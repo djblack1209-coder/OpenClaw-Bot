@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_DIR="/Users/blackdj/Desktop/OpenClaw Bot"
-CLI="$BASE_DIR/openclaw-cli"
+CLI="$BASE_DIR/apps/openclaw-cli"
 
 OUT="$("$CLI" dashboard --no-open)"
 URL=""

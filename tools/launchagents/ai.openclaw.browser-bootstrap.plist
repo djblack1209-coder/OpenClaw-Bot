@@ -8,7 +8,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/python3</string>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/scripts/bootstrap_browser_session.py</string>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/scripts/bootstrap_browser_session.py</string>
   </array>
 
   <key>RunAtLoad</key>

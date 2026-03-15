@@ -17,6 +17,16 @@ This pack curates local workspace skills for OpenClaw Bot and maps them to commu
 - `cost-quota-dashboard`
 - `dev-todo-mode`
 
+## Product & Design skills (from great-product-skills)
+
+- `product-team` — 全流程产研 Team Agent（想法→Spec→Demo→走查）
+- `pm-debate` — 高质量产品讨论，资深 PM 陪练
+- `spec-generate` — 结构化 PRD 生成
+- `frontend-design` — 生产级前端 UI 实现
+- `web-artifacts-builder` — React + shadcn/ui 多组件原型
+- `ux-walkthrough` — 系统性 UX 走查与问题报告
+- `doc-coauthoring` — 协作文档撰写
+
 ## Telegram shortcut aliases
 
 - `profit` -> `profit-war-room`
@@ -50,7 +60,7 @@ This pack curates local workspace skills for OpenClaw Bot and maps them to commu
 
 ## Activation path
 
-1. Skills live under `OpenClaw/skills/` (workspace scope).
+1. Skills live under `apps/openclaw/skills/` (workspace scope).
 2. Skill entries are enabled in `.openclaw/openclaw.json` under `skills.entries`.
 3. OpenClaw loads workspace skills on the next session turn.
 
