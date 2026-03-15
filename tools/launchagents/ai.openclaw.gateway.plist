@@ -18,7 +18,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>/opt/homebrew/opt/node/bin/node</string>
-      <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/openclaw-npm/dist/index.js</string>
+      <string>/Users/blackdj/.npm-global/lib/node_modules/openclaw/dist/index.js</string>
       <string>gateway</string>
       <string>--port</string>
       <string>18789</string>
