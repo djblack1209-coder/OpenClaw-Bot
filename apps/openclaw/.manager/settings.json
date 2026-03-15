@@ -1,0 +1,11 @@
+{
+  "identity": {
+    "botName": "OpenClaw Bot",
+    "userName": "Boss",
+    "timezone": "Asia/Shanghai"
+  },
+  "security": {
+    "enableWhitelist": false,
+    "allowFileAccess": true
+  }
+}

@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+
+BASE_DIR="/Users/blackdj/Desktop/OpenClaw Bot"
+CLI="$BASE_DIR/openclaw-cli"
+
+OUT="$("$CLI" dashboard --no-open)"
+URL=""
+
+while IFS= read -r line; do
+  case "$line" in
+    "Dashboard URL: "*)
+      URL="${line#Dashboard URL: }"
+      ;;
+  esac
+done <<< "$OUT"
+
+if [ -z "$URL" ]; then
+  exec "$CLI" dashboard
+fi
+
+if [ -d "/Applications/Google Chrome.app" ]; then
+  exec open -na "/Applications/Google Chrome.app" --args --app="$URL" --new-window
+fi
+
+exec open "$URL"

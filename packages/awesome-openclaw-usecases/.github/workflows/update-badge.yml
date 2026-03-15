@@ -1,0 +1,29 @@
+name: Update Use Case Count Badge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'usecases/*.md'
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count use cases and update badge
+        run: |
+          COUNT=$(ls usecases/*.md 2>/dev/null | wc -l | tr -d ' ')
+          sed -i "s|usecases-[0-9]*-blue|usecases-${COUNT}-blue|" README.md
+
+      - name: Commit if changed
+        run: |
+          git diff --quiet README.md && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update use case count badge to $(ls usecases/*.md | wc -l | tr -d ' ')"
+          git push

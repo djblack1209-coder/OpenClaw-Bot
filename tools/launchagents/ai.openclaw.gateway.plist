@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>ai.openclaw.gateway</string>
+    
+    <key>Comment</key>
+    <string>OpenClaw Gateway (v2026.3.2)</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>1</integer>
+    <key>Umask</key>
+    <integer>63</integer>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/opt/homebrew/opt/node/bin/node</string>
+      <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/openclaw-npm/dist/index.js</string>
+      <string>gateway</string>
+      <string>--port</string>
+      <string>18789</string>
+    </array>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/logs/gateway.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/logs/gateway.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+    <key>HOME</key>
+    <string>/Users/blackdj</string>
+    <key>TMPDIR</key>
+    <string>/var/folders/fh/ktq7clz11v36qpdbt63rxtj00000gn/T/</string>
+    <key>PATH</key>
+    <string>/Users/blackdj/.local/bin:/Users/blackdj/.npm-global/bin:/Users/blackdj/bin:/Users/blackdj/.volta/bin:/Users/blackdj/.asdf/shims:/Users/blackdj/.bun/bin:/Users/blackdj/Library/Application Support/fnm/aliases/default/bin:/Users/blackdj/.fnm/aliases/default/bin:/Users/blackdj/Library/pnpm:/Users/blackdj/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>NO_PROXY</key>
+    <string>127.0.0.1,localhost,::1</string>
+    <key>no_proxy</key>
+    <string>127.0.0.1,localhost,::1</string>
+    <key>NODE_EXTRA_CA_CERTS</key>
+    <string>/etc/ssl/cert.pem</string>
+    <key>NODE_USE_SYSTEM_CA</key>
+    <string>1</string>
+    <key>OPENCLAW_STATE_DIR</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw</string>
+    <key>OPENCLAW_CONFIG_PATH</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json</string>
+    <key>OPENCLAW_GATEWAY_PORT</key>
+    <string>18789</string>
+    <key>OPENCLAW_GATEWAY_TOKEN</key>
+    <string>openclaw-manager-local-token</string>
+    <key>OPENCLAW_LAUNCHD_LABEL</key>
+    <string>ai.openclaw.gateway</string>
+    <key>OPENCLAW_SYSTEMD_UNIT</key>
+    <string>openclaw-gateway.service</string>
+    <key>OPENCLAW_SERVICE_MARKER</key>
+    <string>openclaw</string>
+    <key>OPENCLAW_SERVICE_KIND</key>
+    <string>gateway</string>
+    <key>OPENCLAW_SERVICE_VERSION</key>
+    <string>2026.3.2</string>
+    </dict>
+  </dict>
+</plist>

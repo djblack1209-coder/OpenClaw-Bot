@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills": {
+      "version": "0.1.0",
+      "installedAt": 1773470583663
+    },
+    "openclaw-tavily-search": {
+      "version": "0.1.0",
+      "installedAt": 1773470583729
+    },
+    "self-improving-agent": {
+      "version": "3.0.2",
+      "installedAt": 1773470584304
+    },
+    "playwright": {
+      "version": "1.0.3",
+      "installedAt": 1773470584456
+    }
+  }
+}

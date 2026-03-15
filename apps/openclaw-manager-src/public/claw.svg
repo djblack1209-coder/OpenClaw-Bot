@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="clawGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff7a6b"/>
+      <stop offset="50%" style="stop-color:#f94d3a"/>
+      <stop offset="100%" style="stop-color:#c1241a"/>
+    </linearGradient>
+  </defs>
+  <!-- 龙虾钳子图标 -->
+  <g fill="url(#clawGrad)">
+    <!-- 左钳 -->
+    <path d="M16 20 C8 16, 4 24, 8 32 C12 40, 20 44, 28 40 L24 32 C20 34, 14 32, 12 28 C10 24, 14 20, 16 20 Z"/>
+    <!-- 右钳 -->
+    <path d="M48 20 C56 16, 60 24, 56 32 C52 40, 44 44, 36 40 L40 32 C44 34, 50 32, 52 28 C54 24, 50 20, 48 20 Z"/>
+    <!-- 身体 -->
+    <ellipse cx="32" cy="44" rx="12" ry="8"/>
+    <ellipse cx="32" cy="36" rx="8" ry="6"/>
+  </g>
+  <!-- 眼睛 -->
+  <circle cx="26" cy="34" r="2" fill="#0a0a0b"/>
+  <circle cx="38" cy="34" r="2" fill="#0a0a0b"/>
+</svg>

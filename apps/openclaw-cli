@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+BASE_DIR="/Users/blackdj/Desktop/OpenClaw Bot"
+export OPENCLAW_STATE_DIR="$BASE_DIR/.openclaw"
+export OPENCLAW_CONFIG_PATH="$BASE_DIR/.openclaw/openclaw.json"
+
+NODE_BIN="${OPENCLAW_NODE:-/opt/homebrew/bin/node}"
+if [[ ! -x "$NODE_BIN" ]]; then
+  NODE_BIN="$(command -v node)"
+fi
+
+GLOBAL_DIST="${OPENCLAW_GLOBAL_DIST:-$HOME/.npm-global/lib/node_modules/openclaw/dist/index.js}"
+LOCAL_DIST="$BASE_DIR/packages/openclaw-npm/dist/index.js"
+
+if [[ -f "$GLOBAL_DIST" ]]; then
+  exec "$NODE_BIN" "$GLOBAL_DIST" "$@"
+fi
+
+exec "$NODE_BIN" "$LOCAL_DIST" "$@"

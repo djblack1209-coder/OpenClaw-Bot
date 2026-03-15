@@ -1,0 +1,19 @@
+# ClawBot 核心依赖（~= 允许补丁更新，锁定主版本）
+python-telegram-bot~=22.5
+httpx~=0.28.1
+python-dotenv~=1.2.1
+beautifulsoup4~=4.14.3
+
+# 交易系统依赖
+yfinance~=1.1.0
+pandas~=2.3.3
+numpy~=2.0.2
+ta~=0.11.0                # 技术分析指标库（RSI/MACD/布林带等）
+
+# IBKR 券商对接（可选，不安装则自动降级为模拟盘）
+# ib_insync~=0.9.86
+
+# 测试依赖
+pytest~=8.4.2
+pytest-asyncio~=1.2.0
+pytest-cov~=7.0.0

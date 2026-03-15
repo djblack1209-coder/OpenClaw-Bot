@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.kiro-gateway</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/kiro-gateway/.venv/bin/python</string>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/kiro-gateway/main.py</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>18793</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/kiro-gateway</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/logs/com-clawbot-kiro-gateway.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/logs/com-clawbot-kiro-gateway.stderr.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/kiro-gateway/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+</dict>
+</plist>

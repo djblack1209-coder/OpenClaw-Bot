@@ -1,0 +1,744 @@
+"""
+CollabCommandsMixin - Collaboration, discussion, and investment commands.
+Extracted from multi_main.py.
+"""
+
+import asyncio
+import logging
+import re
+import json
+from datetime import datetime
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+from src.bot.globals import (
+    chat_router,
+    collab_orchestrator,
+    bot_registry,
+    ibkr,
+    journal,
+    get_full_universe,
+    full_market_scan,
+    get_full_analysis,
+    format_analysis,
+    format_quote,
+    get_market_summary,
+    get_stock_quote,
+    send_long_message,
+    safe_edit,
+    send_as_bot,
+    shared_memory,
+    _pending_trades,
+    ALLOWED_USER_IDS,
+    execute_trade_via_pipeline,
+    get_trading_pipeline,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_trade_recommendations(text: str) -> list:
+    """从策略师回复中解析JSON交易建议
+    
+    寻找 ```json {...} ``` 代码块，提取trades数组
+    返回: [{"action": "BUY", "symbol": "AAPL", "qty": 5, "entry_price": 150.0,
+            "stop_loss": 145.0, "take_profit": 160.0, "reason": "..."}, ...]
+    """
+    if not text:
+        return []
+    
+    # 尝试匹配 ```json ... ``` 代码块
+    patterns = [
+        r'```json\s*(\{.*?\})\s*```',
+        r'```\s*(\{.*?\})\s*```',
+        r'(\{"trades"\s*:\s*\[.*?\]\s*\})',
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.DOTALL)
+        for match in matches:
+            try:
+                data = json.loads(match)
+                trades = data.get("trades", [])
+                if not trades:
+                    continue
+                # 验证每个交易的格式
+                valid_trades = []
+                for t in trades:
+                    action = str(t.get("action", "")).upper()
+                    symbol = str(t.get("symbol", "")).upper().strip()
+                    qty = t.get("qty", 0)
+                    reason = str(t.get("reason", ""))
+                    if action in ("BUY", "SELL") and symbol and qty > 0:
+                        trade = {
+                            "action": action,
+                            "symbol": symbol,
+                            "qty": int(qty) if float(qty) == int(qty) else float(qty),
+                            "reason": reason[:100],
+                            "entry_price": float(t.get("entry_price", 0) or 0),
+                            "stop_loss": float(t.get("stop_loss", 0) or 0),
+                            "take_profit": float(t.get("take_profit", 0) or 0),
+                            "signal_score": int(t.get("signal_score", 0) or 0),
+                        }
+                        valid_trades.append(trade)
+                if valid_trades:
+                    logger.info(f"[Invest] 解析到 {len(valid_trades)} 条交易建议: {valid_trades}")
+                    return valid_trades
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                logger.debug(f"[Invest] JSON解析失败: {e}")
+                continue
+    
+    logger.info("[Invest] 未解析到交易建议（策略师可能建议观望）")
+    return []
+
+
+
+class CollabCommandsMixin:
+    """Mixin providing collaboration, discussion, and investment commands."""
+
+    async def _auto_invest(self, update, context, user_text: str = ""):
+        """
+        全自动投资闭环：全市场扫描334标的 → 多层筛选 → AI团队分析 → 一键下单 → 交易日志
+        """
+        if not self._is_authorized(update.effective_user.id):
+            return
+        if chat_router.get_discuss_session(update.effective_chat.id):
+            await update.message.reply_text("已有分析会议进行中，请等待完成或发送 /stop_discuss 中断")
+            return
+
+        # 检查日亏损限额
+        today_pnl = journal.get_today_pnl()
+        if today_pnl['hit_limit']:
+            await update.message.reply_text(
+                f"{self.emoji} 今日已亏损 ${abs(today_pnl['pnl']):.2f}，触及日亏损限额 ${today_pnl['limit']:.0f}\n"
+                "风控规则：停止交易，明天再来。"
+            )
+            return
+
+        chat_id = update.effective_chat.id
+
+        # === 阶段1: 全市场扫描 ===
+        universe_count = len(get_full_universe())
+        msg = await update.message.reply_text(
+            f"{self.emoji} 全自动投资启动\n\n"
+            f"阶段 1/3: 扫描全市场 {universe_count} 个标的...\n"
+            "（S&P500核心 + ETF + 加密货币 + 中概股）\n"
+            "多层筛选漏斗: 流动性→技术指标→信号评分\n\n"
+            "预计耗时2-5分钟，请稍候..."
+        )
+
+        try:
+            scan_result = await full_market_scan()
+        except Exception as e:
+            await safe_edit(msg, f"扫描失败: {e}")
+            return
+
+        top = scan_result.get('top_candidates', [])
+        if not top:
+            await safe_edit(msg,
+                f"{self.emoji} 全市场扫描完成\n\n"
+                f"扫描: {scan_result['total_scanned']}个标的\n"
+                f"层1通过: {scan_result['layer1_passed']}\n"
+                f"层2信号: {scan_result['layer2_passed']}\n"
+                f"耗时: {scan_result['scan_time']}s\n\n"
+                "结果: 暂无明显信号，市场平静。\n"
+                "建议: 观望等待，不勉强交易。\n\n"
+                "稍后可以再说「开始投资」重新扫描。"
+            )
+            return
+
+        # 挑选最佳标的（前5个）
+        top5 = top[:5]
+        top_symbols = [s['symbol'] for s in top5]
+
+        scan_summary = (
+            f"阶段 1/3: 全市场扫描完成\n"
+            f"扫描{scan_result['total_scanned']}个 → "
+            f"层1:{scan_result['layer1_passed']}个 → "
+            f"层2:{scan_result['layer2_passed']}个 → "
+            f"Top{len(top5)}候选\n"
+            f"耗时: {scan_result['scan_time']}s\n\n"
+            "发现信号:\n"
+        )
+        for s in top5:
+            arrow = "+" if s['change_pct'] >= 0 else ""
+            vol = " [放量]" if s.get('volume_surge') else ""
+            scan_summary += (
+                f"  {s['signal_cn']} {s['symbol']} ${s['price']} "
+                f"({arrow}{s['change_pct']}%) 评分:{s['score']:+d}{vol}\n"
+            )
+
+        await safe_edit(msg,
+            f"{self.emoji} 全自动投资\n\n"
+            f"{scan_summary}\n"
+            "阶段 2/3: 获取详细技术数据...\n"
+        )
+
+        # === 阶段2: 获取详细技术分析 ===
+        ta_tasks = [get_full_analysis(sym) for sym in top_symbols]
+        ta_results = await asyncio.gather(*ta_tasks, return_exceptions=True)
+
+        ta_text = ""
+        for sym, data in zip(top_symbols, ta_results):
+            if isinstance(data, dict) and "error" not in data:
+                ta_text += f"\n{format_analysis(data)}\n"
+
+        await safe_edit(msg,
+            f"{self.emoji} 全自动投资\n\n"
+            f"{scan_summary}\n"
+            "阶段 2/3: 技术数据就绪\n"
+            "阶段 3/3: AI超短线团队分析中...\n\n"
+            "市场雷达 → 宏观猎手 → 图表狙击手 → 风控铁闸 → 交易指挥官"
+        )
+
+        # === 阶段3: 触发投资会议 ===
+        topic = f"全市场扫描{scan_result['total_scanned']}个标的后，筛选出以下Top候选: {', '.join(top_symbols)}。请分析并给出交易决策"
+        context.args = [topic]
+        await self.cmd_invest(update, context)
+
+    async def cmd_invest(self, update, context):
+        """投资讨论: /invest 现在该买什么？"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        # 防止重复触发
+        if chat_router.get_discuss_session(update.effective_chat.id):
+            return
+
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "投资讨论 - 6位AI分析师协作分析\n\n"
+                "用法: `/invest <投资话题>`\n\n"
+                "示例:\n"
+                "`/invest 现在该买什么？`\n"
+                "`/invest 比特币还能涨吗`\n"
+                "`/invest 分析一下NVDA`\n\n"
+                "流程: 情报收集 -> 基本面 -> 技术面 -> 风控 -> 最终决策 -> 终审确认\n"
+                "发送 /stop_discuss 可中断",
+                parse_mode="Markdown"
+            )
+            return
+
+        topic = " ".join(args)
+        chat_id = update.effective_chat.id
+        message_id = update.message.message_id
+
+        # 投资讨论顺序：Haiku情报 -> Qwen基本面 -> GPT技术面 -> DeepSeek风控 -> Sonnet决策
+        invest_order = ["claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonnet", "claude_opus"]
+
+        # 先获取市场数据作为上下文
+        await update.message.reply_text(f"{self.emoji} 正在获取市场数据和技术指标...")
+        try:
+            market_data = await get_market_summary()
+        except Exception:
+            market_data = "(市场数据获取失败)"
+
+        # 如果话题提到具体标的，获取行情+技术分析
+        target_quote = ""
+        ta_data_text = ""
+        potential_symbols = re.findall(r'\b([A-Z]{2,5})\b', topic.upper())
+        known_symbols = {"AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",
+                         "NFLX", "BABA", "JD", "PDD", "NIO", "XPEV", "LI", "TSM", "ASML", "AVGO",
+                         "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "SPY", "QQQ", "DIA", "IWM",
+                         "CRM", "ORCL", "ADBE", "QCOM"}
+        target_syms = [sym for sym in potential_symbols if sym in known_symbols]
+        # 并行获取行情+技术分析
+        if target_syms:
+            ta_tasks = []
+            for sym in target_syms[:5]:  # 最多5个
+                real_sym = f"{sym}-USD" if sym in {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"} else sym
+                ta_tasks.append(get_full_analysis(real_sym))
+            ta_results = await asyncio.gather(*ta_tasks, return_exceptions=True)
+            for sym, data in zip(target_syms[:5], ta_results):
+                if isinstance(data, dict) and "error" not in data:
+                    target_quote += f"\n{format_quote({'symbol': data['symbol'], 'name': data['name'], 'price': data['price'], 'change': data['change'], 'change_pct': data['change_pct'], 'high': data['indicators'].get('high_5d', 0), 'low': data['indicators'].get('low_5d', 0), 'volume': data['indicators'].get('volume', 0), 'currency': 'USD'})}\n"
+                    ta_data_text += f"\n--- {data['symbol']} 技术指标 ---\n{format_analysis(data)}\n"
+
+        # 注册到 discuss_sessions
+        info = await chat_router.start_discuss(chat_id, topic, 1, invest_order, discuss_type="invest")
+        if "已有进行中" in info:
+            await context.bot.send_message(chat_id=chat_id, text=info, reply_to_message_id=message_id)
+            return
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "-- 超短线投资分析会议 --\n"
+                f"议题: {topic}\n\n"
+                f"{market_data}\n"
+                f"{target_quote}\n"
+                "分析顺序:\n"
+                "1. Haiku (市场雷达) - 全市场扫描\n"
+                "2. Qwen (宏观猎手) - 宏观方向判断\n"
+                "3. GPT-OSS (图表狙击手) - 技术信号精准狙击\n"
+                "4. DeepSeek (风控铁闸) - 仓位止损计算\n"
+                "5. Claude Sonnet (交易指挥官) - 最终交易指令\n"
+                "6. Claude Opus (首席策略师) - 终审确认/否决\n\n"
+                "发送 /stop_discuss 可中断"
+            ),
+            reply_to_message_id=message_id,
+        )
+
+        # 构造每个Bot的投资分析提示
+        invest_context = f"市场数据:\n{market_data}\n"
+        if target_quote:
+            invest_context += f"\n相关标的行情:\n{target_quote}\n"
+        if ta_data_text:
+            invest_context += f"\n实时技术分析数据:\n{ta_data_text}\n"
+        invest_context += f"\nIBKR预算: ${ibkr.budget - ibkr.total_spent:.0f} / ${ibkr.budget:.0f}\n"
+
+        previous_opinions = []
+        from src.message_sender import _clean_for_telegram, _split_message
+
+        role_map = {
+            "claude_haiku": ("市场雷达", "你是超短线交易团队的市场雷达。请在200字内完成：\n1. 当前市场状态判断（贪婪/恐惧/中性）\n2. 今日异动标的（放量、大涨大跌、突破关键位）\n3. 板块热点和资金流向\n4. 重要事件提醒（财报、经济数据等）\n\n像交易室晨会简报一样精炼，不要长篇大论。"),
+            "qwen235b": ("宏观猎手", "你是超短线交易团队的宏观猎手。请快速判断：\n1. 当前宏观环境对超短线是利多还是利空\n2. 美联储/非农/CPI等关键数据的影响\n3. 板块轮动方向，资金从哪里流出流入哪里\n4. 今天/本周最值得关注的2-3个超短线方向\n\n快准狠，直接给结论和理由。"),
+            "gptoss": ("图表狙击手", "你是超短线交易团队的图表狙击手。系统已提供实时技术数据，请基于这些硬数据给出精准判断：\n1. RSI超卖/超买信号解读\n2. MACD金叉/死叉 + 柱状图方向\n3. 放量突破还是缩量回调\n4. 布林带位置和突破方向\n5. EMA排列和VWAP关系\n6. 支撑位反弹/阻力位突破机会\n\n输出格式：做多/做空/观望 + 入场价 + 止损价 + 目标价。像交易室老手一样简短精准。"),
+            "deepseek_v3": ("风控铁闸", "你是超短线交易团队的风控铁闸。请冷酷计算：\n1. 每笔交易最大风险敞口（不超过总资金2%=$40）\n2. 基于ATR设定动态止损位（1.5-2倍ATR）\n3. 仓位大小（具体几股，考虑$2000预算）\n4. 检查仓位集中度（单只不超过30%）\n5. 风险收益比（低于1:2直接否决）\n6. 审查前面分析师的建议，指出风险盲点\n\n用数字说话，不带感情。"),
+            "claude_sonnet": ("交易指挥官", "你是超短线交易团队的交易指挥官，最终拍板的人。请：\n1. 综合所有分析师的观点\n2. 指出分歧并给出你的判断\n3. 给出明确的交易指令：买入/卖出/观望（不能模棱两可）\n4. 具体：标的、数量、入场价、止损价、目标价、持仓时间\n5. 如果信号不够强，果断说观望\n\n核心原则：宁可错过不可做错，资金安全第一。\n\n重要：在你的回复最后，必须输出一个JSON代码块，格式如下（即使建议观望也要输出，trades为空数组即可）：\n```json\n{\"trades\": [{\"action\": \"BUY\", \"symbol\": \"AAPL\", \"qty\": 5, \"entry_price\": 150.0, \"stop_loss\": 145.5, \"take_profit\": 159.0, \"reason\": \"简短理由\"}]}\n```\naction只能是BUY或SELL，symbol是股票代码，qty是数量（整数，考虑$2000预算）。entry_price是当前入场价，stop_loss是止损价（必填，通常为入场价下方2-3%或1.5倍ATR），take_profit是目标价（必填，至少为止损距离的2倍）。这三个价格字段必须填写具体数字，不能为0。"),
+            "claude_opus": ("首席策略师", "你是超短线交易团队的首席策略师，终极大脑，只在关键时刻发言。你的职责是：\n1. 审阅所有分析师和交易指挥官的观点\n2. 从更高维度评估：市场情绪是否被误读？有没有被忽略的系统性风险？\n3. 如果交易指挥官的决策合理，简短确认即可（一句话）\n4. 如果发现重大风险或逻辑漏洞，明确提出否决并说明理由\n5. 可以调整仓位大小、止损位，或直接否决交易\n\n你是最后的安全阀。宁可保守，不可冒进。回复控制在100字以内，除非需要否决。"),
+        }
+
+        for i, bot_id in enumerate(invest_order):
+            # 检查是否被中断
+            if not chat_router.get_discuss_session(chat_id):
+                await context.bot.send_message(
+                    chat_id=chat_id, text="-- 投资分析会议已被中断 --", reply_to_message_id=message_id)
+                return
+
+            caller = collab_orchestrator._api_callers.get(bot_id)
+            target_bot = bot_registry.get(bot_id)
+            if not caller or not target_bot or not target_bot.app:
+                logger.warning(f"[Invest] {bot_id} 未注册或未启动，跳过")
+                continue
+
+            bot_telegram = target_bot.app.bot
+            role_name, role_prompt = role_map.get(bot_id, ("分析师", "请给出你的分析。"))
+
+            # 构造提示
+            prompt = (
+                f"【投资分析会议】\n"
+                f"议题: {topic}\n\n"
+                f"{invest_context}\n"
+                f"你的角色: {role_name}\n"
+                f"{role_prompt}\n"
+            )
+            if previous_opinions:
+                prompt += "\n前面分析师的观点:\n" + "\n---\n".join(previous_opinions) + "\n"
+
+            timeout_sec = 120
+            last_response = ""
+            try:
+                response = await asyncio.wait_for(caller(chat_id, prompt), timeout=timeout_sec)
+                previous_opinions.append(f"[{role_name}] {response[:800]}")
+                chat_router.record_discuss_message(chat_id, role_name, response)
+                # 保存最后一个Bot（Sonnet策略师）的完整回复用于解析交易建议
+                if bot_id == invest_order[-1]:
+                    last_response = response
+
+                cleaned = _clean_for_telegram(response)
+                parts = _split_message(cleaned, 4000)
+                for pi, part in enumerate(parts):
+                    reply_id = message_id if pi == 0 else None
+                    try:
+                        await bot_telegram.send_message(chat_id=chat_id, text=part, parse_mode="Markdown", reply_to_message_id=reply_id)
+                    except Exception:
+                        try:
+                            await bot_telegram.send_message(chat_id=chat_id, text=part, reply_to_message_id=reply_id)
+                        except Exception:
+                            await bot_telegram.send_message(chat_id=chat_id, text=part)
+                    if pi < len(parts) - 1:
+                        await asyncio.sleep(0.3)
+                await asyncio.sleep(1)
+            except asyncio.TimeoutError:
+                logger.warning(f"[Invest] {bot_id} 回复超时 ({timeout_sec}s)")
+                try:
+                    await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 回复超时，跳过]")
+                except Exception:
+                    logger.debug("[Invest] 发送超时通知失败(静默)")
+            except Exception as e:
+                logger.error(f"[Invest] {bot_id} 发言失败: {e}")
+                try:
+                    await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 发言失败: {e}]")
+                except Exception:
+                    logger.debug("[Invest] 发送失败通知失败(静默)")
+
+        # 讨论结束
+        await chat_router.stop_discuss(chat_id)
+
+        # 解析策略师的交易建议并生成一键下单按钮
+        trades = _parse_trade_recommendations(last_response)
+        if trades:
+            # 存储待确认交易到全局字典
+            trade_key = f"invest_{chat_id}_{int(datetime.now().timestamp())}"
+            _pending_trades[trade_key] = {
+                "trades": trades,
+                "chat_id": chat_id,
+                "topic": topic,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # 构建交易摘要和确认按钮
+            lines = ["-- 投资分析会议结束 --\n", "策略师建议执行以下交易:\n"]
+            buttons = []
+            for idx, t in enumerate(trades):
+                action_cn = "买入" if t["action"] == "BUY" else "卖出"
+                lines.append(f"{idx+1}. {action_cn} {t['symbol']} x{t['qty']}  ({t['reason']})")
+                btn_text = f"{'🟢' if t['action'] == 'BUY' else '🔴'} {action_cn} {t['symbol']} x{t['qty']}"
+                callback_data = f"itrade:{trade_key}:{idx}"
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=callback_data)])
+
+            # 添加全部执行和取消按钮
+            buttons.append([
+                InlineKeyboardButton("✅ 全部执行", callback_data=f"itrade_all:{trade_key}"),
+                InlineKeyboardButton("❌ 取消", callback_data=f"itrade_cancel:{trade_key}"),
+            ])
+            lines.append(f"\n预算剩余: ${ibkr.budget - ibkr.total_spent:.2f} / ${ibkr.budget:.2f}")
+            lines.append("\n点击按钮确认下单到IBKR模拟账户:")
+
+            keyboard = InlineKeyboardMarkup(buttons)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="\n".join(lines),
+                reply_markup=keyboard,
+                reply_to_message_id=message_id,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="-- 投资分析会议结束 --\n\n策略师建议观望，暂无交易操作\n\n使用 /buy /sell 手动执行交易\n使用 /portfolio 查看持仓",
+                reply_to_message_id=message_id,
+            )
+
+
+    async def cmd_discuss(self, update, context):
+        """讨论模式 - 多Bot多轮讨论，需人类明确指定轮数"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        # 所有Bot都可以触发 /discuss，由第一个收到命令的Bot发起
+        # 用 discuss_sessions 防止重复触发
+        if chat_router.get_discuss_session(update.effective_chat.id):
+            return
+
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "**讨论模式** - 多Bot多轮讨论\n\n"
+                "用法: `/discuss <轮数> <主题>`\n\n"
+                "示例:\n"
+                "`/discuss 3 AI会取代程序员吗`\n"
+                "`/discuss 2 比特币未来走势分析`\n\n"
+                "每轮所有Bot依次发言，人类可随时 /stop_discuss 结束。",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 解析轮数
+        try:
+            rounds = int(args[0])
+            if rounds < 1 or rounds > 10:
+                await update.message.reply_text("轮数请设置在 1-10 之间")
+                return
+            topic = " ".join(args[1:])
+        except ValueError:
+            # 没指定轮数，默认2轮
+            rounds = 2
+            topic = " ".join(args)
+
+        if not topic:
+            await update.message.reply_text("请提供讨论主题")
+            return
+
+        chat_id = update.effective_chat.id
+
+        # 启动讨论
+        info = await chat_router.start_discuss(chat_id, topic, rounds)
+        await update.message.reply_text(info)
+
+        # 自动驱动讨论流程
+        await self._run_discuss_loop(chat_id, context, update.message.message_id)
+
+    async def cmd_stop_discuss(self, update, context):
+        """停止讨论模式"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+        chat_id = update.effective_chat.id
+        discuss_result = await chat_router.stop_discuss(chat_id)
+        workflow_result = await chat_router.stop_service_workflow(chat_id)
+        await update.message.reply_text(f"{discuss_result}\n{workflow_result}")
+
+    async def _run_discuss_loop(self, chat_id, context, reply_to):
+        """驱动讨论循环：依次让每个Bot用自己的Telegram账号发言"""
+        from src.message_sender import _clean_for_telegram, _split_message
+
+        while True:
+            # 检查讨论是否仍然活跃（支持 /stop_discuss 中断）
+            session = chat_router.get_discuss_session(chat_id)
+            if not session or not session.get("active", False):
+                logger.info(f"[Discuss] chat={chat_id} 讨论已被中断")
+                return
+
+            turn = await chat_router.next_discuss_turn(chat_id)
+            if turn is None:
+                # 讨论结束
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="讨论结束。各位Bot已完成所有轮次发言。",
+                    reply_to_message_id=reply_to,
+                )
+                await chat_router.stop_discuss(chat_id)
+                return
+
+            bot_id, prompt = turn
+            bot_cap = chat_router.bots.get(bot_id)
+            bot_name = bot_cap.name if bot_cap else bot_id
+
+            # 找到对应 bot 的 API caller 和 Telegram 实例
+            caller = collab_orchestrator._api_callers.get(bot_id)
+            target_bot = bot_registry.get(bot_id)
+            if not caller or not target_bot or not target_bot.app:
+                logger.warning(f"[Discuss] {bot_id} 未注册或未启动，跳过")
+                continue
+
+            bot_telegram = target_bot.app.bot  # 该 bot 自己的 Telegram 实例
+
+            # 根据模型设置超时：R1 需要更长时间思考
+            timeout_sec = 300 if bot_id == "deepseek_v3" else 120
+
+            try:
+                response = await asyncio.wait_for(
+                    caller(chat_id, prompt),
+                    timeout=timeout_sec,
+                )
+                # 记录到讨论历史
+                chat_router.record_discuss_message(chat_id, bot_name, response)
+                # 用该 bot 自己的 Telegram 账号发送到群组
+                cleaned = _clean_for_telegram(response)
+                parts = _split_message(cleaned, 4000)
+                for pi, part in enumerate(parts):
+                    reply_id = reply_to if pi == 0 else None
+                    try:
+                        await bot_telegram.send_message(
+                            chat_id=chat_id,
+                            text=part,
+                            parse_mode="Markdown",
+                            reply_to_message_id=reply_id,
+                        )
+                    except Exception:
+                        await bot_telegram.send_message(
+                            chat_id=chat_id,
+                            text=part,
+                            reply_to_message_id=reply_id,
+                        )
+                    if pi < len(parts) - 1:
+                        await asyncio.sleep(0.3)
+                # 间隔1秒，避免消息刷屏太快
+                await asyncio.sleep(1)
+            except asyncio.TimeoutError:
+                logger.warning(f"[Discuss] {bot_id} 回复超时 ({timeout_sec}s)，跳过")
+                try:
+                    await bot_telegram.send_message(
+                        chat_id=chat_id,
+                        text=f"[回复超时({timeout_sec}s)，跳过本轮发言]",
+                    )
+                except Exception:
+                    logger.debug("[Discuss] 发送超时通知失败(静默)")
+            except Exception as e:
+                logger.error(f"[Discuss] {bot_id} 发言失败: {e}")
+                try:
+                    await bot_telegram.send_message(
+                        chat_id=chat_id,
+                        text=f"发言失败: {e}",
+                    )
+                except Exception:
+                    logger.debug("[Discuss] 发送失败通知失败(静默)")
+
+    async def cmd_collab(self, update, context):
+        """协作模式命令 - 启动多模型协作流程"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        # 所有Bot都可以触发 /collab，用 collab_tasks 防止重复
+        if chat_router.get_discuss_session(update.effective_chat.id):
+            return
+
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "**协作模式** - 多模型协作完成复杂任务\n\n"
+                "用法: `/collab <任务描述>`\n\n"
+                "流程:\n"
+                "1. 规划: DeepSeek-R1/Qwen 分析任务并制定计划\n"
+                "2. 执行: Claude Opus 4.6 执行核心难点\n"
+                "3. 汇总: ClawBot 整合输出最终结果\n\n"
+                "可选参数:\n"
+                "`/collab --planner r1 <任务>` 指定 DeepSeek-R1 规划\n"
+                "`/collab --planner qwen <任务>` 指定 Qwen 规划\n\n"
+                "示例:\n"
+                "`/collab 帮我设计一个微服务架构的电商系统`\n"
+                "`/collab 写一篇关于AI发展趋势的深度分析报告`",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 防止并发：检查是否已有活跃的协作任务
+        chat_id = update.effective_chat.id
+        active_task = collab_orchestrator.get_active_task(chat_id)
+        if active_task:
+            await update.message.reply_text("当前已有进行中的协作任务，请等待完成后再启动新任务。")
+            return
+
+        # 防止并发：检查是否已有活跃的讨论
+        if chat_router.get_discuss_session(chat_id):
+            await update.message.reply_text("当前已有进行中的讨论，请先 /stop_discuss 结束后再启动协作。")
+            return
+
+        # 解析参数
+        task_parts = []
+        planner_override = None
+        i = 0
+        while i < len(args):
+            if args[i] == "--planner" and i + 1 < len(args):
+                planner_map = {"r1": "deepseek_v3", "deepseek": "deepseek_v3", "qwen": "qwen235b"}
+                planner_override = planner_map.get(args[i + 1].lower(), args[i + 1])
+                i += 2
+            else:
+                task_parts.append(args[i])
+                i += 1
+
+        task_text = " ".join(task_parts)
+        if not task_text:
+            await update.message.reply_text("请提供任务描述")
+            return
+
+        # 启动协作任务
+        task = await collab_orchestrator.start_collab(chat_id, task_text, planner_override)
+
+        # 发送启动通知
+        planner_name = {"deepseek_v3": "DeepSeek V3 🐉", "qwen235b": "Qwen 235B 🧠"}.get(task.planner_id, task.planner_id)
+        status_msg = await update.message.reply_text(
+            f"**🤝 协作模式启动**\n\n"
+            f"任务: {task_text[:100]}{'...' if len(task_text) > 100 else ''}\n\n"
+            f"**阶段 1/3** - 规划中...\n"
+            f"规划师: {planner_name}\n"
+            f"执行者: Claude Opus 4.6 ✨\n"
+            f"汇总者: ClawBot 🤖",
+            parse_mode="Markdown"
+        )
+
+        try:
+            # 阶段1: 规划
+            plan_result = await collab_orchestrator.run_planning(task)
+            if task.error:
+                await safe_edit(status_msg, f"协作失败（规划阶段）: {task.error}")
+                return
+
+            await safe_edit(status_msg,
+                f"**🤝 协作模式**\n\n"
+                f"**阶段 1/4** ✅ 规划完成 ({planner_name})\n"
+                f"**阶段 2/4** - Claude Opus 4.6 执行中...\n"
+                f"**阶段 3/4** - 待审查\n"
+                f"**阶段 4/4** - 待汇总"
+            )
+
+            # 用规划者自己的 Telegram 账号发送规划结果
+            await send_as_bot(task.planner_id, chat_id,
+                f"📋 规划结果\n\n{plan_result}",
+                reply_to_message_id=update.message.message_id)
+
+            # 阶段2: 执行
+            exec_result = await collab_orchestrator.run_execution(task)
+            if task.error:
+                await safe_edit(status_msg, f"协作失败（执行阶段）: {task.error}")
+                return
+
+            await safe_edit(status_msg,
+                f"**🤝 协作模式**\n\n"
+                f"**阶段 1/4** ✅ 规划完成\n"
+                f"**阶段 2/4** ✅ 执行完成 (Claude Opus 4.6)\n"
+                f"**阶段 3/4** - {planner_name} 审查中...\n"
+                f"**阶段 4/4** - 待汇总"
+            )
+
+            # 用 Claude 自己的 Telegram 账号发送执行结果
+            await send_as_bot("claude_sonnet", chat_id,
+                f"⚡ 执行结果\n\n{exec_result}",
+                reply_to_message_id=update.message.message_id)
+
+            # 阶段3: 审查（规划者审查执行结果）
+            review_result = await collab_orchestrator.run_review(task)
+
+            # 用审查者自己的 Telegram 账号发送审查结果
+            review_icon = "✅" if task.review_passed else "🔄"
+            await send_as_bot(task.reviewer_id, chat_id,
+                f"{review_icon} 审查结果\n\n{review_result}",
+                reply_to_message_id=update.message.message_id)
+
+            # 如果审查不通过且可以重试，进行修订
+            if not task.review_passed and task.retry_count < task.max_retries:
+                await safe_edit(status_msg,
+                    f"**🤝 协作模式**\n\n"
+                    f"**阶段 1/4** ✅ 规划完成\n"
+                    f"**阶段 2/4** 🔄 修订执行中 (Claude Opus 4.6)\n"
+                    f"**阶段 3/4** - 待重新审查\n"
+                    f"**阶段 4/4** - 待汇总"
+                )
+
+                exec_result = await collab_orchestrator.run_revised_execution(task)
+                if task.error:
+                    await safe_edit(status_msg, f"协作失败（修订执行）: {task.error}")
+                    return
+
+                await send_as_bot("claude_sonnet", chat_id,
+                    f"🔄 修订结果\n\n{exec_result}",
+                    reply_to_message_id=update.message.message_id)
+
+            await safe_edit(status_msg,
+                f"**🤝 协作模式**\n\n"
+                f"**阶段 1/4** ✅ 规划完成\n"
+                f"**阶段 2/4** ✅ 执行完成\n"
+                f"**阶段 3/4** ✅ 审查{'通过' if task.review_passed else '(修订后继续)'}\n"
+                f"**阶段 4/4** - ClawBot 汇总中..."
+            )
+
+            # 阶段4: 汇总
+            summary_result = await collab_orchestrator.run_summary(task)
+            if task.error:
+                await safe_edit(status_msg, f"协作失败（汇总阶段）: {task.error}")
+                return
+
+            retry_note = f" (经{task.retry_count}次修订)" if task.retry_count > 0 else ""
+            await safe_edit(status_msg,
+                f"**🤝 协作模式 - 完成 ✅**{retry_note}\n\n"
+                f"**阶段 1/4** ✅ 规划 ({planner_name})\n"
+                f"**阶段 2/4** ✅ 执行 (Claude Opus 4.6)\n"
+                f"**阶段 3/4** ✅ 审查 ({planner_name})\n"
+                f"**阶段 4/4** ✅ 汇总 (ClawBot)"
+            )
+
+            # 用 ClawBot 自己的 Telegram 账号发送最终汇总
+            await send_as_bot("qwen235b", chat_id,
+                f"📊 最终汇总\n\n{summary_result}",
+                reply_to_message_id=update.message.message_id)
+
+            # 保存协作结论到共享记忆
+            try:
+                shared_memory.save_collab_result(
+                    task_text=task_text,
+                    plan_result=plan_result,
+                    exec_result=exec_result,
+                    summary_result=summary_result,
+                    planner_id=task.planner_id,
+                    chat_id=chat_id,
+                )
+            except Exception as mem_err:
+                logger.warning(f"[Collab] 保存共享记忆失败: {mem_err}")
+
+        except Exception as e:
+            logger.exception(f"[{self.name}] 协作任务出错")
+            try:
+                await status_msg.edit_text(f"协作任务出错: {e}")
+            except Exception:
+                logger.debug("[Collab] 编辑错误消息失败(静默)")

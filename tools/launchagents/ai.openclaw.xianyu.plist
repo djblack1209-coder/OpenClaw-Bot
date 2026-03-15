@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.xianyu</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/.venv312/bin/python</string>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/scripts/xianyu_main.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/logs/com-clawbot-xianyu.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/logs/com-clawbot-xianyu.stderr.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/clawbot/.venv312/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+</dict>
+</plist>

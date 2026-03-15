@@ -1,0 +1,42 @@
+{
+  "preparedAt": "2026-03-09T11:33:04.742Z",
+  "runId": "social-plan-001",
+  "platform": "x",
+  "topic": "AI内容发布SOP",
+  "composeUrl": "https://x.com/compose/post",
+  "homeUrl": "https://x.com/home",
+  "steps": [
+    "open_compose",
+    "fill_main_text",
+    "attach_media_if_any",
+    "submit_post",
+    "capture_success_evidence",
+    "optionally_publish_thread_replies"
+  ],
+  "requiredEvidence": [
+    "share_link",
+    "post_visible",
+    "success_toast"
+  ],
+  "verificationHints": [
+    "post composer closed",
+    "success toast visible",
+    "new post visible on profile",
+    "share link available"
+  ],
+  "content": {
+    "title": null,
+    "text": "主帖文案",
+    "tags": [],
+    "images": [],
+    "threadParts": [
+      "评论1",
+      "评论2"
+    ]
+  },
+  "browserRequirements": {
+    "preferLocalLoggedInSession": true,
+    "allowBrowserRelayFallback": true,
+    "requireSuccessEvidence": true
+  }
+}

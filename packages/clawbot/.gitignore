@@ -1,0 +1,74 @@
+# ClawBot
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虚拟环境
+.venv/
+venv/
+env/
+*.egg-info/
+
+# 密钥和配置（绝不提交）
+config/.env
+config/.env.*
+data/api_keys.json
+*.pem
+*.key
+
+# 数据（运行时生成）
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 日志
+logs/
+*.log
+
+# 生成的图片
+images/
+
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 子项目虚拟环境
+browser-agent/.venv/
+kiro-gateway/.venv/
+
+# 子项目敏感文件（绝不提交）
+kiro-gateway/.env
+kiro-gateway/.env.*
+browser-agent/keypool.json
+
+# 子项目运行时产物
+browser-agent/*.log
+browser-agent/results/
+browser-agent/screenshots/
+browser-agent/__pycache__/
+browser-agent/model_health.json
+
+# 测试/覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 分发
+dist/
+build/

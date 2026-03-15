@@ -1,0 +1,27 @@
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - ".*"
+  request_changes_workflow: false
+  path_filters:
+    - "usecases/**/*.md"
+    - "README*.md"
+    - "**/package.json"
+    - "**/pnpm-lock.yaml"
+    - "**/yarn.lock"
+    - "**/package-lock.json"
+    - "**/requirements*.txt"
+    - "**/poetry.lock"
+
+path_instructions:
+  - path: "usecases/**/*.md"
+    instructions: |
+      Review with priority on practical value and reasonable security hygiene.
+      - Focus on high-confidence risks, not minor speculation.
+      - When a use case introduces dependencies, skills, plugins, repos, Docker images, or external scripts, check for obvious supply-chain risk signals (typosquatting, suspicious install commands, broad permissions, remote execution patterns, unknown sources).
+      - For OpenClaw install patterns (`clawhub install`, `openclaw plugins install`, GitHub-based skill/plugin installs), suggest lightweight trust checks and version pinning when reasonable.
+      - Flag obvious product promotion only when it weakens technical usefulness.
+      - Prioritize practical utility: clear problem, realistic setup, actionable steps, and expected outcomes.
+      - Suggest concise, minimal fixes.

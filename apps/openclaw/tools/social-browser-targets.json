@@ -1,0 +1,40 @@
+{
+  "x": {
+    "composeUrl": "https://x.com/compose/post",
+    "homeUrl": "https://x.com/home",
+    "requiredEvidence": ["share_link", "post_visible", "success_toast"],
+    "steps": [
+      "open_compose",
+      "fill_main_text",
+      "attach_media_if_any",
+      "submit_post",
+      "capture_success_evidence",
+      "optionally_publish_thread_replies"
+    ],
+    "verificationHints": [
+      "post composer closed",
+      "success toast visible",
+      "new post visible on profile",
+      "share link available"
+    ]
+  },
+  "xhs": {
+    "composeUrl": "https://creator.xiaohongshu.com/publish/publish",
+    "homeUrl": "https://creator.xiaohongshu.com/creator/home",
+    "requiredEvidence": ["note_visible", "publish_success", "note_link"],
+    "steps": [
+      "open_publish_page",
+      "fill_title",
+      "fill_body",
+      "attach_images_if_any",
+      "set_tags_if_supported",
+      "submit_note",
+      "capture_success_evidence"
+    ],
+    "verificationHints": [
+      "publish success notice visible",
+      "new note card visible",
+      "note link available"
+    ]
+  }
+}
