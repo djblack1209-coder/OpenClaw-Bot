@@ -1,21 +1,31 @@
 # HEARTBEAT.md
 
-## OpenClaw Bot heartbeat checklist (cost-safe mode)
+## OpenClaw Bot heartbeat checklist
 
-Boss 当前按请求计费，心跳必须极简：
+### 严重故障检查（必做）
 
-1. 不做主动提醒，不发"请执行 /heal"类消息。
-2. 只有明确严重故障才告警（Gateway down / Telegram channel down / 数据损坏）。
-3. 没有严重故障时，一律只回 `HEARTBEAT_OK`。
-4. 禁止为了"例行检查"触发额外模型调用。
+1. Gateway down / Telegram channel down / 数据损坏 → 立即告警
+2. 没有严重故障时继续检查以下项目
 
-## 社媒运营检查（轻量级，不额外调用模型）
+### 💰 盈利检查（最高优先级）
 
-以下检查仅在心跳触发时顺带执行，不单独消耗请求：
+3. 检查闲鱼服务状态：`launchctl list | grep ai.openclaw.xianyu`
+   - 服务未运行 → 告警「闲鱼客服离线，可能错过订单」
+4. 检查闲鱼日志最新条目：有无新订单/新咨询
+   - 有新订单 → 推送「💰 闲鱼新订单！」
+   - 有未回复消息 → 提醒处理
+5. 有钱挣的事永远优先处理
 
-5. 检查 `memory/social-publish-runs.jsonl` 最后一条记录：
-   - 如果最近24小时没有新发布记录 → 提醒"今日尚未发布内容"
-   - 如果最近一条状态是 `publish_failed` 或 `needs_manual_review` → 提醒处理
-6. 检查 `memory/comment-interactions.jsonl` 最后一条记录：
-   - 如果最近12小时没有互动记录 → 提醒"评论区互动待执行"
-7. 以上检查只读文件、不调用模型、不调用外部API。无异常则不输出。
+### 📱 社媒自动运营检查
+
+6. 检查 `memory/social/SOC-001-publish-runs.md` 最后一条记录：
+   - 最近24小时没有新发布 → 自动触发 social-autopilot 内容生产流程
+   - 最近一条状态是 `publish_failed` → 分析原因并修复
+7. 检查评论互动：最近12小时没有互动记录 → 触发蹭评任务
+8. 以上检查只读文件，无异常则不输出
+
+### 运行规则
+
+- 没有严重故障且没有盈利/运营异常 → 回复 `HEARTBEAT_OK`
+- 禁止为了"例行检查"触发额外模型调用
+- 盈利相关告警不受静音时段限制
