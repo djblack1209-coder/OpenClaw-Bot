@@ -53,12 +53,12 @@ const DEFAULT_RUNTIME_CONFIG: ClawbotRuntimeConfig = {
 };
 
 const CLAWBOT_PIPELINE_LABELS = [
-  'com.clawbot.g4f',
-  'com.clawbot.kiro-gateway',
-  'com.clawbot.agent',
+  'ai.openclaw.g4f',
+  'ai.openclaw.kiro-gateway',
+  'ai.openclaw.clawbot-agent',
 ];
 
-const DEFAULT_LOG_LABEL = 'com.clawbot.agent';
+const DEFAULT_LOG_LABEL = 'ai.openclaw.clawbot-agent';
 
 const getLogLineClass = (line: string) => {
   if (line.includes('ERROR') || line.includes('Error') || line.includes('error') || line.includes('Traceback')) {

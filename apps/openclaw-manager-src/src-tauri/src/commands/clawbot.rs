@@ -123,6 +123,12 @@ pub struct ClawbotBotMatrixEntry {
 }
 
 fn get_home_dir() -> Result<String, String> {
+    // 优先使用 HOME 环境变量（更可靠，不受 Tauri 沙箱影响）
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return Ok(home);
+        }
+    }
     dirs::home_dir()
         .map(|p| p.display().to_string())
         .ok_or_else(|| "无法获取用户 Home 目录".to_string())
@@ -413,9 +419,14 @@ fn parse_env_bool(value: Option<&String>, default_value: bool) -> bool {
 
 fn load_clawbot_env_map() -> Result<HashMap<String, String>, String> {
     let env_path = get_clawbot_env_path()?;
-    let content =
-        fs::read_to_string(&env_path).map_err(|e| format!("读取 ClawBot 配置失败: {}", e))?;
-    Ok(parse_env_content(&content))
+    match fs::read_to_string(&env_path) {
+        Ok(content) => Ok(parse_env_content(&content)),
+        Err(_) => {
+            // 文件不存在时返回空 map，不阻塞 UI
+            log::warn!("[ClawBot] 配置文件不存在: {}，使用默认值", env_path);
+            Ok(HashMap::new())
+        }
+    }
 }
 
 fn get_openclaw_config_path() -> Result<String, String> {

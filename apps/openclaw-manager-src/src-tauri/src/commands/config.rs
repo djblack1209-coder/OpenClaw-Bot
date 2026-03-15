@@ -43,6 +43,11 @@ pub struct ProjectContext {
 }
 
 fn get_home_dir() -> Result<String, String> {
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return Ok(home);
+        }
+    }
     dirs::home_dir()
         .map(|p| p.display().to_string())
         .ok_or_else(|| "无法获取用户 Home 目录".to_string())
