@@ -50,7 +50,7 @@ fn get_home_dir() -> Result<String, String> {
 
 fn get_default_workspace_path() -> Result<String, String> {
     let home = get_home_dir()?;
-    Ok(format!("{}/Desktop/OpenClaw Bot/OpenClaw", home))
+    Ok(format!("{}/Desktop/OpenClaw Bot/apps/openclaw", home))
 }
 
 fn infer_workspace_path(config: &Value) -> Result<String, String> {
@@ -65,14 +65,18 @@ fn infer_workspace_path(config: &Value) -> Result<String, String> {
 
 fn derive_project_base_dir(workspace_dir: &str) -> String {
     let trimmed = workspace_dir.trim_end_matches('/');
+    // workspace is now at apps/openclaw, so go up two levels to get project root
     if let Some(parent) = std::path::Path::new(trimmed).parent() {
+        if let Some(grandparent) = parent.parent() {
+            return grandparent.display().to_string();
+        }
         return parent.display().to_string();
     }
     workspace_dir.to_string()
 }
 
 fn get_manager_settings_path(project_base_dir: &str) -> String {
-    format!("{}/OpenClaw/.manager/settings.json", project_base_dir)
+    format!("{}/apps/openclaw/.manager/settings.json", project_base_dir)
 }
 
 fn get_project_context_from_config(config: &Value) -> Result<ProjectContext, String> {

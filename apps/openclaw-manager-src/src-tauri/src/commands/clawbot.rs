@@ -135,7 +135,7 @@ fn get_base_dir() -> Result<String, String> {
 
 fn get_managed_services() -> Result<Vec<ManagedServiceDefinition>, String> {
     let base_dir = get_base_dir()?;
-    let launchagents_dir = format!("{}/launchagents", base_dir);
+    let launchagents_dir = format!("{}/tools/launchagents", base_dir);
 
     Ok(vec![
         ManagedServiceDefinition {
@@ -357,20 +357,20 @@ fn set_or_append_env_line(lines: &mut Vec<String>, key: &str, value: &str) {
 
 fn get_clawbot_env_path() -> Result<String, String> {
     let base_dir = get_base_dir()?;
-    Ok(format!("{}/clawbot/config/.env", base_dir))
+    Ok(format!("{}/packages/clawbot/config/.env", base_dir))
 }
 
 fn get_service_log_path(label: &str) -> Result<String, String> {
     let base_dir = get_base_dir()?;
     let path = match label {
         "ai.openclaw.gateway" => format!("{}/.openclaw/logs/gateway.log", base_dir),
-        "ai.openclaw.clawbot-agent" => format!("{}/clawbot/logs/com-clawbot-agent.stderr.log", base_dir),
-        "ai.openclaw.g4f" => format!("{}/clawbot/logs/com-clawbot-g4f.stderr.log", base_dir),
+        "ai.openclaw.clawbot-agent" => format!("{}/packages/clawbot/logs/com-clawbot-agent.stderr.log", base_dir),
+        "ai.openclaw.g4f" => format!("{}/packages/clawbot/logs/com-clawbot-g4f.stderr.log", base_dir),
         "ai.openclaw.kiro-gateway" => {
-            format!("{}/clawbot/logs/com-clawbot-kiro-gateway.stderr.log", base_dir)
+            format!("{}/packages/clawbot/logs/com-clawbot-kiro-gateway.stderr.log", base_dir)
         }
         "ai.openclaw.xianyu" => {
-            format!("{}/clawbot/logs/com-clawbot-xianyu.stderr.log", base_dir)
+            format!("{}/packages/clawbot/logs/com-clawbot-xianyu.stderr.log", base_dir)
         }
         _ => return Err(format!("未知服务标签: {}", label)),
     };
@@ -507,12 +507,8 @@ fn is_ibkr_reachable(env_map: &HashMap<String, String>) -> Result<(), String> {
 }
 
 fn get_default_ibkr_start_cmd() -> String {
-    let stable_path = "/Users/blackdj/OpenClawBot/clawbot/scripts/start_ibkr_gateway.sh";
-    if Path::new(stable_path).exists() {
-        return format!("bash {}", stable_path);
-    }
     if let Ok(base_dir) = get_base_dir() {
-        let script_path = format!("{}/clawbot/scripts/start_ibkr_gateway.sh", base_dir);
+        let script_path = format!("{}/packages/clawbot/scripts/start_ibkr_gateway.sh", base_dir);
         if Path::new(&script_path).exists() {
             return format!("bash \"{}\"", script_path);
         }
@@ -521,12 +517,8 @@ fn get_default_ibkr_start_cmd() -> String {
 }
 
 fn get_default_ibkr_stop_cmd() -> String {
-    let stable_path = "/Users/blackdj/OpenClawBot/clawbot/scripts/stop_ibkr_gateway.sh";
-    if Path::new(stable_path).exists() {
-        return format!("bash {}", stable_path);
-    }
     if let Ok(base_dir) = get_base_dir() {
-        let script_path = format!("{}/clawbot/scripts/stop_ibkr_gateway.sh", base_dir);
+        let script_path = format!("{}/packages/clawbot/scripts/stop_ibkr_gateway.sh", base_dir);
         if Path::new(&script_path).exists() {
             return format!("bash \"{}\"", script_path);
         }
