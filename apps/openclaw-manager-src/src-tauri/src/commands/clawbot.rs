@@ -29,13 +29,13 @@ const IBKR_DEFAULT_START_CMD: &str = "open -a \"IB Gateway\"";
 const IBKR_DEFAULT_STOP_CMD: &str =
     "pkill -f \"IB Gateway\" || pkill -f \"Trader Workstation\" || true";
 
-const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 6] = [
+const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 7] = [
     (
         "qwen235b",
         "Qwen 235B",
         "QWEN235B_TOKEN",
         "QWEN235B_USERNAME",
-        "g4f",
+        "free_pool",
         "qwen-3-235b",
     ),
     (
@@ -43,40 +43,48 @@ const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 6] = [
         "GPT-OSS 120B",
         "GPTOSS_TOKEN",
         "GPTOSS_USERNAME",
-        "g4f",
+        "free_pool",
         "gpt-oss-120b",
     ),
     (
         "claude-sonnet",
-        "Claude Sonnet",
+        "Claude Sonnet 4.5",
         "CLAUDE_SONNET_TOKEN",
         "CLAUDE_SONNET_USERNAME",
-        "kiro",
-        "claude-3.7-sonnet",
+        "free_pool",
+        "claude-sonnet-4-5",
     ),
     (
         "claude-haiku",
-        "Claude Haiku",
+        "Claude Haiku 4.5",
         "CLAUDE_HAIKU_TOKEN",
         "CLAUDE_HAIKU_USERNAME",
-        "kiro",
-        "claude-3.5-sonnet",
+        "free_pool",
+        "claude-haiku-4-5",
     ),
     (
         "deepseek-v3",
-        "DeepSeek V3",
+        "DeepSeek V3.2",
         "DEEPSEEK_V3_TOKEN",
         "DEEPSEEK_V3_USERNAME",
-        "siliconflow",
+        "free_pool",
         "deepseek-v3.2",
     ),
     (
         "claude-opus",
-        "Claude Opus",
+        "Claude Opus 4.5",
         "CLAUDE_OPUS_TOKEN",
         "CLAUDE_OPUS_USERNAME",
-        "claude-proxy",
-        "claude-opus-4-6",
+        "free_first",
+        "claude-opus-4-5",
+    ),
+    (
+        "free-llm",
+        "Free LLM",
+        "FREE_LLM_TOKEN",
+        "FREE_LLM_USERNAME",
+        "free_pool",
+        "free-pool-best",
     ),
 ];
 
@@ -322,10 +330,16 @@ fn parse_env_content(content: &str) -> HashMap<String, String> {
             continue;
         }
         if let Some((k, v)) = line.split_once('=') {
-            values.insert(
-                k.trim().to_string(),
-                v.trim().trim_matches('"').trim_matches('\'').to_string(),
-            );
+            let trimmed = v.trim();
+            // 只在值被完整引号包裹时才去除引号（如 "value" 或 'value'）
+            let unquoted = if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+                || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+            {
+                &trimmed[1..trimmed.len() - 1]
+            } else {
+                trimmed
+            };
+            values.insert(k.trim().to_string(), unquoted.to_string());
         }
     }
     values
@@ -723,7 +737,22 @@ pub async fn get_clawbot_runtime_config() -> Result<HashMap<String, String>, Str
 
 #[command]
 pub async fn get_openclaw_usage_snapshot() -> Result<Value, String> {
-    let output = shell::run_openclaw(&["status", "--usage", "--json"])?;
+    // 使用超时机制避免 openclaw 命令挂起导致 UI 卡死
+    let handle = std::thread::spawn(|| {
+        shell::run_openclaw(&["status", "--usage", "--json"])
+    });
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        tokio::task::spawn_blocking(move || handle.join()),
+    )
+    .await;
+
+    let output = match result {
+        Ok(Ok(Ok(Ok(s)))) => s,
+        _ => return Ok(json!({ "providers": [] })),
+    };
+
     let parsed: Value = serde_json::from_str(output.trim())
         .map_err(|e| format!("解析 openclaw usage 输出失败: {}", e))?;
 
@@ -896,4 +925,76 @@ pub async fn get_managed_endpoints_status() -> Result<Vec<ManagedEndpointStatus>
     }
 
     Ok(results)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillEntry {
+    pub name: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillsStatus {
+    pub total: u32,
+    pub enabled: u32,
+    pub skills: Vec<SkillEntry>,
+}
+
+#[command]
+pub async fn get_skills_status() -> Result<SkillsStatus, String> {
+    let base_dir = get_base_dir()?;
+    let skills_dir = format!("{}/apps/openclaw/skills", base_dir);
+
+    // 扫描 skills 目录下的子目录
+    let mut all_skills: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&skills_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    // 跳过隐藏目录
+                    if !name.starts_with('.') {
+                        all_skills.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    all_skills.sort();
+
+    // 读取 openclaw.json 中的 skills.entries 获取启用列表
+    let enabled_set: std::collections::HashSet<String> = match load_openclaw_config() {
+        Ok(cfg) => {
+            cfg.get("skills")
+                .and_then(|v| v.get("entries"))
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|entry| {
+                            let name = entry.get("name").and_then(|v| v.as_str())?;
+                            let enabled = entry.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                            if enabled { Some(name.to_string()) } else { None }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        Err(_) => std::collections::HashSet::new(),
+    };
+
+    let skills: Vec<SkillEntry> = all_skills
+        .iter()
+        .map(|name| SkillEntry {
+            name: name.clone(),
+            enabled: enabled_set.contains(name),
+        })
+        .collect();
+
+    let total = skills.len() as u32;
+    let enabled = skills.iter().filter(|s| s.enabled).count() as u32;
+
+    Ok(SkillsStatus {
+        total,
+        enabled,
+        skills,
+    })
 }

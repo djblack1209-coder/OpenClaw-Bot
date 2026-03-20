@@ -1,0 +1,31 @@
+OpenClaw 一键部署包
+====================
+
+【Windows 用户】
+  双击 "启动安装器.bat"
+
+【macOS 用户】
+  双击 "启动安装器.command"
+  (如果提示无法打开，右键 → 打开)
+
+【Linux 用户】
+  终端执行: bash 启动安装器.command
+
+【部署流程】(全程浏览器操作)
+  1. 输入激活码 (购买后自动收到)
+  2. 输入 Telegram Bot Token
+     (在Telegram搜索 @BotFather → /newbot → 复制Token)
+  3. 选择AI模型方案:
+     - 免费模型: 直接能用，不花钱
+     - 自有API: 填URL和Key即可
+  4. 点击部署，等待完成
+  5. 去Telegram找你的Bot发 /start
+
+【注意事项】
+  - 需要先安装 Python 3.8+ 和 Node.js 18+
+  - Windows安装Python时务必勾选 "Add to PATH"
+  - Node.js下载: https://nodejs.org/
+
+【售后】
+  7天内有问题随时联系卖家
+====================

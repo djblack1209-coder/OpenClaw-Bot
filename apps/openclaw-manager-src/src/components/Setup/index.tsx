@@ -389,7 +389,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
           >
             <span className="text-4xl">🦞</span>
           </motion.div>
-          <h1 className="text-2xl font-bold text-white mb-2">OpenClaw Bot</h1>
+           <h1 className="text-2xl font-bold text-white mb-2">OpenClaw</h1>
           <p className="text-dark-400">环境检测与安装向导</p>
         </div>
 
@@ -403,7 +403,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
 
         {/* 版本信息 */}
         <p className="text-center text-dark-500 text-xs mt-6">
-          OpenClaw Bot v0.0.7
+          OpenClaw v{__APP_VERSION__}
         </p>
       </motion.div>
     </div>

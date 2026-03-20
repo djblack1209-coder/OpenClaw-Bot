@@ -6,7 +6,9 @@ metadata: {"openclaw":{"emoji":"💸"}}
 
 # Cost Quota Dashboard
 
-用于每日/盘后成本巡检与预算控制。
+用于手动查询成本信息，仅在 Boss 主动输入 `/cost` 时触发。
+
+**重要：不要主动推送成本播报通知。不要在心跳/定时任务中自动发送此报告。**
 
 ## 数据源优先级
 
@@ -29,3 +31,9 @@ metadata: {"openclaw":{"emoji":"💸"}}
 - `高`：核心 provider 无剩余额度信息且会话 token 持续攀升
 - `中`：有 usage 数据但接近阈值（例如 >80%）
 - `低`：usage 与 token 都在安全区间
+
+## 禁止行为
+
+- 禁止在心跳中自动触发
+- 禁止主动推送到 Telegram
+- 仅在 /cost 命令时响应

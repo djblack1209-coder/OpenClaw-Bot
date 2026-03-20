@@ -27,6 +27,7 @@ pub struct EnvironmentStatus {
 }
 
 /// 安装进度
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallProgress {
     pub step: String,

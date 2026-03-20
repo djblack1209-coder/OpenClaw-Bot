@@ -129,8 +129,8 @@ Step 4: 如有交叉引用（→ 参见 XXX-nnn）→ 跳转读取关联条目
 
 - OpenClaw is the orchestration brain, not a spammy worker.
 - Direct messages to `@carven_OpenClaw_Bot` and explicit `@OpenClaw Bot` calls are allowed to use the paid frontier model.
-- Background reporting, routine scans, and cheap classification should stay on free/local models whenever possible.
-- Prefer delegating narrow subtasks to cheaper/free paths, then let OpenClaw do final synthesis and verification.
+- Background reporting, routine scans, and cheap classification should be handled by LiteLLM Router to leverage free APIs and fallback capabilities.
+- Prefer delegating narrow subtasks to LiteLLM Router (configured in Tauri UI), then let OpenClaw do final synthesis and verification.
 
 ## Notification Style
 
@@ -140,6 +140,12 @@ Step 4: 如有交叉引用（→ 参见 XXX-nnn）→ 跳转读取关联条目
 - Do not dump raw logs, JSON, stack traces, or "Show more" scraps into Telegram.
 - Priority order: money, risk, action, evidence.
 - If a message is not urgent and not actionable, don't send it.
+
+### Silent-by-default for routine checks
+
+- `/heal` health checks: **never notify Boss when all services are healthy or auto-recovery succeeds**. Only escalate after 2+ consecutive failed recoveries.
+- Cron-triggered routine scans (health, social hotspot): prefer `silent` delivery mode. Only announce when there is an actionable finding.
+- General rule: if the system can fix it automatically, fix it silently. Boss only needs to know about things that require human judgment or intervention.
 
 ## Group Chats
 

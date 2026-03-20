@@ -1,10 +1,13 @@
 """
-ClawBot - 上下文管理模块 v2.0
+ClawBot - 上下文管理模块 v2.0（对标 MemGPT）
 - 本地压缩模式（零 API 调用）：截断+提取关键信息，不消耗请求次数
 - AI 压缩模式（可选）：调用 LLM 生成高质量摘要
 - 渐进式压缩：越旧的消息压缩比越高
 - 支持关键信息标记保留
 - 支持 SQLite HistoryStore 集成
+- [NEW] 分层上下文管理（对标 MemGPT 的 core/recall/archival 三层架构）
+- [NEW] 自动摘要 + 事实提取到长期记忆
+- [NEW] 上下文预算智能分配
 """
 import json
 from typing import List, Dict, Any, Optional, Callable, Tuple
@@ -406,15 +409,20 @@ class ContextManager:
     ):
         """
         将压缩后的消息写回 HistoryStore（替换原有历史）。
-        这样下次获取历史时就是压缩后的版本。
+        压缩后消息已在内存中，直接清空后重写即可。
         """
         try:
-            # 清空旧历史
+            # 先验证压缩后的消息不为空（防止误清空）
+            if not compressed_messages:
+                logger.warning("压缩后消息为空，跳过更新以保留原始历史")
+                return
+
+            # 清空旧历史并写入压缩后的消息（数据在内存中有备份）
             history_store.clear_messages(bot_id, chat_id)
-            # 写入压缩后的消息
             for msg in compressed_messages:
                 content = msg.get("content", "")
                 history_store.add_message(bot_id, chat_id, msg["role"], content)
+
             logger.info(
                 f"已更新 HistoryStore: bot={bot_id}, chat={chat_id}, "
                 f"messages={len(compressed_messages)}"
@@ -524,4 +532,220 @@ class ContextManager:
             "must_compress": self.must_compress(messages),
             "has_summary": self.compressed_summary is not None,
             "key_facts_count": len(self.key_facts),
+        }
+
+
+# ============ 对标 MemGPT: 分层上下文管理 ============
+
+class TieredContextManager:
+    """分层上下文管理器（对标 MemGPT 的三层架构）
+    
+    三层架构：
+    - Core Memory: 始终在上下文中的关键信息（用户画像、系统指令、当前任务）
+    - Recall Memory: 最近对话历史（滑动窗口，自动压缩）
+    - Archival Memory: 长期存储（通过 SharedMemory 向量搜索按需检索）
+    
+    与 MemGPT 的区别：
+    - MemGPT 用 LLM 自主管理内存读写，我们用规则 + LLM 混合
+    - 我们复用现有 SharedMemory 作为 archival 层，零额外基础设施
+    """
+
+    # 上下文预算分配（占总 token 预算的比例）
+    CORE_BUDGET_PCT = 0.15      # 15% 给 core memory
+    RECALL_BUDGET_PCT = 0.60    # 60% 给 recall (最近对话)
+    ARCHIVAL_BUDGET_PCT = 0.15  # 15% 给 archival (按需检索)
+    SYSTEM_BUDGET_PCT = 0.10    # 10% 给 system prompt + 工具
+
+    def __init__(self, context_manager: ContextManager, shared_memory=None,
+                 total_budget: int = 60000):
+        """
+        Args:
+            context_manager: 现有的 ContextManager 实例
+            shared_memory: SharedMemory 实例（用作 archival 层）
+            total_budget: 总 token 预算
+        """
+        self.ctx = context_manager
+        self.shared_memory = shared_memory
+        self.total_budget = total_budget
+
+        # Core memory: 持久化的关键信息
+        self._core_memory: Dict[str, str] = {
+            "user_profile": "",      # 用户画像
+            "bot_personality": "",   # Bot 人设
+            "current_task": "",      # 当前任务
+            "preferences": "",       # 用户偏好
+        }
+        self._core_dirty = False
+
+    # ---- Core Memory 管理 ----
+
+    def core_set(self, key: str, value: str):
+        """写入 core memory（始终在上下文中）"""
+        self._core_memory[key] = value
+        self._core_dirty = True
+        logger.debug(f"[TieredCtx] Core memory updated: {key} = {value[:50]}...")
+
+    def core_get(self, key: str) -> str:
+        return self._core_memory.get(key, "")
+
+    def core_append(self, key: str, text: str):
+        """追加到 core memory 条目"""
+        existing = self._core_memory.get(key, "")
+        self._core_memory[key] = (existing + "\n" + text).strip()
+        self._core_dirty = True
+
+    def _render_core_memory(self) -> str:
+        """渲染 core memory 为注入文本"""
+        parts = []
+        for key, value in self._core_memory.items():
+            if value.strip():
+                label = key.replace("_", " ").title()
+                parts.append(f"[{label}]\n{value}")
+        if not parts:
+            return ""
+        return "=== Core Memory ===\n" + "\n\n".join(parts)
+
+    # ---- Archival Memory 检索 ----
+
+    def archival_search(self, query: str, limit: int = 3) -> str:
+        """从 archival memory (SharedMemory) 语义检索相关记忆"""
+        if not self.shared_memory:
+            return ""
+        try:
+            results = self.shared_memory.semantic_search(query, limit=limit)
+            if not results:
+                return ""
+            parts = []
+            for r in results:
+                parts.append(f"- [{r['category']}] {r['key']}: {r['value'][:150]} (sim={r['similarity']})")
+            return "=== Archival Memory (retrieved) ===\n" + "\n".join(parts)
+        except Exception as e:
+            logger.debug(f"[TieredCtx] Archival search failed: {e}")
+            return ""
+
+    def archival_store(self, key: str, value: str, category: str = "archival",
+                       importance: int = 2):
+        """存入 archival memory"""
+        if not self.shared_memory:
+            return
+        self.shared_memory.remember(
+            key=key, value=value, category=category,
+            source_bot="tiered_ctx", importance=importance,
+        )
+
+    # ---- 自动事实提取 ----
+
+    def extract_and_archive_facts(self, messages: List[Dict]):
+        """从对话中提取事实并存入 archival memory
+        
+        对标 MemGPT 的自动记忆管理：扫描用户消息中的关键信息，
+        自动存入长期记忆。
+        """
+        if not self.shared_memory:
+            return
+
+        for msg in messages:
+            if msg.get("role") != "user":
+                continue
+            if not self.ctx._is_key_message(msg):
+                continue
+            text = self.ctx._get_message_text(msg, max_len=500)
+            if len(text) < 10:
+                continue
+
+            # 生成 key（基于内容前30字符）
+            key_text = text[:30].replace(" ", "_").replace("\n", "_")
+            self.archival_store(
+                key=f"fact_{key_text}",
+                value=text,
+                category="extracted_fact",
+                importance=3,
+            )
+
+    # ---- 智能上下文组装 ----
+
+    def build_context(
+        self,
+        messages: List[Dict],
+        system_prompt: str = "",
+        query_hint: str = "",
+    ) -> Tuple[List[Dict], Dict[str, Any]]:
+        """智能组装分层上下文（对标 MemGPT 的上下文编排）
+        
+        Args:
+            messages: 原始对话历史
+            system_prompt: 系统提示词
+            query_hint: 当前查询提示（用于 archival 检索）
+            
+        Returns:
+            (assembled_messages, metadata)
+        """
+        budget = self.total_budget
+        core_budget = int(budget * self.CORE_BUDGET_PCT)
+        recall_budget = int(budget * self.RECALL_BUDGET_PCT)
+        archival_budget = int(budget * self.ARCHIVAL_BUDGET_PCT)
+
+        assembled = []
+        metadata = {"core_tokens": 0, "recall_tokens": 0, "archival_tokens": 0,
+                     "compressed": False, "archival_results": 0}
+
+        # 1. System prompt + Core memory
+        core_text = self._render_core_memory()
+        system_content = system_prompt
+        if core_text:
+            system_content += f"\n\n{core_text}"
+
+        if system_content.strip():
+            sys_msg = {"role": "system" if messages and messages[0].get("role") != "system" else "user",
+                       "content": system_content}
+            # 很多 API 不支持 system role，用 user 兜底
+            assembled.append({"role": "user", "content": system_content})
+            assembled.append({"role": "assistant", "content": "understood."})
+            metadata["core_tokens"] = self.ctx.estimate_tokens(assembled)
+
+        # 2. Archival memory（按需检索）
+        if query_hint and self.shared_memory:
+            archival_text = self.archival_search(query_hint, limit=3)
+            if archival_text:
+                archival_tokens = self.ctx._count_text_tokens(archival_text)
+                if archival_tokens <= archival_budget:
+                    assembled.append({"role": "user", "content": archival_text})
+                    assembled.append({"role": "assistant", "content": "I've noted the relevant context."})
+                    metadata["archival_tokens"] = archival_tokens
+                    metadata["archival_results"] = archival_text.count("\n- ")
+
+        # 3. Recall memory（最近对话，必要时压缩）
+        recall_tokens = self.ctx.estimate_tokens(messages)
+        if recall_tokens > recall_budget:
+            compressed, _ = self.ctx.compress_local(messages, target_tokens=recall_budget)
+            assembled.extend(compressed)
+            metadata["compressed"] = True
+            metadata["recall_tokens"] = self.ctx.estimate_tokens(compressed)
+        else:
+            assembled.extend(messages)
+            metadata["recall_tokens"] = recall_tokens
+
+        # 4. 自动提取事实到 archival
+        self.extract_and_archive_facts(messages[-5:])
+
+        total_tokens = self.ctx.estimate_tokens(assembled)
+        metadata["total_tokens"] = total_tokens
+        metadata["budget_usage_pct"] = round(total_tokens / budget * 100, 1)
+
+        return assembled, metadata
+
+    def get_status(self) -> Dict[str, Any]:
+        """获取分层上下文状态"""
+        core_size = sum(len(v) for v in self._core_memory.values())
+        return {
+            "core_memory_keys": list(self._core_memory.keys()),
+            "core_memory_chars": core_size,
+            "has_shared_memory": self.shared_memory is not None,
+            "total_budget": self.total_budget,
+            "budget_allocation": {
+                "core": f"{self.CORE_BUDGET_PCT:.0%}",
+                "recall": f"{self.RECALL_BUDGET_PCT:.0%}",
+                "archival": f"{self.ARCHIVAL_BUDGET_PCT:.0%}",
+                "system": f"{self.SYSTEM_BUDGET_PCT:.0%}",
+            },
         }

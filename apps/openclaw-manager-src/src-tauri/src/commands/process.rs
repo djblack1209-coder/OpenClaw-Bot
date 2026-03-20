@@ -65,6 +65,7 @@ pub async fn check_port_in_use(port: u16) -> Result<bool, String> {
 }
 
 /// 获取 Node.js 版本
+#[allow(dead_code)]
 #[command]
 pub async fn get_node_version() -> Result<Option<String>, String> {
     info!("[进程检查] 获取 Node.js 版本...");

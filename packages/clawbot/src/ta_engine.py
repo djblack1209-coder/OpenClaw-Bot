@@ -210,108 +210,148 @@ def find_support_resistance(df, n_levels: int = 3) -> dict:
 
 # ============ 综合信号评分 ============
 
+def _detect_regime(ind: dict) -> str:
+    """检测市场状态: trending / ranging / volatile"""
+    adx = ind.get('adx', 0)
+    bb_width = ind.get('bb_width', 0)
+    atr_pct = ind.get('atr_pct', 0)
+
+    # 高波动 + 无趋势 = volatile
+    if atr_pct > 3.0 and adx < 20:
+        return "volatile"
+    # ADX >= 25 = trending
+    if adx >= 25:
+        return "trending"
+    # 布林带收窄 + 低ADX = ranging
+    if bb_width > 0 and bb_width < 0.04 and adx < 25:
+        return "ranging"
+    return "ranging" if adx < 20 else "trending"
+
+
 def compute_signal_score(ind: dict) -> dict:
     """
     综合评分 -100(强烈卖出) 到 +100(强烈买入)
-    返回: {"score": int, "signal": str, "reasons": [str]}
+    自适应市场状态：趋势市加重动量权重，震荡市加重均值回归权重
+    返回: {"score": int, "signal": str, "reasons": [str], "regime": str}
     """
     score = 0
     reasons = []
 
-    # 1. RSI信号 (权重20)
+    regime = _detect_regime(ind)
+
+    # 权重因子：趋势市 vs 震荡市
+    if regime == "trending":
+        w_trend, w_momentum, w_reversion = 1.3, 1.2, 0.6
+    elif regime == "volatile":
+        w_trend, w_momentum, w_reversion = 0.7, 0.8, 0.5  # 高波动时全面降权
+    else:  # ranging
+        w_trend, w_momentum, w_reversion = 0.7, 0.8, 1.4
+
+    # 1. RSI信号 (均值回归类)
     rsi = ind.get('rsi_14', 50)
     rsi6 = ind.get('rsi_6', 50)
     if rsi < 30:
-        score += 15
+        score += int(15 * w_reversion)
         reasons.append(f"RSI14={rsi:.0f} 超卖")
     elif rsi < 40:
-        score += 8
+        score += int(8 * w_reversion)
     elif rsi > 70:
-        score -= 15
+        score -= int(15 * w_reversion)
         reasons.append(f"RSI14={rsi:.0f} 超买")
     elif rsi > 60:
-        score -= 5
+        score -= int(5 * w_reversion)
 
     if rsi6 < 20:
-        score += 10
+        score += int(10 * w_reversion)
         reasons.append(f"RSI6={rsi6:.0f} 极度超卖")
     elif rsi6 > 80:
-        score -= 10
+        score -= int(10 * w_reversion)
         reasons.append(f"RSI6={rsi6:.0f} 极度超买")
 
-    # 2. MACD信号 (权重20)
+    # 2. MACD信号 (动量类)
     macd_hist = ind.get('macd_hist', 0)
     macd_rising = ind.get('macd_hist_rising', False)
     if macd_hist > 0 and macd_rising:
-        score += 15
+        score += int(15 * w_momentum)
         reasons.append("MACD金叉且柱状图扩大")
     elif macd_hist > 0:
-        score += 8
+        score += int(8 * w_momentum)
     elif macd_hist < 0 and not macd_rising:
-        score -= 15
+        score -= int(15 * w_momentum)
         reasons.append("MACD死叉且柱状图扩大")
     elif macd_hist < 0:
-        score -= 8
+        score -= int(8 * w_momentum)
 
-    # 3. 趋势信号 (权重20)
+    # 3. 趋势信号 (趋势类)
     trend = ind.get('trend', 'sideways')
     if trend == 'strong_up':
-        score += 20
+        score += int(20 * w_trend)
         reasons.append("EMA多头排列(强)")
     elif trend == 'up':
-        score += 12
+        score += int(12 * w_trend)
         reasons.append("EMA多头排列")
     elif trend == 'strong_down':
-        score -= 20
+        score -= int(20 * w_trend)
         reasons.append("EMA空头排列(强)")
     elif trend == 'down':
-        score -= 12
+        score -= int(12 * w_trend)
         reasons.append("EMA空头排列")
 
-    # 4. 布林带信号 (权重15)
+    # 4. 布林带信号 (均值回归类)
     bb_pos = ind.get('bb_position', 0.5)
     if bb_pos < 0.1:
-        score += 12
+        score += int(12 * w_reversion)
         reasons.append(f"触及布林下轨(位置{bb_pos:.0%})")
     elif bb_pos < 0.2:
-        score += 6
+        score += int(6 * w_reversion)
     elif bb_pos > 0.9:
-        score -= 12
+        score -= int(12 * w_reversion)
         reasons.append(f"触及布林上轨(位置{bb_pos:.0%})")
     elif bb_pos > 0.8:
-        score -= 6
+        score -= int(6 * w_reversion)
 
-    # 5. 成交量信号 (权重15)
+    # 5. 成交量信号 (动量类)
     vol_surge = ind.get('volume_surge', False)
     vol_ratio = ind.get('vol_ratio', 1.0)
     price = ind.get('price', 0)
     ema5 = ind.get('ema_5', 0)
     if vol_surge and price > ema5:
-        score += 15
+        score += int(15 * w_momentum)
         reasons.append(f"放量上涨(量比{vol_ratio:.1f}x)")
     elif vol_surge and price < ema5:
-        score -= 10
+        score -= int(10 * w_momentum)
         reasons.append(f"放量下跌(量比{vol_ratio:.1f}x)")
 
-    # 6. ADX趋势强度信号 (权重10，替代日线VWAP)
+    # 6. ADX趋势强度信号 (趋势类)
     adx = ind.get('adx', 0)
     if adx >= 40:
-        # 强趋势，顺势加分
         if trend in ('strong_up', 'up'):
-            score += 10
+            score += int(10 * w_trend)
             reasons.append(f"ADX={adx:.0f} 强趋势+顺势")
         elif trend in ('strong_down', 'down'):
-            score -= 10
+            score -= int(10 * w_trend)
             reasons.append(f"ADX={adx:.0f} 强趋势+逆势")
     elif adx >= 25:
         if trend in ('strong_up', 'up'):
-            score += 5
+            score += int(5 * w_trend)
         elif trend in ('strong_down', 'down'):
-            score -= 5
+            score -= int(5 * w_trend)
     elif adx > 0 and adx < 20:
-        # 无趋势/震荡市，信号不可靠，扣分
+        score -= 3  # 轻微扣分，不再硬扣5分
+        if regime == "ranging":
+            reasons.append(f"ADX={adx:.0f} 震荡市(均值回归加权)")
+        else:
+            reasons.append(f"ADX={adx:.0f} 震荡市(信号弱)")
+
+    # 7. StochRSI 背离检测（新增）
+    stoch_k = ind.get('stoch_rsi_k', 50)
+    stoch_d = ind.get('stoch_rsi_d', 50)
+    if stoch_k < 20 and stoch_d < 20 and stoch_k > stoch_d:
+        score += 5
+        reasons.append("StochRSI超卖金叉")
+    elif stoch_k > 80 and stoch_d > 80 and stoch_k < stoch_d:
         score -= 5
-        reasons.append(f"ADX={adx:.0f} 震荡市(信号弱)")
+        reasons.append("StochRSI超买死叉")
 
     # 限制范围
     score = max(-100, min(100, score))
@@ -344,6 +384,7 @@ def compute_signal_score(ind: dict) -> dict:
         "signal": signal,
         "signal_cn": signal_cn,
         "reasons": reasons,
+        "regime": regime,
     }
 
 
@@ -392,6 +433,9 @@ def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") 
             "period": period,
             "interval": interval,
             "bars": len(df),
+            # 原始价格序列 — 供 strategy_engine 等下游模块使用
+            "closes": df['Close'].tolist(),
+            "volumes": df['Volume'].tolist() if 'Volume' in df.columns else [],
         }
     except Exception as e:
         return {"error": f"{symbol} 技术分析失败: {e}"}

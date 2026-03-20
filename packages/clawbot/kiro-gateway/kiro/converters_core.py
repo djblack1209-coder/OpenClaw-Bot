@@ -731,7 +731,8 @@ def extract_tool_uses_from_message(
                 arguments = func.get("arguments", "{}")
                 # Handle both string (OpenAI) and dict (Anthropic unified) formats
                 if isinstance(arguments, str):
-                    input_data = json.loads(arguments) if arguments else {}
+                    from json_repair import loads as jloads
+                    input_data = jloads(arguments) if arguments else {}
                 else:
                     input_data = arguments if arguments else {}
                 tool_uses.append({

@@ -12,6 +12,11 @@ from pathlib import Path
 
 from src.bot.globals import execution_hub, send_long_message, image_tool, get_siliconflow_key
 from src.bot.rate_limiter import rate_limiter, token_budget
+from src.notify_style import (
+    format_social_published, format_social_dual_result,
+    format_hotpost_result, format_cost_card, format_bounty_result,
+    kv, bullet, divider, timestamp_tag, format_notice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,33 +154,18 @@ class ExecutionCommandsMixin:
     async def cmd_cost(self, update, context):
         if not self._is_authorized(update.effective_user.id):
             return
-        lines = ["成本 / 配额状态", ""]
-        lines.append("请求节流:")
-        lines.append(f"- 群聊 LLM 路由: {'开' if os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false').lower() in {'1','true','yes','on'} else '关'}")
-        lines.append(f"- 群聊意图自动回复: {'开' if os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false').lower() in {'1','true','yes','on'} else '关'}")
-        lines.append(f"- 群聊兜底轮换: {'开' if os.getenv('CHAT_ROUTER_ENABLE_GROUP_FALLBACK', 'false').lower() in {'1','true','yes','on'} else '关'}")
-        lines.append(f"- 自动交易仅保留成交通知: {'开' if os.getenv('AUTO_TRADE_NOTIFY_ONLY_FILLS', 'false').lower() in {'1','true','yes','on'} else '关'}")
-        lines.append("")
-        usage_rows = token_budget.get_all_status()
-        if usage_rows:
-            lines.append("今日 Token:")
-            for bot_id, status in sorted(usage_rows.items()):
-                lines.append(
-                    f"- {bot_id}: {status.get('total_tokens', 0):,}/{status.get('daily_limit', 0):,} ({status.get('usage_pct', '0%')})"
-                )
-        else:
-            lines.append("今日 Token: 暂无记录")
-        lines.append("")
-        rl_rows = rate_limiter.get_all_status()
-        if rl_rows:
-            lines.append("最近请求:")
-            for bot_id, status in sorted(rl_rows.items()):
-                lines.append(
-                    f"- {bot_id}: min {status.get('requests_last_minute', 0)} / hour {status.get('requests_last_hour', 0)} / day {status.get('requests_today', 0)}"
-                )
-        else:
-            lines.append("最近请求: 暂无记录")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        throttle_flags = {
+            "group_llm": os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false').lower() in {'1','true','yes','on'},
+            "group_intent": os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false').lower() in {'1','true','yes','on'},
+            "group_fallback": os.getenv('CHAT_ROUTER_ENABLE_GROUP_FALLBACK', 'false').lower() in {'1','true','yes','on'},
+            "fill_only": os.getenv('AUTO_TRADE_NOTIFY_ONLY_FILLS', 'false').lower() in {'1','true','yes','on'},
+        }
+        text = format_cost_card(
+            throttle_flags=throttle_flags,
+            token_rows=token_budget.get_all_status(),
+            rate_rows=rate_limiter.get_all_status(),
+        )
+        await send_long_message(update.effective_chat.id, text, context)
 
     async def cmd_config(self, update, context):
         if not self._is_authorized(update.effective_user.id):
@@ -276,11 +266,11 @@ class ExecutionCommandsMixin:
             return
         topic = " ".join(context.args or []).strip()
         if not topic:
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并一键发布小红书...")
+            await update.message.reply_text("📕 小红书热点发布中...")
             ret = await execution_hub.autopost_hot_content("xiaohongshu")
             package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
             if not package:
-                await update.message.reply_text(f"小红书热点自动发布失败: {package.get('error', ret.get('error', '未知错误'))}")
+                await update.message.reply_text(f"小红书热点发布失败: {package.get('error', ret.get('error', '未知错误'))}")
                 return
             published = package.get("published", {}) or {}
             if not published.get("success"):
@@ -289,19 +279,23 @@ class ExecutionCommandsMixin:
                     f"{self._social_login_retry_hint(published, '/post_xhs')}"
                 )
                 return
-            lines = [f"小红书已发布 | {package.get('topic', '')}", ""]
-            lines.append(f"蹭热点: {package.get('trend_label', '')}")
-            lines.append(f"标题: {package.get('title', '')}")
-            lines.append(f"链接: {published.get('url', '')}")
-            lines.append(f"学习存档: {package.get('memory_path', '')}")
-            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            text = format_social_published(
+                platform="xiaohongshu",
+                topic=package.get("topic", ""),
+                url=published.get("url", ""),
+                title=package.get("title", ""),
+                memory_path=package.get("memory_path", ""),
+            )
+            if package.get("trend_label"):
+                text = f" 📈 蹭热点: {package.get('trend_label')}\n{text}"
+            await send_long_message(update.effective_chat.id, text, context)
             return
 
-        await update.message.reply_text(f"正在拉起 OpenClaw 专用浏览器并发布小红书：{topic}")
+        await update.message.reply_text(f"📕 小红书发布: {topic}")
         ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
         if not ret.get("success"):
             await update.message.reply_text(
-                f"小红书自动发布失败: {ret.get('error', '未知错误')}"
+                f"小红书发布失败: {ret.get('error', '未知错误')}"
                 f"{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
             )
             return
@@ -312,11 +306,14 @@ class ExecutionCommandsMixin:
                 f"{self._social_login_retry_hint(published, '/post_xhs ' + topic if topic else '/post_xhs')}"
             )
             return
-        lines = [f"小红书已发布 | {topic}", ""]
-        lines.append(f"标题: {ret.get('title', '')}")
-        lines.append(f"链接: {published.get('url', '')}")
-        lines.append(f"学习存档: {ret.get('memory_path', '')}")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        text = format_social_published(
+            platform="xiaohongshu",
+            topic=topic,
+            url=published.get("url", ""),
+            title=ret.get("title", ""),
+            memory_path=ret.get("memory_path", ""),
+        )
+        await send_long_message(update.effective_chat.id, text, context)
 
     async def cmd_post(self, update, context):
         if not self._is_authorized(update.effective_user.id):
@@ -325,25 +322,20 @@ class ExecutionCommandsMixin:
         if not topic:
             await self.cmd_hotpost(update, context)
             return
-        await update.message.reply_text(f"正在拉起 OpenClaw 专用浏览器并双平台发文：{topic}")
+        await update.message.reply_text(f"📱 双平台发文: {topic}")
         xhs = await execution_hub.autopost_topic_content("xiaohongshu", topic)
         xret = await execution_hub.autopost_topic_content("x", topic)
-        lines = [f"双平台发文 | {topic}", ""]
-        if xhs.get("published", {}).get("success"):
-            lines.append(f"- 小红书: {xhs.get('published', {}).get('url', '')}")
-        else:
-            lines.append(f"- 小红书失败: {xhs.get('published', {}).get('error', xhs.get('error', '未知错误'))}")
-        if xret.get("published", {}).get("success"):
-            lines.append(f"- X: {xret.get('published', {}).get('url', '')}")
-        else:
-            lines.append(f"- X失败: {xret.get('published', {}).get('error', xret.get('error', '未知错误'))}")
         mem = xhs.get('memory_path') or xret.get('memory_path') or ''
-        if mem:
-            lines.append(f"- 学习存档: {mem}")
-        hint = self._social_login_retry_hint(xhs.get('published', xhs), f"/post_social {topic}") or self._social_login_retry_hint(xret.get('published', xret), f"/post_social {topic}")
+        hint = self._social_login_retry_hint(xhs.get('published', xhs), f"/post {topic}") or self._social_login_retry_hint(xret.get('published', xret), f"/post {topic}")
+        text = format_social_dual_result(
+            topic=topic,
+            xhs_result=xhs,
+            x_result=xret,
+            memory_path=mem,
+        )
         if hint:
-            lines.append(hint.strip())
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            text += f"\n{hint.strip()}"
+        await send_long_message(update.effective_chat.id, text, context)
 
     async def cmd_hotpost(self, update, context):
         if not self._is_authorized(update.effective_user.id):
@@ -351,6 +343,26 @@ class ExecutionCommandsMixin:
         args = context.args or []
         platform = "all"
         topic = ""
+        preview_mode = False
+
+        # 解析参数：支持 --preview 预览模式
+        filtered_args = []
+        for a in args:
+            if a.lower() in {"--preview", "-p", "preview"}:
+                preview_mode = True
+            else:
+                filtered_args.append(a)
+        args = filtered_args
+
+        # 用户偏好：如果设置了 social_preview=True，默认预览模式
+        if not preview_mode:
+            try:
+                from src.bot.globals import user_prefs
+                if user_prefs.get(update.effective_user.id, "social_preview", False):
+                    preview_mode = True
+            except Exception:
+                pass
+
         if args and str(args[0]).lower() in {"x", "xhs", "xiaohongshu", "all", "both", "dual"}:
             raw_platform = str(args[0]).lower()
             platform = "xiaohongshu" if raw_platform in {"xhs", "xiaohongshu"} else raw_platform
@@ -358,33 +370,101 @@ class ExecutionCommandsMixin:
         else:
             topic = " ".join(args).strip()
 
+        if preview_mode:
+            # 预览模式 — 搬运自 ConversationHandler 向导模式
+            # 生成内容但不发布，用户确认后才发
+            await update.message.reply_text("🔥 生成内容预览中...")
+            try:
+                package = await execution_hub.create_hot_social_package(
+                    platform=platform, topic=topic,
+                )
+                if not package or not package.get("results"):
+                    await update.message.reply_text(
+                        f"内容生成失败: {package.get('error', '未知错误') if package else '无结果'}")
+                    return
+
+                # 构建预览文本
+                preview_lines = ["📝 <b>发文预览</b>\n"]
+                results = package.get("results", {})
+                for plat, content in results.items():
+                    icon = "𝕏" if plat == "x" else "📕"
+                    if isinstance(content, dict):
+                        title = content.get("title", "")
+                        body = content.get("body", "") or content.get("text", "")
+                        if title:
+                            preview_lines.append(f"{icon} <b>{plat}</b>\n标题: {title}\n{body[:300]}{'...' if len(body) > 300 else ''}\n")
+                        else:
+                            preview_lines.append(f"{icon} <b>{plat}</b>\n{body[:300]}{'...' if len(body) > 300 else ''}\n")
+                    elif isinstance(content, str):
+                        preview_lines.append(f"{icon} <b>{plat}</b>\n{content[:300]}{'...' if len(content) > 300 else ''}\n")
+
+                preview_lines.append("━━━━━━━━━━━━━━━")
+                preview_lines.append("确认发布？点击下方按钮")
+
+                # 存储 package 到 user_data，等待确认
+                context.user_data["pending_social_package"] = package
+
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                keyboard = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("✅ 确认发布", callback_data="social_confirm:publish"),
+                        InlineKeyboardButton("❌ 取消", callback_data="social_confirm:cancel"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔄 重新生成", callback_data="social_confirm:regenerate"),
+                    ],
+                ])
+                from telegram.constants import ParseMode
+                await update.message.reply_text(
+                    "\n".join(preview_lines),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard,
+                )
+            except Exception as e:
+                from src.telegram_ux import send_error_with_retry
+                await send_error_with_retry(update, context, e, retry_command="/hot --preview " + topic)
+            return
+
+        # 非预览模式 — 直接发布（原有逻辑）
         if topic:
-            await update.message.reply_text(f"正在拉起 OpenClaw 专用浏览器，抓取“{topic}”相关热点并一键发文...")
+            await update.message.reply_text(f"🔥 抓取「{topic}」热点并发文...")
         else:
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器，抓取今日热点并一键发文，默认优先 OpenClaw 实用教学...")
+            await update.message.reply_text("🔥 抓取今日热点并发文...")
 
         ret = await execution_hub.autopost_hot_content(platform=platform, topic=topic)
         if not ret.get("results"):
             await update.message.reply_text(f"热点发文失败: {ret.get('error', '未知错误')}")
             return
 
-        lines = [f"热点一键发文 | {ret.get('topic', topic or '自动选题')}", ""]
-        if ret.get("trend_label"):
-            lines.append(f"蹭热点: {ret.get('trend_label')}")
-        for name in ["xiaohongshu", "x"]:
-            package = (ret.get("results", {}) or {}).get(name)
-            if not package:
-                continue
-            published = package.get("published", {}) or {}
-            label = "小红书" if name == "xiaohongshu" else "X"
-            if published.get("success"):
-                lines.append(f"- {label}: {published.get('url', '')}")
-            else:
-                lines.append(f"- {label}失败: {published.get('error', package.get('error', '未知错误'))}")
-        hint = self._social_login_retry_hint((ret.get("results", {}) or {}).get("xiaohongshu", {}).get("published", {}), "/hot") or self._social_login_retry_hint((ret.get("results", {}) or {}).get("x", {}).get("published", {}), "/hot")
-        if hint:
-            lines.append(hint.strip())
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        # A/B 测试追踪 — 记录发布的内容变体
+        try:
+            from src.bot.globals import ab_test_manager
+            if ab_test_manager:
+                for plat, plat_result in (ret.get("results") or {}).items():
+                    content = plat_result.get("content", "") or plat_result.get("title", "")
+                    if content:
+                        test = ab_test_manager.create_test(
+                            name=f"hotpost_{plat}_{(topic or 'auto')[:20]}",
+                            contents=[content],
+                        )
+                        variant_id, _ = ab_test_manager.get_content(test.test_id)
+                        if plat_result.get("published", {}).get("success"):
+                            ab_test_manager.record_engagement(test.test_id, variant_id, event="publish")
+        except Exception:
+            pass  # A/B 追踪不影响主流程
+
+        hint = self._social_login_retry_hint(
+            (ret.get("results", {}) or {}).get("xiaohongshu", {}).get("published", {}), "/hot"
+        ) or self._social_login_retry_hint(
+            (ret.get("results", {}) or {}).get("x", {}).get("published", {}), "/hot"
+        )
+        text = format_hotpost_result(
+            topic=ret.get("topic", topic or "自动选题"),
+            trend_label=ret.get("trend_label", ""),
+            results=ret.get("results", {}),
+            login_hint=hint or "",
+        )
+        await send_long_message(update.effective_chat.id, text, context)
 
     async def cmd_social_plan(self, update, context):
         if not self._is_authorized(update.effective_user.id):
@@ -1230,7 +1310,7 @@ class ExecutionCommandsMixin:
             r = subprocess.run(["pgrep", "-fl", "xianyu_main"], capture_output=True, text=True)
             if r.stdout.strip():
                 lines = r.stdout.strip().split("\n")
-                log_path = os.path.expanduser("~/Desktop/OpenClaw Bot/clawbot/logs/com-clawbot-xianyu.stderr.log")
+                log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "com-clawbot-xianyu.stderr.log")
                 last_log = ""
                 try:
                     with open(log_path) as f:
@@ -1270,12 +1350,12 @@ class ExecutionCommandsMixin:
             platform = "𝕏" if item.get("platform") == "x" else "📕"
             lines.append(f"Day {item.get('day', '?')} {item.get('time', '')} {platform} {item.get('topic', '')}")
             lines.append(f"  → {item.get('hook', '')}")
-        await send_long_message(update, "\n".join(lines))
+        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
     # ---- 社媒发帖效果报告 ----
 
     async def cmd_social_report(self, update, context):
-        """查看社媒发帖效果报告"""
+        """查看社媒发帖效果报告 + A/B 测试数据"""
         if not self._is_authorized(update.effective_user.id):
             return
         days = 7
@@ -1299,4 +1379,74 @@ class ExecutionCommandsMixin:
                 lines.append(f"  {i}. [{p['platform']}] ❤️{p['likes']} 💬{p['comments']} {p.get('topic', '')[:30]}")
                 if p.get("url"):
                     lines.append(f"     {p['url']}")
-        await send_long_message(update, "\n".join(lines))
+
+        # A/B 测试数据 — 展示活跃测试的效果对比
+        try:
+            from src.bot.globals import ab_test_manager
+            if ab_test_manager:
+                active_tests = ab_test_manager.get_active_tests()
+                if active_tests:
+                    lines.append("\n🧪 A/B 测试:")
+                    for test in active_tests[:5]:
+                        results_data = ab_test_manager.get_results(test.test_id)
+                        if results_data:
+                            winner = results_data.get("winner", "")
+                            variants = results_data.get("variants", [])
+                            status = "✅ 有赢家" if winner else "⏳ 进行中"
+                            lines.append(f"  · {test.name} ({status})")
+                            for v in variants[:3]:
+                                ctr = v.get("ctr", 0)
+                                imp = v.get("impressions", 0)
+                                clk = v.get("clicks", 0)
+                                lines.append(f"    变体{v.get('id', '?')[:6]}: {imp}曝光 {clk}点击 CTR={ctr:.1%}")
+        except Exception:
+            pass  # A/B 数据不影响主报告
+
+        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+
+    async def handle_social_confirm_callback(self, update, context):
+        """处理社交发文预览的确认/取消/重新生成回调
+        搬运自 ConversationHandler 向导模式 — 生成→预览→确认→发布
+        """
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        if not data.startswith("social_confirm:"):
+            return
+
+        action = data.split(":")[1]
+        package = context.user_data.pop("pending_social_package", None)
+
+        if action == "cancel":
+            await query.edit_message_text("❌ 已取消发布。")
+            return
+
+        if action == "regenerate":
+            await query.edit_message_text("🔄 重新生成中...")
+            # 重新触发 /hot --preview
+            context.args = ["--preview"]
+            await self.cmd_hotpost(update, context)
+            return
+
+        if action == "publish":
+            if not package:
+                await query.edit_message_text("⚠️ 预览已过期，请重新执行 /hot --preview")
+                return
+
+            await query.edit_message_text("📤 正在发布...")
+            try:
+                ret = execution_hub._publish_social_package(package)
+                if ret and ret.get("success"):
+                    await query.edit_message_text(
+                        "✅ 发布成功\n\n" +
+                        "\n".join(
+                            f"{'𝕏' if p == 'x' else '📕'} {p}: {r.get('url', '已发布')}"
+                            for p, r in (ret.get("results") or {}).items()
+                        )
+                    )
+                else:
+                    error = ret.get("error", "未知错误") if ret else "无返回"
+                    await query.edit_message_text(f"⚠️ 发布失败: {error}")
+            except Exception as e:
+                await query.edit_message_text(f"⚠️ 发布异常: {e}")

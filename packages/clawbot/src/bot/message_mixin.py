@@ -10,6 +10,9 @@ import re
 from src.bot.globals import chat_router, collab_orchestrator, bot_registry, history_store, metrics, send_long_message, send_as_bot, shared_memory, _pending_trades, CLAUDE_BASE, CLAUDE_KEY, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
 from src.bot.rate_limiter import rate_limiter
 from src.notify_style import format_digest
+from src.ocr_service import ocr_image, OcrResult
+from src.ocr_router import classify_ocr_scene, OcrScene
+from src.ocr_processors import process_financial_scene, process_ecommerce_scene
 logger = logging.getLogger(__name__)
 
 def _match_chinese_command(text = None):
@@ -49,11 +52,9 @@ def _match_chinese_command(text = None):
         return ('ops_bounty_run', '')
     m_bounty_scan = re.search('(?:扫赏金|扫描赏金|找赏金|赏金扫描)\\s*(.*)', t)
     if m_bounty_scan:
-        if not m_bounty_scan.group(1):
-            m_bounty_scan.group(1)
-        kw = ''.strip()
+        kw = (m_bounty_scan.group(1) or '').strip()
         return ('ops_bounty_scan', kw)
-    if None.fullmatch('(赏金列表|赏金机会|赏金看板)', t):
+    if re.fullmatch('(赏金列表|赏金机会|赏金看板)', t):
         return ('ops_bounty_list', '')
     if re.fullmatch('(赏金top|赏金排行|高收益赏金)', t):
         return ('ops_bounty_top', '')
@@ -62,108 +63,88 @@ def _match_chinese_command(text = None):
     m_tweet_plan = re.search('(?:推文计划|分析推文|推文执行计划)\\s+(.+)', t)
     if m_tweet_plan:
         return ('ops_tweet_plan', m_tweet_plan.group(1).strip())
-    m_tweet_run = None.search('(?:执行推文|推文执行|推文赚钱|跟着推文赚钱)\\s+(.+)', t)
+    m_tweet_run = re.search('(?:执行推文|推文执行|推文赚钱|跟着推文赚钱)\\s+(.+)', t)
     if m_tweet_run:
         return ('ops_tweet_run', m_tweet_run.group(1).strip())
-    m_docs_search = None.search('(?:文档检索|文档搜索|搜文档)\\s+(.+)', t)
+    m_docs_search = re.search('(?:文档检索|文档搜索|搜文档)\\s+(.+)', t)
     if m_docs_search:
         return ('ops_docs_search', m_docs_search.group(1).strip())
-    m_docs_index = None.search('(?:建立文档索引|索引文档)\\s*(.*)', t)
+    m_docs_index = re.search('(?:建立文档索引|索引文档)\\s*(.*)', t)
     if m_docs_index and re.search('文档', t):
-        if not m_docs_index.group(1):
-            m_docs_index.group(1)
-        if not ''.strip():
-            ''.strip()
-        target = '.'
+        target = (m_docs_index.group(1) or '.').strip() or '.'
         return ('ops_docs_index', target)
-    m_meeting = None.search('(?:会议纪要|总结会议)\\s+(.+)', t)
+    m_meeting = re.search('(?:会议纪要|总结会议)\\s+(.+)', t)
     if m_meeting:
         return ('ops_meeting', m_meeting.group(1).strip())
-    m_content = None.search('(?:社媒选题|内容选题|写作选题)\\s*(.*)', t)
+    m_content = re.search('(?:社媒选题|内容选题|写作选题)\\s*(.*)', t)
     if m_content and re.search('选题', t):
-        if not m_content.group(1):
-            m_content.group(1)
-        if not ''.strip():
-            ''.strip()
-        keyword = 'AI'
+        keyword = (m_content.group(1) or 'AI').strip() or 'AI'
         return ('ops_content', keyword)
-    m_social_plan = None.search('(?:社媒计划|发文计划|今日发什么)\\s*(.*)', t)
+    m_social_plan = re.search('(?:社媒计划|发文计划|今日发什么)\\s*(.*)', t)
     if m_social_plan and re.search('计划|发什么', t):
-        if not m_social_plan.group(1):
-            m_social_plan.group(1)
-        return ('social_plan', ''.strip())
-    m_social_repost = None.search('(?:双平台改写|改写双平台|改写成双平台|双平台草稿)\\s*(.*)', t)
+        return ('social_plan', (m_social_plan.group(1) or '').strip())
+    m_social_repost = re.search('(?:双平台改写|改写双平台|改写成双平台|双平台草稿)\\s*(.*)', t)
     if m_social_repost:
-        if not m_social_repost.group(1):
-            m_social_repost.group(1)
-        return ('social_repost', ''.strip())
-    if None.fullmatch('(数字生命首发|首发包|社媒首发包|数字生命人设首发)', t):
+        return ('social_repost', (m_social_repost.group(1) or '').strip())
+    if re.fullmatch('(数字生命首发|首发包|社媒首发包|数字生命人设首发)', t):
         return ('social_launch', '')
     if re.fullmatch('(当前社媒人设|社媒人设|数字生命人设|当前人设)', t):
         return ('social_persona', '')
     m_topic = re.search('(?:研究|分析|看看|学习)(.+?)(?:题材|方向|内容)', t)
     if m_topic:
         return ('social_topic', m_topic.group(1).strip())
-    m_xhs = None.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到小红书', t)
+    m_xhs = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到小红书', t)
     if m_xhs:
         return ('social_xhs', m_xhs.group(1).strip())
-    m_x = None.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到(?:x|推特|推文)', t, re.IGNORECASE)
+    m_x = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到(?:x|推特|推文)', t, re.IGNORECASE)
     if m_x:
         return ('social_x', m_x.group(1).strip())
-    m_dual = None.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?(?:双平台|同时发|发到两个平台)', t)
+    m_dual = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?(?:双平台|同时发|发到两个平台)', t)
     if m_dual:
         return ('social_post', m_dual.group(1).strip())
-    if None.fullmatch('(一键发文|热点发文|热点一键发文|蹭热点发文|自动发文)', t):
+    if re.fullmatch('(一键发文|热点发文|热点一键发文|蹭热点发文|自动发文)', t):
         return ('social_hotpost', '')
     m_hotpost = re.search('(?:一键发文|热点发文|蹭热点发文|自动发文)\\s+(.+)', t)
     if m_hotpost:
         return ('social_hotpost', m_hotpost.group(1).strip())
-    m_monitor_add = None.search('(?:添加资讯监控|新增资讯监控|监控关键词)\\s+(.+)', t)
+    m_monitor_add = re.search('(?:添加资讯监控|新增资讯监控|监控关键词)\\s+(.+)', t)
     if m_monitor_add:
         return ('ops_monitor_add', m_monitor_add.group(1).strip())
-    if None.fullmatch('(资讯监控列表|新闻监控列表)', t):
+    if re.fullmatch('(资讯监控列表|新闻监控列表)', t):
         return ('ops_monitor_list', '')
     if re.fullmatch('(运行资讯监控|扫描资讯监控|立即扫描资讯监控)', t):
         return ('ops_monitor_run', '')
     m_remind = re.search('(\\d+)\\s*分钟后提醒我\\s+(.+)', t)
     if m_remind:
         return ('ops_life_remind', f'''{m_remind.group(1)}|||{m_remind.group(2).strip()}''')
-    m_remind_default = None.search('提醒我\\s+(.+)', t)
+    m_remind_default = re.search('提醒我\\s+(.+)', t)
     if m_remind_default:
         return ('ops_life_remind', f'''30|||{m_remind_default.group(1).strip()}''')
-    m_project = None.search('(?:项目周报|生成项目周报)\\s*(.*)', t)
+    m_project = re.search('(?:项目周报|生成项目周报)\\s*(.*)', t)
     if m_project and re.search('项目周报', t):
-        if not m_project.group(1):
-            m_project.group(1)
-        if not ''.strip():
-            ''.strip()
-        target = '.'
+        target = (m_project.group(1) or '.').strip() or '.'
         return ('ops_project', target)
-    m_dev = None.search('(?:开发流程|执行开发流程|跑开发流程)\\s*(.*)', t)
+    m_dev = re.search('(?:开发流程|执行开发流程|跑开发流程)\\s*(.*)', t)
     if m_dev and re.search('开发流程', t):
-        if not m_dev.group(1):
-            m_dev.group(1)
-        if not ''.strip():
-            ''.strip()
-        target = '.'
+        target = (m_dev.group(1) or '.').strip() or '.'
         return ('ops_dev', target)
-    if None.search('(开始|自动|帮我|一键).{0,2}投资|找.{0,2}机会|自动交易|帮我(赚钱|炒股|交易)|今天买什么|有什么(机会|可以买)', t):
+    if re.search('(开始|自动|帮我|一键).{0,2}投资|找.{0,2}机会|自动交易|帮我(赚钱|炒股|交易)|今天买什么|有什么(机会|可以买)', t):
         return ('auto_invest', t)
-    if None.search('扫描|扫一下|扫一扫|看看市场|市场扫描|全市场', t):
+    if re.search('扫描|扫一下|扫一扫|看看市场|市场扫描|全市场', t):
         return ('scan', '')
     m = re.search('(?:分析|技术分析|看看|研究)\\s*([A-Za-z]{1,5}(?:-USD)?)', t)
     if m:
         return ('ta', m.group(1).upper())
-    m = None.search('([A-Za-z]{1,5})\\s*(?:信号|买卖|怎么样|能买吗|能不能买)', t)
+    m = re.search('([A-Za-z]{1,5})\\s*(?:信号|买卖|怎么样|能买吗|能不能买)', t)
     if m:
         return ('signal', m.group(1).upper())
-    m = None.search('([A-Za-z]{1,5})\\s*(?:多少钱|股价|价格|行情)', t)
+    m = re.search('([A-Za-z]{1,5})\\s*(?:多少钱|股价|价格|行情)', t)
     if m:
         return ('quote', m.group(1).upper())
-    m = None.search('(?:查|看).{0,2}(?:行情|价格)\\s*([A-Za-z]{1,5})?', t)
+    m = re.search('(?:查|看).{0,2}(?:行情|价格)\\s*([A-Za-z]{1,5})?', t)
     if m and m.group(1):
         return ('quote', m.group(1).upper())
-    if None.search('市场概览|大盘|今天行情|行情怎么样|市场怎么样', t):
+    if re.search('市场概览|大盘|今天行情|行情怎么样|市场怎么样', t):
         return ('market', '')
     if re.search('我的?(持仓|仓位|组合|资产)|看看(持仓|仓位)|投资组合', t):
         return ('portfolio', '')
@@ -187,11 +168,9 @@ def _match_chinese_command(text = None):
         return ('autotrader_stop', '')
     m_bt = re.search('(?:回测|测试策略|backtest)\\s*([A-Za-z\\-]{1,10})?', t)
     if m_bt:
-        if not m_bt.group(1):
-            m_bt.group(1)
-        sym = ''.strip().upper()
+        sym = (m_bt.group(1) or '').strip().upper()
         return ('backtest', sym)
-    if None.search('再平衡|调仓|rebalance|配置组合|目标配置', t):
+    if re.search('再平衡|调仓|rebalance|配置组合|目标配置', t):
         return ('rebalance', '')
     m = re.search('(?:投资|讨论|分析).{0,2}(?:一下|下)?\\s*(.{2,})', t)
     if m and re.search('投资|讨论', t):
@@ -213,7 +192,89 @@ class MessageHandlerMixin:
         return f"@{uname}" in text.lower()
 
     async def _dispatch_chinese_action(self, update = None, context = None, action_type="", action_arg=""):
-        pass
+        """分发中文自然语言命令到对应的命令处理器"""
+        if not update or not action_type:
+            return
+
+        # 构造 context.args
+        context.args = [action_arg] if action_arg else []
+
+        # 命令映射表 — 将 NLP 匹配结果路由到实际命令
+        dispatch_map = {
+            "start": self.cmd_start,
+            "clear": self.cmd_clear,
+            "status": self.cmd_status,
+            "config": self.cmd_config,
+            "cost": self.cmd_cost,
+            "context": self.cmd_context,
+            "compact": self.cmd_compact,
+            "news": self.cmd_news,
+            "metrics": self.cmd_metrics,
+            "lanes": self.cmd_lane,
+            "ops_help": self.cmd_ops,
+            "ops_brief": self.cmd_brief,
+            "invest": self.cmd_invest,
+            "quote": self.cmd_quote,
+            "scan": self.cmd_scan,
+            "ta": self.cmd_ta,
+            "portfolio": self.cmd_monitor,
+            "buy": self.cmd_buy,
+            "sell": self.cmd_sell,
+            "risk": self.cmd_risk,
+            "backtest": self.cmd_backtest,
+            "hot": self.cmd_hotpost,
+            "post": self.cmd_post,
+            "social_report": self.cmd_social_report,
+            "memory": self.cmd_memory,
+            "settings": self.cmd_settings,
+            "draw": self.cmd_draw,
+        }
+
+        handler = dispatch_map.get(action_type)
+        if handler:
+            try:
+                await handler(update, context)
+            except Exception as e:
+                logger.warning("[ChineseNLP] 分发 %s 失败: %s", action_type, e)
+            return
+
+        # 带参数的特殊命令
+        try:
+            if action_type == "ops_email":
+                context.args = ["email"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_task_top":
+                context.args = ["task", "top"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_bounty_run":
+                context.args = ["bounty", "run"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_bounty_scan":
+                context.args = ["bounty", "scan"] + ([action_arg] if action_arg else [])
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_bounty_list":
+                context.args = ["bounty", "list"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_bounty_top":
+                context.args = ["bounty", "top"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_bounty_open":
+                context.args = ["bounty", "open"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_tweet_plan":
+                context.args = ["tweet", "plan", action_arg]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_tweet_run":
+                context.args = ["tweet", "run", action_arg]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_docs_search":
+                context.args = ["docs", "search", action_arg]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_docs_index":
+                context.args = ["docs", "index", action_arg]
+                await self.cmd_ops(update, context)
+        except Exception as e:
+            logger.warning("[ChineseNLP] 分发 %s(%s) 失败: %s", action_type, action_arg, e)
 
     
     def _pick_workflow_bot(self, candidates=None, exclude=None):
@@ -257,6 +318,7 @@ class MessageHandlerMixin:
     def _extract_json_object(self, text = None):
         if not text:
             return None
+        from json_repair import loads as jloads
         patterns = [
             '```json\\s*(\\{.*?\\})\\s*```',
             '```\\s*(\\{.*?\\})\\s*```']
@@ -264,23 +326,27 @@ class MessageHandlerMixin:
             match = re.search(pattern, text, re.DOTALL)
             if not match:
                 continue
-            payload = json.loads(match.group(1))
-            if isinstance(payload, dict):
-                
-                return patterns, payload
-        pass  # auto
+            try:
+                payload = jloads(match.group(1))
+                if isinstance(payload, dict):
+                    return payload
+            except Exception:
+                continue
+        # 回退：直接找 JSON 对象
+        start = text.find('{')
+        end = text.rfind('}')
         if start >= 0 and end > start:
-            payload = json.loads(text[start:end + 1])
-            if isinstance(payload, dict):
-                return payload
-            return None
+            try:
+                payload = jloads(text[start:end + 1])
+                if isinstance(payload, dict):
+                    return payload
+            except Exception:
+                pass
         return None
 
     
     def _fallback_service_options(self, text = None):
-        if not text:
-            text
-        task_text = ''.strip()
+        task_text = (text or '').strip()
         return {
             'customer_summary': task_text[:120],
             'missing_info': [
@@ -319,41 +385,37 @@ class MessageHandlerMixin:
 
     
     def _render_service_intake(self, session = None):
-        if not session.options:
-            session.options
-        options = []
+        options = session.options if session and session.options else []
         sections = []
-        if not session.intake_summary:
-            session.intake_summary
+        intake_summary = session.intake_summary if session and session.intake_summary else ''
         sections.append(('【需求确认】', [
-            session.original_text]))
-        if session.missing_info:
+            intake_summary or (session.original_text if session else '')]))
+        if session and session.missing_info:
             sections.append(('【必要信息】', session.missing_info[:3]))
+        recommended = 1
         for item in options[:3]:
-            if not item.get('id', 0):
-                item.get('id', 0)
-            option_id = int(0)
-            sections.append((f'''【方案 {option_id}】''', [
-                f'''标题：{item.get('title', '')}''',
-                f'''适合谁：{item.get('fit', '')}''',
-                f'''优点：{item.get('benefits', '')}''',
-                f'''代价/风险：{item.get('tradeoffs', '')}''',
-                f'''默认假设：{item.get('default_assumption', '')}''']))
+            option_id = int(item.get('id', 0))
+            if item.get('recommended'):
+                recommended = option_id
+            sections.append((f"【方案 {option_id}】", [
+                f"标题：{item.get('title', '')}",
+                f"适合谁：{item.get('fit', '')}",
+                f"优点：{item.get('benefits', '')}",
+                f"代价/风险：{item.get('tradeoffs', '')}",
+                f"默认假设：{item.get('default_assumption', '')}"]))
         return format_digest(title = 'OpenClaw「链式讨论」专业客服接单', intro = '先把需求接稳，再给你 3 个方案。你只需要选编号，我就继续往下推进。', sections = sections, footer = f'''推荐优先选方案 {recommended}。请直接回复 1 / 2 / 3。''')
 
     
     def _parse_workflow_choice(self, text = None, option_count = None):
         if not text:
-            text
-        match = re.search('(?:选|方案)?\\s*([1-9])\\b', '')
+            return (0, '')
+        match = re.search('(?:选|方案)?\\s*([1-9])\\b', text)
         if not match:
             return (0, '')
         choice = int(match.group(1))
-        if choice < 1 or choice > max(1, option_count):
+        if choice < 1 or choice > max(1, option_count or 3):
             return (0, '')
-        if not text:
-            text
-        note = re.sub('(?:选|方案)?\\s*[1-9]\\b', '', '', count = 1).strip(' ：:，,；;')
+        note = re.sub('(?:选|方案)?\\s*[1-9]\\b', '', text, count = 1).strip(' ：:，,；;')
         return (choice, note)
 
     
@@ -377,9 +439,7 @@ class MessageHandlerMixin:
 
     
     def _pick_lane_bot(self, lane = None, exclude = None):
-        if not exclude:
-            exclude
-        exclude_set = set([])
+        exclude_set = set(exclude or [])
         lane_map = {
             'code': [
                 'gpt5_3_codex',
@@ -429,26 +489,18 @@ class MessageHandlerMixin:
     
     def _merge_assignments_by_bot(self, assignments):
         grouped = { }
-        if not assignments:
-            assignments
-        for item in []:
-            if not item.get('bot_id', ''):
-                item.get('bot_id', '')
-            bot_id = str('').strip()
+        for item in (assignments or []):
+            bot_id = str(item.get('bot_id', '')).strip()
             if not bot_id:
                 continue
             bucket = grouped.setdefault(bot_id, {
                 'bot_id': bot_id,
                 'tasks': [],
                 'reasons': [] })
-            if not item.get('subtask', ''):
-                item.get('subtask', '')
-            task_text = str('').strip()
+            task_text = str(item.get('subtask', '')).strip()
             if task_text:
                 bucket['tasks'].append(task_text)
-            if not item.get('reason', ''):
-                item.get('reason', '')
-            reason_text = str('').strip()
+            reason_text = str(item.get('reason', '')).strip()
             if not reason_text:
                 continue
             bucket['reasons'].append(reason_text)
@@ -507,7 +559,378 @@ class MessageHandlerMixin:
 
     
     async def handle_message(self, update, context):
-        pass
+        """处理文本消息 — 流式输出到 Telegram
+        
+        搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 的流式模式:
+        - 发送占位消息 → 流式编辑 → 最终消息
+        - 自适应编辑频率（群聊更保守，私聊更激进）
+        - Markdown 降级（流式中 Markdown 可能断裂）
+        - RetryAfter 退避
+        """
+        from telegram import constants
+        from telegram.error import BadRequest, RetryAfter, TimedOut
+        from src.smart_memory import get_smart_memory
+        from src.feedback import build_feedback_keyboard, parse_feedback_data, get_feedback_store
+
+        TG_MSG_LIMIT = 4096
+        ANTI_FLOOD_DELAY = 0.01
+
+        chat_id = update.effective_chat.id
+        user = update.effective_user
+        text = (update.message.text or "").strip()
+        if not text:
+            return
+
+        chat_type = update.effective_chat.type
+        is_group = chat_type in ("group", "supergroup")
+
+        if not self._is_authorized(user.id):
+            return
+
+        # 消息频率限制 — 防止用户刷屏导致 API 过载
+        from src.bot.globals import rate_limiter
+        if rate_limiter:
+            allowed, reason = rate_limiter.check(self.bot_id, "private" if not is_group else "group")
+            if not allowed:
+                logger.info("[%s] 消息频率限制: %s (user=%s)", self.name, reason, user.id)
+                return
+
+        # 群聊：检查是否应该回复
+        if is_group:
+            should, reason = await self._should_respond_async(
+                text, chat_type, update.message.message_id, user.id
+            )
+            if not should:
+                return
+
+        # 优先级分类 — 关键消息（止损/风控/紧急）优先处理
+        from src.bot.globals import priority_message_queue
+        _msg_priority = None
+        if priority_message_queue:
+            try:
+                _msg_priority = priority_message_queue.classify_priority(
+                    text=text,
+                    chat_id=chat_id,
+                    user_id=user.id,
+                    is_private=not is_group,
+                    is_mentioned=not is_group,  # 私聊视为 mentioned
+                )
+                # 入队追踪（不阻塞处理，仅用于统计和优先级感知）
+                from src.chat_router import PrioritizedMessage
+                import time as _ptime
+                await priority_message_queue.enqueue(PrioritizedMessage(
+                    priority=_msg_priority.value,
+                    timestamp=_ptime.time(),
+                    chat_id=chat_id,
+                    user_id=user.id,
+                    text=text[:200],
+                    bot_id=getattr(self, 'bot_id', ''),
+                ))
+            except Exception:
+                pass  # 优先级队列不影响主流程
+
+        # 智能记忆管道 — 记录用户消息（异步，不阻塞）
+        _sm = get_smart_memory()
+        if _sm:
+            asyncio.create_task(_sm.on_message(chat_id, user.id, "user", text, self.bot_id))
+
+        # 发送 typing 指示器
+        typing_task = asyncio.create_task(self._keep_typing(chat_id, context))
+
+        try:
+            sent_message = None
+            prev_text = ""
+            backoff = 0
+            chunk_idx = 0
+            final_content = ""
+            model_used = getattr(self, 'model', 'unknown') or 'unknown'
+
+            # Phase 1: "思考中" 占位符（搬运自 karfly/chatgpt_telegram_bot）
+            sent_message = await update.message.reply_text(
+                "🤔 思考中...",
+                reply_to_message_id=update.message.message_id if is_group else None,
+            )
+
+            async for content, status in self._call_api_stream(
+                chat_id, text, save_history=True, chat_type=chat_type
+            ):
+                if not content:
+                    continue
+                final_content = content
+
+                # Telegram 消息长度限制 — 超长时分割发送
+                if len(content) > TG_MSG_LIMIT:
+                    if sent_message and prev_text:
+                        try:
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=sent_message.message_id,
+                                text=prev_text[:TG_MSG_LIMIT],
+                            )
+                        except BadRequest:
+                            pass
+                    # 发送所有溢出部分（不截断）
+                    remaining = content[TG_MSG_LIMIT:]
+                    while remaining:
+                        chunk = remaining[:TG_MSG_LIMIT]
+                        remaining = remaining[TG_MSG_LIMIT:]
+                        try:
+                            sent_message = await update.message.reply_text(chunk)
+                            prev_text = chunk
+                        except Exception as e:
+                            logger.warning(f"[{self.bot_id}] 发送溢出消息失败: {e}")
+                            break
+                    continue
+
+                cutoff = self._stream_cutoff(is_group, content) + backoff
+
+                if chunk_idx == 0:
+                    # Phase 2: 首个 token — 替换"思考中"为实际内容
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=sent_message.message_id,
+                            text=content + " ▌",
+                        )
+                        prev_text = content
+                        chunk_idx += 1
+                    except Exception as e:
+                        logger.warning(f"[{self.bot_id}] 替换占位符失败: {e}")
+                        break
+
+                elif abs(len(content) - len(prev_text)) > cutoff or status == "finished":
+                    if not sent_message:
+                        break
+
+                    if status == "finished":
+                        model_short = model_used.split("/")[-1]
+                        model_tag = f"\n\n`via {getattr(self, 'name', self.bot_id)} · {model_short}`"
+                        display = content + model_tag
+                    else:
+                        display = content + " ▌"
+
+                    display = display[:TG_MSG_LIMIT]
+
+                    try:
+                        parse_mode = constants.ParseMode.MARKDOWN if status == "finished" else None
+                        # Phase 3: 完成时附加反馈按钮（搬运自 karfly 的 InlineKeyboard 模式）
+                        reply_markup = build_feedback_keyboard(self.bot_id, model_used, chat_id) if status == "finished" else None
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=sent_message.message_id,
+                            text=display,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup,
+                        )
+                        prev_text = content
+                    except BadRequest as e:
+                        err_msg = str(e)
+                        if "Message is not modified" in err_msg:
+                            pass
+                        elif "parse" in err_msg.lower() or "can't" in err_msg.lower():
+                            try:
+                                await context.bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=sent_message.message_id,
+                                    text=display,
+                                    reply_markup=reply_markup,
+                                )
+                                prev_text = content
+                            except BadRequest:
+                                pass
+                        else:
+                            backoff += 5
+                            logger.debug(f"[{self.bot_id}] edit_message BadRequest: {err_msg}")
+                    except RetryAfter as e:
+                        backoff += 5
+                        await asyncio.sleep(e.retry_after)
+                    except TimedOut:
+                        backoff += 5
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        backoff += 5
+                        logger.debug(f"[{self.bot_id}] edit_message 异常: {e}")
+
+                    await asyncio.sleep(ANTI_FLOOD_DELAY)
+                    chunk_idx += 1
+
+            # 流式没有产出任何内容 → 降级到非流式
+            if chunk_idx == 0:
+                reply = await self._call_api(chat_id, text, save_history=True, chat_type=chat_type)
+                if reply:
+                    final_content = reply
+                    fb_markup = build_feedback_keyboard(self.bot_id, model_used, chat_id)
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=sent_message.message_id,
+                            text=reply[:TG_MSG_LIMIT],
+                            parse_mode=constants.ParseMode.MARKDOWN,
+                            reply_markup=fb_markup,
+                        )
+                    except BadRequest:
+                        try:
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=sent_message.message_id,
+                                text=reply[:TG_MSG_LIMIT],
+                                reply_markup=fb_markup,
+                            )
+                        except Exception:
+                            pass
+                else:
+                    # 空回复 — 更新占位符
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=sent_message.message_id,
+                            text="暂时无法回复，请稍后再试",
+                        )
+                    except Exception:
+                        pass
+                    logger.info(f"[{self.bot_id}] 空回复 (chat={chat_id})")
+
+            # 记录 AI 回复到智能记忆
+            if _sm and final_content:
+                asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:500], self.bot_id))
+
+        except Exception as e:
+            logger.error(f"[{self.bot_id}] handle_message 异常: {e}", exc_info=True)
+
+            # 清理流式光标 ▌ — 防止异常时光标永久残留
+            if sent_message and prev_text:
+                try:
+                    clean_text = prev_text.rstrip(" ▌")
+                    if clean_text:
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=sent_message.message_id,
+                            text=clean_text + "\n\n⚠️ 回复中断",
+                        )
+                except Exception:
+                    pass
+
+            # 分类错误提示 — 比"出错了"更有信息量
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                user_msg = "回复超时了，模型可能比较忙，请稍后再试"
+            elif "rate" in err_str or "429" in err_str or "quota" in err_str:
+                user_msg = "请求太频繁了，请等几秒再发"
+            elif "connect" in err_str or "network" in err_str or "ssl" in err_str:
+                user_msg = "网络连接出了问题，正在自动切换线路"
+            elif "auth" in err_str or "401" in err_str or "403" in err_str:
+                user_msg = "API 认证失败，管理员已收到通知"
+            else:
+                user_msg = "处理消息时遇到问题，请稍后重试"
+            try:
+                from src.telegram_ux import send_error_with_retry
+                await send_error_with_retry(update, context, e, retry_command="")
+            except Exception:
+                try:
+                    await update.message.reply_text(user_msg)
+                except Exception:
+                    pass
+        finally:
+            typing_task.cancel()
+            try:
+                await typing_task
+            except asyncio.CancelledError:
+                pass
+
+    async def handle_voice(self, update, context):
+        """处理语音消息 — 搬运自 father-bot/chatgpt-telegram-bot 的 Whisper 模式
+        
+        下载语音 → OpenAI Whisper 转文字 → 当作文本消息处理
+        """
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        chat_id = update.effective_chat.id
+        voice = update.message.voice or update.message.audio
+        if not voice:
+            return
+
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+        try:
+            # 下载语音文件
+            file = await context.bot.get_file(voice.file_id)
+            buf = io.BytesIO()
+            await file.download_to_memory(buf)
+            buf.seek(0)
+            buf.name = "voice.ogg"
+
+            # 尝试 OpenAI Whisper API
+            transcribed = None
+            try:
+                import os
+                openai_key = os.environ.get("OPENAI_API_KEY", "")
+                if openai_key:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        resp = await client.post(
+                            "https://api.openai.com/v1/audio/transcriptions",
+                            headers={"Authorization": f"Bearer {openai_key}"},
+                            files={"file": ("voice.ogg", buf, "audio/ogg")},
+                            data={"model": "whisper-1"},
+                        )
+                        if resp.status_code == 200:
+                            transcribed = resp.json().get("text", "")
+            except Exception as whisper_err:
+                logger.debug("[Voice] Whisper API 失败: %s", whisper_err)
+
+            if not transcribed:
+                await update.message.reply_text(
+                    "🎤 语音识别暂不可用（需要 OPENAI_API_KEY）\n请发送文字消息",
+                    reply_to_message_id=update.message.message_id,
+                )
+                return
+
+            # 显示识别结果，然后当作文本处理
+            await update.message.reply_text(
+                f"🎤 识别: {transcribed[:200]}",
+                reply_to_message_id=update.message.message_id,
+            )
+
+            # 伪造文本消息，复用 handle_message 流程
+            update.message.text = transcribed
+            await self.handle_message(update, context)
+
+        except Exception as e:
+            logger.error("[Voice] 语音处理失败: %s", e)
+            await update.message.reply_text("🎤 语音处理失败，请发送文字消息")
+
+    @staticmethod
+    def _stream_cutoff(is_group: bool, content: str) -> int:
+        """自适应编辑频率 — 搬运自 n3d1117/chatgpt-telegram-bot
+        
+        群聊更保守（Telegram 对群聊有更严格的 flood 限制），
+        私聊更激进（用户体验优先）。
+        """
+        n = len(content)
+        if is_group:
+            if n > 1000: return 180
+            if n > 200: return 120
+            if n > 50: return 90
+            return 50
+        else:
+            if n > 1000: return 90
+            if n > 200: return 45
+            if n > 50: return 25
+            return 15
+
+    async def _keep_typing(self, chat_id: int, context):
+        """持续发送 typing 指示器 — 搬运自 n3d1117 的 wrap_with_indicator"""
+        from telegram import ChatAction
+        try:
+            while True:
+                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                await asyncio.sleep(4.5)
+        except asyncio.CancelledError:
+            raise  # 让 finally 正常处理
+        except Exception as e:
+            # 网络错误等 — 静默退出但记录，不影响主流程
+            logger.debug(f"[typing] chat={chat_id} 停止: {e}")
 
     
     async def _run_chain_discuss(self, update = None, context = None, text = ('text', str)):
@@ -516,12 +939,279 @@ class MessageHandlerMixin:
 
     
     async def handle_photo(self, update, context):
-        '''处理图片消息'''
-        pass
+        '''处理图片消息 — OCR → 场景路由 → 业务决策链'''
+        try:
+            chat_id = update.effective_chat.id
+            user = update.effective_user
+            caption = update.message.caption or ""
+            is_group = update.effective_chat.type in ("group", "supergroup")
+            
+            # 群聊门控：仅在被 @ 或 caption 含触发词时才 OCR
+            if is_group:
+                bot_username = (await context.bot.get_me()).username or ""
+                mentioned = f"@{bot_username}" in (caption or "")
+                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "竞品", "财报"))
+                if not mentioned and not trigger:
+                    return
+            
+            # 发送处理中提示
+            hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
+            
+            # 下载图片
+            photo = update.message.photo[-1]
+            file = await context.bot.get_file(photo.file_id)
+            buf = io.BytesIO()
+            await file.download_to_memory(buf)
+            image_bytes = buf.getvalue()
+            
+            logger.info(f"[OCR] 收到图片 from {user.id}, {len(image_bytes)} bytes")
+            
+            # 调用 OCR
+            result: OcrResult = await ocr_image(
+                image_bytes,
+                mime_type="image/jpeg",
+                user_id=user.id,
+                file_unique_id=photo.file_unique_id,
+            )
+            
+            # 删除处理中提示
+            try:
+                await hint_msg.delete()
+            except Exception:
+                pass
+            
+            # OCR 失败
+            if not result.ok:
+                await send_long_message(chat_id, f"⚠️ OCR 失败: {result.error}", context,
+                                        reply_to_message_id=update.message.message_id)
+                return
+            
+            # OCR 无文字
+            if not result.text:
+                await send_long_message(chat_id, "📷 图片已收到，未识别到文字内容。", context,
+                                        reply_to_message_id=update.message.message_id)
+                return
+            
+            # 场景路由
+            scene_match = classify_ocr_scene(result.text, caption)
+            
+            if scene_match.scene == OcrScene.FINANCIAL:
+                # 交易/财报场景
+                proc_result = await process_financial_scene(
+                    result.text, caption, user.id, chat_id, shared_memory)
+                
+                tag = " (缓存)" if result.cached else ""
+                reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
+                reply_parts.append(f"\n{'─' * 20}")
+                reply_parts.append(f"🎯 场景: 交易分析 ({scene_match.confidence:.0%})")
+                if proc_result.success:
+                    reply_parts.append(proc_result.summary)
+                    if proc_result.next_step:
+                        reply_parts.append(f"\n💡 {proc_result.next_step}")
+                
+                await send_long_message(chat_id, "\n".join(reply_parts), context,
+                                        reply_to_message_id=update.message.message_id)
+                
+                # 注入对话上下文（可追问）
+                if proc_result.context_injection:
+                    try:
+                        history_store.add_message(
+                            getattr(self, 'bot_id', 'system'), chat_id,
+                            "assistant", proc_result.context_injection)
+                    except Exception as e:
+                        logger.warning(f"[OCR] 交易场景上下文注入失败: {e}")
+                if proc_result.auto_invest_topic and not is_group:
+                    try:
+                        await send_long_message(chat_id,
+                            f"🚀 自动触发投资分析: {proc_result.auto_invest_topic}\n"
+                            "发送 /stop_discuss 可中断", context)
+                        # 模拟 /invest 命令
+                        context.args = proc_result.auto_invest_topic.split()
+                        await self.cmd_invest(update, context)
+                    except Exception as e:
+                        logger.error(f"[OCR] 自动触发 /invest 失败: {e}")
+            
+            elif scene_match.scene == OcrScene.ECOMMERCE:
+                # 电商/竞品场景
+                proc_result = await process_ecommerce_scene(
+                    result.text, caption, user.id, chat_id, shared_memory)
+                
+                tag = " (缓存)" if result.cached else ""
+                reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
+                reply_parts.append(f"\n{'─' * 20}")
+                reply_parts.append(f"🎯 场景: 竞品分析 ({scene_match.confidence:.0%})")
+                if proc_result.success:
+                    reply_parts.append(proc_result.summary)
+                    if proc_result.next_step:
+                        reply_parts.append(f"\n💡 定价建议: {proc_result.next_step}")
+                
+                await send_long_message(chat_id, "\n".join(reply_parts), context,
+                                        reply_to_message_id=update.message.message_id)
+                
+                # 注入对话上下文（可追问）
+                if proc_result.context_injection:
+                    try:
+                        history_store.add_message(
+                            getattr(self, 'bot_id', 'system'), chat_id,
+                            "assistant", proc_result.context_injection)
+                    except Exception as e:
+                        logger.warning(f"[OCR] 电商场景上下文注入失败: {e}")
+            
+            else:
+                # 通用场景
+                tag = " (缓存)" if result.cached else ""
+                reply = f"📄 OCR 识别结果{tag}:\n\n{result.text}"
+                if caption:
+                    reply += f"\n\n💬 附言: {caption}"
+                await send_long_message(chat_id, reply, context,
+                                        reply_to_message_id=update.message.message_id)
+                
+        except Exception as e:
+            logger.error(f"[OCR] handle_photo 异常: {e}", exc_info=True)
+            try:
+                await send_long_message(
+                    update.effective_chat.id, f"⚠️ 图片处理异常: {e}", context,
+                    reply_to_message_id=update.message.message_id)
+            except Exception:
+                pass
 
     
     async def handle_trade_callback(self, update, context):
-        '''处理投资分析会议后的一键下单按钮回调'''
-        pass
+        '''处理投资分析会议后的一键下单按钮回调
+        callback_data 格式:
+          itrade:{trade_key}:{idx}     — 执行单笔交易
+          itrade_all:{trade_key}       — 执行全部交易
+          itrade_cancel:{trade_key}    — 取消全部
+        '''
+        from src.bot.globals import _pending_trades, ibkr
+        from telegram import InlineKeyboardMarkup
+
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+
+        if data.startswith("itrade_cancel:"):
+            trade_key = data.split(":")[1]
+            _pending_trades.pop(trade_key, None)
+            await query.edit_message_text("❌ 已取消全部交易。")
+            return
+
+        if data.startswith("itrade_all:"):
+            trade_key = data.split(":")[1]
+            pending = _pending_trades.pop(trade_key, None)
+            if not pending:
+                await query.edit_message_text("⚠️ 交易已过期，请重新执行 /invest")
+                return
+            trades = pending.get("trades", [])
+            results = []
+            for t in trades:
+                try:
+                    ret = await ibkr.place_order(
+                        symbol=t["symbol"], action=t["action"],
+                        quantity=t["qty"],
+                        stop_loss=t.get("stop_loss"),
+                        take_profit=t.get("take_profit"),
+                    )
+                    emoji = "✅" if ret.get("success") else "❌"
+                    results.append(f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', 'OK')}")
+                except Exception as e:
+                    results.append(f"❌ {t['symbol']}: {e}")
+            await query.edit_message_text("📋 执行结果:\n\n" + "\n".join(results))
+            return
+
+        if data.startswith("itrade:"):
+            parts = data.split(":")
+            if len(parts) < 3:
+                return
+            trade_key = parts[1]
+            idx = int(parts[2])
+            pending = _pending_trades.get(trade_key)
+            if not pending:
+                await query.edit_message_text("⚠️ 交易已过期，请重新执行 /invest")
+                return
+            trades = pending.get("trades", [])
+            if idx >= len(trades):
+                return
+            t = trades[idx]
+            try:
+                ret = await ibkr.place_order(
+                    symbol=t["symbol"], action=t["action"],
+                    quantity=t["qty"],
+                    stop_loss=t.get("stop_loss"),
+                    take_profit=t.get("take_profit"),
+                )
+                emoji = "✅" if ret.get("success") else "❌"
+                await query.message.reply_text(
+                    f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', 'OK')}")
+            except Exception as e:
+                await query.message.reply_text(f"❌ {t['symbol']} 执行失败: {e}")
+
+    async def handle_document_ocr(self, update, context):
+        '''处理文档消息（PDF/图片文件）— 自动 OCR 识别'''
+        try:
+            chat_id = update.effective_chat.id
+            user = update.effective_user
+            doc = update.message.document
+            mime = doc.mime_type or ""
+            fname = doc.file_name or "document"
+            caption = update.message.caption or ""
+            is_group = update.effective_chat.type in ("group", "supergroup")
+            
+            # 仅处理图片和 PDF
+            if not (mime.startswith("image/") or mime == "application/pdf"):
+                return
+            
+            # 群聊门控
+            if is_group:
+                bot_username = (await context.bot.get_me()).username or ""
+                mentioned = f"@{bot_username}" in (caption or "")
+                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取"))
+                if not mentioned and not trigger:
+                    return
+            
+            # 处理中提示
+            hint_msg = await update.message.reply_text(f"🔍 正在识别 {fname}...")
+            
+            logger.info(f"[OCR] 收到文档 {fname} ({mime}, {doc.file_size} bytes) from {user.id}")
+            
+            file = await context.bot.get_file(doc.file_id)
+            buf = io.BytesIO()
+            await file.download_to_memory(buf)
+            file_bytes = buf.getvalue()
+            
+            result: OcrResult = await ocr_image(
+                file_bytes,
+                mime_type=mime,
+                user_id=user.id,
+                file_unique_id=doc.file_unique_id,
+            )
+            
+            # 删除处理中提示
+            try:
+                await hint_msg.delete()
+            except Exception:
+                pass
+            
+            if result.ok and result.text:
+                tag = " (缓存)" if result.cached else ""
+                reply = f"📄 {fname} 识别结果{tag}:\n\n{result.text}"
+                if caption:
+                    reply += f"\n\n💬 附言: {caption}"
+                await send_long_message(chat_id, reply, context,
+                                        reply_to_message_id=update.message.message_id)
+            elif result.ok and not result.text:
+                await send_long_message(chat_id, f"📎 {fname} 已收到，未识别到文字内容。", context,
+                                        reply_to_message_id=update.message.message_id)
+            else:
+                await send_long_message(chat_id, f"⚠️ {fname} OCR 失败: {result.error}", context,
+                                        reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.error(f"[OCR] handle_document_ocr 异常: {e}", exc_info=True)
+            try:
+                await send_long_message(
+                    update.effective_chat.id, f"⚠️ 文档处理异常: {e}", context,
+                    reply_to_message_id=update.message.message_id)
+            except Exception:
+                pass
 
 

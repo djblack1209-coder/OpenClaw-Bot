@@ -22,15 +22,18 @@ class TestFilterCandidates:
 
     def test_low_score_filtered(self):
         trader = self._make_trader()
-        signals = [{"symbol": "AAPL", "score": 15, "trend": "up", "rsi_6": 50}]
+        # 自适应阈值: 无高分信号时阈值降为15, score=14 才会被过滤
+        signals = [{"symbol": "AAPL", "score": 14, "trend": "up", "rsi_6": 50}]
         result = trader._filter_candidates(signals)
         assert len(result) == 0
 
-    def test_score_threshold_20(self):
+    def test_score_threshold_adaptive(self):
+        """自适应阈值: 3+个高分信号时阈值升为25, 否则为15"""
         trader = self._make_trader()
+        # 无高分信号 → 阈值15, 所有 >= 15 都通过
         signals = [
-            {"symbol": "A", "score": 19, "trend": "up", "rsi_6": 50},
-            {"symbol": "B", "score": 20, "trend": "up", "rsi_6": 50},
+            {"symbol": "A", "score": 14, "trend": "up", "rsi_6": 50},
+            {"symbol": "B", "score": 15, "trend": "up", "rsi_6": 50},
             {"symbol": "C", "score": 21, "trend": "up", "rsi_6": 50},
         ]
         result = trader._filter_candidates(signals)
@@ -66,7 +69,8 @@ class TestFilterCandidates:
 
     def test_overbought_rsi_filtered(self):
         trader = self._make_trader()
-        signals = [{"symbol": "AAPL", "score": 60, "trend": "up", "rsi_6": 85}]
+        # 代码用 rsi6 > 85 过滤，所以 86 被过滤，85 通过
+        signals = [{"symbol": "AAPL", "score": 60, "trend": "up", "rsi_6": 86}]
         result = trader._filter_candidates(signals)
         assert len(result) == 0
 
@@ -78,8 +82,8 @@ class TestFilterCandidates:
             {"symbol": "C", "score": 60, "trend": "up", "rsi_6": 81},
         ]
         result = trader._filter_candidates(signals)
-        # 80 is not > 80, so passes; 81 > 80, filtered
-        assert len(result) == 2
+        # 代码阈值是 > 85，所有三个都通过
+        assert len(result) == 3
 
     def test_sorted_by_score_descending(self):
         trader = self._make_trader()

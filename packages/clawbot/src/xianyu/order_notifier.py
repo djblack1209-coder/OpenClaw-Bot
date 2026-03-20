@@ -100,9 +100,17 @@ class OrderNotifier:
             msg["Subject"] = subject
             msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as s:
-                s.login(self.smtp_user, self.smtp_pass)
-                s.send_message(msg)
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as s:
+                    s.login(self.smtp_user, self.smtp_pass)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port) as s:
+                    s.ehlo()
+                    s.starttls()
+                    s.ehlo()
+                    s.login(self.smtp_user, self.smtp_pass)
+                    s.send_message(msg)
             logger.info(f"邮件已发送: {subject}")
         except Exception as e:
             logger.error(f"邮件发送失败: {e}")

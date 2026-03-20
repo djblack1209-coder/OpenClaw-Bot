@@ -3,12 +3,53 @@ python-telegram-bot~=22.5
 httpx~=0.28.1
 python-dotenv~=1.2.1
 beautifulsoup4~=4.14.3
+requests~=2.32.0
+
+# JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
+json-repair~=0.30.0
+
+# Pydantic Settings — 统一配置管理（类型校验 + env + .env）
+pydantic-settings~=2.7.0
+
+# 闲鱼模块依赖
+websockets~=13.0
+openai~=1.50.0
 
 # 交易系统依赖
 yfinance~=1.1.0
 pandas~=2.3.3
 numpy~=2.0.2
 ta~=0.11.0                # 技术分析指标库（RSI/MACD/布林带等）
+
+# ── Phase 2 新增: 高星项目集成 ──────────────────────────────
+
+# LiteLLM — 统一 LLM 路由 (39k⭐, MIT)
+# 替换自研 free_api_pool.py: 负载均衡、故障转移、速率限制
+litellm>=1.70.0
+
+# mem0 — AI 记忆层 (50k⭐, Apache 2.0)
+# 替换 shared_memory.py 的 RAG 部分: 向量嵌入、语义搜索、冲突消解
+mem0ai>=0.1.30
+
+# browser-use — AI 浏览器代理 (81k⭐, MIT)
+# 替换自研 ai_browser.py: DOM 解析、LLM 决策循环、反检测
+browser-use>=0.2.0
+
+# Langfuse — LLM 观测平台 (23.4k⭐, MIT)
+# 替换自研 CostAnalyzer/PrometheusMetrics: 全链路追踪、成本分析、质量评估
+langfuse>=2.0.0
+
+# Freqtrade — 量化交易框架 (47.8k⭐, GPL-3.0)
+# 替换自研 backtester/strategy_engine: 策略框架、回测引擎、超参优化
+# freqtrade>=2024.1  # 可选：pip install freqtrade
+
+# CrewAI — 多 Agent 协作框架 (46.6k⭐, MIT)
+# 升级 ai_team_voter: 动态角色、结构化任务编排、工具调用
+crewai>=0.80.0
+
+# Optuna — 超参数优化 (11k⭐, MIT)
+# Phase 3: AI 团队投票权重优化
+optuna>=4.0.0
 
 # IBKR 券商对接（可选，不安装则自动降级为模拟盘）
 # ib_insync~=0.9.86

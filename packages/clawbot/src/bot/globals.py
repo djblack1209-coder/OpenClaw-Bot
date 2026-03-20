@@ -25,6 +25,7 @@ from src.tool_executor import ToolExecutor, MULTI_BOT_TOOLS
 from src.shared_memory import SharedMemory
 from src.execution_hub import ExecutionHub
 from config.bot_profiles import get_bot_config, BOT_PROFILES
+from src.litellm_router import init_free_pool
 from src.invest_tools import (
     get_stock_quote, get_crypto_quote, get_market_summary,
     format_quote, portfolio, warmup as invest_warmup,
@@ -63,7 +64,7 @@ SILICONFLOW_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_KEYS', '').split('
 SILICONFLOW_BASE = os.getenv('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
 CLAUDE_KEY = os.getenv('CLAUDE_API_KEY', '')
 CLAUDE_BASE = os.getenv('CLAUDE_BASE_URL', 'https://api.anthropic.com/v1')
-G4F_BASE = os.getenv('G4F_BASE_URL', 'http://127.0.0.1:18791/v1')
+G4F_BASE = os.getenv('G4F_BASE_URL', 'http://127.0.0.1:18891/v1')
 G4F_KEY = os.getenv('G4F_API_KEY', 'dummy')
 KIRO_BASE = os.getenv('KIRO_BASE_URL', 'http://127.0.0.1:18793/v1')
 KIRO_KEY = os.getenv('KIRO_API_KEY', '')
@@ -132,6 +133,17 @@ bot_registry: Dict[str, 'object'] = {}
 # 待确认交易
 _pending_trades: Dict[str, dict] = {}
 
+# ============ 优化模块全局实例（供 mixin 层访问） ============
+# 由 multi_main.py 启动时注入，避免 mixin 层自行实例化
+
+tiered_context_manager = None       # TieredContextManager 实例
+priority_message_queue = None       # PriorityMessageQueue 实例
+strategy_engine_instance = None     # StrategyEngine 实例
+ab_test_manager = None              # ABTestManager 实例
+
+# 初始化免费API池
+init_free_pool()
+
 
 def _cleanup_pending_trades():
     """清理超过1小时的过期待确认交易，防止内存泄漏"""
@@ -197,3 +209,75 @@ async def safe_edit(msg, text: str, parse_mode: str = "Markdown"):
             await msg.edit_text(text)
         except Exception as e:
             logger.debug("[safe_edit] plain text edit also failed: %s", e)
+
+
+# ============ Per-User 偏好管理 — 搬运自 father-bot 的 user settings 模式 ============
+
+import json as _json
+
+class UserPreferencesManager:
+    """Per-user 偏好管理器 — 持久化到 JSON 文件
+    
+    搬运自 father-bot/chatgpt_telegram_bot 的 user settings 模式。
+    每个用户独立的通知/语言/风险/模式偏好。
+    """
+    DEFAULTS = {
+        "notify_level": "normal",       # silent / normal / verbose
+        "risk_tolerance": "moderate",   # conservative / moderate / aggressive
+        "language": "zh",               # zh / en
+        "chat_mode": "assistant",       # assistant / trader / analyst / creative
+        "auto_trade_notify": True,      # 是否接收自动交易通知
+        "daily_report": True,           # 是否接收每日报告
+        "social_preview": False,        # 社交发文是否默认预览模式
+    }
+
+    def __init__(self, data_dir: str = "data"):
+        self._dir = Path(data_dir)
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._filepath = self._dir / "user_preferences.json"
+        self._prefs: Dict[str, dict] = {}
+        self._load()
+
+    def _load(self):
+        if self._filepath.exists():
+            try:
+                with open(self._filepath, 'r', encoding='utf-8') as f:
+                    self._prefs = _json.load(f)
+            except Exception:
+                self._prefs = {}
+
+    def _save(self):
+        try:
+            with open(self._filepath, 'w', encoding='utf-8') as f:
+                _json.dump(self._prefs, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error("[UserPrefs] 保存失败: %s", e)
+
+    def get(self, user_id: int, key: str, default=None):
+        uid = str(user_id)
+        user_prefs = self._prefs.get(uid, {})
+        if default is not None:
+            return user_prefs.get(key, default)
+        return user_prefs.get(key, self.DEFAULTS.get(key))
+
+    def set(self, user_id: int, key: str, value):
+        uid = str(user_id)
+        if uid not in self._prefs:
+            self._prefs[uid] = {}
+        self._prefs[uid][key] = value
+        self._save()
+
+    def get_all(self, user_id: int) -> dict:
+        uid = str(user_id)
+        result = dict(self.DEFAULTS)
+        result.update(self._prefs.get(uid, {}))
+        return result
+
+    def reset(self, user_id: int):
+        uid = str(user_id)
+        self._prefs.pop(uid, None)
+        self._save()
+
+
+# 全局实例
+user_prefs = UserPreferencesManager()

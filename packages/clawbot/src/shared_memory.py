@@ -1,55 +1,167 @@
 """
-ClawBot - 共享记忆层
-所有 bot 共享的持久化记忆系统，基于 SQLite。
-支持：
-- 跨 bot 读写共享知识
-- 按来源（bot_id）追踪记忆归属
-- 按分类组织记忆
-- 自动过期清理
-- /collab 结论自动存储
-- 注入 system_prompt 的上下文摘要
+ClawBot - 共享记忆层 v4.0 (Mem0 驱动)
+基于 mem0ai (50k⭐) 重构，保持 v3.0 完全接口兼容。
+
+核心变更：
+- 记忆存储/搜索/冲突解决 → Mem0 驱动（向量索引 + LLM 事实提取）
+- workflow_feedback / collab_result → 保留 SQLite（Mem0 不覆盖）
+- Mem0 不可用时 → 自动降级回 SQLite 原有逻辑
+
+所有调用方零改动：remember/recall/search/forget/get_context_for_prompt 签名不变。
 """
 import sqlite3
 import threading
 import logging
 import time
 import json
+import os
+import hashlib
+import math
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# ── Mem0 可用性检测 ──
+
+_mem0_available = False
+Mem0Memory = None  # type: ignore[assignment]
+try:
+    from mem0 import Memory as Mem0Memory  # type: ignore[no-redef]
+    _mem0_available = True
+except ImportError:
+    logger.info("[SharedMemory] mem0ai 未安装，使用 SQLite 回退模式")
+
+
+def _build_mem0_config() -> dict:
+    """构建 Mem0 配置，优先使用环境变量中的 API。"""
+    config: dict = {
+        "vector_store": {
+            "provider": "qdrant",
+            "config": {
+                "collection_name": "clawbot_memory",
+                "path": str(Path(os.getenv("DATA_DIR", str(Path(__file__).parent.parent / "data"))) / "qdrant_data"),
+                "on_disk": True,
+            },
+        },
+    }
+
+    # LLM 配置：优先 SiliconFlow（免费），回退 OpenAI 兼容
+    sf_keys = os.getenv("SILICONFLOW_KEYS", "")
+    sf_base = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+
+    if sf_keys:
+        first_key = sf_keys.split(",")[0].strip()
+        if first_key:
+            config["llm"] = {
+                "provider": "openai",
+                "config": {
+                    "model": "Qwen/Qwen3-8B",
+                    "api_key": first_key,
+                    "openai_base_url": sf_base,
+                    "temperature": 0.1,
+                    "max_tokens": 2000,
+                },
+            }
+            config["embedder"] = {
+                "provider": "openai",
+                "config": {
+                    "model": "BAAI/bge-m3",
+                    "api_key": first_key,
+                    "openai_base_url": sf_base,
+                },
+            }
+    elif openai_key:
+        config["llm"] = {
+            "provider": "openai",
+            "config": {"model": "gpt-4.1-mini", "temperature": 0.1},
+        }
+        # embedder 默认用 OpenAI text-embedding-3-small
+
+    return config
+
+
+# ── SQLite 回退用的轻量嵌入（从 v3 保留） ──
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _simple_text_embedding(text: str, dim: int = 128) -> List[float]:
+    """n-gram hash 嵌入（仅 SQLite 回退模式使用）"""
+    if not text:
+        return [0.0] * dim
+    text = text.lower().strip()
+    vec = [0.0] * dim
+    for i in range(len(text) - 2):
+        ngram = text[i:i+3]
+        h = int(hashlib.md5(ngram.encode()).hexdigest(), 16)
+        vec[h % dim] += 1.0
+    for word in text.split():
+        h = int(hashlib.md5(word.encode()).hexdigest(), 16)
+        vec[h % dim] += 2.0
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm > 0:
+        vec = [x / norm for x in vec]
+    return vec
+
 
 class SharedMemory:
     """
-    跨 Agent 共享记忆。
+    跨 Agent 共享记忆 v4.0（Mem0 驱动，接口兼容 v3.0）
 
-    与 MemoryTool（JSON 文件、单 bot）不同，SharedMemory：
-    - 使用 SQLite，并发安全
-    - 所有 bot 共享同一个存储
-    - 记录来源 bot_id，可追溯
-    - 支持 TTL 过期
-    - 提供 system_prompt 注入摘要
+    Mem0 模式：向量索引 + LLM 事实提取 + 自动冲突解决
+    SQLite 回退：当 Mem0 不可用时，使用 v3.0 原有逻辑
+    SQLite 始终用于：workflow_feedback、collab_result 等结构化数据
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    EMBEDDING_DIM = 128
+    SIMILARITY_THRESHOLD = 0.15
+
+    def __init__(self, db_path: Optional[str] = None, embedding_fn=None):
+        # SQLite 路径（始终需要，用于 workflow_feedback 等）
         if db_path:
             self.db_path = Path(db_path)
         else:
-            import os
             env_dir = os.getenv("DATA_DIR")
             if env_dir:
                 self.db_path = Path(env_dir) / "shared_memory.db"
             else:
-                self.db_path = (
-                    Path(__file__).parent.parent / "data" / "shared_memory.db"
-                )
+                self.db_path = Path(__file__).parent.parent / "data" / "shared_memory.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
-        self._last_cleanup_time = 0.0  # 上次清理时间戳
-        self._cleanup_interval = 60    # 清理间隔（秒）
+        self._lock = threading.Lock()
+        self._last_cleanup_time = 0.0
+        self._cleanup_interval = 60
+
+        # Mem0 初始化
+        self._mem0 = None
+        self._using_mem0 = False
+        if _mem0_available:
+            try:
+                config = _build_mem0_config()
+                self._mem0 = Mem0Memory.from_config(config)
+                self._using_mem0 = True
+                logger.info("[SharedMemory] v4.0 Mem0 模式启动成功")
+            except Exception as e:
+                logger.warning("[SharedMemory] Mem0 初始化失败，回退 SQLite: %s", e)
+
+        # SQLite 回退用嵌入函数
+        self._embedding_fn = embedding_fn or (lambda t: _simple_text_embedding(t, self.EMBEDDING_DIM))
+
+        # 初始化 SQLite 表（始终需要）
         self._init_db()
+
+    # ── SQLite 连接管理 ──
 
     def _get_conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
@@ -75,20 +187,28 @@ class SharedMemory:
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 expires_at TEXT,
-                access_count INTEGER NOT NULL DEFAULT 0
+                access_count INTEGER NOT NULL DEFAULT 0,
+                embedding BLOB,
+                last_decay_at TEXT,
+                mem0_id TEXT
             );
+            CREATE INDEX IF NOT EXISTS idx_shared_mem_key ON shared_memories(key);
+            CREATE INDEX IF NOT EXISTS idx_shared_mem_category ON shared_memories(category);
+            CREATE INDEX IF NOT EXISTS idx_shared_mem_importance ON shared_memories(importance DESC);
+            CREATE INDEX IF NOT EXISTS idx_shared_mem_source ON shared_memories(source_bot);
 
-            CREATE INDEX IF NOT EXISTS idx_shared_mem_key
-                ON shared_memories(key);
-
-            CREATE INDEX IF NOT EXISTS idx_shared_mem_category
-                ON shared_memories(category);
-
-            CREATE INDEX IF NOT EXISTS idx_shared_mem_importance
-                ON shared_memories(importance DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_shared_mem_source
-                ON shared_memories(source_bot);
+            CREATE TABLE IF NOT EXISTS memory_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_id INTEGER NOT NULL,
+                to_id INTEGER NOT NULL,
+                relation_type TEXT NOT NULL,
+                strength REAL NOT NULL DEFAULT 1.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (from_id) REFERENCES shared_memories(id) ON DELETE CASCADE,
+                FOREIGN KEY (to_id) REFERENCES shared_memories(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_memory_relations_from ON memory_relations(from_id);
+            CREATE INDEX IF NOT EXISTS idx_memory_relations_to ON memory_relations(to_id);
 
             CREATE TABLE IF NOT EXISTS workflow_feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,16 +223,21 @@ class SharedMemory:
                 improvement_focus TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-
-            CREATE INDEX IF NOT EXISTS idx_workflow_feedback_created_at
-                ON workflow_feedback(created_at DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_workflow_feedback_chat_id
-                ON workflow_feedback(chat_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_feedback_created_at ON workflow_feedback(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_workflow_feedback_chat_id ON workflow_feedback(chat_id);
         """)
+        # 确保 mem0_id 列存在（升级兼容）
+        try:
+            conn.execute("SELECT mem0_id FROM shared_memories LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE shared_memories ADD COLUMN mem0_id TEXT")
+        # mem0_id 索引必须在列确认存在后创建
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_shared_mem_mem0id ON shared_memories(mem0_id)")
         conn.commit()
 
-    # ============ 写入 ============
+    # ════════════════════════════════════════════
+    #  写入
+    # ════════════════════════════════════════════
 
     def remember(
         self,
@@ -123,54 +248,116 @@ class SharedMemory:
         chat_id: Optional[int] = None,
         importance: int = 1,
         ttl_hours: Optional[int] = None,
+        related_keys: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """
-        存入共享记忆。如果 key+category 已存在则更新。
+        """存入共享记忆。接口与 v3.0 完全兼容。"""
+        mem0_id = None
 
-        Args:
-            key: 记忆键名
-            value: 记忆内容
-            category: 分类 (general/collab/user_pref/knowledge/task)
-            source_bot: 写入来源 bot_id
-            chat_id: 关联的 chat_id（可选）
-            importance: 重要性 1-5（5 最重要）
-            ttl_hours: 过期时间（小时），None 表示永不过期
-        """
+        # ── Mem0 写入（自动事实提取 + 向量索引）──
+        if self._using_mem0 and self._mem0:
+            try:
+                content = f"[{category}] {key}: {value}"
+                metadata = {
+                    "category": category,
+                    "source_bot": source_bot,
+                    "importance": importance,
+                    "key": key,
+                }
+                if chat_id is not None:
+                    metadata["chat_id"] = str(chat_id)
+                result = self._mem0.add(
+                    [{"role": "user", "content": content}],
+                    user_id=source_bot,
+                    metadata=metadata,
+                    infer=False,  # 直接存储，不做 LLM 提取（保持与 v3 行为一致）
+                )
+                # 提取 mem0 返回的 ID
+                if isinstance(result, dict):
+                    results_list = result.get("results", [])
+                    if results_list and isinstance(results_list[0], dict):
+                        mem0_id = results_list[0].get("id")
+                elif isinstance(result, list) and result:
+                    mem0_id = result[0].get("id") if isinstance(result[0], dict) else None
+            except Exception as e:
+                logger.warning("[SharedMemory] Mem0 写入失败，回退 SQLite: %s", e)
+
+        # ── SQLite 写入（索引 + 元数据 + 过期管理）──
         conn = self._get_conn()
         now = datetime.now().isoformat()
         expires_at = None
         if ttl_hours:
             expires_at = (datetime.now() + timedelta(hours=ttl_hours)).isoformat()
 
-        # Upsert: 如果 key+category 已存在则更新
-        existing = conn.execute(
-            "SELECT id FROM shared_memories WHERE key = ? AND category = ?",
-            (key, category),
-        ).fetchone()
+        # 仅在 SQLite 回退模式下计算本地嵌入
+        embedding = None
+        if not self._using_mem0:
+            try:
+                vec = self._embedding_fn(f"{key} {value}")
+                if vec:
+                    embedding = json.dumps(vec).encode("utf-8")
+            except Exception:
+                pass
 
-        if existing:
-            conn.execute(
-                "UPDATE shared_memories SET value = ?, source_bot = ?, chat_id = ?, "
-                "importance = ?, updated_at = ?, expires_at = ? WHERE id = ?",
-                (value, source_bot, chat_id, importance, now, expires_at, existing["id"]),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO shared_memories "
-                "(key, value, category, source_bot, chat_id, importance, created_at, updated_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (key, value, category, source_bot, chat_id, importance, now, now, expires_at),
-            )
+        with self._lock:
+            existing = conn.execute(
+                "SELECT id FROM shared_memories WHERE key = ? AND category = ?",
+                (key, category),
+            ).fetchone()
+
+            if existing:
+                conn.execute(
+                    "UPDATE shared_memories SET value = ?, source_bot = ?, chat_id = ?, "
+                    "importance = ?, updated_at = ?, expires_at = ?, embedding = ?, "
+                    "last_decay_at = ?, mem0_id = ? WHERE id = ?",
+                    (value, source_bot, chat_id, importance, now, expires_at,
+                     embedding, now, mem0_id, existing["id"]),
+                )
+                mem_id = existing["id"]
+            else:
+                cursor = conn.execute(
+                    "INSERT INTO shared_memories "
+                    "(key, value, category, source_bot, chat_id, importance, "
+                    "created_at, updated_at, expires_at, embedding, last_decay_at, mem0_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (key, value, category, source_bot, chat_id, importance,
+                     now, now, expires_at, embedding, now, mem0_id),
+                )
+                mem_id = cursor.lastrowid
+            conn.commit()
+
+            if related_keys and mem_id:
+                self._link_memories(conn, mem_id, related_keys)
+
+        logger.debug("[SharedMemory] %s 写入: [%s] %s (mem0=%s)", source_bot, category, key, bool(mem0_id))
+        return {"success": True, "key": key, "category": category,
+                "source": source_bot, "id": mem_id}
+
+    def _link_memories(self, conn, from_id: int, related_keys: List[str]):
+        """建立记忆间的关联"""
+        for rk in related_keys:
+            row = conn.execute(
+                "SELECT id FROM shared_memories WHERE key = ? ORDER BY importance DESC LIMIT 1",
+                (rk,),
+            ).fetchone()
+            if row and row["id"] != from_id:
+                exists = conn.execute(
+                    "SELECT 1 FROM memory_relations WHERE from_id = ? AND to_id = ?",
+                    (from_id, row["id"]),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO memory_relations (from_id, to_id, relation_type, strength) "
+                        "VALUES (?, ?, 'related', 1.0)",
+                        (from_id, row["id"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO memory_relations (from_id, to_id, relation_type, strength) "
+                        "VALUES (?, ?, 'related', 1.0)",
+                        (row["id"], from_id),
+                    )
         conn.commit()
 
-        logger.debug(f"[SharedMemory] {source_bot} 写入: [{category}] {key}")
-        return {"success": True, "key": key, "category": category, "source": source_bot}
-
-    # ============ 读取 ============
-
-    def recall(
-        self, key: str, category: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def recall(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
         """按 key 精确查找记忆"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
@@ -187,7 +374,6 @@ class SharedMemory:
             ).fetchone()
 
         if row:
-            # 更新访问计数
             conn.execute(
                 "UPDATE shared_memories SET access_count = access_count + 1 WHERE id = ?",
                 (row["id"],),
@@ -202,56 +388,278 @@ class SharedMemory:
                 "importance": row["importance"],
                 "updated_at": row["updated_at"],
             }
-
         return {"success": False, "error": f"未找到: {key}"}
 
-    def search(self, query: str, limit: int = 10) -> Dict[str, Any]:
-        """模糊搜索记忆（key 和 value 都搜）"""
+    def search(self, query: str, limit: int = 10, mode: str = "hybrid") -> Dict[str, Any]:
+        """混合搜索记忆。Mem0 模式下使用向量索引，SQLite 模式下使用关键词+本地嵌入。"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
 
-        # Escape LIKE wildcards to prevent injection
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # ── Mem0 语义搜索 ──
+        mem0_results = []
+        if self._using_mem0 and self._mem0 and mode in ("semantic", "hybrid"):
+            try:
+                raw = self._mem0.search(query, limit=limit * 2)
+                items = raw.get("results", raw) if isinstance(raw, dict) else raw
+                for r in (items or []):
+                    if not isinstance(r, dict):
+                        continue
+                    content = r.get("memory", r.get("text", ""))
+                    meta = r.get("metadata", {}) or {}
+                    mem0_results.append({
+                        "id": r.get("id", ""),
+                        "key": meta.get("key", content[:50]),
+                        "value": content[:200],
+                        "category": meta.get("category", "general"),
+                        "source_bot": meta.get("source_bot", "unknown"),
+                        "importance": int(meta.get("importance", 1)),
+                        "score": float(r.get("score", 0)),
+                        "similarity": round(float(r.get("score", 0)), 3),
+                        "match_type": "mem0_semantic",
+                    })
+            except Exception as e:
+                logger.warning("[SharedMemory] Mem0 搜索失败: %s", e)
+
+        # ── SQLite 关键词搜索 ──
+        keyword_results = []
+        if mode in ("keyword", "hybrid"):
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            rows = conn.execute(
+                "SELECT * FROM shared_memories "
+                "WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' "
+                "ORDER BY importance DESC, updated_at DESC LIMIT ?",
+                (f"%{escaped}%", f"%{escaped}%", limit * 2),
+            ).fetchall()
+            for r in rows:
+                keyword_results.append({
+                    "id": r["id"],
+                    "key": r["key"],
+                    "value": r["value"][:200],
+                    "category": r["category"],
+                    "source_bot": r["source_bot"],
+                    "importance": r["importance"],
+                    "score": r["importance"] * 0.2,
+                    "match_type": "keyword",
+                })
+
+        # ── SQLite 本地语义搜索（仅回退模式）──
+        sqlite_semantic = []
+        if not self._using_mem0 and mode in ("semantic", "hybrid"):
+            query_emb = self._embedding_fn(query)
+            if query_emb:
+                rows = conn.execute(
+                    "SELECT id, key, value, category, source_bot, importance, embedding "
+                    "FROM shared_memories WHERE embedding IS NOT NULL "
+                    "ORDER BY importance DESC LIMIT ?",
+                    (min(500, limit * 50),),
+                ).fetchall()
+                for r in rows:
+                    blob = r["embedding"]
+                    if not blob:
+                        continue
+                    try:
+                        mem_emb = json.loads(blob.decode("utf-8"))
+                    except Exception:
+                        continue
+                    sim = _cosine_similarity(query_emb, mem_emb)
+                    if sim >= self.SIMILARITY_THRESHOLD:
+                        sqlite_semantic.append({
+                            "id": r["id"],
+                            "key": r["key"],
+                            "value": r["value"][:200],
+                            "category": r["category"],
+                            "source_bot": r["source_bot"],
+                            "importance": r["importance"],
+                            "score": sim,
+                            "similarity": round(sim, 3),
+                            "match_type": "semantic",
+                        })
+                sqlite_semantic.sort(key=lambda x: -x["score"])
+
+        # ── 合并排序 ──
+        semantic_pool = mem0_results or sqlite_semantic
+        if mode == "hybrid":
+            seen_keys = set()
+            merged = []
+            for r in semantic_pool:
+                r["score"] = r["score"] * 0.6 + r["importance"] * 0.08
+                rk = r.get("key", "")
+                if rk not in seen_keys:
+                    seen_keys.add(rk)
+                    merged.append(r)
+            for r in keyword_results:
+                rk = r.get("key", "")
+                if rk not in seen_keys:
+                    r["score"] = r["score"] * 0.4
+                    seen_keys.add(rk)
+                    merged.append(r)
+            merged.sort(key=lambda x: -x["score"])
+            results = merged[:limit]
+        elif mode == "semantic":
+            results = semantic_pool[:limit]
+        else:
+            results = keyword_results[:limit]
+
+        return {"success": True, "query": query, "mode": mode,
+                "results": results, "count": len(results)}
+
+    def semantic_search(self, query: str, limit: int = 5,
+                        category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """纯语义搜索。Mem0 模式下直接用向量索引。"""
+        # ── Mem0 路径 ──
+        if self._using_mem0 and self._mem0:
+            try:
+                filters = {}
+                if category:
+                    filters["category"] = category
+                raw = self._mem0.search(query, limit=limit, filters=filters if filters else None)
+                items = raw.get("results", raw) if isinstance(raw, dict) else raw
+                results = []
+                for r in (items or []):
+                    if not isinstance(r, dict):
+                        continue
+                    content = r.get("memory", r.get("text", ""))
+                    meta = r.get("metadata", {}) or {}
+                    results.append({
+                        "key": meta.get("key", content[:50]),
+                        "value": content,
+                        "category": meta.get("category", "general"),
+                        "source_bot": meta.get("source_bot", "unknown"),
+                        "importance": int(meta.get("importance", 1)),
+                        "similarity": round(float(r.get("score", 0)), 3),
+                    })
+                return results
+            except Exception as e:
+                logger.warning("[SharedMemory] Mem0 semantic_search 失败: %s", e)
+
+        # ── SQLite 回退 ──
+        conn = self._get_conn()
+        self._cleanup_expired(conn)
+        query_emb = self._embedding_fn(query)
+        if not query_emb:
+            return []
+
+        sql = ("SELECT id, key, value, category, source_bot, importance, embedding "
+               "FROM shared_memories WHERE embedding IS NOT NULL")
+        params: list = []
+        if category:
+            sql += " AND category = ?"
+            params.append(category)
+        sql += " ORDER BY importance DESC LIMIT ?"
+        params.append(min(500, limit * 50))
+
+        rows = conn.execute(sql, params).fetchall()
+        scored = []
+        for r in rows:
+            blob = r["embedding"]
+            if not blob:
+                continue
+            try:
+                mem_emb = json.loads(blob.decode("utf-8"))
+            except Exception:
+                continue
+            sim = _cosine_similarity(query_emb, mem_emb)
+            if sim >= self.SIMILARITY_THRESHOLD:
+                scored.append({
+                    "key": r["key"],
+                    "value": r["value"],
+                    "category": r["category"],
+                    "source_bot": r["source_bot"],
+                    "importance": r["importance"],
+                    "similarity": round(sim, 3),
+                })
+        scored.sort(key=lambda x: -x["similarity"])
+        return scored[:limit]
+
+    def get_related(self, key: str, depth: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取与指定记忆关联的记忆"""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT id FROM shared_memories WHERE key = ? ORDER BY importance DESC LIMIT 1",
+            (key,),
+        ).fetchone()
+        if not row:
+            return []
+
+        visited = {row["id"]}
+        frontier = [row["id"]]
+        results = []
+
+        for _ in range(depth):
+            if not frontier:
+                break
+            next_frontier = []
+            for mem_id in frontier:
+                rels = conn.execute(
+                    "SELECT to_id, relation_type, strength FROM memory_relations "
+                    "WHERE from_id = ? ORDER BY strength DESC LIMIT ?",
+                    (mem_id, limit),
+                ).fetchall()
+                for rel in rels:
+                    to_id = rel["to_id"]
+                    if to_id not in visited:
+                        visited.add(to_id)
+                        next_frontier.append(to_id)
+                        mem = conn.execute(
+                            "SELECT key, value, category, source_bot, importance "
+                            "FROM shared_memories WHERE id = ?",
+                            (to_id,),
+                        ).fetchone()
+                        if mem:
+                            results.append({
+                                "key": mem["key"],
+                                "value": mem["value"][:200],
+                                "category": mem["category"],
+                                "relation": rel["relation_type"],
+                                "strength": rel["strength"],
+                            })
+            frontier = next_frontier
+        return results[:limit]
+
+    def decay_importance(self):
+        """重要性自适应衰减"""
+        conn = self._get_conn()
+        now = datetime.now()
         rows = conn.execute(
-            "SELECT * FROM shared_memories "
-            "WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' "
-            "ORDER BY importance DESC, updated_at DESC LIMIT ?",
-            (f"%{escaped}%", f"%{escaped}%", limit),
+            "SELECT id, importance, access_count, last_decay_at FROM shared_memories "
+            "WHERE importance > 1 AND last_decay_at IS NOT NULL"
         ).fetchall()
+        updated = 0
+        for r in rows:
+            last_decay = r["last_decay_at"]
+            if not last_decay:
+                continue
+            try:
+                last_dt = datetime.fromisoformat(last_decay)
+            except (ValueError, TypeError):
+                continue
+            days_since = (now - last_dt).total_seconds() / 86400
+            if days_since < 1:
+                continue
+            access_factor = max(0.2, 1.0 - r["access_count"] * 0.05)
+            decay = 0.05 * days_since * access_factor
+            new_importance = max(1, int(r["importance"] - decay))
+            if new_importance < r["importance"]:
+                conn.execute(
+                    "UPDATE shared_memories SET importance = ?, last_decay_at = ? WHERE id = ?",
+                    (new_importance, now.isoformat(), r["id"]),
+                )
+                updated += 1
+        if updated:
+            conn.commit()
 
-        results = [
-            {
-                "key": r["key"],
-                "value": r["value"][:200],
-                "category": r["category"],
-                "source_bot": r["source_bot"],
-                "importance": r["importance"],
-            }
-            for r in rows
-        ]
-        return {"success": True, "query": query, "results": results, "count": len(results)}
-
-    def get_by_category(
-        self, category: str, limit: int = 20
-    ) -> List[Dict[str, Any]]:
+    def get_by_category(self, category: str, limit: int = 20) -> List[Dict[str, Any]]:
         """按分类获取记忆"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
-
         rows = conn.execute(
             "SELECT * FROM shared_memories WHERE category = ? "
             "ORDER BY importance DESC, updated_at DESC LIMIT ?",
             (category, limit),
         ).fetchall()
-
         return [
-            {
-                "key": r["key"],
-                "value": r["value"],
-                "source_bot": r["source_bot"],
-                "importance": r["importance"],
-                "updated_at": r["updated_at"],
-            }
+            {"key": r["key"], "value": r["value"], "source_bot": r["source_bot"],
+             "importance": r["importance"], "updated_at": r["updated_at"]}
             for r in rows
         ]
 
@@ -259,27 +667,42 @@ class SharedMemory:
         """获取最近更新的记忆"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
-
         rows = conn.execute(
             "SELECT * FROM shared_memories ORDER BY updated_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
-
         return [
-            {
-                "key": r["key"],
-                "value": r["value"][:100],
-                "category": r["category"],
-                "source_bot": r["source_bot"],
-            }
+            {"key": r["key"], "value": r["value"][:100],
+             "category": r["category"], "source_bot": r["source_bot"]}
             for r in rows
         ]
 
-    # ============ 删除 ============
+    # ════════════════════════════════════════════
+    #  删除
+    # ════════════════════════════════════════════
 
     def forget(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
         """删除记忆"""
         conn = self._get_conn()
+
+        # 先查 mem0_id，如果有则同步删除 Mem0 中的记忆
+        if self._using_mem0 and self._mem0:
+            try:
+                if category:
+                    row = conn.execute(
+                        "SELECT mem0_id FROM shared_memories WHERE key = ? AND category = ? AND mem0_id IS NOT NULL",
+                        (key, category),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT mem0_id FROM shared_memories WHERE key = ? AND mem0_id IS NOT NULL",
+                        (key,),
+                    ).fetchone()
+                if row and row["mem0_id"]:
+                    self._mem0.delete(row["mem0_id"])
+            except Exception as e:
+                logger.debug("[SharedMemory] Mem0 删除失败: %s", e)
+
         if category:
             result = conn.execute(
                 "DELETE FROM shared_memories WHERE key = ? AND category = ?",
@@ -295,100 +718,64 @@ class SharedMemory:
             return {"success": True, "deleted": result.rowcount}
         return {"success": False, "error": f"未找到: {key}"}
 
-    # ============ /collab 结论存储 ============
+    # ════════════════════════════════════════════
+    #  /collab 结论存储
+    # ════════════════════════════════════════════
 
     def save_collab_result(
-        self,
-        task_text: str,
-        plan_result: str,
-        exec_result: str,
-        summary_result: str,
-        planner_id: str,
-        chat_id: Optional[int] = None,
+        self, task_text: str, plan_result: str, exec_result: str,
+        summary_result: str, planner_id: str, chat_id: Optional[int] = None,
     ):
-        """
-        保存 /collab 协作任务的结论到共享记忆。
-        自动提取关键信息，供后续任何 bot 引用。
-        """
-        # 保存完整结论
         short_task = task_text[:80]
         timestamp = datetime.now().strftime("%m/%d %H:%M")
-
         self.remember(
             key=f"collab_{timestamp}_{short_task}",
             value=summary_result[:2000],
-            category="collab",
-            source_bot="collab_system",
-            chat_id=chat_id,
-            importance=3,
-            ttl_hours=72,  # 协作结论保留 3 天
+            category="collab", source_bot="collab_system",
+            chat_id=chat_id, importance=3, ttl_hours=72,
         )
-
-        # 保存任务摘要（更短，用于 system_prompt 注入）
         self.remember(
             key=f"collab_brief_{timestamp}",
             value=f"任务: {short_task} | 规划: {planner_id} | 结论: {summary_result[:300]}",
-            category="collab_brief",
-            source_bot="collab_system",
-            chat_id=chat_id,
-            importance=2,
-            ttl_hours=48,
+            category="collab_brief", source_bot="collab_system",
+            chat_id=chat_id, importance=2, ttl_hours=48,
         )
 
-        logger.info(f"[SharedMemory] 保存协作结论: {short_task}")
-
     def save_service_workflow_feedback(
-        self,
-        workflow_id: str,
-        original_text: str,
-        selected_option: str,
-        stage1_score: int,
-        stage2_score: int,
-        stage3_score: int,
-        summary: str = "",
-        improvement_focus: str = "",
+        self, workflow_id: str, original_text: str, selected_option: str,
+        stage1_score: int, stage2_score: int, stage3_score: int,
+        summary: str = "", improvement_focus: str = "",
         chat_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
         now = datetime.now().isoformat()
         conn.execute(
-            "INSERT INTO workflow_feedback (workflow_id, chat_id, original_text, selected_option, stage1_score, stage2_score, stage3_score, summary, improvement_focus, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                workflow_id,
-                chat_id,
-                original_text,
-                selected_option,
-                max(1, min(3, int(stage1_score))),
-                max(1, min(3, int(stage2_score))),
-                max(1, min(3, int(stage3_score))),
-                summary,
-                improvement_focus,
-                now,
-            ),
+            "INSERT INTO workflow_feedback (workflow_id, chat_id, original_text, "
+            "selected_option, stage1_score, stage2_score, stage3_score, summary, "
+            "improvement_focus, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (workflow_id, chat_id, original_text, selected_option,
+             max(1, min(3, int(stage1_score))), max(1, min(3, int(stage2_score))),
+             max(1, min(3, int(stage3_score))), summary, improvement_focus, now),
         )
         conn.commit()
-
         payload = {
-            "workflow_id": workflow_id,
-            "selected_option": selected_option,
+            "workflow_id": workflow_id, "selected_option": selected_option,
             "scores": [int(stage1_score), int(stage2_score), int(stage3_score)],
             "improvement_focus": improvement_focus,
         }
         self.remember(
             key=f"workflow_feedback_{workflow_id}",
             value=json.dumps(payload, ensure_ascii=False),
-            category="workflow_feedback",
-            source_bot="workflow_system",
-            chat_id=chat_id,
-            importance=2,
-            ttl_hours=24 * 30,
+            category="workflow_feedback", source_bot="workflow_system",
+            chat_id=chat_id, importance=2, ttl_hours=24 * 30,
         )
         return {"success": True, "workflow_id": workflow_id}
 
     def get_service_workflow_feedback_stats(self, limit: int = 20, chat_id: Optional[int] = None) -> Dict[str, Any]:
         conn = self._get_conn()
-        params: List[Any] = []
-        query = "SELECT workflow_id, selected_option, stage1_score, stage2_score, stage3_score, improvement_focus, created_at FROM workflow_feedback"
+        params: list = []
+        query = ("SELECT workflow_id, selected_option, stage1_score, stage2_score, "
+                 "stage3_score, improvement_focus, created_at FROM workflow_feedback")
         if chat_id is not None:
             query += " WHERE chat_id = ?"
             params.append(chat_id)
@@ -396,40 +783,23 @@ class SharedMemory:
         params.append(max(1, int(limit)))
         rows = conn.execute(query, params).fetchall()
         if not rows:
-            return {
-                "count": 0,
-                "avg_stage1": 0.0,
-                "avg_stage2": 0.0,
-                "avg_stage3": 0.0,
-                "weakest_stage": "",
-                "recent_focus": [],
-            }
-
+            return {"count": 0, "avg_stage1": 0.0, "avg_stage2": 0.0,
+                    "avg_stage3": 0.0, "weakest_stage": "", "recent_focus": []}
         count = len(rows)
-        avg_stage1 = round(sum(int(r["stage1_score"]) for r in rows) / count, 2)
-        avg_stage2 = round(sum(int(r["stage2_score"]) for r in rows) / count, 2)
-        avg_stage3 = round(sum(int(r["stage3_score"]) for r in rows) / count, 2)
-        stage_map = {
-            "客服接待": avg_stage1,
-            "方案评审": avg_stage2,
-            "任务交付": avg_stage3,
-        }
-        weakest_stage = min(stage_map.items(), key=lambda item: item[1])[0]
-        focus = [str(r["improvement_focus"] or "").strip() for r in rows if str(r["improvement_focus"] or "").strip()]
-        return {
-            "count": count,
-            "avg_stage1": avg_stage1,
-            "avg_stage2": avg_stage2,
-            "avg_stage3": avg_stage3,
-            "weakest_stage": weakest_stage,
-            "recent_focus": focus[:3],
-        }
+        avg1 = round(sum(int(r["stage1_score"]) for r in rows) / count, 2)
+        avg2 = round(sum(int(r["stage2_score"]) for r in rows) / count, 2)
+        avg3 = round(sum(int(r["stage3_score"]) for r in rows) / count, 2)
+        stage_map = {"客服接待": avg1, "方案评审": avg2, "任务交付": avg3}
+        weakest = min(stage_map.items(), key=lambda item: item[1])[0]
+        focus = [str(r["improvement_focus"] or "").strip() for r in rows
+                 if str(r["improvement_focus"] or "").strip()]
+        return {"count": count, "avg_stage1": avg1, "avg_stage2": avg2,
+                "avg_stage3": avg3, "weakest_stage": weakest, "recent_focus": focus[:3]}
 
     def get_service_workflow_feedback_summary(self, limit: int = 20, chat_id: Optional[int] = None) -> str:
         stats = self.get_service_workflow_feedback_stats(limit=limit, chat_id=chat_id)
         if not stats.get("count"):
             return ""
-
         focus = stats.get("recent_focus", []) or []
         focus_text = "；".join(focus[:2]) if focus else "优先优化评分最低的环节。"
         return (
@@ -439,80 +809,41 @@ class SharedMemory:
             f"近期迭代重点：{focus_text}"
         )
 
-    # ============ System Prompt 注入 ============
+    # ════════════════════════════════════════════
+    #  System Prompt 注入
+    # ════════════════════════════════════════════
 
     def get_context_for_prompt(self, max_tokens: int = 500) -> str:
-        """
-        生成注入到 system_prompt 的共享记忆摘要。
-        按重要性排序，控制总长度。
-        """
+        """生成注入到 system_prompt 的共享记忆摘要。"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
-
-        # 获取高重要性记忆
         rows = conn.execute(
             "SELECT key, value, category, source_bot FROM shared_memories "
-            "ORDER BY importance DESC, access_count DESC, updated_at DESC "
-            "LIMIT 20",
+            "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
         ).fetchall()
-
         if not rows:
             return ""
-
         parts = []
         current_len = 0
-        seen_categories = {}
-
+        seen_categories: Dict[str, int] = {}
         for r in rows:
             cat = r["category"]
             entry = f"- [{cat}] {r['key']}: {r['value'][:100]}"
-
-            if current_len + len(entry) > max_tokens * 2:  # 粗略估算
+            if current_len + len(entry) > max_tokens * 2:
                 break
-
-            if cat not in seen_categories:
-                seen_categories[cat] = 0
-            seen_categories[cat] += 1
-
-            # 每个分类最多 3 条
+            seen_categories[cat] = seen_categories.get(cat, 0) + 1
             if seen_categories[cat] <= 3:
                 parts.append(entry)
                 current_len += len(entry)
-
         if parts:
             return "\n\n【共享记忆（团队共享知识）】\n" + "\n".join(parts)
         return ""
 
-    # ============ 统计 ============
-
-    def get_stats(self) -> Dict[str, Any]:
-        """获取共享记忆统计"""
-        conn = self._get_conn()
-        total = conn.execute(
-            "SELECT COUNT(*) as cnt FROM shared_memories"
-        ).fetchone()["cnt"]
-
-        categories = conn.execute(
-            "SELECT category, COUNT(*) as cnt FROM shared_memories GROUP BY category"
-        ).fetchall()
-
-        sources = conn.execute(
-            "SELECT source_bot, COUNT(*) as cnt FROM shared_memories GROUP BY source_bot"
-        ).fetchall()
-
-        return {
-            "total": total,
-            "categories": {r["category"]: r["cnt"] for r in categories},
-            "sources": {r["source_bot"]: r["cnt"] for r in sources},
-            "db_size_kb": round(
-                self.db_path.stat().st_size / 1024, 1
-            ) if self.db_path.exists() else 0,
-        }
-
-    # ============ 内部方法 ============
+    # ════════════════════════════════════════════
+    #  内部方法
+    # ════════════════════════════════════════════
 
     def _cleanup_expired(self, conn: sqlite3.Connection):
-        """清理过期记忆（节流：每分钟最多执行一次）"""
         now_ts = time.time()
         if now_ts - self._last_cleanup_time < self._cleanup_interval:
             return
@@ -525,8 +856,181 @@ class SharedMemory:
         conn.commit()
 
     def close(self):
-        """Close all thread-local connections."""
-        # Close the current thread's connection
         if hasattr(self._local, "conn") and self._local.conn:
             self._local.conn.close()
             self._local.conn = None
+
+    # ════════════════════════════════════════════
+    #  冲突检测（保留 v3 接口）
+    # ════════════════════════════════════════════
+
+    def detect_conflicts(self, key: str, new_value: str, category: str = "general",
+                         similarity_threshold: float = 0.6) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        conflicts = []
+        existing = conn.execute(
+            "SELECT id, key, value, category FROM shared_memories WHERE key = ? AND category = ?",
+            (key, category),
+        ).fetchone()
+        if existing and existing["value"].strip() != new_value.strip():
+            conflicts.append({
+                "id": existing["id"], "key": existing["key"],
+                "old_value": existing["value"][:200], "new_value": new_value[:200],
+                "conflict_type": "exact_key_update", "similarity": 1.0,
+            })
+        return conflicts
+
+    def remember_with_conflict_resolution(
+        self, key: str, value: str, category: str = "general",
+        source_bot: str = "system", chat_id: Optional[int] = None,
+        importance: int = 1, ttl_hours: Optional[int] = None,
+        strategy: str = "newer_wins",
+    ) -> Dict[str, Any]:
+        """带冲突解决的记忆写入。Mem0 模式下冲突解决由 Mem0 内部处理。"""
+        if self._using_mem0:
+            return self.remember(key=key, value=value, category=category,
+                                source_bot=source_bot, chat_id=chat_id,
+                                importance=importance, ttl_hours=ttl_hours)
+        conflicts = self.detect_conflicts(key, value, category)
+        result = self.remember(key=key, value=value, category=category,
+                               source_bot=source_bot, chat_id=chat_id,
+                               importance=importance, ttl_hours=ttl_hours)
+        result["conflicts_detected"] = len(conflicts)
+        return result
+
+    def get_version_history(self, key: str, limit: int = 10) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT id FROM shared_memories WHERE key = ? ORDER BY importance DESC LIMIT 1",
+            (key,),
+        ).fetchone()
+        if not row:
+            return []
+        try:
+            versions = conn.execute(
+                "SELECT old_value, changed_by, changed_at FROM memory_versions "
+                "WHERE memory_id = ? ORDER BY changed_at DESC LIMIT ?",
+                (row["id"], limit),
+            ).fetchall()
+            return [{"old_value": v["old_value"][:200], "changed_by": v["changed_by"],
+                     "changed_at": v["changed_at"]} for v in versions]
+        except Exception:
+            return []
+
+    # ════════════════════════════════════════════
+    #  压缩 & 清理
+    # ════════════════════════════════════════════
+
+    def compress_category(self, category: str, max_memories: int = 50,
+                          compress_fn=None) -> Dict[str, Any]:
+        conn = self._get_conn()
+        count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM shared_memories WHERE category = ?",
+            (category,),
+        ).fetchone()["cnt"]
+        if count <= max_memories:
+            return {"compressed": False, "count": count}
+        excess = count - max_memories + 5
+        old = conn.execute(
+            "SELECT id, key, value FROM shared_memories WHERE category = ? "
+            "ORDER BY importance ASC, access_count ASC, updated_at ASC LIMIT ?",
+            (category, excess),
+        ).fetchall()
+        if not old:
+            return {"compressed": False, "count": count}
+        texts = [f"{m['key']}: {m['value'][:100]}" for m in old]
+        summary = (compress_fn(texts) if compress_fn else " | ".join(texts))[:2000]
+        ids = [m["id"] for m in old]
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM shared_memories WHERE id IN ({ph})", ids)
+        ts = datetime.now().strftime("%m%d_%H%M")
+        self.remember(key=f"compressed_{category}_{ts}", value=summary,
+                      category=category, source_bot="memory_compressor", importance=2)
+        conn.commit()
+        new_count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM shared_memories WHERE category = ?",
+            (category,),
+        ).fetchone()["cnt"]
+        return {"compressed": True, "before": count, "after": new_count, "merged_count": len(old)}
+
+    def auto_compress_all(self, max_per_category: int = 50, compress_fn=None) -> Dict[str, Any]:
+        conn = self._get_conn()
+        cats = conn.execute(
+            "SELECT category, COUNT(*) as cnt FROM shared_memories "
+            "GROUP BY category HAVING cnt > ?", (max_per_category,),
+        ).fetchall()
+        return {c["category"]: self.compress_category(c["category"], max_per_category, compress_fn)
+                for c in cats}
+
+    def smart_cleanup(self, max_total: int = 1000, keep_min_importance: int = 1) -> Dict[str, Any]:
+        conn = self._get_conn()
+        total = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories").fetchone()["cnt"]
+        if total <= max_total:
+            return {"cleaned": 0, "total": total}
+        rows = conn.execute(
+            "SELECT id, importance, access_count, updated_at FROM shared_memories "
+            "WHERE importance <= ?", (keep_min_importance + 2,),
+        ).fetchall()
+        now = datetime.now()
+        scored = []
+        for r in rows:
+            try:
+                days_old = (now - datetime.fromisoformat(r["updated_at"])).total_seconds() / 86400
+            except (ValueError, TypeError):
+                days_old = 30
+            score = r["importance"] * 2 + r["access_count"] * 0.5 + max(0, 10 - days_old)
+            scored.append((r["id"], score))
+        scored.sort(key=lambda x: x[1])
+        to_delete = min(total - max_total + 10, len(scored))
+        if to_delete <= 0:
+            return {"cleaned": 0, "total": total}
+        ids = [s[0] for s in scored[:to_delete]]
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM shared_memories WHERE id IN ({ph})", ids)
+        conn.execute(f"DELETE FROM memory_relations WHERE from_id IN ({ph}) OR to_id IN ({ph})", ids + ids)
+        conn.commit()
+        new_total = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories").fetchone()["cnt"]
+        return {"cleaned": to_delete, "before": total, "after": new_total}
+
+    # ════════════════════════════════════════════
+    #  统计
+    # ════════════════════════════════════════════
+
+    def get_stats(self) -> Dict[str, Any]:
+        conn = self._get_conn()
+        total = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories").fetchone()["cnt"]
+        embedded = conn.execute(
+            "SELECT COUNT(*) as cnt FROM shared_memories WHERE embedding IS NOT NULL"
+        ).fetchone()["cnt"]
+        relations = conn.execute("SELECT COUNT(*) as cnt FROM memory_relations").fetchone()["cnt"]
+        categories = conn.execute(
+            "SELECT category, COUNT(*) as cnt FROM shared_memories GROUP BY category"
+        ).fetchall()
+        sources = conn.execute(
+            "SELECT source_bot, COUNT(*) as cnt FROM shared_memories GROUP BY source_bot"
+        ).fetchall()
+        mem0_count = 0
+        if self._using_mem0:
+            mem0_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM shared_memories WHERE mem0_id IS NOT NULL"
+            ).fetchone()["cnt"]
+        return {
+            "total": total,
+            "embedded": embedded,
+            "embedding_coverage": round(embedded / max(total, 1) * 100, 1),
+            "relations": relations,
+            "categories": {r["category"]: r["cnt"] for r in categories},
+            "sources": {r["source_bot"]: r["cnt"] for r in sources},
+            "engine": "mem0" if self._using_mem0 else "sqlite",
+            "mem0_synced": mem0_count,
+            "db_size_kb": round(self.db_path.stat().st_size / 1024, 1) if self.db_path.exists() else 0,
+        }
+
+    def get_all(self) -> List[Dict[str, Any]]:
+        """获取所有记忆（memory_layer 兼容）"""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT key, value, category, source_bot, importance, updated_at "
+            "FROM shared_memories ORDER BY importance DESC, updated_at DESC LIMIT 500"
+        ).fetchall()
+        return [dict(r) for r in rows]

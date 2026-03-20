@@ -1,0 +1,67 @@
+✅ OpenClaw 一键部署器 v4.0 - 最终检查清单
+
+【已完成】
+✅ 安装器开发完成（8步自动部署）
+✅ 离线License验证（HMAC签名）
+✅ 退款销毁功能
+✅ 三省六部AGENTS.md配置
+✅ 小白教程（免费模型）
+✅ 打包完成（20KB）
+✅ 百度网盘上传
+✅ 配置文件更新
+✅ 商品文案（无Markdown符号）
+✅ 完整流程测试通过
+
+【百度网盘】
+链接: https://pan.baidu.com/s/1SzKjK5IacGlw4Ko6X3DB6Q?pwd=9wea
+提取码: 9wea
+文件: OpenClaw-Installer-v4.0.zip (20KB)
+
+【测试激活码】
+OC-A521CA8D-6B9836C9-59AF4493
+有效期: 2027-03-16
+
+【发货邮件模板】
+见下方自动发货内容
+
+【闲鱼发布】
+标题: 🦞 OpenClaw龙虾AI助手一键部署 GitHub315k⭐ 三省六部架构 小白可用
+价格: ¥19.9
+文案: docs/product-copy.txt
+商品图: tools/xianyu_product_image.html（截图）
+
+【自动发货内容】
+---
+感谢购买 OpenClaw 龙虾AI助手！
+
+【激活码】
+{激活码}
+
+【下载地址】
+https://pan.baidu.com/s/1SzKjK5IacGlw4Ko6X3DB6Q?pwd=9wea
+提取码: 9wea
+
+【使用方法】
+1. 下载并解压 OpenClaw-Installer-v4.0.zip
+2. Windows用户：双击"启动安装器.bat"
+3. Mac/Linux用户：双击"启动安装器.command"
+4. 浏览器会自动打开，输入上面的激活码
+5. 选择模型提供商，填写API信息（见 docs/quick-start-guide.md）
+6. 点击"开始部署"，等待完成
+
+【免费模型教程】
+压缩包内的"docs/quick-start-guide.md"有详细说明：
+- DeepSeek（新用户送10元）
+- 硅基流动（免费模型）
+- 本地Ollama（完全离线）
+
+【售后支持】
+7天内有问题随时联系卖家
+
+祝使用愉快！
+---
+
+【生成新激活码】
+python3 -c "from src.deployer.license_manager import generate_offline_key; print(generate_offline_key(365))"
+
+✅ 所有准备工作完成，可以发布了！

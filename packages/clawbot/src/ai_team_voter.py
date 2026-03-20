@@ -59,6 +59,42 @@ async def _safe_notify(notify_func: Optional[Callable], msg: str) -> None:
             logger.debug("[TeamVote] notify failed: %s", msg[:80])
 
 
+def _render_vote_progress(symbol: str, votes: list, total: int = 6, phase: str = "") -> str:
+    """渲染实时投票进度 — 搬运自 lobe-chat 的进度可视化思路
+    
+    让用户在等待时看到每个 AI 的投票实时出现，
+    而不是 30-60 秒的静默等待。
+    """
+    vote_icons = {"BUY": "🟢", "HOLD": "🟡", "SKIP": "🔴"}
+    pending_icon = "⏳"
+    
+    lines = [f"🗳 {symbol} AI 团队投票中"]
+    lines.append("───────────────────")
+    
+    # 已完成的投票
+    for v in votes:
+        icon = vote_icons.get(v.vote, "❓")
+        conf_bar = "█" * (v.confidence // 2) + "░" * (5 - v.confidence // 2)
+        lines.append(f"{icon} {v.role}: {v.vote} [{conf_bar}] {v.confidence}/10")
+    
+    # 待投票的占位
+    remaining = total - len(votes)
+    for _ in range(remaining):
+        lines.append(f"{pending_icon} 等待投票...")
+    
+    # 进度条
+    pct = len(votes) / total
+    bar_len = 20
+    filled = int(pct * bar_len)
+    bar = "▓" * filled + "░" * (bar_len - filled)
+    lines.append(f"\n[{bar}] {len(votes)}/{total}")
+    
+    if phase:
+        lines.append(f"📍 {phase}")
+    
+    return "\n".join(lines)
+
+
 @dataclass
 class BotVote:
     """单个Bot的投票"""
@@ -104,7 +140,8 @@ class VoteResult:
 
     def format_telegram(self) -> str:
         """格式化为 Telegram 完整流程报告（Full 模式）"""
-        now_text = datetime.now().strftime("%Y-%m-%d %H:%M")
+        from src.utils import now_et
+        now_text = now_et().strftime("%Y-%m-%d %H:%M ET")
         confidence_10 = self.avg_confidence * 10
 
         stop_pct = 0.0
@@ -268,10 +305,12 @@ VOTE_PROMPTS = {
             "你是超短线交易团队的交易指挥官，最终拍板。\n"
             "前面4位分析师的投票:\n{previous_votes}\n\n"
             "{account_context}\n"
+            "{trade_lessons}\n"
             "标的技术数据:\n{ta_summary}\n\n"
             "请综合所有意见，做出最终决策。注意:\n"
             "- 如果多数分析师看好但风控有顾虑，需要权衡\n"
             "- 如果账户今日已有亏损，应更保守\n"
+            "- 参考近期交易教训，避免重复犯错\n"
             "- 给出的价格应参考分析师们的建议取合理值\n\n"
             "请严格按以下JSON格式回复（不要其他内容）:\n"
             '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
@@ -285,12 +324,14 @@ VOTE_PROMPTS = {
             "你是超短线交易团队的首席策略师，终极大脑，拥有最终否决权。\n"
             "前面5位分析师的投票:\n{previous_votes}\n\n"
             "{account_context}\n"
+            "{trade_lessons}\n"
             "标的技术数据:\n{ta_summary}\n\n"
             "你的职责:\n"
             "1. 从更高维度审视：市场情绪是否被误读？有没有被忽略的系统性风险？\n"
             "2. 如果交易指挥官的决策合理且风控通过，投BUY确认\n"
             "3. 如果发现重大风险或逻辑漏洞，投SKIP否决并说明理由\n"
-            "4. 你是最后的安全阀，宁可保守不可冒进\n\n"
+            "4. 参考近期交易教训，避免系统性重复犯错\n"
+            "5. 你是最后的安全阀，宁可保守不可冒进\n\n"
             "请严格按以下JSON格式回复（不要其他内容）:\n"
             '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
             '"reasoning": "100字以内详细理由", "entry_price": 入场价, '
@@ -336,12 +377,13 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
         def _try_json(candidate: str) -> Optional[dict]:
             if not candidate:
                 return None
+            from json_repair import loads as jloads
             if candidate.startswith("{") and candidate.endswith("}"):
                 try:
-                    data = json.loads(candidate)
+                    data = jloads(candidate)
                     if isinstance(data, dict) and "vote" in data:
                         return data
-                except json.JSONDecodeError:
+                except Exception:
                     return None
             return None
 
@@ -522,6 +564,8 @@ async def run_team_vote(
     notify_func: Optional[Callable] = None,
     timeout_per_bot: float = 60,
     account_context: str = "",
+    vote_history: Optional[Dict[str, Dict]] = None,
+    progress_func: Optional[Callable] = None,
 ) -> VoteResult:
     """
     对单个标的运行6人团队投票。
@@ -532,6 +576,8 @@ async def run_team_vote(
         api_callers: {bot_id: async callable(chat_id, prompt)} 映射
         notify_func: Telegram通知回调
         timeout_per_bot: 每个Bot的超时秒数
+        vote_history: {bot_id: {"total": N, "correct": N, "accuracy": float}} 历史准确率
+        progress_func: 实时进度回调 async (text: str) -> None，用于编辑进度消息
 
     Returns:
         VoteResult 投票结果
@@ -559,6 +605,17 @@ async def run_team_vote(
 
     ta_summary = _format_ta_summary(analysis_data)
     account_ctx = account_context or "(无账户信息)"
+    vote_hist = vote_history or {}
+
+    # 构建历史准确率提示（让AI自我校准）
+    def _history_hint(bot_id: str) -> str:
+        h = vote_hist.get(bot_id)
+        if not h or h.get("total", 0) < 3:
+            return ""
+        return (
+            f"\n[你的历史表现: {h['total']}次投票, 准确率{h.get('accuracy', 0):.0f}%, "
+            f"请据此校准你的置信度]\n"
+        )
 
     # --- 阶段1: 前4个分析师并行投票（雷达/宏观/图表/风控）---
     parallel_bots = [b for b in VOTE_ORDER if b not in ("claude_sonnet", "claude_opus")]
@@ -579,6 +636,10 @@ async def run_team_vote(
             previous_votes="(并行投票，无前序结果)",
             account_context=account_ctx,
         )
+        # 注入历史准确率提示
+        hint = _history_hint(bot_id)
+        if hint:
+            prompt = hint + prompt
         # 带重试的投票调用（防 Kiro 网关断连）
         max_attempts = 2
         last_err = ""
@@ -626,7 +687,22 @@ async def run_team_vote(
         vote_icon = {"BUY": "+", "HOLD": "=", "SKIP": "-"}.get(vote.vote, "?")
         previous_votes_text += f"[{vote_icon}] {vote.role}: {vote.vote}({vote.confidence}/10) {vote.reasoning}\n"
 
+    # 实时进度更新：阶段1完成
+    await _safe_notify(progress_func,
+        _render_vote_progress(symbol, result.votes, 6, "阶段1完成 · 指挥官投票中..."))
+
     # --- 阶段2: 指挥官串行投票（看到前4人结果）---
+    # 构建交易教训（闭环学习 — 让高级 AI 看到近期失败模式）
+    trade_lessons = ""
+    try:
+        from src.trading_journal import journal as tj
+        if tj and hasattr(tj, 'get_latest_review'):
+            latest_review = tj.get_latest_review("daily")
+            if latest_review and latest_review.get("lessons_learned"):
+                trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
+    except Exception:
+        pass
+
     commander_id = "claude_sonnet"
     prompt_cfg = VOTE_PROMPTS.get(commander_id)
     caller = api_callers.get(commander_id)
@@ -636,6 +712,7 @@ async def run_team_vote(
             symbol=symbol, ta_summary=ta_summary,
             previous_votes=previous_votes_text,
             account_context=account_ctx,
+            trade_lessons=trade_lessons,
         )
         commander_vote_result = BotVote(
             bot_id=commander_id,
@@ -660,6 +737,10 @@ async def run_team_vote(
                 await asyncio.sleep(2)
         result.votes.append(commander_vote_result)
 
+    # 实时进度更新：阶段2完成
+    await _safe_notify(progress_func,
+        _render_vote_progress(symbol, result.votes, 6, "阶段2完成 · 首席策略师投票中..."))
+
     # --- 阶段3: 首席策略师串行投票（看到前5人结果）---
     # 更新 previous_votes_text，加入指挥官的投票
     commander_vote = next((v for v in result.votes if v.bot_id == "claude_sonnet"), None)
@@ -676,6 +757,7 @@ async def run_team_vote(
             symbol=symbol, ta_summary=ta_summary,
             previous_votes=previous_votes_text,
             account_context=account_ctx,
+            trade_lessons=trade_lessons,
         )
         strategist_vote_result = BotVote(
             bot_id=strategist_id,
@@ -700,6 +782,10 @@ async def run_team_vote(
                 await asyncio.sleep(2)
         result.votes.append(strategist_vote_result)
 
+    # 实时进度更新：全部投票完成
+    await _safe_notify(progress_func,
+        _render_vote_progress(symbol, result.votes, 6, "投票完成 · 统计中..."))
+
     # 统计投票
     result.buy_count = sum(1 for v in result.votes if v.vote == "BUY")
     result.hold_count = sum(1 for v in result.votes if v.vote == "HOLD")
@@ -717,10 +803,12 @@ async def run_team_vote(
 
     if veto_mode == "single" and (risk_skip or strategist_skip):
         result.vetoed = True
-        if risk_skip:
+        if risk_skip and risk_vote is not None:
             result.veto_reason = f"风控铁闸否决: {risk_vote.reasoning}"
-        else:
+        elif strategist_vote is not None:
             result.veto_reason = f"首席策略师否决: {strategist_vote.reasoning}"
+        else:
+            result.veto_reason = "否决（详情缺失）"
         result.decision = "HOLD"
     elif veto_mode == "dual" and risk_skip and strategist_skip:
         result.vetoed = True
@@ -788,6 +876,8 @@ async def run_team_vote_batch(
     notify_func: Optional[Callable] = None,
     max_candidates: int = 5,
     account_context: str = "",
+    vote_history: Optional[Dict[str, Dict]] = None,
+    progress_func: Optional[Callable] = None,
 ) -> List[VoteResult]:
     """
     对多个候选标的批量运行团队投票。
@@ -798,6 +888,8 @@ async def run_team_vote_batch(
         api_callers: {bot_id: async callable} 映射
         notify_func: Telegram通知回调
         max_candidates: 最多分析几个候选
+        vote_history: {bot_id: {"total": N, "correct": N, "accuracy": float}} 历史准确率
+        progress_func: 实时进度回调
 
     Returns:
         按 buy_count 降序排列的 VoteResult 列表
@@ -817,6 +909,8 @@ async def run_team_vote_batch(
             api_callers=api_callers,
             notify_func=notify_func,
             account_context=account_context,
+            vote_history=vote_history,
+            progress_func=progress_func,
         )
         results.append(vote_result)
 

@@ -2,7 +2,7 @@
 
 [← Back to main list](../README.md#table-of-contents)
 
-**111 skills**
+**116 skills**
 
 - [abixus-core-v1](https://github.com/openclaw/skills/tree/main/skills/taofisio/abixus-core-v1/SKILL.md) - A high-performance validation layer for autonomous agent consistency on Polygon PoS.
 - [add-watermark-to-pdf](https://github.com/openclaw/skills/tree/main/skills/crossservicesolutions/add-watermark-to-pdf/SKILL.md) - Add a text watermark to one or multiple PDFs by uploading them to the Solutions API, polling until completion.
@@ -55,6 +55,11 @@
 - [expanso-yaml-to-json](https://github.com/openclaw/skills/tree/main/skills/aronchick/expanso-yaml-to-json/SKILL.md) - Convert YAML to JSON format.
 - [feishu-card](https://github.com/openclaw/skills/tree/main/skills/autogame-17/feishu-card/SKILL.md) - Send rich interactive cards to Feishu (Lark) users or groups.
 - [george](https://github.com/openclaw/skills/tree/main/skills/odrobnik/george/SKILL.md) - Automate George online banking (Erste Bank / Sparkasse Austria)
+- [glmocr](https://github.com/zai-org/GLM-OCR) - Extract text from images/PDFs using Zhipu GLM-OCR API. Supports tables, formulas, handwriting. OmniDocBench V1.5 #1 (94.62).
+- [glmocr-formula](https://github.com/zai-org/GLM-OCR/tree/main/skills/glmocr-formula) - Recognize mathematical formulas from images and convert to LaTeX format using GLM-OCR.
+- [glmocr-handwriting](https://github.com/zai-org/GLM-OCR/tree/main/skills/glmocr-handwriting) - Recognize handwritten text from images. Supports multiple styles, languages, and mixed content.
+- [glmocr-sdk](https://github.com/zai-org/GLM-OCR/tree/main/skills/sdk) - GLM-OCR Python SDK integration for programmatic document parsing (pip install glmocr).
+- [glmocr-table](https://github.com/zai-org/GLM-OCR/tree/main/skills/glmocr-table) - Extract tables from images/PDFs to Markdown. Handles complex tables and merged cells.
 - [gerador-contrato-locacao-preview](https://github.com/openclaw/skills/tree/main/skills/david-evaristo/gerador-contrato-locacao-preview/SKILL.md) - Registra contrato de locação via Google Forms.
 - [google-docs-skill](https://github.com/openclaw/skills/tree/main/skills/zagran/google-docs-skill/SKILL.md) - Direct access to the Google Docs API using OAuth 2.0.
 - [governance](https://github.com/openclaw/skills/tree/main/skills/paulgnz/governance/SKILL.md) - XPR Network governance — communities, proposals, voting on the gov contract.

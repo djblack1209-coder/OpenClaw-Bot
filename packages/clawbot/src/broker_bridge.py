@@ -13,13 +13,25 @@ import os as _os
 import re
 import time as _time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 from datetime import datetime
 from dataclasses import dataclass, field
 
 from src.notify_style import format_ibkr_connectivity
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from ib_insync import (
+        IB,
+        Stock,
+        Forex,
+        Crypto,
+        Contract,
+        MarketOrder,
+        LimitOrder,
+        ScannerSubscription,
+    )
 
 try:
     from ib_insync import (
@@ -37,14 +49,14 @@ try:
 except ImportError:
     HAS_IB = False
     # 定义占位类型，避免类定义时 NameError
-    IB = None
-    Stock = None
-    Forex = None
-    Crypto = None
-    Contract = None
-    MarketOrder = None
-    LimitOrder = None
-    ScannerSubscription = None
+    IB = None  # type: ignore[assignment,misc]
+    Stock = None  # type: ignore[assignment,misc]
+    Forex = None  # type: ignore[assignment,misc]
+    Crypto = None  # type: ignore[assignment,misc]
+    Contract = None  # type: ignore[assignment,misc]
+    MarketOrder = None  # type: ignore[assignment,misc]
+    LimitOrder = None  # type: ignore[assignment,misc]
+    ScannerSubscription = None  # type: ignore[assignment,misc]
     logger.warning("[IBKRBridge] ib_insync 未安装，IBKR功能不可用")
 
 
@@ -87,10 +99,48 @@ class IBKRBridge:
         self._total_reconnects = 0   # 累计重连次数
         self._connected_since = 0.0  # 本次连接建立时间
         self._autostart_attempted = False  # 防止重复启动 Gateway
+        self._last_notify_state = ""  # 去重：上次通知的连接状态
 
     def set_notify(self, func):
         """注入 Telegram 通知回调"""
         self._notify_func = func
+
+    async def _notify_connectivity(self, state: str, title: str, detail: str):
+        """连接状态通知 — 相同状态不重复推送"""
+        if not self._notify_func:
+            return
+        if _os.getenv("IBKR_NOTIFY_CONNECTIVITY", "false").lower() not in {"1", "true", "yes", "on"}:
+            return
+        # 去重：相同状态不重复推
+        if state == self._last_notify_state:
+            logger.debug("[IBKR] 跳过重复通知: %s", state)
+            return
+        self._last_notify_state = state
+        try:
+            await self._notify_func(format_ibkr_connectivity(title, detail))
+        except Exception as e:
+            logger.debug("[IBKR] 通知发送失败: %s", e)
+
+    def _notify_connectivity_sync(self, state: str, title: str, detail: str):
+        """同步上下文中发送连接通知（用于 IB 回调线程）"""
+        if not self._notify_func:
+            return
+        if _os.getenv("IBKR_NOTIFY_CONNECTIVITY", "false").lower() not in {"1", "true", "yes", "on"}:
+            return
+        if state == self._last_notify_state:
+            return
+        self._last_notify_state = state
+        msg = format_ibkr_connectivity(title, detail)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(loop.create_task, self._notify_func(msg))
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.call_soon_threadsafe(asyncio.ensure_future, self._notify_func(msg))
+            except Exception as e:
+                logger.debug("[IBKR] 断连通知发送失败: %s", e)
 
     async def connect(self) -> bool:
         """连接到 IB Gateway（带指数退避重连）"""
@@ -241,13 +291,11 @@ class IBKRBridge:
             self._total_reconnects += 1
             if success:
                 logger.info("[IBKR] 自动重连成功 (累计重连 %d 次)", self._total_reconnects)
-                if self._notify_func and _os.getenv("IBKR_NOTIFY_CONNECTIVITY", "false").lower() in {"1", "true", "yes", "on"}:
-                    try:
-                        await self._notify_func(
-                            format_ibkr_connectivity("IBKR 自动重连成功", "累计重连 %d 次" % self._total_reconnects)
-                        )
-                    except Exception as e:
-                        logger.debug("[IBKR] 重连通知发送失败: %s", e)
+                await self._notify_connectivity(
+                    "reconnected",
+                    "IBKR 自动重连成功",
+                    f"累计重连 {self._total_reconnects} 次"
+                )
             else:
                 logger.error("[IBKR] 自动重连失败，将在下次操作时重试")
 
@@ -266,27 +314,12 @@ class IBKRBridge:
         if self._keepalive_task and not self._keepalive_task.done():
             self._keepalive_task.cancel()
         logger.warning("[IBKR] 连接断开 (第%d次)，将自动重连", self._disconnect_count)
-        # 通知 + 自动重连 — use call_soon_threadsafe since IB callbacks
-        # may fire from IB's network thread, not the asyncio thread.
-        if self._notify_func and _os.getenv("IBKR_NOTIFY_CONNECTIVITY", "false").lower() in {"1", "true", "yes", "on"}:
-            msg = (
-                format_ibkr_connectivity(
-                    "IBKR 连接断开",
-                    "第%d次断开，3 秒后自动重连" % self._disconnect_count,
-                )
-            )
-            try:
-                loop = asyncio.get_running_loop()
-                loop.call_soon_threadsafe(loop.create_task, self._notify_func(msg))
-            except RuntimeError:
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.call_soon_threadsafe(
-                            asyncio.ensure_future, self._notify_func(msg)
-                        )
-                except Exception as e:
-                    logger.debug("[IBKR] 断连通知发送失败: %s", e)
+        # 通知 + 自动重连
+        self._notify_connectivity_sync(
+            "disconnected",
+            "IBKR 连接断开",
+            f"第{self._disconnect_count}次断开，3 秒后自动重连"
+        )
         # 触发自动重连
         self._schedule_auto_reconnect()
 
@@ -633,14 +666,20 @@ class IBKRBridge:
             order.account = self.account
             trade = self.ib.placeOrder(contract, order)
 
-            # P0#7: 市价单等待更长时间(30s)，限价单只等确认提交(10s)
-            max_wait = 60 if order_type != 'LMT' else 20
+            # P0#7: 市价单等待更长时间(30s)，限价单等确认提交后再多等5s捕获快速成交
+            max_wait = 60 if order_type != 'LMT' else 40
+            lmt_submitted = False
             for _ in range(max_wait):
                 await asyncio.sleep(0.5)
                 if trade.orderStatus.status == 'Filled':
                     break
                 if trade.orderStatus.status in ('Submitted', 'PreSubmitted') and order_type == 'LMT':
-                    break
+                    if not lmt_submitted:
+                        lmt_submitted = True
+                        # 限价单已提交，再等10秒看是否快速成交
+                    elif lmt_submitted and _ >= 20:
+                        # 已等10秒仍未成交，退出（后续由持仓监控跟踪）
+                        break
 
             status = trade.orderStatus.status
             filled_qty = trade.orderStatus.filled
@@ -663,10 +702,21 @@ class IBKRBridge:
                     except Exception as e:
                         logger.debug("[IBKR] 滑点估算跳过: %s", e)
                 else:
-                    recovered = filled_qty * avg_price
-                    self.total_spent = max(0, self.total_spent - recovered)
-                    logger.info("[IBKR] 预算回收 $%.2f，剩余预算 $%.2f",
-                                recovered, self.budget - self.total_spent)
+                    # 卖出：按买入成本释放预算（而非卖出收入，避免盈亏扭曲预算）
+                    # 尝试从持仓获取买入成本，回退到卖出价
+                    entry_cost = filled_qty * avg_price  # 默认用卖出价
+                    try:
+                        positions = self.ib.positions() if self.ib else []
+                        for pos in positions:
+                            if pos.contract.symbol == symbol:
+                                if pos.avgCost > 0:
+                                    entry_cost = filled_qty * pos.avgCost
+                                break
+                    except Exception:
+                        pass
+                    self.total_spent = max(0, self.total_spent - entry_cost)
+                    logger.info("[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f",
+                                entry_cost, self.budget - self.total_spent)
             elif side == 'BUY' and order_type != 'LMT':
                 logger.warning("[IBKR] BUY %s 市价单未成交 (status=%s)，预算未扣除", symbol, status)
 

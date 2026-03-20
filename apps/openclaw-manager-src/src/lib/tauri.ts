@@ -195,6 +195,17 @@ export interface OpenclawUsageSnapshot {
   providers: Record<string, unknown>[];
 }
 
+export interface SkillEntry {
+  name: string;
+  enabled: boolean;
+}
+
+export interface SkillsStatus {
+  total: number;
+  enabled: number;
+  skills: SkillEntry[];
+}
+
 export interface IdentitySettings {
   bot_name: string;
   user_name: string;
@@ -309,4 +320,6 @@ export const api = {
     invokeWithLog<string[]>('get_managed_service_logs', { label, lines }),
   getManagedEndpointsStatus: () =>
     invokeWithLog<ManagedEndpointStatus[]>('get_managed_endpoints_status'),
+  getSkillsStatus: () =>
+    invokeWithLog<SkillsStatus>('get_skills_status'),
 };

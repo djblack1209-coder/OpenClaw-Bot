@@ -14,11 +14,12 @@ import { Settings } from './components/Settings';
 import { Testing } from './components/Testing';
 import { Logs } from './components/Logs';
 import { ExecutionFlow } from './components/ExecutionFlow';
+import { Memory } from './components/Memory';
 import { Plugins } from './components/Plugins';
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 
-export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins';
+export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory';
 
 export interface EnvironmentStatus {
   node_installed: boolean;
@@ -107,6 +108,7 @@ function App() {
       control: <ControlCenter />,
       dashboard: <Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} />,
       flow: <ExecutionFlow />,
+      memory: <Memory />,
       plugins: <Plugins />,
       ai: <AIConfig />,
       channels: <Channels />,

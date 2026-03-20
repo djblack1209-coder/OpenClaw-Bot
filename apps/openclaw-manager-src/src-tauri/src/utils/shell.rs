@@ -236,6 +236,7 @@ pub fn run_script_output(script: &str) -> Result<String, String> {
 }
 
 /// 后台执行命令（不等待结果）
+#[allow(dead_code)]
 pub fn spawn_background(script: &str) -> io::Result<()> {
     if platform::is_windows() {
         let mut cmd = Command::new("cmd");

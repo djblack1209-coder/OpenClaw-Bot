@@ -17,7 +17,7 @@ class InvestCommandsMixin:
     """投资相关 Telegram 命令"""
 
     async def cmd_quote(self, update, context):
-        """查询行情: /quote AAPL 或 /quote BTC"""
+        """查询行情: /quote AAPL 或 /quote BTC — 富卡片格式 + 错误恢复"""
         if not self._is_authorized(update.effective_user.id):
             return
         args = context.args
@@ -27,20 +27,43 @@ class InvestCommandsMixin:
         symbol = args[0].upper()
         await update.message.reply_text(f"{self.emoji} 查询 {symbol} 行情中...")
         crypto_symbols = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "DOT", "AVAX", "MATIC", "LINK"}
-        if symbol in crypto_symbols:
-            quote = await get_crypto_quote(symbol)
-        else:
-            quote = await get_stock_quote(symbol)
-        text = format_quote(quote)
-        await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+        try:
+            if symbol in crypto_symbols:
+                quote = await get_crypto_quote(symbol)
+            else:
+                quote = await get_stock_quote(symbol)
+
+            # 优先使用富卡片格式
+            if isinstance(quote, dict) and "price" in quote and not quote.get("error"):
+                from src.telegram_ux import format_quote_card
+                from telegram.constants import ParseMode
+                card = format_quote_card(quote)
+                await update.message.reply_text(
+                    card, parse_mode=ParseMode.HTML,
+                    reply_to_message_id=update.message.message_id,
+                )
+            else:
+                # 降级到原有格式
+                text = format_quote(quote)
+                await send_long_message(
+                    update.effective_chat.id, text, context,
+                    reply_to_message_id=update.message.message_id,
+                )
+        except Exception as e:
+            from src.telegram_ux import send_error_with_retry
+            await send_error_with_retry(update, context, e, retry_command=f"/quote {symbol}")
 
     async def cmd_market(self, update, context):
         """市场概览: /market"""
         if not self._is_authorized(update.effective_user.id):
             return
         await update.message.reply_text(f"{self.emoji} 获取市场概览中（约10秒）...")
-        text = await get_market_summary()
-        await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+        try:
+            text = await get_market_summary()
+            await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            from src.telegram_ux import send_error_with_retry
+            await send_error_with_retry(update, context, e, retry_command="/market")
 
     async def cmd_portfolio(self, update, context):
         """查看投资组合: /portfolio"""

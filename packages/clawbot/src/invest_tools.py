@@ -19,15 +19,37 @@ from typing import Optional, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
-# ============ 行情缓存 ============
+# ============ 行情缓存（统一代理到 QuoteCache） ============
 
-_quote_cache: Dict[str, Tuple[dict, float]] = {}  # symbol -> (quote, timestamp)
+_quote_cache: Dict[str, Tuple[dict, float]] = {}  # 本地回退缓存
 CACHE_TTL = 60  # 缓存60秒
 
 
+def _get_global_quote_cache():
+    """获取全局 QuoteCache 实例（延迟导入避免循环依赖）"""
+    try:
+        from src.trading_system import get_quote_cache
+        return get_quote_cache()
+    except Exception:
+        return None
+
+
 def _get_cached_quote(symbol: str) -> Optional[dict]:
-    """获取缓存的行情（60秒内有效）"""
+    """获取缓存的行情 — 优先从 QuoteCache 读取，回退到本地缓存"""
     key = symbol.upper()
+
+    # 优先从全局 QuoteCache 获取（持仓监控也用这个）
+    qc = _get_global_quote_cache()
+    if qc is not None:
+        price = qc.get(key)
+        if price is not None and price > 0:
+            # QuoteCache 只存 price，本地缓存存完整 dict
+            if key in _quote_cache:
+                quote, ts = _quote_cache[key]
+                if _time.time() - ts < CACHE_TTL:
+                    return quote
+
+    # 回退到本地缓存
     if key in _quote_cache:
         quote, ts = _quote_cache[key]
         if _time.time() - ts < CACHE_TTL:
@@ -36,8 +58,16 @@ def _get_cached_quote(symbol: str) -> Optional[dict]:
 
 
 def _set_cached_quote(symbol: str, quote: dict):
-    """缓存行情"""
-    _quote_cache[symbol.upper()] = (quote, _time.time())
+    """写入缓存 — 同时写入本地缓存和全局 QuoteCache"""
+    key = symbol.upper()
+    _quote_cache[key] = (quote, _time.time())
+
+    # 同步写入全局 QuoteCache，让持仓监控也能用到最新价格
+    qc = _get_global_quote_cache()
+    if qc is not None:
+        price = quote.get("price", 0)
+        if price and price > 0:
+            qc.put(key, float(price), source="invest_tools")
 
 
 # ============ yfinance 同步封装 ============
@@ -46,10 +76,8 @@ _yf_module = None  # 延迟加载，预热后复用
 
 
 def _env_bool(key: str, default: bool) -> bool:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    from src.utils import env_bool
+    return env_bool(key, default)
 
 
 def _ensure_yf():

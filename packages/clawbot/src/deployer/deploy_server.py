@@ -22,12 +22,20 @@ def _check_admin(req):
 
 @app.route("/api/deploy/auth", methods=["POST"])
 def auth():
-    """客户端登录验证"""
+    """客户端登录验证 — 支持 License Key 或 用户名+密码"""
     data = request.json or {}
-    username = data.get("username", "")
-    password = data.get("password", "")
     machine_id = data.get("machine_id", "")
     ip = request.remote_addr or ""
+
+    # License Key-only 模式
+    license_key = data.get("license_key", "")
+    if license_key:
+        result = lm.verify_and_bind(license_key, machine_id, ip)
+        return jsonify(result), 200 if result["ok"] else 403
+
+    # 用户名+密码模式
+    username = data.get("username", "")
+    password = data.get("password", "")
     result = lm.authenticate(username, password, machine_id, ip)
     code = 200 if result["ok"] else 403
     return jsonify(result), code

@@ -368,10 +368,19 @@ class PositionMonitor:
                          pos.symbol, trade_id, retry_count)
             if self.notify:
                 await self.notify(
-                    "!! 平仓多次失败，需手动处理 !!\n"
-                    "标的: %s | 数量: %s\n"
-                    "已重试%d次均失败，已停止自动平仓。\n"
-                    "请手动卖出！" % (pos.symbol, pos.quantity, retry_count)
+                    "🚨 紧急：平仓多次失败 🚨\n\n"
+                    "标的: %s\n"
+                    "数量: %d 股\n"
+                    "入场价: $%.2f\n"
+                    "当前价: $%.2f\n"
+                    "浮动盈亏: $%.2f (%.1f%%)\n"
+                    "触发原因: %s\n\n"
+                    "已重试 %d 次均失败，系统已停止自动平仓。\n"
+                    "⚠️ 请立即手动卖出！" % (
+                        pos.symbol, int(pos.quantity), pos.entry_price,
+                        pos.current_price, pos.unrealized_pnl, pos.unrealized_pnl_pct,
+                        signal.reason.value, retry_count
+                    )
                 )
             # 移除监控，避免无限重试通知轰炸
             self.remove_position(trade_id)
@@ -429,7 +438,8 @@ class PositionMonitor:
 
         # 3. 更新风控（用实际成交价计算PnL，而非报价浮亏）
         if self.risk_manager:
-            actual_pnl = pos.unrealized_pnl  # 默认用浮亏
+            # 部分平仓时按比例计算 PnL，避免用全仓浮亏误报
+            actual_pnl = pos.unrealized_pnl * (sell_qty / pos.quantity) if pos.quantity > 0 else 0
             if sell_result and sell_result.get("avg_price", 0) > 0:
                 actual_exit = sell_result["avg_price"]
                 if pos.side == "BUY":

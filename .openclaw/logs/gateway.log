@@ -20,3 +20,1999 @@
 4) 今日关键决策（成功/失误各 1-3 条）
 
 收到后我就按 /brief 输出完整复盘（含明日改进清单≤5条）。
+2026-03-15T17:33:41.559+08:00 [ws] ⇄ res ✓ config.get 40676ms conn=0ca95c32…e022 id=1a0dc8af…1998
+2026-03-15T17:33:41.793+08:00 [ws] ⇄ res ✓ status 41003ms conn=0ca95c32…e022 id=874a8725…479b
+2026-03-15T17:35:12.269+08:00 [ws] ⇄ res ✓ config.get 388ms conn=453e5b10…f7c4 id=b22793b2…f4b2
+2026-03-15T17:35:12.343+08:00 [ws] ⇄ res ✓ status 464ms conn=453e5b10…f7c4 id=badd1bb3…9cea
+2026-03-15T17:35:12.633+08:00 [ws] ⇄ res ✓ channels.status 54ms conn=80432aaa…b5f3 id=1720a4f2…7027
+2026-03-15T17:36:27.816+08:00 [ws] ⇄ res ✓ agent 2412ms runId=announce:v1:agent:main:cron:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6:5fa07f8d-58b2-4398-bb75-5cd6cc573701:1773566952828 conn=537c96be…e458 id=7ecbc936…521e
+2026-03-15T17:37:01.034+08:00 Boss，成本配额播报如下：
+
+- 今日总览：provider usage 数据缺失（仅有会话 token 回退数据）  
+- Provider 维度：暂无已用/剩余/重置时间  
+- Token 维度：主要会话 totalTokens 约 16k–18k/会话，合计约 70k 左右；缓存读占比偏高  
+- 风险结论：中（usage 缺失，需补齐配额视图）
+
+明日建议：  
+1) 修复/开启 provider usage 采集（openclaw status --usage）。  
+2) 设定每日预算阈值并启用超限提醒。  
+3) 重复上下文优先用缓存/裁剪上下文以降成本。
+2026-03-15T18:15:20.963+08:00 [telegram] sendMessage ok chat=7043182738 message=317
+2026-03-15T18:15:26.689+08:00 [telegram] sendMessage ok chat=7043182738 message=318
+2026-03-15T18:35:18.452+08:00 [gateway] signal SIGTERM received
+2026-03-15T18:35:18.514+08:00 [gateway] received SIGTERM; shutting down
+2026-03-15T18:35:18.580+08:00 [gateway] signal SIGTERM received
+2026-03-15T18:35:18.582+08:00 [gateway] received SIGTERM during shutdown; ignoring
+2026-03-15T18:35:18.800+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-15T21:28:01.271+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-15T21:28:01.351+08:00 [heartbeat] disabled
+2026-03-15T21:28:01.354+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-15T21:28:01.358+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-15T21:28:01.361+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 35589)
+2026-03-15T21:28:01.365+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-15.log
+2026-03-15T21:28:01.407+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-15T21:28:03.397+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-15T21:28:03.423+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-15T21:28:03.425+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-15T21:30:16.679+08:00 [telegram] sendMessage ok chat=7043182738 message=321
+2026-03-15T21:30:18.668+08:00 [ws] ⇄ res ✓ config.get 885ms conn=eabdd68a…8bec id=02b90eb7…6cbf
+2026-03-15T21:30:37.419+08:00 [telegram] sendMessage ok chat=7043182738 message=322
+2026-03-15T21:30:40.434+08:00 Boss，成本配额播报更新：
+
+- provider 用量/配额仍缺失，已回退到会话 token 数据（openclaw status --usage）  
+- 今日模型用量（会话口径）：主要会话合计约 26,754 tokens；主会话约 24,637 tokens；缓存读取占比高（约 49.4 万）  
+- 成本估算：因 provider 用量为空无法准确估算  
+- 剩余配额：未知  
+- 风险结论：中（配额缺失但 token 占用处于低位）
+
+明日建议：  
+1) 检查 provider usage 配置/凭据，恢复用量回传  
+2) 保持缓存命中策略，避免无缓存重算  
+3) 若需成本可视化，补齐 providers 定价/配额信息
+2026-03-15T21:30:43.456+08:00 [telegram] sendMessage ok chat=7043182738 message=323
+2026-03-15T21:44:11.142+08:00 [telegram] sendMessage ok chat=7043182738 message=325
+2026-03-15T21:44:17.414+08:00 [telegram] sendMessage ok chat=7043182738 message=327
+2026-03-15T21:44:24.989+08:00 [telegram] sendMessage ok chat=7043182738 message=329
+2026-03-15T21:44:32.682+08:00 [telegram] sendMessage ok chat=7043182738 message=330
+2026-03-15T21:44:51.523+08:00 [telegram] sendMessage ok chat=7043182738 message=333
+2026-03-15T21:45:00.106+08:00 [telegram] sendMessage ok chat=7043182738 message=334
+2026-03-16T01:11:01.434+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T03:28:50.833+08:00 [telegram] sendMessage ok chat=7043182738 message=336
+2026-03-16T03:29:25.970+08:00 [telegram] sendMessage ok chat=7043182738 message=338
+2026-03-16T03:29:34.075+08:00 [telegram] sendMessage ok chat=7043182738 message=339
+2026-03-16T08:04:47.223+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T08:04:57.807+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T08:55:56.447+08:00 Boss，开盘前简报还缺行情与持仓数据源。请提供这些信息（或指示我从哪读取）：
+
+1) 隔夜市场要点（美股/商品/FX/加密/重要事件）  
+2) 当前持仓与关键风险位  
+3) 今日优先动作/关注标的  
+
+给到后我立刻输出开盘前简报。
+2026-03-16T08:55:56.451+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T08:56:06.802+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T08:56:17.317+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3:2107fec4-2d61-44b3-98f6-3d9cca2a77a3:4ac91ac2-9553-4124-ac25-39656d5045d2:1773622500197 error=HttpError: Network request for 'sendMessage' failed! conn=05fd6b17…e76e id=cdf389af…d57f
+2026-03-16T08:56:17.335+08:00 [cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3] cron announce delivery failed
+2026-03-16T08:56:17.350+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T08:56:27.810+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T09:00:22.523+08:00 Boss，社媒热点扫描失败：脚本路径未找到（MODULE_NOT_FOUND）。当前尝试路径在  
+`/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/OpenClaw/tools/social-hotspot-monitor.mjs`。  
+我怀疑脚本在 `.../apps/openclaw/tools/` 下。
+
+要我先定位脚本真实路径并重试扫描吗？
+2026-03-16T09:00:22.526+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T09:00:32.798+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T09:00:43.323+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:social-hotspot-scan:social-hotspot-scan:93cc113f-66a9-4a8d-99c1-198aa8d6182b:1773622800137 error=HttpError: Network request for 'sendMessage' failed! conn=340dbcb4…4b52 id=aadc1eab…f8b3
+2026-03-16T09:00:43.341+08:00 [cron:social-hotspot-scan] cron announce delivery failed
+2026-03-16T09:00:43.352+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T09:00:53.886+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T10:00:58.394+08:00 Boss，盘中风控巡检结果：因缺少实时数据，无法完成实证检查。  
+需要的数据：当前仓位明细、当日回撤/PnL、标的实时波动与盘口、成交价/滑点。
+
+当前检查（基于缺少数据的保护性判定）  
+- 仓位：未知 → 失败  
+- 回撤：未知 → 失败  
+- 异常波动：未知 → 失败  
+- 执行偏差：未知 → 失败  
+
+立即动作：  
+1) 拉取实时仓位与当日 P&L/回撤数据  
+2) 扫描当日波动/盘口异常（价差扩大、量能骤降、跳空）  
+3) 比对成交滑点 vs 预期（超阈值立即降速/减仓）  
+4) 未拿到数据前，暂停新增交易/减小成交频率
+2026-03-16T10:00:58.402+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T10:00:58.707+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:8efdd25f-b2c6-4ded-b3b6-eeb95ed9a550:1773626400086 error=HttpError: Network request for 'sendMessage' failed! conn=a3e6166f…c2d8 id=6b5454a3…fbf7
+2026-03-16T10:00:58.739+08:00 [cron:5e401547-128d-4614-bd72-a8e620e8b731] cron announce delivery failed
+2026-03-16T11:00:35.602+08:00 Boss，盘中风控巡检结论：无法判定（缺少仓位与账户数据）。  
+原因：未提供实时仓位、权益、当日回撤、成交/滑点与波动数据，无法完成风险闸门核验。
+
+必需检查项（请回传数据）：  
+1) 仓位：当前持仓明细、单票/单品类风险占比、总杠杆  
+2) 回撤：今日/本周最大回撤、当前回撤  
+3) 异常波动：持仓标的日内波动率、触发阈值记录  
+4) 执行偏差：成交均价 vs 计划价、滑点、未成交/撤单率
+
+立即动作（数据补齐前）：  
+- 暂停新开仓；仅允许减仓/对冲  
+- 若总仓位 > 计划上限或出现异常波动，先降仓 20–50%  
+- 逐笔核对执行偏差，偏差超阈值的策略立即降频或停用  
+
+回传上述数据后，我立刻给出最终 Pass/Fail 与具体修正指令。
+2026-03-16T11:00:36.875+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:57d49e2f-914e-4ce5-9846-5eace55c5c95:1773630000064 error=HttpError: Network request for 'sendMessage' failed! conn=0da14d07…d1c2 id=1111cc56…9bbf
+2026-03-16T11:00:36.893+08:00 [cron:5e401547-128d-4614-bd72-a8e620e8b731] cron announce delivery failed
+2026-03-16T11:39:25.336+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T12:00:31.468+08:00 Boss，盘中风险闸门检查结果：**未通过（数据缺失）**。
+
+缺口：  
+- 仓位：未提供当前持仓、总权益、单笔风险比例  
+- 回撤：未提供当日/本周/当月回撤与阈值  
+- 异常波动：未提供标的当日波动率/跳空/新闻事件  
+- 执行偏差：未提供滑点、成交价偏离、成交率  
+
+立即动作：  
+1) 暂停新增仓位，仅允许减仓/对冲  
+2) 收缩风险至最低档（单笔风险降至常规下限）  
+3) 补齐数据后再启用交易  
+
+请补充以下最小信息，我可立即给出通过/拦截与动作：  
+- 当前持仓（标的、方向、仓位%、成本、止损/止盈）  
+- 总权益与今日/本周回撤  
+- 主要标的当日波动/异常事件  
+- 最近执行滑点与成交偏离统计
+2026-03-16T12:00:31.472+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T12:00:41.634+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T12:00:52.186+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:d2d79009-6d20-4293-a023-471fbf6e569e:1773633600054 error=HttpError: Network request for 'sendMessage' failed! conn=3d268727…e1c5 id=87a734d6…239f
+2026-03-16T12:00:52.206+08:00 [cron:5e401547-128d-4614-bd72-a8e620e8b731] cron announce delivery failed
+2026-03-16T12:00:52.220+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T12:01:02.753+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T13:00:25.506+08:00 Boss，当前无法完成盘中风险闸门检查：缺少实时数据（仓位、当日回撤、异常波动指标、执行偏差/滑点）。
+
+请补充以下最小数据（任一格式都行）：  
+1) 当前持仓与仓位占比（单票/总仓）  
+2) 当日/本周回撤（%）  
+3) 异常波动（例如：单票5日波动或当日振幅）  
+4) 执行偏差（滑点/偏离计划价）
+
+收到后我立刻输出风险闸门结果与硬性动作。
+2026-03-16T13:00:25.510+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T13:00:35.809+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T13:00:46.337+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:6351faca-0c0f-4d05-8ae6-b9f7565e5549:1773637200057 error=HttpError: Network request for 'sendMessage' failed! conn=58fb2ba4…a2b2 id=709c7b01…f72e
+2026-03-16T13:00:46.353+08:00 [cron:5e401547-128d-4614-bd72-a8e620e8b731] cron announce delivery failed
+2026-03-16T13:00:46.365+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T13:00:56.869+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T14:00:51.357+08:00 Boss，盘中风控巡检结论：无法完成风控闸门检查（缺少实时数据）。
+
+缺口：当前仓位、当日/周回撤、标的异常波动统计、执行偏差/滑点记录未提供。
+
+立即动作：  
+1) 拉取当前持仓与权益曲线（含当日/当周回撤）  
+2) 统计近 1h 异常波动标的与幅度（超阈值列表）  
+3) 汇总最近 10 笔执行偏差/滑点（均值与最大值）  
+4) 回传以上数据后立刻复查并给出具体处置（减仓/止损/暂停/风控升级）
+2026-03-16T14:00:51.360+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T15:00:22.143+08:00 Boss，盘中风控巡检仍因缺少数据无法完成。  
+立即动作：先暂停新增交易。请提供当前仓位明细（标的/方向/规模/成本/止损）、账户当日/当周回撤、异常波动监控指标、执行偏差（滑点/成交延迟/偏离计划）。收到后我立刻输出完整闸门结果与动作。
+2026-03-16T15:35:26.160+08:00 Boss，收盘复盘还缺当日交易数据。请补充这些关键数字（没有就填 0 / 无）：
+
+- 实现PnL（Realized）  
+- 未实现PnL（Unrealized）  
+- 净日回报（%）  
+- 胜率、平均盈利/平均亏损、Profit Factor  
+- 当日最大回撤、最大单笔/单仓风险  
+- 规则违规（如有）
+
+给到后我立刻按 /brief 格式出完整收盘复盘。
+2026-03-16T16:00:52.638+08:00 Boss，盘中风险闸门检查结果：未通过（缺少关键输入数据，无法验证仓位/回撤/异常波动/执行偏差）。
+
+检查项：  
+1) 仓位：缺少当前持仓与总权益 → 无法评估单笔风险占比与集中度  
+2) 回撤：缺少今日/本周/账户当前回撤 → 无法验证日内/累计下行上限  
+3) 异常波动：缺少标的实时波动/成交量/价差 → 无法判断流动性与滑点风险  
+4) 执行偏差：缺少成交均价 vs 计划价、滑点、延迟 → 无法评估执行质量  
+
+立即动作（先补数据再开闸）：  
+- 立即拉取：当前持仓清单（标的/方向/仓位/成本/止损）、账户权益、日内回撤  
+- 立即拉取：重点标的实时波动与点差（流动性与异常波动检查）  
+- 立即拉取：最新成交与计划价对比（滑点/延迟）  
+- 补齐后重新运行 /risk；若出现“超仓/回撤超限/异常波动/执行偏差”任一项 → 立刻降仓或暂停新增仓位
+2026-03-16T17:08:28.246+08:00 [telegram] sendMessage ok chat=7043182738 message=341
+2026-03-16T17:08:57.129+08:00 [telegram] sendMessage ok chat=7043182738 message=343
+2026-03-16T17:09:22.314+08:00 [telegram] sendMessage ok chat=7043182738 message=345
+2026-03-16T17:09:29.486+08:00 [telegram] sendMessage ok chat=7043182738 message=346
+2026-03-16T20:54:51.056+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T20:59:51.131+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T21:00:54.053+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T21:04:16.119+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T21:31:18.055+08:00 Boss，成本配额播报更新：
+
+- 今日总览：仍未返回 provider usage/quota 数据，已改用会话 token 统计作为参考  
+- Provider 维度：无已用/剩余/重置时间数据（usage.providers 为空）  
+- Token 维度：主要会话 token 占用约 12%–20%/200k（缓存读占比较高，示例：23477–40981 total tokens，cacheRead 23k–38k）  
+- 风险结论：中（usage 数据缺失，配额不可见）
+
+明日建议：  
+1) 补齐 provider usage 数据源（检查 provider 配置/凭据）  
+2) 继续使用缓存友好策略，控制高上下文会话增长  
+3) 如有重要批量任务，优先安排在配额可见后执行
+2026-03-16T21:35:03.267+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-16T22:55:58.498+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-16T23:56:16.014+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T08:56:20.465+08:00 Boss，开盘前简报目前缺关键数据，只能先占位。请把昨夜市场要点、当前持仓与PnL发我，我立刻补全并给出更精确指令。
+
+需要的最少信息：  
+1) 隔夜市场要点（美股/商品/FX/加密/重要事件）  
+2) 当前持仓与关键风险位  
+3) 实现/未实现PnL与净收益率  
+4) 今日优先动作/关注标的
+2026-03-17T08:56:20.469+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T09:00:16.089+08:00 Boss，热点扫描又失败：脚本路径不存在（MODULE_NOT_FOUND）。当前命令在找  
+`/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/OpenClaw/tools/social-hotspot-monitor.mjs`。
+
+要我把路径改成 `tools/social-hotspot-monitor.mjs` 并重试吗？
+2026-03-17T10:00:36.439+08:00 Boss，盘中风控巡检仍因缺少实时账户数据无法判定（仓位/回撤/异常波动/执行偏差）。  
+请给我这些即时指标，我立刻输出通过/不通过与动作：  
+1) 总仓位占用（%权益）  
+2) 今日/近3日最大回撤（%权益）  
+3) 主要持仓异常波动（相对基准/ATR偏离%）  
+4) 过去3笔执行偏差（滑点/成交价偏离触发价，bp）
+
+未拿到数据前的防守动作：  
+- 暂停新增仓位与加仓  
+- 所有挂单规模下调至原计划的 50%  
+- 对高波动/低流动性标的设置更紧止损或减仓 20–30%  
+- 复核成交滑点，若 > 预期阈值，切换为限价或缩量执行
+2026-03-17T11:01:06.458+08:00 Boss，盘中风控巡检结果：**无法判定（缺少实时数据）**。  
+原因：未提供当前仓位、当日/本周回撤、标的异常波动阈值、执行偏差统计。
+
+逐项状态：  
+- 仓位：未知 → 无法核验是否超仓/集中  
+- 回撤：未知 → 无法核验是否触发日内/阶段性止损  
+- 异常波动：未知 → 无法核验是否触发波动警戒  
+- 执行偏差：未知 → 无法核验是否滑点/偏离计划  
+
+**立即动作（先保命）：**  
+1) 立即暂停新增仓位，保留风控通道  
+2) 请回填以下数据（可简表）：  
+   - 当前总仓位% / 最大单一持仓%  
+   - 今日/本周回撤%（含浮动）  
+   - 异常波动阈值与当前触发标的（如有）  
+   - 近 N 笔执行偏差均值/最大滑点  
+
+收到数据后我立刻给出“通过/不通过”与强制修复动作。
+2026-03-17T11:42:22.173+08:00 [telegram] sendMessage ok chat=7043182738 message=349
+2026-03-17T11:42:51.174+08:00 [telegram] sendMessage ok chat=7043182738 message=351
+2026-03-17T11:51:18.883+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T12:00:29.731+08:00 [ws] ⇄ res ✓ agent 80ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:bda4170f-a49c-4c90-aac5-429fd592fc6c:1773720000185 conn=caec6840…a33b id=86d89a83…a35a
+2026-03-17T12:00:37.642+08:00 Boss，盘中风险闸门检查结果（/risk）：
+
+- 仓位：无法读取当前持仓/净敞口 → **未通过**  
+- 回撤：无法读取今日/本周回撤 → **未通过**  
+- 异常波动：无法读取波动阈值与当前振幅 → **未通过**  
+- 执行偏差：无法读取成交均价 vs 计划价格/滑点 → **未通过**
+
+立即动作：  
+1) **暂停新增仓位与加仓**，仅允许减仓/止损  
+2) 立刻提供/导出：当前持仓明细、今日/本周回撤、波动监控阈值与实测、最近 N 笔成交滑点统计  
+3) 数据到位后再复核闸门并给出是否恢复交易与仓位压缩建议
+2026-03-17T12:00:37.655+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T12:16:44.090+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T12:21:34.132+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T12:22:52.077+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T13:00:35.794+08:00 [ws] ⇄ res ✓ agent 50ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:48d54a1b-2b91-421c-b9ff-302d8dfe121a:1773723600116 conn=190d88b9…bb25 id=65854fea…8f00
+2026-03-17T13:00:43.642+08:00 Boss，/risk 需要实时数据才能出结论。我现在没有盘中数据源。请选一种方式：
+
+**方式 A：直接给数据**  
+- 当前仓位：标的/方向/仓位占比/浮动盈亏  
+- 当日回撤：峰值到当前  
+- 异常波动：是否触发你的波动阈值（阈值=？）  
+- 执行偏差：计划价 vs 实际成交价（bps）
+
+**方式 B：授权我拉取数据源**  
+告诉我你用的交易/风控来源（账户/接口/文件路径），我来读并输出检查结果。
+
+收到数据后我会立刻给出：仓位、回撤、异常波动、执行偏差的通过/失败结论 + 立即动作。
+2026-03-17T13:00:43.646+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T13:22:09.306+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T14:00:21.706+08:00 [ws] ⇄ res ✓ agent 114ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:c3822391-0630-4b36-a47f-d6e09a167ff5:1773727200193 conn=d3074ac9…b3aa id=2289a444…5055
+2026-03-17T14:00:30.842+08:00 Boss，盘中风控巡检需要实时数据（仓位/权益/今日回撤/波动/成交与滑点）。我这边没有行情与账户数据源。请给我这 6 项，我立刻产出闸门结果与动作：
+
+1) 当前权益/可用保证金  
+2) 当前总仓位与最大单仓位占比  
+3) 今日累计回撤（% 或金额）  
+4) 近 30–60 分钟异常波动标的/品种  
+5) 今日成交执行偏差（滑点、漏单、成交率）  
+6) 相关集中度（同方向/同主题持仓）
+
+把数据贴上来即可。
+2026-03-17T14:00:30.855+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T14:19:14.188+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T15:00:18.675+08:00 [ws] ⇄ res ✓ agent 71ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:459546d0-0988-49f8-9185-d0273114d7d0:1773730800263 conn=4b9fa973…83d6 id=bd89ee7e…a819
+2026-03-17T15:00:26.675+08:00 Boss，盘中风控巡检结论：**无法完成闸门检查（数据缺失）**。  
+原因：未提供当前仓位、当日/当周回撤、异常波动指标、执行偏差（滑点/成交质量）数据。
+
+立即动作（补齐数据前执行）：  
+1) 暂停新增仓位；仅允许减仓/止损  
+2) 单笔风险上限降到原计划的 50%  
+3) 如已有异常波动预警，相关品种仓位降到 30% 以内  
+
+请补充以下数据以完成检查：  
+- 当前总仓位（%权益）、前五大单一仓位占比  
+- 当日/本周回撤（%）、最大回撤  
+- 异常波动：波动率、跳空、成交量异常或价差异常  
+- 执行偏差：平均滑点、成交失败率、与计划价偏离均值/最大值
+2026-03-17T15:00:26.682+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T15:00:27.051+08:00 [ws] ⇄ res ✗ agent errorCode=UNAVAILABLE errorMessage=HttpError: Network request for 'sendMessage' failed! runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:459546d0-0988-49f8-9185-d0273114d7d0:1773730800263 error=HttpError: Network request for 'sendMessage' failed! conn=4b9fa973…83d6 id=bd89ee7e…a819
+2026-03-17T15:00:27.075+08:00 [cron:5e401547-128d-4614-bd72-a8e620e8b731] cron announce delivery failed
+2026-03-17T15:35:18.401+08:00 [ws] ⇄ res ✓ agent 141ms runId=announce:v1:agent:main:cron:76d73a4e-38e2-46d6-af39-eb186952f6f7:76d73a4e-38e2-46d6-af39-eb186952f6f7:93fafbb6-87ad-48cf-8638-c18e1f2d7909:1773732900154 conn=9728faf3…bdd9 id=7936d0d3…0ce6
+2026-03-17T15:35:24.691+08:00 Boss，收盘复盘需要当日数据。请提供（或指明文件/来源）：
+
+- Realized/Unrealized PnL（金额或%）  
+- 净日收益率  
+- 胜率、平均盈亏比、Profit Factor  
+- 最大日内回撤、最大单仓风险  
+- 规则违规（如有）  
+- 今日关键决策与结果（3–5 条）
+
+发我这些，我立刻生成收盘复盘（含明日改进≤5条）。
+2026-03-17T15:47:08.144+08:00 [gateway] signal SIGTERM received
+2026-03-17T15:47:08.151+08:00 [gateway] received SIGTERM; shutting down
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+│
+◇  Config ───────────────────────────────────────────────────╮
+│                                                            │
+│  Config invalid; doctor will run with best-effort config.  │
+│                                                            │
+├────────────────────────────────────────────────────────────╯
+2026-03-17T16:06:19.430+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-17T16:06:19.691+08:00 [heartbeat] started
+2026-03-17T16:06:19.721+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-17T16:06:19.732+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-17T16:06:19.745+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 49996)
+2026-03-17T16:06:19.765+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-17.log
+2026-03-17T16:06:19.873+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-17T16:06:19.954+08:00 [delivery-recovery] Found 14 pending delivery entries — starting recovery
+2026-03-17T16:06:19.980+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T16:06:19.989+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-17T16:06:21.075+08:00 [delivery-recovery] Recovered delivery ff8f8f71-f1b8-42a8-9cd2-db6633f0778a to telegram:-1003754981982
+2026-03-17T16:06:21.539+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-17T16:06:22.130+08:00 [delivery-recovery] Recovered delivery cc2fe184-fd0f-442f-9018-960d254d54f4 to telegram:-1003754981982
+2026-03-17T16:06:22.683+08:00 [delivery-recovery] Recovered delivery 9b2ce861-1b22-4ef3-9832-8b0947a542d8 to telegram:telegram:7043182738
+2026-03-17T16:06:23.208+08:00 [delivery-recovery] Recovered delivery e2e89e59-7af4-49ef-b46e-b7216bf8bf0d to telegram:telegram:7043182738
+2026-03-17T16:06:23.728+08:00 [delivery-recovery] Recovered delivery f81f7b5f-44db-4415-9bb1-cc2fe74535ae to telegram:-1003754981982
+2026-03-17T16:06:24.351+08:00 [delivery-recovery] Recovered delivery 38285c31-1ecf-479f-8c1e-da7107e31258 to telegram:-1003754981982
+2026-03-17T16:06:24.902+08:00 [delivery-recovery] Recovered delivery 0a67703a-64ea-4076-97bf-99ad2f07e04d to telegram:-1003754981982
+2026-03-17T16:06:28.759+08:00 [delivery-recovery] Recovered delivery a0bd13c7-de52-4fbc-bf6c-5a302941c7b4 to telegram:-1003754981982
+2026-03-17T16:06:29.298+08:00 [delivery-recovery] Recovered delivery 5518e735-9580-45ca-9094-b1744a4b4de9 to telegram:-1003754981982
+2026-03-17T16:06:29.834+08:00 [delivery-recovery] Recovered delivery 03739317-811e-428c-a956-f07b73786c5f to telegram:-1003754981982
+2026-03-17T16:06:30.369+08:00 [delivery-recovery] Recovered delivery 163add81-391e-4c20-9cae-b2f979e6d796 to telegram:-1003754981982
+2026-03-17T16:06:30.906+08:00 [delivery-recovery] Recovered delivery 47f1a5a0-e1cd-4a32-ab15-2ab637a99d37 to telegram:-1003754981982
+2026-03-17T16:06:31.971+08:00 [gateway] signal SIGTERM received
+2026-03-17T16:06:31.977+08:00 [gateway] received SIGTERM; shutting down
+2026-03-17T16:06:32.000+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-17T16:06:42.333+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-17T16:06:42.545+08:00 [heartbeat] started
+2026-03-17T16:06:42.555+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-17T16:06:42.570+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-17T16:06:42.580+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 50198)
+2026-03-17T16:06:42.596+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-17.log
+2026-03-17T16:06:42.773+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-17T16:06:42.816+08:00 [delivery-recovery] Found 2 pending delivery entries — starting recovery
+2026-03-17T16:06:42.838+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T16:06:42.846+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-17T16:06:43.956+08:00 [delivery-recovery] Recovered delivery 92a34a4e-e78c-4dd3-8e49-2456a73aa9f3 to telegram:-1003754981982
+2026-03-17T16:06:44.044+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-17T16:06:44.513+08:00 [delivery-recovery] Recovered delivery dd723b45-1b78-4f3e-b508-fbe302fd8a2a to telegram:-1003754981982
+2026-03-17T16:06:44.519+08:00 [delivery-recovery] Delivery recovery complete: 2 recovered, 0 failed, 0 skipped (max retries), 0 deferred (backoff)
+2026-03-17T16:07:41.414+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-17T16:07:41.600+08:00 [heartbeat] started
+2026-03-17T16:07:41.612+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-17T16:07:41.632+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-17T16:07:41.645+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 50767)
+2026-03-17T16:07:41.659+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-17.log
+2026-03-17T16:07:41.787+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-17T16:07:43.645+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-17T16:07:43.679+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T16:07:43.706+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-17T16:08:36.296+08:00 [ws] ⇄ res ✓ agent 159ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:57e7054e-833e-4f41-97fd-03f52672ee7b:1773734862039 conn=3248189b…6f54 id=e08749d0…9be9
+2026-03-17T16:08:47.713+08:00 Boss，盘中风险闸门检查结果：信息不足 → 未通过（需补齐仓位/回撤/波动/执行偏差）。
+
+缺口：  
+- 仓位：当前总仓位%、单票风险%、集中度  
+- 回撤：当日与近 7 日最大回撤  
+- 异常波动：近 1–3 小时波动率、异常波动标记  
+- 执行偏差：滑点、成交偏离、延迟  
+
+立即动作：  
+1) 立刻暂停新开仓与加仓，维持现有止损不动  
+2) 提供当前账户快照：总仓位%、单票最大风险%、当日回撤%、近7日回撤%、异常波动标记、滑点/偏差统计  
+3) 若任一指标触发阈值（单票风险过高/日回撤超限/异常波动/执行偏差放大），执行减仓或清仓，并进入 recovery-retrain-loop
+2026-03-17T16:52:41.662+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T16:55:47.560+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T16:56:23.995+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T17:00:43.958+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T17:04:29.486+08:00 [reload] config change detected; evaluating reload (agents.defaults.compaction, skills.entries.openviking, skills.entries.superpowers-workflow, skills.entries.cli-anything, skills.entries.gstack-review, skills.entries.page-agent)
+2026-03-17T17:04:29.529+08:00 [reload] config change applied (dynamic reads: agents.defaults.compaction, skills.entries.openviking, skills.entries.superpowers-workflow, skills.entries.cli-anything, skills.entries.gstack-review, skills.entries.page-agent)
+2026-03-17T17:48:01.376+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T18:00:47.590+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T19:00:28.645+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T19:00:39.585+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T19:11:01.775+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T19:30:37.393+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T19:44:23.234+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T20:00:40.847+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T21:06:54.975+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T21:30:39.149+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T21:31:48.292+08:00 [ws] ⇄ res ✓ config.get 2457ms conn=5c18429c…7477 id=e2cff2af…e908
+2026-03-17T21:32:15.385+08:00 [ws] ⇄ res ✓ agent 70ms runId=announce:v1:agent:main:cron:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6:989260d4-d68f-4c3c-bf43-cc07d09c55a1:1773754240505 conn=46ae747d…57e8 id=ec09e5b5…7da2
+2026-03-17T21:32:23.085+08:00 Boss，成本配额播报更新：
+
+- 今日总览：provider usage 数据仍缺失，已回退到会话 token 统计  
+- 模型用量（会话侧）：主要会话累计约 23.9k tokens（输入 23,349 / 输出 699，缓存读 96,384）  
+- 成本估算：缺少 provider 计费数据，暂无法精确估算  
+- 剩余配额：未知（usage 空）  
+- 风险结论：中（usage 缺失 + token 持续增长）
+
+明日建议：  
+1) 确认 provider usage 采集是否正常（优先恢复 openclaw status --usage 数据源）  
+2) 继续使用缓存/复用上下文，压低新 token  
+3) 若明日仍无 usage 数据，低优先级任务改用低成本模型
+2026-03-17T22:44:13.582+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-17T23:01:10.824+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-17T23:36:41.599+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T00:00:51.128+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T00:01:01.319+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T00:31:10.350+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T00:37:55.722+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T00:44:50.357+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T00:48:37.227+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T00:55:51.145+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T00:58:05.891+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T01:00:56.606+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T01:02:16.805+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T01:30:20.790+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T04:02:06.773+08:00 [gateway] signal SIGTERM received
+2026-03-18T04:02:06.777+08:00 [gateway] received SIGTERM; shutting down
+2026-03-18T04:02:06.806+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-18T04:02:17.160+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-18T04:02:17.368+08:00 [heartbeat] started
+2026-03-18T04:02:17.396+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-18T04:02:17.412+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-18T04:02:17.417+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 55226)
+2026-03-18T04:02:17.426+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-18.log
+2026-03-18T04:02:17.542+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-18T04:02:17.597+08:00 [delivery-recovery] Found 1 pending delivery entries — starting recovery
+2026-03-18T04:02:17.644+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T04:02:17.654+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T04:02:18.719+08:00 [delivery-recovery] Recovered delivery 73aed864-d60d-4812-a466-eb3f055b2d60 to telegram:telegram:7043182738
+2026-03-18T04:02:18.731+08:00 [delivery-recovery] Delivery recovery complete: 1 recovered, 0 failed, 0 skipped (max retries), 0 deferred (backoff)
+2026-03-18T04:02:18.753+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T07:11:01.604+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T07:30:35.164+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T08:00:22.575+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T08:30:35.371+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T08:55:56.645+08:00 [ws] ⇄ res ✓ agent 109ms runId=announce:v1:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3:2107fec4-2d61-44b3-98f6-3d9cca2a77a3:ab8ee4b9-d3e6-4535-bf69-11c421d86bff:1773795300119 conn=536b9910…cdfe id=a18d002e…dc9b
+2026-03-18T08:56:10.322+08:00 Boss，开盘前简报暂缺昨夜市场与持仓数据源。我先给你可直接填数的模板（要我自动填，请给出数据来源/账户快照）。
+
+——  
+开盘前简报（2026-03-18）
+
+【隔夜市场】  
+- 美股：___（道指/标普/纳指涨跌）  
+- 美债：___（2Y/10Y收益率变动）  
+- 美元：___（DXY变动）  
+- 原油/黄金/比特币：___  
+- 重大事件：___  
+
+【持仓提醒】  
+- 当前仓位：___（方向/仓位比例）  
+- 风险点：___（单票集中度、跳空风险、财报/宏观事件）  
+- 触发价/止损位：___  
+
+【今日优先动作】  
+1) ___（开盘前检查/挂单/对冲）  
+2) ___（关注标的/入场条件）  
+3) ___（风控动作：减仓/锁利/移动止损）  
+
+【执行建议】  
+先保风控边界，再找高胜率单点突破，宁缺毋滥。  
+——  
+
+你给我任一信息就能自动生成完整版本：  
+- 账户持仓快照（标的/方向/成本/仓位/止损）  
+- 隔夜市场数据来源（常用终端/链接）
+2026-03-18T09:00:47.690+08:00 [ws] ⇄ res ✓ agent 58ms runId=announce:v1:agent:main:cron:social-hotspot-scan:social-hotspot-scan:bbcfdf3c-bb0e-4f6e-8643-5f362bbc334a:1773795634308 conn=ad44e287…0426 id=6570e657…9c0b
+2026-03-18T09:00:55.429+08:00 社媒热点扫描完成  
+- 已生成 10 个来源的浏览器扫描任务清单  
+- 目前仅生成任务，尚未抓取与评分  
+- 下一步：执行浏览器自动化抓取 → 用 `--raw-data` 回传评分
+2026-03-18T10:00:20.344+08:00 [ws] ⇄ res ✓ agent 57ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:fc11d87b-5c85-4343-a8a9-bafd5f32c57c:1773799200191 conn=596aac17…f83b id=5c9f9e48…5fd0
+2026-03-18T10:00:27.815+08:00 Boss，/risk 盘中风控巡检因数据不足暂不通过。
+
+原因：  
+- 仓位：未提供当前净敞口/单票风险占比  
+- 回撤：未提供当日/本周回撤  
+- 异常波动：未提供实时波动/异常阈值  
+- 执行偏差：未提供滑点/成交偏差统计  
+
+立即动作：  
+1) 立即暂停新增仓位（只允许减仓/对冲）  
+2) 拉取并汇总：当前持仓明细、净敞口、单票风险占比、当日回撤、近1小时波动异常、最近10笔滑点/成交偏差  
+3) 任一项超阈值 → 立刻减仓至风险上限内；回撤触及阈值 → 启动恢复流程  
+
+把上述数据贴给我后，我给出明确通过/不通过与具体动作。
+2026-03-18T10:03:06.823+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T11:00:16.885+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T11:01:18.450+08:00 [ws] ⇄ res ✓ agent 99ms runId=announce:v1:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731:5e401547-128d-4614-bd72-a8e620e8b731:eafbe1e7-cf1e-4d7a-a094-42eb07e46148:1773802800210 conn=e193e59c…e494 id=d2f555a5…8af6
+2026-03-18T11:01:27.754+08:00 Boss，【盘中风控巡检 /risk】当前缺少实时账户与交易数据（仓位、回撤、波动、执行偏差），无法给出通过/不通过结论。
+
+必须提供的最小输入：  
+- 当前总仓位/净敞口  
+- 当日与盘中最大回撤  
+- 近 30/60 分钟波动或异常波动告警  
+- 近 5–10 笔成交的滑点/偏离（执行偏差）
+
+立即动作（数据未到前）：  
+1) 暂停新增仓位与加仓  
+2) 仅允许减仓/对冲  
+3) 拉取实时风险快照后再重新放行  
+
+把上述 4 项数据发我，我立刻输出完整闸门结果与动作板。
+2026-03-18T11:02:18.279+08:00 [warn] Subagent announce completion direct announce agent call transient failure, retrying 2/4 in 5s: gateway timeout after 60000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json
+Bind: loopback
+2026-03-18T11:03:23.300+08:00 [warn] Subagent announce completion direct announce agent call transient failure, retrying 3/4 in 10s: gateway timeout after 60000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json
+Bind: loopback
+2026-03-18T11:04:35.429+08:00 [telegram] autoSelectFamily=false (config)
+2026-03-18T11:24:02.155+08:00 [reload] config change detected; evaluating reload (agents.defaults.compaction, channels.telegram.customCommands)
+2026-03-18T11:24:02.192+08:00 [gateway/channels] restarting telegram channel
+2026-03-18T11:24:02.218+08:00 [reload] config hot reload applied (channels.telegram.customCommands)
+2026-03-18T11:24:03.943+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T11:24:03.976+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T11:29:06.090+08:00 [gateway] signal SIGTERM received
+2026-03-18T11:29:06.095+08:00 [gateway] received SIGTERM; shutting down
+2026-03-18T11:29:06.126+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-18T11:29:19.475+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-18T11:29:19.740+08:00 [heartbeat] started
+2026-03-18T11:29:19.755+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-18T11:29:19.766+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-18T11:29:19.774+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 30791)
+2026-03-18T11:29:19.806+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-18.log
+2026-03-18T11:29:19.992+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-18T11:29:21.299+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T11:29:21.321+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T11:29:21.328+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T11:36:20.753+08:00 [ws] ⇄ res ✓ config.get 2742ms conn=9bfeea24…ae86 id=b69900e4…993a
+2026-03-18T11:36:20.781+08:00 [ws] ⇄ res ✓ status 2784ms conn=9bfeea24…ae86 id=d143bdce…1729
+2026-03-18T11:36:23.727+08:00 [gateway] signal SIGTERM received
+2026-03-18T11:36:23.733+08:00 [gateway] received SIGTERM; shutting down
+2026-03-18T11:36:23.765+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-18T12:00:27.073+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-18T12:00:27.195+08:00 [heartbeat] started
+2026-03-18T12:00:27.204+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-18T12:00:27.224+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-18T12:00:27.230+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 45706)
+2026-03-18T12:00:27.255+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-18.log
+2026-03-18T12:00:27.270+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T12:00:27.288+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T12:00:27.389+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-18T12:00:28.570+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T12:00:28.597+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T12:00:28.605+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T12:00:45.060+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=126bbf4a…6103 id=37651476…720a
+2026-03-18T12:00:45.073+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=126bbf4a…6103 id=ec56b021…3e59
+2026-03-18T12:00:45.082+08:00 [ws] ⇄ res ✗ config.get 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=126bbf4a…6103 id=abff6d9c…4bb3
+2026-03-18T12:01:18.466+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T12:01:18.470+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T12:05:31.924+08:00 [gateway] signal SIGTERM received
+2026-03-18T12:05:31.933+08:00 [gateway] received SIGTERM; shutting down
+2026-03-18T12:05:32.271+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-18T12:05:59.226+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-18T12:05:59.535+08:00 [heartbeat] started
+2026-03-18T12:05:59.554+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-18T12:05:59.570+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-18T12:05:59.579+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 49447)
+2026-03-18T12:05:59.592+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-18.log
+2026-03-18T12:05:59.607+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T12:05:59.622+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T12:05:59.759+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-18T12:06:00.936+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T12:06:01.006+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T12:06:01.024+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T12:08:43.335+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=032c1a11…ae98 id=029cf957…0581
+2026-03-18T12:08:43.352+08:00 [ws] ⇄ res ✗ system-presence 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=032c1a11…ae98 id=e8786187…0d66
+2026-03-18T12:08:43.358+08:00 [ws] ⇄ res ✗ config.get 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=032c1a11…ae98 id=7af32dd1…8136
+2026-03-18T12:09:08.757+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=2e3fd4b8…9313 id=f341adec…c2d9
+2026-03-18T12:09:08.773+08:00 [ws] ⇄ res ✗ system-presence 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=2e3fd4b8…9313 id=1af88119…a227
+2026-03-18T12:09:08.778+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=2e3fd4b8…9313 id=333b0b26…7a56
+2026-03-18T12:09:32.263+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=12699a29…7b1b id=049a6381…880e
+2026-03-18T12:09:32.285+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=12699a29…7b1b id=ddf4a538…5b68
+2026-03-18T12:09:32.296+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=12699a29…7b1b id=2b0162e8…7082
+2026-03-18T12:10:00.362+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=3e2ab8a3…1376 id=c3b0bfe1…b08b
+2026-03-18T12:10:00.387+08:00 [ws] ⇄ res ✗ system-presence 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=3e2ab8a3…1376 id=b47ad47c…1e58
+2026-03-18T12:10:00.398+08:00 [ws] ⇄ res ✗ config.get 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=3e2ab8a3…1376 id=4a74ba86…b87a
+2026-03-18T12:10:30.798+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=e6787728…001d id=c13c7c0e…ab7b
+2026-03-18T12:10:30.813+08:00 [ws] ⇄ res ✗ system-presence 2ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=e6787728…001d id=1cf8950e…d54a
+2026-03-18T12:10:30.825+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=e6787728…001d id=9e260a3d…641f
+2026-03-18T12:10:34.401+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=65d6dc5c…0a22 id=f7ddd405…61f4
+2026-03-18T12:10:34.408+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=65d6dc5c…0a22 id=ae462ea3…8925
+2026-03-18T12:10:34.430+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=65d6dc5c…0a22 id=cd6a0ff0…5f8e
+2026-03-18T12:11:24.438+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=affff8ae…6b95 id=422ba93f…a551
+2026-03-18T12:11:24.464+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=affff8ae…6b95 id=cc48ab28…c609
+2026-03-18T12:11:24.470+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=affff8ae…6b95 id=20013f00…99b0
+2026-03-18T12:19:10.699+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=622bce51…3cde id=2cf7a10c…1e09
+2026-03-18T12:19:10.713+08:00 [ws] ⇄ res ✗ system-presence 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=622bce51…3cde id=4f09ea38…ce0a
+2026-03-18T12:19:10.722+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=622bce51…3cde id=03b5a259…96f1
+2026-03-18T12:32:22.700+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=efa64b5f…70a8 id=7d6fd080…3fe2
+2026-03-18T12:32:22.718+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=efa64b5f…70a8 id=efe7dadb…1ab6
+2026-03-18T12:32:22.730+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=efa64b5f…70a8 id=b34f6989…f0a5
+2026-03-18T13:00:40.896+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T13:00:40.898+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T16:16:37.887+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T16:16:37.909+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T19:50:55.697+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=9cc9e920…fd2a id=256ab984…87a8
+2026-03-18T19:50:55.705+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=9cc9e920…fd2a id=cf5282b7…e1cd
+2026-03-18T19:50:55.722+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=9cc9e920…fd2a id=3ca551b4…838e
+2026-03-18T19:52:03.858+08:00 [gateway] signal SIGTERM received
+2026-03-18T19:52:03.864+08:00 [gateway] received SIGTERM; shutting down
+2026-03-18T19:52:03.895+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-18T19:52:23.113+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-18T19:52:23.281+08:00 [heartbeat] started
+2026-03-18T19:52:23.311+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-18T19:52:23.335+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-18T19:52:23.350+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 18260)
+2026-03-18T19:52:23.363+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-18.log
+2026-03-18T19:52:23.394+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T19:52:23.404+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T19:52:23.509+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-18T19:52:24.834+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-18T19:52:24.860+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T19:52:24.918+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-18T19:53:04.055+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=fad47942…47e5 id=d56a5738…19c4
+2026-03-18T19:53:04.068+08:00 [ws] ⇄ res ✗ system-presence 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=fad47942…47e5 id=a12e47f3…bc0d
+2026-03-18T19:53:04.088+08:00 [ws] ⇄ res ✗ config.get 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=fad47942…47e5 id=aa668f1f…45e9
+2026-03-18T20:00:53.216+08:00 [ws] ⇄ res ✗ status 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=31a31709…6b97 id=c12bed3f…7fe2
+2026-03-18T20:00:53.235+08:00 [ws] ⇄ res ✗ system-presence 4ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=31a31709…6b97 id=f26f6e59…1b92
+2026-03-18T20:00:53.278+08:00 [ws] ⇄ res ✗ config.get 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=31a31709…6b97 id=b9d9bdd0…5692
+2026-03-18T20:04:13.242+08:00 [ws] ⇄ res ✗ status 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=5674b917…334c id=f82aec0d…5d34
+2026-03-18T20:04:13.294+08:00 [ws] ⇄ res ✗ system-presence 0ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=5674b917…334c id=d7db4804…cfbd
+2026-03-18T20:04:13.309+08:00 [ws] ⇄ res ✗ config.get 1ms errorCode=INVALID_REQUEST errorMessage=missing scope: operator.read conn=5674b917…334c id=8886e615…4395
+2026-03-18T21:31:07.712+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-18T21:31:07.716+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-19T00:13:52.971+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-19T00:13:52.983+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-19T01:05:52.664+08:00 [telegram] sendMessage ok chat=7043182738 message=398
+2026-03-19T01:47:05.360+08:00 [reload] config change detected; evaluating reload (agents.defaults.compaction, skills.entries.glmocr, skills.entries.glmocr-table, skills.entries.glmocr-formula, skills.entries.glmocr-handwriting, skills.entries.glmocr-sdk)
+2026-03-19T01:47:05.536+08:00 [reload] config change applied (dynamic reads: agents.defaults.compaction, skills.entries.glmocr, skills.entries.glmocr-table, skills.entries.glmocr-formula, skills.entries.glmocr-handwriting, skills.entries.glmocr-sdk)
+2026-03-19T01:56:20.398+08:00 [reload] config change detected; evaluating reload (skills.entries.glmocr.env.ZHIPU_API_KEY)
+2026-03-19T01:56:20.410+08:00 [reload] config change applied (dynamic reads: skills.entries.glmocr.env.ZHIPU_API_KEY)
+2026-03-19T09:01:25.851+08:00 [browser/service] Browser control service ready (profiles=3)
+2026-03-19T09:01:28.893+08:00 [browser/chrome] 🦞 openclaw browser started (chrome) profile "openclaw" on 127.0.0.1:18800 (pid 31696)
+2026-03-19T09:02:49.611+08:00 [browser/chrome] 🦞 openclaw browser started (chrome) profile "openclaw" on 127.0.0.1:18800 (pid 32085)
+2026-03-19T12:57:48.738+08:00 [gateway] signal SIGTERM received
+2026-03-19T12:57:48.748+08:00 [gateway] received SIGTERM; shutting down
+2026-03-19T12:57:48.817+08:00 [gateway] signal SIGTERM received
+2026-03-19T12:57:48.821+08:00 [gateway] received SIGTERM during shutdown; ignoring

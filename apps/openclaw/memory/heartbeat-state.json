@@ -3,5 +3,8 @@
     "serviceHealth": 1772788800,
     "profitBrief": null,
     "alerts": null
+  },
+  "healFailures": {
+    "g4f": 2
   }
 }

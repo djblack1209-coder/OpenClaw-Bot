@@ -46,21 +46,39 @@ def print_banner():
 
 def login() -> Optional[dict]:
     print("[1/5] 账号验证")
-    username = input("  用户名: ").strip()
-    password = getpass("  密码: ").strip()
-    if not username or not password:
-        print("  ❌ 用户名和密码不能为空")
-        return None
+    print("  [1] License Key 激活（推荐）")
+    print("  [2] 用户名 + 密码登录")
+    auth_mode = input("  选择方式 [1]: ").strip() or "1"
 
     mid = machine_id()
-    try:
-        resp = requests.post(f"{SERVER_URL}/api/deploy/auth", json={
-            "username": username, "password": password, "machine_id": mid,
-        }, timeout=15)
-        result = resp.json()
-    except Exception as e:
-        print(f"  ❌ 连接服务器失败: {e}")
-        return None
+
+    if auth_mode == "1":
+        license_key = input("  License Key: ").strip()
+        if not license_key:
+            print("  ❌ License Key 不能为空")
+            return None
+        try:
+            resp = requests.post(f"{SERVER_URL}/api/deploy/auth", json={
+                "license_key": license_key, "machine_id": mid,
+            }, timeout=15)
+            result = resp.json()
+        except Exception as e:
+            print(f"  ❌ 连接服务器失败: {e}")
+            return None
+    else:
+        username = input("  用户名: ").strip()
+        password = getpass("  密码: ").strip()
+        if not username or not password:
+            print("  ❌ 用户名和密码不能为空")
+            return None
+        try:
+            resp = requests.post(f"{SERVER_URL}/api/deploy/auth", json={
+                "username": username, "password": password, "machine_id": mid,
+            }, timeout=15)
+            result = resp.json()
+        except Exception as e:
+            print(f"  ❌ 连接服务器失败: {e}")
+            return None
 
     if not result.get("ok"):
         print(f"  ❌ {result.get('message', '验证失败')}")
@@ -70,7 +88,7 @@ def login() -> Optional[dict]:
     # 保存 license 到本地
     os.makedirs(OPENCLAW_HOME, exist_ok=True)
     with open(LICENSE_PATH, "w") as f:
-        json.dump({"key": result["license_key"], "machine_id": mid, "user": username}, f)
+        json.dump({"key": result["license_key"], "machine_id": mid}, f)
     return result
 
 

@@ -27,7 +27,7 @@ interface SettingsProps {
 
 export function Settings({ onEnvironmentChange }: SettingsProps) {
   const [identity, setIdentity] = useState({
-    botName: 'OpenClaw Bot',
+    botName: 'OpenClaw',
     userName: 'Boss',
     timezone: 'Asia/Shanghai',
   });
@@ -171,7 +171,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                 onChange={(e) =>
                   setIdentity({ ...identity, botName: e.target.value })
                 }
-                placeholder="OpenClaw Bot"
+                placeholder="OpenClaw"
                 className="input-base"
               />
             </div>

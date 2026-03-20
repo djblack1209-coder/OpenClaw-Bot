@@ -140,22 +140,30 @@ export function ControlCenter() {
     }
 
     try {
-      const [serviceStatus, configValues, endpointStatus, matrix, usage] = await Promise.all([
+      // 核心状态：必须成功才能渲染
+      const [serviceStatus, configValues, endpointStatus, matrix] = await Promise.all([
         api.getManagedServicesStatus(),
         api.getClawbotRuntimeConfig(),
         api.getManagedEndpointsStatus(),
         api.getClawbotBotMatrix(),
-        api.getOpenclawUsageSnapshot(),
       ]);
       setServices(serviceStatus);
       setRuntimeConfig({ ...DEFAULT_RUNTIME_CONFIG, ...configValues });
       setEndpoints(endpointStatus);
       setBotMatrix(matrix);
-      setUsageSnapshot({ providers: usage.providers || [], updatedAt: usage.updatedAt });
       if (!serviceStatus.some((service) => service.label === selectedLogLabel)) {
         const fallback = serviceStatus.find((service) => service.label === DEFAULT_LOG_LABEL)?.label;
         setSelectedLogLabel(fallback || serviceStatus[0]?.label || DEFAULT_LOG_LABEL);
       }
+
+      // 非关键数据：失败不阻塞 UI
+      api.getOpenclawUsageSnapshot()
+        .then((usage) => {
+          setUsageSnapshot({ providers: usage.providers || [], updatedAt: usage.updatedAt });
+        })
+        .catch(() => {
+          setUsageSnapshot({ providers: [] });
+        });
     } catch (error) {
       setNotice({ type: 'error', message: `刷新失败: ${String(error)}` });
     } finally {

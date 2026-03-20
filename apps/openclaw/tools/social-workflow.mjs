@@ -171,10 +171,11 @@ if (command === 'hotspot') runNode('tools/social-hotspot-monitor.mjs', argv.slic
 if (command === 'interact') runNode('tools/social-comment-engine.mjs', ['reply', ...argv.slice(1)]);
 if (command === 'scout') runNode('tools/social-comment-engine.mjs', ['scout', ...argv.slice(1)]);
 if (command === 'full-cycle') {
-  // 完整发布周期：预检 -> 发布 -> 启动互动调度
+  // 完整发布周期：预检 -> 浏览器自动发布 -> 启动互动调度
   const args = argv.slice(1);
   const runId = getFlag('--run-id', args, `social-${Date.now()}`);
   const platform = getFlag('--platform', args, 'xhs');
+  const useBrowser = hasFlag('--auto-browser', args);
 
   // Step 1: preflight
   const preflightCode = cmdPreflightLog(args);
@@ -183,8 +184,38 @@ if (command === 'full-cycle') {
     process.exit(preflightCode);
   }
 
-  // Step 2: publish (mark as submitted, needs manual browser execution)
-  const publishCode = cmdPublish([...args, '--submitted', '--manual-review']);
+  // Step 2: publish
+  let publishCode;
+  if (useBrowser) {
+    // 使用 Playwright 自动发布：先 prepare-run，再 execute
+    const prepRes = runCapture('tools/social-browser-adapter.mjs', ['prepare-run']);
+    if (prepRes.status !== 0) {
+      console.error('prepare-run failed:', prepRes.stderr);
+      process.exit(prepRes.status ?? 2);
+    }
+    const execRes = runCapture('tools/social-browser-adapter.mjs', ['execute']);
+    if (execRes.stdout) process.stdout.write(execRes.stdout);
+    if (execRes.stderr) process.stderr.write(execRes.stderr);
+    publishCode = execRes.status ?? 1;
+
+    // 如果浏览器执行成功，尝试提取 postUrl 并记录
+    if (publishCode === 0) {
+      try {
+        const execResult = JSON.parse(execRes.stdout || '{}');
+        if (execResult.postUrl) {
+          logState({
+            runId, platform, topic: getFlag('--topic', args, '') || null,
+            state: 'published', status: 'ok',
+            evidence: 'browser_auto', url: execResult.postUrl,
+            operator: 'openclaw',
+          });
+        }
+      } catch {}
+    }
+  } else {
+    // 回退：标记为需要手动浏览器执行
+    publishCode = cmdPublish([...args, '--submitted', '--manual-review']);
+  }
   
   // Step 3: generate interaction schedule
   const scheduleRes = runCapture('tools/social-comment-engine.mjs', ['schedule', '--platform', platform, '--post-id', runId]);

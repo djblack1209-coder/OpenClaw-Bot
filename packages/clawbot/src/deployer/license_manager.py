@@ -1,10 +1,13 @@
-"""License 管理 — 账号验证 + 防复制 + 设备绑定"""
+"""License 管理 — 账号验证 + 防复制 + 设备绑定 + 离线验证"""
+import base64
 import hashlib
+import hmac
 import json
 import os
 import platform
 import secrets
 import sqlite3
+import struct
 import time
 import uuid
 import logging
@@ -15,11 +18,58 @@ logger = logging.getLogger(__name__)
 DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 DB_PATH = os.path.join(DB_DIR, "deploy_licenses.db")
 
+# 离线验证密钥（硬编码在安装器和服务端，不可泄露）
+_OFFLINE_SECRET = b"OpenClaw2026-xianyu-license-hmac-secret-key"
+
 
 def _machine_fingerprint() -> str:
     """生成设备指纹：MAC + hostname + platform"""
     raw = f"{uuid.getnode()}:{platform.node()}:{platform.system()}:{platform.machine()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def generate_offline_key(days: int = 365) -> str:
+    """生成离线License Key（无需服务器验证）
+
+    格式: OC-<随机8字符>-<过期时间戳hex>-<HMAC签名前8字符>
+    例: OC-A1B2C3D4-67890ABC-F1E2D3C4
+
+    安装器用 verify_offline_key() 本地验证，不联网。
+    """
+    rand_part = secrets.token_hex(4).upper()
+    expire_ts = int(time.time()) + days * 86400
+    expire_hex = format(expire_ts, "08X")
+    payload = f"{rand_part}-{expire_hex}"
+    sig = hmac.new(_OFFLINE_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:8].upper()
+    return f"OC-{rand_part}-{expire_hex}-{sig}"
+
+
+def verify_offline_key(key: str) -> Dict:
+    """离线验证License Key（买家端调用，不联网）
+
+    返回: {"ok": bool, "message": str, "expires": str}
+    """
+    try:
+        parts = key.strip().split("-")
+        if len(parts) != 4 or parts[0] != "OC":
+            return {"ok": False, "message": "License Key 格式无效"}
+
+        _, rand_part, expire_hex, sig = parts
+        payload = f"{rand_part}-{expire_hex}"
+        expected_sig = hmac.new(_OFFLINE_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:8].upper()
+
+        if not hmac.compare_digest(sig.upper(), expected_sig):
+            return {"ok": False, "message": "License Key 签名无效（可能是伪造的）"}
+
+        expire_ts = int(expire_hex, 16)
+        if time.time() > expire_ts:
+            expire_str = time.strftime("%Y-%m-%d", time.localtime(expire_ts))
+            return {"ok": False, "message": f"License Key 已过期（{expire_str}）"}
+
+        expire_str = time.strftime("%Y-%m-%d", time.localtime(expire_ts))
+        return {"ok": True, "message": "验证通过", "expires": expire_str}
+    except Exception as e:
+        return {"ok": False, "message": f"验证异常: {e}"}
 
 
 class LicenseManager:
@@ -62,7 +112,7 @@ class LicenseManager:
     # ---- 管理端 ----
     def create_license(self, username: str, password: str, xianyu_order_id: str = "",
                        max_devices: int = 1, days: int = 365, notes: str = "") -> str:
-        key = f"OC-{secrets.token_hex(4).upper()}-{secrets.token_hex(4).upper()}"
+        key = generate_offline_key(days=days)
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
         expires = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + days * 86400))
         with self._conn() as c:
@@ -131,3 +181,45 @@ class LicenseManager:
         if not row or row[1] != "active":
             return False
         return machine_id in json.loads(row[0])
+
+    def verify_and_bind(self, license_key: str, machine_id: str = "", ip_addr: str = "") -> Dict:
+        """License Key-only 验证 + 设备绑定"""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT username,status,max_devices,bound_devices,expires_at FROM licenses WHERE license_key=?",
+                (license_key,),
+            ).fetchone()
+
+        if not row:
+            return {"ok": False, "message": "License Key 无效"}
+
+        username, status, max_dev, bound_json, expires = row
+        if status != "active":
+            return {"ok": False, "message": f"License 状态异常: {status}"}
+        if expires and expires < time.strftime("%Y-%m-%d %H:%M:%S"):
+            return {"ok": False, "message": "License 已过期"}
+
+        bound = json.loads(bound_json)
+        if machine_id and machine_id not in bound:
+            if len(bound) >= max_dev:
+                return {"ok": False, "message": f"设备数已达上限({max_dev})，请联系卖家解绑"}
+            bound.append(machine_id)
+            with self._conn() as c:
+                c.execute("UPDATE licenses SET bound_devices=? WHERE license_key=?",
+                          (json.dumps(bound), license_key))
+
+        with self._conn() as c:
+            c.execute("UPDATE licenses SET last_used=datetime('now'), deploy_count=deploy_count+1 WHERE license_key=?", (license_key,))
+            c.execute("INSERT INTO deploy_logs(license_key,machine_id,action,ip_addr,os_info) VALUES(?,?,?,?,?)",
+                      (license_key, machine_id, "key_auth", ip_addr, f"{platform.system()} {platform.release()}"))
+
+        return {"ok": True, "license_key": license_key, "message": "验证通过"}
+
+    def find_by_buyer(self, buyer_id: str) -> Optional[str]:
+        """通过买家ID查找活跃的 License Key"""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT license_key FROM licenses WHERE xianyu_order_id LIKE ? AND status='active' ORDER BY id DESC LIMIT 1",
+                (f"%{buyer_id}%",),
+            ).fetchone()
+        return row[0] if row else None

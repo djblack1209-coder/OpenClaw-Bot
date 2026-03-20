@@ -313,7 +313,8 @@ async def stream_kiro_to_anthropic(
                 # Parse arguments if string
                 if isinstance(tool_input, str):
                     try:
-                        tool_input = json.loads(tool_input)
+                        from json_repair import loads as jloads
+                        tool_input = jloads(tool_input)
                     except json.JSONDecodeError:
                         tool_input = {}
                 
@@ -387,7 +388,8 @@ async def stream_kiro_to_anthropic(
                 
                 if isinstance(tool_input, str):
                     try:
-                        tool_input = json.loads(tool_input)
+                        from json_repair import loads as jloads
+                        tool_input = jloads(tool_input)
                     except json.JSONDecodeError:
                         tool_input = {}
                 
@@ -603,7 +605,8 @@ async def collect_anthropic_response(
         
         if isinstance(tool_input, str):
             try:
-                tool_input = json.loads(tool_input)
+                from json_repair import loads as jloads
+                tool_input = jloads(tool_input)
             except json.JSONDecodeError:
                 tool_input = {}
         

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenClaw Bot",
+  "productName": "OpenClaw",
   "version": "0.0.7",
   "identifier": "com.openclaw.manager",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "OpenClaw Bot",
+        "title": "OpenClaw",
         "label": "main",
         "width": 1200,
         "height": 800,
@@ -42,8 +42,8 @@
       "icons/icon.ico"
     ],
     "category": "Utility",
-    "shortDescription": "OpenClaw Bot AI 助手管理工具",
-    "longDescription": "OpenClaw Bot 是一个跨平台的高性能管理工具，用于配置和管理 OpenClaw 与 ClawBot 服务。",
+    "shortDescription": "OpenClaw AI 助手管理工具",
+    "longDescription": "OpenClaw 是一个跨平台的高性能管理工具，用于配置和管理 OpenClaw 与 ClawBot 服务。",
     "copyright": "Copyright © 2024 OpenClaw Team",
     "macOS": {
       "minimumSystemVersion": "10.15",

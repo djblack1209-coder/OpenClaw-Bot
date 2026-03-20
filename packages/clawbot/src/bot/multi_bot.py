@@ -21,6 +21,7 @@ from src.bot.cmd_trading_mixin import TradingCommandsMixin
 from src.bot.cmd_collab_mixin import CollabCommandsMixin
 from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
 from src.bot.message_mixin import MessageHandlerMixin
+from src.error_handler import get_error_handler
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +59,8 @@ class MultiBot(
         self.max_messages = 30
         self.app = None
 
-        # HTTP 客户端超时
-        if self.api_type == "kiro":
-            api_timeout = 120.0
-        elif self.api_type == "g4f":
+        # HTTP 客户端超时（LiteLLM 可能触发 Fallback，给足够时间）
+        if self.api_type in ("kiro", "g4f", "free_pool", "free_first"):
             api_timeout = 120.0
         else:
             api_timeout = 60.0
@@ -79,7 +78,7 @@ class MultiBot(
             name=self.name,
             username=self.username,
             keywords=config.get("keywords", []),
-            domains=profile.get("skills", []),
+            domains=profile.get("domains", []),
         ))
 
         # 注册到健康检查
@@ -89,6 +88,34 @@ class MultiBot(
     def system_prompt(self) -> str:
         memory_context = shared_memory.get_context_for_prompt(max_tokens=500)
         return self._base_system_prompt + memory_context
+
+    def _get_chat_mode_prompt(self, user_id: int) -> str:
+        """根据用户 chat_mode 偏好返回额外的系统提示 — 搬运自 father-bot 的 chat_modes"""
+        from src.bot.globals import user_prefs
+        mode = user_prefs.get(user_id, "chat_mode", "assistant")
+        if mode == "assistant":
+            return ""  # 默认模式，不加额外提示
+        mode_prompts = {
+            "trader": (
+                "\n\n[交易员模式] 你现在是一个专业的短线交易员。"
+                "回答时优先关注：入场/出场时机、风险回报比、仓位管理、技术指标信号。"
+                "用简洁的交易术语，给出明确的操作建议（买入/卖出/观望），附带具体价位。"
+                "不要废话，直接给结论。"
+            ),
+            "analyst": (
+                "\n\n[分析师模式] 你现在是一个深度研究分析师。"
+                "回答时注重：数据支撑、多角度分析、风险因素、长期趋势。"
+                "引用具体数据和指标，给出结构化的分析框架。"
+                "保持客观中立，呈现多种可能性。"
+            ),
+            "creative": (
+                "\n\n[创意模式] 你现在是一个社媒内容创作者。"
+                "回答时注重：吸引力、传播性、情绪共鸣、故事性。"
+                "用口语化的表达，像跟朋友聊天。"
+                "给出多个创意方向，每个都要有钩子。"
+            ),
+        }
+        return mode_prompts.get(mode, "")
 
     def _is_authorized(self, user_id: int) -> bool:
         if not ALLOWED_USER_IDS:
@@ -134,6 +161,11 @@ class MultiBot(
             .read_timeout(30)
             .build()
         )
+
+        # 全局错误处理器 — 接入 error_handler.py
+        error_handler = get_error_handler()
+        if error_handler:
+            self.app.add_error_handler(error_handler.telegram_error_handler)
 
         # 注册命令
         self.app.add_handler(CommandHandler("start", self.cmd_start))
@@ -203,13 +235,41 @@ class MultiBot(
         self.app.add_handler(CommandHandler("xianyu", self.cmd_xianyu))
         self.app.add_handler(CommandHandler("social_calendar", self.cmd_social_calendar))
         self.app.add_handler(CommandHandler("social_report", self.cmd_social_report))
+        self.app.add_handler(CommandHandler("model", self.cmd_model))
+        self.app.add_handler(CommandHandler("pool", self.cmd_pool))
+        self.app.add_handler(CommandHandler("memory", self.cmd_memory))
+        self.app.add_handler(CommandHandler("settings", self.cmd_settings))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_trade_callback, pattern=r"^itrade"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_help_callback, pattern=r"^help:"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_help_callback, pattern=r"^onboard:"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_feedback_callback, pattern=r"^fb\|"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_memory_callback, pattern=r"^mem_"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_settings_callback, pattern=r"^settings\|"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_notify_action_callback, pattern=r"^cmd:"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_social_confirm_callback, pattern=r"^social_confirm:"))
+        self.app.add_handler(CallbackQueryHandler(
+            lambda u, c: u.callback_query.answer(), pattern=r"^noop$"))
 
         self.app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND, self.handle_message))
         self.app.add_handler(MessageHandler(
             filters.PHOTO, self.handle_photo))
+        self.app.add_handler(MessageHandler(
+            filters.VOICE | filters.AUDIO, self.handle_voice))
+        self.app.add_handler(MessageHandler(
+            filters.Document.PDF | filters.Document.IMAGE, self.handle_document_ocr))
+
+        # Inline Query — @bot 搜股票/记忆（搬运自 freqtrade + yym68686 模式）
+        from telegram.ext import InlineQueryHandler
+        self.app.add_handler(InlineQueryHandler(self.handle_inline_query))
 
         await self.app.initialize()
         try:

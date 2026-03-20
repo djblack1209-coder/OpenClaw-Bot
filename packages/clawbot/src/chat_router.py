@@ -9,6 +9,7 @@ import time
 import logging
 import asyncio
 import os
+import threading
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Callable, Awaitable, Any
 from dataclasses import dataclass, field
@@ -17,10 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    from src.utils import env_bool
+    return env_bool(name, default)
 
 # 链式讨论触发词（统一定义，避免重复）
 CHAIN_DISCUSS_TRIGGERS = [
@@ -120,7 +119,7 @@ LANE_ROUTE_RULES = [
     ("creative", "claude_haiku", ["[creative]", "#creative", "#文案", "#创意"]),
 ]
 
-# 兜底轮换列表（排除付费 Opus，其余 5 个 bot 轮换）
+# 兜底轮换列表（排除付费 Opus 和 Free-LLM，其余 5 个 bot 轮换）
 _FALLBACK_ROTATION = ["qwen235b", "gptoss", "deepseek_v3", "claude_haiku", "claude_sonnet"]
 
 # 意图检测关键词
@@ -164,7 +163,8 @@ class ChatRouter:
         # 防重复回复：记录最近已回复的消息
         self._recent_responses: Dict[int, Dict] = {}  # msg_id -> {bot_id, time}
         self._response_window = 5.0  # 秒，同一消息的回复窗口
-        self._response_lock = asyncio.Lock()  # 保护 _recent_responses 并发访问
+        self._response_lock = asyncio.Lock()  # 保护 _recent_responses 异步并发访问
+        self._response_lock_sync = threading.Lock()  # 保护 sync should_respond 的竞态
         # 已注册的 bot user_id 集合，用于过滤 bot 消息
         self._bot_user_ids: set = set()
         # 讨论模式：chat_id -> {topic, rounds_left, participants, round_current, history, type}
@@ -758,25 +758,27 @@ class ChatRouter:
         return False, "无匹配"
 
     def _record_response(self, message_id: Optional[int], bot_id: str):
-        """记录回复"""
+        """记录回复（sync 版本需要 threading.Lock 保护）"""
         if message_id is None:
             return
-        self._recent_responses[message_id] = {
-            "bot_id": bot_id,
-            "time": time.time(),
-        }
-        # 清理过期记录
-        self._cleanup_old_responses()
+        with self._response_lock_sync:
+            self._recent_responses[message_id] = {
+                "bot_id": bot_id,
+                "time": time.time(),
+            }
+            # 清理过期记录
+            self._cleanup_old_responses()
 
     def _already_responded(self, message_id: Optional[int], current_bot_id: str) -> bool:
-        """检查是否已有其他 bot 回复了此消息"""
+        """检查是否已有其他 bot 回复了此消息（sync 版本需要 threading.Lock 保护）"""
         if message_id is None:
             return False
-        record = self._recent_responses.get(message_id)
-        if record and record["bot_id"] != current_bot_id:
-            if time.time() - record["time"] < self._response_window:
-                return True
-        return False
+        with self._response_lock_sync:
+            record = self._recent_responses.get(message_id)
+            if record and record["bot_id"] != current_bot_id:
+                if time.time() - record["time"] < self._response_window:
+                    return True
+            return False
 
     def _cleanup_old_responses(self):
         """清理过期的回复记录"""
@@ -1207,3 +1209,203 @@ class CollabOrchestrator:
         ]
         for tid in expired:
             del self.active_tasks[tid]
+
+
+# ============ 对标 LiteLLM: 流式传输支持 ============
+
+class StreamingResponse:
+    """流式响应包装器 — 支持 SSE 风格的逐 chunk 传输
+    
+    对标 LiteLLM 的 streaming 支持，让 Telegram bot 可以
+    逐步更新消息而不是等待完整响应。
+    """
+
+    def __init__(self):
+        self._chunks: List[str] = []
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._done = False
+        self._full_text = ""
+        self._start_time = time.time()
+
+    async def add_chunk(self, text: str):
+        """添加一个文本 chunk"""
+        self._chunks.append(text)
+        self._full_text += text
+        await self._queue.put(text)
+
+    async def finish(self):
+        """标记流结束"""
+        self._done = True
+        await self._queue.put(None)
+
+    async def __aiter__(self):
+        """异步迭代 chunks"""
+        while True:
+            chunk = await self._queue.get()
+            if chunk is None:
+                break
+            yield chunk
+
+    @property
+    def full_text(self) -> str:
+        return self._full_text
+
+    @property
+    def elapsed_ms(self) -> float:
+        return (time.time() - self._start_time) * 1000
+
+    @property
+    def chunk_count(self) -> int:
+        return len(self._chunks)
+
+
+async def stream_llm_to_telegram(
+    llm_stream_func: Callable,
+    send_func: Callable,
+    chat_id: int,
+    edit_interval: float = 1.0,
+    min_chars_per_edit: int = 50,
+):
+    """将 LLM 流式输出实时推送到 Telegram 消息
+    
+    Args:
+        llm_stream_func: async generator，yield 文本 chunks
+        send_func: async (chat_id, text) -> message_id，发送/编辑消息
+        chat_id: Telegram chat ID
+        edit_interval: 最小编辑间隔（秒），避免 Telegram rate limit
+        min_chars_per_edit: 每次编辑的最小新增字符数
+    """
+    full_text = ""
+    message_id = None
+    last_edit_time = 0
+    pending_chars = 0
+
+    try:
+        async for chunk in llm_stream_func():
+            full_text += chunk
+            pending_chars += len(chunk)
+            now = time.time()
+
+            should_edit = (
+                now - last_edit_time >= edit_interval
+                and pending_chars >= min_chars_per_edit
+            )
+
+            if message_id is None:
+                # 首次发送
+                if len(full_text) >= 10:
+                    message_id = await send_func(chat_id, full_text + " ▌")
+                    last_edit_time = now
+                    pending_chars = 0
+            elif should_edit:
+                try:
+                    await send_func(chat_id, full_text + " ▌", edit_message_id=message_id)
+                    last_edit_time = now
+                    pending_chars = 0
+                except Exception:
+                    pass  # Telegram edit 偶尔失败，忽略
+
+        # 最终更新（去掉光标）
+        if message_id and full_text:
+            try:
+                await send_func(chat_id, full_text, edit_message_id=message_id)
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error(f"[Streaming] 流式传输失败: {e}")
+        if full_text and message_id:
+            try:
+                await send_func(chat_id, full_text + "\n\n⚠️ 流式传输中断",
+                                edit_message_id=message_id)
+            except Exception:
+                pass
+
+    return full_text
+
+
+# ============ 优先级消息队列 ============
+
+class MessagePriority(Enum):
+    """消息优先级"""
+    CRITICAL = 0    # 系统告警、风控通知
+    HIGH = 1        # 直接 @bot、私聊
+    NORMAL = 2      # 群聊普通消息
+    LOW = 3         # 自动化任务、定时消息
+    BACKGROUND = 4  # 后台分析、日志
+
+
+@dataclass(order=True)
+class PrioritizedMessage:
+    """带优先级的消息"""
+    priority: int
+    timestamp: float = field(compare=True)
+    chat_id: int = field(compare=False)
+    user_id: int = field(compare=False)
+    text: str = field(compare=False)
+    bot_id: str = field(compare=False, default="")
+    metadata: Dict[str, Any] = field(compare=False, default_factory=dict)
+
+
+class PriorityMessageQueue:
+    """优先级消息队列 — 确保高优先级消息优先处理
+    
+    解决问题：当多个群同时发消息时，确保 @bot 的直接请求
+    和风控告警优先于普通群聊消息被处理。
+    """
+
+    def __init__(self, max_size: int = 1000):
+        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue(maxsize=max_size)
+        self._stats = {
+            "total_enqueued": 0,
+            "total_processed": 0,
+            "by_priority": {p.name: 0 for p in MessagePriority},
+        }
+
+    async def enqueue(self, msg: PrioritizedMessage):
+        """入队"""
+        await self._queue.put(msg)
+        self._stats["total_enqueued"] += 1
+        for p in MessagePriority:
+            if p.value == msg.priority:
+                self._stats["by_priority"][p.name] += 1
+                break
+
+    async def dequeue(self) -> PrioritizedMessage:
+        """出队（阻塞等待）"""
+        msg = await self._queue.get()
+        self._stats["total_processed"] += 1
+        return msg
+
+    def classify_priority(self, text: str, chat_id: int, user_id: int,
+                          is_private: bool = False, is_mentioned: bool = False) -> MessagePriority:
+        """自动分类消息优先级"""
+        text_lower = text.lower()
+
+        # 风控/告警关键词
+        if any(kw in text_lower for kw in ["止损", "爆仓", "风控", "紧急", "urgent", "alert"]):
+            return MessagePriority.CRITICAL
+
+        # 私聊或直接 @
+        if is_private or is_mentioned:
+            return MessagePriority.HIGH
+
+        # 命令
+        if text.startswith("/"):
+            return MessagePriority.HIGH
+
+        # 链式讨论触发
+        if any(trigger in text_lower for trigger in CHAIN_DISCUSS_TRIGGERS[:5]):
+            return MessagePriority.HIGH
+
+        return MessagePriority.NORMAL
+
+    @property
+    def pending(self) -> int:
+        return self._queue.qsize()
+
+    def get_stats(self) -> Dict[str, Any]:
+        return {
+            **self._stats,
+            "pending": self.pending,
+        }

@@ -59,6 +59,20 @@ def main():
 
     live = XianyuLive(cookies)
 
+    # 启动 Web 管理面板 (后台线程)
+    admin_port = int(os.getenv("XIANYU_ADMIN_PORT", "18800"))
+    try:
+        from src.xianyu.xianyu_admin import start_admin_server
+        start_admin_server(
+            ctx_manager=live.ctx,
+            reply_bot=live.bot,
+            live_instance=live,
+            port=admin_port,
+        )
+        logger.info(f"闲鱼管理面板: http://localhost:{admin_port}")
+    except Exception as e:
+        logger.warning(f"管理面板启动失败 (非致命): {e}")
+
     # SIGUSR1 热更新 Cookie：kill -USR1 <pid>
     def _reload_cookies(signum, frame):
         logger.info("收到 SIGUSR1，重新加载 Cookie...")

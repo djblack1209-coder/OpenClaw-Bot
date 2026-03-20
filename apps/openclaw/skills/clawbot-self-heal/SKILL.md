@@ -17,11 +17,17 @@ Use when service health degrades, endpoints fail, or message routing stalls.
 ## Recovery sequence
 
 1. Detect failing endpoint and impacted workflows.
-2. Map endpoint to LaunchAgent label.
-3. Restart only affected service first.
-4. Recheck endpoint health.
-5. If still failing, escalate to dependency service restart order.
-6. Capture concise incident note with root cause hypothesis.
+2. **Auto-recovery first**: Immediately restart affected service (map endpoint to LaunchAgent label).
+3. Recheck endpoint health after 10s.
+4. If still failing, escalate to dependency service restart order.
+5. Recheck again after 10s.
+6. Track failure state in `apps/openclaw/memory/heartbeat-state.json` under `healFailures: {endpoint: consecutiveCount}`.
+
+## Notification rules
+
+- **All healthy** → Silent (no message to Boss)
+- **Auto-recovery succeeded** → Silent
+- **Auto-recovery failed (consecutiveCount >= 2)** → Notify Boss with concise incident note + root cause hypothesis
 
 ## Stability rule
 

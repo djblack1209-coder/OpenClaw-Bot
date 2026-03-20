@@ -60,8 +60,8 @@ class DecisionValidator:
         get_quote_func: Callable,
         portfolio=None,
         journal=None,
-        price_tolerance_pct: float = 0.05,
-        max_price_age_seconds: int = 300,
+        price_tolerance_pct: float = 0.03,
+        max_price_age_seconds: int = 180,
         min_decision_interval_seconds: int = 120,
         extreme_volatility_pct: float = 0.08,
         min_confidence_threshold: float = 0.3,
@@ -71,8 +71,8 @@ class DecisionValidator:
             get_quote_func: 异步函数，接收 symbol 返回行情 dict（至少含 price 字段）
             portfolio: 组合管理实例（需提供 get_positions() 方法）
             journal: 交易日志实例（预留，暂未使用）
-            price_tolerance_pct: 入场价与实时价的最大允许偏差比例（默认 5%）
-            max_price_age_seconds: 行情数据最大有效期（秒，默认 300 即 5 分钟）
+            price_tolerance_pct: 入场价与实时价的最大允许偏差比例（默认 3%，收紧防滑点）
+            max_price_age_seconds: 行情数据最大有效期（秒，默认 180 即 3 分钟，收紧时效）
             min_decision_interval_seconds: 同一标的最小决策间隔（秒，默认 120）
             extreme_volatility_pct: 极端波动阈值（默认 8%，日内涨跌超此值拒绝交易）
             min_confidence_threshold: AI 最低置信度阈值（默认 0.3）

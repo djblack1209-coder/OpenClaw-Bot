@@ -32,10 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 def _env_bool(key: str, default: bool) -> bool:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    from src.utils import env_bool
+    return env_bool(key, default)
 
 
 def _env_int(key: str, default: int, minimum: int = 0) -> int:
@@ -161,22 +159,21 @@ class TradingPipeline:
         self._execution_log: List[Dict] = []
 
     async def _safe_notify(self, msg: str) -> None:
+        """Pipeline 通知 — 只推成交和风控相关"""
         if not self.notify:
             return
-        only_fills = os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"}
         text = str(msg or "")
+        if not text.strip():
+            return
+
+        only_fills = os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"}
         if only_fills:
-            allow_keywords = (
-                "交易待成交",
-                "交易已成交",
-                "成交回写完成",
-                "次日重挂已提交",
-                "卖出完成",
-                "止损触发",
-                "止盈触发",
-                "自动停机",
+            p0_keywords = (
+                "交易待成交", "交易已成交", "成交回写完成", "次日重挂已提交",
+                "卖出完成", "止损触发", "止盈触发", "追踪止损",
+                "自动停机", "熔断", "风控拒绝", "决策验证拒绝",
             )
-            if not any(keyword in text for keyword in allow_keywords):
+            if not any(kw in text for kw in p0_keywords):
                 logger.debug("[Pipeline] 已静默非成交通知: %s", text[:120])
                 return
         try:
@@ -492,7 +489,8 @@ def parse_trade_proposal(text: str, symbol: str = "") -> Optional[TradeProposal]
     json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', text, re.DOTALL)
     if json_match:
         try:
-            data = json.loads(json_match.group())
+            from json_repair import loads as jloads
+            data = jloads(json_match.group())
             return TradeProposal(
                 symbol=data.get("symbol", symbol).upper(),
                 action=data.get("action", "HOLD").upper(),
@@ -646,28 +644,48 @@ class AutoTrader:
         logger.info("[AutoTrader] 已停止")
 
     async def _safe_notify(self, msg: str) -> None:
-        """安全发送通知，异常不影响交易流程"""
-        if self.notify:
-            only_fills = os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"}
-            text = str(msg or "")
-            if only_fills:
-                allow_keywords = (
-                    "交易待成交",
-                    "交易已成交",
-                    "成交回写完成",
-                    "次日重挂已提交",
-                    "卖出完成",
-                    "止损触发",
-                    "止盈触发",
-                    "自动停机",
-                )
-                if not any(keyword in text for keyword in allow_keywords):
-                    logger.debug("[AutoTrader] 已静默非成交通知: %s", text[:120])
-                    return
-            try:
-                await self.notify(msg)
-            except Exception as e:
-                logger.warning("[AutoTrader] 通知发送失败: %s", e)
+        """安全发送通知 — 分级过滤，只推重要信息"""
+        if not self.notify:
+            return
+        text = str(msg or "")
+        if not text.strip():
+            return
+
+        # 重要性分级：P0 必推、P1 默认推、P2 静默
+        # P0: 成交、止损止盈、自动停机、风控拒绝 — 涉及真金白银
+        p0_keywords = (
+            "交易待成交", "交易已成交", "成交回写完成", "次日重挂已提交",
+            "卖出完成", "止损触发", "止盈触发", "追踪止损",
+            "自动停机", "熔断", "日亏损限额",
+            "风控拒绝", "决策验证拒绝",
+        )
+        # P1: 交易循环摘要、扫描结果、AI投票结论 — 有信息量
+        p1_keywords = (
+            "阶段 4/4", "阶段 3/4: AI团队投票完成",
+            "防空仓策略", "IBKR 未连接",
+            "今日已达交易上限",
+        )
+
+        is_p0 = any(kw in text for kw in p0_keywords)
+        is_p1 = any(kw in text for kw in p1_keywords)
+
+        only_fills = os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"}
+
+        if only_fills and not is_p0:
+            logger.debug("[AutoTrader] 静默非P0通知: %s", text[:120])
+            return
+
+        if not only_fills and not is_p0 and not is_p1:
+            # 非静默模式下，P2 通知也静默（扫描中...、获取数据中... 等过程信息）
+            quiet_mode = os.getenv("AUTO_TRADE_QUIET_MODE", "true").lower() in {"1", "true", "yes", "on"}
+            if quiet_mode:
+                logger.debug("[AutoTrader] 静默P2通知: %s", text[:120])
+                return
+
+        try:
+            await self.notify(text)
+        except Exception as e:
+            logger.warning("[AutoTrader] 通知发送失败: %s", e)
 
     def _get_capital(self) -> float:
         """Return configured total capital, defaulting to 2000."""
@@ -707,7 +725,7 @@ class AutoTrader:
         return max(0.0, max_exposure - current_exposure)
 
     def _build_account_context(self) -> str:
-        """构建账户上下文信息供AI投票参考"""
+        """构建账户上下文信息供AI投票参考 — 含近期交易结果（闭环学习）"""
         lines = ["[账户状态]"]
         capital = self._get_capital()
         lines.append("总资金: $%.0f" % capital)
@@ -727,6 +745,32 @@ class AutoTrader:
         if self.pipeline and self.pipeline.monitor:
             pos_count = len(self.pipeline.monitor.positions)
             lines.append("当前持仓: %d笔" % pos_count)
+
+        # 闭环学习：注入近期交易结果 + 教训
+        try:
+            from src.trading_journal import journal as tj
+            if tj:
+                closed = tj.get_closed_trades(days=3, limit=5) if hasattr(tj, 'get_closed_trades') else []
+                if closed:
+                    lines.append("\n[近3日交易结果]")
+                    for t in closed[:5]:
+                        lines.append(
+                            "  %s %s PnL=$%+.2f (%+.1f%%) 持仓%.1fh | %s"
+                            % (t.get("side", "?"), t.get("symbol", "?"),
+                               t.get("pnl", 0), t.get("pnl_pct", 0),
+                               t.get("hold_duration_hours", 0) or 0,
+                               (t.get("exit_reason") or t.get("entry_reason") or "")[:40])
+                        )
+                # 注入迭代教训
+                if hasattr(tj, 'generate_iteration_report'):
+                    report = tj.generate_iteration_report(days=7)
+                    suggestions = report.get("improvement_suggestions", []) if isinstance(report, dict) else []
+                    if suggestions:
+                        lines.append("\n[近7日教训]")
+                        for s in suggestions[:3]:
+                            lines.append("  - " + str(s))
+        except Exception:
+            pass  # journal 不可用不影响投票
 
         return "\n".join(lines)
 
@@ -821,7 +865,7 @@ class AutoTrader:
         """执行一次完整的交易循环 — 4阶段全程Telegram播报"""
         cycle_result = {
             "cycle": self._cycle_count,
-            "time": datetime.now().isoformat(),
+            "time": _now_et().isoformat(),
             "scanned": 0,
             "candidates": 0,
             "analyzed": 0,
@@ -879,7 +923,7 @@ class AutoTrader:
         if self.scan_market:
             try:
                 self._scan_results = await self.scan_market()
-                self._last_scan = datetime.now()
+                self._last_scan = _now_et()
                 cycle_result["scanned"] = len(self._scan_results)
             except Exception as e:
                 logger.error("[AutoTrader] 扫描失败: %s", e)
@@ -1164,16 +1208,32 @@ class AutoTrader:
                         self._today_trades += 1
                         if proposal.decided_by == "AntiIdlePolicy":
                             self._forced_trades_today += 1
-                        await self._safe_notify(
-                            "交易执行成功\n"
-                            "BUY %s x%d @ $%.2f\n"
-                            "止损: $%.2f | 止盈: $%.2f\n"
-                            "今日交易: %d/%d笔"
-                            % (proposal.symbol, proposal.quantity,
-                               proposal.entry_price, proposal.stop_loss,
-                               proposal.take_profit,
-                               self._today_trades, self.max_trades_per_day)
-                        )
+                        # 结构化交易卡片 — 搬运自 freqtrade 通知格式
+                        try:
+                            from src.telegram_ux import format_trade_card
+                            card = format_trade_card({
+                                "action": proposal.action,
+                                "symbol": proposal.symbol,
+                                "quantity": proposal.quantity,
+                                "entry_price": proposal.entry_price,
+                                "stop_loss": proposal.stop_loss,
+                                "take_profit": proposal.take_profit,
+                                "reason": proposal.reason,
+                                "confidence": proposal.confidence,
+                            })
+                            card += "\n\n今日交易: %d/%d笔" % (self._today_trades, self.max_trades_per_day)
+                            await self._safe_notify(card)
+                        except Exception:
+                            await self._safe_notify(
+                                "交易执行成功\n"
+                                "BUY %s x%d @ $%.2f\n"
+                                "止损: $%.2f | 止盈: $%.2f\n"
+                                "今日交易: %d/%d笔"
+                                % (proposal.symbol, proposal.quantity,
+                                   proposal.entry_price, proposal.stop_loss,
+                                   proposal.take_profit,
+                                   self._today_trades, self.max_trades_per_day)
+                            )
                     elif exec_result["status"] == "rejected":
                         cycle_result["rejected"] += 1
                         await self._safe_notify(
@@ -1231,21 +1291,26 @@ class AutoTrader:
         return cycle_result
 
     def _filter_candidates(self, signals: List[Dict]) -> List[Dict]:
-        """从扫描结果中筛选候选标的（含流动性 + ADX 过滤）
+        """从扫描结果中筛选候选标的（自适应阈值）
 
-        过滤条件（已放宽以增加交易机会）:
-        - score >= 20（原30，放宽以捕获更多中等信号）
-        - trend 非 strong_down（允许 down，因为可能是反弹机会）
-        - RSI6 <= 80（原75，放宽超买阈值）
-        - 价格 > $3（原$5，允许更多中小盘）
-        - 20日均量 > 10万（原50万，允许中等流动性标的）
-        - ADX > 15（原20，放宽趋势强度要求）
+        过滤条件（根据市场环境动态调整）:
+        - score >= 15（市场冷清时）或 >= 25（市场火热时）
+        - trend 非 strong_down
+        - RSI6 <= 85（极端超买才过滤）
+        - 价格 > $2（允许更多标的）
+        - 20日均量 > 5万（降低流动性门槛）
+        - ADX > 12（震荡市也可能有机会）
         """
         candidates = []
         _rejected = {"score": 0, "trend": 0, "rsi": 0, "price": 0, "volume": 0, "adx": 0}
+        
+        # 自适应评分阈值：根据信号数量动态调整
+        high_score_count = sum(1 for s in signals if s.get("score", 0) >= 40)
+        score_threshold = 25 if high_score_count >= 3 else 15
+        
         for s in signals:
             score = s.get("score", 0)
-            if score < 20:
+            if score < score_threshold:
                 _rejected["score"] += 1
                 continue
             trend = s.get("trend", "sideways")
@@ -1253,25 +1318,22 @@ class AutoTrader:
                 _rejected["trend"] += 1
                 continue
             rsi6 = s.get("rsi_6", 50)
-            if rsi6 > 80:
+            if rsi6 > 85:
                 _rejected["rsi"] += 1
                 continue
-            # --- 流动性过滤 ---
             price = s.get("price", 0)
-            if price > 0 and price < 3:
-                logger.debug("[Filter] %s 价格$%.2f < $3，跳过", s.get("symbol"), price)
+            if price > 0 and price < 2:
+                logger.debug("[Filter] %s 价格$%.2f < $2，跳过", s.get("symbol"), price)
                 _rejected["price"] += 1
                 continue
-            # 最低20日均量 10万股
             vol_avg = s.get("vol_avg_20", 0)
-            if vol_avg > 0 and vol_avg < 100_000:
-                logger.debug("[Filter] %s 20日均量%d < 10万，跳过", s.get("symbol"), vol_avg)
+            if vol_avg > 0 and vol_avg < 50_000:
+                logger.debug("[Filter] %s 20日均量%d < 5万，跳过", s.get("symbol"), vol_avg)
                 _rejected["volume"] += 1
                 continue
-            # --- ADX 过滤 ---
             adx = s.get("adx", 0)
-            if adx > 0 and adx < 15:
-                logger.debug("[Filter] %s ADX=%.1f < 15 震荡市，跳过", s.get("symbol"), adx)
+            if adx > 0 and adx < 12:
+                logger.debug("[Filter] %s ADX=%.1f < 12 震荡市，跳过", s.get("symbol"), adx)
                 _rejected["adx"] += 1
                 continue
             candidates.append(s)
@@ -1280,8 +1342,8 @@ class AutoTrader:
         total = len(signals)
         passed = len(candidates)
         logger.info(
-            "[Filter] %d/%d 通过筛选 | 淘汰: score<%d trend=%d rsi=%d price=%d vol=%d adx=%d",
-            passed, total, _rejected["score"], _rejected["trend"],
+            "[Filter] %d/%d 通过筛选 (阈值score>=%d) | 淘汰: score=%d trend=%d rsi=%d price=%d vol=%d adx=%d",
+            passed, total, score_threshold, _rejected["score"], _rejected["trend"],
             _rejected["rsi"], _rejected["price"], _rejected["volume"], _rejected["adx"],
         )
 
@@ -1335,7 +1397,7 @@ class AutoTrader:
         )
 
     async def _run_review(self) -> None:
-        """收盘自动复盘 — 生成当日交易总结并通知"""
+        """收盘自动复盘 — 生成当日交易总结、持久化教训、通知"""
         self.state = TraderState.REVIEWING
         logger.info("[AutoTrader] 开始收盘复盘")
         try:
@@ -1349,6 +1411,8 @@ class AutoTrader:
                 today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
             lines.append("扫描循环: %d次" % self._cycle_count)
 
+            wins = 0
+            losses = 0
             if closed:
                 wins = sum(1 for t in closed if t.get("pnl", 0) >= 0)
                 losses = len(closed) - wins
@@ -1365,6 +1429,37 @@ class AutoTrader:
                     lines.append("  %s x%s @ $%s 止损$%s" % (
                         t.get("symbol", "?"), t.get("quantity", "?"),
                         t.get("entry_price", "?"), t.get("stop_loss", "无")))
+
+            # 闭环学习：持久化复盘教训到 trading_journal
+            lessons = ""
+            try:
+                trade_count = today_pnl.get("trades", 0)
+                win_rate = round(wins / max(trade_count, 1) * 100, 1)
+
+                # 生成迭代报告提取失败模式
+                iteration = {}
+                if hasattr(tj, 'generate_iteration_report'):
+                    iteration = tj.generate_iteration_report(days=7)
+                suggestions = iteration.get("improvement_suggestions", []) if isinstance(iteration, dict) else []
+                lessons = "; ".join(str(s) for s in suggestions[:3])
+
+                if hasattr(tj, 'save_review_session'):
+                    from src.utils import today_et_str
+                    tj.save_review_session(
+                        date=today_et_str(),
+                        session_type='daily',
+                        trades_reviewed=trade_count,
+                        total_pnl=today_pnl.get("pnl", 0),
+                        win_rate=win_rate,
+                        lessons_learned=lessons,
+                        improvements="",
+                    )
+                    logger.info("[AutoTrader] 复盘教训已持久化")
+
+                if lessons:
+                    lines.append("\n📝 教训: " + lessons)
+            except Exception as e:
+                logger.warning("[AutoTrader] 复盘持久化失败(非致命): %s", e)
 
             lines.append("\n明日将自动继续交易。")
 

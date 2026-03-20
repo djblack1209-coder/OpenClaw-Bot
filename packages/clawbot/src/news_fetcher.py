@@ -14,12 +14,15 @@ from src.notify_style import format_digest
 class NewsFetcher:
     """新闻抓取器"""
     
-    # 搜索关键词
+    # 搜索关键词（扩展覆盖面）
     TOPICS = {
         "google": ["Google AI", "Google Gemini", "谷歌"],
         "nvidia": ["Nvidia", "英伟达", "CUDA", "Jensen Huang"],
         "claude": ["Anthropic", "Claude AI", "Claude 3"],
-        "musk": ["Elon Musk", "马斯克", "Tesla AI", "xAI", "Grok"]
+        "musk": ["Elon Musk", "马斯克", "Tesla AI", "xAI", "Grok"],
+        "market": ["stock market today", "S&P 500", "美股行情"],
+        "fed": ["Federal Reserve", "美联储", "interest rate decision"],
+        "crypto": ["Bitcoin", "比特币", "Ethereum", "加密货币"],
     }
     
     def __init__(self, serpapi_key: Optional[str] = None):
@@ -30,6 +33,7 @@ class NewsFetcher:
             serpapi_key: SerpAPI key (可选，用于 Google 搜索)
         """
         self.serpapi_key = serpapi_key
+        self._seen_titles: set = set()  # 跨主题去重
 
     @staticmethod
     def format_news_items(items: List[Dict[str, str]], max_items: int = 3, title_max_len: int = 72) -> List[str]:
@@ -128,7 +132,7 @@ class NewsFetcher:
             return []
     
     async def fetch_topic_news(self, topic: str, count: int = 3) -> List[Dict[str, str]]:
-        """获取特定主题的新闻"""
+        """获取特定主题的新闻（跨主题去重）"""
         keywords = self.TOPICS.get(topic, [topic])
         all_news = []
         
@@ -145,23 +149,35 @@ class NewsFetcher:
             
             await asyncio.sleep(0.5)  # 避免请求过快
         
-        # 去重
-        seen = set()
+        # 去重（含跨主题去重）
         unique_news = []
         for item in all_news:
-            if item["title"] not in seen:
-                seen.add(item["title"])
+            title = item["title"].strip()
+            # 标题相似度去重：取前30字符作为指纹
+            fingerprint = re.sub(r'\s+', '', title[:30].lower())
+            if fingerprint not in self._seen_titles and title not in {n["title"] for n in unique_news}:
+                self._seen_titles.add(fingerprint)
                 unique_news.append(item)
+        
+        # 限制去重缓存大小
+        if len(self._seen_titles) > 500:
+            self._seen_titles = set(list(self._seen_titles)[-200:])
         
         return unique_news[:count]
     
     async def generate_morning_report(self) -> str:
-        """生成早报"""
+        """生成早报（含市场/宏观/加密板块）"""
+        # 重置跨主题去重缓存
+        self._seen_titles.clear()
+
         section_titles = [
+            ("market", "【美股市场】"),
+            ("fed", "【美联储 / 宏观】"),
             ("google", "【Google / AI】"),
             ("nvidia", "【Nvidia】"),
             ("claude", "【Anthropic / Claude】"),
             ("musk", "【马斯克 / xAI】"),
+            ("crypto", "【加密货币】"),
         ]
 
         sections = []
@@ -173,7 +189,7 @@ class NewsFetcher:
 
         return format_digest(
             title=f"OpenClaw「科技早报」{datetime.now().strftime('%Y年%m月%d日')}",
-            intro="今日聚焦 Google / AI、Nvidia、Anthropic / Claude、马斯克 / xAI 四条主线，按主题整理如下。",
+            intro="今日聚焦美股市场、宏观政策、AI科技、加密货币四大主线，按主题整理如下。",
             sections=sections,
             footer="更多详情可直接回复对应主题，或打开上方链接查看原文。",
         )

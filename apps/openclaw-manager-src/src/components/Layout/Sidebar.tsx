@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings,
   Workflow,
+  BrainCircuit,
   Blocks
 } from 'lucide-react';
 import { PageType } from '../../App';
@@ -32,6 +33,7 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'control', label: '总控中心', icon: ShieldCheck },
   { id: 'dashboard', label: '概览', icon: LayoutDashboard },
   { id: 'flow', label: '智能流监控', icon: Workflow },
+  { id: 'memory', label: '记忆脑图', icon: BrainCircuit },
   { id: 'plugins', label: 'MCP 插件市场', icon: Blocks },
   { id: 'ai', label: 'AI 配置', icon: Bot },
   { id: 'channels', label: '消息渠道', icon: MessageSquare },

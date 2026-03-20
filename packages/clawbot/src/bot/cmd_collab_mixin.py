@@ -58,7 +58,8 @@ def _parse_trade_recommendations(text: str) -> list:
         matches = re.findall(pattern, text, re.DOTALL)
         for match in matches:
             try:
-                data = json.loads(match)
+                from json_repair import loads as jloads
+                data = jloads(match)
                 trades = data.get("trades", [])
                 if not trades:
                     continue
@@ -288,6 +289,18 @@ class CollabCommandsMixin:
             invest_context += f"\n实时技术分析数据:\n{ta_data_text}\n"
         invest_context += f"\nIBKR预算: ${ibkr.budget - ibkr.total_spent:.0f} / ${ibkr.budget:.0f}\n"
 
+        # ── 血管 2: 注入历史分析上下文 ──
+        try:
+            history_hits = shared_memory.search(topic, limit=3)
+            invest_history = [h for h in history_hits if "invest" in h.get("key", "").lower() or "ocr_financial" in h.get("key", "").lower()]
+            if invest_history:
+                invest_context += "\n历史分析参考:\n"
+                for h in invest_history[:2]:
+                    invest_context += f"- [{h.get('key', '')}] {h.get('value', '')[:200]}\n"
+                invest_context += "\n"
+        except Exception as e:
+            logger.debug(f"[Invest] 历史上下文注入失败(非致命): {e}")
+
         previous_opinions = []
         from src.message_sender import _clean_for_telegram, _split_message
 
@@ -299,6 +312,39 @@ class CollabCommandsMixin:
             "claude_sonnet": ("交易指挥官", "你是超短线交易团队的交易指挥官，最终拍板的人。请：\n1. 综合所有分析师的观点\n2. 指出分歧并给出你的判断\n3. 给出明确的交易指令：买入/卖出/观望（不能模棱两可）\n4. 具体：标的、数量、入场价、止损价、目标价、持仓时间\n5. 如果信号不够强，果断说观望\n\n核心原则：宁可错过不可做错，资金安全第一。\n\n重要：在你的回复最后，必须输出一个JSON代码块，格式如下（即使建议观望也要输出，trades为空数组即可）：\n```json\n{\"trades\": [{\"action\": \"BUY\", \"symbol\": \"AAPL\", \"qty\": 5, \"entry_price\": 150.0, \"stop_loss\": 145.5, \"take_profit\": 159.0, \"reason\": \"简短理由\"}]}\n```\naction只能是BUY或SELL，symbol是股票代码，qty是数量（整数，考虑$2000预算）。entry_price是当前入场价，stop_loss是止损价（必填，通常为入场价下方2-3%或1.5倍ATR），take_profit是目标价（必填，至少为止损距离的2倍）。这三个价格字段必须填写具体数字，不能为0。"),
             "claude_opus": ("首席策略师", "你是超短线交易团队的首席策略师，终极大脑，只在关键时刻发言。你的职责是：\n1. 审阅所有分析师和交易指挥官的观点\n2. 从更高维度评估：市场情绪是否被误读？有没有被忽略的系统性风险？\n3. 如果交易指挥官的决策合理，简短确认即可（一句话）\n4. 如果发现重大风险或逻辑漏洞，明确提出否决并说明理由\n5. 可以调整仓位大小、止损位，或直接否决交易\n\n你是最后的安全阀。宁可保守，不可冒进。回复控制在100字以内，除非需要否决。"),
         }
+
+        # 实时进度消息 — 让用户看到每个 AI 的分析进度
+        progress_icons = {"pending": "⏳", "running": "🔄", "done": "✅", "failed": "❌", "timeout": "⏰"}
+        bot_status = {bid: "pending" for bid in invest_order}
+
+        def _render_invest_progress():
+            lines = [f"📊 {topic} 分析进度"]
+            lines.append("───────────────────")
+            for bid in invest_order:
+                role_name_p = role_map.get(bid, ("分析师", ""))[0]
+                icon = progress_icons.get(bot_status[bid], "❓")
+                lines.append(f"{icon} {role_name_p}")
+            done_count = sum(1 for s in bot_status.values() if s in ("done", "failed", "timeout"))
+            pct = done_count / len(invest_order)
+            bar_len = 16
+            filled = int(pct * bar_len)
+            bar = "▓" * filled + "░" * (bar_len - filled)
+            lines.append(f"\n[{bar}] {done_count}/{len(invest_order)}")
+            return "\n".join(lines)
+
+        # 发送初始进度消息
+        progress_msg = await context.bot.send_message(
+            chat_id=chat_id, text=_render_invest_progress())
+
+        async def _update_progress():
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg.message_id,
+                    text=_render_invest_progress(),
+                )
+            except Exception:
+                pass
 
         for i, bot_id in enumerate(invest_order):
             # 检查是否被中断
@@ -315,6 +361,10 @@ class CollabCommandsMixin:
 
             bot_telegram = target_bot.app.bot
             role_name, role_prompt = role_map.get(bot_id, ("分析师", "请给出你的分析。"))
+
+            # 更新进度：当前 bot 正在分析
+            bot_status[bot_id] = "running"
+            await _update_progress()
 
             # 构造提示
             prompt = (
@@ -351,13 +401,19 @@ class CollabCommandsMixin:
                     if pi < len(parts) - 1:
                         await asyncio.sleep(0.3)
                 await asyncio.sleep(1)
+                bot_status[bot_id] = "done"
+                await _update_progress()
             except asyncio.TimeoutError:
+                bot_status[bot_id] = "timeout"
+                await _update_progress()
                 logger.warning(f"[Invest] {bot_id} 回复超时 ({timeout_sec}s)")
                 try:
                     await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 回复超时，跳过]")
                 except Exception:
                     logger.debug("[Invest] 发送超时通知失败(静默)")
             except Exception as e:
+                bot_status[bot_id] = "failed"
+                await _update_progress()
                 logger.error(f"[Invest] {bot_id} 发言失败: {e}")
                 try:
                     await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 发言失败: {e}]")
@@ -410,6 +466,30 @@ class CollabCommandsMixin:
                 text="-- 投资分析会议结束 --\n\n策略师建议观望，暂无交易操作\n\n使用 /buy /sell 手动执行交易\n使用 /portfolio 查看持仓",
                 reply_to_message_id=message_id,
             )
+
+        # ── 血管 2: 投资分析结果写入 SharedMemory ──
+        try:
+            invest_summary = "\n---\n".join(previous_opinions) if previous_opinions else "无分析结果"
+            trade_summary = ""
+            if trades:
+                trade_lines = [f"{t['action']} {t['symbol']} x{t['qty']} (止损{t.get('stop_loss','N/A')}, 目标{t.get('take_profit','N/A')})" for t in trades]
+                trade_summary = f"\n交易建议: {'; '.join(trade_lines)}"
+            else:
+                trade_summary = "\n结论: 观望"
+
+            timestamp = datetime.now().strftime("%m/%d %H:%M")
+            shared_memory.remember(
+                key=f"invest_{timestamp}_{topic[:30]}",
+                value=f"投资分析会议: {topic}\n{trade_summary}\n\n各角色观点摘要:\n{invest_summary[:1500]}",
+                category="general",
+                source_bot="invest_pipeline",
+                chat_id=chat_id,
+                importance=3,
+                ttl_hours=168,  # 保留 7 天
+            )
+            logger.info(f"[Invest] 分析结果已写入 SharedMemory: {topic}")
+        except Exception as e:
+            logger.debug(f"[Invest] SharedMemory 写入失败(非致命): {e}")
 
 
     async def cmd_discuss(self, update, context):

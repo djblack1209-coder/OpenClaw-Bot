@@ -11,6 +11,8 @@ from src.bot.globals import (
     SILICONFLOW_KEYS, LOW_BALANCE_THRESHOLD,
     send_long_message, execution_hub,
 )
+from src.litellm_router import free_pool
+from src.telegram_ux import with_typing, ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -20,81 +22,200 @@ class BasicCommandsMixin:
 
     async def cmd_start(self, update, context):
         if not self._is_authorized(update.effective_user.id):
-            await update.message.reply_text("无权限")
+            await update.message.reply_text(
+                "👋 你好！这是一个私有 Bot，暂未对你开放。\n"
+                "如需使用请联系管理员获取授权。"
+            )
             return
 
-        await update.message.reply_text(
-            f"{self.emoji} **{self.name}** - {self.role}\n\n"
-            f"模型: `{self.model.split('/')[-1]}`\n\n"
-            f"直接发消息开始对话！\n"
-            f"群聊中 @我 或提到我的名字即可\n\n"
-            f"社媒默认使用 OpenClaw 专用浏览器；首次会自动拉起，登录一次后可持续复用。\n\n"
-            f"**常用命令**\n"
-            f"/clear - 清空对话\n"
-            f"/status - 状态\n"
-            f"/hot - 抓热点并一键发文（兼容 /hotpost）\n"
-            f"/post\_social [题材] - 自动拉起专用浏览器并双发（兼容 /post）\n"
-            f"/post\_x [题材] - 自动拉起专用浏览器发 X（兼容 /xpost）\n"
-            f"/post\_xhs [题材] - 自动拉起专用浏览器发小红书（兼容 /xhspost、/xhs）\n"
-            f"/social\_plan [题材] - 生成发文计划\n"
-            f"/social\_repost [题材] - 生成双平台草稿\n"
-            f"/social\_launch - 查看数字生命首发包\n"
-            f"/social\_persona - 查看当前社媒人设\n"
-            f"/topic <题材> - 研究题材并写入学习笔记\n"
-            f"/dev <任务> - 开发/配置流程\n"
-            f"/config - 查看当前运行配置\n"
-            f"/cost - 查看请求/配额\n"
-            f"/ops - 高级入口总菜单\n\n"
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-            f"**辅助命令**\n"
-            f"/context - 上下文状态\n"
-            f"/compact - 压缩上下文\n"
-            f"/draw <描述> - 生成图片\n"
-            f"/news - 科技早报\n\n"
-            f"**投资命令**\n"
-            f"/invest <话题> - 5位AI分析师协作\n"
-            f"/quote <代码> - 查询行情\n"
-            f"/market - 市场概览\n"
-            f"/ta <代码> - 技术分析\n"
-            f"/scan - 全市场扫描\n"
-            f"/signal <代码> - 交易信号\n"
-            f"/portfolio - 投资组合\n"
-            f"/buy <代码> <数量> - 模拟买入\n"
-            f"/sell <代码> <数量> - 模拟卖出\n"
-            f"/trades - 交易记录\n"
-            f"/watchlist - 自选股\n"
-            f"/backtest <代码> - 策略回测\n"
-            f"/rebalance - 组合再平衡\n\n"
-            f"**交易系统**\n"
-            f"/risk - 风控状态\n"
-            f"/monitor - 持仓监控\n"
-            f"/autotrader - 自动交易\n"
-            f"/tradingsystem - 系统总览\n"
-            f"/journal - 交易日志\n"
-            f"/performance - 绩效统计\n"
-            f"/review - 复盘报告\n\n"
-            f"**协作命令**\n"
-            f"/discuss <轮数> <主题> - 多Bot讨论\n"
-            f"/collab <任务> - 多模型协作\n"
-            f"/lanes - 查看群聊分流标签\n\n"
-            f"**高级执行**\n"
-            f"/brief - 手动生成执行简报\n"
-            f"/lane - 查看群聊分流规则\n"
-            f"/xwatch <X合集推文链接> - 导入博主监控\n"
-            f"/xbrief - 查看X更新摘要+原文链接\n"
-            f"/xdraft [主题] - 生成X流量草稿\n"
-            f"/xpost [草稿ID或主题] - 自动发X\n"
-            f"/xhsdraft [主题] - 生成小红书草稿\n"
-            f"/xhspost [草稿ID或主题] - 自动发小红书\n\n"
-            f"**IBKR实盘**\n"
-            f"/ibuy <代码> <数量> - IBKR买入\n"
-            f"/isell <代码> <数量> - IBKR卖出\n"
-            f"/ipositions - IBKR持仓\n"
-            f"/iorders - IBKR订单\n"
-            f"/iaccount - IBKR账户\n"
-            f"/icancel - 取消订单",
-            parse_mode="Markdown"
-        )
+        user = update.effective_user
+        chat_id = update.effective_chat.id
+
+        # 首次使用检测 — 搬运自 father-bot/chatgpt_telegram_bot 的 register_user_if_not_exists
+        is_first_time = not history_store.get_messages(self.bot_id, chat_id, limit=1)
+
+        if is_first_time:
+            # 首次用户：引导式 onboarding
+            onboard = (
+                f"👋 你好 {user.first_name}！我是 {self.name}\n"
+                f"───────────────────\n"
+                f"{self.role}\n\n"
+                f"我能帮你做很多事，先试一个？\n"
+                f"点下面的按钮，或者直接发消息给我聊天 👇"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 直接聊天试试", callback_data="onboard:chat")],
+                [InlineKeyboardButton("📰 看今日科技早报", callback_data="onboard:news"),
+                 InlineKeyboardButton("🎨 AI 画一张图", callback_data="onboard:draw")],
+                [InlineKeyboardButton("📈 分析一只股票", callback_data="onboard:invest"),
+                 InlineKeyboardButton("📱 发一条社媒", callback_data="onboard:social")],
+                [InlineKeyboardButton("📋 查看全部功能", callback_data="help:all")],
+            ])
+            await update.message.reply_text(onboard, reply_markup=keyboard)
+        else:
+            # 老用户：分类菜单
+            welcome = (
+                f"{self.emoji}  {self.name}\n"
+                f"───────────────────\n"
+                f"{self.role} · {self.model.split('/')[-1]}\n\n"
+                f"直接发消息就能对话，群聊 @我 即可。\n"
+                f"下面按场景展开更多功能 👇"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
+                 InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
+                [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
+                 InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced")],
+                [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
+            ])
+            await update.message.reply_text(welcome, reply_markup=keyboard)
+
+    async def handle_help_callback(self, update, context):
+        """处理 /start 引导按钮和 onboarding 按钮的回调"""
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+
+        # Onboarding 按钮处理
+        if data.startswith("onboard:"):
+            action = data.replace("onboard:", "")
+            await self._handle_onboard_action(query, context, action)
+            return
+
+        section = data.replace("help:", "")
+
+        HELP_SECTIONS = {
+            "daily": (
+                "💬 日常功能\n"
+                "───────────────────\n"
+                "直接发消息即可对话\n\n"
+                "/clear  清空对话记录\n"
+                "/status  查看 Bot 状态\n"
+                "/draw <描述>  AI 生图\n"
+                "/news  科技早报\n"
+                "/context  查看上下文用量\n"
+                "/compact  压缩上下文"
+            ),
+            "social": (
+                "📱 社媒一键发\n"
+                "───────────────────\n"
+                "/hot [题材]  抓热点 + 自动发文\n"
+                "/post [题材]  双平台发文\n"
+                "/post_x [题材]  发 X\n"
+                "/post_xhs [题材]  发小红书\n"
+                "/social_plan  查看发文计划\n"
+                "/social_persona  查看人设\n"
+                "/topic <题材>  深度研究题材"
+            ),
+            "invest": (
+                "📈 投资分析\n"
+                "───────────────────\n"
+                "/invest <话题>  5 位 AI 协作分析\n"
+                "/quote <代码>  实时行情\n"
+                "/market  市场概览\n"
+                "/ta <代码>  技术分析\n"
+                "/signal <代码>  交易信号\n"
+                "/portfolio  查看组合\n"
+                "/buy /sell  模拟交易\n"
+                "/risk  风控检查"
+            ),
+            "advanced": (
+                "⚙️ 高级功能\n"
+                "───────────────────\n"
+                "/ops  自动化总入口\n"
+                "/brief  执行简报\n"
+                "/dev <任务>  开发流程\n"
+                "/cost  成本配额\n"
+                "/discuss <轮数> <主题>  多 Bot 讨论\n"
+                "/lanes  群聊分流标签\n"
+                "/config  运行配置"
+            ),
+            "all": (
+                f"{self.emoji} 全部命令\n"
+                "───────────────────\n"
+                "▸ 日常: /clear /status /draw /news /context /compact\n"
+                "▸ 社媒: /hot /post /post_x /post_xhs /social_plan /social_persona /topic\n"
+                "▸ 投资: /invest /quote /market /ta /signal /portfolio /buy /sell /risk\n"
+                "▸ 高级: /ops /brief /dev /cost /discuss /lanes /config\n\n"
+                "直接发消息开始对话，群聊 @我 即可"
+            ),
+        }
+
+        text = HELP_SECTIONS.get(section, "未知分类")
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        back_btn = InlineKeyboardMarkup([
+            [InlineKeyboardButton("← 返回", callback_data="help:back")]
+        ]) if section != "all" else None
+
+        if section == "back":
+            # 返回主菜单
+            welcome = (
+                f"{self.emoji}  {self.name}\n"
+                f"───────────────────\n"
+                f"{self.role} · {self.model.split('/')[-1]}\n\n"
+                f"直接发消息就能对话，群聊 @我 即可。\n"
+                f"下面按场景展开更多功能 👇"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
+                 InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
+                [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
+                 InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced")],
+                [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
+            ])
+            await query.edit_message_text(welcome, reply_markup=keyboard)
+            return
+
+        await query.edit_message_text(text, reply_markup=back_btn)
+
+    async def _handle_onboard_action(self, query, context, action):
+        """处理 onboarding 引导按钮 — 引导用户完成第一个操作"""
+        chat_id = query.message.chat_id
+
+        if action == "chat":
+            await query.edit_message_text(
+                "💬 直接在这里打字就行！\n\n"
+                "试试发一句：「帮我写一段自我介绍」\n"
+                "或者问我任何问题，我会用流式输出实时回复你 ✨"
+            )
+
+        elif action == "news":
+            await query.edit_message_text("📰 正在获取今日科技早报...")
+            try:
+                report = await news_fetcher.generate_morning_report()
+                await context.bot.send_message(chat_id=chat_id, text=report)
+            except Exception as e:
+                await context.bot.send_message(chat_id=chat_id, text=f"获取失败: {e}")
+
+        elif action == "draw":
+            await query.edit_message_text(
+                "🎨 AI 画图\n\n"
+                "发送 /draw 加上描述就行，比如：\n"
+                "/draw 一只穿西装的龙虾在写代码\n\n"
+                "支持 flux / sd3 / sdxl 模型"
+            )
+
+        elif action == "invest":
+            await query.edit_message_text(
+                "📈 投资分析\n\n"
+                "发送 /quote AAPL 查看苹果实时行情\n"
+                "发送 /invest 比特币 启动 5 位 AI 协作分析\n"
+                "发送 /ta TSLA 查看特斯拉技术分析\n\n"
+                "试试看？"
+            )
+
+        elif action == "social":
+            await query.edit_message_text(
+                "📱 社媒一键发\n\n"
+                "发送 /hot 自动抓热点 + 发文\n"
+                "发送 /post AI趋势 双平台发文\n"
+                "发送 /social_persona 查看你的社媒人设\n\n"
+                "需要先配置浏览器登录态才能发布"
+            )
 
     async def cmd_lanes(self, update, context):
         """查看群聊显式分流标签"""
@@ -102,18 +223,18 @@ class BasicCommandsMixin:
             return
 
         await update.message.reply_text(
-            "**群聊分流标签（替代 Telegram Topic）**\n\n"
-            "在群里发消息时加上标签，可强制指定回复 Bot：\n"
-            "- `[RISK]` / `#风控` -> Claude Sonnet（风险闸门）\n"
-            "- `[ALPHA]` / `#研究` -> Qwen 235B（研究与规划）\n"
-            "- `[EXEC]` / `#执行` -> DeepSeek V3（执行与技术）\n"
-            "- `[FAST]` / `#快问` -> GPT-OSS（快速答复）\n"
-            "- `[CN]` / `#中文` -> DeepSeek V3（中文表达）\n"
-            "- `[BRAIN]` / `#终极` -> Claude Opus（深度推理）\n"
-            "- `[CREATIVE]` / `#创意` -> Claude Haiku（文案创意）\n\n"
-            "示例：`[RISK] 今天持仓有没有超风险？`\n"
-            "提示：`@bot` 提及优先级仍高于标签。",
-            parse_mode="Markdown"
+            "🏷  群聊分流标签\n"
+            "───────────────────\n"
+            "发消息时加标签，强制指定回复Bot：\n\n"
+            " [RISK] #风控  → 💎 Sonnet（风险闸门）\n"
+            " [ALPHA] #研究  → 🧠 Qwen（研究规划）\n"
+            " [EXEC] #执行  → 🐉 DeepSeek（执行技术）\n"
+            " [FAST] #快问  → ⚡ GPT-OSS（快速答复）\n"
+            " [CN] #中文  → 🐉 DeepSeek（中文表达）\n"
+            " [BRAIN] #终极  → 👑 Opus（深度推理）\n"
+            " [CREATIVE] #创意  → 🚀 Haiku（文案创意）\n\n"
+            "示例：[RISK] 今天持仓有没有超风险？\n"
+            "提示：@bot 提及优先级高于标签"
         )
 
     async def cmd_clear(self, update, context):
@@ -123,9 +244,12 @@ class BasicCommandsMixin:
         history_store.clear_messages(self.bot_id, chat_id)
         await update.message.reply_text(f"{self.emoji} 对话已清空")
 
+    @with_typing
     async def cmd_status(self, update, context):
         if not self._is_authorized(update.effective_user.id):
             return
+
+        from src.notify_style import format_status_card
 
         chat_id = update.effective_chat.id
         msg_count = history_store.get_message_count(self.bot_id, chat_id)
@@ -138,31 +262,54 @@ class BasicCommandsMixin:
 
         balance_warning = ""
         if total_balance < LOW_BALANCE_THRESHOLD * len(SILICONFLOW_KEYS):
-            balance_warning = "\n⚠️ **余额不足，请及时充值！**"
+            balance_warning = "余额不足，请及时充值"
 
-        browser_running = "运行中" if social_browser.get("browser_running") else "未启动"
         x_state_raw = social_browser.get("x_ready")
         xhs_state_raw = social_browser.get("xiaohongshu_ready")
-        x_state = "已登录" if x_state_raw is True else ("待登录" if x_state_raw is False else "待检查")
-        xhs_state = "已登录" if xhs_state_raw is True else ("待登录" if xhs_state_raw is False else "待检查")
+        x_state = "✅" if x_state_raw is True else ("🔑" if x_state_raw is False else "⏳")
+        xhs_state = "✅" if xhs_state_raw is True else ("🔑" if xhs_state_raw is False else "⏳")
 
-        await update.message.reply_text(
-            f"{self.emoji} **{self.name}** 状态\n\n"
-            f"角色: {self.role}\n"
-            f"模型: `{self.model.split('/')[-1]}`\n"
-            f"当前对话: {msg_count // 2} 轮\n"
-            f"API Keys: {len(SILICONFLOW_KEYS)} 个\n"
-            f"总余额: {total_balance:.2f} 元\n"
-            f"健康: {'正常' if bot_health.get('healthy', True) else '异常'}\n"
-            f"运行: {stats['uptime_hours']}h\n"
-            f"今日消息: {stats['today_messages']}\n"
-            f"社媒浏览器: 专用模式 / {browser_running}\n"
-            f"X 登录: {x_state}\n"
-            f"小红书登录: {xhs_state}\n"
-            f"社媒人设: {social_persona.get('name', '未配置')} / {social_persona.get('headline', '')}{balance_warning}",
-            parse_mode="Markdown"
+        # Gateway 连通性检测（超时延长到10秒，避免网络抖动误报）
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get("http://localhost:18789/health")
+                gateway_status = "在线" if resp.status_code == 200 else "异常"
+        except Exception:
+            gateway_status = "离线"
+
+        # 免费 API 池状态
+        pool_stats = free_pool.get_stats()
+        pool_info = f"{pool_stats['active_sources']}/{pool_stats['total_sources']}源"
+
+        api_type_label = {
+            "free_pool": "LiteLLM Router",
+            "free_first": "免费优先",
+            "g4f": "g4f",
+        }.get(getattr(self, "api_type", ""), "其他")
+
+        text = format_status_card(
+            name=self.name,
+            emoji=self.emoji,
+            role=self.role,
+            model=self.model,
+            api_type=api_type_label,
+            msg_count=msg_count,
+            pool_info=pool_info,
+            healthy=bot_health.get('healthy', True),
+            uptime_hours=stats['uptime_hours'],
+            today_messages=stats['today_messages'],
+            gateway_status=gateway_status,
+            browser_running=social_browser.get("browser_running", False),
+            x_state=x_state,
+            xhs_state=xhs_state,
+            persona_name=social_persona.get('name', '未配置'),
+            balance_warning=balance_warning,
         )
 
+        await update.message.reply_text(text)
+
+    @with_typing
     async def cmd_draw(self, update, context):
         if not self._is_authorized(update.effective_user.id):
             return
@@ -187,15 +334,17 @@ class BasicCommandsMixin:
                 i += 1
 
         prompt = " ".join(prompt_parts)
-        await update.message.reply_text(f"{self.emoji} 正在生成: {prompt}...")
 
-        api_key = get_siliconflow_key()
-        if not api_key:
-            await update.message.reply_text("没有可用的 API Key")
-            return
+        async with ProgressTracker(update.effective_chat.id, context, title=f"生成: {prompt[:30]}") as progress:
+            await progress.update("准备 API Key")
+            api_key = get_siliconflow_key()
+            if not api_key:
+                await update.message.reply_text("没有可用的 API Key")
+                return
 
-        image_tool.set_api_key(api_key)
-        result = await image_tool.generate(prompt, model)
+            await progress.update(f"调用 {model} 模型")
+            image_tool.set_api_key(api_key)
+            result = await image_tool.generate(prompt, model)
 
         if result["success"]:
             for path in result["paths"]:
@@ -208,10 +357,10 @@ class BasicCommandsMixin:
         else:
             await update.message.reply_text(f"生成失败: {result.get('error')}")
 
+    @with_typing
     async def cmd_news(self, update, context):
         if not self._is_authorized(update.effective_user.id):
             return
-        await update.message.reply_text(f"{self.emoji} 正在获取新闻...")
         try:
             report = await news_fetcher.generate_morning_report()
             await update.message.reply_text(report)
@@ -227,29 +376,75 @@ class BasicCommandsMixin:
         health = health_checker.get_status()
         db_stats = history_store.get_stats()
 
-        text = f"**运行指标**\n\n"
-        text += f"运行时间: {stats['uptime_hours']}h\n"
-        text += f"总消息: {stats['total_messages']}\n"
-        text += f"今日消息: {stats['today_messages']}\n"
-        text += f"API 调用: {stats['total_api_calls']}\n"
-        text += f"错误率: {stats['error_rate']}%\n"
-        text += f"平均延迟: {stats['avg_latency_ms']}ms\n\n"
+        lines = [
+            "📊  运行指标",
+            "───────────────────",
+            f" · 运行  {stats['uptime_hours']}h",
+            f" · 总消息  {stats['total_messages']} | 今日  {stats['today_messages']}",
+            f" · API调用  {stats['total_api_calls']} | 错误率  {stats['error_rate']}%",
+            f" · 平均延迟  {stats['avg_latency_ms']}ms",
+            "",
+            "▸ 存储",
+            f"  数据库 {db_stats['db_size_kb']}KB | {db_stats['total_messages']}条 | {db_stats['total_chats']}个对话",
+        ]
 
-        text += f"**存储**\n"
-        text += f"数据库: {db_stats['db_size_kb']}KB\n"
-        text += f"总消息: {db_stats['total_messages']}\n"
-        text += f"对话数: {db_stats['total_chats']}\n\n"
+        model_usage = stats.get('model_usage', {})
+        if model_usage:
+            lines.extend(["", "▸ 模型使用"])
+            for model, count in model_usage.items():
+                lines.append(f"  {model.split('/')[-1]}: {count}")
 
-        text += f"**模型使用**\n"
-        for model, count in stats.get('model_usage', {}).items():
-            text += f"- {model.split('/')[-1]}: {count}\n"
-
-        text += f"\n**健康状态**\n"
+        lines.extend(["", "▸ 健康"])
         for bot_id, status in health.items():
-            icon = "✅" if status['healthy'] else "❌"
-            text += f"{icon} {bot_id}: 错误{status['consecutive_errors']}\n"
+            icon = "💚" if status['healthy'] else "🔴"
+            lines.append(f"  {icon} {bot_id}: 连续错误 {status['consecutive_errors']}")
 
+        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+
+    async def cmd_model(self, update, context):
+        """查看当前模型信息"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        pool_stats = free_pool.get_stats()
+        api_type_label = {
+            "free_pool": "LiteLLM 动态路由",
+            "free_first": "免费优先（私聊可降级付费）",
+            "g4f": "g4f 本地",
+            "kiro": "Kiro Gateway",
+            "siliconflow": "硅基流动",
+        }.get(getattr(self, "api_type", ""), "未知")
+
+        text = (
+            f"{self.emoji} **{self.name} 模型信息**\n\n"
+            f"配置模型: `{self.model}`\n"
+            f"路由方式: {api_type_label}\n"
+            f"活跃模型数: {pool_stats['active_sources']}/{pool_stats['total_sources']}\n"
+            f"模型族数: {pool_stats['model_families']}\n"
+        )
         await update.message.reply_text(text, parse_mode="Markdown")
+
+    async def cmd_pool(self, update, context):
+        """查看免费 API 池 + 智能路由状态"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        pool_stats = free_pool.get_stats()
+        text = f"🆓 **免费 API 池状态**\n\n"
+        text += f"总源数: {pool_stats['total_sources']}\n"
+        text += f"活跃源: {pool_stats['active_sources']}\n"
+        text += f"模型族: {pool_stats['model_families']}\n\n"
+
+        for family, info in pool_stats.get("families", {}).items():
+            icon = "✅" if info["active"] > 0 else "❌"
+            text += f"{icon} {family}: {info['active']}/{info['total']} 活跃\n"
+
+        # AdaptiveRouter 智能路由状态
+        from src.litellm_router import adaptive_router
+        if adaptive_router:
+            text += f"\n{adaptive_router.format_routing_status()}"
+
+        await send_long_message(update.effective_chat.id, text, context)
 
     async def cmd_context(self, update, context):
         """查看当前上下文状态"""
@@ -312,3 +507,435 @@ class BasicCommandsMixin:
             f"关键信息和最近对话已保留。",
             parse_mode="Markdown"
         )
+
+    # ── /settings 命令 — 搬运自 father-bot 的 per-user settings 模式 ──
+
+    async def cmd_settings(self, update, context):
+        """查看/修改个人偏好设置"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        from src.bot.globals import user_prefs
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+
+        user_id = update.effective_user.id
+        args = context.args or []
+
+        # /settings key value — 直接设置
+        if len(args) >= 2:
+            key = args[0].lower()
+            value = " ".join(args[1:])
+            valid_keys = user_prefs.DEFAULTS.keys()
+            if key not in valid_keys:
+                await update.message.reply_text(
+                    f"未知设置项: {key}\n可用: {', '.join(valid_keys)}")
+                return
+            # 类型转换
+            if value.lower() in {"true", "on", "1", "yes"}:
+                value = True
+            elif value.lower() in {"false", "off", "0", "no"}:
+                value = False
+            user_prefs.set(user_id, key, value)
+            await update.message.reply_text(f"✅ 已设置 {key} = {value}")
+            return
+
+        # /settings — 展示当前设置 + inline keyboard
+        prefs = user_prefs.get_all(user_id)
+        labels = {
+            "notify_level": ("🔔 通知级别", {"silent": "静默", "normal": "正常", "verbose": "详细"}),
+            "risk_tolerance": ("🛡 风险偏好", {"conservative": "保守", "moderate": "适中", "aggressive": "激进"}),
+            "chat_mode": ("💬 对话模式", {"assistant": "助手", "trader": "交易员", "analyst": "分析师", "creative": "创意"}),
+            "auto_trade_notify": ("📈 交易通知", {True: "开启", False: "关闭"}),
+            "daily_report": ("📋 每日报告", {True: "开启", False: "关闭"}),
+            "social_preview": ("📱 发文预览", {True: "开启", False: "关闭"}),
+        }
+
+        lines = ["⚙️ <b>个人设置</b>\n"]
+        keyboard = []
+        for key, (label, options) in labels.items():
+            current = prefs.get(key, "?")
+            display = options.get(current, str(current))
+            lines.append(f"{label}: {display}")
+            # 构建切换按钮 — 循环到下一个选项
+            option_keys = list(options.keys())
+            if current in option_keys:
+                next_idx = (option_keys.index(current) + 1) % len(option_keys)
+                next_val = option_keys[next_idx]
+                next_display = options[next_val]
+                keyboard.append([InlineKeyboardButton(
+                    f"{label} → {next_display}",
+                    callback_data=f"settings|{user_id}|{key}|{next_val}",
+                )])
+
+        lines.append("\n点击按钮切换，或用 /settings <key> <value> 直接设置")
+
+        await update.message.reply_text(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+        )
+
+    async def handle_settings_callback(self, update, context):
+        """处理设置切换按钮的回调"""
+        from src.bot.globals import user_prefs
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+
+        query = update.callback_query
+        await query.answer()
+
+        parts = query.data.split("|")
+        if len(parts) < 4:
+            return
+
+        user_id = int(parts[1])
+        key = parts[2]
+        value = parts[3]
+
+        # 类型转换
+        if value == "True":
+            value = True
+        elif value == "False":
+            value = False
+
+        user_prefs.set(user_id, key, value)
+
+        # 重新渲染设置面板
+        prefs = user_prefs.get_all(user_id)
+        labels = {
+            "notify_level": ("🔔 通知级别", {"silent": "静默", "normal": "正常", "verbose": "详细"}),
+            "risk_tolerance": ("🛡 风险偏好", {"conservative": "保守", "moderate": "适中", "aggressive": "激进"}),
+            "chat_mode": ("💬 对话模式", {"assistant": "助手", "trader": "交易员", "analyst": "分析师", "creative": "创意"}),
+            "auto_trade_notify": ("📈 交易通知", {True: "开启", False: "关闭"}),
+            "daily_report": ("📋 每日报告", {True: "开启", False: "关闭"}),
+            "social_preview": ("📱 发文预览", {True: "开启", False: "关闭"}),
+        }
+
+        lines = ["⚙️ <b>个人设置</b> ✅ 已更新\n"]
+        keyboard = []
+        for k, (label, options) in labels.items():
+            current = prefs.get(k, "?")
+            display = options.get(current, str(current))
+            lines.append(f"{label}: {display}")
+            option_keys = list(options.keys())
+            if current in option_keys:
+                next_idx = (option_keys.index(current) + 1) % len(option_keys)
+                next_val = option_keys[next_idx]
+                next_display = options[next_val]
+                keyboard.append([InlineKeyboardButton(
+                    f"{label} → {next_display}",
+                    callback_data=f"settings|{user_id}|{k}|{next_val}",
+                )])
+
+        try:
+            await query.edit_message_text(
+                "\n".join(lines),
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except Exception:
+            pass
+
+    # ── /memory 命令 — 搬运自 mem0 的用户记忆管理 + karfly 的分页模式 ──
+
+    MEMORIES_PER_PAGE = 5
+
+    async def cmd_memory(self, update, context):
+        """查看/管理 Bot 记住的关于你的信息"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        from src.smart_memory import get_smart_memory
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+
+        user_id = update.effective_user.id
+        sm = get_smart_memory()
+        if not sm:
+            await update.message.reply_text("记忆系统未启用")
+            return
+
+        # 获取用户相关记忆
+        search_result = sm.memory.search(f"auto_{user_id}", limit=50)
+        results = search_result.get("results", []) if isinstance(search_result, dict) else []
+
+        # 也获取用户画像
+        profile = sm.get_user_profile(user_id)
+
+        if not results and not profile:
+            await update.message.reply_text(
+                "📭 还没有记住关于你的任何信息。\n"
+                "和我聊天后，我会自动记住重要的事情。"
+            )
+            return
+
+        text = "🧠 <b>我记住的关于你的信息</b>\n\n"
+
+        if profile:
+            text += "<b>用户画像:</b>\n"
+            if profile.get("summary"):
+                text += f"  {profile['summary']}\n"
+            if profile.get("interests"):
+                text += f"  兴趣: {', '.join(profile['interests'][:5])}\n"
+            text += "\n"
+
+        if results:
+            text += f"<b>记忆 ({len(results)} 条):</b>\n\n"
+            for i, mem in enumerate(results[:self.MEMORIES_PER_PAGE], 1):
+                val = mem.get("value", "")[:100]
+                text += f"{i}. {val}\n\n"
+
+        keyboard = []
+        if len(results) > self.MEMORIES_PER_PAGE:
+            keyboard.append([InlineKeyboardButton("下一页 »", callback_data=f"mem_page|{user_id}|1")])
+        keyboard.append([
+            InlineKeyboardButton("🗑 清除所有记忆", callback_data=f"mem_clear|{user_id}"),
+        ])
+
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+        )
+
+    async def handle_feedback_callback(self, update, context):
+        """处理 👍/👎/🔄 反馈按钮 — 搬运自 karfly 的 callback 模式"""
+        from src.feedback import parse_feedback_data, get_feedback_store
+        from src.litellm_router import adaptive_router
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        query = update.callback_query
+        await query.answer()  # 立即响应，消除加载动画（karfly 关键模式）
+
+        data = parse_feedback_data(query.data)
+        if not data:
+            return
+
+        user_id = query.from_user.id
+        action = data["action"]
+        model = data["model"]
+        bot_id = data["bot_id"]
+
+        if action == "retry":
+            # 移除按钮，提示重新生成
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text("🔄 请重新发送你的问题")
+            return
+
+        # 记录反馈
+        rating = 1 if action == "up" else -1
+        store = get_feedback_store()
+        store.record(user_id, data["chat_id"], bot_id, model, rating)
+
+        # 联动 AdaptiveRouter 质量评分（闭环）
+        if adaptive_router:
+            quality = 0.8 if rating > 0 else 0.2
+            adaptive_router.record_result(model, "general", success=True, quality=quality)
+
+        # 替换按钮为确认（karfly 模式）
+        emoji = "👍" if action == "up" else "👎"
+        await query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"{emoji} 已收到反馈", callback_data="noop")
+            ]])
+        )
+
+    async def handle_memory_callback(self, update, context):
+        """处理记忆管理的分页/删除回调"""
+        from src.smart_memory import get_smart_memory
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+
+        query = update.callback_query
+        await query.answer()
+
+        parts = query.data.split("|")
+        action = parts[0]
+
+        if action == "mem_clear":
+            user_id = int(parts[1])
+            sm = get_smart_memory()
+            if sm:
+                # 删除该用户的所有自动记忆
+                search_result = sm.memory.search(f"auto_{user_id}", limit=100)
+                results = search_result.get("results", []) if isinstance(search_result, dict) else []
+                for mem in results:
+                    key = mem.get("key", "")
+                    if key:
+                        sm.memory.forget(key)
+                # 也删除画像
+                sm.memory.forget(f"user_profile_{user_id}")
+            await query.edit_message_text("✅ 所有记忆已清除。")
+
+        elif action == "mem_page":
+            user_id = int(parts[1])
+            page = int(parts[2])
+            sm = get_smart_memory()
+            if not sm:
+                return
+
+            search_result = sm.memory.search(f"auto_{user_id}", limit=50)
+            results = search_result.get("results", []) if isinstance(search_result, dict) else []
+
+            start = page * self.MEMORIES_PER_PAGE
+            end = min(start + self.MEMORIES_PER_PAGE, len(results))
+            page_items = results[start:end]
+
+            text = f"🧠 <b>记忆 ({len(results)} 条) - 第 {page + 1} 页</b>\n\n"
+            for i, mem in enumerate(page_items, start=start + 1):
+                val = mem.get("value", "")[:100]
+                text += f"{i}. {val}\n\n"
+
+            nav = []
+            if page > 0:
+                nav.append(InlineKeyboardButton("« 上一页", callback_data=f"mem_page|{user_id}|{page - 1}"))
+            if end < len(results):
+                nav.append(InlineKeyboardButton("下一页 »", callback_data=f"mem_page|{user_id}|{page + 1}"))
+            keyboard = [nav] if nav else []
+            keyboard.append([InlineKeyboardButton("🗑 清除所有", callback_data=f"mem_clear|{user_id}")])
+
+            try:
+                await query.edit_message_text(
+                    text, parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+            except Exception:
+                pass
+
+    async def handle_notify_action_callback(self, update, context):
+        """处理交易通知中的 actionable 按钮 — 搬运 freqtrade 的 inline command 模式
+        
+        callback_data 格式: cmd:/command [args]
+        点击按钮等同于执行对应命令，结果直接回复在通知下方。
+        """
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        if not data.startswith("cmd:"):
+            return
+
+        cmd_str = data[4:].strip()  # 去掉 "cmd:" 前缀
+        if not cmd_str.startswith("/"):
+            return
+
+        # 解析命令和参数
+        parts = cmd_str.split()
+        cmd_name = parts[0][1:]  # 去掉 "/"
+        cmd_args = parts[1:]
+
+        # 映射到对应的命令处理函数
+        cmd_map = {
+            "monitor": self.cmd_monitor,
+            "risk": self.cmd_risk,
+            "tradingsystem": self.cmd_tradingsystem,
+            "brief": self.cmd_brief,
+            "status": self.cmd_status,
+            "autotrader": self.cmd_autotrader,
+        }
+
+        handler = cmd_map.get(cmd_name)
+        if not handler:
+            await query.message.reply_text(f"未知命令: /{cmd_name}")
+            return
+
+        # 构造 context.args 并执行命令
+        context.args = cmd_args
+        try:
+            await handler(update, context)
+        except Exception as e:
+            await query.message.reply_text(f"执行 /{cmd_name} 失败: {e}")
+
+    # ── Inline Query — @bot 搜股票/记忆 ──
+    # 搬运自 yym68686/ChatGPT-Telegram-Bot + freqtrade 的 inline 模式
+
+    async def handle_inline_query(self, update, context):
+        """处理 @bot <query> 内联搜索 — 在任何聊天中即时查股票/记忆"""
+        from telegram import InlineQueryResultArticle, InputTextMessageContent
+
+        query = update.inline_query
+        text = (query.query or "").strip()
+        if not text or len(text) < 1:
+            return
+
+        results = []
+        text_upper = text.upper()
+
+        # 1. 股票快速查询
+        try:
+            from src.invest_tools import get_stock_quote, get_crypto_quote
+            from src.telegram_ux import format_quote_card
+
+            # 判断是否像股票代码（1-5个字母）
+            if text_upper.isalpha() and len(text_upper) <= 5:
+                quote = await get_stock_quote(text_upper)
+                if quote and isinstance(quote, dict) and "price" in quote:
+                    card = format_quote_card(quote)
+                    results.append(InlineQueryResultArticle(
+                        id=f"stock_{text_upper}",
+                        title=f"📈 {text_upper} — ${quote.get('price', 0):.2f}",
+                        description=f"{quote.get('change_pct', 0):+.2f}% | Vol {quote.get('volume', 0):,.0f}",
+                        input_message_content=InputTextMessageContent(
+                            card, parse_mode="HTML",
+                        ),
+                    ))
+
+                # 也试加密货币
+                crypto_quote = await get_crypto_quote(text_upper)
+                if crypto_quote and isinstance(crypto_quote, dict) and "price" in crypto_quote:
+                    card = format_quote_card(crypto_quote)
+                    results.append(InlineQueryResultArticle(
+                        id=f"crypto_{text_upper}",
+                        title=f"🪙 {text_upper} — ${crypto_quote.get('price', 0):.2f}",
+                        description=f"{crypto_quote.get('change_pct', 0):+.2f}%",
+                        input_message_content=InputTextMessageContent(
+                            card, parse_mode="HTML",
+                        ),
+                    ))
+        except Exception:
+            pass
+
+        # 2. 记忆搜索
+        try:
+            from src.smart_memory import get_smart_memory
+            sm = get_smart_memory()
+            if sm and len(text) >= 2:
+                search_result = sm.memory.search(text, limit=5)
+                memories = search_result.get("results", []) if isinstance(search_result, dict) else []
+                for i, mem in enumerate(memories[:3]):
+                    val = mem.get("value", "")[:200]
+                    if val:
+                        results.append(InlineQueryResultArticle(
+                            id=f"mem_{i}",
+                            title=f"🧠 记忆: {val[:50]}",
+                            description=val[:100],
+                            input_message_content=InputTextMessageContent(
+                                f"🧠 {val}",
+                            ),
+                        ))
+        except Exception:
+            pass
+
+        # 3. 命令快捷入口
+        cmd_hints = {
+            "回测": ("/backtest", "📊 回测策略"),
+            "持仓": ("/monitor", "📊 查看持仓"),
+            "风控": ("/risk", "🛡 风控状态"),
+            "新闻": ("/news", "📰 科技早报"),
+            "记忆": ("/memory", "🧠 查看记忆"),
+            "发文": ("/hot", "🔥 热点发文"),
+        }
+        for keyword, (cmd, desc) in cmd_hints.items():
+            if keyword in text or text in keyword:
+                results.append(InlineQueryResultArticle(
+                    id=f"cmd_{cmd}",
+                    title=desc,
+                    description=f"发送 {cmd} 命令",
+                    input_message_content=InputTextMessageContent(cmd),
+                ))
+
+        try:
+            await query.answer(results[:10], cache_time=30)
+        except Exception:
+            pass

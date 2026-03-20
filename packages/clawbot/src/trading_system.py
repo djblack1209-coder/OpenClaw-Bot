@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from datetime import time, datetime, timedelta
+from collections import OrderedDict
 from typing import Optional, Callable, Dict, List
 
 from src.notify_style import (
@@ -30,7 +31,7 @@ _rebalancer = None
 _weekly_guard_last_week_key = ""
 _weekly_kill_switch_triggered = False
 _pending_reentry_queue: List[Dict] = []
-_processed_fill_exec_ids = set()
+_processed_fill_exec_ids = OrderedDict()  # 保持插入顺序，截断时保留最近的
 _initialized = False
 _ai_team_api_callers = {}  # {bot_id: async callable} — 由 multi_main.py 注入
 
@@ -45,10 +46,8 @@ def set_ai_team_callers(callers: dict):
 
 
 def _env_bool(key: str, default: bool) -> bool:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
+    from src.utils import env_bool
+    return env_bool(key, default)
 
 
 def _env_int(key: str, default: int, minimum: int = 1) -> int:
@@ -125,7 +124,8 @@ def _load_pending_reentry_queue() -> List[Dict]:
         payload = json.loads(raw)
         if not isinstance(payload, list):
             return []
-    except Exception:
+    except Exception as e:
+        logger.warning("[TradingSystem] 解析 reentry queue 失败: %s", e)
         return []
 
     normalized = []
@@ -242,7 +242,8 @@ def _ensure_monitor_position_from_trade(trade: Dict) -> None:
 
     entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
     if entry_dt is None:
-        entry_dt = datetime.now()
+        from src.utils import now_et
+        entry_dt = now_et()
 
     mon = MonitoredPosition(
         trade_id=trade_id,
@@ -451,12 +452,36 @@ def init_trading_system(
 
         scan_func = _full_scan
 
-        # AI分析函数：获取完整技术分析并生成摘要
+        # AI分析函数：获取完整技术分析 + 策略引擎信号增强
         async def _analyze_candidate(symbol):
-            """为候选标的获取完整技术分析"""
+            """为候选标的获取完整技术分析，并融合策略引擎信号"""
             try:
                 data = await get_full_analysis(symbol)
                 if isinstance(data, dict) and "error" not in data:
+                    # 策略引擎增强：将量化策略信号注入分析结果
+                    try:
+                        from src.bot.globals import strategy_engine_instance
+                        if strategy_engine_instance and "closes" in data:
+                            from src.strategy_engine import MarketData
+                            md = MarketData(
+                                symbol=symbol,
+                                timeframe="1d",
+                                closes=data["closes"] if isinstance(data.get("closes"), list) else [],
+                                volumes=data.get("volumes", []),
+                            )
+                            if md.closes and len(md.closes) >= 10:
+                                se_result = strategy_engine_instance.analyze(md)
+                                data["strategy_engine"] = {
+                                    "consensus_signal": str(se_result.get("consensus_signal", "HOLD")),
+                                    "consensus_score": se_result.get("consensus_score", 0),
+                                    "confidence": se_result.get("confidence", 0),
+                                    "signals": [
+                                        {"name": s.strategy_name, "signal": str(s.signal.value), "score": s.score}
+                                        for s in se_result.get("signals", [])
+                                    ],
+                                }
+                    except Exception as se_err:
+                        logger.debug("[TradingSystem] 策略引擎增强失败 %s: %s", symbol, se_err)
                     return data
             except Exception as e:
                 logger.warning("[TradingSystem] 分析 %s 失败: %s", symbol, e)
@@ -466,16 +491,40 @@ def init_trading_system(
         logger.warning("[TradingSystem] ta_engine 不可用")
 
     # AI团队投票函数 — 延迟绑定，等 bot 启动后注入 api_callers
+    # 优先使用 CrewAI 多 Agent 协作（如果可用），否则降级到原生投票
+    try:
+        from src.crewai_bridge import get_crewai_bridge
+        _crewai = get_crewai_bridge()
+    except ImportError:
+        _crewai = None
+
     try:
         from src.ai_team_voter import run_team_vote_batch
         _ai_team_vote_batch = run_team_vote_batch
 
         async def _ai_team_wrapper(candidates, analyses, notify_func=None, max_candidates=5, account_context=""):
-            """包装AI团队投票，注入api_callers"""
-            # api_callers 在 multi_main.py 启动后通过 set_ai_team_callers() 注入
+            """包装AI团队投票，优先 CrewAI，降级到原生投票"""
             if not _ai_team_api_callers:
                 logger.warning("[TradingSystem] AI团队API callers未注入，跳过投票")
                 return []
+
+            # 尝试 CrewAI 多 Agent 协作
+            if _crewai:
+                try:
+                    crewai_results = []
+                    for cand in candidates[:max_candidates]:
+                        sym = cand.get("symbol", "")
+                        analysis = analyses.get(sym, {})
+                        result = await _crewai.analyze_trade(sym, analysis, notify_func)
+                        if result:
+                            crewai_results.append(result)
+                    if crewai_results:
+                        logger.info("[TradingSystem] CrewAI 投票完成: %d 个结果", len(crewai_results))
+                        return crewai_results
+                except Exception as crew_err:
+                    logger.warning("[TradingSystem] CrewAI 投票失败，降级到原生: %s", crew_err)
+
+            # 降级到原生 AI 团队投票
             return await _ai_team_vote_batch(
                 candidates=candidates,
                 analyses=analyses,
@@ -485,7 +534,7 @@ def init_trading_system(
                 account_context=account_context,
             )
         ai_team_func = _ai_team_wrapper
-        logger.info("[TradingSystem] AI团队投票模块已加载")
+        logger.info("[TradingSystem] AI团队投票模块已加载 (CrewAI: %s)", "可用" if _crewai else "不可用，使用原生")
     except ImportError:
         logger.warning("[TradingSystem] ai_team_voter 不可用，使用机械策略")
 
@@ -537,7 +586,6 @@ async def start_trading_system():
         return
 
     _pending_reentry_queue = _load_pending_reentry_queue()
-    _processed_fill_exec_ids = set()
     if _pending_reentry_queue:
         logger.info("[TradingSystem] 恢复待重挂队列: %d 条", len(_pending_reentry_queue))
 
@@ -742,7 +790,33 @@ async def start_trading_system():
 
             from src.utils import now_et
             now = now_et()
-            if now.weekday() != 0:  # 仅周一执行
+
+            # 从持久化存储恢复 kill switch 状态
+            from src.trading_journal import journal as tj
+            _saved_ks = tj.get_config("weekly_kill_switch_state")
+            if _saved_ks:
+                try:
+                    _ks_data = json.loads(_saved_ks)
+                    if _ks_data.get("triggered") and _ks_data.get("week_key"):
+                        # 检查是否仍在同一周（周一重置）
+                        current_week_start = now.date() - timedelta(days=now.weekday())
+                        if _ks_data["week_key"] >= current_week_start.isoformat():
+                            global _weekly_kill_switch_triggered
+                            if not _weekly_kill_switch_triggered:
+                                _weekly_kill_switch_triggered = True
+                                if _auto_trader:
+                                    await _auto_trader.stop()
+                                    try:
+                                        from src.auto_trader import TraderState
+                                        _auto_trader.state = TraderState.PAUSED
+                                    except Exception:
+                                        pass
+                                logger.warning("[Scheduler] 从持久化恢复周度熔断状态 (week_key=%s)", _ks_data["week_key"])
+                            return
+                except Exception as e:
+                    logger.debug("[Scheduler] 解析 weekly_kill_switch_state 失败: %s", e)
+
+            if now.weekday() != 0:  # 仅周一执行完整检查
                 return
 
             current_week_start = now.date() - timedelta(days=now.weekday())
@@ -781,17 +855,26 @@ async def start_trading_system():
 
             if week_pnl >= target:
                 _weekly_kill_switch_triggered = False
+                # 清除持久化状态
+                tj.set_config("weekly_kill_switch_state", "")
                 return
 
             _weekly_kill_switch_triggered = True
+            # 持久化 kill switch 状态
+            tj.set_config("weekly_kill_switch_state", json.dumps({
+                "triggered": True,
+                "week_key": current_week_start.isoformat(),
+                "week_pnl": week_pnl,
+                "target": target,
+            }))
 
             if _auto_trader:
                 await _auto_trader.stop()
                 try:
                     from src.auto_trader import TraderState
                     _auto_trader.state = TraderState.PAUSED
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("[Scheduler] 设置 AutoTrader PAUSED 状态失败: %s", e)
 
             msg = (
                 "!! 周盈利硬规则触发，自动停机 !!\n"
@@ -865,7 +948,7 @@ async def start_trading_system():
                 if not exec_id or exec_id in _processed_fill_exec_ids:
                     continue
 
-                _processed_fill_exec_ids.add(exec_id)
+                _processed_fill_exec_ids[exec_id] = True
                 new_exec += 1
 
                 order_id = str(fill.get("order_id", "") or "").strip()
@@ -886,7 +969,9 @@ async def start_trading_system():
                     item["latest_time"] = str(fill.get("time"))
 
             if len(_processed_fill_exec_ids) > 8000:
-                _processed_fill_exec_ids = set(list(_processed_fill_exec_ids)[-4000:])
+                # 保留最近 4000 条（OrderedDict 保持插入顺序）
+                keys = list(_processed_fill_exec_ids.keys())
+                _processed_fill_exec_ids = OrderedDict.fromkeys(keys[-4000:], True)
 
             pending_by_order = {}
             for trade in pending:
@@ -978,7 +1063,8 @@ async def start_trading_system():
                     entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
                     age_min = 0
                     if entry_dt is not None:
-                        age_min = int(max(0, (datetime.now() - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
+                        from src.utils import now_et
+                        age_min = int(max(0, (now_et().replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
 
                     if order_id in open_order_ids:
                         # 旧记录修正为 pending，避免被误当成已持仓
@@ -1049,7 +1135,8 @@ async def start_trading_system():
             }
 
             cancelled_statuses = {"Cancelled", "ApiCancelled", "Inactive"}
-            now = datetime.now()
+            from src.utils import now_et
+            now = now_et()
 
             for trade in pending:
                 trade_id = int(float(trade.get("id", 0) or 0))
@@ -1060,7 +1147,7 @@ async def start_trading_system():
                 entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
                 age_min = 9999
                 if entry_dt is not None:
-                    age_min = max(0, int((now - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
+                    age_min = max(0, int((now.replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
 
                 live_order = open_map.get(order_id)
                 snap = snapshot_map.get(order_id, {})

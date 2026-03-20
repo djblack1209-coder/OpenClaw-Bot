@@ -131,7 +131,8 @@ def parse_bracket_tool_calls(response_text: str) -> List[Dict[str, Any]]:
         json_str = response_text[json_start:json_end + 1]
         
         try:
-            args = json.loads(json_str)
+            from json_repair import loads as jloads
+            args = jloads(json_str)
             tool_call_id = generate_tool_call_id()
             # index will be added later when forming the final response
             tool_calls.append({
@@ -406,7 +407,8 @@ class AwsEventStreamParser:
         if isinstance(args, str):
             if args.strip():
                 try:
-                    parsed = json.loads(args)
+                    from json_repair import loads as jloads
+                    parsed = jloads(args)
                     # Ensure result is a JSON string
                     self.current_tool_call['function']['arguments'] = json.dumps(parsed)
                     logger.debug(f"Tool '{tool_name}' arguments parsed successfully: {list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}")

@@ -48,21 +48,25 @@ def _decode_mime(value = None):
     return ''.join(out).strip()
 
 
-def _safe_int(raw = None, default = None):
+def _safe_int(raw=None, default=0):
     try:
+        if raw is None:
+            return default
         return int(raw)
     except (TypeError, ValueError):
         return default
 
 
-def _safe_float(raw = None, default = None):
+def _safe_float(raw=None, default=0.0):
     try:
+        if raw is None:
+            return default
         return float(raw)
     except (TypeError, ValueError):
         return default
 
 
-def _parse_hhmm(raw = None, fallback = None):
+def _parse_hhmm(raw=None, fallback=(0, 0)):
     raw = raw or fallback
     text = str(raw or '').strip()
     if ':' not in text:
@@ -138,6 +142,10 @@ class ExecutionHub:
         self._payout_seen_hashes = {}
         self._monitor_seen_digests = set()
         self._draft_store = []
+        # 内存上限，防止长期运行 OOM
+        self._max_drafts = 500
+        self._max_monitors = 200
+        self._max_seen_digests = 5000
 
     
     def _default_social_persona_id(self):
@@ -391,41 +399,30 @@ class ExecutionHub:
         return await self._call_social_ai_direct(bot_id, prompt, system_prompt)
 
     async def _call_social_ai_direct(self, bot_id=None, prompt=None, system_prompt=None):
-        """Direct OpenAI-compatible chat completion call to configured LLM endpoints."""
+        """通过 LiteLLM Router 调用 — 替代手写 HTTP"""
         if not prompt:
             return {"success": False, "error": "empty prompt"}
-        endpoints = [
-            (os.getenv('SILICONFLOW_BASE_URL', ''), (os.getenv('SILICONFLOW_KEYS', '').split(',') or [''])[0].strip(), 'Qwen/Qwen3-235B-A22B'),
-            (os.getenv('G4F_BASE_URL', ''), os.getenv('G4F_API_KEY', 'dummy'), 'qwen-3-235b'),
-            (os.getenv('KIRO_BASE_URL', ''), os.getenv('KIRO_API_KEY', ''), 'claude-sonnet-4-20250514'),
-        ]
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        for base_url, api_key, model in endpoints:
-            if not base_url or not api_key:
-                continue
-            url = f"{base_url.rstrip('/')}/chat/completions"
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            payload = {"model": model, "messages": messages, "max_tokens": 4096, "temperature": 0.7}
-            try:
-                async with httpx.AsyncClient(timeout=60) as client:
-                    resp = await client.post(url, json=payload, headers=headers)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    text = data["choices"][0]["message"]["content"].strip()
-                    if text:
-                        return {"success": True, "raw": text, "bot_id": bot_id or model, "provider": base_url}
-            except Exception as e:
-                logger.debug(f"[SocialAI] direct call to {base_url} failed: {e}")
-                continue
-        return {"success": False, "error": "all LLM endpoints failed"}
+        from src.litellm_router import free_pool
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = await free_pool.acompletion(
+                model_family="qwen",
+                messages=messages,
+                system_prompt=system_prompt or "",
+                temperature=0.7,
+                max_tokens=4096,
+            )
+            text = response.choices[0].message.content or ""
+            return {"success": True, "raw": text, "bot_id": bot_id or "litellm/qwen", "provider": "litellm"}
+        except Exception as e:
+            logger.warning(f"[SocialAI] LiteLLM call failed: {e}")
+            return {"success": False, "error": str(e)}
 
     
     def _extract_json_object(self, text = None):
         if not text:
             return None
+        from json_repair import loads as jloads
         patterns = [
             '```json\\s*(\\{.*?\\})\\s*```',
             '```\\s*(\\{.*?\\})\\s*```']
@@ -433,13 +430,13 @@ class ExecutionHub:
             match = re.search(pattern, text, re.DOTALL)
             if not match:
                 continue
-            payload = json.loads(match.group(1))
+            payload = jloads(match.group(1))
             if isinstance(payload, dict):
                 
-                return patterns, payload
+                return payload
         start = text.find('{'); end = text.rfind('}')
         if start >= 0 and end > start:
-            payload = json.loads(text[start:end + 1])
+            payload = jloads(text[start:end + 1])
             if isinstance(payload, dict):
                 return payload
             return None
@@ -730,7 +727,7 @@ class ExecutionHub:
             if not path.exists():
                 continue
             
-            return candidates, str(path)
+            return str(path)
         return ''
 
     
@@ -798,6 +795,33 @@ class ExecutionHub:
             pass
         today_topics = [t for t in (state or {}).get("recent_post_topics", []) if isinstance(t, str) and t.startswith(now.strftime("%Y-%m-%d"))]
         post_count_hint = f"今日已发 {len(today_topics)} 篇（目标2-3篇/天）"
+
+        # 闭环学习：注入近期发帖效果 + A/B 测试洞察
+        performance_hint = ""
+        try:
+            perf = self.get_post_performance_report(days=7)
+            if perf.get("success") and perf.get("top_posts"):
+                top = perf["top_posts"][:3]
+                perf_lines = [f"- [{p['platform']}] {p.get('topic','')} ❤️{p['likes']} 💬{p['comments']} 👁{p['views']}" for p in top]
+                performance_hint = "═══ 近7天表现最好的帖子（学习它们的风格）═══\n" + "\n".join(perf_lines)
+        except Exception:
+            pass
+        try:
+            from src.bot.globals import ab_test_manager
+            if ab_test_manager:
+                ab_lines = []
+                for test in ab_test_manager.get_active_tests()[:3]:
+                    r = ab_test_manager.get_results(test.test_id)
+                    if r:
+                        variants = r.get("variants", [])
+                        best = max(variants, key=lambda v: v.get("engagement_rate", 0), default=None)
+                        if best and best.get("impressions", 0) > 3:
+                            ab_lines.append(f"- A/B测试'{r['name']}': 互动率最高的风格: {best.get('content_preview','')[:60]}")
+                if ab_lines:
+                    performance_hint += "\n═══ A/B测试洞察 ═══\n" + "\n".join(ab_lines)
+        except Exception:
+            pass
+
         return textwrap.dedent(f"""
             你是周予衡，一个浙大CS大三男生，用OpenClaw自动化一切的懒人。你在运营X和小红书账号。
             你不是AI客服，你是一个有想法、会吐槽、偶尔认真的真实男大学生。
@@ -836,6 +860,8 @@ class ExecutionHub:
 
             {time_hint} | {post_count_hint}
             {trending_hint}
+
+            {performance_hint}
 
             社媒状态：{json.dumps(digest, ensure_ascii=False, indent=2)}
             评论规则：{' '.join(self._social_comment_priority_rules())}
@@ -963,8 +989,8 @@ class ExecutionHub:
                     topic TEXT DEFAULT '', content TEXT DEFAULT '', published_at TEXT,
                     likes INTEGER DEFAULT 0, comments INTEGER DEFAULT 0, shares INTEGER DEFAULT 0,
                     views INTEGER DEFAULT 0, last_checked TEXT, checked_count INTEGER DEFAULT 0)""")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[ExecutionHub] social_post_tracking 表创建失败: {e}")
 
     def _record_post_publish(self, platform, url, topic="", content=""):
         self._ensure_post_tracking_table()
@@ -1001,7 +1027,8 @@ class ExecutionHub:
             m = _re.search(r'\[.*\]', raw, _re.DOTALL)
             if m:
                 try:
-                    return {"success": True, "calendar": json.loads(m.group()), "trending": trending}
+                    from json_repair import loads as jloads
+                    return {"success": True, "calendar": jloads(m.group()), "trending": trending}
                 except Exception:
                     pass
         return {"success": False, "error": "AI calendar generation failed"}
@@ -1014,15 +1041,15 @@ class ExecutionHub:
             try:
                 if now < datetime.fromisoformat(next_action_at):
                     return {"success": True, "status": "idle", "next_action_at": next_action_at}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[SocialAutopilot] 解析 next_action_at 失败: %s", e)
         self._ensure_post_tracking_table()
         try:
             trending = await self.research_trending_topics()
             if trending:
                 state["_trending_topics"] = trending
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[SocialAutopilot] 热点研究失败: %s", e)
         workspace = await self.collect_social_workspace()
         if workspace.get("success"):
             profile_lines = (((workspace.get("xiaohongshu") or {}).get("profile") or {}).get("lines") or [])
@@ -1287,7 +1314,7 @@ class ExecutionHub:
             return {'success': False, 'error': str(e)}
 
     
-    def add_task(self, title = None, details = None, due_at = None, sources=None):
+    def add_task(self, title = None, details = None, due_at = None, sources=None, priority=3):
         title = title or ''
         t = str(title or '').strip()
         if not t:
@@ -1463,29 +1490,54 @@ class ExecutionHub:
     
     def _run_social_worker(self, action = None, payload = None):
         worker = Path(self.repo_root) / 'scripts' / 'social_browser_worker.py'
-        cp = subprocess.run([
-            'python3',
-            str(worker),
-            action,
-            json.dumps(payload, ensure_ascii = False)], check = False, capture_output = True, text = True, timeout = 300)
-        if cp.returncode != 0:
-            return {
-                'success': False,
-                'error': 'worker exited {}'.format(cp.returncode),
-                'stderr': str(cp.stderr or '').strip(),
-                'stdout': str(cp.stdout or '').strip() }
-        stdout = str(cp.stdout or '').strip()
-        if not stdout:
-            return {
-                'success': False,
-                'error': 'worker produced no output' }
-        data = json.loads(stdout)
-        if isinstance(data, dict):
-            data.setdefault('success', True)
-            return data
-        return {
-            'success': False,
-            'error': 'worker 输出不是对象' }
+        max_retries = 2 if action and 'publish' in str(action) else 1
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                cp = subprocess.run([
+                    'python3',
+                    str(worker),
+                    action,
+                    json.dumps(payload, ensure_ascii = False)], check = False, capture_output = True, text = True, timeout = 300)
+                if cp.returncode != 0:
+                    last_err = {
+                        'success': False,
+                        'error': 'worker exited {}'.format(cp.returncode),
+                        'stderr': str(cp.stderr or '').strip(),
+                        'stdout': str(cp.stdout or '').strip() }
+                    if attempt < max_retries - 1:
+                        logger.warning("[SocialWorker] %s 失败(attempt %d)，重试中...", action, attempt + 1)
+                        time.sleep(3)
+                        continue
+                    return last_err
+                stdout = str(cp.stdout or '').strip()
+                if not stdout:
+                    last_err = {
+                        'success': False,
+                        'error': 'worker produced no output' }
+                    if attempt < max_retries - 1:
+                        time.sleep(3)
+                        continue
+                    return last_err
+                data = json.loads(stdout)
+                if isinstance(data, dict):
+                    data.setdefault('success', True)
+                    return data
+                return {
+                    'success': False,
+                    'error': 'worker 输出不是对象' }
+            except subprocess.TimeoutExpired:
+                last_err = {'success': False, 'error': f'worker 超时 (action={action})'}
+                logger.warning("[SocialWorker] %s 超时(attempt %d)", action, attempt + 1)
+            except json.JSONDecodeError as e:
+                last_err = {'success': False, 'error': f'worker 输出解析失败: {e}'}
+                logger.warning("[SocialWorker] %s JSON解析失败: %s", action, e)
+            except Exception as e:
+                last_err = {'success': False, 'error': str(e)}
+                logger.warning("[SocialWorker] %s 异常(attempt %d): %s", action, attempt + 1, e)
+            if attempt < max_retries - 1:
+                time.sleep(3)
+        return last_err or {'success': False, 'error': 'unknown'}
 
     
     def _social_browser_targets(self, platforms = None):
@@ -1779,7 +1831,7 @@ class ExecutionHub:
         for item in items:
             title = item.get('title', '')
             key = self._normalize_monitor_text(title)
-            if key or key in seen_titles:
+            if not key or key in seen_titles:
                 continue
             seen_titles.add(key)
             handle = item.get('handle', '')
@@ -1937,7 +1989,7 @@ class ExecutionHub:
             '',
             f'主页置顶放{lead_magnet}，先验证 PMF，再决定买会员还是投流。',
             '#OpenClaw #内容增长'])
-        return text[:278]
+        return '\n'.join(lines)[:278]
 
     
     def _build_hot_xhs_title(self, candidate = None, strategy = None):
@@ -2367,6 +2419,9 @@ class ExecutionHub:
             'updated_at': datetime.now().isoformat(),
         }
         self._draft_store.append(row)
+        # 内存上限裁剪
+        if len(self._draft_store) > self._max_drafts:
+            self._draft_store = self._draft_store[-self._max_drafts:]
         return row
 
     
@@ -2886,6 +2941,9 @@ class ExecutionHub:
                 'error': '关键词不能为空' }
         source = source or 'news'
         self._monitors.append({'keyword': k, 'source': source})
+        # 内存上限裁剪
+        if len(self._monitors) > self._max_monitors:
+            self._monitors = self._monitors[-self._max_monitors:]
         return {'success': True, 'keyword': k, 'source': source}
 
     
@@ -3037,6 +3095,11 @@ class ExecutionHub:
                 digest_key = item.get('digest_key', '')
                 if digest_key and digest_key not in self._monitor_seen_digests:
                     self._monitor_seen_digests.add(digest_key)
+                    # 防止 set 无限增长
+                    if len(self._monitor_seen_digests) > self._max_seen_digests:
+                        # 丢弃一半旧的（set 无序，但足够防 OOM）
+                        to_keep = list(self._monitor_seen_digests)[-self._max_seen_digests // 2:]
+                        self._monitor_seen_digests = set(to_keep)
                     new_items.append(item)
             if new_items:
                 alerts.append({
@@ -3667,30 +3730,36 @@ class ExecutionHub:
             now = datetime.now()
             ts = time.time()
 
-            # Daily brief
+            # Daily brief — 只在指定时间推一次
             if os.getenv('OPS_BRIEF_ENABLED', '').lower() in ('1', 'true', 'yes', 'on'):
                 today = now.strftime('%Y-%m-%d')
                 if today != self._last_brief_date and now.hour == brief_time[0] and now.minute >= brief_time[1]:
                     try:
                         result = await self.generate_daily_brief()
                         self._last_brief_date = today
-                        if self._notify_func and result:
+                        # 门控：brief 必须有实际内容才推送
+                        if self._notify_func and result and len(str(result).strip()) > 20:
                             await self._notify_func(result)
                     except Exception as e:
                         logger.error(f"[Scheduler] daily brief failed: {e}")
 
-            # Monitors
+            # Monitors — 只推有新增告警的结果
             if os.getenv('OPS_MONITOR_ENABLED', '').lower() in ('1', 'true', 'yes', 'on'):
                 if ts - self._last_monitor_ts >= monitor_interval:
                     try:
                         result = await self.run_monitors_once()
                         self._last_monitor_ts = ts
-                        if self._notify_func and result:
+                        # 门控：空列表/无告警不推送
+                        if self._notify_func and result and isinstance(result, list) and len(result) > 0:
+                            formatted = "\n\n".join(self.format_monitor_alert(al) for al in result if al)
+                            if formatted.strip():
+                                await self._notify_func(formatted)
+                        elif self._notify_func and result and isinstance(result, str) and len(result.strip()) > 10:
                             await self._notify_func(result)
                     except Exception as e:
                         logger.error(f"[Scheduler] monitor failed: {e}")
 
-            # Social operator
+            # Social operator — 静默运行，不主动推送（结果写入 state 文件）
             if social_op_interval > 0:
                 if ts - self._last_social_operator_ts >= social_op_interval:
                     try:
@@ -3699,16 +3768,31 @@ class ExecutionHub:
                     except Exception as e:
                         logger.error(f"[Scheduler] social operator failed: {e}")
 
-            # Bounty scan
+            # Bounty scan — 只推有新增线索的结果到私聊
             if os.getenv('OPS_BOUNTY_ENABLED', '').lower() in ('1', 'true', 'yes', 'on'):
                 if ts - self._last_bounty_ts >= bounty_interval:
                     try:
                         result = await self.scan_bounties()
                         self._last_bounty_ts = ts
-                        if self._private_notify_func and result:
-                            await self._private_notify_func(result)
+                        # 门控：只有新增入库 > 0 才推送
+                        saved = (result or {}).get('saved', {}) if isinstance(result, dict) else {}
+                        new_count = int(saved.get('inserted', 0) or 0)
+                        if self._private_notify_func and new_count > 0:
+                            await self._private_notify_func(
+                                f"🎯 赏金扫描完成 | 新增 {new_count} 条线索\n"
+                                f"入库: {saved.get('total', 0)} (更新{saved.get('updated', 0)})\n"
+                                f"下一步: /ops bounty top"
+                            )
                     except Exception as e:
                         logger.error(f"[Scheduler] bounty scan failed: {e}")
+
+            # 每小时清理过期的待确认交易，防止内存泄漏
+            if now.minute == 0:
+                try:
+                    from src.bot.globals import _cleanup_pending_trades
+                    _cleanup_pending_trades()
+                except Exception:
+                    pass
 
     
     def _run_cmd(self, cmd=None, cwd=None, timeout=30):

@@ -1,10 +1,15 @@
-"""闲鱼 AI 多专家客服 — 定制化 OpenClaw 远程部署服务"""
+"""闲鱼 AI 多专家客服 — LiteLLM Router 版
+
+升级:
+- 替代独立 OpenAI client，统一走 LiteLLM Router (fallback + 多 provider)
+- 保持多专家架构: IntentRouter + PriceAgent + TechAgent + DefaultAgent
+- 新增: 异步调用支持 (async generate)
+"""
+import asyncio
 import os
 import re
 import logging
-from typing import Dict, List
-
-from openai import OpenAI
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,45 +25,70 @@ def _load_prompt(name: str) -> str:
     raise FileNotFoundError(f"Prompt {name} not found in {PROMPT_DIR}")
 
 
+# ---- 安全过滤 ----
+BLOCKED = ["微信", "QQ", "支付宝", "银行卡", "线下交易"]
+
+
+def _safe_filter(text: str) -> str:
+    if any(p in text for p in BLOCKED):
+        return "[安全提醒] 请通过闲鱼平台沟通交易，保障双方权益。"
+    return text
+
+
+# ---- Agent 基类 ----
+
 class BaseAgent:
-    def __init__(self, client: OpenAI, system_prompt: str, model: str):
-        self.client = client
+    def __init__(self, system_prompt: str, model_family: str = "qwen"):
         self.system_prompt = system_prompt
-        self.model = model
+        self.model_family = model_family
 
     def generate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
-        messages = [
-            {"role": "system", "content": f"【商品信息】{item_desc}\n【对话历史】{context}\n{self.system_prompt}"},
-            {"role": "user", "content": user_msg},
-        ]
-        return self._call(messages)
-
-    def _call(self, messages: List[Dict], temperature: float = 0.4) -> str:
-        resp = self.client.chat.completions.create(
-            model=self.model, messages=messages,
-            temperature=temperature, max_tokens=600, top_p=0.8,
+        """同步调用 (兼容旧代码)"""
+        return asyncio.get_event_loop().run_until_complete(
+            self.agenerate(user_msg, item_desc, context, bargain_count)
         )
-        return resp.choices[0].message.content
+
+    async def agenerate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
+        """异步调用 — 走 LiteLLM Router"""
+        system = f"【商品信息】{item_desc}\n【对话历史】{context}\n{self.system_prompt}"
+        messages = [{"role": "user", "content": user_msg}]
+        return await self._acall(messages, system, temperature=0.4)
+
+    async def _acall(self, messages: List[Dict], system: str = "", temperature: float = 0.4) -> str:
+        from src.litellm_router import free_pool
+        try:
+            response = await free_pool.acompletion(
+                model_family=self.model_family,
+                messages=messages,
+                system_prompt=system or self.system_prompt,
+                temperature=temperature,
+                max_tokens=600,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.error(f"[XianyuAgent] LLM 调用失败: {e}")
+            return "抱歉，系统繁忙，请稍后再试。"
 
 
 class PriceAgent(BaseAgent):
-    def generate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
+    async def agenerate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
         temp = min(0.3 + bargain_count * 0.15, 0.9)
-        messages = [
-            {"role": "system", "content": f"【商品信息】{item_desc}\n【对话历史】{context}\n{self.system_prompt}\n▲当前议价轮次：{bargain_count}"},
-            {"role": "user", "content": user_msg},
-        ]
-        return self._call(messages, temperature=temp)
+        system = (
+            f"【商品信息】{item_desc}\n【对话历史】{context}\n"
+            f"{self.system_prompt}\n▲当前议价轮次：{bargain_count}"
+        )
+        messages = [{"role": "user", "content": user_msg}]
+        return await self._acall(messages, system, temperature=temp)
 
 
 class TechAgent(BaseAgent):
-    def generate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
-        messages = [
-            {"role": "system", "content": f"【商品信息】{item_desc}\n【对话历史】{context}\n{self.system_prompt}"},
-            {"role": "user", "content": user_msg},
-        ]
-        return self._call(messages, temperature=0.3)
+    async def agenerate(self, user_msg: str, item_desc: str, context: str, bargain_count: int = 0) -> str:
+        system = f"【商品信息】{item_desc}\n【对话历史】{context}\n{self.system_prompt}"
+        messages = [{"role": "user", "content": user_msg}]
+        return await self._acall(messages, system, temperature=0.3)
 
+
+# ---- 意图路由 ----
 
 class IntentRouter:
     RULES = {
@@ -86,33 +116,34 @@ class IntentRouter:
         # LLM fallback
         return self.classify_agent.generate(user_msg=user_msg, item_desc=item_desc, context=context)
 
+    async def adetect(self, user_msg: str, item_desc: str, context: str) -> str:
+        """异步意图检测"""
+        clean = re.sub(r"[^\w\u4e00-\u9fa5]", "", user_msg).lower()
+        for intent in ("tech", "price"):
+            if any(kw in clean for kw in self.RULES[intent]["keywords"]):
+                return intent
+            if any(re.search(p, clean) for p in self.RULES[intent]["patterns"]):
+                return intent
+        return await self.classify_agent.agenerate(user_msg=user_msg, item_desc=item_desc, context=context)
 
-BLOCKED = ["微信", "QQ", "支付宝", "银行卡", "线下交易"]
 
-
-def _safe_filter(text: str) -> str:
-    if any(p in text for p in BLOCKED):
-        return "[安全提醒] 请通过闲鱼平台沟通交易，保障双方权益。"
-    return text
-
+# ---- 主 Bot ----
 
 class XianyuReplyBot:
     def __init__(self):
-        self.client = OpenAI(
-            api_key=os.getenv("XIANYU_LLM_API_KEY", os.getenv("API_KEY", "")),
-            base_url=os.getenv("XIANYU_LLM_BASE_URL", os.getenv("MODEL_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")),
-        )
-        self.model = os.getenv("XIANYU_LLM_MODEL", os.getenv("MODEL_NAME", "qwen-max"))
+        # 从环境变量读取模型族偏好，默认 qwen (免费)
+        self.model_family = os.getenv("XIANYU_MODEL_FAMILY", "qwen")
         self._load_agents()
         self.router = IntentRouter(self.agents["classify"])
-        self.last_intent = None
+        self.last_intent: Optional[str] = None
 
     def _load_agents(self):
+        fam = self.model_family
         self.agents = {
-            "classify": BaseAgent(self.client, _load_prompt("classify_prompt"), self.model),
-            "price": PriceAgent(self.client, _load_prompt("price_prompt"), self.model),
-            "tech": TechAgent(self.client, _load_prompt("tech_prompt"), self.model),
-            "default": BaseAgent(self.client, _load_prompt("default_prompt"), self.model),
+            "classify": BaseAgent(_load_prompt("classify_prompt"), fam),
+            "price": PriceAgent(_load_prompt("price_prompt"), fam),
+            "tech": TechAgent(_load_prompt("tech_prompt"), fam),
+            "default": BaseAgent(_load_prompt("default_prompt"), fam),
         }
 
     def reload_prompts(self):
@@ -120,8 +151,24 @@ class XianyuReplyBot:
         self.router = IntentRouter(self.agents["classify"])
 
     def generate_reply(self, user_msg: str, item_desc: str, context: List[Dict]) -> str:
+        """同步接口 (兼容旧调用)"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(
+                        asyncio.run, self.agenerate_reply(user_msg, item_desc, context)
+                    ).result(timeout=30)
+            return loop.run_until_complete(self.agenerate_reply(user_msg, item_desc, context))
+        except Exception as e:
+            logger.error(f"[XianyuReplyBot] sync generate failed: {e}")
+            return "抱歉，系统繁忙，请稍后再试。"
+
+    async def agenerate_reply(self, user_msg: str, item_desc: str, context: List[Dict]) -> str:
+        """异步接口 — 推荐使用"""
         formatted = "\n".join(f"{m['role']}: {m['content']}" for m in context if m["role"] in ("user", "assistant"))
-        intent = self.router.detect(user_msg, item_desc, formatted)
+        intent = await self.router.adetect(user_msg, item_desc, formatted)
 
         if intent == "no_reply":
             self.last_intent = "no_reply"
@@ -139,5 +186,8 @@ class XianyuReplyBot:
                 if match:
                     bargain_count = int(match.group(1))
 
-        reply = agent.generate(user_msg=user_msg, item_desc=item_desc, context=formatted, bargain_count=bargain_count)
+        reply = await agent.agenerate(
+            user_msg=user_msg, item_desc=item_desc,
+            context=formatted, bargain_count=bargain_count,
+        )
         return _safe_filter(reply)

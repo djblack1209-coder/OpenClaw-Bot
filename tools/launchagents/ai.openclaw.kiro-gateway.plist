@@ -24,6 +24,9 @@
   <key>KeepAlive</key>
   <true/>
 
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
   <key>StandardOutPath</key>
   <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/com-clawbot-kiro-gateway.stdout.log</string>
 

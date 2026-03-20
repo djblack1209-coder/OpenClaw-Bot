@@ -227,19 +227,21 @@ async def full_market_scan(
     total = len(symbols)
     logger.info(f"[Scanner] 开始全市场扫描: {total} 个标的")
 
-    # === 层1: 快速筛选（并行，批量） ===
-    batch_size = max_workers
+    # === 层1: 快速筛选（Semaphore 控制并发，比批次更高效） ===
+    sem = asyncio.Semaphore(max_workers)
     layer1_passed = []
 
-    for i in range(0, total, batch_size):
-        batch = symbols[i:i + batch_size]
-        results = await asyncio.gather(
-            *[asyncio.to_thread(_sync_quick_screen, sym) for sym in batch],
-            return_exceptions=True
-        )
-        for r in results:
-            if isinstance(r, dict) and r is not None:
-                layer1_passed.append(r)
+    async def _screen_one(sym: str):
+        async with sem:
+            return await asyncio.to_thread(_sync_quick_screen, sym)
+
+    results = await asyncio.gather(
+        *[_screen_one(sym) for sym in symbols],
+        return_exceptions=True
+    )
+    for r in results:
+        if isinstance(r, dict) and r is not None:
+            layer1_passed.append(r)
 
     logger.info(f"[Scanner] 层1通过: {len(layer1_passed)}/{total}")
 
@@ -247,13 +249,15 @@ async def full_market_scan(
     from src.ta_engine import _sync_full_analysis
     layer2_results = []
 
-    for i in range(0, len(layer1_passed), batch_size):
-        batch = layer1_passed[i:i + batch_size]
-        results = await asyncio.gather(
-            *[asyncio.to_thread(_sync_full_analysis, item['symbol']) for item in batch],
-            return_exceptions=True
-        )
-        for item, r in zip(batch, results):
+    async def _analyze_one(item: dict):
+        async with sem:
+            return await asyncio.to_thread(_sync_full_analysis, item['symbol'])
+
+    l2_results = await asyncio.gather(
+        *[_analyze_one(item) for item in layer1_passed],
+        return_exceptions=True
+    )
+    for item, r in zip(layer1_passed, l2_results):
             if isinstance(r, dict) and "error" not in r:
                 sig = r.get("signal", {})
                 score = sig.get("score", 0)
@@ -282,13 +286,13 @@ async def full_market_scan(
 
     logger.info(f"[Scanner] 层2通过: {len(layer2_results)}/{len(layer1_passed)}")
 
-    # === 层3: 排序输出Top候选 ===
+    # === 层3: 排序输出Top候选（加上限保护） ===
     layer2_results.sort(key=lambda x: abs(x['score']), reverse=True)
     final_top_n = max(5, int(top_n or 50))
     env_top_n = os.getenv("MAX_SCAN_CANDIDATES")
     if env_top_n:
         try:
-            final_top_n = max(5, int(env_top_n))
+            final_top_n = min(max(5, int(env_top_n)), 200)  # 上限200防止返回过多
         except ValueError:
             pass
 

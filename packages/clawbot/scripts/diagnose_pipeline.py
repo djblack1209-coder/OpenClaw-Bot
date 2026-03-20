@@ -175,7 +175,7 @@ async def stage4_ai_caller():
     sep("阶段 4: AI Caller 连通性测试")
 
     # 测试 g4f (Qwen)
-    print("\n  测试 g4f (端口 18791)...")
+    print("\n  测试 g4f (端口 18891)...")
     try:
         import aiohttp
         async with aiohttp.ClientSession() as session:
@@ -185,7 +185,7 @@ async def stage4_ai_caller():
                 "max_tokens": 10,
             }
             async with session.post(
-                "http://localhost:18791/v1/chat/completions",
+                "http://localhost:18891/v1/chat/completions",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:

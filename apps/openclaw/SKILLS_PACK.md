@@ -2,6 +2,29 @@
 
 This pack curates local workspace skills for OpenClaw Bot and maps them to community references.
 
+## 🆕 新增集成 (2026-03-19)
+
+基于 GLM-OCR（智谱，2.9k stars）完善的 5 个 OCR skills:
+
+- `glmocr` 📄 — 通用文字提取（图片/PDF/扫描件，OmniDocBench V1.5 第一名）
+- `glmocr-table` 📊 — 表格识别与提取（复杂表格、合并单元格→Markdown）
+- `glmocr-formula` 🔢 — 数学公式识别（→LaTeX 格式）
+- `glmocr-handwriting` ✍️ — 手写体识别（多语言、多风格）
+- `glmocr-sdk` 🔌 — SDK 程序化集成（pip install glmocr，批量处理/MCP 封装）
+
+CLI 脚本: `apps/openclaw/tools/scripts/glm_ocr_cli.py`
+前置条件: `ZHIPU_API_KEY`（https://open.bigmodel.cn）
+
+## 🆕 新增集成 (2026-03-17)
+
+基于 GitHub 热门 AI Agent 项目完善的 5 个新 skills:
+
+- `openviking` 🗄️ — OpenViking 上下文数据库（字节跳动，替代 SQLite memory）
+- `superpowers-workflow` ⚡ — 结构化开发方法论（obra/superpowers 90k stars）
+- `cli-anything` 🔧 — 一键为任意 GUI 软件生成 CLI（HKUDS/CLI-Anything）
+- `gstack-review` 🎯 — 多角色审查模式（YC 总裁 Garry Tan 的 gstack）
+- `page-agent` 🌐 — 自然语言控制浏览器（Alibaba page-agent）
+
 ## Local skills enabled
 
 - `usecase-playbook-router`
@@ -40,6 +63,14 @@ This pack curates local workspace skills for OpenClaw Bot and maps them to commu
 - `lane` -> `telegram-lane-router`
 - `cost` -> `cost-quota-dashboard`
 - `dev` -> `dev-todo-mode`
+
+## GLM-OCR skills (智谱 OCR)
+
+- `glmocr` — 通用 OCR 文字提取
+- `glmocr-table` — 表格识别
+- `glmocr-formula` — 公式识别
+- `glmocr-handwriting` — 手写体识别
+- `glmocr-sdk` — SDK 程序化集成
 
 ## Reference mapping
 

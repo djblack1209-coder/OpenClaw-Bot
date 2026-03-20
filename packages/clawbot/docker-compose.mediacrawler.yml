@@ -1,0 +1,25 @@
+# MediaCrawler 独立部署配置
+# 用法: docker compose -f docker-compose.mediacrawler.yml up -d
+#
+# 部署后:
+#   - WebUI: http://localhost:8080
+#   - ClawBot 通过 MEDIACRAWLER_URL=http://localhost:8080 连接
+#
+# 注意: MediaCrawler 使用非商业许可证，仅限学习研究用途
+
+services:
+  mediacrawler:
+    build:
+      context: ./vendor/MediaCrawler
+      dockerfile: Dockerfile
+    container_name: mediacrawler
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/mediacrawler:/app/data
+      - ./data/mediacrawler/browser_data:/app/browser_data
+    environment:
+      - HEADLESS=true
+      - SAVE_DATA_OPTION=json
+      - ENABLE_CDP_MODE=false
