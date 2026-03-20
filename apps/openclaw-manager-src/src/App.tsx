@@ -1,21 +1,45 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+
+import { lazy, Suspense } from 'react';
+import { Loader2 } from 'lucide-react';
+
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const ControlCenter = lazy(() => import('./components/ControlCenter').then(m => ({ default: m.ControlCenter })));
+const AIConfig = lazy(() => import('./components/AIConfig').then(m => ({ default: m.AIConfig })));
+const Channels = lazy(() => import('./components/Channels').then(m => ({ default: m.Channels })));
+const Social = lazy(() => import('./components/Social').then(m => ({ default: m.Social })));
+const Money = lazy(() => import('./components/Money').then(m => ({ default: m.Money })));
+const Dev = lazy(() => import('./components/Dev').then(m => ({ default: m.Dev })));
+const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
+const Testing = lazy(() => import('./components/Testing').then(m => ({ default: m.Testing })));
+const Logs = lazy(() => import('./components/Logs').then(m => ({ default: m.Logs })));
+const ExecutionFlow = lazy(() => import('./components/ExecutionFlow').then(m => ({ default: m.ExecutionFlow })));
+const Memory = lazy(() => import('./components/Memory').then(m => ({ default: m.Memory })));
+const Plugins = lazy(() => import('./components/Plugins').then(m => ({ default: m.Plugins })));
+
+const PageLoader = () => (
+  <div className="h-full flex items-center justify-center">
+    <Loader2 className="w-8 h-8 animate-spin text-claw-500" />
+  </div>
+);
+
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
-import { Dashboard } from './components/Dashboard';
-import { ControlCenter } from './components/ControlCenter';
-import { AIConfig } from './components/AIConfig';
-import { Channels } from './components/Channels';
-import { Social } from './components/Social';
-import { Money } from './components/Money';
-import { Dev } from './components/Dev';
-import { Settings } from './components/Settings';
-import { Testing } from './components/Testing';
-import { Logs } from './components/Logs';
-import { ExecutionFlow } from './components/ExecutionFlow';
-import { Memory } from './components/Memory';
-import { Plugins } from './components/Plugins';
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 
@@ -131,7 +155,9 @@ function App() {
           transition={{ duration: 0.2 }}
           className="h-full"
         >
-          {pages[currentPage]}
+          <Suspense fallback={<PageLoader />}>
+            {pages[currentPage]}
+          </Suspense>
         </motion.div>
       </AnimatePresence>
     );
