@@ -8,7 +8,7 @@ mod commands;
 mod models;
 mod utils;
 
-use commands::{clawbot, config, diagnostics, installer, process, service};
+use commands::{clawbot, config, diagnostics, installer, process, service, mcp};
 
 fn main() {
     // 初始化日志 - 默认显示 info 级别日志
@@ -16,7 +16,7 @@ fn main() {
         env_logger::Env::default().default_filter_or("info")
     ).init();
     
-    log::info!("🦞 OpenClaw Bot 启动");
+    log::info!("🦞 OpenClaw 启动");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -40,6 +40,7 @@ fn main() {
             clawbot::save_clawbot_runtime_config,
             clawbot::get_managed_service_logs,
             clawbot::get_managed_endpoints_status,
+            clawbot::get_skills_status,
             // 进程管理
             process::check_openclaw_installed,
             process::get_openclaw_version,
@@ -87,6 +88,10 @@ fn main() {
             // 版本更新
             installer::check_openclaw_update,
             installer::update_openclaw,
+            // MCP Plugins
+            mcp::get_mcp_plugins,
+            mcp::save_mcp_plugin,
+            mcp::toggle_mcp_plugin_status,
         ])
         .run(tauri::generate_context!())
         .expect("运行 Tauri 应用时发生错误");

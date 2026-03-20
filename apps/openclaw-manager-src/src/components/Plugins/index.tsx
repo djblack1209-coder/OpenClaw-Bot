@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Blocks, Search, Plus, Settings2, Trash2,
   Github, Database, Globe, HardDrive,
-  RefreshCw, AlertCircle, User
+  RefreshCw, AlertCircle, User, Loader2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { isTauri } from '../../lib/tauri';
 
 interface MCPPlugin {
   id: string;
@@ -21,7 +23,17 @@ interface MCPPlugin {
   tags: string[];
 }
 
-const mockPlugins: MCPPlugin[] = [
+const fallbackIcon = Blocks;
+
+const getIconForPlugin = (id: string) => {
+  if (id.includes('github')) return Github;
+  if (id.includes('sqlite') || id.includes('db')) return Database;
+  if (id.includes('browser')) return Globe;
+  if (id.includes('file') || id.includes('fs')) return HardDrive;
+  return fallbackIcon;
+};
+
+const defaultPlugins: MCPPlugin[] = [
   {
     id: 'mcp-github',
     name: 'GitHub MCP Server',
@@ -29,7 +41,7 @@ const mockPlugins: MCPPlugin[] = [
     version: '1.0.2',
     author: 'modelcontextprotocol',
     type: 'stdio',
-    status: 'running',
+    status: 'stopped',
     icon: Github,
     tags: ['git', 'vcs', 'official']
   },
@@ -51,41 +63,88 @@ const mockPlugins: MCPPlugin[] = [
     version: '2.1.0',
     author: 'browser-use',
     type: 'sse',
-    status: 'running',
+    status: 'stopped',
     icon: Globe,
     tags: ['web', 'automation', 'agent']
-  },
-  {
-    id: 'mcp-filesystem',
-    name: 'Local File System',
-    description: 'Safe read/write operations within restricted local directories.',
-    version: '1.2.0',
-    author: 'modelcontextprotocol',
-    type: 'stdio',
-    status: 'error',
-    icon: HardDrive,
-    tags: ['fs', 'system', 'official']
   }
 ];
 
 export function Plugins() {
-  const [plugins, setPlugins] = useState<MCPPlugin[]>(mockPlugins);
+  const [plugins, setPlugins] = useState<MCPPlugin[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPlugins = async () => {
+    if (!isTauri()) {
+      // Mock mode
+      setPlugins(defaultPlugins);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const data = await invoke<MCPPlugin[]>('get_mcp_plugins');
+      if (data && data.length > 0) {
+        // Map string icons to actual Lucide components
+        const mapped = data.map(p => ({
+          ...p,
+          icon: getIconForPlugin(p.id)
+        }));
+        setPlugins(mapped);
+      } else {
+        // Seed default plugins if none exist
+        for (const p of defaultPlugins) {
+          const toSave = { ...p, icon: "default" }; // Rust struct doesn't accept React elements
+          await invoke('save_mcp_plugin', { plugin: toSave });
+        }
+        setPlugins(defaultPlugins);
+      }
+    } catch (e) {
+      console.error("Failed to fetch plugins", e);
+      setPlugins(defaultPlugins);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlugins();
+  }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
+    fetchPlugins();
   };
 
-  const togglePlugin = (id: string) => {
+  const togglePlugin = async (id: string, currentStatus: string) => {
+    const targetStatus = currentStatus === 'running' ? 'stopped' : 'running';
+    
+    // Optimistic update
     setPlugins(prev => prev.map(p => {
-      if (p.id === id) {
-        return { ...p, status: p.status === 'running' ? 'stopped' : 'running' };
-      }
+      if (p.id === id) return { ...p, status: targetStatus as any };
       return p;
     }));
+
+    if (isTauri()) {
+      try {
+        await invoke('toggle_mcp_plugin_status', { id, targetStatus });
+      } catch (e) {
+        console.error("Failed to toggle status", e);
+        // Revert on failure
+        fetchPlugins();
+      }
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    );
+  }
 
   const filteredPlugins = plugins.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -121,7 +180,7 @@ export function Plugins() {
                 Active Servers
               </span>
             </div>
-            <button className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5">
+            <button className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
               <Plus size={18} /> 安装新插件
             </button>
           </div>
@@ -161,21 +220,21 @@ export function Plugins() {
               <CardHeader className="pb-3 pt-5 px-5 flex flex-row items-start justify-between space-y-0 border-b border-dark-700/50">
                 <div className="flex gap-3">
                   <div className={clsx(
-                    "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm",
-                    plugin.status === 'running' ? "bg-dark-900 border-dark-700" : "bg-dark-900 border-dark-800 opacity-60"
+                    "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm transition-colors",
+                    plugin.status === 'running' ? "bg-dark-900 border-dark-700" : "bg-dark-900/50 border-dark-800 opacity-60"
                   )}>
-                    <plugin.icon size={24} className={clsx(
+                    {plugin.icon && <plugin.icon size={24} className={clsx(
                       plugin.status === 'running' ? "text-purple-400" : "text-gray-500"
-                    )} />
+                    )} />}
                   </div>
-                  <div className="space-y-1">
-                    <CardTitle className="text-base font-bold text-white line-clamp-1 group-hover:text-purple-400 transition-colors">
+                  <div className="space-y-1 min-w-0">
+                    <CardTitle className="text-base font-bold text-white truncate group-hover:text-purple-400 transition-colors" title={plugin.name}>
                       {plugin.name}
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 font-mono">{plugin.version}</span>
                       <span className="text-gray-700 text-xs">•</span>
-                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <span className="text-xs text-gray-500 flex items-center gap-1 truncate">
                         <User size={10} /> {plugin.author}
                       </span>
                     </div>
@@ -183,7 +242,7 @@ export function Plugins() {
                 </div>
                 <Switch 
                   checked={plugin.status === 'running'} 
-                  onCheckedChange={() => togglePlugin(plugin.id)}
+                  onCheckedChange={() => togglePlugin(plugin.id, plugin.status)}
                   className="data-[state=checked]:bg-green-500"
                 />
               </CardHeader>
