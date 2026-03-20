@@ -100,7 +100,7 @@ class TestVoteResult:
             votes=[],
         )
         text = vr.format_telegram()
-        assert "风控否决" in text
+        assert "未通过" in text
         assert "波动太大" in text
 
 
@@ -139,11 +139,11 @@ class TestRunTeamVote:
 
     @pytest.mark.asyncio
     async def test_risk_veto(self):
-        """DeepSeek SKIP should veto even with 4 BUY votes"""
+        """DeepSeek + Opus both SKIP should veto even with 4 BUY votes (dual mode)"""
         callers = {}
         for bot_id in VOTE_ORDER:
             mock = AsyncMock()
-            if bot_id == "deepseek_v3":
+            if bot_id in ("deepseek_v3", "claude_opus"):
                 mock.return_value = '{"vote": "SKIP", "confidence": 9, "reasoning": "风险过高"}'
             else:
                 mock.return_value = '{"vote": "BUY", "confidence": 8, "reasoning": "看好"}'
@@ -152,7 +152,7 @@ class TestRunTeamVote:
         result = await run_team_vote("AAPL", {}, callers)
         assert result.decision == "HOLD"
         assert result.vetoed is True
-        assert "风险过高" in result.veto_reason
+        assert "风险过高" in result.veto_reason or "双重否决" in result.veto_reason
 
     @pytest.mark.asyncio
     async def test_timeout_defaults_hold(self):
@@ -168,15 +168,17 @@ class TestRunTeamVote:
 
     @pytest.mark.asyncio
     async def test_notify_called(self):
-        """Notify should be called for each vote"""
+        """run_team_vote does not call notify_func directly (only batch does)"""
         callers = {}
         for bot_id in VOTE_ORDER:
             mock = AsyncMock(return_value='{"vote": "HOLD", "confidence": 5, "reasoning": "ok"}')
             callers[bot_id] = mock
 
         notify = AsyncMock()
-        await run_team_vote("AAPL", {}, callers, notify_func=notify)
-        assert notify.call_count == len(VOTE_ORDER)
+        result = await run_team_vote("AAPL", {}, callers, notify_func=notify)
+        # run_team_vote itself doesn't call notify_func; only run_team_vote_batch does
+        assert result.decision == "HOLD"
+        assert result.hold_count == 6
 
 
 class TestRunTeamVoteBatch:

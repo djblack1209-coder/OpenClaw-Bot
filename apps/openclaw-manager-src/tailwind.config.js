@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ["class"],
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,6 +8,60 @@ export default {
   theme: {
     extend: {
       colors: {
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)'
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)'
+        },
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)'
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)'
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)'
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+          cyan: '#22d3ee',
+          purple: '#a78bfa',
+          green: '#4ade80',
+          amber: '#fbbf24',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)'
+        },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        chart: {
+          '1': 'var(--chart-1)',
+          '2': 'var(--chart-2)',
+          '3': 'var(--chart-3)',
+          '4': 'var(--chart-4)',
+          '5': 'var(--chart-5)'
+        },
+        sidebar: {
+          DEFAULT: 'var(--sidebar)',
+          foreground: 'var(--sidebar-foreground)',
+          primary: 'var(--sidebar-primary)',
+          'primary-foreground': 'var(--sidebar-primary-foreground)',
+          accent: 'var(--sidebar-accent)',
+          'accent-foreground': 'var(--sidebar-accent-foreground)',
+          border: 'var(--sidebar-border)',
+          ring: 'var(--sidebar-ring)'
+        },
         // OpenClaw 品牌色
         claw: {
           50: '#fef3f2',
@@ -14,7 +69,7 @@ export default {
           200: '#ffccc7',
           300: '#ffa8a0',
           400: '#ff7a6b',
-          500: '#f94d3a',  // 主色 - 龙虾红
+          500: '#f94d3a',
           600: '#e63024',
           700: '#c1241a',
           800: '#a02119',
@@ -29,13 +84,6 @@ export default {
           600: '#242428',
           500: '#2e2e33',
           400: '#3d3d44',
-        },
-        // 强调色
-        accent: {
-          cyan: '#22d3ee',
-          purple: '#a78bfa',
-          green: '#4ade80',
-          amber: '#fbbf24',
         }
       },
       fontFamily: {
@@ -90,7 +138,12 @@ export default {
       backdropBlur: {
         xs: '2px',
       },
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)'
+      }
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 }

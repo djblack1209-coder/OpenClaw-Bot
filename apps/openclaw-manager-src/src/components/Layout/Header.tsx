@@ -11,10 +11,14 @@ interface HeaderProps {
 const pageTitles: Record<PageType, { title: string; description: string }> = {
   control: { title: '总控中心', description: '最高权限总开关与 ClawBot 关键配置' },
   dashboard: { title: '概览', description: '服务状态、日志与快捷操作' },
+  flow: { title: '智能流监控', description: 'Agent 执行链路与决策过程可视化大屏' },
   ai: { title: 'AI 模型配置', description: '配置 AI 提供商和模型' },
   channels: { title: '消息渠道', description: '配置 Telegram、Discord、飞书等' },
+  social: { title: '社媒总控', description: '发文、热点、人设、计划与自动运营' },
+  money: { title: '盈利总控', description: '收入看板、Alpha 研究、风控与日报' },
+  dev: { title: '开发总控', description: '开发任务、编码代理与 GitHub 操作' },
   testing: { title: '测试诊断', description: '系统诊断与问题排查' },
-  logs: { title: '应用日志', description: '查看 OpenClaw Bot 应用的控制台日志' },
+  logs: { title: '应用日志', description: '查看 OpenClaw 应用的控制台日志' },
   settings: { title: '设置', description: '身份配置与高级选项' },
 };
 

@@ -1,56 +1,32 @@
 import { create } from 'zustand';
-import type { ServiceStatus, SystemInfo } from '../lib/tauri';
+import { PageType, EnvironmentStatus } from '../App';
 
-interface AppState {
-  // 服务状态
-  serviceStatus: ServiceStatus | null;
-  setServiceStatus: (status: ServiceStatus | null) => void;
-
-  // 系统信息
-  systemInfo: SystemInfo | null;
-  setSystemInfo: (info: SystemInfo | null) => void;
-
-  // UI 状态
-  loading: boolean;
-  setLoading: (loading: boolean) => void;
-
-  // 通知
-  notifications: Notification[];
-  addNotification: (notification: Omit<Notification, 'id'>) => void;
-  removeNotification: (id: string) => void;
+interface ServiceStatus {
+  running: boolean;
+  pid: number | null;
+  port: number;
 }
 
-interface Notification {
-  id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  title: string;
-  message?: string;
+interface AppState {
+  currentPage: PageType;
+  envStatus: EnvironmentStatus | null;
+  serviceStatus: ServiceStatus | null;
+  isReady: boolean | null;
+  
+  setCurrentPage: (page: PageType) => void;
+  setEnvStatus: (status: EnvironmentStatus | null) => void;
+  setServiceStatus: (status: ServiceStatus | null) => void;
+  setIsReady: (ready: boolean | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // 服务状态
+  currentPage: 'control',
+  envStatus: null,
   serviceStatus: null,
+  isReady: null,
+  
+  setCurrentPage: (page) => set({ currentPage: page }),
+  setEnvStatus: (status) => set({ envStatus: status }),
   setServiceStatus: (status) => set({ serviceStatus: status }),
-
-  // 系统信息
-  systemInfo: null,
-  setSystemInfo: (info) => set({ systemInfo: info }),
-
-  // UI 状态
-  loading: false,
-  setLoading: (loading) => set({ loading }),
-
-  // 通知
-  notifications: [],
-  addNotification: (notification) =>
-    set((state) => ({
-      notifications: [
-        ...state.notifications,
-        { ...notification, id: Date.now().toString() },
-      ],
-    })),
-  removeNotification: (id) =>
-    set((state) => ({
-      notifications: state.notifications.filter((n) => n.id !== id),
-    })),
+  setIsReady: (ready) => set({ isReady: ready }),
 }));

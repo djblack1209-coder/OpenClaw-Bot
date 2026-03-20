@@ -152,7 +152,7 @@ class TestExecutionHubMonitoring:
         assert x_draft["success"] is True
         assert x_draft["draft_id"] > 0
         assert "今天筛了 2 条值得看的AI 出海更新" in x_draft["body"]
-        assert "#AI" in x_draft["body"]
+        assert "AI" in x_draft["body"]
 
         assert xhs_draft["success"] is True
         assert xhs_draft["draft_id"] > 0

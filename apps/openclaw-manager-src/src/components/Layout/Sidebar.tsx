@@ -4,9 +4,13 @@ import {
   LayoutDashboard,
   Bot,
   MessageSquare,
+  Share2,
+  DollarSign,
+  Code2,
   FlaskConical,
   ScrollText,
   Settings,
+  Workflow,
 } from 'lucide-react';
 import { PageType } from '../../App';
 import clsx from 'clsx';
@@ -26,8 +30,12 @@ interface SidebarProps {
 const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'control', label: '总控中心', icon: ShieldCheck },
   { id: 'dashboard', label: '概览', icon: LayoutDashboard },
+  { id: 'flow', label: '智能流监控', icon: Workflow },
   { id: 'ai', label: 'AI 配置', icon: Bot },
   { id: 'channels', label: '消息渠道', icon: MessageSquare },
+  { id: 'social', label: '社媒总控', icon: Share2 },
+  { id: 'money', label: '盈利总控', icon: DollarSign },
+  { id: 'dev', label: '开发总控', icon: Code2 },
   { id: 'testing', label: '测试诊断', icon: FlaskConical },
   { id: 'logs', label: '应用日志', icon: ScrollText },
   { id: 'settings', label: '设置', icon: Settings },
@@ -35,23 +43,35 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
 
 export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps) {
   const isRunning = serviceStatus?.running ?? false;
+
   return (
     <aside className="w-64 bg-dark-800 border-r border-dark-600 flex flex-col">
       {/* Logo 区域（macOS 标题栏拖拽） */}
       <div className="h-14 flex items-center px-6 titlebar-drag border-b border-dark-600">
-        <div className="flex items-center gap-3 titlebar-no-drag">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-claw-400 to-claw-600 flex items-center justify-center">
-            <span className="text-lg">🦞</span>
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold text-white">OpenClaw Bot</h1>
-            <p className="text-xs text-gray-500">Control Hub</p>
+        <div className="flex items-center gap-2 titlebar-no-drag">
+          <span className="text-2xl">🦞</span>
+          <span className="font-bold text-white tracking-wide">OpenClaw</span>
+        </div>
+      </div>
+
+      {/* 服务状态迷你指示器 */}
+      <div className="px-6 py-4 border-b border-dark-600/50">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Service Status</span>
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              {isRunning && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+              <span className={clsx("relative inline-flex rounded-full h-2 w-2", isRunning ? "bg-green-500" : "bg-red-500")}></span>
+            </span>
+            <span className={clsx("text-xs font-medium", isRunning ? "text-green-500" : "text-red-500")}>
+              {isRunning ? 'Online' : 'Offline'}
+            </span>
           </div>
         </div>
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 py-4 px-3">
+      <nav className="flex-1 py-4 px-3 overflow-y-auto scroll-container">
         <ul className="space-y-1">
           {menuItems.map((item) => {
             const isActive = currentPage === item.id;
@@ -62,10 +82,10 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
                 <button
                   onClick={() => onNavigate(item.id)}
                   className={clsx(
-                    'w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all relative',
+                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium relative',
                     isActive
-                      ? 'text-white bg-dark-600'
-                      : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                      ? 'bg-claw-500/10 text-claw-400'
+                      : 'text-gray-400 hover:bg-dark-700 hover:text-white'
                   )}
                 >
                   {isActive && (
@@ -75,7 +95,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon size={18} className={isActive ? 'text-claw-400' : ''} />
+                  <Icon size={18} className={clsx('transition-colors', isActive ? 'text-claw-400' : 'text-gray-500')} />
                   <span>{item.label}</span>
                 </button>
               </li>

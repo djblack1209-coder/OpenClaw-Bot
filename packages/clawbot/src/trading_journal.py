@@ -152,6 +152,52 @@ class TradingJournal:
                     "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v)
                 )
 
+            # 盈利目标表（日/周/月）
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS profit_targets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    period TEXT NOT NULL,            -- daily / weekly / monthly
+                    period_start TEXT NOT NULL,      -- 周期起始日
+                    period_end TEXT NOT NULL,        -- 周期截止日
+                    target_pnl REAL NOT NULL,        -- 目标盈亏金额
+                    actual_pnl REAL DEFAULT 0,       -- 实际盈亏
+                    target_trades INTEGER DEFAULT 0, -- 目标交易笔数
+                    actual_trades INTEGER DEFAULT 0, -- 实际交易笔数
+                    target_win_rate REAL DEFAULT 0,  -- 目标胜率
+                    actual_win_rate REAL DEFAULT 0,  -- 实际胜率
+                    status TEXT DEFAULT 'active',    -- active / achieved / missed / cancelled
+                    notes TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+
+            # 研判预期表（收盘验证用）
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trade_id INTEGER,                -- 关联交易ID
+                    symbol TEXT NOT NULL,
+                    prediction_time TEXT NOT NULL,    -- 预测时间
+                    predicted_direction TEXT,         -- UP / DOWN / SIDEWAYS
+                    predicted_target REAL,            -- 预测目标价
+                    predicted_stop REAL,              -- 预测止损价
+                    predicted_timeframe TEXT,         -- 预测时间框架 (1d/3d/1w)
+                    confidence REAL DEFAULT 0,        -- 置信度 0-1
+                    ai_reasoning TEXT,               -- AI 推理过程
+                    decided_by TEXT,                  -- 哪个AI的判断
+                    -- 验证结果（收盘时回填）
+                    actual_close REAL,               -- 实际收盘价
+                    actual_direction TEXT,            -- 实际方向
+                    direction_correct INTEGER,        -- 方向是否正确 0/1
+                    target_hit INTEGER DEFAULT 0,     -- 是否触及目标价 0/1
+                    deviation_pct REAL,              -- 偏差百分比
+                    validation_time TEXT,             -- 验证时间
+                    validation_notes TEXT,            -- 验证备注
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+
     # ============ 配置 ============
 
     def get_config(self, key: str, default: str = '0') -> str:
@@ -648,6 +694,336 @@ class TradingJournal:
         lines.append(f"夏普:{p['sharpe']} 最大回撤:${p['max_drawdown']:.2f} 期望值:${p['expectancy']:+.2f}")
 
         return "\n".join(lines)
+
+    # ============ 盈利目标管理 ============
+
+    def set_profit_target(self, period: str, target_pnl: float,
+                          target_trades: int = 0, target_win_rate: float = 0,
+                          notes: str = '') -> int:
+        """设定盈利目标（daily/weekly/monthly）"""
+        from src.utils import now_et
+        _now = now_et()
+
+        if period == 'daily':
+            start = _now.strftime('%Y-%m-%d')
+            end = start
+        elif period == 'weekly':
+            # 本周一到周五
+            start = (_now - timedelta(days=_now.weekday())).strftime('%Y-%m-%d')
+            end = (_now + timedelta(days=4 - _now.weekday())).strftime('%Y-%m-%d')
+        elif period == 'monthly':
+            start = _now.strftime('%Y-%m-01')
+            import calendar
+            last_day = calendar.monthrange(_now.year, _now.month)[1]
+            end = _now.strftime(f'%Y-%m-{last_day:02d}')
+        else:
+            start = end = _now.strftime('%Y-%m-%d')
+
+        with self._conn() as conn:
+            # 取消同周期旧目标
+            conn.execute(
+                "UPDATE profit_targets SET status='cancelled' WHERE period=? AND status='active'",
+                (period,)
+            )
+            cursor = conn.execute("""
+                INSERT INTO profit_targets (period, period_start, period_end,
+                    target_pnl, target_trades, target_win_rate, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (period, start, end, target_pnl, target_trades, target_win_rate, notes))
+            tid = cursor.lastrowid
+
+        logger.info(f"[Journal] 设定{period}盈利目标: ${target_pnl:+.2f} ({start}~{end})")
+        return tid
+
+    def update_profit_target_progress(self):
+        """更新所有活跃盈利目标的实际进度"""
+        with self._conn() as conn:
+            targets = conn.execute(
+                "SELECT * FROM profit_targets WHERE status='active'"
+            ).fetchall()
+
+            for t in targets:
+                # 统计周期内已平仓交易
+                rows = conn.execute("""
+                    SELECT pnl FROM trades
+                    WHERE status='closed' AND date(exit_time) BETWEEN ? AND ?
+                """, (t['period_start'], t['period_end'])).fetchall()
+
+                pnls = [r['pnl'] for r in rows]
+                actual_pnl = sum(pnls)
+                actual_trades = len(pnls)
+                wins = sum(1 for p in pnls if p > 0)
+                actual_win_rate = (wins / actual_trades * 100) if actual_trades > 0 else 0
+
+                status = 'active'
+                if actual_pnl >= t['target_pnl'] and t['target_pnl'] > 0:
+                    status = 'achieved'
+
+                conn.execute("""
+                    UPDATE profit_targets SET actual_pnl=?, actual_trades=?,
+                        actual_win_rate=?, status=?, updated_at=datetime('now')
+                    WHERE id=?
+                """, (round(actual_pnl, 2), actual_trades,
+                      round(actual_win_rate, 1), status, t['id']))
+
+    def get_active_targets(self) -> List[Dict]:
+        """获取所有活跃盈利目标"""
+        self.update_profit_target_progress()
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM profit_targets WHERE status IN ('active','achieved') ORDER BY period"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def format_target_progress(self) -> str:
+        """格式化盈利目标进度"""
+        targets = self.get_active_targets()
+        if not targets:
+            return "暂未设定盈利目标。\n用 /target <日/周/月> <金额> 设定目标。"
+
+        lines = ["盈利目标进度\n"]
+        for t in targets:
+            pct = (t['actual_pnl'] / t['target_pnl'] * 100) if t['target_pnl'] != 0 else 0
+            bar_len = 15
+            filled = min(int(bar_len * abs(pct) / 100), bar_len)
+            bar = "█" * filled + "░" * (bar_len - filled)
+
+            period_label = {'daily': '日', 'weekly': '周', 'monthly': '月'}.get(t['period'], t['period'])
+            status_icon = '✓' if t['status'] == 'achieved' else '→'
+
+            lines.append(
+                f"{status_icon} {period_label}目标: ${t['target_pnl']:+.0f}\n"
+                f"  [{bar}] {pct:.0f}%\n"
+                f"  实际: ${t['actual_pnl']:+.2f} | {t['actual_trades']}笔 | 胜率{t['actual_win_rate']:.0f}%\n"
+                f"  周期: {t['period_start']}~{t['period_end']}"
+            )
+        return "\n".join(lines)
+
+    # ============ 研判预期记录 & 收盘验证 ============
+
+    def record_prediction(self, symbol: str, direction: str, target_price: float,
+                          stop_price: float = 0, timeframe: str = '1d',
+                          confidence: float = 0.5, reasoning: str = '',
+                          decided_by: str = '', trade_id: int = None) -> int:
+        """记录 AI 研判预期（开仓时调用）"""
+        from src.utils import now_et
+        with self._conn() as conn:
+            cursor = conn.execute("""
+                INSERT INTO predictions (trade_id, symbol, prediction_time,
+                    predicted_direction, predicted_target, predicted_stop,
+                    predicted_timeframe, confidence, ai_reasoning, decided_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (trade_id, symbol.upper(), now_et().isoformat(),
+                  direction.upper(), target_price, stop_price, timeframe,
+                  confidence, reasoning, decided_by))
+            return cursor.lastrowid
+
+    def validate_predictions(self, date: str = None) -> Dict:
+        """收盘验证：对比 AI 研判 vs 实际走势"""
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+
+        with self._conn() as conn:
+            preds = conn.execute("""
+                SELECT * FROM predictions
+                WHERE date(prediction_time)=? AND validation_time IS NULL
+            """, (date,)).fetchall()
+
+        if not preds:
+            return {"date": date, "predictions": 0, "validated": 0, "accuracy": 0}
+
+        validated = 0
+        correct = 0
+
+        for p in preds:
+            p = dict(p)
+            symbol = p['symbol']
+
+            # 获取实际收盘价（从 yfinance）
+            try:
+                from src.invest_tools import get_stock_quote
+                quote = get_stock_quote(symbol)
+                if not quote:
+                    continue
+                actual_close = quote.get('price', 0)
+                if actual_close <= 0:
+                    continue
+            except Exception:
+                continue
+
+            # 计算实际方向
+            entry_ref = p['predicted_stop'] if p['predicted_stop'] > 0 else actual_close * 0.98
+            if p['predicted_direction'] == 'UP':
+                direction_correct = actual_close > entry_ref
+            elif p['predicted_direction'] == 'DOWN':
+                direction_correct = actual_close < entry_ref
+            else:
+                direction_correct = False
+
+            # 目标价是否触及
+            target_hit = 0
+            if p['predicted_target'] and p['predicted_target'] > 0:
+                if p['predicted_direction'] == 'UP':
+                    target_hit = 1 if actual_close >= p['predicted_target'] else 0
+                else:
+                    target_hit = 1 if actual_close <= p['predicted_target'] else 0
+
+            # 偏差
+            deviation = 0
+            if p['predicted_target'] and p['predicted_target'] > 0:
+                deviation = (actual_close - p['predicted_target']) / p['predicted_target'] * 100
+
+            with self._conn() as conn:
+                conn.execute("""
+                    UPDATE predictions SET actual_close=?, actual_direction=?,
+                        direction_correct=?, target_hit=?, deviation_pct=?,
+                        validation_time=datetime('now')
+                    WHERE id=?
+                """, (actual_close,
+                      'UP' if actual_close > entry_ref else 'DOWN',
+                      1 if direction_correct else 0,
+                      target_hit, round(deviation, 2), p['id']))
+
+            validated += 1
+            if direction_correct:
+                correct += 1
+
+        accuracy = (correct / validated * 100) if validated > 0 else 0
+        return {
+            "date": date,
+            "predictions": len(preds),
+            "validated": validated,
+            "correct": correct,
+            "accuracy": round(accuracy, 1),
+        }
+
+    def get_prediction_accuracy(self, days: int = 30) -> Dict:
+        """获取指定天数内的研判准确率统计"""
+        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT decided_by, 
+                       COUNT(*) as total,
+                       SUM(CASE WHEN direction_correct=1 THEN 1 ELSE 0 END) as correct,
+                       AVG(ABS(deviation_pct)) as avg_deviation
+                FROM predictions
+                WHERE validation_time IS NOT NULL AND date(prediction_time) >= ?
+                GROUP BY decided_by
+            """, (since,)).fetchall()
+
+        by_ai = {}
+        total_all = 0
+        correct_all = 0
+        for r in rows:
+            r = dict(r)
+            ai_name = r['decided_by'] or 'unknown'
+            acc = (r['correct'] / r['total'] * 100) if r['total'] > 0 else 0
+            by_ai[ai_name] = {
+                "total": r['total'],
+                "correct": r['correct'],
+                "accuracy": round(acc, 1),
+                "avg_deviation": round(r['avg_deviation'] or 0, 2),
+            }
+            total_all += r['total']
+            correct_all += r['correct']
+
+        return {
+            "days": days,
+            "total_predictions": total_all,
+            "overall_accuracy": round(correct_all / total_all * 100, 1) if total_all > 0 else 0,
+            "by_ai": by_ai,
+        }
+
+    # ============ 周期复盘迭代 ============
+
+    def generate_iteration_report(self, days: int = 7) -> Dict:
+        """生成迭代改进报告：分析失败交易的模式"""
+        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        with self._conn() as conn:
+            # 所有亏损交易
+            bad_trades = conn.execute("""
+                SELECT * FROM trades
+                WHERE status='closed' AND pnl < 0 AND date(exit_time) >= ?
+                ORDER BY pnl ASC
+            """, (since,)).fetchall()
+
+            # 所有盈利交易
+            good_trades = conn.execute("""
+                SELECT * FROM trades
+                WHERE status='closed' AND pnl > 0 AND date(exit_time) >= ?
+                ORDER BY pnl DESC
+            """, (since,)).fetchall()
+
+            # 研判不准确的
+            wrong_preds = conn.execute("""
+                SELECT * FROM predictions
+                WHERE validation_time IS NOT NULL AND direction_correct=0
+                    AND date(prediction_time) >= ?
+            """, (since,)).fetchall()
+
+        bad_trades = [dict(r) for r in bad_trades]
+        good_trades = [dict(r) for r in good_trades]
+        wrong_preds = [dict(r) for r in wrong_preds]
+
+        # 分析失败模式
+        patterns = []
+        for t in bad_trades:
+            reason = t.get('entry_reason', '') or ''
+            exit_r = t.get('exit_reason', '') or ''
+            hold_h = t.get('hold_duration_hours', 0) or 0
+
+            if hold_h < 0.5:
+                patterns.append('过快止损（持仓<30分钟）')
+            if hold_h > 48:
+                patterns.append('持仓过久（>48小时未止损）')
+            if '追涨' in reason or '突破' in reason:
+                patterns.append('追涨买入')
+            if t.get('pnl_pct', 0) < -5:
+                sym = t.get('symbol', '?')
+                pct = t.get('pnl_pct', 0)
+                patterns.append(f'大额亏损（{sym} {pct:.1f}%）')
+
+        # 统计模式频率
+        from collections import Counter
+        pattern_freq = Counter(patterns)
+
+        return {
+            "period_days": days,
+            "total_trades": len(bad_trades) + len(good_trades),
+            "bad_trades_count": len(bad_trades),
+            "good_trades_count": len(good_trades),
+            "total_loss": round(sum(t['pnl'] for t in bad_trades), 2),
+            "total_profit": round(sum(t['pnl'] for t in good_trades), 2),
+            "wrong_predictions": len(wrong_preds),
+            "failure_patterns": dict(pattern_freq.most_common(5)),
+            "worst_trades": bad_trades[:3],
+            "best_trades": good_trades[:3],
+            "improvement_suggestions": self._generate_suggestions(pattern_freq, bad_trades),
+        }
+
+    def _generate_suggestions(self, pattern_freq: dict, bad_trades: list) -> List[str]:
+        """根据失败模式生成改进建议"""
+        suggestions = []
+
+        if pattern_freq.get('过快止损（持仓<30分钟）', 0) >= 2:
+            suggestions.append("止损设太紧：考虑用 1.5-2x ATR 替代固定百分比止损")
+
+        if pattern_freq.get('持仓过久（>48小时未止损）', 0) >= 1:
+            suggestions.append("超短线不应持仓超过2天：增加时间止损规则")
+
+        if pattern_freq.get('追涨买入', 0) >= 2:
+            suggestions.append("追涨亏损率高：限制只在回调到支撑位时入场")
+
+        if len(bad_trades) > 0:
+            avg_loss = sum(t['pnl'] for t in bad_trades) / len(bad_trades)
+            if abs(avg_loss) > 50:
+                suggestions.append(f"平均亏损${abs(avg_loss):.0f}过大：减小仓位或收紧止损")
+
+        if not suggestions:
+            suggestions.append("近期无明显失败模式，继续保持当前策略")
+
+        return suggestions
 
 
 # 全局实例

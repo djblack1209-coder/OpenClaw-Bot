@@ -9,6 +9,7 @@ import { api, ServiceStatus, isTauri } from '../../lib/tauri';
 import { Terminal, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import { EnvironmentStatus } from '../../App';
+import { Card } from '@/components/ui/card';
 
 interface DashboardProps {
   envStatus: EnvironmentStatus | null;
@@ -144,12 +145,12 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const needsSetup = envStatus && !envStatus.ready;
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2">
+    <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="space-y-6"
+        className="space-y-6 max-w-[1400px] mx-auto"
       >
         {/* 环境安装向导（仅在需要时显示） */}
         {needsSetup && (
@@ -158,102 +159,108 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
           </motion.div>
         )}
 
-        {/* 服务状态卡片 */}
-        <motion.div variants={itemVariants}>
-          <StatusCard status={status} loading={loading} />
-        </motion.div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2 space-y-6">
+            {/* 服务状态卡片 */}
+            <motion.div variants={itemVariants}>
+              <StatusCard status={status} loading={loading} />
+            </motion.div>
 
-        {/* 快捷操作 */}
-        <motion.div variants={itemVariants}>
-          <QuickActions
-            status={status}
-            loading={actionLoading}
-            onStart={handleStart}
-            onStop={handleStop}
-            onRestart={handleRestart}
-          />
-        </motion.div>
-
-        {/* 实时日志 */}
-        <motion.div variants={itemVariants}>
-          <div className="bg-dark-700 rounded-2xl border border-dark-500 overflow-hidden">
-            {/* 日志标题栏 */}
-            <div 
-              className="flex items-center justify-between px-4 py-3 bg-dark-600/50 cursor-pointer"
-              onClick={() => setLogsExpanded(!logsExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                <Terminal size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-white">实时日志</span>
-                <span className="text-xs text-gray-500">
-                  ({logs.length} 行)
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                {logsExpanded && (
-                  <>
-                    <label 
-                      className="flex items-center gap-2 text-xs text-gray-400"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={autoRefreshLogs}
-                        onChange={(e) => setAutoRefreshLogs(e.target.checked)}
-                        className="w-3 h-3 rounded border-dark-500 bg-dark-600 text-claw-500"
-                      />
-                      自动刷新
-                    </label>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fetchLogs();
-                      }}
-                      className="text-gray-500 hover:text-white"
-                      title="刷新日志"
-                    >
-                      <RefreshCw size={14} />
-                    </button>
-                  </>
-                )}
-                {logsExpanded ? (
-                  <ChevronUp size={16} className="text-gray-500" />
-                ) : (
-                  <ChevronDown size={16} className="text-gray-500" />
-                )}
-              </div>
-            </div>
-
-            {/* 日志内容 */}
-            {logsExpanded && (
-              <div ref={logsContainerRef} className="h-64 overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-dark-800">
-                {logs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-gray-500">
-                    <p>暂无日志，请先启动服务</p>
+            {/* 实时日志 */}
+            <motion.div variants={itemVariants}>
+              <Card className="bg-dark-700/50 border-dark-500 shadow-xl backdrop-blur-sm overflow-hidden">
+                {/* 日志标题栏 */}
+                <div 
+                  className="flex items-center justify-between px-4 py-3 bg-dark-600/50 cursor-pointer hover:bg-dark-600/80 transition-colors"
+                  onClick={() => setLogsExpanded(!logsExpanded)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Terminal size={16} className="text-gray-400" />
+                    <span className="text-sm font-semibold text-white">实时日志</span>
+                    <span className="text-xs text-gray-500">
+                      ({logs.length} 行)
+                    </span>
                   </div>
-                ) : (
-                  <>
-                    {logs.map((line, index) => (
-                      <div
-                        key={index}
-                        className={clsx('py-0.5 whitespace-pre-wrap break-all', getLogLineClass(line))}
-                      >
-                        {line}
+                  <div className="flex items-center gap-3">
+                    {logsExpanded && (
+                      <>
+                        <label 
+                          className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 cursor-pointer"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={autoRefreshLogs}
+                            onChange={(e) => setAutoRefreshLogs(e.target.checked)}
+                            className="w-3 h-3 rounded border-dark-500 bg-dark-600 text-claw-500"
+                          />
+                          自动刷新
+                        </label>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchLogs();
+                          }}
+                          className="text-gray-500 hover:text-white transition-colors"
+                          title="刷新日志"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      </>
+                    )}
+                    {logsExpanded ? (
+                      <ChevronUp size={16} className="text-gray-500" />
+                    ) : (
+                      <ChevronDown size={16} className="text-gray-500" />
+                    )}
+                  </div>
+                </div>
+
+                {/* 日志内容 */}
+                {logsExpanded && (
+                  <div ref={logsContainerRef} className="h-[400px] overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-dark-900/80">
+                    {logs.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-gray-500">
+                        <p>暂无日志，请先启动服务</p>
                       </div>
-                    ))}
-
-                  </>
+                    ) : (
+                      <>
+                        {logs.map((line, index) => (
+                          <div
+                            key={index}
+                            className={clsx('py-0.5 whitespace-pre-wrap break-all hover:bg-dark-800/50 px-2 -mx-2 rounded', getLogLineClass(line))}
+                          >
+                            {line}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
+              </Card>
+            </motion.div>
           </div>
-        </motion.div>
 
-        {/* 系统信息 */}
-        <motion.div variants={itemVariants}>
-          <SystemInfo />
-        </motion.div>
+          <div className="space-y-6">
+            {/* 快捷操作 */}
+            <motion.div variants={itemVariants}>
+              <QuickActions
+                status={status}
+                loading={actionLoading}
+                onStart={handleStart}
+                onStop={handleStop}
+                onRestart={handleRestart}
+              />
+            </motion.div>
+
+            {/* 系统信息 */}
+            <motion.div variants={itemVariants}>
+              <SystemInfo />
+            </motion.div>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
 }
+

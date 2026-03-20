@@ -12,8 +12,8 @@ metadata: {"openclaw":{"emoji":"📖"}}
 
 1. 读取本文件中的项目概览模板
 2. 读取 `memory/INDEX.md` 获取当前记忆状态
-3. 读取 `.openclaw/openclaw.json` 中 `skills.entries` 获取已启用 skill 数量
-4. 读取 `memory/social/SOC-001-publish-runs.md` 获取最新发布统计
+3. 读取 `.openclaw/openclaw.json` 中 `skills.entries` 获取已启用 skill 数量；若不存在则统计 `apps/openclaw/skills/*/SKILL.md` 文件数量
+4. 读取 `apps/openclaw/memory/social/SOC-001-publish-runs.md` 获取最新发布统计
 5. 汇总后以下方模板输出
 
 ## 输出模板
@@ -62,11 +62,11 @@ OpenClaw Bot 是一套 AI Agent 驱动的全栈自动化系统：
 /github — GitHub 操作
 
 【产研】
-"产研团队"/"阿七" — 全流程产研（想法→Spec→Demo→走查）
+/dev — 🛠️ 开发任务模式（想法→Spec→Demo→走查）
 
 ━━━━━━ 💰 盈利渠道 ━━━━━━
 
-1. 闲鱼 AI 客服 — OpenClaw 部署服务 ¥99 + API Token ¥19.9
+1. 闲鱼 AI 客服 — OpenClaw 一键部署服务 ¥19.9
 2. Upwork 自动接单 — 变现 watcher 自动推送
 3. 社媒流量变现 — X(@CodeTiredAI) + 小红书(代码写累了) 引流
 
@@ -79,7 +79,9 @@ OpenClaw Bot 是一套 AI Agent 驱动的全栈自动化系统：
 
 ━━━━━━ 📊 当前状态 ━━━━━━
 
-（由 Agent 实时读取填充：已启用 skill 数、发布统计、盈利状态等）
+• 记忆索引：（读取 memory/INDEX.md 最后更新日期）
+• 已启用 skills 数：（统计 skills 目录下 SKILL.md 数量）
+• 最近社媒发布：（读取 SOC-001 获取最新发布记录）
 
 提示: 发送任何问题我都会尽力回答。私聊走主脑模型，群聊走免费模型。
 ```
