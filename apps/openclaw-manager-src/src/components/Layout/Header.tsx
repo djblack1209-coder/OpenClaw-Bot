@@ -12,6 +12,7 @@ const pageTitles: Record<PageType, { title: string; description: string }> = {
   control: { title: '总控中心', description: '最高权限总开关与 ClawBot 关键配置' },
   dashboard: { title: '概览', description: '服务状态、日志与快捷操作' },
   flow: { title: '智能流监控', description: 'Agent 执行链路与决策过程可视化大屏' },
+  plugins: { title: 'MCP 插件市场', description: '连接本地服务、数据库与外部协议能力' },
   ai: { title: 'AI 模型配置', description: '配置 AI 提供商和模型' },
   channels: { title: '消息渠道', description: '配置 Telegram、Discord、飞书等' },
   social: { title: '社媒总控', description: '发文、热点、人设、计划与自动运营' },

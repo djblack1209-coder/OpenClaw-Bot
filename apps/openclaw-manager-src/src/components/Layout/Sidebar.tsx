@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings,
   Workflow,
+  Blocks
 } from 'lucide-react';
 import { PageType } from '../../App';
 import clsx from 'clsx';
@@ -31,6 +32,7 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'control', label: '总控中心', icon: ShieldCheck },
   { id: 'dashboard', label: '概览', icon: LayoutDashboard },
   { id: 'flow', label: '智能流监控', icon: Workflow },
+  { id: 'plugins', label: 'MCP 插件市场', icon: Blocks },
   { id: 'ai', label: 'AI 配置', icon: Bot },
   { id: 'channels', label: '消息渠道', icon: MessageSquare },
   { id: 'social', label: '社媒总控', icon: Share2 },
