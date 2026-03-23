@@ -26,8 +26,8 @@ def main():
     for skill in skills:
         try:
             run(f"npx clawhub install {skill}")
-        except:
-            print(f"  跳过 {skill}")
+        except Exception as e:
+            print(f"  跳过 {skill}: {e}")
     
     # 3. 配置免费模型
     print("\n[3/4] 配置免费模型...")

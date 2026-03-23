@@ -18,8 +18,15 @@ logger = logging.getLogger(__name__)
 DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 DB_PATH = os.path.join(DB_DIR, "deploy_licenses.db")
 
-# 离线验证密钥（硬编码在安装器和服务端，不可泄露）
-_OFFLINE_SECRET = b"OpenClaw2026-xianyu-license-hmac-secret-key"
+# 离线验证密钥 — 必须通过环境变量设置，禁止硬编码
+_secret_env = os.getenv("OPENCLAW_LICENSE_SECRET")
+if not _secret_env:
+    raise RuntimeError(
+        "OPENCLAW_LICENSE_SECRET environment variable is not set. "
+        "The license HMAC secret must be provided via environment variable."
+    )
+_OFFLINE_SECRET = _secret_env.encode()
+logger.info("License HMAC secret loaded from OPENCLAW_LICENSE_SECRET environment variable.")
 
 
 def _machine_fingerprint() -> str:

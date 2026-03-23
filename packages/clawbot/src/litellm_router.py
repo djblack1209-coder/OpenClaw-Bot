@@ -19,6 +19,40 @@ from litellm.router import Router
 
 logger = logging.getLogger(__name__)
 
+# ---- LLM 缓存层 (diskcache, graceful degradation) ----
+try:
+    from src.llm_cache import _make_cache_key, _get_cache
+    _HAS_LLM_CACHE = True
+
+    def _llm_cache_get(key: str):
+        cache = _get_cache()
+        if cache is None:
+            return None
+        from src.llm_cache import _stats
+        val = cache.get(key)
+        if val is not None:
+            _stats["hits"] += 1
+        else:
+            _stats["misses"] += 1
+        return val
+
+    def _llm_cache_set(key: str, value, ttl: int):
+        cache = _get_cache()
+        if cache is not None:
+            cache.set(key, value, expire=ttl)
+
+except ImportError:
+    _HAS_LLM_CACHE = False
+
+    def _llm_cache_get(key: str):  # type: ignore[misc]
+        return None
+
+    def _llm_cache_set(key: str, value, ttl: int):  # type: ignore[misc]
+        pass
+
+    def _make_cache_key(*args, **kwargs) -> str:  # type: ignore[misc]
+        return ""
+
 # 静默 LiteLLM 内部日志
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
@@ -79,24 +113,34 @@ class FreeAPISource:
 
 # ---- 模型强度排名 ----
 MODEL_RANKING = {
-    "gemini-2.5-flash": 97, "claude-sonnet-4": 95,
+    "gemini-2.5-pro": 98, "gemini-2.5-flash": 97, "claude-sonnet-4": 95,
+    "gemini-3-flash-preview": 95,
     "moonshotai/kimi-k2-instruct": 94, "moonshotai/kimi-k2-instruct:free": 94,
-    "deepseek/deepseek-r1-0528:free": 93, "DeepSeek-R1": 93,
+    "deepseek/deepseek-r1-0528:free": 93, "DeepSeek-R1": 93, "deepseek-r1": 93,
     "o4-mini": 92, "Qwen/Qwen3-235B-A22B": 92, "qwen/qwen3-235b-a22b:free": 92,
+    "qwen3-235b-a22b-instruct": 92,
     "nousresearch/hermes-3-llama-3.1-405b:free": 90,
-    "deepseek-ai/DeepSeek-V3-0324": 90,
+    "deepseek-ai/DeepSeek-V3-0324": 90, "deepseek-v3.2": 90, "deepseek-v3": 88,
+    "command-a-reasoning-08-2025": 89, "command-a-vision-07-2025": 87,
     "command-a-03-2025": 87, "gpt-4.1-mini": 86, "codestral-latest": 85,
+    "kimi-k2": 94, "qwen3-max": 91, "qwen3-coder-plus": 90,
     "llama-3.3-70b-versatile": 83, "llama-3.3-70b": 83,
     "meta-llama/llama-3.3-70b-instruct:free": 83, "meta/llama-3.3-70b-instruct": 83,
     "deepseek-r1-distill-llama-70b": 82,
     "openai/gpt-oss-120b:free": 82, "compound-ai/compound-beta": 82,
     "qwen/qwen3-coder:free": 82, "gemini-2.0-flash": 82,
+    "gemini-2.5-flash-lite": 80,
     "THUDM/GLM-4-32B-0414": 80,
-    "qwen/qwen3-32b": 77, "microsoft/phi-4-reasoning-plus:free": 76,
+    "qwen/qwen3-32b": 77, "qwen3-32b": 77,
+    "microsoft/phi-4-reasoning-plus:free": 76,
     "mistral-small-latest": 74, "mistralai/mistral-small-3.1-24b-instruct:free": 74,
     "gemma-3-27b-it": 74, "google/gemma-3-27b-it:free": 74,
     "meta-llama/llama-4-scout-17b-16e-instruct": 72,
     "llama-4-scout-17b-16e-instruct": 72,
+    "nvidia/nemotron-3-super-120b-a12b:free": 90,
+    "minimax/minimax-m2.5:free": 88,
+    "qwen/qwen3-next-80b-a3b-instruct:free": 85,
+    "gpt-4o": 88, "gpt-4o-mini": 78,
     "auto": 65,
 }
 
@@ -139,6 +183,13 @@ class LiteLLMPool:
         self._total_output_tokens = 0
         self._total_cost = 0.0
 
+        # Phoenix OTEL — 与 Langfuse 并行运行，OpenTelemetry 标准协议
+        try:
+            from src.observability import init_phoenix
+            init_phoenix()
+        except ImportError:
+            pass
+
     @property
     def sources(self) -> Dict[str, List[FreeAPISource]]:
         return self._sources
@@ -163,7 +214,7 @@ class LiteLLMPool:
             tier=tier, rpm_limit=rpm, note=note, _deployment_id=dep_id,
         ))
         return {"model_name": fam, "litellm_params": params,
-                "model_info": {"id": dep_id, "tier": tier}}
+                "model_info": {"id": dep_id, "tier": "free"}}
 
     def _build_all_deployments(self) -> List[Dict]:
         deps: List[Dict] = []
@@ -171,6 +222,8 @@ class LiteLLMPool:
         # SiliconFlow
         sf_base = "https://api.siliconflow.cn/v1"
         for i, key in enumerate(_env_list("SILICONFLOW_KEYS")):
+            if not key:
+                continue
             prov = f"siliconflow_{i}"
             for m, fam, t in [
                 ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),
@@ -179,45 +232,52 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep(prov, f"openai/{m}", key, sf_base, tier=t, family=fam, note="SiliconFlow free"))
 
-        # Groq
+        # Groq — 极速推理, 1000RPD (基于官方文档 2026.3)
         gk = _env("GROQ_API_KEY")
         if gk:
             for m, fam, t, r in [
-                ("llama-3.3-70b-versatile", "llama", TIER_A, 30),
+                ("llama-3.3-70b-versatile", "llama", TIER_A, 30),       # 30RPM, 1000RPD, 12K TPM
+                ("moonshotai/kimi-k2-instruct", "kimi", TIER_S, 60),    # 60RPM, 1000RPD
+                ("openai/gpt-oss-120b", "gpt-oss", TIER_A, 30),        # 30RPM, 1000RPD
+                ("qwen/qwen3-32b", "qwen", TIER_B, 60),                 # 60RPM, 1000RPD
                 ("meta-llama/llama-4-scout-17b-16e-instruct", "llama", TIER_B, 30),
-                ("qwen/qwen3-32b", "qwen", TIER_B, 30),
-                ("moonshotai/kimi-k2-instruct", "kimi", TIER_S, 30),
-                ("deepseek-r1-distill-llama-70b", "deepseek", TIER_A, 30),
+                ("llama-3.1-8b-instant", "llama", TIER_C, 30),          # 30RPM, 14400RPD
             ]:
-                deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note="Groq free"))
+                deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM"))
 
-        # Cerebras
+        # Cerebras — 最快推理 ~2000tok/s, 但 8K context
         ck = _env("CEREBRAS_API_KEY")
         if ck:
-            for m, t in [("llama-3.3-70b", TIER_A), ("llama-4-scout-17b-16e-instruct", TIER_B)]:
-                deps.append(self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family="llama", note="Cerebras free"))
+            for m, t in [("qwen-3-235b-a22b-instruct-2507", TIER_S), ("llama3.1-8b", TIER_C)]:
+                deps.append(self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family="qwen" if "qwen" in m else "llama", note="Cerebras 30RPM/1000RPD/8K ctx"))
 
-        # Gemini
+        # Gemini — 2.5/3系 (2.0系已废弃, 1M上下文, RPM/RPD按模型动态)
         gk2 = _env("GEMINI_API_KEY")
         if gk2:
             gb = "https://generativelanguage.googleapis.com/v1beta/openai"
-            for m, t, r in [("gemini-2.5-flash", TIER_S, 10), ("gemini-2.0-flash", TIER_A, 15), ("gemma-3-27b-it", TIER_B, 30)]:
+            for m, t, r in [
+                ("gemini-2.5-pro", TIER_S, 5),          # 最强, RPM低但质量高, 1M ctx
+                ("gemini-2.5-flash", TIER_S, 10),        # 主力, 10RPM, 1M ctx, 65K output
+                ("gemini-3-flash-preview", TIER_S, 10),   # 最新preview, 1M ctx
+                ("gemini-2.5-flash-lite", TIER_B, 30),    # 轻量, 30RPM, 1M ctx
+                ("gemini-2.0-flash", TIER_B, 15),         # 已废弃但仍可用, 兜底
+            ]:
                 deps.append(self._dep("google", f"openai/{m}", gk2, gb, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
 
-        # OpenRouter
+        # OpenRouter — 免费模型, ~20RPM 动态限制
         ork = _env("OPENROUTER_API_KEY")
         if ork:
             for m, fam, t in [
                 ("nousresearch/hermes-3-llama-3.1-405b:free", "llama", TIER_S),
-                ("qwen/qwen3-235b-a22b:free", "qwen", TIER_S),
+                ("nvidia/nemotron-3-super-120b-a12b:free", "llama", TIER_S),
+                ("minimax/minimax-m2.5:free", "minimax", TIER_S),
                 ("openai/gpt-oss-120b:free", "gpt-oss", TIER_A),
-                ("deepseek/deepseek-r1-0528:free", "deepseek", TIER_S),
-                ("moonshotai/kimi-k2-instruct:free", "kimi", TIER_S),
-                ("meta-llama/llama-3.3-70b-instruct:free", "llama", TIER_A),
                 ("qwen/qwen3-coder:free", "qwen", TIER_A),
-                ("google/gemma-3-27b-it:free", "gemma", TIER_B),
+                ("qwen/qwen3-next-80b-a3b-instruct:free", "qwen", TIER_A),
+                ("meta-llama/llama-3.3-70b-instruct:free", "llama", TIER_A),
                 ("mistralai/mistral-small-3.1-24b-instruct:free", "mistral", TIER_B),
-                ("microsoft/phi-4-reasoning-plus:free", "phi", TIER_B),
+                ("google/gemma-3-27b-it:free", "gemma", TIER_B),
+                ("stepfun/step-3.5-flash:free", "stepfun", TIER_B),
             ]:
                 deps.append(self._dep("openrouter", f"openrouter/{m}", ork, rpm=20, tier=t, family=fam, note="OpenRouter free"))
 
@@ -230,7 +290,8 @@ class LiteLLMPool:
         # Cohere
         cok = _env("COHERE_API_KEY")
         if cok:
-            deps.append(self._dep("cohere", "openai/command-a-03-2025", cok, "https://api.cohere.com/v2", rpm=20, tier=TIER_A, family="cohere"))
+            for m, t in [("command-a-reasoning-08-2025", TIER_S), ("command-a-vision-07-2025", TIER_A)]:
+                deps.append(self._dep("cohere", f"cohere/{m}", cok, rpm=20, tier=t, family="cohere", note="Cohere"))
 
         # GitHub Models
         ght = _env("GITHUB_MODELS_TOKEN")
@@ -245,15 +306,81 @@ class LiteLLMPool:
         if kk:
             deps.append(self._dep("kiro", "openai/claude-sonnet-4", kk, kb, rpm=5, tier=TIER_S, family="claude", note="Kiro Gateway"))
 
-        # NVIDIA NIM
+        # NVIDIA NIM (信用额度制, 非真正无限, ~60RPM, 试用额度用完需购买AI Enterprise)
         nk = _env("NVIDIA_NIM_API_KEY")
         if nk:
-            deps.append(self._dep("nvidia", "openai/meta/llama-3.3-70b-instruct", nk, "https://integrate.api.nvidia.com/v1", rpm=40, tier=TIER_A, family="llama"))
+            nvidia_base = "https://integrate.api.nvidia.com/v1"
+            for m, fam, t in [
+                ("meta/llama-3.3-70b-instruct", "llama", TIER_A),
+                ("deepseek-ai/deepseek-r1", "deepseek", TIER_S),
+                ("qwen/qwen3-235b-a22b-instruct", "qwen", TIER_S),
+                ("mistralai/mixtral-8x22b-instruct-v0.1", "mistral", TIER_A),
+                ("google/gemma-3-27b-it", "gemma", TIER_B),
+            ]:
+                deps.append(self._dep("nvidia", f"openai/{m}", nk, nvidia_base, rpm=60, tier=t, family=fam, note="NVIDIA NIM unlimited"))
 
         # Sambanova
         sk = _env("SAMBANOVA_API_KEY")
         if sk:
             deps.append(self._dep("sambanova", "openai/DeepSeek-R1", sk, "https://api.sambanova.ai/v1", rpm=10, tier=TIER_S, family="deepseek"))
+
+        # iflow 无限 API（硅基流分配，14个顶级模型，无限使用）
+        iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
+        iflow_base = _env("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
+        if iflow_key:
+            # 去掉 /chat/completions 后缀（LiteLLM 会自动加）
+            iflow_base = iflow_base.replace("/chat/completions", "")
+            for m, fam, t in [
+                # instruct/非thinking版优先（速度快、有内容输出）
+                ("qwen3-235b-a22b-instruct", "qwen", TIER_S),
+                ("deepseek-v3.2", "deepseek", TIER_S),
+                ("kimi-k2", "kimi", TIER_S),
+                ("qwen3-max", "qwen", TIER_S),
+                ("qwen3-coder-plus", "qwen", TIER_S),
+                ("deepseek-r1", "deepseek", TIER_S),   # reasoning model
+                ("deepseek-v3", "deepseek", TIER_A),
+                ("qwen3-vl-plus", "qwen", TIER_A),     # vision model
+                ("qwen3-32b", "qwen", TIER_A),
+                ("qwen3-235b", "qwen", TIER_B),         # thinking model（慢，备用）
+            ]:
+                deps.append(self._dep("iflow", f"openai/{m}", iflow_key, iflow_base,
+                                      rpm=500, tier=t, family=fam, note="iflow unlimited"))
+
+        # 硅基流动付费Key池 (10条, 14元/条, 未实名, ⚠️禁止Pro模型)
+        # 仅限非Pro模型: DeepSeek-R1/V3, Qwen3-235B, GLM-4-32B 等
+        sf_paid_keys = _env_list("SILICONFLOW_PAID_KEYS")
+        sf_paid_base = _env("SILICONFLOW_PAID_BASE_URL", "https://api.siliconflow.cn/v1")
+        if sf_paid_keys:
+            for i, key in enumerate(sf_paid_keys):
+                prov = f"sf_paid_{i}"
+                for m, fam, t in [
+                    ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),          # 免费模型, 不扣余额
+                    ("deepseek-ai/DeepSeek-V3-0324", "deepseek", TIER_S), # 免费模型
+                    ("THUDM/GLM-4-32B-0414", "glm", TIER_A),            # 免费模型
+                    ("deepseek-ai/DeepSeek-R1", "deepseek", TIER_S),     # 非Pro, 扣余额, ~175次/key
+                    ("deepseek-ai/DeepSeek-V3", "deepseek", TIER_A),     # 非Pro, 扣余额, ~1000次/key
+                ]:
+                    deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
+                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (no Pro!)"))
+
+        # Volcengine 火山引擎
+        vk = _env("VOLCENGINE_API_KEY")
+        vb = _env("VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+        if vk:
+            deps.append(self._dep("volcengine", "openai/doubao-pro-256k", vk, vb,
+                                  rpm=10, tier=TIER_A, family="doubao", note="Volcengine"))
+
+        # GPT_API_Free (免费: gpt-5/4o系5次/天, deepseek系30次/天, mini系200次/天)
+        gpk = _env("GPT_API_FREE_KEY")
+        gpb = _env("GPT_API_FREE_BASE_URL", "https://api.gpt.ge/v1")
+        if gpk:
+            for m, fam, t, r in [
+                ("gpt-4o", "gpt", TIER_S, 2),              # 5/day
+                ("gpt-4o-mini", "gpt", TIER_A, 5),           # 200/day
+                ("deepseek-r1", "deepseek", TIER_S, 2),      # 30/day
+                ("deepseek-v3", "deepseek", TIER_A, 2),      # 30/day
+            ]:
+                deps.append(self._dep("gpt_free", f"openai/{m}", gpk, gpb, rpm=r, tier=t, family=fam, note="GPT_API_Free"))
 
         # g4f 兜底
         g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
@@ -300,14 +427,39 @@ class LiteLLMPool:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         stream: bool = False,
+        cache_ttl: int = 3600,
+        no_cache: bool = False,
         **kwargs,
     ):
-        """统一 LLM 调用入口，替代 api_mixin 中所有手写 HTTP 调用"""
+        """统一 LLM 调用入口，替代 api_mixin 中所有手写 HTTP 调用
+
+        Args:
+            cache_ttl: Cache TTL in seconds (default 3600). 0 disables cache.
+            no_cache: Force bypass cache for this request.
+        """
         if not self._router:
             raise RuntimeError("LiteLLMPool 未初始化")
 
         model = model_family or self._pick_strongest_family()
         all_msgs = ([{"role": "system", "content": system_prompt}] + messages) if system_prompt else messages
+
+        # ---- Cache layer (non-streaming only) ----
+        use_cache = (
+            not stream
+            and not no_cache
+            and cache_ttl > 0
+            and _HAS_LLM_CACHE
+        )
+
+        if use_cache:
+            cache_key = _make_cache_key(all_msgs, model, temperature)
+            try:
+                cached = _llm_cache_get(cache_key)
+                if cached is not None:
+                    logger.debug(f"[LiteLLMPool] cache HIT key={cache_key[:16]}… model={model}")
+                    return cached
+            except Exception:
+                logger.debug("Silenced exception", exc_info=True)  # Cache read error → fall through to LLM
 
         start = time.time()
         try:
@@ -322,6 +474,20 @@ class LiteLLMPool:
             if hasattr(response, "usage") and response.usage:
                 self._total_input_tokens += getattr(response.usage, "prompt_tokens", 0)
                 self._total_output_tokens += getattr(response.usage, "completion_tokens", 0)
+                # Calculate cost from LiteLLM response
+                try:
+                    cost = litellm.completion_cost(completion_response=response)
+                    self._total_cost += cost
+                except Exception:
+                    logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
+
+            # ---- Store to cache ----
+            if use_cache:
+                try:
+                    _llm_cache_set(cache_key, response, cache_ttl)
+                except Exception:
+                    logger.debug("Silenced exception", exc_info=True)  # Cache write error → ignore
+
             return response
         except Exception as e:
             self._error_count += 1
@@ -363,6 +529,8 @@ class LiteLLMPool:
                         best, best_score, best_fam = s, score, fam
         return (best_fam, best) if best else None
 
+    # DEPRECATED: record_success/record_error are dead code — LiteLLM Router
+    # handles success/error tracking internally. Kept for backward compatibility.
     def record_success(self, source: FreeAPISource, latency_ms: float = 0,
                        input_tokens: int = 0, output_tokens: int = 0):
         source.used_today += 1
@@ -433,6 +601,66 @@ class LiteLLMPool:
 
     def load_state(self):
         pass
+
+    async def health_check(self, timeout: float = 10.0) -> Dict:
+        """启动时健康检查 — 快速 ping 每个 provider，禁用不可用的。
+
+        Returns:
+            {"checked": N, "healthy": N, "disabled": [...], "elapsed_s": float}
+        """
+        import asyncio
+        start = time.time()
+        checked = 0
+        healthy = 0
+        disabled_providers = []
+
+        # Group sources by provider to avoid redundant checks
+        providers_seen: Dict[str, bool] = {}
+
+        for family, sources in self._sources.items():
+            for src in sources:
+                if src.provider in providers_seen:
+                    # Apply same result
+                    if not providers_seen[src.provider]:
+                        src.disabled = True
+                    continue
+
+                checked += 1
+                try:
+                    # Minimal ping: 1-token completion with short timeout
+                    resp = await asyncio.wait_for(
+                        self.acompletion(
+                            model_family=family,
+                            messages=[{"role": "user", "content": "hi"}],
+                            max_tokens=1,
+                            temperature=0,
+                        ),
+                        timeout=timeout,
+                    )
+                    providers_seen[src.provider] = True
+                    healthy += 1
+                except Exception as e:
+                    logger.warning(f"[健康检查] {src.provider}/{src.model} 不可用: {e}")
+                    providers_seen[src.provider] = False
+                    src.disabled = True
+                    disabled_providers.append(f"{src.provider}/{src.model}")
+
+        # Mark all sources of failed providers as disabled
+        for family, sources in self._sources.items():
+            for src in sources:
+                if src.provider in providers_seen and not providers_seen[src.provider]:
+                    src.disabled = True
+
+        elapsed = time.time() - start
+        result = {
+            "checked": checked,
+            "healthy": healthy,
+            "disabled": disabled_providers,
+            "elapsed_s": round(elapsed, 2),
+        }
+        logger.info(f"[健康检查] {healthy}/{checked} providers 可用, "
+                     f"禁用 {len(disabled_providers)} 个, 耗时 {elapsed:.1f}s")
+        return result
 
 
 # ============================================================

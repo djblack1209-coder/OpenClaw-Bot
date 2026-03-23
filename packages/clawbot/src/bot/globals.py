@@ -23,7 +23,7 @@ from src.tools.image_tool import ImageTool
 from src.context_manager import ContextManager
 from src.tool_executor import ToolExecutor, MULTI_BOT_TOOLS
 from src.shared_memory import SharedMemory
-from src.execution_hub import ExecutionHub
+from src.execution import ExecutionHub
 from config.bot_profiles import get_bot_config, BOT_PROFILES
 from src.litellm_router import init_free_pool
 from src.invest_tools import (
@@ -43,6 +43,7 @@ from src.trading_system import (
     get_trading_pipeline, get_system_status,
 )
 from src.pipeline_helper import execute_trade_via_pipeline
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,18 @@ ALLOWED_USER_IDS = parse_ids(os.getenv('ALLOWED_USER_IDS', ''))
 
 SILICONFLOW_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_KEYS', '').split(',') if k.strip()]
 SILICONFLOW_BASE = os.getenv('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
+SILICONFLOW_PAID_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_PAID_KEYS', '').split(',') if k.strip()]
 CLAUDE_KEY = os.getenv('CLAUDE_API_KEY', '')
 CLAUDE_BASE = os.getenv('CLAUDE_BASE_URL', 'https://api.anthropic.com/v1')
 G4F_BASE = os.getenv('G4F_BASE_URL', 'http://127.0.0.1:18891/v1')
 G4F_KEY = os.getenv('G4F_API_KEY', 'dummy')
 KIRO_BASE = os.getenv('KIRO_BASE_URL', 'http://127.0.0.1:18793/v1')
 KIRO_KEY = os.getenv('KIRO_API_KEY', '')
+
+# 搜索/工具 API
+SERPAPI_KEY = os.getenv('SERPAPI_KEY', '')
+BRAVE_SEARCH_API_KEY = os.getenv('BRAVE_SEARCH_API_KEY', '')
+CLOUDCONVERT_API_KEY = os.getenv('CLOUDCONVERT_API_KEY', '')
 
 # 硅基流动 Key 管理
 current_sf_key_idx = 0
@@ -147,8 +154,7 @@ init_free_pool()
 
 def _cleanup_pending_trades():
     """清理超过1小时的过期待确认交易，防止内存泄漏"""
-    from datetime import datetime
-    now = datetime.now()
+    now = now_et()
     expired = []
     for k, v in _pending_trades.items():
         try:

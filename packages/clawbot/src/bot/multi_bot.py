@@ -239,6 +239,10 @@ class MultiBot(
         self.app.add_handler(CommandHandler("pool", self.cmd_pool))
         self.app.add_handler(CommandHandler("memory", self.cmd_memory))
         self.app.add_handler(CommandHandler("settings", self.cmd_settings))
+        self.app.add_handler(CommandHandler("voice", self.cmd_voice))
+        self.app.add_handler(CommandHandler("export", self.cmd_export))
+        self.app.add_handler(CommandHandler("qr", self.cmd_qr))
+        self.app.add_handler(CommandHandler("agent", self.cmd_agent))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_trade_callback, pattern=r"^itrade"))
         self.app.add_handler(CallbackQueryHandler(
@@ -256,6 +260,12 @@ class MultiBot(
         self.app.add_handler(CallbackQueryHandler(
             self.handle_social_confirm_callback, pattern=r"^social_confirm:"))
         self.app.add_handler(CallbackQueryHandler(
+            self.handle_ops_menu_callback, pattern=r"^ops_"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_quote_action_callback, pattern=r"^(ta_|buy_|watch_)"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_card_action_callback, pattern=r"^(trade:|bt:|ta:|analyze:|news:|evo:|retry:|shop:|post:)"))
+        self.app.add_handler(CallbackQueryHandler(
             lambda u, c: u.callback_query.answer(), pattern=r"^noop$"))
 
         self.app.add_handler(MessageHandler(
@@ -265,7 +275,14 @@ class MultiBot(
         self.app.add_handler(MessageHandler(
             filters.VOICE | filters.AUDIO, self.handle_voice))
         self.app.add_handler(MessageHandler(
-            filters.Document.PDF | filters.Document.IMAGE, self.handle_document_ocr))
+            filters.Document.PDF | filters.Document.IMAGE
+            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")      # .docx
+            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.presentationml.presentation")    # .pptx
+            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")            # .xlsx
+            | filters.Document.MimeType("application/msword")              # .doc
+            | filters.Document.MimeType("application/vnd.ms-excel")        # .xls
+            | filters.Document.MimeType("application/vnd.ms-powerpoint"),  # .ppt
+            self.handle_document_ocr))
 
         # Inline Query — @bot 搜股票/记忆（搬运自 freqtrade + yym68686 模式）
         from telegram.ext import InlineQueryHandler

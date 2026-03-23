@@ -1,13 +1,16 @@
 """
-Social — X (Twitter) 集成层
+Social — X (Twitter) 集成层 v2.0
 
-基于现有 social_browser_worker.py 的 X 平台操作封装。
-将 execution_hub.py 中散落的 X 相关方法统一到此模块。
+v2.0 变更 (2026-03-23):
+  - 搬运 tweepy (10.6k⭐, MIT) — X/Twitter 官方 Python SDK
+  - 新增 API 直连路径: Bearer Token → tweepy.Client
+  - 发推文 / 获取动态 不再依赖 browser worker
+  - 三级降级: tweepy API → Jina Reader → browser worker
 
 支持:
-- 发布推文 (通过 browser worker)
-- 回复推文
-- 监控 X 动态 (通过 Jina reader)
+- 发布推文 (API 或 browser worker)
+- 获取用户动态 (API 或 Jina reader)
+- 监控 X 动态
 - 推文分析和转发策略
 """
 import logging
@@ -18,6 +21,40 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# ── tweepy (10.6k⭐) — X/Twitter 官方 SDK ──────────────────
+_HAS_TWEEPY = False
+_tweepy_client = None
+try:
+    import tweepy
+    _bearer = os.getenv("X_BEARER_TOKEN", "").strip()
+    if _bearer:
+        _tweepy_client = tweepy.Client(bearer_token=_bearer)
+        _HAS_TWEEPY = True
+        logger.info("[X] tweepy 已加载 (Bearer Token)")
+    else:
+        # OAuth 1.0a (完全写权限)
+        _ck = os.getenv("X_CONSUMER_KEY", "").strip()
+        _cs = os.getenv("X_CONSUMER_SECRET", "").strip()
+        _at = os.getenv("X_ACCESS_TOKEN", "").strip()
+        _ats = os.getenv("X_ACCESS_TOKEN_SECRET", "").strip()
+        if all([_ck, _cs, _at, _ats]):
+            _tweepy_client = tweepy.Client(
+                consumer_key=_ck, consumer_secret=_cs,
+                access_token=_at, access_token_secret=_ats,
+            )
+            _HAS_TWEEPY = True
+            logger.info("[X] tweepy 已加载 (OAuth 1.0a)")
+        else:
+            logger.info("[X] X API 凭证未设置，降级到 Jina/browser")
+except ImportError:
+    logger.info("[X] tweepy 未安装 (pip install tweepy)")
+
+try:
+    from src.utils import emit_flow_event as _emit_flow
+except Exception:
+    def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
+        pass
+
 
 async def fetch_x_profile_posts(
     handle: str,
@@ -26,12 +63,20 @@ async def fetch_x_profile_posts(
 ) -> List[Dict]:
     """获取 X 用户最近的公开动态
 
-    优先使用 Jina reader (免费, 无需登录),
-    回退到 browser worker (需要登录态)
+    v2.0 三级降级:
+      1. tweepy API (Bearer Token, 最快最可靠)
+      2. Jina reader (免费, 无需登录)
+      3. browser worker (需要登录态)
     """
     handle = str(handle or "").strip().lstrip("@")
     if not handle:
         return []
+
+    # 方式0: tweepy API (v2.0 新增)
+    if _HAS_TWEEPY and _tweepy_client:
+        items = await _fetch_via_tweepy(handle, count)
+        if items:
+            return items
 
     # 方式1: Jina reader (免费)
     items = await _fetch_via_jina(handle, count)
@@ -121,9 +166,12 @@ async def publish_x_post(
         payload = {"text": content}
         if image_path:
             payload["image"] = image_path
+        _emit_flow("llm", "browser", "running", "启动浏览器发布 X 推文", {"length": len(content)})
         result = worker_fn("publish_x", payload)
+        _emit_flow("browser", "social", "success", "X 推文发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:
+        _emit_flow("browser", "social", "error", f"X 发布失败: {e}", {"platform": "x"})
         logger.error(f"[X.publish] failed: {e}")
         return {"success": False, "error": str(e)}
 
@@ -139,11 +187,14 @@ async def reply_to_x_post(
     if not worker_fn:
         return {"success": False, "error": "browser worker 未配置"}
     try:
+        _emit_flow("llm", "browser", "running", "启动浏览器回复 X 推文", {"url": tweet_url[:60]})
         result = worker_fn("reply_x", {
             "url": tweet_url,
             "text": reply_text,
         })
+        _emit_flow("browser", "social", "success", "X 回复发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:
+        _emit_flow("browser", "social", "error", f"X 回复失败: {e}", {"platform": "x"})
         logger.error(f"[X.reply] failed: {e}")
         return {"success": False, "error": str(e)}

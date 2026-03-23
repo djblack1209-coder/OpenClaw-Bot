@@ -18,6 +18,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 
 from src.notify_style import format_ibkr_connectivity
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -628,7 +629,7 @@ class IBKRBridge:
                 "volume": int(volume) if volume > 0 else 0,
                 "currency": getattr(q_contract, "currency", currency),
                 "exchange": getattr(q_contract, "primaryExchange", "") or getattr(q_contract, "exchange", ""),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now_et().isoformat(),
             }
         except Exception as e:
             return {"error": f"获取快照失败: {e}"}
@@ -637,7 +638,7 @@ class IBKRBridge:
                 if 'q_contract' in locals():
                     self.ib.cancelMktData(q_contract)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     async def _place_order(self, side: str, symbol: str, quantity: float,
                            order_type: str = 'MKT', limit_price: float = 0,
@@ -713,7 +714,7 @@ class IBKRBridge:
                                     entry_cost = filled_qty * pos.avgCost
                                 break
                     except Exception:
-                        pass
+                        logger.debug("Silenced exception", exc_info=True)
                     self.total_spent = max(0, self.total_spent - entry_cost)
                     logger.info("[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f",
                                 entry_cost, self.budget - self.total_spent)
@@ -1059,3 +1060,41 @@ class _LazyIBKR:
         return getattr(get_ibkr(), name)
 
 ibkr = _LazyIBKR()
+
+
+# ── 统一券商选择器 (v1.1, 2026-03-23) ──────────────────────
+# 自动检测可用券商: IBKR → Alpaca → 模拟
+# trading_system.py 可直接用 get_broker() 获取最佳可用券商
+
+def get_broker():
+    """获取最佳可用券商实例。
+
+    优先级: IBKR (已连接) → Alpaca (有API Key) → IBKR (模拟盘)
+
+    返回的对象统一实现:
+      buy(symbol, quantity) / sell(symbol, quantity)
+      get_positions() / get_account_summary()
+      get_open_orders() / cancel_order(order_id)
+    """
+    # 1. 检查 IBKR 是否已连接
+    try:
+        ib = get_ibkr()
+        if HAS_IB and ib.is_connected():
+            logger.debug("[BrokerSelector] 使用 IBKR (已连接)")
+            return ib
+    except Exception:
+        logger.debug("Silenced exception", exc_info=True)
+
+    # 2. 检查 Alpaca 是否有 API Key
+    try:
+        from src.alpaca_bridge import get_alpaca_bridge
+        alpaca = get_alpaca_bridge()
+        if alpaca.connected:
+            logger.debug("[BrokerSelector] 使用 Alpaca")
+            return alpaca
+    except ImportError:
+        pass
+
+    # 3. 降级到 IBKR 模拟盘
+    logger.debug("[BrokerSelector] 使用 IBKR (模拟盘)")
+    return get_ibkr()

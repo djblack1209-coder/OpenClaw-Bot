@@ -110,8 +110,15 @@ def _is_us_market_open_now() -> bool:
 
 
 def _parse_datetime(value: str) -> Optional[datetime]:
+    """解析 ISO 日期字符串，确保返回 timezone-aware datetime (美东时间)"""
     try:
-        return datetime.fromisoformat(str(value))
+        from src.utils import now_et
+        dt = datetime.fromisoformat(str(value))
+        if dt.tzinfo is None:
+            # naive datetime → 假定为美东时间
+            from zoneinfo import ZoneInfo
+            dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+        return dt
     except Exception:
         return None
 
@@ -594,6 +601,7 @@ async def start_trading_system():
         try:
             from src.trading_journal import journal as tj
             from src.position_monitor import MonitoredPosition
+            from src.utils import now_et
             open_trades = tj.get_open_trades()
             for t in open_trades:
                 try:
@@ -603,7 +611,7 @@ async def start_trading_system():
                         side=t.get("side", "BUY"),
                         quantity=float(t.get("quantity", 0)),
                         entry_price=float(t.get("entry_price", 0)),
-                        entry_time=datetime.fromisoformat(t["created_at"]) if t.get("created_at") else datetime.now(),
+                        entry_time=_parse_datetime(t["created_at"]) or now_et() if t.get("created_at") else now_et(),
                         stop_loss=float(t.get("stop_loss", 0) or 0),
                         take_profit=float(t.get("take_profit", 0) or 0),
                         trailing_stop_pct=0.03,
@@ -810,7 +818,7 @@ async def start_trading_system():
                                         from src.auto_trader import TraderState
                                         _auto_trader.state = TraderState.PAUSED
                                     except Exception:
-                                        pass
+                                        logger.debug("Silenced exception", exc_info=True)
                                 logger.warning("[Scheduler] 从持久化恢复周度熔断状态 (week_key=%s)", _ks_data["week_key"])
                             return
                 except Exception as e:
@@ -836,7 +844,9 @@ async def start_trading_system():
                 if not exit_time:
                     continue
                 try:
-                    exit_dt = datetime.fromisoformat(str(exit_time))
+                    exit_dt = _parse_datetime(str(exit_time))
+                    if not exit_dt:
+                        continue
                     exit_date = exit_dt.date()
                 except Exception:
                     continue
@@ -1308,7 +1318,7 @@ async def start_trading_system():
                                 format_pending_reentry(symbol, qty, price, status)
                             )
                         except Exception:
-                            pass
+                            logger.debug("Silenced exception", exc_info=True)
                     continue
 
                 retry_count = int(float(item.get("retry_count", 0) or 0)) + 1

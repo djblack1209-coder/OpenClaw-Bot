@@ -391,11 +391,21 @@ def compute_signal_score(ind: dict) -> dict:
 # ============ 异步获取技术分析 ============
 
 def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") -> dict:
-    """同步获取完整技术分析（在线程池中执行）"""
+    """同步获取完整技术分析（在线程池中执行）— 统一数据提供层，支持 US/CN_A/CRYPTO"""
     try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
+        # 优先使用统一数据提供层 (自动检测 US/CN_A/CRYPTO)
+        df = None
+        try:
+            from src.data_providers import get_history_sync, detect_market
+            df = get_history_sync(symbol, period=period, interval=interval)
+        except ImportError:
+            # 回退到 yfinance-only
+            pass
+
+        if df is None:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=interval)
 
         if df is None or df.empty or len(df) < 20:
             return {"error": f"{symbol} 数据不足(仅{len(df) if df is not None else 0}根K线)"}
@@ -413,11 +423,23 @@ def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") 
         change = price - prev_close
         change_pct = (change / prev_close * 100) if prev_close else 0
 
-        # P1#12: ticker.info 可能超时/失败，不应影响已计算好的技术指标
+        # ticker.info (仅 yfinance 有效，其他市场跳过)
         name = symbol
         try:
-            info = ticker.info
-            name = info.get('shortName', symbol)
+            from src.data_providers import detect_market, Market
+            market = detect_market(symbol)
+            if market == Market.US:
+                import yfinance as yf
+                info = yf.Ticker(symbol).info
+                name = info.get('shortName', symbol)
+        except ImportError:
+            # 无 data_providers，直接用 yfinance
+            try:
+                import yfinance as yf
+                info = yf.Ticker(symbol).info
+                name = info.get('shortName', symbol)
+            except Exception as _info_err:
+                logger.warning("[TA] %s ticker.info 获取失败(不影响分析): %s", symbol, _info_err)
         except Exception as _info_err:
             logger.warning("[TA] %s ticker.info 获取失败(不影响分析): %s", symbol, _info_err)
 
@@ -448,7 +470,7 @@ async def get_full_analysis(symbol: str, period: str = "1mo", interval: str = "1
 
 # ============ 超短线扫描器 ============
 
-# 默认扫描列表
+# 默认扫描列表 — 美股
 SCAN_WATCHLIST = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD",
     "NFLX", "AVGO", "CRM", "ORCL", "ADBE", "INTC", "QCOM",
@@ -457,13 +479,34 @@ SCAN_WATCHLIST = [
     "BTC-USD", "ETH-USD", "SOL-USD",
 ]
 
+# A股扫描列表
+SCAN_WATCHLIST_CN = [
+    "000001", "600519", "000858", "601318", "600036",  # 大盘蓝筹
+    "300750", "002594", "300059", "688981", "688012",  # 科技/新能源
+]
+
+# 加密货币扫描列表
+SCAN_WATCHLIST_CRYPTO = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT",
+    "XRP/USDT", "ADA/USDT", "DOGE/USDT", "AVAX/USDT",
+]
+
 
 def _sync_scan_single(symbol: str) -> Optional[dict]:
-    """扫描单个标的（同步）"""
+    """扫描单个标的（同步）— 统一数据提供层，支持 US/CN_A/CRYPTO"""
     try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="3mo", interval="1d")
+        # 优先使用统一数据提供层
+        df = None
+        try:
+            from src.data_providers import get_history_sync
+            df = get_history_sync(symbol, period="3mo", interval="1d")
+        except ImportError:
+            pass
+
+        if df is None:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="3mo", interval="1d")
 
         if df is None or df.empty or len(df) < 20:
             return None

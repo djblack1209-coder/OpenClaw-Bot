@@ -21,7 +21,23 @@ logger = logging.getLogger(__name__)
 
 
 async def discover_hot_topics(count: int = 5) -> List[Dict]:
-    """发现当前热点话题"""
+    """发现当前热点话题 — 优先真实热搜，LLM 作为回退。
+
+    数据源优先级:
+      1. 真实平台热搜 (微博/百度/知乎) — 免费公开 API
+      2. LLM 生成 — 仅在真实数据全部失败时使用
+    """
+    # 优先: 真实热搜数据
+    try:
+        from src.execution.social.real_trending import fetch_real_trending
+        real_topics = await fetch_real_trending(limit=count)
+        if real_topics and len(real_topics) >= 3:
+            logger.info("[ContentStrategy] 使用真实热搜数据 (%d 条)", len(real_topics))
+            return real_topics[:count]
+    except Exception as e:
+        logger.debug("[ContentStrategy] 真实热搜获取失败，回退到 LLM: %s", e)
+
+    # 回退: LLM 生成
     prompt = (
         f"请列出当前最值得关注的 {count} 个科技/AI/加密货币热点话题，"
         "每个话题包含标题、简述、热度评分(1-10)。"
@@ -50,7 +66,7 @@ async def discover_hot_topics(count: int = 5) -> List[Dict]:
 async def derive_content_strategy(
     topic: str,
     platform: str = "x",
-    persona: Dict = None,
+    persona: Optional[Dict] = None,
 ) -> Dict:
     """为指定话题推导内容策略"""
     persona_hint = ""
@@ -81,8 +97,8 @@ async def derive_content_strategy(
 async def compose_post(
     topic: str,
     platform: str = "x",
-    strategy: Dict = None,
-    persona: Dict = None,
+    strategy: Optional[Dict] = None,
+    persona: Optional[Dict] = None,
     max_length: int = 280,
 ) -> Dict:
     """AI 生成社交媒体帖子"""
@@ -125,7 +141,7 @@ async def compose_post(
         return {"success": False, "error": str(e)}
 
 
-def load_persona(persona_dir: str = None, name: str = "default") -> Optional[Dict]:
+def load_persona(persona_dir: Optional[str] = None, name: str = "default") -> Optional[Dict]:
     """加载社交人设配置"""
     if not persona_dir:
         persona_dir = str(

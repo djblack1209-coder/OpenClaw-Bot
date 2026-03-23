@@ -1285,7 +1285,7 @@ class SharedMemory:
                 "SELECT COUNT(*) as cnt FROM memory_versions"
             ).fetchone()["cnt"]
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         # v3.0: 过期记忆统计
         now = datetime.now().isoformat()

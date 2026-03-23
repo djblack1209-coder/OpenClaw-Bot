@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from src.execution._utils import parse_hhmm, safe_int
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class ExecutionScheduler:
             except asyncio.CancelledError:
                 break
 
-            now = datetime.now()
+            now = now_et()
             ts = time.time()
 
             await self._run_daily_brief(now, brief_time)
@@ -89,7 +90,7 @@ class ExecutionScheduler:
                 self._last_brief_date = today  # 标记已处理，避免每分钟重试
                 return
         except Exception:
-            pass  # 偏好系统不可用不影响默认行为
+            logger.debug("Silenced exception", exc_info=True)  # 偏好系统不可用不影响默认行为
 
         try:
             from src.execution.daily_brief import generate_daily_brief
@@ -159,4 +160,4 @@ class ExecutionScheduler:
             from src.bot.globals import _cleanup_pending_trades
             _cleanup_pending_trades()
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)

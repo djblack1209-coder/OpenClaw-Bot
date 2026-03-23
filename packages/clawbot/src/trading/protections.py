@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+from src.utils import now_et
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +65,7 @@ class StoplossGuard(BaseProtection):
         self._locked_until: Optional[datetime] = None
 
     def check(self, symbol: str = "", trade_history: List[Dict] = None) -> ProtectionResult:
-        now = datetime.now()
+        now = now_et()
         if self._locked_until and now < self._locked_until:
             remaining = (self._locked_until - now).total_seconds() / 60
             return ProtectionResult(
@@ -119,7 +121,7 @@ class MaxDrawdownGuard(BaseProtection):
         self._locked_until: Optional[datetime] = None
 
     def check(self, symbol: str = "", trade_history: List[Dict] = None) -> ProtectionResult:
-        now = datetime.now()
+        now = now_et()
         if self._locked_until and now < self._locked_until:
             remaining = (self._locked_until - now).total_seconds() / 60
             return ProtectionResult(
@@ -163,13 +165,13 @@ class CooldownGuard(BaseProtection):
         self._last_trade_time: Dict[str, datetime] = {}
 
     def record_trade(self, symbol: str):
-        self._last_trade_time[symbol] = datetime.now()
+        self._last_trade_time[symbol] = now_et()
 
     def check(self, symbol: str = "", trade_history: List[Dict] = None) -> ProtectionResult:
         if not symbol or symbol not in self._last_trade_time:
             return ProtectionResult(allowed=True, protection_name=self.name)
         last = self._last_trade_time[symbol]
-        elapsed = (datetime.now() - last).total_seconds() / 60
+        elapsed = (now_et() - last).total_seconds() / 60
         if elapsed < self.cooldown_minutes:
             remaining = self.cooldown_minutes - elapsed
             return ProtectionResult(
@@ -203,7 +205,7 @@ class LowProfitGuard(BaseProtection):
     def check(self, symbol: str = "", trade_history: List[Dict] = None) -> ProtectionResult:
         if not symbol:
             return ProtectionResult(allowed=True, protection_name=self.name)
-        now = datetime.now()
+        now = now_et()
         if symbol in self._locked_symbols:
             if now < self._locked_symbols[symbol]:
                 remaining = (self._locked_symbols[symbol] - now).total_seconds() / 60

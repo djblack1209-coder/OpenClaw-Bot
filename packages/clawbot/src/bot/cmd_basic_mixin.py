@@ -12,6 +12,7 @@ from src.bot.globals import (
     send_long_message, execution_hub,
 )
 from src.litellm_router import free_pool
+from src.message_format import format_error
 from src.telegram_ux import with_typing, ProgressTracker
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,9 @@ class BasicCommandsMixin:
                 [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
                  InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
                 [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
-                 InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced")],
+                 InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
+                [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
+                 InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
                 [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
             ])
             await update.message.reply_text(welcome, reply_markup=keyboard)
@@ -103,12 +106,19 @@ class BasicCommandsMixin:
                 "📱 社媒一键发\n"
                 "───────────────────\n"
                 "/hot [题材]  抓热点 + 自动发文\n"
+                "/hotpost  一键热点发文\n"
                 "/post [题材]  双平台发文\n"
                 "/post_x [题材]  发 X\n"
                 "/post_xhs [题材]  发小红书\n"
                 "/social_plan  查看发文计划\n"
                 "/social_persona  查看人设\n"
-                "/topic <题材>  深度研究题材"
+                "/social_launch  数字生命首发包\n"
+                "/social_repost  双平台改写\n"
+                "/social_calendar  发文日历\n"
+                "/social_report  社媒报告\n"
+                "/topic <题材>  深度研究题材\n"
+                "/xwatch  X 监控\n"
+                "/xbrief  X 简报"
             ),
             "invest": (
                 "📈 投资分析\n"
@@ -120,11 +130,30 @@ class BasicCommandsMixin:
                 "/signal <代码>  交易信号\n"
                 "/portfolio  查看组合\n"
                 "/buy /sell  模拟交易\n"
-                "/risk  风控检查"
+                "/risk  风控检查\n"
+                "/watchlist  自选股管理\n"
+                "/trades  交易历史\n"
+                "/backtest <代码>  策略回测\n"
+                "/autotrader  自动交易\n"
+                "/rebalance  组合再平衡\n"
+                "/tradingsystem  交易系统状态\n"
+                "/performance  投资绩效\n"
+                "/review  交易复盘\n"
+                "/journal  交易日志"
+            ),
+            "ibkr": (
+                "🏦 IBKR 实盘\n"
+                "───────────────────\n"
+                "/ibuy <代码> <数量>  实盘买入\n"
+                "/isell <代码> <数量>  实盘卖出\n"
+                "/ipositions  实盘持仓\n"
+                "/iorders  实盘订单\n"
+                "/iaccount  实盘账户"
             ),
             "advanced": (
                 "⚙️ 高级功能\n"
                 "───────────────────\n"
+                "/agent <指令>  智能 Agent 多工具链\n"
                 "/ops  自动化总入口\n"
                 "/brief  执行简报\n"
                 "/dev <任务>  开发流程\n"
@@ -133,13 +162,34 @@ class BasicCommandsMixin:
                 "/lanes  群聊分流标签\n"
                 "/config  运行配置"
             ),
+            "system": (
+                "🔧 系统工具\n"
+                "───────────────────\n"
+                "/memory  记忆管理\n"
+                "/settings  偏好设置\n"
+                "/voice  语音回复开关\n"
+                "/export  导出数据\n"
+                "/qr  生成二维码\n"
+                "/model  切换模型\n"
+                "/pool  API 池状态\n"
+                "/collab  多 Bot 协作\n"
+                "/discuss  多 Bot 讨论"
+            ),
             "all": (
                 f"{self.emoji} 全部命令\n"
                 "───────────────────\n"
                 "▸ 日常: /clear /status /draw /news /context /compact\n"
-                "▸ 社媒: /hot /post /post_x /post_xhs /social_plan /social_persona /topic\n"
-                "▸ 投资: /invest /quote /market /ta /signal /portfolio /buy /sell /risk\n"
-                "▸ 高级: /ops /brief /dev /cost /discuss /lanes /config\n\n"
+                "▸ 社媒: /hot /hotpost /post /post_x /post_xhs /social_plan\n"
+                "  /social_persona /social_launch /social_repost\n"
+                "  /social_calendar /social_report /topic /xwatch /xbrief\n"
+                "▸ 投资: /invest /quote /market /ta /signal /portfolio\n"
+                "  /buy /sell /risk /watchlist /trades /backtest\n"
+                "  /autotrader /rebalance /tradingsystem /performance\n"
+                "  /review /journal\n"
+                "▸ IBKR: /ibuy /isell /ipositions /iorders /iaccount\n"
+                "▸ 高级: /agent /ops /brief /dev /cost /discuss /lanes /config\n"
+                "▸ 系统: /memory /settings /voice /export /qr /model\n"
+                "  /pool /collab /discuss\n\n"
                 "直接发消息开始对话，群聊 @我 即可"
             ),
         }
@@ -164,7 +214,9 @@ class BasicCommandsMixin:
                 [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
                  InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
                 [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
-                 InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced")],
+                 InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
+                [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
+                 InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
                 [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
             ])
             await query.edit_message_text(welcome, reply_markup=keyboard)
@@ -243,6 +295,15 @@ class BasicCommandsMixin:
         chat_id = update.effective_chat.id
         history_store.clear_messages(self.bot_id, chat_id)
         await update.message.reply_text(f"{self.emoji} 对话已清空")
+
+    async def cmd_voice(self, update, context):
+        """切换语音回复模式 — /voice 开启后短回复自动附带语音"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+        current = context.user_data.get("voice_reply", False)
+        context.user_data["voice_reply"] = not current
+        status = "开启" if not current else "关闭"
+        await update.message.reply_text(f"语音回复已{status}")
 
     @with_typing
     async def cmd_status(self, update, context):
@@ -365,7 +426,45 @@ class BasicCommandsMixin:
             report = await news_fetcher.generate_morning_report()
             await update.message.reply_text(report)
         except Exception as e:
-            await update.message.reply_text(f"获取失败: {e}")
+            await update.message.reply_text(format_error(e, "获取新闻"))
+
+    async def cmd_qr(self, update, context):
+        """生成二维码: /qr [文本或URL]"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        from src.tools.qr_service import HAS_QRCODE
+
+        if not HAS_QRCODE:
+            await update.message.reply_text(
+                "二维码功能需要安装依赖:\n`pip install 'qrcode[pil]'`",
+                parse_mode="Markdown",
+            )
+            return
+
+        # 确定要编码的内容
+        if context.args:
+            text = " ".join(context.args)
+        else:
+            # 默认生成 Bot 邀请二维码
+            bot_user = await context.bot.get_me()
+            text = f"https://t.me/{bot_user.username}"
+
+        try:
+            from src.tools.qr_service import generate_qr
+            buf = generate_qr(text)
+
+            # 截断显示文本
+            display = text if len(text) <= 60 else text[:57] + "..."
+            await context.bot.send_photo(
+                chat_id=update.effective_chat.id,
+                photo=buf,
+                caption=f"QR: {display}",
+                reply_to_message_id=update.message.message_id,
+            )
+        except Exception as e:
+            logger.error("二维码生成失败: %s", e, exc_info=True)
+            await update.message.reply_text(f"二维码生成失败: {e}")
 
     async def cmd_metrics(self, update, context):
         """运行指标命令"""
@@ -635,7 +734,7 @@ class BasicCommandsMixin:
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
     # ── /memory 命令 — 搬运自 mem0 的用户记忆管理 + karfly 的分页模式 ──
 
@@ -801,7 +900,7 @@ class BasicCommandsMixin:
                     reply_markup=InlineKeyboardMarkup(keyboard),
                 )
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     async def handle_notify_action_callback(self, update, context):
         """处理交易通知中的 actionable 按钮 — 搬运 freqtrade 的 inline command 模式
@@ -818,7 +917,7 @@ class BasicCommandsMixin:
 
         cmd_str = data[4:].strip()  # 去掉 "cmd:" 前缀
         if not cmd_str.startswith("/"):
-            return
+            cmd_str = "/" + cmd_str  # Normalize: add / prefix if missing
 
         # 解析命令和参数
         parts = cmd_str.split()
@@ -833,6 +932,13 @@ class BasicCommandsMixin:
             "brief": self.cmd_brief,
             "status": self.cmd_status,
             "autotrader": self.cmd_autotrader,
+            "portfolio": self.cmd_portfolio,
+            "cost": self.cmd_cost,
+            "help": self.cmd_start,
+            "quote": self.cmd_quote,
+            "market": self.cmd_market,
+            "backtest": self.cmd_backtest,
+            "ta": self.cmd_ta,
         }
 
         handler = cmd_map.get(cmd_name)
@@ -845,7 +951,7 @@ class BasicCommandsMixin:
         try:
             await handler(update, context)
         except Exception as e:
-            await query.message.reply_text(f"执行 /{cmd_name} 失败: {e}")
+            await query.message.reply_text(format_error(e, f"执行 /{cmd_name}"))
 
     # ── Inline Query — @bot 搜股票/记忆 ──
     # 搬运自 yym68686/ChatGPT-Telegram-Bot + freqtrade 的 inline 模式
@@ -894,7 +1000,7 @@ class BasicCommandsMixin:
                         ),
                     ))
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         # 2. 记忆搜索
         try:
@@ -915,7 +1021,7 @@ class BasicCommandsMixin:
                             ),
                         ))
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         # 3. 命令快捷入口
         cmd_hints = {
@@ -938,4 +1044,106 @@ class BasicCommandsMixin:
         try:
             await query.answer(results[:10], cache_time=30)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
+
+    # ── /agent 命令 — 搬运 smolagents (26.2k⭐) 自主 Agent ──
+
+    @with_typing
+    async def cmd_agent(self, update, context):
+        """智能 Agent — 自然语言驱动多工具链"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        query = " ".join(context.args) if context.args else ""
+        if not query:
+            await update.message.reply_text(
+                "🤖 <b>智能 Agent</b>\n\n"
+                "用自然语言描述你想做的事，Agent 会自动调用工具链完成。\n\n"
+                "示例:\n"
+                "• /agent 分析AAPL的技术面并给出买卖建议\n"
+                "• /agent 搜索最新BTC新闻并分析情绪\n"
+                "• /agent 检查持仓，对亏损超5%的标的建议止损\n"
+                "• /agent 对比NVDA和AMD的技术指标\n"
+                "• /agent 查看全球市场概览并分析风险\n\n"
+                "Agent 可用工具: 行情查询、技术分析、新闻搜索、"
+                "投资组合、市场概览、风控状态、情绪分析",
+                parse_mode="HTML",
+            )
+            return
+
+        msg = await update.message.reply_text("🤖 Agent 正在思考并执行...")
+
+        try:
+            from src.agent_tools import run_agent, HAS_SMOLAGENTS
+
+            if not HAS_SMOLAGENTS:
+                await msg.edit_text(
+                    "⚠️ smolagents 未安装，Agent 功能不可用。\n"
+                    "运行 <code>pip install 'smolagents&gt;=1.0.0'</code> 后重启。",
+                    parse_mode="HTML",
+                )
+                return
+
+            result = await run_agent(query)
+
+            # Convert markdown to Telegram-safe HTML
+            try:
+                from src.telegram_markdown import md_to_html
+                safe = md_to_html(result)
+            except Exception:
+                import html as _html
+                safe = _html.escape(result)
+
+            await send_long_message(
+                update.effective_chat.id, safe, context, parse_mode="HTML"
+            )
+            # Delete the "thinking" message
+            try:
+                await msg.delete()
+            except Exception:
+                logger.debug("Silenced exception", exc_info=True)
+
+        except Exception as e:
+            await msg.edit_text(format_error(e, "Agent 执行"))
+
+    async def handle_card_action_callback(self, update, context):
+        """处理 OMEGA 响应卡片上的操作按钮（response_cards.py 生成的 callback_data）"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+
+        if data.startswith("trade:buy:"):
+            symbol = data.split(":")[-1]
+            await query.message.reply_text(f"💡 请使用: /buy {symbol} 数量")
+        elif data.startswith("bt:"):
+            parts = data.split(":")
+            symbol = parts[-1] if len(parts) > 2 else ""
+            context.args = [symbol] if symbol else []
+            await self.cmd_backtest(update, context)
+        elif data.startswith("ta:detail:"):
+            symbol = data.split(":")[-1]
+            context.args = [symbol]
+            await self.cmd_ta(update, context)
+        elif data.startswith("analyze:"):
+            symbol = data.split(":")[-1]
+            context.args = [symbol]
+            await self.cmd_ta(update, context)
+        elif data.startswith("news:"):
+            symbol = data.split(":")[-1]
+            context.args = [symbol]
+            await self.cmd_news(update, context)
+        elif data.startswith("evo:approve:") or data.startswith("evo:reject:"):
+            action = "approve" if "approve" in data else "reject"
+            pid = data.split(":")[-1]
+            await query.message.reply_text(f"📋 进化提案 {pid} 已标记为 {action}")
+        elif data.startswith("retry:"):
+            await query.message.reply_text("🔄 请重试您之前的操作")
+        elif data.startswith("shop:refresh:"):
+            product = data.split(":", 2)[-1]
+            await query.message.reply_text(f"🔄 正在刷新 {product} 的价格...")
+        elif data.startswith("post:"):
+            topic = data.split(":", 1)[-1]
+            context.args = [topic]
+            await self.cmd_post(update, context)
+        else:
+            await query.message.reply_text("💡 此操作暂不支持")

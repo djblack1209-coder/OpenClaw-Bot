@@ -9,7 +9,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional, Callable, Any
 
-from telegram import ChatAction, Update
+from telegram.constants import ChatAction
+from telegram import Update
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ class ProgressTracker:
             try:
                 await self._message.edit_text(final)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     async def update(self, step: str):
         """更新当前步骤"""
@@ -142,7 +143,7 @@ class ProgressTracker:
                 try:
                     await self._message.edit_text(text)
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
         except asyncio.CancelledError:
             pass
 
@@ -269,7 +270,7 @@ class TelegramProgressBar:
                 )
                 self._last_edit = now
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     async def finish(self, summary: str = ""):
         text = summary or f"✅ {self.label}完成 ({self.total}/{self.total})"
@@ -280,7 +281,7 @@ class TelegramProgressBar:
                 text=text,
             )
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
 
 # ============ 错误恢复 — 搬运自 n3d1117/chatgpt-telegram-bot ============
@@ -319,7 +320,7 @@ async def send_error_with_retry(update, context, error: Exception,
             user_msg, reply_markup=keyboard,
         )
     except Exception:
-        pass
+        logger.debug("Silenced exception", exc_info=True)
 
 
 # ============ 通知批量合并 — 防止 auto_trader 刷屏 ============
@@ -386,29 +387,55 @@ class NotificationBatcher:
 # ============ 结构化卡片 — 搬运自 father-bot 的格式化模式 ============
 
 def format_trade_card(trade: dict) -> str:
-    """交易通知卡片 — 搬运自 freqtrade 的通知格式"""
+    """交易通知卡片 — 搬运自 freqtrade 的通知格式
+
+    支持两种数据源:
+    - 自动交易信号: entry_price, stop_loss, take_profit, confidence
+    - 手动交易结果: price, total, remaining_cash, profit
+    """
     side = trade.get("action", "BUY")
     emoji = "🟢" if side == "BUY" else "🔴"
+    side_label = "买入" if side in ("BUY", "买入") else "卖出"
     symbol = trade.get("symbol", "???")
     qty = trade.get("quantity", 0)
-    entry = trade.get("entry_price", 0)
+
+    # 兼容两种字段名: entry_price (信号) vs price (手动)
+    entry = trade.get("entry_price") or trade.get("price", 0)
     stop = trade.get("stop_loss", 0)
     target = trade.get("take_profit", 0)
     reason = trade.get("reason", "")[:80]
     confidence = trade.get("confidence", 0)
 
-    rr = abs(target - entry) / abs(entry - stop) if abs(entry - stop) > 0.01 else 0
+    lines = [
+        f"{emoji} <b>{side_label} {symbol}</b> x{qty}",
+        f"━━━━━━━━━━━━━━━",
+        f"📈 价格: ${entry:.2f}",
+    ]
 
-    return (
-        f"{emoji} <b>{side} {symbol}</b> x{qty}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"📈 入场: ${entry:.2f}\n"
-        f"🎯 目标: ${target:.2f} ({(target/entry - 1)*100:+.1f}%)\n"
-        f"🛑 止损: ${stop:.2f} ({(stop/entry - 1)*100:+.1f}%)\n"
-        f"📊 R:R = {rr:.1f} | 信心: {confidence:.0f}/10\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"💡 {reason}"
-    )
+    # 自动交易信号: 显示目标/止损/R:R
+    if target and stop and entry:
+        rr = abs(target - entry) / abs(entry - stop) if abs(entry - stop) > 0.01 else 0
+        lines.append(f"🎯 目标: ${target:.2f} ({(target/entry - 1)*100:+.1f}%)")
+        lines.append(f"🛑 止损: ${stop:.2f} ({(stop/entry - 1)*100:+.1f}%)")
+        lines.append(f"📊 R:R = {rr:.1f} | 信心: {confidence:.0f}/10")
+
+    # 手动交易结果: 显示总额/盈亏/余额
+    total = trade.get("total", 0)
+    if total:
+        lines.append(f"💵 总额: ${total:,.2f}")
+    profit = trade.get("profit")
+    if profit is not None:
+        sign = "+" if profit >= 0 else ""
+        lines.append(f"📊 盈亏: {sign}${profit:,.2f}")
+    remaining = trade.get("remaining_cash")
+    if remaining is not None:
+        lines.append(f"💰 余额: ${remaining:,.2f}")
+
+    lines.append("━━━━━━━━━━━━━━━")
+    if reason:
+        lines.append(f"💡 {reason}")
+
+    return "\n".join(lines)
 
 
 def format_portfolio_card(positions: list, cash: float = 0) -> str:
@@ -486,13 +513,22 @@ def _setup_chart_style():
 
 def generate_equity_chart(equity_curve: list, title: str = "权益曲线") -> io.BytesIO:
     """回测权益曲线图 — 搬运自 freqtrade 的 plot_profit 模式
-    
+
     Args:
         equity_curve: 权益值列表 [10000, 10050, 9980, ...]
         title: 图表标题
     Returns:
         BytesIO PNG 图片，可直接 send_photo
     """
+    # Try plotly version first (richer charts with drawdown shading)
+    try:
+        from src.charts import generate_equity_curve as plotly_equity
+        png_bytes = plotly_equity(equity_curve, title=title)
+        if png_bytes:
+            return io.BytesIO(png_bytes)
+    except Exception:
+        logger.debug("Silenced exception", exc_info=True)
+    # Fall through to matplotlib version below
     plt = _setup_chart_style()
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
 
@@ -527,10 +563,19 @@ def generate_equity_chart(equity_curve: list, title: str = "权益曲线") -> io
 
 def generate_pnl_chart(trades: list, title: str = "交易盈亏") -> io.BytesIO:
     """交易 PnL 柱状图 — 搬运自 freqtrade 的 trade_list 可视化
-    
+
     Args:
         trades: [{"symbol": "AAPL", "pnl": 50.0}, {"symbol": "NVDA", "pnl": -20.0}, ...]
     """
+    # Try plotly version first (waterfall chart, richer visualization)
+    try:
+        from src.charts import generate_pnl_waterfall as plotly_pnl
+        png_bytes = plotly_pnl(trades, title=title)
+        if png_bytes:
+            return io.BytesIO(png_bytes)
+    except Exception:
+        logger.debug("Silenced exception", exc_info=True)
+    # Fall through to matplotlib version below
     plt = _setup_chart_style()
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
 
@@ -566,10 +611,19 @@ def generate_pnl_chart(trades: list, title: str = "交易盈亏") -> io.BytesIO:
 
 def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.BytesIO:
     """持仓分布饼图 — 简洁版，适合 Telegram 移动端
-    
+
     Args:
         positions: [{"symbol": "AAPL", "market_value": 5000}, ...]
     """
+    # Try plotly version first (interactive-style pie with pull-out)
+    try:
+        from src.charts import generate_portfolio_pie as plotly_pie
+        png_bytes = plotly_pie(positions, title=title)
+        if png_bytes:
+            return io.BytesIO(png_bytes)
+    except Exception:
+        logger.debug("Silenced exception", exc_info=True)
+    # Fall through to matplotlib version below
     plt = _setup_chart_style()
     fig, ax = plt.subplots(figsize=(8, 8), dpi=150)
 

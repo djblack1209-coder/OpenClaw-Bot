@@ -153,11 +153,13 @@ class SmartMemoryPipeline:
 
         # 到达提取阈值 — 异步触发，不阻塞
         if turn % self.extract_interval == 0 and self.llm_fn:
-            asyncio.create_task(self._extract_and_store(chat_id, user_id, bot_id))
+            _t = asyncio.create_task(self._extract_and_store(chat_id, user_id, bot_id))
+            _t.add_done_callback(lambda t: t.exception() and logger.debug("事实提取后台任务异常: %s", t.exception()))
 
         # 到达画像更新阈值
         if turn % self.profile_interval == 0 and self.llm_fn:
-            asyncio.create_task(self._update_user_profile(chat_id, user_id))
+            _t2 = asyncio.create_task(self._update_user_profile(chat_id, user_id))
+            _t2.add_done_callback(lambda t: t.exception() and logger.debug("用户画像更新后台任务异常: %s", t.exception()))
 
     async def _extract_and_store(self, chat_id: int, user_id: int, bot_id: str):
         """阶段1: LLM 事实提取 + 阶段2: 冲突解决（搬运自 mem0）"""
@@ -328,7 +330,7 @@ class SmartMemoryPipeline:
             if isinstance(data, dict) and "facts" in data:
                 return [f for f in data["facts"] if isinstance(f, str) and len(f) > 5]
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         return []
 
     @staticmethod
@@ -344,7 +346,7 @@ class SmartMemoryPipeline:
                     old_text=data.get("old_text", ""),
                 )
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         return MemoryAction(event="NONE")
 
     @staticmethod
@@ -358,7 +360,7 @@ class SmartMemoryPipeline:
             if isinstance(result, dict):
                 return result
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         # 尝试从代码块中提取
         match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
         if match:
@@ -367,7 +369,7 @@ class SmartMemoryPipeline:
                 if isinstance(result, dict):
                     return result
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         # 尝试找匹配的 { ... }（支持嵌套大括号）
         depth = 0
         start_idx = -1
@@ -395,7 +397,7 @@ class SmartMemoryPipeline:
             try:
                 return json.loads(results[0].get("value", "{}"))
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         return None
 
     def get_stats(self) -> dict:

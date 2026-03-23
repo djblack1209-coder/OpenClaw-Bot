@@ -194,7 +194,7 @@ class AlertRule:
                 self.last_fired = now
                 return self.message_fn()
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         return None
 
 
@@ -616,7 +616,7 @@ class TaskObserver:
                     if qs > 0:
                         entry["quality_scores"].append(qs)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         # 计算平均值
         for tt, entry in by_type.items():
@@ -1100,7 +1100,7 @@ class AnomalyDetector:
                 return None
             current = self._latency_window[-1]
             # 用前 N-1 个值计算基线
-            baseline = self._latency_window[:-1]
+            baseline = list(self._latency_window)[:-1]
         z = self._z_score(baseline, current)
         if z > threshold_z:
             alert = {
@@ -1120,8 +1120,9 @@ class AnomalyDetector:
         with self._lock:
             if len(self._error_window) < 10:
                 return None
-            recent = self._error_window[-20:]  # 最近 20 次
-            older = self._error_window[:-20] if len(self._error_window) > 20 else []
+            error_list = list(self._error_window)
+            recent = error_list[-20:]  # 最近 20 次
+            older = error_list[:-20] if len(error_list) > 20 else []
 
         recent_rate = sum(1 for e in recent if e) / len(recent)
         older_rate = (sum(1 for e in older if e) / len(older)) if older else 0.05
@@ -1144,7 +1145,7 @@ class AnomalyDetector:
             if len(self._cost_window) < 20:
                 return None
             current = self._cost_window[-1]
-            baseline = self._cost_window[:-1]
+            baseline = list(self._cost_window)[:-1]
 
         if current <= 0:
             return None
@@ -1165,7 +1166,7 @@ class AnomalyDetector:
     def detect_traffic_anomaly(self) -> Optional[Dict[str, Any]]:
         """检测流量异常（QPS 突增或骤降）"""
         with self._lock:
-            ts = self._request_timestamps[:]
+            ts = list(self._request_timestamps)
         if len(ts) < 20:
             return None
         now = time.time()
@@ -1219,9 +1220,9 @@ class AnomalyDetector:
     def get_health_summary(self) -> Dict[str, Any]:
         """获取健康摘要"""
         with self._lock:
-            lat = self._latency_window[:]
-            err = self._error_window[:]
-            cost = self._cost_window[:]
+            lat = list(self._latency_window)
+            err = list(self._error_window)
+            cost = list(self._cost_window)
         import math
         avg_lat = sum(lat) / len(lat) if lat else 0
         p95_lat = sorted(lat)[int(len(lat) * 0.95)] if len(lat) > 5 else 0

@@ -344,7 +344,7 @@ class CollabCommandsMixin:
                     text=_render_invest_progress(),
                 )
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
         for i, bot_id in enumerate(invest_order):
             # 检查是否被中断

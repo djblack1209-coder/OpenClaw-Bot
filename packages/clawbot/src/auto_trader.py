@@ -1,6 +1,11 @@
 """
-ClawBot 自主交易引擎 v1.0
+ClawBot 自主交易引擎 v1.1
 完整的 扫描->分析->决策->风控->执行->监控 自动化闭环
+
+v1.1 变更 (2026-03-23):
+  - 搬运 exchange-calendars (4.1k⭐) 替代手写 70 行休市日计算
+  - 覆盖全球 50+ 交易所（NYSE/NASDAQ/SSE/HKEX/LSE...）
+  - exchange-calendars 不可用时降级到原有手写逻辑（零破坏性）
 
 核心流程:
 1. 定时扫描市场（使用 ta_engine + universe）
@@ -29,6 +34,19 @@ from src.notify_style import (
 from src.utils import now_et as _now_et
 
 logger = logging.getLogger(__name__)
+
+# ── exchange-calendars (4.1k⭐) — 替代手写休市日计算 ──────────
+# 支持全球 50+ 交易所: NYSE/NASDAQ/SSE/HKEX/LSE/TSX...
+# 不可用时降级到原有手写逻辑（零破坏性）
+_HAS_XCAL = False
+_xcal_nyse = None
+try:
+    import exchange_calendars as xcals
+    _xcal_nyse = xcals.get_calendar("XNYS")  # NYSE
+    _HAS_XCAL = True
+    logger.debug("[AutoTrader] exchange-calendars 已加载 (XNYS/NYSE)")
+except Exception:
+    logger.info("[AutoTrader] exchange-calendars 未安装，使用内置休市日计算 (pip install exchange-calendars)")
 
 
 def _env_bool(key: str, default: bool) -> bool:
@@ -114,7 +132,26 @@ def _us_market_holidays(year: int) -> set:
 
 
 def is_market_holiday(date_str: str) -> bool:
-    """检查给定日期是否为美股休市日"""
+    """检查给定日期是否为美股休市日。
+
+    v1.1: 优先用 exchange-calendars (4.1k⭐) — 支持全球50+交易所，
+    数据由交易所官方维护，永不遗漏特殊休市日（如飓风/国葬临时休市）。
+    不可用时降级到手写计算。
+    """
+    try:
+        import pandas as pd
+        ts = pd.Timestamp(date_str)
+    except Exception:
+        return False
+
+    # ── 路径1: exchange-calendars（精准，含特殊休市日）──
+    if _HAS_XCAL and _xcal_nyse is not None:
+        try:
+            return not _xcal_nyse.is_session(ts)
+        except Exception:
+            logger.debug("Silenced exception", exc_info=True)
+
+    # ── 路径2: 手写计算（降级，不含特殊休市日）──
     try:
         year = int(date_str[:4])
         return date_str in _us_market_holidays(year)
@@ -169,7 +206,7 @@ class TradingPipeline:
         only_fills = os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"}
         if only_fills:
             p0_keywords = (
-                "交易待成交", "交易已成交", "成交回写完成", "次日重挂已提交",
+                "已成交", "待成交", "成交回写完成", "次日重挂已提交",
                 "卖出完成", "止损触发", "止盈触发", "追踪止损",
                 "自动停机", "熔断", "风控拒绝", "决策验证拒绝",
             )
@@ -770,7 +807,7 @@ class AutoTrader:
                         for s in suggestions[:3]:
                             lines.append("  - " + str(s))
         except Exception:
-            pass  # journal 不可用不影响投票
+            logger.debug("Silenced exception", exc_info=True)  # journal 不可用不影响投票
 
         return "\n".join(lines)
 

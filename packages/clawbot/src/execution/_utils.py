@@ -116,7 +116,7 @@ def extract_json_object(text=None):
             if isinstance(payload, dict):
                 return payload
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
     return None
 
 

@@ -1,3 +1,8 @@
+# ⚠️ DEPRECATED — 此文件为反编译巨石 (3808行)，已被模块化版本替代。
+# 生产代码已从 src.execution 导入。此文件仅保留供历史参考。
+# 新代码请使用: from src.execution import ExecutionHub
+# 参见: src/execution/__init__.py (273行 facade)
+#
 # Source Generated with Decompyle++
 # File: execution_hub.cpython-312.pyc (Python 3.12)
 
@@ -792,7 +797,7 @@ class ExecutionHub:
             if trending:
                 trending_hint = f"当前热点：{', '.join(trending[:5])}"
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         today_topics = [t for t in (state or {}).get("recent_post_topics", []) if isinstance(t, str) and t.startswith(now.strftime("%Y-%m-%d"))]
         post_count_hint = f"今日已发 {len(today_topics)} 篇（目标2-3篇/天）"
 
@@ -805,7 +810,7 @@ class ExecutionHub:
                 perf_lines = [f"- [{p['platform']}] {p.get('topic','')} ❤️{p['likes']} 💬{p['comments']} 👁{p['views']}" for p in top]
                 performance_hint = "═══ 近7天表现最好的帖子（学习它们的风格）═══\n" + "\n".join(perf_lines)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         try:
             from src.bot.globals import ab_test_manager
             if ab_test_manager:
@@ -820,7 +825,7 @@ class ExecutionHub:
                 if ab_lines:
                     performance_hint += "\n═══ A/B测试洞察 ═══\n" + "\n".join(ab_lines)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         return textwrap.dedent(f"""
             你是周予衡，一个浙大CS大三男生，用OpenClaw自动化一切的懒人。你在运营X和小红书账号。
@@ -1030,7 +1035,7 @@ class ExecutionHub:
                     from json_repair import loads as jloads
                     return {"success": True, "calendar": jloads(m.group()), "trending": trending}
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
         return {"success": False, "error": "AI calendar generation failed"}
 
     async def run_social_autopilot_once(self):
@@ -1121,7 +1126,7 @@ class ExecutionHub:
             if ai_next > 0:
                 next_minutes = max(min_interval, min(max_interval, ai_next))
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         state["next_action_at"] = (now + timedelta(minutes=next_minutes)).isoformat()
         state.pop("_trending_topics", None)
         self._save_social_operator_state(state)
@@ -2455,7 +2460,7 @@ class ExecutionHub:
                 if row:
                     return dict(row)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         return None
 
     
@@ -2644,22 +2649,59 @@ class ExecutionHub:
 
     
     def _today_bounty_accept_cost(self):
+        """统计今日已接受赏金的总预估成本"""
         date_key = datetime.now().strftime('%Y-%m-%d')
+        try:
+            runs = self._bounty_run_log.get(date_key, [])
+            return sum(float(r.get('est_cost', 0) or 0) for r in runs if r.get('decision') == 'accept')
+        except Exception:
+            return 0.0
 
     
     def _today_accepted_bounty_ids(self):
+        """获取今日已接受赏金的 ID 列表"""
         date_key = datetime.now().strftime('%Y-%m-%d')
+        try:
+            runs = self._bounty_run_log.get(date_key, [])
+            return [r.get('lead_id') for r in runs if r.get('decision') == 'accept' and r.get('lead_id')]
+        except Exception:
+            return []
 
     
     def _record_bounty_run(self, lead = None, decision = None, est_cost = None, sources=None):
+        """记录一次赏金评估结果"""
         date_key = datetime.now().strftime('%Y-%m-%d')
+        if not hasattr(self, '_bounty_run_log'):
+            self._bounty_run_log = {}
+        if date_key not in self._bounty_run_log:
+            self._bounty_run_log[date_key] = []
+        self._bounty_run_log[date_key].append({
+            'lead_id': getattr(lead, 'id', None) if lead else None,
+            'decision': decision,
+            'est_cost': est_cost,
+            'sources': sources,
+            'timestamp': datetime.now().isoformat(),
+        })
 
     
     def _accepted_bounty_shortlist(self, limit = None, min_roi = None, sources=None):
-        rows = self.list_bounty_leads(status = 'accepted', limit = max(20, int(limit) * 8))
+        """获取已接受赏金的精选列表"""
+        effective_limit = max(20, int(limit or 5) * 8)
+        rows = self.list_bounty_leads(status = 'accepted', limit = effective_limit)
         filtered = []
-        allowed_platforms = allowed_platforms or ''
+        allowed_platforms = sources or ''
         allowed = set()
+        if allowed_platforms:
+            allowed = {p.strip().lower() for p in str(allowed_platforms).split(',') if p.strip()}
+        for row in rows:
+            if allowed and row.get('source', '').lower() not in allowed:
+                continue
+            if min_roi and float(row.get('est_roi', 0) or 0) < float(min_roi):
+                continue
+            filtered.append(row)
+            if limit and len(filtered) >= int(limit):
+                break
+        return filtered
 
     
     async def run_bounty_hunter(self, keywords = None, shortlist_limit = None):
@@ -3792,7 +3834,7 @@ class ExecutionHub:
                     from src.bot.globals import _cleanup_pending_trades
                     _cleanup_pending_trades()
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
 
     
     def _run_cmd(self, cmd=None, cwd=None, timeout=30):

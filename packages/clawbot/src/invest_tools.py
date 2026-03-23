@@ -1,5 +1,5 @@
 """
-ClawBot 投资工具集 v2.1
+ClawBot 投资工具集 v2.2
 - yfinance 异步化（asyncio.to_thread 避免阻塞事件循环）
 - 并行行情查询（asyncio.gather）
 - 行情缓存（60秒TTL，避免重复查询）
@@ -7,6 +7,9 @@ ClawBot 投资工具集 v2.1
 - SQLite 连接使用 context manager 防泄漏
 - 动态读取 initial_capital
 - 新增 remove_watchlist / reset_portfolio / get_trade_summary
+- [v2.2] Fear & Greed Index (alternative.me)
+- [v2.2] get_quick_quotes() 快速多标的报价
+- [v2.2] get_earnings_calendar() 财报日历（yfinance）
 """
 import asyncio
 import logging
@@ -16,6 +19,8 @@ import time as _time
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional, Dict, Tuple
+
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +190,14 @@ async def get_stock_quote(symbol: str) -> dict:
                         return result
         except Exception as e:
             logger.debug("[InvestTools] IBKR实时报价回退到yfinance: %s", e)
+
+    # 统一数据提供层: 自动检测 US/CN_A/CRYPTO 并路由到对应数据源
+    try:
+        from src.data_providers import get_quote
+        return await get_quote(symbol)
+    except ImportError:
+        # 回退到 yfinance-only (原始代码)
+        pass
 
     return await asyncio.to_thread(_sync_get_quote, symbol)
 
@@ -615,3 +628,161 @@ class Portfolio:
 
 # 全局实例
 portfolio = Portfolio()
+
+
+# ── Fear & Greed Index (v2.2, 2026-03-23) ────────────────────
+# 搬运自 alternative.me API + fear-and-greed (MIT)
+# 零依赖，零成本，反向指标对投资决策有参考价值
+
+_fng_cache: Dict[str, Tuple[dict, float]] = {}
+_FNG_TTL = 3600  # 1小时缓存
+
+
+async def get_fear_greed_index() -> Dict:
+    """获取 CNN/Crypto Fear & Greed Index — 零 API Key。
+
+    搬运自 alternative.me API (开源社区标准方案)。
+
+    Returns:
+        {
+            "value": 45,         # 0-100
+            "label": "Fear",     # Extreme Fear / Fear / Neutral / Greed / Extreme Greed
+            "emoji": "😰",
+            "timestamp": "...",
+            "source": "alternative.me",
+        }
+    """
+    # 检查缓存
+    cached = _fng_cache.get("fng")
+    if cached and (_time.time() - cached[1]) < _FNG_TTL:
+        return cached[0]
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://api.alternative.me/fng/?limit=1",
+                headers={"User-Agent": "OpenClaw-Bot/2.0"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        entry = data.get("data", [{}])[0]
+        value = int(entry.get("value", 50))
+        label = entry.get("value_classification", "Neutral")
+
+        # Emoji 映射
+        emoji_map = {
+            "Extreme Fear": "😱", "Fear": "😰",
+            "Neutral": "😐", "Greed": "🤑", "Extreme Greed": "🤯",
+        }
+        emoji = emoji_map.get(label, "📊")
+
+        # 中文标签
+        label_cn_map = {
+            "Extreme Fear": "极度恐惧", "Fear": "恐惧",
+            "Neutral": "中性", "Greed": "贪婪", "Extreme Greed": "极度贪婪",
+        }
+        label_cn = label_cn_map.get(label, label)
+
+        result = {
+            "value": value,
+            "label": label,
+            "label_cn": label_cn,
+            "emoji": emoji,
+            "timestamp": entry.get("timestamp", ""),
+            "source": "alternative.me",
+            "telegram_text": f"{emoji} 恐惧贪婪指数: {value}/100 ({label_cn})",
+        }
+
+        _fng_cache["fng"] = (result, _time.time())
+        return result
+
+    except Exception as e:
+        logger.warning(f"[invest_tools] Fear & Greed 获取失败: {e}")
+        return {
+            "value": 50, "label": "Neutral", "label_cn": "中性",
+            "emoji": "📊", "source": "fallback",
+            "telegram_text": "📊 恐惧贪婪指数: 暂不可用",
+        }
+
+
+async def get_quick_quotes(symbols: list) -> Dict:
+    """快速获取多标的报价（并行）— 供 daily_brief 等使用"""
+    results = {}
+    for sym in symbols:
+        try:
+            quote = await get_stock_quote(sym)
+            if quote:
+                results[sym] = quote
+        except Exception:
+            logger.debug("Silenced exception", exc_info=True)
+    return results
+
+
+async def get_earnings_calendar(symbols: list, days_ahead: int = 14) -> list:
+    """获取持仓/关注标的的财报日历 — 搬运 yfinance .get_calendar() 模式。
+
+    超短线交易者必须知道哪天有财报，避免持仓过财报。
+    搬运来源: yfinance (14k⭐) ticker.get_calendar()
+
+    Args:
+        symbols: 股票代码列表
+        days_ahead: 向前看多少天
+
+    Returns:
+        [{"symbol": "AAPL", "date": "2026-04-25", "event": "Earnings", "est_eps": 1.62}, ...]
+    """
+    from datetime import timedelta
+
+    def _fetch():
+        try:
+            import yfinance as yf
+        except ImportError:
+            return []
+
+        events = []
+        now = now_et()
+        cutoff = now + timedelta(days=days_ahead)
+
+        for sym in symbols:
+            try:
+                ticker = yf.Ticker(sym)
+                cal = ticker.get_calendar()
+                if cal is None or cal.empty:
+                    continue
+
+                # yfinance calendar 返回 DataFrame 或 dict
+                if hasattr(cal, "to_dict"):
+                    cal_dict = cal.to_dict()
+                elif isinstance(cal, dict):
+                    cal_dict = cal
+                else:
+                    continue
+
+                # 提取 Earnings Date
+                earnings_date = cal_dict.get("Earnings Date")
+                if earnings_date:
+                    if isinstance(earnings_date, dict):
+                        # {0: Timestamp, 1: Timestamp}
+                        for _, ts in earnings_date.items():
+                            if hasattr(ts, "to_pydatetime"):
+                                dt = ts.to_pydatetime().replace(tzinfo=None)
+                            else:
+                                continue
+                            if now <= dt <= cutoff:
+                                events.append({
+                                    "symbol": sym,
+                                    "date": dt.strftime("%Y-%m-%d"),
+                                    "event": "Earnings",
+                                    "est_eps": cal_dict.get("Earnings Average", {}).get(0, None),
+                                    "est_revenue": cal_dict.get("Revenue Average", {}).get(0, None),
+                                })
+                                break
+            except Exception as e:
+                logger.debug(f"[invest_tools] 财报日历 {sym} 获取失败: {e}")
+
+        events.sort(key=lambda x: x["date"])
+        return events
+
+    return await asyncio.to_thread(_fetch)

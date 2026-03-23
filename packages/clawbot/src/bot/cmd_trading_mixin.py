@@ -146,7 +146,7 @@ class TradingCommandsMixin:
                         await send_chart(update, context, chart, caption="📊 持仓分布")
                     return
             except Exception:
-                pass  # 降级到原有文字格式
+                logger.debug("Silenced exception", exc_info=True)  # 降级到原有文字格式
 
             await update.message.reply_text(status_text)
         else:
@@ -280,7 +280,7 @@ class TradingCommandsMixin:
                             enhanced = reporter.generate_report(report)
                             result_text += "\n📊 详细图表报告已生成（权益曲线、回撤、交易明细）"
                         except Exception:
-                            pass
+                            logger.debug("Silenced exception", exc_info=True)
                         try:
                             from src.telegram_ux import generate_equity_chart, generate_pnl_chart, send_chart
                             equity = getattr(report, 'equity_curve', None)

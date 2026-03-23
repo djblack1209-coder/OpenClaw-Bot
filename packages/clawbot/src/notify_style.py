@@ -1,15 +1,34 @@
 """
-统一的 Telegram/推送文案排版 v2.0
+统一的 Telegram/推送文案排版 v2.1
 
 设计原则：
 - 每条通知一眼扫完，信息密度高但不拥挤
 - emoji 做视觉锚点，不滥用
 - 分隔线用细线 ─── 而非粗重符号
 - 关键数字突出，废话砍掉
+
+v2.1 变更 (2026-03-23):
+  - 搬运 humanize (2.9k⭐) — 自然语言时间/文件大小/数字格式
+  - 新增 natural_time(): "3分钟前" / "2 hours ago"
+  - 新增 natural_size(): "1.2 MB" / "340 KB"
+  - 新增 natural_number(): "1,234,567" / "1.2 million"
 """
 
 from datetime import datetime
 from typing import Iterable, Optional, Sequence, Tuple
+
+# ── humanize (2.9k⭐) — 自然语言格式化 ──────────────────────
+_HAS_HUMANIZE = False
+try:
+    import humanize
+    # 激活中文支持
+    try:
+        humanize.activate("zh_CN")
+    except Exception:
+        pass  # 回退英文
+    _HAS_HUMANIZE = True
+except ImportError:
+    humanize = None  # type: ignore[assignment]
 
 
 # ── 基础工具 ──────────────────────────────────────
@@ -47,6 +66,69 @@ def timestamp_tag() -> str:
         return now_et().strftime("%H:%M ET")
     except Exception:
         return datetime.now().strftime("%H:%M")
+
+
+def natural_time(dt=None, future: bool = False) -> str:
+    """自然语言时间 — 搬运 humanize (2.9k⭐)。
+
+    natural_time(some_datetime)  →  "3分钟前" / "2 hours ago"
+    natural_time(None)           →  "刚刚"
+    humanize 不可用时降级到 strftime。
+    """
+    if _HAS_HUMANIZE and humanize is not None:
+        try:
+            if dt is None:
+                return humanize.naturaltime(0)
+            if isinstance(dt, (int, float)):
+                from datetime import datetime as _dt
+                dt = _dt.fromtimestamp(dt)
+            return humanize.naturaltime(dt, future=future)
+        except Exception:
+            pass
+    # 降级
+    if dt is None:
+        return "刚刚"
+    if isinstance(dt, (int, float)):
+        from datetime import datetime as _dt
+        dt = _dt.fromtimestamp(dt)
+    try:
+        return dt.strftime("%m-%d %H:%M")
+    except Exception:
+        return str(dt)
+
+
+def natural_size(num_bytes: int) -> str:
+    """自然语言文件大小 — 搬运 humanize。
+
+    natural_size(1234567)  →  "1.2 MB"
+    """
+    if _HAS_HUMANIZE and humanize is not None:
+        try:
+            return humanize.naturalsize(num_bytes)
+        except Exception:
+            pass
+    # 降级
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if num_bytes < 1024:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.1f} TB"
+
+
+def natural_number(n) -> str:
+    """自然语言数字 — 搬运 humanize。
+
+    natural_number(1234567)  →  "1.2 million"
+    natural_number(1234)     →  "1,234"
+    """
+    if _HAS_HUMANIZE and humanize is not None:
+        try:
+            if isinstance(n, float) and n >= 1_000_000:
+                return humanize.intword(int(n))
+            return humanize.intcomma(n)
+        except Exception:
+            pass
+    return f"{n:,}" if isinstance(n, (int, float)) else str(n)
 
 
 # ── 通知卡片 ──────────────────────────────────────

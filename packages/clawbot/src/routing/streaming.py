@@ -92,12 +92,12 @@ async def stream_llm_to_telegram(
             try:
                 await send_func(chat_id, full_text, message_id)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         elif full_text and not message_id:
             try:
                 await send_func(chat_id, full_text, None)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     except Exception as e:
         logger.error(f"[StreamLLM] stream failed: {e}")

@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 # ── Mem0 可用性检测 ──
 
 _mem0_available = False
-Mem0Memory = None  # type: ignore[assignment]
 try:
-    from mem0 import Memory as Mem0Memory  # type: ignore[no-redef]
+    from mem0 import Memory as Mem0Memory
     _mem0_available = True
 except ImportError:
+    Mem0Memory = None  # type: ignore[assignment,misc]
     logger.info("[SharedMemory] mem0ai 未安装，使用 SQLite 回退模式")
 
 
@@ -43,36 +43,63 @@ def _build_mem0_config() -> dict:
                 "collection_name": "clawbot_memory",
                 "path": str(Path(os.getenv("DATA_DIR", str(Path(__file__).parent.parent / "data"))) / "qdrant_data"),
                 "on_disk": True,
+                "embedding_model_dims": 1024,  # BAAI/bge-m3 输出维度
             },
         },
     }
 
-    # LLM 配置：优先 SiliconFlow（免费），回退 OpenAI 兼容
+    # LLM 配置：优先 SILICONFLOW_UNLIMITED_KEY（无限额），回退 SILICONFLOW_KEYS，再回退 OpenAI
+    sf_unlimited_key = os.getenv("SILICONFLOW_UNLIMITED_KEY", "").strip()
     sf_keys = os.getenv("SILICONFLOW_KEYS", "")
     sf_base = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
     openai_key = os.getenv("OPENAI_API_KEY", "")
 
-    if sf_keys:
-        first_key = sf_keys.split(",")[0].strip()
-        if first_key:
-            config["llm"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "Qwen/Qwen3-8B",
-                    "api_key": first_key,
-                    "openai_base_url": sf_base,
-                    "temperature": 0.1,
-                    "max_tokens": 2000,
-                },
-            }
-            config["embedder"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "BAAI/bge-m3",
-                    "api_key": first_key,
-                    "openai_base_url": sf_base,
-                },
-            }
+    # SILICONFLOW_UNLIMITED_URL 可能是完整路径如 https://apis.iflow.cn/v1/chat/completions
+    # 提取 base URL（去掉 /chat/completions 后缀）
+    sf_unlimited_url = os.getenv("SILICONFLOW_UNLIMITED_URL", "").strip()
+    if sf_unlimited_url:
+        # 去除 /chat/completions 等路径后缀，保留到 /v1
+        if "/chat/completions" in sf_unlimited_url:
+            sf_unlimited_base = sf_unlimited_url.split("/chat/completions")[0]
+        else:
+            sf_unlimited_base = sf_unlimited_url.rstrip("/")
+    else:
+        sf_unlimited_base = sf_base
+
+    # 选择可用的 SiliconFlow key 和对应 base URL
+    # 优先使用标准 siliconflow.cn（稳定，支持 LLM + embeddings）
+    # UNLIMITED_KEY 仅当 iflow.cn 可用时使用，但 iflow 不支持 embeddings，故统一用 siliconflow
+    _all_keys = [k.strip() for k in sf_keys.split(",") if k.strip()] if sf_keys else []
+    # 取最后一个 key（通常是有余额的）
+    active_sf_key = _all_keys[-1] if _all_keys else sf_unlimited_key
+    active_sf_base = sf_base  # 始终用 api.siliconflow.cn/v1（稳定）
+
+    if active_sf_key:
+        first_key = active_sf_key
+        config["llm"] = {
+            "provider": "openai",
+            "config": {
+                "model": "Qwen/Qwen2.5-7B-Instruct",
+                "api_key": first_key,
+                "openai_base_url": active_sf_base,
+                "temperature": 0.1,
+                "max_tokens": 2000,
+            },
+        }
+        # embedder 必须用标准 SiliconFlow（支持 /v1/embeddings），
+        # iflow.cn 只是 LLM 代理，不提供嵌入端点
+        # 从 SILICONFLOW_KEYS 轮换选 key：尽量避开余额不足的 key（取最后一个作 fallback）
+        _emb_keys = [k.strip() for k in sf_keys.split(",") if k.strip()] if sf_keys else []
+        emb_key = _emb_keys[-1] if len(_emb_keys) > 1 else (_emb_keys[0] if _emb_keys else first_key)
+        emb_base = sf_base  # 始终用 api.siliconflow.cn/v1
+        config["embedder"] = {
+            "provider": "openai",
+            "config": {
+                "model": "BAAI/bge-m3",
+                "api_key": emb_key,
+                "openai_base_url": emb_base,
+            },
+        }
     elif openai_key:
         config["llm"] = {
             "provider": "openai",
@@ -146,12 +173,19 @@ class SharedMemory:
         # Mem0 初始化
         self._mem0 = None
         self._using_mem0 = False
-        if _mem0_available:
+        if _mem0_available and Mem0Memory is not None:
             try:
                 config = _build_mem0_config()
-                self._mem0 = Mem0Memory.from_config(config)
-                self._using_mem0 = True
-                logger.info("[SharedMemory] v4.0 Mem0 模式启动成功")
+                # 临时屏蔽 OPENROUTER_API_KEY，防止 mem0 自动路由到 OpenRouter
+                # mem0 会扫描环境变量自动选 LLM provider，优先级高于显式 config
+                _or_key = os.environ.pop("OPENROUTER_API_KEY", None)
+                try:
+                    self._mem0 = Mem0Memory.from_config(config)
+                    self._using_mem0 = True
+                    logger.info("[SharedMemory] v4.0 Mem0 模式启动成功")
+                finally:
+                    if _or_key is not None:
+                        os.environ["OPENROUTER_API_KEY"] = _or_key
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 初始化失败，回退 SQLite: %s", e)
 
@@ -266,8 +300,8 @@ class SharedMemory:
                 if chat_id is not None:
                     metadata["chat_id"] = str(chat_id)
                 result = self._mem0.add(
-                    [{"role": "user", "content": content}],
-                    user_id=source_bot,
+                    [{'role': 'user', 'content': content}],
+                    agent_id="clawbot",
                     metadata=metadata,
                     infer=False,  # 直接存储，不做 LLM 提取（保持与 v3 行为一致）
                 )
@@ -296,7 +330,7 @@ class SharedMemory:
                 if vec:
                     embedding = json.dumps(vec).encode("utf-8")
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
         with self._lock:
             existing = conn.execute(
@@ -399,7 +433,7 @@ class SharedMemory:
         mem0_results = []
         if self._using_mem0 and self._mem0 and mode in ("semantic", "hybrid"):
             try:
-                raw = self._mem0.search(query, limit=limit * 2)
+                raw = self._mem0.search(query, limit=limit * 2, agent_id="clawbot")
                 items = raw.get("results", raw) if isinstance(raw, dict) else raw
                 for r in (items or []):
                     if not isinstance(r, dict):

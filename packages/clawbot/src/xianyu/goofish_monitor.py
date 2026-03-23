@@ -283,7 +283,7 @@ class XianyuMonitorBridge:
                 try:
                     await self.notify_fn(msg)
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
 
         if new_count:
             logger.info("[XianyuMonitorBridge] 处理了 %d 条新监控结果", new_count)

@@ -661,6 +661,13 @@ class RiskManager:
         返回: {shares, total_cost, max_loss, risk_pct}
         """
         cap = capital or self.config.total_capital
+        if cap <= 0:
+            return {"error": "资金为零，无法计算仓位", "shares": 0}
+        if entry_price is None or entry_price <= 0:
+            return {"error": "入场价必须大于零", "shares": 0}
+        if stop_loss is None:
+            return {"error": "止损价不能为空", "shares": 0}
+
         max_risk = cap * self.config.max_risk_per_trade_pct
         max_position = cap * self.config.max_position_pct
         

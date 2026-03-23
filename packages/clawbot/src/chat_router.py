@@ -1222,7 +1222,7 @@ class StreamingResponse:
 
     def __init__(self):
         self._chunks: List[str] = []
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._done = False
         self._full_text = ""
         self._start_time = time.time()
@@ -1241,7 +1241,11 @@ class StreamingResponse:
     async def __aiter__(self):
         """异步迭代 chunks"""
         while True:
-            chunk = await self._queue.get()
+            try:
+                chunk = await asyncio.wait_for(self._queue.get(), timeout=60)
+            except asyncio.TimeoutError:
+                logger.warning("[Streaming] Queue read timeout — producer may have crashed")
+                break
             if chunk is None:
                 break
             yield chunk
@@ -1302,15 +1306,15 @@ async def stream_llm_to_telegram(
                     await send_func(chat_id, full_text + " ▌", edit_message_id=message_id)
                     last_edit_time = now
                     pending_chars = 0
-                except Exception:
-                    pass  # Telegram edit 偶尔失败，忽略
+                except Exception as e:
+                    logger.warning(f"[Streaming] Telegram edit failed (mid-stream): {e}")
 
         # 最终更新（去掉光标）
         if message_id and full_text:
             try:
                 await send_func(chat_id, full_text, edit_message_id=message_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[Streaming] Final Telegram edit failed: {e}")
 
     except Exception as e:
         logger.error(f"[Streaming] 流式传输失败: {e}")
@@ -1318,8 +1322,8 @@ async def stream_llm_to_telegram(
             try:
                 await send_func(chat_id, full_text + "\n\n⚠️ 流式传输中断",
                                 edit_message_id=message_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[Streaming] Failed to send interruption notice: {e}")
 
     return full_text
 

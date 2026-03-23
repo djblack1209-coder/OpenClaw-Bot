@@ -135,7 +135,7 @@ class ErrorHandler:
             try:
                 self._structured_logger.log_error(bot_id, category, str(error))
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
         # 记录到标准日志
         logger.error(

@@ -14,6 +14,12 @@ try:
 except ImportError:
     log_generation = None  # type: ignore[assignment]
 
+try:
+    from src.utils import emit_flow_event as _emit_flow
+except Exception:
+    def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
+        pass
+
 
 class AICallerPool:
     """管理 AI 调用 — 优先注入 caller，回退走 LiteLLM Router"""
@@ -43,14 +49,17 @@ class AICallerPool:
             return {"success": False, "error": "empty prompt"}
         bot_id = self.pick_bot_id()
         caller = self._callers.get(bot_id)
+        _emit_flow("hub", "llm", "running", f"AI 调用: {bot_id}", {"prompt_len": len(prompt)})
         if caller:
             try:
                 result = await caller(0, prompt)
                 text = str(result or "").strip()
                 if text:
+                    _emit_flow("llm", "hub", "success", f"AI 响应: {bot_id}", {"resp_len": len(text)})
                     return {"success": True, "raw": text, "bot_id": bot_id}
             except Exception as e:
                 logger.warning(f"[AICallerPool] {bot_id} failed: {e}")
+                _emit_flow("llm", "hub", "error", f"AI 失败: {bot_id}", {"error": str(e)[:100]})
         return await self.call_via_litellm(prompt, system_prompt)
 
     async def call_via_litellm(self, prompt: str, system_prompt: str = None) -> dict:
@@ -61,6 +70,7 @@ class AICallerPool:
         messages = [{"role": "user", "content": prompt}]
         t0 = time.time()
         try:
+            _emit_flow("hub", "llm", "running", "LiteLLM 路由调用", {"model_family": "qwen"})
             response = await free_pool.acompletion(
                 model_family="qwen",  # 社交内容默认用 qwen
                 messages=messages,
@@ -72,6 +82,7 @@ class AICallerPool:
             elapsed_ms = (time.time() - t0) * 1000
             input_tokens = getattr(response.usage, "prompt_tokens", 0) if response.usage else 0
             output_tokens = getattr(response.usage, "completion_tokens", 0) if response.usage else 0
+            _emit_flow("llm", "hub", "success", "LiteLLM 响应完成", {"elapsed_ms": round(elapsed_ms), "tokens": output_tokens})
             if log_generation:
                 try:
                     log_generation(
@@ -85,7 +96,7 @@ class AICallerPool:
                         output_tokens=output_tokens,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
             return {"success": True, "raw": text, "bot_id": "litellm/qwen", "provider": "litellm"}
         except Exception as e:
             logger.warning(f"[AICallerPool] LiteLLM call failed: {e}")

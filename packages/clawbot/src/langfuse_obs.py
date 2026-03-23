@@ -133,7 +133,7 @@ def trace_llm_call(
                             metadata={"latency_ms": round(elapsed * 1000)},
                         )
                     except Exception:
-                        pass
+                        logger.debug("Silenced exception", exc_info=True)
 
                 return result
 
@@ -146,7 +146,7 @@ def trace_llm_call(
                             status_message=str(e),
                         )
                     except Exception:
-                        pass
+                        logger.debug("Silenced exception", exc_info=True)
                 raise
 
         return wrapper
@@ -207,7 +207,7 @@ def log_event(name: str, metadata: Dict[str, Any] = None):
             metadata=metadata or {},
         )
     except Exception:
-        pass
+        logger.debug("Silenced exception", exc_info=True)
 
 
 def flush():
@@ -216,7 +216,7 @@ def flush():
         try:
             _langfuse_client.flush()
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
 
 def shutdown():
@@ -227,7 +227,7 @@ def shutdown():
             _langfuse_client.flush()
             _langfuse_client.shutdown()
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         _langfuse_client = None
 
 

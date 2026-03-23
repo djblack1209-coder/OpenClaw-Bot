@@ -177,7 +177,7 @@ class BrowserUseBridge:
             try:
                 await self._browser.close()
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
             self._browser = None
 
 

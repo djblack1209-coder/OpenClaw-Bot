@@ -1,6 +1,12 @@
 """
-ClawBot 组合再平衡引擎 v1.0
+ClawBot 组合再平衡引擎 v2.0
 目标配置 + 漂移检测 + 自动调仓建议
+
+v2.0 新增 (2026-03-23):
+  - 搬运 PyPortfolioOpt (4.6k⭐) 有效前沿优化
+  - `optimize_weights()` — 根据历史数据自动计算最优权重 (最大夏普/最小波动)
+  - 离散分配 (DiscreteAllocation) — 精确到整数股数
+  - PyPortfolioOpt 不可用时自动降级到等权重/手动目标
 
 核心功能：
 1. 目标配置：定义每个标的的目标权重
@@ -8,12 +14,26 @@ ClawBot 组合再平衡引擎 v1.0
 3. 调仓建议：生成买入/卖出建议以回归目标配置
 4. 阈值控制：仅在漂移超过阈值时触发调仓
 5. 风控集成：调仓建议经过 RiskManager 审核
+6. [NEW] 有效前沿优化：PyPortfolioOpt 自动计算最优权重
 """
 import logging
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# ── PyPortfolioOpt 有效前沿 (可选) ──────────────────────────
+_HAS_PYPFOPT = False
+try:
+    from pypfopt import EfficientFrontier, expected_returns, risk_models
+    from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
+    _HAS_PYPFOPT = True
+    logger.debug("[rebalancer] PyPortfolioOpt 已加载")
+except ImportError:
+    EfficientFrontier = None  # type: ignore[assignment,misc]
+    expected_returns = None   # type: ignore[assignment]
+    risk_models = None        # type: ignore[assignment]
+    logger.info("[rebalancer] PyPortfolioOpt 未安装，有效前沿优化不可用 (pip install pyportfolioopt)")
 
 
 # ============ 数据结构 ============
@@ -326,6 +346,133 @@ class Rebalancer:
         lines.append("%-6s %5.1f%%" % ("合计", total))
         lines.append("%-6s %5.1f%%" % ("现金", 100 - total))
         return "\n".join(lines)
+
+    async def optimize_weights(
+        self,
+        symbols: List[str],
+        portfolio_value: float,
+        objective: str = "max_sharpe",
+        period: str = "1y",
+    ) -> Dict:
+        """使用 PyPortfolioOpt 有效前沿计算最优投资组合权重。
+
+        搬运自 PyPortfolioOpt (4.6k⭐, BSD-3) — 全球最流行的 Python 投资组合优化库。
+        包含 Markowitz 均值-方差模型 + 离散分配。
+
+        Args:
+            symbols: 股票代码列表, 如 ["AAPL", "MSFT", "GOOGL"]
+            portfolio_value: 组合总价值 (用于离散分配)
+            objective: 优化目标
+                - "max_sharpe"   最大化夏普比率 (默认)
+                - "min_volatility" 最小化波动率
+                - "max_quadratic_utility" 最大化二次效用
+            period: 历史数据周期 ("1y", "2y", "5y")
+
+        Returns:
+            dict with:
+                weights: {symbol: weight_pct}  # 最优权重 (百分比)
+                discrete: {symbol: shares}     # 离散分配 (整数股数)
+                performance: {sharpe, ret, vol} # 预期绩效
+                source: "pypfopt" | "equal_weight"
+                error: str (仅失败时)
+        """
+        if not _HAS_PYPFOPT:
+            # 降级: 等权重
+            equal_w = round(100 / len(symbols), 2)
+            return {
+                "weights": {s: equal_w for s in symbols},
+                "discrete": {},
+                "performance": {},
+                "source": "equal_weight",
+                "error": "PyPortfolioOpt 未安装，使用等权重降级 (pip install pyportfolioopt)",
+            }
+
+        try:
+            import asyncio
+            import pandas as pd
+
+            def _run_optimization():
+                # 1. 获取历史价格
+                try:
+                    import yfinance as yf
+                    raw = yf.download(
+                        symbols, period=period, auto_adjust=True, progress=False
+                    )
+                    if isinstance(raw.columns, pd.MultiIndex):
+                        prices = raw["Close"]
+                    else:
+                        prices = raw[["Close"]]
+                    prices = prices.dropna()
+                except Exception as e:
+                    raise RuntimeError(f"价格数据获取失败: {e}")
+
+                if prices.empty or len(prices) < 30:
+                    raise RuntimeError("历史数据不足 (需至少30个交易日)")
+
+                # 2. 计算预期收益 + 协方差矩阵
+                mu = expected_returns.mean_historical_return(prices)
+                S = risk_models.sample_cov(prices)
+
+                # 3. 有效前沿优化
+                ef = EfficientFrontier(mu, S)
+                if objective == "min_volatility":
+                    ef.min_volatility()
+                elif objective == "max_quadratic_utility":
+                    ef.max_quadratic_utility()
+                else:  # max_sharpe (default)
+                    ef.max_sharpe()
+
+                cleaned_weights = ef.clean_weights()
+                perf = ef.portfolio_performance(verbose=False)
+
+                # 4. 离散分配
+                latest_prices = get_latest_prices(prices)
+                da = DiscreteAllocation(
+                    cleaned_weights,
+                    latest_prices,
+                    total_portfolio_value=portfolio_value,
+                )
+                allocation, leftover = da.greedy_portfolio()
+
+                return {
+                    "weights": {k: round(v * 100, 2) for k, v in cleaned_weights.items()},
+                    "discrete": allocation,
+                    "leftover": round(leftover, 2),
+                    "performance": {
+                        "expected_annual_return": round(perf[0] * 100, 2),
+                        "annual_volatility": round(perf[1] * 100, 2),
+                        "sharpe_ratio": round(perf[2], 3),
+                    },
+                    "source": "pypfopt",
+                    "objective": objective,
+                }
+
+            result = await asyncio.to_thread(_run_optimization)
+
+            # 同步更新 Rebalancer targets
+            targets = [
+                AllocationTarget(symbol=sym, target_pct=pct)
+                for sym, pct in result["weights"].items()
+                if pct > 0
+            ]
+            self.set_targets(targets)
+            logger.info(
+                "[Rebalancer] PyPortfolioOpt 优化完成: %s, sharpe=%.3f",
+                objective, result["performance"].get("sharpe_ratio", 0),
+            )
+            return result
+
+        except Exception as e:
+            logger.warning("[Rebalancer] PyPortfolioOpt 优化失败: %s，降级等权重", e)
+            equal_w = round(100 / len(symbols), 2)
+            return {
+                "weights": {s: equal_w for s in symbols},
+                "discrete": {},
+                "performance": {},
+                "source": "equal_weight",
+                "error": str(e),
+            }
+
 
 
 # 全局实例

@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 lm = LicenseManager()
 
-ADMIN_TOKEN = os.getenv("DEPLOY_ADMIN_TOKEN", "changeme-admin-token")
+ADMIN_TOKEN = os.getenv("DEPLOY_ADMIN_TOKEN", "")
+if not ADMIN_TOKEN:
+    raise RuntimeError(
+        "DEPLOY_ADMIN_TOKEN environment variable is not set. "
+        "The deploy server refuses to start without an explicit admin token."
+    )
 
 
 def _check_admin(req):

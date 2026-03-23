@@ -86,7 +86,7 @@ class APIMixin:
             if chat_mode_extra:
                 messages.insert(0, {"role": "system", "content": chat_mode_extra})
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
 
         try:
             # 路由决策
@@ -129,7 +129,7 @@ class APIMixin:
                         output_tokens=output_tokens, metadata={"chat_type": chat_type},
                     )
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
 
             return reply
 
@@ -355,7 +355,7 @@ class APIMixin:
                         metadata={"chat_type": chat_type, "stream": True},
                     )
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
 
             yield (full_text, "finished")
 

@@ -20,7 +20,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ---- 离线License验证 ----
-_SECRET = os.getenv("OPENCLAW_LICENSE_SECRET", "").encode() or b"OpenClaw2026-xianyu-license-hmac-secret-key"
+_secret_env = os.getenv("OPENCLAW_LICENSE_SECRET")
+if not _secret_env:
+    raise RuntimeError(
+        "OPENCLAW_LICENSE_SECRET environment variable is not set. "
+        "The license HMAC secret must be provided via environment variable."
+    )
+_SECRET = _secret_env.encode()
+logger.info("License HMAC secret loaded from OPENCLAW_LICENSE_SECRET environment variable.")
 
 def verify_key(key):
     try:

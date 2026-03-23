@@ -1,6 +1,11 @@
 """
-ClawBot - 新闻抓取模块
+ClawBot - 新闻抓取模块 v2.0
 抓取 Google、Nvidia、Claude、马斯克相关新闻
+
+v2.0 变更 (2026-03-23):
+  - 搬运 feedparser (9.8k⭐) 替代 regex XML 解析 (更鲁棒，支持 Atom/RSS 1.0/RSS 2.0)
+  - 新增 RSS 源: TechCrunch / Hacker News / 36氪 / 少数派
+  - 三级降级: feedparser RSS → Google News RSS (regex) → Bing 搜索
 """
 import asyncio
 import httpx
@@ -9,6 +14,37 @@ from datetime import datetime
 import re
 
 from src.notify_style import format_digest
+
+# ── feedparser 可选依赖 ──
+_HAS_FEEDPARSER = False
+try:
+    import feedparser
+    _HAS_FEEDPARSER = True
+except ImportError:
+    feedparser = None  # type: ignore[assignment]
+
+import logging
+logger = logging.getLogger(__name__)
+
+# ── 内置 RSS 源（无需 API Key）──
+RSS_FEEDS: Dict[str, List[str]] = {
+    "tech_en": [
+        "https://hnrss.org/newest?points=100",                # Hacker News 100+ 分
+        "https://feeds.feedburner.com/TechCrunch/",            # TechCrunch
+        "https://www.theverge.com/rss/index.xml",              # The Verge
+    ],
+    "tech_cn": [
+        "https://36kr.com/feed",                               # 36氪
+        "https://sspai.com/feed",                              # 少数派
+    ],
+    "ai": [
+        "https://blog.google/technology/ai/rss/",             # Google AI Blog
+        "https://openai.com/blog/rss/",                        # OpenAI Blog
+    ],
+    "finance": [
+        "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",  # S&P 500
+    ],
+}
 
 
 class NewsFetcher:
@@ -34,6 +70,91 @@ class NewsFetcher:
         """
         self.serpapi_key = serpapi_key
         self._seen_titles: set = set()  # 跨主题去重
+
+    async def fetch_rss_feed(self, feed_url: str, count: int = 5) -> List[Dict[str, str]]:
+        """feedparser 解析 RSS/Atom feed (v2.0 新增).
+
+        搬运 feedparser (9.8k⭐) — 支持 RSS 0.9/1.0/2.0 + Atom 0.3/1.0
+        比 regex XML 解析更鲁棒，能处理 CDATA, namespace, encoding 等边缘情况。
+        """
+        if not _HAS_FEEDPARSER:
+            # 降级: 直接 regex 解析
+            return await self._fetch_rss_regex(feed_url, count)
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(feed_url, headers={
+                    "User-Agent": "OpenClaw-NewsBot/2.0 (feedparser)"
+                })
+                resp.raise_for_status()
+
+            loop = asyncio.get_event_loop()
+            parsed = await loop.run_in_executor(
+                None, feedparser.parse, resp.text
+            )
+
+            items = []
+            for entry in parsed.entries[:count]:
+                title = entry.get("title", "").strip()
+                url = entry.get("link", "").strip()
+                source = parsed.feed.get("title", "").strip()
+                published = entry.get("published", entry.get("updated", ""))
+                if title and url and title not in self._seen_titles:
+                    self._seen_titles.add(title)
+                    items.append({
+                        "title": title,
+                        "url": url,
+                        "source": source,
+                        "published": published[:16] if published else "",
+                    })
+            return items
+        except Exception as e:
+            logger.warning(f"[news_fetcher] feedparser RSS 失败 ({feed_url}): {e}")
+            return []
+
+    async def fetch_by_category(self, category: str, count: int = 5) -> List[Dict[str, str]]:
+        """按分类抓取 RSS 新闻 (v2.0 新增)
+
+        category: tech_en | tech_cn | ai | finance
+        """
+        feeds = RSS_FEEDS.get(category, [])
+        if not feeds:
+            return []
+        tasks = [self.fetch_rss_feed(url, count) for url in feeds]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        items = []
+        for r in results:
+            if isinstance(r, list):
+                items.extend(r)
+        # 去重+截断
+        seen = set()
+        deduped = []
+        for item in items:
+            t = item.get("title", "")
+            if t and t not in seen:
+                seen.add(t)
+                deduped.append(item)
+        return deduped[:count]
+
+    async def _fetch_rss_regex(self, url: str, count: int = 5) -> List[Dict[str, str]]:
+        """feedparser 不可用时的 regex 降级"""
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            items_raw = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
+            news = []
+            for item in items_raw[:count]:
+                t = re.search(r'<title>(.*?)</title>', item)
+                l = re.search(r'<link>(.*?)</link>', item)
+                s = re.search(r'<source[^>]*>(.*?)</source>', item)
+                if t and l:
+                    news.append({
+                        "title": t.group(1).strip(),
+                        "url": l.group(1).strip(),
+                        "source": s.group(1) if s else "",
+                    })
+            return news
+        except Exception:
+            return []
 
     @staticmethod
     def format_news_items(items: List[Dict[str, str]], max_items: int = 3, title_max_len: int = 72) -> List[str]:

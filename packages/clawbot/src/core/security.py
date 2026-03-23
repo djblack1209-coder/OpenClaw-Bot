@@ -298,7 +298,7 @@ class SecurityGate:
                         if line:
                             records.append(json.loads(line))
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         return records[-limit:]
 
 
@@ -316,6 +316,6 @@ def get_security_gate() -> SecurityGate:
             if ALLOWED_USER_IDS:
                 ids.extend(ALLOWED_USER_IDS)
         except Exception:
-            pass
+            logger.debug("Silenced exception", exc_info=True)
         _gate = SecurityGate(admin_user_ids=list(set(ids)))
     return _gate

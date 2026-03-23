@@ -1,12 +1,18 @@
 """
-ClawBot 社交媒体工具集 v1.0
+ClawBot 社交媒体工具集 v2.0
 
 支持：
 - A/B 测试框架（多版本内容对比）
-- 情感分析（中英文，零 API 调用）
+- 情感分析 v2.0 — snownlp (6k⭐) 中文 + textblob (9k⭐) 英文 + 词袋降级
 - 多平台内容适配器
 - 发布时间优化
 - 互动率追踪
+
+v2.0 变更 (2026-03-23):
+  - 搬运 snownlp (6k⭐) 作为中文情感分析主力引擎 (贝叶斯分类器)
+  - 搬运 textblob (9k⭐) 作为英文情感分析引擎 (NLTK 模式匹配)
+  - 中英文自动检测分流
+  - 原词袋词典保留为双重降级
 """
 
 import hashlib
@@ -21,6 +27,23 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# ── snownlp / textblob 可选依赖 ──
+_HAS_SNOWNLP = False
+try:
+    from snownlp import SnowNLP
+    _HAS_SNOWNLP = True
+    logger.debug("[social_tools] snownlp 已加载 (中文情感分析)")
+except ImportError:
+    SnowNLP = None  # type: ignore[assignment,misc]
+
+_HAS_TEXTBLOB = False
+try:
+    from textblob import TextBlob
+    _HAS_TEXTBLOB = True
+    logger.debug("[social_tools] textblob 已加载 (英文情感分析)")
+except ImportError:
+    TextBlob = None  # type: ignore[assignment,misc]
 
 
 # ============ 情感分析（零 API 调用） ============
@@ -62,26 +85,19 @@ class SentimentResult:
     negative_words: List[str] = field(default_factory=list)
 
 
-def analyze_sentiment(text: str) -> SentimentResult:
-    """零 API 调用的情感分析（中英文混合支持）"""
-    if not text:
-        return SentimentResult(score=0, label="neutral", confidence=0)
-
+def _lexicon_sentiment(text: str) -> SentimentResult:
+    """词袋情感分析降级（原有逻辑，零依赖）"""
     text_lower = text.lower()
     words = set(re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z]+', text_lower))
-    # 也检查单字（中文）
-    chars = set(text_lower)
 
     pos_found = []
     neg_found = []
-
     for w in words:
         if w in _CN_POSITIVE or w in _EN_POSITIVE:
             pos_found.append(w)
         elif w in _CN_NEGATIVE or w in _EN_NEGATIVE:
             neg_found.append(w)
 
-    # 否定词翻转（简单规则：否定词后的情感词翻转）
     has_negator = bool(words & _NEGATORS)
     if has_negator and pos_found and not neg_found:
         neg_found = pos_found
@@ -96,18 +112,85 @@ def analyze_sentiment(text: str) -> SentimentResult:
 
     score = (len(pos_found) - len(neg_found)) / total
     confidence = min(0.9, 0.4 + total * 0.1)
-
-    if score > 0.15:
-        label = "positive"
-    elif score < -0.15:
-        label = "negative"
-    else:
-        label = "neutral"
-
+    label = "positive" if score > 0.15 else ("negative" if score < -0.15 else "neutral")
     return SentimentResult(
         score=round(score, 3), label=label, confidence=round(confidence, 2),
         positive_words=pos_found, negative_words=neg_found,
     )
+
+
+def _detect_lang(text: str) -> str:
+    """检测文本主要语言: 'zh' / 'en' / 'mixed'"""
+    cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
+    total = cn_chars + en_chars
+    if total == 0:
+        return "en"
+    if cn_chars / total > 0.5:
+        return "zh"
+    elif en_chars / total > 0.7:
+        return "en"
+    return "mixed"
+
+
+def analyze_sentiment(text: str) -> SentimentResult:
+    """零 API 调用的情感分析（中英文混合支持）
+
+    v2.0 三级降级:
+      1. snownlp (6k⭐) — 中文贝叶斯分类器，精度远超词袋
+      2. textblob (9k⭐) — 英文 NLTK 模式匹配
+      3. 词袋计数 — 原有逻辑作为最终降级
+
+    搬运来源: snownlp + textblob 最佳实践 (GitHub 多项目通用模式)
+    """
+    if not text:
+        return SentimentResult(score=0, label="neutral", confidence=0)
+
+    lang = _detect_lang(text)
+
+    # ── 路径 1: snownlp (中文/混合) ──
+    if lang in ("zh", "mixed") and _HAS_SNOWNLP:
+        try:
+            s = SnowNLP(text)
+            # snownlp.sentiments 返回 0~1 (0=负, 1=正)
+            raw_score = s.sentiments
+            score = (raw_score - 0.5) * 2  # 映射到 -1 ~ +1
+            confidence = abs(score) * 0.8 + 0.2  # 偏离中心越远越确信
+            if score > 0.15:
+                label = "positive"
+            elif score < -0.15:
+                label = "negative"
+            else:
+                label = "neutral"
+            return SentimentResult(
+                score=round(score, 3), label=label,
+                confidence=round(min(confidence, 0.95), 2),
+            )
+        except Exception as e:
+            logger.debug(f"[sentiment] snownlp 失败: {e}")
+
+    # ── 路径 2: textblob (英文) ──
+    if lang in ("en", "mixed") and _HAS_TEXTBLOB:
+        try:
+            blob = TextBlob(text)
+            # TextBlob polarity: -1 ~ +1
+            score = blob.sentiment.polarity
+            confidence = abs(score) * 0.7 + 0.3
+            if score > 0.1:
+                label = "positive"
+            elif score < -0.1:
+                label = "negative"
+            else:
+                label = "neutral"
+            return SentimentResult(
+                score=round(score, 3), label=label,
+                confidence=round(min(confidence, 0.95), 2),
+            )
+        except Exception as e:
+            logger.debug(f"[sentiment] textblob 失败: {e}")
+
+    # ── 路径 3: 词袋降级（原有逻辑）──
+    return _lexicon_sentiment(text)
 
 
 # ============ A/B 测试框架 ============

@@ -9,6 +9,7 @@ from src.bot.globals import (
     format_quote, portfolio, send_long_message,
     get_risk_manager, ibkr,
 )
+from src.message_format import format_error
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,17 @@ class InvestCommandsMixin:
             if isinstance(quote, dict) and "price" in quote and not quote.get("error"):
                 from src.telegram_ux import format_quote_card
                 from telegram.constants import ParseMode
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                 card = format_quote_card(quote)
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📊 技术分析", callback_data=f"ta_{symbol}"),
+                    InlineKeyboardButton("🟢 买入", callback_data=f"buy_{symbol}"),
+                    InlineKeyboardButton("⭐ 加自选", callback_data=f"watch_{symbol}"),
+                ]])
                 await update.message.reply_text(
                     card, parse_mode=ParseMode.HTML,
                     reply_to_message_id=update.message.message_id,
+                    reply_markup=keyboard,
                 )
             else:
                 # 降级到原有格式
@@ -70,17 +78,64 @@ class InvestCommandsMixin:
         if not self._is_authorized(update.effective_user.id):
             return
         await update.message.reply_text(f"{self.emoji} 计算投资组合中...")
-        text = await portfolio.get_portfolio_summary()
+
+        # 获取结构化持仓数据用于富卡片
+        positions_raw = portfolio.get_positions()
+        cash = portfolio.get_cash()
+
+        if positions_raw:
+            # 并行查询行情，构建 format_portfolio_card 所需数据
+            from src.bot.globals import get_stock_quote
+            import asyncio
+            quotes = await asyncio.gather(
+                *[get_stock_quote(p["symbol"]) for p in positions_raw],
+                return_exceptions=True,
+            )
+            enriched = []
+            for pos, quote in zip(positions_raw, quotes):
+                if isinstance(quote, Exception) or (isinstance(quote, dict) and "error" in quote):
+                    current_price = pos["avg_price"]
+                else:
+                    current_price = quote.get("price", pos["avg_price"])
+                market_value = pos["quantity"] * current_price
+                cost = pos["quantity"] * pos["avg_price"]
+                pnl_pct = ((current_price / pos["avg_price"]) - 1) * 100 if pos["avg_price"] else 0
+                enriched.append({
+                    "symbol": pos["symbol"],
+                    "quantity": pos["quantity"],
+                    "avg_cost": pos["avg_price"],
+                    "market_value": market_value,
+                    "pnl_pct": pnl_pct,
+                })
+
+            from src.telegram_ux import format_portfolio_card, generate_portfolio_pie, send_chart
+            card = format_portfolio_card(enriched, cash=cash)
+            await update.message.reply_text(card, parse_mode="HTML",
+                                            reply_to_message_id=update.message.message_id)
+            # 发送饼图
+            try:
+                chart = generate_portfolio_pie(enriched, "资产配置")
+                await send_chart(update, context, chart, caption="")
+            except Exception as e:
+                logger.debug("Portfolio pie chart failed: %s", e)
+        else:
+            from src.telegram_ux import format_portfolio_card
+            card = format_portfolio_card([], cash=cash)
+            await update.message.reply_text(card, parse_mode="HTML",
+                                            reply_to_message_id=update.message.message_id)
+
         # 当 IBKR 已连接时，追加实盘持仓
         if ibkr.is_connected():
             try:
                 ibkr_text = await ibkr.get_positions_text()
                 if ibkr_text.strip():
-                    text += "\n\n━━━ IBKR 实盘持仓 ━━━\n" + ibkr_text
-                text += "\n" + ibkr.get_budget_status()
+                    ibkr_msg = "━━━ IBKR 实盘持仓 ━━━\n" + ibkr_text
+                    ibkr_msg += "\n" + ibkr.get_budget_status()
+                    await update.message.reply_text(ibkr_msg,
+                                                    reply_to_message_id=update.message.message_id)
             except Exception as e:
-                text += f"\n\n(IBKR持仓获取失败: {e})"
-        await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+                await update.message.reply_text(format_error(e, "获取IBKR持仓"),
+                                                reply_to_message_id=update.message.message_id)
 
     async def cmd_buy(self, update, context):
         """模拟买入: /buy AAPL 10 或 /buy AAPL 10 150.5"""
@@ -135,16 +190,16 @@ class InvestCommandsMixin:
                 fill_qty = ibkr_result.get("filled_qty", 0) or quantity
                 # 同步更新模拟组合
                 portfolio.buy(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动买入(IBKR同步)")
-                text = (
-                    f"IBKR 买入成功\n\n"
-                    f"标的: {ibkr_result['symbol']}\n"
-                    f"数量: {fill_qty}\n"
-                    f"成交价: ${fill_price:.2f}\n"
-                    f"订单状态: {ibkr_result.get('status', 'N/A')}\n"
-                    f"Order ID: {ibkr_result.get('order_id', 'N/A')}\n"
-                    f"预算剩余: {ibkr.get_budget_status()}"
-                )
-                await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+                from src.telegram_ux import format_trade_card
+                card = format_trade_card({
+                    "symbol": ibkr_result['symbol'],
+                    "action": "BUY",
+                    "quantity": fill_qty,
+                    "price": fill_price,
+                    "total": fill_qty * fill_price,
+                    "reason": f"IBKR实盘 | {ibkr_result.get('status', 'N/A')} | OID:{ibkr_result.get('order_id', 'N/A')} | {ibkr.get_budget_status()}",
+                })
+                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
                 await update.message.reply_text(f"IBKR下单失败: {ibkr_result['error']}\n降级到模拟组合...")
         if not ibkr_ok:
@@ -152,15 +207,17 @@ class InvestCommandsMixin:
             if "error" in result:
                 await update.message.reply_text(f"买入失败: {result['error']}")
             else:
-                text = (
-                    f"模拟买入成功\n\n"
-                    f"标的: {result['symbol']}\n"
-                    f"数量: {result['quantity']}\n"
-                    f"价格: ${result['price']:.2f}\n"
-                    f"总额: ${result['total']:.2f}\n"
-                    f"剩余现金: ${result['remaining_cash']:,.2f}"
-                )
-                await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+                from src.telegram_ux import format_trade_card
+                card = format_trade_card({
+                    "symbol": result['symbol'],
+                    "action": "BUY",
+                    "quantity": result['quantity'],
+                    "price": result['price'],
+                    "total": result['total'],
+                    "remaining_cash": result['remaining_cash'],
+                    "reason": "模拟买入",
+                })
+                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
 
     async def cmd_sell(self, update, context):
         """模拟卖出: /sell AAPL 10 或 /sell AAPL 10 160.5"""
@@ -205,18 +262,17 @@ class InvestCommandsMixin:
                 # 同步更新模拟组合
                 sim_result = portfolio.sell(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动卖出(IBKR同步)")
                 profit = sim_result.get("profit", 0) if "error" not in sim_result else 0
-                sign = "+" if profit >= 0 else ""
-                text = (
-                    f"IBKR 卖出成功\n\n"
-                    f"标的: {ibkr_result['symbol']}\n"
-                    f"数量: {fill_qty}\n"
-                    f"成交价: ${fill_price:.2f}\n"
-                    f"订单状态: {ibkr_result.get('status', 'N/A')}\n"
-                    f"Order ID: {ibkr_result.get('order_id', 'N/A')}\n"
-                    f"模拟盈亏: {sign}${profit:.2f}\n"
-                    f"预算剩余: {ibkr.get_budget_status()}"
-                )
-                await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+                from src.telegram_ux import format_trade_card
+                card = format_trade_card({
+                    "symbol": ibkr_result['symbol'],
+                    "action": "SELL",
+                    "quantity": fill_qty,
+                    "price": fill_price,
+                    "total": fill_qty * fill_price,
+                    "profit": profit,
+                    "reason": f"IBKR实盘 | {ibkr_result.get('status', 'N/A')} | OID:{ibkr_result.get('order_id', 'N/A')} | {ibkr.get_budget_status()}",
+                })
+                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
                 await update.message.reply_text(f"IBKR下单失败: {ibkr_result['error']}\n降级到模拟组合...")
         if not ibkr_ok:
@@ -224,17 +280,18 @@ class InvestCommandsMixin:
             if "error" in result:
                 await update.message.reply_text(f"卖出失败: {result['error']}")
             else:
-                sign = "+" if result['profit'] >= 0 else ""
-                text = (
-                    f"模拟卖出成功\n\n"
-                    f"标的: {result['symbol']}\n"
-                    f"数量: {result['quantity']}\n"
-                    f"价格: ${result['price']:.2f}\n"
-                    f"总额: ${result['total']:.2f}\n"
-                    f"盈亏: {sign}${result['profit']:.2f}\n"
-                    f"剩余现金: ${result['remaining_cash']:,.2f}"
-                )
-                await send_long_message(update.effective_chat.id, text, context, reply_to_message_id=update.message.message_id)
+                from src.telegram_ux import format_trade_card
+                card = format_trade_card({
+                    "symbol": result['symbol'],
+                    "action": "SELL",
+                    "quantity": result['quantity'],
+                    "price": result['price'],
+                    "total": result['total'],
+                    "profit": result['profit'],
+                    "remaining_cash": result['remaining_cash'],
+                    "reason": "模拟卖出",
+                })
+                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
 
     async def cmd_watchlist(self, update, context):
         """自选股: /watchlist 或 /watchlist add AAPL 理由"""
@@ -292,6 +349,134 @@ class InvestCommandsMixin:
                      f"卖{summary['sell_count']}笔 ${summary['total_sell_amount']:,.0f} | "
                      f"持仓{summary['open_positions']}只")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context, reply_to_message_id=update.message.message_id)
+
+        # 发送 PnL 柱状图（仅含卖出交易的盈亏）
+        sell_trades = [t for t in trades if t["action"] == "SELL"]
+        if sell_trades:
+            try:
+                from src.telegram_ux import generate_pnl_chart, send_chart
+                pnl_data = [{"symbol": t["symbol"], "pnl": t["total"]} for t in sell_trades]
+                chart = generate_pnl_chart(pnl_data, "卖出交易金额分布")
+                await send_chart(update, context, chart)
+            except Exception as e:
+                logger.debug("PnL chart failed: %s", e)
+
+    async def cmd_export(self, update, context):
+        """导出交易数据为 Excel: /export [trades|watchlist|portfolio] [csv]"""
+        if not self._is_authorized(update.effective_user.id):
+            return
+
+        args = context.args or []
+        target = args[0].lower() if args else "trades"
+        fmt = "csv" if (len(args) >= 2 and args[1].lower() == "csv") else "xlsx"
+
+        # 检查 openpyxl 可用性
+        from src.tools.export_service import HAS_OPENPYXL
+        if fmt == "xlsx" and not HAS_OPENPYXL:
+            fmt = "csv"
+            await update.message.reply_text("openpyxl 未安装，降级为 CSV 格式")
+
+        await update.message.reply_text(f"{self.emoji} 正在生成导出文件...")
+
+        try:
+            if target == "watchlist":
+                items = portfolio.get_watchlist()
+                if not items:
+                    await update.message.reply_text("自选股为空，无法导出")
+                    return
+                from src.tools.export_service import export_watchlist
+                buf = export_watchlist(items, format=fmt)
+                filename = f"watchlist.{fmt}"
+                caption = f"自选股列表 ({len(items)} 只)"
+
+            elif target == "portfolio":
+                positions_raw = portfolio.get_positions()
+                cash = portfolio.get_cash()
+                if not positions_raw:
+                    await update.message.reply_text("投资组合为空，无法导出")
+                    return
+                # 获取行情计算市值
+                import asyncio
+                quotes = await asyncio.gather(
+                    *[get_stock_quote(p["symbol"]) for p in positions_raw],
+                    return_exceptions=True,
+                )
+                enriched = []
+                total_value = cash
+                for pos, quote in zip(positions_raw, quotes):
+                    if isinstance(quote, Exception) or (isinstance(quote, dict) and "error" in quote):
+                        current_price = pos["avg_price"]
+                    else:
+                        current_price = quote.get("price", pos["avg_price"])
+                    market_value = pos["quantity"] * current_price
+                    pnl_pct = ((current_price / pos["avg_price"]) - 1) * 100 if pos["avg_price"] else 0
+                    total_value += market_value
+                    enriched.append({
+                        "symbol": pos["symbol"],
+                        "quantity": pos["quantity"],
+                        "avg_cost": pos["avg_price"],
+                        "market_value": market_value,
+                        "pnl_pct": pnl_pct,
+                    })
+                from src.tools.export_service import export_portfolio
+                buf = export_portfolio(
+                    enriched,
+                    summary={"cash": cash, "total_value": total_value},
+                    format=fmt,
+                )
+                filename = f"portfolio.{fmt}"
+                caption = f"投资组合 ({len(enriched)} 只持仓)"
+
+            else:
+                # 默认导出交易记录
+                limit = 100
+                if len(args) >= 2:
+                    try:
+                        limit = int(args[1])
+                    except ValueError:
+                        pass
+                trades = portfolio.get_trades(limit=limit)
+                if not trades:
+                    await update.message.reply_text("暂无交易记录，无法导出")
+                    return
+                from src.tools.export_service import export_trades
+                buf = export_trades(trades, format=fmt)
+                filename = f"trades.{fmt}"
+                caption = f"交易记录 ({len(trades)} 笔)"
+
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=buf,
+                filename=filename,
+                caption=caption,
+                reply_to_message_id=update.message.message_id,
+            )
+
+        except Exception as e:
+            logger.error("导出失败: %s", e, exc_info=True)
+            await update.message.reply_text(
+                f"导出失败: {e}\n\n"
+                "用法: `/export [trades|watchlist|portfolio] [csv]`",
+                parse_mode="Markdown",
+            )
+
+    async def handle_quote_action_callback(self, update, context):
+        """处理行情卡片操作按钮 (ta_, buy_, watch_)"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+
+        if data.startswith("ta_"):
+            symbol = data[3:]
+            context.args = [symbol]
+            await self.cmd_ta(update, context)
+        elif data.startswith("buy_"):
+            symbol = data[4:]
+            await query.message.reply_text(f"💡 请使用命令: /buy {symbol} 数量\n例如: /buy {symbol} 10")
+        elif data.startswith("watch_"):
+            symbol = data[6:]
+            context.args = ["add", symbol]
+            await self.cmd_watchlist(update, context)
 
     async def cmd_reset_portfolio(self, update, context):
         """重置投资组合: /reset_portfolio"""

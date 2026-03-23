@@ -701,7 +701,7 @@ async def run_team_vote(
             if latest_review and latest_review.get("lessons_learned"):
                 trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
     except Exception:
-        pass
+        logger.debug("Silenced exception", exc_info=True)
 
     commander_id = "claude_sonnet"
     prompt_cfg = VOTE_PROMPTS.get(commander_id)

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from src.bot.globals import execution_hub, send_long_message, image_tool, get_siliconflow_key
 from src.bot.rate_limiter import rate_limiter, token_budget
+from src.message_format import format_error
 from src.notify_style import (
     format_social_published, format_social_dual_result,
     format_hotpost_result, format_cost_card, format_bounty_result,
@@ -52,7 +53,7 @@ class ExecutionCommandsMixin:
             return
         ret = await asyncio.to_thread(execution_hub.get_social_persona_summary)
         if not ret.get("success"):
-            await update.message.reply_text(f"社媒人设读取失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "读取社媒人设"))
             return
         lines = [f"当前社媒人设 | {ret.get('name', '')}", ""]
         if ret.get("headline"):
@@ -84,7 +85,7 @@ class ExecutionCommandsMixin:
         await update.message.reply_text("正在生成数字生命首发包并写入草稿...")
         ret = await asyncio.to_thread(execution_hub.create_social_launch_drafts)
         if not ret.get("success"):
-            await update.message.reply_text(f"首发包读取失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "生成首发包"))
             return
         persona = ret.get("persona", {}) or {}
         lines = [f"数字生命首发包 | {persona.get('name', '')}", ""]
@@ -208,7 +209,7 @@ class ExecutionCommandsMixin:
         await update.message.reply_text(f"正在研究题材：{topic}")
         ret = await execution_hub.research_social_topic(topic, limit=5)
         if not ret.get("success"):
-            await update.message.reply_text(f"题材研究失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "题材研究"))
             return
         research = ret.get("research", {}) or {}
         strategy = ret.get("strategy", {}) or {}
@@ -361,7 +362,7 @@ class ExecutionCommandsMixin:
                 if user_prefs.get(update.effective_user.id, "social_preview", False):
                     preview_mode = True
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
         if args and str(args[0]).lower() in {"x", "xhs", "xiaohongshu", "all", "both", "dual"}:
             raw_platform = str(args[0]).lower()
@@ -433,7 +434,7 @@ class ExecutionCommandsMixin:
 
         ret = await execution_hub.autopost_hot_content(platform=platform, topic=topic)
         if not ret.get("results"):
-            await update.message.reply_text(f"热点发文失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "热点发文"))
             return
 
         # A/B 测试追踪 — 记录发布的内容变体
@@ -451,7 +452,7 @@ class ExecutionCommandsMixin:
                         if plat_result.get("published", {}).get("success"):
                             ab_test_manager.record_engagement(test.test_id, variant_id, event="publish")
         except Exception:
-            pass  # A/B 追踪不影响主流程
+            logger.debug("Silenced exception", exc_info=True)  # A/B 追踪不影响主流程
 
         hint = self._social_login_retry_hint(
             (ret.get("results", {}) or {}).get("xiaohongshu", {}).get("published", {}), "/hot"
@@ -476,7 +477,7 @@ class ExecutionCommandsMixin:
             await update.message.reply_text("正在生成今日社媒发文计划...")
         ret = await execution_hub.build_social_plan(topic=topic, limit=3)
         if not ret.get("success"):
-            await update.message.reply_text(f"社媒发文计划生成失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "生成发文计划"))
             return
         if ret.get("mode") == "topic":
             strategy = ret.get("strategy", {}) or {}
@@ -518,7 +519,7 @@ class ExecutionCommandsMixin:
             await update.message.reply_text("正在把今日热点改写成双平台草稿...")
         ret = await execution_hub.build_social_repost_bundle(topic=topic)
         if not ret.get("success"):
-            await update.message.reply_text(f"双平台改写失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "双平台改写"))
             return
         lines = [f"双平台改写 | {ret.get('topic', topic or '自动选题')}", ""]
         for name in ["xiaohongshu", "x"]:
@@ -542,7 +543,24 @@ class ExecutionCommandsMixin:
 
         args = context.args or []
         if not args:
-            await update.message.reply_text(self._ops_help())
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = [
+                [InlineKeyboardButton("📝 任务管理", callback_data="ops_task"),
+                 InlineKeyboardButton("📊 项目报告", callback_data="ops_project")],
+                [InlineKeyboardButton("🔥 热点扫描", callback_data="ops_hot"),
+                 InlineKeyboardButton("✍️ 发帖", callback_data="ops_post")],
+                [InlineKeyboardButton("📧 邮件", callback_data="ops_email"),
+                 InlineKeyboardButton("📝 会议纪要", callback_data="ops_meeting")],
+                [InlineKeyboardButton("🏠 生活提醒", callback_data="ops_life"),
+                 InlineKeyboardButton("💰 赏金猎人", callback_data="ops_bounty")],
+                [InlineKeyboardButton("📺 监控", callback_data="ops_monitor"),
+                 InlineKeyboardButton("🔧 开发", callback_data="ops_dev")],
+            ]
+            await update.message.reply_text(
+                "<b>🎯 自动化工作台</b>\n选择要执行的操作：",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
             return
 
         main = args[0].lower().strip()
@@ -667,7 +685,7 @@ class ExecutionCommandsMixin:
         await update.message.reply_text("正在生成 X 草稿...")
         ret = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
         if not ret.get("success"):
-            await update.message.reply_text(f"X 草稿生成失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "X 草稿生成"))
             return
         lines = ["X 草稿", ""]
         lines.append(f"草稿ID: {ret.get('draft_id')}")
@@ -1317,7 +1335,7 @@ class ExecutionCommandsMixin:
                         last_lines = f.readlines()[-3:]
                         last_log = "\n".join(l.strip() for l in last_lines)
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
                 msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个\n\n最近日志:\n{last_log}"
                 await update.message.reply_text(msg[:4000])
             else:
@@ -1338,7 +1356,7 @@ class ExecutionCommandsMixin:
         await update.message.reply_text(f"📅 正在生成 {days} 天内容日历...")
         result = await execution_hub.generate_content_calendar(days=days)
         if not result.get("success"):
-            await update.message.reply_text(f"❌ 生成失败: {result.get('error', '未知错误')}")
+            await update.message.reply_text(format_error(result.get('error', '未知错误'), "生成内容日历"))
             return
         calendar = result.get("calendar", [])
         trending = result.get("trending", [])
@@ -1400,7 +1418,7 @@ class ExecutionCommandsMixin:
                                 clk = v.get("clicks", 0)
                                 lines.append(f"    变体{v.get('id', '?')[:6]}: {imp}曝光 {clk}点击 CTR={ctr:.1%}")
         except Exception:
-            pass  # A/B 数据不影响主报告
+            logger.debug("Silenced exception", exc_info=True)  # A/B 数据不影响主报告
 
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
@@ -1449,4 +1467,58 @@ class ExecutionCommandsMixin:
                     error = ret.get("error", "未知错误") if ret else "无返回"
                     await query.edit_message_text(f"⚠️ 发布失败: {error}")
             except Exception as e:
-                await query.edit_message_text(f"⚠️ 发布异常: {e}")
+                await query.edit_message_text(format_error(e, "发布内容"))
+
+    async def handle_ops_menu_callback(self, update, context):
+        """处理 /ops 交互菜单按钮回调"""
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        if not data.startswith("ops_"):
+            return
+
+        # 映射按钮 callback_data → cmd_ops 子命令
+        _OPS_MENU_MAP = {
+            "ops_task":    (["task", "top"],    "📝 加载任务 Top3..."),
+            "ops_project": (["project"],        "📊 生成项目报告..."),
+            "ops_hot":     (None,               None),  # 直接走 cmd_hotpost
+            "ops_post":    (None,               None),  # 直接走 cmd_post
+            "ops_email":   (["email"],           "📧 整理邮箱..."),
+            "ops_meeting": (None,               "📝 请发送: /ops meeting <会议文本>"),
+            "ops_life":    (["life", "remind"],  "🏠 请发送: /ops life remind <分钟> <内容>"),
+            "ops_bounty":  (["bounty", "run"],   "💰 启动赏金猎人..."),
+            "ops_monitor": (["monitor", "list"], "📺 加载监控列表..."),
+            "ops_dev":     (["dev"],             "🔧 启动开发流程..."),
+        }
+
+        entry = _OPS_MENU_MAP.get(data)
+        if not entry:
+            return
+
+        args, hint = entry
+
+        # 无参数提示型按钮 — 直接展示用法
+        if args is None and hint is None:
+            # 特殊路由
+            if data == "ops_hot":
+                await query.edit_message_text("🔥 抓取热点中...")
+                context.args = []
+                await self.cmd_hotpost(update, context)
+            elif data == "ops_post":
+                await query.edit_message_text("✍️ 准备发帖...")
+                context.args = []
+                await self.cmd_post(update, context)
+            return
+
+        if args is None:
+            # 提示用户手动输入
+            await query.edit_message_text(hint)
+            return
+
+        await query.edit_message_text(hint or "⏳ 执行中...")
+        try:
+            context.args = args
+            await self.cmd_ops(update, context)
+        except Exception as e:
+            logger.warning("[OpsMenu] 执行 %s 失败: %s", data, e)

@@ -155,7 +155,7 @@ class MemoryLayer:
             try:
                 return self._shared_memory.get_all()
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         return []
 
     def delete(self, memory_id: str) -> bool:
@@ -165,7 +165,7 @@ class MemoryLayer:
                 self._mem0.delete(memory_id)
                 return True
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         return False
 
     @property

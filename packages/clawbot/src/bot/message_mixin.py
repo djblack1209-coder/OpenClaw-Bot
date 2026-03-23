@@ -13,6 +13,7 @@ from src.notify_style import format_digest
 from src.ocr_service import ocr_image, OcrResult
 from src.ocr_router import classify_ocr_scene, OcrScene
 from src.ocr_processors import process_financial_scene, process_ecommerce_scene
+from src.telegram_markdown import md_to_html
 logger = logging.getLogger(__name__)
 
 def _match_chinese_command(text = None):
@@ -201,6 +202,7 @@ class MessageHandlerMixin:
 
         # 命令映射表 — 将 NLP 匹配结果路由到实际命令
         dispatch_map = {
+            # ── 基础命令 ──
             "start": self.cmd_start,
             "clear": self.cmd_clear,
             "status": self.cmd_status,
@@ -211,23 +213,45 @@ class MessageHandlerMixin:
             "news": self.cmd_news,
             "metrics": self.cmd_metrics,
             "lanes": self.cmd_lane,
-            "ops_help": self.cmd_ops,
-            "ops_brief": self.cmd_brief,
-            "invest": self.cmd_invest,
-            "quote": self.cmd_quote,
-            "scan": self.cmd_scan,
-            "ta": self.cmd_ta,
-            "portfolio": self.cmd_monitor,
-            "buy": self.cmd_buy,
-            "sell": self.cmd_sell,
-            "risk": self.cmd_risk,
-            "backtest": self.cmd_backtest,
-            "hot": self.cmd_hotpost,
-            "post": self.cmd_post,
-            "social_report": self.cmd_social_report,
             "memory": self.cmd_memory,
             "settings": self.cmd_settings,
             "draw": self.cmd_draw,
+            # ── 执行场景 ──
+            "ops_help": self.cmd_ops,
+            "ops_brief": self.cmd_brief,
+            "hot": self.cmd_hotpost,
+            "post": self.cmd_post,
+            "social_report": self.cmd_social_report,
+            # ── 投资 & 交易 ──
+            "invest": self.cmd_invest,
+            "auto_invest": self.cmd_invest,
+            "quote": self.cmd_quote,
+            "market": self.cmd_market,
+            "scan": self.cmd_scan,
+            "ta": self.cmd_ta,
+            "signal": self.cmd_signal,
+            "portfolio": self.cmd_portfolio,
+            "positions": self.cmd_ipositions,
+            "performance": self.cmd_performance,
+            "review": self.cmd_review,
+            "journal": self.cmd_journal,
+            "buy": self.cmd_buy,
+            "sell": self.cmd_sell,
+            "risk": self.cmd_risk,
+            "monitor": self.cmd_monitor,
+            "tradingsystem": self.cmd_tradingsystem,
+            "backtest": self.cmd_backtest,
+            "rebalance": self.cmd_rebalance,
+            # ── 社媒 ──
+            "social_plan": self.cmd_social_plan,
+            "social_repost": self.cmd_social_repost,
+            "social_launch": self.cmd_social_launch,
+            "social_persona": self.cmd_social_persona,
+            "social_topic": self.cmd_topic,
+            "social_xhs": self.cmd_xhs,
+            "social_x": self.cmd_xpost,
+            "social_post": self.cmd_post,
+            "social_hotpost": self.cmd_hotpost,
         }
 
         handler = dispatch_map.get(action_type)
@@ -273,6 +297,41 @@ class MessageHandlerMixin:
             elif action_type == "ops_docs_index":
                 context.args = ["docs", "index", action_arg]
                 await self.cmd_ops(update, context)
+            elif action_type == "ops_meeting":
+                context.args = ["meeting", action_arg] if action_arg else ["meeting"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_content":
+                context.args = ["content", action_arg] if action_arg else ["content"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_monitor_add":
+                context.args = ["monitor", "add", action_arg]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_monitor_list":
+                context.args = ["monitor", "list"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_monitor_run":
+                context.args = ["monitor", "run"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_life_remind":
+                # action_arg format: "minutes|||message"
+                parts = action_arg.split("|||", 1) if action_arg else []
+                if len(parts) == 2:
+                    context.args = ["life", "remind", parts[0], parts[1]]
+                else:
+                    context.args = ["life", "remind"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_project":
+                context.args = ["project", action_arg] if action_arg else ["project"]
+                await self.cmd_ops(update, context)
+            elif action_type == "ops_dev":
+                context.args = ["dev", action_arg] if action_arg else ["dev"]
+                await self.cmd_ops(update, context)
+            elif action_type == "autotrader_start":
+                context.args = ["start"]
+                await self.cmd_autotrader(update, context)
+            elif action_type == "autotrader_stop":
+                context.args = ["stop"]
+                await self.cmd_autotrader(update, context)
         except Exception as e:
             logger.warning("[ChineseNLP] 分发 %s(%s) 失败: %s", action_type, action_arg, e)
 
@@ -341,7 +400,7 @@ class MessageHandlerMixin:
                 if isinstance(payload, dict):
                     return payload
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
         return None
 
     
@@ -587,6 +646,43 @@ class MessageHandlerMixin:
         if not self._is_authorized(user.id):
             return
 
+        # 中文自然语言命令匹配 — 在 LLM 调用前拦截
+        chinese_action = _match_chinese_command(text)
+        if chinese_action:
+            action_type, action_arg = chinese_action
+            await self._dispatch_chinese_action(update, context, action_type, action_arg)
+            return  # Chinese command handled, skip LLM call
+
+        # ── Brain 路由（opt-in）──────────────────────────────
+        # 中文命令未匹配时，尝试用 OMEGA brain.py 处理可执行请求。
+        # 仅在 ENABLE_BRAIN_ROUTING=1 时启用，避免影响现有行为。
+        # 使用 _try_fast_parse()（纯正则，无 LLM 调用）做快速判断，
+        # 只有可执行意图才路由到 brain；闲聊仍走下方 LLM 流式路径。
+        import os
+        if os.environ.get("ENABLE_BRAIN_ROUTING", "").lower() in ("1", "true", "yes"):
+            try:
+                from src.core.intent_parser import IntentParser
+                quick_intent = IntentParser()._try_fast_parse(text)
+                if quick_intent and quick_intent.is_actionable:
+                    from src.core.brain import get_brain
+                    brain = get_brain()
+                    result = await brain.process_message(
+                        source="telegram",
+                        message=text,
+                        context={"user_id": user.id, "chat_id": chat_id},
+                    )
+                    if result.success and result.final_result:
+                        user_msg = result.to_user_message()
+                        if user_msg and user_msg != "✅ 操作已完成":
+                            try:
+                                safe = md_to_html(user_msg)
+                                await update.message.reply_text(safe, parse_mode="HTML")
+                            except Exception:
+                                await update.message.reply_text(user_msg)
+                            return
+            except Exception as e:
+                logger.debug(f"Brain routing failed, falling through to LLM: {e}")
+
         # 消息频率限制 — 防止用户刷屏导致 API 过载
         from src.bot.globals import rate_limiter
         if rate_limiter:
@@ -627,12 +723,13 @@ class MessageHandlerMixin:
                     bot_id=getattr(self, 'bot_id', ''),
                 ))
             except Exception:
-                pass  # 优先级队列不影响主流程
+                logger.debug("Silenced exception", exc_info=True)  # 优先级队列不影响主流程
 
         # 智能记忆管道 — 记录用户消息（异步，不阻塞）
         _sm = get_smart_memory()
         if _sm:
-            asyncio.create_task(_sm.on_message(chat_id, user.id, "user", text, self.bot_id))
+            _t = asyncio.create_task(_sm.on_message(chat_id, user.id, "user", text, self.bot_id))
+            _t.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(用户消息)后台任务异常: %s", t.exception()))
 
         # 发送 typing 指示器
         typing_task = asyncio.create_task(self._keep_typing(chat_id, context))
@@ -702,18 +799,22 @@ class MessageHandlerMixin:
                     if not sent_message:
                         break
 
-                    if status == "finished":
-                        model_short = model_used.split("/")[-1]
-                        model_tag = f"\n\n`via {getattr(self, 'name', self.bot_id)} · {model_short}`"
-                        display = content + model_tag
-                    else:
-                        display = content + " ▌"
-
-                    display = display[:TG_MSG_LIMIT]
+                    if status != "finished":
+                        display = (content + " ▌")[:TG_MSG_LIMIT]
 
                     try:
-                        parse_mode = constants.ParseMode.MARKDOWN if status == "finished" else None
-                        # Phase 3: 完成时附加反馈按钮（搬运自 karfly 的 InlineKeyboard 模式）
+                        # Phase 3: 完成时用 md_to_html 安全渲染 + HTML parse_mode
+                        if status == "finished":
+                            try:
+                                display = md_to_html(content) + f"\n\n<code>via {getattr(self, 'name', self.bot_id)} · {model_used.split('/')[-1]}</code>"
+                                display = display[:TG_MSG_LIMIT]
+                                parse_mode = constants.ParseMode.HTML
+                            except Exception:
+                                model_short = model_used.split("/")[-1]
+                                display = (content + f"\n\n`via {getattr(self, 'name', self.bot_id)} · {model_short}`")[:TG_MSG_LIMIT]
+                                parse_mode = constants.ParseMode.MARKDOWN
+                        else:
+                            parse_mode = None
                         reply_markup = build_feedback_keyboard(self.bot_id, model_used, chat_id) if status == "finished" else None
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
@@ -761,11 +862,12 @@ class MessageHandlerMixin:
                     final_content = reply
                     fb_markup = build_feedback_keyboard(self.bot_id, model_used, chat_id)
                     try:
+                        safe_reply = md_to_html(reply)
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
-                            text=reply[:TG_MSG_LIMIT],
-                            parse_mode=constants.ParseMode.MARKDOWN,
+                            text=safe_reply[:TG_MSG_LIMIT],
+                            parse_mode=constants.ParseMode.HTML,
                             reply_markup=fb_markup,
                         )
                     except BadRequest:
@@ -777,7 +879,7 @@ class MessageHandlerMixin:
                                 reply_markup=fb_markup,
                             )
                         except Exception:
-                            pass
+                            logger.debug("Silenced exception", exc_info=True)
                 else:
                     # 空回复 — 更新占位符
                     try:
@@ -787,12 +889,23 @@ class MessageHandlerMixin:
                             text="暂时无法回复，请稍后再试",
                         )
                     except Exception:
-                        pass
+                        logger.debug("Silenced exception", exc_info=True)
                     logger.info(f"[{self.bot_id}] 空回复 (chat={chat_id})")
 
             # 记录 AI 回复到智能记忆
             if _sm and final_content:
-                asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:500], self.bot_id))
+                _t2 = asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:500], self.bot_id))
+                _t2.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(AI回复)后台任务异常: %s", t.exception()))
+
+            # 可选语音回复 — 用户通过 /voice 开启后，短回复自动附带语音
+            try:
+                if final_content and context.user_data.get("voice_reply") and len(final_content) < 500:
+                    from src.tts_engine import text_to_voice
+                    audio_bytes = await text_to_voice(final_content)
+                    if audio_bytes:
+                        await update.message.reply_voice(io.BytesIO(audio_bytes))
+            except Exception:
+                logger.debug("Silenced exception", exc_info=True)  # 语音是可选功能，不阻塞主流程
 
         except Exception as e:
             logger.error(f"[{self.bot_id}] handle_message 异常: {e}", exc_info=True)
@@ -808,7 +921,7 @@ class MessageHandlerMixin:
                             text=clean_text + "\n\n⚠️ 回复中断",
                         )
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
 
             # 分类错误提示 — 比"出错了"更有信息量
             err_str = str(e).lower()
@@ -829,7 +942,7 @@ class MessageHandlerMixin:
                 try:
                     await update.message.reply_text(user_msg)
                 except Exception:
-                    pass
+                    logger.debug("Silenced exception", exc_info=True)
         finally:
             typing_task.cancel()
             try:
@@ -921,7 +1034,7 @@ class MessageHandlerMixin:
 
     async def _keep_typing(self, chat_id: int, context):
         """持续发送 typing 指示器 — 搬运自 n3d1117 的 wrap_with_indicator"""
-        from telegram import ChatAction
+        from telegram.constants import ChatAction
         try:
             while True:
                 await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
@@ -978,7 +1091,7 @@ class MessageHandlerMixin:
             try:
                 await hint_msg.delete()
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
             
             # OCR 失败
             if not result.ok:
@@ -986,8 +1099,23 @@ class MessageHandlerMixin:
                                         reply_to_message_id=update.message.message_id)
                 return
             
-            # OCR 无文字
+            # OCR 无文字 → 降级到 Vision 模型分析
             if not result.text:
+                try:
+                    from src.tools.vision import analyze_image
+                    vision_prompt = caption or "描述这张图片的内容"
+                    vision_result = await analyze_image(bytes(image_bytes), vision_prompt)
+                    if vision_result:
+                        await send_long_message(
+                            chat_id,
+                            f"🖼️ 图片分析:\n\n{vision_result}",
+                            context,
+                            reply_to_message_id=update.message.message_id,
+                        )
+                        return
+                except Exception as ve:
+                    logger.debug(f"[OCR] Vision fallback 失败: {ve}")
+
                 await send_long_message(chat_id, "📷 图片已收到，未识别到文字内容。", context,
                                         reply_to_message_id=update.message.message_id)
                 return
@@ -1058,11 +1186,25 @@ class MessageHandlerMixin:
                         logger.warning(f"[OCR] 电商场景上下文注入失败: {e}")
             
             else:
-                # 通用场景
+                # 通用场景: OCR 文字 + Vision 补充分析
                 tag = " (缓存)" if result.cached else ""
                 reply = f"📄 OCR 识别结果{tag}:\n\n{result.text}"
                 if caption:
                     reply += f"\n\n💬 附言: {caption}"
+
+                # Vision 补充: 用户有 caption 指令时，用 Vision 模型做进一步分析
+                if caption and any(w in caption for w in ("分析", "解释", "翻译", "总结", "看看", "什么意思")):
+                    try:
+                        from src.tools.vision import analyze_image
+                        vision_result = await analyze_image(
+                            bytes(image_bytes),
+                            f"图片中的文字内容如下:\n{result.text[:500]}\n\n用户要求: {caption}",
+                        )
+                        if vision_result:
+                            reply += f"\n\n{'─' * 20}\n🖼️ 图片分析:\n{vision_result}"
+                    except Exception as ve:
+                        logger.debug(f"[OCR] Vision 补充分析失败: {ve}")
+
                 await send_long_message(chat_id, reply, context,
                                         reply_to_message_id=update.message.message_id)
                 
@@ -1073,7 +1215,7 @@ class MessageHandlerMixin:
                     update.effective_chat.id, f"⚠️ 图片处理异常: {e}", context,
                     reply_to_message_id=update.message.message_id)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
     
     async def handle_trade_callback(self, update, context):
@@ -1147,7 +1289,7 @@ class MessageHandlerMixin:
                 await query.message.reply_text(f"❌ {t['symbol']} 执行失败: {e}")
 
     async def handle_document_ocr(self, update, context):
-        '''处理文档消息（PDF/图片文件）— 自动 OCR 识别'''
+        '''处理文档消息（PDF/DOCX/PPTX/XLSX/图片）— Docling 结构化理解 + OCR 降级'''
         try:
             chat_id = update.effective_chat.id
             user = update.effective_user
@@ -1157,28 +1299,96 @@ class MessageHandlerMixin:
             caption = update.message.caption or ""
             is_group = update.effective_chat.type in ("group", "supergroup")
             
-            # 仅处理图片和 PDF
-            if not (mime.startswith("image/") or mime == "application/pdf"):
+            # 仅处理图片、PDF 和 Office 文档
+            supported_mimes = (
+                "image/", "application/pdf",
+                "application/vnd.openxmlformats-officedocument",  # docx/pptx/xlsx
+                "application/msword",  # .doc
+                "application/vnd.ms-excel",  # .xls
+                "application/vnd.ms-powerpoint",  # .ppt
+            )
+            if not any(mime.startswith(m) for m in supported_mimes):
                 return
             
             # 群聊门控
             if is_group:
                 bot_username = (await context.bot.get_me()).username or ""
                 mentioned = f"@{bot_username}" in (caption or "")
-                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取"))
+                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "总结", "摘要"))
                 if not mentioned and not trigger:
                     return
             
             # 处理中提示
-            hint_msg = await update.message.reply_text(f"🔍 正在识别 {fname}...")
+            hint_msg = await update.message.reply_text(f"🔍 正在分析 {fname}...")
             
-            logger.info(f"[OCR] 收到文档 {fname} ({mime}, {doc.file_size} bytes) from {user.id}")
+            logger.info(f"[DOC] 收到文档 {fname} ({mime}, {doc.file_size} bytes) from {user.id}")
             
             file = await context.bot.get_file(doc.file_id)
             buf = io.BytesIO()
             await file.download_to_memory(buf)
             file_bytes = buf.getvalue()
-            
+
+            # ── Docling 结构化理解 (优先) ──────────────────────────
+            docling_supported = ('.pdf', '.docx', '.pptx', '.xlsx', '.doc')
+            docling_handled = False
+
+            if fname.lower().endswith(docling_supported):
+                try:
+                    from src.tools.docling_service import (
+                        convert_document, summarize_document, HAS_DOCLING,
+                    )
+                    if HAS_DOCLING:
+                        # 写入临时文件 — Docling 需要文件路径
+                        import os, tempfile
+                        suffix = os.path.splitext(fname)[1] or ".pdf"
+                        with tempfile.NamedTemporaryFile(
+                            suffix=suffix, delete=False,
+                        ) as tmp:
+                            tmp.write(file_bytes)
+                            local_path = tmp.name
+
+                        try:
+                            if caption:
+                                # 用户附带了问题 → 摘要+问答模式
+                                result_text = await summarize_document(
+                                    local_path, question=caption,
+                                )
+                            else:
+                                # 无问题 → 自动摘要
+                                result_text = await summarize_document(local_path)
+
+                            if result_text:
+                                # 删除处理中提示
+                                try:
+                                    await hint_msg.delete()
+                                except Exception:
+                                    logger.debug("Silenced exception", exc_info=True)
+                                try:
+                                    safe = md_to_html(result_text)
+                                    await update.message.reply_text(
+                                        safe, parse_mode="HTML",
+                                        reply_to_message_id=update.message.message_id,
+                                    )
+                                except Exception:
+                                    # HTML 渲染失败 → 纯文本降级
+                                    await send_long_message(
+                                        chat_id, result_text, context,
+                                        reply_to_message_id=update.message.message_id,
+                                    )
+                                docling_handled = True
+                        finally:
+                            # 清理临时文件
+                            try:
+                                os.unlink(local_path)
+                            except Exception:
+                                logger.debug("Silenced exception", exc_info=True)
+                except Exception as e:
+                    logger.debug(f"[DOC] Docling 处理失败，降级到 OCR: {e}")
+
+            if docling_handled:
+                return
+
+            # ── OCR 降级 (图片 + Docling 失败时) ──────────────────
             result: OcrResult = await ocr_image(
                 file_bytes,
                 mime_type=mime,
@@ -1190,7 +1400,7 @@ class MessageHandlerMixin:
             try:
                 await hint_msg.delete()
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
             
             if result.ok and result.text:
                 tag = " (缓存)" if result.cached else ""
@@ -1206,12 +1416,12 @@ class MessageHandlerMixin:
                 await send_long_message(chat_id, f"⚠️ {fname} OCR 失败: {result.error}", context,
                                         reply_to_message_id=update.message.message_id)
         except Exception as e:
-            logger.error(f"[OCR] handle_document_ocr 异常: {e}", exc_info=True)
+            logger.error(f"[DOC] handle_document_ocr 异常: {e}", exc_info=True)
             try:
                 await send_long_message(
                     update.effective_chat.id, f"⚠️ 文档处理异常: {e}", context,
                     reply_to_message_id=update.message.message_id)
             except Exception:
-                pass
+                logger.debug("Silenced exception", exc_info=True)
 
 
