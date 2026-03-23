@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ class ABTest:
     test_id: str
     name: str
     variants: List[ABVariant]
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    created_at: str = field(default_factory=lambda: now_et().isoformat())
     status: str = "active"  # active / paused / completed
     winner_id: Optional[str] = None
     min_impressions: int = 30  # 每个变体最少曝光数才能判定胜者

@@ -65,7 +65,7 @@ def timestamp_tag() -> str:
         from src.utils import now_et
         return now_et().strftime("%H:%M ET")
     except Exception:
-        return datetime.now().strftime("%H:%M")
+        return now_et().strftime("%H:%M")
 
 
 def natural_time(dt=None, future: bool = False) -> str:

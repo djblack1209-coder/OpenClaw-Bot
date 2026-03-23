@@ -5,6 +5,7 @@ import sqlite3
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class XianyuContextManager:
     def daily_stats(self, date: str = "") -> Dict[str, Any]:
         """获取某天的统计数据，默认今天"""
         if not date:
-            date = datetime.now().strftime("%Y-%m-%d")
+            date = now_et().strftime("%Y-%m-%d")
         with self._conn() as c:
             # 咨询数
             consult_total = c.execute(

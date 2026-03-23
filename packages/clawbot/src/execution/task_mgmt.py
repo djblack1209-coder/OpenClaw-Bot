@@ -8,6 +8,7 @@ from datetime import datetime
 
 from src.execution._db import get_conn
 from src.execution._utils import safe_int
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def add_task(title=None, priority="medium", db_path=None) -> dict:
     if not t:
         return {"success": False, "error": "标题不能为空"}
     p = priority if priority in ("high", "medium", "low") else "medium"
-    now = datetime.now().isoformat()
+    now = now_et().isoformat()
     try:
         with get_conn(db_path) as conn:
             cursor = conn.execute(
@@ -56,7 +57,7 @@ def update_task_status(task_id=None, status=None, db_path=None) -> dict:
         with get_conn(db_path) as conn:
             conn.execute(
                 "UPDATE tasks SET status=?, updated_at=? WHERE id=?",
-                (st, datetime.now().isoformat(), int(task_id)),
+                (st, now_et().isoformat(), int(task_id)),
             )
             return {"success": True, "task_id": task_id, "status": st}
     except Exception as e:

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 from src.execution._db import get_conn
 from src.execution._utils import safe_int, run_osascript
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def _parse_remind_time(time_text: str = None, delay_minutes: int = None) -> tupl
     Returns:
         (remind_at_iso, display_text)
     """
-    now = datetime.now()
+    now = now_et()
 
     # 路径1: dateparser 自然语言解析
     if time_text and _HAS_DATEPARSER:
@@ -84,7 +85,7 @@ async def create_reminder(
             cursor = conn.execute(
                 "INSERT INTO reminders (message, remind_at, status, created_at) "
                 "VALUES (?, ?, 'pending', ?)",
-                (msg, remind_at, datetime.now().isoformat()),
+                (msg, remind_at, now_et().isoformat()),
             )
             return {
                 "success": True,

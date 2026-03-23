@@ -12,6 +12,7 @@ from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
 from src.models import TradeProposal
 from src.auto_trader import TradingPipeline
 from src.position_monitor import PositionMonitor, MonitoredPosition, ExitReason
+from src.utils import now_et
 
 
 # ============ RiskManager Fixtures ============
@@ -41,7 +42,7 @@ def mock_journal():
     j = MagicMock()
     j.get_today_pnl.return_value = {"pnl": 0.0, "trades": 0}
     j.open_trade.return_value = 42  # trade_id
-    j.close_trade.return_value = None
+    j.close_trade.return_value = {"trade_id": 42, "symbol": "AAPL", "pnl": 10.0, "pnl_pct": 1.33, "hold_hours": 4.5}
     j.get_open_trades.return_value = []
     return j
 
@@ -50,8 +51,8 @@ def mock_journal():
 def risk_manager(risk_config, mock_journal):
     """RiskManager with known config and mocked journal."""
     rm = RiskManager(config=risk_config, journal=mock_journal)
-    rm._last_pnl_update = datetime.now().strftime('%Y-%m-%d')
-    rm._last_refresh_ts = datetime.now()
+    rm._last_pnl_update = now_et().strftime('%Y-%m-%d')
+    rm._last_refresh_ts = now_et()
     return rm
 
 

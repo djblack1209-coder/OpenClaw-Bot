@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from .github_trending import (
+from src.utils import now_et
     TrendingRepo,
     fetch_trending,
     fetch_fast_growing_repos,
@@ -71,7 +72,7 @@ class EvolutionProposal:
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.now().isoformat()
+            self.created_at = now_et().isoformat()
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -404,7 +405,7 @@ class EvolutionEngine:
         duration = time.time() - t0
         scan_result = ScanResult(
             scan_id=scan_id,
-            timestamp=datetime.now().isoformat(),
+            timestamp=now_et().isoformat(),
             repos_scanned=len(candidates),
             repos_evaluated=evaluated,
             proposals_generated=len(all_proposals),
@@ -415,7 +416,7 @@ class EvolutionEngine:
         self._append_history(scan_result)
 
         # 更新上次扫描时间
-        self._config["last_scan_time"] = datetime.now().isoformat()
+        self._config["last_scan_time"] = now_et().isoformat()
         self._save_config(self._config)
 
         logger.info(
@@ -611,7 +612,7 @@ class EvolutionEngine:
     def _save_proposal(self, proposal: EvolutionProposal) -> Path:
         """保存提案到 JSON 文件。"""
         PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = now_et().strftime("%Y%m%d")
         filepath = PROPOSALS_DIR / f"{date_str}_{proposal.id}.json"
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(proposal.to_json())

@@ -17,6 +17,7 @@ import subprocess
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,7 @@ class MediaCrawlerBridge:
                 ensure_ascii=False,
             )[:2000]
             self.memory.remember(
-                key=f"competitor_analysis_{platform}_{datetime.now():%m%d}",
+                key=f"competitor_analysis_{platform}_{now_et():%m%d}",
                 value=summary,
                 category="social_research",
                 source_bot="media_crawler",
@@ -267,7 +268,7 @@ class MediaCrawlerBridge:
             summary_parts.append(f"{title} (👍{likes})")
         summary = " | ".join(summary_parts)
         self.memory.remember(
-            key=f"crawl_{platform}_{mode}_{kw}_{datetime.now():%H%M}",
+            key=f"crawl_{platform}_{mode}_{kw}_{now_et():%H%M}",
             value=f"[{platform}] {mode} '{kw}': {summary}",
             category="social_research",
             source_bot="media_crawler",

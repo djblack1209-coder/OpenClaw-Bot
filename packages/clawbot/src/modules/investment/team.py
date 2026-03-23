@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class TeamAnalysis:
     """投资团队完整分析结果"""
     symbol: str
     market: str = "cn"
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     # 各角色报告
     research_report: Optional[AgentReport] = None
@@ -145,7 +146,7 @@ class TeamAnalysis:
 @dataclass
 class DailyBrief:
     """每日投资简报"""
-    date: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
+    date: str = field(default_factory=lambda: now_et().strftime("%Y-%m-%d"))
     market_overview: str = ""
     opportunities: List[Dict] = field(default_factory=list)
     risks: List[str] = field(default_factory=list)
@@ -737,7 +738,7 @@ class StrategyHealthMonitor:
             "live_return": live_return,
             "backtest_return": backtest_return,
             "deviation": abs(live_return - backtest_return) / max(abs(backtest_return), 0.01),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_et().isoformat(),
         }
 
         deviation = self._strategy_performance[strategy_name]["deviation"]

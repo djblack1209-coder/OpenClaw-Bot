@@ -8,12 +8,22 @@ requests~=2.32.0
 # JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
 json-repair~=0.30.0
 
+# loguru — 结构化日志 (23.7k⭐, MIT)
+# 搬运: 拦截 stdlib logging → 彩色控制台 + JSON 文件日志 + 自动轮转
+loguru>=0.7.0
+
+# instructor — 结构化 LLM 输出 (10k⭐, MIT)
+# 搬运: Pydantic model 强制 LLM 返回类型安全的结构化数据
+# 替换 json_repair + regex 的脆弱 JSON 提取模式
+# [litellm] extra 自动安装 litellm 适配层
+instructor[litellm]>=1.7.0
+
 # Pydantic Settings — 统一配置管理（类型校验 + env + .env）
 pydantic-settings~=2.7.0
 
 # 闲鱼模块依赖
 websockets~=13.0
-openai~=1.50.0
+openai>=1.68.2,<2.0.0
 
 # 交易系统依赖
 yfinance~=1.1.0
@@ -54,7 +64,148 @@ optuna>=4.0.0
 # IBKR 券商对接（可选，不安装则自动降级为模拟盘）
 # ib_insync~=0.9.86
 
+# ── Phase 3 新增: 内控 API 服务器 ──────────────────────────────
+
+# FastAPI — 内控 API 框架 (80k⭐, MIT)
+# 搬运 freqtrade RPC + Open WebUI 模式，暴露 REST API 给 Tauri Manager
+fastapi>=0.115.0
+
+# Uvicorn — ASGI 服务器 (9k⭐, BSD)
+# 搬运 freqtrade 的线程内 uvicorn 模式，与 Telegram bot 共存
+uvicorn[standard]>=0.32.0
+
+# APScheduler — 定时任务调度 (6.3k⭐, MIT)
+# 搬运: 社交自动驾驶日程管理 (BackgroundScheduler, cron trigger)
+apscheduler>=3.10.0,<4.0.0
+
+# ── Phase 4 新增: 多市场数据源 ──────────────────────────────
+
+# DrissionPage — 反检测浏览器控制 (11.6k⭐, 自研 CDP 内核)
+# 搬运: 不基于 WebDriver，反爬场景天然优势（闲鱼/电商/社交平台）
+DrissionPage>=4.1.0
+
+# AKShare — A股全量数据 (14k⭐, MIT)
+# 搬运: 东方财富/新浪等数据源的统一封装
+akshare>=1.15.0
+
+# CCXT — 加密货币全平台接口 (35k⭐, MIT)
+# 搬运: 108+ 交易所的统一API
+ccxt>=4.4.0
+
+# PyAutoGUI — macOS 桌面控制 (12k⭐, BSD)
+# 搬运: Quartz 底层鼠标键盘模拟
+pyautogui>=0.9.54
+pyobjc-core>=10.0
+pyobjc-framework-Quartz>=10.0
+
 # 测试依赖
 pytest~=8.4.2
 pytest-asyncio~=1.2.0
 pytest-cov~=7.0.0
+
+# ── Phase 5 新增: 自愈引擎真正重试 ──────────────────────────────
+
+# Tenacity — 重试库 (6k⭐, Apache 2.0)
+# 替换 self_heal.py 的假重试: 真正的指数退避、stop_after_attempt、retry_if_exception_type
+tenacity>=9.0.0
+
+# pandas-ta — 标准技术分析指标库 (5k⭐, MIT)
+# 替换 strategy_engine.py 手写 RSI/MA: 200+ 标准指标，与交易平台数值一致
+pandas-ta>=0.3.14b1
+
+# diskcache — SQLite 持久化缓存 (2.8k⭐, Apache 2.0)
+# LLM 响应缓存: 相同请求直接返回，按 TTL 自动过期，线程安全
+diskcache>=5.6.0
+
+# ── Phase 5 新增: 统一通知系统 ──────────────────────────────
+
+# crawl4ai — 结构化网页抽取 (62.4k⭐, Apache 2.0)
+# 替换 httpx+bs4 脆弱爬虫: AsyncWebCrawler + JsonCssExtractionStrategy + LLM 降级
+# 用于购物比价引擎的三级降级链 (CSS → LLM → Jina fallback)
+crawl4ai>=0.6.0
+
+# Apprise — 多渠道通知 (16.1k⭐, BSD)
+# 替换仅 Telegram 通知: 100+ 渠道 (Discord/Slack/WeChat/Email/Ntfy/Webhook 等)
+# URL 配置，零代码添加新渠道
+apprise>=1.9.0
+
+# jieba — 中文分词 (34.8k⭐, MIT)
+# 增强 intent_parser.py: TF-IDF 关键词提取，自定义电商/金融词典
+jieba>=0.42.1
+
+# ── Phase 5 新增: Phoenix OTEL 可观测性 ──────────────────────────────
+
+# Phoenix OTEL — LLM 可观测性 (9k⭐, ELv2)
+# 与 Langfuse 并行运行，OpenTelemetry 标准协议
+# 轻量客户端 — Phoenix Server 通过 Docker 独立部署
+arize-phoenix-otel>=0.1.0
+openinference-instrumentation-litellm>=0.1.0
+
+# ── Phase 6 新增: 小而美工具库 ──────────────────────────────
+
+# mistletoe — Markdown AST 解析器 (1k⭐, MIT)
+# 搬运: 将 LLM 输出的标准 Markdown 安全转换为 Telegram MarkdownV2/HTML
+# 替换 message_sender.py 的 regex 清理，AST 级别精确转换
+mistletoe>=1.4.0
+
+# stamina — 声明式重试 (1.4k⭐, MIT)
+# 搬运: 替换分散的 tenacity 配置，更干净的 API + structlog 集成
+# 降级链: stamina → tenacity → 手写指数退避
+stamina>=2.0.0
+
+# PyrateLimiter — 令牌桶限流 (485⭐, MIT)
+# 搬运: 统一 API 限流，替换手写滑动窗口
+# 预配置: yfinance(2000/h), akshare(100/m), telegram(30/s)
+pyrate-limiter>=3.0.0
+
+# ── Phase 7 新增: 高级图表引擎 ──────────────────────────────
+
+# Plotly — 交互式图表库 (18.4k⭐, MIT)
+# 搬运: 替换 telegram_ux.py 的 matplotlib 图表
+# K线图/瀑布图/仪表盘等，plotly_dark 主题，Telegram 友好
+plotly>=6.0.0
+
+# Kaleido — Plotly 静态导出引擎 (400⭐, MIT)
+# 搬运: 将 plotly 图表导出为 PNG bytes，零浏览器依赖
+kaleido>=0.2.0
+
+# edge-tts — 微软 Edge TTS (10.3k⭐, GPL-3.0)
+# 搬运: 零成本文本转语音，300+ 声音，40+ 语言，无需 API Key
+# 默认中文女声 zh-CN-XiaoxiaoNeural，男声 zh-CN-YunxiNeural
+edge-tts>=6.0.0
+
+# ── Phase 7 新增: 小工具模块 ──────────────────────────────
+
+# openpyxl — Excel 读写 (3.7k⭐, MIT)
+# 搬运: 交易记录/自选股/投资组合导出为专业 Excel 报表
+# 无则自动降级 CSV (标准库)
+openpyxl>=3.1.0
+
+# qrcode — 二维码生成 (4.5k⭐, BSD)
+# 搬运: 文本/URL/Telegram 邀请链接二维码，支持 logo 嵌入
+# [pil] extra 使用 Pillow 渲染高质量 PNG
+qrcode[pil]>=7.0
+
+# fpdf2 — PDF 生成 (1.1k⭐, LGPL)
+# 搬运: 每日简报/交易报告 PDF 导出，支持 CJK 字体
+fpdf2==2.7.9
+
+# ── Phase 8 新增: AI 搜索引擎 ──────────────────────────────
+
+# Tavily — AI-native 搜索 SDK (1.1k⭐, MIT)
+# 搬运: 专为 AI Agent 优化的搜索 API (QnA / RAG Context / Extract)
+# 替代 Jina Reader 搜索功能，降级链: Tavily → Jina Reader
+tavily-python>=0.5.0
+
+# smolagents — 轻量 AI Agent 框架 (26.2k⭐, Apache 2.0)
+# 搬运: HuggingFace 出品，CodeAgent 模式让 LLM 写代码串联工具调用
+# 用途: /agent 命令，自然语言驱动多工具链 (行情+分析+搜索+风控)
+smolagents>=1.0.0
+
+# ── Phase 9 新增: 文档理解 ──────────────────────────────
+
+# Docling — 文档理解引擎 (56.3k⭐, MIT)
+# 搬运: PDF/DOCX/PPTX/XLSX/图片 → 结构化 Markdown
+# 表格保留结构，公式解析，代码块提取
+# 要求 Python ≥3.10 (项目已使用 3.12)
+docling>=2.0.0

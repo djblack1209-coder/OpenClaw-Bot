@@ -34,6 +34,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -322,7 +323,7 @@ class BacktestResult:
     error: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
     trades: List[Dict] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     def format_telegram(self) -> str:
         """格式化为 Telegram 消息"""

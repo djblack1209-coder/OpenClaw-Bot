@@ -8,6 +8,7 @@ ClawBot 交易日志 & 绩效系统 v1.0
 - 自动复盘：收盘后生成复盘报告，供AI团队总结经验教训
 - 持仓监控：追踪止损/止盈触发
 """
+from src.utils import now_et
 import sqlite3
 import os
 import logging
@@ -266,7 +267,7 @@ class TradingJournal:
             existing_order_id = str(trade['entry_order_id'] or '')
             target_order_id = str(entry_order_id or existing_order_id)
 
-            ts = fill_time or datetime.now().isoformat()
+            ts = fill_time or now_et().isoformat()
             conn.execute(
                 """
                 UPDATE trades
@@ -410,7 +411,7 @@ class TradingJournal:
 
     def get_closed_trades(self, days: int = 30, limit: int = 50) -> List[Dict]:
         """获取已平仓交易"""
-        since = (datetime.now() - timedelta(days=days)).isoformat()
+        since = (now_et() - timedelta(days=days)).isoformat()
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT * FROM trades WHERE status='closed' AND exit_time>=? ORDER BY exit_time DESC LIMIT ?",
@@ -625,7 +626,7 @@ class TradingJournal:
     def generate_review_data(self, date: str = None) -> Dict:
         """生成复盘数据（供AI团队复盘用）"""
         if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
+            date = now_et().strftime('%Y-%m-%d')
 
         with self._conn() as conn:
             trades = conn.execute(
@@ -821,7 +822,7 @@ class TradingJournal:
     def validate_predictions(self, date: str = None) -> Dict:
         """收盘验证：对比 AI 研判 vs 实际走势"""
         if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
+            date = now_et().strftime('%Y-%m-%d')
 
         with self._conn() as conn:
             preds = conn.execute("""
@@ -899,7 +900,7 @@ class TradingJournal:
 
     def get_prediction_accuracy(self, days: int = 30) -> Dict:
         """获取指定天数内的研判准确率统计"""
-        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        since = (now_et() - timedelta(days=days)).strftime('%Y-%m-%d')
         with self._conn() as conn:
             rows = conn.execute("""
                 SELECT decided_by, 
@@ -938,7 +939,7 @@ class TradingJournal:
 
     def generate_iteration_report(self, days: int = 7) -> Dict:
         """生成迭代改进报告：分析失败交易的模式"""
-        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        since = (now_et() - timedelta(days=days)).strftime('%Y-%m-%d')
 
         with self._conn() as conn:
             # 所有亏损交易

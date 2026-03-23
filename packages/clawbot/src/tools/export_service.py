@@ -7,6 +7,7 @@ import io
 import logging
 from datetime import datetime
 from typing import Any, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,7 @@ def export_trades(trades: List[dict], format: str = "xlsx") -> io.BytesIO:
     ws.title = "交易记录"
 
     # 标题行
-    ws.append([f"交易记录导出 — {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    ws.append([f"交易记录导出 — {now_et().strftime('%Y-%m-%d %H:%M')}"])
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     ws[1][0].font = Font(name="Arial", bold=True, size=14)
     ws.append([])  # 空行
@@ -193,7 +194,7 @@ def export_watchlist(items: List[dict], format: str = "xlsx") -> io.BytesIO:
     ws = wb.active
     ws.title = "自选股"
 
-    ws.append([f"自选股列表 — {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    ws.append([f"自选股列表 — {now_et().strftime('%Y-%m-%d %H:%M')}"])
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     ws[1][0].font = Font(name="Arial", bold=True, size=14)
     ws.append([])
@@ -252,7 +253,7 @@ def export_portfolio(
     ws = wb.active
     ws.title = "投资组合"
 
-    ws.append([f"投资组合 — {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    ws.append([f"投资组合 — {now_et().strftime('%Y-%m-%d %H:%M')}"])
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     ws[1][0].font = Font(name="Arial", bold=True, size=14)
     ws.append([])

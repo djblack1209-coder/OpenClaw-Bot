@@ -25,6 +25,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
+from src.utils import now_et
 
 try:
     import pandas_ta as ta
@@ -58,7 +59,7 @@ class TradeSignal:
     indicators: Dict[str, float] = field(default_factory=dict)
     stop_loss_pct: float = 0.0
     take_profit_pct: float = 0.0
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
 
 @dataclass
@@ -586,7 +587,7 @@ class StrategyEngine:
             "confidence": round(avg_confidence, 2),
             "signals": signals,
             "recommendation": recommendation,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_et().isoformat(),
         }
 
         self._results_history.append({

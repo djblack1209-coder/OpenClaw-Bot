@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Any
 from datetime import datetime
 from enum import Enum
+from src.utils import now_et
 
 
 # ============================================================
@@ -216,7 +217,7 @@ class WSMessageType(str, Enum):
 class WSMessage(BaseModel):
     type: WSMessageType
     data: Any = None
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = Field(default_factory=lambda: now_et().isoformat())
 
 
 # ============================================================

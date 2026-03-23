@@ -12,6 +12,7 @@ from getpass import getpass
 from typing import Optional
 
 import requests
+from src.utils import now_et
 
 SERVER_URL = os.getenv("OPENCLAW_DEPLOY_SERVER", "https://deploy.openclaw.ai")
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
@@ -322,7 +323,7 @@ def verify_install():
     print("\n[5/5] 验证安装 & 生成健康报告")
     report = []
     report.append(f"系统: {platform.system()} {platform.release()} ({platform.machine()})")
-    report.append(f"时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report.append(f"时间: {__import__('datetime').now_et().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # OpenClaw CLI
     try:

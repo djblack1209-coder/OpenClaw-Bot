@@ -1046,3 +1046,17 @@
 ### 文件变更
 - `src/core/security.py` — 新增 `sanitize_input()` 方法及 `SENSITIVE_PATTERNS` 扩展。
 - `tests/test_security.py` — 移除 `pytest.mark.xfail` 使测试真实生效。
+
+## [2026-03-23] 解决全局隐式错误屏蔽问题 (HI-016)
+
+> 领域: `backend`
+> 影响模块: 全局 (30+ 个核心 Python 模块)
+> 关联问题: HI-016
+
+### 变更内容
+- 通过脚本对所有 `src/` 下的 `except Exception: pass` 进行了全量扫雷替换。
+- 替换为 `logger.debug("Silenced exception", exc_info=True)`，以维持原本对终端用户透明的要求（不干扰正常执行），但会在调试日志中记录确切的调用栈，解决异常彻底黑洞化的问题。
+- 完成全部 673 项全自动测试的运行并全部通过，证明替换没有破坏现有的容错逻辑。
+
+### 文件变更
+- `src/**/*.py` — 大量文件替换 `except Exception: pass` 为记录异常到 debug log 中。

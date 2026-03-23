@@ -237,5 +237,5 @@ class TestValidateIntegration:
         ) as mock_ta:
             mock_ta.return_value = {"signal": {"signal": "BUY", "score": 50}}
             result = await validator.validate(proposal)
-        if result.approved:
-            assert "AAPL" in validator._recent_decisions
+        assert result.approved is True
+        assert "AAPL" in validator._recent_decisions

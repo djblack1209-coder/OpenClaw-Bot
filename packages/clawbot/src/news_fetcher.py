@@ -24,6 +24,7 @@ except ImportError:
     feedparser = None  # type: ignore[assignment]
 
 import logging
+from src.utils import now_et
 logger = logging.getLogger(__name__)
 
 # ── 内置 RSS 源（无需 API Key）──
@@ -309,7 +310,7 @@ class NewsFetcher:
             await asyncio.sleep(1)
 
         return format_digest(
-            title=f"OpenClaw「科技早报」{datetime.now().strftime('%Y年%m月%d日')}",
+            title=f"OpenClaw「科技早报」{now_et().strftime('%Y年%m月%d日')}",
             intro="今日聚焦美股市场、宏观政策、AI科技、加密货币四大主线，按主题整理如下。",
             sections=sections,
             footer="更多详情可直接回复对应主题，或打开上方链接查看原文。",

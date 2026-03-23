@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class ResponseCard:
     body: str = ""
     footer: str = ""
     task_id: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now().strftime("%H:%M"))
+    timestamp: str = field(default_factory=lambda: now_et().strftime("%H:%M"))
 
     def to_telegram(self) -> str:
         """渲染为 Telegram HTML 格式消息"""

@@ -1,7 +1,7 @@
 import pytest
 from typing import cast
 
-import src.execution_hub as execution_hub_module
+import src.execution as execution_hub_module
 from src.execution_hub import ExecutionHub
 from src.news_fetcher import NewsFetcher
 

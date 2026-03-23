@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def _notify(message: str, data: Optional[Dict] = None) -> None:
         push_event(WSMessageType.AUTOPILOT_EVENT, {
             "message": message,
             **(data or {}),
-            "ts": datetime.now().isoformat(),
+            "ts": now_et().isoformat(),
         })
     except Exception:
         logger.debug("Silenced exception", exc_info=True)
@@ -238,7 +239,7 @@ def job_evening_produce() -> None:
                             "text": result["text"],
                             "strategy": strategy,
                             "status": "ready",
-                            "created_at": datetime.now().isoformat(),
+                            "created_at": now_et().isoformat(),
                         }
                         drafts.append(draft)
                         logger.info(
@@ -306,7 +307,7 @@ def job_night_publish() -> None:
 
             if result.get("success"):
                 draft["status"] = "published"
-                draft["published_at"] = datetime.now().isoformat()
+                draft["published_at"] = now_et().isoformat()
                 published.append(draft)
                 logger.info("[Autopilot] 发布成功: %s/%s", platform, draft_id)
             else:
@@ -362,7 +363,7 @@ def job_late_review() -> None:
         kpi_summary = {
             "posts_today": state["stats"].get("posts_today", 0),
             "metrics_raw": result if result.get("success") else {},
-            "review_time": datetime.now().isoformat(),
+            "review_time": now_et().isoformat(),
         }
 
         # KPI check (from SKILL.md: XHS>500 views, X>200 views)
@@ -375,7 +376,7 @@ def job_late_review() -> None:
             if xhs_views < 500 and state["stats"].get("posts_today", 0) > 0:
                 warnings.append(f"XHS 阅读量 {xhs_views} 未达标 (目标>500)")
 
-        state["last_review"] = datetime.now().isoformat()
+        state["last_review"] = now_et().isoformat()
         _save_state(state)
 
         _notify(

@@ -15,6 +15,7 @@ from json_repair import loads as jloads
 from src.execution._db import get_conn
 from src.execution._ai import ai_pool
 from src.execution._utils import extract_json_object
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def _ensure_bounty_table(db_path: str):
 
 def _upsert_lead(conn, lead: Dict):
     """插入或更新赏金线索"""
-    now = datetime.now().isoformat()
+    now = now_et().isoformat()
     try:
         conn.execute(
             """INSERT INTO bounty_leads (source, title, url, reward_range, difficulty, keywords, found_at, updated_at)
@@ -197,7 +198,7 @@ async def evaluate_bounty_lead(lead_id: int, db_path: str = "") -> Dict:
                     conn.execute(
                         "UPDATE bounty_leads SET score=?, evaluation=?, updated_at=? WHERE id=?",
                         (parsed.get("score", 0), json.dumps(parsed, ensure_ascii=False),
-                         datetime.now().isoformat(), lead_id)
+                         now_et().isoformat(), lead_id)
                     )
                 return parsed
         return {"error": "AI evaluation failed"}

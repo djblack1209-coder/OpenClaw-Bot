@@ -7,6 +7,7 @@ import base64
 import os
 from pathlib import Path
 from datetime import datetime
+from src.utils import now_et
 
 class ScreenTool:
     """屏幕截图和GUI操作"""
@@ -27,7 +28,7 @@ class ScreenTool:
             dict: {success, path, base64, error}
         """
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = now_et().strftime("%Y%m%d_%H%M%S")
             filename = f"screen_{timestamp}.png"
             filepath = self.screenshot_dir / filename
             

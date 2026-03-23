@@ -11,6 +11,7 @@ from datetime import datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from src.utils import now_et
 from src.bot.globals import (
     chat_router,
     collab_orchestrator,
@@ -427,12 +428,12 @@ class CollabCommandsMixin:
         trades = _parse_trade_recommendations(last_response)
         if trades:
             # 存储待确认交易到全局字典
-            trade_key = f"invest_{chat_id}_{int(datetime.now().timestamp())}"
+            trade_key = f"invest_{chat_id}_{int(now_et().timestamp())}"
             _pending_trades[trade_key] = {
                 "trades": trades,
                 "chat_id": chat_id,
                 "topic": topic,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now_et().isoformat(),
             }
 
             # 构建交易摘要和确认按钮
@@ -477,7 +478,7 @@ class CollabCommandsMixin:
             else:
                 trade_summary = "\n结论: 观望"
 
-            timestamp = datetime.now().strftime("%m/%d %H:%M")
+            timestamp = now_et().strftime("%m/%d %H:%M")
             shared_memory.remember(
                 key=f"invest_{timestamp}_{topic[:30]}",
                 value=f"投资分析会议: {topic}\n{trade_summary}\n\n各角色观点摘要:\n{invest_summary[:1500]}",

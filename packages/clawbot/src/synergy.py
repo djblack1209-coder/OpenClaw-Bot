@@ -16,6 +16,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class SynergyEngine:
                     "platform": "x",
                     "status": "auto_generated",
                     "source": "trading_synergy",
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": now_et().isoformat(),
                     "metadata": {"symbol": symbol, "signal": direction, "score": score},
                 })
                 state["drafts"] = drafts
@@ -165,7 +166,7 @@ def _push(event_type: str, message: str):
         push_event(type_map.get(event_type, WSMessageType.STATUS), {
             "message": message,
             "source": "synergy",
-            "ts": datetime.now().isoformat(),
+            "ts": now_et().isoformat(),
         })
     except Exception:
         logger.debug("Silenced exception", exc_info=True)

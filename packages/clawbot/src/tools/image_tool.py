@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 import logging
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class ImageTool:
         self.api_key = key
 
     def _save_image_bytes(self, img_bytes: bytes, prefix: str = "gen") -> str:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = now_et().strftime("%Y%m%d_%H%M%S_%f")
         filepath = self.output_dir / f"{prefix}_{timestamp}.png"
         with open(filepath, "wb") as f:
             f.write(img_bytes)

@@ -19,6 +19,7 @@ import os
 import time
 from typing import List, Dict, Optional
 from datetime import datetime
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +312,7 @@ async def full_market_scan(
         "buy_candidates": [c for c in top_candidates if c['score'] > 0],
         "sell_candidates": [c for c in top_candidates if c['score'] < 0],
         "scan_time": round(scan_time, 1),
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_et().isoformat(),
     }
 
 

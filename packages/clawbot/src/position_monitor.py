@@ -307,7 +307,7 @@ class PositionMonitor:
             entry = pos.entry_time
             if entry.tzinfo is None:
                 # 旧数据用 naive datetime，保持 naive 比较
-                now = datetime.now()
+                now = now_et()
             else:
                 now = _now_et()
             hold_hours = (now - entry).total_seconds() / 3600

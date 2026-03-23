@@ -32,6 +32,7 @@ from dotenv import load_dotenv
 from config.bot_profiles import get_bot_config
 from src.news_fetcher import NewsFetcher
 from src.notify_style import bullet, format_announcement, format_digest, format_notice, kv, shorten
+from src.utils import now_et
 logger = logging.getLogger(__name__)
 if load_dotenv:
     _config_env_path = Path(__file__).resolve().parent.parent / 'config' / '.env'
@@ -508,7 +509,7 @@ class ExecutionHub:
         timestamp = latest.get('timestamp', '')
         if not timestamp:
             return None
-        age = datetime.now() - datetime.fromisoformat(timestamp)
+        age = now_et() - datetime.fromisoformat(timestamp)
         if age.total_seconds() > max(1, int(max_age_minutes)) * 60:
             return None
         return latest
@@ -570,7 +571,7 @@ class ExecutionHub:
             path = self._social_metrics_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, 'a', encoding='utf-8') as f:
-                line = json.dumps({**result, 'collected_at': datetime.now().isoformat()}, ensure_ascii=False)
+                line = json.dumps({**result, 'collected_at': now_et().isoformat()}, ensure_ascii=False)
                 f.write(line + '\n')
         return result
 
@@ -765,7 +766,7 @@ class ExecutionHub:
 
     
     def _social_operator_run_path(self):
-        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        stamp = now_et().strftime('%Y%m%d_%H%M%S')
         return Path(self.social_state_dir) / f'{self._default_social_persona_id()}_{stamp}.json'
 
     
@@ -779,7 +780,7 @@ class ExecutionHub:
         persona = self.get_social_persona_summary()
         digest = self._workspace_digest(workspace)
         publish_image = self._persona_publish_image()
-        now = datetime.now()
+        now = now_et()
         hour = now.hour
         if 7 <= hour <= 9:
             time_hint = "早高峰（7-9点）→ 小红书图文（通勤党在刷）"
@@ -913,7 +914,7 @@ class ExecutionHub:
         return {**payload, "browser": browser}
 
     async def _run_social_autopilot_fallback(self, state=None, workspace=None):
-        now = datetime.now()
+        now = now_et()
         mentions = (((workspace or {}).get("xiaohongshu") or {}).get("mentions_items") or [])[:6]
         for item in mentions:
             if bool(item.get("note_deleted")):
@@ -1002,14 +1003,14 @@ class ExecutionHub:
         try:
             with self._conn() as conn:
                 conn.execute("INSERT OR IGNORE INTO social_post_tracking(platform,url,topic,content,published_at) VALUES(?,?,?,?,?)",
-                    (platform, url, topic, content[:500], datetime.now().isoformat()))
+                    (platform, url, topic, content[:500], now_et().isoformat()))
         except Exception as e:
             logger.debug(f"record post failed: {e}")
 
     def get_post_performance_report(self, days=7):
         self._ensure_post_tracking_table()
         try:
-            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cutoff = (now_et() - timedelta(days=days)).isoformat()
             with self._conn() as conn:
                 rows = conn.execute("SELECT platform,COUNT(*),SUM(likes),SUM(comments),SUM(views) FROM social_post_tracking WHERE published_at>? GROUP BY platform", (cutoff,)).fetchall()
                 top = conn.execute("SELECT platform,url,topic,likes,comments,views FROM social_post_tracking WHERE published_at>? ORDER BY likes+comments DESC LIMIT 5", (cutoff,)).fetchall()
@@ -1040,7 +1041,7 @@ class ExecutionHub:
 
     async def run_social_autopilot_once(self):
         state = self._load_social_operator_state()
-        now = datetime.now()
+        now = now_et()
         next_action_at = str(state.get("next_action_at", "") or "").strip()
         if next_action_at:
             try:
@@ -1789,7 +1790,7 @@ class ExecutionHub:
         norm_title = self._normalize_monitor_text(title)
         norm_body = self._normalize_monitor_text(body)
         norm_topic = self._normalize_monitor_text(topic)
-        now = datetime.now()
+        now = now_et()
         for row in self._recent_social_rows(limit=24):
             if target_platform and target_platform != 'both':
                 row_platform = str(row.get('platform', '')).strip().lower()
@@ -2421,7 +2422,7 @@ class ExecutionHub:
             'title': title,
             'body': content,
             'topic': topic,
-            'updated_at': datetime.now().isoformat(),
+            'updated_at': now_et().isoformat(),
         }
         self._draft_store.append(row)
         # 内存上限裁剪
@@ -2468,7 +2469,7 @@ class ExecutionHub:
         if not draft_id or not status:
             return {'success': False, 'error': 'draft_id and status required'}
         try:
-            now = datetime.now().isoformat()
+            now = now_et().isoformat()
             with self._conn() as conn:
                 conn.execute('UPDATE social_drafts SET status=?, updated_at=? WHERE id=?',
                              (str(status), now, int(draft_id)))
@@ -2650,7 +2651,7 @@ class ExecutionHub:
     
     def _today_bounty_accept_cost(self):
         """统计今日已接受赏金的总预估成本"""
-        date_key = datetime.now().strftime('%Y-%m-%d')
+        date_key = now_et().strftime('%Y-%m-%d')
         try:
             runs = self._bounty_run_log.get(date_key, [])
             return sum(float(r.get('est_cost', 0) or 0) for r in runs if r.get('decision') == 'accept')
@@ -2660,7 +2661,7 @@ class ExecutionHub:
     
     def _today_accepted_bounty_ids(self):
         """获取今日已接受赏金的 ID 列表"""
-        date_key = datetime.now().strftime('%Y-%m-%d')
+        date_key = now_et().strftime('%Y-%m-%d')
         try:
             runs = self._bounty_run_log.get(date_key, [])
             return [r.get('lead_id') for r in runs if r.get('decision') == 'accept' and r.get('lead_id')]
@@ -2670,7 +2671,7 @@ class ExecutionHub:
     
     def _record_bounty_run(self, lead = None, decision = None, est_cost = None, sources=None):
         """记录一次赏金评估结果"""
-        date_key = datetime.now().strftime('%Y-%m-%d')
+        date_key = now_et().strftime('%Y-%m-%d')
         if not hasattr(self, '_bounty_run_log'):
             self._bounty_run_log = {}
         if date_key not in self._bounty_run_log:
@@ -2680,7 +2681,7 @@ class ExecutionHub:
             'decision': decision,
             'est_cost': est_cost,
             'sources': sources,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': now_et().isoformat(),
         })
 
     
@@ -3580,12 +3581,12 @@ class ExecutionHub:
         if not msg:
             return {'success': False, 'error': '提醒内容不能为空'}
         delay_minutes = max(1, _safe_int(delay_minutes, 5))
-        remind_at = (datetime.now() + timedelta(minutes=delay_minutes)).isoformat()
+        remind_at = (now_et() + timedelta(minutes=delay_minutes)).isoformat()
         try:
             with self._conn() as conn:
                 cursor = conn.execute(
                     "INSERT INTO reminders (message, remind_at, status, created_at) VALUES (?, ?, 'pending', ?)",
-                    (msg, remind_at, datetime.now().isoformat()))
+                    (msg, remind_at, now_et().isoformat()))
                 reminder_id = cursor.lastrowid
             return {'success': True, 'reminder_id': reminder_id, 'message': msg,
                     'remind_at': remind_at, 'delay_minutes': delay_minutes}
@@ -3769,7 +3770,7 @@ class ExecutionHub:
                 await asyncio.sleep(60)
             except asyncio.CancelledError:
                 break
-            now = datetime.now()
+            now = now_et()
             ts = time.time()
 
             # Daily brief — 只在指定时间推一次

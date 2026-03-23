@@ -125,7 +125,7 @@ class TestGenerateProposal:
         assert proposal.symbol == "AAPL"
         assert proposal.action == "BUY"
         assert proposal.quantity == 10
-        assert proposal.stop_loss > 0
+        assert 0 < proposal.stop_loss < proposal.entry_price  # BUY: SL must be below entry
         assert proposal.take_profit > proposal.entry_price
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestGenerateProposal:
         candidate = {"symbol": "AAPL", "score": 60, "price": 150.0, "atr_pct": 2.0}
         proposal = await trader._generate_proposal(candidate)
         assert proposal is not None
-        assert proposal.quantity >= 1  # Fallback: max(1, int(400/150)) = 2
+        assert proposal.quantity == 2  # Fallback: max(1, int(400/150)) = 2
 
     @pytest.mark.asyncio
     async def test_atr_affects_stop_loss(self):
@@ -159,3 +159,138 @@ class TestGenerateProposal:
 
         # Higher ATR -> wider stop loss (lower SL price)
         assert p2.stop_loss < p1.stop_loss
+
+
+# ============ 容错测试 (Fault Tolerance Tests) ============
+
+
+class TestFilterCandidatesEdgeCases:
+    """Edge cases for _filter_candidates beyond the basic empty list."""
+
+    def test_filter_candidates_all_empty_dicts(self):
+        """List of empty dicts (no symbol, no score) → all filtered out.
+
+        Missing 'score' defaults to 0 via .get("score", 0), which is < 15.
+        """
+        trader = AutoTrader()
+        signals = [{}, {}, {}]
+        result = trader._filter_candidates(signals)
+        assert result == []
+
+    def test_filter_candidates_none_values_in_fields(self):
+        """Candidate with None values for score/rsi/trend → filtered by score.
+
+        .get("score", 0) returns None, and None < 15 raises TypeError in Python 3.
+        This documents the current behavior.
+        """
+        trader = AutoTrader()
+        signals = [{"symbol": "AAPL", "score": None, "trend": "up", "rsi_6": 50}]
+        with pytest.raises(TypeError):
+            trader._filter_candidates(signals)
+
+
+class TestGenerateProposalNaN:
+    """_generate_proposal with NaN score."""
+
+    @pytest.mark.asyncio
+    async def test_generate_proposal_nan_score(self):
+        """score=NaN → ValueError when formatting reason string.
+
+        _generate_proposal falls into the else branch where it builds
+        reason_text = "信号评分%d" % score. Python's %d cannot format NaN,
+        raising ValueError. This documents the missing NaN guard.
+        """
+        rm = MagicMock()
+        rm.calc_safe_quantity.return_value = {"shares": 5}
+        rm.config = MagicMock()
+        rm.config.total_capital = 10000.0
+        trader = AutoTrader(risk_manager=rm)
+
+        candidate = {
+            "symbol": "AAPL",
+            "score": float("nan"),
+            "price": 150.0,
+            "atr_pct": 2.0,
+        }
+        with pytest.raises(ValueError, match="cannot convert float NaN to integer"):
+            await trader._generate_proposal(candidate)
+
+
+class TestExecuteTradeBrokerTimeout:
+    """Broker timeout → pipeline falls back to simulation portfolio."""
+
+    @pytest.mark.asyncio
+    async def test_execute_trade_broker_timeout(self):
+        """asyncio.TimeoutError from broker.buy → fallback to sim portfolio.
+
+        Pipeline catches all exceptions from broker, logs warning, and
+        falls back to portfolio.buy (simulation).
+        """
+        import asyncio
+        from unittest.mock import AsyncMock as _AsyncMock
+        from src.auto_trader import TradingPipeline
+        from src.risk_manager import RiskManager, RiskConfig
+        from src.models import TradeProposal
+        from src.utils import now_et
+
+        config = RiskConfig(
+            total_capital=10000.0,
+            daily_loss_limit=200.0,
+            trading_hours_enabled=False,
+            blacklist=[],
+        )
+        rm = RiskManager(config=config)
+        rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
+        rm._last_refresh_ts = now_et()
+
+        mock_broker = _AsyncMock()
+        mock_broker.buy.side_effect = asyncio.TimeoutError("IBKR timeout")
+        mock_broker.is_connected = MagicMock(return_value=True)
+        mock_broker.get_positions = _AsyncMock(return_value=[])
+
+        mock_portfolio = MagicMock()
+        mock_portfolio.get_positions.return_value = []
+        mock_portfolio.buy.return_value = {
+            "status": "ok", "symbol": "AAPL", "quantity": 5,
+        }
+
+        mock_journal = MagicMock()
+        mock_journal.open_trade.return_value = 99
+
+        pipeline = TradingPipeline(
+            risk_manager=rm,
+            broker=mock_broker,
+            journal=mock_journal,
+            portfolio=mock_portfolio,
+        )
+
+        proposal = TradeProposal(
+            symbol="AAPL",
+            action="BUY",
+            quantity=5,
+            entry_price=150.0,
+            stop_loss=145.0,
+            take_profit=162.0,
+            signal_score=50,
+            decided_by="TestBot",
+        )
+
+        result = await pipeline.execute_proposal(proposal)
+
+        # Broker was attempted but timed out
+        mock_broker.buy.assert_called_once()
+
+        # Fell back to simulation portfolio
+        mock_portfolio.buy.assert_called_once()
+
+        # Trade still executed via simulation
+        assert result["status"] == "executed"
+        assert result["trade_id"] == 99
+
+        # Steps should contain the broker error
+        broker_error_steps = [
+            s for s in result["steps"]
+            if "broker_error" in s
+        ]
+        assert len(broker_error_steps) == 1
+        assert "IBKR timeout" in broker_error_steps[0]["broker_error"]

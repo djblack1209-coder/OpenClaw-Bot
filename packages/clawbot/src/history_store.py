@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class HistoryStore:
         conn.execute(
             "INSERT INTO messages (bot_id, chat_id, role, content, created_at, metadata) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (bot_id, chat_id, role, content_str, datetime.now().isoformat(), meta_str)
+            (bot_id, chat_id, role, content_str, now_et().isoformat(), meta_str)
         )
         conn.commit()
 

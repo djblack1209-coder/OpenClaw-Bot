@@ -24,6 +24,7 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +321,7 @@ class SynergyPipelines:
                 "content": content,
                 "symbol": symbol,
                 "source": source,
-                "created_at": datetime.now().isoformat(),
+                "created_at": now_et().isoformat(),
                 "published": False,
             })
             drafts_file.write_text(json.dumps(drafts[-50:], ensure_ascii=False, indent=2))

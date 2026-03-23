@@ -6,13 +6,21 @@ ClawBot 多机器人版 v5.0 - Mixin 架构版
 """
 import os
 import sys
-import asyncio
 import logging
 import signal
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# ── loguru 日志系统 (23.7k⭐) — 必须在所有业务 import 之前初始化 ──
+from src.log_config import setup_logging
+setup_logging(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    json_log_dir=str(Path(__file__).parent / "logs"),
+)
+
+import asyncio
+from typing import Optional
 
 from dotenv import load_dotenv
 from telegram import BotCommand
@@ -21,26 +29,9 @@ from telegram import BotCommand
 config_path = Path(__file__).parent / 'config' / '.env'
 load_dotenv(config_path)
 
-# 配置日志
-log_dir = Path(__file__).parent / 'logs'
-log_dir.mkdir(exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_dir / 'multi_bot.log')
-    ]
-)
 logger = logging.getLogger(__name__)
 
-# 降噪：抑制高频第三方库日志
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("yfinance").setLevel(logging.WARNING)
-logging.getLogger("ib_insync.wrapper").setLevel(logging.WARNING)
-logging.getLogger("ib_insync.client").setLevel(logging.WARNING)
+# 注: 第三方库降噪已由 src/log_config.py 统一管理 (_NOISY_LIBS)
 
 # 导入重构后的 MultiBot 和全局共享组件
 from src.bot.multi_bot import MultiBot
@@ -63,6 +54,8 @@ from src.chat_router import PriorityMessageQueue
 from src.strategy_engine import create_default_engine
 from src.social_tools import ABTestManager
 from src.langfuse_obs import init_langfuse
+from src.api.server import start_api_server, stop_api_server
+from src.api.schemas import WSMessageType
 import src.bot.globals as g
 
 
@@ -381,6 +374,97 @@ async def main():
     except Exception as e:
         logger.info(f"  CrewAI 初始化跳过: {e}")
 
+    # === 启动内控 API 服务器 (搬运 freqtrade RPC + Open WebUI 模式) ===
+    api_port = int(os.environ.get("API_PORT", "18790"))
+    try:
+        api_server = start_api_server(port=api_port)
+        logger.info(f"  内控 API 服务器已启动: http://127.0.0.1:{api_port}/api/docs")
+    except Exception as e:
+        api_server = None
+        logger.warning(f"  内控 API 服务器启动失败（非致命）: {e}")
+
+    # === OMEGA v2.0 核心模块初始化 ===
+    _omega_brain = None
+    _omega_gateway = None
+    try:
+        from src.core.event_bus import get_event_bus
+        _omega_event_bus = get_event_bus()
+        logger.info("  OMEGA 事件总线已初始化")
+    except Exception as e:
+        logger.info(f"  OMEGA 事件总线初始化跳过: {e}")
+
+    # === 统一通知系统 (搬运 Apprise 16.1k⭐) — 订阅 EventBus 事件 ===
+    try:
+        from src.notifications import get_notification_manager
+        _notification_manager = get_notification_manager()
+        await _notification_manager.register_event_handlers()
+        logger.info("  统一通知系统已初始化 (EventBus 事件订阅已注册)")
+    except Exception as e:
+        logger.info(f"  统一通知系统初始化跳过: {e}")
+
+    try:
+        from src.core.brain import init_brain
+        _omega_brain = init_brain()
+        logger.info("  OMEGA 核心编排器 (Brain) 已初始化")
+    except Exception as e:
+        logger.info(f"  OMEGA Brain 初始化跳过: {e}")
+
+    try:
+        from src.core.cost_control import get_cost_controller
+        _omega_cost = get_cost_controller()
+        logger.info(f"  OMEGA 成本控制已初始化 (日预算 ${_omega_cost._daily_budget:.2f})")
+    except Exception as e:
+        logger.info(f"  OMEGA 成本控制初始化跳过: {e}")
+
+    try:
+        from src.core.security import get_security_gate
+        _omega_security = get_security_gate()
+        logger.info(f"  OMEGA 安全门控已初始化 (管理员: {len(_omega_security._admin_ids)})")
+    except Exception as e:
+        logger.info(f"  OMEGA 安全门控初始化跳过: {e}")
+
+    # 协同管道 — 跨模块飞轮效应（借鉴 n8n 数据管道模式）
+    try:
+        from src.core.synergy_pipelines import init_synergy_pipelines
+        _omega_synergy = await init_synergy_pipelines()
+        logger.info(f"  OMEGA 协同管道已注册 ({_omega_synergy.get_stats()['active_pipelines']} 条管道)")
+    except Exception as e:
+        logger.info(f"  OMEGA 协同管道初始化跳过: {e}")
+
+    _stop_gateway_fn = None
+    try:
+        from src.gateway.telegram_gateway import start_gateway, stop_gateway as _stop_gw
+        _stop_gateway_fn = _stop_gw
+        _omega_gateway = await start_gateway()
+        if _omega_gateway:
+            logger.info("  OMEGA Telegram Gateway Bot 已启动")
+        else:
+            logger.info("  OMEGA Gateway Bot 未配置 (设置 OMEGA_GATEWAY_BOT_TOKEN 启用)")
+    except Exception as e:
+        logger.info(f"  OMEGA Gateway Bot 初始化跳过: {e}")
+
+    # === 进化引擎初始化 (搬运 GitHub Trending 扫描模式) ===
+    _evolution_engine = None
+    try:
+        from src.evolution.engine import EvolutionEngine
+        _evolution_engine = EvolutionEngine()
+        logger.info("  进化引擎已就绪（可通过 Manager UI 触发扫描）")
+    except Exception as e:
+        logger.info(f"  进化引擎初始化跳过: {e}")
+
+    # === 社交自动驾驶 — 检查是否需要自动恢复 (搬运 APScheduler 模式) ===
+    try:
+        from src.social_scheduler import SocialAutopilot, _load_state as _load_ap_state
+        _autopilot = SocialAutopilot()
+        _ap_state = _load_ap_state()
+        if _ap_state.get("enabled", False):
+            _autopilot.start()
+            logger.info("  社交自动驾驶已恢复运行（上次关闭前为启用状态）")
+        else:
+            logger.info("  社交自动驾驶待命（可通过 Manager UI 启动）")
+    except Exception as e:
+        logger.info(f"  社交自动驾驶初始化跳过: {e}")
+
     logger.info("=" * 60)
     logger.info(f"成功启动 {len(bots)} 个 Bot:")
     for bot in bots:
@@ -462,6 +546,60 @@ async def main():
                 chat_id=_notify_chat_id, text=text,
                 reply_markup=reply_markup,
             )
+
+            # Push to WebSocket live event feed alongside Telegram
+            try:
+                from src.api.routers.ws import push_event
+                if "交易执行" in text or "交易已成交" in text:
+                    push_event(WSMessageType.TRADE_EXECUTED, {"message": text})
+                    # EventBus: 交易执行事件 → 协同管道自动生成社媒草稿
+                    try:
+                        from src.core.event_bus import get_event_bus, EventType as EvtType
+                        direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
+                        asyncio.create_task(get_event_bus().publish(
+                            EvtType.TRADE_EXECUTED,
+                            {"signal": direction, "reason": text[:100], "message": text},
+                            source="trading_system",
+                        ))
+                    except Exception:
+                        pass
+                    # 旧 Synergy 兼容（逐步迁移到 EventBus）
+                    try:
+                        from src.synergy import get_synergy
+                        direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
+                        asyncio.create_task(get_synergy().on_trade_signal({
+                            "signal": direction, "reason": text[:100], "score": 80, "symbol": "",
+                        }))
+                    except Exception:
+                        pass
+                elif "止损" in text or "止盈" in text or "风控" in text:
+                    push_event(WSMessageType.RISK_ALERT, {"message": text})
+                    # EventBus: 风控事件
+                    try:
+                        from src.core.event_bus import get_event_bus, EventType as EvtType
+                        asyncio.create_task(get_event_bus().publish(
+                            EvtType.RISK_ALERT,
+                            {"message": text},
+                            source="trading_system",
+                        ))
+                    except Exception:
+                        pass
+                elif "信号" in text or "signal" in text.lower():
+                    push_event(WSMessageType.TRADE_SIGNAL, {"message": text})
+                    # EventBus: 交易信号
+                    try:
+                        from src.core.event_bus import get_event_bus, EventType as EvtType
+                        asyncio.create_task(get_event_bus().publish(
+                            EvtType.TRADE_SIGNAL,
+                            {"message": text},
+                            source="trading_system",
+                        ))
+                    except Exception:
+                        pass
+                elif "告警" in text or "错误" in text or "失败" in text:
+                    push_event(WSMessageType.BOT_ERROR, {"message": text})
+            except Exception:
+                pass
         except Exception as e:
             logger.error("[TradingSystem] 通知发送失败: %s", e)
 
@@ -543,20 +681,27 @@ async def main():
         asyncio.create_task(_notify_telegram(message))
     alert_mgr.on_alert(_on_alert)
 
+    # 注册告警回调 -> WebSocket 实时推送
+    from src.api.routers.ws import push_event
+    alert_mgr.on_alert(lambda name, msg: push_event(WSMessageType.RISK_ALERT, {"rule": name, "message": msg}))
+
     _heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))
     _cleanup_interval = int(os.environ.get("CLEANUP_INTERVAL", "60"))
     _cleanup_max_age = float(os.environ.get("CLEANUP_MAX_AGE", "3600.0"))
     _alert_check_interval = int(os.environ.get("ALERT_CHECK_INTERVAL", "30"))
+    _evolution_interval = int(os.environ.get("EVOLUTION_SCAN_INTERVAL", "86400"))  # 24h
 
     try:
         cleanup_counter = 0
         heartbeat_counter = 0
         alert_counter = 0
+        evolution_counter = 0
         while not stop_event.is_set():
             await asyncio.sleep(1)
             cleanup_counter += 1
             heartbeat_counter += 1
             alert_counter += 1
+            evolution_counter += 1
             if heartbeat_counter >= _heartbeat_interval:
                 heartbeat_counter = 0
                 for bot in bots:
@@ -568,13 +713,43 @@ async def main():
             if alert_counter >= _alert_check_interval:
                 alert_counter = 0
                 alert_mgr.check_all()
+            # 进化引擎定时扫描（默认每24小时）
+            if _evolution_engine and evolution_counter >= _evolution_interval:
+                evolution_counter = 0
+                async def _run_evolution_scan():
+                    try:
+                        proposals = await _evolution_engine.daily_scan()
+                        if proposals:
+                            logger.info("[Evolution] 发现 %d 个进化提案", len(proposals))
+                    except Exception as e:
+                        logger.debug("[Evolution] 扫描异常: %s", e)
+                asyncio.create_task(_run_evolution_scan())
     except asyncio.CancelledError:
         pass
 
     # 优雅关闭
     logger.info("正在停止...")
+    # 停止 OMEGA Gateway Bot
+    if _omega_gateway and _stop_gateway_fn:
+        try:
+            await _stop_gateway_fn()
+            logger.info("  OMEGA Gateway Bot 已停止")
+        except Exception as e:
+            logger.warning(f"  OMEGA Gateway 停止失败: {e}")
+    # 停止 OMEGA 执行引擎
+    try:
+        from src.core.executor import get_executor
+        await get_executor().close()
+    except Exception:
+        pass
     await execution_hub.stop_scheduler()
     await stop_trading_system()
+    # 停止内控 API 服务器
+    try:
+        stop_api_server()
+        logger.info("  内控 API 服务器已停止")
+    except Exception:
+        pass
     if auto_recovery:
         auto_recovery.stop()
     if metrics_server:

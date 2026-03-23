@@ -16,6 +16,7 @@ from typing import List, Dict, Any, Optional, Callable, Tuple
 from datetime import datetime
 from pathlib import Path
 import logging
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +502,7 @@ class ContextManager:
 
     def _save_summary(self, summary: str, original_messages: List[Dict]):
         """保存摘要到文件"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = now_et().strftime("%Y%m%d_%H%M%S")
         data = {
             "timestamp": timestamp,
             "summary": summary,

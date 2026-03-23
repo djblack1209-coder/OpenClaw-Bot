@@ -1,7 +1,7 @@
 import pytest
 from typing import cast
 
-import src.execution_hub as execution_hub_module
+import src.execution as execution_hub_module
 from src.news_fetcher import NewsFetcher
 from src.execution_hub import ExecutionHub
 
@@ -178,7 +178,7 @@ class TestExecutionHubMonitoring:
 
         digest = await hub.generate_x_monitor_brief()
 
-        assert digest.startswith("OpenClaw「X 资讯快讯」")
+        assert digest.startswith("📢  OpenClaw「X 资讯快讯」")
         assert "【@WaytoAGI】" in digest
         assert "详情：https://x.com/WaytoAGI/status/123" in digest
 
@@ -200,6 +200,6 @@ class TestExecutionHubMonitoring:
             }
         )
 
-        assert text.startswith("OpenClaw「资讯快讯」NVIDIA")
+        assert text.startswith("📢  OpenClaw「资讯快讯」NVIDIA")
         assert "【第 1 条】" in text
         assert "详情：https://example.com/nvda" in text

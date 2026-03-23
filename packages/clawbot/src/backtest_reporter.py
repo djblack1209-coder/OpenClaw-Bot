@@ -14,6 +14,7 @@ import math
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ class BacktestReporter:
     ) -> str:
         """生成完整的 HTML 回测报告"""
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now = now_et().strftime("%Y-%m-%d %H:%M")
         pnl_class = BacktestReporter._color_class(report.total_pnl)
 
         html = [
@@ -428,7 +429,7 @@ class BacktestReporter:
         title: str = "策略对比报告",
     ) -> str:
         """生成多标的/多策略对比报告"""
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now = now_et().strftime("%Y-%m-%d %H:%M")
 
         html = [
             "<!DOCTYPE html>",

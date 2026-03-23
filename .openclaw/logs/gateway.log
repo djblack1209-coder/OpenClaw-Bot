@@ -2016,3 +2016,136 @@ Bind: loopback
 2026-03-19T12:57:48.748+08:00 [gateway] received SIGTERM; shutting down
 2026-03-19T12:57:48.817+08:00 [gateway] signal SIGTERM received
 2026-03-19T12:57:48.821+08:00 [gateway] received SIGTERM during shutdown; ignoring
+│
+◇  Doctor changes ──────────────────────────────╮
+│                                               │
+│  Telegram configured, enabled automatically.  │
+│                                               │
+├───────────────────────────────────────────────╯
+│
+◇  Doctor ──────────────────────────────────────────────╮
+│                                                       │
+│  Run "openclaw doctor --fix" to apply these changes.  │
+│                                                       │
+├───────────────────────────────────────────────────────╯
+2026-03-23T01:35:12.703+08:00 [gateway] auto-enabled plugins:
+- Telegram configured, enabled automatically.
+2026-03-23T01:35:12.746+08:00 [gateway] [plugins] loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (plugin=openclaw-weixin, source=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:35:12.758+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-23T01:35:12.813+08:00 [heartbeat] started
+2026-03-23T01:35:12.818+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-23T01:35:12.821+08:00 [gateway] agent model: xapi/gpt-5.2-codex
+2026-03-23T01:35:12.822+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 67530)
+2026-03-23T01:35:12.825+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:35:12.829+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:35:12.831+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:35:12.860+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-23T01:35:12.865+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:35:12.867+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:35:12.869+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:35:12.870+08:00 [openclaw-weixin] [weixin] no previous sync buf, starting fresh
+2026-03-23T01:35:14.216+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-23T01:35:14.228+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:35:14.233+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:36:57.348+08:00 [openclaw-weixin] [weixin] config cached for o9cq809N3jZD1D6m8h0NEdQYU7Fs@im.wechat
+2026-03-23T01:42:33.647+08:00 [reload] config change detected; evaluating reload (models.providers.iflow, models.providers.siliconflow, agents.defaults.model.primary, agents.defaults.model.fallbacks, agents.defaults.models.iflow/deepseek-v3.2, agents.defaults.models.iflow/qwen3-235b-a22b-instruct, agents.defaults.models.iflow/kimi-k2, agents.defaults.models.siliconflow/Qwen/Qwen3-235B-A22B, agents.defaults.models.siliconflow/deepseek-ai/DeepSeek-V3-0324, agents.list, channels.openclaw-weixin)
+2026-03-23T01:42:33.655+08:00 [gateway/channels] restarting openclaw-weixin channel
+2026-03-23T01:42:43.704+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:42:43.712+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:42:43.719+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:42:43.723+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:42:43.727+08:00 [reload] config hot reload applied (models.providers.iflow, models.providers.siliconflow, agents.defaults.model.primary, agents.defaults.model.fallbacks, agents.defaults.models.iflow/deepseek-v3.2, agents.defaults.models.iflow/qwen3-235b-a22b-instruct, agents.defaults.models.iflow/kimi-k2, agents.defaults.models.siliconflow/Qwen/Qwen3-235B-A22B, agents.defaults.models.siliconflow/deepseek-ai/DeepSeek-V3-0324, channels.openclaw-weixin)
+2026-03-23T01:43:07.144+08:00 [gateway] signal SIGTERM received
+2026-03-23T01:43:07.149+08:00 [gateway] received SIGTERM; shutting down
+2026-03-23T01:43:16.942+08:00 [gateway] [plugins] loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (plugin=openclaw-weixin, source=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:43:16.957+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-23T01:43:17.022+08:00 [heartbeat] started
+2026-03-23T01:43:17.029+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-23T01:43:17.034+08:00 [gateway] agent model: iflow/deepseek-v3.2
+2026-03-23T01:43:17.036+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 71943)
+2026-03-23T01:43:17.040+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:43:17.048+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:43:17.050+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:43:17.088+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-23T01:43:17.096+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:43:17.099+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:43:17.102+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:43:17.104+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:43:18.482+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-23T01:43:18.499+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:43:18.504+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:43:26.646+08:00 [browser/service] Browser control service ready (profiles=3)
+2026-03-23T01:44:11.198+08:00 [openclaw-weixin] [weixin] config cached for o9cq809N3jZD1D6m8h0NEdQYU7Fs@im.wechat
+2026-03-23T01:47:12.812+08:00 [gateway] signal SIGTERM received
+2026-03-23T01:47:12.821+08:00 [gateway] received SIGTERM; shutting down
+2026-03-23T01:47:22.986+08:00 [gateway] [plugins] loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (plugin=openclaw-weixin, source=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:47:23.000+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-23T01:47:23.058+08:00 [heartbeat] started
+2026-03-23T01:47:23.064+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-23T01:47:23.068+08:00 [gateway] agent model: iflow/deepseek-v3.2
+2026-03-23T01:47:23.070+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 75900)
+2026-03-23T01:47:23.074+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:47:23.080+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:47:23.082+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:47:23.117+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-23T01:47:23.123+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:47:23.126+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:47:23.129+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:47:23.132+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:47:25.026+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-23T01:47:25.037+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:47:25.041+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:47:51.678+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:47:51.681+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:48:12.933+08:00 [openclaw-weixin] [weixin] config cached for o9cq809N3jZD1D6m8h0NEdQYU7Fs@im.wechat
+2026-03-23T01:54:41.483+08:00 [gateway] signal SIGTERM received
+2026-03-23T01:54:41.493+08:00 [gateway] received SIGTERM; shutting down
+2026-03-23T01:54:44.957+08:00 [gmail-watcher] gmail watcher stopped
+2026-03-23T01:54:48.729+08:00 [gateway] [plugins] loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (plugin=openclaw-weixin, source=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:54:48.742+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-23T01:54:48.797+08:00 [heartbeat] started
+2026-03-23T01:54:48.802+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-23T01:54:48.805+08:00 [gateway] agent model: iflow/deepseek-v3.2
+2026-03-23T01:54:48.807+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 81691)
+2026-03-23T01:54:48.812+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:54:48.816+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:54:48.818+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:54:48.855+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-23T01:54:48.862+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:54:48.864+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:54:48.867+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:54:48.869+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:54:50.350+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-23T01:54:50.364+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:54:50.366+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:58:54.964+08:00 [reload] config change detected; evaluating reload (channels.openclaw-weixin.systemPrompt)
+2026-03-23T01:58:54.971+08:00 [gateway/channels] restarting openclaw-weixin channel
+2026-03-23T01:59:03.253+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:59:03.262+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:59:03.264+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:59:03.267+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:59:03.271+08:00 [reload] config hot reload applied (channels.openclaw-weixin.systemPrompt)
+2026-03-23T01:59:45.835+08:00 [gateway] signal SIGTERM received
+2026-03-23T01:59:45.843+08:00 [gateway] received SIGTERM; shutting down
+2026-03-23T01:59:55.934+08:00 [gateway] [plugins] loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (plugin=openclaw-weixin, source=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:59:55.963+08:00 [canvas] host mounted at http://127.0.0.1:18789/__openclaw__/canvas/ (root /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/canvas)
+2026-03-23T01:59:56.025+08:00 [heartbeat] started
+2026-03-23T01:59:56.032+08:00 [health-monitor] started (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)
+2026-03-23T01:59:56.035+08:00 [gateway] agent model: iflow/deepseek-v3.2
+2026-03-23T01:59:56.037+08:00 [gateway] listening on ws://127.0.0.1:18789, ws://[::1]:18789 (PID 87271)
+2026-03-23T01:59:56.042+08:00 [gateway] log file: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:59:56.048+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:59:56.050+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T01:59:56.086+08:00 [browser/server] Browser control listening on http://127.0.0.1:18791/ (auth=token)
+2026-03-23T01:59:56.094+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] starting weixin provider (https://ilinkai.weixin.qq.com)
+2026-03-23T01:59:56.096+08:00 [openclaw-weixin] [e2b5d71c1715-im-bot] weixin logs: /tmp/openclaw/openclaw-2026-03-23.log
+2026-03-23T01:59:56.099+08:00 [openclaw-weixin] weixin monitor started (https://ilinkai.weixin.qq.com, account=e2b5d71c1715-im-bot)
+2026-03-23T01:59:56.101+08:00 [openclaw-weixin] [weixin] resuming from previous sync buf (104 bytes)
+2026-03-23T01:59:58.094+08:00 [telegram] [default] starting provider (@carven_OpenClaw_Bot)
+2026-03-23T01:59:58.108+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T01:59:58.112+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T04:03:55.586+08:00 [openclaw-weixin] [weixin] config cached for o9cq809N3jZD1D6m8h0NEdQYU7Fs@im.wechat
+2026-03-23T08:55:43.802+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T08:55:43.805+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)
+2026-03-23T17:45:30.305+08:00 [telegram] autoSelectFamily=true (default-node22)
+2026-03-23T17:45:30.315+08:00 [telegram] dnsResultOrder=ipv4first (default-node22)

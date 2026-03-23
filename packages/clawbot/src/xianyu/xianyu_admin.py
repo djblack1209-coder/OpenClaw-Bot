@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +54,13 @@ def _get_ctx():
 def dashboard(date: str = ""):
     ctx = _get_ctx()
     if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = now_et().strftime("%Y-%m-%d")
     stats = ctx.daily_stats(date)
 
     # 最近 7 天趋势
     trend = []
     for i in range(6, -1, -1):
-        d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        d = (now_et() - timedelta(days=i)).strftime("%Y-%m-%d")
         trend.append(ctx.daily_stats(d))
 
     return {"today": stats, "trend": trend}
@@ -190,7 +191,7 @@ def system_status():
         status["cookie_ok"] = getattr(_live, '_cookie_ok', False)
         status["last_heartbeat"] = getattr(_live, 'last_hb_resp', 0)
         status["token_age_s"] = int(
-            (datetime.now().timestamp() - getattr(_live, 'token_ts', 0))
+            (now_et().timestamp() - getattr(_live, 'token_ts', 0))
         ) if getattr(_live, 'token_ts', 0) > 0 else -1
         status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
     return status

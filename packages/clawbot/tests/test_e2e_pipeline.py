@@ -8,6 +8,8 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 
+from src.utils import now_et
+
 from src.models import TradeProposal
 from src.auto_trader import TradingPipeline, AutoTrader
 from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
@@ -38,8 +40,8 @@ def risk_manager():
     )
     rm = RiskManager(config=config, journal=None)
     # Pin the date so _refresh_today_pnl doesn't hit a real journal
-    rm._last_pnl_update = datetime.now().strftime("%Y-%m-%d")
-    rm._last_refresh_ts = datetime.now()
+    rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
+    rm._last_refresh_ts = now_et()
     return rm
 
 
@@ -384,7 +386,7 @@ class TestPipelineExtremeMarketHalt:
     async def test_extreme_cooldown_expires(self, pipeline, risk_manager):
         """After cooldown period, trades should be allowed again."""
         # Set extreme event in the past (beyond cooldown)
-        risk_manager._last_extreme_time = datetime.now() - timedelta(minutes=61)
+        risk_manager._last_extreme_time = now_et() - timedelta(minutes=61)
 
         assert risk_manager.is_in_extreme_cooldown() is False
 

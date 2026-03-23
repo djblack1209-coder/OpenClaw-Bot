@@ -9,16 +9,16 @@ def test_format_notice_keeps_uniform_layout():
     )
 
     assert text.splitlines()[0] == "OpenClaw 提现提醒"
-    assert "- 单子: Expensify/App#84449" in text
-    assert text.rstrip().endswith("https://github.com/Expensify/App/issues/84449")
+    assert " · 单子  Expensify/App#84449" in text
+    assert " 🔗 https://github.com/Expensify/App/issues/84449" in text
 
 
 def test_format_trade_submitted_uses_consistent_bullets():
     text = format_trade_submitted("buy", "nvda", 3, 12345, status="Submitted")
 
-    assert text.startswith("交易待成交")
-    assert "- 动作: BUY NVDA x3" in text
-    assert "- 订单: #12345" in text
+    assert text.startswith("🟢 挂单")
+    assert "BUY NVDA x3" in text
+    assert " · 订单号  #12345" in text
 
 
 def test_format_digest_uses_announcement_style_sections():
@@ -32,7 +32,7 @@ def test_format_digest_uses_announcement_style_sections():
         footer="更多详情请查看原文链接。",
     )
 
-    assert text.splitlines()[0] == "OpenClaw「科技早报」2026年03月08日"
+    assert text.splitlines()[0] == "📢  OpenClaw「科技早报」2026年03月08日"
     assert "今日聚焦 AI 与自动化两条主线。" in text
     assert "【AI】" in text
     assert "详情：https://example.com/ai" in text
@@ -48,6 +48,6 @@ def test_format_announcement_supports_links_block():
         footer="如需继续追踪，可稍后再次扫描。",
     )
 
-    assert text.startswith("OpenClaw「资讯快讯」NVIDIA")
-    assert "【直达链接】" in text
+    assert text.startswith("📢  OpenClaw「资讯快讯」NVIDIA")
+    assert "🔗 直达" in text
     assert text.rstrip().endswith("如需继续追踪，可稍后再次扫描。")

@@ -2,8 +2,8 @@
 
 _Learn about the person you're helping. Update this as you go._
 
-- **Name:** Boss
-- **What to call them:** Boss
+- **Name:** 严总
+- **What to call them:** 严总
 - **Pronouns:** _(optional)_
 - **Timezone:** Asia/Shanghai
 - **Notes:**

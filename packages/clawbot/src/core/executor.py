@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import httpx
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +362,7 @@ class MultiPathExecutor:
                 {
                     "description": task_description,
                     "context_keys": list(context.keys()),
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_et().isoformat(),
                 },
                 source="executor",
             )

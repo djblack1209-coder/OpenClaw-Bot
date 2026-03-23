@@ -2175,3 +2175,334 @@ Command not found
 2026-03-19T12:57:48.842+08:00 Invalid config at /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json:\n- skills: Unrecognized key: "aliases"
 2026-03-19T12:57:48.854+08:00 [gateway] shutdown error: Error: Invalid config at /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json:
 - skills: Unrecognized key: "aliases"
+2026-03-23T01:35:12.591+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:35:12.695+08:00 Config overwrite: /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json (sha256 27b18c2adf45e4651025e810f8731f729632cd75056fae11f9280e2f5a3b38d3 -> b8f0864cd830dc4afa9667efaf73b017780f0786ead0a1a51acaa103cf4e9a18, backup=/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json.bak)
+2026-03-23T01:35:12.744+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:35:12.910+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:36:33.770+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=gpt-5.2-codex provider=xapi error=HTTP 401: Your authentication token has been invalidated. Please try signing in again.
+2026-03-23T01:36:33.796+08:00 [agent/embedded] embedded run failover decision: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f stage=assistant decision=fallback_model reason=auth provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:36:33.801+08:00 [diagnostic] lane task error: lane=nested durationMs=80838 error="FailoverError: HTTP 401: Your authentication token has been invalidated. Please try signing in again."
+2026-03-23T01:36:33.803+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=80845 error="FailoverError: HTTP 401: Your authentication token has been invalidated. Please try signing in again."
+2026-03-23T01:36:33.810+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=auth next=openai/gpt-5.4
+2026-03-23T01:36:49.499+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=gpt-5.4 provider=openai error=HTTP 401: Your authentication token has been invalidated. Please try signing in again.
+2026-03-23T01:36:49.526+08:00 [agent/embedded] auth profile failure state updated: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f profile=sha256:f7d43a588b65 provider=openai reason=auth window=cooldown reused=false
+2026-03-23T01:36:49.532+08:00 [agent/embedded] embedded run failover decision: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f stage=assistant decision=fallback_model reason=auth provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:36:49.535+08:00 [diagnostic] lane task error: lane=nested durationMs=15716 error="FailoverError: HTTP 401: Your authentication token has been invalidated. Please try signing in again."
+2026-03-23T01:36:49.537+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=15721 error="FailoverError: HTTP 401: Your authentication token has been invalidated. Please try signing in again."
+2026-03-23T01:36:49.542+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=auth next=kiro_local/deepseek-3.2
+2026-03-23T01:36:51.027+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:36:54.414+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:36:59.813+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:37:00.959+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:37:05.909+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:37:09.309+08:00 [agent/embedded] embedded run agent end: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:37:09.333+08:00 [agent/embedded] embedded run failover decision: runId=e45bdce8-459f-42a3-86e1-209bc0bffa1f stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:37:09.337+08:00 [diagnostic] lane task error: lane=nested durationMs=19784 error="FailoverError: LLM request timed out."
+2026-03-23T01:37:09.340+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=19791 error="FailoverError: LLM request timed out."
+2026-03-23T01:37:09.345+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:37:13.017+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:37:24.235+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:37:24.264+08:00 [agent/embedded] embedded run failover decision: runId=090d87d3-f4d7-48f9-81da-7f311492594b stage=assistant decision=fallback_model reason=timeout provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:37:24.267+08:00 [diagnostic] lane task error: lane=main durationMs=26551 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:37:24.270+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=26557 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:37:24.275+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=timeout next=openai/gpt-5.4
+2026-03-23T01:37:27.342+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:37:32.275+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:37:39.708+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:37:50.998+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:37:51.027+08:00 [agent/embedded] embedded run failover decision: runId=090d87d3-f4d7-48f9-81da-7f311492594b stage=assistant decision=fallback_model reason=timeout provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:37:51.030+08:00 [diagnostic] lane task error: lane=main durationMs=26744 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:37:51.033+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=26751 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:37:51.039+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=timeout next=kiro_local/deepseek-3.2
+2026-03-23T01:37:52.495+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:37:55.896+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:38:01.152+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:38:10.666+08:00 [agent/embedded] embedded run agent end: runId=090d87d3-f4d7-48f9-81da-7f311492594b isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:38:10.694+08:00 [agent/embedded] embedded run failover decision: runId=090d87d3-f4d7-48f9-81da-7f311492594b stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:38:10.697+08:00 [diagnostic] lane task error: lane=main durationMs=19648 error="FailoverError: LLM request timed out."
+2026-03-23T01:38:10.700+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=19654 error="FailoverError: LLM request timed out."
+2026-03-23T01:38:10.705+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:38:10.708+08:00 Embedded agent failed before reply: All models failed (3): xapi/gpt-5.2-codex: 500 auth_unavailable: no auth available (timeout) | openai/gpt-5.4: 500 auth_unavailable: no auth available (timeout) | kiro_local/deepseek-3.2: LLM request timed out. (timeout)
+2026-03-23T01:38:14.415+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:38:19.437+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:38:26.591+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:38:38.137+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:38:38.162+08:00 [agent/embedded] embedded run failover decision: runId=ec770c4d-0250-42a0-8890-df9b241a0723 stage=assistant decision=fallback_model reason=timeout provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:38:38.165+08:00 [diagnostic] lane task error: lane=main durationMs=27137 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:38:38.169+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=27144 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:38:38.174+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=timeout next=openai/gpt-5.4
+2026-03-23T01:38:41.474+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:38:46.518+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:38:54.597+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:39:06.632+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:39:06.659+08:00 [agent/embedded] embedded run failover decision: runId=ec770c4d-0250-42a0-8890-df9b241a0723 stage=assistant decision=fallback_model reason=timeout provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:39:06.663+08:00 [diagnostic] lane task error: lane=main durationMs=28476 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:39:06.666+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=28484 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:39:06.671+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=timeout next=kiro_local/deepseek-3.2
+2026-03-23T01:39:07.941+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:39:11.227+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:39:16.552+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:39:25.802+08:00 [agent/embedded] embedded run agent end: runId=ec770c4d-0250-42a0-8890-df9b241a0723 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:39:25.819+08:00 [agent/embedded] embedded run failover decision: runId=ec770c4d-0250-42a0-8890-df9b241a0723 stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:39:25.821+08:00 [diagnostic] lane task error: lane=main durationMs=19140 error="FailoverError: LLM request timed out."
+2026-03-23T01:39:25.823+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=19146 error="FailoverError: LLM request timed out."
+2026-03-23T01:39:25.827+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:39:25.829+08:00 Embedded agent failed before reply: All models failed (3): xapi/gpt-5.2-codex: 500 auth_unavailable: no auth available (timeout) | openai/gpt-5.4: 500 auth_unavailable: no auth available (timeout) | kiro_local/deepseek-3.2: LLM request timed out. (timeout)
+2026-03-23T01:39:29.087+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:39:33.713+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:39:40.910+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:39:51.903+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:39:51.928+08:00 [agent/embedded] embedded run failover decision: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 stage=assistant decision=fallback_model reason=timeout provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:39:51.933+08:00 [diagnostic] lane task error: lane=nested durationMs=25698 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:39:51.936+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:76d73a4e-38e2-46d6-af39-eb186952f6f7 durationMs=25706 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:39:51.942+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=timeout next=openai/gpt-5.4
+2026-03-23T01:39:54.988+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:39:59.699+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:40:06.849+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:40:17.808+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:40:17.828+08:00 [agent/embedded] embedded run failover decision: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 stage=assistant decision=fallback_model reason=timeout provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:40:17.833+08:00 [diagnostic] lane task error: lane=nested durationMs=25878 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:40:17.836+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:76d73a4e-38e2-46d6-af39-eb186952f6f7 durationMs=25886 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:40:17.843+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=timeout next=kiro_local/deepseek-3.2
+2026-03-23T01:40:19.168+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:40:22.466+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:40:27.808+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:40:37.156+08:00 [agent/embedded] embedded run agent end: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:40:37.166+08:00 [agent/embedded] embedded run failover decision: runId=f0e81c76-ba12-43e1-b95a-64236fcbe261 stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:40:37.169+08:00 [diagnostic] lane task error: lane=nested durationMs=19315 error="FailoverError: LLM request timed out."
+2026-03-23T01:40:37.170+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:76d73a4e-38e2-46d6-af39-eb186952f6f7 durationMs=19321 error="FailoverError: LLM request timed out."
+2026-03-23T01:40:37.173+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:40:40.870+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:40:45.974+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:40:53.323+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:41:04.697+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:41:04.713+08:00 [agent/embedded] embedded run failover decision: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 stage=assistant decision=fallback_model reason=timeout provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:41:04.716+08:00 [diagnostic] lane task error: lane=main durationMs=27433 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:41:04.718+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=27437 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:41:04.721+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=timeout next=openai/gpt-5.4
+2026-03-23T01:41:08.128+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:41:13.179+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:41:20.821+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:41:32.174+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:41:32.193+08:00 [agent/embedded] embedded run failover decision: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 stage=assistant decision=fallback_model reason=timeout provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:41:32.197+08:00 [diagnostic] lane task error: lane=main durationMs=27468 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:41:32.199+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=27473 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:41:32.205+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=timeout next=kiro_local/deepseek-3.2
+2026-03-23T01:41:33.579+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:41:36.959+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:41:42.232+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:41:51.632+08:00 [agent/embedded] embedded run agent end: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:41:51.652+08:00 [agent/embedded] embedded run failover decision: runId=858ffcac-07d8-4f8f-846d-b3769b62bb14 stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:41:51.656+08:00 [diagnostic] lane task error: lane=main durationMs=19439 error="FailoverError: LLM request timed out."
+2026-03-23T01:41:51.659+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=19447 error="FailoverError: LLM request timed out."
+2026-03-23T01:41:51.666+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:41:51.669+08:00 Embedded agent failed before reply: All models failed (3): xapi/gpt-5.2-codex: 500 auth_unavailable: no auth available (timeout) | openai/gpt-5.4: 500 auth_unavailable: no auth available (timeout) | kiro_local/deepseek-3.2: LLM request timed out. (timeout)
+2026-03-23T01:41:54.761+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:41:59.266+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:42:05.954+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:42:16.771+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.2-codex provider=xapi error=500 auth_unavailable: no auth available
+2026-03-23T01:42:16.793+08:00 [agent/embedded] embedded run failover decision: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 stage=assistant decision=fallback_model reason=timeout provider=xapi/gpt-5.2-codex profile=-
+2026-03-23T01:42:16.798+08:00 [diagnostic] lane task error: lane=nested durationMs=25078 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:42:16.802+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6 durationMs=25085 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:42:16.808+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=xapi/gpt-5.2-codex reason=timeout next=openai/gpt-5.4
+2026-03-23T01:42:19.522+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:42:24.154+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:42:30.982+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:42:41.920+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=gpt-5.4 provider=openai error=500 auth_unavailable: no auth available
+2026-03-23T01:42:41.937+08:00 [agent/embedded] embedded run failover decision: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 stage=assistant decision=fallback_model reason=timeout provider=openai/gpt-5.4 profile=sha256:f7d43a588b65
+2026-03-23T01:42:41.939+08:00 [diagnostic] lane task error: lane=nested durationMs=25120 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:42:41.941+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6 durationMs=25126 error="FailoverError: 500 auth_unavailable: no auth available"
+2026-03-23T01:42:41.945+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=openai/gpt-5.4 reason=timeout next=kiro_local/deepseek-3.2
+2026-03-23T01:42:43.423+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:42:46.920+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:42:52.394+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:43:01.876+08:00 [agent/embedded] embedded run agent end: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 isError=true model=deepseek-3.2 provider=kiro_local error=LLM request timed out.
+2026-03-23T01:43:01.887+08:00 [agent/embedded] embedded run failover decision: runId=8943a512-5f89-4776-ba94-8e58c6b741d2 stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-23T01:43:01.889+08:00 [diagnostic] lane task error: lane=nested durationMs=19935 error="FailoverError: LLM request timed out."
+2026-03-23T01:43:01.891+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:f9e21eb0-c32e-430e-b0e2-f28424c7c8e6 durationMs=19940 error="FailoverError: LLM request timed out."
+2026-03-23T01:43:01.895+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=xapi/gpt-5.2-codex candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-23T01:43:16.852+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:43:16.940+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:43:31.767+08:00 [tools] browser failed: Error: Could not connect to Chrome. Check if Chrome is running.
+Cause: Could not find DevToolsActivePort for chrome at /Users/blackdj/Library/Application Support/Google/Chrome/DevToolsActivePort
+2026-03-23T01:43:36.161+08:00 [tools] browser failed: Error: Could not connect to Chrome. Check if Chrome is running.
+Cause: Could not find DevToolsActivePort for chrome at /Users/blackdj/Library/Application Support/Google/Chrome/DevToolsActivePort
+2026-03-23T01:43:47.347+08:00 [tools] web_search failed: Perplexity API error (402): {"error":{"message":"This request requires more credits, or fewer max_tokens. You requested up to 8000 tokens, but can only afford 1933. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account","code":402,"metadata":{"provider_name":null}},"user_id":"user_3AvRrQEU85D12HAgV3obBRp0VS4"}
+2026-03-23T01:43:49.838+08:00 [security] blocked URL fetch (url-fetch) target=https://news.ycombinator.com/ reason=Blocked: resolves to private/internal/special-use IP address
+2026-03-23T01:43:49.848+08:00 [tools] web_fetch failed: Blocked: resolves to private/internal/special-use IP address
+2026-03-23T01:43:57.840+08:00 [security] blocked URL fetch (url-fetch) target=https://www.producthunt.com/ reason=Blocked: resolves to private/internal/special-use IP address
+2026-03-23T01:43:57.850+08:00 [tools] web_fetch failed: Blocked: resolves to private/internal/special-use IP address
+2026-03-23T01:47:22.903+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:47:22.984+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:47:28.924+08:00 [tools] exec failed: zsh:1: no such file or directory: /brief
+
+Command not found
+2026-03-23T01:47:33.842+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-23T01:47:43.229+08:00 [memory] embeddings rate limited; retrying in 509ms
+2026-03-23T01:47:43.349+08:00 [memory] embeddings rate limited; retrying in 555ms
+2026-03-23T01:47:43.353+08:00 [memory] embeddings rate limited; retrying in 572ms
+2026-03-23T01:47:43.359+08:00 [memory] embeddings rate limited; retrying in 516ms
+2026-03-23T01:47:43.931+08:00 [memory] embeddings rate limited; retrying in 1183ms
+2026-03-23T01:47:44.085+08:00 [memory] embeddings rate limited; retrying in 1170ms
+2026-03-23T01:47:44.122+08:00 [memory] embeddings rate limited; retrying in 1174ms
+2026-03-23T01:47:44.132+08:00 [memory] embeddings rate limited; retrying in 1087ms
+2026-03-23T01:47:45.319+08:00 [memory] embeddings rate limited; retrying in 2047ms
+2026-03-23T01:47:45.422+08:00 [memory] embeddings rate limited; retrying in 2350ms
+2026-03-23T01:47:45.452+08:00 [memory] embeddings rate limited; retrying in 2201ms
+2026-03-23T01:47:45.534+08:00 [memory] embeddings rate limited; retrying in 2045ms
+2026-03-23T01:47:47.981+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603221747174106686399dXuhS9)","type":"new_api_error"}}
+2026-03-23T01:47:47.987+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603221747174106686399dXuhS9)","type":"new_api_error"}}
+2026-03-23T01:54:48.600+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:54:48.726+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:59:55.865+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T01:59:55.931+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-23T02:00:53.990+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-23T02:30:54.441+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-23T03:00:55.893+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-23T03:12:21.826+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-23T03:31:08.599+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-23T04:01:14.309+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-23T05:00:25.603+08:00 [memory] embeddings rate limited; retrying in 543ms
+2026-03-23T05:00:25.903+08:00 [memory] embeddings rate limited; retrying in 510ms
+2026-03-23T05:00:25.920+08:00 [memory] embeddings rate limited; retrying in 532ms
+2026-03-23T05:00:25.927+08:00 [memory] embeddings rate limited; retrying in 580ms
+2026-03-23T05:00:26.343+08:00 [memory] embeddings rate limited; retrying in 1159ms
+2026-03-23T05:00:26.611+08:00 [memory] embeddings rate limited; retrying in 1191ms
+2026-03-23T05:00:26.645+08:00 [memory] embeddings rate limited; retrying in 1029ms
+2026-03-23T05:00:26.714+08:00 [memory] embeddings rate limited; retrying in 1192ms
+2026-03-23T05:00:27.699+08:00 [memory] embeddings rate limited; retrying in 2117ms
+2026-03-23T05:00:27.870+08:00 [memory] embeddings rate limited; retrying in 2222ms
+2026-03-23T05:00:28.014+08:00 [memory] embeddings rate limited; retrying in 2002ms
+2026-03-23T05:00:28.110+08:00 [memory] embeddings rate limited; retrying in 2038ms
+2026-03-23T05:00:30.366+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260322205959301676536bUM8dr4N)","type":"new_api_error"}}
+2026-03-23T05:00:30.373+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260322205959301676536bUM8dr4N)","type":"new_api_error"}}
+2026-03-23T05:02:33.671+08:00 [memory] embeddings rate limited; retrying in 568ms
+2026-03-23T05:02:33.686+08:00 [memory] embeddings rate limited; retrying in 595ms
+2026-03-23T05:02:33.703+08:00 [memory] embeddings rate limited; retrying in 565ms
+2026-03-23T05:02:33.721+08:00 [memory] embeddings rate limited; retrying in 531ms
+2026-03-23T05:02:34.480+08:00 [memory] embeddings rate limited; retrying in 1140ms
+2026-03-23T05:02:34.508+08:00 [memory] embeddings rate limited; retrying in 1080ms
+2026-03-23T05:02:34.544+08:00 [memory] embeddings rate limited; retrying in 1117ms
+2026-03-23T05:02:34.568+08:00 [memory] embeddings rate limited; retrying in 1057ms
+2026-03-23T05:02:35.960+08:00 [memory] embeddings rate limited; retrying in 2324ms
+2026-03-23T05:02:35.984+08:00 [memory] embeddings rate limited; retrying in 2197ms
+2026-03-23T05:02:36.010+08:00 [memory] embeddings rate limited; retrying in 2020ms
+2026-03-23T05:02:36.031+08:00 [memory] embeddings rate limited; retrying in 2396ms
+2026-03-23T05:02:38.980+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260322210208227819186l0xfvnGE)","type":"new_api_error"}}
+2026-03-23T08:00:54.183+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-23T08:00:56.199+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-23T08:00:58.218+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-23T08:00:58.225+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-23T08:01:27.249+08:00 [agent/embedded] embedded run agent end: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-23T08:01:28.247+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-23T08:01:30.269+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-23T08:01:30.588+08:00 [agent/embedded] embedded run agent end: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-23T08:01:32.287+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-23T08:01:32.293+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-23T08:01:35.891+08:00 [agent/embedded] embedded run agent end: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-23T08:01:45.327+08:00 [agent/embedded] embedded run agent end: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-23T08:01:45.359+08:00 [agent/embedded] embedded run failover decision: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-23T08:01:45.366+08:00 [diagnostic] lane task error: lane=main durationMs=105214 error="FailoverError: LLM request timed out."
+2026-03-23T08:01:45.369+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=105223 error="FailoverError: LLM request timed out."
+2026-03-23T08:01:45.377+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=timeout next=iflow/qwen3-235b-a22b-instruct
+2026-03-23T08:01:46.780+08:00 [agent/embedded] embedded run agent end: runId=5f9af7b7-5e82-4be5-81dd-178f613090e1 isError=true model=qwen3-235b-a22b-instruct provider=iflow error=LLM request timed out.
+2026-03-23T08:01:57.450+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-23T08:55:06.098+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-23T08:55:07.562+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief'
+2026-03-23T08:55:19.024+08:00 [tools] exec failed: zsh:1: no such file or directory: ./brief
+
+Command not found
+2026-03-23T08:55:36.340+08:00 [memory] embeddings rate limited; retrying in 547ms
+2026-03-23T08:55:36.445+08:00 [memory] embeddings rate limited; retrying in 541ms
+2026-03-23T08:55:36.564+08:00 [memory] embeddings rate limited; retrying in 544ms
+2026-03-23T08:55:36.586+08:00 [memory] embeddings rate limited; retrying in 538ms
+2026-03-23T08:55:37.108+08:00 [memory] embeddings rate limited; retrying in 1080ms
+2026-03-23T08:55:37.208+08:00 [memory] embeddings rate limited; retrying in 1120ms
+2026-03-23T08:55:37.321+08:00 [memory] embeddings rate limited; retrying in 1006ms
+2026-03-23T08:55:37.331+08:00 [memory] embeddings rate limited; retrying in 1045ms
+2026-03-23T08:55:38.398+08:00 [memory] embeddings rate limited; retrying in 2112ms
+2026-03-23T08:55:38.544+08:00 [memory] embeddings rate limited; retrying in 2124ms
+2026-03-23T08:55:38.553+08:00 [memory] embeddings rate limited; retrying in 2077ms
+2026-03-23T08:55:38.594+08:00 [memory] embeddings rate limited; retrying in 2045ms
+2026-03-23T08:55:40.881+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323005509458839085ZZtE4oc3)","type":"new_api_error"}}
+2026-03-23T08:55:40.887+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323005509458839085ZZtE4oc3)","type":"new_api_error"}}
+2026-03-23T10:00:07.814+08:00 [memory] embeddings rate limited; retrying in 549ms
+2026-03-23T10:00:08.046+08:00 [memory] embeddings rate limited; retrying in 549ms
+2026-03-23T10:00:08.052+08:00 [memory] embeddings rate limited; retrying in 598ms
+2026-03-23T10:00:08.057+08:00 [memory] embeddings rate limited; retrying in 504ms
+2026-03-23T10:00:08.578+08:00 [memory] embeddings rate limited; retrying in 1040ms
+2026-03-23T10:00:08.785+08:00 [memory] embeddings rate limited; retrying in 1033ms
+2026-03-23T10:00:08.797+08:00 [memory] embeddings rate limited; retrying in 1093ms
+2026-03-23T10:00:08.860+08:00 [memory] embeddings rate limited; retrying in 1190ms
+2026-03-23T10:00:09.828+08:00 [memory] embeddings rate limited; retrying in 2249ms
+2026-03-23T10:00:10.036+08:00 [memory] embeddings rate limited; retrying in 2155ms
+2026-03-23T10:00:10.112+08:00 [memory] embeddings rate limited; retrying in 2102ms
+2026-03-23T10:00:10.263+08:00 [memory] embeddings rate limited; retrying in 2023ms
+2026-03-23T10:00:12.483+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323015940935167252vxAvTa9m)","type":"new_api_error"}}
+2026-03-23T10:00:12.491+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323015940935167252vxAvTa9m)","type":"new_api_error"}}
+2026-03-23T11:00:06.203+08:00 [memory] embeddings rate limited; retrying in 574ms
+2026-03-23T11:00:06.415+08:00 [memory] embeddings rate limited; retrying in 580ms
+2026-03-23T11:00:06.425+08:00 [memory] embeddings rate limited; retrying in 574ms
+2026-03-23T11:00:06.432+08:00 [memory] embeddings rate limited; retrying in 507ms
+2026-03-23T11:00:07.006+08:00 [memory] embeddings rate limited; retrying in 1023ms
+2026-03-23T11:00:07.162+08:00 [memory] embeddings rate limited; retrying in 1034ms
+2026-03-23T11:00:07.214+08:00 [memory] embeddings rate limited; retrying in 1184ms
+2026-03-23T11:00:07.224+08:00 [memory] embeddings rate limited; retrying in 1046ms
+2026-03-23T11:00:08.236+08:00 [memory] embeddings rate limited; retrying in 2073ms
+2026-03-23T11:00:08.413+08:00 [memory] embeddings rate limited; retrying in 2161ms
+2026-03-23T11:00:08.491+08:00 [memory] embeddings rate limited; retrying in 2051ms
+2026-03-23T11:00:08.621+08:00 [memory] embeddings rate limited; retrying in 2192ms
+2026-03-23T11:00:09.876+08:00 [tools] read failed: EISDIR: illegal operation on a directory, read
+2026-03-23T11:00:11.031+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603230259396859504864WTe2mV)","type":"new_api_error"}}
+2026-03-23T13:00:24.810+08:00 [tools] exec failed: === 系统状态检查 ===
+Mon Mar 23 13:00:24 CST 2026
+=== 内存使用 ===
+zsh:1: command not found: free
+
+Command not found
+2026-03-23T13:00:29.833+08:00 [memory] embeddings rate limited; retrying in 509ms
+2026-03-23T13:00:29.955+08:00 [memory] embeddings rate limited; retrying in 523ms
+2026-03-23T13:00:29.977+08:00 [memory] embeddings rate limited; retrying in 598ms
+2026-03-23T13:00:29.982+08:00 [memory] embeddings rate limited; retrying in 556ms
+2026-03-23T13:00:30.565+08:00 [memory] embeddings rate limited; retrying in 1087ms
+2026-03-23T13:00:30.680+08:00 [memory] embeddings rate limited; retrying in 1125ms
+2026-03-23T13:00:30.760+08:00 [memory] embeddings rate limited; retrying in 1030ms
+2026-03-23T13:00:30.769+08:00 [memory] embeddings rate limited; retrying in 1099ms
+2026-03-23T13:00:31.879+08:00 [memory] embeddings rate limited; retrying in 2182ms
+2026-03-23T13:00:32.015+08:00 [memory] embeddings rate limited; retrying in 2264ms
+2026-03-23T13:00:32.026+08:00 [memory] embeddings rate limited; retrying in 2061ms
+2026-03-23T13:00:32.093+08:00 [memory] embeddings rate limited; retrying in 2240ms
+2026-03-23T13:00:34.548+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323050002620595735h6OcCa7Y)","type":"new_api_error"}}
+2026-03-23T14:00:07.576+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/risk/SKILL.md'
+2026-03-23T15:00:06.238+08:00 [memory] embeddings rate limited; retrying in 548ms
+2026-03-23T15:00:06.296+08:00 [memory] embeddings rate limited; retrying in 535ms
+2026-03-23T15:00:06.452+08:00 [memory] embeddings rate limited; retrying in 592ms
+2026-03-23T15:00:06.480+08:00 [memory] embeddings rate limited; retrying in 567ms
+2026-03-23T15:00:07.020+08:00 [memory] embeddings rate limited; retrying in 1184ms
+2026-03-23T15:00:07.046+08:00 [memory] embeddings rate limited; retrying in 1133ms
+2026-03-23T15:00:07.269+08:00 [memory] embeddings rate limited; retrying in 1117ms
+2026-03-23T15:00:07.280+08:00 [memory] embeddings rate limited; retrying in 1059ms
+2026-03-23T15:00:08.408+08:00 [memory] embeddings rate limited; retrying in 2114ms
+2026-03-23T15:00:08.421+08:00 [memory] embeddings rate limited; retrying in 2043ms
+2026-03-23T15:00:08.551+08:00 [memory] embeddings rate limited; retrying in 2148ms
+2026-03-23T15:00:08.600+08:00 [memory] embeddings rate limited; retrying in 2299ms
+2026-03-23T15:00:11.122+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323065938846169961Ks4N9Bsa)","type":"new_api_error"}}
+2026-03-23T15:35:06.802+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-23T15:35:21.448+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief'
+2026-03-23T16:00:09.447+08:00 [memory] embeddings rate limited; retrying in 535ms
+2026-03-23T16:00:09.455+08:00 [memory] embeddings rate limited; retrying in 560ms
+2026-03-23T16:00:09.463+08:00 [memory] embeddings rate limited; retrying in 526ms
+2026-03-23T16:00:09.470+08:00 [memory] embeddings rate limited; retrying in 591ms
+2026-03-23T16:00:10.191+08:00 [memory] embeddings rate limited; retrying in 1049ms
+2026-03-23T16:00:10.202+08:00 [memory] embeddings rate limited; retrying in 1161ms
+2026-03-23T16:00:10.225+08:00 [memory] embeddings rate limited; retrying in 1121ms
+2026-03-23T16:00:10.262+08:00 [memory] embeddings rate limited; retrying in 1153ms
+2026-03-23T16:00:11.461+08:00 [memory] embeddings rate limited; retrying in 2384ms
+2026-03-23T16:00:11.557+08:00 [memory] embeddings rate limited; retrying in 2269ms
+2026-03-23T16:00:11.573+08:00 [memory] embeddings rate limited; retrying in 2234ms
+2026-03-23T16:00:11.630+08:00 [memory] embeddings rate limited; retrying in 2360ms
+2026-03-23T16:00:14.192+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 2026032307594243450868I4xJUtG5)","type":"new_api_error"}}
+2026-03-23T17:45:28.164+08:00 [telegram] Polling stall detected (no getUpdates for 341.53s); forcing restart.
+2026-03-23T17:45:28.218+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 2.07s.
+2026-03-23T18:46:00.348+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-23T19:00:43.222+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/social/SOC-002-batch-20260314.md'

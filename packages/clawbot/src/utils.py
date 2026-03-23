@@ -73,6 +73,7 @@ def env_float(key: str, default: float) -> float:
 
 import json
 import logging
+from src.utils import now_et
 
 def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict = None):
     """

@@ -8,7 +8,7 @@ mod commands;
 mod models;
 mod utils;
 
-use commands::{clawbot, config, diagnostics, installer, process, service, mcp};
+use commands::{clawbot, clawbot_api, config, diagnostics, installer, process, service, mcp};
 
 fn main() {
     // 初始化日志 - 默认显示 info 级别日志
@@ -92,6 +92,58 @@ fn main() {
             mcp::get_mcp_plugins,
             mcp::save_mcp_plugin,
             mcp::toggle_mcp_plugin_status,
+            // ClawBot Internal API (FastAPI :18790)
+            clawbot_api::clawbot_api_ping,
+            clawbot_api::clawbot_api_status,
+            clawbot_api::clawbot_api_trading_positions,
+            clawbot_api::clawbot_api_trading_pnl,
+            clawbot_api::clawbot_api_trading_signals,
+            clawbot_api::clawbot_api_trading_system,
+            clawbot_api::clawbot_api_trading_vote,
+            clawbot_api::clawbot_api_social_status,
+            clawbot_api::clawbot_api_social_topics,
+            clawbot_api::clawbot_api_social_compose,
+            clawbot_api::clawbot_api_social_publish,
+            clawbot_api::clawbot_api_social_research,
+            clawbot_api::clawbot_api_social_metrics,
+            clawbot_api::clawbot_api_social_personas,
+            clawbot_api::clawbot_api_social_calendar,
+            // Social Autopilot
+            clawbot_api::clawbot_api_autopilot_status,
+            clawbot_api::clawbot_api_autopilot_start,
+            clawbot_api::clawbot_api_autopilot_stop,
+            clawbot_api::clawbot_api_autopilot_trigger,
+            // Social Drafts
+            clawbot_api::clawbot_api_social_drafts,
+            clawbot_api::clawbot_api_social_draft_update,
+            clawbot_api::clawbot_api_social_draft_delete,
+            clawbot_api::clawbot_api_social_draft_publish,
+            // Image Generation
+            clawbot_api::clawbot_api_generate_image,
+            clawbot_api::clawbot_api_generate_persona_photo,
+            clawbot_api::clawbot_api_memory_search,
+            clawbot_api::clawbot_api_memory_stats,
+            clawbot_api::clawbot_api_pool_stats,
+            // Evolution Engine
+            clawbot_api::clawbot_api_evolution_scan,
+            clawbot_api::clawbot_api_evolution_proposals,
+            clawbot_api::clawbot_api_evolution_gaps,
+            clawbot_api::clawbot_api_evolution_stats,
+            clawbot_api::clawbot_api_evolution_update_proposal,
+            // Shopping (比价引擎)
+            clawbot_api::clawbot_api_shopping_compare,
+            // OMEGA v2.0
+            clawbot_api::clawbot_api_omega_status,
+            clawbot_api::clawbot_api_omega_cost,
+            clawbot_api::clawbot_api_omega_events,
+            clawbot_api::clawbot_api_omega_audit,
+            clawbot_api::clawbot_api_omega_tasks,
+            clawbot_api::clawbot_api_omega_process,
+            clawbot_api::clawbot_api_omega_investment_team,
+            clawbot_api::clawbot_api_omega_investment_analyze,
+            clawbot_api::clawbot_api_omega_generate_image,
+            clawbot_api::clawbot_api_omega_generate_video,
+            clawbot_api::clawbot_api_omega_media_models,
         ])
         .run(tauri::generate_context!())
         .expect("运行 Tauri 应用时发生错误");

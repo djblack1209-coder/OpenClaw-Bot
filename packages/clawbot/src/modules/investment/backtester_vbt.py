@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class BacktestResult:
     alpha: float = 0.0
     best_params: Dict = field(default_factory=dict)
     details: Dict = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -143,7 +144,7 @@ class ComparisonResult:
     period: str
     results: List[BacktestResult] = field(default_factory=list)
     best_strategy: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     def to_telegram_text(self) -> str:
         if not self.results:

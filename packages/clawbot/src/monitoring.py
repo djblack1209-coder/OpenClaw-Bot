@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +287,7 @@ class StructuredLogger:
                 "total_errors": self._stats["total_errors"],
                 "model_usage": self._stats["model_usage"],
                 "daily_messages": self._stats["daily_messages"],
-                "last_saved": datetime.now().isoformat(),
+                "last_saved": now_et().isoformat(),
             }
             with open(self._metrics_path, 'w') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -296,7 +297,7 @@ class StructuredLogger:
     def log_message(self, bot_id: str, chat_id: int, user_id: int, text_length: int):
         """记录收到的消息 + Prometheus 指标"""
         self._stats["total_messages"] += 1
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_et().strftime("%Y-%m-%d")
         self._stats["daily_messages"][today] = self._stats["daily_messages"].get(today, 0) + 1
 
         # 对标 LiteLLM: Prometheus counter
@@ -388,7 +389,7 @@ class StructuredLogger:
 
     def _emit_jsonl(self, data: Dict[str, Any]):
         """写入结构化 JSONL 日志 + 自动轮转（对标 logrotate）"""
-        data["ts"] = datetime.now().isoformat()
+        data["ts"] = now_et().isoformat()
         try:
             self._rotate_jsonl(self._jsonl_path, self._max_jsonl_bytes, self._max_jsonl_backups)
             with open(self._jsonl_path, "a") as f:
@@ -422,7 +423,7 @@ class StructuredLogger:
         latencies = self._stats["api_latencies"]
         avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_et().strftime("%Y-%m-%d")
         today_messages = self._stats["daily_messages"].get(today, 0)
 
         return {
@@ -526,7 +527,7 @@ class TaskObserver:
         )
 
         record = {
-            "ts": datetime.now().isoformat(),
+            "ts": now_et().isoformat(),
             "task_id": task["task_id"],
             "task_type": task["task_type"],
             "bot_id": task["bot_id"],
@@ -575,7 +576,7 @@ class TaskObserver:
 
     def get_summary(self, days: int = 7) -> Dict[str, Any]:
         """获取近 N 天的任务可观测性摘要"""
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = now_et() - timedelta(days=days)
         cutoff_iso = cutoff.isoformat()
 
         by_type: Dict[str, Dict[str, Any]] = {}

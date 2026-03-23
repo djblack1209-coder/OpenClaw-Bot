@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Union
 from pathlib import Path
 from datetime import datetime
 import logging
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class MemoryTool:
     def remember(self, key: str, value: Any, category: str = "general") -> Dict[str, Any]:
         if category not in self.memories:
             self.memories[category] = {}
-        self.memories[category][key] = {"value": value, "time": datetime.now().isoformat()}
+        self.memories[category][key] = {"value": value, "time": now_et().isoformat()}
         self._save()
         return {"success": True, "key": key, "category": category}
     

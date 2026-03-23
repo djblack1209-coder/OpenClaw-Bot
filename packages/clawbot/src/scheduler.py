@@ -7,6 +7,7 @@ import asyncio
 from datetime import datetime, time, timedelta
 from typing import Callable, Dict, Any, Optional, List
 import logging
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 

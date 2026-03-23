@@ -6,6 +6,7 @@ import io
 import logging
 from datetime import datetime
 from typing import List, Optional
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class _ReportPDF(FPDF):
         self.set_y(-15)
         self.set_font(self._cjk_font, "", 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f"ClawBot | {datetime.now().strftime('%Y-%m-%d %H:%M')} | Page {self.page_no()}", align="C")
+        self.cell(0, 10, f"ClawBot | {now_et().strftime('%Y-%m-%d %H:%M')} | Page {self.page_no()}", align="C")
 
     def section_title(self, title: str):
         """节标题"""
@@ -166,7 +167,7 @@ def generate_daily_report(
     if not HAS_FPDF:
         raise RuntimeError("PDF 报告需要安装 fpdf2: pip install fpdf2")
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     pdf = _ReportPDF(title=f"ClawBot Daily Report — {today}")
     pdf.add_page()
 
@@ -235,7 +236,7 @@ def generate_trade_report(
     if not HAS_FPDF:
         raise RuntimeError("PDF 报告需要安装 fpdf2: pip install fpdf2")
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     pdf = _ReportPDF(title=f"Trade Report — {today}")
     pdf.add_page()
 

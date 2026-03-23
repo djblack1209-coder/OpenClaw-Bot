@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
+from src.utils import now_et
 
 
 class TestRiskCheckBlacklist:
@@ -25,14 +26,14 @@ class TestRiskCheckCooldown:
     """Check 1: Circuit breaker / cooldown."""
 
     def test_cooldown_blocks_trade(self, risk_manager):
-        risk_manager._cooldown_until = datetime.now() + timedelta(minutes=15)
+        risk_manager._cooldown_until = now_et() + timedelta(minutes=15)
         risk_manager._consecutive_losses = 3
         result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0)
         assert not result.approved
         assert "熔断" in result.reason
 
     def test_expired_cooldown_allows_trade(self, risk_manager):
-        risk_manager._cooldown_until = datetime.now() - timedelta(minutes=1)
+        risk_manager._cooldown_until = now_et() - timedelta(minutes=1)
         result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0, signal_score=50)
         assert result.approved
 
@@ -42,14 +43,14 @@ class TestRiskCheckDailyLoss:
 
     def test_daily_loss_exceeded_blocks(self, risk_manager):
         risk_manager._today_pnl = -200.0  # At limit
-        risk_manager._last_refresh_ts = datetime.now()  # Prevent refresh
+        risk_manager._last_refresh_ts = now_et()  # Prevent refresh
         result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0)
         assert not result.approved
         assert "日亏损限额" in result.reason
 
     def test_within_daily_limit_passes(self, risk_manager):
         risk_manager._today_pnl = -50.0
-        risk_manager._last_refresh_ts = datetime.now()
+        risk_manager._last_refresh_ts = now_et()
         result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0, signal_score=50)
         assert result.approved
 
@@ -278,7 +279,7 @@ class TestResetDaily:
         risk_manager._today_pnl = -150.0
         risk_manager._today_trades = 5
         risk_manager._consecutive_losses = 2
-        risk_manager._cooldown_until = datetime.now() + timedelta(minutes=10)
+        risk_manager._cooldown_until = now_et() + timedelta(minutes=10)
         risk_manager.reset_daily()
         assert risk_manager._today_pnl == 0.0
         assert risk_manager._today_trades == 0
@@ -311,3 +312,140 @@ class TestRiskScore:
             "AAPL", "BUY", 5, 150.0, 145.0, 162.0, 50, []
         )
         assert score_losing > score_clean
+
+
+# ============ 边界测试 (Boundary Tests) ============
+
+
+class TestCalcSafeQuantityBoundaries:
+    """Boundary tests for calc_safe_quantity edge cases."""
+
+    def test_entry_price_zero(self, risk_manager):
+        """entry_price=0 now returns error dict instead of ZeroDivisionError.
+
+        After fix HI-036: calc_safe_quantity guards against entry_price <= 0.
+        """
+        result = risk_manager.calc_safe_quantity(entry_price=0.0, stop_loss=5.0)
+        assert "error" in result
+        assert result["shares"] == 0
+
+    def test_capital_zero(self):
+        """total_capital=0 → returns error dict with shares=0.
+
+        After fix HI-036: early guard catches capital <= 0.
+        """
+        config = RiskConfig(total_capital=0.0)
+        rm = RiskManager(config=config)
+        result = rm.calc_safe_quantity(
+            entry_price=150.0, stop_loss=145.0,
+        )
+        assert "error" in result
+        assert result["shares"] == 0
+
+    def test_stop_loss_none_returns_error(self, risk_manager):
+        """stop_loss=None now returns error dict instead of TypeError.
+
+        After fix HI-036: calc_safe_quantity guards against None stop_loss.
+        """
+        result = risk_manager.calc_safe_quantity(entry_price=150.0, stop_loss=None)
+        assert "error" in result
+        assert result["shares"] == 0
+
+    def test_stop_loss_zero_returns_valid_result(self, risk_manager):
+        """stop_loss=0 → risk_per_share=150, shares_by_risk=1 (capped by risk).
+
+        Unlike stop_loss=None, zero is valid arithmetic and returns a result.
+        Capital=10000, max_risk=200, risk_per_share=150, shares_by_risk=1,
+        shares_by_position=int(3000/150)=20, min(1,20)=1.
+        """
+        result = risk_manager.calc_safe_quantity(
+            entry_price=150.0, stop_loss=0.0,
+        )
+        assert "shares" in result
+        assert result["shares"] == 1
+        assert result["max_loss"] == pytest.approx(150.0)
+
+
+class TestConsecutiveLossesCircuitBreaker:
+    """Consecutive losses trigger tiered cooldown and block trades."""
+
+    def test_consecutive_losses_circuit_breaker(self):
+        """3 consecutive losses → Tier2 cooldown → check_trade rejected.
+
+        RiskConfig defaults: tier2_losses=3, tiered_cooldown_enabled=True.
+        After 3 losses, _cooldown_until is set and all trades are blocked.
+        """
+        config = RiskConfig(
+            total_capital=10000.0,
+            daily_loss_limit=500.0,       # high limit so it doesn't interfere
+            tiered_cooldown_enabled=True,
+            tier2_losses=3,
+            tier2_cooldown_minutes=15,
+            trading_hours_enabled=False,
+            blacklist=[],
+        )
+        rm = RiskManager(config=config)
+        rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
+        rm._last_refresh_ts = now_et()
+
+        # Record exactly 3 consecutive losses
+        rm.record_trade_result(-10.0, "AAPL")
+        rm.record_trade_result(-15.0, "MSFT")
+        rm.record_trade_result(-20.0, "GOOG")
+
+        assert rm._consecutive_losses == 3
+        assert rm._cooldown_until is not None
+
+        # check_trade must be rejected
+        result = rm.check_trade(
+            "TSLA", "BUY", 5, 200.0, 190.0, 224.0, signal_score=60,
+        )
+        assert result.approved is False
+        assert "熔断" in result.reason
+
+
+class TestDailyLossLimitExactBoundary:
+    """Daily loss limit behavior at exact boundary value."""
+
+    def test_daily_loss_limit_exact_boundary(self):
+        """PnL exactly at -$100 with limit=$100 → trade blocked.
+
+        The check is `_today_pnl <= -daily_loss_limit`, so -100 <= -100 is True.
+        """
+        config = RiskConfig(
+            total_capital=10000.0,
+            daily_loss_limit=100.0,
+            trading_hours_enabled=False,
+            blacklist=[],
+        )
+        rm = RiskManager(config=config)
+        rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
+        rm._last_refresh_ts = now_et()
+        rm._today_pnl = -100.0  # exactly at limit
+
+        result = rm.check_trade(
+            "AAPL", "BUY", 5, 150.0, 145.0, 162.0, signal_score=50,
+        )
+        assert result.approved is False
+        assert "日亏损限额" in result.reason
+
+    def test_daily_loss_limit_one_cent_below_boundary(self):
+        """PnL at -$99.99 with limit=$100 → trade allowed.
+
+        -99.99 <= -100 is False, so trade passes the daily loss check.
+        """
+        config = RiskConfig(
+            total_capital=10000.0,
+            daily_loss_limit=100.0,
+            trading_hours_enabled=False,
+            blacklist=[],
+        )
+        rm = RiskManager(config=config)
+        rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
+        rm._last_refresh_ts = now_et()
+        rm._today_pnl = -99.99
+
+        result = rm.check_trade(
+            "AAPL", "BUY", 5, 150.0, 145.0, 162.0, signal_score=50,
+        )
+        assert result.approved is True

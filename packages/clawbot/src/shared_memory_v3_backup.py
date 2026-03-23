@@ -29,6 +29,7 @@ import hashlib
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime, timedelta
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -305,10 +306,10 @@ class SharedMemory:
             related_keys: 关联的记忆 key 列表（构建记忆图谱）
         """
         conn = self._get_conn()
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         expires_at = None
         if ttl_hours:
-            expires_at = (datetime.now() + timedelta(hours=ttl_hours)).isoformat()
+            expires_at = (now_et() + timedelta(hours=ttl_hours)).isoformat()
 
         # 对标 mem0: 生成嵌入向量
         embed_text = f"{key} {value}"
@@ -590,7 +591,7 @@ class SharedMemory:
     def decay_importance(self):
         """对标 mem0: 重要性自适应衰减（低访问记忆逐渐降低重要性）"""
         conn = self._get_conn()
-        now = datetime.now()
+        now = now_et()
         rows = conn.execute(
             "SELECT id, importance, access_count, last_decay_at FROM shared_memories "
             "WHERE importance > 1 AND last_decay_at IS NOT NULL"
@@ -702,7 +703,7 @@ class SharedMemory:
         """
         # 保存完整结论
         short_task = task_text[:80]
-        timestamp = datetime.now().strftime("%m/%d %H:%M")
+        timestamp = now_et().strftime("%m/%d %H:%M")
 
         self.remember(
             key=f"collab_{timestamp}_{short_task}",
@@ -740,7 +741,7 @@ class SharedMemory:
         chat_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         conn.execute(
             "INSERT INTO workflow_feedback (workflow_id, chat_id, original_text, selected_option, stage1_score, stage2_score, stage3_score, summary, improvement_focus, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -881,7 +882,7 @@ class SharedMemory:
         if now_ts - self._last_cleanup_time < self._cleanup_interval:
             return
         self._last_cleanup_time = now_ts
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         conn.execute(
             "DELETE FROM shared_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
             (now,),
@@ -1143,7 +1144,7 @@ class SharedMemory:
         )
         
         # 写入摘要记忆
-        timestamp = datetime.now().strftime("%m%d_%H%M")
+        timestamp = now_et().strftime("%m%d_%H%M")
         self.remember(
             key=f"compressed_{category}_{timestamp}",
             value=summary,
@@ -1213,7 +1214,7 @@ class SharedMemory:
             (keep_min_importance + 2,),  # 不清理高重要性记忆
         ).fetchall()
         
-        now = datetime.now()
+        now = now_et()
         scored = []
         for r in rows:
             try:
@@ -1288,11 +1289,11 @@ class SharedMemory:
             logger.debug("Silenced exception", exc_info=True)
 
         # v3.0: 过期记忆统计
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         expiring_soon = conn.execute(
             "SELECT COUNT(*) as cnt FROM shared_memories "
             "WHERE expires_at IS NOT NULL AND expires_at < ?",
-            ((datetime.now() + timedelta(hours=24)).isoformat(),),
+            ((now_et() + timedelta(hours=24)).isoformat(),),
         ).fetchone()["cnt"]
 
         return {

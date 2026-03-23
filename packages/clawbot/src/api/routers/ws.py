@@ -11,6 +11,7 @@ from typing import Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..schemas import WSMessageType
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,7 +33,7 @@ def push_event(event_type: WSMessageType, data: dict = None):
     _event_buffer.append({
         "type": event_type.value,
         "data": data or {},
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_et().isoformat(),
     })
 
 
@@ -46,7 +47,7 @@ async def broadcast_event(event_type: WSMessageType, data: dict = None):
     message = json.dumps({
         "type": event_type.value,
         "data": data or {},
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_et().isoformat(),
     })
 
     disconnected = set()
@@ -75,7 +76,7 @@ async def websocket_events(websocket: WebSocket):
         await websocket.send_json({
             "type": WSMessageType.STATUS.value,
             "data": status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_et().isoformat(),
         })
 
         # Keep alive — wait for disconnect, drain buffered events
@@ -98,7 +99,7 @@ async def websocket_events(websocket: WebSocket):
                     await websocket.send_json(event)
                 # Send heartbeat
                 try:
-                    await websocket.send_json({"type": "heartbeat", "timestamp": datetime.now().isoformat()})
+                    await websocket.send_json({"type": "heartbeat", "timestamp": now_et().isoformat()})
                 except Exception:
                     break
     except WebSocketDisconnect:

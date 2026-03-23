@@ -20,6 +20,7 @@ import math
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timedelta
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -317,10 +318,10 @@ class SharedMemory:
 
         # ── SQLite 写入（索引 + 元数据 + 过期管理）──
         conn = self._get_conn()
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         expires_at = None
         if ttl_hours:
-            expires_at = (datetime.now() + timedelta(hours=ttl_hours)).isoformat()
+            expires_at = (now_et() + timedelta(hours=ttl_hours)).isoformat()
 
         # 仅在 SQLite 回退模式下计算本地嵌入
         embedding = None
@@ -653,7 +654,7 @@ class SharedMemory:
     def decay_importance(self):
         """重要性自适应衰减"""
         conn = self._get_conn()
-        now = datetime.now()
+        now = now_et()
         rows = conn.execute(
             "SELECT id, importance, access_count, last_decay_at FROM shared_memories "
             "WHERE importance > 1 AND last_decay_at IS NOT NULL"
@@ -761,7 +762,7 @@ class SharedMemory:
         summary_result: str, planner_id: str, chat_id: Optional[int] = None,
     ):
         short_task = task_text[:80]
-        timestamp = datetime.now().strftime("%m/%d %H:%M")
+        timestamp = now_et().strftime("%m/%d %H:%M")
         self.remember(
             key=f"collab_{timestamp}_{short_task}",
             value=summary_result[:2000],
@@ -782,7 +783,7 @@ class SharedMemory:
         chat_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         conn.execute(
             "INSERT INTO workflow_feedback (workflow_id, chat_id, original_text, "
             "selected_option, stage1_score, stage2_score, stage3_score, summary, "
@@ -882,7 +883,7 @@ class SharedMemory:
         if now_ts - self._last_cleanup_time < self._cleanup_interval:
             return
         self._last_cleanup_time = now_ts
-        now = datetime.now().isoformat()
+        now = now_et().isoformat()
         conn.execute(
             "DELETE FROM shared_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
             (now,),
@@ -977,7 +978,7 @@ class SharedMemory:
         ids = [m["id"] for m in old]
         ph = ",".join("?" * len(ids))
         conn.execute(f"DELETE FROM shared_memories WHERE id IN ({ph})", ids)
-        ts = datetime.now().strftime("%m%d_%H%M")
+        ts = now_et().strftime("%m%d_%H%M")
         self.remember(key=f"compressed_{category}_{ts}", value=summary,
                       category=category, source_bot="memory_compressor", importance=2)
         conn.commit()
@@ -1005,7 +1006,7 @@ class SharedMemory:
             "SELECT id, importance, access_count, updated_at FROM shared_memories "
             "WHERE importance <= ?", (keep_min_importance + 2,),
         ).fetchall()
-        now = datetime.now()
+        now = now_et()
         scored = []
         for r in rows:
             try:

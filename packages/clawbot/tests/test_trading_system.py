@@ -1,5 +1,6 @@
 """Tests for src.trading_system module."""
 import pytest
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import src.trading_system as ts
@@ -26,6 +27,51 @@ def reset_globals():
     ts._quote_cache = None
     ts._rebalancer = None
     ts._ai_team_api_callers = {}
+
+
+# ============ _parse_datetime ============
+
+class TestParseDatetime:
+    """Tests for _parse_datetime — ensures timezone-aware datetime output."""
+
+    def test_naive_iso_string_gets_et_timezone(self):
+        """Naive datetime strings should be tagged with America/New_York."""
+        result = ts._parse_datetime("2026-03-23T14:30:00")
+        assert result is not None
+        assert result.tzinfo is not None
+        assert result.year == 2026
+        assert result.hour == 14
+
+    def test_aware_iso_string_preserved(self):
+        """Already timezone-aware strings should keep their timezone."""
+        result = ts._parse_datetime("2026-03-23T14:30:00+00:00")
+        assert result is not None
+        assert result.tzinfo is not None
+        # UTC offset should be preserved
+        assert result.utcoffset() == timedelta(0)
+
+    def test_invalid_string_returns_none(self):
+        """Invalid datetime strings should return None, not raise."""
+        assert ts._parse_datetime("not-a-date") is None
+        assert ts._parse_datetime("") is None
+
+    def test_date_only_string(self):
+        """Date-only strings (no time) should parse correctly."""
+        result = ts._parse_datetime("2026-03-23")
+        assert result is not None
+        assert result.tzinfo is not None
+        assert result.year == 2026
+        assert result.month == 3
+        assert result.day == 23
+
+    def test_result_can_compare_with_now_et(self):
+        """Parsed result should be comparable with now_et() (both aware)."""
+        from src.utils import now_et
+        result = ts._parse_datetime("2026-03-23T14:30:00")
+        assert result is not None
+        # Should not raise TypeError (aware vs naive comparison)
+        diff = now_et() - result
+        assert isinstance(diff, timedelta)
 
 
 # ============ set_ai_team_callers ============
