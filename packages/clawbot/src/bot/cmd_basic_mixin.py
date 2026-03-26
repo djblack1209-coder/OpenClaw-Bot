@@ -4,6 +4,7 @@
 """
 import asyncio
 import logging
+import os
 
 from src.bot.globals import (
     history_store, context_manager, metrics, health_checker,
@@ -13,14 +14,32 @@ from src.bot.globals import (
 )
 from src.litellm_router import free_pool
 from src.message_format import format_error
+from src.bot.error_messages import error_generic, error_service_failed
 from src.telegram_ux import with_typing, ProgressTracker
+from src.bot.auth import requires_auth
 
 logger = logging.getLogger(__name__)
+
+
+def _build_help_main_keyboard():
+    """构建帮助主菜单键盘 (去重: /start 老用户 + help:back 共用)"""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🤖 AI 助手能力", callback_data="help:ai_assistant")],
+        [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
+         InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
+        [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
+         InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
+        [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
+         InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
+        [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
+    ])
 
 
 class BasicCommandsMixin:
     """基础 Telegram 命令"""
 
+    @with_typing
     async def cmd_start(self, update, context):
         if not self._is_authorized(update.effective_user.id):
             await update.message.reply_text(
@@ -56,24 +75,18 @@ class BasicCommandsMixin:
             ])
             await update.message.reply_text(onboard, reply_markup=keyboard)
         else:
-            # 老用户：分类菜单
+            # 老用户：直接展示能力 + NL 示例
             welcome = (
                 f"{self.emoji}  {self.name}\n"
-                f"───────────────────\n"
-                f"{self.role} · {self.model.split('/')[-1]}\n\n"
-                f"直接发消息就能对话，群聊 @我 即可。\n"
-                f"下面按场景展开更多功能 👇"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"直接说中文就能操作：\n\n"
+                f"  · \"帮我买100股苹果\"\n"
+                f"  · \"特斯拉多少钱\"\n"
+                f"  · \"帮我找便宜的AirPods\"\n"
+                f"  · \"今日简报\"\n\n"
+                f"或者展开下方菜单查看更多 👇"
             )
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
-                 InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
-                [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
-                 InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
-                [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
-                 InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
-                [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
-            ])
-            await update.message.reply_text(welcome, reply_markup=keyboard)
+            await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
 
     async def handle_help_callback(self, update, context):
         """处理 /start 引导按钮和 onboarding 按钮的回调"""
@@ -91,6 +104,30 @@ class BasicCommandsMixin:
         section = data.replace("help:", "")
 
         HELP_SECTIONS = {
+            "ai_assistant": (
+                "🤖 AI 助手能力\n"
+                "═══════════════════\n"
+                "我不只是命令工具，我是你的 AI 助手。\n"
+                "你可以直接说人话，不用记命令。\n\n"
+                "💬 智能追问 — 每次回复后我会建议下一步\n"
+                "💡 摘要先行 — 长回复我先说结论\n"
+                "🎭 懂你风格 — 你喜欢简短我就简短\n"
+                "📡 异动推送 — 自选股>3%波动主动通知\n"
+                "🧠 记住偏好 — 说一次\"简短点\"我就记住\n"
+                "🔗 跨域联想 — 分析股票时关联社交热点\n"
+                "✏️ 知错就改 — 说\"不对\"我自动纠正\n"
+                "⏰ 任务跟踪 — 买完股票2h后告诉你涨跌\n"
+                "👋 离线摘要 — 你回来时告诉你发生了什么\n"
+                "🌡️ 语气感知 — 你急我就直给结论\n"
+                "🔗 多步编排 — \"分析然后发小红书\"一步搞定\n"
+                "📊 行为洞察 — 发现你频繁查的标的\n"
+                "📶 进度反馈 — 多步任务实时通知进度\n\n"
+                "试试直接说：\n"
+                "  • 帮我分析 TSLA\n"
+                "  • 比价 AirPods Pro\n"
+                "  • 分析TSLA然后发到小红书\n"
+                "  • 简短点，以后回复别太长"
+            ),
             "daily": (
                 "💬 日常功能\n"
                 "───────────────────\n"
@@ -176,21 +213,34 @@ class BasicCommandsMixin:
                 "/discuss  多 Bot 讨论"
             ),
             "all": (
-                f"{self.emoji} 全部命令\n"
-                "───────────────────\n"
-                "▸ 日常: /clear /status /draw /news /context /compact\n"
-                "▸ 社媒: /hot /hotpost /post /post_x /post_xhs /social_plan\n"
-                "  /social_persona /social_launch /social_repost\n"
-                "  /social_calendar /social_report /topic /xwatch /xbrief\n"
-                "▸ 投资: /invest /quote /market /ta /signal /portfolio\n"
-                "  /buy /sell /risk /watchlist /trades /backtest\n"
-                "  /autotrader /rebalance /tradingsystem /performance\n"
-                "  /review /journal\n"
-                "▸ IBKR: /ibuy /isell /ipositions /iorders /iaccount\n"
-                "▸ 高级: /agent /ops /brief /dev /cost /discuss /lanes /config\n"
-                "▸ 系统: /memory /settings /voice /export /qr /model\n"
-                "  /pool /collab /discuss\n\n"
-                "直接发消息开始对话，群聊 @我 即可"
+                f"{self.emoji} 我能帮你做什么\n"
+                "━━━━━━━━━━━━━━━━━━━\n\n"
+                "💡 不需要记命令，直接说中文：\n\n"
+                "📈 投资交易\n"
+                "  · \"帮我买100股苹果\"\n"
+                "  · \"特斯拉能买吗\" → 技术分析\n"
+                "  · \"英伟达多少钱\" → 实时报价\n"
+                "  · \"帮我炒股\" → 6个AI开会分析\n"
+                "  · \"我的持仓\" → 组合概览\n"
+                "  · \"复盘\" → AI交易复盘\n\n"
+                "🛒 购物比价\n"
+                "  · \"帮我找便宜的AirPods\"\n"
+                "  · \"降噪耳机哪里买最便宜\"\n\n"
+                "📱 社媒运营\n"
+                "  · \"热点发文\" → 自动写+发布\n"
+                "  · \"发AI趋势到小红书\"\n"
+                "  · \"社媒计划\" → 今日发文计划\n\n"
+                "📋 日常效率\n"
+                "  · \"今日简报\" → 智能日报\n"
+                "  · \"整理邮箱\" → AI分类\n"
+                "  · \"30分钟后提醒我开会\"\n"
+                "  · \"新闻\" → 科技早报\n\n"
+                "🤖 也支持命令 (高级)\n"
+                "  /invest /quote /ta /buy /sell\n"
+                "  /hot /post /social_plan\n"
+                "  /ops /brief /agent\n\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                "直接发消息开始对话 👆"
             ),
         }
 
@@ -210,16 +260,7 @@ class BasicCommandsMixin:
                 f"直接发消息就能对话，群聊 @我 即可。\n"
                 f"下面按场景展开更多功能 👇"
             )
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
-                 InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
-                [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
-                 InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
-                [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
-                 InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
-                [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
-            ])
-            await query.edit_message_text(welcome, reply_markup=keyboard)
+            await query.edit_message_text(welcome, reply_markup=_build_help_main_keyboard())
             return
 
         await query.edit_message_text(text, reply_markup=back_btn)
@@ -241,7 +282,7 @@ class BasicCommandsMixin:
                 report = await news_fetcher.generate_morning_report()
                 await context.bot.send_message(chat_id=chat_id, text=report)
             except Exception as e:
-                await context.bot.send_message(chat_id=chat_id, text=f"获取失败: {e}")
+                await context.bot.send_message(chat_id=chat_id, text=error_service_failed("新闻获取"))
 
         elif action == "draw":
             await query.edit_message_text(
@@ -269,11 +310,10 @@ class BasicCommandsMixin:
                 "需要先配置浏览器登录态才能发布"
             )
 
+    @requires_auth
+    @with_typing
     async def cmd_lanes(self, update, context):
         """查看群聊显式分流标签"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         await update.message.reply_text(
             "🏷  群聊分流标签\n"
             "───────────────────\n"
@@ -289,27 +329,23 @@ class BasicCommandsMixin:
             "提示：@bot 提及优先级高于标签"
         )
 
+    @requires_auth
     async def cmd_clear(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         chat_id = update.effective_chat.id
         history_store.clear_messages(self.bot_id, chat_id)
         await update.message.reply_text(f"{self.emoji} 对话已清空")
 
+    @requires_auth
     async def cmd_voice(self, update, context):
         """切换语音回复模式 — /voice 开启后短回复自动附带语音"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         current = context.user_data.get("voice_reply", False)
         context.user_data["voice_reply"] = not current
         status = "开启" if not current else "关闭"
         await update.message.reply_text(f"语音回复已{status}")
 
+    @requires_auth
     @with_typing
     async def cmd_status(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         from src.notify_style import format_status_card
 
         chat_id = update.effective_chat.id
@@ -334,7 +370,7 @@ class BasicCommandsMixin:
         try:
             import httpx
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get("http://localhost:18789/health")
+                resp = await client.get(f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}/health")
                 gateway_status = "在线" if resp.status_code == 200 else "异常"
         except Exception:
             gateway_status = "离线"
@@ -370,11 +406,9 @@ class BasicCommandsMixin:
 
         await update.message.reply_text(text)
 
+    @requires_auth
     @with_typing
     async def cmd_draw(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         args = context.args
         if not args:
             await update.message.reply_text(
@@ -413,26 +447,24 @@ class BasicCommandsMixin:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=f,
-                        caption=f"Prompt: {prompt[:100]}"
+                        caption=f"描述: {prompt[:100]}"
                     )
         else:
             await update.message.reply_text(f"生成失败: {result.get('error')}")
 
+    @requires_auth
     @with_typing
     async def cmd_news(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         try:
             report = await news_fetcher.generate_morning_report()
             await update.message.reply_text(report)
         except Exception as e:
             await update.message.reply_text(format_error(e, "获取新闻"))
 
+    @requires_auth
+    @with_typing
     async def cmd_qr(self, update, context):
         """生成二维码: /qr [文本或URL]"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         from src.tools.qr_service import HAS_QRCODE
 
         if not HAS_QRCODE:
@@ -459,18 +491,17 @@ class BasicCommandsMixin:
             await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
                 photo=buf,
-                caption=f"QR: {display}",
+                caption=f"二维码: {display}",
                 reply_to_message_id=update.message.message_id,
             )
         except Exception as e:
             logger.error("二维码生成失败: %s", e, exc_info=True)
-            await update.message.reply_text(f"二维码生成失败: {e}")
+            await update.message.reply_text(error_generic(str(e)))
 
+    @requires_auth
+    @with_typing
     async def cmd_metrics(self, update, context):
         """运行指标命令"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         stats = metrics.get_stats()
         health = health_checker.get_status()
         db_stats = history_store.get_stats()
@@ -500,11 +531,10 @@ class BasicCommandsMixin:
 
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_model(self, update, context):
         """查看当前模型信息"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         pool_stats = free_pool.get_stats()
         api_type_label = {
             "free_pool": "LiteLLM 动态路由",
@@ -523,11 +553,10 @@ class BasicCommandsMixin:
         )
         await update.message.reply_text(text, parse_mode="Markdown")
 
+    @requires_auth
+    @with_typing
     async def cmd_pool(self, update, context):
         """查看免费 API 池 + 智能路由状态"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         pool_stats = free_pool.get_stats()
         text = f"🆓 **免费 API 池状态**\n\n"
         text += f"总源数: {pool_stats['total_sources']}\n"
@@ -545,11 +574,10 @@ class BasicCommandsMixin:
 
         await send_long_message(update.effective_chat.id, text, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_context(self, update, context):
         """查看当前上下文状态"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         chat_id = update.effective_chat.id
         messages = history_store.get_messages(self.bot_id, chat_id, limit=100)
         status = context_manager.get_context_status(messages)
@@ -576,11 +604,10 @@ class BasicCommandsMixin:
             parse_mode="Markdown"
         )
 
+    @requires_auth
+    @with_typing
     async def cmd_compact(self, update, context):
         """手动压缩上下文"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         chat_id = update.effective_chat.id
         messages = history_store.get_messages(self.bot_id, chat_id, limit=100)
 
@@ -609,11 +636,9 @@ class BasicCommandsMixin:
 
     # ── /settings 命令 — 搬运自 father-bot 的 per-user settings 模式 ──
 
+    @requires_auth
+    @with_typing
     async def cmd_settings(self, update, context):
-        """查看/修改个人偏好设置"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         from src.bot.globals import user_prefs
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
@@ -689,6 +714,10 @@ class BasicCommandsMixin:
             return
 
         user_id = int(parts[1])
+        # 安全校验：只允许用户修改自己的设置
+        if query.from_user.id != user_id:
+            await query.edit_message_text("⚠️ 无权修改他人设置")
+            return
         key = parts[2]
         value = parts[3]
 
@@ -740,11 +769,10 @@ class BasicCommandsMixin:
 
     MEMORIES_PER_PAGE = 5
 
+    @requires_auth
+    @with_typing
     async def cmd_memory(self, update, context):
         """查看/管理 Bot 记住的关于你的信息"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         from src.smart_memory import get_smart_memory
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
@@ -911,6 +939,11 @@ class BasicCommandsMixin:
         query = update.callback_query
         await query.answer()
 
+        # 认证: 仅授权用户可操作
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
+
         data = query.data
         if not data.startswith("cmd:"):
             return
@@ -939,6 +972,18 @@ class BasicCommandsMixin:
             "market": self.cmd_market,
             "backtest": self.cmd_backtest,
             "ta": self.cmd_ta,
+            # v3.0: 扩展 cmd_map 支持智能行动建议按钮
+            "sell": self.cmd_sell,
+            "buy": self.cmd_buy,
+            "performance": self.cmd_performance,
+            "hotpost": self.cmd_hotpost,
+            "social_plan": self.cmd_social_plan,
+            "signal": self.cmd_signal,
+            "journal": self.cmd_journal,
+            "review": self.cmd_review,
+            "invest": self.cmd_invest,
+            "evolve": self.cmd_status,
+            "tasks": self.cmd_ops,
         }
 
         handler = cmd_map.get(cmd_name)
@@ -1046,14 +1091,55 @@ class BasicCommandsMixin:
         except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
+    # ── /tts 命令 — 文字转语音 (edge-tts 10K⭐) ──
+
+    @requires_auth
+    @with_typing
+    async def cmd_tts(self, update, context):
+        """文字转语音 — /tts <文本> [音色]"""
+        args = context.args or []
+        if not args:
+            from src.tools.tts_tool import format_voice_list, CHINESE_VOICES
+            help_text = "🎤 文字转语音\n\n用法: /tts <文本> [音色]\n\n"
+            help_text += format_voice_list()
+            help_text += "\n\n示例:\n  /tts 今天天气真好\n  /tts 你好世界 云希"
+            await update.message.reply_text(help_text)
+            return
+
+        # 检查最后一个参数是否是音色名
+        from src.tools.tts_tool import text_to_speech, CHINESE_VOICES
+        voice = None
+        text_parts = list(args)
+        if text_parts[-1] in CHINESE_VOICES:
+            voice = text_parts.pop()
+        text = " ".join(text_parts)
+
+        if not text.strip():
+            await update.message.reply_text("❓ 请输入要转换的文本")
+            return
+
+        await update.message.reply_text("🎤 正在生成语音...")
+        audio_path = await text_to_speech(text, voice=voice or "zh-CN-XiaoxiaoNeural")
+
+        if audio_path:
+            from pathlib import Path
+            try:
+                with open(audio_path, "rb") as f:
+                    await update.message.reply_voice(voice=f)
+                # 清理临时文件
+                Path(audio_path).unlink(missing_ok=True)
+            except Exception as e:
+                logger.error("[TTS] 发送音频失败: %s", e)
+                await update.message.reply_text("⚠️ 音频生成成功但发送失败")
+        else:
+            await update.message.reply_text("⚠️ 语音生成失败，请稍后重试")
+
     # ── /agent 命令 — 搬运 smolagents (26.2k⭐) 自主 Agent ──
 
+    @requires_auth
     @with_typing
     async def cmd_agent(self, update, context):
         """智能 Agent — 自然语言驱动多工具链"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         query = " ".join(context.args) if context.args else ""
         if not query:
             await update.message.reply_text(
@@ -1115,6 +1201,12 @@ class BasicCommandsMixin:
         if data.startswith("trade:buy:"):
             symbol = data.split(":")[-1]
             await query.message.reply_text(f"💡 请使用: /buy {symbol} 数量")
+        elif data.startswith("trade:size:"):
+            symbol = data.split(":")[-1]
+            await query.message.reply_text(
+                f"💡 调整仓位: /buy {symbol} 数量\n"
+                f"例如: /buy {symbol} 100"
+            )
         elif data.startswith("bt:"):
             parts = data.split(":")
             symbol = parts[-1] if len(parts) > 2 else ""
@@ -1147,3 +1239,34 @@ class BasicCommandsMixin:
             await self.cmd_post(update, context)
         else:
             await query.message.reply_text("💡 此操作暂不支持")
+
+    async def handle_clarification_callback(self, update, context):
+        """处理 ClarificationCard 追问按钮的回调 (callback_data: {tid}:{param}:{value})"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data or ""
+
+        parts = data.split(":", 2)
+        if len(parts) < 3:
+            await query.message.reply_text("⚠️ 按钮数据格式异常，请重新提问。")
+            return
+
+        tid, param, value = parts[0], parts[1], parts[2]
+
+        # 取消操作
+        if param == "cancel":
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text("❌ 已取消。")
+            return
+
+        # 需要用户手动输入
+        if value == "ask":
+            await query.message.reply_text(f"请补充「{param}」信息，直接回复即可。")
+            return
+
+        # 用按钮值作为追加输入发送回 handle_message
+        display = value
+        if param and param != value:
+            display = f"{param}: {value}"
+
+        await query.message.reply_text(f"✅ 已选择: {display}\n请稍候，正在继续处理...")

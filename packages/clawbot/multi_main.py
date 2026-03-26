@@ -177,7 +177,7 @@ BOTS = [
     },
     {
         "id": "free_llm",
-        "token": os.getenv('FREE_LLM_TOKEN', '8676504472:AAFNbg40iy_Px0-jl1GlfHQTC92kGwPw-A8'),
+        "token": os.getenv('FREE_LLM_TOKEN', ''),
         "username": os.getenv('FREE_LLM_USERNAME', 'Free_LLM_Bot'),
         "model": "free-pool-best",
         "api_type": "free_pool",
@@ -203,6 +203,15 @@ async def main():
     logger.info("=" * 60)
     logger.info("ClawBot 多机器人系统 v5.0 (Mixin 架构版)")
     logger.info("=" * 60)
+
+    # === 启动前配置验证 ===
+    from src.core.config_validator import validate_startup_config, log_validation_results
+    _cfg_errors, _cfg_warnings = validate_startup_config()
+    _cfg_ok = log_validation_results(_cfg_errors, _cfg_warnings)
+    if not _cfg_ok:
+        logger.critical("配置验证失败 — 请检查 config/.env 和环境变量后重试")
+        # 不阻止启动但记录严重告警，让运维人员决定
+
     logger.info(f"配置文件: {config_path}")
     logger.info(f"硅基流动 Keys: {len(SILICONFLOW_KEYS)} 个")
     logger.info(f"Claude API: {'已配置' if CLAUDE_KEY else '未配置'}")
@@ -325,6 +334,9 @@ async def main():
         except Exception as e:
             logger.error(f"[{config['id']}] 启动失败: {e}")
 
+    if not bots:
+        logger.critical("所有 Bot 启动失败! 系统将在无 Bot 模式下运行 — 无法接收或发送消息")
+
     # 启动自动恢复
     auto_recovery = AutoRecovery(
         health_checker,
@@ -335,6 +347,31 @@ async def main():
         auto_recovery.register_restart_func(bot.bot_id, bot.run_async, bot.stop_async)
         collab_orchestrator.register_api_caller(bot.bot_id, bot._call_api)
     auto_recovery.start()
+
+    # 非阻塞 API Key 健康验证 (不阻塞启动)
+    async def _background_key_validation():
+        try:
+            report = await free_pool.validate_keys(timeout=10.0)
+            h, u = report["healthy"], report["unhealthy"]
+            logger.info(f"  [Key验证] {h}/{h + u} providers 健康, {u} 异常, 耗时 {report['elapsed_s']}s")
+            if u > 0:
+                for prov, info in report.get("providers", {}).items():
+                    if info.get("status") not in ("ok", "partial"):
+                        logger.warning(f"  [Key验证] ❌ {prov}: {info.get('status')} — {info.get('error', '')[:80]}")
+                    elif info.get("dead_indices"):
+                        logger.warning(f"  [Key验证] ⚠️ {prov}: dead keys #{info['dead_indices']}")
+        except Exception as e:
+            logger.warning(f"  [Key验证] 启动验证跳过: {e}")
+    # 辅助: 为 fire-and-forget 任务统一添加异常回调
+    def _task_done_cb(label: str):
+        def _cb(t):
+            if not t.cancelled() and t.exception():
+                logger.critical("[%s] 后台任务失败: %s", label, t.exception())
+        return _cb
+
+    asyncio.create_task(_background_key_validation()).add_done_callback(
+        _task_done_cb("KeyValidation")
+    )
 
     # 注册 LLM 路由（使用 qwen235b 作为路由模型，免费无限）
     router_instance = next((b for b in bots if b.bot_id == "qwen235b"), None)
@@ -357,6 +394,23 @@ async def main():
 
     # mem0 记忆层已内置于 SharedMemory v4.0，无需额外 memory_layer
     logger.info(f"  记忆引擎: {shared_memory.get_stats().get('engine', 'sqlite')}")
+
+    # 初始化主动智能引擎 (搬运自 BasedHardware/omi 17k⭐ 的 proactive_notification 三步管道)
+    try:
+        from src.core.proactive_engine import get_proactive_engine, setup_proactive_listeners
+        proactive = get_proactive_engine()
+        await setup_proactive_listeners(proactive)
+        logger.info("  主动智能引擎已启动 (Gate→Generate→Critic 三步管道)")
+    except Exception as e:
+        logger.info(f"  主动智能引擎初始化跳过: {e}")
+
+    # 启动自选股异动监控（搬运交易类产品标配告警模式）
+    try:
+        from src.watchlist_monitor import get_watchlist_monitor
+        _wm = get_watchlist_monitor()
+        await _wm.start()
+    except Exception as e:
+        logger.info(f"  自选股异动监控跳过: {e}")
 
     # 初始化 browser-use 浏览器代理
     try:
@@ -472,7 +526,8 @@ async def main():
     logger.info("=" * 60)
 
     # 后台预热 yfinance
-    asyncio.create_task(invest_warmup())
+    _t = asyncio.create_task(invest_warmup())
+    _t.add_done_callback(_task_done_cb("InvestWarmup"))
 
     # 连接 IBKR Paper Trading
     async def _connect_ibkr():
@@ -481,7 +536,8 @@ async def main():
             logger.info("[IBKR] Paper Trading 连接成功 (预算$%.0f)" % ibkr.budget)
         else:
             logger.warning("[IBKR] 连接失败，IBKR命令不可用（IB Gateway是否运行？）")
-    asyncio.create_task(_connect_ibkr())
+    _t = asyncio.create_task(_connect_ibkr())
+    _t.add_done_callback(_task_done_cb("IBKR_Connect"))
 
     # 初始化自动交易系统
     _notify_chat_id = int(os.environ.get("NOTIFY_CHAT_ID", "0"))
@@ -556,50 +612,54 @@ async def main():
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
                         direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
-                        asyncio.create_task(get_event_bus().publish(
+                        _t = asyncio.create_task(get_event_bus().publish(
                             EvtType.TRADE_EXECUTED,
                             {"signal": direction, "reason": text[:100], "message": text},
                             source="trading_system",
                         ))
-                    except Exception:
-                        pass
+                        _t.add_done_callback(_task_done_cb("EventBus_TradeExec"))
+                    except Exception as e:
+                        logger.debug("EventBus publish failed (TradeExec): %s", e, exc_info=True)
                     # 旧 Synergy 兼容（逐步迁移到 EventBus）
                     try:
                         from src.synergy import get_synergy
                         direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
-                        asyncio.create_task(get_synergy().on_trade_signal({
+                        _t = asyncio.create_task(get_synergy().on_trade_signal({
                             "signal": direction, "reason": text[:100], "score": 80, "symbol": "",
                         }))
-                    except Exception:
-                        pass
+                        _t.add_done_callback(_task_done_cb("Synergy_TradeSignal"))
+                    except Exception as e:
+                        logger.debug("EventBus publish failed (Synergy_TradeSignal): %s", e, exc_info=True)
                 elif "止损" in text or "止盈" in text or "风控" in text:
                     push_event(WSMessageType.RISK_ALERT, {"message": text})
                     # EventBus: 风控事件
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
-                        asyncio.create_task(get_event_bus().publish(
+                        _t = asyncio.create_task(get_event_bus().publish(
                             EvtType.RISK_ALERT,
                             {"message": text},
                             source="trading_system",
                         ))
-                    except Exception:
-                        pass
+                        _t.add_done_callback(_task_done_cb("EventBus_RiskAlert"))
+                    except Exception as e:
+                        logger.debug("EventBus publish failed (RiskAlert): %s", e, exc_info=True)
                 elif "信号" in text or "signal" in text.lower():
                     push_event(WSMessageType.TRADE_SIGNAL, {"message": text})
                     # EventBus: 交易信号
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
-                        asyncio.create_task(get_event_bus().publish(
+                        _t = asyncio.create_task(get_event_bus().publish(
                             EvtType.TRADE_SIGNAL,
                             {"message": text},
                             source="trading_system",
                         ))
-                    except Exception:
-                        pass
+                        _t.add_done_callback(_task_done_cb("EventBus_TradeSignal"))
+                    except Exception as e:
+                        logger.debug("EventBus publish failed (TradeSignal): %s", e, exc_info=True)
                 elif "告警" in text or "错误" in text or "失败" in text:
                     push_event(WSMessageType.BOT_ERROR, {"message": text})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("EventBus publish failed (outer): %s", e, exc_info=True)
         except Exception as e:
             logger.error("[TradingSystem] 通知发送失败: %s", e)
 
@@ -670,7 +730,8 @@ async def main():
         execution_hub.set_social_ai_callers(ai_callers)
         logger.info("  - AI团队投票已就绪: %s", list(ai_callers.keys()))
 
-    asyncio.create_task(start_trading_system())
+    _t = asyncio.create_task(start_trading_system())
+    _t.add_done_callback(_task_done_cb("TradingSystem"))
     logger.info("  - 自动交易系统已初始化 (风控/监控/管道/调度)")
 
     await execution_hub.start_scheduler(_notify_telegram, _notify_private_telegram)
@@ -678,7 +739,8 @@ async def main():
 
     # 注册告警回调 -> Telegram 通知
     def _on_alert(rule_name, message):
-        asyncio.create_task(_notify_telegram(message))
+        _t = asyncio.create_task(_notify_telegram(message))
+        _t.add_done_callback(_task_done_cb("AlertNotify"))
     alert_mgr.on_alert(_on_alert)
 
     # 注册告警回调 -> WebSocket 实时推送
@@ -690,18 +752,21 @@ async def main():
     _cleanup_max_age = float(os.environ.get("CLEANUP_MAX_AGE", "3600.0"))
     _alert_check_interval = int(os.environ.get("ALERT_CHECK_INTERVAL", "30"))
     _evolution_interval = int(os.environ.get("EVOLUTION_SCAN_INTERVAL", "86400"))  # 24h
+    _proactive_interval = int(os.environ.get("PROACTIVE_CHECK_INTERVAL", "1800"))  # 30分钟
 
     try:
         cleanup_counter = 0
         heartbeat_counter = 0
         alert_counter = 0
         evolution_counter = 0
+        proactive_counter = 0
         while not stop_event.is_set():
             await asyncio.sleep(1)
             cleanup_counter += 1
             heartbeat_counter += 1
             alert_counter += 1
             evolution_counter += 1
+            proactive_counter += 1
             if heartbeat_counter >= _heartbeat_interval:
                 heartbeat_counter = 0
                 for bot in bots:
@@ -710,6 +775,12 @@ async def main():
             if cleanup_counter >= _cleanup_interval:
                 cleanup_counter = 0
                 collab_orchestrator.cleanup_old_tasks(max_age=_cleanup_max_age)
+                chat_router.cleanup_stale_sessions(max_age_seconds=1800)
+                try:
+                    from src.core.brain import get_brain
+                    get_brain().cleanup_pending_callbacks(max_age_seconds=600)
+                except Exception:
+                    pass
             if alert_counter >= _alert_check_interval:
                 alert_counter = 0
                 alert_mgr.check_all()
@@ -723,12 +794,37 @@ async def main():
                             logger.info("[Evolution] 发现 %d 个进化提案", len(proposals))
                     except Exception as e:
                         logger.debug("[Evolution] 扫描异常: %s", e)
-                asyncio.create_task(_run_evolution_scan())
+                asyncio.create_task(_run_evolution_scan()).add_done_callback(
+                    _task_done_cb("EvolutionScan")
+                )
+            # 主动智能定时检查（默认每30分钟）
+            if proactive_counter >= _proactive_interval:
+                proactive_counter = 0
+                try:
+                    from src.core.proactive_engine import get_proactive_engine, periodic_proactive_check
+                    _pe = get_proactive_engine()
+                    asyncio.create_task(periodic_proactive_check(_pe)).add_done_callback(
+                        _task_done_cb("ProactiveCheck")
+                    )
+                except Exception as e:
+                    logger.debug(f"[Proactive] 定时检查启动失败: {e}")
     except asyncio.CancelledError:
         pass
 
     # 优雅关闭
     logger.info("正在停止...")
+    # 停止自选股异动监控
+    try:
+        from src.watchlist_monitor import get_watchlist_monitor
+        await get_watchlist_monitor().stop()
+    except Exception:
+        pass
+    # 刷新通知批量合并器 — 防止待发通知丢失
+    try:
+        await _notify_batcher.flush()
+        logger.info("  通知批量合并器已刷新")
+    except Exception as e:
+        logger.warning("  通知批量合并器刷新失败: %s", e)
     # 停止 OMEGA Gateway Bot
     if _omega_gateway and _stop_gateway_fn:
         try:

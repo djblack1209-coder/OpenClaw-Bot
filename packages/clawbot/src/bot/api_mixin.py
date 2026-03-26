@@ -18,6 +18,7 @@ from src.bot.globals import (
     CLAUDE_BASE, CLAUDE_KEY,
 )
 from src.bot.rate_limiter import rate_limiter, token_budget, quality_gate
+from src.bot.error_messages import error_generic, error_circuit_open, error_tool_abuse
 from src.http_client import CircuitOpenError
 from src.litellm_router import free_pool, BOT_MODEL_FAMILY
 
@@ -27,6 +28,38 @@ except ImportError:
     log_generation = None
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_message_tone(text: str) -> str:
+    """检测消息的紧急/悠闲语气 — 搬运 Google Gemini 情境适应模式
+
+    返回: "urgent" (紧急) / "detailed" (详细) / "normal" (普通)
+    零 LLM 成本，纯特征检测。
+    """
+    import re
+    if not text or len(text) < 2:
+        return "normal"
+
+    # 紧急信号: 短消息 + 感叹号/问号连续 + 催促关键词
+    urgent_signals = 0
+    if len(text) < 15:
+        urgent_signals += 1  # 短消息通常较急
+    if re.search(r"[!！]{2,}|[?？]{2,}", text):
+        urgent_signals += 2  # 连续感叹号/问号
+    if re.search(r"(?:快|急|马上|立刻|赶紧|速度|紧急|立即|ASAP)", text):
+        urgent_signals += 2  # 催促关键词
+    if re.search(r"(?:怎么回事|出问题了|崩了|挂了|不行了)", text):
+        urgent_signals += 1  # 问题信号
+    if urgent_signals >= 2:
+        return "urgent"
+
+    # 详细信号: 长消息(>25中文字符) + 多个问题/逗号(结构化表达)
+    if len(text) > 25:
+        return "detailed"
+    if text.count("？") + text.count("?") >= 2:
+        return "detailed"  # 多个问题说明用户有耐心
+
+    return "normal"
 
 
 class APIMixin:
@@ -69,6 +102,7 @@ class APIMixin:
                     messages=messages,
                     system_prompt=getattr(self, 'system_prompt', ''),
                     query_hint=user_message,
+                    chat_id=chat_id,
                 )
                 was_compressed = meta.get("compressed", False)
             except Exception as e:
@@ -104,7 +138,8 @@ class APIMixin:
             # 质量门控
             qok, qreason = quality_gate.check_response(self.bot_id, reply)
             if not qok:
-                return ""
+                logger.warning("[%s] quality_gate rejected: %s", self.bot_id, qreason)
+                return f"⚠️ 回复未通过质量检查，请重新提问。\n原因: {qreason}"
             quality_gate.record_response(self.bot_id, reply)
 
             # 保存历史
@@ -136,14 +171,14 @@ class APIMixin:
         except CircuitOpenError as e:
             metrics.log_api_call(self.bot_id, self.model, 0, success=False, error=str(e))
             health_checker.record_error(self.bot_id, str(e))
-            return "服务暂时不可用（熔断保护中），请稍后再试"
+            return error_circuit_open()
 
         except Exception as e:
             latency = (_time.time() - start) * 1000
             metrics.log_api_call(self.bot_id, self.model, latency, success=False, error=str(e))
             health_checker.record_error(self.bot_id, str(e))
             logger.error(f"[{self.name}] API错误: {e}")
-            return f"抱歉，出错了: {e}"
+            return error_generic(str(e))
 
     # ---- 核心调用: LiteLLM Router ----
 
@@ -160,12 +195,13 @@ class APIMixin:
         return response.choices[0].message.content or "(无响应)"
 
     async def _call_opus_smart(self, messages: list) -> str:
-        """Opus 智能路由: 优先免费 Claude → g4f → 付费 Claude API
+        """Opus 智能路由: 仅使用免费模型，付费 API 需显式调用
 
+        v3.0: 移除付费 Claude API 自动回落。用户需发 /claude 显式调用。
         尝试顺序:
-        1. LiteLLM Router 的 claude family (Kiro Gateway)
-        2. LiteLLM Router 的 g4f family
-        3. 付费 Claude API (最后手段)
+        1. LiteLLM Router 的 claude family (Kiro Gateway, 免费)
+        2. LiteLLM Router 的 g4f family (免费)
+        3. 任意可用免费模型 (qwen/deepseek/gemini 等)
         """
         bot_name = getattr(self, "name", "claude_opus")
 
@@ -191,12 +227,8 @@ class APIMixin:
         except Exception as e:
             logger.warning(f"[{bot_name}] g4f 也失败: {e}")
 
-        # 3. 付费 Claude API
-        if CLAUDE_KEY:
-            logger.info(f"[{bot_name}] 降级到付费 Claude API")
-            return await self._call_claude_api(messages)
-
-        # 4. 任意可用模型
+        # 3. 任意可用免费模型 (不再自动回落到付费 Claude)
+        # v3.0: 付费 Claude API 需用户发 /claude 显式调用
         try:
             response = await free_pool.acompletion(
                 model_family=None, messages=messages,
@@ -204,7 +236,7 @@ class APIMixin:
             )
             return response.choices[0].message.content or "(无响应)"
         except Exception:
-            raise Exception("所有 API 渠道均不可用")
+            raise Exception("所有免费 API 渠道均不可用，如需使用付费模型请发 /claude")
 
     async def _call_claude_api(self, messages: list, use_tools: bool = True) -> str:
         """付费 Claude API，支持工具调用循环 (保留原实现，LiteLLM 不直接支持多轮工具循环)"""
@@ -271,7 +303,7 @@ class APIMixin:
 
         if text_parts:
             return "\n".join(text_parts) + "\n\n[已达到工具调用上限]"
-        return "任务处理中使用了过多工具调用，已中止。"
+        return error_tool_abuse()
 
     # ---- 流式调用 ----
 
@@ -301,6 +333,7 @@ class APIMixin:
                     messages=messages,
                     system_prompt=getattr(self, 'system_prompt', ''),
                     query_hint=user_message,
+                    chat_id=chat_id,
                 )
                 was_compressed = meta.get("compressed", False)
             except Exception:
@@ -313,20 +346,47 @@ class APIMixin:
         bot_id = getattr(self, "bot_id", "")
         family = BOT_MODEL_FAMILY.get(bot_id)
 
+        # 画像驱动回复: 从 core memory 读取用户偏好，注入 system prompt
+        # 搬运灵感: omi personality-driven responses
+        _sys_prompt = getattr(self, 'system_prompt', '')
+        try:
+            if _tcm:
+                _user_profile = _tcm.core_get("user_profile", chat_id=chat_id) or ""
+                if _user_profile:
+                    _sys_prompt += f"\n\n[用户偏好] {_user_profile[:300]}"
+        except Exception:
+            pass  # 画像获取失败不影响主流程
+
+        # 消息温度感知: 检测用户紧急/悠闲语气，调整回复风格
+        # 搬运灵感: Google Gemini contextual response adaptation
+        try:
+            _tone = _detect_message_tone(user_message)
+            if _tone == "urgent":
+                _sys_prompt += "\n\n[语气感知] 用户当前很着急，请极简直给，不超过2句话，先给结论。"
+            elif _tone == "detailed":
+                _sys_prompt += "\n\n[语气感知] 用户当前很有耐心，可以详细展开分析。"
+        except Exception:
+            pass
+
         try:
             response = await free_pool.acompletion(
                 model_family=family,
                 messages=messages,
-                system_prompt=getattr(self, 'system_prompt', ''),
+                system_prompt=_sys_prompt,
                 stream=True,
             )
 
             full_text = ""
+            _last_yield = _time.monotonic()
+            _MIN_YIELD_INTERVAL = 0.3   # HI-011: 生产端最少 300ms 才 yield 一次
             async for chunk in response:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
                     full_text += delta.content
-                    yield (full_text, "streaming")
+                    _now = _time.monotonic()
+                    if _now - _last_yield >= _MIN_YIELD_INTERVAL:
+                        yield (full_text, "streaming")
+                        _last_yield = _now
 
             # 记录
             rate_limiter.record(self.bot_id)
@@ -368,4 +428,4 @@ class APIMixin:
                 reply = await self._call_api(chat_id, user_message, save_history, chat_type)
                 yield (reply, "finished")
             except Exception as e2:
-                yield (f"抱歉，出错了: {e2}", "error")
+                yield (error_generic(str(e2)), "error")

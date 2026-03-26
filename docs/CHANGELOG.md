@@ -5,6 +5,3669 @@
 
 ---
 
+## [2026-03-27] 验证层 — 41 项测试证明 16 项能力真的能用 + 2 个 Bug 修复
+
+> 领域: `backend`
+> 影响模块: `watchlist_monitor.py`(Bug修复), `api_mixin.py`(Bug修复), `tests/test_ai_assistant_features.py`(新建)
+> 关联问题: 产品跃迁第六轮 — 验证驱动质量
+
+### 测试暴露的 2 个真实 Bug
+
+1. **WatchlistMonitor._is_cooled() 冷却逻辑** — 首次告警被错误阻止
+   - 修复: key 不存在时直接返回 True（首次放行）
+2. **_detect_message_tone() 中文阈值** — 阈值 >30 不适配中文字符计数
+   - 修复: 调整为 >25
+
+### 新增 41 项测试 (覆盖 16 项 AI 助手能力的核心逻辑)
+- 946/946 passed (905 旧 + 41 新)
+
+---
+
+## [2026-03-27] 感知层修复 — 让 13 项能力被用户看到、用上
+
+> 领域: `backend`
+> 影响模块: `message_mixin.py`, `response_synthesizer.py`
+> 关联问题: 产品跃迁第五轮 — 能力可发现性
+
+### 位阶1: LLM 流式路径补齐追问建议按钮
+
+- `message_mixin.py` 新增 `_async_update_suggestions()` 方法
+  - LLM 流式回复完成后，**异步**调用 `generate_suggestions()` 生成追问建议
+  - 再用 `edit_message_reply_markup()` 更新按钮（不阻塞原消息发送）
+  - 修复: 之前追问建议只在 Brain 路径（~20%对话）出现，现在覆盖 100% 对话
+
+### 位阶2: 能力情境提示 — 替换无用的"继续聊"按钮
+
+- `_build_smart_reply_keyboard()` 通用聊天分支改为**能力发现按钮**
+  - 无特定领域匹配时，展示: 📊分析股票 / 🛒比价购物 
+  - 搬运 ChatGPT 首页 suggested prompts / Google Gemini 推荐操作
+  - 点击后直接触发对应能力（走 suggest: 回调）
+
+### 位阶3: 首次能力引导
+
+- `response_synthesizer.py` 新增 `_first_time_flags` 类变量
+  - TL;DR 第一次触发时追加: "(💡 长回复我会先说结论，方便你快速扫一眼)"
+  - 追问建议第一次出现时追加: "💡 这些是AI建议的下一步"
+  - 每种能力只提示一次，不重复打扰
+
+### 文件变更
+- `packages/clawbot/src/bot/message_mixin.py` — 异步追问建议更新 + 能力发现按钮
+- `packages/clawbot/src/core/response_synthesizer.py` — 首次能力引导标志
+
+### 测试
+- 905/905 passed
+
+---
+
+## [2026-03-27] 执行层升级 + HI-258 根因修复 — 从"能想"到"能办事"：3大执行能力
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `proactive_engine.py`, `bot/__init__.py`
+> 关联问题: 产品跃迁第四轮 — 执行层 + HI-258 循环导入根治
+
+### Bug 修复: HI-258 循环导入根治
+
+- **根因**: `src/bot/__init__.py` 的 `from src.bot.multi_bot import MultiBot` 触发全部 10 个 Mixin 连锁加载
+- **修复**: 清除 `__init__.py` 中的模块级重型导入（无任何消费者使用 `from src.bot import MultiBot`）
+- **效果**: telegram_ux 独立导入不再报错，error_messages 导入不再触发重型加载链
+- **活跃问题归零**: 🔴0 🟠0 🟡0 🔵0
+
+### 位阶1: 复合意图编排 (搬运 ChatGPT multi-tool / AutoGPT task chain)
+
+- `brain.py` 新增 `_detect_compound_intent()` 模块级函数
+  - 零 LLM 成本正则检测连接词: "然后/接着/之后/再/并且/同时"
+  - 自动拆解子任务并推断每段的 TaskType
+  - 按序执行: 前一个结果可传给下一个
+- 示例: "分析TSLA然后发到小红书" → [INVESTMENT→SOCIAL] 两步自动编排
+- `process_message()` 中检测到复合意图后递归调用自身执行子任务
+
+### 位阶2: 使用行为洞察 (搬运 Spotify Wrapped / Apple 屏幕使用时间)
+
+- `proactive_engine.py` `periodic_proactive_check()` 新增第 9 项数据源
+  - 从最近 100 条历史消息中提取用户频繁提及的标的
+  - 检测"频繁提及但不在 watchlist"的标的
+  - 主动建议: "你最近频繁提及 NVDA（5次），但它不在自选股里，要加入吗？"
+
+### 位阶3: 流式进度反馈 (搬运 Claude artifact / ChatGPT 思考过程)
+
+- `proactive_engine.py` 新增 `brain.progress` EventBus 订阅
+  - 多步任务（>1步）每完成一步实时推送: "🔄 进度 1/3 — 正在执行: 分析TSLA"
+  - 已有的 `_on_progress` / `_on_node_complete` 回调终于有了消费者
+
+### 文件变更
+- `packages/clawbot/src/bot/__init__.py` — 清除重型模块级导入 (HI-258 修复)
+- `packages/clawbot/src/core/brain.py` — 新增复合意图拆解 + 按序执行
+- `packages/clawbot/src/core/proactive_engine.py` — 新增行为洞察 + 进度推送
+
+### 测试
+- 905/905 passed, 0 TS errors, HI-258 已验证修复
+
+---
+
+## [2026-03-27] 时间+情感层升级 — 从"会想"到"活着"：3大神经系统能力
+
+> 领域: `backend`
+> 影响模块: `proactive_engine.py`, `message_mixin.py`, `api_mixin.py`
+> 关联问题: 产品跃迁第三轮 — 时间连续性 + 情感温度
+
+### 位阶1: 任务闭环跟踪 (搬运 Apple Reminders / Todoist 定期回看)
+
+- `proactive_engine.py` 新增 TASK_COMPLETED EventBus 监听
+  - 投资类任务完成后，延迟 2 小时自动检查标的变化
+  - 通过 ProactiveEngine Gate→Generate→Critic 管道评估是否值得推送
+  - "2小时前你分析的 TSLA 涨了 2%"
+
+### 位阶2: 会话恢复问候 (搬运 Apple Intelligence 摘要 / Slack Catch Up)
+
+- `message_mixin.py` 新增 `_check_session_resumption()` 方法
+  - 记录每个 chat_id 的最后交互时间
+  - 超过 4 小时不活跃后首条消息自动触发离线摘要
+  - 摘要内容: 自选股异动 (>1.5%变化) + 闲鱼未读消息
+  - "👋 你离开了 6 小时，这期间发生了: TSLA +2.3%, 闲鱼 3 条未读"
+
+### 位阶3: 消息温度感知 (搬运 Google Gemini 情境适应)
+
+- `api_mixin.py` 新增 `_detect_message_tone()` 模块级函数
+  - 零 LLM 成本正则检测: 紧急信号(感叹号/催促词/短消息) / 详细信号(长消息/多问题)
+  - 紧急 → system prompt 追加"极简直给，不超过2句话"
+  - 详细 → system prompt 追加"可以详细展开分析"
+  - 普通 → 不干预
+
+### 文件变更
+- `packages/clawbot/src/core/proactive_engine.py` — 新增 TASK_COMPLETED 延迟回访监听
+- `packages/clawbot/src/bot/message_mixin.py` — 新增会话恢复问候机制
+- `packages/clawbot/src/bot/api_mixin.py` — 新增消息温度感知 + LLM prompt 注入
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-27] 认知层升级 — 从"能说"到"会想"：3大认知能力
+
+> 领域: `backend`
+> 影响模块: `smart_memory.py`, `brain.py`, `response_synthesizer.py`, `synergy_pipelines.py`, `message_mixin.py`, `api_mixin.py`, `error_messages.py`, `prompts.py`
+> 关联问题: 产品跃迁第二轮 — 认知层（记忆/联想/纠错）
+
+### 位阶1: 对话记忆贯通 (搬运 ChatGPT Memory / mem0 auto-extract)
+
+- `smart_memory.py` 新增 `_detect_instant_preference()` 实时偏好检测器
+  - 零 LLM 成本正则匹配: "我喜欢/我讨厌/简短点/以后别" 等 5 组信号词
+  - 命中则立即写入 SharedMemory (category=user_preference, importance=high)
+  - 同时触发画像立即更新（不等 profile_interval 的 50 轮）
+- `prompts.py` SOUL_CORE 新增 3 条人格指令: 记住偏好 / 跨域联想 / 被纠正时修正
+- `error_messages.py` 新增 `preference_saved()` + `correction_ack()` 模板
+
+### 位阶2: 跨域关联智能 (搬运 omi cross-context awareness)
+
+- `synergy_pipelines.py` 新增 `get_context_enrichment()` 跨域信号聚合接口
+  - 返回格式化文本: 社交热点标的 + 风控否决标的 + 今日跨域事件统计
+- `response_synthesizer.py` BrainContextCollector 新增第 4 数据源 `cross_domain_signals`
+  - collect() 返回: user_profile + conversation_summary + recent_messages + **cross_domain_signals**
+- `brain.py` 闲聊降级路径注入 `[跨域关联]` 到系统提示词
+  - 投资分析时自动感知社交热点，社媒发文时自动避开风控标的
+
+### 位阶3: 容错对话修复 (搬运 ChatGPT correction handling)
+
+- `message_mixin.py` 新增 `_detect_correction()` 模块级函数
+  - 正则检测 4 组纠错信号: "不对/说错了/不是X是Y/重新来"
+  - 优先级高于 Brain 追问路由（在 handle_message 最前面）
+- 检测到纠错时: 从历史获取上轮上下文 → 拼接 `[纠正上一条]` 标签 → 走正常路由重新处理
+- 发送 `correction_ack()` 确认反馈: "收到，已更正。下次不会搞错了。"
+
+### 文件变更
+- `packages/clawbot/config/prompts.py` — SOUL_CORE 新增 3 条人格指令
+- `packages/clawbot/src/smart_memory.py` — 新增实时偏好检测器
+- `packages/clawbot/src/core/synergy_pipelines.py` — 新增跨域信号聚合接口
+- `packages/clawbot/src/core/response_synthesizer.py` — BrainContextCollector 新增跨域数据源
+- `packages/clawbot/src/core/brain.py` — 闲聊路径注入跨域上下文
+- `packages/clawbot/src/bot/message_mixin.py` — 新增纠错检测器 + 纠错处理逻辑
+- `packages/clawbot/src/bot/error_messages.py` — 新增纠错/偏好确认模板
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-27] 产品跃迁 — 从"功能集合"到"AI助手"：4大体验升级
+
+> 领域: `backend`
+> 影响模块: `response_synthesizer.py`, `brain.py`, `message_mixin.py`, `api_mixin.py`, `multi_bot.py`, `proactive_engine.py`, `event_bus.py`, `prompts.py`, `watchlist_monitor.py`(新建), `watchlist.py`(新建)
+> 关联问题: 用户痛点地图 — 产品从"功能集合"到"AI助手"
+
+### 位阶1: 智能追问引擎 (搬运 khoj/open-webui follow_up 模式)
+
+- Brain 每次回复后自动生成 2-3 个"下一步建议"按钮（用最便宜的 g4f 模型）
+- `response_synthesizer.py` 新增 `generate_suggestions()` 方法
+- `brain.py` 用 `asyncio.gather` 并行生成建议 + TL;DR 摘要
+- `message_mixin.py` Brain 路由路径传递 `ai_suggestions` 到按钮构建
+- `multi_bot.py` 注册 `suggest:` 回调 handler
+- `prompts.py` 新增 `FOLLOWUP_SUGGESTIONS_PROMPT`
+
+### 位阶2: 摘要先行模式 (搬运 Perplexity/Arc Search 模式)
+
+- 所有 >200字 的合成回复自动在前面加 1-2 句核心结论
+- `response_synthesizer.py` 新增 `generate_tldr()` 方法
+- `brain.py` 合成结果格式: `💡 {摘要}\n────\n{原文}`
+
+### 位阶3: 画像驱动回复 (搬运 omi personality-driven responses)
+
+- LLM 流式回复路径从 TieredContextManager 读取用户画像注入 system_prompt
+- `api_mixin.py` `_call_api_stream()` 自动附加 `[用户偏好]` 到系统提示
+- `prompts.py` RESPONSE_SYNTH_PROMPT 新增画像调整规则 (简短/领域/专业度)
+
+### 位阶4: 自选股异动推送 (搬运 position_monitor 循环+冷却模式)
+
+- 新建 `watchlist_monitor.py` (257行) — 每5分钟扫描 watchlist 异动
+  - 价格异动: |涨跌幅| > 3%
+  - 目标价/止损价触达
+  - 放量: >1.5x 20日均量
+  - RSI 极值: RSI6 < 20 或 > 80
+  - PanWatch 冷却节流机制 (30min-1h)
+- `event_bus.py` 新增 `WATCHLIST_ANOMALY` + `WATCHLIST_PRICE_ALERT` 事件类型
+- `proactive_engine.py` 新增 watchlist 异动 EventBus 监听器
+- `multi_main.py` 启动/关闭流程接入 WatchlistMonitor
+
+### Bug 修复
+
+- `watchlist.py` 新建 — 修复 daily_brief/proactive_engine 的 `from src.watchlist import get_watchlist_symbols` ImportError
+
+### 文件变更
+- `packages/clawbot/config/prompts.py` — 新增 FOLLOWUP_SUGGESTIONS_PROMPT + 画像调整规则
+- `packages/clawbot/src/core/response_synthesizer.py` — 新增 generate_suggestions + generate_tldr
+- `packages/clawbot/src/core/brain.py` — 并行生成追问建议+TL;DR，存入 extra_data
+- `packages/clawbot/src/bot/message_mixin.py` — Brain 路由传递 ai_suggestions
+- `packages/clawbot/src/bot/api_mixin.py` — LLM 流式路径注入用户画像
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 suggest: 回调
+- `packages/clawbot/src/core/event_bus.py` — 新增 WATCHLIST 事件类型
+- `packages/clawbot/src/core/proactive_engine.py` — 新增自选股异动监听器
+- `packages/clawbot/src/watchlist_monitor.py` — **新建** 自选股异动监控引擎
+- `packages/clawbot/src/watchlist.py` — **新建** 自选股统一访问层
+- `packages/clawbot/multi_main.py` — 启动/关闭 WatchlistMonitor
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第48轮 PRR 收尾 — 6项残留修复，PRR 问题全部清零
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `xianyu_live.py`, `novel_writer.py`, `tts_tool.py`
+
+### 修复内容
+
+- **发货延时生效**: `delay_seconds` 规则之前只存不用 → 现在 `process_order` 前 `asyncio.sleep(min(delay, 120))`
+- **订单字段修复**: `record_order("", uid, "")` 全空 → 使用实际 `order_id` + `recent_item`
+- **mark_converted 修复**: `mark_converted("", "")` → `mark_converted(recent_item, uid)`
+- **word_count 注释**: 添加 `# 字符数（中文1字=1字符）` 说明
+- **MD5→SHA256**: tts_tool.py 文件名哈希升级
+- **日志脱敏确认**: auto_shipper 日志不含 card_content（通过）
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第46轮 PRR 质量门 — 2 CRITICAL + 5 HIGH + 5 MEDIUM 修复
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `auto_shipper.py`, `tts_tool.py`, `novel_writer.py`, `sau_bridge.py`, `xianyu_live.py`
+
+### P1 安全 — CRITICAL (2项)
+
+- **卡券竞态分配**: SELECT+UPDATE 两步 → 单条原子 UPDATE 子查询，彻底消除并发下同一张卡被分给两个买家的风险
+- **幂等缺失**: shipping_log 添加 `UNIQUE(order_id)` + process_order 入口幂等检查，WebSocket 重连消息重放不会重复发卡
+
+### P1 安全 — HIGH (5项)
+
+- **路径遍历**: tts_tool.py output_path 添加 `resolve()` + 前缀校验
+- **异常静默**: xianyu_live.py 自动发货异常从 `logger.debug` → `logger.error`
+- **order_id 碰撞**: 秒级 `time.time()` → `uuid.uuid4().hex[:12]`
+- **LLM 无超时**: novel_writer.py `asyncio.wait_for(timeout=120)`
+- **实例风暴**: xianyu_live.py AutoShipper 每次 new → `hasattr` 单例复用
+
+### P2 可靠性 — MEDIUM (5项)
+
+- **rollback 缺失**: novel_writer + auto_shipper 的 `_conn()` 添加 `except: rollback(); raise`
+- **串行发布**: sau_bridge.py `publish_multi_platform` for 循环 → `asyncio.gather` 并行
+- **TTS 超时**: edge_tts `communicate.save()` 包裹 `asyncio.wait_for(timeout=60)`
+- **章节重复**: novel_writer chapters 表添加 `UNIQUE(novel_id, chapter_num)` 索引
+- **import 清理**: sau_bridge.py 删除未使用 shlex + os 移至顶部
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-26] auto_shipper 对接 xianyu_live 订单事件 + 新增 /ship 命令
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `xianyu_live`, `xianyu_context`, `cmd_execution_mixin`, `multi_bot`, `auto_shipper`
+> 关联问题: 无
+
+### 变更内容
+- xianyu_live.py: 在 `paid` 订单事件中插入 auto_shipper 自动发货逻辑（在 `_auto_create_license` 之前执行）
+- xianyu_context.py: 新增 `get_recent_item_id()` 方法，从 conversations 表查询用户最近商品ID
+- cmd_execution_mixin.py: 新增 `/ship` 命令（add/stock/rule/stats/test 子命令）
+- multi_bot.py: 注册 `/ship` CommandHandler
+- COMMAND_REGISTRY.md: 新增第83号命令 `/ship`
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 442行 paid 分支插入自动发货逻辑
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 get_recent_item_id 方法
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 cmd_ship 方法 (~100行)
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 ship 命令
+- `docs/registries/COMMAND_REGISTRY.md` — 新增 /ship 条目
+
+---
+
+## [2026-03-26] 第44轮 — 闲鱼自动发货引擎 + 4模块33个单元测试
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `auto_shipper.py`, `test_sau_bridge.py`, `test_tts_tool.py`, `test_novel_writer.py`, `test_auto_shipper.py`
+
+### P3 业务 — 闲鱼自动发货引擎
+
+- 新建 `src/xianyu/auto_shipper.py` (210行) — 搬运 xianyu-super-butler 的虚拟商品发货逻辑
+- 三张 SQLite 表: `card_inventory`(卡券库存) + `shipping_rules`(发货规则) + `shipping_log`(发货记录)
+- 核心 API: `add_cards()` 批量导入卡券 → `set_rule()` 设发货规则 → `process_order()` 自动匹配发货
+- 安全保护: 最小延时 10s + 日发货上限 + 库存耗尽告警 + 重复卡券防护
+
+### P5 测试 — 4模块33个测试
+
+| 测试文件 | 模块 | 测试数 |
+|----------|------|--------|
+| `test_sau_bridge.py` | 社媒发布桥接 | 7 |
+| `test_tts_tool.py` | TTS 语音 | 5 |
+| `test_novel_writer.py` | AI 小说 | 7 |
+| `test_auto_shipper.py` | 闲鱼发货 | 11 |
+
+测试总数: 872 → **905** (+33)
+
+### 测试
+- 905/905 passed, 0 TS errors
+
+---
+
+## [2026-03-26] AI 小说工坊 — novel_writer 引擎 + /novel 命令
+
+> 领域: `backend`
+> 影响模块: `novel_writer.py`, `cmd_execution_mixin.py`, `multi_bot.py`
+> 关联问题: 无
+
+### 变更内容
+- 新增 `novel_writer.py` — AI 网文写作引擎，搬运 inkos (2.4K星) + MuMuAINovel (1.9K星) 的 Prompt 方法论
+- 功能: 选题构思 → 世界观/角色设定 → 大纲生成 → 逐章续写 → TXT 导出 → TTS 语音
+- 利用 `litellm_router.free_pool.acompletion()` 调用 LLM，零成本
+- 新增 `/novel` 命令 — 子命令: new/continue/status/list/export/tts
+- 在 `multi_bot.py` 中注册 `/novel` 命令
+
+### 文件变更
+- `packages/clawbot/src/novel_writer.py` — 新建，AI 网文写作引擎 (275行)
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 cmd_novel 方法 (154行)
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /novel 命令
+
+---
+
+## [2026-03-26] 社媒发布桥接层 — sau_bridge + /publish 命令
+
+> 领域: `social`, `backend`
+> 影响模块: `sau_bridge.py`, `social_scheduler.py`, `cmd_execution_mixin.py`, `multi_bot.py`
+> 关联问题: 无
+
+### 变更内容
+- 新增 `sau_bridge.py` — 对接 social-auto-upload (9K星) CLI，支持抖音/B站/小红书/快手多平台视频和图文发布
+- 在 `social_scheduler.py` 的 20:30 自动发布任务中集成 sau_bridge，已发布内容自动同步到抖音/小红书
+- 新增 `/publish` 命令 — 手动发布视频/图文到指定社媒平台
+- 在 `multi_bot.py` 中注册 `/publish` 命令
+
+### 文件变更
+- `packages/clawbot/src/sau_bridge.py` — 新建，CLI 桥接层 (175行)
+- `packages/clawbot/src/social_scheduler.py` — job_night_publish 中增加 sau_bridge 多平台同步
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 cmd_publish 方法
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /publish 命令
+
+---
+
+## [2026-03-26] 新增 TTS 文字转语音工具 + 日报 GitHub Trending 板块
+
+> 领域: `backend`
+> 影响模块: `tts_tool.py`, `cmd_basic_mixin.py`, `multi_bot.py`, `daily_brief.py`
+> 关联问题: 无
+
+### 变更内容
+- 新建 `tts_tool.py` — 对接 edge-tts (10K⭐)，零成本微软 Edge TTS，支持 6 种中文音色别名
+- 新增 `/tts` 命令 — 用户发送 `/tts 文本 [音色]` 即可生成语音消息
+- 日报新增第 13 板块「🔭 项目发现」— 从 GitHub Trending 筛选与 OpenClaw 相关的热门项目
+
+### 文件变更
+- `src/tools/tts_tool.py` — 新建，text_to_speech / get_voices / format_voice_list
+- `src/bot/cmd_basic_mixin.py` — 新增 cmd_tts 方法
+- `src/bot/multi_bot.py` — 注册 /tts CommandHandler
+- `src/execution/daily_brief.py` — 新增 _fetch_trending_projects + Section 13
+
+## [2026-03-26] 第41轮审计 — _setup_scheduler 698→48行 + 20模块烟雾测试 + 循环导入修复
+
+> 领域: `backend`
+> 影响模块: `trading_system.py`, `telegram_ux.py`, `test_import_smoke.py`
+> 关联问题: HI-258~260
+
+### P5 架构重构
+
+- **HI-258**: `_setup_scheduler()` 698→48 行。10 个内联调度任务函数 (`_daily_risk_reset`, `_eod_auto_review`, `_refresh_quotes`, `_daily_rebalance_check`, `_daily_capital_sync`, `_weekly_profit_guard`, `_reconcile_ibkr_entry_fills`, `_cancel_stale_pending_entries`, `_submit_pending_reentry_queue`, `_ibkr_health_check`) 全部提取到模块级别
+- 连同第40轮 `start_trading_system` 拆分，交易系统最大函数从 **786 行缩减为 33+48=81 行编排代码**
+
+### P2 可靠性
+
+- **HI-259**: `telegram_ux.py` 循环导入修复 — `from src.bot.error_messages import ...` 从顶层移到函数内延迟导入
+
+### P5 测试覆盖
+
+- **HI-260**: 新增 `test_import_smoke.py` — 20 个大型模块的参数化导入烟雾测试
+- 测试总数从 852 → **872** (+20)
+- 所有 20 个模块导入验证通过
+
+### 文件变更
+- `src/trading_system.py` — 10 个内联函数提取到模块级
+- `src/telegram_ux.py` — error_messages 延迟导入
+- `tests/test_import_smoke.py` — 新建 20 模块烟雾测试
+
+### 测试
+- 872/872 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 导入烟雾测试 — 20 模块验证, 发现 1 处循环导入
+
+> 领域: `backend`
+> 影响模块: `test_import_smoke.py`, `telegram_ux.py`
+> 关联问题: HI-258
+
+### 变更内容
+- 新增导入烟雾测试 `test_import_smoke.py`，覆盖 20 个核心模块的导入验证
+- 19/20 模块通过，`src.telegram_ux` 因循环导入失败
+- 循环链: `telegram_ux → bot.__init__ → multi_bot → cmd_basic_mixin → telegram_ux`
+- 已登记为 HI-258 (🟡一般)
+
+### 文件变更
+- `packages/clawbot/tests/test_import_smoke.py` — 新增导入烟雾测试
+
+---
+
+## [2026-03-26] 第40轮审计 — 最大技术债清零: start_trading_system 786→33行
+
+> 领域: `backend`, `docs`
+> 影响模块: `trading_system.py`, `MODULE_REGISTRY.md`
+> 关联问题: HI-255~257
+
+### P5 架构重构
+
+- **HI-257**: `start_trading_system()` 786 行单函数拆分为 6 个独立函数:
+  - `_restore_open_positions()` (28行) — 从 journal 恢复未平仓持仓
+  - `_restore_today_pnl()` (12行) — 恢复今日 PnL
+  - `_restore_autotrader_count()` (14行) — 恢复交易计数
+  - `_sync_ibkr_capital()` (12行) — IBKR 资金同步
+  - `_setup_scheduler()` (698行) — 调度器设置(8个内联任务保留为局部函数)
+  - `start_trading_system()` (**33行**) — 纯编排函数
+- 纯重构，零行为变更，852/852 测试通过
+
+### P8 文档
+
+- **HI-255/256**: MODULE_REGISTRY 5 模块补注册 + 4 模块描述更新 + core 分组新建
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] MODULE_REGISTRY 补注册 — 5个安全审计重点模块
+
+> 领域: `docs`
+> 影响模块: `MODULE_REGISTRY.md`
+> 关联问题: 第32-38轮审计中重点修改但缺失注册表条目
+
+### 变更内容
+- 补注册 5 个在安全审计中被重点加固但未登记的模块:
+  - `src/tools/code_tool.py` (155行) — Python/Node.js 代码沙箱
+  - `src/tools/bash_tool.py` (161行) — 白名单 Shell 执行
+  - `src/core/security.py` (349行) — 安全防护层 (输入消毒/PIN/审计/权限)
+  - `src/api/rpc.py` (923行) — RPC 远程调用接口
+  - `src/shared_memory.py` (1111行) — 共享记忆层 v4.0
+- 新增 `核心引擎 (src/core/)` 分组表头
+
+### 文件变更
+- `docs/registries/MODULE_REGISTRY.md` — 插入 5 个模块条目 + 1 个分组表头
+
+---
+
+## [2026-03-26] 第38轮审计 — 20处except静默异常批量清理
+
+> 领域: `backend`
+> 影响模块: `message_sender.py`, `deploy_client.py`, `web_installer.py`, `social_scheduler.py`, `browser_use_bridge.py`, `trading_system.py`, `humanized_controller.py`, `screen_tool.py`, `bash_tool.py`, `qr_service.py`
+> 关联问题: HI-254
+
+### P5 代码质量 — 静默异常清零
+
+全项目扫描发现 20 处 `except Exception:` 无 `as e`（完全静默，异常信息丢失，排障死角）。按文件批量修复：
+
+| 文件 | 修复数 | 说明 |
+|------|--------|------|
+| `message_sender.py` | 2 | 消息发送失败静默 |
+| `deploy_client.py` | 2 | 部署异常静默 + 新增 logger |
+| `web_installer.py` | 2 | 安装异常静默 |
+| `social_scheduler.py` | 4 | 社媒调度 4 处静默 |
+| `browser_use_bridge.py` | 1 | 浏览器桥接静默 |
+| `trading_system.py` | 3 | 交易系统 3 处静默 |
+| `humanized_controller.py` | 3 | 桌面控制 3 处静默 + 新增 logger |
+| `screen_tool.py` | 1 | 截图工具静默 + 新增 logger |
+| `bash_tool.py` | 1 | Shell 工具静默 |
+| `qr_service.py` | 1 | 二维码服务静默 |
+
+全部改为 `except Exception as e:` + `logger.debug("[模块名] 异常: %s", e)`
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第37轮审计 — import清理+Sidebar响应式+AIConfig日志+grid断点 (5项修复)
+
+> 领域: `backend`, `frontend`
+> 影响模块: `agent_tools.py`, `AIConfig/index.tsx`, `Sidebar.tsx`, `Dashboard/index.tsx`
+> 关联问题: HI-250~253 (4个新问题全部修复)
+
+### P5 代码质量 (1项)
+
+- **HI-250**: `agent_tools.py` 删除未使用 `List`, `Optional` import。`src/__init__.py` 和 `api/routers/__init__.py` 确认为 re-export，保留不动
+
+### P6 UX 前端 (3项)
+
+- **HI-251**: `AIConfig/index.tsx` 空 `catch {}` → `console.debug('[AIConfig] 获取项目上下文失败:', e)`
+- **HI-252**: `Sidebar.tsx` 响应式折叠 — `w-64` → `w-16 lg:w-64` + 菜单文字 `hidden lg:inline` + 过渡动画 300ms
+- **HI-253**: `Dashboard/index.tsx` grid 断点 — `grid-cols-1 xl:grid-cols-3` → `grid-cols-1 lg:grid-cols-2 xl:grid-cols-3`
+
+### P6 UX Bot (确认通过)
+
+- `/risk` `/monitor` 无参数时直接展示状态，符合用户预期，无需改动
+- 讨论模式发言失败已在第33轮修复为友好格式，确认通过
+
+### 文件变更
+- `src/agent_tools.py` — 删除 List, Optional import
+- `apps/.../AIConfig/index.tsx` — catch 添加日志
+- `apps/.../Layout/Sidebar.tsx` — 响应式 w-16/w-64 + 文字隐藏
+- `apps/.../Dashboard/index.tsx` — lg:grid-cols-2 过渡断点
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第36轮审计 — 互动率+佣金核算+UX脱敏+前端骨架屏 (13项修复)
+
+> 领域: `backend`, `xianyu`, `frontend`, `infra`
+> 影响模块: `news_fetcher.py`, `observability.py`, `life_automation.py`, `xianyu_context.py`, `cmd_basic_mixin.py`, `cmd_ibkr_mixin.py`, `cmd_invest_mixin.py`, `cmd_execution_mixin.py`, `Dashboard/index.tsx`, `Settings/index.tsx`
+> 关联问题: HI-239~249 (11个新问题全部修复)
+
+### P2 可靠性 (2项)
+
+- **HI-239**: `news_fetcher.py` 废弃 `asyncio.get_event_loop()` → `get_running_loop()`
+- **HI-240**: `observability.py` 3 处 `ImportError: pass` → `logger.info` 记录缺失模块名
+
+### P3 业务逻辑 (3项)
+
+- **HI-241**: `get_engagement_summary()` 新增互动率 `engagement_rate = (likes+comments+shares)/views*100`
+- **HI-242**: 闲鱼利润核算扣除佣金 — `commission_rate` 字段 (默认 6%) + `profit = amount*(1-rate)-cost`
+- **HI-243**: `notified` 魔术数字 0/1/2 → `NOTIFY_NONE/ORDER/SHIPMENT` 常量
+
+### P6 UX (8项)
+
+**Telegram Bot (6处)**:
+- **HI-244**: onboarding 新闻获取失败 `str(e)` → `error_service_failed("新闻获取")`
+- **HI-245**: IBKR 买入/卖出/取消 3 处 `result["error"]` → `error_service_failed("IBKR...")`
+- **HI-246**: "降级到模拟组合" 术语 → "实盘暂不可用，已在模拟组合执行"（2处）
+- **HI-247**: 未知子命令提示添加 ❓ emoji + 优化文案
+
+**前端 (2处)**:
+- **HI-248**: Dashboard 状态/日志获取失败 → 首次 `toast.warning` + `useRef` 防重复
+- **HI-249**: Settings 加载时空表单 → 旋转加载动画 + "加载设置..." 文字
+
+### 文件变更
+- `src/news_fetcher.py` — get_running_loop()
+- `src/observability.py` — 3处 ImportError 日志
+- `src/execution/life_automation.py` — engagement_rate 计算
+- `src/xianyu/xianyu_context.py` — commission_rate 字段 + NOTIFY 常量
+- `src/bot/cmd_basic_mixin.py` — onboarding 脱敏
+- `src/bot/cmd_ibkr_mixin.py` — 3处 IBKR 脱敏
+- `src/bot/cmd_invest_mixin.py` — 2处降级术语
+- `src/bot/cmd_execution_mixin.py` — emoji 前缀
+- `apps/.../Dashboard/index.tsx` — toast + useRef
+- `apps/.../Settings/index.tsx` — loading 骨架屏
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第35轮审计 — shell注入清零+网络重试+业务验证+运维增强 (14项修复)
+
+> 领域: `backend`, `deploy`, `xianyu`, `infra`
+> 影响模块: `deploy_client.py`, `auto_download.py`, `server.py`, `github_trending.py`, `telegram_ux.py`, `trading_system.py`, `life_automation.py`, `xianyu_context.py`, `backup_databases.py`, `monitoring.py`
+> 关联问题: HI-228~238 (11个新问题全部修复)
+
+### P1 安全 (3项)
+
+- **HI-228**: `deploy_client.py` + `auto_download.py` 两处 `shell=True` → `shlex.split` 列表调用。至此项目 **shell=True 全部清零**
+- **HI-229**: CORS `allow_methods/headers=["*"]` 收窄为 4 个 HTTP 方法 + 3 个明确 header
+
+### P2 可靠性 (3项)
+
+- **HI-230**: `github_trending.py` aiohttp 添加 `sock_connect=10` + 两个抓取函数各加 3 次指数退避重试
+- **HI-231**: `telegram_ux.py` 通知批处理 `_delayed_flush` 添加 `done_callback` 崩溃日志
+- **HI-232**: `trading_system.py` 2 处 `except Exception: return 0.0` → `logger.debug` 记录后返回
+
+### P3 业务逻辑 (4项)
+
+- **HI-233**: `record_post_engagement` 添加数值 `max(0)` 校验 + 平台白名单 (x/xhs/weibo/linkedin/douyin/bilibili)
+- **HI-234**: `_calc_next_occurrence` 最小间隔钳位 5 分钟，防止 "每1分钟" 通知轰炸
+- **HI-235**: `delete_last_expense` 新增 `chat_id` 可选参数，群组内撤销不误删其他群的记录
+- **HI-236**: `xianyu_context.py` 发货超时查询从 UTC `datetime('now')` → `now_et()` + `timedelta`，与 `daily_stats` 时区一致
+
+### P4 运维 (2项)
+
+- **HI-237**: `backup_databases.py` 备份后 `PRAGMA integrity_check` 验证，损坏自动删除 + 错误日志
+- **HI-238**: `/health` 端点从 `{"status":"ok"}` → 包含 `uptime_seconds` + `components` 子系统状态
+
+### 文件变更
+- `src/deployer/deploy_client.py` — shlex.split 替代 shell=True
+- `src/deployer/auto_download.py` — 同上
+- `src/api/server.py` — CORS 收窄
+- `src/evolution/github_trending.py` — sock_connect + 3次重试
+- `src/telegram_ux.py` — flush done_callback
+- `src/trading_system.py` — 2处静默异常改日志
+- `src/execution/life_automation.py` — 互动验证 + 最小间隔 + 撤销隔离
+- `src/xianyu/xianyu_context.py` — 时区统一 + timedelta 导入
+- `scripts/backup_databases.py` — integrity_check
+- `src/monitoring.py` — /health 增强
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第34轮审计 — 沙箱加固+Mem0兼容+并发防护+运维安全 (13项修复)
+
+> 领域: `backend`, `xianyu`, `deploy`, `infra`
+> 影响模块: `code_tool.py`, `bash_tool.py`, `security.py`, `shared_memory.py`, `life_automation.py`, `order_notifier.py`, `_db.py`, `deploy_vps.sh`, `monitoring.py`
+> 关联问题: HI-216~227 (12个新问题全部修复)
+
+### P1 安全 (3项)
+
+- **HI-216**: Python 沙箱加固 — 禁用 `builtins.open` (仅允许 /dev/null, /dev/urandom) + `type.__subclasses__` 返回空列表，阻断 subclasses 链绕过
+- **HI-217**: `execute_dangerous()` 从 39 行完整执行 → 4 行安全拒绝存根，彻底消除 `shell=True` 残留
+- **HI-218**: PIN 验证频率限制 — 5 次失败锁定 300 秒，向后兼容无 user_id 调用
+
+### P2 可靠性 (4项)
+
+- **HI-219**: Mem0 Cloud API 兼容 — `remember()` 中 Cloud 模式传字符串，本地模式传消息列表
+- **HI-220**: 跨用户记忆泄漏防护 — `search()` + `semantic_search()` 中 chat_id=None 时 user_id 默认为 `"global"`
+- **HI-221**: `fire_due_reminders()` 并发防护 — 从 SELECT+UPDATE 改为先原子 UPDATE 标记 fired 再 SELECT
+- **HI-222**: 闲鱼订单通知 3 次指数退避重试 (1s/2s/4s)
+
+### P3 业务逻辑 (3项)
+
+- **HI-223**: `evaluate_strategy_performance` 胜率单位自动检测 — >1 视为百分比需除 100
+- **HI-224**: `get_expense_summary` 最近 5 笔添加时间范围筛选，与汇总统计一致
+- **HI-225**: `post_engagement` 添加 `UNIQUE(draft_id, platform)` + `INSERT OR REPLACE` 幂等更新
+
+### P4 运维 (2项)
+
+- **HI-226**: `deploy_vps.sh` SSH 从 root → clawbot 用户，IP 从硬编码 → `DEPLOY_VPS_HOST` 环境变量
+- **HI-227**: Prometheus `_histograms` 指标类型从错误的 `summary` 修正为 `histogram`
+
+### 文件变更
+- `src/tools/code_tool.py` — Python 沙箱新增 open/subclasses 防护
+- `src/tools/bash_tool.py` — execute_dangerous 替换为拒绝存根
+- `src/core/security.py` — PIN 频率限制 (5次/5分钟)
+- `src/shared_memory.py` — Mem0 Cloud API 分支 + user_id 泄漏防护
+- `src/execution/life_automation.py` — 并发防护 + 胜率单位 + 账单筛选 + INSERT OR REPLACE
+- `src/execution/_db.py` — post_engagement UNIQUE 约束
+- `src/xianyu/order_notifier.py` — 3次重试
+- `scripts/deploy_vps.sh` — clawbot 用户 + 环境变量
+- `src/monitoring.py` — histogram 类型修正
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第33轮审计 — PIN加盐+微信重试+中文触发词+import清理 (17项修复)
+
+> 领域: `backend`, `deploy`, `xianyu`
+> 影响模块: `security.py`, `gateway.plist`, `kiro-gateway/config.py`, `wechat_bridge.py`, `notifications.py`, `scheduler.py`, `quote_cache.py`, `monitoring.py`, `execution/__init__.py`, `chinese_nlp_mixin.py`, `daily_brief.py`, `rpc.py`, `trading.py`, `cmd_collab_mixin.py`, `backtester.py`, `alpaca_bridge.py`, `backtest_reporter.py`, `test_security.py`
+> 关联问题: HI-204~215 (12个新问题全部修复)
+
+### P1 安全修复 (3项)
+
+- **HI-204**: Gateway plist 硬编码 Token → 占位符 `${OPENCLAW_GATEWAY_TOKEN}` + 注释警告
+- **HI-205**: kiro-gateway 默认 `0.0.0.0` → `127.0.0.1`
+- **HI-206**: PIN 无盐 SHA-256 → PBKDF2 + 随机盐 (100,000 轮迭代) + `chmod 600` + 向后兼容旧格式
+
+### P2 可靠性修复 (5项)
+
+- **HI-207**: `wechat_bridge.py` contextToken 30分钟 TTL 自动刷新 + 发送 3 次指数退避重试 + 401/403 清缓存重试
+- **HI-208**: `notifications.py` 微信桥接 `except: pass` → `logger.debug` 记录异常
+- **HI-209/210/211**: `scheduler.py` / `quote_cache.py` / `monitoring.py` 三个关键循环添加 `done_callback` 崩溃告警
+
+### P3 业务逻辑修复 (4项)
+
+- **HI-212**: `execution/__init__.py` `triage_email` 废弃 `get_event_loop()` → `async def` + `await`
+- **HI-213**: `chinese_nlp_mixin.py` 删除重复键 `social_report` + 新增 3 组中文触发词 (画图/记忆/设置)
+- **HI-214**: `daily_brief.py` 4 处 `except: pass` → `logger.debug` 记录日报段落异常
+
+### P5 代码质量 (5项)
+
+- **HI-215**: 6 个文件清理 20+ 未使用 import:
+  - `rpc.py`: Any, Dict, datetime
+  - `trading.py`: StatusMsg, TeamVoteResult, TradeSignal, TradingSystemStatus
+  - `cmd_collab_mixin.py`: datetime, get_stock_quote, ALLOWED_USER_IDS 等
+  - `backtester.py`: timedelta, Tuple, deepcopy
+  - `alpaca_bridge.py`: dataclass, field
+  - `backtest_reporter.py`: datetime, export_png, Document, curdoc, file_html
+
+### 文件变更
+- `src/core/security.py` — PBKDF2 + salt + chmod + 向后兼容
+- `tools/launchagents/ai.openclaw.gateway.plist` — Token 占位符化
+- `kiro-gateway/kiro/config.py` — 默认绑定 127.0.0.1
+- `src/wechat_bridge.py` — TTL 30min + 3次重试 + 401清缓存
+- `src/notifications.py` — 微信异常日志
+- `src/execution/scheduler.py` — 调度循环 done_callback
+- `src/quote_cache.py` — 报价刷新 done_callback
+- `src/monitoring.py` — 自动恢复 done_callback
+- `src/execution/__init__.py` — triage_email async 化
+- `src/bot/chinese_nlp_mixin.py` — 删重复键 + 3组触发词
+- `src/execution/daily_brief.py` — 4处静默异常改日志
+- `src/api/rpc.py` — 3个未使用 import 删除
+- `src/api/routers/trading.py` — 4个未使用 import 删除
+- `src/bot/cmd_collab_mixin.py` — 5个未使用 import 删除
+- `src/backtester.py` — 3个未使用 import 删除
+- `src/alpaca_bridge.py` — 1行未使用 import 删除
+- `src/backtest_reporter.py` — 1个未使用 import + 死代码块删除
+- `tests/test_security.py` — PIN 测试适配 PBKDF2 salt:hash 格式
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 第32轮全量审计 — 6层145项扫描 + 28项代码修复
+
+> 领域: `backend`, `frontend`, `xianyu`, `deploy`
+> 影响模块: `message_mixin.py`, `cmd_basic_mixin.py`, `cmd_execution_mixin.py`, `cmd_invest_mixin.py`, `cmd_analysis_mixin.py`, `cmd_collab_mixin.py`, `code_tool.py`, `rpc.py`, `deploy_server.py`, `broker_bridge.py`, `chinese_nlp_mixin.py`, `xianyu_context.py`, `license_manager.py`, `auto_trader.py`, `position_monitor.py`, `feedback.py`, `monitoring.py`, `brain.py`, `life_automation.py`, `ocr_processors.py`, `response_cards.py`, `CommandPalette.tsx`
+> 关联问题: HI-180~203 (24个新问题全部修复)
+
+### 审计方法论
+
+6 个并行扫描智能体覆盖安全/可靠性/业务逻辑/运维/代码质量/UX，共 145+ 项检查：
+
+| 位阶 | 审计范围 | 发现数 | 修复数 |
+|------|---------|--------|--------|
+| P1 安全 | 注入/泄露/权限/认证 | 18 | 8 |
+| P2 可靠性 | 资源泄漏/错误处理/并发 | 28 | 7 |
+| P3 业务逻辑 | 半成品/边界条件/死代码 | 16 | 4 |
+| P6 UX/UI | 错误消息/英文残留/中文化 | 33 | 9 |
+| **合计** | | **95+** | **28** |
+
+### 🔴 安全修复 (P1, 8项)
+
+- **HI-180**: 5 个 Callback Handler 无认证 — `handle_trade_callback`(可执行实盘交易!) / `handle_notify_action_callback` / `handle_social_confirm_callback` / `handle_ops_menu_callback` / `handle_quote_action_callback` 全部添加 `_is_authorized()` 检查
+- **HI-181**: Node.js `execute_node()` 无沙箱 — 添加前导代码禁用 `child_process`/`fs`/`net` 等 12 个危险模块
+- **HI-182**: `rpc.py` 14 处 `str(e)` 泄露内部路径 — 新增 `_safe_error()` 脱敏函数 + 全量替换
+- **HI-183**: `deploy_server.py` 默认绑定 `0.0.0.0` → `127.0.0.1`
+- **HI-184**: `broker_bridge.py` `create_subprocess_shell` → `create_subprocess_exec` + `shlex.split`
+- **HI-185**: `chinese_nlp_mixin.py` 记账功能 NameError — `action_data` → `action_arg` + 提取 `user`/`chat_id`
+
+### 🟠 可靠性修复 (P2, 7项)
+
+- **HI-186/187**: `xianyu_context.py` + `license_manager.py` SQLite 连接永不关闭 — `_conn()` 改为 `@contextmanager` + `finally: conn.close()`
+- **HI-188/189**: `auto_trader.py` + `position_monitor.py` 关键循环无崩溃回调 — 添加 `done_callback` + `logger.critical`
+- **HI-190**: `feedback.py` 多线程 SQLite 无锁 — 添加 `threading.Lock` 保护所有 DB 操作
+- **HI-191**: `monitoring.py` `_init_db` SQLite 异常可泄漏 — `try/finally` 包装
+- **HI-192**: `message_mixin.py` 3 处 fire-and-forget task 无回调 — 添加异常日志回调
+
+### 🟡 业务逻辑修复 (P3, 4项)
+
+- **HI-193**: `brain.py` 追问闭环多参数赋值错误 — 只赋值给第一个缺失参数
+- **HI-194**: `xianyu_context.py` 利润核算不工作 — `record_order` 新增 `amount`/`cost` 参数
+- **HI-195**: `life_automation.py` 记账金额无验证 — 添加 0.01~1M 范围校验 + 长度截断
+- **HI-196**: `ocr_processors.py` 平均价格计算分母错误 — 用有价格条目数做分母
+
+### 🔵 UX 修复 (P6, 9项)
+
+- **HI-197/198**: `cmd_analysis_mixin.py` (3处) + `cmd_collab_mixin.py` (4处) 错误消息暴露技术信息 → `error_service_failed()` 统一模板
+- **HI-199**: `cmd_basic_mixin.py` 英文 `Prompt:` / `QR:` → 中文 `描述:` / `二维码:`
+- **HI-200**: `cmd_execution_mixin.py` 英文 `OK`/`FAIL`/`stdout`/`stderr`/`ON`/`OFF` → 中文
+- **HI-201**: `response_cards.py` 英文缩写 `TA` → `技术分析` + 去重复按钮
+- **HI-202**: `cmd_invest_mixin.py` 英文介词 `[by xxx]` → `[来自 xxx]`
+- **HI-203**: `CommandPalette.tsx` 英文导航 `Dashboard` → `概览`
+
+### 文件变更
+- `src/bot/message_mixin.py` — handle_trade_callback 认证 + 3处 task 回调
+- `src/bot/cmd_basic_mixin.py` — handle_notify_action_callback 认证 + 英文修正
+- `src/bot/cmd_execution_mixin.py` — 2处 handler 认证 + 英文修正
+- `src/bot/cmd_invest_mixin.py` — handler 认证 + 英文介词修正
+- `src/bot/cmd_analysis_mixin.py` — 3处错误消息统一
+- `src/bot/cmd_collab_mixin.py` — 4处错误消息统一
+- `src/bot/chinese_nlp_mixin.py` — 记账 NameError 修复
+- `src/tools/code_tool.py` — Node.js 沙箱前导代码
+- `src/api/rpc.py` — _safe_error() + 14处替换
+- `src/deployer/deploy_server.py` — 默认绑定 127.0.0.1
+- `src/broker_bridge.py` — shlex.split + create_subprocess_exec
+- `src/xianyu/xianyu_context.py` — @contextmanager + 利润核算参数
+- `src/deployer/license_manager.py` — @contextmanager
+- `src/auto_trader.py` — 主循环 done_callback
+- `src/position_monitor.py` — 监控循环 done_callback
+- `src/feedback.py` — threading.Lock
+- `src/monitoring.py` — _init_db try/finally
+- `src/core/brain.py` — 多参数追问修复
+- `src/execution/life_automation.py` — 记账金额验证
+- `src/ocr_processors.py` — 平均值分母修正
+- `src/core/response_cards.py` — TA→技术分析 + 去重复按钮
+- `apps/.../CommandPalette.tsx` — Dashboard→概览
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] reentry_queue 技术债清理 + 生产就绪验证
+
+> 领域: `trading`, `backend`
+> 影响模块: `trading_system.py`, `trading/reentry_queue.py`
+> 关联问题: reentry_queue 重复代码 (技术债)
+
+### reentry_queue 技术债清理
+
+- `trading/reentry_queue.py` 重写为 v2.0 — 回灌 trading_system.py 的成熟实现:
+  - `_normalize_item()` — 类型转换 + 字段验证 + 安全过滤
+  - `load_pending_reentry_queue()` — 支持显式 journal 参数或自动延迟导入
+  - `save_pending_reentry_queue()` — 同上
+  - `queue_reentry_from_trade()` — 去重 + 日志 + 返回 (queue, success) 元组
+- `trading_system.py` 3 个内部函数替换为模块调用 — 消除约 70 行重复代码
+- 行为完全一致，向后兼容
+
+### 生产就绪验证
+
+- 22 个关键模块 import 链全部通过 (brain/proactive/executor/multi_bot/message_mixin/litellm_router/notifications/wechat_bridge/monitoring/shared_memory/trading_system/reentry_queue/auto_trader/risk_manager/omega/social/trading API/bash_tool/code_tool/xianyu_agent/evolution)
+- 852/852 pytest passed
+
+### 文件变更
+- `src/trading/reentry_queue.py` — v2.0 重写 (61→133行，含规范化+验证)
+- `src/trading_system.py` — 3 函数改为模块委托 (减少约 70 行)
+
+---
+
+## [2026-03-26] Mem0 Cloud API 激活 + API 号池注册表同步
+
+> 领域: `backend`, `ai-pool`, `docs`
+> 影响模块: `shared_memory.py`, `config/.env`, `API_POOL_REGISTRY.md`
+> 关联问题: Mem0 Cloud 模式接入 + API 号池补全
+
+### Mem0 Cloud API 激活
+
+- `shared_memory.py` 新增 Mem0 Cloud API 模式 (v4.1):
+  - 优先级: `MEM0_API_KEY` 环境变量 → Mem0 Cloud API → 本地 qdrant + SiliconFlow LLM → SQLite 回退
+  - 使用 `MemoryClient(api_key=...)` 连接 Mem0 Cloud，无需本地 qdrant/embedding
+  - `.env` 已配置 `MEM0_API_KEY`，重启后自动升级为 Cloud 模式
+- 微信通知已通过 `WECHAT_NOTIFY_ENABLED=true` 默认启用
+
+### API 号池注册表同步
+
+- `API_POOL_REGISTRY.md` 新增 Sambanova(#17) + GitHub Models(#18) + Tavily(#29)
+- 编号从 26 → 29 个 API 提供商
+- 更新日期 2026-03-22 → 2026-03-26
+
+### Key 清单验证结果
+
+全部用户提供的 Key 对比 `.env`:
+- **已配置 (17个)**: Groq, Gemini, OpenRouter, Cerebras, Mistral, Cohere, SiliconFlow(免费4+付费10+无限1), NVIDIA, Volcengine, GPT_API_Free, ZhipuAI, fal.ai, Deepgram, Manus, Vercel, HuggingFace, SerpApi, Brave, CloudConvert, Kling
+- **新增 (1个)**: Mem0 Cloud API
+- **待用户注册 (2个)**: Tavily (空), Langfuse (空)
+
+### 文件变更
+- `src/shared_memory.py` — 新增 Mem0 Cloud API 模式（MemoryClient）
+- `config/.env` — 新增 `MEM0_API_KEY` + `WECHAT_NOTIFY_ENABLED=true`
+- `docs/registries/API_POOL_REGISTRY.md` — 补全 3 个提供商 + 编号修正
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 搬运模块激活 + 前端全量中文化 + COMMAND_REGISTRY 修正
+
+> 领域: `backend`, `frontend`, `docs`, `ai-pool`
+> 影响模块: `config/.env`, `ExecutionFlow`, `Logs`, `Memory`, `QuickActions`, `COMMAND_REGISTRY`
+> 关联问题: 6 个搬运模块激活 + 13 处英文中文化 + 命令编号修正
+
+### 搬运模块激活
+
+- `config/.env` 新增 6 个搬运模块的环境变量模板:
+  - `TAVILY_API_KEY` — AI 搜索（购物比价/深度研究，免费 1000次/月）
+  - `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_HOST` — LLM 可观测（免费 50K events/月）
+  - `WECHAT_NOTIFY_ENABLED=true` — 微信通知桥接已默认启用
+- 6 个模块 pip 依赖已全部确认安装: browser-use/crewai/smolagents/langfuse/docling/tavily-python
+
+### 前端全量中文化 (13处)
+
+- **ExecutionFlow**: 5 处 (Tracing Active→追踪中 等)
+- **Logs**: 4 处下拉选项 (Debug→调试, Info→信息, Warn→警告, Error→错误)
+- **Memory**: 4 处标签 (USER_PROFILE→用户画像, HIGH PRIORITY→高优先级 等)
+
+### Dashboard 诊断按钮激活
+
+- `QuickActions.tsx` 诊断按钮添加 `onClick` → 调用 `api.runDoctor()` → toast 展示结果摘要
+
+### COMMAND_REGISTRY 编号修正
+
+- 总数 76→80，修复 #18 重复，消除非标编号 (33a/b/c)，统一连续 #1-#80
+
+### 文件变更
+- `config/.env` — 新增搬运模块激活配置段
+- `apps/.../ExecutionFlow/index.tsx` — 5 处中文化
+- `apps/.../Logs/index.tsx` — 4 处中文化
+- `apps/.../Memory/index.tsx` — 4 处中文化
+- `apps/.../Dashboard/QuickActions.tsx` — 诊断按钮接入 runDoctor API
+- `docs/registries/COMMAND_REGISTRY.md` — 总数+编号修正
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 活跃问题清零 — 搬运模块调研 + monitoring_extras 激活 + Key 监控确认
+
+> 领域: `backend`, `ai-pool`, `infra`
+> 影响模块: `monitoring.py`, `monitoring_extras.py`, `litellm_router.py`
+> 关联问题: HI-152(模块调研) + HI-009/010/012(Key监控) + monitoring_extras 激活
+
+### HI-152: 16 个搬运模块深度调研
+
+逐模块调研结果（16 个模块 0 个空壳）:
+- **5 个已激活**: pipeline_helper / ai_team_integration / dev_workflow / meeting_notes / project_report
+- **6 个待配置**: browser_use_bridge / crewai_bridge / agent_tools / langfuse_obs / docling_service / tavily_search (代码完整，已被主流程引用，只差环境变量或 pip install)
+- **3 个待集成**: composio_bridge / skyvern_bridge / monitoring_extras
+- **1 个独立脚本**: auto_download.py (无需接入)
+- **1 个技术债**: reentry_queue.py (trading_system 有重复实现)
+
+### monitoring_extras 激活
+
+- `monitoring.py` 新增 `get_system_resources()` 和 `check_g4f_health()` 代理函数
+- 通过懒加载方式委托到 `monitoring_extras.py`，不影响无 psutil 环境
+
+### HI-009/010/012: Key 监控确认
+
+- `multi_main.py:352-364` 已实现启动时非阻塞 Key 验证 (`validate_keys`)
+- 异常 Provider 自动 warning + 标记 dead keys
+- 用户可通过 `/keyhealth` 命令手动触发全量检查
+- 三个问题本质是外部服务固有限制，非代码 bug，标记已有监控
+
+### 文件变更
+- `src/monitoring.py` — 新增 get_system_resources + check_g4f_health 代理
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] 前端接真 + Token 优化 + API 规范 — 5项 HI 关闭
+
+> 领域: `frontend`, `backend`, `ai-pool`
+> 影响模块: `Memory/index.tsx`, `Social/index.tsx`, `Money/index.tsx`, `proactive_engine.py`, `omega.py`, `social.py`, `trading.py`
+> 关联问题: HI-179(Token优化) + HI-172/173(前端Mock) + HI-177(API规范)
+
+### Token 成本优化 (HI-179 🟠→✅)
+
+- ProactiveEngine 三步管道模型分级完成:
+  - **Gate**: g4f (最便宜) + max_tokens=100 — 仅判断"是否值得打扰"
+  - **Generate**: qwen (最强免费) + max_tokens=300 — 需要高质量输出
+  - **Critic**: g4f (最便宜) + max_tokens=100 — 简单审查通过/拒绝
+- 预计降低 ProactiveEngine 每次调用成本 ~60%
+
+### 前端接真实 API (HI-172/173 🟡→✅)
+
+- **Memory 组件**: Mock 硬编码 → `GET /api/v1/memory/search?q=&limit=50`，字段自动映射，空状态友好提示
+- **Social 组件**: setTimeout 模拟 → `POST /api/v1/omega/process`，错误反馈中文化
+- **Money 组件**: setTimeout 模拟 → `POST /api/v1/omega/process`，同 Social
+
+### API 端点规范 (HI-177 🔵→✅)
+
+- 31 个端点添加 `response_model=Dict[str, Any]`:
+  - `omega.py`: 14 个端点
+  - `social.py`: 14 个端点
+  - `trading.py`: 3 个端点
+- Swagger UI (/api/docs) 现在能展示所有端点的响应结构
+
+### 文件变更
+- `src/core/proactive_engine.py` — Critic 步骤改用 cheap=True
+- `apps/.../Memory/index.tsx` — Mock → 真实 API
+- `apps/.../Social/index.tsx` — setTimeout → POST API
+- `apps/.../Money/index.tsx` — setTimeout → POST API
+- `src/api/routers/omega.py` — 14 个 response_model
+- `src/api/routers/social.py` — 14 个 response_model
+- `src/api/routers/trading.py` — 3 个 response_model
+
+### 测试
+- 852/852 passed, 0 TS errors
+
+---
+
+## [2026-03-26] FastAPI 端点补全 response_model — OpenAPI 文档完整性提升
+
+> 领域: `backend`
+> 影响模块: `omega.py`, `social.py`, `trading.py`
+> 关联问题: 无 (API 文档改进)
+
+### 变更内容
+- 为 3 个 router 文件共 31 个端点添加 `response_model=Dict[str, Any]`
+  - `omega.py`: 14 个端点 (0% → 100%)
+  - `social.py`: 14 个端点 (1/15 → 15/15)
+  - `trading.py`: 3 个端点 (2/5 → 5/5)
+- 整体覆盖率从 ~32% 提升至 ~100% (三文件范围)
+
+### 文件变更
+- `packages/clawbot/src/api/routers/omega.py` — 添加 `from typing import Any, Dict` + 14 个端点补充 response_model
+- `packages/clawbot/src/api/routers/social.py` — 添加 `from typing import Any, Dict` + 14 个端点补充 response_model
+- `packages/clawbot/src/api/routers/trading.py` — 添加 `from typing import Any, Dict` + 3 个端点补充 response_model
+
+---
+
+## [2026-03-26] 文档全量同步 + 基础设施修复 — 6项 HI 关闭
+
+> 领域: `docs`, `deploy`, `infra`, `frontend`
+> 影响模块: `MODULE_REGISTRY.md`, `DEPENDENCY_MAP.md`, `PROJECT_MAP.md`, `heartbeat-sender.plist`
+> 关联问题: HI-174/175/176(文档同步) + HI-171(SSH) + HI-178(空目录) + HI-099(日志)
+
+### 文档同步 (3项)
+
+- **HI-174 MODULE_REGISTRY**: 新增 32 个模块条目 (4,652行代码)，涵盖 7 个分组 (核心工具/执行层/社媒/工具/交易/闲鱼/API)。删除 execution_hub.py 幽灵引用
+- **HI-175 DEPENDENCY_MAP**: 新增 13 个包 (python-dotenv/beautifulsoup4/requests/flask/aiohttp/json-repair/pydantic-settings/websockets/openai/ib_insync/tavily-python/smolagents/docling)。总数 66→79
+- **HI-176 PROJECT_MAP**: 统一 10 个文件行数 (brain.py 1180→1475, proactive_engine 340→602 等)。execution_hub.py 和 /view 命令标记废弃
+
+### 基础设施修复 (3项)
+
+- **HI-171**: SSH `StrictHostKeyChecking=no` → `accept-new` (防 MITM 但不阻碍首次连接)
+- **HI-099**: newsyslog 轮转配置已确认存在，覆盖全部 8 个服务
+- **HI-178**: 删除前端空 `Service/` 目录
+
+### 文件变更
+- `docs/registries/MODULE_REGISTRY.md` — 新增 32 个模块条目
+- `docs/registries/DEPENDENCY_MAP.md` — 新增 13 个包
+- `docs/PROJECT_MAP.md` — 10 个文件行数修正 + 幽灵引用标记
+- `tools/launchagents/ai.openclaw.heartbeat-sender.plist` — SSH 安全修复
+- `apps/.../components/Service/` — 空目录删除
+
+### 测试
+- 852/852 passed, 0 failures, 0 TS errors
+
+---
+
+## [2026-03-26] 基础设施修复 3 项
+
+> 领域: `deploy`, `infra`, `frontend`
+> 影响模块: `heartbeat-sender.plist`, `Service/`
+> 关联问题: HI-171, HI-099, HI-178
+
+### 变更内容
+- **HI-171**: SSH `StrictHostKeyChecking=no` → `accept-new` — 首次连接自动接受密钥，后续验证防 MITM
+- **HI-099**: 日志轮转配置确认 — `tools/newsyslog.d/openclaw.conf` 已存在且覆盖全部服务日志（无需重建）
+- **HI-178**: 删除空目录 `apps/openclaw-manager-src/src/components/Service/`
+
+### 文件变更
+- `tools/launchagents/ai.openclaw.heartbeat-sender.plist` — StrictHostKeyChecking=accept-new
+- `apps/openclaw-manager-src/src/components/Service/` — 删除空目录
+- `docs/status/HEALTH.md` — HI-171/HI-178 移至已解决
+
+---
+
+## [2026-03-25] Token 成本优化 + 微信通知桥接 + 功能补全
+
+> 领域: `backend`, `ai-pool`, `infra`, `deploy`
+> 影响模块: `proactive_engine.py`, `notifications.py`, `wechat_bridge.py`, `notifications.yaml`, `message_mixin.py`, `Dockerfile`
+> 关联问题: HI-148~151(4项修复) + HI-170(Dockerfile) + HI-179(登记)
+
+### Token 成本优化
+
+- **ProactiveEngine 模型分级** (HI-179): Gate 步骤从 `qwen`(Qwen3-235B) 切换为 `g4f`(最便宜模型)，max_tokens 从 300→100。Gate 仅判断"是否值得通知用户"，不需要最强模型
+- 新增环境变量 `PROACTIVE_MODEL` 可手动指定模型 family
+- Generate/Critic 步骤保持 `qwen` 不变（需要高质量输出）
+
+### 微信通知对齐
+
+- **创建 `config/notifications.yaml`**: 多渠道通知配置模板，支持企业微信 (wecom://KEY)、Bark、Discord、Slack 等 100+ 渠道
+- 通知系统已内置 Apprise 支持，只需取消注释并填入 webhook key 即可启用
+- 配置优先级: 环境变量 `NOTIFY_URLS` > YAML 配置 > Telegram 兜底
+
+### 微信通知桥接
+
+- **新增 `src/wechat_bridge.py`**: 微信通知桥接模块，直接调用腾讯 iLink API (ilinkai.weixin.qq.com) 推送通知
+  - 自动读取 `.openclaw/openclaw-weixin/accounts/` 中已扫码登录的 Bot Token
+  - 通过 iLink getconfig 获取 contextToken，sendmessage 推送文本
+  - 请求头与 TypeScript 插件完全一致 (AuthorizationType/X-WECHAT-UIN/Bearer)
+  - 环境变量: `WECHAT_NOTIFY_ENABLED=true` 即可启用
+- **修改 `src/notifications.py`**: 在 `send()` 方法末尾注入微信同步推送
+  - 所有通过通知系统发出的事件（交易信号、风控、日报等）自动同步到微信
+  - 微信桥接失败不影响 Telegram 和其他渠道
+
+### 安全加固 (4项 HIGH 修复)
+
+- **HI-148**: 闲鱼 prompt 注入 — 对话历史添加隔离标记 `【END 对话历史】` + 防注入指令
+- **HI-149**: osascript 注入 — 正则白名单过滤 + URL scheme 校验 (仅允许 http/https)
+- **HI-150**: API Token 未配置 — 绑定非 localhost 时输出 `logger.critical` 级别警报
+- **HI-151**: discuss 链式讨论 — `_fallback_summary_payload` 实现结构化摘要 + `_parse_workflow_ratings` 支持数字/emoji 评分解析
+
+### 运维修复
+
+- **HI-170**: 创建 `packages/clawbot/Dockerfile` — 多阶段构建(builder→runtime)，非 root 用户，最小镜像
+- 创建 `.dockerignore` — 排除 data/logs/tests/docs/venv/git
+
+### 文件变更
+- `src/core/proactive_engine.py` — Gate 用最便宜模型 + `import os` + `cheap` 参数
+- `src/wechat_bridge.py` — 新增微信通知桥接模块
+- `src/notifications.py` — 注入微信同步推送到 send() 管道
+- `config/notifications.yaml` — 新增多渠道通知配置 (含微信模板)
+- `packages/clawbot/Dockerfile` — 新增多阶段生产 Dockerfile
+- `packages/clawbot/.dockerignore` — 新增
+- `src/xianyu/xianyu_agent.py` — prompt 注入防护
+- `src/execution/life_automation.py` — osascript/URL 注入防护
+- `src/api/auth.py` — 生产环境 critical 警报
+- `src/bot/message_mixin.py` — discuss 摘要 + 评分解析实现
+- `tests/test_bash_tool.py` — 适配白名单 API 重写
+
+### 测试
+- 852/852 passed, 0 failures
+
+---
+
+## [2026-03-25] CRITICAL 安全加固 — bash_tool 白名单 + code_tool 沙箱
+
+> 领域: `backend`
+> 影响模块: `bash_tool.py`, `code_tool.py`
+> 关联问题: HI-146, HI-147
+
+### 变更内容
+- **bash_tool.py**: 黑名单模式 → 白名单模式 (ALLOWED_COMMANDS frozenset, 35 个安全命令)
+- **bash_tool.py**: `shell=True` → `shell=False` + `shlex.split()` 拆分命令，杜绝管道/变量展开/base64 编码等绕过手法
+- **bash_tool.py**: `is_dangerous()` → `is_allowed()` 反转安全逻辑
+- **bash_tool.py**: `execute_dangerous()` 新增日志记录 + 500 字符输入长度限制
+- **code_tool.py**: Python 执行注入沙箱前导代码，通过 `__import__` hook 禁用 14 个危险模块 (os/subprocess/socket 等)
+- **code_tool.py**: Shell 脚本执行完全禁用，返回错误提示使用 /bash
+- **code_tool.py**: 所有 execute 方法添加 10,000 字符代码大小限制
+- **code_tool.py**: 临时文件执行后自动清理 (`filepath.unlink(missing_ok=True)`)
+
+### 文件变更
+- `packages/clawbot/src/tools/bash_tool.py` — 白名单重构 + shell=False + shlex 安全拆分
+- `packages/clawbot/src/tools/code_tool.py` — Python 沙箱 + Shell 禁用 + 大小限制 + 临时文件清理
+
+---
+
+## [2026-03-25] 第31轮全量审计(续) — P4运维+P6前端+P7API+P8文档 4层审计 + 34项修复
+
+> 领域: `deploy`, `frontend`, `docs`, `backend`
+> 影响模块: `deploy_vps.sh`, `docker-compose.yml`, `Evolution/index.tsx`, `Plugins/index.tsx`, `Dashboard/index.tsx`, `Settings/index.tsx`
+> 关联问题: HI-165~178 (6修复 + 12登记)
+
+### 审计方法论 (续)
+
+| 位阶 | 审计范围 | 发现数 | 修复数 |
+|------|---------|--------|--------|
+| P4 运维 | 部署脚本/Docker/日志/备份/LaunchAgent | 27 | 2 (脚本重写) |
+| P6 UX/UI | 前端组件/国际化/错误反馈/Mock数据 | 14 | 34 (28中文化+6反馈) |
+| P7 API | 44端点完整性/LLM路由/外部服务接入 | 6 | 0 (登记) |
+| P8 文档 | 注册表同步/命名规范/行数一致性/orphan | 12 | 3 (orphan清理) |
+
+### 🔴 运维修复 (deploy_vps.sh 全面重写)
+
+- rsync 新增 9 个排除项: `.venv*` `.git` `data/api_keys.json` `kiro-gateway/` `browser-agent/` `dist/` `deploy_bundle_final/` `deploy_resources/` `openclaw_deploy_final/`
+- systemd `ProtectHome=yes` → `ProtectHome=read-only` (修复启动崩溃)
+- 全局 `pip3 install` → `.venv` 虚拟环境隔离 (修复 PEP 668)
+- 添加 `EnvironmentFile=/home/clawbot/clawbot/config/.env`
+- 添加 `CPUQuota=150%` + `python3 -u` (unbuffered)
+
+### 🔴 Docker 修复 (docker-compose.yml)
+
+- 端口 `18790:18790` → `127.0.0.1:18790:18790` (防外网暴露)
+- 端口 `9090:9090` → `127.0.0.1:9090:9090` (Prometheus metrics)
+- Redis `7-alpine` → `7.2-alpine` (锁定版本)
+- 主服务添加资源限制: `memory: 2G, cpus: 1.5`
+- healthcheck `import httpx` → `import urllib.request` (无外部依赖)
+
+### 🟠 前端中文化 (28处)
+
+- **Evolution 组件**: 19 处英文→中文 (标题/按钮/标签/提示/空态)
+- **Plugins 组件**: 9 处英文→中文 (描述/状态/tooltip)
+
+### 🟠 前端错误反馈 (6处)
+
+- **Dashboard**: 启动/停止/重启失败 → 添加 `toast.error`
+- **Evolution**: 审批通过/拒绝失败 → 添加 `toast.error`
+- **Settings**: 打开目录失败 → 添加 `toast.error`
+
+### 🟡 文件清理
+
+- 删除根目录 3 个 orphan 文件: `fix_now_et.py` `fix_syntax.py` `commit_msg.txt`
+
+### 文件变更
+- `packages/clawbot/scripts/deploy_vps.sh` — 全面重写 (rsync+systemd+venv)
+- `docker-compose.yml` — 端口绑定+版本锁定+资源限制+healthcheck
+- `apps/.../Evolution/index.tsx` — 19 处中文化 + 2 处 toast 反馈
+- `apps/.../Plugins/index.tsx` — 9 处中文化
+- `apps/.../Dashboard/index.tsx` — 3 处 toast 反馈
+- `apps/.../Settings/index.tsx` — 1 处 toast 反馈
+- 根目录 — 删除 3 个临时文件
+
+### 测试
+- 856/856 Python passed, 0 failures
+- TypeScript: 0 errors
+
+---
+
+## [2026-03-25] 第31轮全量审计 — 5层230+项扫描 + 17项代码修复
+
+> 领域: `backend`, `xianyu`, `docs`
+> 影响模块: `cmd_execution_mixin.py`, `evolution/engine.py`, `monitoring.py`, `cmd_basic_mixin.py`, `api/routers/omega.py`, `proactive_engine.py`, `media_crawler_bridge.py`, `goofish_monitor.py`, `brain.py`, `message_mixin.py`, `auto_trader.py`, `risk_manager.py`
+> 关联问题: HI-153~164 (12个新问题全部修复) + HI-146~152 (7个新问题登记)
+
+### 审计方法论
+
+按世界顶级软件公司 (Google/Meta/Stripe) SOP，5 层审计:
+
+| 位阶 | 审计范围 | 发现数 | 修复数 |
+|------|---------|--------|--------|
+| P1 安全 | API Key/注入/权限/异常泄露 | 16 | 3 |
+| P2 可靠性 | 崩溃点/资源泄漏/超时/并发 | 34 | 5 |
+| P3 业务逻辑 | 半成品/死代码/命令一致性 | 35 | 0 |
+| P5 代码质量 | 语法/未用import/巨石文件 | 30 | 9 |
+| **合计** | | **115+** | **17** |
+
+### 🔴 阻塞级修复 (3项)
+
+- **HI-153**: `cmd_execution_mixin.py:304` — `error_service_failed()` 和 f-string 拼接缺少 `+` 连接符，SyntaxError 导致整个 Bot 模块无法加载
+- **HI-154**: `evolution/engine.py:27` — `from src.utils import now_et` 误插入 github_trending 的多行 import 括号内
+- **HI-155**: `monitoring.py` CostAnalyzer 3 个方法 SQLite 连接不在 try/finally，异常时泄漏 → 改为 `with` 上下文管理器
+
+### 🟠 重要级修复 (2项)
+
+- **HI-156**: `cmd_basic_mixin.py` settings callback 无 user_id 校验 → 添加 `from_user.id == user_id` 防越权
+- **HI-157**: `omega.py` 20 处 API 端点 `str(e)` 泄露内部路径 → 新增 `_safe_error()` 脱敏函数
+
+### 🟡 一般级修复 (12项)
+
+- **HI-158**: `proactive_engine.py` 10 处 `except Exception: pass` → `logger.debug` 记录
+- **HI-159/160**: `media_crawler_bridge.py` + `goofish_monitor.py` httpx 无 close() → 添加
+- **HI-161~164**: `brain.py`/`message_mixin.py`/`auto_trader.py`/`risk_manager.py` 共 15 个未使用 import 删除
+
+### 新登记问题 (7项, 待后续迭代)
+
+- **HI-146/147** (🔴 CRITICAL): bash_tool + code_tool 命令执行无沙箱
+- **HI-148** (🟠): 闲鱼 AI 客服 prompt 注入风险
+- **HI-149** (🟠): osascript 注入
+- **HI-150** (🟠): API Token 未配置时降级无认证
+- **HI-151** (🟠): discuss 链式讨论摘要/评分未实现
+- **HI-152** (🟡): 16 个模块搬运完毕但未接入主流程
+
+### 文件变更
+- `src/bot/cmd_execution_mixin.py` — 修复字符串拼接语法错误
+- `src/evolution/engine.py` — 修复 import 语法错误
+- `src/monitoring.py` — 3 处 SQLite 改 with 上下文管理器
+- `src/bot/cmd_basic_mixin.py` — settings callback 添加越权校验
+- `src/api/routers/omega.py` — 新增 `_safe_error()` + 20 处替换
+- `src/core/proactive_engine.py` — 10 处 except pass 改 logger.debug
+- `src/execution/social/media_crawler_bridge.py` — 添加 `async close()`
+- `src/xianyu/goofish_monitor.py` — 添加 `async close()`
+- `src/core/brain.py` — 删除 3 个未使用 import
+- `src/bot/message_mixin.py` — 删除 9+2 个未使用 import
+- `src/auto_trader.py` — 删除未使用 import `dataclass`
+- `src/risk_manager.py` — 删除未使用 import `math`
+
+### 测试
+- 856/856 passed, 0 failures
+- TypeScript: 0 errors
+
+---
+
+## [2026-03-25] 策略绩效感知自动评估 — 周度交易绩效报告 + 调度器集成
+
+> 领域: `trading`, `backend`
+> 影响模块: `life_automation.py`, `scheduler.py`
+> 关联问题: 无 (新功能 — 策略权重参数无法根据回测结果自动优化)
+
+### 变更内容
+- 新增 `evaluate_strategy_performance()` 函数，复用 TradingJournal.get_performance() 评估近30天交易绩效
+- 返回胜率/盈亏/夏普比率/最大回撤及操作建议（四级: 优秀/正常/偏低/过低）
+- 调度器新增 `_run_weekly_strategy_review()` 方法，每周日 20:00 自动执行绩效评估并通过 Telegram 私聊推送报告
+
+### 文件变更
+- `packages/clawbot/src/execution/life_automation.py` — 末尾新增 evaluate_strategy_performance 函数
+- `packages/clawbot/src/execution/scheduler.py` — _loop 中添加周度评估调用 + 新增 _run_weekly_strategy_review 方法
+
+---
+
+## [2026-03-25] 社媒互动数据回收闭环 — post_engagement 表 + 记录/汇总函数 + 日报集成
+
+> 领域: `social`, `backend`
+> 影响模块: `_db.py`, `life_automation.py`, `daily_brief.py`
+> 关联问题: 无 (新功能)
+
+### 变更内容
+- 新增 `post_engagement` 表，记录帖子的点赞/评论/转发/浏览数据，外键关联 `social_drafts`
+- 新增 `record_post_engagement()` 函数，供发布后回写互动数据
+- 新增 `get_engagement_summary()` 函数，按平台聚合近 N 天互动统计
+- 每日日报新增 Section 12「社媒互动」段，展示近 7 天各平台互动汇总
+
+### 文件变更
+- `src/execution/_db.py` — `init_db()` 新增 `post_engagement` 表定义
+- `src/execution/life_automation.py` — 末尾新增 `record_post_engagement()` + `get_engagement_summary()`
+- `src/execution/daily_brief.py` — 闲鱼段后新增 Section 12 社媒互动段
+
+---
+
+## [2026-03-25] 功能补全 — 闲鱼成交后链路 + 简易记账 + 前端巨石拆分
+
+> 领域: `xianyu`, `backend`, `frontend`
+> 影响模块: `xianyu_context.py`, `scheduler.py`, `_db.py`, `life_automation.py`, `chinese_nlp_mixin.py`, `AIConfig/`
+> 关联问题: F-02(闲鱼成交后), F-03(记账缺失), P4-1.1(AIConfig巨石)
+
+### 闲鱼成交后链路 (F-02)
+
+- **发货超时提醒**: 订单状态 `paid` 超过 4 小时自动推送提醒，标记已提醒
+- **利润核算**: orders 表新增 `amount`/`cost` 字段，新增 `get_profit_summary()` 统计收入/成本/利润
+- **定时检查**: scheduler 每 60 秒运行 `_run_xianyu_shipment_check()`
+
+### 简易记账功能 (F-03) — 新增
+
+- **数据库**: `expenses` 表 (user_id/category/amount/note/ts)
+- **三个函数**: `add_expense()` / `get_expense_summary()` / `delete_last_expense()`
+- **中文触发词**: "午饭 35" / "花了120块停车" / "记一笔 50 水果" / "我的账单" / "撤销记账"
+- **效果**: 用户说「午饭 35」→ 立即记录并回复 ✅
+
+### 前端巨石拆分 (P4-1.1)
+
+- `AIConfig/index.tsx` (1157行) → 拆分为 4 个文件:
+  - `types.ts` (65行) — 7 个共享接口
+  - `ProviderDialog.tsx` (557行) — 对话框组件
+  - `ProviderCard.tsx` (225行) — 卡片组件
+  - `index.tsx` (354行) — 主页面
+
+### 文件变更
+- `src/xianyu/xianyu_context.py` — +3 方法 +2 字段迁移
+- `src/execution/scheduler.py` — +发货检查定时任务
+- `src/execution/_db.py` — +expenses 表
+- `src/execution/life_automation.py` — +3 个记账函数
+- `src/bot/chinese_nlp_mixin.py` — +4 组记账触发词 +3 个分发分支
+- `apps/.../AIConfig/` — 拆分为 types.ts + ProviderDialog.tsx + ProviderCard.tsx + index.tsx
+
+### 测试
+- 856/856 passed, 0 failures
+- TypeScript: 0 errors
+
+---
+
+## [2026-03-25] 交互体验大修 — 59 个命令加 typing + 阻塞 I/O 修复 + 错误消息统一
+
+> 领域: `backend`
+> 影响模块: `cmd_basic_mixin.py`, `cmd_invest_mixin.py`, `cmd_execution_mixin.py`, `cmd_trading_mixin.py`, `cmd_collab_mixin.py`, `cmd_ibkr_mixin.py`, `cmd_analysis_mixin.py`, `worker_bridge.py`, `error_messages.py`
+> 关联问题: UX-3.1(typing覆盖率5%→87%), P3阻塞I/O, UX-2.1(硬编码错误消息)
+
+### 变更内容
+
+**59 个命令添加 `@with_typing` 装饰器**
+- 覆盖率从 4/68 (5.9%) → 63/68 (92.6%)
+- 7 个 cmd_*.py 文件全部添加 import + 装饰器
+- 跳过的 5 个秒级操作: cmd_clear, cmd_voice, cmd_stop_discuss 等
+- 效果: 用户发送任何命令后**立即看到"正在输入"动画**，不再死寂
+
+**worker_bridge.py 异步版本**
+- 新增 `run_social_worker_async()` — 使用 `asyncio.create_subprocess_exec` + `asyncio.sleep`
+- 保留同步版本兼容现有调用
+- 效果: 社媒发布不再阻塞 Bot 事件循环最长 5 分钟
+
+**错误消息统一 (7 处)**
+- `error_messages.py` 新增 `error_service_failed()` 通用模板
+- `cmd_invest_mixin.py`: 5 处 f-string 错误替换为统一模板 (行情/买入/卖出/自选股)
+- `cmd_execution_mixin.py`: 2 处 stderr 暴露替换 (启动/停止服务)
+- 效果: 用户不再看到英文异常堆栈和内部术语
+
+### 文件变更
+- `src/bot/cmd_basic_mixin.py` — +10 个 @with_typing
+- `src/bot/cmd_invest_mixin.py` — +import +9 个 @with_typing +5 处错误消息统一
+- `src/bot/cmd_execution_mixin.py` — +import +21 个 @with_typing +2 处 stderr 修复
+- `src/bot/cmd_trading_mixin.py` — +import +6 个 @with_typing
+- `src/bot/cmd_collab_mixin.py` — +import +4 个 @with_typing
+- `src/bot/cmd_ibkr_mixin.py` — +import +6 个 @with_typing
+- `src/bot/cmd_analysis_mixin.py` — +import +6 个 @with_typing
+- `src/execution/social/worker_bridge.py` — +run_social_worker_async()
+- `src/bot/error_messages.py` — +error_service_failed()
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] P6/P8 审计 — 用户体验 + 业务完整性 + 前端中文化
+
+> 领域: `backend`, `frontend`, `xianyu`, `docs`
+> 影响模块: `response_cards.py`, `message_mixin.py`, `chinese_nlp_mixin.py`, `free_apis.py`, `daily_brief.py`, `Sidebar.tsx`, `ControlCenter/index.tsx`, `Social/index.tsx`, `Money/index.tsx`, `Header.tsx`, `Channels/index.tsx`, `AIConfig/index.tsx`, `Dashboard/index.tsx`, `SystemInfo.tsx`, `PROJECT_MAP.md`
+> 关联问题: UX-5.1, UX-5.5, F-04, F-05, 前端中文化14处, 静默catch 3处, alert→toast 7处
+
+### P6 用户体验审计 (28项发现 → 7项修复)
+
+**Telegram Bot 修复**
+- (UX-5.1) SystemStatusCard 移除死按钮「进化扫描」「任务列表」→ 替换为「成本分析」「设置」
+- (UX-5.5) 通用聊天 noop 按钮文本缩短: 「继续聊这个」→「继续聊」
+
+**Manager 桌面端修复 (20处)**
+- 7处 `alert()` 全部替换为 `toast.success/error/info` (sonner)
+- 14处英文状态标签中文化: Service Status→服务状态, Online→在线, Running→运行中, IBKR GATEWAY ONLINE→IBKR 网关在线, 删除多余的英文括号 (Social Hub/Money Hub/PnL/Positions)
+- 3处静默 `catch {}` 添加 `console.warn` 错误日志
+
+### P8 业务完整性审计 (10项发现 → 3项修复)
+
+**快递查询功能 (F-04) — 新增**
+- `free_apis.py` 新增 `query_express()` — 快递物流查询(自动识别快递公司+物流轨迹)
+- `chinese_nlp_mixin.py` 新增触发词: "查快递 SF1234567890" / "快递查询 YT..." / "跟踪快递..."
+- 效果: 用户说"查快递 SF1234567890"直接获得物流信息
+
+**闲鱼数据接入主日报 (F-05)**
+- `daily_brief.py` 新增 Section 11: 闲鱼运营 (💬咨询/📦下单/💰成交/📈转化率)
+- 效果: 早上日报从10段→11段，不再需要等到晚上21:00看闲鱼独立日报
+
+**文档修正**
+- `PROJECT_MAP.md` 4个幽灵占位目录标记为已废弃，标注功能实际所在
+- `PROJECT_MAP.md` COMMUNICATION TaskType 微信→邮件/企微通知，新增微信能力边界说明
+
+### 文件变更
+- `src/core/response_cards.py` — 替换死按钮
+- `src/bot/message_mixin.py` — noop 文本缩短
+- `src/bot/chinese_nlp_mixin.py` — +快递查询触发词+分发
+- `src/tools/free_apis.py` — +query_express()
+- `src/execution/daily_brief.py` — +Section 11 闲鱼运营
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — alert→toast (6处)
+- `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — alert→toast (1处)
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — 英文→中文 (3处)
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — 英文→中文 (5处)
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 英文→中文 (4处)
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 英文→中文 (4处)
+- `apps/openclaw-manager-src/src/components/Layout/Header.tsx` — Dashboard→控制面板
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — +catch日志 (2处)
+- `apps/openclaw-manager-src/src/components/Dashboard/SystemInfo.tsx` — +catch日志
+- `docs/PROJECT_MAP.md` — 占位目录废弃标注 + 微信描述修正
+
+### 测试
+- 856/856 passed, 0 failures
+- TypeScript: 0 errors
+
+## [2026-03-25] 全面审计 — 7 层 131 项扫描 + 22 项代码修复
+
+> 领域: `backend`, `trading`, `xianyu`, `deploy`, `infra`, `docs`
+> 影响模块: `risk_manager.py`, `broker_bridge.py`, `auto_trader.py`, `cmd_execution_mixin.py`, `image_tool.py`, `real_trending.py`, `monitoring.py`, `_db.py`, `xianyu_context.py`, `feedback.py`, `xianyu_live.py`, `message_mixin.py`, `life_automation.py`, `scheduler.py`, `proactive_engine.py`, `self_heal.py`, `log_config.py`, `license_manager.py`, `backup_databases.py`, `docker-compose.yml`, `DEPENDENCY_MAP.md`
+> 关联问题: HI-111~132 (22 个新发现问题全部修复)
+
+### 审计方法论
+
+按世界顶级软件公司 (Google/Meta/Stripe) 的 SOP，完成 7 层价值位阶审计:
+
+| 位阶 | 审计范围 | 发现数 | 修复数 |
+|------|---------|--------|--------|
+| P0 安全 | API Key/注入/权限/敏感数据 | 8 | 4 |
+| P1 可靠性 | 崩溃点/资源泄漏/降级链 | 17 | 5 |
+| P2 业务逻辑 | 交易安全/闲鱼/提醒/并发 | 18 | 7 |
+| P3 性能 | 内存/阻塞I/O/缓存 | 28 | 3 |
+| P4 代码质量 | 架构/死代码/类型安全 | 30 | 0 |
+| P5 开发体验 | CI/CD/依赖/文档 | 12 | 1 |
+| P7 运维 | Docker/部署/日志/备份 | 18 | 2 |
+| **合计** | | **131** | **22** |
+
+### 🔴 阻塞级修复 (资金安全)
+
+- **BIZ-001**: `risk_manager.py` — `record_trade_result` 日盈亏计数加 `threading.Lock`，防止并发交易绕过日亏损限额 ($100)
+- **BIZ-002**: `risk_manager.py` — `check_trade` 添加 `entry_price>0` 和 `quantity>0` 前置验证，防止零价格除零和负数量绕过
+- **BIZ-003**: `broker_bridge.py` — `_place_order` 添加 `quantity<=0` 拦截
+- **BIZ-004**: `auto_trader.py` — SELL 订单纳入风控审核 (原先完全跳过)
+- **P1-httpx**: `image_tool.py` — httpx 加 `timeout=30`，防止图片下载卡死 Bot
+
+### 🟠 重要级修复
+
+- **权限**: `cmd_execution_mixin.py` — 4 个命令别名 (cmd_hot/post_social/post_x/post_xhs) 添加 `@requires_auth`
+- **闲鱼**: `xianyu_live.py` — 自动接受加合理价格范围 (`<= floor*10`)；4 个后台任务添加异常回调
+- **SQLite**: `monitoring.py` 6 处连接改 `with` 语句；`_db.py`/`xianyu_context.py`/`feedback.py` 启用 WAL + timeout
+- **提醒**: `life_automation.py` 删除重复 `cancel_reminder`；`dateparser` 启用时区感知
+- **缓存**: `proactive_engine.py` 添加 24h 清理；`self_heal.py` 添加 maxsize=500
+- **Docker**: Redis 端口改 expose + 资源限制 + maxmemory；kiro-gateway 移除默认密码
+- **安全**: `log_config.py` console diagnose 改 False；`license_manager.py` Key 日志脱敏
+- **文档**: `DEPENDENCY_MAP.md` Python 版本从 3.9 更正为 3.12
+
+### 文件变更
+- `src/risk_manager.py` — +参数验证 +threading.Lock +record_trade_result委托
+- `src/broker_bridge.py` — +quantity前置验证
+- `src/auto_trader.py` — 风控覆盖SELL +parse负数拦截
+- `src/bot/cmd_execution_mixin.py` — 4处 +@requires_auth
+- `src/tools/image_tool.py` — +timeout=30
+- `src/execution/social/real_trending.py` — +timeout=20
+- `src/monitoring.py` — 3处SQLite改with
+- `src/execution/_db.py` — +WAL +timeout
+- `src/xianyu/xianyu_context.py` — +WAL +timeout
+- `src/feedback.py` — +WAL +timeout
+- `src/xianyu/xianyu_live.py` — +价格上限 +done_callback +JSON解析日志
+- `src/bot/message_mixin.py` — 3处except pass改logger.debug
+- `src/execution/life_automation.py` — 删除重复cancel +dateparser时区
+- `src/execution/scheduler.py` — 日志级别debug→warning
+- `src/core/proactive_engine.py` — +_cleanup_old_entries
+- `src/core/self_heal.py` — +maxsize +容量截断
+- `src/log_config.py` — diagnose=False
+- `src/deployer/license_manager.py` — Key脱敏
+- `scripts/backup_databases.py` — 时区统一UTC
+- `kiro-gateway/docker-compose.yml` — 移除默认密码
+- `docker-compose.yml` — Redis安全+资源限制
+- `docs/registries/DEPENDENCY_MAP.md` — Python版本修正
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 个性化日报 + 跨域主动智能 — Bot 变成"懂你的秘书"
+
+> 领域: `backend`
+> 影响模块: `daily_brief.py`, `life_automation.py`, `proactive_engine.py`
+> 关联问题: 让 Bot 从"你问我答"升级为"不问也主动告诉你该知道的"
+
+### 变更内容
+
+**每日简报个性化 — 2 个新区块**
+
+- Section 4.5「⏰ 今日提醒」— 从提醒系统拉取今日到期的提醒,按时间排序: `⏰ 14:30 — 开会`。无今日提醒时回退显示重复提醒
+- Section 4.8「👀 关注股票隔夜变动」— 从持仓+watchlist 获取关注股票,变动≥0.5%才显示,减少噪音: `📈 TSLA: $285.30 (+3.2%)`
+- `list_reminders` SELECT 扩展加 `recurrence_rule`/`user_chat_id`(COALESCE 兼容旧数据)
+
+**效果**: 早上简报不再是千人一面的"市场行情"——而是"你今天要做什么+你关注的股票发生了什么"
+
+**主动引擎上下文增强 — 5 个新信号源 (3→8)**
+
+| # | 上下文源 | 跨域价值 |
+|---|---------|----------|
+| 4 | 今日待触发提醒 | "你今天有3个提醒,别忘了" |
+| 5 | 持仓盈亏警报 | "你的TSLA快到止盈目标了" |
+| 6 | 关注股票大幅变动 (≥3%) | "你关注的NVDA今天大涨5%" |
+| 7 | 活跃重复提醒统计 | "你有5个重复提醒在运行" |
+| 8 | 闲鱼24h成交额 | "闲鱼刚卖了¥500,要不要加仓?" |
+
+**效果**: 主动引擎从"你有3条闲鱼消息"→"闲鱼刚卖了¥500,你关注的NVDA今天涨了5%,要不要趁手头有钱加仓?"
+
+### 文件变更
+- `src/execution/daily_brief.py` — +2 个新区块(今日提醒 + 关注股票)
+- `src/execution/life_automation.py` — list_reminders SELECT 扩展
+- `src/core/proactive_engine.py` — +_safe_parse_time + 5 个新上下文源
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 智能提醒系统 v2.0 — 从"空头承诺"到"真正的AI助手"
+
+> 领域: `backend`
+> 影响模块: `_db.py`, `life_automation.py`, `scheduler.py`, `chinese_nlp_mixin.py`
+> 关联问题: 痛点地图🔥🔥 "不支持重复提醒+日历集成" + 提醒触发机制完全缺失(无声放鸽子)
+
+### 问题诊断
+
+**CRITICAL BUG**: 提醒被创建并存入 SQLite,但**没有任何代码去检查和触发它们**。Bot 说"好的,30分钟后提醒你"然后永远不提醒。这是对用户的空头承诺。
+
+同时,只支持"X分钟后提醒我"一种模式,不支持"每天/每周/每月"重复提醒。
+
+### 变更内容
+
+**修复: 提醒触发机制 (从无到有)**
+- `_db.py` 添加 `recurrence_rule` + `user_chat_id` 列(ALTER TABLE 兼容旧数据)
+- `life_automation.py` 新增 `fire_due_reminders()` — 查找到期提醒,单次标记 fired,重复计算下次时间
+- `life_automation.py` 新增 `_calc_next_occurrence()` — 支持 daily/hourly/weekly:N/monthly:N/weekdays/Nmin + 中文规则
+- `life_automation.py` 新增 `cancel_reminder()` — 按 ID 取消
+- `scheduler.py` 新增 `_run_reminders()` — 每 60 秒检查一次到期提醒,通过 Telegram 通知用户
+
+**新增: 中文重复提醒 NLP**
+- "每天早上9点提醒我吃药" → 重复提醒(daily, 9:00, 吃药)
+- "每周一提醒我交报告" → 重复提醒(weekly:0, 交报告)
+- "每月15号提醒我交房租" → 重复提醒(monthly:15, 交房租)
+- "每小时提醒我喝水" → 重复提醒(hourly, 喝水)
+- "工作日提醒我打卡" → 重复提醒(weekdays, 打卡)
+- "明天下午3点提醒我开会" → 自然语言单次提醒(dateparser解析)
+- "我的提醒" → 列出所有待触发提醒
+- "取消提醒 #3" → 取消指定提醒
+
+### 参考项目
+- dateparser (2.5k⭐) — 自然语言时间解析
+- APScheduler (6.3k⭐) — 定时任务调度(已有依赖)
+
+### 文件变更
+- `src/execution/_db.py` — ALTER TABLE 添加 2 列
+- `src/execution/life_automation.py` — create_reminder +2参数 / +fire_due_reminders / +_calc_next_occurrence / +cancel_reminder
+- `src/execution/scheduler.py` — +_run_reminders 方法
+- `src/bot/chinese_nlp_mixin.py` — +4组NLP模式(管理/取消/重复/自然语言时间) + dispatch 重构
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 提醒触发机制修复 + 重复提醒支持
+
+> 领域: `backend`
+> 影响模块: `life_automation.py`, `scheduler.py`, `_db.py`
+> 关联问题: HI-110
+
+### 变更内容
+- **修复核心 Bug**: 提醒写入 SQLite 后无任何代码检查和触发，用户被"无声放鸽子"
+- **新增 `fire_due_reminders()`**: 查找所有到期的 pending 提醒，单次提醒标记 fired，重复提醒计算下次时间
+- **新增 `_calc_next_occurrence()`**: 支持 daily/hourly/weekly/monthly/weekdays/Nmin 及中文规则 (每天/每小时/每周一/每月15号/工作日/每30分钟)
+- **新增 `cancel_reminder()`**: 取消指定提醒
+- **Scheduler 集成**: `_run_reminders()` 每60秒执行一次，触发后通过 `_notify_func` 发送 Telegram 通知
+- **DB 迁移**: `reminders` 表新增 `recurrence_rule` (TEXT) 和 `user_chat_id` (INTEGER) 列，ALTER TABLE 兼容旧数据
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — init_db 末尾添加 ALTER TABLE 迁移两个新列
+- `packages/clawbot/src/execution/life_automation.py` — create_reminder 新增 recurrence_rule/user_chat_id 参数; 新增 fire_due_reminders/_calc_next_occurrence/cancel_reminder 三个函数
+- `packages/clawbot/src/execution/scheduler.py` — ExecutionScheduler 新增 _run_reminders 方法，_loop 中每次循环调用
+
+## [2026-03-25] 投资决策信号历史验证 — 让"AI说买"带上历史胜率
+
+> 领域: `backend`, `trading`
+> 影响模块: `backtester_vbt.py`, `team.py`
+> 关联问题: 痛点地图最后一个🔥🔥🔥🔥🔥 — "AI说买但不知道历史胜率,缺回测验证"
+
+### 变更内容
+
+**quick_signal_validation() — 快速信号验证便捷 API**
+- 并行跑 MA/RSI/MACD 三策略简化回测,5秒内返回汇总
+- 输出: 平均胜率 + 最优策略 + 可信度标签(🟢高/🟡中/🔴低)
+- 15秒超时保护,异常静默降级不阻塞主流程
+
+**投资团队量化分析师注入回测验证**
+- `_run_quant()` 获取量化数据后、LLM 分析前,自动调用信号验证
+- LLM 看到的量化数据中包含 `signal_validation.avg_win_rate: 67.2%` 等参考值
+- 影响 LLM 决策: 胜率高时增强信心,胜率低时 LLM 自动更谨慎
+
+**Telegram 消息展示历史验证**
+- 团队分析结果中新增"📋 历史信号验证"区块
+- 展示: 🟢/🟡/🔴 平均胜率 + 🏆 最优策略
+- 位置: 风控之后、最终决策之前
+
+**效果对比:**
+```
+之前: ━━━ 投资分析: AAPL ━━━
+      📊 研究员: 8.0/10 ⭐⭐⭐⭐
+      ...
+      🛡️ 风控: ✅ 通过
+      ━━━ 最终决策 ━━━
+      建议: BUY              ← "说买就买,凭什么?"
+
+现在: ━━━ 投资分析: AAPL ━━━
+      📊 研究员: 8.0/10 ⭐⭐⭐⭐
+      ...
+      🛡️ 风控: ✅ 通过
+      📋 历史信号验证 (6mo):
+         🟢 平均胜率: 67.2% (高可信)
+         🏆 最优策略: RSI (72.3%)
+      ━━━ 最终决策 ━━━
+      建议: BUY              ← "过去6个月同类信号67%都赚钱了"
+```
+
+**修复: daily_meeting 断裂导入**
+- `generate_brief` → `generate_daily_brief`,适配返回值类型 str
+
+### 参考项目
+- vectorbt (6.9k⭐) — 向量化快速回测核心
+- quantstats (4.8k⭐) — 绩效报告
+- finlab_crypto (1.2k⭐) — Portfolio.from_signals 最佳实践
+
+### 文件变更
+- `src/modules/investment/backtester_vbt.py` — 新增 `quick_signal_validation()`
+- `src/modules/investment/team.py` — `_run_quant()` +信号验证 / `to_telegram_text()` +展示 / `daily_meeting()` 修复
+
+---
+
+## [2026-03-25] 体验层打磨 — 从"能用"到"好用"的六项优化
+
+> 领域: `backend`
+> 影响模块: `error_messages.py`, `message_mixin.py`, `test_api_mixin.py`
+> 关联问题: UX审计发现2项🟡(错误体验/流式等待)需要提升到🟢
+
+### 变更内容
+
+**P0-A (CRITICAL): 错误消息人性化重写**
+- 11 条错误全部重写: ⚠️ + "请稍后重试" → 💬/⏳/❌ 三级 emoji + 具体等待时间 + 下一步建议
+- 去除内部术语: "工具"→"问题太复杂" / "保护中"→"暂时休息" / "API认证"→"服务连接"
+- `error_generic` 新增 `_is_technical()` 过滤: 自动隐藏英文异常信息，只展示人话
+- 效果: 错误从"机器人客服"变成"朋友发微信"
+
+**P0-B (CRITICAL): 思考中动画**
+- "🤔 思考中..." 冻屏 → 每3秒切换: 🔍 搜索中... → 🧠 分析中... → ✍️ 撰写中...
+- 首个 token 到达时自动停止动画，流式降级路径也正确停止
+- 效果: 慢模型(如 Opus) 5-10秒等待不再像 Bot 死了
+
+**P1-A: 溢出分段格式化**
+- >4096 字符的溢出块从原始纯文本 → 先 `md_to_html` + HTML 模式发送，失败降级纯文本
+- 效果: 长回复的每一段都保持格式，不再变成"格式突然消失"
+
+**P1-B: 模型署名去开发者化**
+- `via OpenClaw · qwen-turbo` → `— OpenClaw`
+- 效果: 用户不再看到模型名等技术术语，省出一行屏幕空间
+
+**P1-C: Smart Reply 键盘增强**
+- 通用聊天场景增加"💬 继续聊这个"按钮（无特定领域按钮时兜底）
+- 新增中文商品名检测: "买小米音箱" → 生成 `🛒 比价 小米音箱` 按钮
+- 效果: 每条消息都有可点击的下一步操作
+
+### 文件变更
+- `src/bot/error_messages.py` — 11 个函数重写 + `_is_technical()` 新增
+- `src/bot/message_mixin.py` — 思考动画 + 溢出格式化 + 署名简化 + Smart Reply 增强
+- `tests/test_api_mixin.py` — 断言更新适配新错误消息文本
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] Brain 追问-回答闭环修复 + core memory 补全 — 最后一个 CRITICAL 断裂清零
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `message_mixin.py`, `context_manager.py`
+> 关联问题: GAP 1 (CRITICAL: 追问闭环完全失效) + GAP 7 (MEDIUM: bot_personality/preferences 死字段)
+
+### 问题诊断
+
+Brain 追问闭环存在 3 个叠加 bug，导致"追问→回答"链路**完全不工作**：
+1. message_mixin 收到 clarification result 后不显示（`success` 为 False 所以跳过）
+2. 用户的文本回复没有任何机制路由回 pending callback
+3. _pending_callbacks 仅在有可执行节点时才存储，无节点则丢失
+
+### 变更内容
+
+**Brain 追问闭环修复 (3 处 brain.py + 2 处 message_mixin.py)**
+
+- `brain.py` 新增 `_pending_clarifications: Dict[int, str]` — chat_id→task_id 映射，让文本回复能找到对应的追问任务
+- `brain.py` 重构 `needs_clarification` 分支 — 无论是否有可先执行的节点，始终存储 pending_callback + chat_id 映射
+- `brain.py` 新增 `get_pending_clarification(chat_id)` — 检查指定 chat 是否有待回答的追问
+- `brain.py` 新增 `resume_with_answer(task_id, answer, context)` — 恢复中断任务：注入回答到 intent.known_params → 清除 missing_critical → 重建任务图 → 执行 → 响应合成
+- `brain.py` 更新 `cleanup_pending_callbacks` — 同步清理过期的 _pending_clarifications
+- `message_mixin.py` 新增追问回答路由 — handle_message 最前面检测 pending clarification，匹配则路由到 resume_with_answer
+- `message_mixin.py` 新增 `elif result.needs_clarification` 分支 — Brain 追问结果正确显示给用户
+
+**效果对比:**
+```
+之前: "分析股票" → Bot追问"哪只？" → 用户答"TSLA" → Bot当新消息处理 → "你好有什么帮你的"
+现在: "分析股票" → Bot追问"哪只？" → 用户答"TSLA" → 路由回Brain恢复任务 → 完整TSLA分析结果
+```
+
+**GAP 7: bot_personality 自动填充 (context_manager.py)**
+- `build_context()` 中自动从 system_prompt 前 200 字提取 bot 人格摘要写入 core memory
+- 效果: core memory 5 个字段全部激活（user_profile ✅ key_facts ✅ current_task ✅ bot_personality ✅ preferences ✅）
+
+### 文件变更
+- `src/core/brain.py` — +_pending_clarifications / +get_pending_clarification / +resume_with_answer / 重构 needs_clarification 分支 / cleanup 增强
+- `src/bot/message_mixin.py` — +追问回答路由(handle_message最前面) / +needs_clarification 显示分支
+- `src/context_manager.py` — +bot_personality 自动填充
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] Brain 路径七项断裂修复 — 从"残废大脑"到"全能核心"
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `message_mixin.py`
+> 关联问题: AI助手第二轮诊断 — Brain 路径存在 10 个断裂点，本次修复 7 个(S+M 复杂度)
+
+### 问题诊断
+
+Brain 路径（处理投资/购物/社媒等任务执行）存在系统性质量问题：
+- 回复无操作按钮（函数签名错误被静默吞掉）
+- 聊天降级不认识用户（不注入画像）
+- 回答复杂问题被 300 token 截断
+- 处理期间用户看到死寂（无 typing 指示）
+- 意图被解析两次（浪费 + 可能冲突）
+- 不记录当前任务（后续消息丢失上下文）
+
+### 变更内容
+
+**GAP 2 (CRITICAL): Brain 回复操作按钮修复**
+- `self._build_smart_reply_keyboard(text, user_msg)` → `_build_smart_reply_keyboard(user_msg, self.bot_id, model, chat_id)`
+- 修复: 1) 去掉错误的 `self.`（它是模块级函数） 2) 参数签名对齐
+- 效果: Brain 回复也会显示"📊 分析" "💰 买入"等一键操作按钮
+
+**GAP 3 (HIGH): Brain 聊天降级注入用户画像**
+- 把已收集的 `brain_context["user_profile"]` 和 `conversation_summary` 注入到 CHAT_FALLBACK_PROMPT
+- 效果: Brain 聊天降级也知道"严总偏好超短线，沟通风格直接"
+
+**GAP 4 (HIGH): Brain 聊天降级 token 上限提升**
+- `max_tokens` 从 300 → 1000
+- 效果: 回答复杂问题不再截断
+
+**GAP 5 (HIGH): Brain 路径 typing 指示器**
+- Brain 路由入口添加 `send_action("typing")`
+- 效果: Brain 在思考时用户能看到"正在输入"动画
+
+**GAP 6 (HIGH): current_task 自动写入 core memory**
+- 任务开始时: `core_set("current_task", "investment: 分析TSLA", chat_id)`
+- 任务完成时: `core_set("current_task", "[已完成] investment: 分析TSLA", chat_id)`
+- 效果: 后续消息"那竞争对手呢"→ LLM 上下文中有"[Current Task] 分析TSLA" → 知道"那"指什么
+
+**GAP 9 (MEDIUM): 消除重复意图解析**
+- `process_message()` 新增 `pre_parsed_intent` 参数，复用 message_mixin 预解析的结果
+- 效果: 省掉一次 LLM 调用 (200-500ms) + 消除两次解析可能的冲突
+
+**GAP 10 (MEDIUM): skip_chat_fallback 避免劣质降级**
+- `process_message()` 新增 `skip_chat_fallback=True` 参数
+- 当 Brain 自己的 parse() 认为不可执行时，直接返回让流式路径处理，避免 Brain 用低质量路径（无画像/300token）生成次优回复
+- 效果: 用户要么收到 Brain 高质量结果，要么收到流式路径高质量结果，不再收到 Brain 的劣质降级
+
+### 文件变更
+- `src/core/brain.py` — process_message +2参数 / 复用预解析 / current_task写入 / 画像注入 / token提升 / skip降级
+- `src/bot/message_mixin.py` — typing指示器 / 传递预解析+skip / 修复按钮函数调用
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 从"功能集合"到"AI助手" — 三大核心链路改造
+
+> 领域: `backend`
+> 影响模块: `context_manager.py`, `smart_memory.py`, `proactive_engine.py`, `multi_main.py`, `intent_parser.py`, `message_mixin.py`
+> 关联问题: 系统诊断发现 Bot 有两条并行路径 — Brain(10%有记忆) vs 流式LLM(90%无记忆)，核心断裂是"知道用户但不用所知"
+
+### 问题诊断
+
+系统有"大脑"但 90% 的对话没在用它:
+- **G1**: SmartMemory 提取了用户画像但存在 SharedMemory，TieredContextManager 的 core memory `user_profile` 始终空白 → 流式 LLM 路径无个性化
+- **G2**: ProactiveEngine 文档写了"APScheduler 每30分钟检查"但实际不存在定时器 + `_send_proactive()` 调用不存在的 `get_bot_instances()` → Bot 永远不主动说话
+- **G3**: Brain routing 完全依赖 `_try_fast_parse()` 正则 → 复杂自然语言直接掉到通用聊天，无任务图/工具调用
+
+### 变更内容
+
+**改造1: 记忆注入主路径 (G1修复)**
+- `_sync_smart_memory_facts` 增加 user_profile 同步: 从 SharedMemory 检索 `user_profile_*` 条目，解析 JSON → 写入 core memory `user_profile`/`preferences` 字段
+- `_update_user_profile` 画像更新后主动推送到 TCM `core_set()`，双通道(拉取+推送)确保画像实时可用
+- 效果: 每条消息的 LLM 上下文中都包含"称呼: 严总 / 兴趣: 超短线投资 / 沟通风格: 简洁直接"
+
+**改造2: 主动智能定时器 (G2修复)**
+- 修复 `_send_proactive()`: `get_bot_instances()` → `bot_registry`（修复 ImportError）
+- 新增 `periodic_proactive_check()`: 收集系统上下文(持仓/闲鱼未读/今日交易)，对每个管理员调用三步管道评估
+- `multi_main.py` 主循环增加 `proactive_counter`，默认每 30 分钟触发一次 (env: `PROACTIVE_CHECK_INTERVAL`)
+- 效果: Bot 每 30 分钟检查一次是否有值得主动推送的信息，从"等命令"变为"主动关心"
+
+**改造3: LLM 意图降级分类器 (G3修复)**
+- `IntentParser` 新增 `_try_llm_classify()`: qwen + max_tokens=100，5秒超时，confidence >= 0.6
+- `message_mixin.py` Brain routing: fast_parse 失败 → LLM 分类 → 成功走 Brain，失败走流式聊天
+- 执行链: 用户消息 → fast_parse(正则,0成本) → 失败 → LLM分类(qwen,~$0.00001) → 失败 → 流式LLM
+
+### 参考项目
+- BasedHardware/omi (17k⭐) — ProactiveEngine 三步管道架构
+- letta-ai/letta (16k⭐) — TieredContextManager 分层记忆架构
+
+### 文件变更
+- `src/context_manager.py` — `_sync_smart_memory_facts` +user_profile 同步块
+- `src/smart_memory.py` — `_update_user_profile` +TCM 实时推送
+- `src/core/proactive_engine.py` — `_send_proactive` 修复 + `periodic_proactive_check` 新增
+- `multi_main.py` — 主循环增加 proactive_counter 定时触发
+- `src/core/intent_parser.py` — 新增 `_try_llm_classify()` 方法
+- `src/bot/message_mixin.py` — Brain routing 增加 LLM 分类降级路径
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 从"功能集合"到"AI助手" — 五大交互断裂修复
+
+> 领域: `backend`
+> 影响模块: `chinese_nlp_mixin.py`, `message_mixin.py`, `intent_parser.py`
+> 关联问题: 用户体验诊断 — "每一条路径都能感受到这是助手而不是命令行"
+
+### 问题诊断
+
+Bot 交互存在5个"功能集合"特征:
+1. 18个`re.fullmatch`拒绝自然中文 (用户说"看看新闻"无响应)
+2. 命令分发后对话不记录 (跟进"那竞争对手呢"时LLM不知道"那"指什么)
+3. 无"你是不是想说"建议 (用户打错字/用近义词→直接掉到通用聊天)
+4. 命令分发无typing指示 (发消息后死寂2-5秒→突然出结果)
+5. 意图捕获含噪音 ("分析一下苹果好不好"→捕获到"一下苹果好不好")
+
+### 变更内容
+
+**Gap 2: 18个fullmatch→模糊容错search**
+- 全部18个`re.fullmatch`替换为`re.search`
+- 每个模式增加前缀容错: `(?:帮我|看看|查看|来个|给我|打开)?`
+- 每个模式增加后缀容错: `(?:吧|啊|呢|呀|一下)?$`
+- 每个模式增加2-3个自然同义词 (如"最新消息""功能列表""花了多少钱")
+- 效果: "看看新闻""帮我清空对话""花了多少钱""有什么功能"等200+种自然表述现在全部可以触发
+
+**Gap 5: 捕获噪音清洗**
+- 新增`_clean_capture(text)`工具函数，剥离中文对话粒子
+- 覆盖: 前缀(帮我/给我/请/麻烦), 后缀(吧/啊/呢/一下/好不好/怎么样), 尾部"的"
+- 应用到投资/购物/讨论3类关键捕获组
+- 效果: "分析一下苹果的走势好不好"→正确提取"苹果走势"
+
+**Gap 4: 命令分发typing指示器**
+- `_dispatch_chinese_action`调用前添加`send_action("typing")`
+- 用户发命令后立即看到"正在输入"动画
+- 效果: 3秒等待从"死寂→突然出现"变为"在打字→回复"
+
+**Gap 1: 命令分发对话记录**
+- 命令执行后将`[命令:action_type] 原文`异步记录到SmartMemory
+- 后续跟进消息走LLM路径时，上下文中包含"之前执行了什么"
+- 效果: "TSLA能买吗"→分析完→"那竞争对手呢"→LLM知道在聊TSLA
+
+**Gap 3: "你是不是想说"建议机制**
+- 新增`_suggest_command(text)`函数，基于`difflib.SequenceMatcher`(标准库,零依赖)
+- 维护27个高频命令关键词的模糊匹配表
+- `_match_chinese_command`末尾: 所有精确匹配失败后尝试模糊建议
+- 匹配阈值: 0.55 (宽松, 偏向有建议)
+- 返回`('suggest', '...')`→dispatch展示InlineKeyboard一键确认按钮
+- 效果: "清空会话"(近似"清空对话")→"你是不是想说「清空对话」？✅"
+
+### 参考项目
+- RapidFuzz (2.5k⭐) — 评估后选择 difflib.SequenceMatcher (零依赖, 27个关键词不需要C++加速)
+
+### 文件变更
+- `src/bot/chinese_nlp_mixin.py` — +_clean_capture +_suggest_command +18个fullmatch修复 +3处捕获清洗 +suggest分发
+- `src/bot/message_mixin.py` — +typing指示器 +SmartMemory命令记录
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] [ARCH] 遗留全清 — message_mixin 拆分 + 反编译清理 + env var 收敛
+
+> 领域: `backend`
+> 影响模块: `message_mixin.py`(拆分), `ocr_mixin.py`(新), `chinese_nlp_mixin.py`(新), `multi_bot.py`, `globals.py`, `browser_use_bridge.py`, `crewai_bridge.py`, `shared_memory.py`, `context_manager.py`, `memory_tool.py`
+> 关联问题: HI-006/007/008(反编译巨石) + HI-025(datetime裸调用) + config散落
+
+### 变更内容
+
+**message_mixin.py 巨石拆分 (1914行 → 1128行, -41%)**
+
+| 提取模块 | 行数 | 包含方法 |
+|----------|------|----------|
+| `ocr_mixin.py` (新) | 325 | `handle_photo`, `handle_document_ocr` |
+| `chinese_nlp_mixin.py` (新) | 477 | `_CN_TICKER_MAP`, `_resolve_chinese_ticker`, `_match_chinese_command`, `_dispatch_chinese_action`, `_is_directed_to_current_bot` |
+| message_mixin.py (残留) | 1128 | `handle_message` 核心 + `_build_smart_reply_keyboard` + workflow + callbacks |
+
+- `multi_bot.py` MRO 更新: 新增 `OCRHandlerMixin` + `ChineseNLPMixin` 在 `MessageHandlerMixin` 之前
+
+**反编译残留清理 (15处修复)**
+- 5 处 `= ('text', str, ...)` 反编译签名 → 正确 Python 类型标注
+- 5 处裸名语句 (`feedback_context`, `focus`, `text` 等孤立变量名) → 删除
+- 3 处无返回值函数 → 添加正确 return
+- 1 处死代码块 (return 后不可达) → 删除
+- 1 处纯 pass 空方法 (`_run_chain_discuss`) → 删除
+
+**env var 重复收敛 (7处修复)**
+- SILICONFLOW_KEYS/BASE_URL: 3 个文件绕过 globals.py 直接读 env → import from globals
+- DATA_DIR: 4 个文件各自读 env → globals.py 新增 DATA_DIR, 其他文件 import
+- 循环导入风险: shared_memory/context_manager/memory_tool 使用懒导入避免
+
+### 文件变更
+- `src/bot/ocr_mixin.py` — 新增 (325行)
+- `src/bot/chinese_nlp_mixin.py` — 新增 (477行)
+- `src/bot/message_mixin.py` — 1914→1128行 (-786行)
+- `src/bot/multi_bot.py` — MRO 新增 2 个 mixin
+- `src/bot/globals.py` — 新增 DATA_DIR
+- `src/browser_use_bridge.py` — SILICONFLOW → import globals
+- `src/crewai_bridge.py` — 同上
+- `src/shared_memory.py` — SILICONFLOW + DATA_DIR → lazy import globals
+- `src/context_manager.py` — DATA_DIR → lazy import globals
+- `src/tools/memory_tool.py` — DATA_DIR → lazy import globals
+- `tests/test_message_mixin.py` — FakeBot 继承 ChineseNLPMixin
+
+### 技术债务状态
+- ~~反编译巨石文件~~ → **已解决** (execution_hub 删除 + message_mixin 拆分+清理)
+- ~~datetime 裸调用~~ → **已解决** (生产代码 0 处剩余)
+- ~~人格/配置散落~~ → **已解决**
+- 仍存在: src/ 61文件平铺 (utils.py 被 61 文件 import, 风险过高需先补测试)
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 环境变量去重 — SILICONFLOW_KEYS / DATA_DIR 收敛到 globals.py
+
+> 领域: `backend`
+> 影响模块: `globals`, `browser_use_bridge`, `crewai_bridge`, `shared_memory`, `context_manager`, `memory_tool`, `history_store`
+> 关联问题: 无 (技术债清理)
+
+### 变更内容
+- SILICONFLOW_KEYS / SILICONFLOW_BASE_URL: 3 个文件绕过 globals.py 直接读 os.getenv，现改为从 globals 导入
+- DATA_DIR: 4 个文件各自读 os.getenv("DATA_DIR")，现新增 globals.DATA_DIR 作为唯一事实源
+- shared_memory / context_manager / history_store 使用延迟导入避免循环依赖
+
+### 文件变更
+- `src/bot/globals.py` — 新增 `DATA_DIR` 变量
+- `src/browser_use_bridge.py` — 导入 SILICONFLOW_KEYS/BASE 替代 os.getenv
+- `src/crewai_bridge.py` — 同上
+- `src/shared_memory.py` — 延迟导入 SILICONFLOW_KEYS/BASE/DATA_DIR，去除 3 处 os.getenv
+- `src/context_manager.py` — 延迟导入 DATA_DIR，去除 os.getenv
+- `src/tools/memory_tool.py` — 延迟导入 DATA_DIR，去除 os.getenv
+- `src/history_store.py` — 延迟导入 DATA_DIR，去除 os.getenv
+
+---
+
+## [2026-03-25] [ARCH] 遗留问题全面清扫 — 端口统一 / 时区修复 / 配置收敛
+
+> 领域: `backend`, `deploy`, `docs`, `infra`
+> 影响模块: `cmd_basic_mixin.py`, `server.py`, `deploy_client.py`, `deploy_server.py`, `freqtrade_bridge.py`, `brain.py`, `ai_team_voter.py`, `prompts.py`, `daily_brief.py`, `backup_databases.py`, `social_browser_worker.py`, `omega.yaml`, `HEALTH.md`
+> 关联问题: 第十六轮架构审计遗留的13项问题全部清零
+
+### 全面扫描结果
+
+8项扫描覆盖: 硬编码端口 / execution_hub残留引用 / datetime裸调用 / 内联提示词 / import错误 / 未使用import / omega.yaml孤立配置 / HEALTH.md统计准确性
+
+| 优先级 | 数量 | 已修 |
+|--------|------|------|
+| CRITICAL | 0 | — |
+| HIGH | 3 | 3 |
+| MEDIUM | 6 | 6 |
+| LOW | 4 | 4 |
+
+### 变更内容
+
+**H1: 端口 18789 GATEWAY_PORT 统一**
+- 4 处硬编码 (cmd_basic_mixin / server.py CORS / deploy_client / deploy_server) 全部改为 `os.environ.get("GATEWAY_PORT", "18789")`
+- 设置环境变量即可统一切换，默认行为不变
+
+**H2: freqtrade_bridge.py 最后一处内联提示词**
+- `system_prompt="你是专业量化交易分析师"` → `BACKTEST_ANALYST_PROMPT` (基于 SOUL_CORE)
+- prompts.py 新增 BACKTEST_ANALYST_PROMPT
+
+**H3: HEALTH.md 统计表修正**
+- 🟠重要 active: 2→0 (实际为"本区无活跃问题")
+- 🟡一般 active: 3→4 (HI-009/010/012/099)
+- 总计: 5→4
+
+**M1: 9 处生产代码 datetime.now() 时区修复**
+- daily_brief.py(2) / social_browser_worker.py(4) / backup_databases.py(3)
+- 全部改为 `datetime.now(timezone.utc)`
+
+**M3-M5: 未使用 import 清理**
+- brain.py: 删除 `Coroutine` + `datetime` (全文无使用)
+- ai_team_voter.py: 删除 `datetime` (全文无使用)
+
+**M6: omega.yaml evolution 孤立配置标注**
+- 添加 `[PLANNED - not yet consumed by code; EvolutionEngine uses evolution_config.json]`
+
+**L3: prompts.py 死导出清理**
+- 删除 `IDENTITY_BASE = SOUL_CORE` (全项目零引用的向后兼容别名)
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 代码清洁 — 内联提示词外迁 + 未用导入清除 + 死导出删除
+
+> 领域: `backend`
+> 影响模块: `config/prompts.py`, `src/freqtrade_bridge.py`, `src/core/brain.py`, `src/ai_team_voter.py`
+> 关联问题: 架构清爽化后续 — H2/M3/M4/M5/L3
+
+### 变更内容
+- **H2**: `freqtrade_bridge.py` 内联 system_prompt 迁移到 `prompts.py` 新常量 `BACKTEST_ANALYST_PROMPT`，统一走 SOUL_CORE 人格
+- **M3**: `brain.py` 移除未使用的 `Coroutine` 导入
+- **M4**: `brain.py` 移除未使用的 `from datetime import datetime`
+- **M5**: `ai_team_voter.py` 移除未使用的 `from datetime import datetime`
+- **L3**: `prompts.py` 删除死导出 `IDENTITY_BASE = SOUL_CORE`（全项目无引用）
+
+### 文件变更
+- `config/prompts.py` — 删除 IDENTITY_BASE 死导出，新增 BACKTEST_ANALYST_PROMPT，更新使用方列表
+- `src/freqtrade_bridge.py` — 导入 BACKTEST_ANALYST_PROMPT 替代内联字符串
+- `src/core/brain.py` — 移除 `datetime` 和 `Coroutine` 未用导入
+- `src/ai_team_voter.py` — 移除 `datetime` 未用导入
+
+---
+
+## [2026-03-25] [ARCH] 架构清爽化 — 散沙诊断 + SSOT收敛 + 死代码清除
+
+> 领域: `backend`, `deploy`, `docs`
+> 影响模块: `multi_main.py`, `config/prompts.py`, `ai_team_voter.py`, `brain.py`, `message_format.py`, `web_installer.py`, `config_validator.py`, `execution_hub.py`(已删除)
+> 关联问题: 首席架构师审计 — 6类散沙症状扫描
+
+### 散沙诊断发现
+
+| 类型 | 发现数 | 关键症状 |
+|------|--------|----------|
+| A-人格漂移 | 3处 | web_installer用"龙虾"身份; brain.py 3处绕过SOUL_CORE; message_mixin用"小白用户" |
+| B-配置孤岛 | 12+处 | 387处os.getenv散布; G4F/Kiro URL两处定义; 端口18789四处硬编码 |
+| D-功能孤岛 | 2处 | ai_team_voter 100行提示词完整复制; 投资格式化双路径 |
+| F-死代码 | 2795行+3目录 | execution_hub.py已废弃; openclaw_deploy_final/空目录; deploy_resources/无引用 |
+| 安全 | 1处 | Bot Token硬编码在源码中 |
+
+### 变更内容
+
+**P0 安全修复**
+- `multi_main.py:180` — 移除硬编码 Bot Token (FREE_LLM_TOKEN默认值清空，必须从.env读取)
+- `config_validator.py:104` — 同步移除硬编码Token的比较逻辑
+
+**P1 人格统一**
+- `web_installer.py` — "龙虾"+"三省六部制"替换为SOUL_CORE对齐身份 (2处: src + deploy_bundle)
+- `brain.py` — 3处用户可感知的inline提示词 (购物/代码/错误) 改为SOUL_CORE前缀
+
+**P1 SSOT收敛**
+- `ai_team_voter.py` — 100行投票角色提示词完整复制 → `from config.prompts import INVEST_VOTE_PROMPTS`
+- `config/prompts.py` — 新增 `INVEST_VOTE_PROMPTS` (投票角色SSOT，与 `INVEST_DISCUSSION_ROLES` 区分: 投票=结构化JSON输出 vs 讨论=自由对话)
+
+**P2 死代码清除**
+- 删除 `execution_hub.py` (2,795行, 标记FULLY DEPRECATED, 零运行时import)
+- 删除 `openclaw_deploy_final/` (空目录) + `deploy_resources/` (无引用)
+
+**P2 关系标注**
+- `message_format._format_investment` — 标注为投资格式化第3层降级 (synthesized_reply → InvestmentAnalysisCard → 本函数)
+- `message_format.format_error` — 标注为错误格式化SSOT，理清与error_messages.py的关系
+
+### 文件变更
+- `multi_main.py` — Token硬编码清除
+- `config/prompts.py` — 新增 INVEST_VOTE_PROMPTS (~90行)
+- `src/ai_team_voter.py` — 100行内联提示词 → 2行import
+- `src/core/brain.py` — 3处inline prompt → SOUL_CORE + error_ai_busy()
+- `src/core/config_validator.py` — Token检查逻辑更新
+- `src/deployer/web_installer.py` — "龙虾"身份修复
+- `deploy_bundle_final/web_installer.py` — 同上
+- `src/message_format.py` — 格式化分层关系注释
+- `src/execution_hub.py` — **已删除** (2,795行)
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 修复用户侧内联提示词绕过 SOUL_CORE 人格的问题
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `error_messages.py`
+> 关联问题: 人格一致性 — 3 处用户侧 LLM 调用硬编码一句话人设，绕过 SOUL_CORE SSOT
+
+### 变更内容
+- 购物比价助手 system prompt: `"你是专业购物比价助手"` → `SOUL_CORE + 任务指令`
+- 代码生成器 system_prompt: `"你是Python代码生成器"` → `SOUL_CORE + 任务指令`
+- LLM 查询失败兜底: 硬编码 `"抱歉，暂时无法回答此问题。"` → `error_ai_busy()`（统一错误消息 SSOT）
+- 新增 `from src.bot.error_messages import error_ai_busy` 导入
+
+### 文件变更
+- `packages/clawbot/src/core/brain.py` — 3 处提示词/错误消息统一到 SSOT
+
+---
+
+## [2026-03-25] AI助手体验闭环 — 接通3条断裂线路
+
+> 领域: `backend`
+> 影响模块: `multi_main.py`, `message_mixin.py`
+> 关联问题: 上轮写了引擎但没装到车上
+
+### 问题诊断
+
+上轮创建了 ResponseSynthesizer + ProactiveEngine + BrainContextCollector，但审计发现 3 条关键线路未接通:
+1. ProactiveEngine 是 100% 死代码 — multi_main.py 从未调用 `setup_proactive_listeners()`
+2. Brain 路径是记忆黑洞 — Brain 处理的消息在 `return` 前从未记录到 SmartMemory，导致 30-40% 对话对记忆系统不可见
+3. Brain 回复无操作按钮 — 最智能的投资分析回复没有"买入"/"深入分析"等一键按钮
+
+### 变更内容
+
+**1. ProactiveEngine 接入启动序列**
+- `multi_main.py`: SmartMemory 初始化后注册 ProactiveEngine
+- EventBus 监听 TRADE_EXECUTED / RISK_ALERT 事件
+- Gate→Generate→Critic 三步管道现在可以被真实事件触发
+
+**2. Brain 路径记忆闭环**
+- `message_mixin.py` Brain routing 区域: 成功返回前同时记录用户消息 + AI回复到 SmartMemory
+- Brain 处理的投资分析、购物比价等对话现在会被 SmartMemory 看到
+- 用户画像不再缺失 Brain 路径的数据，形成完整的个性化反馈循环
+
+**3. Brain 回复智能按钮**
+- Brain 路径返回结果时调用 `_build_smart_reply_keyboard()` 生成操作按钮
+- 投资分析结果现在带 "📊 分析TSLA" / "💰 买入" 等一键按钮
+- 和流式聊天路径的按钮体验一致
+
+**4. 记忆截断提升**
+- Bot 回复记录到 SmartMemory 的截断从 500 → 1500 字符
+- Brain 路径记录截断也设为 1500 字符
+- 长投资分析不再丢失尾部关键结论
+
+### 文件变更
+- `multi_main.py` — 新增 ProactiveEngine 启动注册 (+7行)
+- `src/bot/message_mixin.py` — Brain 路径 SmartMemory 记录 + 智能按钮 + bot_id 传递 + 截断提升
+
+### 测试
+- 856/856 passed, 0 failures
+
+---
+
+## [2026-03-25] 从"功能集合"到"AI助手" — 人格统一 + 响应合成 + 主动智能
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `prompts.py`, `response_cards.py`, `message_format.py`, 新增 `response_synthesizer.py`, `proactive_engine.py`
+> 关联问题: 用户痛点地图 — "功能堆砌 vs 真正的AI助手"
+
+### 问题诊断
+
+Brain/Bot 路径人格分裂:
+- Bot 路径(聊天): 有性格、有记忆、有上下文 → 像人
+- Brain 路径(任务执行): 无记忆、无性格、数据堆砌 → 像工具
+
+6 大断裂点: Brain 无记忆、Brain 无性格、纯被动、数据堆砌、用户画像空转、跟进断裂
+
+### 变更内容
+
+**1. 统一人格层 (SOUL_CORE)**
+- 将 SOUL.md 哲学转化为 `SOUL_CORE` 提示词，注入 prompts.py
+- `CHAT_FALLBACK_PROMPT` 和 `INFO_QUERY_PROMPT` 从通用一行升级为 SOUL_CORE
+- `IDENTITY_BASE` 指向 SOUL_CORE (向后兼容)
+- Brain 路径和 Bot 路径共用同一人格内核
+
+**2. Brain 上下文注入 (BrainContextCollector)**
+- `process_message()` 入口处收集: 用户画像 + 对话历史 + 最近消息
+- 闲聊降级路径注入最近对话历史 (解决"那竞争对手呢"的指代问题)
+- `_exec_llm_query()` 同样注入对话上下文
+- 数据来源: SharedMemory (用户画像) + TieredContextManager (核心记忆) + HistoryStore (最近消息)
+
+**3. 响应合成层 (ResponseSynthesizer)**
+- TaskGraph 执行完成后，原始数据通过 LLM 合成为对话式回复
+- 搬运自 BasedHardware/omi (17k⭐) 的合成理念
+- 按 task_type 提供不同的合成指引 (investment/shopping/social/info)
+- 合成结果放入 `synthesized_reply`，原始数据保留在 `_raw_data`
+- `message_format.py` 优先展示 `synthesized_reply`
+- `response_cards.py` 合成回复 + 投资按钮组合展示
+
+**4. 用户画像消费**
+- SmartMemoryPipeline 生成的 `user_profile_{user_id}` 现在被 BrainContextCollector 自动读取
+- 5 分钟 TTL 缓存避免重复查询
+- 画像注入到响应合成提示中，实现个性化回复
+
+**5. 主动智能引擎 (ProactiveEngine)**
+- 搬运自 BasedHardware/omi (17k⭐) 的三步管道: Gate → Generate → Critic
+- Gate: 最便宜模型快速判断是否值得打扰 (阈值 0.70)
+- Generate: 生成通知文本 (100字以内，像朋友发微信)
+- Critic: 人类视角最终审查 ("收到后会觉得'靠幸亏看到了'还是'好烦'?")
+- 频率控制: 每用户每小时最多 3 条
+- EventBus 集成: 交易成交、风控预警等事件触发评估
+- Pydantic 结构化输出 + json_repair 降级
+
+### 文件变更
+- `config/prompts.py` — 新增 SOUL_CORE + RESPONSE_SYNTH_PROMPT + PROACTIVE_*_PROMPT
+- `src/core/response_synthesizer.py` — 新增: ResponseSynthesizer + BrainContextCollector (~280行)
+- `src/core/proactive_engine.py` — 新增: ProactiveEngine + EventBus集成 (~340行)
+- `src/core/brain.py` — 注入上下文收集 + 响应合成
+- `src/core/response_cards.py` — InfoCard 支持覆写按钮 + 合成回复优先展示
+- `src/message_format.py` — format_result() 优先使用 synthesized_reply
+- `tests/test_omega_core.py` — 适配合成层的结果结构
+- `docs/registries/MODULE_REGISTRY.md` — 新增 1.18 + 1.19
+
+### 参考项目
+- BasedHardware/omi (17k⭐) — proactive_notification 三步管道模式
+- NVIDIA/GenerativeAIExamples — 响应合成模式
+
+---
+
+## [2026-03-25] 智能行动建议 + Brain 路由默认启用 — AI 助手最后一块拼图
+
+> 领域: `backend`
+> 影响模块: `src/bot/message_mixin.py`, `src/bot/cmd_basic_mixin.py`
+> 关联问题: 产品定位「从功能集合到AI助手」
+
+### 变更内容
+- **智能行动建议 (Smart Action Suggestions)**: LLM 回复后自动检测上下文，附加 2-3 个相关行动按钮
+  - 提到股票代码 → [📊 分析AAPL] [💰 买入AAPL] 按钮
+  - 提到持仓/盈亏 → [📋 查看持仓] [📊 查看绩效] 按钮
+  - 提到市场/行情 → [💹 市场概览] [📰 今日简报] 按钮
+  - 提到商品/价格 → [🛒 比价] 按钮
+  - 提到社媒/发文 → [🔥 热点发文] [📱 社媒计划] 按钮
+  - 无关话题 → 仅保留反馈按钮 (👍👎🔄)
+  - 搬运灵感: ChatGPT Suggested Actions / Google Gemini Quick Actions
+- **扩展 cmd_map**: 新增 sell/buy/performance/hotpost/social_plan/signal/journal/review/invest 9个命令到回调按钮处理器
+- **Brain 路由默认启用**: `ENABLE_BRAIN_ROUTING` 默认值从 `""` 改为 `"1"`，使用纯正则 fast_parse (零 token 成本)。设 `=0` 可关闭
+  - 10种 TaskType (INVESTMENT/SHOPPING/BOOKING/LIFE/CODE/INFO 等) 自动路由到 OMEGA 编排器
+  - 覆盖更多自然语言模式，不再需要精确匹配中文触发词
+
+### 文件变更
+- `src/bot/message_mixin.py` — 新增 `_build_smart_reply_keyboard()` (+100行)，Brain routing 默认启用
+- `src/bot/cmd_basic_mixin.py` — cmd_map 扩展 9 个命令
+
+### 用户体验变化
+| 之前 | 之后 |
+|------|------|
+| LLM 回复只有文字 + [👍👎🔄] | LLM 回复 + [📊分析AAPL] [💰买入] + [👍👎🔄] |
+| 文字回复后用户要自己想命令 | 一键点击就能执行下一步 |
+| Brain 路由默认关闭 | Brain 路由默认开启 (零token成本) |
+
+## [2026-03-25] 全面修复: 免费模型默认 + Bug修复 + Token瘦身 + 打招呼体验
+
+> 领域: `backend`, `ai-pool`, `docs`
+> 影响模块: `litellm_router.py`, `api_mixin.py`, `multi_bot.py`, `message_mixin.py`, `cmd_basic_mixin.py`
+> 关联问题: 成本控制 + Bug修复 + 用户体验
+
+### 变更内容
+
+**成本控制 — 默认全免费**
+- **SiliconFlow 付费Key隔离**: 扣费模型 (DeepSeek-R1/V3) 从 `deepseek` family 移到 `deepseek_paid` family，不再被默认路由随机命中。免费模型 (Qwen3/DeepSeek-V3-0324/GLM-4) 保持原 family
+- **Claude 付费API门控**: `_call_opus_smart()` 移除自动回落到付费 Anthropic API ($75/MTok)。改为尝试3个免费渠道 (Kiro→g4f→any)。用户需发 `/claude` 显式调用付费模型
+- **token 瘦身**: `shared_memory` 注入从 500→200 tokens (live_context 已覆盖实时数据)
+- **预估月省**: ~$50-200 (Claude自动回落) + ~140 CNY (付费Key随机命中)
+
+**Bug 修复**
+- `cmd_dual_post` AttributeError 修复 → 路由到 `cmd_post` (双平台发布)
+- `social_report` NL触发遗漏 → 添加 "社媒报告/运营报告/发文报告" 触发词
+- Dead dispatch entries 清理 (6个不可达条目修正)
+
+**打招呼体验升级**
+- "你好/hi/hello/在吗/你能做什么/怎么用" → 触发能力清单
+- 能力清单改为**自然语言示例优先** (不再是命令列表)
+- 分类展示: 投资交易 / 购物比价 / 社媒运营 / 日常效率
+- 老用户回访也显示 NL 示例而非命令列表
+
+### 文件变更
+- `src/litellm_router.py` — 付费Key隔离到 `deepseek_paid` family
+- `src/bot/api_mixin.py` — 移除 `_call_claude_api` 自动回落
+- `src/bot/multi_bot.py` — shared_memory 500→200 tokens
+- `src/bot/message_mixin.py` — 修复 dual_post + 添加 social_report/打招呼触发
+- `src/bot/cmd_basic_mixin.py` — 能力清单改为 NL 示例优先
+
+## [2026-03-24] 实时上下文注入 — LLM 从"聊天机器人"变成"AI助手"
+
+> 领域: `backend`
+> 影响模块: `src/bot/multi_bot.py`
+> 关联问题: 产品定位「从功能集合到AI助手」
+
+### 变更内容
+- **`_build_live_context()`**: 每次对话自动注入 ~120 token 用户实时状态到 system prompt
+  - 持仓概览: symbol/价格/浮盈亏/止损位 (from position_monitor 内存数据)
+  - 交易绩效: 今日P&L + 7日胜率/盈亏 (from trading_journal SQLite)
+  - 待办事项: top 3 任务标题 (from task_mgmt SQLite)
+  - 可用操作提示: 教 LLM 引导用户使用自然语言命令
+- **60s 缓存**: 避免每条消息重复拉取，性能影响 < 1ms
+- **零数据零噪音**: 无持仓/无交易时返回空字符串，不浪费 token
+
+### 体验变化
+| 之前 | 之后 |
+|------|------|
+| "最近交易做得怎么样" → 通用建议 | "最近交易做得怎么样" → "你7日胜率67%, 盈亏+$320, AAPL浮盈+1.8%" |
+| "有什么要注意的" → 废话 | "有什么要注意的" → "TSLA 距止损只剩$2.50, 写周报还没完成" |
+| LLM 不知道用户有什么持仓 | LLM 知道每个持仓的实时价格和止损位 |
+
+### 文件变更
+- `src/bot/multi_bot.py` — 新增 `_build_live_context()` (+80行), 修改 `system_prompt` property
+
+## [2026-03-24] 智能日报 v3.0 — 用户打开 Telegram 就知道一切
+
+> 领域: `backend`
+> 影响模块: `src/execution/daily_brief.py`
+> 关联问题: 痛点地图「用户无需主动查看」L4 主动服务
+
+### 变更内容
+- **daily_brief.py 93行 → 210行**: 从 6 个数据段扩展到 10 个，覆盖全部生活场景
+  - 新增: 💼 持仓概览 (position_monitor 实时浮盈亏)
+  - 新增: 📊 7日交易绩效 (胜率/夏普/期望值)
+  - 新增: 📅 今日交易摘要 (P&L/胜负/限额)
+  - 新增: 🎯 目标进度 (ASCII 进度条)
+  - 新增: 📱 社媒运营状态 (自动驾驶/今日已发/下一动作)
+  - 新增: 💰 API 成本 (日均/月预估)
+  - 升级: 💹 市场行情 3→9 大指数 (含恒生/上证/黄金/原油)
+  - 升级: 使用 `format_digest(sections=...)` 结构化分节替代扁平段落
+- **时间问候语**: 根据时段显示早上好/下午好/晚上好
+- **底部提示**: 教用户用自然语言操作 (帮我买100股苹果/帮我找便宜的AirPods)
+- **零新依赖**: 全部调用已有模块的已有函数 — 纯组合任务
+
+### 文件变更
+- `src/execution/daily_brief.py` — v2.0→v3.0 重写 (93行→210行)
+
+## [2026-03-24] 自然语言直达: NL-to-Trade + NL-to-Shopping 路由桥接
+
+> 领域: `backend`
+> 影响模块: `src/bot/message_mixin.py`, `src/core/intent_parser.py`
+> 关联问题: 痛点地图「上手学习」🔥4, 用户体验范式升级
+
+### 变更内容
+- **NL-to-Trade**: 用户说"帮我买100股苹果"直接路由到 `/buy AAPL 100`，无需学习任何命令
+  - 新增 30+ 中文公司名→ticker 映射 (苹果→AAPL, 特斯拉→TSLA, 英伟达→NVDA, 比特币→BTC-USD 等)
+  - 支持: "买入X股Y" / "卖出X" / "Y能买吗" / "Y多少钱" / "分析Y" (中文公司名)
+  - 风控系统完整接入 (与 /buy 相同的风控检查+确认流程)
+- **NL-to-Shopping**: 用户说"帮我找便宜的AirPods"直接触发三级降级比价 (Tavily→crawl4ai→Jina→LLM)
+  - 支持: "帮我找X" / "X哪里买最便宜" / "我想买个X" / "比较一下X的价格"
+  - 自动排除股票上下文 (含"股/期权/基金"不走购物)
+- **Intent Parser 消歧**: 修复"买100股苹果"被误分类为 SHOPPING 的问题，添加 `exclude_pattern` 机制
+- **15项 NL 路由单元测试全部通过**
+
+### 文件变更
+- `src/bot/message_mixin.py` — v2.0: 新增 `_resolve_chinese_ticker()` + `_CN_TICKER_MAP` + `_cmd_smart_shop()` + 12 条 NL 触发 regex (+150行)
+- `src/core/intent_parser.py` — v2.0: 购物类添加 `exclude_pattern` 股票消歧
+
+### 用户体验变化
+| 之前 | 之后 |
+|------|------|
+| 必须输入 `/buy AAPL 100` | 说"帮我买100股苹果"即可 |
+| 必须知道 ticker 代码 | 说中文公司名即可 |
+| 必须输入 `/quote TSLA` | 说"特斯拉多少钱"即可 |
+| 购物比价需要 Brain 路由 (默认关) | 说"帮我找便宜的AirPods"直接触发 |
+
+## [2026-03-24] 投资风控实时推送 — position_monitor v2.0 接近止损预警 + 通知节流 + EventBus
+
+> 领域: `trading`, `backend`
+> 影响模块: `src/position_monitor.py`
+> 关联问题: 痛点地图「投资-风控」🔥4
+
+### 变更内容
+- **接近止损预警**: 三级预警 (🟡WARN 80% / 🟠DANGER 50% / 🔴CRITICAL 20%)，当持仓价格接近止损位时主动推送 Telegram
+- **通知节流器**: 搬运 PanWatch (MIT) throttle 模式 — 按 (trade_id, AlertLevel) 冷却 (CRITICAL=5min, DANGER=15min, WARN=30min)，避免重复骚扰
+- **EventBus 接入**: 预警发布 `trade.risk_alert` 事件，NotificationManager 可自动转发到 100+ 渠道 (Apprise)
+- **止损调整通知**: 保本止损触发、追踪止损上移 (>0.5%) 时推送通知到用户，不再只写日志
+- **dead code 激活**: `risk_manager.update_position_pnl()` 利润回撤守卫接入监控循环
+- **Bug 修复**: line 313 `now_et()` → `_now_et()` (未导入的函数引用)
+
+### 文件变更
+- `src/position_monitor.py` — v1.0→v2.0: +150行 (573→~720行)
+
+### 搬运来源
+- PanWatch (MIT, TNT-Likely/PanWatch) — `IntradayMonitorAgent` 通知节流模式
+
+## [2026-03-24] HI-006/008: execution_hub.py 巨石文件完全拆分 — 143 方法迁移到模块化包
+
+> 领域: `backend`, `social`
+> 影响模块: `src/execution/__init__.py`, `src/execution/social/content_pipeline.py`, `src/execution/social/drafts.py`, `src/execution/social/x_platform.py`, `src/execution/life_automation.py`
+> 关联问题: HI-006, HI-008
+
+### 变更内容
+- **HI-006**: 完成 execution_hub.py (2,794 行, 143 方法) 到模块化 `src/execution/` 包的全部迁移。facade v3.0 不再通过 `_get_legacy()` 加载 legacy 文件
+- **HI-008**: 所有反编译代码已重写为干净的模块函数，变量名和签名已规范化
+- **新增** `src/execution/social/content_pipeline.py` (587 行) — 社媒内容管道引擎: 策略推导、内容组合、自动发布、创意生成、内容日历
+- **新增** `src/execution/social/drafts.py` (284 行) — 草稿管理: 保存/列出/更新/发布，含内存去重检测
+- **扩展** `src/execution/social/x_platform.py` (+280 行) — X 监控简报、推文执行分析、handle 提取、帖子解析
+- **扩展** `src/execution/life_automation.py` (+115 行) — 智能家居动作路由 (notify/open_url/open_app/say/shortcut)
+- **重写** `src/execution/__init__.py` facade v3.0 (761 行) — 全部 legacy 委托替换为直接模块导入，`__getattr__` 改为 ERROR 级别
+- **更新** 3 个测试文件适配新架构，856/856 测试通过
+
+### 文件变更
+- `src/execution/social/content_pipeline.py` — **新增** 社媒内容管道 (587 行)
+- `src/execution/social/drafts.py` — **新增** 草稿管理 (284 行)
+- `src/execution/social/x_platform.py` — 扩展 X 监控/推文分析 (+280 行)
+- `src/execution/life_automation.py` — 扩展智能家居动作路由 (+115 行)
+- `src/execution/__init__.py` — facade v3.0 重写，移除 `_get_legacy()` 委托
+- `src/execution_hub.py` — 标记为 FULLY DEPRECATED v3.0，不再被运行时加载
+- `tests/test_execution_facade.py` — 适配 v3.0 (移除 _get_legacy 测试)
+- `tests/test_execution_hub_social_hotpost.py` — 适配模块化调用
+- `tests/test_execution_hub_monitoring.py` — 适配模块化调用
+
+---
+
+## [2026-03-24] HI-105~109: Tauri 安全加固 + Python 内存泄漏修复 + import 修复 + 死配置标注
+
+> 领域: `frontend`, `backend`, `docs`
+> 影响模块: `src-tauri/capabilities/default.json`, `src-tauri/tauri.conf.json`, `chat_router`, `brain`, `globals`, `omega.yaml`, `multi_main`
+> 关联问题: HI-105, HI-106, HI-107, HI-108, HI-109
+
+### 变更内容
+- **HI-105**: 收紧 Tauri shell 权限 — 移除 `shell:allow-execute`/`shell:allow-spawn`/`shell:allow-stdin-write`/`shell:allow-kill`，替换为 `shell:allow-open-url`。Rust 侧通过 `std::process::Command` 管理进程，不需要前端 shell 权限
+- **HI-106**: 启用 CSP — 将 `"csp": null` 替换为严格策略: `default-src 'self'`，限定 connect-src 仅允许本地 API (127.0.0.1:18790)
+- **HI-107**: 修复 3 处 Python 内存泄漏 — `_discuss_sessions`/`_service_workflows` 添加 `cleanup_stale_sessions()` (30min TTL)，`_pending_callbacks` 添加 `cleanup_pending_callbacks()` (10min TTL)，两者均接入 multi_main.py 60s 周期定时器
+- **HI-108**: 修复 `globals.py` 缺失 `from datetime import datetime` 导致 `_cleanup_pending_trades()` 运行时 NameError
+- **HI-109**: 在 `omega.yaml` 中为 `routing.task_routing`、`social.optimal_times`、`life.*` 三个未被代码消费的配置段添加 `[PLANNED - not yet consumed by code]` 注释
+
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/capabilities/default.json` — 移除 4 个过宽 shell 权限，替换为 `shell:allow-open-url`
+- `apps/openclaw-manager-src/src-tauri/tauri.conf.json` — 设置 CSP 策略
+- `packages/clawbot/src/chat_router.py` — 讨论会话添加 `created_at` 字段 + 新增 `cleanup_stale_sessions()` 方法
+- `packages/clawbot/src/core/brain.py` — pending callbacks 添加 `created_at` 字段 + 新增 `cleanup_pending_callbacks()` 方法
+- `packages/clawbot/multi_main.py` — 周期清理定时器扩展 chat_router + brain 清理
+- `packages/clawbot/src/bot/globals.py` — 添加 `from datetime import datetime` import
+- `packages/clawbot/config/omega.yaml` — 3 处死配置添加 `[PLANNED]` 注释
+
+## [2026-03-24] HI-103/104: 自动数据库备份 + VPS 部署数据库保护 + 灾难恢复指南
+
+> 领域: `infra`, `deploy`, `docs`
+> 影响模块: `scripts/backup_databases.py`, `src/execution/scheduler.py`, `scripts/deploy_vps.sh`
+> 关联问题: HI-103, HI-104
+
+### 变更内容
+- **HI-103**: 新增自动数据库备份系统 — `scripts/backup_databases.py` 使用 SQLite 在线备份 API (`sqlite3.Connection.backup()`) 安全备份 9 个数据库到 `data/backups/`，不影响运行中的服务
+- **HI-103**: 备份保留策略: 每日备份保留 7 天，周日备份 (每周) 保留 4 周，自动清理过期备份
+- **HI-103**: 接入 ExecutionScheduler，每日 04:00 ET 自动触发 (在 03:00 清理任务之后)
+- **HI-104**: VPS rsync 部署添加 `--exclude 'data/*.db'` + `--exclude 'data/*.db-wal'` + `--exclude 'data/*.db-shm'` + `--exclude 'data/backups/'` + `--exclude 'data/qdrant_data/'` + `--exclude 'data/llm_cache/'`，防止本地数据覆盖生产数据库
+- **DOCS**: 新增灾难恢复指南 `docs/guides/DISASTER_RECOVERY.md` — RPO 24h / RTO 30min，含数据库清单、恢复流程、VPS 迁移检查清单
+
+### 文件变更
+- `scripts/backup_databases.py` — **新增** 自动数据库备份脚本 (112 行)
+- `src/execution/scheduler.py` — 新增 `_run_daily_db_backup()` + 04:00 ET 调度
+- `scripts/deploy_vps.sh` — rsync 添加 6 个排除规则保护运行时数据
+- `docs/guides/DISASTER_RECOVERY.md` — **新增** 灾难恢复指南
+- `docs/status/HEALTH.md` — HI-103/104 记录到已解决，新增灾难恢复状态行
+
+---
+
+## [2026-03-24] HI-100/101/102: 消息流间隙 + 追问卡片死按钮 + 废弃命令清理
+
+> 领域: `backend`, `docs`
+> 影响模块: `message_mixin`, `api_mixin`, `cmd_basic_mixin`, `multi_bot`, `response_cards`, `TELEGRAM_COMMANDS.md`
+> 关联问题: HI-100, HI-101, HI-102
+
+### 变更内容
+- **HI-100a**: 频率限制拒绝时向用户回复 ⏳ 提示，不再静默丢弃
+- **HI-100b**: 8 个 chain discuss 空方法体 (`_fallback_expert_plan`, `_render_expert_review`, `_build_worker_prompt`, `_build_summary_prompt`, `_render_final_workflow_report`, `_continue_service_workflow`, `_fallback_team_plan`, `_render_team_plan`) 添加最小可用实现
+- **HI-100c**: `quality_gate` 拒绝时返回拒绝原因给用户，不再返回空字符串
+- **HI-101**: 新增 `handle_clarification_callback` 处理 ClarificationCard 追问按钮回调 (`{tid}:{param}:{value}` 格式)，注册 CallbackQueryHandler pattern `^\d+:.+:.+$`
+- **HI-102**: 从 TELEGRAM_COMMANDS.md 删除 6 个废弃命令 (/profit, /alpha, /recover, /heal, /channel, /playbook) 及其使用示例
+- 更新 `test_api_mixin.py` 测试以匹配 quality_gate 新行为
+
+### 文件变更
+- `src/bot/message_mixin.py` — 频率限制用户反馈 (L701-706) + 8 个空方法体实现
+- `src/bot/api_mixin.py` — quality_gate 返回拒绝原因 (L108-109)
+- `src/bot/cmd_basic_mixin.py` — 新增 handle_clarification_callback 方法
+- `src/bot/multi_bot.py` — 注册 clarification callback handler
+- `apps/openclaw/TELEGRAM_COMMANDS.md` — 删除 6 个废弃命令
+- `tests/test_api_mixin.py` — 更新 quality_gate 测试断言
+- `docs/status/HEALTH.md` — HI-100/101/102 移至已解决
+
+---
+
+## [2026-03-24] 命令/按钮完整性审计 + LLM Fallback 多级链 + 流式成本追踪
+
+> 领域: `backend`, `ai-pool`, `docs`
+> 影响模块: `src/litellm_router.py`, `src/bot/cmd_basic_mixin.py`, `src/core/response_cards.py`
+> 关联问题: HI-101, HI-102
+
+### 变更内容
+- **FIX**: LLM fallback 从单点 g4f 改为多级链 (family → qwen → deepseek → g4f)，消除 g4f 宕机时的全面失败
+- **FIX**: 流式 (stream=True) LLM 调用现在正确追踪 token 用量和成本 — 新增 `_wrap_streaming()` 异步生成器包装器
+- **FIX**: DashboardCard 的 `cmd:evolve` 和 `cmd:tasks` 回调按钮从死按钮 ("未知命令") 改为映射到 /status 和 /ops
+- **FIX**: `trade:size:` 回调按钮从 "此操作暂不支持" 改为正确的仓位调整引导
+- **DOCS**: COMMAND_REGISTRY 新增 `/agent` 命令 (smolagents 自主 Agent，cmd_basic_mixin.py:1026)
+- **AUDIT**: 完成 81 CommandHandler + 12 CallbackQueryHandler + 40+ 中文触发词的全量审计
+
+### 审计发现 (记入 HEALTH.md)
+- HI-101: FollowUpCard 回调按钮 `{tid}:{param}:value` 默认 tid="0" 不匹配任何 handler，静默失败
+- HI-102: TELEGRAM_COMMANDS.md 含 6 个废弃命令映射 (/profit, /alpha, /recover, /heal, /channel, /playbook)
+
+### 文件变更
+- `src/litellm_router.py` — fallback chain 从 `[{f: ["g4f"]}]` 改为多级 `[{f: ["qwen", "deepseek", "g4f"]}]`; 新增 `_wrap_streaming()` 方法
+- `src/bot/cmd_basic_mixin.py` — cmd_map 新增 `evolve`→cmd_status 和 `tasks`→cmd_ops; trade:size: 按钮处理
+- `docs/registries/COMMAND_REGISTRY.md` — 新增 `/agent` 条目
+- `docs/status/HEALTH.md` — 新增 HI-101, HI-102
+
+## [2026-03-24] LaunchAgent 日志轮转 + 启动配置验证 + 消息流审计
+
+> 领域: `infra`, `backend`
+> 影响模块: `tools/newsyslog.d`, `scripts/setup_log_rotation.sh`, `src/core/config_validator.py`, `multi_main.py`
+> 关联问题: HI-099, HI-100
+
+### 变更内容
+- **HIGH**: 新增 newsyslog 日志轮转配置 — 8 个 LaunchAgent 的 15 个日志文件均配置自动轮转 (bzip2 压缩, 保留 2-5 份, 5-10MB 触发)
+- **HIGH**: 新增启动配置验证模块 `config_validator.py` — 在 Bot 启动前检查必要环境变量、LLM Key、配置文件，缺失时输出明确错误信息
+- **AUDIT**: 端到端消息流追踪 (用户发送 "帮我分析AAPL" → 响应) — 发现 3 个集成间隙 (见 HEALTH.md HI-100)
+
+### 文件变更
+- `tools/newsyslog.d/openclaw.conf` — 新增: 15 条日志轮转规则
+- `scripts/setup_log_rotation.sh` — 新增: 安装脚本 (需 sudo)
+- `packages/clawbot/src/core/config_validator.py` — 新增: 7 Bot Token + 12 LLM Key + 2 文件检查
+- `packages/clawbot/multi_main.py:203-212` — 启动序列注入 validate_startup_config()
+
+---
+
+## [2026-03-24] [FIX] 日志/社交/通知 7 项安全修复 (审计 FIX 1-8)
+
+> 领域: `backend`, `social`, `trading`
+> 影响模块: `log_config`, `globals`, `social_scheduler`, `auto_trader`, `multi_main`
+> 关联问题: HI-092, HI-093, HI-094, HI-095, HI-096, HI-097, HI-098
+
+### 变更内容
+- **CRITICAL**: loguru 文件 sink `diagnose=True` → `diagnose=False` — 防止 API Key/token 泄露到日志文件 (HI-092)
+- **HIGH**: API Key 日志前缀 `key[:20]` → `key[:8]` — 减少暴力破解攻击面 (HI-093)
+- **HIGH**: social_scheduler `job_night_publish` 添加 `publishing` 中间状态 + 每步持久化 — 防止 cron/手动重叠导致重复发布 (HI-094)
+- **HIGH**: auto_trader `_safe_notify` P0 通知 (成交/止损) 添加 3 次重试 + 指数退避 — 防止 Telegram 短暂不可用丢失关键告警 (HI-095)
+- **HIGH**: 关闭序列添加 `await _notify_batcher.flush()` — 防止待发通知在优雅关闭时丢失 (HI-096)
+- **MEDIUM**: multi_main.py 6 处 `except Exception: pass` → `logger.debug` 记录 EventBus 发布失败 (HI-097)
+- **MEDIUM**: 添加全部 Bot 启动失败的 `logger.critical` 检测 (HI-098)
+- **SKIP**: FIX 3 (print debug) — 两处 print() 均在 docstring 示例中，非可执行代码
+
+### 文件变更
+- `src/log_config.py:177,193` — 文件 sink diagnose=True → diagnose=False
+- `src/bot/globals.py:112,123` — key[:20] → key[:8]
+- `src/social_scheduler.py:291-325` — 添加 publishing 中间状态 + try/except + 每步 _save_state
+- `src/auto_trader.py:734-744` — P0 通知 3 次重试 + 指数退避
+- `multi_main.py:770-775` — 关闭序列添加 _notify_batcher.flush()
+- `multi_main.py:592-636` — 6 处 except pass → logger.debug
+- `multi_main.py:328-329` — 添加零 Bot 启动检测
+
+---
+
+## [2026-03-24] [FIX] 4 项部署安全/数据稳定性/DB增长修复
+
+> 领域: `deploy`, `backend`, `trading`
+> 影响模块: `scripts/deploy_vps.sh`, `src/data_providers.py`, `src/trading_journal.py`, `src/feedback.py`, `src/execution/scheduler.py`
+> 关联问题: HI-081, HI-082, HI-083, HI-084
+
+### 变更内容
+- **systemd 安全加固** — deploy_vps.sh 的 systemd unit 从 root 切换为 clawbot 用户运行，增加 NoNewPrivileges/ProtectSystem/ProtectHome/PrivateTmp/MemoryMax=2G 等安全指令，添加 StartLimitBurst 防止无限重启
+- **rsync 排除 .env** — rsync 同步时排除 `config/.env`，防止 API Keys 通过部署脚本泄露到 VPS 环境
+- **yfinance 行情缓存** — 新增 60s TTL 内存缓存层 (`_cached_yfinance_get_quote`)，消除高频重复网络请求；增加 `_stale_warning` 字段检测过期交易日数据
+- **数据库清理自动化** — TradingJournal.cleanup(365天)、FeedbackStore.cleanup(90天) 新增清理方法；scheduler.py 在每日 03:00 ET 自动执行三个模块的 cleanup（含已有的 CostAnalyzer.cleanup(30天)）
+
+### 文件变更
+- `scripts/deploy_vps.sh` — systemd 安全加固 + rsync 排除 .env + 用户/目录切换
+- `src/data_providers.py` — 新增 `_quote_cache` + `_cached_yfinance_get_quote` + `_yfinance_get_quote_raw` 带 staleness 检测
+- `src/trading_journal.py` — 新增 `TradingJournal.cleanup()` 方法
+- `src/feedback.py` — 新增 `FeedbackStore.cleanup()` 方法
+- `src/execution/scheduler.py` — 新增 `_run_daily_db_cleanup()` 函数，在 03:00 触发
+
+## [2026-03-24] [TEST] 3 个关键模块基础测试: LLM Router + Chat Router + SharedMemory (+71 tests)
+
+> 领域: `backend`
+> 影响模块: `src/litellm_router.py`, `src/chat_router.py`, `src/shared_memory.py`
+> 关联问题: 无 (预防性测试覆盖)
+
+### 变更内容
+- **LLM Router (27 tests)** — FreeAPISource.can_accept_request, get_model_score, _scrub_secrets 脱敏, acompletion 调用/超时/错误处理, get_stats 结构, _pick_strongest_family 选择, health_check 禁用, validate_keys 禁用 auth_error key, cost tracking
+- **Chat Router (23 tests)** — classify_intent 意图分类 (code/creative/math/general), should_respond 路由逻辑 (私聊/at/关键词/Bot过滤/chain_discuss), lane 分流路由, should_auto_service_workflow 触发/跳过, discuss 模式启动/停止/轮次, CollabOrchestrator 创建/规划者选择
+- **SharedMemory (21 tests)** — remember/recall CRUD, 键更新去重, 分类过滤, chat_id 存储, forget 删除, search 关键词/语义/hybrid, get_context_for_prompt, auto_compress_all 压缩/no-op, smart_cleanup 清理, _cleanup_expired 过期清理, get_stats 结构
+
+### 文件变更
+- `packages/clawbot/tests/test_litellm_router.py` — 新建, 27 个测试
+- `packages/clawbot/tests/test_chat_router.py` — 新建, 23 个测试
+- `packages/clawbot/tests/test_shared_memory_core.py` — 新建, 21 个测试
+
+## [2026-03-24] [FIX] 6 项安全/稳定性修复: 闲鱼底价绕过 + 速率限制 + 记忆隔离 + API Key 泄露
+
+> 领域: `xianyu`, `backend`, `ai-pool`
+> 影响模块: `src/xianyu/xianyu_live.py`, `src/xianyu/xianyu_agent.py`, `src/shared_memory.py`, `src/litellm_router.py`
+> 关联问题: HI-067, HI-068, HI-069, HI-070, HI-071, HI-072
+
+### 变更内容
+- **[HIGH] 闲鱼底价绕过修复** — 当 `_extract_price()` 无法从买家消息中提取数字价格时, AI agent 现在会收到底价信息, 防止在不知情下同意低于底价的报价
+- **[HIGH] 闲鱼消息速率限制** — 新增 per-chat 速率限制 (默认 10 msgs/min), 防止买家刷消息触发无限 LLM 调用. 可通过 `XIANYU_MAX_MSGS_PER_MINUTE` 环境变量配置
+- **[MEDIUM] 闲鱼 Agent 重复方法清理** — 删除 `BaseAgent.agenerate()` 的死代码首次定义, 消除方法覆盖歧义
+- **[HIGH] Mem0 多租户隔离** — `remember()`/`search()`/`semantic_search()` 的 Mem0 调用现在传入 `user_id`, 按用户隔离记忆, 防止跨用户记忆泄露
+- **[HIGH] LLM Router API Key 脱敏** — 新增 `_scrub_secrets()` 工具函数, 从错误日志中移除 API keys、Bearer tokens、内网 URL, 防止密钥泄露到日志
+- **[MEDIUM] validate_keys() 自动禁用死 Key** — `validate_keys()` 检测到 auth_error (401/403) 的 key 后自动设置 `disabled=True`, 避免持续重试死 key
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 底价注入 AI 上下文 + per-chat 速率限制
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — 删除 BaseAgent.agenerate() 死代码定义
+- `packages/clawbot/src/shared_memory.py` — Mem0 add/search 添加 user_id 参数隔离 + search/semantic_search 方法签名新增 chat_id
+- `packages/clawbot/src/litellm_router.py` — 新增 _scrub_secrets() + 错误日志脱敏 + validate_keys() 自动禁用 auth_error key
+
+## [2026-03-24] [FIX] Tauri 前端 18 个 TypeScript 编译错误 + 状态反同步 + 内存泄漏 + 静默吞错
+
+> 领域: `frontend`
+> 影响模块: `tauri.ts`, `useGlobalToasts.ts`, `CommandPalette.tsx`, `OmegaStatus.tsx`, `Evolution/index.tsx`, `ExecutionFlow/index.tsx`, `Channels/index.tsx`, `Testing/index.tsx`, `App.tsx`, `appStore.ts`
+> 关联问题: N/A
+
+### 变更内容
+- **FIX 1 (CRITICAL):** 修复 18 个 TypeScript 编译错误
+  - `tauri.ts` 补充 12 个缺失 API 方法绑定 (clawbotSocialTopics, clawbotEvolutionScan, clawbotStatus, clawbotTradingSystem, clawbotAutopilotStart/Stop, omegaStatus, clawbotEvolutionStats/Gaps/Proposals, clawbotEvolutionUpdateProposal)
+  - `tauri.ts` 导出 `CLAWBOT_WS_URL` 常量
+  - `useGlobalToasts.ts` 添加 WebSocket 消息类型窄化
+  - `CommandPalette.tsx` 修复 catch 块 `e?.message` 属性访问 (改为 `e instanceof Error` 判断)
+  - `Evolution/index.tsx` 修复 `Record<string, unknown>` 返回值类型安全
+- **FIX 2 (HIGH):** App.tsx / appStore 双重状态反同步
+  - App.tsx 移除本地 `useState` 改用 Zustand store 的 `currentPage`, `isReady`, `envStatus`, `serviceStatus`
+  - CommandPalette 通过 Zustand 导航现在能正确反映到 App.tsx 的页面渲染
+- **FIX 3 (HIGH):** 内存泄漏修复
+  - `ExecutionFlow/index.tsx`: simulateExecution 的 setInterval 存入 ref + useEffect 清理
+  - `Channels/index.tsx`: WhatsApp 登录轮询 interval 和 timeout 配对清理
+- **FIX 4 (MEDIUM):** 静默错误吞没改为 `console.error` 输出
+  - `ExecutionFlow/index.tsx`, `Channels/index.tsx`, `Testing/index.tsx`
+
+### 文件变更
+- `src/lib/tauri.ts` — 新增 12 个 API 方法 + CLAWBOT_WS_URL 导出
+- `src/hooks/useGlobalToasts.ts` — WebSocket 消息类型窄化
+- `src/components/CommandPalette.tsx` — catch 块类型安全
+- `src/components/Evolution/index.tsx` — API 返回值类型安全 cast
+- `src/components/ExecutionFlow/index.tsx` — interval ref + cleanup + console.error
+- `src/components/Channels/index.tsx` — interval/timeout 配对清理 + console.error
+- `src/components/Testing/index.tsx` — console.error
+- `src/App.tsx` — 移除 useState 改用 Zustand store
+
+---
+
+## [2026-03-24] [FIX] 原子文件写入 + SmartMemory 并发守卫 + 测试显式标记
+
+> 领域: `backend`
+> 影响模块: `context_manager`, `cookie_refresher`, `smart_memory`, `test_trading_system`
+> 关联问题: 代码审计发现的数据完整性和测试质量问题
+
+### 变更内容
+- `context_manager.py`: 新增 `_atomic_json_write()` 辅助函数，将 `_save_core()`、`_save_summary()`、`_save_preferences()` 三处 `open("w")` 替换为 tempfile+rename 原子写入，防止崩溃时文件截断损坏
+- `cookie_refresher.py`: `update_env_file()` 使用 tempfile+`os.replace()` 原子写入 .env 文件，防止崩溃丢失所有环境变量
+- `smart_memory.py`: 新增 `self._extracting: set` 跟踪正在提取中的 chat_id，防止同一聊天并发触发重复事实提取
+- `test_trading_system.py`: 为 `TestStopTradingSystem` 和 `TestStartTradingSystem` 的 4 个 async 测试方法添加显式 `@pytest.mark.asyncio` 装饰器（虽然 `asyncio_mode=auto` 已自动处理，但显式标记更具可移植性）
+
+### 文件变更
+- `packages/clawbot/src/context_manager.py` — 新增 `tempfile`/`os` import + `_atomic_json_write()` + 替换三处非原子写入
+- `packages/clawbot/src/xianyu/cookie_refresher.py` — 新增 `tempfile` import + `.env` 原子写入
+- `packages/clawbot/src/smart_memory.py` — 新增 `_extracting` set + 提取前 guard + done_callback 清理
+- `packages/clawbot/tests/test_trading_system.py` — 4 个 async 测试方法添加 `@pytest.mark.asyncio`
+
+---
+
+## [2026-03-24] [FEAT] API 认证中间件: 共享密钥 Token 验证
+
+> 领域: `backend`, `frontend`
+> 影响模块: `src/api/auth.py`, `src/api/server.py`, `src/api/routers/ws.py`, `src/xianyu/xianyu_admin.py`, `clawbot_api.rs`
+> 关联问题: 安全审计发现 40+ API 端点零认证
+
+### 变更内容
+- 新增 `src/api/auth.py` — 共享密钥 Token 认证模块 (Header: X-API-Token)
+- FastAPI 主应用 (server.py) 添加全局 `verify_api_token` 依赖，保护所有 REST 端点
+- WebSocket 端点 (ws.py) 添加 query param `?token=` 验证，连接前拒绝无效 token
+- 闲鱼管理面板 (xianyu_admin.py) 添加相同全局认证依赖
+- Tauri Rust 客户端 (clawbot_api.rs) 的 GET/POST/PATCH/DELETE 请求均附带 X-API-Token header
+- `config/.env` 添加 `OPENCLAW_API_TOKEN=` 配置项 (留空 = 开发模式, 无认证)
+- 未配置 Token 时自动降级为无认证模式，启动打印 WARNING 日志
+
+### 文件变更
+- `packages/clawbot/src/api/auth.py` — 新建: 认证依赖 + WS token 验证 + 启动日志
+- `packages/clawbot/src/api/server.py` — FastAPI 全局 dependency 注入
+- `packages/clawbot/src/api/routers/ws.py` — WebSocket 连接前 token 验证
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 全局 dependency 注入
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — 所有 HTTP helper 附带 token header
+- `packages/clawbot/config/.env` — 添加 OPENCLAW_API_TOKEN 配置项
+
+---
+
+## [2026-03-24] [FIX] 安全审计修复: 1 CRITICAL + 2 HIGH + 1 MEDIUM
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `src/xianyu/xianyu_admin.py`, `src/api/routers/omega.py`, `src/api/routers/social.py`, `requirements.txt`
+> 关联问题: HI-063, HI-064, HI-065, HI-066
+
+### CRITICAL 修复
+- **xianyu_admin.py 4项安全加固** — (1) 绑定地址 `0.0.0.0` → `127.0.0.1` 防止网络暴露 (2) CORS wildcard `*` → 白名单 3 个本地源 (3) prompt 名称添加正则校验 `^[a-zA-Z0-9_-]+$` 防目录遍历 (4) 以上 3 项组合消除无认证管理面板暴露风险
+
+### HIGH 修复
+- **SSRF 防护** — `/omega/tools/jina-read` 添加 URL scheme 白名单 (仅 http/https) + 内网地址黑名单 (169.254/10.x/192.168/172.x/localhost/::1)，阻止服务端请求伪造
+- **依赖安全** — 添加 `flask>=3.0.0` + `aiohttp>=3.9.0` 缺失依赖；`fpdf2==2.7.9` → `~=2.7.9` 允许补丁更新；`litellm`/`crewai`/`browser-use` 添加 `<2.0.0`/`<1.0.0` 上界防止破坏性升级
+
+### MEDIUM 修复
+- **API 输入边界** — omega.py: `limit` 添加 `Query(ge=1, le=500)`，`message` 添加 `max_length=1000`；social.py: `count` 添加 `Query(ge=1, le=50)`，`days` 添加 `Query(ge=1, le=30)`
+
+### 文件变更
+- `src/xianyu/xianyu_admin.py` — 4 项安全修复 (bind addr + CORS + path traversal + import re)
+- `src/api/routers/omega.py` — SSRF 防护 + 参数边界 (import urlparse/HTTPException/Query)
+- `src/api/routers/social.py` — 参数边界 (import Query)
+- `requirements.txt` — +flask +aiohttp, fpdf2 宽松化, 3 个依赖添加上界
+
+---
+
+## [2026-03-24] [FIX] 交易资金路径3项关键修复 (2 CRITICAL + 1 HIGH)
+
+> 领域: `trading`
+> 影响模块: `broker_bridge.py`, `alpaca_bridge.py`, `auto_trader.py`
+> 关联问题: HI-060, HI-061, HI-062
+
+### CRITICAL 修复
+- **IBKR 预算持久化** — `total_spent` 从纯内存变量改为持久化到 `data/broker_budget_state.json`，按日期恢复，防止重启后重复花费整日预算
+- **Alpaca 成交轮询** — `_place_order()` 不再立即返回 "submitted"，改为30秒轮询等待实际成交状态（filled/rejected），确保返回真实成交价和数量
+
+### HIGH 修复
+- **部分成交处理** — `TradingPipeline.execute_proposal()` 从 `order_result.filled_qty` 提取实际成交数量，journal/monitor/通知全部使用实际值而非请求值
+
+### 文件变更
+- `packages/clawbot/src/broker_bridge.py` — 添加 `_save_budget_state()` / `_load_budget_state()` 方法，`__init__` 尾部恢复、所有 `total_spent` 修改点持久化、`reset_budget()` / `sync_capital()` 同步持久化
+- `packages/clawbot/src/alpaca_bridge.py` — `_place_order()` 添加 15×2s 轮询循环，区分 filled/partially_filled/cancelled/expired/rejected/timeout
+- `packages/clawbot/src/auto_trader.py` — `execute_proposal()` 添加 `actual_qty` 变量，journal.open_trade / MonitoredPosition / 通知 / 日志全部使用实际成交量
+
+## [2026-03-24] [REFACTOR] execution_hub.py 死代码删除 + facade 迁移完成
+
+> 领域: `backend`
+> 影响模块: `src/execution_hub.py`, `src/execution/__init__.py`
+> 关联问题: HI-006
+
+### 变更内容
+
+**Part A: 删除 44 个确认死亡方法 (1058 行)**
+
+- **社交自动驾驶系统** (29 方法, ~650 行): `run_social_autopilot_once` 及其完整调用链全部删除，包括 `collect_social_metrics`, `_build_social_operator_prompt`, `_extract_social_priority_queue` 等
+- **Payout Watching 系统** (9 方法, ~350 行): `check_payout_watches_once`, `add_payout_watch`, `_classify_payout_comment` 等全部删除
+- **Upwork/浏览器自动化** (3 方法, ~150 行): `_attempt_upwork_offer_auto_accept`, `_attempt_xiaohongshu_publish` 等全部删除
+- **旧版调度器** (3 方法, ~100 行): 旧 `start_scheduler`, `stop_scheduler`, `_scheduler_loop` 删除 (已被 facade 版替代)
+
+**Part B: 8 个 __getattr__ 方法迁移为显式委托**
+
+- `create_social_launch_drafts` (sync), `generate_x_monitor_brief` (async), `open_bounty_links` (sync), `analyze_tweet_execution` (async), `run_tweet_execution` (async), `import_x_monitors_from_tweet` (async), `_normalize_x_handle` (sync), `_publish_social_package` (sync)
+- 删除 `_PRIVATE_WHITELIST`，`__getattr__` 现在对所有 `_` 开头属性抛出 AttributeError
+- `__getattr__` 添加 `logger.warning()` 用于发现遗漏的未迁移方法
+
+### 文件变更
+- `src/execution_hub.py` — 3851 → 2793 行 (删除 1058 行死代码)
+- `src/execution/__init__.py` — 428 → 458 行 (新增 8 个显式委托 + 更新 __getattr__)
+
+---
+
+## [2026-03-24] [FIX] datetime.utcnow() 残留清理
+
+> 领域: `backend`
+> 影响模块: `src/evolution/github_trending.py`
+> 关联问题: HI-025 (补充)
+
+### 变更内容
+- `github_trending.py` 中最后 1 处 `datetime.utcnow()` 替换为 `now_et()` (deprecated in Python 3.12)
+- 全量扫描确认: `src/` 下 `datetime.now()` 0 处残留, `datetime.utcnow()` 0 处残留
+- `tests/test_backtester.py` 19 处 `datetime.now()` 判定为 SKIP (仅用于构造任意测试数据, 不涉及存储/比较/调度)
+
+### 文件变更
+- `src/evolution/github_trending.py` — `datetime.utcnow()` → `now_et()`, 移除 `datetime` import, 添加 `from src.utils import now_et`
+
+---
+
+## [2026-03-24] [FIX] 交易系统11项安全修复 (6 CRITICAL + 5 HIGH)
+
+> 领域: `trading`
+> 影响模块: `cmd_invest_mixin.py`, `message_mixin.py`, `position_monitor.py`, `risk_manager.py`, `invest_tools.py`
+> 关联问题: HI-050 ~ HI-059
+
+### CRITICAL 修复 (涉及真金白银)
+- `/sell` 路径原无任何风控检查 — 添加 rm.check_cooldown() + 持仓校验 + rm=None 拦截
+- 负数/零数量未校验 — buy/sell 均添加 `quantity <= 0` 拦截
+- 无重复下单保护 — 添加 30 秒 per-user:symbol 冷却防重机制
+
+### HIGH 修复
+- itrade callback fallback 调用不存在的 `ibkr.place_order()` — 替换为 `ibkr.buy()`/`ibkr.sell()`
+- IBKR 零成交时写入幽灵持仓 — `fill_qty <= 0` 时跳过 portfolio 写入
+- `rm is None` 时所有风控被跳过 — 实盘场景(IBKR连接)下 rm=None 直接拒绝交易
+- 监控循环崩溃后不重试 — 添加 `asyncio.CancelledError` 处理，异常后继续循环
+
+### MEDIUM 修复
+- `calc_safe_quantity()` 错误返回缺少 `shares` 键 — 所有错误路径补充 `"shares": 0`
+- `reset_daily()` 未重置 `_current_tier`/`_position_scale` — 每日干净启动
+- Portfolio SQLite 无 WAL/timeout — 添加 `timeout=10` + `PRAGMA journal_mode=WAL`
+
+### 文件变更
+- `src/bot/cmd_invest_mixin.py` — FIX 1/2/3/5/6: 风控校验+正数校验+防重+零成交保护+rm强制
+- `src/bot/message_mixin.py` — FIX 4: 两处 itrade fallback place_order→buy/sell
+- `src/position_monitor.py` — FIX 7: CancelledError 处理
+- `src/risk_manager.py` — FIX 8/9/11: shares 键补全 + reset_daily 分层重置
+- `src/invest_tools.py` — FIX 10: SQLite WAL + timeout
+
+---
+
+## [2026-03-24] [FIX] Facade 签名修复 + 并发安全加固
+
+> 领域: `backend`
+> 影响模块: `src/execution/__init__.py`, `multi_main.py`, `src/core/brain.py`, `src/feedback.py`
+> 关联问题: HI-047, HI-048, HI-049
+
+### Part A — 4 个 facade 方法签名修复 (运行时 TypeError 崩溃)
+- `build_social_plan` — 转为 legacy delegate (caller 传 topic/limit, facade 期望 days)
+- `research_social_topic` — 转为 legacy delegate (caller 传 limit, facade 无该参数)
+- `scan_bounties` — 转为 legacy delegate (caller 传 per_query, 子模块不支持)
+- `run_bounty_hunter` — 转为 legacy delegate (caller 传 keywords/shortlist_limit, 子模块不支持)
+
+### Part B — 并发安全加固
+- `multi_main.py` 10 处 fire-and-forget `asyncio.create_task` 添加 `add_done_callback` + 统一 `_task_done_cb` 辅助函数
+- `src/core/brain.py` 1 处后台任务图执行添加 done callback
+- `src/feedback.py` FeedbackStore 添加 `close()` 方法修复 SQLite 资源泄漏
+
+### 已确认无需修改
+- `crawl4ai_engine.py` 2 处 `asyncio.gather` 已有 `return_exceptions=True`
+- `price_engine.py` 1 处 `asyncio.gather` 已有 `return_exceptions=True`
+- `media_crawler_bridge.py` 已有 `async def close()` (line 206)
+- `goofish_monitor.py` 已有 `async def close()` (line 202)
+
+### 文件变更
+- `src/execution/__init__.py` — 4 个方法签名修复为 legacy delegate
+- `multi_main.py` — 10 处 create_task 添加 done callback + _task_done_cb 辅助函数
+- `src/core/brain.py` — 1 处 create_task 添加 done callback
+- `src/feedback.py` — 添加 close() 方法
+
+---
+
+## [2026-03-24] [ARCH] 架构清爽化 — 人格统一/提示词SSOT/配置收敛/死代码清理/装饰器重构
+
+> 领域: `backend` `frontend` `trading` `docs`
+> 影响模块: 40+ 文件 (详见下方)
+> 关联问题: HI-039~046 (全部解决)
+
+### 变更概述
+
+首席架构师级别重构，聚焦 Single Source of Truth 原则。不加功能，不修 Bug，只让每个文件知道自己是谁。
+
+### 域1 — 人格统一 (HI-039)
+- 全局搜索替换 "Boss"→"严总" + "老板"→"严总" — **31 文件, ~75 处**
+- 修复 IDENTITY.md 与 AGENTS.md/USER.md 的三方矛盾
+- 覆盖: skill 文件(20+), cron jobs, Python 代码, Tauri 管理端默认值
+
+### 域2 — 风控参数对齐 (HI-038)
+- omega.yaml risk_rules 4 个参数与 risk_manager.py 对齐
+- brain.py/bot_profiles.py/cmd_collab_mixin.py 添加事实源追溯注释
+- 统一值: 单笔30%($600), 日亏5%($100), 行业50%, 回撤10%
+
+### 域3+4 — 系统提示词 SSOT (HI-040)
+- 新建 `config/prompts.py` — 集中定义所有 system prompt (~220 行)
+- 5 个消费文件改为 import 引用 (brain.py/intent_parser.py/team.py/pydantic_agents.py/cmd_collab_mixin.py)
+- 投资角色提示词从 3 份重复 → 1 份定义
+- 消除了 "友好的数字生命助手" vs "全能AI助手" 的身份不一致
+
+### 域5 — 死代码清理 (HI-041)
+- 删除 8 个僵尸文件 + 2 个目录: shared_memory_v3_backup / migrate_memory_to_mem0 / updater / memory_layer / config_schema / agent_skills (+test) / routing/ / models/ — **共 3,091 行**
+- 保留 deployer/web_installer.py (被 package.sh 硬引用)
+
+### 域6 — @requires_auth 装饰器 (HI-042)
+- 新建 `src/bot/auth.py` (28 行)
+- 替换 7 个 mixin 文件中 **70 处** 重复权限检查
+- 保留 3 处特殊场景 (cmd_start 发送拒绝消息 / message_mixin 不同变量模式)
+
+### 域7 — 错误消息统一 (HI-043)
+- 新建 `src/bot/error_messages.py` (70 行, 11 个函数)
+- 替换 6 个文件中 **15 处** 不一致的错误消息
+- 保留特定场景消息 (IBKR/K线/社媒 等)
+
+### 域8 — 配置清理 (HI-044~046)
+- `remaining_daily_budget` 重命名为 `remaining_daily_loss_budget` (避免与 LLM 预算混淆)
+- Admin 用户 ID 统一为 `ALLOWED_USER_IDS` (telegram_gateway 向后兼容)
+- Help 键盘去重: 2 处完全相同的构建代码 → `_build_help_main_keyboard()` 函数
+
+### 文件变更
+
+**新建:**
+- `packages/clawbot/config/prompts.py` — 系统提示词注册表 (SSOT)
+- `packages/clawbot/src/bot/auth.py` — @requires_auth 装饰器
+- `packages/clawbot/src/bot/error_messages.py` — 统一错误消息模板
+
+**修改 (核心):**
+- `packages/clawbot/config/omega.yaml` — 风控参数与代码对齐
+- `packages/clawbot/src/risk_manager.py` — SSOT 注释 + 字段重命名
+- `packages/clawbot/src/core/brain.py` — 提示词 → config.prompts import
+- `packages/clawbot/src/core/intent_parser.py` — 提示词 → import
+- `packages/clawbot/src/modules/investment/team.py` — 角色提示 → import
+- `packages/clawbot/src/modules/investment/pydantic_agents.py` — 角色提示 → import
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — 角色提示 → import
+- `packages/clawbot/src/bot/cmd_basic_mixin.py` — Help 键盘去重 + @requires_auth
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — @requires_auth + error_messages
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — @requires_auth
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — @requires_auth
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — @requires_auth + error_messages
+- `packages/clawbot/src/bot/cmd_ibkr_mixin.py` — @requires_auth
+- `packages/clawbot/src/bot/api_mixin.py` — error_messages
+- `packages/clawbot/src/bot/message_mixin.py` — error_messages
+- `packages/clawbot/src/gateway/telegram_gateway.py` — Admin env var 统一
+- `packages/clawbot/src/bot/globals.py` — 规范注释
+- `packages/clawbot/src/smart_memory.py` — Boss→严总
+- `packages/clawbot/src/social_scheduler.py` — Boss→严总
+
+**修改 (persona):**
+- `apps/openclaw/IDENTITY.md` + 20+ skills/*.md + `.openclaw/cron/jobs.json` — Boss/老板→严总
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 默认用户名→严总
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — mock 数据→严总
+
+**删除:**
+- `packages/clawbot/src/shared_memory_v3_backup.py` (1,311 行)
+- `packages/clawbot/src/migrate_memory_to_mem0.py` (144 行)
+- `packages/clawbot/src/updater.py` (127 行)
+- `packages/clawbot/src/memory_layer.py` (187 行)
+- `packages/clawbot/src/config_schema.py` (158 行)
+- `packages/clawbot/src/agent_skills.py` (672 行)
+- `packages/clawbot/tests/test_agent_skills.py` (73 行)
+- `packages/clawbot/src/routing/` 整个包 (419 行)
+- `packages/clawbot/src/models/` 空目录
+
+---
+
+## [2026-03-24] 3 项代码清理: 风控字段重命名 + 管理员 env var 统一 + 帮助键盘去重
+
+> 领域: `backend`
+> 影响模块: `src/risk_manager.py`, `src/gateway/telegram_gateway.py`, `src/bot/globals.py`, `src/bot/cmd_basic_mixin.py`
+> 关联问题: —
+
+### 变更内容
+- `remaining_daily_budget` → `remaining_daily_loss_budget`: 消除与 LLM API 成本预算的歧义 (risk_manager.py 2 处)
+- `telegram_gateway.py`: 管理员 ID 优先读 `ALLOWED_USER_IDS`, 降级读 `OMEGA_ADMIN_USER_IDS` 向后兼容
+- `globals.py`: 标注 `ALLOWED_USER_IDS` 为管理员 ID 唯一事实源
+- `cmd_basic_mixin.py`: 提取 `_build_help_main_keyboard()` 函数, 消除 /start 老用户 + help:back 两处完全相同的键盘定义
+
+### 文件变更
+- `packages/clawbot/src/risk_manager.py` — 2 处重命名 dict key
+- `packages/clawbot/src/gateway/telegram_gateway.py` — env var 读取逻辑 + 注释
+- `packages/clawbot/src/bot/globals.py` — 新增 canonical 注释
+- `packages/clawbot/src/bot/cmd_basic_mixin.py` — 新增 `_build_help_main_keyboard()`, 替换 2 处内联构造
+
+---
+
+## [2026-03-24] 统一错误消息模板 — error_messages.py 消除 4+ 种不一致模式
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `src/bot/error_messages.py`, `src/bot/api_mixin.py`, `src/bot/cmd_basic_mixin.py`, `src/bot/cmd_trading_mixin.py`, `src/bot/message_mixin.py`, `src/telegram_ux.py`, `src/xianyu/xianyu_agent.py`
+> 关联问题: —
+
+### 变更内容
+- 新建 `src/bot/error_messages.py` 作为所有用户可见错误消息的单一事实源 (11 个模板函数)
+- 消除 4+ 种不一致的错误消息风格 (抱歉出错了/⚠️操作失败/系统繁忙/请求太频繁等)
+- 统一语气规范: ⚠️ 前缀可恢复错误, ❌ 前缀严重错误, 永不暴露异常堆栈
+- 替换 15 处硬编码错误消息为集中化函数调用
+- 保留所有上下文特定错误消息 (如 IBKR下单失败、K线图生成失败等)
+- 不影响 format_error() (message_format.py) 的异常分类逻辑, 两者互补
+
+### 文件变更
+- `src/bot/error_messages.py` — 新建, 72 行, 11 个错误模板函数
+- `src/bot/api_mixin.py` — 4 处替换: 熔断/通用错误/工具滥用/流式降级错误
+- `src/telegram_ux.py` — 3 处替换: send_error_with_retry 中的分类消息
+- `src/bot/message_mixin.py` — 4 处替换: 空回复/超时/频率/通用错误
+- `src/xianyu/xianyu_agent.py` — 2 处替换: LLM 调用失败兜底消息
+- `src/bot/cmd_trading_mixin.py` — 1 处替换: 再平衡分析失败
+- `src/bot/cmd_basic_mixin.py` — 1 处替换: 二维码生成失败
+- `docs/registries/MODULE_REGISTRY.md` — 新增 error_messages.py 模块条目
+
+## [2026-03-24] 提示词集中化 — config/prompts.py 单一事实源
+
+> 领域: `backend`
+> 影响模块: `config/prompts.py`, `src/modules/investment/team.py`, `src/modules/investment/pydantic_agents.py`, `src/bot/cmd_collab_mixin.py`, `src/core/brain.py`, `src/core/intent_parser.py`
+> 关联问题: —
+
+### 变更内容
+- 新建 `config/prompts.py` 作为所有系统提示词的 Single Source of Truth
+- 消除投资角色提示词的 3 处重复定义 (team.py / pydantic_agents.py / cmd_collab_mixin.py)
+- 集中管理 12 个提示词常量: IDENTITY_BASE, CHAT_FALLBACK_PROMPT, INFO_QUERY_PROMPT, INVEST_DIRECTOR_DECISION_PROMPT, INVESTMENT_ROLES (6角色), INVEST_DISCUSSION_ROLES (6角色), INTENT_PARSER_PROMPT, INTENT_PARSER_USER_TEMPLATE, SOCIAL_PERSONA_X, SOCIAL_PERSONA_XHS
+- pydantic_agents.py 的 5 个简化副本替换为 team.py 权威完整版
+- execution_hub.py 按计划不动 (遗留模块待淘汰)
+
+### 文件变更
+- `config/prompts.py` — 新建，220 行，系统提示词注册表
+- `src/modules/investment/team.py` — 6 个内联提示词替换为 `from config.prompts import INVESTMENT_ROLES`
+- `src/modules/investment/pydantic_agents.py` — 5 个简化副本替换为中央注册表导入
+- `src/bot/cmd_collab_mixin.py` — 内联 role_map 替换为 `INVEST_DISCUSSION_ROLES` 导入
+- `src/core/brain.py` — 3 处内联提示词替换为常量导入
+- `src/core/intent_parser.py` — 意图解析提示词替换为常量导入
+- `docs/registries/MODULE_REGISTRY.md` — 新增 prompts.py 模块条目
+
+## [2026-03-24] @requires_auth 装饰器 — 消除 70 处重复权限检查
+
+> 领域: `backend`
+> 影响模块: `src/bot/auth.py` (新建), `src/bot/cmd_basic_mixin.py`, `src/bot/cmd_execution_mixin.py`, `src/bot/cmd_analysis_mixin.py`, `src/bot/cmd_invest_mixin.py`, `src/bot/cmd_trading_mixin.py`, `src/bot/cmd_ibkr_mixin.py`, `src/bot/cmd_collab_mixin.py`
+> 关联问题: 技术债 (重复代码)
+
+### 变更内容
+- 新建 `src/bot/auth.py`，提供 `@requires_auth` 装饰器，替代 `if not self._is_authorized(...): return` 两行模板
+- 7 个 Mixin 文件中的 70 处重复权限检查替换为装饰器
+- `cmd_start` 保留原有内联检查（有自定义拒绝消息，行为不同于静默返回）
+- `message_mixin.py` 中的 2 处保留（使用 `user.id` 而非 `update.effective_user.id`，模式不同）
+- 装饰器始终放在 `@with_typing` 等其他装饰器之前，确保权限检查最先执行
+
+### 文件变更
+- `packages/clawbot/src/bot/auth.py` — 新建: `requires_auth` 装饰器 (functools.wraps, 静默返回)
+- `packages/clawbot/src/bot/cmd_basic_mixin.py` — 15 处替换
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 23 处替换
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 6 处替换
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — 9 处替换
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — 6 处替换
+- `packages/clawbot/src/bot/cmd_ibkr_mixin.py` — 6 处替换
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — 5 处替换
+
+## [2026-03-24] 风控参数统一 — omega.yaml / risk_manager.py / bot_profiles.py 三源对齐
+
+> 领域: `trading`, `backend`
+> 影响模块: `config/omega.yaml`, `src/risk_manager.py`, `src/core/brain.py`, `config/bot_profiles.py`, `src/bot/cmd_collab_mixin.py`
+> 关联问题: HI-038
+
+### 变更内容
+- omega.yaml risk_rules 与 risk_manager.py RiskConfig 存在 4 处数值冲突，统一以 risk_manager.py 运行时真值为准
+- 冲突1: max_position_single 20%→30% (对齐 risk_manager.py max_position_pct=0.30)
+- 冲突2: daily_loss_limit 3%→5% (对齐 risk_manager.py $100/$2000=5%)
+- 冲突3: max_sector_position 35%→50% (对齐 risk_manager.py max_sector_exposure_pct=0.50)
+- 冲突4: max_drawdown_stop 8%→10% (对齐 risk_manager.py drawdown_halt_pct=0.10)
+- brain.py 默认风控参数同步更新
+- RiskConfig docstring 标注为 single source of truth，注明三处同步要求
+- bot_profiles.py 风控提示词添加数值来源注释
+- cmd_collab_mixin.py 风控 role_map 添加来源注释并补充日亏损限额说明
+
+### 文件变更
+- `packages/clawbot/config/omega.yaml` — risk_rules 4 个参数值更新 + 添加 total_capital/max_risk_per_trade + 同步注释
+- `packages/clawbot/src/risk_manager.py` — RiskConfig docstring 标注 single source of truth + 各字段添加 omega.yaml 映射注释
+- `packages/clawbot/src/core/brain.py` — _load_config 默认 risk_rules 对齐 (0.20→0.30, 0.03→0.05, 0.08→0.10)
+- `packages/clawbot/config/bot_profiles.py` — DeepSeek 风控提示词 + GROUP_CHAT_RULES 添加数值来源注释
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — deepseek_v3 role_map 添加来源注释 + 补充日亏损$100=5%说明
+
+## [2026-03-24] 僵尸代码清理 — 删除零引用文件 3,091 行
+
+> 领域: `backend`
+> 影响模块: `src/` (6 个僵尸文件 + 1 个测试 + 1 个空目录 + 1 个僵尸包)
+> 关联问题: 技术债清理
+
+### 变更内容
+- 删除 6 个零生产引用的 Python 模块 (2,599 行)
+- 删除 `routing/` 包 (4 文件, 419 行) — 从 chat_router.py 提取但未接入
+- 删除 `tests/test_agent_skills.py` (73 行) — 对应模块已删除
+- 移除空目录 `src/models/` (活跃 `src/models.py` 保留)
+- **保留** `deployer/web_installer.py` 和 `deploy_client.py` — 被 package.sh/pack_*.sh 硬引用
+
+### 文件变更
+- `src/shared_memory_v3_backup.py` (1,311行) — 删除: 旧备份, 活跃版本是 shared_memory.py
+- `src/migrate_memory_to_mem0.py` (144行) — 删除: 一次性迁移脚本
+- `src/updater.py` (127行) — 删除: GitHub 自动更新检查器, 未集成
+- `src/memory_layer.py` (187行) — 删除: 未采用的记忆抽象层
+- `src/config_schema.py` (158行) — 删除: 未使用的 pydantic-settings 配置
+- `src/agent_skills.py` (672行) — 删除: 未接线的技能系统
+- `tests/test_agent_skills.py` (73行) — 删除: 对应模块已删除
+- `src/routing/` (4文件, 419行) — 删除: __init__.py, models.py, streaming.py, priority_queue.py
+- `src/models/` (空目录) — 删除
+- `docs/registries/MODULE_REGISTRY.md` — 移除 config_schema.py 条目
+- `docs/registries/DEPENDENCY_MAP.md` — 移除 pydantic-settings 条目
+- `docs/PROJECT_MAP.md` — 移除 routing/ 和 agent_skills.py 条目
+
+---
+
+## [2026-03-24] 位阶2.3 Letta 记忆深化 + 策略命令暴露 + K线图
+
+> 领域: `backend` `trading`
+> 影响模块: `src/context_manager.py`, `src/bot/api_mixin.py`, `src/bot/cmd_analysis_mixin.py`, `src/bot/multi_bot.py`
+> 关联问题: 价值位阶 2.3 (Letta), 六.4 (K线图), #27 (命令暴露)
+
+### 变更内容
+
+**位阶 2.3 — Letta 分层记忆深化 (搬运自 letta-ai/letta 16k⭐):**
+- `context_manager.py` v2.1→v3.0: TieredContextManager 全面升级
+- Per-chat core memory 持久化 (JSON 文件 `data/core_memory/chat_{id}.json`)
+- 打通 SmartMemoryPipeline ↔ TieredContextManager (`_sync_smart_memory_facts()`)
+- Per-chat_id 记忆隔离 (不同聊天各自记忆空间)
+- Core memory 新增 `key_facts` 字段 (从 SmartMemory 自动同步)
+- `build_context()` 新增 `chat_id` 参数, 组装完成后自动持久化脏数据
+- `api_mixin.py` 两处调用点传递 `chat_id`
+
+**策略命令暴露 (让 FinRL/Qlib 可被用户触达):**
+- `/chart AAPL [period]` — K线图 (MA10/20/50 + 成交量, Plotly candlestick)
+- `/drl AAPL [period]` — DRL 强化学习策略分析 (PPO, 含训练+推理)
+- `/factors AAPL [period]` — 16 Alpha 因子分析 (含关键因子详情展示)
+- 三个命令已注册到 `multi_bot.py` handler 列表
+
+### 文件变更
+- `src/context_manager.py` — v3.0 升级 (~780→870行)
+- `src/bot/api_mixin.py` — 2处 build_context 传递 chat_id
+- `src/bot/cmd_analysis_mixin.py` — 新增 cmd_chart/cmd_drl/cmd_factors (~200行)
+- `src/bot/multi_bot.py` — 注册 3 个新命令
+
+---
+
+## [2026-03-24] 位阶1 交易核心: FinRL DRL 强化学习 + Qlib Alpha 因子策略集成
+
+> 领域: `trading` `backend`
+> 影响模块: `src/strategies/drl_strategy.py` (新建), `src/strategies/factor_strategy.py` (新建), `src/strategy_engine.py`, `src/modules/investment/backtester_vbt.py`, `requirements.txt`
+> 关联问题: 价值位阶 1.2/1.3
+
+### 变更内容
+
+**位阶 1.2 — FinRL DRL 强化学习交易策略:**
+- 新建 `src/strategies/drl_strategy.py` (~310行) — 搬运自 FinRL (11k⭐, MIT)
+- 实现 `StockTradingEnv` (gymnasium 环境): 11维观测空间 (余额/持仓/价格/MA/RSI/MACD/量比/动量)
+- 集成 `DRLStrategy(BaseStrategy)` — PPO/A2C Agent via stable-baselines3 (9.4k⭐)
+- 训练模型自动缓存到 `src/models/drl/`，90天过期重训
+- 支持 graceful degradation: 缺 gymnasium/sb3 时返回 HOLD
+
+**位阶 1.3 — Qlib Alpha 因子 + LightGBM ML 信号:**
+- 新建 `src/strategies/factor_strategy.py` (~380行) — 搬运自 Qlib (18k⭐, MIT)
+- 实现 `AlphaFactors` 16 因子库: 动量(4) + 均值回归(2) + 波动率(2) + 成交量(3) + 技术面(3) + 形态(2)
+- 实现 `FactorMLModel` — LightGBM 二分类 (预测 5 日方向), AUC 指标
+- 双路径: ML (LightGBM, 60%权重) + 规则打分 (FactorScorer, 40%权重)
+- 支持 graceful degradation: 缺 lightgbm 时纯规则路径
+
+**策略引擎升级 v2.0 → v3.0:**
+- `strategy_engine.py` — `create_default_engine()` 从 5 策略扩展到最多 7 策略加权投票
+- 新策略权重: DRL 1.2x, Factor 1.1x (高信号质量)
+
+**回测引擎升级 v2.0 → v3.0:**
+- `backtester_vbt.py` — 新增 `run_drl_strategy()` DRL 训练+回测
+- 新增 `run_factor_strategy()` 因子信号+VectorBT 回测
+- `run_multi_strategy_comparison()` 从 5 策略扩展到最多 8 策略并行对比
+
+**依赖更新:**
+- `requirements.txt` 新增可选依赖注释: gymnasium, stable-baselines3, lightgbm
+
+### 文件变更
+- `src/strategies/__init__.py` — 新建，导出 DRLStrategy + FactorStrategy
+- `src/strategies/drl_strategy.py` — 新建 ~310行 (FinRL 搬运)
+- `src/strategies/factor_strategy.py` — 新建 ~380行 (Qlib 搬运)
+- `src/strategy_engine.py` — v3.0 升级，docstring + create_default_engine 扩展
+- `src/modules/investment/backtester_vbt.py` — v3.0 升级，+DRL/因子回测 (~150行)
+- `requirements.txt` — 新增可选依赖注释 (gymnasium/sb3/lightgbm)
+- `docs/registries/MODULE_REGISTRY.md` — 更新位阶状态
+
+---
+
+## [2026-03-24] Phase 6 代码卫生: AI Key 健康检测 + facade 迁移 + TS 类型修复 + 文档整理
+
+> 领域: `ai-pool` `backend` `frontend` `docs`
+> 影响模块: `src/litellm_router.py`, `src/execution/__init__.py`, `src/bot/cmd_basic_mixin.py`, `multi_main.py`, `apps/openclaw-manager-src/`
+> 关联问题: HI-009/010/012 (增强检测), HI-006/008 (推进), HI-017/026 (解决), HI-015 (解决)
+
+### 变更内容
+
+**Phase 6-A — AI Key 健康检测系统 (HI-009/010/012):**
+- 新增 `LiteLLMPool.validate_keys()` — 按 provider 分组，逐 key 测试 (max_tokens=1, timeout=10s)
+- 分类结果: `ok` / `auth_error` / `quota_exhausted` / `unreachable` / `unknown_error`
+- 多 key 池 (SiliconFlow 4免费+10付费) 逐 key 报告 dead_indices
+- 新增 `/keyhealth` 管理员命令 — HTML 格式健康报告
+- 启动时自动运行 (非阻塞)，日志记录不健康 provider
+
+**Phase 6-B — execution_hub facade 正式迁移 (HI-006/008 推进):**
+- 新增 `_get_legacy()` 惰性加载辅助方法
+- 10 个高频社媒方法从 __getattr__ 提升为 facade 显式方法 (有 docstring + 类型提示)
+- 未迁移方法从 48 → 38 个 (仍由 __getattr__ 兜底)
+
+**Phase 6-C — TypeScript any 修复 (HI-017/026 解决):**
+- 实测仅 6 处 `: any` (非 HEALTH.md 记录的 57 处 — 大部分已在之前迭代中修复)
+- 全部修复: `Connection`, `React.MouseEvent`, `LucideIcon`, `Record<string, unknown>[]`
+- tauri.ts 零 any (2 处 unknown 保留，类型安全)
+
+**Phase 6-D — 文档命名冲突 (HI-015 解决):**
+- 确认 `packages/clawbot/docs/agents.md` 被 `web_installer.py` 和 `package.sh` 硬引用，非重复文件
+- 两个文件用途不同: 根目录 AGENTS.md = AI 工具入口，clawbot 内 = 部署用系统 prompt
+
+**测试验证:**
+- pytest: 673/673 通过 (100%)
+
+### 文件变更
+- `src/litellm_router.py` — 新增 `validate_keys()` (~160行)
+- `src/execution/__init__.py` — 新增 `_get_legacy()` + 10 个显式委托方法
+- `src/bot/cmd_basic_mixin.py` — 新增 `/keyhealth` 命令
+- `src/bot/multi_bot.py` — 注册 `/keyhealth`
+- `multi_main.py` — 启动时自动 key 验证
+- `apps/openclaw-manager-src/src/components/` — 4 个文件 TypeScript any 修复
+- `docs/status/HEALTH.md` — HI-015/017/026 移至已解决
+
+---
+
+## [2026-03-24] API Key 健康验证系统 (`validate_keys` + `/keyhealth`)
+
+> 领域: `ai-pool`, `backend`
+> 影响模块: `src/litellm_router.py`, `src/bot/cmd_basic_mixin.py`, `src/bot/multi_bot.py`, `multi_main.py`
+> 关联问题: HI-009, HI-010, HI-012
+
+### 变更内容
+- 新增 `LiteLLMPool.validate_keys()` 方法 — 按 provider 分组、逐 key 并行测试（max_tokens=1, timeout=10s）
+  - 分类: `ok` / `auth_error` (401/403) / `quota_exhausted` (429) / `unreachable` / `unknown_error`
+  - 多 key 池 (SiliconFlow free/paid) 逐 key 独立测试，报告 dead key 索引
+  - 使用 `asyncio.gather()` 并行验证所有 provider
+- 新增 `/keyhealth` Telegram 命令 — Admin-only，输出结构化健康报告
+- 启动时自动触发 `validate_keys()` (fire-and-forget, 不阻塞启动)
+- 内部辅助: `_group_providers()` 按逻辑 provider 分组, `_test_single_key()` 单 key 测试
+
+### 文件变更
+- `src/litellm_router.py` — 新增 `validate_keys()`, `_group_providers()`, `_test_single_key()` (670→~830行)
+- `src/bot/cmd_basic_mixin.py` — 新增 `cmd_keyhealth()` 命令处理器
+- `src/bot/multi_bot.py` — 注册 `CommandHandler("keyhealth", ...)`
+- `multi_main.py` — 启动时 `asyncio.create_task(_background_key_validation())`
+
+## [2026-03-24] TS `: any` 类型清理 (6处) + HI-015 文档命名冲突解决
+
+> 领域: `frontend`, `docs`
+> 影响模块: `Evolution`, `ExecutionFlow`, `Money`, `Plugins`, `docs/`
+> 关联问题: HI-017 (推进), HI-026 (22→16), HI-015 (解决)
+
+### 变更内容
+- **Evolution/index.tsx**: `gapList: any[]` / `propList: any[]` → `Record<string, unknown>[]`，map 回调添加 `as` 类型断言匹配 `CapabilityGap` / `EvolutionProposal` 接口
+- **ExecutionFlow/index.tsx**: `onConnect(params: any)` → `Connection`，`onNodeClick(_: any, ...)` → `React.MouseEvent`，新增 `Connection` import
+- **Money/index.tsx**: `formatter={(value: any) => ...}` → 移除显式注解，由 Recharts `Formatter` 类型推导
+- **Plugins/index.tsx**: `icon: any` → `icon: LucideIcon`，新增 `LucideIcon` type import
+- **HI-015 调查结论**: `packages/clawbot/docs/agents.md` 被 `web_installer.py:69` 和 `package.sh:24` 硬引用，是客户部署 artifact，与 `apps/openclaw/AGENTS.md` 用途不同，无需重命名
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — 2 处 `any[]` → `Record<string, unknown>[]` + 类型断言
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 2 处 `any` → `Connection` / `React.MouseEvent` + import
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 1 处 `any` → 类型推导
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — 1 处 `any` → `LucideIcon` + import
+- `docs/status/HEALTH.md` — HI-015 移至已解决，HI-026 计数更新
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-24] Execution facade: Top-10 高频方法显式委托迁移
+
+> 领域: `backend`
+> 影响模块: `src/execution/__init__.py`
+> 关联问题: HI-006 (推进)
+
+### 变更内容
+- 新增 `_get_legacy()` 帮助方法，懒加载旧 ExecutionHub 实例用于委托
+- 将 10 个高频调用方法从 `__getattr__` 隐式回退提升为 facade 显式委托方法:
+  - `create_social_draft` / `autopost_topic_content` / `publish_social_draft`
+  - `autopost_hot_content` / `create_hot_social_package` / `build_social_repost_bundle`
+  - `generate_content_ideas` / `generate_content_calendar`
+  - `trigger_home_action` / `get_post_performance_report`
+- 每个方法保留原始签名 (async/sync)，附中文 docstring，不复制实现
+- `__getattr__` 回退保留，继续处理剩余约 38 个未迁移方法
+
+### 文件变更
+- `src/execution/__init__.py` — 新增 `_get_legacy()` + 10 个显式委托方法 (383→437 行)
+
+---
+
+## [2026-03-24] Phase 5 价值位阶执行: 反编译清洗 + facade 桥接 + Skyvern 视觉RPA
+
+> 领域: `backend` `infra`
+> 影响模块: `src/bot/message_mixin.py`, `src/execution/__init__.py`, `src/integrations/skyvern_bridge.py`, `src/core/executor.py`
+> 关联问题: HI-007 (解决), HI-006/008 (推进)
+
+### 变更内容
+
+**Phase 5-A — message_mixin.py 反编译清洗 (HI-007 解决):**
+- 移除 `Decompyle++` 文件头，替换为描述性注释
+- 修复 25 个非 raw-string 正则表达式 (`'\\\\s'` → `r'\s'`)
+- 重命名反编译变量: `t`→`cleaned`, `n`→`content_len`
+- 修复函数签名: `text = None` → `text=None` (去除 Decompyle++ 风格空格)
+- 代码质量从「反编译产物」提升到「可维护源码」
+
+**Phase 5-B — execution_hub facade 桥接 (HI-006/008 推进):**
+- 发现并修复 CRITICAL 运行时 Bug: 48 个公共方法未迁移到 facade → cmd_execution_mixin 调用时 AttributeError
+- 添加 `__getattr__` 惰性委托: 未迁移方法自动路由到旧 ExecutionHub
+- 白名单 2 个私有方法: `_normalize_x_handle`, `_publish_social_package`
+- 所有 50+ 社媒/赏金/生活自动化命令恢复正常
+
+**Phase 5-C — Skyvern 视觉 RPA (11k⭐):**
+- 新建 `src/integrations/skyvern_bridge.py` (230行) — 基于截图+LLM 的浏览器自动化
+- `MultiPathExecutor` 新增第6条执行路径 `skyvern`
+- 3 个核心方法: `run_task()` / `extract_data()` / `fill_form()`
+- 遵循 composio_bridge 完全相同的降级模式
+
+**测试验证:**
+- pytest: 673/673 通过 (100%)
+
+### 文件变更
+- `src/bot/message_mixin.py` — 25 regex修复 + 变量重命名 + header清理
+- `src/execution/__init__.py` — __getattr__ 惰性委托桥接
+- `src/integrations/skyvern_bridge.py` — 新建 Skyvern RPA 桥接
+- `src/core/executor.py` — 新增 skyvern 执行路径
+- `src/bot/globals.py` — 新增 SKYVERN_API_KEY
+- `requirements.txt` — 新增 skyvern (可选)
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-24] 新增 Skyvern 视觉 RPA 桥接 — 截图 + LLM 浏览器自动化
+
+> 领域: `backend`
+> 影响模块: `src/integrations/skyvern_bridge.py`, `src/core/executor.py`, `src/bot/globals.py`
+> 关联问题: —
+
+### 变更内容
+- 新建 `src/integrations/skyvern_bridge.py` (~230行) — 搬运 Skyvern-AI/skyvern (11k⭐)，基于视觉理解的浏览器自动化桥接
+- `SkyvernBridge` 类遵循 `composio_bridge.py` 同一模式: try/except ImportError 降级 + 全局单例 + Dict 标准返回
+- 核心方法: `run_task()` (视觉执行) / `extract_data()` (结构化提取) / `fill_form()` (表单填写)
+- 在 `executor.py` 新增 `skyvern` 执行路径 (在 composio 之后、else 之前)，通过 `execute_via_skyvern()` 方法调度
+- `globals.py` 新增 `SKYVERN_API_KEY` 环境变量加载
+- `requirements.txt` 添加 skyvern 可选依赖注释
+- Skyvern 为附加路径，不替换现有 browser-use/DrissionPage/Playwright
+
+### 文件变更
+- `src/integrations/skyvern_bridge.py` — 新建，视觉 RPA 桥接 (~230行)
+- `src/core/executor.py` — 新增 `skyvern` 分支 + `execute_via_skyvern()` 方法 (+40行)
+- `src/bot/globals.py` — 新增 `SKYVERN_API_KEY` 环境变量 (+3行)
+- `requirements.txt` — 添加 skyvern 可选依赖注释 (+4行)
+
+---
+
+## [2026-03-24] 修复 ExecutionHub 门面 48 个方法缺失导致运行时 AttributeError
+
+> 领域: `backend`
+> 影响模块: `src/execution/__init__.py`
+> 关联问题: HI-006
+
+### 变更内容
+- `cmd_execution_mixin.py` 通过门面类 `src/execution/__init__.py` 的 `ExecutionHub` 调用 48 个方法，但这些方法仅存在于旧版 `src/execution_hub.py`，导致运行时 `AttributeError`
+- 在门面类中添加 `__getattr__` 惰性桥接：首次访问未迁移方法时才实例化旧版 `ExecutionHub`，后续调用直接委托
+- 白名单机制：仅 `_normalize_x_handle` 和 `_publish_social_package` 两个被 mixin 调用的私有方法可穿透，其余私有属性正确抛出 `AttributeError`
+- 已显式迁移到子模块的方法（如 `triage_email`、`add_task` 等）仍优先于 `__getattr__`
+
+### 文件变更
+- `src/execution/__init__.py` — 新增 `_PRIVATE_WHITELIST` + `__getattr__` 方法 (34 行)
+
+---
+
+## [2026-03-23] Phase 4 价值位阶执行: 收益可视化 + 闲鱼底线价 + Composio 250+ 集成
+
+> 领域: `backend` `trading` `xianyu` `infra`
+> 影响模块: `src/trading_journal.py`, `src/bot/cmd_analysis_mixin.py`, `src/xianyu/xianyu_context.py`, `src/xianyu/xianyu_live.py`, `src/bot/cmd_execution_mixin.py`, `src/integrations/composio_bridge.py`, `src/core/executor.py`
+> 关联问题: —
+
+### 变更内容
+
+**Phase 4-A — 收益可视化曲线 (得分4):**
+- `/performance` 命令新增 Plotly 权益曲线图 (附加在文本摘要后)
+- `TradingJournal.get_equity_curve(days)` 从已关闭交易计算累积权益序列
+- 可选 S&P 500 (SPY) 基准对比线 (yfinance, 失败不影响主图)
+- 复用现有 `charts.generate_equity_curve()` (Plotly → PNG → Telegram photo)
+
+**Phase 4-B — 闲鱼底线价自动成交 (得分4):**
+- `xianyu_context.py` 新增 `floor_prices` SQLite 表 + CRUD 方法
+- `xianyu_live.py` 新增 `_extract_price()` 智能价格提取 (支持 ¥/元/块/中文数字)
+- 买家出价 >= 底线价 → 自动接受 ("好的，直接拍下就行～")，跳过 AI 调用
+- 买家出价在底线价 90% 以内 → 记录日志，交给 AI 继续谈判
+- `/xianyu floor list|<item_id> <price>|<item_id> off` 远程管理底线价
+
+**Phase 4-C — Composio 250+ 外部集成 (20k⭐):**
+- 新建 `src/integrations/composio_bridge.py` (220行) — Gmail/Calendar/Slack/GitHub/Notion 等 250+ 服务
+- `MultiPathExecutor` 新增第5条执行路径 `composio` (api→composio→browser→voice→human)
+- 遵循 AlpacaBridge 模式: composio-core 未安装时优雅降级
+- requirements.txt 添加 `composio-core>=0.7.0` (注释，可选)
+
+**测试验证:**
+- pytest: 673/673 通过 (100%)
+
+### 文件变更
+- `src/trading_journal.py` — 新增 `get_equity_curve()` 方法
+- `src/bot/cmd_analysis_mixin.py` — `/performance` 追加权益曲线图
+- `src/xianyu/xianyu_context.py` — 新增 floor_prices 表 + CRUD
+- `src/xianyu/xianyu_live.py` — 价格提取 + 底线价自动接受
+- `src/bot/cmd_execution_mixin.py` — `/xianyu floor` 子命令
+- `src/integrations/composio_bridge.py` — 新建 Composio 桥接
+- `src/core/executor.py` — 新增 composio 执行路径
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-23] Composio 250+ 外部服务集成桥接
+
+> 领域: `backend`
+> 影响模块: `src/integrations/composio_bridge.py`, `src/core/executor.py`, `src/bot/globals.py`
+> 关联问题: 无
+
+### 变更内容
+- 新增 `src/integrations/composio_bridge.py` — 搬运 ComposioHQ/composio (20k⭐) SDK，统一调用 Gmail/Calendar/Slack/GitHub/Notion 等 250+ 外部服务
+- `ComposioBridge` 类提供 `list_apps()` / `list_actions()` / `find_actions()` / `execute_action()` / `get_status()` 接口
+- `MultiPathExecutor` 新增 `composio` 执行路径 (第5条路径)，通过 `asyncio.to_thread` 避免阻塞事件循环
+- `PLATFORM_REGISTRY` 新增 `composio` 平台条目
+- `globals.py` 新增 `COMPOSIO_API_KEY` 环境变量读取
+- `requirements.txt` 新增 `composio-core>=0.7.0` (注释状态，可选依赖)
+- composio-core 为可选依赖，遵循 AlpacaBridge 模式: 未安装时所有操作安全降级
+
+### 文件变更
+- `packages/clawbot/src/integrations/__init__.py` — 新建，集成层包初始化
+- `packages/clawbot/src/integrations/composio_bridge.py` — 新建，Composio 桥接模块
+- `packages/clawbot/src/core/executor.py` — 新增 `execute_via_composio()` 方法 + `composio` 路径分发
+- `packages/clawbot/src/bot/globals.py` — 新增 `COMPOSIO_API_KEY` 环境变量
+- `packages/clawbot/requirements.txt` — 新增 composio-core 可选依赖注释
+
+---
+
+## [2026-03-23] 闲鱼底价自动成交功能
+
+> 领域: `xianyu`
+> 影响模块: `src/xianyu/xianyu_context.py`, `src/xianyu/xianyu_live.py`, `src/bot/cmd_execution_mixin.py`
+> 关联问题: Phase 3 #9 (完成)
+
+### 变更内容
+- 新增 `floor_prices` SQLite 表存储每个商品的底价配置
+- `XianyuContextManager` 新增 `set_floor_price()`, `get_floor_price()`, `remove_floor_price()`, `list_floor_prices()` 四个方法
+- `handle_message()` 在 AI 回复前增加底价自动接受判断：买家出价 >= 底价时自动回复接受；出价接近底价（90%以内）时交给 AI 处理
+- 新增 `_extract_price()` 函数从买家消息中提取价格，支持阿拉伯数字、中文数字、¥符号等多种格式
+- `/xianyu floor` 子命令：`list` 列出所有底价、`<item_id> <price>` 设置底价、`<item_id> off` 移除底价
+- 底价功能默认关闭（不影响未设底价的商品），完全向后兼容
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 `floor_prices` 表 + 4 个底价管理方法
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增 `_extract_price()` 价格提取 + `handle_message()` 底价自动接受逻辑
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — `cmd_xianyu()` 新增 `floor` 子命令
+
+---
+
+## [2026-03-23] /performance 命令新增权益曲线图表
+
+> 领域: `trading`
+> 影响模块: `src/trading_journal.py`, `src/bot/cmd_analysis_mixin.py`
+> 关联问题: 无
+
+### 变更内容
+- `TradingJournal` 新增 `get_equity_curve(days)` 方法，按日聚合已平仓交易 PnL 生成累计权益序列
+- `/performance` 命令在文字绩效报告之后自动发送权益曲线 PNG 图表（复用 `charts.generate_equity_curve()`）
+- 可选 S&P 500 (SPY) 基准对比（归一化到 initial_capital 起点，线性插值对齐长度）
+- 图表生成失败不影响原有文字输出（try/except 隔离）
+
+### 文件变更
+- `packages/clawbot/src/trading_journal.py` — 新增 `get_equity_curve()` 方法 (L582-617)
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — `cmd_performance()` 追加图表发送逻辑 (L122-164)
+
+---
+
+## [2026-03-23] Phase 2-3 价值位阶执行: 投资闭环 + IBKR实盘 + 新手引导 + 双平台发文
+
+> 领域: `backend` `trading` `social` `docs`
+> 影响模块: `src/bot/cmd_collab_mixin.py`, `src/bot/message_mixin.py`, `src/bot/cmd_basic_mixin.py`, `src/bot/cmd_execution_mixin.py`, `src/bot/multi_bot.py`, `src/broker_bridge.py`, `requirements.txt`, `tests/test_risk_manager.py`
+> 关联问题: HI-007/008 (推进)
+
+### 变更内容
+
+**Phase 2-A — 投资决策→回测→执行闭环 (得分8):**
+- `/invest` 投票完成后自动触发 VectorBT 多策略回测验证 (5 策略对比)
+- 回测结果附加到推荐消息中，用户在确认下单前看到历史验证
+- 所有策略 Sharpe < 0 时显示 ⚠️ 历史回测警告
+- `handle_trade_callback()` 从直接 `ibkr.place_order()` 改为走 `TradingPipeline`
+  → 补全了 RiskManager / DecisionValidator / TradingJournal / PositionMonitor 全链路
+  → 保留 pipeline 不可用时的降级兼容
+
+**Phase 2-B — IBKR 实盘接入 (得分7):**
+- requirements.txt 取消注释 `ib_insync~=0.9.86` 并安装
+- IBKRBridge 1100 行代码已 100% 完成，无需代码改动
+- 从模拟盘→实盘只需改 `IBKR_PORT=4001` + 真实账户ID
+
+**Phase 3-A — 新手交互式引导 (得分6):**
+- `/start` 首次用户触发 3 步引导向导 (替代静态按钮)
+- Step 1: 选择主场景 (投资/社媒/闲鱼/购物/生活/全部)
+- Step 2: 场景快速指南 (3-5 个关键命令+示例)
+- Step 3: 完成提示，引导开始使用
+
+**Phase 3-B — 社媒一键双平台发文 (得分5):**
+- 新增 `/dualpost <topic>` 命令 (中文触发: 双平台发文/一键双发)
+- AI 自动生成双平台适配内容 (X: 280字+hashtag / 小红书: 标题+emoji+话题标签)
+- 预览确认 → asyncio.gather 并发发布 → 独立报告每个平台结果
+
+**预存在 Bug 修复:**
+- `test_risk_manager.py` 交易时段测试: mock `datetime.now()` → mock `now_et()` (修复时区不匹配)
+
+**测试验证:**
+- pytest: 673/673 通过 (100%)
+
+### 文件变更
+- `src/bot/cmd_collab_mixin.py` — /invest 后自动回测验证
+- `src/bot/message_mixin.py` — trade callback 改用 TradingPipeline + /dualpost 中文触发
+- `src/bot/cmd_basic_mixin.py` — 新手 3 步引导向导
+- `src/bot/cmd_execution_mixin.py` — /dualpost 双平台发文
+- `src/bot/multi_bot.py` — 注册 /dualpost 命令
+- `requirements.txt` — 启用 ib_insync~=0.9.86
+- `tests/test_risk_manager.py` — 修复交易时段测试时区 mock
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-23] 一键双平台发文 /dualpost 命令
+
+> 领域: `backend`, `social`
+> 影响模块: `src/bot/cmd_execution_mixin.py`, `src/bot/multi_bot.py`, `src/bot/message_mixin.py`
+> 关联问题: Phase 3 #8 (社媒一键双平台发文)
+
+### 变更内容
+- 新增 `/dualpost <话题>` 命令 — 用 AI 一次生成 X 和小红书适配内容，预览后确认发布
+- 流程: 输入话题 → AI 生成双平台文案 (X: 280字符+hashtag / 小红书: 标题+正文+emoji) → InlineKeyboard 预览 → 选择发布方式
+- 4 个按钮: "确认发布" (双平台并发) | "仅发X" | "仅发小红书" | "取消"
+- 并发发布使用 `asyncio.gather()`，两个平台互不阻塞，各自独立报告结果
+- 扩展 `handle_social_confirm_callback` 支持 `social_confirm:dual:*` 回调前缀
+- 中文触发词: "双平台发文"、"一键双发"、"双平台一键发文" → `/dualpost`
+- AI 内容生成失败时给出降级提示，不阻塞用户手动发布
+
+### 文件变更
+- `src/bot/cmd_execution_mixin.py` — 新增 `cmd_dual_post()` + `_dual_post_execute()` 方法，扩展 `handle_social_confirm_callback()` 支持 dual 前缀
+- `src/bot/multi_bot.py` — 注册 `CommandHandler("dualpost", self.cmd_dual_post)`
+- `src/bot/message_mixin.py` — `_match_chinese_command()` 新增 dualpost 触发词，`_dispatch_chinese_action()` 新增 dualpost 路由
+
+---
+
+## [2026-03-23] Trade callback handler 接入 TradingPipeline
+
+> 领域: `backend`, `trading`
+> 影响模块: `src/bot/message_mixin.py`
+> 关联问题: Phase 2 #5 (投资决策→回测→执行闭环)
+
+### 变更内容
+- `handle_trade_callback()` 的 `itrade:` 和 `itrade_all:` 分支从直接调用 `ibkr.place_order()` 改为通过 `execute_trade_via_pipeline()` 执行
+- 交易现在经过 RiskManager 验证、TradingJournal 记录、PositionMonitor 跟踪、DecisionValidator 反幻觉检查
+- 用户可见的状态从简单的 ✅/❌ 细化为 ✅ executed / 🛡️ risk rejected / ⏭️ skipped / ❌ error
+- 保留向后兼容: 若 TradingPipeline 未初始化 (`get_trading_pipeline()` 返回 None)，降级到原 `ibkr.place_order()` 直连
+- `itrade_cancel:` 分支不变 (仅清理 `_pending_trades`)
+
+### 文件变更
+- `src/bot/message_mixin.py` — `handle_trade_callback()` 两个执行分支重写 (约 +20 行)
+
+---
+
+## [2026-03-23] /invest 命令接入回测验证闭环
+
+> 领域: `backend`, `trading`
+> 影响模块: `src/bot/cmd_collab_mixin.py`, `src/strategy_engine.py`
+> 关联问题: Phase 2 #5 (投资决策→回测→执行闭环)
+
+### 变更内容
+- `/invest` 命令在 AI 团队投票结束、解析交易建议后，自动对每个标的运行 StrategyEngine 历史回测 (1年)
+- 回测结果 (策略排名表) 追加到交易确认消息中，在按钮之前展示
+- 若所有策略 Sharpe Ratio 均为负，显示 "⚠️ 历史回测警告: 所有策略在过去1年均为负收益"
+- 回测为可选增强：try/except 包裹 + asyncio.wait_for(timeout=30s)，失败不阻塞交易流程
+
+### 文件变更
+- `src/bot/cmd_collab_mixin.py` — cmd_invest 方法内 trades 解析后插入回测验证步骤 (新增约 30 行)
+
+---
+
+## [2026-03-23] Phase 1 执行: Telegram flood 根治 + Gemini 2.0 清理 + execution_hub 门面补全
+
+> 领域: `backend` `ai-pool`
+> 影响模块: `src/bot/message_mixin.py`, `src/bot/api_mixin.py`, `src/litellm_router.py`, `src/execution/__init__.py`
+> 关联问题: HI-011 (解决), HI-013 (解决), HI-006 (推进)
+
+### 变更内容
+
+**HI-011 — Telegram flood 限制根治 (5层修复):**
+1. **时间门控**: 群聊 3.0s / 私聊 1.0s 最小编辑间隔 (替代原 10ms `ANTI_FLOOD_DELAY`)
+2. **编辑次数上限**: 群聊 15 / 私聊 30 次硬限制 (新增)
+3. **指数退避**: `backoff_multiplier` 1→2→4→8→16 倍 (替代原 `backoff += 5` 线性增长)
+4. **cutoff 提升**: 群聊 80-300 字符 (原 50-180)，私聊 15-120 字符 (原 15-90)
+5. **生产端节流**: `_call_api_stream` 每 300ms 最多 yield 一次 (原每 token 都 yield)
+
+**HI-013 — Gemini 2.0 废弃模型清理:**
+- 从 deployment 列表中移除 `gemini-2.0-flash` (原标注 "已废弃但仍可用, 兜底")
+- 从 `MODEL_RANKING` 中移除 `gemini-2.0-flash: 82` 条目
+- 保留 gemini-2.5-pro / 2.5-flash / 3-flash-preview / 2.5-flash-lite 四个活跃模型
+
+**HI-006 — execution_hub 门面推进:**
+- `src/execution/__init__.py` 补全 4 个监控辅助方法: `_curate_monitor_items`, `_clean_monitor_title`, `_is_low_value_monitor_item`, `_monitor_env_list`
+- 3 个测试文件添加 TODO 标记，待完整迁移后切换导入
+
+**测试验证:**
+- pytest: 673/673 通过 (100%)
+
+### 文件变更
+- `src/bot/message_mixin.py` — 时间门控 + 编辑上限 + 指数退避 + cutoff 提升 + `import time as _time`
+- `src/bot/api_mixin.py` — 生产端 300ms 节流
+- `src/litellm_router.py` — 删除 gemini-2.0-flash deployment + ranking
+- `src/execution/__init__.py` — 补全 4 个监控辅助方法 + `import os, re`
+- `tests/test_execution_hub_*.py` — 3 个文件添加 TODO(HI-006) 迁移标记
+- `docs/status/HEALTH.md` — HI-011/HI-013 移至已解决，活跃 11→9
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-23] 产品立项: CPO/CTO/CEO 三件套痛点挖掘 + 竞品拆解 + 功能优先级矩阵
+
+> 领域: `docs` `backend` `trading`
+> 影响模块: `docs/PROJECT_MAP.md`, `docs/status/HEALTH.md`, `docs/specs/2026-03-23-upgrade-opportunities-design.md`
+> 关联问题: HI-037, HI-011, HI-006, HI-007, HI-008
+
+### 变更内容
+
+**产品立项分析 (三件套完整产出):**
+- CPO: 4 类用户画像 + 9 项用户痛点地图 (投资执行 🔥5 / 投资决策 🔥5 / 上手学习 🔥4 / 社媒发文 🔥4)
+- CTO: 3 大竞品拆解 (chatgpt-on-wechat / Freqtrade / AutoGPT) + 差异化定位
+- CEO: 主护城河选定 (工作流锁定) + 15 项功能优先级矩阵 (8 🚀立即 / 4 ⏳待定 / 3 ❌放弃)
+
+**功能优先级矩阵 (CEO 拍板):**
+- Phase 1 (本周): HI-037 sanitize_input 实现 / HI-011 flood 根治 / HI-006 巨石切换
+- Phase 2 (下周): IBKR 实盘 / 投资闭环 / 反编译重写
+- Phase 3 (后续): 新手引导 / 社媒闭环
+
+**新增搬运积木清单 (5 项):**
+- bleach (2.6k⭐) — 输入消毒
+- ib_insync (2.8k⭐) — IBKR 实盘
+- validators (940⭐) — 输入验证
+- lightweight-charts-python (1.4k⭐) — TradingView K线
+- Telegram WebApp React SDK
+
+### 文件变更
+- `docs/PROJECT_MAP.md` — 底部新增: 用户痛点地图 + 竞品对标 + 核心护城河
+- `docs/status/HEALTH.md` — 顶部新增: 功能优先级矩阵 (Phase 1-3)
+- `docs/specs/2026-03-23-upgrade-opportunities-design.md` — 新增: Phase 1 积木库清单
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-23] QA 价值位阶深度审计: OMEGA核心 + 交易边界 + 韧性 + 安全 (+95 测试, 修复 3 个生产 Bug)
 
 > 领域: `backend` `trading` `docs`

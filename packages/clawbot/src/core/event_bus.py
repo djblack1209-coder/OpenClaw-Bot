@@ -71,6 +71,10 @@ class EventType:
     GATEWAY_MESSAGE = "gateway.message"
     GATEWAY_CALLBACK = "gateway.callback"
 
+    # 自选股事件
+    WATCHLIST_ANOMALY = "watchlist.anomaly"          # 自选股异动（价格/放量/RSI极值）
+    WATCHLIST_PRICE_ALERT = "watchlist.price_alert"  # 触达目标价/止损价
+
 
 # ── 事件数据结构 ──────────────────────────────────────────
 

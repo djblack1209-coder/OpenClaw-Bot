@@ -1,341 +1,176 @@
-# Source Generated with Decompyle++
-# File: message_mixin.cpython-312.pyc (Python 3.12)
+# message_mixin.py — 消息处理 Mixin (文本/语音/图片/文档/回调)
+# 搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 流式模式
 
 import asyncio
 import io
-import base64
 import json
 import logging
 import re
-from src.bot.globals import chat_router, collab_orchestrator, bot_registry, history_store, metrics, send_long_message, send_as_bot, shared_memory, _pending_trades, CLAUDE_BASE, CLAUDE_KEY, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
+import time as _time
+from src.bot.globals import collab_orchestrator, bot_registry, send_long_message, _pending_trades, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
 from src.bot.rate_limiter import rate_limiter
+from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 from src.notify_style import format_digest
-from src.ocr_service import ocr_image, OcrResult
-from src.ocr_router import classify_ocr_scene, OcrScene
-from src.ocr_processors import process_financial_scene, process_ecommerce_scene
 from src.telegram_markdown import md_to_html
+from src.bot.chinese_nlp_mixin import _CN_TICKER_MAP, _resolve_chinese_ticker, _match_chinese_command
 logger = logging.getLogger(__name__)
 
-def _match_chinese_command(text = None):
-    '''
-    匹配中文自然语言触发词，返回 (action_type, arg) 或 None
-    '''
-    t = text.strip()
-    if re.fullmatch('(开始|帮助|菜单|命令|指令|使用说明)', t):
-        return ('start', '')
-    if re.fullmatch('(清空|清空对话|重置对话|重置会话)', t):
-        return ('clear', '')
-    if re.fullmatch('(状态|查看状态|机器人状态)', t):
-        return ('status', '')
-    if re.fullmatch('(配置|配置状态|当前配置|运行配置)', t):
-        return ('config', '')
-    if re.fullmatch('(成本|配额|用量|成本状态|配额状态)', t):
-        return ('cost', '')
-    if re.fullmatch('(上下文|上下文状态)', t):
-        return ('context', '')
-    if re.fullmatch('(压缩|压缩上下文|整理上下文)', t):
-        return ('compact', '')
-    if re.fullmatch('(新闻|科技早报|早报)', t):
-        return ('news', '')
-    if re.fullmatch('(指标|运行指标|监控指标)', t):
-        return ('metrics', '')
-    if re.fullmatch('(分流|分流规则|路由规则|话题分流|多bot分流|多机器人分流)', t):
-        return ('lanes', '')
-    if re.search('执行场景|自动化菜单|ops帮助', t):
-        return ('ops_help', '')
-    if re.search('整理邮箱|邮件整理|邮箱分类', t):
-        return ('ops_email', '')
-    if re.search('执行简报|行业简报|今日简报', t):
-        return ('ops_brief', '')
-    if re.search('最重要.{0,2}3件事|任务优先级|今日任务', t):
-        return ('ops_task_top', '')
-    if re.search('赏金猎人|自动接单|接单机器人|\\bbounty\\b', t, re.IGNORECASE):
-        return ('ops_bounty_run', '')
-    m_bounty_scan = re.search('(?:扫赏金|扫描赏金|找赏金|赏金扫描)\\s*(.*)', t)
-    if m_bounty_scan:
-        kw = (m_bounty_scan.group(1) or '').strip()
-        return ('ops_bounty_scan', kw)
-    if re.fullmatch('(赏金列表|赏金机会|赏金看板)', t):
-        return ('ops_bounty_list', '')
-    if re.fullmatch('(赏金top|赏金排行|高收益赏金)', t):
-        return ('ops_bounty_top', '')
-    if re.fullmatch('(开工赚钱|打开赏金机会|开赏金链接)', t):
-        return ('ops_bounty_open', '')
-    m_tweet_plan = re.search('(?:推文计划|分析推文|推文执行计划)\\s+(.+)', t)
-    if m_tweet_plan:
-        return ('ops_tweet_plan', m_tweet_plan.group(1).strip())
-    m_tweet_run = re.search('(?:执行推文|推文执行|推文赚钱|跟着推文赚钱)\\s+(.+)', t)
-    if m_tweet_run:
-        return ('ops_tweet_run', m_tweet_run.group(1).strip())
-    m_docs_search = re.search('(?:文档检索|文档搜索|搜文档)\\s+(.+)', t)
-    if m_docs_search:
-        return ('ops_docs_search', m_docs_search.group(1).strip())
-    m_docs_index = re.search('(?:建立文档索引|索引文档)\\s*(.*)', t)
-    if m_docs_index and re.search('文档', t):
-        target = (m_docs_index.group(1) or '.').strip() or '.'
-        return ('ops_docs_index', target)
-    m_meeting = re.search('(?:会议纪要|总结会议)\\s+(.+)', t)
-    if m_meeting:
-        return ('ops_meeting', m_meeting.group(1).strip())
-    m_content = re.search('(?:社媒选题|内容选题|写作选题)\\s*(.*)', t)
-    if m_content and re.search('选题', t):
-        keyword = (m_content.group(1) or 'AI').strip() or 'AI'
-        return ('ops_content', keyword)
-    m_social_plan = re.search('(?:社媒计划|发文计划|今日发什么)\\s*(.*)', t)
-    if m_social_plan and re.search('计划|发什么', t):
-        return ('social_plan', (m_social_plan.group(1) or '').strip())
-    m_social_repost = re.search('(?:双平台改写|改写双平台|改写成双平台|双平台草稿)\\s*(.*)', t)
-    if m_social_repost:
-        return ('social_repost', (m_social_repost.group(1) or '').strip())
-    if re.fullmatch('(数字生命首发|首发包|社媒首发包|数字生命人设首发)', t):
-        return ('social_launch', '')
-    if re.fullmatch('(当前社媒人设|社媒人设|数字生命人设|当前人设)', t):
-        return ('social_persona', '')
-    m_topic = re.search('(?:研究|分析|看看|学习)(.+?)(?:题材|方向|内容)', t)
-    if m_topic:
-        return ('social_topic', m_topic.group(1).strip())
-    m_xhs = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到小红书', t)
-    if m_xhs:
-        return ('social_xhs', m_xhs.group(1).strip())
-    m_x = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?到(?:x|推特|推文)', t, re.IGNORECASE)
-    if m_x:
-        return ('social_x', m_x.group(1).strip())
-    m_dual = re.search('(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?(?:双平台|同时发|发到两个平台)', t)
-    if m_dual:
-        return ('social_post', m_dual.group(1).strip())
-    if re.fullmatch('(一键发文|热点发文|热点一键发文|蹭热点发文|自动发文)', t):
-        return ('social_hotpost', '')
-    m_hotpost = re.search('(?:一键发文|热点发文|蹭热点发文|自动发文)\\s+(.+)', t)
-    if m_hotpost:
-        return ('social_hotpost', m_hotpost.group(1).strip())
-    m_monitor_add = re.search('(?:添加资讯监控|新增资讯监控|监控关键词)\\s+(.+)', t)
-    if m_monitor_add:
-        return ('ops_monitor_add', m_monitor_add.group(1).strip())
-    if re.fullmatch('(资讯监控列表|新闻监控列表)', t):
-        return ('ops_monitor_list', '')
-    if re.fullmatch('(运行资讯监控|扫描资讯监控|立即扫描资讯监控)', t):
-        return ('ops_monitor_run', '')
-    m_remind = re.search('(\\d+)\\s*分钟后提醒我\\s+(.+)', t)
-    if m_remind:
-        return ('ops_life_remind', f'''{m_remind.group(1)}|||{m_remind.group(2).strip()}''')
-    m_remind_default = re.search('提醒我\\s+(.+)', t)
-    if m_remind_default:
-        return ('ops_life_remind', f'''30|||{m_remind_default.group(1).strip()}''')
-    m_project = re.search('(?:项目周报|生成项目周报)\\s*(.*)', t)
-    if m_project and re.search('项目周报', t):
-        target = (m_project.group(1) or '.').strip() or '.'
-        return ('ops_project', target)
-    m_dev = re.search('(?:开发流程|执行开发流程|跑开发流程)\\s*(.*)', t)
-    if m_dev and re.search('开发流程', t):
-        target = (m_dev.group(1) or '.').strip() or '.'
-        return ('ops_dev', target)
-    if re.search('(开始|自动|帮我|一键).{0,2}投资|找.{0,2}机会|自动交易|帮我(赚钱|炒股|交易)|今天买什么|有什么(机会|可以买)', t):
-        return ('auto_invest', t)
-    if re.search('扫描|扫一下|扫一扫|看看市场|市场扫描|全市场', t):
-        return ('scan', '')
-    m = re.search('(?:分析|技术分析|看看|研究)\\s*([A-Za-z]{1,5}(?:-USD)?)', t)
-    if m:
-        return ('ta', m.group(1).upper())
-    m = re.search('([A-Za-z]{1,5})\\s*(?:信号|买卖|怎么样|能买吗|能不能买)', t)
-    if m:
-        return ('signal', m.group(1).upper())
-    m = re.search('([A-Za-z]{1,5})\\s*(?:多少钱|股价|价格|行情)', t)
-    if m:
-        return ('quote', m.group(1).upper())
-    m = re.search('(?:查|看).{0,2}(?:行情|价格)\\s*([A-Za-z]{1,5})?', t)
-    if m and m.group(1):
-        return ('quote', m.group(1).upper())
-    if re.search('市场概览|大盘|今天行情|行情怎么样|市场怎么样', t):
-        return ('market', '')
-    if re.search('我的?(持仓|仓位|组合|资产)|看看(持仓|仓位)|投资组合', t):
-        return ('portfolio', '')
-    if re.search('(IBKR|盈透|真实|实盘).{0,2}(持仓|仓位)', t):
-        return ('positions', '')
-    if re.search('绩效|战绩|成绩|表现|胜率|盈亏|收益率|夏普|回撤', t):
-        return ('performance', '')
-    if re.search('复盘|总结.{0,2}(今天|交易)|回顾|检讨|反思', t):
-        return ('review', '')
-    if re.search('交易(日志|记录|历史)|日志|看看(记录|日志)', t):
-        return ('journal', '')
-    if re.search('风控|风险(状态|管理)?|熔断', t):
-        return ('risk', '')
-    if re.search('持仓监控|监控(状态)?|止损(状态)?|止盈', t):
-        return ('monitor', '')
-    if re.search('交易系统|系统状态|全部状态', t):
-        return ('tradingsystem', '')
-    if re.search('启动自动|开启自动|自动交易启动|开始自动', t):
-        return ('autotrader_start', '')
-    if re.search('停止自动|关闭自动|自动交易停止', t):
-        return ('autotrader_stop', '')
-    m_bt = re.search('(?:回测|测试策略|backtest)\\s*([A-Za-z\\-]{1,10})?', t)
-    if m_bt:
-        sym = (m_bt.group(1) or '').strip().upper()
-        return ('backtest', sym)
-    if re.search('再平衡|调仓|rebalance|配置组合|目标配置', t):
-        return ('rebalance', '')
-    m = re.search('(?:投资|讨论|分析).{0,2}(?:一下|下)?\\s*(.{2,})', t)
-    if m and re.search('投资|讨论', t):
-        topic = m.group(1).strip()
-        if len(topic) >= 2:
-            return ('invest', topic)
+# ── v3.0: 智能行动建议 — LLM回复后自动附加下一步按钮 ─────────
+# 让 AI 不只给文字，还给"下一步能做什么"
+# 搬运灵感: ChatGPT Suggested Actions / Google Gemini Quick Actions
 
+
+def _detect_correction(text: str) -> bool:
+    """检测用户是否在纠正上一轮的回复 — 搬运 ChatGPT correction handling 模式
+
+    检测信号词: "不对/说错了/搞错了/纠正/你记错了/不是X是Y"
+    返回 True 表示这条消息是纠正指令，需要特殊处理。
+    """
+    if not text or len(text) < 2:
+        return False
+    _CORRECTION_PATTERNS = [
+        r"^(?:不对|错了|说错了|搞错了|弄错了|你[搞说弄]错了|你记错了)",
+        r"(?:不是.*(?:是|而是|应该是))",
+        r"^(?:纠正|更正|我说的是|我的意思是|我是说)",
+        r"^(?:重新(?:来|说|分析|查))",
+    ]
+    for pattern in _CORRECTION_PATTERNS:
+        if re.search(pattern, text.strip()):
+            return True
+    return False
+
+def _build_smart_reply_keyboard(response_text: str, bot_id: str, model_used: str, chat_id: int, ai_suggestions: list = None):
+    """分析 LLM 回复内容，生成上下文相关的行动按钮
+
+    规则:
+    1. 如果有 AI 生成的追问建议，优先显示在最前面
+    2. 检测回复中提到的股票代码 → 技术分析/报价按钮
+    3. 检测交易关键词 → 买入/卖出/止损按钮
+    4. 检测商品/购物关键词 → 比价按钮
+    5. 始终保留反馈按钮 (👍👎🔄)
+    """
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from src.feedback import build_feedback_keyboard
+
+    text = (response_text or "").lower()
+    action_buttons = []
+    suggest_row = []  # AI 追问建议独立一行
+
+    # 0. AI 追问建议按钮（智能追问引擎生成）
+    if ai_suggestions:
+        for suggestion in ai_suggestions[:3]:
+            # Telegram callback_data 限制 64 字节
+            # 中文 UTF-8 每字符 3 字节，截断到 ~18 字符确保安全
+            cb_text = suggestion[:18]
+            cb_data = f"suggest:{cb_text}"
+            # 二次检查: callback_data 编码后不超过 64 字节
+            if len(cb_data.encode("utf-8")) > 64:
+                cb_data = f"suggest:{suggestion[:12]}"
+            suggest_row.append(
+                InlineKeyboardButton(f"💬 {suggestion[:15]}", callback_data=cb_data)
+            )
+
+    # 1. 检测股票代码 (英文ticker)
+    tickers_found = re.findall(r'\b([A-Z]{1,5})\b', response_text)
+    # 过滤掉常见非ticker词
+    skip_words = {'AI', 'ETF', 'RSI', 'MACD', 'KDJ', 'EMA', 'SMA', 'ATR', 'VWAP',
+                  'API', 'USD', 'BTC', 'OK', 'VS', 'PDF', 'URL', 'VIA', 'BOT', 'LLM',
+                  'HTML', 'CSS', 'SQL', 'NLP', 'RPC', 'SOP', 'ROI', 'PNL', 'IPO',
+                  'CEO', 'CTO', 'GDP', 'CPI', 'FED', 'SEC', 'NYSE', 'PRO', 'MAX', 'MIN'}
+    valid_tickers = [t for t in tickers_found if t not in skip_words and len(t) >= 2]
+
+    if valid_tickers:
+        ticker = valid_tickers[0]  # 取第一个
+        action_buttons.append(
+            InlineKeyboardButton(f"📊 分析{ticker}", callback_data=f"ta_{ticker}")
+        )
+        if any(kw in text for kw in ['买入', '建仓', '加仓', '推荐买', '可以买', '值得买', 'buy']):
+            action_buttons.append(
+                InlineKeyboardButton(f"💰 买入{ticker}", callback_data=f"buy_{ticker}")
+            )
+        elif any(kw in text for kw in ['卖出', '减仓', '止盈', '清仓', '平仓', 'sell']):
+            action_buttons.append(
+                InlineKeyboardButton(f"📉 卖出{ticker}", callback_data=f"cmd:sell {ticker}")
+            )
+        else:
+            action_buttons.append(
+                InlineKeyboardButton(f"💹 报价{ticker}", callback_data=f"cmd:quote {ticker}")
+            )
+
+    # 2. 检测持仓/投资主题 (无特定ticker时)
+    if not action_buttons and any(kw in text for kw in ['持仓', '仓位', '组合', '盈亏', '浮盈', '浮亏']):
+        action_buttons.append(
+            InlineKeyboardButton("📋 查看持仓", callback_data="cmd:portfolio")
+        )
+        action_buttons.append(
+            InlineKeyboardButton("📊 查看绩效", callback_data="cmd:performance")
+        )
+
+    # 3. 检测市场/行情主题
+    if not action_buttons and any(kw in text for kw in ['大盘', '市场', '指数', '行情', '美股', 'a股']):
+        action_buttons.append(
+            InlineKeyboardButton("💹 市场概览", callback_data="cmd:market")
+        )
+        action_buttons.append(
+            InlineKeyboardButton("📰 今日简报", callback_data="cmd:brief")
+        )
+
+    # 4. 检测购物/商品主题
+    if not action_buttons and any(kw in text for kw in ['价格', '元', '优惠', '打折', '推荐', '购买',
+                                                         '京东', '淘宝', '拼多多', '亚马逊']):
+        # 尝试提取商品名
+        product_match = re.search(r'([\w\-]+\s*(?:Pro|Max|Plus|Ultra)?)', response_text)
+        if product_match and len(product_match.group(1)) > 2:
+            product = product_match.group(1).strip()[:20]
+            action_buttons.append(
+                InlineKeyboardButton(f"🛒 比价{product}", callback_data=f"shop:{product}")
+            )
+
+    # 4.5 中文商品名检测 (补充英文正则覆盖不到的场景)
+    cn_product_match = re.search(
+        r'(?:买|推荐|比价|搜|找)\s*(?:一[个台只双部条])?'
+        r'([\u4e00-\u9fff]{2,8}(?:Pro|Max|Plus|Ultra|mini)?)',
+        response_text,
+    )
+    if cn_product_match and not action_buttons:
+        product = cn_product_match.group(1)
+        action_buttons.append(
+            InlineKeyboardButton(f"🛒 比价 {product}", callback_data=f"shop:{product}")
+        )
+
+    # 5. 检测社媒主题
+    if not action_buttons and any(kw in text for kw in ['发文', '小红书', '推特', '热点', '社媒', '内容']):
+        action_buttons.append(
+            InlineKeyboardButton("🔥 热点发文", callback_data="cmd:hotpost")
+        )
+        action_buttons.append(
+            InlineKeyboardButton("📱 社媒计划", callback_data="cmd:social_plan")
+        )
+
+    # 通用聊天: 无特定领域按钮时，展示能力发现按钮（替代无用的"继续聊"）
+    # 搬运灵感: ChatGPT 首页的 suggested prompts / Google Gemini 推荐操作
+    if not action_buttons:
+        _capability_buttons = [
+            InlineKeyboardButton("📊 分析股票", callback_data="suggest:帮我分析一只股票"),
+            InlineKeyboardButton("🛒 比价购物", callback_data="suggest:帮我比价一个商品"),
+            InlineKeyboardButton("📱 社媒发文", callback_data="suggest:帮我写一篇小红书"),
+        ]
+        action_buttons.extend(_capability_buttons[:2])  # 最多展示2个
+
+    # 组装键盘: AI建议行(如有) + 行动按钮(最多3个) + 反馈按钮
+    rows = []
+    if suggest_row:
+        rows.append(suggest_row[:3])  # AI 追问建议放最前
+    if action_buttons:
+        rows.append(action_buttons[:3])  # 最多3个行动按钮
+
+    # 反馈行 (简化)
+    fb_keyboard = build_feedback_keyboard(bot_id, model_used, chat_id)
+    rows.extend(fb_keyboard.inline_keyboard)
+
+    return InlineKeyboardMarkup(rows)
 
 class MessageHandlerMixin:
-    @staticmethod
-    def _is_directed_to_current_bot(text="", chat_type="", username=""):
-        if chat_type == "private":
-            return True
-        if not username:
-            return False
-        uname = username.strip().lstrip("@").lower()
-        if not uname or not text:
-            return False
-        return f"@{uname}" in text.lower()
-
-    async def _dispatch_chinese_action(self, update = None, context = None, action_type="", action_arg=""):
-        """分发中文自然语言命令到对应的命令处理器"""
-        if not update or not action_type:
-            return
-
-        # 构造 context.args
-        context.args = [action_arg] if action_arg else []
-
-        # 命令映射表 — 将 NLP 匹配结果路由到实际命令
-        dispatch_map = {
-            # ── 基础命令 ──
-            "start": self.cmd_start,
-            "clear": self.cmd_clear,
-            "status": self.cmd_status,
-            "config": self.cmd_config,
-            "cost": self.cmd_cost,
-            "context": self.cmd_context,
-            "compact": self.cmd_compact,
-            "news": self.cmd_news,
-            "metrics": self.cmd_metrics,
-            "lanes": self.cmd_lane,
-            "memory": self.cmd_memory,
-            "settings": self.cmd_settings,
-            "draw": self.cmd_draw,
-            # ── 执行场景 ──
-            "ops_help": self.cmd_ops,
-            "ops_brief": self.cmd_brief,
-            "hot": self.cmd_hotpost,
-            "post": self.cmd_post,
-            "social_report": self.cmd_social_report,
-            # ── 投资 & 交易 ──
-            "invest": self.cmd_invest,
-            "auto_invest": self.cmd_invest,
-            "quote": self.cmd_quote,
-            "market": self.cmd_market,
-            "scan": self.cmd_scan,
-            "ta": self.cmd_ta,
-            "signal": self.cmd_signal,
-            "portfolio": self.cmd_portfolio,
-            "positions": self.cmd_ipositions,
-            "performance": self.cmd_performance,
-            "review": self.cmd_review,
-            "journal": self.cmd_journal,
-            "buy": self.cmd_buy,
-            "sell": self.cmd_sell,
-            "risk": self.cmd_risk,
-            "monitor": self.cmd_monitor,
-            "tradingsystem": self.cmd_tradingsystem,
-            "backtest": self.cmd_backtest,
-            "rebalance": self.cmd_rebalance,
-            # ── 社媒 ──
-            "social_plan": self.cmd_social_plan,
-            "social_repost": self.cmd_social_repost,
-            "social_launch": self.cmd_social_launch,
-            "social_persona": self.cmd_social_persona,
-            "social_topic": self.cmd_topic,
-            "social_xhs": self.cmd_xhs,
-            "social_x": self.cmd_xpost,
-            "social_post": self.cmd_post,
-            "social_hotpost": self.cmd_hotpost,
-        }
-
-        handler = dispatch_map.get(action_type)
-        if handler:
-            try:
-                await handler(update, context)
-            except Exception as e:
-                logger.warning("[ChineseNLP] 分发 %s 失败: %s", action_type, e)
-            return
-
-        # 带参数的特殊命令
-        try:
-            if action_type == "ops_email":
-                context.args = ["email"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_task_top":
-                context.args = ["task", "top"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_bounty_run":
-                context.args = ["bounty", "run"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_bounty_scan":
-                context.args = ["bounty", "scan"] + ([action_arg] if action_arg else [])
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_bounty_list":
-                context.args = ["bounty", "list"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_bounty_top":
-                context.args = ["bounty", "top"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_bounty_open":
-                context.args = ["bounty", "open"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_tweet_plan":
-                context.args = ["tweet", "plan", action_arg]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_tweet_run":
-                context.args = ["tweet", "run", action_arg]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_docs_search":
-                context.args = ["docs", "search", action_arg]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_docs_index":
-                context.args = ["docs", "index", action_arg]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_meeting":
-                context.args = ["meeting", action_arg] if action_arg else ["meeting"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_content":
-                context.args = ["content", action_arg] if action_arg else ["content"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_monitor_add":
-                context.args = ["monitor", "add", action_arg]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_monitor_list":
-                context.args = ["monitor", "list"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_monitor_run":
-                context.args = ["monitor", "run"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_life_remind":
-                # action_arg format: "minutes|||message"
-                parts = action_arg.split("|||", 1) if action_arg else []
-                if len(parts) == 2:
-                    context.args = ["life", "remind", parts[0], parts[1]]
-                else:
-                    context.args = ["life", "remind"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_project":
-                context.args = ["project", action_arg] if action_arg else ["project"]
-                await self.cmd_ops(update, context)
-            elif action_type == "ops_dev":
-                context.args = ["dev", action_arg] if action_arg else ["dev"]
-                await self.cmd_ops(update, context)
-            elif action_type == "autotrader_start":
-                context.args = ["start"]
-                await self.cmd_autotrader(update, context)
-            elif action_type == "autotrader_stop":
-                context.args = ["stop"]
-                await self.cmd_autotrader(update, context)
-        except Exception as e:
-            logger.warning("[ChineseNLP] 分发 %s(%s) 失败: %s", action_type, action_arg, e)
-
-    
     def _pick_workflow_bot(self, candidates=None, exclude=None):
         exclude_set = set(exclude or [])
         if candidates:
@@ -349,6 +184,85 @@ class MessageHandlerMixin:
                 continue
             return None, bot_id
         return self.bot_id
+
+    # ── v2.0: 自然语言购物比价 ─────────────────────────────────
+
+    async def _cmd_smart_shop(self, update, context, product=""):
+        """自然语言购物比价: 用户说"帮我找便宜的AirPods" → 多平台比价
+
+        三级降级: Tavily (实时搜索) → crawl4ai (JD/SMZDM) → Jina+LLM → 纯LLM
+        """
+        if not product:
+            await update.message.reply_text("请告诉我你想买什么，例如: 帮我找便宜的AirPods Pro")
+            return
+
+        await update.message.reply_text(f"🔍 正在为你搜索「{product}」的最佳价格...\n多平台比价中，请稍候...")
+
+        try:
+            # 尝试 Brain 的智能购物 (三级降级链)
+            from src.core.brain import OmegaBrain
+            brain = OmegaBrain()
+            result = await brain._exec_smart_shopping({"product": product})
+            if result and result.get("success") and result.get("data"):
+                data = result["data"]
+                # 格式化输出
+                lines = [f"🛒 <b>{product} 比价结果</b>\n"]
+                products = data.get("products", [])
+                if products:
+                    for i, p in enumerate(products[:8], 1):
+                        name = p.get("name", p.get("title", ""))[:40]
+                        price = p.get("price", "N/A")
+                        platform = p.get("platform", p.get("source", ""))
+                        url = p.get("url", "")
+                        line = f"{i}. <b>{name}</b>"
+                        if price:
+                            line += f" — ¥{price}"
+                        if platform:
+                            line += f" ({platform})"
+                        lines.append(line)
+                        if url:
+                            lines.append(f"   🔗 <a href='{url}'>链接</a>")
+
+                best = data.get("best_deal") or data.get("recommendation", "")
+                if best:
+                    lines.append(f"\n💡 <b>推荐:</b> {best}")
+
+                tips = data.get("tips", [])
+                if tips:
+                    lines.append("\n📌 <b>省钱技巧:</b>")
+                    for tip in tips[:3]:
+                        lines.append(f"  • {tip}")
+
+                msg = "\n".join(lines)
+                await send_long_message(update.effective_chat.id, msg, parse_mode="HTML",
+                                       context=context)
+                return
+
+            # 降级到纯文本
+            summary = result.get("data", {}).get("raw", "") if result else ""
+            if summary:
+                await send_long_message(update.effective_chat.id,
+                                       f"🛒 <b>{product} 比价</b>\n\n{summary}",
+                                       parse_mode="HTML", context=context)
+                return
+
+        except Exception as e:
+            logger.warning("[SmartShop] Brain 购物失败, 降级到 LLM: %s", e)
+
+        # 最终降级: 让当前 Bot 的 LLM 回答
+        prompt = (
+            f"用户想买「{product}」，请帮忙做一个简洁的多平台价格对比。"
+            f"包括京东、淘宝、拼多多等主流平台的价格范围和购买建议。"
+            f"如果有优惠券或促销活动也请提及。"
+        )
+        context.args = []
+        # 走标准 LLM 流式响应
+        async for content, status in self._call_api_stream(
+            update.effective_chat.id, prompt, save_history=False
+        ):
+            if status == "done" and content:
+                await send_long_message(update.effective_chat.id, content, context=context)
+                return
 
     def _workflow_team_catalog(self):
         strengths = {
@@ -379,8 +293,8 @@ class MessageHandlerMixin:
             return None
         from json_repair import loads as jloads
         patterns = [
-            '```json\\s*(\\{.*?\\})\\s*```',
-            '```\\s*(\\{.*?\\})\\s*```']
+            r'```json\s*(\{.*?\})\s*```',
+            r'```\s*(\{.*?\})\s*```']
         for pattern in patterns:
             match = re.search(pattern, text, re.DOTALL)
             if not match:
@@ -437,9 +351,7 @@ class MessageHandlerMixin:
                     'recommended': False }] }
 
     
-    def _build_service_intake_prompt(self, text = None, feedback_context = None):
-        if not feedback_context:
-            feedback_context
+    def _build_service_intake_prompt(self, text: str = None, feedback_context: str = None) -> str:
         return f'''你现在是一个多模型团队里的专业客服接待官，面对的是中文小白用户。\n\n你的任务不是直接开工，而是先把需求接稳、讲明白，再给用户 3 个可选方案。\n\n输出要求：\n1. 用中文，口语化、好懂，不要堆术语。\n2. 先用 1-2 句话复述用户要做什么。\n3. 如果缺信息，只指出最关键的 1-3 条；如果不阻塞，就写“可先按默认假设推进”。\n4. 必须给出 3 个编号方案，每个方案包含：title、fit、benefits、tradeoffs、default_assumption。\n5. 选出一个 recommended=true 的推荐方案。\n6. 最后明确提醒用户只需要回复 1 / 2 / 3 即可继续。\n\n请务必在结尾附上 JSON 代码块，格式如下：\n```json\n{{\n  "customer_summary": "",\n  "missing_info": [""],\n  "options": [\n    {{"id": 1, "title": "", "fit": "", "benefits": "", "tradeoffs": "", "default_assumption": "", "recommended": true}},\n    {{"id": 2, "title": "", "fit": "", "benefits": "", "tradeoffs": "", "default_assumption": "", "recommended": false}},\n    {{"id": 3, "title": "", "fit": "", "benefits": "", "tradeoffs": "", "default_assumption": "", "recommended": false}}\n  ]\n}}\n```\n\n历史评分反馈：{'暂无历史评分，按标准客服流程接待。'}\n\n用户原话：{text}'''
 
     
@@ -468,33 +380,47 @@ class MessageHandlerMixin:
     def _parse_workflow_choice(self, text = None, option_count = None):
         if not text:
             return (0, '')
-        match = re.search('(?:选|方案)?\\s*([1-9])\\b', text)
+        match = re.search(r'(?:选|方案)?\s*([1-9])\b', text)
         if not match:
             return (0, '')
         choice = int(match.group(1))
         if choice < 1 or choice > max(1, option_count or 3):
             return (0, '')
-        note = re.sub('(?:选|方案)?\\s*[1-9]\\b', '', text, count = 1).strip(' ：:，,；;')
+        note = re.sub(r'(?:选|方案)?\s*[1-9]\b', '', text, count=1).strip(' ：:，,；;')
         return (choice, note)
 
     
-    def _build_expert_review_prompt(self, session = None, selected_option = None, feedback_context = ('selected_option', dict, 'feedback_context', str, 'return', str)):
-        if not feedback_context:
-            feedback_context
-        if not session.selection_note:
-            session.selection_note
+    def _build_expert_review_prompt(self, session=None, selected_option: dict = None, feedback_context: str = None) -> str:
         return f'''你现在是相关领域的专家评审官，面对的是一个中文小白用户。\n\n请基于用户原始需求和已选方案，完成：\n1. 判断该方案是否适合当前需求。\n2. 补充必要假设、交付物、风险和小白注意事项。\n3. 将后续执行拆成 2-4 个可并行 workstreams，每个 workstream 标明 type（code / logic / copy / research / qa）。\n\n结尾必须附上 JSON：\n```json\n{{\n  "expert_role": "",\n  "assessment": "",\n  "assumptions": [""],\n  "deliverables": [""],\n  "risks": [""],\n  "beginner_notes": [""],\n  "workstreams": [\n    {{"id": "ws1", "title": "", "goal": "", "type": "logic", "done_when": ""}}\n  ]\n}}\n```\n\n历史评分反馈：{'暂无历史评分。'}\n\n用户原话：{session.original_text}\n用户选中的方案：{json.dumps(selected_option, ensure_ascii = False)}\n用户补充说明：{'无'}'''
 
     
     def _fallback_expert_plan(self, session = None, selected_option = None):
-        pass
+        logger.debug("Chain discuss: _fallback_expert_plan not yet implemented")
+        return {
+            "expert_role": "通用顾问",
+            "assessment": "方案基本可行，建议按步骤执行。",
+            "assumptions": ["基于当前上下文的合理默认假设"],
+            "deliverables": ["初步结果"],
+            "risks": ["暂无已知风险"],
+            "beginner_notes": ["如有疑问可随时追问"],
+            "workstreams": [
+                {"id": "ws1", "title": "执行任务", "goal": str(getattr(session, 'original_text', ''))[:80], "type": "logic", "done_when": "完成用户需求"}
+            ],
+        }
 
     
     def _render_expert_review(self, plan = None):
-        if not plan.get('assessment', ''):
-            plan.get('assessment', '')
-        if not plan.get('assumptions'):
-            plan.get('assumptions')
+        logger.debug("Chain discuss: _render_expert_review not yet implemented")
+        if not plan:
+            return ""
+        assessment = plan.get('assessment', '')
+        assumptions = plan.get('assumptions', [])
+        parts = []
+        if assessment:
+            parts.append(f"📋 评估: {assessment}")
+        if assumptions:
+            parts.append("📌 假设: " + "、".join(str(a) for a in assumptions[:3]))
+        return "\n".join(parts)
 
     
     def _pick_lane_bot(self, lane = None, exclude = None):
@@ -532,18 +458,25 @@ class MessageHandlerMixin:
         return self._pick_workflow_bot(lane_map.get(lane, lane_map['logic']), exclude = exclude_set)
 
     
-    def _build_director_prompt(self, session = None, team_catalog = None, feedback_context = ('feedback_context', str, 'return', str)):
-        if not feedback_context:
-            feedback_context
+    def _build_director_prompt(self, session=None, team_catalog=None, feedback_context: str = None) -> str:
         return f'''你现在是多模型团队的总监，需要根据专家复核后的方案，把任务按模型特长分配给现有团队并行执行。\n\n要求：\n1. 必须从可用 bot_id 中选择 2-4 个 assignment。\n2. 尽量并行，不要把所有任务都压给同一个模型。\n3. 代码优先交给 code 强的模型，中文解释优先交给 Qwen/中文强模型，复杂逻辑优先交给 DeepSeek/强推理模型。\n4. 再选 1-2 个 validators 做交叉验证。\n\n可用模型：{json.dumps(team_catalog, ensure_ascii = False)}\n专家方案：{json.dumps(session.expert_plan, ensure_ascii = False)}\n历史评分反馈：{'暂无历史评分。'}\n\n请只在结尾附上 JSON：\n```json\n{{\n  "director_summary": "",\n  "assignments": [\n    {{"bot_id": "", "task_id": "ws1", "subtask": "", "reason": ""}}\n  ],\n  "validators": [\n    {{"bot_id": "", "focus": ""}}\n  ]\n}}\n```'''
 
     
     def _fallback_team_plan(self, session, team_catalog):
-        pass
+        logger.debug("Chain discuss: _fallback_team_plan not yet implemented")
+        return {
+            "director_summary": "默认分配: 使用当前可用模型执行任务",
+            "assignments": [],
+            "validators": [],
+        }
 
     
     def _render_team_plan(self, team_plan = None, team_catalog = None):
-        pass
+        logger.debug("Chain discuss: _render_team_plan not yet implemented")
+        if not team_plan:
+            return ""
+        summary = team_plan.get("director_summary", "")
+        return f"🎯 {summary}" if summary else ""
 
     
     def _merge_assignments_by_bot(self, assignments):
@@ -573,37 +506,106 @@ class MessageHandlerMixin:
 
     
     def _build_worker_prompt(self, session = None, grouped_assignment = None):
-        pass
+        logger.debug("Chain discuss: _build_worker_prompt not yet implemented")
+        tasks = grouped_assignment.get("tasks", []) if grouped_assignment else []
+        task_desc = "\n".join(f"- {t}" for t in tasks) if tasks else "- 完成分配的任务"
+        return f"""请根据以下任务指令完成工作。
+
+用户原始需求: {getattr(session, 'original_text', '未知')}
+
+你的任务:
+{task_desc}
+
+请直接给出结果，不需要解释分配过程。"""
 
     
-    def _build_validation_prompt(self, session = None, focus = None, combined_text = ('focus', str, 'combined_text', str, 'return', str)):
-        if not focus:
-            focus
+    def _build_validation_prompt(self, session=None, focus: str = None, combined_text: str = None) -> str:
         return f'''你现在负责交叉验证。请检查下面这轮团队并行结果，重点关注：{'遗漏、冲突、风险和对小白是否友好'}。\n\n用户原话：{session.original_text}\n已选方案：{session.selected_option_id}\n专家复核：{json.dumps(session.expert_plan, ensure_ascii = False)}\n团队执行结果：\n{combined_text[:5000]}\n\n请在结尾附上 JSON：\n```json\n{{\n  "verdict": "pass",\n  "highlights": [""],\n  "missing": [""],\n  "beginner_notes": [""],\n  "next_iterations": [""]\n}}\n```'''
 
     
-    def _build_summary_prompt(self, session = None, combined_text = None, validation_text = ('combined_text', str, 'validation_text', str, 'return', str)):
-        pass
+    def _build_summary_prompt(self, session=None, combined_text: str = None, validation_text: str = None) -> str:
+        logger.debug("Chain discuss: _build_summary_prompt not yet implemented")
+        return f"""请为以下多模型协作结果生成一份用户友好的总结报告。
+
+用户原始需求: {getattr(session, 'original_text', '未知')}
+
+团队执行结果:
+{str(combined_text)[:3000] if combined_text else '暂无结果'}
+
+验证反馈:
+{str(validation_text)[:1000] if isinstance(validation_text, str) else '暂无验证'}
+
+请输出:
+1. 一句话总结
+2. 关键结论 (3-5条)
+3. 后续建议"""
 
     
-    def _fallback_summary_payload(self, session = None):
+    def _fallback_summary_payload(self, session=None):
+        """生成降级摘要数据 — 从讨论结果中提取结构化摘要。"""
         status_items = []
+        all_text = []
         for item in session.execution_results:
-            status_items.append(f'''{item.get('bot_name', item.get('bot_id', 'AI'))} 已完成：{item.get('task_summary', '已提交结果')}''')
-        if not session.expert_plan.get('beginner_notes'):
-            session.expert_plan.get('beginner_notes')
+            bot_name = item.get('bot_name', item.get('bot_id', 'AI'))
+            task_summary = item.get('task_summary', '已提交结果')
+            status_items.append(f'{bot_name} 已完成：{task_summary}')
+            # 收集所有回复文本用于摘要
+            content = item.get('content', item.get('result', ''))
+            if content:
+                all_text.append(f"【{bot_name}】{str(content)[:500]}")
+        beginner_notes = session.expert_plan.get('beginner_notes', []) if session.expert_plan else []
+        # 生成简要摘要
+        summary = ""
+        if all_text:
+            summary = "\n".join(all_text[:5])  # 最多取前5条回复
+        return {
+            'status_items': status_items,
+            'beginner_notes': beginner_notes,
+            'summary': summary,
+            'result': summary,
+        }
 
     
     def _render_final_workflow_report(self, session = None, summary_payload = None):
-        pass
+        logger.debug("Chain discuss: _render_final_workflow_report not yet implemented")
+        if not summary_payload:
+            return "📋 工作流已完成，暂无详细报告。"
+        if isinstance(summary_payload, dict):
+            summary = summary_payload.get("summary", summary_payload.get("result", ""))
+            if summary:
+                return f"📋 工作流报告\n━━━━━━━━━━━━━━━\n{str(summary)[:2000]}"
+        return f"📋 工作流报告\n━━━━━━━━━━━━━━━\n{str(summary_payload)[:2000]}"
 
     
-    def _parse_workflow_ratings(self, text = None):
+    def _parse_workflow_ratings(self, text: str = None):
+        """从用户反馈文本中解析评分（支持数字评分和emoji评分）。
+        
+        支持格式:
+        - "3 4 5" 或 "3, 4, 5"  → [3, 4, 5]
+        - "⭐⭐⭐ ⭐⭐⭐⭐ ⭐⭐⭐⭐⭐" → [3, 4, 5]
+        - "客服3分 方案4分 交付5分" → [3, 4, 5]
+        """
+        import re
         if not text:
-            text
+            return None
+        text = text.strip()
+        # 方式1: 提取所有 1-5 的数字
+        numbers = re.findall(r'\b([1-5])\b', text)
+        if len(numbers) >= 3:
+            return [int(n) for n in numbers[:3]]
+        # 方式2: 数星星 ⭐
+        star_groups = re.findall(r'(⭐+)', text)
+        if len(star_groups) >= 3:
+            return [len(g) for g in star_groups[:3]]
+        # 方式3: 单个数字视为整体评价
+        if len(numbers) == 1:
+            score = int(numbers[0])
+            return [score, score, score]
+        return None
 
     
-    def _workflow_improvement_focus(self, ratings):
+    def _workflow_improvement_focus(self, ratings) -> str:
+        """根据评分确定需要改进的环节。"""
         labels = [
             '客服接待',
             '方案评审',
@@ -611,10 +613,22 @@ class MessageHandlerMixin:
         if not ratings:
             return '持续优化整体链路。'
         min_value = min(ratings)
+        # 找到最低分对应的环节
+        min_idx = ratings.index(min_value)
+        if min_idx < len(labels):
+            return f'重点改进「{labels[min_idx]}」环节（当前评分最低: {min_value}）。'
+        return '持续优化整体链路。'
 
     
-    async def _continue_service_workflow(self, update = None, context = None, session = None, text = ('text', str)):
-        pass
+    async def _continue_service_workflow(self, update=None, context=None, session=None, text: str = None):
+        logger.debug("Chain discuss: _continue_service_workflow not yet implemented")
+        try:
+            await update.message.reply_text(
+                "🚧 此功能正在开发中，暂时无法继续工作流。\n"
+                "请直接描述您的需求，我会用标准模式为您服务。"
+            )
+        except Exception:
+            pass
 
     
     async def handle_message(self, update, context):
@@ -629,10 +643,15 @@ class MessageHandlerMixin:
         from telegram import constants
         from telegram.error import BadRequest, RetryAfter, TimedOut
         from src.smart_memory import get_smart_memory
-        from src.feedback import build_feedback_keyboard, parse_feedback_data, get_feedback_store
+        from src.feedback import build_feedback_keyboard
 
         TG_MSG_LIMIT = 4096
-        ANTI_FLOOD_DELAY = 0.01
+        # ── HI-011 flood 根治: 时间门控 + 编辑次数上限 ──
+        # Telegram 群聊 editMessageText 限制约 20次/分钟
+        EDIT_INTERVAL_GROUP = 3.0     # 群聊: 每条消息最少间隔 3 秒
+        EDIT_INTERVAL_PRIVATE = 1.0   # 私聊: 每条消息最少间隔 1 秒
+        MAX_EDITS_GROUP = 15          # 群聊: 单条消息最多编辑 15 次
+        MAX_EDITS_PRIVATE = 30        # 私聊: 单条消息最多编辑 30 次
 
         chat_id = update.effective_chat.id
         user = update.effective_user
@@ -646,39 +665,192 @@ class MessageHandlerMixin:
         if not self._is_authorized(user.id):
             return
 
+        # ── 会话恢复问候 — 搬运 Apple Intelligence 摘要 / Slack Catch Up ──
+        # 用户超过 4 小时没互动后回来，在首条回复前生成"离线期间发生了什么"摘要
+        try:
+            _session_gap_handled = await self._check_session_resumption(chat_id, user.id, update, context)
+        except Exception:
+            pass  # 会话恢复失败不影响主流程
+
+        # ── 纠错检测 — 搬运 ChatGPT correction handling ──────
+        # 用户说"不对/说错了/我说的是X不是Y"时，把上一轮上下文 + 纠正指令合并重新处理
+        # 优先级高于追问路由（用户可能在纠正追问的前提）
+        try:
+            _correction = _detect_correction(text)
+            if _correction:
+                await update.message.chat.send_action("typing")
+                # 从历史获取上一轮对话，作为纠正上下文
+                _prev_context = ""
+                try:
+                    from src.history_store import get_history_store
+                    _hs = get_history_store()
+                    if _hs:
+                        _recent = _hs.get_messages(self.bot_id, chat_id, limit=2)
+                        if _recent:
+                            _prev_context = " | ".join(
+                                m.get("content", "")[:200] for m in _recent
+                            )
+                except Exception:
+                    pass
+                # 拼接纠正上下文到消息，让 LLM/Brain 理解这是纠正
+                _corrected_msg = f"[纠正上一条] {text}"
+                if _prev_context:
+                    _corrected_msg += f"\n[上轮上下文] {_prev_context[:300]}"
+                # 替换 text 继续走正常路由
+                text = _corrected_msg
+                # 发送确认
+                from src.bot.error_messages import correction_ack
+                await update.message.reply_text(correction_ack())
+        except Exception:
+            pass  # 纠错检测失败不影响主流程
+
+        # ── Brain 追问回答路由 ──────────────────────────────
+        # 如果上一条消息是 Brain 的追问（如"请问要分析哪只股票？"），
+        # 本条消息作为回答路由回 Brain，而不是当作新消息处理。
+        try:
+            from src.core.brain import get_brain
+            _brain = get_brain()
+            _clarify_task_id = _brain.get_pending_clarification(chat_id)
+            if _clarify_task_id:
+                await update.message.chat.send_action("typing")
+                _clarify_result = await _brain.resume_with_answer(
+                    _clarify_task_id, text,
+                    {"user_id": user.id, "chat_id": chat_id, "bot_id": self.bot_id},
+                )
+                if _clarify_result.success and _clarify_result.final_result:
+                    _clarify_msg = _clarify_result.to_user_message()
+                    if _clarify_msg:
+                        _clarify_markup = None
+                        try:
+                            _clarify_markup = _build_smart_reply_keyboard(
+                                _clarify_msg, self.bot_id, getattr(self, 'model', ''), chat_id
+                            )
+                        except Exception:
+                            pass
+                        try:
+                            safe = md_to_html(_clarify_msg)
+                            await update.message.reply_text(
+                                safe, parse_mode="HTML", reply_markup=_clarify_markup,
+                            )
+                        except Exception:
+                            await update.message.reply_text(
+                                _clarify_msg, reply_markup=_clarify_markup,
+                            )
+                        return
+                elif _clarify_result.error:
+                    await update.message.reply_text(f"❌ {_clarify_result.error}")
+                    return
+                # 如果 result 既不 success 也不 error (罕见)，继续正常流程
+        except Exception as _ce:
+            logger.debug(f"Brain 追问路由失败: {_ce}")
+
         # 中文自然语言命令匹配 — 在 LLM 调用前拦截
         chinese_action = _match_chinese_command(text)
         if chinese_action:
             action_type, action_arg = chinese_action
+            await update.effective_chat.send_action("typing")
             await self._dispatch_chinese_action(update, context, action_type, action_arg)
+            # 记录命令上下文到对话历史 (修复跟进断裂)
+            try:
+                _sm = get_smart_memory()
+                if _sm:
+                    action_label = f"[命令:{action_type}] {text}"
+                    _cmd_task = asyncio.create_task(
+                        _sm.on_message(chat_id, user.id, "user", action_label, self.bot_id)
+                    )
+                    def _cmd_task_done(t):
+                        if not t.cancelled() and t.exception():
+                            logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
+                    _cmd_task.add_done_callback(_cmd_task_done)
+            except Exception:
+                logger.debug("SmartMemory 命令记录失败", exc_info=True)
             return  # Chinese command handled, skip LLM call
 
-        # ── Brain 路由（opt-in）──────────────────────────────
-        # 中文命令未匹配时，尝试用 OMEGA brain.py 处理可执行请求。
-        # 仅在 ENABLE_BRAIN_ROUTING=1 时启用，避免影响现有行为。
-        # 使用 _try_fast_parse()（纯正则，无 LLM 调用）做快速判断，
+        # ── Brain 路由 (v3.0: 默认启用) ──────────────────────────
+        # 中文命令未匹配时，用 OMEGA brain.py 处理可执行请求。
+        # v3.0: 默认启用。使用 _try_fast_parse()（纯正则，零 LLM/token 成本）。
         # 只有可执行意图才路由到 brain；闲聊仍走下方 LLM 流式路径。
+        # 设置 ENABLE_BRAIN_ROUTING=0 可关闭。
         import os
-        if os.environ.get("ENABLE_BRAIN_ROUTING", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("ENABLE_BRAIN_ROUTING", "1").lower() not in ("0", "false", "no", "off"):
             try:
+                # GAP 5: Brain 路径 typing 指示器 — 用户不再看到死寂
+                await update.message.chat.send_action("typing")
+
                 from src.core.intent_parser import IntentParser
-                quick_intent = IntentParser()._try_fast_parse(text)
+                _parser = IntentParser()
+                quick_intent = _parser._try_fast_parse(text)
+                # 降级: fast_parse 未命中时，用轻量 LLM 分类器再试一次
+                if not quick_intent or not quick_intent.is_actionable:
+                    try:
+                        quick_intent = await _parser._try_llm_classify(text)
+                    except Exception:
+                        quick_intent = None
                 if quick_intent and quick_intent.is_actionable:
                     from src.core.brain import get_brain
                     brain = get_brain()
                     result = await brain.process_message(
                         source="telegram",
                         message=text,
-                        context={"user_id": user.id, "chat_id": chat_id},
+                        context={"user_id": user.id, "chat_id": chat_id, "bot_id": self.bot_id},
+                        pre_parsed_intent=quick_intent,
+                        skip_chat_fallback=True,
                     )
                     if result.success and result.final_result:
                         user_msg = result.to_user_message()
                         if user_msg and user_msg != "✅ 操作已完成":
+                            # Brain 回复带智能操作按钮 + AI 追问建议
+                            reply_markup = None
+                            try:
+                                # 从 Brain 结果中提取 AI 生成的追问建议
+                                _ai_suggestions = result.extra_data.get("followup_suggestions", [])
+                                reply_markup = _build_smart_reply_keyboard(
+                                    user_msg, self.bot_id, getattr(self, 'model', ''), chat_id,
+                                    ai_suggestions=_ai_suggestions,
+                                )
+                            except Exception:
+                                pass
+
                             try:
                                 safe = md_to_html(user_msg)
+                                await update.message.reply_text(
+                                    safe, parse_mode="HTML",
+                                    reply_markup=reply_markup,
+                                )
+                            except Exception:
+                                await update.message.reply_text(
+                                    user_msg,
+                                    reply_markup=reply_markup,
+                                )
+
+                            # Gap 2 修复: Brain 路径也记录到 SmartMemory
+                            try:
+                                _sm = get_smart_memory()
+                                if _sm:
+                                    def _brain_mem_done(t):
+                                        if not t.cancelled() and t.exception():
+                                            logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
+                                    _brain_t1 = asyncio.create_task(
+                                        _sm.on_message(chat_id, user.id, "user", text, self.bot_id)
+                                    )
+                                    _brain_t1.add_done_callback(_brain_mem_done)
+                                    _brain_t2 = asyncio.create_task(
+                                        _sm.on_message(chat_id, user.id, "assistant", user_msg[:1500], self.bot_id)
+                                    )
+                                    _brain_t2.add_done_callback(_brain_mem_done)
+                            except Exception:
+                                logger.debug("Brain 路径 SmartMemory 写入失败", exc_info=True)
+
+                            return
+                    elif result.needs_clarification:
+                        # Brain 需要追问 — 显示追问消息，等待用户下一条消息回答
+                        clarify_text = result.to_user_message()
+                        if clarify_text:
+                            try:
+                                safe = md_to_html(clarify_text)
                                 await update.message.reply_text(safe, parse_mode="HTML")
                             except Exception:
-                                await update.message.reply_text(user_msg)
+                                await update.message.reply_text(clarify_text)
                             return
             except Exception as e:
                 logger.debug(f"Brain routing failed, falling through to LLM: {e}")
@@ -689,6 +861,10 @@ class MessageHandlerMixin:
             allowed, reason = rate_limiter.check(self.bot_id, "private" if not is_group else "group")
             if not allowed:
                 logger.info("[%s] 消息频率限制: %s (user=%s)", self.name, reason, user.id)
+                try:
+                    await update.message.reply_text("⏳ 请稍等，消息发送过于频繁。")
+                except Exception:
+                    logger.debug("频率限制回复失败", exc_info=True)
                 return
 
         # 群聊：检查是否应该回复
@@ -737,16 +913,41 @@ class MessageHandlerMixin:
         try:
             sent_message = None
             prev_text = ""
-            backoff = 0
+            backoff_multiplier = 1.0   # HI-011: 指数退避乘数
             chunk_idx = 0
             final_content = ""
             model_used = getattr(self, 'model', 'unknown') or 'unknown'
+            edit_interval = EDIT_INTERVAL_GROUP if is_group else EDIT_INTERVAL_PRIVATE
+            max_edits = MAX_EDITS_GROUP if is_group else MAX_EDITS_PRIVATE
+            last_edit_time = 0.0       # HI-011: 上次编辑时间 (monotonic)
 
             # Phase 1: "思考中" 占位符（搬运自 karfly/chatgpt_telegram_bot）
             sent_message = await update.message.reply_text(
                 "🤔 思考中...",
                 reply_to_message_id=update.message.message_id if is_group else None,
             )
+
+            # P0-B: 思考动画 — 让等待不再死寂
+            _thinking_phases = ["🔍 搜索中...", "🧠 分析中...", "✍️ 撰写中..."]
+            _thinking_active = True
+
+            async def _animate_thinking():
+                """后台循环更新思考占位符，每3秒切换一个阶段"""
+                try:
+                    phase_idx = 0
+                    while _thinking_active:
+                        await asyncio.sleep(3.0)
+                        if not _thinking_active:
+                            break
+                        phase_idx = min(phase_idx + 1, len(_thinking_phases) - 1)
+                        try:
+                            await sent_message.edit_text(_thinking_phases[phase_idx])
+                        except Exception:
+                            break
+                except asyncio.CancelledError:
+                    pass
+
+            _thinking_task = asyncio.create_task(_animate_thinking())
 
             async for content, status in self._call_api_stream(
                 chat_id, text, save_history=True, chat_type=chat_type
@@ -766,22 +967,31 @@ class MessageHandlerMixin:
                             )
                         except BadRequest:
                             pass
-                    # 发送所有溢出部分（不截断）
+                    # P1-A: 溢出分段保留格式化渲染
                     remaining = content[TG_MSG_LIMIT:]
                     while remaining:
                         chunk = remaining[:TG_MSG_LIMIT]
                         remaining = remaining[TG_MSG_LIMIT:]
                         try:
-                            sent_message = await update.message.reply_text(chunk)
-                            prev_text = chunk
-                        except Exception as e:
-                            logger.warning(f"[{self.bot_id}] 发送溢出消息失败: {e}")
-                            break
+                            safe_chunk = md_to_html(chunk)
+                            sent_message = await update.message.reply_text(
+                                safe_chunk, parse_mode="HTML"
+                            )
+                        except Exception:
+                            try:
+                                sent_message = await update.message.reply_text(chunk)
+                            except Exception as e:
+                                logger.warning(f"[{self.bot_id}] 发送溢出消息失败: {e}")
+                                break
+                        prev_text = chunk
                     continue
 
-                cutoff = self._stream_cutoff(is_group, content) + backoff
+                cutoff = self._stream_cutoff(is_group, content)
 
                 if chunk_idx == 0:
+                    # P0-B: 首个 token 到达，停止思考动画
+                    _thinking_active = False
+                    _thinking_task.cancel()
                     # Phase 2: 首个 token — 替换"思考中"为实际内容
                     try:
                         await context.bot.edit_message_text(
@@ -790,6 +1000,7 @@ class MessageHandlerMixin:
                             text=content + " ▌",
                         )
                         prev_text = content
+                        last_edit_time = _time.monotonic()
                         chunk_idx += 1
                     except Exception as e:
                         logger.warning(f"[{self.bot_id}] 替换占位符失败: {e}")
@@ -799,6 +1010,16 @@ class MessageHandlerMixin:
                     if not sent_message:
                         break
 
+                    # ── HI-011: 时间门控 + 编辑次数上限 ──
+                    now = _time.monotonic()
+                    effective_interval = edit_interval * backoff_multiplier
+                    time_ok = (now - last_edit_time) >= effective_interval
+                    under_cap = chunk_idx < max_edits
+
+                    # 非完成状态: 必须同时满足时间门控和编辑上限
+                    if status != "finished" and (not time_ok or not under_cap):
+                        continue
+
                     if status != "finished":
                         display = (content + " ▌")[:TG_MSG_LIMIT]
 
@@ -806,16 +1027,17 @@ class MessageHandlerMixin:
                         # Phase 3: 完成时用 md_to_html 安全渲染 + HTML parse_mode
                         if status == "finished":
                             try:
-                                display = md_to_html(content) + f"\n\n<code>via {getattr(self, 'name', self.bot_id)} · {model_used.split('/')[-1]}</code>"
+                                display = md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
                             except Exception:
-                                model_short = model_used.split("/")[-1]
-                                display = (content + f"\n\n`via {getattr(self, 'name', self.bot_id)} · {model_short}`")[:TG_MSG_LIMIT]
+                                display = (content + f"\n\n`— {getattr(self, 'name', self.bot_id)}`")[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.MARKDOWN
                         else:
                             parse_mode = None
-                        reply_markup = build_feedback_keyboard(self.bot_id, model_used, chat_id) if status == "finished" else None
+                        reply_markup = _build_smart_reply_keyboard(
+                            content, self.bot_id, model_used, chat_id
+                        ) if status == "finished" else None
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
@@ -823,7 +1045,15 @@ class MessageHandlerMixin:
                             parse_mode=parse_mode,
                             reply_markup=reply_markup,
                         )
+                        # LLM 流式路径补齐追问建议 — 先发消息，再异步更新按钮
+                        # 搬运灵感: khoj follow_up / 前四轮只在 Brain 路径有，这里覆盖 80% 对话
+                        if status == "finished" and sent_message:
+                            asyncio.create_task(self._async_update_suggestions(
+                                context, chat_id, sent_message.message_id,
+                                content, display, parse_mode, model_used,
+                            ))
                         prev_text = content
+                        last_edit_time = _time.monotonic()
                     except BadRequest as e:
                         err_msg = str(e)
                         if "Message is not modified" in err_msg:
@@ -837,26 +1067,29 @@ class MessageHandlerMixin:
                                     reply_markup=reply_markup,
                                 )
                                 prev_text = content
+                                last_edit_time = _time.monotonic()
                             except BadRequest:
                                 pass
                         else:
-                            backoff += 5
+                            backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                             logger.debug(f"[{self.bot_id}] edit_message BadRequest: {err_msg}")
                     except RetryAfter as e:
-                        backoff += 5
+                        backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                         await asyncio.sleep(e.retry_after)
                     except TimedOut:
-                        backoff += 5
+                        backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                         await asyncio.sleep(0.5)
                     except Exception as e:
-                        backoff += 5
+                        backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                         logger.debug(f"[{self.bot_id}] edit_message 异常: {e}")
 
-                    await asyncio.sleep(ANTI_FLOOD_DELAY)
                     chunk_idx += 1
 
             # 流式没有产出任何内容 → 降级到非流式
             if chunk_idx == 0:
+                # P0-B: 流式无输出，也要停止思考动画
+                _thinking_active = False
+                _thinking_task.cancel()
                 reply = await self._call_api(chat_id, text, save_history=True, chat_type=chat_type)
                 if reply:
                     final_content = reply
@@ -886,15 +1119,15 @@ class MessageHandlerMixin:
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
-                            text="暂时无法回复，请稍后再试",
+                            text=error_ai_busy(),
                         )
                     except Exception:
                         logger.debug("Silenced exception", exc_info=True)
                     logger.info(f"[{self.bot_id}] 空回复 (chat={chat_id})")
 
-            # 记录 AI 回复到智能记忆
+            # 记录 AI 回复到智能记忆 (1500字截断，保留更多分析上下文)
             if _sm and final_content:
-                _t2 = asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:500], self.bot_id))
+                _t2 = asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:1500], self.bot_id))
                 _t2.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(AI回复)后台任务异常: %s", t.exception()))
 
             # 可选语音回复 — 用户通过 /voice 开启后，短回复自动附带语音
@@ -926,15 +1159,15 @@ class MessageHandlerMixin:
             # 分类错误提示 — 比"出错了"更有信息量
             err_str = str(e).lower()
             if "timeout" in err_str or "timed out" in err_str:
-                user_msg = "回复超时了，模型可能比较忙，请稍后再试"
+                user_msg = error_ai_busy()
             elif "rate" in err_str or "429" in err_str or "quota" in err_str:
-                user_msg = "请求太频繁了，请等几秒再发"
+                user_msg = error_rate_limit()
             elif "connect" in err_str or "network" in err_str or "ssl" in err_str:
-                user_msg = "网络连接出了问题，正在自动切换线路"
+                user_msg = error_network()
             elif "auth" in err_str or "401" in err_str or "403" in err_str:
-                user_msg = "API 认证失败，管理员已收到通知"
+                user_msg = error_auth()
             else:
-                user_msg = "处理消息时遇到问题，请稍后重试"
+                user_msg = error_generic()
             try:
                 from src.telegram_ux import send_error_with_retry
                 await send_error_with_retry(update, context, e, retry_command="")
@@ -1019,17 +1252,19 @@ class MessageHandlerMixin:
         
         群聊更保守（Telegram 对群聊有更严格的 flood 限制），
         私聊更激进（用户体验优先）。
+        
+        HI-011 根治: 群聊 cutoff 全面提升，配合时间门控使用。
         """
-        n = len(content)
+        content_len = len(content)
         if is_group:
-            if n > 1000: return 180
-            if n > 200: return 120
-            if n > 50: return 90
-            return 50
+            if content_len > 1000: return 300   # was 180
+            if content_len > 200: return 200    # was 120
+            if content_len > 50: return 150     # was 90
+            return 80                 # was 50
         else:
-            if n > 1000: return 90
-            if n > 200: return 45
-            if n > 50: return 25
+            if content_len > 1000: return 120   # was 90
+            if content_len > 200: return 60     # was 45
+            if content_len > 50: return 30      # was 25
             return 15
 
     async def _keep_typing(self, chat_id: int, context):
@@ -1045,179 +1280,190 @@ class MessageHandlerMixin:
             # 网络错误等 — 静默退出但记录，不影响主流程
             logger.debug(f"[typing] chat={chat_id} 停止: {e}")
 
-    
-    async def _run_chain_discuss(self, update = None, context = None, text = ('text', str)):
-        '''启动新版链式讨论工作流。'''
-        pass
+    # ── LLM 流式路径追问建议异步更新 ────────────────────────────
+    # Brain 路径已有追问建议（第一轮交付），但 LLM 流式路径（80%对话）没有
+    # 这里在消息发出后异步生成建议，再更新按钮
 
-    
-    async def handle_photo(self, update, context):
-        '''处理图片消息 — OCR → 场景路由 → 业务决策链'''
+    async def _async_update_suggestions(self, context, chat_id, message_id,
+                                         raw_content, display_html, parse_mode, model_used):
+        """异步生成追问建议并更新消息按钮 — 不阻塞主流程。"""
         try:
-            chat_id = update.effective_chat.id
-            user = update.effective_user
-            caption = update.message.caption or ""
-            is_group = update.effective_chat.type in ("group", "supergroup")
-            
-            # 群聊门控：仅在被 @ 或 caption 含触发词时才 OCR
-            if is_group:
-                bot_username = (await context.bot.get_me()).username or ""
-                mentioned = f"@{bot_username}" in (caption or "")
-                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "竞品", "财报"))
-                if not mentioned and not trigger:
-                    return
-            
-            # 发送处理中提示
-            hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
-            
-            # 下载图片
-            photo = update.message.photo[-1]
-            file = await context.bot.get_file(photo.file_id)
-            buf = io.BytesIO()
-            await file.download_to_memory(buf)
-            image_bytes = buf.getvalue()
-            
-            logger.info(f"[OCR] 收到图片 from {user.id}, {len(image_bytes)} bytes")
-            
-            # 调用 OCR
-            result: OcrResult = await ocr_image(
-                image_bytes,
-                mime_type="image/jpeg",
-                user_id=user.id,
-                file_unique_id=photo.file_unique_id,
+            from src.core.response_synthesizer import get_response_synthesizer
+            synth = get_response_synthesizer()
+            suggestions = await synth.generate_suggestions(raw_content)
+            if not suggestions:
+                return
+
+            # 用建议重新构建键盘
+            new_markup = _build_smart_reply_keyboard(
+                raw_content, self.bot_id, model_used, chat_id,
+                ai_suggestions=suggestions,
             )
-            
-            # 删除处理中提示
-            try:
-                await hint_msg.delete()
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
-            
-            # OCR 失败
-            if not result.ok:
-                await send_long_message(chat_id, f"⚠️ OCR 失败: {result.error}", context,
-                                        reply_to_message_id=update.message.message_id)
-                return
-            
-            # OCR 无文字 → 降级到 Vision 模型分析
-            if not result.text:
-                try:
-                    from src.tools.vision import analyze_image
-                    vision_prompt = caption or "描述这张图片的内容"
-                    vision_result = await analyze_image(bytes(image_bytes), vision_prompt)
-                    if vision_result:
-                        await send_long_message(
-                            chat_id,
-                            f"🖼️ 图片分析:\n\n{vision_result}",
-                            context,
-                            reply_to_message_id=update.message.message_id,
-                        )
-                        return
-                except Exception as ve:
-                    logger.debug(f"[OCR] Vision fallback 失败: {ve}")
-
-                await send_long_message(chat_id, "📷 图片已收到，未识别到文字内容。", context,
-                                        reply_to_message_id=update.message.message_id)
-                return
-            
-            # 场景路由
-            scene_match = classify_ocr_scene(result.text, caption)
-            
-            if scene_match.scene == OcrScene.FINANCIAL:
-                # 交易/财报场景
-                proc_result = await process_financial_scene(
-                    result.text, caption, user.id, chat_id, shared_memory)
-                
-                tag = " (缓存)" if result.cached else ""
-                reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
-                reply_parts.append(f"\n{'─' * 20}")
-                reply_parts.append(f"🎯 场景: 交易分析 ({scene_match.confidence:.0%})")
-                if proc_result.success:
-                    reply_parts.append(proc_result.summary)
-                    if proc_result.next_step:
-                        reply_parts.append(f"\n💡 {proc_result.next_step}")
-                
-                await send_long_message(chat_id, "\n".join(reply_parts), context,
-                                        reply_to_message_id=update.message.message_id)
-                
-                # 注入对话上下文（可追问）
-                if proc_result.context_injection:
-                    try:
-                        history_store.add_message(
-                            getattr(self, 'bot_id', 'system'), chat_id,
-                            "assistant", proc_result.context_injection)
-                    except Exception as e:
-                        logger.warning(f"[OCR] 交易场景上下文注入失败: {e}")
-                if proc_result.auto_invest_topic and not is_group:
-                    try:
-                        await send_long_message(chat_id,
-                            f"🚀 自动触发投资分析: {proc_result.auto_invest_topic}\n"
-                            "发送 /stop_discuss 可中断", context)
-                        # 模拟 /invest 命令
-                        context.args = proc_result.auto_invest_topic.split()
-                        await self.cmd_invest(update, context)
-                    except Exception as e:
-                        logger.error(f"[OCR] 自动触发 /invest 失败: {e}")
-            
-            elif scene_match.scene == OcrScene.ECOMMERCE:
-                # 电商/竞品场景
-                proc_result = await process_ecommerce_scene(
-                    result.text, caption, user.id, chat_id, shared_memory)
-                
-                tag = " (缓存)" if result.cached else ""
-                reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
-                reply_parts.append(f"\n{'─' * 20}")
-                reply_parts.append(f"🎯 场景: 竞品分析 ({scene_match.confidence:.0%})")
-                if proc_result.success:
-                    reply_parts.append(proc_result.summary)
-                    if proc_result.next_step:
-                        reply_parts.append(f"\n💡 定价建议: {proc_result.next_step}")
-                
-                await send_long_message(chat_id, "\n".join(reply_parts), context,
-                                        reply_to_message_id=update.message.message_id)
-                
-                # 注入对话上下文（可追问）
-                if proc_result.context_injection:
-                    try:
-                        history_store.add_message(
-                            getattr(self, 'bot_id', 'system'), chat_id,
-                            "assistant", proc_result.context_injection)
-                    except Exception as e:
-                        logger.warning(f"[OCR] 电商场景上下文注入失败: {e}")
-            
-            else:
-                # 通用场景: OCR 文字 + Vision 补充分析
-                tag = " (缓存)" if result.cached else ""
-                reply = f"📄 OCR 识别结果{tag}:\n\n{result.text}"
-                if caption:
-                    reply += f"\n\n💬 附言: {caption}"
-
-                # Vision 补充: 用户有 caption 指令时，用 Vision 模型做进一步分析
-                if caption and any(w in caption for w in ("分析", "解释", "翻译", "总结", "看看", "什么意思")):
-                    try:
-                        from src.tools.vision import analyze_image
-                        vision_result = await analyze_image(
-                            bytes(image_bytes),
-                            f"图片中的文字内容如下:\n{result.text[:500]}\n\n用户要求: {caption}",
-                        )
-                        if vision_result:
-                            reply += f"\n\n{'─' * 20}\n🖼️ 图片分析:\n{vision_result}"
-                    except Exception as ve:
-                        logger.debug(f"[OCR] Vision 补充分析失败: {ve}")
-
-                await send_long_message(chat_id, reply, context,
-                                        reply_to_message_id=update.message.message_id)
-                
+            await context.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=new_markup,
+            )
         except Exception as e:
-            logger.error(f"[OCR] handle_photo 异常: {e}", exc_info=True)
-            try:
-                await send_long_message(
-                    update.effective_chat.id, f"⚠️ 图片处理异常: {e}", context,
-                    reply_to_message_id=update.message.message_id)
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
+            logger.debug(f"异步追问建议更新失败 (不影响主流程): {e}")
 
-    
+    # ── 会话恢复问候 — 搬运 Apple Intelligence 摘要 / Slack Catch Up ──────
+    # 用户超过 SESSION_GAP_THRESHOLD 小时没互动，回来时生成离线摘要
+
+    _SESSION_GAP_THRESHOLD = 4 * 3600  # 4 小时
+    _last_interaction: dict = {}  # chat_id → monotonic timestamp
+
+    async def _check_session_resumption(self, chat_id: int, user_id: int, update, context) -> bool:
+        """检测用户是否从长时间离线中回来，如果是则发送离线摘要。
+
+        搬运灵感: Apple Intelligence notification summary / Slack Catch Up
+        返回 True 表示发送了恢复摘要。
+        """
+        import time as _t
+
+        now = _t.monotonic()
+        last = self._last_interaction.get(chat_id, 0)
+        self._last_interaction[chat_id] = now
+
+        # 首次互动或间隔不够长，跳过
+        if last == 0 or (now - last) < self._SESSION_GAP_THRESHOLD:
+            return False
+
+        gap_hours = (now - last) / 3600
+
+        # 收集离线期间的变化（异步、轻量）
+        summary_parts = []
+        try:
+            # 1. 持仓变化
+            from src.invest_tools import get_stock_quote
+            from src.watchlist import get_watchlist_symbols
+            symbols = get_watchlist_symbols()[:5]
+            if symbols:
+                movers = []
+                import asyncio as _aio
+                quotes = await _aio.gather(
+                    *[get_stock_quote(s) for s in symbols],
+                    return_exceptions=True,
+                )
+                for sym, q in zip(symbols, quotes):
+                    if isinstance(q, Exception) or not q:
+                        continue
+                    pct = q.get("change_pct", 0)
+                    if abs(pct) > 1.5:
+                        movers.append(f"{sym} {pct:+.1f}%")
+                if movers:
+                    summary_parts.append(f"📊 自选股异动: {', '.join(movers)}")
+        except Exception:
+            pass
+
+        try:
+            # 2. 闲鱼未读消息
+            from src.xianyu.xianyu_live_session import get_xianyu_live
+            xy = get_xianyu_live()
+            if xy:
+                unread = xy.get_unread_count() if hasattr(xy, 'get_unread_count') else 0
+                if unread and unread > 0:
+                    summary_parts.append(f"🛍️ 闲鱼 {unread} 条未读消息")
+        except Exception:
+            pass
+
+        if not summary_parts:
+            return False
+
+        # 发送恢复摘要
+        try:
+            gap_text = f"{gap_hours:.0f}小时" if gap_hours < 24 else f"{gap_hours/24:.0f}天"
+            greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
+            await update.message.reply_text(greeting)
+            return True
+        except Exception:
+            return False
+
+    async def handle_suggest_callback(self, update, context):
+        """处理智能追问建议按钮点击 — 将建议文本当作用户消息重新处理
+
+        callback_data 格式: suggest:{建议文本}
+        用户点击后，等同于直接发送该建议文本给 Bot。
+        搬运灵感: ChatGPT Suggested Replies / Google Gemini Quick Actions
+        """
+        query = update.callback_query
+        await query.answer()
+
+        # 认证检查
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
+
+        data = query.data
+        if not data.startswith("suggest:"):
+            return
+
+        # 提取建议文本
+        suggest_text = data[8:].strip()  # 去掉 "suggest:" 前缀
+        if not suggest_text:
+            return
+
+        chat_id = update.effective_chat.id
+
+        try:
+            # 显示正在处理的提示
+            await query.edit_message_reply_markup(reply_markup=None)
+
+            # 将建议文本路由到 Brain 处理（与正常消息相同路径）
+            from src.core.brain import get_brain
+            brain = get_brain()
+            result = await brain.process_message(
+                source="telegram",
+                message=suggest_text,
+                context={
+                    "user_id": update.effective_user.id,
+                    "chat_id": chat_id,
+                    "bot_id": self.bot_id,
+                },
+            )
+
+            if result.success and result.final_result:
+                user_msg = result.to_user_message()
+                if user_msg:
+                    # 提取追问建议（如果有）
+                    _suggestions = result.extra_data.get("followup_suggestions", [])
+                    reply_markup = None
+                    try:
+                        reply_markup = _build_smart_reply_keyboard(
+                            user_msg, self.bot_id,
+                            getattr(self, 'model', ''), chat_id,
+                            ai_suggestions=_suggestions,
+                        )
+                    except Exception:
+                        pass
+
+                    try:
+                        from src.telegram_markdown import md_to_html
+                        safe = md_to_html(user_msg)
+                        await query.message.reply_text(
+                            safe, parse_mode="HTML",
+                            reply_markup=reply_markup,
+                        )
+                    except Exception:
+                        await query.message.reply_text(
+                            user_msg, reply_markup=reply_markup,
+                        )
+                    return
+
+            # Brain 未能处理 → 降级: 当作普通文本消息重新走流式路径
+            # 伪造文本消息让 handle_message 处理
+            await query.message.reply_text(f"🔍 正在处理「{suggest_text}」...")
+            update.message = query.message
+            update.message.text = suggest_text
+            await self.handle_message(update, context)
+
+        except Exception as e:
+            logger.debug(f"处理追问建议按钮失败: {e}")
+            try:
+                await query.message.reply_text(f"❌ 处理失败，请直接发送: {suggest_text}")
+            except Exception:
+                pass
+
     async def handle_trade_callback(self, update, context):
         '''处理投资分析会议后的一键下单按钮回调
         callback_data 格式:
@@ -1230,6 +1476,12 @@ class MessageHandlerMixin:
 
         query = update.callback_query
         await query.answer()
+
+        # 认证: 仅授权用户可操作
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
+
         data = query.data
 
         if data.startswith("itrade_cancel:"):
@@ -1246,16 +1498,31 @@ class MessageHandlerMixin:
                 return
             trades = pending.get("trades", [])
             results = []
+            pipeline = get_trading_pipeline()
             for t in trades:
                 try:
-                    ret = await ibkr.place_order(
-                        symbol=t["symbol"], action=t["action"],
-                        quantity=t["qty"],
-                        stop_loss=t.get("stop_loss"),
-                        take_profit=t.get("take_profit"),
-                    )
-                    emoji = "✅" if ret.get("success") else "❌"
-                    results.append(f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', 'OK')}")
+                    if pipeline:
+                        res = await execute_trade_via_pipeline(
+                            t, pipeline=pipeline, get_quote_func=get_stock_quote,
+                        )
+                        if res.startswith("[OK]"):
+                            emoji = "✅"
+                        elif res.startswith("[RISK REJECTED]"):
+                            emoji = "🛡️"
+                        elif res.startswith("[SKIP]"):
+                            emoji = "⏭️"
+                        else:
+                            emoji = "❌"
+                        results.append(f"{emoji} {res}")
+                    else:
+                        # Fallback: pipeline not initialized, use direct broker
+                        # FIX 4: ibkr has no place_order(); use buy()/sell()
+                        if t["action"].upper() == "BUY":
+                            ret = await ibkr.buy(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                        else:
+                            ret = await ibkr.sell(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                        emoji = "✅" if "error" not in ret else "❌"
+                        results.append(f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}")
                 except Exception as e:
                     results.append(f"❌ {t['symbol']}: {e}")
             await query.edit_message_text("📋 执行结果:\n\n" + "\n".join(results))
@@ -1276,152 +1543,30 @@ class MessageHandlerMixin:
                 return
             t = trades[idx]
             try:
-                ret = await ibkr.place_order(
-                    symbol=t["symbol"], action=t["action"],
-                    quantity=t["qty"],
-                    stop_loss=t.get("stop_loss"),
-                    take_profit=t.get("take_profit"),
-                )
-                emoji = "✅" if ret.get("success") else "❌"
-                await query.message.reply_text(
-                    f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', 'OK')}")
+                pipeline = get_trading_pipeline()
+                if pipeline:
+                    res = await execute_trade_via_pipeline(
+                        t, pipeline=pipeline, get_quote_func=get_stock_quote,
+                    )
+                    if res.startswith("[OK]"):
+                        emoji = "✅"
+                    elif res.startswith("[RISK REJECTED]"):
+                        emoji = "🛡️"
+                    elif res.startswith("[SKIP]"):
+                        emoji = "⏭️"
+                    else:
+                        emoji = "❌"
+                    await query.message.reply_text(f"{emoji} {res}")
+                else:
+                    # Fallback: pipeline not initialized, use direct broker
+                    # FIX 4: ibkr has no place_order(); use buy()/sell()
+                    if t["action"].upper() == "BUY":
+                        ret = await ibkr.buy(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                    else:
+                        ret = await ibkr.sell(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                    emoji = "✅" if "error" not in ret else "❌"
+                    await query.message.reply_text(
+                        f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}")
             except Exception as e:
                 await query.message.reply_text(f"❌ {t['symbol']} 执行失败: {e}")
-
-    async def handle_document_ocr(self, update, context):
-        '''处理文档消息（PDF/DOCX/PPTX/XLSX/图片）— Docling 结构化理解 + OCR 降级'''
-        try:
-            chat_id = update.effective_chat.id
-            user = update.effective_user
-            doc = update.message.document
-            mime = doc.mime_type or ""
-            fname = doc.file_name or "document"
-            caption = update.message.caption or ""
-            is_group = update.effective_chat.type in ("group", "supergroup")
-            
-            # 仅处理图片、PDF 和 Office 文档
-            supported_mimes = (
-                "image/", "application/pdf",
-                "application/vnd.openxmlformats-officedocument",  # docx/pptx/xlsx
-                "application/msword",  # .doc
-                "application/vnd.ms-excel",  # .xls
-                "application/vnd.ms-powerpoint",  # .ppt
-            )
-            if not any(mime.startswith(m) for m in supported_mimes):
-                return
-            
-            # 群聊门控
-            if is_group:
-                bot_username = (await context.bot.get_me()).username or ""
-                mentioned = f"@{bot_username}" in (caption or "")
-                trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "总结", "摘要"))
-                if not mentioned and not trigger:
-                    return
-            
-            # 处理中提示
-            hint_msg = await update.message.reply_text(f"🔍 正在分析 {fname}...")
-            
-            logger.info(f"[DOC] 收到文档 {fname} ({mime}, {doc.file_size} bytes) from {user.id}")
-            
-            file = await context.bot.get_file(doc.file_id)
-            buf = io.BytesIO()
-            await file.download_to_memory(buf)
-            file_bytes = buf.getvalue()
-
-            # ── Docling 结构化理解 (优先) ──────────────────────────
-            docling_supported = ('.pdf', '.docx', '.pptx', '.xlsx', '.doc')
-            docling_handled = False
-
-            if fname.lower().endswith(docling_supported):
-                try:
-                    from src.tools.docling_service import (
-                        convert_document, summarize_document, HAS_DOCLING,
-                    )
-                    if HAS_DOCLING:
-                        # 写入临时文件 — Docling 需要文件路径
-                        import os, tempfile
-                        suffix = os.path.splitext(fname)[1] or ".pdf"
-                        with tempfile.NamedTemporaryFile(
-                            suffix=suffix, delete=False,
-                        ) as tmp:
-                            tmp.write(file_bytes)
-                            local_path = tmp.name
-
-                        try:
-                            if caption:
-                                # 用户附带了问题 → 摘要+问答模式
-                                result_text = await summarize_document(
-                                    local_path, question=caption,
-                                )
-                            else:
-                                # 无问题 → 自动摘要
-                                result_text = await summarize_document(local_path)
-
-                            if result_text:
-                                # 删除处理中提示
-                                try:
-                                    await hint_msg.delete()
-                                except Exception:
-                                    logger.debug("Silenced exception", exc_info=True)
-                                try:
-                                    safe = md_to_html(result_text)
-                                    await update.message.reply_text(
-                                        safe, parse_mode="HTML",
-                                        reply_to_message_id=update.message.message_id,
-                                    )
-                                except Exception:
-                                    # HTML 渲染失败 → 纯文本降级
-                                    await send_long_message(
-                                        chat_id, result_text, context,
-                                        reply_to_message_id=update.message.message_id,
-                                    )
-                                docling_handled = True
-                        finally:
-                            # 清理临时文件
-                            try:
-                                os.unlink(local_path)
-                            except Exception:
-                                logger.debug("Silenced exception", exc_info=True)
-                except Exception as e:
-                    logger.debug(f"[DOC] Docling 处理失败，降级到 OCR: {e}")
-
-            if docling_handled:
-                return
-
-            # ── OCR 降级 (图片 + Docling 失败时) ──────────────────
-            result: OcrResult = await ocr_image(
-                file_bytes,
-                mime_type=mime,
-                user_id=user.id,
-                file_unique_id=doc.file_unique_id,
-            )
-            
-            # 删除处理中提示
-            try:
-                await hint_msg.delete()
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
-            
-            if result.ok and result.text:
-                tag = " (缓存)" if result.cached else ""
-                reply = f"📄 {fname} 识别结果{tag}:\n\n{result.text}"
-                if caption:
-                    reply += f"\n\n💬 附言: {caption}"
-                await send_long_message(chat_id, reply, context,
-                                        reply_to_message_id=update.message.message_id)
-            elif result.ok and not result.text:
-                await send_long_message(chat_id, f"📎 {fname} 已收到，未识别到文字内容。", context,
-                                        reply_to_message_id=update.message.message_id)
-            else:
-                await send_long_message(chat_id, f"⚠️ {fname} OCR 失败: {result.error}", context,
-                                        reply_to_message_id=update.message.message_id)
-        except Exception as e:
-            logger.error(f"[DOC] handle_document_ocr 异常: {e}", exc_info=True)
-            try:
-                await send_long_message(
-                    update.effective_chat.id, f"⚠️ 文档处理异常: {e}", context,
-                    reply_to_message_id=update.message.message_id)
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
-
 

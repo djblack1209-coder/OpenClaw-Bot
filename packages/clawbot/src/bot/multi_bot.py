@@ -20,10 +20,104 @@ from src.bot.cmd_ibkr_mixin import IBKRCommandsMixin
 from src.bot.cmd_trading_mixin import TradingCommandsMixin
 from src.bot.cmd_collab_mixin import CollabCommandsMixin
 from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
+from src.bot.chinese_nlp_mixin import ChineseNLPMixin
+from src.bot.ocr_mixin import OCRHandlerMixin
 from src.bot.message_mixin import MessageHandlerMixin
 from src.error_handler import get_error_handler
 
 logger = logging.getLogger(__name__)
+
+
+# ── v2.0: 实时上下文注入 — 让 LLM 看到用户的真实数据 ─────────
+# 每次对话自动注入 ~500 token 的用户实时状态到 system prompt
+# 使得 "最近交易做得怎么样" 能得到基于真实 P&L 的回答
+
+import time as _time
+
+_live_context_cache = {"text": "", "ts": 0}
+_LIVE_CONTEXT_TTL = 60  # 缓存60秒，避免每条消息都拉取
+
+
+def _build_live_context() -> str:
+    """构建用户实时状态摘要 — 注入 system prompt
+
+    拉取: 持仓概览 / 交易绩效 / 待办事项 / 市场概要
+    全部从内存/本地数据获取，不做网络请求 (< 10ms)
+    """
+    now = _time.monotonic()
+    if now - _live_context_cache["ts"] < _LIVE_CONTEXT_TTL:
+        return _live_context_cache["text"]
+
+    sections = []
+
+    # 1. 持仓概览 (from position_monitor — 内存数据)
+    try:
+        from src.position_monitor import position_monitor
+        if position_monitor and position_monitor.positions:
+            status = position_monitor.get_status()
+            lines = []
+            total_pnl = status.get("total_unrealized_pnl", 0)
+            lines.append(f"持仓{status.get('monitored_count', 0)}个, "
+                         f"总浮盈亏${total_pnl:+,.2f}")
+            for p in status.get("positions", [])[:5]:
+                sym = p["symbol"]
+                pnl_pct = p.get("unrealized_pnl_pct", 0)
+                cur = p.get("current_price", 0)
+                sl = p.get("stop_loss", 0)
+                line = f"  {sym} ${cur:.2f} ({pnl_pct:+.1f}%)"
+                if sl > 0:
+                    line += f" SL=${sl:.2f}"
+                lines.append(line)
+            sections.append("持仓: " + "; ".join(lines))
+    except Exception:
+        pass
+
+    # 2. 交易绩效 (from trading_journal — SQLite本地数据)
+    try:
+        from src.trading_journal import journal
+        if journal:
+            today = journal.get_today_pnl()
+            if today and today.get("trades", 0) > 0:
+                sections.append(
+                    f"今日交易: {today['trades']}笔 "
+                    f"胜{today.get('wins', 0)} 负{today.get('losses', 0)} "
+                    f"盈亏${today.get('pnl', 0):+,.2f}"
+                )
+            perf = journal.get_performance(days=7)
+            if perf and perf.get("total_trades", 0) > 0:
+                sections.append(
+                    f"7日绩效: {perf['total_trades']}笔 "
+                    f"胜率{perf.get('win_rate', 0):.0f}% "
+                    f"盈亏${perf.get('total_pnl', 0):+,.2f}"
+                )
+    except Exception:
+        pass
+
+    # 3. 待办事项 (from task_mgmt — SQLite本地数据)
+    try:
+        from src.execution.task_mgmt import top_tasks
+        tasks = top_tasks(limit=3)
+        if tasks:
+            task_str = ", ".join(t.get("title", "")[:20] for t in tasks)
+            sections.append(f"待办: {task_str}")
+    except Exception:
+        pass
+
+    # 4. 可用操作提示 (让 LLM 知道可以建议用户说什么)
+    sections.append(
+        "用户可以说中文指令: \"帮我买X股Y\" \"Y能买吗\" \"Y多少钱\" "
+        "\"帮我找便宜的Z\" \"分析Y\" 来触发实际操作"
+    )
+
+    if not sections:
+        _live_context_cache["text"] = ""
+        _live_context_cache["ts"] = now
+        return ""
+
+    text = "\n\n【实时状态】\n" + "\n".join(f"• {s}" for s in sections) + "\n"
+    _live_context_cache["text"] = text
+    _live_context_cache["ts"] = now
+    return text
 
 
 class MultiBot(
@@ -35,6 +129,8 @@ class MultiBot(
     TradingCommandsMixin,
     CollabCommandsMixin,
     ExecutionCommandsMixin,
+    ChineseNLPMixin,
+    OCRHandlerMixin,
     MessageHandlerMixin,
 ):
     """支持群聊的多机器人 — 使用共享基础设施 + Mixin 架构"""
@@ -86,8 +182,10 @@ class MultiBot(
 
     @property
     def system_prompt(self) -> str:
-        memory_context = shared_memory.get_context_for_prompt(max_tokens=500)
-        return self._base_system_prompt + memory_context
+        # v3.0: 缩减 shared_memory 500→200 tokens (live_context 已覆盖实时数据)
+        memory_context = shared_memory.get_context_for_prompt(max_tokens=200)
+        live_context = _build_live_context()
+        return self._base_system_prompt + memory_context + live_context
 
     def _get_chat_mode_prompt(self, user_id: int) -> str:
         """根据用户 chat_mode 偏好返回额外的系统提示 — 搬运自 father-bot 的 chat_modes"""
@@ -196,6 +294,9 @@ class MultiBot(
         self.app.add_handler(CommandHandler("performance", self.cmd_performance))
         self.app.add_handler(CommandHandler("review", self.cmd_review))
         self.app.add_handler(CommandHandler("journal", self.cmd_journal))
+        self.app.add_handler(CommandHandler("chart", self.cmd_chart))
+        self.app.add_handler(CommandHandler("drl", self.cmd_drl))
+        self.app.add_handler(CommandHandler("factors", self.cmd_factors))
         self.app.add_handler(CommandHandler("ibuy", self.cmd_ibuy))
         self.app.add_handler(CommandHandler("isell", self.cmd_isell))
         self.app.add_handler(CommandHandler("ipositions", self.cmd_ipositions))
@@ -232,17 +333,23 @@ class MultiBot(
         self.app.add_handler(CommandHandler("xpost", self.cmd_xpost))
         self.app.add_handler(CommandHandler("xhsdraft", self.cmd_xhsdraft))
         self.app.add_handler(CommandHandler("xhspost", self.cmd_xhspost))
+        self.app.add_handler(CommandHandler("dualpost", self.cmd_dual_post))
+        self.app.add_handler(CommandHandler("publish", self.cmd_publish))
         self.app.add_handler(CommandHandler("xianyu", self.cmd_xianyu))
         self.app.add_handler(CommandHandler("social_calendar", self.cmd_social_calendar))
         self.app.add_handler(CommandHandler("social_report", self.cmd_social_report))
         self.app.add_handler(CommandHandler("model", self.cmd_model))
         self.app.add_handler(CommandHandler("pool", self.cmd_pool))
+        self.app.add_handler(CommandHandler("keyhealth", self.cmd_keyhealth))
         self.app.add_handler(CommandHandler("memory", self.cmd_memory))
         self.app.add_handler(CommandHandler("settings", self.cmd_settings))
         self.app.add_handler(CommandHandler("voice", self.cmd_voice))
         self.app.add_handler(CommandHandler("export", self.cmd_export))
         self.app.add_handler(CommandHandler("qr", self.cmd_qr))
         self.app.add_handler(CommandHandler("agent", self.cmd_agent))
+        self.app.add_handler(CommandHandler("tts", self.cmd_tts))
+        self.app.add_handler(CommandHandler("novel", self.cmd_novel))
+        self.app.add_handler(CommandHandler("ship", self.cmd_ship))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_trade_callback, pattern=r"^itrade"))
         self.app.add_handler(CallbackQueryHandler(
@@ -265,6 +372,10 @@ class MultiBot(
             self.handle_quote_action_callback, pattern=r"^(ta_|buy_|watch_)"))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_card_action_callback, pattern=r"^(trade:|bt:|ta:|analyze:|news:|evo:|retry:|shop:|post:)"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_clarification_callback, pattern=r"^\d+:.+:.+$"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_suggest_callback, pattern=r"^suggest:"))
         self.app.add_handler(CallbackQueryHandler(
             lambda u, c: u.callback_query.answer(), pattern=r"^noop$"))
 

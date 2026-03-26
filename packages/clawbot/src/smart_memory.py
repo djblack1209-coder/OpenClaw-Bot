@@ -125,6 +125,7 @@ class SmartMemoryPipeline:
         self._turn_count: Dict[int, int] = {}  # chat_id -> turn count
         self._pending_messages: Dict[int, List[Dict]] = {}  # chat_id -> recent messages
         self._lock = asyncio.Lock()
+        self._extracting: set = set()  # chat_ids currently running extraction
 
     def set_llm_fn(self, llm_fn: Callable):
         """延迟设置 LLM 函数（启动后注入）"""
@@ -151,15 +152,73 @@ class SmartMemoryPipeline:
         self._turn_count[chat_id] = self._turn_count.get(chat_id, 0) + 1
         turn = self._turn_count[chat_id]
 
-        # 到达提取阈值 — 异步触发，不阻塞
-        if turn % self.extract_interval == 0 and self.llm_fn:
+        # 实时偏好检测 — 零 LLM 成本的正则捕获（搬运 ChatGPT Memory 模式）
+        # 用户说"简短点"/"我喜欢..."/"以后别..."时立即写入记忆，不等 extract_interval
+        if role == "user":
+            asyncio.create_task(self._detect_instant_preference(content, chat_id, user_id, bot_id))
+
+        # 到达提取阈值 — 异步触发，不阻塞（跳过已在提取中的 chat）
+        if turn % self.extract_interval == 0 and self.llm_fn and chat_id not in self._extracting:
+            self._extracting.add(chat_id)
             _t = asyncio.create_task(self._extract_and_store(chat_id, user_id, bot_id))
-            _t.add_done_callback(lambda t: t.exception() and logger.debug("事实提取后台任务异常: %s", t.exception()))
+            _t.add_done_callback(lambda t: (self._extracting.discard(chat_id), t.exception() and logger.debug("事实提取后台任务异常: %s", t.exception())))
 
         # 到达画像更新阈值
         if turn % self.profile_interval == 0 and self.llm_fn:
             _t2 = asyncio.create_task(self._update_user_profile(chat_id, user_id))
             _t2.add_done_callback(lambda t: t.exception() and logger.debug("用户画像更新后台任务异常: %s", t.exception()))
+
+    async def _detect_instant_preference(self, content: str, chat_id: int, user_id: int, bot_id: str):
+        """实时偏好检测器 — 零 LLM 成本捕获用户偏好信号
+
+        搬运灵感: ChatGPT Memory 的 "Remembered" 功能 / mem0 auto-extract
+        当检测到偏好信号词时，立即写入 SharedMemory，不等 extract_interval。
+        """
+        import re
+        try:
+            text = (content or "").strip()
+            if len(text) < 4:
+                return
+
+            # 偏好信号词匹配（优先级从高到低）
+            _PREF_PATTERNS = [
+                # 直接表达偏好
+                (r"(?:我喜欢|我偏好|我倾向|我更想)", "用户偏好"),
+                # 负面偏好
+                (r"(?:我讨厌|别给我|不要给我|我不喜欢|以后别|以后不要)", "用户反感"),
+                # 沟通风格
+                (r"(?:简短[点些一]|简洁[点些一]|少[说废]话|直接[说给]|别[啰罗]嗦)", "沟通风格: 偏好简洁"),
+                (r"(?:详细[点些一]|说[详仔]细|展开[说讲])", "沟通风格: 偏好详细"),
+                # 记住/记住了
+                (r"(?:帮我记住|你记一下|记住我|以后记得)", "用户要求记忆"),
+            ]
+
+            matched_category = None
+            for pattern, category in _PREF_PATTERNS:
+                if re.search(pattern, text):
+                    matched_category = category
+                    break
+
+            if not matched_category:
+                return
+
+            # 立即写入 SharedMemory（不等定期提取）
+            if self.shared_memory:
+                pref_fact = f"[{matched_category}] {text[:100]}"
+                self.shared_memory.remember(
+                    pref_fact,
+                    user_id=str(user_id),
+                    category="user_preference",
+                    importance="high",
+                )
+                logger.info(f"💬 实时偏好捕获: {pref_fact[:60]}")
+
+                # 偏好变化 → 触发画像立即更新（不等 profile_interval）
+                if self.llm_fn:
+                    asyncio.create_task(self._update_user_profile(chat_id, user_id))
+
+        except Exception as e:
+            logger.debug(f"实时偏好检测异常 (不影响主流程): {e}")
 
     async def _extract_and_store(self, chat_id: int, user_id: int, bot_id: str):
         """阶段1: LLM 事实提取 + 阶段2: 冲突解决（搬运自 mem0）"""
@@ -277,7 +336,31 @@ class SmartMemoryPipeline:
                 logger.info(f"[SmartMemory] 用户画像已更新: user={user_id}")
                 emit_flow_event("mem0", "profile", "success", "用户画像更新", {"profile": profile})
 
-                # 自动将画像同步写入硬盘的 MEMORY.md 供人类（Boss）阅读
+                # 同步画像到 TieredContextManager core memory
+                try:
+                    from src.bot.globals import tiered_context_manager as _tcm
+                    if _tcm and profile:
+                        parts = []
+                        if profile.get("name"):
+                            parts.append(f"称呼: {profile['name']}")
+                        if profile.get("interests"):
+                            interests = profile["interests"]
+                            if isinstance(interests, list):
+                                parts.append(f"兴趣: {', '.join(interests)}")
+                        if profile.get("expertise"):
+                            expertise = profile["expertise"]
+                            if isinstance(expertise, list):
+                                parts.append(f"专长: {', '.join(expertise)}")
+                        if profile.get("communication_style"):
+                            parts.append(f"沟通风格: {profile['communication_style']}")
+                        if parts:
+                            profile_text = "\n".join(parts)
+                            _tcm.core_set("user_profile", profile_text, chat_id=chat_id)
+                            logger.info("[SmartMemory] 画像已同步到 TieredContextManager core memory")
+                except Exception as tcm_e:
+                    logger.debug(f"[SmartMemory] 同步到 TCM 失败: {tcm_e}")
+
+                # 自动将画像同步写入硬盘的 MEMORY.md 供人类（严总）阅读
                 try:
                     import os
                     from pathlib import Path
@@ -295,7 +378,7 @@ class SmartMemoryPipeline:
                         # 用正则替换掉旧的画像块
                         import re
                         profile_md = f"**Last Updated**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                        profile_md += f"**Name**: {profile.get('name', 'Boss')}\n"
+                        profile_md += f"**Name**: {profile.get('name', '严总')}\n"
                         profile_md += f"**Interests**: {', '.join(profile.get('interests', []))}\n"
                         for k, v in profile.get('preferences', {}).items():
                             profile_md += f"- **{k}**: {v}\n"

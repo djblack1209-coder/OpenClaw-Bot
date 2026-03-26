@@ -307,6 +307,36 @@ class SynergyPipelines:
             "social_signals": len(self._social_signals),
         }
 
+    def get_context_enrichment(self) -> str:
+        """供 Brain 注入的跨域信号摘要 — 搬运 omi cross-context awareness 模式
+
+        将投资/社媒/风控等领域的最新信号聚合为一段简短文本，
+        让 Brain 在处理任何请求时都能"联想"到其他领域的相关信息。
+        """
+        parts = []
+
+        # 1. 社交热点信号（可能影响投资决策）
+        if self._social_signals:
+            fresh = []
+            now = time.time()
+            for sym, sig in self._social_signals.items():
+                if (now - sig.get("timestamp", 0)) < 3600:  # 1小时内
+                    sentiment = sig.get("sentiment", "")
+                    fresh.append(f"{sym}({sentiment})" if sentiment else sym)
+            if fresh:
+                parts.append(f"社交热点标的: {', '.join(fresh[:5])}")
+
+        # 2. 风控否决标的（避免推荐已被否决的）
+        if self._vetoed_symbols:
+            parts.append(f"风控否决标的: {', '.join(list(self._vetoed_symbols)[:5])}")
+
+        # 3. 最近跨域事件（从统计中提取）
+        total = self._stats.get("total_events", 0)
+        if total > 0:
+            parts.append(f"今日跨域事件: {total}条")
+
+        return "\n".join(parts) if parts else ""
+
     # ── 内部工具 ──────────────────────────────────
 
     async def _save_social_draft(self, content: str, symbol: str = "", source: str = "") -> None:
