@@ -3,6 +3,8 @@
 /quote, /market, /portfolio, /buy, /sell, /watchlist, /trades, /reset_portfolio
 """
 import logging
+import time as _time
+from typing import Dict
 
 from src.bot.globals import (
     get_stock_quote, get_crypto_quote, get_market_summary,
@@ -10,17 +12,99 @@ from src.bot.globals import (
     get_risk_manager, ibkr,
 )
 from src.message_format import format_error
+from src.bot.error_messages import error_service_failed
+from src.bot.auth import requires_auth
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
+
+# ── 防重复下单冷却 (FIX 3) ──────────────────────────────────
+_trade_cooldown: Dict[str, float] = {}   # key="{user_id}:{symbol}", value=timestamp
+_TRADE_COOLDOWN_SEC = 30
 
 
 class InvestCommandsMixin:
     """投资相关 Telegram 命令"""
 
+    @requires_auth
+    @with_typing
+    async def cmd_calc(self, update, context):
+        """仓位计算器: /calc TSLA 195 190 (代码 入场价 止损价)
+
+        搬运 TradingView Position Size Calculator:
+        根据账户大小、风险偏好自动计算该买多少股。
+        同时给出固定比例法和凯利公式法两种建议。
+        """
+        args = context.args
+        if not args or len(args) < 3:
+            await update.message.reply_text(
+                "📐 仓位计算器\n\n"
+                "用法: `/calc 代码 入场价 止损价 [目标价]`\n"
+                "示例: `/calc TSLA 195 190`\n"
+                "示例: `/calc AAPL 180 175 200`\n\n"
+                "自动根据你的风控参数计算该买多少股。",
+                parse_mode="Markdown",
+            )
+            return
+
+        symbol = args[0].upper()
+        try:
+            entry_price = float(args[1])
+            stop_loss = float(args[2])
+            take_profit = float(args[3]) if len(args) > 3 else 0
+        except ValueError:
+            await update.message.reply_text("❌ 价格必须是数字。用法: /calc TSLA 195 190")
+            return
+
+        if stop_loss >= entry_price:
+            await update.message.reply_text("❌ 止损价必须低于入场价。")
+            return
+
+        rm = get_risk_manager()
+        if not rm:
+            await update.message.reply_text("❌ 风控引擎未就绪。")
+            return
+
+        # 固定比例法
+        safe = rm.calc_safe_quantity(entry_price, stop_loss)
+        # 凯利公式法
+        kelly = rm.calc_kelly_quantity(entry_price, stop_loss, take_profit) if hasattr(rm, 'calc_kelly_quantity') else {}
+
+        risk_per_share = entry_price - stop_loss
+        risk_pct = (risk_per_share / entry_price) * 100
+
+        lines = [
+            f"📐 <b>仓位计算 — {symbol}</b>",
+            f"",
+            f"入场价: ${entry_price:.2f}",
+            f"止损价: ${stop_loss:.2f} (风险 {risk_pct:.1f}%)",
+        ]
+        if take_profit > 0:
+            rr = (take_profit - entry_price) / risk_per_share
+            lines.append(f"目标价: ${take_profit:.2f} (盈亏比 {rr:.1f}:1)")
+
+        lines.append(f"")
+        lines.append(f"━━━ 固定比例法 (2%风险) ━━━")
+        if safe:
+            lines.append(f"建议数量: <b>{safe.get('quantity', 0)}</b> 股")
+            lines.append(f"投入金额: ${safe.get('total_cost', 0):,.0f}")
+            lines.append(f"最大亏损: ${safe.get('max_loss', 0):,.0f}")
+
+        if kelly and kelly.get("quantity", 0) > 0:
+            lines.append(f"")
+            lines.append(f"━━━ 凯利公式法 (保守1/4) ━━━")
+            lines.append(f"建议数量: <b>{kelly.get('quantity', 0)}</b> 股")
+            lines.append(f"投入金额: ${kelly.get('total_cost', 0):,.0f}")
+            if kelly.get("kelly_pct"):
+                lines.append(f"凯利仓位: {kelly['kelly_pct']:.1f}%")
+
+        msg = "\n".join(lines)
+        await update.message.reply_text(msg, parse_mode="HTML")
+
+    @requires_auth
+    @with_typing
     async def cmd_quote(self, update, context):
         """查询行情: /quote AAPL 或 /quote BTC — 富卡片格式 + 错误恢复"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if not args:
             await update.message.reply_text("用法: `/quote AAPL` 或 `/quote BTC`", parse_mode="Markdown")
@@ -61,10 +145,10 @@ class InvestCommandsMixin:
             from src.telegram_ux import send_error_with_retry
             await send_error_with_retry(update, context, e, retry_command=f"/quote {symbol}")
 
+    @requires_auth
+    @with_typing
     async def cmd_market(self, update, context):
         """市场概览: /market"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text(f"{self.emoji} 获取市场概览中（约10秒）...")
         try:
             text = await get_market_summary()
@@ -73,10 +157,10 @@ class InvestCommandsMixin:
             from src.telegram_ux import send_error_with_retry
             await send_error_with_retry(update, context, e, retry_command="/market")
 
+    @requires_auth
+    @with_typing
     async def cmd_portfolio(self, update, context):
         """查看投资组合: /portfolio"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text(f"{self.emoji} 计算投资组合中...")
 
         # 获取结构化持仓数据用于富卡片
@@ -137,10 +221,10 @@ class InvestCommandsMixin:
                 await update.message.reply_text(format_error(e, "获取IBKR持仓"),
                                                 reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_buy(self, update, context):
         """模拟买入: /buy AAPL 10 或 /buy AAPL 10 150.5"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if not args or len(args) < 2:
             await update.message.reply_text(
@@ -156,6 +240,10 @@ class InvestCommandsMixin:
         except ValueError:
             await update.message.reply_text("数量必须是数字")
             return
+        # FIX 2: 校验正数
+        if quantity <= 0:
+            await update.message.reply_text("⚠️ 数量必须为正数。")
+            return
         if len(args) >= 3:
             try:
                 price = float(args[2])
@@ -166,11 +254,26 @@ class InvestCommandsMixin:
             await update.message.reply_text(f"{self.emoji} 获取 {symbol} 当前价格...")
             quote = await get_stock_quote(symbol)
             if "error" in quote:
-                await update.message.reply_text(f"获取价格失败: {quote['error']}")
+                await update.message.reply_text(error_service_failed("行情查询", quote.get('error', '')))
                 return
             price = quote["price"]
-        # 风控检查
+
+        # FIX 3: 防重复下单冷却
+        user_id = update.effective_user.id if update.effective_user else 0
+        dedup_key = f"{user_id}:{symbol}"
+        now_ts = _time.time()
+        last_trade_ts = _trade_cooldown.get(dedup_key, 0)
+        if now_ts - last_trade_ts < _TRADE_COOLDOWN_SEC:
+            remaining = int(_TRADE_COOLDOWN_SEC - (now_ts - last_trade_ts))
+            await update.message.reply_text(f"⚠️ 请勿重复下单，{remaining}秒后可再次交易 {symbol}。")
+            return
+
+        # FIX 6: 风控系统必须初始化（实盘场景）
         rm = get_risk_manager()
+        if rm is None and ibkr.is_connected():
+            await update.message.reply_text("⚠️ 风控系统未初始化，无法执行交易。")
+            return
+        # 风控检查
         if rm and price > 0:
             sl = round(price * 0.97, 2)
             check = rm.check_trade(symbol=symbol, side="BUY", quantity=quantity,
@@ -188,6 +291,11 @@ class InvestCommandsMixin:
                 ibkr_ok = True
                 fill_price = ibkr_result.get("avg_price", 0) or price
                 fill_qty = ibkr_result.get("filled_qty", 0) or quantity
+                # FIX 5: 零成交不入持仓
+                if fill_qty <= 0:
+                    await update.message.reply_text("⚠️ 订单已提交但尚未成交，请稍后查看 /portfolio。")
+                    _trade_cooldown[dedup_key] = now_ts
+                    return
                 # 同步更新模拟组合
                 portfolio.buy(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动买入(IBKR同步)")
                 from src.telegram_ux import format_trade_card
@@ -201,11 +309,11 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text(f"IBKR下单失败: {ibkr_result['error']}\n降级到模拟组合...")
+                await update.message.reply_text(f"⚠️ 实盘暂不可用，已为您在模拟组合中执行")
         if not ibkr_ok:
             result = portfolio.buy(symbol, quantity, price, decided_by=self.name, reason="手动买入")
             if "error" in result:
-                await update.message.reply_text(f"买入失败: {result['error']}")
+                await update.message.reply_text(error_service_failed("买入", result.get('error', '')))
             else:
                 from src.telegram_ux import format_trade_card
                 card = format_trade_card({
@@ -218,11 +326,13 @@ class InvestCommandsMixin:
                     "reason": "模拟买入",
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
+        # FIX 3: 记录冷却时间戳
+        _trade_cooldown[dedup_key] = _time.time()
 
+    @requires_auth
+    @with_typing
     async def cmd_sell(self, update, context):
         """模拟卖出: /sell AAPL 10 或 /sell AAPL 10 160.5"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if not args or len(args) < 2:
             await update.message.reply_text(
@@ -238,6 +348,10 @@ class InvestCommandsMixin:
         except ValueError:
             await update.message.reply_text("数量必须是数字")
             return
+        # FIX 2: 校验正数
+        if quantity <= 0:
+            await update.message.reply_text("⚠️ 数量必须为正数。")
+            return
         if len(args) >= 3:
             try:
                 price = float(args[2])
@@ -248,9 +362,42 @@ class InvestCommandsMixin:
             await update.message.reply_text(f"{self.emoji} 获取 {symbol} 当前价格...")
             quote = await get_stock_quote(symbol)
             if "error" in quote:
-                await update.message.reply_text(f"获取价格失败: {quote['error']}")
+                await update.message.reply_text(error_service_failed("行情查询", quote.get('error', '')))
                 return
             price = quote["price"]
+
+        # FIX 3: 防重复下单冷却
+        user_id = update.effective_user.id if update.effective_user else 0
+        dedup_key = f"{user_id}:{symbol}"
+        now_ts = _time.time()
+        last_trade_ts = _trade_cooldown.get(dedup_key, 0)
+        if now_ts - last_trade_ts < _TRADE_COOLDOWN_SEC:
+            remaining = int(_TRADE_COOLDOWN_SEC - (now_ts - last_trade_ts))
+            await update.message.reply_text(f"⚠️ 请勿重复下单，{remaining}秒后可再次交易 {symbol}。")
+            return
+
+        # FIX 1 + FIX 6: 风控检查（sell 路径原本完全跳过了风控）
+        rm = get_risk_manager()
+        if rm is None and ibkr.is_connected():
+            await update.message.reply_text("⚠️ 风控系统未初始化，无法执行交易。")
+            return
+        if rm and price > 0:
+            # 检查熔断冷却
+            if hasattr(rm, 'check_cooldown'):
+                cooldown_ok = rm.check_cooldown()
+                if not cooldown_ok:
+                    await update.message.reply_text("⚠️ 风控熔断中，暂停交易。")
+                    return
+            # 验证持仓存在且数量合法
+            positions = portfolio.get_positions()
+            pos = next((p for p in positions if p["symbol"] == symbol), None)
+            if pos is None:
+                await update.message.reply_text(f"⚠️ 没有 {symbol} 的持仓，无法卖出。")
+                return
+            if quantity > pos["quantity"]:
+                await update.message.reply_text(f"⚠️ 持仓不足: 持有{pos['quantity']}股, 要卖{quantity}股。")
+                return
+
         # 优先走 IBKR 实盘，失败降级模拟
         ibkr_ok = False
         if ibkr.is_connected():
@@ -259,6 +406,11 @@ class InvestCommandsMixin:
                 ibkr_ok = True
                 fill_price = ibkr_result.get("avg_price", 0) or price
                 fill_qty = ibkr_result.get("filled_qty", 0) or quantity
+                # FIX 5: 零成交不入持仓
+                if fill_qty <= 0:
+                    await update.message.reply_text("⚠️ 订单已提交但尚未成交，请稍后查看 /portfolio。")
+                    _trade_cooldown[dedup_key] = now_ts
+                    return
                 # 同步更新模拟组合
                 sim_result = portfolio.sell(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动卖出(IBKR同步)")
                 profit = sim_result.get("profit", 0) if "error" not in sim_result else 0
@@ -274,11 +426,11 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text(f"IBKR下单失败: {ibkr_result['error']}\n降级到模拟组合...")
+                await update.message.reply_text(f"⚠️ 实盘暂不可用，已为您在模拟组合中执行")
         if not ibkr_ok:
             result = portfolio.sell(symbol, quantity, price, decided_by=self.name, reason="手动卖出")
             if "error" in result:
-                await update.message.reply_text(f"卖出失败: {result['error']}")
+                await update.message.reply_text(error_service_failed("卖出", result.get('error', '')))
             else:
                 from src.telegram_ux import format_trade_card
                 card = format_trade_card({
@@ -292,18 +444,20 @@ class InvestCommandsMixin:
                     "reason": "模拟卖出",
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
+        # FIX 3: 记录冷却时间戳
+        _trade_cooldown[dedup_key] = _time.time()
 
+    @requires_auth
+    @with_typing
     async def cmd_watchlist(self, update, context):
         """自选股: /watchlist 或 /watchlist add AAPL 理由"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if args and args[0].lower() == "add" and len(args) >= 2:
             symbol = args[1].upper()
             reason = " ".join(args[2:]) if len(args) > 2 else ""
             result = portfolio.add_watchlist(symbol, added_by=self.name, reason=reason)
             if "error" in result:
-                await update.message.reply_text(f"添加失败: {result['error']}")
+                await update.message.reply_text(error_service_failed("自选股", result.get('error', '')))
             else:
                 await update.message.reply_text(f"已添加 {symbol} 到自选股")
             return
@@ -317,14 +471,14 @@ class InvestCommandsMixin:
             if item.get("reason"):
                 line += f" ({item['reason']})"
             if item.get("added_by"):
-                line += f" [by {item['added_by']}]"
+                line += f" [来自 {item['added_by']}]"
             lines.append(line)
         await send_long_message(update.effective_chat.id, "\n".join(lines), context, reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_trades(self, update, context):
         """交易记录: /trades 或 /trades 20"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         limit = 10
         if args:
@@ -361,11 +515,10 @@ class InvestCommandsMixin:
             except Exception as e:
                 logger.debug("PnL chart failed: %s", e)
 
+    @requires_auth
+    @with_typing
     async def cmd_export(self, update, context):
         """导出交易数据为 Excel: /export [trades|watchlist|portfolio] [csv]"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         args = context.args or []
         target = args[0].lower() if args else "trades"
         fmt = "csv" if (len(args) >= 2 and args[1].lower() == "csv") else "xlsx"
@@ -464,6 +617,12 @@ class InvestCommandsMixin:
         """处理行情卡片操作按钮 (ta_, buy_, watch_)"""
         query = update.callback_query
         await query.answer()
+
+        # 认证: 仅授权用户可操作
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
+
         data = query.data
 
         if data.startswith("ta_"):
@@ -478,10 +637,10 @@ class InvestCommandsMixin:
             context.args = ["add", symbol]
             await self.cmd_watchlist(update, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_reset_portfolio(self, update, context):
         """重置投资组合: /reset_portfolio"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         capital = 100000
         if args:

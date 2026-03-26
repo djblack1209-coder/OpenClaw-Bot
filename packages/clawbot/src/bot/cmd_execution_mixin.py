@@ -13,6 +13,9 @@ from pathlib import Path
 from src.bot.globals import execution_hub, send_long_message, image_tool, get_siliconflow_key
 from src.bot.rate_limiter import rate_limiter, token_budget
 from src.message_format import format_error
+from src.bot.error_messages import error_service_failed
+from src.bot.auth import requires_auth
+from src.telegram_ux import with_typing
 from src.notify_style import (
     format_social_published, format_social_dual_result,
     format_hotpost_result, format_cost_card, format_bounty_result,
@@ -36,21 +39,25 @@ class ExecutionCommandsMixin:
         label = " / ".join(missing) if missing else "目标平台"
         return f"\nOpenClaw 专用浏览器已自动打开，请先登录{label}后重试 {retry_command}"
 
+    @requires_auth
     async def cmd_hot(self, update, context):
         await self.cmd_hotpost(update, context)
 
+    @requires_auth
     async def cmd_post_social(self, update, context):
         await self.cmd_post(update, context)
 
+    @requires_auth
     async def cmd_post_x(self, update, context):
         await self.cmd_xpost(update, context)
 
+    @requires_auth
     async def cmd_post_xhs(self, update, context):
         await self.cmd_xhspost(update, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_social_persona(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         ret = await asyncio.to_thread(execution_hub.get_social_persona_summary)
         if not ret.get("success"):
             await update.message.reply_text(format_error(ret.get('error', '未知错误'), "读取社媒人设"))
@@ -79,9 +86,9 @@ class ExecutionCommandsMixin:
             lines.append(f"- 人设文件: {ret.get('path')}")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_social_launch(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text("正在生成数字生命首发包并写入草稿...")
         ret = await asyncio.to_thread(execution_hub.create_social_launch_drafts)
         if not ret.get("success"):
@@ -120,7 +127,7 @@ class ExecutionCommandsMixin:
                     except Exception:
                         logger.exception("发送数字生命自拍失败: %s", path)
             else:
-                lines.append(f"- 自拍生成失败: {image_ret.get('error', '未知错误')}")
+                lines.append(error_service_failed("自拍生成", image_ret.get('error', '')))
         lines.append(f"- 自拍 Prompt: {prompt}")
         lines.append(f"- 负面词: {(ret.get('image', {}) or {}).get('negative_prompt', '')}")
         if generated_paths:
@@ -133,28 +140,26 @@ class ExecutionCommandsMixin:
             lines.append("- 下一步: /post_x <X草稿ID> 或 /post_xhs <小红书草稿ID>")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
     async def cmd_dev(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = ["dev", *(context.args or [])]
         context.args = args
         await self.cmd_ops(update, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_brief(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text("正在生成执行简报...")
         brief = await execution_hub.generate_daily_brief()
         await send_long_message(update.effective_chat.id, brief, context)
 
+    @requires_auth
     async def cmd_lane(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await self.cmd_lanes(update, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_cost(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         throttle_flags = {
             "group_llm": os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false').lower() in {'1','true','yes','on'},
             "group_intent": os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false').lower() in {'1','true','yes','on'},
@@ -168,9 +173,9 @@ class ExecutionCommandsMixin:
         )
         await send_long_message(update.effective_chat.id, text, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_config(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         lines = ["当前执行配置", ""]
         lines.append("自动调度:")
         lines.append(f"- 执行简报: {os.getenv('OPS_BRIEF_ENABLED', 'false')}")
@@ -202,9 +207,9 @@ class ExecutionCommandsMixin:
         lines.append("- /ops -> 全量自动化入口")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_topic(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip() or "AI出海"
         await update.message.reply_text(f"正在研究题材：{topic}")
         ret = await execution_hub.research_social_topic(topic, limit=5)
@@ -262,16 +267,16 @@ class ExecutionCommandsMixin:
         lines.append(f"- 学习存档: {ret.get('memory_path', '')}")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_xhs(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         if not topic:
             await update.message.reply_text("📕 小红书热点发布中...")
             ret = await execution_hub.autopost_hot_content("xiaohongshu")
             package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
             if not package:
-                await update.message.reply_text(f"小红书热点发布失败: {package.get('error', ret.get('error', '未知错误'))}")
+                await update.message.reply_text(error_service_failed("小红书热点发布", package.get('error', ret.get('error', ''))))
                 return
             published = package.get("published", {}) or {}
             if not published.get("success"):
@@ -296,8 +301,8 @@ class ExecutionCommandsMixin:
         ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
         if not ret.get("success"):
             await update.message.reply_text(
-                f"小红书发布失败: {ret.get('error', '未知错误')}"
-                f"{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
+                error_service_failed("小红书发帖", ret.get('error', ''))
+                + f"\n{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
             )
             return
         published = ret.get("published", {}) or {}
@@ -316,9 +321,9 @@ class ExecutionCommandsMixin:
         )
         await send_long_message(update.effective_chat.id, text, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_post(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         if not topic:
             await self.cmd_hotpost(update, context)
@@ -338,9 +343,9 @@ class ExecutionCommandsMixin:
             text += f"\n{hint.strip()}"
         await send_long_message(update.effective_chat.id, text, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_hotpost(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args or []
         platform = "all"
         topic = ""
@@ -381,7 +386,7 @@ class ExecutionCommandsMixin:
                 )
                 if not package or not package.get("results"):
                     await update.message.reply_text(
-                        f"内容生成失败: {package.get('error', '未知错误') if package else '无结果'}")
+                        error_service_failed("内容生成", package.get('error', '') if package else '无结果'))
                     return
 
                 # 构建预览文本
@@ -467,9 +472,9 @@ class ExecutionCommandsMixin:
         )
         await send_long_message(update.effective_chat.id, text, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_social_plan(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         if topic:
             await update.message.reply_text(f"正在生成题材发文计划：{topic}")
@@ -509,9 +514,9 @@ class ExecutionCommandsMixin:
         lines.append("下一步: /social_repost <题材> 或 /post_social <题材>")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_social_repost(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         if topic:
             await update.message.reply_text(f"正在生成双平台改写草稿：{topic}")
@@ -532,15 +537,14 @@ class ExecutionCommandsMixin:
                     lines.append(f"- {label}标题: {package.get('title')}")
                 lines.append(f"- {label}预览: {str(package.get('body', '') or '')[:88]}")
             else:
-                lines.append(f"- {label}失败: {package.get('error', '未知错误')}")
+                lines.append(f"- {error_service_failed(label, package.get('error', ''))}")
         lines.append("")
         lines.append(f"下一步: /post_social {ret.get('topic', topic or '').strip()}".rstrip())
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_ops(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         args = context.args or []
         if not args:
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -638,39 +642,39 @@ class ExecutionCommandsMixin:
             if not result.get("success"):
                 await send_long_message(
                     update.effective_chat.id,
-                    f"开发流程失败: {result.get('error', '未知错误')}",
+                    error_service_failed("开发流程", result.get('error', '')),
                     context,
                 )
                 return
 
             lines = ["开发流程结果", ""]
             for i, step in enumerate(result.get("steps", []), 1):
-                ok = "OK" if step.get("ok") else "FAIL"
+                ok = "成功" if step.get("ok") else "失败"
                 lines.append(f"[{i}] {ok} {step.get('command', '')}")
                 out = (step.get("stdout", "") or "").strip()
                 err = (step.get("stderr", "") or "").strip()
                 if out:
-                    lines.append(f"stdout: {out[:300]}")
+                    lines.append(f"输出: {out[:300]}")
                 if err:
-                    lines.append(f"stderr: {err[:300]}")
+                    lines.append(f"错误: {err[:300]}")
                 lines.append("")
             await send_long_message(update.effective_chat.id, "\n".join(lines).strip(), context)
             return
 
-        await update.message.reply_text("未知子命令，请使用 /ops help")
+        await update.message.reply_text("❓ 未知子命令，请使用 /ops help 查看可用操作")
 
+    @requires_auth
+    @with_typing
     async def cmd_xwatch(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         source = " ".join(context.args or []).strip()
         if not source:
             await update.message.reply_text("用法: /xwatch <X合集推文链接>")
             return
         await self._ops_tweet(update, context, ["watch", source])
 
+    @requires_auth
+    @with_typing
     async def cmd_xbrief(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text("正在生成 X 博主更新摘要...")
         digest = await execution_hub.generate_x_monitor_brief()
         if not digest:
@@ -678,9 +682,9 @@ class ExecutionCommandsMixin:
             return
         await send_long_message(update.effective_chat.id, digest, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_xdraft(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         await update.message.reply_text("正在生成 X 草稿...")
         ret = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
@@ -694,9 +698,9 @@ class ExecutionCommandsMixin:
         lines.append(ret.get("body", ""))
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_xpost(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args or []
         draft_id = 0
         topic = ""
@@ -707,7 +711,7 @@ class ExecutionCommandsMixin:
         if draft_id <= 0:
             draft = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
             if not draft.get("success"):
-                await update.message.reply_text(f"X 自动发帖失败: {draft.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("X 发帖", draft.get('error', '')))
                 return
             draft_id = int(draft.get("draft_id", 0) or 0)
         await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发 X...")
@@ -721,14 +725,14 @@ class ExecutionCommandsMixin:
                 f"{self._social_login_retry_hint(ret, '/post_x ' + topic if topic else '/post_x')}"
             )
 
+    @requires_auth
+    @with_typing
     async def cmd_xhsdraft(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         topic = " ".join(context.args or []).strip()
         await update.message.reply_text("正在生成小红书草稿...")
         ret = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
         if not ret.get("success"):
-            await update.message.reply_text(f"小红书草稿生成失败: {ret.get('error', '未知错误')}")
+            await update.message.reply_text(error_service_failed("小红书草稿", ret.get('error', '')))
             return
         lines = ["小红书草稿", ""]
         lines.append(f"草稿ID: {ret.get('draft_id')}")
@@ -737,9 +741,9 @@ class ExecutionCommandsMixin:
         lines.append(ret.get("body", ""))
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
+    @requires_auth
+    @with_typing
     async def cmd_xhspost(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args or []
         draft_id = 0
         topic = ""
@@ -750,7 +754,7 @@ class ExecutionCommandsMixin:
         if draft_id <= 0:
             draft = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
             if not draft.get("success"):
-                await update.message.reply_text(f"小红书自动发帖失败: {draft.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("小红书发帖", draft.get('error', '')))
                 return
             draft_id = int(draft.get("draft_id", 0) or 0)
         await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发小红书...")
@@ -820,7 +824,7 @@ class ExecutionCommandsMixin:
             result = await asyncio.to_thread(execution_hub.summarize_meeting, payload, "")
 
         if not result.get("success"):
-            await update.message.reply_text(f"会议纪要生成失败: {result.get('error', '未知错误')}")
+            await update.message.reply_text(error_service_failed("会议纪要", result.get('error', '')))
             return
         lines = ["自动会议纪要", ""]
         lines.append(f"文本行数: {result.get('line_count', 0)}")
@@ -851,7 +855,7 @@ class ExecutionCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"任务已创建: #{ret.get('task_id')} {title}")
             else:
-                await update.message.reply_text(f"创建失败: {ret.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("创建", ret.get('error', '')))
             return
 
         if sub == "done":
@@ -867,7 +871,7 @@ class ExecutionCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"任务已完成: #{task_id}")
             else:
-                await update.message.reply_text(f"更新失败: {ret.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("更新", ret.get('error', '')))
             return
 
         if sub == "top":
@@ -912,7 +916,7 @@ class ExecutionCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"监控已添加: {keyword}")
             else:
-                await update.message.reply_text(f"添加失败: {ret.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("添加", ret.get('error', '')))
             return
 
         if sub == "addx":
@@ -928,7 +932,7 @@ class ExecutionCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"X博主监控已添加: @{normalized}")
             else:
-                await update.message.reply_text(f"添加失败: {ret.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("添加", ret.get('error', '')))
             return
 
         if sub == "list":
@@ -938,7 +942,7 @@ class ExecutionCommandsMixin:
                 return
             lines = ["监控列表", ""]
             for r in rows:
-                state = "ON" if int(r.get("enabled", 0) or 0) == 1 else "OFF"
+                state = "开启" if int(r.get("enabled", 0) or 0) == 1 else "关闭"
                 lines.append(f"#{r.get('id')} [{state}] {r.get('keyword')} ({r.get('source')})")
             await update.message.reply_text("\n".join(lines))
             return
@@ -981,7 +985,7 @@ class ExecutionCommandsMixin:
                     f"提醒已创建: #{ret.get('reminder_id')}\n触发时间: {ret.get('trigger_at')}"
                 )
             else:
-                await update.message.reply_text(f"创建失败: {ret.get('error', '未知错误')}")
+                await update.message.reply_text(error_service_failed("创建", ret.get('error', '')))
             return
 
         if sub == "action":
@@ -1281,15 +1285,131 @@ class ExecutionCommandsMixin:
             "/ops life action <动作> [JSON] - 触发本机动作/设备Webhook\n"
             "/ops project [路径] - 项目协作周报\n"
             "/ops dev [路径] - 开发流程自动化\n"
-            "/ops xianyu start|stop|status|reload - 闲鱼 AI 客服控制"
+            "/ops xianyu start|stop|status|reload - 闲鱼 AI 客服控制\n"
+            "/publish <平台> <文件路径> [标题] - 社媒多平台发布 (抖音/B站/小红书/快手)"
         )
+
+    # ---- 社媒多平台发布 (sau_bridge) ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_publish(self, update, context):
+        """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
+        from src.sau_bridge import publish_video, publish_note, get_supported_platforms, format_publish_result, PLATFORMS
+
+        args = context.args or []
+        if len(args) < 2:
+            platforms = get_supported_platforms()
+            help_text = "📤 社媒发布\n\n用法:\n"
+            help_text += "  /publish <平台> <文件路径> [标题]\n\n"
+            help_text += "支持平台:\n"
+            for key, info in platforms.items():
+                caps = []
+                if info["video"]: caps.append("视频")
+                if info["note"]: caps.append("图文")
+                help_text += f"  • {key} ({info['name']}) — {'/'.join(caps)}\n"
+            help_text += "\n示例:\n  /publish douyin /path/to/video.mp4 我的视频标题"
+            await update.message.reply_text(help_text)
+            return
+
+        platform = args[0].lower()
+        file_path = args[1]
+        title = " ".join(args[2:]) if len(args) > 2 else "OpenClaw 自动发布"
+
+        if platform not in PLATFORMS:
+            await update.message.reply_text(f"❓ 不支持的平台: {platform}\n支持: {', '.join(PLATFORMS.keys())}")
+            return
+
+        await update.message.reply_text(f"📤 正在发布到 {PLATFORMS[platform]['name']}...")
+
+        if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
+            result = await publish_video(platform, file_path, title)
+        else:
+            result = await publish_note(platform, [file_path], title)
+
+        if result.get("success"):
+            await update.message.reply_text(f"✅ 发布到 {PLATFORMS[platform]['name']} 成功!")
+        else:
+            error = result.get("error", result.get("stderr", "未知错误"))
+            await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
 
     # ---- 闲鱼 AI 客服控制 ----
 
+    @requires_auth
+    @with_typing
+    async def cmd_xianyu_report(self, update, context):
+        """闲鱼收入报表: /xianyu_report [天数]
+
+        搬运 Shopify Analytics Dashboard 的日报/周报/月报模式。
+        默认展示最近 7 天的收入、利润、订单数、客单价、爆款排行。
+        """
+        args = context.args or []
+        days = 7
+        if args:
+            try:
+                days = int(args[0])
+            except ValueError:
+                pass
+        days = min(max(days, 1), 90)  # 限制 1-90 天
+
+        try:
+            from src.xianyu.xianyu_context import XianyuContextManager
+            xctx = XianyuContextManager()
+
+            # 收入汇总
+            profit = xctx.get_profit_summary(days=days) if hasattr(xctx, 'get_profit_summary') else {}
+            # 今日统计
+            today_stats = xctx.daily_stats() if hasattr(xctx, 'daily_stats') else {}
+            # 待发货
+            pending_ship = xctx.get_pending_shipments() if hasattr(xctx, 'get_pending_shipments') else []
+
+            lines = [f"🐟 <b>闲鱼收入报表 — 最近 {days} 天</b>", ""]
+
+            if profit and profit.get("revenue", 0) > 0:
+                revenue = profit["revenue"]
+                cost = profit.get("cost", 0)
+                net_profit = profit.get("profit", 0)
+                orders = profit.get("orders", 0)
+                avg_price = revenue / orders if orders > 0 else 0
+                margin = (net_profit / revenue * 100) if revenue > 0 else 0
+
+                lines.append("━━━ 💰 营收概览 ━━━")
+                lines.append(f"营收: <b>¥{revenue:,.0f}</b>")
+                lines.append(f"成本: ¥{cost:,.0f}")
+                lines.append(f"利润: <b>¥{net_profit:,.0f}</b> ({margin:.0f}%)")
+                lines.append(f"订单: {orders} 笔 | 客单价: ¥{avg_price:.0f}")
+
+                if days > 1:
+                    daily_avg = revenue / days
+                    lines.append(f"日均: ¥{daily_avg:,.0f}")
+            else:
+                lines.append("📊 暂无营收数据")
+
+            if today_stats:
+                lines.append("")
+                lines.append("━━━ 📊 今日数据 ━━━")
+                if today_stats.get("messages", 0) > 0:
+                    lines.append(f"咨询: {today_stats['messages']} 条")
+                if today_stats.get("orders", 0) > 0:
+                    lines.append(f"下单: {today_stats['orders']} 笔")
+                if today_stats.get("conversion_rate"):
+                    lines.append(f"转化率: {today_stats['conversion_rate']}")
+
+            if pending_ship:
+                lines.append("")
+                lines.append(f"━━━ ⚠️ 待发货 {len(pending_ship)} 笔 ━━━")
+                for ship in pending_ship[:5]:
+                    lines.append(f"  • {ship.get('item_id', '?')} ({ship.get('hours_ago', '?')}h 前付款)")
+
+            msg = "\n".join(lines)
+            await update.message.reply_text(msg, parse_mode="HTML")
+
+        except Exception as e:
+            from src.bot.error_messages import error_service_failed
+            await update.message.reply_text(error_service_failed("闲鱼报表", str(e)))
+
     async def cmd_xianyu(self, update, context):
         """闲鱼 AI 客服远程控制"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = (context.args or [])
         action = args[0].lower() if args else "status"
 
@@ -1303,14 +1423,14 @@ class ExecutionCommandsMixin:
             if r.returncode == 0:
                 await update.message.reply_text("🦞 闲鱼 AI 客服已启动")
             else:
-                await update.message.reply_text(f"❌ 启动失败: {r.stderr.strip()}")
+                await update.message.reply_text(error_service_failed("服务启动"))
 
         elif action == "stop":
             r = subprocess.run(["launchctl", "unload", PLIST], capture_output=True, text=True)
             if r.returncode == 0:
                 await update.message.reply_text("🔴 闲鱼 AI 客服已停止")
             else:
-                await update.message.reply_text(f"❌ 停止失败: {r.stderr.strip()}")
+                await update.message.reply_text(error_service_failed("服务停止"))
 
         elif action == "reload":
             # 发送 SIGUSR1 热更新 Cookie
@@ -1343,10 +1463,10 @@ class ExecutionCommandsMixin:
 
     # ---- 社媒内容日历 ----
 
+    @requires_auth
+    @with_typing
     async def cmd_social_calendar(self, update, context):
         """生成未来 7 天的内容日历"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         days = 7
         if context.args:
             try:
@@ -1372,10 +1492,10 @@ class ExecutionCommandsMixin:
 
     # ---- 社媒发帖效果报告 ----
 
+    @requires_auth
+    @with_typing
     async def cmd_social_report(self, update, context):
         """查看社媒发帖效果报告 + A/B 测试数据"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         days = 7
         if context.args:
             try:
@@ -1429,6 +1549,11 @@ class ExecutionCommandsMixin:
         query = update.callback_query
         await query.answer()
 
+        # 认证: 仅授权用户可操作
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
+
         data = query.data
         if not data.startswith("social_confirm:"):
             return
@@ -1473,6 +1598,11 @@ class ExecutionCommandsMixin:
         """处理 /ops 交互菜单按钮回调"""
         query = update.callback_query
         await query.answer()
+
+        # 认证: 仅授权用户可操作
+        if not self._is_authorized(update.effective_user.id):
+            await query.answer("⛔ 未授权操作", show_alert=True)
+            return
 
         data = query.data
         if not data.startswith("ops_"):
@@ -1522,3 +1652,294 @@ class ExecutionCommandsMixin:
             await self.cmd_ops(update, context)
         except Exception as e:
             logger.warning("[OpsMenu] 执行 %s 失败: %s", data, e)
+
+    # ---- 闲鱼卡券自动发货管理 ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_ship(self, update, context):
+        """闲鱼卡券管理 — /ship <子命令>"""
+        import time as _time
+        from src.xianyu.auto_shipper import AutoShipper
+
+        shipper = AutoShipper()
+        args = context.args or []
+        sub = args[0] if args else "help"
+
+        if sub == "help" or sub == "帮助":
+            help_text = (
+                "📦 闲鱼自动发货管理\n\n"
+                "子命令:\n"
+                "  /ship add <商品ID> <卡券内容> — 添加单张卡券\n"
+                "  /ship batch <商品ID> — 批量添加(下一条消息每行一个)\n"
+                "  /ship stock [商品ID] — 查看库存\n"
+                "  /ship rule <商品ID> [延时秒数] — 设置发货规则\n"
+                "  /ship stats [商品ID] — 发货统计\n"
+                "  /ship test <商品ID> — 模拟发货测试\n\n"
+                "示例:\n"
+                "  /ship add item_001 ABCD-EFGH-1234\n"
+                "  /ship stock\n"
+                "  /ship rule item_001 60"
+            )
+            await update.message.reply_text(help_text)
+            return
+
+        if sub == "add" or sub == "添加":
+            if len(args) < 3:
+                await update.message.reply_text("❓ 用法: /ship add <商品ID> <卡券内容>")
+                return
+            item_id = args[1]
+            card = " ".join(args[2:])
+            result = shipper.add_cards(item_id, [card])
+            if result["added"] > 0:
+                remaining = shipper._get_remaining(item_id)
+                await update.message.reply_text(f"✅ 卡券已添加\n商品: {item_id}\n当前库存: {remaining}")
+            else:
+                await update.message.reply_text("⚠️ 卡券已存在（重复）")
+            return
+
+        if sub == "stock" or sub == "库存":
+            item_id = args[1] if len(args) > 1 else None
+            inv = shipper.get_inventory(item_id)
+            if not inv:
+                await update.message.reply_text("📦 暂无库存")
+                return
+            msg = "📦 卡券库存:\n\n"
+            for item in inv:
+                msg += f"  {item['item_id']}"
+                if item.get("spec"):
+                    msg += f" ({item['spec']})"
+                msg += f": {item['available']}可用 / {item['used']}已用 / {item['total']}总计\n"
+            await update.message.reply_text(msg)
+            return
+
+        if sub == "rule" or sub == "规则":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 用法: /ship rule <商品ID> [延时秒数]")
+                return
+            item_id = args[1]
+            delay = int(args[2]) if len(args) > 2 else 30
+            shipper.set_rule(item_id, auto_ship=True, delay_seconds=delay)
+            rule = shipper.get_rule(item_id)
+            await update.message.reply_text(
+                f"✅ 发货规则已设置\n"
+                f"商品: {item_id}\n"
+                f"自动发货: {'开启' if rule['auto_ship'] else '关闭'}\n"
+                f"延时: {rule['delay_seconds']}秒\n"
+                f"日上限: {rule['max_daily_ship']}单"
+            )
+            return
+
+        if sub == "stats" or sub == "统计":
+            item_id = args[1] if len(args) > 1 else None
+            stats = shipper.get_shipping_stats(item_id)
+            await update.message.reply_text(
+                f"📊 发货统计:\n"
+                f"  今日发货: {stats['today_shipped']}\n"
+                f"  累计发货: {stats['total_shipped']}"
+            )
+            return
+
+        if sub == "test" or sub == "测试":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 用法: /ship test <商品ID>")
+                return
+            item_id = args[1]
+            inv = shipper.get_inventory(item_id)
+            if not inv or inv[0]["available"] == 0:
+                await update.message.reply_text(f"⚠️ 商品 {item_id} 无可用卡券")
+                return
+            result = shipper.process_order(f"test_{int(_time.time())}", item_id, "test_buyer")
+            if result["success"]:
+                await update.message.reply_text(
+                    f"✅ 模拟发货成功\n"
+                    f"卡券: {result['card_content'][:50]}...\n"
+                    f"发送消息:\n{result['message'][:200]}\n"
+                    f"剩余库存: {result['remaining']}"
+                )
+            else:
+                await update.message.reply_text(f"⚠️ 模拟失败: {result['reason']}")
+            return
+
+        await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /ship help 查看帮助")
+
+    # ---- AI 小说工坊 (novel_writer) ----
+
+    @requires_auth
+    async def cmd_novel(self, update, context):
+        """AI小说写作 — /novel <子命令>"""
+        from src.novel_writer import get_novel_writer
+        
+        writer = get_novel_writer()
+        args = context.args or []
+        sub = args[0] if args else "help"
+        user_id = update.effective_user.id if update.effective_user else 0
+        
+        if sub == "help" or sub == "帮助":
+            help_text = (
+                "📖 AI 小说工坊\n\n"
+                "子命令:\n"
+                "  /novel new <题材> [风格] — 创建新小说\n"
+                "  /novel continue <ID> — 续写下一章\n"
+                "  /novel status <ID> — 查看进度\n"
+                "  /novel list — 我的小说列表\n"
+                "  /novel export <ID> — 导出 TXT\n"
+                "  /novel tts <ID> <章节号> — 章节转语音\n\n"
+                "示例:\n"
+                "  /novel new 都市修仙 轻松搞笑\n"
+                "  /novel new 末日生存\n"
+                "  /novel continue 1"
+            )
+            await update.message.reply_text(help_text)
+            return
+        
+        if sub == "new" or sub == "新建":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 请指定题材: /novel new <题材> [风格]\n例: /novel new 都市修仙 轻松搞笑")
+                return
+            genre = args[1]
+            style = " ".join(args[2:]) if len(args) > 2 else "轻松有趣"
+            await update.message.reply_text(f"📖 正在构思《{genre}》小说，生成大纲中...")
+            result = await writer.create_novel(genre, style, user_id)
+            if "error" in result:
+                await update.message.reply_text(f"⚠️ 创建失败: {result['error']}")
+                return
+            outline = result.get("outline", {})
+            msg = (
+                f"📖 新小说创建成功!\n\n"
+                f"📕 《{result['title']}》\n"
+                f"📝 {result.get('tagline', '')}\n"
+                f"🆔 小说ID: {result['novel_id']}\n\n"
+            )
+            # 显示角色
+            chars = outline.get("characters", [])
+            if chars:
+                msg += "👥 主要角色:\n"
+                for c in chars[:5]:
+                    msg += f"  • {c.get('name','')} ({c.get('role','')}): {c.get('personality','')}\n"
+            # 显示章节数
+            total_chapters = sum(len(act.get("chapters", [])) for act in outline.get("acts", []))
+            if total_chapters:
+                msg += f"\n📋 大纲: {len(outline.get('acts', []))}幕 {total_chapters}章\n"
+            msg += f"\n发送 /novel continue {result['novel_id']} 开始写第一章"
+            await update.message.reply_text(msg)
+            return
+        
+        if sub == "continue" or sub == "续写":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 请指定小说ID: /novel continue <ID>")
+                return
+            try:
+                novel_id = int(args[1])
+            except ValueError:
+                await update.message.reply_text("❓ 小说ID必须是数字")
+                return
+            await update.message.reply_text("✍️ 正在续写中，请稍候（约30秒）...")
+            result = await writer.write_next_chapter(novel_id)
+            if "error" in result:
+                await update.message.reply_text(f"⚠️ 续写失败: {result['error']}")
+                return
+            # Telegram 消息长度限制 4096
+            content = result["content"]
+            header = f"📖 《续写》第{result['chapter_num']}章 {result['title']}\n字数: {result['word_count']}\n\n"
+            if len(header + content) > 4000:
+                content = content[:3900] + "\n\n...(完整内容请导出 TXT)"
+            await update.message.reply_text(header + content)
+            return
+        
+        if sub == "status" or sub == "进度":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 请指定小说ID: /novel status <ID>")
+                return
+            try:
+                novel_id = int(args[1])
+            except ValueError:
+                await update.message.reply_text("❓ 小说ID必须是数字")
+                return
+            status = writer.get_novel_status(novel_id)
+            if "error" in status:
+                await update.message.reply_text(f"⚠️ {status['error']}")
+                return
+            msg = (
+                f"📖 《{status['title']}》\n"
+                f"📝 {status.get('tagline', '')}\n"
+                f"🎭 {status['genre']} · {status['style']}\n"
+                f"📊 {status['chapters']}章 / {status['total_words']}字\n\n"
+            )
+            if status["chapter_list"]:
+                msg += "章节列表:\n"
+                for ch in status["chapter_list"]:
+                    msg += f"  第{ch['num']}章 {ch['title']} ({ch['words']}字)\n"
+            await update.message.reply_text(msg)
+            return
+        
+        if sub == "list" or sub == "列表":
+            novels = writer.list_novels(user_id)
+            if not novels:
+                await update.message.reply_text("📖 还没有创建过小说\n发送 /novel new <题材> 开始创作")
+                return
+            msg = "📚 我的小说:\n\n"
+            for n in novels:
+                msg += f"  #{n['id']} 《{n['title']}》 {n['genre']} — {n['chapters']}章/{n['words']}字\n"
+            await update.message.reply_text(msg)
+            return
+        
+        if sub == "export" or sub == "导出":
+            if len(args) < 2:
+                await update.message.reply_text("❓ 请指定小说ID: /novel export <ID>")
+                return
+            try:
+                novel_id = int(args[1])
+            except ValueError:
+                await update.message.reply_text("❓ 小说ID必须是数字")
+                return
+            path = writer.export_txt(novel_id)
+            if not path:
+                await update.message.reply_text("⚠️ 导出失败（小说不存在或无章节）")
+                return
+            try:
+                with open(path, "rb") as f:
+                    await update.message.reply_document(document=f, filename=Path(path).name)
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ 文件发送失败: {e}")
+            return
+        
+        if sub == "tts":
+            if len(args) < 3:
+                await update.message.reply_text("❓ 用法: /novel tts <小说ID> <章节号>")
+                return
+            try:
+                novel_id = int(args[1])
+                chapter_num = int(args[2])
+            except ValueError:
+                await update.message.reply_text("❓ ID和章节号必须是数字")
+                return
+            # 获取章节内容
+            status = writer.get_novel_status(novel_id)
+            if "error" in status:
+                await update.message.reply_text(f"⚠️ {status['error']}")
+                return
+            # 读取章节
+            with writer._conn() as conn:
+                ch = conn.execute(
+                    "SELECT content FROM chapters WHERE novel_id=? AND chapter_num=?",
+                    (novel_id, chapter_num)
+                ).fetchone()
+            if not ch:
+                await update.message.reply_text(f"⚠️ 第{chapter_num}章不存在")
+                return
+            await update.message.reply_text(f"🎤 正在将第{chapter_num}章转为语音...")
+            from src.tools.tts_tool import text_to_speech
+            audio = await text_to_speech(ch["content"][:5000])
+            if audio:
+                try:
+                    with open(audio, "rb") as f:
+                        await update.message.reply_voice(voice=f)
+                    Path(audio).unlink(missing_ok=True)
+                except Exception as e:
+                    await update.message.reply_text(f"⚠️ 音频发送失败")
+            else:
+                await update.message.reply_text("⚠️ 语音生成失败")
+            return
+        
+        await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /novel help 查看帮助")

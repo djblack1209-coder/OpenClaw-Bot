@@ -5,6 +5,43 @@
 
 ---
 
+## [2026-03-27] 实用功能升级 — 3 项每日实用工具
+
+> 领域: `backend`, `trading`, `xianyu`
+> 影响模块: `daily_brief.py`, `cmd_invest_mixin.py`, `cmd_execution_mixin.py`, `multi_bot.py`
+
+### 1. 日报闲鱼段增强 (搬运 Shopify Analytics)
+
+- `daily_brief.py` L350: 闲鱼段新增 `get_profit_summary(days=1)` 调用
+- 展示日营收 + 利润 + 客单价，而不只是笔数
+- 自动推送: 每日 9AM 日报现在包含"今天闲鱼赚了多少"
+
+### 2. /calc 仓位计算器 (搬运 TradingView Position Size Calculator)
+
+- `cmd_invest_mixin.py` 新增 `cmd_calc()` 方法 (~75行)
+- 用法: `/calc TSLA 195 190 [200]` (代码 入场价 止损价 [目标价])
+- 同时输出固定比例法 (2%风险) 和凯利公式法 (1/4保守) 两种建议
+- 读取 RiskConfig 的 total_capital / max_risk_per_trade_pct 参数
+- `multi_bot.py` 注册 /calc handler
+
+### 3. /xianyu_report 闲鱼收入报表 (搬运 Shopify Analytics Dashboard)
+
+- `cmd_execution_mixin.py` 新增 `cmd_xianyu_report()` 方法 (~70行)
+- 用法: `/xianyu_report [天数]` (默认7天)
+- 展示: 营收/成本/利润/利润率/订单数/客单价/日均 + 今日数据 + 待发货列表
+- `multi_bot.py` 注册 /xianyu_report handler
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — 闲鱼段增强营收
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — 新增 /calc 仓位计算器
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 /xianyu_report 收入报表
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /calc + /xianyu_report
+
+### 测试
+- 946/946 passed
+
+---
+
 ## [2026-03-27] 验证层 — 41 项测试证明 16 项能力真的能用 + 2 个 Bug 修复
 
 > 领域: `backend`
