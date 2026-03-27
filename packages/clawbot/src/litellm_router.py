@@ -10,14 +10,27 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 """
 import logging
 import os
+import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import litellm
 from litellm.router import Router
 
 logger = logging.getLogger(__name__)
+
+
+def _scrub_secrets(msg: str) -> str:
+    """Remove API keys and sensitive URLs from error messages."""
+    # Scrub API keys (common patterns: sk-xxx, key-xxx, Bearer xxx)
+    msg = re.sub(r'(sk-|key-|Key:|Bearer\s+)[a-zA-Z0-9_-]{10,}', r'\1***REDACTED***', msg)
+    # Scrub URLs with keys in query params
+    msg = re.sub(r'(api_key=|token=|key=)[a-zA-Z0-9_-]+', r'\1***REDACTED***', msg)
+    # Scrub localhost URLs (internal service topology)
+    msg = re.sub(r'https?://127\.0\.0\.1:\d+[^\s]*', 'http://[internal]', msg)
+    msg = re.sub(r'https?://localhost:\d+[^\s]*', 'http://[internal]', msg)
+    return msg
 
 # ---- LLM 缓存层 (diskcache, graceful degradation) ----
 try:
@@ -128,7 +141,7 @@ MODEL_RANKING = {
     "meta-llama/llama-3.3-70b-instruct:free": 83, "meta/llama-3.3-70b-instruct": 83,
     "deepseek-r1-distill-llama-70b": 82,
     "openai/gpt-oss-120b:free": 82, "compound-ai/compound-beta": 82,
-    "qwen/qwen3-coder:free": 82, "gemini-2.0-flash": 82,
+    "qwen/qwen3-coder:free": 82,
     "gemini-2.5-flash-lite": 80,
     "THUDM/GLM-4-32B-0414": 80,
     "qwen/qwen3-32b": 77, "qwen3-32b": 77,
@@ -260,7 +273,6 @@ class LiteLLMPool:
                 ("gemini-2.5-flash", TIER_S, 10),        # 主力, 10RPM, 1M ctx, 65K output
                 ("gemini-3-flash-preview", TIER_S, 10),   # 最新preview, 1M ctx
                 ("gemini-2.5-flash-lite", TIER_B, 30),    # 轻量, 30RPM, 1M ctx
-                ("gemini-2.0-flash", TIER_B, 15),         # 已废弃但仍可用, 兜底
             ]:
                 deps.append(self._dep("google", f"openai/{m}", gk2, gb, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
 
@@ -347,21 +359,28 @@ class LiteLLMPool:
                                       rpm=500, tier=t, family=fam, note="iflow unlimited"))
 
         # 硅基流动付费Key池 (10条, 14元/条, 未实名, ⚠️禁止Pro模型)
-        # 仅限非Pro模型: DeepSeek-R1/V3, Qwen3-235B, GLM-4-32B 等
+        # v3.0: 免费模型保持原 family; 实际扣费模型隔离到 _paid family
+        # 用户说"用付费模型"时才会路由到 _paid family
         sf_paid_keys = _env_list("SILICONFLOW_PAID_KEYS")
         sf_paid_base = _env("SILICONFLOW_PAID_BASE_URL", "https://api.siliconflow.cn/v1")
         if sf_paid_keys:
             for i, key in enumerate(sf_paid_keys):
                 prov = f"sf_paid_{i}"
+                # 免费模型 (不扣余额) → 保持原 family, 增加免费Key容量
                 for m, fam, t in [
-                    ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),          # 免费模型, 不扣余额
-                    ("deepseek-ai/DeepSeek-V3-0324", "deepseek", TIER_S), # 免费模型
-                    ("THUDM/GLM-4-32B-0414", "glm", TIER_A),            # 免费模型
-                    ("deepseek-ai/DeepSeek-R1", "deepseek", TIER_S),     # 非Pro, 扣余额, ~175次/key
-                    ("deepseek-ai/DeepSeek-V3", "deepseek", TIER_A),     # 非Pro, 扣余额, ~1000次/key
+                    ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),
+                    ("deepseek-ai/DeepSeek-V3-0324", "deepseek", TIER_S),
+                    ("THUDM/GLM-4-32B-0414", "glm", TIER_A),
                 ]:
                     deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
-                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (no Pro!)"))
+                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (free model)"))
+                # 扣费模型 → 隔离到 _paid family, 不会被默认路由命中
+                for m, fam, t in [
+                    ("deepseek-ai/DeepSeek-R1", "deepseek_paid", TIER_S),
+                    ("deepseek-ai/DeepSeek-V3", "deepseek_paid", TIER_A),
+                ]:
+                    deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
+                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (PAID, gated)"))
 
         # Volcengine 火山引擎
         vk = _env("VOLCENGINE_API_KEY")
@@ -397,8 +416,21 @@ class LiteLLMPool:
             logger.warning("[LiteLLMPool] 无可用 deployment")
             return
 
-        families = list({d["model_name"] for d in deps})
-        fallbacks = [{f: ["g4f"]} for f in families if f != "g4f"]
+        families = set(d["model_name"] for d in deps)
+
+        # Multi-level fallback chain — avoid single-point-of-failure on g4f
+        # Priority: qwen/deepseek (many free providers) → g4f (localhost)
+        fallbacks = []
+        for f in families:
+            if f == "g4f":
+                continue  # g4f is the ultimate fallback, no further chain
+            chain = []
+            if f != "qwen" and "qwen" in families:
+                chain.append("qwen")
+            if f != "deepseek" and "deepseek" in families:
+                chain.append("deepseek")
+            chain.append("g4f")
+            fallbacks.append({f: chain})
 
         try:
             self._router = Router(
@@ -468,6 +500,11 @@ class LiteLLMPool:
                 temperature=temperature, max_tokens=max_tokens,
                 stream=stream, **kwargs,
             )
+
+            if stream:
+                # Streaming: wrap to capture token usage from final chunk
+                return self._wrap_streaming(response, model, start)
+
             latency = (time.time() - start) * 1000
             self._call_count += 1
             self._total_latency += latency
@@ -491,7 +528,7 @@ class LiteLLMPool:
             return response
         except Exception as e:
             self._error_count += 1
-            logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {e}")
+            logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {_scrub_secrets(str(e))}")
             raise
 
     def _pick_strongest_family(self) -> str:
@@ -504,6 +541,43 @@ class LiteLLMPool:
                         best_score = score
                         best_fam = fam
         return best_fam
+
+    async def _wrap_streaming(self, response, model: str, start_time: float):
+        """Wrap streaming response to capture token usage from the final chunk.
+
+        LiteLLM streaming responses carry usage info in the last chunk
+        (when stream_options={"include_usage": True} or provider supports it).
+        This wrapper tallies tokens and records cost after the stream completes.
+        """
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+
+        async for chunk in response:
+            # Many providers include usage in the final chunk
+            if hasattr(chunk, "usage") and chunk.usage:
+                prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
+                total_tokens = getattr(chunk.usage, "total_tokens", 0) or 0
+            yield chunk
+
+        # After stream completes, record metrics
+        latency = (time.time() - start_time) * 1000
+        self._call_count += 1
+        self._total_latency += latency
+
+        if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
+            self._total_input_tokens += prompt_tokens
+            self._total_output_tokens += completion_tokens
+            try:
+                cost = litellm.completion_cost(
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                self._total_cost += cost
+            except Exception:
+                logger.debug("Silenced exception", exc_info=True)
 
     # ---- 兼容旧接口 ----
 
@@ -529,25 +603,8 @@ class LiteLLMPool:
                         best, best_score, best_fam = s, score, fam
         return (best_fam, best) if best else None
 
-    # DEPRECATED: record_success/record_error are dead code — LiteLLM Router
-    # handles success/error tracking internally. Kept for backward compatibility.
-    def record_success(self, source: FreeAPISource, latency_ms: float = 0,
-                       input_tokens: int = 0, output_tokens: int = 0):
-        source.used_today += 1
-        source.last_used = time.time()
-        source.consecutive_errors = 0
-
-    def record_error(self, source: FreeAPISource, error: str = ""):
-        source.consecutive_errors += 1
-
     def add_source(self, model_family: str, source: FreeAPISource):
         self._reg(model_family, source)
-
-    def acquire_request(self, source: FreeAPISource):
-        pass  # LiteLLM handles concurrency
-
-    def release_request(self, source: FreeAPISource):
-        pass
 
     def reset_daily_counters(self):
         for sources in self._sources.values():
@@ -595,12 +652,6 @@ class LiteLLMPool:
                 provs[p]["requests_today"] += s.used_today
                 provs[p]["errors"] += s.consecutive_errors
         return provs
-
-    def save_state(self):
-        pass  # LiteLLM manages state
-
-    def load_state(self):
-        pass
 
     async def health_check(self, timeout: float = 10.0) -> Dict:
         """启动时健康检查 — 快速 ping 每个 provider，禁用不可用的。
@@ -661,6 +712,202 @@ class LiteLLMPool:
         logger.info(f"[健康检查] {healthy}/{checked} providers 可用, "
                      f"禁用 {len(disabled_providers)} 个, 耗时 {elapsed:.1f}s")
         return result
+
+    # ---- API Key 验证 (按 provider 逐 key 检测) ----
+
+    _MULTI_KEY_PREFIXES = {
+        "siliconflow_": "siliconflow_free",
+        "sf_paid_": "siliconflow_paid",
+    }
+
+    def _group_providers(self) -> Dict[str, Dict]:
+        """将 deployments 按逻辑 provider 分组，返回 {display_name: {keys: {raw_provider: src}}}"""
+        groups: Dict[str, Dict[str, FreeAPISource]] = {}
+        seen_providers: set = set()
+
+        for _family, sources in self._sources.items():
+            for src in sources:
+                if src.provider in seen_providers:
+                    continue
+                seen_providers.add(src.provider)
+
+                display = src.provider
+                for prefix, group_name in self._MULTI_KEY_PREFIXES.items():
+                    if src.provider.startswith(prefix):
+                        display = group_name
+                        break
+
+                groups.setdefault(display, {})[src.provider] = src
+
+        return groups
+
+    async def _test_single_key(self, src: FreeAPISource, timeout: float = 10.0) -> Dict:
+        """测试单个 key — 返回 {status, error?}"""
+        import asyncio
+        import re
+
+        # 使用 litellm 直接调用 (绕过 Router fallback)
+        model_id = src._deployment_id.split("/", 1)[-1] if "/" in src._deployment_id else src.model
+        # 为 litellm 构建正确的 model 格式
+        params: Dict[str, Any] = {
+            "model": f"openai/{model_id}" if src.base_url else model_id,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+            "temperature": 0,
+            "api_key": src.api_key,
+        }
+        if src.base_url:
+            params["api_base"] = src.base_url
+
+        try:
+            await asyncio.wait_for(
+                litellm.acompletion(**params),
+                timeout=timeout,
+            )
+            return {"status": "ok"}
+        except asyncio.TimeoutError:
+            return {"status": "unreachable", "error": f"Timeout ({timeout}s)"}
+        except Exception as e:
+            err_str = _scrub_secrets(str(e))
+            # 提取 HTTP 状态码
+            status_code = None
+            code_match = re.search(r"Status(?:Code)?[:\s]*(\d{3})", err_str, re.IGNORECASE)
+            if code_match:
+                status_code = int(code_match.group(1))
+            elif hasattr(e, "status_code"):
+                status_code = e.status_code
+
+            if status_code in (401, 403):
+                return {"status": "auth_error", "error": f"{status_code} {err_str[:120]}"}
+            elif status_code == 429:
+                return {"status": "quota_exhausted", "error": f"429 {err_str[:120]}"}
+            elif status_code is not None and status_code >= 500:
+                return {"status": "unreachable", "error": f"{status_code} {err_str[:120]}"}
+            elif "connect" in err_str.lower() or "unreachable" in err_str.lower():
+                return {"status": "unreachable", "error": err_str[:120]}
+            else:
+                return {"status": "unknown_error", "error": err_str[:200]}
+
+    async def validate_keys(self, timeout: float = 10.0) -> Dict:
+        """验证所有 API Key 健康状态 — 按 provider 分组、逐 key 测试。
+
+        Returns:
+            {
+                "timestamp": "...",
+                "total_providers": N,
+                "healthy": N,
+                "unhealthy": N,
+                "providers": {
+                    "siliconflow_free": {"status": "ok", "keys_tested": 4, ...},
+                    ...
+                },
+                "elapsed_s": float,
+            }
+        """
+        import asyncio
+        from datetime import datetime, timezone
+
+        start = time.time()
+        groups = self._group_providers()
+
+        async def _test_group(display: str, key_map: Dict[str, FreeAPISource]) -> tuple:
+            """测试一个 provider 组, 返回 (display, result_dict)"""
+            if len(key_map) == 1:
+                # 单 key provider — 测一次
+                raw_prov, src = next(iter(key_map.items()))
+                result = await self._test_single_key(src, timeout)
+                if result["status"] == "auth_error":
+                    src.disabled = True
+                    logger.warning("[validate_keys] 禁用 auth_error key: %s/%s",
+                                   src.provider, src.model)
+                return (display, {
+                    "status": result["status"],
+                    **({} if result["status"] == "ok" else {"error": result.get("error", "")}),
+                })
+            else:
+                # 多 key provider — 逐 key 测
+                keys_tested = 0
+                keys_ok = 0
+                dead_indices: List[int] = []
+                errors: List[str] = []
+
+                # 按 provider 名排序以保持稳定索引
+                sorted_items = sorted(key_map.items(), key=lambda x: x[0])
+
+                tasks = []
+                for _raw_prov, src in sorted_items:
+                    tasks.append(self._test_single_key(src, timeout))
+
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                for idx, res in enumerate(results):
+                    keys_tested += 1
+                    _raw_prov, src_ref = sorted_items[idx]
+                    if isinstance(res, Exception):
+                        dead_indices.append(idx)
+                        errors.append(str(res)[:80])
+                        src_ref.disabled = True
+                    elif res["status"] == "ok":
+                        keys_ok += 1
+                    else:
+                        dead_indices.append(idx)
+                        errors.append(res.get("error", res["status"]))
+                        if res["status"] == "auth_error":
+                            src_ref.disabled = True
+                            logger.warning("[validate_keys] 禁用 auth_error key: %s/%s",
+                                           src_ref.provider, src_ref.model)
+
+                overall = "ok" if keys_ok == keys_tested else (
+                    "auth_error" if keys_ok == 0 else "partial"
+                )
+
+                info: Dict[str, Any] = {
+                    "status": overall,
+                    "keys_tested": keys_tested,
+                    "keys_ok": keys_ok,
+                    "keys_dead": len(dead_indices),
+                }
+                if dead_indices:
+                    info["dead_indices"] = dead_indices
+                if errors:
+                    info["errors"] = errors[:5]  # 最多 5 条
+                return (display, info)
+
+        # 并行测试所有 provider 组
+        group_tasks = [_test_group(d, km) for d, km in groups.items()]
+        group_results = await asyncio.gather(*group_tasks, return_exceptions=True)
+
+        providers_report: Dict[str, Dict] = {}
+        healthy_count = 0
+        unhealthy_count = 0
+
+        for res in group_results:
+            if isinstance(res, Exception):
+                continue
+            display, info = res
+            providers_report[display] = info
+            if info["status"] == "ok":
+                healthy_count += 1
+            elif info["status"] == "partial":
+                healthy_count += 1  # 部分可用也算健康
+            else:
+                unhealthy_count += 1
+
+        elapsed = time.time() - start
+        report = {
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+            "total_providers": len(providers_report),
+            "healthy": healthy_count,
+            "unhealthy": unhealthy_count,
+            "providers": providers_report,
+            "elapsed_s": round(elapsed, 2),
+        }
+
+        logger.info(
+            f"[Key验证] {healthy_count}/{len(providers_report)} providers 健康, "
+            f"{unhealthy_count} 异常, 耗时 {elapsed:.1f}s"
+        )
+        return report
 
 
 # ============================================================

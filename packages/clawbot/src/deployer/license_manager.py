@@ -1,5 +1,4 @@
 """License 管理 — 账号验证 + 防复制 + 设备绑定 + 离线验证"""
-import base64
 import hashlib
 import hmac
 import json
@@ -7,10 +6,10 @@ import os
 import platform
 import secrets
 import sqlite3
-import struct
 import time
 import uuid
 import logging
+from contextlib import contextmanager
 from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
@@ -85,8 +84,17 @@ class LicenseManager:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+    @contextmanager
+    def _conn(self):
+        """获取 SQLite 连接 (上下文管理器自动关闭)"""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init_db(self):
         with self._conn() as c:
@@ -128,7 +136,7 @@ class LicenseManager:
                 "VALUES(?,?,?,?,?,?,?)",
                 (key, username, pw_hash, xianyu_order_id, max_devices, expires, notes),
             )
-        logger.info(f"License 创建: {key} -> {username} (设备上限: {max_devices}, 有效期: {days}天)")
+        logger.info(f"License 创建: {key[:4]}...{key[-4:]} -> {username} (设备上限: {max_devices}, 有效期: {days}天)")
         return key
 
     def list_licenses(self) -> list:
@@ -142,7 +150,7 @@ class LicenseManager:
     def revoke_license(self, key: str):
         with self._conn() as c:
             c.execute("UPDATE licenses SET status='revoked' WHERE license_key=?", (key,))
-        logger.info(f"License 已吊销: {key}")
+        logger.info(f"License 已吊销: {key[:4]}...{key[-4:]}")
 
     # ---- 客户端验证 ----
     def authenticate(self, username: str, password: str, machine_id: str = "", ip_addr: str = "") -> Dict:

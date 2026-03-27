@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from src.utils import now_et
@@ -142,7 +141,7 @@ class InvestmentAnalysisCard(ResponseCard):
 
         buttons.append([
             InlineKeyboardButton("📊 回测验证", callback_data=f"bt:ma:{self.symbol}"),
-            InlineKeyboardButton("📈 详细TA", callback_data=f"ta:detail:{self.symbol}"),
+            InlineKeyboardButton("📈 技术分析", callback_data=f"ta:detail:{self.symbol}"),
         ])
         buttons.append([
             InlineKeyboardButton("🔄 重新分析", callback_data=f"analyze:{self.symbol}"),
@@ -274,8 +273,8 @@ class SystemStatusCard(ResponseCard):
                 InlineKeyboardButton("💰 费用详情", callback_data="cmd:cost"),
             ],
             [
-                InlineKeyboardButton("🔄 进化扫描", callback_data="cmd:evolve"),
-                InlineKeyboardButton("📋 任务列表", callback_data="cmd:tasks"),
+                InlineKeyboardButton("📊 系统指标", callback_data="cmd:metrics"),
+                InlineKeyboardButton("⚙️ 设置", callback_data="cmd:settings"),
             ],
         ])
 
@@ -329,6 +328,9 @@ class InfoCard(ResponseCard):
     card_type: str = "info"
     answer: str = ""
     sources: List[str] = field(default_factory=list)
+    _override_buttons: Optional[InlineKeyboardMarkup] = field(
+        default=None, repr=False
+    )
 
     def to_telegram(self) -> str:
         lines = [self.answer or self.body]
@@ -338,6 +340,10 @@ class InfoCard(ResponseCard):
             for s in self.sources[:3]:
                 lines.append(f"  • {s[:60]}")
         return "\n".join(lines)
+
+    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+        """支持外部覆写 action buttons (用于合成回复 + 投资按钮组合)"""
+        return self._override_buttons
 
 
 # ── 错误/追问卡片 ──────────────────────────────────────
@@ -493,6 +499,23 @@ def card_from_brain_result(result) -> ResponseCard:
 
     task_type = intent.task_type.value if intent else "unknown"
     data = result.final_result or {}
+
+    # ★ 优先使用合成后的对话式回复
+    if isinstance(data, dict) and data.get("synthesized_reply"):
+        # 合成回复作为主文本，原始数据保留供按钮展开
+        card = InfoCard(answer=data["synthesized_reply"])
+        # 从原始数据构建 action buttons (如果是投资类)
+        raw = data.get("_raw_data", {})
+        actual_type = data.get("_task_type", task_type)
+        if actual_type == "investment" and raw:
+            try:
+                invest_card = _build_investment_card(raw, result.task_id, intent)
+                # 替换文本但保留按钮
+                card._override_buttons = invest_card.action_buttons()
+                return card
+            except Exception:
+                pass
+        return card
 
     # 投资分析
     if task_type == "investment":

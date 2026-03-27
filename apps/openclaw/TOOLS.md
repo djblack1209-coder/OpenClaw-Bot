@@ -41,10 +41,10 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 ## Browser automation
 
-- Boss's logged-in Chrome profile usually lives at: `/Users/blackdj/Library/Application Support/Google/Chrome/Profile 1`
+- 严总's logged-in Chrome profile usually lives at: `/Users/blackdj/Library/Application Support/Google/Chrome/Profile 1`
 - Cookies DB: `/Users/blackdj/Library/Application Support/Google/Chrome/Profile 1/Cookies`
 - Default strategy for X / 小红书 / Upwork browser tasks on this machine:
   1. Try local Chrome-profile automation first (Playwright + `browser_cookie3` + Chrome cookies)
   2. Use Browser Relay only if local profile automation cannot reach the required page state
-- Do not tell Boss to manually copy/paste posts if the local Chrome session is already usable.
+- Do not tell 严总 to manually copy/paste posts if the local Chrome session is already usable.
 - If a browser window/tab is opened only to extract video content, close that browser window/tab immediately after extraction completes.

@@ -12,10 +12,8 @@ OpenClaw 跨模块联动系统 — 别人抄不走的核心壁垒
   2. 每条链路独立，一条断了不影响其他
   3. 所有联动可通过 config 开关
 """
-import asyncio
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import List
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)

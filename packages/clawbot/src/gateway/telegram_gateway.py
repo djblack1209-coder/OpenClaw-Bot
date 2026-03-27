@@ -7,7 +7,6 @@ OpenClaw OMEGA — Telegram 主控台网关
   - GatewayBot 是第 8 个 Bot，专门作为 OMEGA 统一入口
   - 通过 EventBus 接收所有模块事件
 """
-import asyncio
 import logging
 import os
 from typing import Dict, List, Optional
@@ -500,7 +499,8 @@ async def start_gateway() -> Optional[OpenClawGateway]:
     """启动 Gateway Bot（从环境变量读取配置）"""
     global _gateway
     token = os.environ.get("OMEGA_GATEWAY_BOT_TOKEN", "")
-    admin_ids_str = os.environ.get("OMEGA_ADMIN_USER_IDS", "")
+    # 规范环境变量: ALLOWED_USER_IDS 为主, OMEGA_ADMIN_USER_IDS 向后兼容
+    admin_ids_str = os.environ.get("ALLOWED_USER_IDS") or os.environ.get("OMEGA_ADMIN_USER_IDS", "")
     admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip().isdigit()]
 
     if not token:

@@ -3,7 +3,6 @@ Helper to execute trades through the TradingPipeline from callback handlers.
 Bridges the gap between the old dict-based trade format and the new TradeProposal system.
 """
 import logging
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

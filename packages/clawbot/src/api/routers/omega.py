@@ -2,12 +2,29 @@
 OMEGA API Router — Brain状态 / 成本控制 / 安全 / 事件总线
 挂载到 /api/v1/omega/*
 """
-from fastapi import APIRouter
+import logging
+from typing import Any, Dict
+from urllib.parse import urlparse
 
+from fastapi import APIRouter, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/omega")
 
 
-@router.get("/status")
+def _safe_error(e: Exception) -> str:
+    """将异常转为安全的错误消息，不泄露内部路径和技术细节"""
+    msg = str(e)
+    # 过滤掉包含文件路径、模块名、类名的技术信息
+    if any(kw in msg for kw in ("/", "\\", "src.", "Traceback", "line ", "File ")):
+        return "内部服务错误，请稍后重试"
+    # 保留简短的业务错误消息（如 "vectorbt 未安装"）
+    if len(msg) > 200:
+        return "内部服务错误，请稍后重试"
+    return msg
+
+
+@router.get("/status", response_model=Dict[str, Any])
 async def omega_status():
     """OMEGA 系统状态"""
     result = {"omega": True}
@@ -20,47 +37,47 @@ async def omega_status():
             "pending_callbacks": len(brain._pending_callbacks),
         }
     except Exception as e:
-        result["brain"] = {"error": str(e)}
+        result["brain"] = {"error": _safe_error(e)}
 
     try:
         from src.core.event_bus import get_event_bus
         bus = get_event_bus()
         result["event_bus"] = bus.get_stats()
     except Exception as e:
-        result["event_bus"] = {"error": str(e)}
+        result["event_bus"] = {"error": _safe_error(e)}
 
     try:
         from src.core.cost_control import get_cost_controller
         cc = get_cost_controller()
         result["cost"] = cc.get_stats()
     except Exception as e:
-        result["cost"] = {"error": str(e)}
+        result["cost"] = {"error": _safe_error(e)}
 
     try:
         from src.core.security import get_security_gate
         gate = get_security_gate()
         result["security"] = gate.get_stats()
     except Exception as e:
-        result["security"] = {"error": str(e)}
+        result["security"] = {"error": _safe_error(e)}
 
     try:
         from src.core.self_heal import get_self_heal_engine
         engine = get_self_heal_engine()
         result["self_heal"] = engine.get_stats()
     except Exception as e:
-        result["self_heal"] = {"error": str(e)}
+        result["self_heal"] = {"error": _safe_error(e)}
 
     try:
         from src.core.executor import get_executor
         executor = get_executor()
         result["executor"] = executor.get_stats()
     except Exception as e:
-        result["executor"] = {"error": str(e)}
+        result["executor"] = {"error": _safe_error(e)}
 
     return result
 
 
-@router.get("/cost")
+@router.get("/cost", response_model=Dict[str, Any])
 async def omega_cost():
     """成本详情"""
     try:
@@ -68,32 +85,32 @@ async def omega_cost():
         cc = get_cost_controller()
         return cc.get_weekly_report()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/events")
-async def omega_events(event_type: str = "", limit: int = 50):
+@router.get("/events", response_model=Dict[str, Any])
+async def omega_events(event_type: str = "", limit: int = Query(default=50, ge=1, le=500)):
     """事件历史"""
     try:
         from src.core.event_bus import get_event_bus
         bus = get_event_bus()
         return {"events": bus.get_recent_events(event_type, limit)}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/audit")
-async def omega_audit(limit: int = 50):
+@router.get("/audit", response_model=Dict[str, Any])
+async def omega_audit(limit: int = Query(default=50, ge=1, le=500)):
     """审计日志"""
     try:
         from src.core.security import get_security_gate
         gate = get_security_gate()
         return {"operations": gate.get_recent_operations(limit)}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/tasks")
+@router.get("/tasks", response_model=Dict[str, Any])
 async def omega_tasks():
     """活跃任务"""
     try:
@@ -101,11 +118,11 @@ async def omega_tasks():
         brain = get_brain()
         return {"tasks": brain.get_active_tasks()}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.post("/process")
-async def omega_process(message: str, source: str = "api"):
+@router.post("/process", response_model=Dict[str, Any])
+async def omega_process(message: str = Query(max_length=1000), source: str = "api"):
     """通过 API 发送消息给 Brain"""
     try:
         from src.core.brain import get_brain
@@ -113,10 +130,10 @@ async def omega_process(message: str, source: str = "api"):
         result = await brain.process_message(source=source, message=message)
         return result.to_dict()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/investment/team")
+@router.get("/investment/team", response_model=Dict[str, Any])
 async def omega_investment_team():
     """投资团队状态"""
     try:
@@ -128,10 +145,10 @@ async def omega_investment_team():
             "portfolio": team.get_portfolio_status(),
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.post("/investment/analyze")
+@router.post("/investment/analyze", response_model=Dict[str, Any])
 async def omega_investment_analyze(symbol: str, market: str = "cn"):
     """触发投资分析（优先 Pydantic AI 引擎）"""
     # 优先: Pydantic AI 结构化分析
@@ -150,10 +167,10 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         analysis = await team.analyze(symbol, market)
         return analysis.to_dict()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/investment/backtest")
+@router.get("/investment/backtest", response_model=Dict[str, Any])
 async def omega_investment_backtest(
     symbol: str,
     strategy: str = "ma_cross",
@@ -211,21 +228,41 @@ async def omega_investment_backtest(
 
         return result.to_dict()
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/tools/jina-read")
+@router.get("/tools/jina-read", response_model=Dict[str, Any])
 async def omega_jina_read(url: str):
     """读取URL内容（Jina Reader）"""
+    # SSRF protection: validate URL scheme and block internal networks
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Only HTTP(S) URLs allowed")
+    if parsed.hostname:
+        # 使用 ipaddress 标准库精确判断私网地址（防止 SSRF）
+        # 原来 startswith("172.") 会误判 172.0-15.* 和 172.32+.* 等公网地址
+        blocked = False
+        if parsed.hostname in {"169.254.169.254", "metadata.google.internal",
+                               "localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+            blocked = True
+        else:
+            try:
+                import ipaddress
+                ip = ipaddress.ip_address(parsed.hostname)
+                blocked = ip.is_private or ip.is_loopback or ip.is_link_local
+            except ValueError:
+                pass  # 域名无法直接解析，允许通过（由 DNS 解析后的 IP 处理）
+        if blocked:
+            raise HTTPException(status_code=400, detail="Access to internal networks is not allowed")
     try:
         from src.tools.jina_reader import jina_read
         content = await jina_read(url)
         return {"url": url, "content": content or "无法获取内容"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/tools/jina-search")
+@router.get("/tools/jina-search", response_model=Dict[str, Any])
 async def omega_jina_search(query: str):
     """Web搜索（Jina Search）"""
     try:
@@ -233,10 +270,10 @@ async def omega_jina_search(query: str):
         content = await jina_search(query)
         return {"query": query, "results": content or "无搜索结果"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.post("/tools/generate-image")
+@router.post("/tools/generate-image", response_model=Dict[str, Any])
 async def omega_generate_image(prompt: str, model: str = "fal-ai/flux/schnell"):
     """AI 图像生成 (fal.ai)"""
     try:
@@ -244,10 +281,10 @@ async def omega_generate_image(prompt: str, model: str = "fal-ai/flux/schnell"):
         url = await generate_image(prompt, model=model)
         return {"prompt": prompt, "image_url": url, "model": model}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.post("/tools/generate-video")
+@router.post("/tools/generate-video", response_model=Dict[str, Any])
 async def omega_generate_video(prompt: str, model: str = "fal-ai/kling-video/v1/standard/text-to-video"):
     """AI 视频生成 (fal.ai)"""
     try:
@@ -255,14 +292,14 @@ async def omega_generate_video(prompt: str, model: str = "fal-ai/kling-video/v1/
         url = await generate_video(prompt, model=model)
         return {"prompt": prompt, "video_url": url, "model": model}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}
 
 
-@router.get("/tools/media-models")
+@router.get("/tools/media-models", response_model=Dict[str, Any])
 async def omega_media_models():
     """可用的图像/视频模型列表"""
     try:
         from src.tools.fal_client import get_available_models
         return {"models": get_available_models()}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": _safe_error(e)}

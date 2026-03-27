@@ -2,12 +2,10 @@
 Execution Hub — 邮件自动整理
 场景1: 邮件分类、摘要、行动事项提取
 """
-import asyncio
 import logging
 
 from src.execution._utils import extract_json_object
 from src.execution._ai import ai_pool
-from src.notify_style import format_announcement
 
 logger = logging.getLogger(__name__)
 

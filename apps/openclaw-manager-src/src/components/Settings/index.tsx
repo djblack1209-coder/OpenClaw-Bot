@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import {
   User,
   Shield,
@@ -28,7 +29,7 @@ interface SettingsProps {
 export function Settings({ onEnvironmentChange }: SettingsProps) {
   const [identity, setIdentity] = useState({
     botName: 'OpenClaw',
-    userName: 'Boss',
+    userName: '严总',
     timezone: 'Asia/Shanghai',
   });
   const [security, setSecurity] = useState({
@@ -103,6 +104,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
       await open(projectContext?.config_dir ?? (await invoke<{ config_dir: string }>('get_system_info')).config_dir);
     } catch (e) {
       console.error('打开目录失败:', e);
+      toast.error('打开目录失败: ' + (e instanceof Error ? e.message : '未知错误'));
     }
   };
 
@@ -130,9 +132,11 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
         // 通知环境状态变化，触发重新检查
         onEnvironmentChange?.();
         // 卸载成功后关闭确认框
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           setShowUninstallConfirm(false);
         }, 2000);
+        // 组件卸载时清理定时器
+        return () => clearTimeout(timer);
       }
     } catch (e) {
       setUninstallResult({
@@ -144,6 +148,15 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
       setUninstalling(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+        <span className="ml-3 text-gray-400">加载设置...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scroll-container pr-2">
@@ -186,7 +199,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                 onChange={(e) =>
                   setIdentity({ ...identity, userName: e.target.value })
                 }
-                placeholder="Boss"
+                placeholder="严总"
                 className="input-base"
               />
             </div>

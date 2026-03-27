@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -100,6 +101,7 @@ class SecurityGate:
         self._admin_ids: Set[int] = set(admin_user_ids or [])
         self._pin_hash: Optional[str] = self._load_pin_hash()
         self._operation_count: Dict[str, int] = {}
+        self._pin_attempts: dict = {}  # user_id -> {"count": int, "locked_until": float}
         logger.info(f"SecurityGate 初始化 (管理员: {len(self._admin_ids)})")
 
     def _load_pin_hash(self) -> Optional[str]:
@@ -167,25 +169,69 @@ class SecurityGate:
         )
 
     def set_pin(self, pin: str) -> bool:
-        """设置 PIN（SHA256 存储）"""
+        """设置 PIN（PBKDF2 + 随机盐存储）"""
         if len(pin) < 4:
             return False
-        pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+        salt = secrets.token_hex(16)
+        pin_hash = hashlib.pbkdf2_hmac('sha256', pin.encode(), salt.encode(), 100000).hex()
         try:
-            PIN_FILE.write_text(pin_hash)
-            self._pin_hash = pin_hash
+            # 存储格式: salt:hash
+            PIN_FILE.write_text(f"{salt}:{pin_hash}")
+            os.chmod(PIN_FILE, 0o600)
+            self._pin_hash = f"{salt}:{pin_hash}"
             logger.info("PIN 已设置")
             return True
         except Exception as e:
             logger.error(f"PIN 设置失败: {e}")
             return False
 
-    def verify_pin(self, pin: str) -> bool:
-        """验证 PIN"""
+    def verify_pin(self, pin: str, user_id: int = 0) -> bool:
+        """验证 PIN（含频率限制: 5次失败后锁定5分钟）"""
+        # 频率限制检查
+        state = self._pin_attempts.get(user_id, {"count": 0, "locked_until": 0})
+        if time.time() < state.get("locked_until", 0):
+            return False
+
         if not self._pin_hash:
             return True  # 未设置 PIN 则跳过验证
-        pin_hash = hashlib.sha256(pin.encode()).hexdigest()
-        return pin_hash == self._pin_hash
+        stored = self._pin_hash
+        if ':' in stored:
+            # 新格式: salt:hash (PBKDF2)
+            salt, expected_hash = stored.split(':', 1)
+            pin_hash = hashlib.pbkdf2_hmac('sha256', pin.encode(), salt.encode(), 100000).hex()
+            result = pin_hash == expected_hash
+        else:
+            # 向后兼容旧格式（无盐 SHA-256）
+            result = hashlib.sha256(pin.encode()).hexdigest() == stored
+
+        if not result:
+            state["count"] = state.get("count", 0) + 1
+            if state["count"] >= 5:
+                state["locked_until"] = time.time() + 300  # 锁定5分钟
+                state["count"] = 0
+                logger.warning("[Security] PIN 验证失败 5 次，用户 %s 锁定 5 分钟", user_id)
+                # EventBus: 安全告警
+                try:
+                    from src.core.event_bus import get_event_bus
+                    bus = get_event_bus()
+                    if bus:
+                        import asyncio
+                        try:
+                            loop = asyncio.get_running_loop()
+                            _t = loop.create_task(bus.publish("system.security_alert", {
+                                "alert_type": "pin_brute_force",
+                                "user_id": user_id,
+                                "locked_minutes": 5,
+                            }))
+                            _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                        except RuntimeError:
+                            pass
+                except Exception:
+                    pass
+            self._pin_attempts[user_id] = state
+        else:
+            self._pin_attempts.pop(user_id, None)  # 成功后清除计数
+        return result
 
     def has_pin(self) -> bool:
         return self._pin_hash is not None

@@ -12,9 +12,8 @@ Trading — 保护系统 (借鉴 freqtrade Protections)
 - protections 做系统级的熔断保护（跨交易）
 """
 import logging
-import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 

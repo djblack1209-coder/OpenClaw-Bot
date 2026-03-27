@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import { StatusCard } from './StatusCard';
 import { QuickActions } from './QuickActions';
 import { SystemInfo } from './SystemInfo';
@@ -24,6 +25,8 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const [logsExpanded, setLogsExpanded] = useState(true);
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const statusFailedRef = useRef(false);
+  const logsFailedRef = useRef(false);
 
   const fetchStatus = async () => {
     if (!isTauri()) {
@@ -33,8 +36,13 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     try {
       const result = await api.getServiceStatus();
       setStatus(result);
-    } catch {
-      // 静默处理
+      statusFailedRef.current = false;
+    } catch (e) {
+      console.warn('获取状态失败', e);
+      if (!statusFailedRef.current) {
+        statusFailedRef.current = true;
+        toast.warning('服务连接异常，状态刷新暂停');
+      }
     } finally {
       setLoading(false);
     }
@@ -45,8 +53,13 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     try {
       const result = await invoke<string[]>('get_logs', { lines: 50 });
       setLogs(result);
-    } catch {
-      // 静默处理
+      logsFailedRef.current = false;
+    } catch (e) {
+      console.warn('获取日志失败', e);
+      if (!logsFailedRef.current) {
+        logsFailedRef.current = true;
+        toast.warning('服务连接异常，日志刷新暂停');
+      }
     }
   };
 
@@ -80,6 +93,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchLogs();
     } catch (e) {
       console.error('启动失败:', e);
+      toast.error('启动失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);
     }
@@ -94,6 +108,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchLogs();
     } catch (e) {
       console.error('停止失败:', e);
+      toast.error('停止失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);
     }
@@ -108,6 +123,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchLogs();
     } catch (e) {
       console.error('重启失败:', e);
+      toast.error('重启失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);
     }
@@ -159,7 +175,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
           </motion.div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 space-y-6">
             {/* 服务状态卡片 */}
             <motion.div variants={itemVariants}>

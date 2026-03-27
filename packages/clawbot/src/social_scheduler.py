@@ -21,7 +21,6 @@ import json
 import logging
 import threading
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -96,8 +95,8 @@ def _notify(message: str, data: Optional[Dict] = None) -> None:
             **(data or {}),
             "ts": now_et().isoformat(),
         })
-    except Exception:
-        logger.debug("Silenced exception", exc_info=True)
+    except Exception as e:
+        logger.debug("[SocialScheduler] 异常: %s", e)
     logger.info("[Autopilot] %s", message)
 
 
@@ -139,13 +138,14 @@ def job_morning_scan() -> None:
                 {"topics": selected, "source": "morning_scan"},
                 source="social_scheduler",
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("[SocialScheduler] 异常: %s", e)
             # 降级: 旧 synergy
             try:
                 from src.synergy import get_synergy
                 await get_synergy().on_social_hotspot(selected)
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
+            except Exception as e:
+                logger.debug("[SocialScheduler] 异常: %s", e)
 
         titles = [t.get("title", "?") for t in selected[:3]]
         _notify(
@@ -168,13 +168,21 @@ def job_noon_engage() -> None:
     try:
         from src.execution.social.worker_bridge import run_social_worker
 
-        # Auto-reply to comments on existing posts
-        reply_result = run_social_worker("auto_reply", {})
-        logger.info("[Autopilot] 自动回复结果: %s", reply_result.get("success"))
+        # 自动回复评论
+        try:
+            reply_result = run_social_worker("auto_reply", {})
+            logger.info("[Autopilot] 自动回复结果: %s", reply_result.get("success"))
+        except Exception as e:
+            logger.error("[Autopilot] 自动回复失败: %s", e)
+            reply_result = {"success": False, "error": str(e)}
 
-        # Scout and comment on trending posts
-        scout_result = run_social_worker("scout_comment", {"count": 3})
-        logger.info("[Autopilot] 蹭评结果: %s", scout_result.get("success"))
+        # 蹭评热门帖子
+        try:
+            scout_result = run_social_worker("scout_comment", {"count": 3})
+            logger.info("[Autopilot] 蹭评结果: %s", scout_result.get("success"))
+        except Exception as e:
+            logger.error("[Autopilot] 蹭评失败: %s", e)
+            scout_result = {"success": False, "error": str(e)}
 
         _notify("午间互动完成", {
             "auto_reply": reply_result.get("success", False),
@@ -275,7 +283,7 @@ def job_night_publish() -> None:
     """20:30 — 自动发布 (双平台)"""
 
     async def _run() -> None:
-        from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.worker_bridge import run_social_worker_async
 
         state = _load_state()
         drafts = state.get("drafts", [])
@@ -293,36 +301,68 @@ def job_night_publish() -> None:
             text = draft.get("text", "")
             draft_id = draft.get("id", "?")
 
-            if platform == "x":
-                result = run_social_worker("publish_x", {"text": text})
-            elif platform == "xhs":
-                lines = text.strip().splitlines()
-                title = lines[0].strip() if lines else "无标题"
-                body = "\n".join(lines[1:]).strip() if len(lines) > 1 else text
-                result = run_social_worker(
-                    "publish_xhs", {"title": title, "body": body},
-                )
-            else:
-                result = {"success": False, "error": f"未知平台: {platform}"}
+            # 防重发: 先标记为 publishing 并持久化
+            draft["status"] = "publishing"
+            _save_state(state)
 
-            if result.get("success"):
-                draft["status"] = "published"
-                draft["published_at"] = now_et().isoformat()
-                published.append(draft)
-                logger.info("[Autopilot] 发布成功: %s/%s", platform, draft_id)
-            else:
+            try:
+                if platform == "x":
+                    result = await run_social_worker_async("publish_x", {"text": text})
+                elif platform == "xhs":
+                    lines = text.strip().splitlines()
+                    title = lines[0].strip() if lines else "无标题"
+                    body = "\n".join(lines[1:]).strip() if len(lines) > 1 else text
+                    result = await run_social_worker_async(
+                        "publish_xhs", {"title": title, "body": body},
+                    )
+                else:
+                    result = {"success": False, "error": f"未知平台: {platform}"}
+
+                if result.get("success"):
+                    draft["status"] = "published"
+                    draft["published_at"] = now_et().isoformat()
+                    published.append(draft)
+                    logger.info("[Autopilot] 发布成功: %s/%s", platform, draft_id)
+                else:
+                    draft["status"] = "failed"
+                    draft["error"] = result.get("error", "unknown")
+                    failed.append(draft)
+                    logger.warning(
+                        "[Autopilot] 发布失败: %s/%s - %s",
+                        platform, draft_id, result.get("error"),
+                    )
+            except Exception as e:
                 draft["status"] = "failed"
-                draft["error"] = result.get("error", "unknown")
+                draft["error"] = str(e)
                 failed.append(draft)
-                logger.warning(
-                    "[Autopilot] 发布失败: %s/%s - %s",
-                    platform, draft_id, result.get("error"),
-                )
+                logger.error("[Autopilot] 发布异常: %s/%s - %s", platform, draft_id, e)
+
+            _save_state(state)
 
         state["drafts"] = drafts  # updated statuses
         state["today_published"].extend(published)
         state["stats"]["posts_today"] = len(state["today_published"])
         _save_state(state)
+
+        # sau_bridge: 将已发布内容同步到抖音/B站等平台（如果 sau 可用）
+        try:
+            from src.sau_bridge import publish_multi_platform
+            # 把已成功发布的内容通过 sau 同步到更多平台
+            for draft in published:
+                text = draft.get("text", "")
+                title = text.strip().splitlines()[0].strip()[:100] if text.strip() else "OpenClaw 自动发布"
+                sau_results = await publish_multi_platform(
+                    platforms=["douyin", "xiaohongshu"],
+                    title=title,
+                    description=text[:500],
+                )
+                sau_ok = sum(1 for r in sau_results.values() if r.get("success"))
+                if sau_ok:
+                    logger.info("[Autopilot] sau 多平台同步: %d 个平台成功", sau_ok)
+        except ImportError:
+            logger.info("[SocialAutopilot] sau_bridge 未配置，跳过自动发布")
+        except Exception as e:
+            logger.warning("[Autopilot] sau 多平台同步异常: %s", e)
 
         # EventBus: 社媒发布事件
         if published:
@@ -334,8 +374,8 @@ def job_night_publish() -> None:
                     {"count": len(published), "platforms": [p.get("platform") for p in published]},
                     source="social_scheduler",
                 )
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
+            except Exception as e:
+                logger.debug("[SocialScheduler] 异常: %s", e)
 
         _notify(
             f"发布完成: {len(published)} 成功, {len(failed)} 失败",
@@ -369,12 +409,93 @@ def job_late_review() -> None:
         # KPI check (from SKILL.md: XHS>500 views, X>200 views)
         warnings: List[str] = []
         if result.get("success"):
-            x_views = result.get("x", {}).get("views", 0)
-            xhs_views = result.get("xhs", {}).get("views", 0)
+            x_stats = result.get("x", {}).get("stats", {})
+            xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
+            x_views = x_stats.get("latest_like_count", 0) + x_stats.get("latest_repost_count", 0)
+            xhs_views = xhs_stats.get("views", 0)
             if x_views < 200 and state["stats"].get("posts_today", 0) > 0:
                 warnings.append(f"X 阅读量 {x_views} 未达标 (目标>200)")
             if xhs_views < 500 and state["stats"].get("posts_today", 0) > 0:
                 warnings.append(f"XHS 阅读量 {xhs_views} 未达标 (目标>500)")
+
+            # ── 管道接通: 将采集到的互动数据写入 post_engagement 表 ──
+            try:
+                from src.execution.life_automation import record_post_engagement
+
+                # X 平台数据: 用最新帖子的互动指标
+                if x_stats:
+                    record_post_engagement(
+                        draft_id=0,  # 0 表示 profile 级聚合快照
+                        platform="x",
+                        likes=x_stats.get("latest_like_count", 0),
+                        comments=x_stats.get("latest_reply_count", 0),
+                        shares=x_stats.get("latest_repost_count", 0),
+                        views=x_stats.get("followers", 0),  # X 无直接浏览量，用粉丝数近似
+                        post_url=result.get("x", {}).get("url", ""),
+                    )
+                    logger.info("[Autopilot] X 互动数据已存入 post_engagement")
+
+                # 小红书数据: 创作者中心有完整指标
+                if xhs_stats:
+                    record_post_engagement(
+                        draft_id=0,
+                        platform="xhs",
+                        likes=xhs_stats.get("likes", 0),
+                        comments=xhs_stats.get("comments", 0),
+                        shares=xhs_stats.get("shares", 0),
+                        views=xhs_stats.get("views", 0),
+                        post_url=result.get("xiaohongshu", {}).get("url", ""),
+                    )
+                    logger.info("[Autopilot] XHS 互动数据已存入 post_engagement")
+            except Exception as e:
+                logger.warning("[Autopilot] 存储互动数据失败(不影响主流程): %s", e)
+
+            # ── 管道接通: 将粉丝数存入 follower_snapshots 表供趋势分析 ──
+            try:
+                from src.execution.life_automation import record_follower_snapshot
+
+                # X 平台: 粉丝数 + 关注数
+                if x_stats and x_stats.get("followers"):
+                    record_follower_snapshot(
+                        platform="x",
+                        followers=x_stats.get("followers", 0),
+                        following=x_stats.get("following", 0),
+                    )
+
+                # 小红书: 粉丝数 + 获赞总数
+                if xhs_stats and xhs_stats.get("followers"):
+                    record_follower_snapshot(
+                        platform="xhs",
+                        followers=xhs_stats.get("followers", 0),
+                        total_likes=xhs_stats.get("total_likes", 0),
+                        total_views=xhs_stats.get("views", 0),
+                    )
+            except Exception as e:
+                logger.warning("[Autopilot] 存储粉丝快照失败(不影响主流程): %s", e)
+
+            # ── 管道接通: 喂数据给 PostTimeOptimizer 学习最佳发布时间 ──
+            try:
+                from src.social_tools import get_post_time_optimizer
+
+                optimizer = get_post_time_optimizer()
+                current_hour = now_et().hour
+
+                # 计算两个平台的综合互动率
+                total_engagement = (
+                    x_stats.get("latest_like_count", 0)
+                    + x_stats.get("latest_reply_count", 0)
+                    + x_stats.get("latest_repost_count", 0)
+                    + xhs_stats.get("likes", 0)
+                    + xhs_stats.get("comments", 0)
+                    + xhs_stats.get("shares", 0)
+                )
+                total_views = max(xhs_stats.get("views", 0) + x_stats.get("followers", 1), 1)
+                engagement_rate = round(total_engagement / total_views * 100, 2)
+
+                optimizer.record_engagement(current_hour, engagement_rate)
+                logger.info("[Autopilot] PostTimeOptimizer 已记录 hour=%d rate=%.2f%%", current_hour, engagement_rate)
+            except Exception as e:
+                logger.warning("[Autopilot] PostTimeOptimizer 记录失败(不影响主流程): %s", e)
 
         state["last_review"] = now_et().isoformat()
         _save_state(state)
@@ -523,7 +644,7 @@ class SocialAutopilot:
         }
 
     def trigger_job(self, job_id: str) -> Dict[str, Any]:
-        """Manually trigger a specific job (for testing / Boss override)."""
+        """Manually trigger a specific job (for testing / 严总 override)."""
         job_map = {
             "morning_scan": job_morning_scan,
             "noon_engage": job_noon_engage,

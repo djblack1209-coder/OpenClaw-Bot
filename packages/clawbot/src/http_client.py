@@ -6,7 +6,7 @@ import time
 import asyncio
 import logging
 from typing import Optional, Dict, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 import httpx

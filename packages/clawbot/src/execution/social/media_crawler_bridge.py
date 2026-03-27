@@ -13,10 +13,8 @@ import logging
 import os
 import json
 import asyncio
-import subprocess
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from datetime import datetime
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -58,6 +56,12 @@ class MediaCrawlerBridge:
                 logger.error("[MediaCrawler] httpx 未安装")
                 return None
         return self._session
+
+    async def close(self):
+        """关闭 httpx 会话，防止连接泄漏"""
+        if self._session:
+            await self._session.aclose()
+            self._session = None
 
     def _normalize_platform(self, platform: str) -> str:
         return PLATFORM_MAP.get(platform.lower().strip(), platform.lower().strip())

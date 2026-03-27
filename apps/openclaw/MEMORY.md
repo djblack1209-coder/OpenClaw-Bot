@@ -2,7 +2,7 @@
 
 ## Stable Facts
 
-- Human should be addressed as **Boss**.
+- Human should be addressed as **严总**.
 - Primary workspace is `~/Desktop/OpenClaw Bot`.
 - Preferred language is Chinese.
 
@@ -61,7 +61,7 @@
 - 3条小红书 + 2条X
 - 全部通过preflight检查
 
-### Boss的核心要求（必须牢记）
+### 严总的核心要求（必须牢记）
 1. 形象人设必须真实，让人有点开主页的欲望
 2. 内容必须吸睛，标题直击热点，明确受众
 3. 像人一样运营：发内容+评论区互动+蹭热点评论区

@@ -390,7 +390,7 @@ export function ControlCenter() {
                               : 'bg-red-500/10 text-red-300 border-red-500/30'
                           )}
                         >
-                          {service.running ? 'Running' : 'Stopped'}
+                          {service.running ? '运行中' : '已停止'}
                         </span>
                         <button
                           onClick={() => handleServiceAction(service.label, 'start')}
@@ -447,7 +447,7 @@ export function ControlCenter() {
                           : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                       )}
                     >
-                      {endpoint.healthy ? 'Reachable' : 'Unreachable'}
+                      {endpoint.healthy ? '可达' : '不可达'}
                     </span>
                   </div>
                 ))}
@@ -602,7 +602,7 @@ export function ControlCenter() {
                                 : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                             )}
                           >
-                            {bot.ready ? 'Ready' : 'Pending'}
+                            {bot.ready ? '就绪' : '等待中'}
                           </span>
                           <p className="text-[11px] text-gray-500 mt-1">Token: {bot.token_masked || '未配置'}</p>
                         </div>

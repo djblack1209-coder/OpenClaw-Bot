@@ -8,7 +8,7 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -151,6 +151,24 @@ class CostController:
                 f"[成本告警] 今日花费 ${self._today_spend:.4f} "
                 f"已达预算 {self._today_spend/self._daily_budget:.0%}"
             )
+            # EventBus: 通知成本预警
+            try:
+                from src.core.event_bus import get_event_bus
+                bus = get_event_bus()
+                if bus:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        _t = loop.create_task(bus.publish("system.cost_warning", {
+                            "daily_spend": self._today_spend,
+                            "daily_budget": self._daily_budget,
+                            "usage_pct": self._today_spend / self._daily_budget,
+                        }))
+                        _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                    except RuntimeError:
+                        pass
+            except Exception:
+                pass
 
     def get_daily_spend(self) -> float:
         self._check_date_rollover()

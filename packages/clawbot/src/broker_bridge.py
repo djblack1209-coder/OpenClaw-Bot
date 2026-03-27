@@ -8,17 +8,21 @@ ClawBot IBKR 券商桥接层 v1.0
 - 自动重连机制
 """
 import asyncio
+import json
 import logging
 import os as _os
 import re
+import shlex
 import time as _time
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Optional, List, Dict, TYPE_CHECKING
 from datetime import datetime
 from dataclasses import dataclass, field
 
 from src.notify_style import format_ibkr_connectivity
 from src.utils import now_et
+
+BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state.json"
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,6 @@ try:
         MarketOrder,
         LimitOrder,
         ScannerSubscription,
-        util,
     )
     HAS_IB = True
 except ImportError:
@@ -101,6 +104,31 @@ class IBKRBridge:
         self._connected_since = 0.0  # 本次连接建立时间
         self._autostart_attempted = False  # 防止重复启动 Gateway
         self._last_notify_state = ""  # 去重：上次通知的连接状态
+
+        # 启动时恢复预算状态
+        self._load_budget_state()
+
+    def _save_budget_state(self):
+        """Persist daily budget state to survive restarts."""
+        try:
+            BUDGET_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            state = {"date": now_et().strftime("%Y-%m-%d"), "total_spent": self.total_spent}
+            BUDGET_STATE_FILE.write_text(json.dumps(state))
+        except Exception as e:
+            logger.warning("Failed to persist budget state: %s", e)
+
+    def _load_budget_state(self):
+        """Restore daily budget state after restart."""
+        try:
+            if BUDGET_STATE_FILE.exists():
+                state = json.loads(BUDGET_STATE_FILE.read_text())
+                if state.get("date") == now_et().strftime("%Y-%m-%d"):
+                    self.total_spent = state.get("total_spent", 0.0)
+                    logger.info("Restored budget state: spent $%.2f today", self.total_spent)
+                else:
+                    logger.info("Budget state from previous day (%s), starting fresh", state.get("date"))
+        except Exception as e:
+            logger.warning("Failed to load budget state: %s", e)
 
     def set_notify(self, func):
         """注入 Telegram 通知回调"""
@@ -208,8 +236,8 @@ class IBKRBridge:
                     self._autostart_attempted = True
                     logger.info("[IBKR] 连接失败，尝试自动启动 Gateway: %s", start_cmd)
                     try:
-                        proc = await asyncio.create_subprocess_shell(
-                            start_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                        proc = await asyncio.create_subprocess_exec(
+                            *shlex.split(start_cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                         )
                         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=150)
                         if proc.returncode == 0:
@@ -644,6 +672,8 @@ class IBKRBridge:
                            order_type: str = 'MKT', limit_price: float = 0,
                            decided_by: str = '', reason: str = '') -> Dict:
         """统一下单逻辑（BUY/SELL 共用）"""
+        if quantity <= 0:
+            return {"error": f"数量必须大于零 (got {quantity})"}
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
 
@@ -694,6 +724,7 @@ class IBKRBridge:
             if filled_qty > 0 and avg_price > 0:
                 if side == 'BUY':
                     self.total_spent += filled_qty * avg_price
+                    self._save_budget_state()
                     # 滑点估算日志（仅买入）
                     try:
                         slippage_est = await self.estimate_slippage(symbol, quantity, side="BUY")
@@ -716,6 +747,7 @@ class IBKRBridge:
                     except Exception:
                         logger.debug("Silenced exception", exc_info=True)
                     self.total_spent = max(0, self.total_spent - entry_cost)
+                    self._save_budget_state()
                     logger.info("[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f",
                                 entry_cost, self.budget - self.total_spent)
             elif side == 'BUY' and order_type != 'LMT':
@@ -996,6 +1028,7 @@ class IBKRBridge:
         """重置预算"""
         self.budget = new_budget
         self.total_spent = 0.0
+        self._save_budget_state()
 
     async def sync_capital(self) -> float:
         """从IBKR账户同步实际可用资金，返回可用资金金额"""
@@ -1008,6 +1041,7 @@ class IBKRBridge:
         if available > 0:
             self.budget = min(available, net_liq) if net_liq > 0 else available
             self.total_spent = 0.0
+            self._save_budget_state()
             logger.info("[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 预算设为=$%.2f",
                         available, net_liq, self.budget)
         return self.budget

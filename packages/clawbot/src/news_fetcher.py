@@ -9,8 +9,7 @@ v2.0 变更 (2026-03-23):
 """
 import asyncio
 import httpx
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Optional
 import re
 
 from src.notify_style import format_digest
@@ -88,7 +87,7 @@ class NewsFetcher:
                 })
                 resp.raise_for_status()
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             parsed = await loop.run_in_executor(
                 None, feedparser.parse, resp.text
             )

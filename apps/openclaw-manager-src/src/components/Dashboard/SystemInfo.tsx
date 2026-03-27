@@ -21,8 +21,8 @@ export function SystemInfo() {
         ]);
         setInfo(sysInfo);
         setSkillsStatus(skills);
-      } catch {
-        // 静默处理
+      } catch (e) {
+        console.warn('获取系统信息失败', e);
       } finally {
         setLoading(false);
       }

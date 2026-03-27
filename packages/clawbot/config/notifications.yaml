@@ -1,0 +1,39 @@
+# OpenClaw Bot — 多渠道通知配置
+# 文件位置: config/notifications.yaml
+# 最后更新: 2026-03-25
+#
+# 通知渠道优先级: 环境变量 NOTIFY_URLS > 本文件 urls > Telegram 兜底
+# 微信通知: 无需在此配置，通过 WECHAT_NOTIFY_ENABLED=true 环境变量启用
+#           (自动读取已扫码登录的 openclaw-weixin 插件凭证)
+#
+# Apprise 完整渠道列表: https://github.com/caronc/apprise/wiki
+
+# ── 通知渠道 URL ──────────────────────────────────────
+urls:
+  # Telegram (默认已通过 BOT_TOKEN + ADMIN_CHAT_ID 自动配置，无需手动填写)
+  # - "tgram://BOT_TOKEN/CHAT_ID"
+
+  # Bark (iOS 推送，免费)
+  # - "bark://YOUR_DEVICE_KEY@api.day.app"
+
+  # Discord Webhook
+  # - "discord://WEBHOOK_ID/WEBHOOK_TOKEN"
+
+  # Slack
+  # - "slack://TOKEN_A/TOKEN_B/TOKEN_C/#channel"
+
+  # ntfy (自托管推送)
+  # - "ntfy://YOUR_TOPIC"
+
+  # 自定义 Webhook (JSON POST)
+  # - "json://your-server.com/webhook/path"
+
+# ── 标签路由 ──────────────────────────────────────────
+# 按标签将特定事件路由到特定渠道
+tag_routes: {}
+
+# ── 通知级别说明 ──────────────────────────────────────
+# CRITICAL (1): 资金安全/系统宕机 → 所有渠道 + 声音提醒
+# HIGH     (2): 交易成交/风控警报 → 主要渠道
+# NORMAL   (5): 日报/社媒发布 → 默认渠道
+# LOW      (8): 调试/信息性 → 仅日志

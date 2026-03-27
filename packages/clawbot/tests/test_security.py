@@ -111,7 +111,11 @@ class TestPinVerification:
         pin_file = tmp_path / ".pin_hash"
         assert pin_file.exists()
         stored = pin_file.read_text().strip()
-        assert len(stored) == 64  # SHA256 hex digest
+        # PBKDF2 格式: salt(32hex):hash(64hex) = 97字符
+        assert ':' in stored
+        salt, hash_val = stored.split(':', 1)
+        assert len(salt) == 32  # 16字节 hex
+        assert len(hash_val) == 64  # SHA256 hex digest
 
     def test_pin_file_not_exist_on_init(self, tmp_path, monkeypatch):
         monkeypatch.setattr("src.core.security.AUDIT_DIR", tmp_path)

@@ -18,7 +18,6 @@ import logging
 import os
 import time
 from typing import List, Dict, Optional
-from datetime import datetime
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -202,7 +201,6 @@ async def full_market_scan(
         "timestamp": str,
     }
     """
-    from src.ta_engine import compute_indicators, compute_signal_score, find_support_resistance
 
     start_time = time.time()
 

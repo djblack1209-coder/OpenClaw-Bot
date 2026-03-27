@@ -1,5 +1,11 @@
 """
-ClawBot 插件化策略引擎 v2.0（对标 freqtrade 36k⭐）
+ClawBot 插件化策略引擎 v3.0（对标 freqtrade 36k⭐）
+
+v3.0 — 2026-03-24:
+  - 新增 DRLStrategy (搬运自 FinRL 11k⭐) — PPO/A2C 强化学习交易策略
+  - 新增 FactorStrategy (搬运自 Qlib 18k⭐) — 16 Alpha 因子 + LightGBM ML 信号
+  - 最多 7 策略加权投票组合 (5 TA + 1 DRL + 1 因子)
+  - 所有新策略支持 graceful degradation (缺依赖自动跳过)
 
 v2.0 — 2026-03-22:
   - 用 pandas-ta (5k⭐) 替换手写 RSI/MA/Volume 指标
@@ -17,12 +23,10 @@ v2.0 — 2026-03-22:
 """
 
 import logging
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from src.utils import now_et
@@ -657,7 +661,12 @@ class StrategyEngine:
 # ============ 默认引擎实例 ============
 
 def create_default_engine() -> StrategyEngine:
-    """创建带有内置策略的默认引擎（v2.0: 5 策略组合）"""
+    """创建带有内置策略的默认引擎（v3.0: 最多 7 策略组合）
+
+    v3.0 新增:
+      - DRLStrategy (FinRL 11k⭐) — PPO 强化学习交易 (需 gymnasium + stable-baselines3)
+      - FactorStrategy (Qlib 18k⭐) — Alpha 因子 + LightGBM (需 lightgbm 可选)
+    """
     engine = StrategyEngine()
     engine.register(MACrossStrategy(fast_period=10, slow_period=30))
     engine.register(RSIMomentumStrategy())
@@ -668,4 +677,31 @@ def create_default_engine() -> StrategyEngine:
     else:
         logger.warning("[StrategyEngine] pandas-ta 未安装，MACD 和布林带策略不可用。"
                        "安装: pip install pandas-ta")
+
+    # v3.0: DRL 强化学习策略 (搬运自 FinRL, 可选依赖)
+    try:
+        from src.strategies.drl_strategy import DRLStrategy
+        drl = DRLStrategy(algorithm="ppo", train_timesteps=50_000)
+        if drl.available:
+            engine.register(drl)
+            logger.info("[StrategyEngine] DRL-PPO 策略已注册 (FinRL)")
+        else:
+            logger.info("[StrategyEngine] DRL 依赖未安装，跳过。"
+                        "安装: pip install gymnasium stable-baselines3")
+    except ImportError:
+        logger.debug("[StrategyEngine] drl_strategy 模块不可用")
+
+    # v3.0: Alpha 因子策略 (搬运自 Qlib, 始终可用; ML 路径需 lightgbm)
+    try:
+        from src.strategies.factor_strategy import FactorStrategy
+        factor = FactorStrategy(use_ml=True, n_future_days=5)
+        engine.register(factor)
+        if factor.ml_available:
+            logger.info("[StrategyEngine] Alpha因子+ML 策略已注册 (Qlib)")
+        else:
+            logger.info("[StrategyEngine] Alpha因子策略已注册 (纯规则模式, "
+                        "安装 lightgbm 可启用 ML)")
+    except ImportError:
+        logger.debug("[StrategyEngine] factor_strategy 模块不可用")
+
     return engine

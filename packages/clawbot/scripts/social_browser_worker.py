@@ -15,7 +15,7 @@ import time
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -623,7 +623,7 @@ def research_topic(topic: str, limit: int = 5) -> Dict[str, Any]:
         "x": x_items,
         "xiaohongshu": xhs_items,
         "insights": insights,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -990,7 +990,7 @@ def collect_social_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         return {
             "success": True,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "seeded": bool(seed.get("seeded")),
             "x": {
                 "profile": {"url": x_profile.url, "stats": _x_profile_stats(x_profile), "snapshot": _page_snapshot(x_profile, limit=20)},
@@ -1024,7 +1024,7 @@ def collect_social_metrics_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         return {
             "success": True,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "seeded": bool(seed.get("seeded")),
             "x": {"url": x_page.url, "stats": x_stats},
             "xiaohongshu": {"url": xhs_page.url, "stats": xhs_stats},
@@ -1035,7 +1035,7 @@ def draw_cards(payload: Dict[str, Any]) -> Dict[str, Any]:
     topic = payload.get("topic", "AI出海")
     picks = payload.get("picks", [])[:5]
     insights = payload.get("insights", {})
-    out_dir = ROOT / "clawbot" / "images" / "social_posts" / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slugify(topic)}"
+    out_dir = ROOT / "clawbot" / "images" / "social_posts" / f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{slugify(topic)}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     title_font = ImageFont.truetype(FONT_PATH, 82)

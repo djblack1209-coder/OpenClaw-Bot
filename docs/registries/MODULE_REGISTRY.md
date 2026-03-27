@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-27 | 认知层升级: 偏好检测/跨域关联/纠错修复 + 产品跃迁: watchlist_monitor/watchlist
+> 最后更新: 2026-03-27 | R9 补充核心模块: browser_use_bridge/crewai_bridge/trading_journal/novel_writer/position_monitor/skyvern_bridge/strategies/
 
 ---
 
@@ -47,7 +47,7 @@
 | 属性 | 值 |
 |------|-----|
 | 路径 | `packages/clawbot/src/telegram_ux.py` |
-| 行数 | 668 |
+| 行数 | 728 |
 | 搬运自 | python-telegram-bot 最佳实践 + grammY (15k⭐) + freqtrade + n3d1117/chatgpt-telegram-bot (3.5k⭐) |
 | 导入方 | cmd_basic_mixin, cmd_invest_mixin, cmd_trading_mixin, cmd_analysis_mixin, cmd_execution_mixin, message_mixin |
 | 依赖 | telegram, matplotlib, plotly (可选) |
@@ -66,6 +66,7 @@
 - `generate_equity_chart(equity_curve, title) -> BytesIO` — 权益曲线图
 - `generate_pnl_chart(trades, title) -> BytesIO` — PnL 柱状图
 - `generate_portfolio_pie(positions, title) -> BytesIO` — 持仓饼图
+- `generate_sector_pie(sector_values, title) -> BytesIO` — 行业分布饼图
 - `send_chart(update, context, chart_buf, caption)` — 发送图表 + 降级
 
 ### 1.2 notify_style.py — 统一排版引擎
@@ -453,7 +454,7 @@
 | invest_tools.py | `src/invest_tools.py` | ~600 | 行情获取 + 报价格式化 |
 | ta_engine.py | `src/ta_engine.py` | ~500 | pandas-ta 技术指标计算 |
 | history_store.py | `src/history_store.py` | ~400 | SQLite 对话历史存储 |
-| risk_manager.py | `src/risk_manager.py` | ~500 | 风控引擎 (仓位/止损/集中度) |
+| risk_manager.py | `src/risk_manager.py` | ~1320 | 风控引擎 (仓位/止损/集中度/行业查询/风险敞口摘要) |
 | social_tools.py | `src/social_tools.py` | ~700 | 社媒内容生成 + 发布 |
 | monitoring.py | `src/monitoring.py` | 1243 | Prometheus 监控 + 健康检查 |
 | message_format.py | `src/message_format.py` | 528 | OMEGA 结构化响应 + 格式化 |
@@ -467,6 +468,7 @@
 | strategy_engine.py | `src/strategy_engine.py` | 710 | 交易策略引擎 v3.0 (7策略加权投票) |
 | synergy.py | `src/synergy.py` | 180 | 多 Bot 协同策略 |
 | **核心引擎 (src/core/)** | | | |
+| synergy_pipelines.py | `src/core/synergy_pipelines.py` | 550 | 跨模块协同管道: 交易→社媒/社交→投资/进化广播/风控过滤/新闻情感→风控(4h定时)/盈利庆祝帖 |
 | security.py | `src/core/security.py` | 349 | ✅ 安全防护层: 输入消毒(sanitize_input) + PIN(PBKDF2+盐+频率限制) + 审计日志(JSONL) + 权限三级分控(auto/confirm/always_human) + XSS/SQL注入/路径遍历/命令注入防护 |
 | **核心工具 (src/ 根级)** | | | |
 | utils.py | `src/utils.py` | 101 | 共享工具函数 (时间/环境变量/样板代码消除) |
@@ -483,7 +485,7 @@
 | meeting_notes.py | `src/execution/meeting_notes.py` | 45 | 会议纪要提炼 (摘要/行动事项/关键决策提取) |
 | project_report.py | `src/execution/project_report.py` | 51 | 项目周报生成 (基于 git log 自动汇总) |
 | **社媒 (src/execution/social/)** | | | |
-| content_pipeline.py | `src/execution/social/content_pipeline.py` | 587 | 社媒内容管道 (自动发布/话题研究/创意生成/人设组合) |
+| content_pipeline.py | `src/execution/social/content_pipeline.py` | 638 | 社媒内容管道 (自动发布/话题研究/创意生成/人设组合/日历持久化+查询+标记完成) |
 | drafts.py | `src/execution/social/drafts.py` | 293 | 社媒草稿管理 (保存/去重检测/状态更新/发布) |
 | worker_bridge.py | `src/execution/social/worker_bridge.py` | 187 | 社媒浏览器 Worker 桥接 (独立于 ExecutionHub 调用) |
 | **工具 (src/tools/)** | | | |
@@ -539,6 +541,7 @@
 | broker_bridge.py | `src/broker_bridge.py` | 1100 | 新增 `get_broker()` 统一券商选择器 (IBKR→Alpaca→模拟) | — |
 | invest_tools.py | `src/invest_tools.py` | 720 | 新增 Fear & Greed Index + `get_quick_quotes()` + `get_earnings_calendar()` | alternative.me + yfinance |
 | daily_brief.py | `src/execution/daily_brief.py` | 100 | 接入 Fear & Greed Index (简报第6段) | — |
+| daily_brief.py | `src/execution/daily_brief.py` | 930 | 新增 _build_today_agenda() 日程板块，合并5源(持仓风险/提醒/账单/待办/降价监控)按紧急度排序 | — |
 | universe.py | `src/universe.py` | 400 | tvscreener (Apache-2.0) 动态股票筛选 `get_dynamic_candidates()` | tvscreener |
 | alpaca_bridge.py | `src/alpaca_bridge.py` | 380 | v1.1: +6 IBKRBridge 兼容方法，可完全替换 IBKR | alpaca-py (1k⭐) |
 | trading_system.py | `src/trading_system.py` | 1431 | 健康检查统一为 `_broker_health_check` (IBKR/Alpaca 双支持) | — |
@@ -611,13 +614,37 @@
 | `test_broker_bridge.py` | broker_bridge.py | 20 | 单元+mock | 2026-03-22 |
 | 其余 20 文件 | 各模块 | ~280 | 混合 | 2026-03-22 |
 
-**总计: 642 passed + 31 xfailed = 673 个测试用例**
+**总计: 980 passed = 980 个测试用例 (R8 新增 34 个)**
 
 ### 4.2 未覆盖的 P0 模块
 
 | 模块 | 行数 | 缺失原因 | 优先级 |
 |------|------|----------|--------|
 | `src/chat_router.py` | 1,415 | 群聊路由复杂度高，需 mock 7 Bot | P1 |
-| `src/shared_memory.py` | 1,070 | 依赖 mem0/SQLite | P2 |
+| `src/shared_memory.py` | 1,070 | **R8 已补测试 (6 cases)** | ✅ |
 | `src/context_manager.py` | 751 | 依赖 LLM token 计数 | P2 |
 | `src/litellm_router.py` | 653 | 依赖 50+ API key | P2 |
+
+---
+
+## 5. R9 补充的核心模块条目
+
+以下模块在 R1~R8 审计中发现缺失注册，现统一补充。
+
+| 模块 | 路径 | 行数 | 说明 | 搬运来源 |
+|------|------|------|------|---------|
+| `browser_use_bridge.py` | `src/browser_use_bridge.py` | ~220 | AI 浏览器代理桥接 — DOM 解析/LLM 决策/反检测 | browser-use (81k⭐) |
+| `crewai_bridge.py` | `src/crewai_bridge.py` | ~180 | CrewAI 多 Agent 协作桥接 | crewai (27k⭐) |
+| `trading_journal.py` | `src/trading_journal.py` | ~350 | 交易日志 — 开仓/平仓/盈亏记录 | 自研 |
+| `novel_writer.py` | `src/novel_writer.py` | ~450 | AI 小说工坊 — 大纲/续写/TTS | inkos + MuMuAINovel |
+| `position_monitor.py` | `src/position_monitor.py` | ~700 | 持仓实时监控 — 止损/止盈/异动告警 | 自研 |
+| `social_scheduler.py` | `src/social_scheduler.py` | ~580 | 社媒自动驾驶 — 5 个定时任务 (APScheduler) | 自研 |
+| `auto_trader.py` | `src/auto_trader.py` | ~680 | 自动交易引擎 — 信号扫描/执行/管理 | 自研 |
+| `data_providers.py` | `src/data_providers.py` | ~400 | 多市场数据源聚合 (yfinance/Alpha Vantage) | yfinance (16k⭐) |
+| `backtester.py` | `src/backtester.py` | ~350 | 回测引擎主模块 | vectorbt (5.4k⭐) |
+| `skyvern_bridge.py` | `src/integrations/skyvern_bridge.py` | ~150 | Skyvern 浏览器 RPA 桥接 | skyvern (14k⭐) |
+| `strategies/drl_strategy.py` | `src/strategies/drl_strategy.py` | ~200 | 深度强化学习交易策略 (PPO) | FinRL (10k⭐) |
+| `strategies/factor_strategy.py` | `src/strategies/factor_strategy.py` | ~300 | 16 Alpha 因子量化策略 | Qlib (16k⭐) |
+| `image_tool.py` | `src/tools/image_tool.py` | ~100 | 图片生成工具 (硅基流动 FLUX/SD3/SDXL) | 自研 |
+| `bash_tool.py` | `src/tools/bash_tool.py` | ~80 | Bash 命令执行工具 (沙箱) | smolagents |
+| `code_tool.py` | `src/tools/code_tool.py` | ~120 | Python 代码执行工具 (沙箱) | smolagents |

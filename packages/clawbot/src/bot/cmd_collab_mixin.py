@@ -7,10 +7,13 @@ import asyncio
 import logging
 import re
 import json
-from datetime import datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
+from src.telegram_ux import with_typing
+from config.prompts import INVEST_DISCUSSION_ROLES
 from src.utils import now_et
 from src.bot.globals import (
     chat_router,
@@ -24,15 +27,10 @@ from src.bot.globals import (
     format_analysis,
     format_quote,
     get_market_summary,
-    get_stock_quote,
-    send_long_message,
     safe_edit,
     send_as_bot,
     shared_memory,
     _pending_trades,
-    ALLOWED_USER_IDS,
-    execute_trade_via_pipeline,
-    get_trading_pipeline,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,12 +96,11 @@ def _parse_trade_recommendations(text: str) -> list:
 class CollabCommandsMixin:
     """Mixin providing collaboration, discussion, and investment commands."""
 
+    @requires_auth
     async def _auto_invest(self, update, context, user_text: str = ""):
         """
         全自动投资闭环：全市场扫描334标的 → 多层筛选 → AI团队分析 → 一键下单 → 交易日志
         """
-        if not self._is_authorized(update.effective_user.id):
-            return
         if chat_router.get_discuss_session(update.effective_chat.id):
             await update.message.reply_text("已有分析会议进行中，请等待完成或发送 /stop_discuss 中断")
             return
@@ -132,7 +129,7 @@ class CollabCommandsMixin:
         try:
             scan_result = await full_market_scan()
         except Exception as e:
-            await safe_edit(msg, f"扫描失败: {e}")
+            await safe_edit(msg, error_service_failed("市场扫描"))
             return
 
         top = scan_result.get('top_candidates', [])
@@ -198,11 +195,10 @@ class CollabCommandsMixin:
         context.args = [topic]
         await self.cmd_invest(update, context)
 
+    @requires_auth
+    @with_typing
     async def cmd_invest(self, update, context):
         """投资讨论: /invest 现在该买什么？"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         # 防止重复触发
         if chat_router.get_discuss_session(update.effective_chat.id):
             return
@@ -305,14 +301,8 @@ class CollabCommandsMixin:
         previous_opinions = []
         from src.message_sender import _clean_for_telegram, _split_message
 
-        role_map = {
-            "claude_haiku": ("市场雷达", "你是超短线交易团队的市场雷达。请在200字内完成：\n1. 当前市场状态判断（贪婪/恐惧/中性）\n2. 今日异动标的（放量、大涨大跌、突破关键位）\n3. 板块热点和资金流向\n4. 重要事件提醒（财报、经济数据等）\n\n像交易室晨会简报一样精炼，不要长篇大论。"),
-            "qwen235b": ("宏观猎手", "你是超短线交易团队的宏观猎手。请快速判断：\n1. 当前宏观环境对超短线是利多还是利空\n2. 美联储/非农/CPI等关键数据的影响\n3. 板块轮动方向，资金从哪里流出流入哪里\n4. 今天/本周最值得关注的2-3个超短线方向\n\n快准狠，直接给结论和理由。"),
-            "gptoss": ("图表狙击手", "你是超短线交易团队的图表狙击手。系统已提供实时技术数据，请基于这些硬数据给出精准判断：\n1. RSI超卖/超买信号解读\n2. MACD金叉/死叉 + 柱状图方向\n3. 放量突破还是缩量回调\n4. 布林带位置和突破方向\n5. EMA排列和VWAP关系\n6. 支撑位反弹/阻力位突破机会\n\n输出格式：做多/做空/观望 + 入场价 + 止损价 + 目标价。像交易室老手一样简短精准。"),
-            "deepseek_v3": ("风控铁闸", "你是超短线交易团队的风控铁闸。请冷酷计算：\n1. 每笔交易最大风险敞口（不超过总资金2%=$40）\n2. 基于ATR设定动态止损位（1.5-2倍ATR）\n3. 仓位大小（具体几股，考虑$2000预算）\n4. 检查仓位集中度（单只不超过30%）\n5. 风险收益比（低于1:2直接否决）\n6. 审查前面分析师的建议，指出风险盲点\n\n用数字说话，不带感情。"),
-            "claude_sonnet": ("交易指挥官", "你是超短线交易团队的交易指挥官，最终拍板的人。请：\n1. 综合所有分析师的观点\n2. 指出分歧并给出你的判断\n3. 给出明确的交易指令：买入/卖出/观望（不能模棱两可）\n4. 具体：标的、数量、入场价、止损价、目标价、持仓时间\n5. 如果信号不够强，果断说观望\n\n核心原则：宁可错过不可做错，资金安全第一。\n\n重要：在你的回复最后，必须输出一个JSON代码块，格式如下（即使建议观望也要输出，trades为空数组即可）：\n```json\n{\"trades\": [{\"action\": \"BUY\", \"symbol\": \"AAPL\", \"qty\": 5, \"entry_price\": 150.0, \"stop_loss\": 145.5, \"take_profit\": 159.0, \"reason\": \"简短理由\"}]}\n```\naction只能是BUY或SELL，symbol是股票代码，qty是数量（整数，考虑$2000预算）。entry_price是当前入场价，stop_loss是止损价（必填，通常为入场价下方2-3%或1.5倍ATR），take_profit是目标价（必填，至少为止损距离的2倍）。这三个价格字段必须填写具体数字，不能为0。"),
-            "claude_opus": ("首席策略师", "你是超短线交易团队的首席策略师，终极大脑，只在关键时刻发言。你的职责是：\n1. 审阅所有分析师和交易指挥官的观点\n2. 从更高维度评估：市场情绪是否被误读？有没有被忽略的系统性风险？\n3. 如果交易指挥官的决策合理，简短确认即可（一句话）\n4. 如果发现重大风险或逻辑漏洞，明确提出否决并说明理由\n5. 可以调整仓位大小、止损位，或直接否决交易\n\n你是最后的安全阀。宁可保守，不可冒进。回复控制在100字以内，除非需要否决。"),
-        }
+        # 投资讨论角色提示词 — 从中央注册表导入
+        role_map = INVEST_DISCUSSION_ROLES
 
         # 实时进度消息 — 让用户看到每个 AI 的分析进度
         progress_icons = {"pending": "⏳", "running": "🔄", "done": "✅", "failed": "❌", "timeout": "⏰"}
@@ -417,7 +407,7 @@ class CollabCommandsMixin:
                 await _update_progress()
                 logger.error(f"[Invest] {bot_id} 发言失败: {e}")
                 try:
-                    await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 发言失败: {e}]")
+                    await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 暂时无法回复，已跳过]")
                 except Exception:
                     logger.debug("[Invest] 发送失败通知失败(静默)")
 
@@ -493,11 +483,10 @@ class CollabCommandsMixin:
             logger.debug(f"[Invest] SharedMemory 写入失败(非致命): {e}")
 
 
+    @requires_auth
+    @with_typing
     async def cmd_discuss(self, update, context):
         """讨论模式 - 多Bot多轮讨论，需人类明确指定轮数"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         # 所有Bot都可以触发 /discuss，由第一个收到命令的Bot发起
         # 用 discuss_sessions 防止重复触发
         if chat_router.get_discuss_session(update.effective_chat.id):
@@ -541,10 +530,10 @@ class CollabCommandsMixin:
         # 自动驱动讨论流程
         await self._run_discuss_loop(chat_id, context, update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_stop_discuss(self, update, context):
         """停止讨论模式"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         chat_id = update.effective_chat.id
         discuss_result = await chat_router.stop_discuss(chat_id)
         workflow_result = await chat_router.stop_service_workflow(chat_id)
@@ -631,16 +620,15 @@ class CollabCommandsMixin:
                 try:
                     await bot_telegram.send_message(
                         chat_id=chat_id,
-                        text=f"发言失败: {e}",
+                        text="[发言暂时不可用，已跳过]",
                     )
                 except Exception:
                     logger.debug("[Discuss] 发送失败通知失败(静默)")
 
+    @requires_auth
+    @with_typing
     async def cmd_collab(self, update, context):
         """协作模式命令 - 启动多模型协作流程"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         # 所有Bot都可以触发 /collab，用 collab_tasks 防止重复
         if chat_router.get_discuss_session(update.effective_chat.id):
             return
@@ -820,6 +808,6 @@ class CollabCommandsMixin:
         except Exception as e:
             logger.exception(f"[{self.name}] 协作任务出错")
             try:
-                await status_msg.edit_text(f"协作任务出错: {e}")
+                await status_msg.edit_text(error_service_failed("协作任务"))
             except Exception:
                 logger.debug("[Collab] 编辑错误消息失败(静默)")

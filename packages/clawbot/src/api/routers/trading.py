@@ -1,10 +1,12 @@
 """Trading endpoints — positions, PnL, signals, team vote, system status"""
 import logging
+from typing import Any, Dict
+
 from fastapi import APIRouter
 from ..rpc import ClawBotRPC
 from ..schemas import (
-    TradingPositions, PnLSummary, TradeSignal,
-    TeamVoteResult, TeamVoteRequest, TradingSystemStatus, StatusMsg,
+    TradingPositions, PnLSummary,
+    TeamVoteRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,17 +23,17 @@ async def get_pnl():
     return await ClawBotRPC._rpc_trading_pnl()
 
 
-@router.get("/trading/signals")
+@router.get("/trading/signals", response_model=Dict[str, Any])
 def get_signals():
     return ClawBotRPC._rpc_trading_signals()
 
 
-@router.get("/trading/system")
+@router.get("/trading/system", response_model=Dict[str, Any])
 def get_trading_system():
     return ClawBotRPC._rpc_trading_system_status()
 
 
-@router.post("/trading/vote")
+@router.post("/trading/vote", response_model=Dict[str, Any])
 async def trigger_vote(req: TeamVoteRequest):
     """Trigger AI team vote for a symbol.
     

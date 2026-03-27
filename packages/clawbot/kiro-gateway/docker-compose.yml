@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   kiro-gateway:
     build:
@@ -7,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: kiro-gateway
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       # Server configuration
       - SERVER_HOST=0.0.0.0
@@ -15,7 +13,7 @@ services:
       
       # Required: Set your proxy API key
       # You can also use .env file (see env_file below)
-      - PROXY_API_KEY=${PROXY_API_KEY:-my-super-secret-password-123}
+      - PROXY_API_KEY=${PROXY_API_KEY:?PROXY_API_KEY must be set in .env}
       
       # Authentication (choose one method)
       # Option 1: Refresh token

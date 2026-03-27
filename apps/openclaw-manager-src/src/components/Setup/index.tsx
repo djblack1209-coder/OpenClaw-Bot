@@ -56,7 +56,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         setupLogger.info('✅ 环境就绪');
         setStep('complete');
         // 延迟一下再跳转，让用户看到成功状态
-        setTimeout(() => onComplete(), 1500);
+        const timer = setTimeout(() => onComplete(), 1500);
+        return () => clearTimeout(timer);
       } else {
         setupLogger.warn('环境未就绪，需要安装依赖');
         setStep('install');

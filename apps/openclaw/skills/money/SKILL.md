@@ -11,7 +11,7 @@ metadata:
 
 # Money — 盈利总控台
 
-当 Boss 输入 `/money` 或"挣钱"时，执行以下检查并汇报。
+当 严总 输入 `/money` 或"挣钱"时，执行以下检查并汇报。
 
 ## 行为
 
@@ -78,10 +78,10 @@ metadata:
 ### 3. 主动行动
 
 如果发现渠道状态异常，主动修复：
-- 闲鱼 Cookie 过期 → 提醒 Boss 更新 Cookie
+- 闲鱼 Cookie 过期 → 提醒 严总 更新 Cookie
 - 闲鱼服务未运行 → 自动启动 `launchctl load`
 - 社媒今日未发 → 触发 social-autopilot
-- Upwork 有新 job 匹配 → 推送给 Boss
+- Upwork 有新 job 匹配 → 推送给 严总
 
 ## 盈利启动清单（第一块钱计划）
 

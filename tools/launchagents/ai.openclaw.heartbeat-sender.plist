@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.heartbeat-sender</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/ssh</string>
+    <string>-o</string>
+    <string>ConnectTimeout=5</string>
+    <string>-o</string>
+    <string>StrictHostKeyChecking=accept-new</string>
+    <string>openclaw@101.43.41.96</string>
+    <string>touch /opt/openclaw/data/primary_heartbeat</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/heartbeat-sender.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/heartbeat-sender.log</string>
+</dict>
+</plist>

@@ -3,11 +3,8 @@ Execution Hub — 智能任务管理
 场景5: 任务的增删改查，优先级排序
 """
 import logging
-import sqlite3
-from datetime import datetime
 
 from src.execution._db import get_conn
-from src.execution._utils import safe_int
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)

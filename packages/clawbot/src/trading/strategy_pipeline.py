@@ -11,9 +11,8 @@ Trading — 策略管道连接器
 修复: 插入 StrategyPipeline 作为中间层。
 """
 import logging
-import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,6 @@ class StrategyPipeline:
 
             if self.strategy_engine:
                 try:
-                    from src.strategy_engine import MarketData
                     # 从 scan_results 构建 MarketData
                     md = _build_market_data(symbol, item)
                     result = self.strategy_engine.analyze(md)

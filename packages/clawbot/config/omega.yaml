@@ -1,0 +1,142 @@
+# OpenClaw OMEGA v2.0 配置
+omega:
+  version: "2.0"
+
+  # ── Telegram 主控台 ────────────────────────────────
+  gateway:
+    telegram:
+      # Gateway Bot Token（第8个Bot，专门作为OMEGA统一入口）
+      # 从 @BotFather 创建新Bot获取
+      gateway_bot_token: "${OMEGA_GATEWAY_BOT_TOKEN}"
+
+      # 管理员 Telegram user_id 白名单（逗号分隔）
+      admin_user_ids: []
+
+      # 通知分级（哪些事件触发哪种通知）
+      notification_levels:
+        silent:
+          - "social.published"
+          - "evolution.scan_complete"
+        normal:
+          - "trade.executed"
+          - "system.task_completed"
+        important:
+          - "trade.risk_alert"
+          - "system.cost_warning"
+        urgent:
+          - "trade.stop_loss"
+          - "system.critical"
+
+      # 进度推送方式: streaming（编辑同一条消息）/ batch（每步新消息）
+      progress_style: "streaming"
+
+  # ── 成本控制 ────────────────────────────────────────
+  cost:
+    # 每日预算（美元）
+    daily_budget_usd: 50.0
+    # 每条消息末尾显示本次成本
+    show_cost_per_message: false
+    # 每周自动推送费用报告
+    weekly_report: true
+    # 超预算时自动降级到免费模型
+    cost_aware_routing: true
+
+  # ── 安全 ────────────────────────────────────────────
+  security:
+    # 交易操作需要PIN码确认
+    require_pin_for_trades: true
+    # PIN SHA256 hash（首次使用时通过 /setpin 命令设置）
+    pin_hash: ""
+    # 审计日志开关
+    audit_log_enabled: true
+    # 敏感数据（银行卡号/密码/身份证号）仅内存存储
+    sensitive_data_in_memory_only: true
+
+  # ── 投资团队 ────────────────────────────────────────
+  investment:
+    # 多智能体投资团队开关
+    team_enabled: true
+    # 自动交易（false = 需要人工确认）
+    auto_trade: false
+
+    # 风控硬性规则 — 权威值来自 risk_manager.py RiskConfig, 此处保持同步
+    # 任何修改必须同步更新 risk_manager.py 默认值 + bot_profiles.py 风控提示词
+    risk_rules:
+      total_capital: 2000             # 总资金基准 (USD)
+      max_risk_per_trade: 0.02        # 单笔最大风险 2% ($40 on $2000)
+      max_position_single: 0.30       # 单标的最大仓位 30% — 与 risk_manager.py 对齐
+      max_sector_position: 0.50       # 同行业最大仓位 50% — 与 risk_manager.py max_sector_exposure_pct 对齐
+      max_total_position: 0.80        # 总仓位上限 80%
+      max_drawdown_stop: 0.10         # 滚动窗口回撤 >10% 暂停交易 — 与 risk_manager.py drawdown_halt_pct 对齐
+      daily_loss_limit: 0.05          # 单日亏损 >5% 暂停交易 — 与 risk_manager.py 对齐: $100 on $2000 capital
+      require_human_approval_rmb: 100000  # 单笔 >10万需人工确认
+      correlation_check: true
+      liquidity_check: true
+
+    # 盘中自动监控
+    monitor:
+      enabled: true
+      check_interval_seconds: 300    # 每5分钟检查一次
+
+    # 策略健康监控
+    strategy_health:
+      deviation_threshold: 0.20      # 实盘偏离回测 >20% 暂停策略
+      auto_suspend: true
+
+  # ── 执行引擎 ────────────────────────────────────────
+  executor:
+    # 执行路径优先级
+    fallback_chain:
+      - "api"
+      - "browser"
+      - "voice_call"
+      - "human"
+
+    # 熔断器
+    circuit_breaker:
+      failure_threshold: 3           # 连续失败3次触发熔断
+      recovery_timeout_seconds: 300  # 5分钟后恢复
+
+    # 浏览器自动化
+    browser:
+      headless: true
+      anti_detect: true              # 使用 DrissionPage 反检测
+
+    # AI电话
+    voice_call:
+      provider: "retell"             # retell / twilio
+      # Retell API Key: ${RETELL_API_KEY}
+      # Twilio: ${TWILIO_ACCOUNT_SID}, ${TWILIO_AUTH_TOKEN}
+
+  # ── 自进化 ──────────────────────────────────────── [PLANNED - not yet consumed by code; EvolutionEngine uses evolution_config.json]
+  evolution:
+    scan_interval_hours: 24
+    auto_approve_threshold: 8.0      # 价值分 >=8 且 LOW 风险自动通过
+    auto_integrate: false            # 需要人工确认
+
+  # ── 模型路由 ────────────────────────────────────────
+  routing:
+    default_strategy: "balanced"
+    # 任务类型 → 模型映射 [PLANNED - not yet consumed by code]
+    task_routing:
+      complex_reasoning: "claude-opus-4"
+      fast_execution: "claude-sonnet-4"
+      chinese_understanding: "qwen3-235b-a22b"
+      code_tasks: "claude-code-cli"
+      local_private: "ollama/qwen2.5"
+      intent_parsing: "qwen3-235b-a22b"        # 意图解析用便宜模型
+      investment_analysis: "claude-sonnet-4"     # 投资分析用中端模型
+      content_generation: "qwen3-235b-a22b"      # 内容生成用免费模型
+
+  # ── 社媒运营 ────────────────────────────────────────
+  social:
+    # 平台算法最佳发布时间 [PLANNED - not yet consumed by code]
+    optimal_times:
+      douyin: ["18:00", "19:00", "20:00", "21:00"]
+      xiaohongshu: ["12:00", "13:00", "20:00", "22:00"]
+      x_twitter: ["09:00", "15:00", "21:00"]    # UTC+8
+
+  # ── 生活服务 ──────────────────────────────────────── [PLANNED - not yet consumed by code]
+  life:
+    calendar_reminder_minutes_before: 120
+    delivery_check_interval_hours: 4

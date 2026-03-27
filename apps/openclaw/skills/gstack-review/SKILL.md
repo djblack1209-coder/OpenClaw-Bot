@@ -63,7 +63,7 @@ metadata: {"openclaw":{"emoji":"🎯"}}
 ## 在 Telegram 中使用
 
 ```
-Boss: /review-ceo 我想给闲鱼加个自动降价功能
+严总: /review-ceo 我想给闲鱼加个自动降价功能
 
 Agent: 🎯 CEO 审查模式
 
@@ -89,5 +89,5 @@ Agent: 🎯 CEO 审查模式
 ## 触发条件
 
 - `/review-ceo`、`/review-eng`、`/review-security`、`/review-qa`、`/ship`
-- Boss 说 "帮我审查一下"、"这个方案怎么样"
+- 严总 说 "帮我审查一下"、"这个方案怎么样"
 - 开发任务的 review 阶段自动触发

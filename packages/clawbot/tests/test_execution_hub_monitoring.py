@@ -3,7 +3,12 @@ from typing import cast
 
 import src.execution as execution_hub_module
 from src.news_fetcher import NewsFetcher
-from src.execution_hub import ExecutionHub
+# HI-006 完成: 已迁移到模块化 ExecutionHub
+from src.execution import ExecutionHub
+from src.execution.social.x_platform import (
+    extract_x_handle_candidates_from_markdown,
+    extract_x_profile_posts_from_markdown,
+)
 
 
 class TestExecutionHubMonitoring:
@@ -86,7 +91,6 @@ class TestExecutionHubMonitoring:
 
     def test_extract_x_profile_posts_from_markdown(self, monkeypatch, tmp_path):
         monkeypatch.setattr(execution_hub_module, "DB_PATH", tmp_path / "execution_hub.db")
-        hub = ExecutionHub()
 
         markdown = """
 [WaytoAGI｜通往AGI之路](https://x.com/WaytoAGI)
@@ -104,7 +108,7 @@ class TestExecutionHubMonitoring:
 《Claude官方文档提示词工程最佳实践》来自未来力场中英文编译。
         """.strip()
 
-        posts = hub._extract_x_profile_posts_from_markdown("WaytoAGI", markdown, limit=3)
+        posts = extract_x_profile_posts_from_markdown("WaytoAGI", markdown, limit=3)
 
         assert len(posts) == 2
         assert posts[0]["digest_key"] == "1772087763044839450"
@@ -113,7 +117,6 @@ class TestExecutionHubMonitoring:
 
     def test_extract_x_handle_candidates_from_markdown(self, monkeypatch, tmp_path):
         monkeypatch.setattr(execution_hub_module, "DB_PATH", tmp_path / "execution_hub.db")
-        hub = ExecutionHub()
 
         markdown = """
 1.   中文 AI 圈高频信息源，长期分享 Prompt 工程、AI 实战、前沿工具与模型解读。WaytoAGI
@@ -122,7 +125,7 @@ class TestExecutionHubMonitoring:
 4.   中文互联网知识分享常青树，科技与工具类内容长期稳定高质量。阮一峰
         """.strip()
 
-        handles = hub._extract_x_handle_candidates_from_markdown(markdown, limit=10)
+        handles = extract_x_handle_candidates_from_markdown(markdown, limit=10)
 
         assert handles == ["WaytoAGI", "HongyuanCao", "indie_maker_fox"]
 

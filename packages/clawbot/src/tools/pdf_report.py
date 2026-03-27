@@ -4,7 +4,6 @@ PDF 报告生成服务 — 每日简报 / 交易报告
 """
 import io
 import logging
-from datetime import datetime
 from typing import List, Optional
 from src.utils import now_et
 

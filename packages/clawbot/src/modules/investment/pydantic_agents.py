@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -407,31 +407,16 @@ class PydanticInvestmentEngine:
         return ctx
 
 
-# ── Agent Prompts ──────────────────────────────────────
+# ── Agent Prompts — 从中央注册表导入 ─────────────────
+# 使用 config.prompts 的完整版本（team.py 权威定义），替代原先的简化副本。
 
-RESEARCHER_PROMPT = """你是OpenClaw投资团队的市场研究员。
-分析标的的基本面数据，评估估值水平和投资价值。
-关注: 营收增长、利润率、行业地位、估值区间、近期催化剂和风险。
-reasoning字段必须填写你的核心分析逻辑（20-60字）。"""
+from config.prompts import INVESTMENT_ROLES
 
-TA_PROMPT = """你是OpenClaw投资团队的技术分析师。
-分析K线和技术指标，判断当前趋势和最佳交易时机。
-关注: 均线排列、MACD、RSI、成交量、支撑压力位、形态信号。
-key_signal字段写最重要的一个技术信号。reasoning字段必须填写（20-60字）。"""
-
-QUANT_PROMPT = """你是OpenClaw投资团队的量化工程师。
-用数据和统计方法评估投资机会。
-关注: 动量、波动率、历史收益分布、风险调整收益。
-reasoning字段必须填写（20-60字）。"""
-
-RISK_PROMPT = """你是OpenClaw投资团队的首席风控官。你有一票否决权。
-硬性规则: 单标的仓位≤20%, 总仓位≤80%, 单标的回撤≥8%止损。
-如果多项指标矛盾或数据不足, 倾向否决。reasoning字段必须填写（20-60字）。"""
-
-DIRECTOR_PROMPT = """你是OpenClaw投资团队的投资总监。
-综合研究员、技术分析、量化指标和风控意见, 做出最终投资决策。
-如果团队意见分歧大, 倾向保守。风控否决不可覆盖。
-reasoning字段必须写你的决策依据（20-80字）。target_price和stop_loss用美元数字。"""
+RESEARCHER_PROMPT = INVESTMENT_ROLES["researcher"]
+TA_PROMPT = INVESTMENT_ROLES["ta_analyst"]
+QUANT_PROMPT = INVESTMENT_ROLES["quant"]
+RISK_PROMPT = INVESTMENT_ROLES["risk_manager"]
+DIRECTOR_PROMPT = INVESTMENT_ROLES["director"]
 
 
 # ── 全局单例 ──────────────────────────────────────────

@@ -5,6 +5,1050 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R10 轮: 代码+前端+部署+SOP 大修
+
+> 领域: `backend` | `frontend` | `deploy` | `docs`
+> 影响模块: 110+ Python 文件, 5 前端组件, 4 部署配置, AGENTS.md
+> 关联问题: HI-321~HI-333
+
+### 变更内容
+- 清理 273 处未使用 import (ruff F401) + 6 处 fire-and-forget create_task
+- 前端: JSON.parse 崩溃防护 + 6 处 Mock 数据替换为 API 调用 + 定时器泄漏修复 + 250 行重复代码消除
+- Git 仓库: 从索引移除 49K 不应跟踪的文件 (.venv/node_modules/browser), .gitignore 补充
+- 部署: docker-compose 资源限制 + 删除默认密码 + deploy_server 绑定收窄
+- 依赖管理: 7 个包添加版本上界 + 拆分 requirements-dev.txt
+- SOP: AGENTS.md 升级为 AI CEO 开发 SOP 体系 (209→447行)
+
+### 文件变更
+- `packages/clawbot/src/**/*.py` — 273 处 import 清理 + 6 处 create_task 修复
+- `packages/clawbot/src/bot/globals.py` — 恢复 3 个被误删的 re-export
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — JSON.parse 防护 + Mock 清理
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — Mock 数据替换
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — Mock 数据替换 + API 接入
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 定时器修复 + 重复代码消除
+- `.gitignore` — 补充 *.dmg/*.tar.gz/backups/.openclaw/browser/ 规则
+- `packages/clawbot/docker-compose.goofish.yml` — 资源限制 + 删除默认密码
+- `packages/clawbot/docker-compose.mediacrawler.yml` — 资源限制 + healthcheck
+- `packages/clawbot/scripts/deploy_server_main.py` — 绑定 127.0.0.1
+- `packages/clawbot/requirements.txt` — 7 个包版本上界
+- `packages/clawbot/requirements-dev.txt` — 新建, 测试依赖拆分
+- `AGENTS.md` — AI CEO 开发 SOP 重构 (447行)
+
+---
+
+## [2026-03-28] 部署配置安全加固: 资源限制 + 密码清理 + 绑定地址 + 依赖版本上界
+
+> 领域: `deploy`
+> 影响模块: `docker-compose.goofish`, `docker-compose.mediacrawler`, `deploy_server_main`, `requirements`
+> 关联问题: 无
+
+### 变更内容
+- **docker-compose.goofish.yml**: 添加 `deploy.resources.limits` (内存 1G / CPU 1.0) + healthcheck；删除注释中的默认密码 `admin/admin123`，改为引导查看 `.env.goofish`
+- **docker-compose.mediacrawler.yml**: 添加 `deploy.resources.limits` (内存 1G / CPU 1.0) + healthcheck
+- **deploy_server_main.py**: 默认绑定地址从 `0.0.0.0`（全接口暴露）改为 `127.0.0.1`（仅本机），环境变量 `DEPLOY_HOST` 仍可覆盖
+- **requirements.txt**: 7 个无上界依赖添加大版本上界 (flask/aiohttp/langfuse/playwright/plotly/smolagents/docling)；测试依赖 (pytest/pytest-asyncio/pytest-cov) 拆出到 `requirements-dev.txt`
+
+### 文件变更
+- `packages/clawbot/docker-compose.goofish.yml` — 资源限制 + healthcheck + 删除默认密码
+- `packages/clawbot/docker-compose.mediacrawler.yml` — 资源限制 + healthcheck
+- `packages/clawbot/scripts/deploy_server_main.py` — 默认绑定 0.0.0.0 → 127.0.0.1
+- `packages/clawbot/requirements.txt` — 7 个依赖加版本上界 + 测试依赖标记拆出
+- `packages/clawbot/requirements-dev.txt` — 新增，包含 pytest/pytest-asyncio/pytest-cov
+
+---
+
+## [2026-03-28] 前端关键问题修复: JSON崩溃防护 + Mock数据清理 + 定时器泄漏 + 重复代码消除
+
+> 领域: `frontend`
+> 影响模块: `Memory`, `Social`, `Money`, `Channels`
+> 关联问题: 无
+
+### 变更内容
+- **P0 JSON.parse 崩溃防护**: Memory 组件中 `JSON.parse(entry.value)` 增加 try-catch，解析失败时回退显示原始字符串，防止非法 JSON 导致白屏
+- **P1 Memory 统计面板**: 右侧面板硬编码数据 (4,281条/128轮/1536维) 替换为动态值 — 总条目显示实际 entries 数量，其余显示 "—"，引擎状态根据连接情况动态显示
+- **P1 Social Mock 清理**: 移除 `mockDrafts` 硬编码假草稿，改为 `useState<Draft[]>([])` 空数组初始值 + 空态 UI；`browserStatus` 从 `ready/login_needed` 硬编码改为 `unknown` 默认状态
+- **P1 Money Mock 清理**: 移除 `mockChartData` 和 `mockAssets` 硬编码数据，改为状态变量 + useEffect 从后端 `/api/v1/trading/status` 获取；`ibkrConnected` 从 `true` 硬编码改为 `useState(false)` + API 动态获取；图表和持仓区域增加空态 UI
+- **P2 定时器泄漏修复**: Channels 中 WhatsApp 登录的 `setInterval`/`setTimeout` 改用 `useRef` 持有引用，组件卸载时在 `useEffect` cleanup 中自动清理，登录成功时也正确清理
+- **P3 重复代码消除**: Channels/index.tsx 中约 250 行重复代码（ChannelConfig/ChannelField 类型、channelInfo 对象、maskToken/deriveTelegramUserId/getTelegramDefaultAccount/hasValidConfig 函数）全部改为从 `channelDefinitions.ts` 导入，删除本地重复定义
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — JSON.parse 增加 try-catch 防护 + 统计面板改为动态数据
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 移除 mockDrafts + browserStatus 改为 unknown + 增加空态 UI
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 移除 mockChartData/mockAssets + ibkrConnected 动态化 + 增加 useEffect 数据获取 + 空态 UI
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — WhatsApp 定时器用 useRef 管理 + 删除约 250 行重复代码改用 channelDefinitions 导入
+
+---
+
+## [2026-03-28] 补全9组高频命令中文触发词 + 新增 /review_history 复盘历史查询
+
+> 领域: `backend`, `trading`
+> 影响模块: `chinese_nlp_mixin`, `cmd_analysis_mixin`, `trading_journal`, `multi_bot`
+> 关联问题: 无
+
+### 变更内容
+- **中文触发词补全 (9组/27个触发词)**: 为 watchlist/trades/chart/iorders/iaccount/social_calendar/voice/novel/ship 补全中文自然语言触发词，新增 dispatch_map 映射。覆盖"我的自选股""交易记录""苹果的K线""盈透订单""发文日历""语音播报""写小说""发货管理"等高频口语表达
+- **cmd_chart 实装**: 补全此前仅注册但未实现的 /chart 命令，对接 `data_providers.get_history_sync` + `charts.generate_candlestick`，支持中文触发"X的K线""看看X图""X图表"并自动解析中文公司名
+- **新增 /review_history 命令**: 查询最近N次复盘会议记录，显示日期、星级评分(基于胜率)、盈亏、交易笔数、经验教训。`TradingJournal.get_review_history()` 从 review_sessions 表读取
+- **中文触发词**: "复盘历史"/"过往复盘"/"复盘记录" → review_history
+- **"发文计划" 路由调整**: 原映射到 social_plan，现改为 social_calendar（更符合日历查看语义），social_plan 仍响应"社媒计划""今日发什么"
+- **订单/账户 NLP 位置修复**: 将 iorders/iaccount 匹配移到基础命令块之前，避免"订单状态"被"状态"通配拦截
+
+### 文件变更
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — _COMMAND_KEYWORDS 新增11项模糊建议 + _match_chinese_command 新增27个触发词正则 + dispatch_map 新增10个映射
+- `packages/clawbot/src/trading_journal.py` — TradingJournal 新增 `get_review_history(limit=5)` 方法
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — AnalysisCommandsMixin 新增 `cmd_review_history()` + `cmd_chart()` 两个命令处理器
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 `/review_history` CommandHandler
+
+---
+
+## [2026-03-28] 投资安全双加固: 新闻情感→风控管道5实装 + 复盘教训全员注入
+
+> 领域: `trading`, `backend`
+> 影响模块: `core/synergy_pipelines`, `trading_system`, `ai_team_voter`
+> 关联问题: 无
+
+### 变更内容
+- **管道5实装 (新闻情感→投资风险信号)**: `synergy_pipelines.py` 新增 `run_news_sentiment_scan()` 方法和 `_news_sentiment_loop()` 后台循环，每4小时自动扫描最新新闻，对持仓相关标的做零成本情感分析（snownlp/textblob/词袋，不调 LLM），强负面新闻（sentiment < -0.5）触发 RISK_ALERT 事件并推送通知
+- **持仓标的双匹配**: 同时匹配新闻标题中的 ticker 代码（如 NVDA）和公司名（如 "英伟达"、"nvidia"），基于已有 `_NAME_TO_TICKER` 映射表反向查找
+- **管道联动**: 管道5发出的 RISK_ALERT 自动被管道4（风控→社媒过滤）捕获，禁止推荐出现负面新闻的标的
+- **复盘教训全员注入**: `trading_system.py` 的 `_ai_team_wrapper` 在构建投票上下文时主动注入最近复盘教训到 `account_context`，确保全部6位 AI 分析师（包括 Phase 1 的4位并行投票者）都能看到历史教训，而非仅限 Phase 2/3 的指挥官和策略师
+- **安全设计**: 所有新代码 try/except 包裹，新闻获取/情感分析/教训获取失败均不影响主流程
+
+### 文件变更
+- `packages/clawbot/src/core/synergy_pipelines.py` — 新增 `_news_sentiment_loop()`、`run_news_sentiment_scan()` 方法（~130行），`__init__` 新增扫描状态字段，`register_all()` 启动定时任务，`get_stats()` 返回上次扫描时间
+- `packages/clawbot/src/trading_system.py` — `_ai_team_wrapper` 新增8行教训注入逻辑
+
+---
+
+## [2026-03-28] 自选股异动通知升级为情报级（新闻+K线图+RSI+持仓浮盈）
+
+> 领域: `trading`, `backend`
+> 影响模块: `watchlist_monitor`, `core/proactive_engine`
+> 关联问题: 无
+
+### 变更内容
+- **异动信息增强**: `watchlist_monitor.py` 新增 `_enrich_anomalies()` 方法，在检测到异动后自动附加：新闻原因（Google News RSS → Bing 降级）、5日1小时迷你K线图（plotly candlestick → PNG）、RSI14指标、持仓浮盈/浮亏
+- **情报级通知格式**: `proactive_engine.py` 的 `on_watchlist_anomaly` 从 LLM evaluate 方式改为直接构建结构化富文本卡片（⚡标题 + 📰新闻 + 📊RSI + 💰持仓），跳过 LLM 降低延迟和成本
+- **带图发送**: 新增 `_send_proactive_photo()` 函数，通过 Telegram `send_photo` 发送K线图，发送失败自动降级为纯文本
+- **通知目标修复**: 从 `user_id="default"`（不生效的硬编码）改为读取 `ALLOWED_USER_IDS` 获取实际管理员 chat_id
+- **全链路降级**: yfinance/plotly/新闻搜索任一环节失败均 try/except 降级，不影响基础通知发送
+
+### 文件变更
+- `packages/clawbot/src/watchlist_monitor.py` — 新增 `_enrich_anomalies()` 方法（112行），`_check_watchlist` 增加增强调用步骤
+- `packages/clawbot/src/core/proactive_engine.py` — 新增 `_send_proactive_photo()` 函数，重写 `on_watchlist_anomaly` 为富文本渲染
+
+---
+
+## [2026-03-28] 社媒增强三连: 日历持久化 + 最佳时段注入 + 盈利庆祝帖管道
+
+> 领域: `social`, `trading`, `backend`
+> 影响模块: `execution/_db`, `execution/social/content_pipeline`, `execution/__init__`, `core/synergy_pipelines`, `bot/cmd_execution_mixin`
+> 关联问题: 无
+
+### 变更内容
+- **内容日历持久化**: `_db.py` 新增 `content_calendar` 表 (UNIQUE(plan_date, topic) 防重复)；`content_pipeline.py` 新增 `_save_calendar_to_db` / `get_calendar_from_db` / `mark_calendar_done` 三个持久化函数；`generate_content_calendar()` 生成后自动入库
+- **命令增强**: `/social_calendar` 先查表展示已有计划，无计划时才调 AI 生成；新增 `/social_calendar done N` 标记第 N 天为已完成
+- **PostTimeOptimizer 注入**: `generate_content_calendar()` 的 prompt 自动注入历史最佳发布时段数据（不超过 50 字）
+- **盈利庆祝帖管道**: `synergy_pipelines.py` 新增 `_on_profit_celebration`，交易平仓盈利 > 10% 时自动生成庆祝帖草稿（模板不调 LLM），通过 `save_social_draft` 存为草稿
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — 新增 content_calendar 表定义
+- `packages/clawbot/src/execution/social/content_pipeline.py` — 新增日历持久化函数 + prompt 注入最佳时段 + import datetime
+- `packages/clawbot/src/execution/__init__.py` — generate_content_calendar 改为 DB 优先 + 暴露 get_calendar_from_db/mark_calendar_done
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — cmd_social_calendar 支持 done 子命令 + DB 优先展示
+- `packages/clawbot/src/core/synergy_pipelines.py` — 新增 profit_celebration 管道配置 + _on_profit_celebration 方法 + register_all 注册
+
+---
+
+## [2026-03-28] 日报统一日程板块 + 模糊输入智能引导
+
+> 领域: `backend`
+> 影响模块: `execution/daily_brief`, `core/brain`, `bot/message_mixin`, `bot/cmd_basic_mixin`
+> 关联问题: 无
+
+### 变更内容
+- `daily_brief.py` 新增 `_build_today_agenda()`: 合并5个数据源(持仓风险/提醒/账单/待办/降价监控)按紧急度排序，作为日报第一板块
+- `brain.py` 非可执行意图分支新增 `quick_suggestions`: 当无法识别明确意图时，将快捷操作建议写入 `result.extra_data`
+- `message_mixin.py` 新增模糊输入引导: Brain路由未命中时，LLM闲聊前先发送 InlineKeyboard 快捷操作按钮(看持仓/今日简报/账单状态/闲鱼状态)
+- `cmd_basic_mixin.py` cmd_map 补充 `bill` 和 `xianyu` 映射，使 `cmd:bill`/`cmd:xianyu` callback 能正确路由
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — 新增 _build_today_agenda() + generate_daily_brief 首板块调用
+- `packages/clawbot/src/core/brain.py` — 非可执行意图分支追加 quick_suggestions 到 extra_data
+- `packages/clawbot/src/bot/message_mixin.py` — Brain路由失败后发送模糊引导 InlineKeyboard
+- `packages/clawbot/src/bot/cmd_basic_mixin.py` — cmd_map 新增 bill/xianyu 映射
+
+---
+
+## [2026-03-28] /export 扩展 — 记账数据 + 闲鱼订单 Excel 导出
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `tools/export_service`, `execution/life_automation`, `xianyu/xianyu_context`, `bot/cmd_invest_mixin`, `bot/chinese_nlp_mixin`
+> 关联问题: 无
+
+### 变更内容
+- `export_service.py` 新增 `export_expenses()`: 收支明细表(支出红色/收入绿色) + 月度汇总sheet(预算使用率颜色编码)
+- `export_service.py` 新增 `export_xianyu_orders()`: 订单明细表(利润颜色编码) + 利润汇总sheet(键值对布局)
+- `life_automation.py` 新增 `get_all_expenses()`: 获取含收入和支出的全部记账明细
+- `xianyu_context.py` 新增 `get_all_orders()`: 获取带商品标题的订单明细; `get_profit_summary()` 新增 `total_commission` 字段
+- `cmd_invest_mixin.py` 扩展 `/export` 命令: 支持 `expenses [天数]` 和 `xianyu [天数]`，CSV 标记可在任意位置
+- `chinese_nlp_mixin.py` 新增 NLP 触发: "导出记账/导出账单" → export expenses, "导出闲鱼/闲鱼报表导出" → export xianyu
+- 新增 `_NUM_FMT_CNY` 人民币格式常量，Excel 金额列使用 ¥ 前缀
+- 所有导出函数保持 `HAS_OPENPYXL` 检查 + CSV 降级模式
+
+### 文件变更
+- `packages/clawbot/src/tools/export_service.py` — 新增 export_expenses() + export_xianyu_orders() + _NUM_FMT_CNY
+- `packages/clawbot/src/execution/life_automation.py` — 新增 get_all_expenses()
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 get_all_orders(), 增强 get_profit_summary()
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — 扩展 cmd_export 支持 expenses/xianyu
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增导出记账/闲鱼 NLP 触发词 + 分发逻辑
+
+---
+
+## [2026-03-28] 闲鱼 AI 客服回复配置 — 自定义风格 / FAQ / 商品规则
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `xianyu/xianyu_context`, `xianyu/xianyu_agent`, `xianyu/xianyu_live`, `bot/cmd_execution_mixin`, `bot/multi_bot`, `bot/chinese_nlp_mixin`
+> 关联问题: 无
+
+### 变更内容
+- 新增 `reply_config` 表：支持 style(回复风格) / faq(常见问题) / item_rule(商品规则) 三种配置类型
+- `XianyuContextManager` 新增 7 个方法：`set_reply_style` / `add_faq` / `get_faqs` / `remove_faq` / `set_item_rule` / `remove_item_rule` / `get_reply_config`
+- `XianyuReplyBot.agenerate_reply` 流程增强：FAQ 快速匹配(短路 LLM 调用) → 配置注入(风格+FAQ+商品规则) → 安全过滤
+- 新增 `/xianyu_style` 命令（8 个子命令）：set / faq add / faq list / faq remove / rule / rule_remove / show / help
+- 中文 NLP 触发：「闲鱼风格」「客服风格」→ 查看配置；「闲鱼常见问题」「闲鱼FAQ」→ FAQ列表
+- FAQ 上限 50 条，商品规则上限 100 条，配置加载失败不影响正常回复
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 reply_config 表 + 7 个管理方法
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — XianyuReplyBot 接受 ctx 参数，agenerate_reply 增加 FAQ 匹配和配置注入
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 传递 ctx 到 XianyuReplyBot，传递 item_id 到 agenerate_reply
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 cmd_xianyu_style 命令处理器
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /xianyu_style 命令
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增闲鱼风格/FAQ NLP 触发词 + 分发路由
+
+---
+
+## [2026-03-28] /portfolio 增强 — 行业分布 + 风险敞口 + SPY Benchmark
+
+> 领域: `backend`, `trading`
+> 影响模块: `bot/cmd_invest_mixin`, `risk_manager`, `telegram_ux`
+> 关联问题: 无
+
+### 变更内容
+- 新增风险敞口文本段: 单只最大占比、同行业最大占比、总仓位、日亏损额度
+- 新增 SPY Benchmark 对比: 组合收益 vs SPY 近30天收益，显示超额收益
+- 新增行业分布饼图: 按 sector 聚合市值，中英对照行业名
+- risk_manager 新增 `lookup_sectors()`: yfinance 行业查询 + 缓存到 `_symbol_sectors`
+- risk_manager 新增 `get_risk_exposure_summary()`: 聚合风险敞口数据供展示
+- telegram_ux 新增 `generate_sector_pie()`: 行业分布饼图生成
+- 所有新增数据段独立 try/except，失败不影响已有输出
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — cmd_portfolio 追加风险敞口+SPY对标+行业饼图
+- `packages/clawbot/src/risk_manager.py` — 新增 lookup_sectors + get_risk_exposure_summary
+- `packages/clawbot/src/telegram_ux.py` — 新增 generate_sector_pie 行业饼图函数
+
+## [2026-03-28] 记账功能增强 — 收入记录 + 月预算 + 超支告警 + 月度聚合
+
+> 领域: `backend`
+> 影响模块: `execution/_db`, `execution/life_automation`, `execution/scheduler`, `bot/chinese_nlp_mixin`
+> 关联问题: 无
+
+### 变更内容
+- 扩展 expenses 表: 新增 `type` 列 (expense/income) 区分收入与支出
+- 新增 budgets 表: 存储用户月度预算设定
+- 新增 `add_income()`: 记录收入，支持智能分类推断
+- 新增 `set_monthly_budget()`: 设定月预算
+- 新增 `get_monthly_summary()`: 月度财务汇总 (收入/支出/结余/预算/分类明细)
+- 新增 `check_budget_alert()`: 检查超预算状态 (80%预警/100%超支)
+- 新增 `format_monthly_report()`: 将汇总数据格式化为 Telegram 消息
+- 新增 `_auto_categorize()`: 根据备注关键词自动推断 13 种分类
+- 改造 `get_expense_summary()`: 兼容新 type 列，仅统计支出
+- NLP 新增触发词: 收入/进账/工资 → 记收入, 月预算 → 设预算, 本月账单/月度报告 → 月度汇总, 预算还剩/超预算 → 预算检查
+- 调度器新增: 每天 20:00 自动检查所有用户预算使用率，超 80% 推送提醒
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — 新增 type 列 ALTER + budgets 表
+- `packages/clawbot/src/execution/life_automation.py` — 新增 6 个函数 + 智能分类
+- `packages/clawbot/src/execution/scheduler.py` — 新增 _run_budget_alert 定时任务
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增 4 类 NLP 触发词 + 处理分发
+
+## [2026-03-28] /xianyu 帮助优化 + 数据生命周期清理
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `cmd_execution_mixin.py`, `life_automation.py`, `scheduler.py`
+> 关联问题: 无
+
+### 变更内容
+- `/xianyu` 无参数时展示帮助菜单 + 一行状态概要，不再直接走 status 全量展示
+- 新增 `cleanup_stale_watches()` 函数: 清理已触发/取消超30天的降价监控、已删除超30天的账单追踪、90天未检查的过期监控
+- 在凌晨 03:00 的 `_run_daily_db_cleanup` 中自动调用清理函数
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 无参数时展示帮助菜单而非直接查状态
+- `packages/clawbot/src/execution/life_automation.py` — 新增 `cleanup_stale_watches()` 清理函数
+- `packages/clawbot/src/execution/scheduler.py` — `_run_daily_db_cleanup` 追加调用清理函数
+
+---
+
+## [2026-03-28] 4项注册/配置层快速修复 — dualpost崩溃、NLP正则、帮助菜单、Telegram菜单补全
+
+> 领域: `backend`
+> 影响模块: `multi_bot`, `chinese_nlp_mixin`, `cmd_basic_mixin`, `multi_main`
+> 关联问题: 无 (预防性修复)
+
+### 变更内容
+- 修复 `/dualpost` 命令指向不存在的 `cmd_dual_post` 方法导致崩溃，改为 `cmd_post`
+- 修复 NLP 正则 `.{2,30?}` 语法错误，改为 `.{2,30}?`（懒惰量词位置修正）
+- `/help` 菜单 invest 分类补全 accuracy/equity/targets，daily 分类补全 weekly/pricewatch/bill
+- `/help` 菜单新增 xianyu 分类（含 xianyu/xianyu_report），并添加对应导航按钮
+- `_COMMON_COMMANDS` 补全 6 个缺失的 BotCommand 注册
+
+### 文件变更
+- `packages/clawbot/src/bot/multi_bot.py:340` — dualpost handler 改为 cmd_post
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py:200` — 正则懒惰量词位置修正
+- `packages/clawbot/src/bot/cmd_basic_mixin.py:33-35` — 帮助菜单新增闲鱼按钮
+- `packages/clawbot/src/bot/cmd_basic_mixin.py:139-143` — daily 分类补全 3 条命令
+- `packages/clawbot/src/bot/cmd_basic_mixin.py:183-185` — invest 分类补全 3 条命令
+- `packages/clawbot/src/bot/cmd_basic_mixin.py:208-213` — 新增 xianyu 帮助分类
+- `packages/clawbot/multi_main.py:104-110` — BotCommand 列表补全 6 条
+
+---
+
+## [2026-03-28] 修复周期性提醒首次触发时间 — 不再错误地设为5分钟后
+
+> 领域: `backend`
+> 影响模块: `life_automation.py`
+> 关联问题: HI-320
+
+### 变更内容
+- 修复: 用户说"每月1号提醒我交电费"时，首次触发时间错误地设为5分钟后（NLP 层正确拆出 recurrence_rule 但不生成 time_text，create_reminder 走了 delay 降级路径）
+- 在 `create_reminder()` 中新增分支: 当 `time_text` 为空且存在 `recurrence_rule` 时，调用 `_calc_next_occurrence()` 计算首次触发时间
+- 覆盖场景: 每天/每周X/每月X号/工作日/每N分钟 — 均复用已有的 `_calc_next_occurrence()` 逻辑
+
+### 文件变更
+- `packages/clawbot/src/execution/life_automation.py` — create_reminder() 第88-93行新增周期规则首次触发计算分支 (+6行)
+
+## [2026-03-28] 购物降价提醒系统 — 盯着商品自动降价通知
+
+> 领域: `backend`
+> 影响模块: `_db.py`, `life_automation.py`, `scheduler.py`, `cmd_execution_mixin.py`, `multi_bot.py`, `multi_main.py`, `chinese_nlp_mixin.py`, `response_synthesizer.py`
+> 关联问题: 无 (新功能)
+
+### 变更内容
+- 新增 `price_watches` 数据表 (v2.5): 存储用户的降价监控 (keyword/target_price/current_price/lowest_price/status)
+- 新增 `add_price_watch()`: 添加降价监控，每用户最多 10 个活跃监控
+- 新增 `list_price_watches()`: 列出用户活跃监控及当前/最低价格
+- 新增 `remove_price_watch()`: 删除监控 (软删除改状态为 cancelled)
+- 新增 `check_price_watches()`: 异步批量检查所有活跃监控 — 复用 `compare_prices()` 比价引擎，每次间隔 3 秒防反爬
+- 调度器新增 `_run_price_watch_check()`: 每 6 小时在 00:00/06:00/12:00/18:00 ET 自动执行降价检查
+- 新增 `/pricewatch` 命令: add/list/remove 三个子命令管理降价监控
+- 中文 NLP 新增触发词: "帮我盯着X，降到N告诉我" / "X降价提醒 N" → pricewatch add; "降价监控" / "我的监控" → pricewatch list
+- `response_synthesizer.py` 购物 hint 恢复降价提醒建议: 引导用户使用 `/pricewatch add`
+- 命令注册: `multi_bot.py` + `multi_main.py` BotCommand 菜单
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — 新增 `price_watches` 表 (v2.5)
+- `packages/clawbot/src/execution/life_automation.py` — 新增 4 个降价监控函数 (add/list/remove/check)
+- `packages/clawbot/src/execution/scheduler.py` — 新增 `_run_price_watch_check` 定时任务 (6小时周期)
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 `cmd_pricewatch` 命令 (add/list/remove/help)
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 `/pricewatch` CommandHandler
+- `packages/clawbot/multi_main.py` — 添加 BotCommand 菜单项
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增降价监控 NLP 触发词 + 分发逻辑
+- `packages/clawbot/src/core/response_synthesizer.py` — 购物 hint 恢复降价提醒建议
+
+---
+
+## [2026-03-28] 生活账单追踪 — 话费/水电费余额检测提醒系统
+
+> 领域: `backend`
+> 影响模块: `_db.py`, `life_automation.py`, `cmd_execution_mixin.py`, `chinese_nlp_mixin.py`, `scheduler.py`, `multi_bot.py`
+> 关联问题: 无 (新功能, EventBus BILL_DUE 事件接通)
+
+### 变更内容
+- `_db.py` 新增 `bill_accounts` 数据表 (v2.4): 记录账单类型/余额/阈值/告警时间
+- `life_automation.py` 新增 7 个账单管理函数: add/update/list/remove/check_alerts/get_reminders_due/find_by_type
+- `cmd_execution_mixin.py` 新增 `/bill` 命令: add/update/list/remove 四个子命令，序号式操作
+- `chinese_nlp_mixin.py` 新增 4 类中文 NLP 触发词:
+  - "话费还剩30块" → 自动更新余额 (无追踪时自动创建)
+  - "帮我盯着电费" / "话费低于30提醒我" → 添加追踪
+  - "我的账单" / "话费水电费" → 查看列表
+  - "查话费" / "查电费" → 查余额或提示添加
+- `scheduler.py` 新增 `_run_bill_checks`: 每天 09:00/18:00 低余额告警 + 09:00 remind_day 提醒
+- `multi_bot.py` 注册 `/bill` 命令
+- EventBus `BILL_DUE` 事件接通: 低余额时 publish，主动推送引擎可响应
+- 约束: 每用户最多 20 个账单 / 24 小时告警冷却 / 5 种账单类型 emoji 映射
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — 新增 bill_accounts 表定义
+- `packages/clawbot/src/execution/life_automation.py` — 新增账单追踪函数 (约 230 行)
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 新增 cmd_bill 方法 (约 180 行)
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增账单 NLP 触发词 + 分发逻辑 (约 140 行)
+- `packages/clawbot/src/execution/scheduler.py` — 新增 _run_bill_checks 定时任务 (约 90 行)
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /bill 命令
+- `docs/registries/COMMAND_REGISTRY.md` — 新增 /bill 条目 (总数 89)
+
+## [2026-03-28] 闲鱼库存低预警 — 卖完前主动通知补货
+
+> 领域: `xianyu`
+> 影响模块: `auto_shipper.py`, `xianyu_live.py`, `scheduler.py`
+> 关联问题: 无 (新功能)
+
+### 变更内容
+- AutoShipper 新增 `check_low_stock(threshold)`: 扫描全部商品，返回库存低于阈值的列表
+- `process_order` 发货成功后检测剩余库存，<= 3 张时在结果中附带 `low_stock_warning`
+- xianyu_live.py 自动发货后检测预警字段，通过 OrderNotifier Telegram 即时推送
+- ExecutionScheduler 新增 `_run_stock_check`: 每 4 小时全量巡检，24 小时冷却避免重复通知
+
+### 文件变更
+- `packages/clawbot/src/xianyu/auto_shipper.py` — 新增 check_low_stock 方法 + process_order 预警逻辑
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 发货成功后处理 low_stock_warning
+- `packages/clawbot/src/execution/scheduler.py` — 新增定时库存巡检任务
+
+## [2026-03-28] AI 投票分歧度量化 + 高分歧降级保护
+
+> 领域: `trading`
+> 影响模块: `ai_team_voter`
+> 关联问题: prompts.py L238 "标准差>2 倾向保守" 规则未实现
+
+### 变更内容
+- 投票统计后用 `statistics.stdev` 计算6人信心分标准差（分歧度 σ）
+- 当 σ>2.5 且 BUY 票数恰好等于最低要求时，自动降级为 HOLD（边缘通过保护）
+- Telegram 报告新增共识度可视化（●○ 进度条 + 百分比 + σ 值）
+- 高分歧时追加 ⚠️ 分歧警告
+- `VoteResult` 新增 `divergence` / `is_high_divergence` 字段，供上游 trading_journal 记录
+
+### 文件变更
+- `packages/clawbot/src/ai_team_voter.py` — 新增分歧度计算、降级逻辑、展示格式
+
+## [2026-03-27] 社媒粉丝增长时序存储 — 让用户看到"这周涨了多少粉"
+
+> 领域: `social`
+> 影响模块: `_db.py`, `life_automation.py`, `social_scheduler.py`, `daily_brief.py`
+> 关联问题: 无 (新功能)
+
+### 变更内容
+- 新增 `follower_snapshots` 表: 每天每平台存一条粉丝快照 (followers/following/total_likes/total_views)
+- 新增 `record_follower_snapshot()`: 写入粉丝快照，INSERT OR REPLACE 保证每天每平台唯一
+- 新增 `get_follower_growth(days)`: 查询指定天数内各平台的起止粉丝数和净增长/增长率
+- `job_late_review` 22:00 采集 metrics 后自动调用 `record_follower_snapshot` 存入 X 和小红书粉丝数
+- 日报新增「👥 粉丝」板块: 展示 `X 1,350(+5) | 小红书 580(+3)` 格式的每日变化
+- 周报社媒板块追加粉丝增长趋势 (7天增量 + 增长率)
+- 所有新增代码均 try/except 包裹，失败不影响主流程
+
+### 文件变更
+- `packages/clawbot/src/execution/_db.py` — 新增 `follower_snapshots` 表 (v2.3)
+- `packages/clawbot/src/execution/life_automation.py` — 新增 `record_follower_snapshot` + `get_follower_growth`
+- `packages/clawbot/src/social_scheduler.py` — `job_late_review` 中新增粉丝快照存储管道
+- `packages/clawbot/src/execution/daily_brief.py` — 日报新增 12.5 粉丝增长板块 + 周报追加粉丝趋势
+
+---
+
+## [2026-03-27] 闲鱼 BI 三板块暴露给用户 (报表+NLP+日报)
+
+> 领域: `xianyu`
+> 影响模块: `cmd_execution_mixin.py`, `chinese_nlp_mixin.py`, `daily_brief.py`
+> 关联问题: 无 (功能增强)
+
+### 变更内容
+- `/xianyu_report` 命令新增3个 BI 板块: 商品热度排行 + 咨询高峰时段(文本柱状图) + 转化漏斗
+- 中文 NLP 新增 12 个触发词: 闲鱼报告/闲鱼数据/商品排行/热销排行/咨询高峰/转化率等 → xianyu_report
+- 日报闲鱼板块末尾追加「今日热销 Top3」(调用 get_item_rankings(days=1, limit=3))
+- 所有 BI 查询 try/except 包裹，失败不影响主流程
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — L1404-1454: 3个 BI 板块追加到报表末尾
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — L337-339: NLP 触发词 + L520: dispatch_map 新增 xianyu_report
+- `packages/clawbot/src/execution/daily_brief.py` — L362-374: 日报追加今日热销 Top3
+
+---
+
+## [2026-03-27] 日报新闻板块升级: LLM 深度分析 + 持仓关联
+
+> 领域: `backend`
+> 影响模块: `daily_brief.py`
+> 关联问题: 无 (功能增强)
+
+### 变更内容
+- 日报新闻板块从纯标题列表升级为 LLM 智能分析模式
+- 新增 `_analyze_news_with_llm()` 函数，用免费 qwen 模型对新闻做一句话摘要 + 持仓影响分析
+- 自动从 `position_monitor` 获取用户持仓 symbols，关联到新闻影响
+- 成本控制: model_family="qwen" (免费)，max_tokens=300，cache_ttl=1800s
+- 降级保护: LLM 调用失败自动回退到原有纯标题列表模式
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — L31-93: 新增 `_analyze_news_with_llm()` 函数; L331-357: 升级 Section 7 新闻板块逻辑
+
+---
+
+## [2026-03-27] PostTimeOptimizer 学习数据持久化 + 单例修复
+
+> 领域: `social`
+> 影响模块: `social_tools.py`, `social_scheduler.py`
+> 关联问题: 无 (Bug 修复)
+
+### 变更内容
+- `PostTimeOptimizer` 新增 JSON 持久化（`_save()` / `_load()`），重启后不再丢失学习数据
+- 新增 `get_post_time_optimizer()` 全局单例工厂函数，避免每次调用创建新实例导致内存数据丢失
+- `social_scheduler.py` 的 `job_late_review` 改用单例获取器
+
+### 文件变更
+- `packages/clawbot/src/social_tools.py` — L471-546: PostTimeOptimizer 增加 `data_dir` 参数 + `_save()/_load()` + 模块级单例
+- `packages/clawbot/src/social_scheduler.py` — L456-458: `PostTimeOptimizer()` → `get_post_time_optimizer()`
+
+---
+
+## [2026-03-27] /journal 显示 AI 决策者 + 购物比价去除虚假承诺
+
+> 领域: `backend`
+> 影响模块: `cmd_analysis_mixin.py`, `response_synthesizer.py`
+> 关联问题: 无
+
+### 变更内容
+- `/journal` 输出末尾新增 `[🤖 decided_by]` 标签，持仓中和已平仓交易均显示由哪个 AI 做出的决策
+- 购物比价 `_TASK_HINTS["shopping"]` 去除"设降价提醒"建议（功能不存在，避免误导用户）
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — L226-230 持仓交易、L236-243 已平仓交易末尾追加 decided_by 显示
+- `packages/clawbot/src/core/response_synthesizer.py` — L60 shopping hint 改为"直接买/再等等/改天再搜"
+
+---
+
+## [2026-03-27] 投资分析: 新增 /accuracy + /equity + /targets 三个数据可视化命令
+
+> 领域: `trading`
+> 影响模块: `cmd_analysis_mixin.py`, `multi_bot.py`, `chinese_nlp_mixin.py`
+> 关联问题: 无 (新功能)
+
+### 新增功能
+- **/accuracy**: AI预测准确率面板 — 调用 `trading_journal.get_prediction_accuracy(days)` 按AI分组展示历史预测表现 (准确率/次数/平均偏差)
+- **/equity**: 权益曲线图表 — 调用 `get_equity_curve()` + `generate_equity_chart()` 生成累计收益变化图, 附带起止金额和变动百分比
+- **/targets**: 盈利目标进度 — 调用 `format_target_progress()` 展示日/周/月目标达成百分比 (进度条)
+
+### 中文触发词
+- "预测准确率" / "AI准确率" / "研判准确率" → `/accuracy`
+- "权益曲线" / "收益曲线" / "资金曲线" → `/equity`
+- "目标进度" / "盈利目标" / "目标达成" → `/targets`
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 新增 cmd_accuracy / cmd_equity / cmd_targets 三个方法 (246-362行)
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 accuracy / equity / targets 三个 CommandHandler (298-300行)
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增 6 个中文触发词正则 + 3 个分发映射条目
+- `docs/registries/COMMAND_REGISTRY.md` — 新增 3 个命令条目, 总数 85→88
+
+---
+
+## [2026-03-27] 新增综合周报功能 — 聚合四维度周度数据
+
+> 领域: `backend`
+> 影响模块: `daily_brief.py`, `scheduler.py`, `cmd_analysis_mixin.py`, `multi_bot.py`, `chinese_nlp_mixin.py`
+> 关联问题: 无
+
+### 变更内容
+- 新增 `weekly_report()` 函数: 聚合投资+社媒+闲鱼+成本 4 个维度的 7 天数据，生成结构化周报
+- 周报包含 6 个独立板块: 交易战绩/持仓变化/社媒周报/闲鱼周报/成本周报/目标进度
+- 每个板块独立 try/except，一个失败不影响其他
+- 新增 `/weekly` 命令 (AnalysisCommandsMixin) 手动触发周报
+- 新增定时任务: 每周日 20:30 ET 自动推送周报 (避开 20:00 策略评估)
+- 新增中文 NLP 触发词: "周报"/"本周总结"/"每周总结"/"综合周报"/"这周怎么样"
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — 新增 `weekly_report()` 函数 (~200 行)
+- `packages/clawbot/src/execution/scheduler.py` — 新增 `_run_weekly_report()` 定时任务
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 新增 `cmd_weekly()` 命令处理器
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 `/weekly` CommandHandler
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 添加 NLP 触发词 + dispatch_map 路由
+
+## [2026-03-27] 社媒数据分析: 接通3层断裂管道 + /social_report 展示真实数据
+
+> 领域: `social`
+> 影响模块: `social_scheduler.py`, `content_pipeline.py`
+> 关联问题: 无 (新发现的管道断裂)
+
+### 变更内容
+- **管道1 — 采集→存储**: `job_late_review` 拿到浏览器 worker 的 metrics 数据后，调用 `record_post_engagement()` 将 X 和小红书的互动指标写入 `post_engagement` 表
+- **管道2 — 存储→展示**: `get_post_performance_report()` 现在调用 `get_engagement_summary()` 获取真实互动数据，返回 `by_platform` (按平台聚合) 和 `top_posts` (互动最高帖子列表)，匹配 `/social_report` 命令模板的期望字段
+- **管道3 — 数据→学习**: 互动数据存入后同时喂给 `PostTimeOptimizer.record_engagement()`，让发布时间分析有真实数据学习
+- 修正 KPI 检查路径: 原代码用 `result.get("x", {}).get("views", 0)` 但 worker 返回的结构是 `result["x"]["stats"]["..."]`，已修正为正确路径
+
+### 文件变更
+- `packages/clawbot/src/social_scheduler.py` — `job_late_review` 函数 (402-430行): 新增互动数据存储 + PostTimeOptimizer 数据喂入 + 修正 KPI 路径
+- `packages/clawbot/src/execution/social/content_pipeline.py` — `get_post_performance_report` 函数 (573-587行): 从仅返回草稿统计改为返回真实互动数据 (by_platform + top_posts)
+
+---
+
+## [2026-03-27] 闲鱼模块: 2处参数Bug修复 + 3个运营智能查询
+
+> 领域: `xianyu`
+> 影响模块: `xianyu_live.py`, `xianyu_context.py`
+> 关联问题: HI-280, HI-281
+
+### Bug 修复
+- **record_order 未传 amount** (HI-280): 从商品 SKU/soldPrice 提取价格传入 amount 参数，利润核算不再为 0
+- **mark_converted 参数传反** (HI-281): 交换参数顺序，修正为 mark_converted(chat_id, item_id)
+
+### 新增功能
+- **get_item_rankings()**: 商品热度排行，按咨询次数降序，JOIN items 表取商品名，含转化率
+- **get_peak_hours()**: 咨询时段分布，按小时聚合买家消息数，补全 24 时段
+- **get_conversion_funnel()**: 转化漏斗，总咨询→有回复→成交→发货四阶段数量和转化率
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 修复 record_order 传入 amount + mark_converted 参数顺序 (449-464行)
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 3 个运营查询方法 (316-439行)
+
+---
+
+## [2026-03-27] 投资信号追踪系统: 接通3根断裂管道
+
+> 领域: `trading`
+> 影响模块: `auto_trader.py`, `trading_system.py`
+> 关联问题: 无 (功能完善)
+
+### 变更内容
+- 管道1: 开仓时自动记录AI预测到 predictions 表，供收盘验证准确率
+- 管道2: 收盘复盘时自动调用 validate_predictions() 验证当日AI预测
+- 管道3: AI团队投票前获取历史预测准确率，传入 vote_history 让AI自我校准置信度
+
+### 文件变更
+- `packages/clawbot/src/auto_trader.py` — execute_proposal() 中 open_trade 后追加 record_prediction 调用
+- `packages/clawbot/src/trading_system.py` — _eod_auto_review() 中追加 validate_predictions 调用
+- `packages/clawbot/src/trading_system.py` — _ai_team_wrapper() 中获取 get_prediction_accuracy 并传入投票函数
+
+---
+
+## [2026-03-27] 全量审计R9: 文档治理 + API安全 + DB-WAL + SSRF修复
+
+> 领域: `backend`, `docs`
+> 影响模块: `auth.py`, `monitoring.py`, `feedback.py`, `omega.py`, 7个docs文件
+> 关联问题: HI-300~303 (4个新问题全部修复)
+
+### 文档治理 (17项修复)
+- **COMMAND_REGISTRY**: 补充 `/calc` 仓位计算器 + `/xianyu_report` 闲鱼报表，总数修正为 85
+- **MODULE_REGISTRY**: 补充 15 个缺失核心模块条目 (browser_use_bridge/crewai_bridge/trading_journal/novel_writer/position_monitor 等)，测试计数更新为 980
+- **DEPENDENCY_MAP**: 补充 8 个缺失包 + 标注移除幽灵依赖 tiktoken
+- **DEVELOPER_GUIDE**: 修正项目路径 `~/clawbot` → `packages/clawbot`，更新能力描述和安装命令
+- **5 个文档补日期标记**: OMEGA_V2_ARCHITECTURE / OPTIMIZATION_PLAN / DEPLOYMENT_GUIDE / QUICKSTART / XIANYU_BUSINESS_PLAN
+
+### API 安全修复 (HI-300)
+- `auth.py:68` Token 比较改用 `hmac.compare_digest()`，防止时序攻击逐字符猜测 Token
+
+### SQLite WAL 修复 (HI-301)
+- `monitoring.py:901` CostAnalyzer._init_db() 添加 `PRAGMA journal_mode=WAL`
+- 该数据库每次 LLM 调用都写入，无 WAL 会在高并发时 `database is locked`
+
+### 路径修复 (HI-302)
+- `feedback.py:61` 硬编码 `"clawbot/data/feedback.db"` → `Path(__file__).parent.parent / "data" / "feedback.db"`
+
+### SSRF 精确判断 (HI-303)
+- `omega.py:249` `startswith("172.")` 会把 172.0~15.x 和 172.32+.x 公网地址也拦截
+- 改用 `ipaddress.ip_address().is_private` 标准库精确判断
+
+### R9 审计发现统计
+| 维度 | 发现 | 修复 |
+|------|------|------|
+| API 端点 (47个) | 6项 | 4项修复 + 2项记录 |
+| SQLite 数据库 (11个/38表) | 5项 | 3项修复 + 2项记录 |
+| 文档注册表 | 17项 | 17项全部修复 |
+
+### 文件变更
+- `src/api/auth.py` — hmac.compare_digest
+- `src/monitoring.py` — WAL 模式
+- `src/feedback.py` — 路径规范化
+- `src/api/routers/omega.py` — SSRF ipaddress
+- `docs/registries/COMMAND_REGISTRY.md` — 补2命令
+- `docs/registries/MODULE_REGISTRY.md` — 补15模块
+- `docs/registries/DEPENDENCY_MAP.md` — 补8包
+- `docs/guides/DEVELOPER_GUIDE.md` — 路径+描述更新
+- `docs/architecture/OMEGA_V2_ARCHITECTURE.md` — 日期标记
+- `docs/architecture/OPTIMIZATION_PLAN.md` — 日期标记
+- `docs/guides/DEPLOYMENT_GUIDE.md` — 日期标记
+- `docs/guides/QUICKSTART.md` — 日期标记
+- `docs/business/XIANYU_BUSINESS_PLAN.md` — 日期标记
+
+### 测试
+- 980/980 passed
+
+---
+
+## [2026-03-27] 全量审计R8: E2E冒烟测试 + 34个新测试 + 文档治理 + 启动BUG修复
+
+> 领域: `backend`, `docs`, `deploy`
+> 影响模块: `multi_main.py`, `tests/test_brain.py`(新建), `tests/test_monitoring_module.py`(新建), `tests/test_shared_memory_module.py`(新建), `DEPENDENCY_MAP.md`
+> 关联问题: HI-299 (1个新BUG修复)
+
+### 🔴 启动BUG修复 (HI-299)
+**问题**: `multi_main.py:819` 关机通知代码 `import subprocess, os` 在 try 块内导入 `os`，
+Python 局部变量提升导致外部模块级 `import os` 被遮蔽，启动时 229 行 `os.environ` 抛 `UnboundLocalError`。
+**影响**: Bot 完全无法启动。
+**修复**: 移除 try 块内多余的 `import os`。
+
+### E2E 冒烟测试
+- 本地 Bot 启动验证: ClawBot v5.0 **启动成功**
+  - LiteLLM Router: 110 deployments, 17 groups
+  - Brain/IntentParser/EventBus: 全部初始化完成
+  - TradingSystem: 风控/监控/管道/调度 全部就绪
+  - 内控 API: `http://127.0.0.1:18790` 监听中
+- FastAPI 端点冒烟测试:
+  - `/api/v1/pool/stats` → 200, 110源109活跃
+  - `/api/docs` → 200, Swagger UI 可访问
+  - Telegram Bot Token 过期(测试环境预期)
+
+### 新增 34 个单元测试 (946→980)
+| 文件 | 测试数 | 覆盖内容 |
+|------|--------|---------|
+| `test_brain.py` | 21 | Brain单例/消息处理/意图解析/追问/上下文/任务管理/异常处理 |
+| `test_monitoring_module.py` | 7 | 日志记录/成本分析/健康检查/连续错误/恢复 |
+| `test_shared_memory_module.py` | 6 | 记忆存取/重复key/分类搜索/删除/衰减/统计 |
+
+### 文档治理审计发现
+| 问题 | 数量 | 状态 |
+|------|------|------|
+| DEPENDENCY_MAP 缺失8个包 | 8 | ✅ 已补充 |
+| tiktoken 幽灵依赖 | 1 | ✅ 已标注移除 |
+| COMMAND_REGISTRY 缺2条命令 | 2 | 📋 已记录 |
+| MODULE_REGISTRY 缺核心模块 | 9+ | 📋 已记录 |
+| 5个文档缺更新日期标记 | 5 | 📋 已记录 |
+| DEVELOPER_GUIDE 过期31天 | 1 | 📋 已记录 |
+
+### 文件变更
+- `multi_main.py` — 修复 os import 遮蔽BUG
+- `tests/test_brain.py` — **新建** 21个测试
+- `tests/test_monitoring_module.py` — **新建** 7个测试
+- `tests/test_shared_memory_module.py` — **新建** 6个测试
+- `docs/registries/DEPENDENCY_MAP.md` — 补充8个缺失包
+
+### 测试
+- **980/980 passed** (新增 34 个)
+
+---
+
+## [2026-03-27] 全量审计R7: VPS启动验证 + 安全审计 + cost_daily_report + 覆盖率分析
+
+> 领域: `backend`, `deploy`, `infra`
+> 影响模块: `trading_system.py`, VPS `/opt/openclaw/app/`
+> 关联问题: HI-298 (1个新问题修复)
+
+### VPS 启动验证 — 通过
+- 安装缺失依赖 (pandas/numpy/yfinance/ta)
+- 启动测试: ClawBot v5.0 成功初始化
+  - LiteLLM Router: 110 deployments, 17 groups
+  - 4 个硅基流动 Key + Claude API 配置
+  - SQLite 存储就绪
+- 最新代码已同步 (R1~R7 所有修复)
+
+### 依赖安全审计 — 全部通过
+检查 11 个关键安全包 (cryptography/urllib3/certifi/requests/httpx/aiohttp/pillow/jinja2/setuptools):
+- 0 个已知 CVE 漏洞
+- 所有包均在安全版本
+
+### cost_daily_report 定时任务 (HI-298)
+- 新增 23:00 ET scheduler task，发布 `system.cost_daily_report` 事件
+- 完成 EventBus 最后一个预留事件的发布者
+- 通知系统自动推送每日 LLM 花费汇总
+
+### 代码覆盖率分析
+- 有对应测试文件: **49 个模块**
+- 无对应测试文件: **147 个模块**
+- 最大无测试模块: `cmd_execution_mixin.py` (1945行), `brain.py` (1607行), `monitoring.py` (1291行)
+- 说明: 核心业务模块偏集成/E2E 测试，单元测试覆盖聚焦于数据模型和工具函数
+
+### 文件变更
+- `src/trading_system.py` — 新增 cost_daily_report 定时任务
+- VPS `/opt/openclaw/app/` — 全量代码同步
+
+### 测试
+- 946/946 passed
+
+---
+
+## [2026-03-27] 全量审计R6: EventBus 6处悬空订阅补全 + 风控增强 + Tauri构建验证
+
+> 领域: `backend`, `trading`, `infra`, `frontend`
+> 影响模块: `team.py`, `trading_system.py`, `cost_control.py`, `security.py`, `self_heal.py`, `monitoring.py`, `cmd_invest_mixin.py`
+> 关联问题: HI-296~297 (2个新问题全部修复)
+
+### EventBus 悬空订阅补全 (HI-296)
+之前发现 7 个事件有订阅者但无发布者，本轮补齐 6 个:
+
+| 事件 | 发布位置 | 触发条件 |
+|------|---------|---------|
+| `trade.strategy_suspended` | `team.py:730` | 策略实盘偏离回测 >20% 时挂起 |
+| `trade.daily_review` | `trading_system.py:642` | 每日 16:05 收盘复盘完成 |
+| `system.cost_warning` | `cost_control.py:153` | 今日花费超过预算 80% |
+| `system.security_alert` | `security.py:212` | PIN 暴力破解 5 次失败锁定 |
+| `system.self_heal` | `self_heal.py:618` | 自愈成功（与 SELF_HEAL_FAILED 对称） |
+| `system.bot_health` | `monitoring.py:694` | Bot 连续 5 次错误变为不健康 |
+
+第 7 个 `system.cost_daily_report` 为预留接口（需新建 scheduler task），本轮标记为计划中。
+
+**效果**: 策略挂起/成本超支/安全告警/Bot不健康等事件，现在都会自动触发 Telegram/Discord/Email 多渠道通知。
+
+### 风控增强 (HI-297)
+- `/buy` 命令传入 `current_positions` — 启用总敞口检查 + 最大持仓数检查
+- `stop_loss` 动态计算: 低价股/加密货币 5%，大盘蓝筹 3%（替代硬编码 3%）
+
+### Tauri 前端构建验证
+- `npx vite build` **0 错误，6.55s 完成**
+- 最大 chunk: 342KB (gzip 102KB) — 合理范围
+
+### 文件变更
+- `src/modules/investment/team.py` — strategy_suspended 事件
+- `src/trading_system.py` — daily_review 事件
+- `src/core/cost_control.py` — cost_warning 事件
+- `src/core/security.py` — security_alert 事件
+- `src/core/self_heal.py` — self_heal 成功事件
+- `src/monitoring.py` — bot_health 事件
+- `src/bot/cmd_invest_mixin.py` — 风控参数增强+动态止损
+
+### 测试
+- 946/946 passed, 0 TS errors, Tauri build 0 errors
+
+---
+
+## [2026-03-27] 全量审计R5: 交易链路补全 + EventBus修复 + LLM限流 + 性能优化
+
+> 领域: `backend`, `trading`, `xianyu`, `social`
+> 影响模块: `cmd_invest_mixin.py`, `smart_memory.py`, `xianyu_live.py`, `social_scheduler.py`, `scheduler.py`
+> 关联问题: HI-290~295 (6个新问题全部修复)
+
+### 🔴 交易链路断裂修复 (HI-290, HI-291)
+**问题**: 手动 `/buy` 命令成功后不记录交易日志、不添加仓位监控、不发布 EventBus 事件。
+相当于交易执行了但"无据可查"——每日复盘看不到、止损止盈不生效、多渠道通知不触发。
+
+**修复**: cmd_buy() 成功后补齐三条闭环链路:
+1. `TradingJournal.open_trade()` — 记录交易日志
+2. `PositionMonitor.add_position()` — 启动仓位止损/止盈监控
+3. `EventBus.publish("trade.executed")` — 触发多渠道通知 + 社媒联动 + 主动智能
+
+### 🔴 LLM 调用风暴控制 (HI-292)
+**问题**: 多个活跃聊天同时达到提取阈值(每5条消息)时，会并发触发 LLM 调用风暴。
+**修复**: SmartMemory 添加全局限流 `_extract_min_interval=30秒`，确保两次事实提取间至少间隔30秒。
+
+### 🟠 性能修复
+- **HI-293**: 闲鱼 `get_floor_price()` 同一消息处理流程重复查询数据库 → 复用已查结果
+- **HI-294**: 社媒 `job_night_publish()` 在 async 函数中调用同步 `run_social_worker()` 阻塞事件循环 → 改用 `run_social_worker_async()`
+- **HI-295**: `Scheduler._run_loop` 无 `done_callback`，崩溃无日志 → 添加崩溃回调
+
+### 审计发现 (已记录待后续处理)
+- EventBus 有 7 个悬空订阅 (有订阅者但无发布者)、13 个未使用常量
+- `/buy` 风控检查未传入 `current_positions`，跳过总敞口和持仓数检查
+- `stop_loss` 硬编码 3%，对所有标的统一止损不合理
+
+### 文件变更
+- `src/bot/cmd_invest_mixin.py` — 交易闭环补全
+- `src/smart_memory.py` — LLM 全局限流
+- `src/xianyu/xianyu_live.py` — 重复查询消除
+- `src/social_scheduler.py` — 异步化发布
+- `src/scheduler.py` — 崩溃回调
+
+### 测试
+- 946/946 passed
+
+---
+
+## [2026-03-27] 全量审计R3-R4: VPS部署 + 深入审计 + 7项BUG修复
+
+> 领域: `backend`, `xianyu`, `social`, `deploy`, `frontend`
+> 影响模块: `xianyu_context.py`, `smart_memory.py`, `xianyu_live.py`, `order_notifier.py`, `social_scheduler.py`, `litellm_router.py`, `requirements.txt`, VPS systemd, 前端8组件
+> 关联问题: HI-276~289 (14个新问题, 全部修复)
+
+### VPS 备用节点部署 (HI-276 修复)
+- 最新代码同步到 `/opt/openclaw/app/` (rsync 441KB)
+- systemd 服务 `openclaw-bot.service` 创建 (安全加固: ProtectSystem+PrivateTmp+MemoryMax=800M)
+- failover timer 每30秒检查心跳
+- Mac 心跳发送器恢复运行 (launchctl load)
+- failover 自动切回 standby
+
+### 闲鱼链路BUG修复 (2严重+1中等)
+- **HI-285 严重**: `get_recent_item_id()` 查询不存在的 `conversations` 表 → 改为 `messages` 表。**影响: 自动发货链路从此可正常工作**
+- **HI-287 中等**: `record_order()` 把 order_id 当 chat_id 传入 → 改用具名参数
+- **HI-288 中等**: `order_notifier.py` 同步 `time.sleep()` 阻塞异步事件循环 → 异步场景跳过重试
+
+### 智能记忆BUG修复 (1严重)
+- **HI-286 严重**: 偏好检测完全不工作 — `self.shared_memory` 不存在 + `remember()` 参数错误 + `importance` 类型错误 → 修正为 `self.memory` + `key/value` 参数 + `importance=5`
+
+### 社媒调度修复 (1中等)
+- **HI-289**: `job_noon_engage()` 自动回复和蹭评共享 try 块 → 拆分独立 try 块 + 英文注释中文化
+
+### 其他修复
+- **HI-279**: Git 仓库 `git rm --cached` 清理 .venv312/ + node_modules/ (47K文件)
+- `litellm_router.py` 清理 6 个废弃方法 + 更新测试
+- `requirements.txt` 12个包版本约束从 `>=` 收紧为 `~=`
+- `smart_memory.py` 硬编码 macOS 路径改为相对路径
+- 前端 19 处英文注释中文化 + 5 处 console 消息中文化
+
+### 文件变更
+- `src/xianyu/xianyu_context.py` — 修复表名
+- `src/smart_memory.py` — 偏好检测修复 + 路径修复
+- `src/xianyu/xianyu_live.py` — record_order 参数修复
+- `src/xianyu/order_notifier.py` — 异步安全
+- `src/social_scheduler.py` — try块拆分
+- `src/litellm_router.py` — 清理6个废弃方法
+- `requirements.txt` — 12包版本收紧
+- `tests/test_adaptive_router.py` — 适配测试
+- 前端 8 个组件文件 — 英文→中文
+
+### 测试
+- 946/946 passed, 0 TS errors
+
+---
+
+## [2026-03-27] 全功能链路验证 + 关机切换机制修复
+
+> 领域: `backend`, `deploy`, `infra`
+> 影响模块: `multi_main.py`, `vps_failover_check.sh`(新建), `HEALTH.md`
+> 关联问题: HI-276~284 (9个新问题登记, 3个已修复)
+
+### 链路验证结果 (5条主链路)
+
+| 链路 | 结果 | 验证方式 |
+|------|------|---------|
+| Telegram消息→Bot→Brain→LLM→响应 | **通过** | 代码走查5个环节: 入口→处理→路由→LLM→通知 |
+| 微信通知桥接 | **通过** | notifications.py → wechat_bridge.py 调用链完整 |
+| VPS备用节点 | **未部署** | SSH 实测: clawbot目录/服务不存在 |
+| Mac关机→VPS切换 | **3处断裂** | 心跳可达, 但无关机通知/无退让/脚本不在Git |
+| 关键命令走查 | **通过** | /buy、中文触发词、Brain路由全链路函数匹配 |
+
+### 修复内容
+
+**1. multi_main.py 关机通知 (HI-278 部分修复)**
+- 优雅关闭流程开头新增两步通知:
+  1. SSH 到 VPS 写入 `/opt/openclaw/data/primary_shutdown` 标记文件
+  2. Telegram 发送"🔄 系统正在关机维护"给管理员
+- 效果: VPS 检测到 shutdown 标记可秒级切换 (从 150s 降至 30s)
+
+**2. vps_failover_check.sh 新建 (HI-278 修复)**
+- 新建 `scripts/vps_failover_check.sh` — VPS 端 failover 检查脚本
+- 功能: 心跳检测 + 主动关机标记检测 + 连续失败计数 + 自动切换 + **Mac 恢复后自动退让**
+- 内含 systemd timer 安装说明
+- 解决了 failover 脚本不在 Git 仓库的治理盲区
+
+**3. HEALTH.md VPS 状态修正 (HI-276 信息修正)**
+- "备用节点 🟢 待命中" → "🔴 未部署" — 反映实际 VPS 状态
+
+### 新增活跃问题登记
+
+| ID | 严重度 | 描述 |
+|----|--------|------|
+| HI-276 | 🔴 | VPS 备用节点完全未部署 |
+| HI-277 | 🟠 | Mac 恢复后无 VPS 退让机制 (vps_failover_check.sh 已实现但未部署) |
+| HI-278 | 🟠 | failover 脚本不在 Git (已新建) |
+| HI-279 | 🟠 | Git 仓库 .venv312/ + node_modules/ 被跟踪 |
+| HI-280 | 🟡 | LaunchAgent 日志 185MB 无轮转 |
+| HI-281 | 🟡 | requirements.txt 12包无上限约束 |
+| HI-282 | 🟡 | litellm_router 6个废弃方法 |
+| HI-283 | 🟡 | 前端 26处英文注释/日志 |
+| HI-284 | 🔵 | _emit_flow 3处重复 stub |
+
+### 文件变更
+- `packages/clawbot/multi_main.py` — 关机通知 VPS + Telegram 管理员
+- `packages/clawbot/scripts/vps_failover_check.sh` — **新建** VPS failover 检查脚本
+- `docs/status/HEALTH.md` — VPS 状态修正 + 9个活跃问题登记
+
+### 测试
+- 946/946 passed, 0 TS errors
+
+---
+
+## [2026-03-27] 第49轮全量审计 — 9位阶覆盖 + 28项修复 (15 Python + 8 Docker/部署 + 5 前端)
+
+> 领域: `backend`, `frontend`, `deploy`, `infra`
+> 影响模块: `position_monitor.py`, `execution/__init__.py`, `notifications.py`, `wechat_bridge.py`, `monitoring_extras.py`, `smart_memory.py`, `message_mixin.py`, `proactive_engine.py`, `monitoring.py`, `feedback.py`, `github_trending.py`, `.gitignore`, `.dockerignore`, `requirements.txt`, 3个docker-compose, `Memory/index.tsx`, `Plugins/index.tsx`, `Setup/index.tsx`, `Settings/index.tsx`
+> 关联问题: HI-261~275 (15个新问题全部修复)
+
+### 审计范围 (按世界顶级软件公司职能架构)
+
+| 位阶 | 角色视角 | 扫描项 | 发现数 | 修复数 |
+|------|---------|--------|--------|--------|
+| P0 | CISO | 硬编码凭据/注入/权限/SSL/pickle | 0 | 0 |
+| P1 | VP Engineering | 语法/导入链/废弃API | 7 | 7 |
+| P2 | SRE | 资源泄漏/超时/并发/异常处理 | 8 | 8 |
+| P3 | Product Manager | TODO/NotImplemented/半成品 | 0 | 0 |
+| P4 | Principal Engineer | 技术债/死代码/重复 | 3类 | 已记录 |
+| P5 | Platform Engineer | API端点/路由完整性 | 0 | 0 |
+| P6 | Design Lead | TS类型/定时器泄漏/英文残留 | 5类 | 5 |
+| P7 | DevOps | Docker/VPS/LaunchAgent/依赖 | 18 | 8 |
+| P8 | QA | type:ignore/空函数体 | 2类 | 已记录 |
+
+### P1 安全/部署修复 (8项)
+
+- **HI-261**: `.gitignore` 通配符修正 — `.venv/` → `.venv*/`，排除 .venv312/ (3.1GB)
+- **HI-262**: `.dockerignore` 密钥排除 — 添加 `config/.env` + `*.pem` + `*.key`
+- **HI-263**: `requirements.txt` 依赖补全 — 添加 `playwright>=1.40.0`
+- **HI-264**: kiro-gateway docker-compose 端口绑定 `127.0.0.1` + 删除废弃 version 字段
+- **HI-265/266**: mediacrawler + goofish docker-compose 端口全部绑定 `127.0.0.1`
+
+### P2 Python 运行时修复 (15项)
+
+**asyncio 废弃 API 清零 (7处)**:
+- `position_monitor.py:686` — 三重反模式 (get_event_loop + lambda + ensure_future) → get_running_loop + create_task + done_callback
+- `execution/__init__.py:106` — run_until_complete → async def + await
+- `notifications.py:372,394` — get_event_loop().run_in_executor → get_running_loop()
+- `wechat_bridge.py:244` — get_event_loop → try get_running_loop except RuntimeError
+- `monitoring_extras.py:70` — get_event_loop → try get_running_loop
+
+**fire-and-forget create_task 补回调 (4处)**:
+- `smart_memory.py:158` — _detect_instant_preference 偏好检测任务
+- `message_mixin.py:911` — _keep_typing 打字指示器任务
+- `message_mixin.py:1051` — _async_update_suggestions 追问建议更新任务
+- `proactive_engine.py:490` — _delayed_followup 延迟回访任务
+
+**SQLite 安全 (2处)**:
+- `feedback.py:63` — 添加 atexit.register(self.close) 防止连接泄漏
+- `monitoring.py:884` — _init_db() 添加 timeout=10 防死锁
+
+**aiohttp 超时兜底 (3处)**:
+- `github_trending.py:81,240,312` — 3个 ClientSession 添加 session 级 timeout
+
+### P6 前端修复 (5项)
+
+- **HI-272**: `Memory/index.tsx` — `any` → 定义 `MemoryApiResult` 接口
+- **HI-273**: `Plugins/index.tsx` — `as any` → `MCPPlugin['status']` 精确类型 + 注释中文化
+- **HI-274**: `Setup/index.tsx` — setTimeout 添加 clearTimeout 清理
+- **HI-275**: `Settings/index.tsx` — setTimeout 添加 clearTimeout 清理
+
+### 遗留记录 (不影响运行，下个迭代处理)
+
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| Git 仓库臃肿 | 47K文件 | .venv312/ + node_modules/ 需 `git rm --cached` 清理 |
+| VPS 部署脚本权限 | 1处 | deploy_vps.sh 需拆分 root/user 脚本 |
+| LaunchAgent 日志轮转 | 185MB | 需 newsyslog 配置 |
+| requirements.txt 版本约束 | 12包 | 无上限的 `>=` 应改为 `~=` |
+| litellm_router.py 废弃方法 | 6个 | 应清理或标注 @deprecated |
+| _emit_flow 重复 stub | 3个文件 | 应提取到公共模块 |
+| 前端英文注释 | 21处 | 按项目规范应改为中文 |
+| 前端英文 console 消息 | 5处 | 同上 |
+
+### 文件变更
+- `.gitignore` — .venv*/ 通配符
+- `packages/clawbot/.dockerignore` — 密钥排除
+- `packages/clawbot/requirements.txt` — playwright 依赖
+- `packages/clawbot/kiro-gateway/docker-compose.yml` — 端口+version
+- `packages/clawbot/docker-compose.mediacrawler.yml` — 端口绑定
+- `packages/clawbot/docker-compose.goofish.yml` — 端口绑定
+- `packages/clawbot/src/position_monitor.py` — asyncio 修复
+- `packages/clawbot/src/execution/__init__.py` — async 化
+- `packages/clawbot/src/notifications.py` — get_running_loop
+- `packages/clawbot/src/wechat_bridge.py` — get_running_loop
+- `packages/clawbot/src/monitoring_extras.py` — get_running_loop
+- `packages/clawbot/src/smart_memory.py` — 偏好检测回调
+- `packages/clawbot/src/bot/message_mixin.py` — typing+建议回调
+- `packages/clawbot/src/core/proactive_engine.py` — 回访任务回调
+- `packages/clawbot/src/monitoring.py` — _init_db timeout
+- `packages/clawbot/src/feedback.py` — atexit 清理
+- `packages/clawbot/src/evolution/github_trending.py` — session timeout
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — MemoryApiResult 接口
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — 精确类型+中文注释
+- `apps/openclaw-manager-src/src/components/Setup/index.tsx` — clearTimeout
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — clearTimeout
+
+### 测试
+- 946/946 Python passed, 0 TypeScript errors
+
+---
+
 ## [2026-03-27] 实用功能升级 — 3 项每日实用工具
 
 > 领域: `backend`, `trading`, `xianyu`

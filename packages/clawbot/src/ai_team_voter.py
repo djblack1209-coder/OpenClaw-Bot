@@ -12,12 +12,13 @@ ClawBot AI 团队投票决策模块 v1.1
 - 最终置信度 = 加权平均信心分 / 10
 """
 import asyncio
-from datetime import datetime
-import json
 import logging
 import os
 import re
+import statistics
 from dataclasses import dataclass, field
+
+from config.prompts import INVEST_VOTE_PROMPTS
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,8 @@ class VoteResult:
     vol_ratio: float = 0
     rsi6: float = 0
     rsi14: float = 0
+    divergence: float = 0.0        # 信心分标准差（分歧度）
+    is_high_divergence: bool = False  # 分歧度 > 2.5 时为 True
 
     def format_telegram(self) -> str:
         """格式化为 Telegram 完整流程报告（Full 模式）"""
@@ -194,6 +197,15 @@ class VoteResult:
             lines.append(f"{i}) {vote.role}: {vote.vote} ({vote.confidence}/10)")
             lines.append(f"   理由: {vote.reasoning}")
 
+        # 共识度/分歧度可视化
+        if self.divergence > 0:
+            consensus_pct = max(0, min(100, int(100 - self.divergence * 12)))
+            filled = consensus_pct // 20
+            dots = "●" * filled + "○" * (5 - filled)
+            lines.append(f"\n🎯 共识度: {dots} {consensus_pct}% (σ={self.divergence:.1f})")
+            if self.is_high_divergence:
+                lines.append(f"⚠️ 分歧警告: 信心分标准差 {self.divergence:.1f} (>2.5)，AI 团队意见严重分化")
+
         lines.extend([
             "",
             "D. 风险闸门",
@@ -239,106 +251,8 @@ class VoteResult:
         return "\n".join(lines)
 
 
-# 每位Bot的投票提示模板
-VOTE_PROMPTS = {
-    "claude_haiku": {
-        "role": "市场雷达",
-        "prompt": (
-            "你是超短线交易团队的市场雷达，负责捕捉短期动量和异动信号。\n"
-            "请分析 {symbol} 的以下技术数据，给出你的投票。\n\n"
-            "{account_context}\n"
-            "{ta_summary}\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由，包含关键指标依据", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-    "qwen235b": {
-        "role": "宏观猎手",
-        "prompt": (
-            "你是超短线交易团队的宏观猎手，负责从宏观经济和板块轮动角度分析。\n"
-            "请分析 {symbol} 是否处于有利的宏观环境中。\n\n"
-            "{account_context}\n"
-            "{ta_summary}\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由，包含宏观/板块分析", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-    "gptoss": {
-        "role": "图表狙击手",
-        "prompt": (
-            "你是超短线交易团队的图表狙击手，负责基于技术形态和指标给出精准判断。\n"
-            "重点关注: EMA排列、MACD动量、RSI超买超卖、布林带位置、ADX趋势强度、成交量配合。\n\n"
-            "{account_context}\n"
-            "{ta_summary}\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由，包含具体技术形态分析", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-    "deepseek_v3": {
-        "role": "风控铁闸",
-        "prompt": (
-            "你是超短线交易团队的风控铁闸，拥有一票否决权。请冷酷审查 {symbol}。\n"
-            "你的职责是保护资金安全，宁可错过也不能亏大钱。\n\n"
-            "{account_context}\n"
-            "{ta_summary}\n\n"
-            "风控检查清单:\n"
-            "1. 止损距离是否合理(不超过入场价2-3%)?\n"
-            "2. 风险收益比是否>=1:2?\n"
-            "3. ADX是否显示有趋势(>20)?震荡市应SKIP\n"
-            "4. 成交量是否支持(量比>1.0)?\n"
-            "5. 当前账户状态是否允许新开仓?\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由，包含风控分析", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-    "claude_sonnet": {
-        "role": "交易指挥官",
-        "prompt": (
-            "你是超短线交易团队的交易指挥官，最终拍板。\n"
-            "前面4位分析师的投票:\n{previous_votes}\n\n"
-            "{account_context}\n"
-            "{trade_lessons}\n"
-            "标的技术数据:\n{ta_summary}\n\n"
-            "请综合所有意见，做出最终决策。注意:\n"
-            "- 如果多数分析师看好但风控有顾虑，需要权衡\n"
-            "- 如果账户今日已有亏损，应更保守\n"
-            "- 参考近期交易教训，避免重复犯错\n"
-            "- 给出的价格应参考分析师们的建议取合理值\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由，包含综合判断依据", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-    "claude_opus": {
-        "role": "首席策略师",
-        "prompt": (
-            "你是超短线交易团队的首席策略师，终极大脑，拥有最终否决权。\n"
-            "前面5位分析师的投票:\n{previous_votes}\n\n"
-            "{account_context}\n"
-            "{trade_lessons}\n"
-            "标的技术数据:\n{ta_summary}\n\n"
-            "你的职责:\n"
-            "1. 从更高维度审视：市场情绪是否被误读？有没有被忽略的系统性风险？\n"
-            "2. 如果交易指挥官的决策合理且风控通过，投BUY确认\n"
-            "3. 如果发现重大风险或逻辑漏洞，投SKIP否决并说明理由\n"
-            "4. 参考近期交易教训，避免系统性重复犯错\n"
-            "5. 你是最后的安全阀，宁可保守不可冒进\n\n"
-            "请严格按以下JSON格式回复（不要其他内容）:\n"
-            '{{"vote": "BUY或HOLD或SKIP", "confidence": 1到10的整数, '
-            '"reasoning": "100字以内详细理由", "entry_price": 入场价, '
-            '"stop_loss": 止损价, "take_profit": 目标价}}'
-        ),
-    },
-}
+# 每位Bot的投票提示模板 — 单一事实源: config/prompts.py
+VOTE_PROMPTS = INVEST_VOTE_PROMPTS
 
 # 投票顺序: 雷达->宏观->图表->风控->指挥官->首席策略师
 VOTE_ORDER = ["claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonnet", "claude_opus"]
@@ -791,6 +705,11 @@ async def run_team_vote(
     result.hold_count = sum(1 for v in result.votes if v.vote == "HOLD")
     result.skip_count = sum(1 for v in result.votes if v.vote == "SKIP")
 
+    # 计算信心分标准差（分歧度）— prompts.py L238 规则的代码实现
+    all_confidences = [v.confidence for v in result.votes if v.confidence > 0]
+    result.divergence = statistics.stdev(all_confidences) if len(all_confidences) > 1 else 0.0
+    result.is_high_divergence = result.divergence > 2.5
+
     min_buy_votes = max(2, _env_int("TEAM_MIN_BUY_VOTES", 3))
     min_avg_buy_conf = max(1.0, min(10.0, _env_float("TEAM_MIN_AVG_BUY_CONF", 5.5)))
     veto_mode = _env_text("TEAM_VETO_MODE", "dual").lower()  # off / single / dual
@@ -819,7 +738,12 @@ async def run_team_vote(
         buy_votes_for_conf = [v for v in result.votes if v.vote == "BUY"]
         avg_buy_conf = sum(v.confidence for v in buy_votes_for_conf) / len(buy_votes_for_conf) if buy_votes_for_conf else 0
         if avg_buy_conf >= min_avg_buy_conf:
-            result.decision = "BUY"
+            # 高分歧降级保护：边缘通过 + 团队严重分化 → 保守观望
+            if result.is_high_divergence and result.buy_count == min_buy_votes:
+                result.decision = "HOLD"
+                result.veto_reason = f"团队分歧过大 (σ={result.divergence:.1f}), 保守观望"
+            else:
+                result.decision = "BUY"
         else:
             result.decision = "HOLD"
             result.veto_reason = (
@@ -859,7 +783,7 @@ async def run_team_vote(
     result.summary = (
         f"{symbol}: {result.decision} "
         f"(BUY:{result.buy_count} HOLD:{result.hold_count} SKIP:{result.skip_count}) "
-        f"置信度{result.avg_confidence:.0%}"
+        f"置信度{result.avg_confidence:.0%} σ={result.divergence:.1f}"
     )
     if brief_reason:
         result.summary += f" | {brief_reason}"

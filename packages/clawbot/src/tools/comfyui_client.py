@@ -16,13 +16,12 @@ Key endpoints:
   GET  /view?filename  — download generated image
   GET  /system_stats   — server health check
 """
-import json
 import logging
 import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict
 
 import requests
 

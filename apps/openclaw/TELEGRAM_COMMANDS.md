@@ -1,42 +1,29 @@
-# Telegram Command Shortcuts (Boss)
+# Telegram Command Shortcuts (严总)
 
 These commands are bound to workspace skills for faster triggering in Telegram.
 
 ## Shortcut map
 
-- `/profit` -> `profit-war-room`
-- `/alpha` -> `alpha-research-pipeline`
 - `/risk` -> `execution-risk-gate`
-- `/recover` -> `recovery-retrain-loop`
 - `/brief` -> `pnl-daily-brief`
-- `/heal` -> `clawbot-self-heal`
-- `/channel` -> `channel-command-center`
-- `/playbook` -> `usecase-playbook-router`
 - `/lane` -> `telegram-lane-router`
 - `/cost` -> `cost-quota-dashboard`
 - `/dev` -> `dev-todo-mode`
 
 ## Usage examples
 
-- `/alpha earnings this week`
 - `/risk check current plan`
-- `/profit plan for US open`
-- `/recover this week pnl miss`
-- `/heal gateway 18789 down`
 - `/lane [RISK] 今天仓位是否需要降杠杆？`
 - `/cost`
 - `/dev 修复总控中心里 provider 空白并回归测试`
 
-## Boss direct-equivalent shortcuts
+## 严总 direct-equivalent shortcuts
 
-These are the shortcuts Boss should prefer in Telegram when they want roughly the same effect as a direct assistant request:
+These are the shortcuts 严总 should prefer in Telegram when they want roughly the same effect as a direct assistant request:
 
 - Development / config execution -> `/dev <task or path>`
-- Channel / Telegram config -> `/channel <task>`
 - Cost / quota check -> `/cost`
 - Risk / execution gate -> `/risk <task>`
-- Alpha / research -> `/alpha <topic>`
-- Playbook routing -> `/playbook <goal>`
 
 ## Lane 标签（非 forum 群分流）
 

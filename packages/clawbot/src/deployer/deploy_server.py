@@ -111,7 +111,7 @@ def _build_deploy_config(data: dict) -> dict:
     return {
         "version": "2026.3",
         "gateway": {
-            "port": 18789,
+            "port": int(os.environ.get("GATEWAY_PORT", "18789")),
         },
         "models": {
             "providers": {
@@ -152,6 +152,6 @@ def _build_deploy_config(data: dict) -> dict:
     }
 
 
-def run_server(host: str = "0.0.0.0", port: int = 18800):
+def run_server(host: str = "127.0.0.1", port: int = 18800):
     logger.info(f"部署授权服务启动: {host}:{port}")
     app.run(host=host, port=port, debug=False)

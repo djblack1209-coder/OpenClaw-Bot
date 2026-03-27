@@ -3,7 +3,6 @@ Trading — 仓位同步工具
 估算敞口、同步仓位到 PositionMonitor
 """
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

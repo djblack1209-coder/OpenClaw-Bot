@@ -196,12 +196,99 @@ class InvestCommandsMixin:
             card = format_portfolio_card(enriched, cash=cash)
             await update.message.reply_text(card, parse_mode="HTML",
                                             reply_to_message_id=update.message.message_id)
-            # 发送饼图
+
+            # ── 风险敞口文本（新增） ──────────────────────────
+            try:
+                rm = get_risk_manager()
+                if rm:
+                    exposure = rm.get_risk_exposure_summary(enriched, cash)
+                    risk_lines = [
+                        "⚠️ <b>风险敞口</b>",
+                        "━━━━━━━━━━━━━━━",
+                        f"单只最大: {exposure['max_single_symbol']} "
+                        f"{exposure['max_single_pct']}% "
+                        f"(阈值 {exposure['max_single_threshold']:.0f}%)",
+                        f"同行业最大: {exposure['max_sector_name']} "
+                        f"{exposure['max_sector_pct']}% "
+                        f"(阈值 {exposure['max_sector_threshold']:.0f}%)",
+                        f"总仓位: {exposure['total_position_pct']}% "
+                        f"(阈值 {exposure['total_position_threshold']:.0f}%)",
+                        f"日亏限额: 已用 ${exposure['daily_loss_used']:.0f} "
+                        f"/ ${exposure['daily_loss_limit']:.0f}",
+                    ]
+                    await update.message.reply_text(
+                        "\n".join(risk_lines), parse_mode="HTML",
+                        reply_to_message_id=update.message.message_id,
+                    )
+            except Exception as e:
+                logger.debug("风险敞口展示失败: %s", e)
+
+            # ── SPY Benchmark 对比（新增） ──────────────────
+            try:
+                import yfinance as yf
+                from datetime import datetime, timedelta
+                # 计算组合近30天收益
+                total_value = sum(abs(p.get("market_value", 0)) for p in enriched) + cash
+                total_cost = sum(p.get("quantity", 0) * p.get("avg_cost", 0) for p in enriched) + cash
+                portfolio_return = ((total_value / total_cost) - 1) * 100 if total_cost > 0 else 0
+
+                # 获取 SPY 近30天收益
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=35)
+                spy_data = yf.download(
+                    "SPY", start=start_date.strftime("%Y-%m-%d"),
+                    end=end_date.strftime("%Y-%m-%d"), progress=False
+                )
+                if spy_data is not None and len(spy_data) >= 2:
+                    # 取近30个交易日的首尾计算涨跌幅
+                    spy_close = spy_data["Close"]
+                    if hasattr(spy_close, "iloc"):
+                        spy_start = float(spy_close.iloc[-min(22, len(spy_close))])
+                        spy_end = float(spy_close.iloc[-1])
+                        spy_return = ((spy_end / spy_start) - 1) * 100
+                        alpha = portfolio_return - spy_return
+                        alpha_emoji = "🟢" if alpha >= 0 else "🔴"
+                        spy_line = (
+                            f"📈 近30天: 你的组合 {portfolio_return:+.1f}% "
+                            f"| SPY {spy_return:+.1f}% "
+                            f"| {alpha_emoji} 超额 {alpha:+.1f}%"
+                        )
+                        await update.message.reply_text(
+                            spy_line,
+                            reply_to_message_id=update.message.message_id,
+                        )
+            except Exception as e:
+                logger.debug("SPY对标展示失败: %s", e)
+
+            # 发送持仓饼图（已有）
             try:
                 chart = generate_portfolio_pie(enriched, "资产配置")
                 await send_chart(update, context, chart, caption="")
             except Exception as e:
                 logger.debug("Portfolio pie chart failed: %s", e)
+
+            # ── 行业分布饼图（新增） ──────────────────────────
+            try:
+                rm = get_risk_manager()
+                if rm:
+                    # 复用风险敞口计算中已缓存的 sector 数据
+                    symbols = [p.get("symbol", "") for p in enriched]
+                    sector_map = rm.lookup_sectors(symbols)
+                    sector_values = {}
+                    for p in enriched:
+                        sym = p.get("symbol", "").upper()
+                        sector = sector_map.get(sym, "未知")
+                        mv = abs(p.get("market_value", 0))
+                        sector_values[sector] = sector_values.get(sector, 0) + mv
+                    # 至少有2个行业才值得画饼图
+                    if len(sector_values) >= 2 or (
+                        len(sector_values) == 1 and "未知" not in sector_values
+                    ):
+                        from src.telegram_ux import generate_sector_pie
+                        sector_chart = generate_sector_pie(sector_values, "行业分布")
+                        await send_chart(update, context, sector_chart, caption="")
+            except Exception as e:
+                logger.debug("行业分布饼图失败: %s", e)
         else:
             from src.telegram_ux import format_portfolio_card
             card = format_portfolio_card([], cash=cash)
@@ -275,9 +362,22 @@ class InvestCommandsMixin:
             return
         # 风控检查
         if rm and price > 0:
-            sl = round(price * 0.97, 2)
+            # 动态止损: 波动率大的标的用更宽止损，小盘股/加密货币 5%，大盘蓝筹 3%
+            sl_pct = 0.05 if price < 10 or symbol.endswith("USD") else 0.03
+            sl = round(price * (1 - sl_pct), 2)
+            # 传入当前持仓，启用总敞口和最大持仓数检查
+            current_positions = []
+            try:
+                positions = portfolio.get_positions() if hasattr(portfolio, 'get_positions') else portfolio.positions
+                if isinstance(positions, dict):
+                    current_positions = [{"symbol": k, "quantity": v.get("quantity", 0), "avg_price": v.get("avg_price", 0)} for k, v in positions.items()]
+                elif isinstance(positions, list):
+                    current_positions = positions
+            except Exception:
+                pass
             check = rm.check_trade(symbol=symbol, side="BUY", quantity=quantity,
-                                   entry_price=price, stop_loss=sl)
+                                   entry_price=price, stop_loss=sl,
+                                   current_positions=current_positions)
             if not check.approved:
                 await update.message.reply_text(f"风控拒绝: {check.reason}")
                 return
@@ -328,6 +428,40 @@ class InvestCommandsMixin:
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
         # FIX 3: 记录冷却时间戳
         _trade_cooldown[dedup_key] = _time.time()
+
+        # 补齐交易闭环: 记录交易日志 + 仓位监控 + 发布 EventBus 事件
+        try:
+            trade_data = {
+                "symbol": symbol, "action": "BUY", "quantity": quantity,
+                "price": price, "decided_by": self.name, "reason": "手动买入",
+                "ibkr": ibkr_ok,
+            }
+            # 交易日志
+            try:
+                from src.trading.trading_journal import get_trading_journal
+                journal = get_trading_journal()
+                if journal:
+                    journal.open_trade(symbol, "BUY", quantity, price, stop_loss=round(price * 0.97, 2))
+            except Exception as e:
+                logger.debug("交易日志记录失败: %s", e)
+            # 仓位监控
+            try:
+                from src.position_monitor import get_position_monitor
+                pm = get_position_monitor()
+                if pm:
+                    pm.add_position(symbol, quantity, price)
+            except Exception as e:
+                logger.debug("仓位监控添加失败: %s", e)
+            # EventBus 事件 — 触发多渠道通知 + 社媒联动
+            try:
+                from src.core.event_bus import get_event_bus
+                bus = get_event_bus()
+                if bus:
+                    await bus.publish("trade.executed", trade_data)
+            except Exception as e:
+                logger.debug("交易事件发布失败: %s", e)
+        except Exception:
+            pass  # 闭环增强不影响主流程
 
     @requires_auth
     @with_typing
@@ -518,10 +652,15 @@ class InvestCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_export(self, update, context):
-        """导出交易数据为 Excel: /export [trades|watchlist|portfolio] [csv]"""
+        """导出数据为 Excel: /export [trades|watchlist|portfolio|expenses|xianyu] [天数] [csv]"""
         args = context.args or []
         target = args[0].lower() if args else "trades"
-        fmt = "csv" if (len(args) >= 2 and args[1].lower() == "csv") else "xlsx"
+        # 检测 csv 格式标记 (可能在任意位置)
+        fmt = "xlsx"
+        for a in args[1:]:
+            if a.lower() == "csv":
+                fmt = "csv"
+                break
 
         # 检查 openpyxl 可用性
         from src.tools.export_service import HAS_OPENPYXL
@@ -580,6 +719,83 @@ class InvestCommandsMixin:
                 filename = f"portfolio.{fmt}"
                 caption = f"投资组合 ({len(enriched)} 只持仓)"
 
+            elif target == "expenses":
+                # 导出记账数据: /export expenses [天数]
+                user_id = update.effective_user.id if update.effective_user else 0
+                days = 30
+                for a in args[1:]:
+                    if a.isdigit():
+                        days = int(a)
+                        break
+                from src.execution.life_automation import get_all_expenses, get_monthly_summary
+                expenses = get_all_expenses(user_id, days=days)
+                if not expenses:
+                    await update.message.reply_text("暂无记账数据，无法导出")
+                    return
+                # 构建月度汇总数据
+                summary_data = None
+                try:
+                    from datetime import datetime as _dt
+                    now = _dt.now()
+                    months = []
+                    # 获取最近 3 个月的汇总
+                    for offset in range(3):
+                        month = now.month - offset
+                        year = now.year
+                        if month <= 0:
+                            month += 12
+                            year -= 1
+                        ym = f"{year}-{month:02d}"
+                        ms = get_monthly_summary(user_id, year_month=ym)
+                        if ms.get("success") and (ms.get("total_expense", 0) > 0 or ms.get("total_income", 0) > 0):
+                            months.append({
+                                "month": ym,
+                                "total_expense": ms["total_expense"],
+                                "total_income": ms["total_income"],
+                                "net": ms["net"],
+                                "budget": ms.get("budget", 0),
+                                "budget_pct": ms.get("budget_pct", 0),
+                            })
+                    if months:
+                        summary_data = {"months": months}
+                except Exception:
+                    pass  # 汇总获取失败不影响明细导出
+                from src.tools.export_service import export_expenses
+                buf = export_expenses(expenses, summary=summary_data, format=fmt)
+                filename = f"expenses_{days}d.{fmt}"
+                caption = f"记账数据 (近{days}天, {len(expenses)} 条)"
+
+            elif target == "xianyu":
+                # 导出闲鱼订单: /export xianyu [天数]
+                days = 90
+                for a in args[1:]:
+                    if a.isdigit():
+                        days = int(a)
+                        break
+                try:
+                    from src.xianyu.xianyu_context import XianyuContextManager
+                    ctx = XianyuContextManager()
+                    orders = ctx.get_all_orders(days=days)
+                    if not orders:
+                        await update.message.reply_text("暂无闲鱼订单，无法导出")
+                        return
+                    # 获取利润汇总
+                    ps = ctx.get_profit_summary(days=days)
+                    profit_summary = {
+                        "total_orders": ps.get("orders", 0),
+                        "total_revenue": ps.get("revenue", 0),
+                        "total_cost": ps.get("cost", 0),
+                        "total_commission": ps.get("total_commission", 0),
+                        "net_profit": ps.get("profit", 0),
+                    }
+                except ImportError:
+                    await update.message.reply_text("闲鱼模块未加载")
+                    return
+                from src.tools.export_service import export_xianyu_orders
+                buf = export_xianyu_orders(orders, profit_summary=profit_summary, format=fmt)
+                filename = f"xianyu_orders_{days}d.{fmt}"
+                caption = f"闲鱼订单 (近{days}天, {len(orders)} 笔)"
+
             else:
                 # 默认导出交易记录
                 limit = 100
@@ -609,7 +825,7 @@ class InvestCommandsMixin:
             logger.error("导出失败: %s", e, exc_info=True)
             await update.message.reply_text(
                 f"导出失败: {e}\n\n"
-                "用法: `/export [trades|watchlist|portfolio] [csv]`",
+                "用法: `/export [trades|watchlist|portfolio|expenses|xianyu] [天数] [csv]`",
                 parse_mode="Markdown",
             )
 

@@ -6,7 +6,7 @@ metadata: {"openclaw":{"emoji":"💰"}}
 
 # Profit War Room
 
-Use when Boss asks for investment decisions, trading plans, capital allocation, or performance acceleration.
+Use when 严总 asks for investment decisions, trading plans, capital allocation, or performance acceleration.
 
 ## Core doctrine
 

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { isTauri } from '../../lib/tauri';
 import clsx from 'clsx';
 
 interface MemoryEntry {
@@ -14,30 +13,50 @@ interface MemoryEntry {
   updated_at: number;
 }
 
+// API 返回的记忆条目原始格式
+interface MemoryApiResult {
+  key?: string;
+  id?: string;
+  value?: string | Record<string, unknown>;
+  content?: string;
+  source_bot?: string;
+  source?: string;
+  importance?: number;
+  score?: number;
+  updated_at?: number;
+}
+
 export function Memory() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchMemories = async () => {
-    if (!isTauri()) {
-       setLoading(false);
-       return;
-    }
     try {
       setLoading(true);
-      // We will need a tauri command for this later. 
-      // For now we mock or use empty until backend command is added
-      // const res = await invoke<MemoryEntry[]>('get_smart_memories');
-      // setEntries(res);
-      setEntries([
-        { key: 'user_profile_admin', value: '{"name": "Boss", "interests": ["Crypto", "AI", "Automation"], "preferences": {"trading_style": "conservative", "language": "Chinese"}}', source_bot: 'system', importance: 5, updated_at: Date.now() / 1000 },
-        { key: 'auto_admin_1711000000', value: '用户希望每日早上 8 点收到科技新闻简报', source_bot: 'assistant', importance: 3, updated_at: Date.now() / 1000 - 86400 },
-        { key: 'auto_admin_1711000001', value: '用户不喜欢过于啰嗦的回答，要求直接给结果', source_bot: 'assistant', importance: 4, updated_at: Date.now() / 1000 - 172800 },
-        { key: 'auto_admin_1711000002', value: '正在关注 $SOL 的做空机会', source_bot: 'assistant', importance: 3, updated_at: Date.now() / 1000 - 3600 }
-      ]);
+      const resp = await fetch('http://127.0.0.1:18790/api/v1/memory/search?q=&limit=50');
+      if (resp.ok) {
+        const data = await resp.json();
+        // API 返回 { results: [...] } 格式
+        const results = data.results || data.entries || data || [];
+        if (Array.isArray(results) && results.length > 0) {
+          setEntries(results.map((r: MemoryApiResult) => ({
+            key: r.key || r.id || 'unknown',
+            value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
+            source_bot: r.source_bot || r.source || 'system',
+            importance: r.importance || r.score || 3,
+            updated_at: r.updated_at || Date.now() / 1000,
+          })));
+        } else {
+          setEntries([]);
+        }
+      } else {
+        console.warn('记忆API返回非200:', resp.status);
+        setEntries([]);
+      }
     } catch (e) {
-      console.error(e);
+      console.warn('记忆API不可用，显示空状态:', e);
+      setEntries([]);
     } finally {
       setLoading(false);
     }
@@ -103,18 +122,24 @@ export function Memory() {
                                         "px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase",
                                         isProfile ? "bg-purple-500/20 text-purple-400" : "bg-dark-600 text-gray-400"
                                     )}>
-                                        {isProfile ? 'USER_PROFILE' : 'FACT'}
+                                        {isProfile ? '用户画像' : '事实'}
                                     </span>
-                                    <span className="text-xs text-gray-500">ID: {entry.key}</span>
+                                    <span className="text-xs text-gray-500">标识: {entry.key}</span>
                                     {entry.importance >= 4 && (
-                                        <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">HIGH PRIORITY</span>
+                                        <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">高优先级</span>
                                     )}
                                 </div>
                                 <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-mono">
-                                    {isProfile ? JSON.stringify(JSON.parse(entry.value), null, 2) : entry.value}
+                                    {isProfile ? (() => {
+                                      try {
+                                        return JSON.stringify(JSON.parse(entry.value), null, 2);
+                                      } catch {
+                                        return entry.value;
+                                      }
+                                    })() : entry.value}
                                 </div>
                                 <div className="mt-3 text-xs text-gray-600">
-                                    Source: {entry.source_bot} | Updated: {new Date(entry.updated_at * 1000).toLocaleString()}
+                                    来源: {entry.source_bot} | 更新: {new Date(entry.updated_at * 1000).toLocaleString()}
                                 </div>
                             </div>
                             
@@ -135,7 +160,7 @@ export function Memory() {
             
             {filteredEntries.length === 0 && (
                 <div className="text-center py-12 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
-                    没有找到匹配的记忆记录
+                    {searchQuery ? '没有找到匹配的记忆记录' : '记忆库为空。与 Bot 对话后会自动记录。'}
                 </div>
             )}
           </div>
@@ -153,19 +178,26 @@ export function Memory() {
                 <CardContent className="p-4 space-y-4">
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">总记忆条目</span>
-                        <span className="text-lg font-mono text-white">4,281</span>
+                        <span className="text-lg font-mono text-white">{entries.length > 0 ? entries.length.toLocaleString() : '—'}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">提取轮次</span>
-                        <span className="text-lg font-mono text-white">128</span>
+                        <span className="text-lg font-mono text-white">—</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">向量维度</span>
-                        <span className="text-lg font-mono text-white">1536</span>
+                        <span className="text-lg font-mono text-white">—</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">引擎状态</span>
-                        <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">在线</span>
+                        <span className={clsx(
+                            "text-xs px-2 py-0.5 rounded border",
+                            loading ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                            entries.length > 0 ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                            "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                        )}>
+                            {loading ? '检查中...' : entries.length > 0 ? '在线' : '未连接'}
+                        </span>
                     </div>
                 </CardContent>
             </Card>

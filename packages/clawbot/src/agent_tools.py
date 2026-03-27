@@ -14,7 +14,6 @@ Usage:
 import asyncio
 import logging
 import os
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ import asyncio
 import time
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional, Callable, Any
+from typing import Optional
 
 from telegram.constants import ChatAction
 from telegram import Update
@@ -295,18 +295,20 @@ async def send_error_with_retry(update, context, error: Exception,
     - 附加重试按钮，一键重新执行
     """
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    # 延迟导入: 打破 telegram_ux ↔ bot 的循环依赖
+    from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 
     err_str = str(error).lower()
     if "timeout" in err_str or "timed out" in err_str:
-        user_msg = "⏱ 请求超时，服务可能比较忙"
+        user_msg = error_ai_busy()
     elif "rate" in err_str or "429" in err_str:
-        user_msg = "🚦 请求太频繁，请稍等几秒"
+        user_msg = error_rate_limit()
     elif "connect" in err_str or "network" in err_str:
-        user_msg = "🌐 网络连接问题，正在切换线路"
+        user_msg = error_network()
     elif "auth" in err_str or "401" in err_str:
-        user_msg = "🔑 API 认证失败"
+        user_msg = error_auth()
     else:
-        user_msg = f"⚠️ 操作失败: {str(error)[:100]}"
+        user_msg = error_generic(str(error))
 
     keyboard = None
     if retry_command:
@@ -359,9 +361,14 @@ class NotificationBatcher:
             if len(self._buffers[chat_id]) >= self.max_batch:
                 await self._flush(chat_id)
             elif chat_id not in self._timers:
-                self._timers[chat_id] = asyncio.create_task(
+                task = asyncio.create_task(
                     self._delayed_flush(chat_id)
                 )
+                def _flush_done(t):
+                    if not t.cancelled() and t.exception():
+                        logger.debug("[TelegramUX] flush 异常: %s", t.exception())
+                task.add_done_callback(_flush_done)
+                self._timers[chat_id] = task
 
     async def _delayed_flush(self, chat_id: int):
         await asyncio.sleep(self.flush_interval)
@@ -653,6 +660,62 @@ def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.B
     plt.close(fig)
     buf.seek(0)
     buf.name = 'portfolio.png'
+    return buf
+
+
+def generate_sector_pie(sector_values: dict, title: str = "行业分布") -> io.BytesIO:
+    """行业分布饼图 — 按 sector 聚合市值后展示
+
+    Args:
+        sector_values: {"Technology": 5000, "Healthcare": 3000, ...}
+        title: 图表标题
+    Returns:
+        BytesIO PNG 图片
+    """
+    plt = _setup_chart_style()
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=150)
+
+    # 按市值降序排列
+    sorted_items = sorted(sector_values.items(), key=lambda x: x[1], reverse=True)
+    sectors = [s for s, _ in sorted_items]
+    values = [v for _, v in sorted_items]
+    total = sum(values) or 1
+
+    # 行业名中英对照（常见行业翻译）
+    sector_cn = {
+        "Technology": "科技", "Healthcare": "医疗", "Financial Services": "金融",
+        "Consumer Cyclical": "可选消费", "Communication Services": "通信",
+        "Industrials": "工业", "Consumer Defensive": "必需消费",
+        "Energy": "能源", "Utilities": "公用事业", "Real Estate": "房地产",
+        "Basic Materials": "基础材料", "未知": "未知",
+    }
+    labels = [sector_cn.get(s, s) for s in sectors]
+
+    # 颜色方案（行业风格配色）
+    sector_colors = [
+        '#00d4aa', '#3498db', '#e74c3c', '#f39c12',
+        '#9b59b6', '#1abc9c', '#e67e22', '#2ecc71',
+        '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
+    ]
+    colors = [sector_colors[i % len(sector_colors)] for i in range(len(sectors))]
+
+    wedges, texts, autotexts = ax.pie(
+        values, labels=labels, autopct=lambda p: f'{p:.1f}%' if p > 3 else '',
+        colors=colors, startangle=90, pctdistance=0.8,
+        textprops={'color': '#e0e0e0', 'fontsize': 12},
+    )
+    for t in autotexts:
+        t.set_fontsize(10)
+        t.set_color('#ffffff')
+
+    ax.set_title(f"{title}\n总值 ${total:,.0f}", pad=15, color='#e0e0e0', fontsize=14)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    buf.name = 'sector.png'
     return buf
 
 

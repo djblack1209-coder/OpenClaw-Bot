@@ -1,6 +1,14 @@
 """
-ClawBot 持仓监控器 v1.0
+ClawBot 持仓监控器 v2.0
 自动监控所有持仓，实时检测止损/止盈/追踪止损触发
+
+v2.0 变更 (2026-03-24):
+  - 搬运 PanWatch (MIT) 通知节流模式 — 按 symbol+级别 冷却
+  - 新增接近止损预警 (proximity alert): 80%/50%/20% 三级预警
+  - 接入 EventBus 发布 trade.risk_alert 事件
+  - 止损调整通知 (breakeven/trailing 上移推送到用户)
+  - 激活 risk_manager.update_position_pnl() dead code
+  - Bug fix: line 313 now_et() → _now_et()
 
 功能：
 1. 定时轮询持仓价格（可配置间隔）
@@ -8,13 +16,15 @@ ClawBot 持仓监控器 v1.0
 3. 止盈触发 -> 自动平仓
 4. 追踪止损 -> 价格上涨时自动上移止损位
 5. 时间止损 -> 持仓超时自动平仓
-6. 事件回调 -> 触发时通知Telegram群
+6. 接近止损预警 -> Telegram + EventBus 分级推送 (v2.0)
+7. 止损调整通知 -> 保本/追踪上移推送 (v2.0)
 """
 import asyncio
 import logging
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from src.utils import now_et as _now_et_fn
@@ -35,6 +45,29 @@ class ExitReason(Enum):
     DAILY_LIMIT = "daily_limit"
     CIRCUIT_BREAKER = "circuit_breaker"
     PARTIAL_TAKE_PROFIT = "partial_take_profit"
+
+
+# ── v2.0: 接近止损预警级别 (搬运 PanWatch throttle 模式) ───────
+
+class AlertLevel(Enum):
+    """止损接近预警级别 — 距止损距离越近级别越高"""
+    WARN = "warn"           # 距止损 ≤ 80% (已消耗 80% 的安全距离)
+    DANGER = "danger"       # 距止损 ≤ 50%
+    CRITICAL = "critical"   # 距止损 ≤ 20%
+
+
+# 预警阈值: (距止损百分比, 级别, 冷却秒数)
+_ALERT_THRESHOLDS = [
+    (0.20, AlertLevel.CRITICAL, 300),   # 距止损≤20% → 5分钟冷却
+    (0.50, AlertLevel.DANGER, 900),     # 距止损≤50% → 15分钟冷却
+    (0.80, AlertLevel.WARN, 1800),      # 距止损≤80% → 30分钟冷却
+]
+
+_ALERT_EMOJI = {
+    AlertLevel.WARN: "🟡",
+    AlertLevel.DANGER: "🟠",
+    AlertLevel.CRITICAL: "🔴",
+}
 
 
 @dataclass
@@ -59,6 +92,8 @@ class MonitoredPosition:
     breakeven_triggered: bool = False  # 保本止损是否已触发
     partial_exit_done: bool = False    # 分批止盈是否已执行（50%在1.5R）
     original_quantity: float = 0       # 原始数量（分批止盈后quantity会减少）
+    # v2.0: 止损调整事件 (由 PositionMonitor 消费并推送通知)
+    _pending_adjustments: List[str] = field(default_factory=list)
 
     def update_price(self, price: float):
         self.current_price = price
@@ -81,6 +116,11 @@ class MonitoredPosition:
                         old = self.stop_loss
                         self.stop_loss = new_stop
                         self.breakeven_triggered = True
+                        # v2.0: 记录调整事件供通知
+                        self._pending_adjustments.append(
+                            "🛡️ %s 保本止损触发\n止损上移: $%.2f → $%.2f\n当前价: $%.2f (盈利达1R)"
+                            % (self.symbol, old, new_stop, price)
+                        )
                         logger.info(
                             "[Monitor] %s 保本止损触发: $%.2f -> $%.2f (盈利达1R, 当前$%.2f)",
                             self.symbol, old, new_stop, price,
@@ -101,11 +141,24 @@ class MonitoredPosition:
                     old = self.trailing_stop_price
                     self.trailing_stop_price = new_trailing
                     if old > 0:
+                        # v2.0: 记录显著调整 (上移>0.5%) 供通知
+                        move_pct = ((new_trailing - old) / old * 100) if old > 0 else 0
+                        if move_pct >= 0.5:
+                            self._pending_adjustments.append(
+                                "📈 %s 追踪止损上移\n$%.2f → $%.2f (+%.1f%%)\n最高价: $%.2f"
+                                % (self.symbol, old, new_trailing, move_pct, price)
+                            )
                         logger.info(
                             "[Monitor] %s 追踪止损上移: $%.2f -> $%.2f (最高价$%.2f%s)",
                             self.symbol, old, self.trailing_stop_price, price,
                             " ATR=%.2f" % self.atr if self.atr > 0 else "",
                         )
+
+    def drain_adjustments(self) -> List[str]:
+        """取出并清空待通知的止损调整事件"""
+        msgs = list(self._pending_adjustments)
+        self._pending_adjustments.clear()
+        return msgs
 
 
 @dataclass
@@ -140,6 +193,9 @@ class PositionMonitor:
         self._exit_history: List[ExitSignal] = []
         self._exit_retry_count: Dict[int, int] = {}  # trade_id -> 重试次数
         self._max_exit_retries = 3  # 最大重试次数
+        # v2.0: 通知节流 (搬运 PanWatch throttle 模式)
+        # key: (trade_id, AlertLevel) -> last_alert_timestamp
+        self._alert_cooldowns: Dict[tuple, float] = {}
         logger.info("[PositionMonitor] 初始化完成 | 检查间隔=%ds", check_interval)
 
     # ============ 持仓管理 ============
@@ -190,6 +246,13 @@ class PositionMonitor:
             return
         self._running = True
         self._task = asyncio.create_task(self._monitor_loop())
+        def _monitor_done(t):
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc:
+                logger.critical("[PositionMonitor] 监控循环崩溃: %s", exc)
+        self._task.add_done_callback(_monitor_done)
         logger.info("[PositionMonitor] 监控循环已启动")
 
     async def stop(self) -> None:
@@ -207,8 +270,11 @@ class PositionMonitor:
             try:
                 if self.positions:
                     await self._check_all_positions()
+            except asyncio.CancelledError:
+                logger.info("[Monitor] 监控循环被取消")
+                raise  # 让 stop() 正常结束
             except Exception as e:
-                logger.error("[Monitor] 监控循环异常: %s", e, exc_info=True)
+                logger.error("[Monitor] 监控循环异常: %s — 将在 %ds 后重试", e, self.check_interval, exc_info=True)
             await asyncio.sleep(self.check_interval)
 
     async def _check_all_positions(self) -> None:
@@ -235,6 +301,29 @@ class PositionMonitor:
                 if price is None:
                     continue
                 pos.update_price(price)
+
+                # v2.0: 推送止损调整通知 (breakeven/trailing 上移)
+                adjustments = pos.drain_adjustments()
+                for adj_msg in adjustments:
+                    await self._send_alert(adj_msg)
+
+                # v2.0: 接近止损预警 (proximity alert)
+                await self._check_proximity_alert(pos)
+
+                # v2.0: 激活 risk_manager.update_position_pnl() (原 dead code)
+                if self.risk_manager and hasattr(self.risk_manager, 'update_position_pnl'):
+                    try:
+                        pnl_warning = self.risk_manager.update_position_pnl(
+                            pos.symbol, pos.unrealized_pnl
+                        )
+                        if pnl_warning and pnl_warning.get("action"):
+                            await self._send_alert(
+                                "⚠️ %s 利润回撤预警\n%s\n当前浮盈: $%.2f"
+                                % (pos.symbol, pnl_warning.get("action", ""), pos.unrealized_pnl)
+                            )
+                    except Exception:
+                        pass  # 不影响核心监控循环
+
                 signal = self._check_exit_conditions(pos)
                 if signal:
                     exit_signals.append(signal)
@@ -307,7 +396,7 @@ class PositionMonitor:
             entry = pos.entry_time
             if entry.tzinfo is None:
                 # 旧数据用 naive datetime，保持 naive 比较
-                now = now_et()
+                now = _now_et()  # Bug fix v2.0: was now_et() (missing import)
             else:
                 now = _now_et()
             hold_hours = (now - entry).total_seconds() / 3600
@@ -489,6 +578,127 @@ class PositionMonitor:
                 signal.reason.value,
             )
             await self.notify(msg)
+
+    # ============ v2.0: 接近止损预警 (搬运 PanWatch throttle 模式) ============
+
+    async def _check_proximity_alert(self, pos: MonitoredPosition) -> None:
+        """检查持仓是否接近止损位，按级别发送预警
+
+        搬运自 PanWatch (MIT) 的 throttle 模式:
+        - 按 (trade_id, AlertLevel) 维度冷却
+        - 越接近止损，冷却越短 (CRITICAL=5min, DANGER=15min, WARN=30min)
+        """
+        if pos.side != "BUY" or pos.stop_loss <= 0:
+            return
+        if pos.current_price <= 0 or pos.entry_price <= 0:
+            return
+
+        # 计算距止损的距离占比
+        # distance_ratio = 0 表示已触及止损, 1.0 表示在入场价
+        total_distance = pos.entry_price - pos.stop_loss
+        if total_distance <= 0:
+            return
+        remaining_distance = pos.current_price - pos.stop_loss
+        if remaining_distance <= 0:
+            return  # 已低于止损，由 _check_exit_conditions 处理
+        distance_ratio = remaining_distance / total_distance
+
+        # 检查阈值 (从高到低，取最高级别)
+        now = time.monotonic()
+        for threshold, level, cooldown_secs in _ALERT_THRESHOLDS:
+            if distance_ratio <= threshold:
+                cooldown_key = (pos.trade_id, level)
+                last_alert = self._alert_cooldowns.get(cooldown_key, 0)
+                if now - last_alert < cooldown_secs:
+                    return  # 在冷却期内，不重复发送
+
+                # 发送预警
+                self._alert_cooldowns[cooldown_key] = now
+                emoji = _ALERT_EMOJI.get(level, "⚠️")
+                distance_pct = distance_ratio * 100
+                msg = (
+                    "%s %s 接近止损位\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "现价: $%.2f (▼%.1f%%)\n"
+                    "止损: $%.2f (距离 $%.2f, %.0f%%)\n"
+                    "浮亏: $%.2f (%.1f%%)"
+                ) % (
+                    emoji, pos.symbol,
+                    pos.current_price, abs(pos.unrealized_pnl_pct),
+                    pos.stop_loss, remaining_distance, distance_pct,
+                    pos.unrealized_pnl, pos.unrealized_pnl_pct,
+                )
+                # 追踪止损信息
+                if pos.trailing_stop_price > 0:
+                    msg += "\n追踪止损: $%.2f" % pos.trailing_stop_price
+                msg += "\n━━━━━━━━━━━━━━━━"
+                if level == AlertLevel.CRITICAL:
+                    msg += "\n💡 价格接近止损，请关注是否需要手动干预"
+
+                await self._send_alert(msg, level=level, symbol=pos.symbol)
+
+                # 发布 EventBus 事件 (如果可用)
+                self._emit_event("trade.risk_alert", {
+                    "symbol": pos.symbol,
+                    "level": level.value,
+                    "current_price": pos.current_price,
+                    "stop_loss": pos.stop_loss,
+                    "distance_pct": distance_pct,
+                    "unrealized_pnl": pos.unrealized_pnl,
+                })
+                return  # 只发最高级别
+
+    async def _send_alert(self, message: str, level: AlertLevel = None, symbol: str = "") -> None:
+        """发送预警通知 — 优先 NotificationManager，降级 notify_func"""
+        # 尝试 NotificationManager (多渠道)
+        try:
+            from src.notifications import get_notification_manager, NotifyLevel
+            nm = get_notification_manager()
+            if nm:
+                notify_level = NotifyLevel.NORMAL
+                if level == AlertLevel.CRITICAL:
+                    notify_level = NotifyLevel.CRITICAL
+                elif level == AlertLevel.DANGER:
+                    notify_level = NotifyLevel.HIGH
+                await nm.send(
+                    title="持仓风控预警" if level else "持仓监控通知",
+                    body=message,
+                    level=notify_level,
+                    tags=["trading", "risk"],
+                )
+                return
+        except Exception:
+            pass  # NotificationManager 不可用，降级
+
+        # 降级: 直接 Telegram callback
+        if self.notify:
+            try:
+                await self.notify(message)
+            except Exception as e:
+                logger.warning("[Monitor] 通知发送失败: %s", e)
+
+    def _emit_event(self, event_type: str, data: dict) -> None:
+        """发布 EventBus 事件 (fire-and-forget)"""
+        try:
+            from src.core.event_bus import get_event_bus
+            bus = get_event_bus()
+            if bus:
+                try:
+                    loop = asyncio.get_running_loop()
+                    _t = loop.create_task(bus.publish(event_type, data))
+                    _t.add_done_callback(lambda t: t.exception() and logger.debug("EventBus 发布异常: %s", t.exception()))
+                except RuntimeError:
+                    pass  # 无运行中的事件循环，跳过
+        except Exception as e:
+            logger.debug("EventBus 不可用: %s", e)
+
+    def _cleanup_stale_cooldowns(self) -> None:
+        """清理过期的冷却记录 (防止内存泄漏)"""
+        now = time.monotonic()
+        max_cooldown = 3600  # 1小时后清理
+        stale = [k for k, v in self._alert_cooldowns.items() if now - v > max_cooldown]
+        for k in stale:
+            del self._alert_cooldowns[k]
 
     # ============ 状态查询 ============
 

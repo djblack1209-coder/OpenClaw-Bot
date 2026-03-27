@@ -1,43 +1,51 @@
 """
 ClawBot - Bash命令执行工具
+安全加固版: 白名单模式 + shell=False
 """
 import subprocess
+import shlex
 import os
 import signal
+import logging
 from typing import Optional
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 class BashTool:
-    """执行Bash命令"""
+    """执行Bash命令 (白名单模式)"""
     
-    # 危险命令列表
-    DANGEROUS_PATTERNS = [
-        "rm -rf /",
-        "rm -rf ~",
-        "rm -rf /*",
-        "mkfs",
-        "dd if=",
-        "> /dev/sd",
-        "chmod -R 777 /",
-        ":(){ :|:& };:",  # fork bomb
-    ]
+    # 允许执行的命令白名单
+    ALLOWED_COMMANDS = frozenset({
+        "ls", "cat", "head", "tail", "grep", "find", "wc", "sort", "uniq",
+        "echo", "pwd", "date", "whoami", "uname", "df", "du", "file",
+        "pip", "python3", "node", "npm", "git", "docker", "curl", "wget",
+        "tar", "zip", "unzip", "gzip", "mkdir", "cp", "mv", "touch",
+        "which", "env", "printenv", "ps", "top", "htop", "free",
+        "ssh", "scp", "rsync",
+    })
     
     def __init__(self, working_dir: Optional[str] = None, timeout: int = 120):
         self.working_dir = working_dir or str(Path.home())
         self.timeout = timeout
         self.current_process: Optional[subprocess.Popen] = None
     
-    def is_dangerous(self, command: str) -> bool:
-        """检查命令是否危险"""
-        cmd_lower = command.lower().strip()
-        for pattern in self.DANGEROUS_PATTERNS:
-            if pattern.lower() in cmd_lower:
-                return True
-        return False
+    def is_allowed(self, command: str) -> bool:
+        """检查命令是否在白名单中 (基于 shlex 拆分后的第一个 token)"""
+        try:
+            args = shlex.split(command)
+            if not args:
+                return False
+            # 取命令名 (去掉路径前缀，如 /usr/bin/ls → ls)
+            cmd_name = os.path.basename(args[0])
+            return cmd_name in self.ALLOWED_COMMANDS
+        except ValueError:
+            # shlex 解析失败 (如未闭合引号)，拒绝执行
+            return False
     
     def execute(self, command: str, workdir: Optional[str] = None, timeout: Optional[int] = None) -> dict:
         """
-        执行Bash命令
+        执行Bash命令 (白名单模式, shell=False)
         
         Args:
             command: 要执行的命令
@@ -51,19 +59,37 @@ class BashTool:
             cwd = workdir or self.working_dir
             cmd_timeout = timeout or self.timeout
             
-            # 检查危险命令
-            if self.is_dangerous(command):
+            # 使用 shlex 拆分命令
+            try:
+                args = shlex.split(command)
+            except ValueError as e:
                 return {
                     "success": False,
-                    "dangerous": True,
-                    "error": "检测到危险命令，需要确认后执行",
+                    "error": f"命令解析失败: {e}",
                     "command": command
                 }
             
-            # 执行命令
+            if not args:
+                return {
+                    "success": False,
+                    "error": "空命令",
+                    "command": command
+                }
+            
+            # 白名单检查
+            cmd_name = os.path.basename(args[0])
+            if cmd_name not in self.ALLOWED_COMMANDS:
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "error": f"命令 '{cmd_name}' 不在允许列表中。允许的命令: {', '.join(sorted(self.ALLOWED_COMMANDS))}",
+                    "command": command
+                }
+            
+            # 执行命令 (shell=False，安全模式)
             self.current_process = subprocess.Popen(
-                command,
-                shell=True,
+                args,
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,
@@ -115,34 +141,10 @@ class BashTool:
                 "command": command
             }
     
-    def execute_dangerous(self, command: str, workdir: Optional[str] = None) -> dict:
-        """强制执行危险命令 (需要用户确认后调用)"""
-        try:
-            cwd = workdir or self.working_dir
-            
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                cwd=cwd,
-                timeout=self.timeout
-            )
-            
-            return {
-                "success": result.returncode == 0,
-                "stdout": result.stdout.decode('utf-8', errors='replace'),
-                "stderr": result.stderr.decode('utf-8', errors='replace'),
-                "returncode": result.returncode,
-                "command": command,
-                "forced": True
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "command": command
-            }
+    def execute_dangerous(self, command: str) -> dict:
+        """已禁用 — 所有命令必须通过白名单 execute() 方法"""
+        logger.warning("[BashTool] execute_dangerous 已禁用，拒绝: %s", command[:100])
+        return {"output": "", "error": "此方法已禁用，请使用 /bash 命令", "returncode": 1}
     
     def cancel(self) -> dict:
         """取消当前执行的命令"""
@@ -153,6 +155,7 @@ class BashTool:
                 else:
                     self.current_process.terminate()
                 return {"success": True, "message": "命令已取消"}
-            except Exception:
+            except Exception as e:
+                logger.debug("[BashTool] 异常: %s", e)
                 return {"success": False, "error": "取消失败"}
         return {"success": False, "error": "没有正在执行的命令"}

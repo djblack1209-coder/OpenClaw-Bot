@@ -23,7 +23,6 @@ import os
 import re
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass
 from enum import Enum
 
 from src.models import TradeProposal
@@ -272,7 +271,7 @@ class TradingPipeline:
                 result["steps"].append({"validation_error": str(e)})
 
         # Step 1: 风控审核
-        if self.risk_manager and proposal.action == "BUY":
+        if self.risk_manager and proposal.action in ("BUY", "SELL"):
             current_positions = []
             # 优先使用 IBKR 实际持仓
             if self.broker and hasattr(self.broker, 'is_connected') and self.broker.is_connected():
@@ -396,6 +395,18 @@ class TradingPipeline:
         if order_result and order_result.get("avg_price", 0) > 0:
             fill_price = order_result["avg_price"]
 
+        # Handle partial fills: use actual filled quantity for journal/monitor
+        actual_qty = proposal.quantity
+        if order_result:
+            raw_filled = order_result.get("filled_qty", 0)
+            if raw_filled and float(raw_filled) > 0:
+                actual_qty = float(raw_filled)
+                if actual_qty < proposal.quantity:
+                    logger.warning(
+                        "[Pipeline] Partial fill: %s/%s shares of %s",
+                        actual_qty, proposal.quantity, proposal.symbol,
+                    )
+
         # P0#6: 检测是否为模拟降级交易
         is_simulated_fallback = False
         if self.broker and order_result:
@@ -411,7 +422,7 @@ class TradingPipeline:
                 trade_id = self.journal.open_trade(
                     symbol=proposal.symbol,
                     side="BUY",
-                    quantity=proposal.quantity,
+                    quantity=actual_qty,
                     entry_price=fill_price,
                     stop_loss=proposal.stop_loss,
                     take_profit=proposal.take_profit,
@@ -422,6 +433,20 @@ class TradingPipeline:
                     status="pending" if is_entry_pending else "open",
                 )
                 result["trade_id"] = trade_id
+                # 管道1: 记录AI预测，供收盘验证准确率
+                try:
+                    self.journal.record_prediction(
+                        symbol=proposal.symbol,
+                        direction="UP" if proposal.action == "BUY" else "DOWN",
+                        target_price=proposal.take_profit,
+                        stop_price=proposal.stop_loss,
+                        confidence=proposal.confidence,
+                        reasoning=proposal.reason[:200],
+                        decided_by=proposal.decided_by,
+                        trade_id=trade_id,
+                    )
+                except Exception as e:
+                    logger.debug("[Pipeline] 记录AI预测失败: %s", e)
                 if is_entry_pending:
                     result["steps"].append({"journal": "trade #%s (pending)" % trade_id})
                 else:
@@ -437,7 +462,7 @@ class TradingPipeline:
                     trade_id=trade_id,
                     symbol=proposal.symbol,
                     side="BUY",
-                    quantity=proposal.quantity,
+                    quantity=actual_qty,
                     entry_price=fill_price,  # P0#3: 用实际成交价
                     entry_time=_now_et(),     # P0#2: 用美东时间
                     stop_loss=proposal.stop_loss,
@@ -487,7 +512,7 @@ class TradingPipeline:
             return result
 
         result["status"] = "executed"
-        result["quantity"] = proposal.quantity
+        result["quantity"] = actual_qty
         result["entry_price"] = fill_price  # P0#3: 返回实际成交价
 
         # Step 5: 通知
@@ -496,7 +521,7 @@ class TradingPipeline:
             msg = format_trade_executed(
                 proposal.action,
                 proposal.symbol,
-                proposal.quantity,
+                actual_qty,
                 fill_price,
                 proposal.stop_loss,
                 proposal.take_profit,
@@ -512,9 +537,9 @@ class TradingPipeline:
         if len(self._execution_log) > 200:
             self._execution_log = self._execution_log[-200:]
         logger.info(
-            "[Pipeline] 执行完成: %s %s x%d @ $%.2f",
+            "[Pipeline] 执行完成: %s %s x%s @ $%.2f",
             proposal.action, proposal.symbol,
-            proposal.quantity, proposal.entry_price,
+            actual_qty, fill_price,
         )
         return result
 
@@ -531,7 +556,7 @@ def parse_trade_proposal(text: str, symbol: str = "") -> Optional[TradeProposal]
             return TradeProposal(
                 symbol=data.get("symbol", symbol).upper(),
                 action=data.get("action", "HOLD").upper(),
-                quantity=int(data.get("quantity", data.get("qty", 0))),
+                quantity=max(0, int(data.get("quantity", data.get("qty", 0)))),
                 entry_price=float(data.get("entry_price", 0)),
                 stop_loss=float(data.get("stop_loss", 0)),
                 take_profit=float(data.get("take_profit", 0)),
@@ -663,6 +688,13 @@ class AutoTrader:
         self._running = True
         self.state = TraderState.IDLE
         self._task = asyncio.create_task(self._main_loop())
+        def _main_loop_done(t):
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc:
+                logger.critical("[AutoTrader] 主循环崩溃: %s", exc)
+        self._task.add_done_callback(_main_loop_done)
         logger.info("[AutoTrader] 已启动")
         await self._safe_notify(
             "AutoTrader 已启动\n扫描间隔: %d分钟\n自动模式: %s"
@@ -719,10 +751,17 @@ class AutoTrader:
                 logger.debug("[AutoTrader] 静默P2通知: %s", text[:120])
                 return
 
-        try:
-            await self.notify(text)
-        except Exception as e:
-            logger.warning("[AutoTrader] 通知发送失败: %s", e)
+        for attempt in range(3):
+            try:
+                await self.notify(text)
+                return
+            except Exception as e:
+                if is_p0 and attempt < 2:
+                    logger.debug("[AutoTrader] P0通知重试 (%d/3): %s", attempt + 1, e)
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logger.warning("[AutoTrader] 通知发送失败: %s (attempt %d)", e, attempt + 1)
+                return
 
     def _get_capital(self) -> float:
         """Return configured total capital, defaulting to 2000."""

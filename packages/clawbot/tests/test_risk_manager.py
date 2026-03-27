@@ -60,11 +60,9 @@ class TestRiskCheckTradingHours:
 
     def test_outside_hours_blocked_when_enabled(self, risk_manager):
         risk_manager.config.trading_hours_enabled = True
-        # Force a time outside trading hours (3 AM)
-        fake_now = datetime.now().replace(hour=3, minute=0, second=0)
-        with patch("src.risk_manager.datetime") as mock_dt:
-            mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        # Force a time outside trading hours (3 AM ET)
+        fake_now = now_et().replace(hour=3, minute=0, second=0)
+        with patch("src.risk_manager.now_et", return_value=fake_now):
             result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0)
         assert not result.approved
         assert "非交易时段" in result.reason

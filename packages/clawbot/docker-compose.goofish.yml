@@ -2,7 +2,7 @@
 # 用法: docker compose -f docker-compose.goofish.yml up -d
 #
 # 部署后:
-#   - Web UI: http://localhost:8000 (admin/admin123)
+#   - Web UI: http://localhost:8000 (登录凭据见 .env.goofish)
 #   - API: http://localhost:8000/docs
 #   - ClawBot 通过 GOOFISH_MONITOR_URL=http://localhost:8000 连接
 
@@ -12,7 +12,7 @@ services:
     container_name: goofish-monitor
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - ./config/.env.goofish
     volumes:
@@ -21,3 +21,14 @@ services:
       - ./data/goofish/prompts:/app/prompts
       - ./data/goofish/logs:/app/logs
       - ./data/goofish/images:/app/images
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

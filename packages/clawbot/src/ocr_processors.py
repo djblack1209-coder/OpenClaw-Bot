@@ -12,12 +12,10 @@ OCR 场景处理器 — 将 OCR 文字转化为业务决策
 - OCR 结果注入对话上下文（可追问）
 """
 import re
-import json
 import time
 import logging
-import asyncio
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +316,8 @@ def _generate_pricing_advice(
     if products:
         high_sales = [p for p in products if p.get("sales", 0) > 50]
         if high_sales:
-            avg_high = sum(p["price"] for p in high_sales if p.get("price")) / len(high_sales)
+            priced = [p for p in high_sales if p.get("price")]
+            avg_high = sum(p["price"] for p in priced) / len(priced) if priced else 0
             parts.append(f"高销量竞品均价¥{avg_high:.0f}")
 
     # 具体建议

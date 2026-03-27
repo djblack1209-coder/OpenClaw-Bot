@@ -14,8 +14,7 @@
 """
 import asyncio
 import logging
-import re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import List, Optional
 import httpx
 
@@ -179,7 +178,7 @@ async def fetch_real_trending(
         "zhihu": _fetch_zhihu,
     }
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
         tasks = [fetchers[s](client) for s in sources if s in fetchers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

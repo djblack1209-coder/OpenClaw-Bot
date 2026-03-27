@@ -28,7 +28,6 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -406,30 +405,110 @@ async def setup_proactive_listeners(engine: "ProactiveEngine"):
         if hasattr(EventType, "RISK_ALERT"):
             await bus.subscribe(EventType.RISK_ALERT, on_risk_alert)
 
-        # 自选股异动 → 主动推送通知（搬运交易类产品标配告警模式）
+        # 自选股异动 → 情报级主动推送（新闻+K线图+RSI+持仓浮盈）
         async def on_watchlist_anomaly(event_data: Dict[str, Any]):
-            """自选股异动触发主动通知（价格/放量/RSI/目标价）。"""
+            """自选股异动触发富文本通知（v2.0: 从纯文本升级为情报卡片）。
+
+            通知格式:
+              ⚡ NVDA 暴涨 +5.2% | $135.80
+              ━━━━━━━━━━━━━━━
+              📰 可能原因: Nvidia发布新一代Blackwell芯片
+              📊 RSI: 72.3 (超买区域)
+              💰 你持有 100股，浮盈 +$520
+              [附: 5日1小时K线图]
+            """
             try:
+                from src.bot.globals import ALLOWED_USER_IDS
+
                 symbol = event_data.get("symbol", "")
                 anomaly_type = event_data.get("anomaly_type", "")
                 details = event_data.get("details", "")
                 change_pct = event_data.get("change_pct", 0)
+                price = event_data.get("price", 0)
 
-                context = (
-                    f"自选股 {symbol} 异动: {anomaly_type}\n"
-                    f"涨跌幅: {change_pct:+.1f}%\n"
-                    f"详情: {details}"
+                # 增强数据（由 watchlist_monitor._enrich_anomalies 注入）
+                news_title = event_data.get("news_title", "")
+                chart_png = event_data.get("chart_png", b"")
+                rsi_value = event_data.get("rsi_value")
+                holding_qty = event_data.get("holding_qty", 0)
+                holding_avg_price = event_data.get("holding_avg_price", 0)
+
+                # ── 构建情报卡片 ──
+                # 标题行: 根据异动类型选择图标
+                _type_emoji = {
+                    "price_surge": "⚡",
+                    "volume_surge": "📊",
+                    "rsi_extreme": "📈",
+                    "target_hit": "🎯",
+                    "stoploss_hit": "⚠️",
+                }
+                emoji = _type_emoji.get(anomaly_type, "⚡")
+
+                # 涨跌方向
+                if anomaly_type == "price_surge":
+                    direction = "暴涨" if change_pct > 0 else "暴跌"
+                    headline = (
+                        f"{emoji} <b>{symbol} {direction} "
+                        f"{change_pct:+.1f}%</b> | ${price:.2f}"
+                    )
+                else:
+                    # 非价格异动用原始 details 做标题
+                    headline = f"{emoji} <b>{details}</b>"
+
+                lines = [headline, "━━━━━━━━━━━━━━━"]
+
+                # 新闻原因
+                if news_title:
+                    # 截断过长标题
+                    title_display = (
+                        news_title[:60] + "..." if len(news_title) > 60
+                        else news_title
+                    )
+                    lines.append(f"📰 可能原因: {title_display}")
+
+                # RSI 指标
+                if rsi_value is not None:
+                    if rsi_value > 70:
+                        zone = " (超买区域)"
+                    elif rsi_value < 30:
+                        zone = " (超卖区域)"
+                    else:
+                        zone = ""
+                    lines.append(f"📊 RSI: {rsi_value:.1f}{zone}")
+
+                # 持仓浮盈
+                if holding_qty > 0 and holding_avg_price > 0:
+                    pnl = (price - holding_avg_price) * holding_qty
+                    pnl_label = "浮盈" if pnl >= 0 else "浮亏"
+                    lines.append(
+                        f"💰 你持有 {holding_qty}股，"
+                        f"{pnl_label} {'+'if pnl >= 0 else ''}"
+                        f"${abs(pnl):,.0f}"
+                    )
+
+                alert_text = "\n".join(lines)
+
+                # ── 确定通知目标（用第一个管理员 ID）──
+                target_id = ""
+                if ALLOWED_USER_IDS:
+                    target_id = str(list(ALLOWED_USER_IDS)[0])
+                if not target_id:
+                    return  # 无接收者，跳过
+
+                # ── 有图发图，无图发文 ──
+                if chart_png:
+                    await _send_proactive_photo(
+                        target_id, chart_png, alert_text
+                    )
+                else:
+                    await _send_proactive(target_id, alert_text)
+
+                logger.info(
+                    f"📡 异动情报已推送: {symbol} ({anomaly_type})"
                 )
 
-                notification = await engine.evaluate(
-                    context_type="watchlist_anomaly",
-                    current_context=context,
-                    user_id="default",
-                )
-                if notification:
-                    await _send_proactive("default", notification)
             except Exception as e:
-                logger.debug(f"自选股异动主动通知评估失败: {e}")
+                logger.debug(f"自选股异动通知失败: {e}")
 
         if hasattr(EventType, "WATCHLIST_ANOMALY"):
             await bus.subscribe(EventType.WATCHLIST_ANOMALY, on_watchlist_anomaly)
@@ -487,7 +566,8 @@ async def setup_proactive_listeners(engine: "ProactiveEngine"):
                     except Exception as e:
                         logger.debug(f"任务闭环回访异常: {e}")
 
-                asyncio.create_task(_delayed_followup())
+                _followup_t = asyncio.create_task(_delayed_followup())
+                _followup_t.add_done_callback(lambda t: t.exception() and logger.debug("延迟回访后台任务异常: %s", t.exception()))
             except Exception as e:
                 logger.debug(f"任务完成监听异常: {e}")
 
@@ -544,6 +624,36 @@ async def _send_proactive(user_id: str, text: str):
                 )
     except Exception as e:
         logger.debug(f"主动通知发送失败: {e}")
+
+
+async def _send_proactive_photo(user_id: str, photo_bytes: bytes, caption: str):
+    """通过 Telegram 发送带图主动通知（异动K线图等）。
+
+    降级: 图片发送失败时自动降级为纯文本通知。
+    """
+    try:
+        import io as _io
+        from src.bot.globals import bot_registry
+        bots = bot_registry
+        if not bots:
+            return
+
+        bot = next(iter(bots.values()), None)
+        if bot and hasattr(bot, "application"):
+            admin_chat_id = int(user_id) if user_id.isdigit() else None
+            if admin_chat_id:
+                buf = _io.BytesIO(photo_bytes)
+                buf.name = "anomaly_chart.png"
+                await bot.application.bot.send_photo(
+                    chat_id=admin_chat_id,
+                    photo=buf,
+                    caption=caption,
+                    parse_mode="HTML",
+                )
+    except Exception as e:
+        logger.debug(f"主动图表通知发送失败: {e}, 降级到纯文本")
+        # 降级到纯文本
+        await _send_proactive(user_id, caption)
 
 
 def _safe_parse_time(iso_str: str):

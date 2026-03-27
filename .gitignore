@@ -7,6 +7,7 @@ __pycache__/
 env/
 venv/
 .venv/
+.venv*/
 ENV/
 build/
 develop-eggs/
@@ -69,3 +70,23 @@ packages/clawbot/kiro-gateway/.venv/
 .openclaw/openclaw.json
 .openclaw/.env
 .openclaw/openclaw.json.bak
+
+# 二进制分发包
+*.dmg
+*.tar.gz
+
+# 备份
+backups/
+
+# 浏览器用户数据
+.openclaw/browser/
+
+# SQLite 数据库
+*.db-wal
+*.db-shm
+
+# Python 虚拟环境（确保通配符覆盖）
+.venv*/
+
+# Node modules（所有位置）
+**/node_modules/

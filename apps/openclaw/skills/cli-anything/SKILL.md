@@ -86,7 +86,7 @@ cli-anything-vscode terminal run --command "npm test"
 
 ## 触发条件
 
-- Boss 说 "cli-anything"、"生成 CLI"、"让 Agent 控制 xxx"
+- 严总 说 "cli-anything"、"生成 CLI"、"让 Agent 控制 xxx"
 - 需要自动化操作某个 GUI 软件时
 - `/coding_agent` 任务涉及 GUI 软件交互时
 

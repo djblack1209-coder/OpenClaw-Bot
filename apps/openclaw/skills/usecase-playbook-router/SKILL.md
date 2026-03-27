@@ -6,7 +6,7 @@ metadata: {"openclaw":{"emoji":"🧭"}}
 
 # Usecase Playbook Router
 
-Use this skill when Boss asks for a workflow, blueprint, system design, or "how should we run this" question.
+Use this skill when 严总 asks for a workflow, blueprint, system design, or "how should we run this" question.
 
 ## Source of truth
 

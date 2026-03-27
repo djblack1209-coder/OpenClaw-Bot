@@ -24,14 +24,12 @@ Usage:
 import html
 import logging
 import re
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # ── mistletoe 导入（优雅降级） ──────────────────────────
 
 try:
-    import mistletoe
     from mistletoe import Document
     from mistletoe.base_renderer import BaseRenderer
     from mistletoe.span_token import (
@@ -46,7 +44,6 @@ try:
         Image,
     )
     from mistletoe.block_token import (
-        Document as DocToken,
         Heading,
         Paragraph,
         BlockCode,

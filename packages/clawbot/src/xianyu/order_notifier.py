@@ -119,16 +119,28 @@ class OrderNotifier:
         if not self.tg_token or not self.tg_chat_id:
             logger.debug("Telegram 通知未配置，跳过")
             return
-        try:
-            url = f"https://api.telegram.org/bot{self.tg_token}/sendMessage"
-            resp = requests.post(url, json={
-                "chat_id": self.tg_chat_id,
-                "text": text,
-                "disable_web_page_preview": True,
-            }, timeout=10)
-            if resp.status_code == 200:
-                logger.info("Telegram 通知已发送")
-            else:
-                logger.warning(f"Telegram 通知失败: {resp.text}")
-        except Exception as e:
-            logger.error(f"Telegram 通知异常: {e}")
+        import time as _time
+        url = f"https://api.telegram.org/bot{self.tg_token}/sendMessage"
+        payload = {
+            "chat_id": self.tg_chat_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    logger.info("Telegram 通知已发送")
+                    return
+                logger.debug("[订单通知] 发送尝试 %d/3 HTTP %d: %s", attempt + 1, resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.debug("[订单通知] 发送尝试 %d/3 失败: %s", attempt + 1, e)
+            if attempt < 2:
+                try:
+                    import asyncio
+                    asyncio.get_running_loop()
+                    # 在异步上下文中，用非阻塞方式等待
+                    return  # 异步场景不做同步重试，避免阻塞事件循环
+                except RuntimeError:
+                    _time.sleep(2 ** attempt)  # 同步场景可以安全 sleep
+        logger.warning("[订单通知] Telegram 3 次重试均失败")

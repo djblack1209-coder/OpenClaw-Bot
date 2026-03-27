@@ -19,6 +19,8 @@ import os
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass
 
+from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE
+
 logger = logging.getLogger(__name__)
 
 _crewai_available = False
@@ -113,11 +115,9 @@ class CrewAIBridge:
 
         # CrewAI 原生支持 litellm 前缀: "litellm/model_name"
         # 配置环境变量让 CrewAI 走 LiteLLM Router
-        sf_keys = os.getenv("SILICONFLOW_KEYS", "")
-        if sf_keys:
-            first_key = sf_keys.split(",")[0].strip()
-            os.environ.setdefault("OPENAI_API_KEY", first_key)
-            os.environ.setdefault("OPENAI_API_BASE", "https://api.siliconflow.cn/v1")
+        if SILICONFLOW_KEYS:
+            os.environ.setdefault("OPENAI_API_KEY", SILICONFLOW_KEYS[0])
+            os.environ.setdefault("OPENAI_API_BASE", SILICONFLOW_BASE)
 
         agents = []
         for a in self.analysts:
@@ -208,7 +208,6 @@ class CrewAIBridge:
 
     def _parse_crew_result(self, result, symbol: str) -> List[Dict]:
         """解析 CrewAI 输出为投票列表"""
-        import json as _json
         from json_repair import loads as jloads
         votes = []
         raw = str(result)

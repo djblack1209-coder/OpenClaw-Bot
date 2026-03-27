@@ -9,7 +9,13 @@
 3. RSI 极值: RSI6 < 20 或 > 80
 4. 目标价/止损价触达
 
-> 最后更新: 2026-03-27
+v2.0 变更 (2026-03-28):
+  - 异动通知升级为"情报级": 附加新闻原因 + 迷你K线图 + RSI + 持仓浮盈
+  - 新闻搜索: Google News RSS → Bing 降级链
+  - K线图: 5日1小时 plotly candlestick → PNG
+  - 所有增强数据注入 EventBus 事件，由 proactive_engine 负责富文本渲染
+
+> 最后更新: 2026-03-28
 """
 from __future__ import annotations
 
@@ -189,7 +195,11 @@ class WatchlistMonitor:
         # 4. 对有初步异动的标的做深度技术分析
         await self._deep_scan(anomalies, quotes)
 
-        # 5. 发布 EventBus 事件
+        # 5. 增强异动信息：附加新闻原因、K线图、RSI、持仓信息
+        if anomalies:
+            await self._enrich_anomalies(anomalies)
+
+        # 6. 发布 EventBus 事件
         if anomalies:
             await self._publish_anomalies(anomalies)
 
@@ -255,6 +265,108 @@ class WatchlistMonitor:
 
             except Exception as e:
                 logger.debug(f"深度扫描 {sym} 失败: {e}")
+
+    async def _enrich_anomalies(self, anomalies: List[Dict]):
+        """为异动通知附加新闻原因、迷你K线图、RSI指标、持仓信息。
+
+        所有增强操作均 try/except 包裹，失败不影响基础通知。
+        """
+        if not anomalies:
+            return
+
+        # 按 symbol 去重，避免重复网络请求
+        symbols = list({a["symbol"] for a in anomalies})
+
+        # ── 1. 新闻搜索: Google News RSS → Bing 降级 ──
+        news_map: Dict[str, str] = {}
+        try:
+            from src.news_fetcher import NewsFetcher
+            nf = NewsFetcher()
+            for sym in symbols:
+                try:
+                    # 用标的代码搜索最新新闻
+                    news = await nf.fetch_from_google_news_rss(sym, count=2)
+                    if not news:
+                        # 降级到 Bing
+                        news = await nf.fetch_from_bing(sym, count=2)
+                    if news:
+                        news_map[sym] = news[0].get("title", "")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"异动新闻搜索模块不可用: {e}")
+
+        # ── 2. 迷你K线图 + RSI ──
+        chart_map: Dict[str, bytes] = {}
+        rsi_map: Dict[str, float] = {}
+        try:
+            from src.data_providers import get_history
+            from src.charts import generate_candlestick
+
+            for sym in symbols:
+                try:
+                    # 获取5日1小时数据（用于K线图+RSI计算）
+                    df = await get_history(sym, period="5d", interval="1h")
+                    if df is None or df.empty or len(df) < 5:
+                        continue
+
+                    # 生成K线图 — plotly candlestick → PNG
+                    ohlcv = []
+                    for idx, row in df.iterrows():
+                        ohlcv.append({
+                            "date": str(idx),
+                            "open": float(row["Open"]),
+                            "high": float(row["High"]),
+                            "low": float(row["Low"]),
+                            "close": float(row["Close"]),
+                            "volume": float(row.get("Volume", 0)),
+                        })
+                    chart_bytes = generate_candlestick(ohlcv, symbol=sym)
+                    if chart_bytes:
+                        chart_map[sym] = chart_bytes
+
+                    # 计算 RSI14（从收盘价序列手动计算，不引入新依赖）
+                    closes = df["Close"].dropna()
+                    if len(closes) >= 14:
+                        delta = closes.diff()
+                        gain = delta.clip(lower=0).rolling(14).mean()
+                        loss = (-delta.clip(upper=0)).rolling(14).mean()
+                        rs = gain / loss.replace(0, float("inf"))
+                        rsi = 100 - (100 / (1 + rs))
+                        last_rsi = rsi.iloc[-1]
+                        # 排除 NaN
+                        if last_rsi == last_rsi:
+                            rsi_map[sym] = float(last_rsi)
+
+                except Exception as e:
+                    logger.debug(f"K线图/RSI生成失败 {sym}: {e}")
+        except Exception as e:
+            logger.debug(f"K线图模块不可用: {e}")
+
+        # ── 3. 持仓信息（用于显示"你持有 X 股，浮盈 +$Y"）──
+        holding_map: Dict[str, Dict] = {}
+        try:
+            from src.invest_tools import Portfolio
+            portfolio = Portfolio()
+            positions = portfolio.get_positions()
+            for pos in positions:
+                holding_map[pos["symbol"]] = pos
+        except Exception as e:
+            logger.debug(f"持仓查询失败: {e}")
+
+        # ── 4. 将增强数据注入每条异动事件 ──
+        for anomaly in anomalies:
+            sym = anomaly["symbol"]
+            anomaly["news_title"] = news_map.get(sym, "")
+            anomaly["chart_png"] = chart_map.get(sym, b"")
+            anomaly["rsi_value"] = rsi_map.get(sym)
+            holding = holding_map.get(sym)
+            if holding:
+                anomaly["holding_qty"] = holding.get("quantity", 0)
+                anomaly["holding_avg_price"] = holding.get("avg_price", 0)
+            else:
+                anomaly["holding_qty"] = 0
+                anomaly["holding_avg_price"] = 0
 
     async def _publish_anomalies(self, anomalies: List[Dict]):
         """将异动事件发布到 EventBus"""

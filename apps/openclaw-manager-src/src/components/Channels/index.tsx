@@ -1,18 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import {
-  MessageCircle,
-  Hash,
-  Slack,
-  MessagesSquare,
   MessageSquare,
   Check,
   X,
   Loader2,
   ChevronRight,
-  Apple,
-  Bell,
   Eye,
   EyeOff,
   Play,
@@ -31,228 +26,17 @@ import {
   type ManagedEndpointStatus,
   type ProjectContext,
 } from '../../lib/tauri';
-
-interface FeishuPluginStatus {
-  installed: boolean;
-  version: string | null;
-  plugin_name: string | null;
-}
-
-interface ChannelConfig {
-  id: string;
-  channel_type: string;
-  enabled: boolean;
-  config: Record<string, unknown>;
-}
-
-// 渠道配置字段定义
-interface ChannelField {
-  key: string;
-  label: string;
-  type: 'text' | 'password' | 'select';
-  placeholder?: string;
-  options?: { value: string; label: string }[];
-  required?: boolean;
-}
-
-const channelInfo: Record<
-  string,
-  { 
-    name: string; 
-    icon: React.ReactNode; 
-    color: string;
-    fields: ChannelField[];
-    helpText?: string;
-  }
-> = {
-  telegram: {
-    name: 'Telegram',
-    icon: <MessageCircle size={20} />,
-    color: 'text-blue-400',
-    fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: '从 @BotFather 获取', required: true },
-      { key: 'userId', label: 'User ID', type: 'text', placeholder: '你的 Telegram User ID', required: true },
-      { key: 'dmPolicy', label: '私聊策略', type: 'select', options: [
-        { value: 'pairing', label: '配对模式' },
-        { value: 'open', label: '开放模式' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-      { key: 'groupPolicy', label: '群组策略', type: 'select', options: [
-        { value: 'allowlist', label: '白名单' },
-        { value: 'open', label: '开放' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-    ],
-    helpText: '1. 搜索 @BotFather 发送 /newbot 获取 Token  2. 搜索 @userinfobot 获取 User ID',
-  },
-  discord: {
-    name: 'Discord',
-    icon: <Hash size={20} />,
-    color: 'text-indigo-400',
-    fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Discord Bot Token', required: true },
-      { key: 'testChannelId', label: '测试 Channel ID', type: 'text', placeholder: '用于发送测试消息的频道 ID (可选)' },
-      { key: 'dmPolicy', label: '私聊策略', type: 'select', options: [
-        { value: 'pairing', label: '配对模式' },
-        { value: 'open', label: '开放模式' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-    ],
-    helpText: '从 Discord Developer Portal 获取，开启开发者模式可复制 Channel ID',
-  },
-  slack: {
-    name: 'Slack',
-    icon: <Slack size={20} />,
-    color: 'text-purple-400',
-    fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...', required: true },
-      { key: 'appToken', label: 'App Token', type: 'password', placeholder: 'xapp-...' },
-      { key: 'testChannelId', label: '测试 Channel ID', type: 'text', placeholder: '用于发送测试消息的频道 ID (可选)' },
-    ],
-    helpText: '从 Slack API 后台获取，Channel ID 可从频道详情复制',
-  },
-  feishu: {
-    name: '飞书',
-    icon: <MessagesSquare size={20} />,
-    color: 'text-blue-500',
-    fields: [
-      { key: 'appId', label: 'App ID', type: 'text', placeholder: '飞书应用 App ID', required: true },
-      { key: 'appSecret', label: 'App Secret', type: 'password', placeholder: '飞书应用 App Secret', required: true },
-      { key: 'testChatId', label: '测试 Chat ID', type: 'text', placeholder: '用于发送测试消息的群聊/用户 ID (可选)' },
-      { key: 'connectionMode', label: '连接模式', type: 'select', options: [
-        { value: 'websocket', label: 'WebSocket (推荐)' },
-        { value: 'webhook', label: 'Webhook' },
-      ]},
-      { key: 'domain', label: '部署区域', type: 'select', options: [
-        { value: 'feishu', label: '国内 (feishu.cn)' },
-        { value: 'lark', label: '海外 (larksuite.com)' },
-      ]},
-      { key: 'requireMention', label: '需要 @提及', type: 'select', options: [
-        { value: 'true', label: '是' },
-        { value: 'false', label: '否' },
-      ]},
-    ],
-    helpText: '从飞书开放平台获取凭证，Chat ID 可从群聊设置中获取',
-  },
-  imessage: {
-    name: 'iMessage',
-    icon: <Apple size={20} />,
-    color: 'text-green-400',
-    fields: [
-      { key: 'dmPolicy', label: '私聊策略', type: 'select', options: [
-        { value: 'pairing', label: '配对模式' },
-        { value: 'open', label: '开放模式' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-      { key: 'groupPolicy', label: '群组策略', type: 'select', options: [
-        { value: 'allowlist', label: '白名单' },
-        { value: 'open', label: '开放' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-    ],
-    helpText: '仅支持 macOS，需要授权消息访问权限',
-  },
-  whatsapp: {
-    name: 'WhatsApp',
-    icon: <MessageCircle size={20} />,
-    color: 'text-green-500',
-    fields: [
-      { key: 'dmPolicy', label: '私聊策略', type: 'select', options: [
-        { value: 'pairing', label: '配对模式' },
-        { value: 'open', label: '开放模式' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-      { key: 'groupPolicy', label: '群组策略', type: 'select', options: [
-        { value: 'allowlist', label: '白名单' },
-        { value: 'open', label: '开放' },
-        { value: 'disabled', label: '禁用' },
-      ]},
-    ],
-    helpText: '需要扫描二维码登录，运行: openclaw channels login --channel whatsapp',
-  },
-  wechat: {
-    name: '微信',
-    icon: <MessageSquare size={20} />,
-    color: 'text-green-600',
-    fields: [
-      { key: 'appId', label: 'App ID', type: 'text', placeholder: '微信开放平台 App ID' },
-      { key: 'appSecret', label: 'App Secret', type: 'password', placeholder: '微信开放平台 App Secret' },
-    ],
-    helpText: '微信公众号/企业微信配置',
-  },
-  dingtalk: {
-    name: '钉钉',
-    icon: <Bell size={20} />,
-    color: 'text-blue-600',
-    fields: [
-      { key: 'appKey', label: 'App Key', type: 'text', placeholder: '钉钉应用 App Key' },
-      { key: 'appSecret', label: 'App Secret', type: 'password', placeholder: '钉钉应用 App Secret' },
-    ],
-    helpText: '从钉钉开放平台获取',
-  },
-};
-
-interface TestResult {
-  success: boolean;
-  message: string;
-  error: string | null;
-}
-
-const maskToken = (value: string) => {
-  if (!value) return '';
-  if (value.length <= 8) return '****';
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
-};
-
-const deriveTelegramUserId = (config: Record<string, unknown>): string => {
-  const direct = config.userId;
-  if (typeof direct === 'string' && direct.trim()) return direct.trim();
-
-  const allowFrom = config.allowFrom;
-  if (Array.isArray(allowFrom) && allowFrom.length > 0) {
-    const first = allowFrom[0];
-    if (typeof first === 'string' && first.trim()) return first.trim();
-  }
-  if (typeof allowFrom === 'string' && allowFrom.trim()) {
-    return allowFrom
-      .split(',')
-      .map((item) => item.trim())
-      .find((item) => !!item) || '';
-  }
-
-  const accounts = config.accounts;
-  if (accounts && typeof accounts === 'object' && !Array.isArray(accounts)) {
-    const def = (accounts as Record<string, unknown>).default;
-    if (def && typeof def === 'object' && !Array.isArray(def)) {
-      const defCfg = def as Record<string, unknown>;
-      const defAllowFrom = defCfg.allowFrom;
-      if (Array.isArray(defAllowFrom) && defAllowFrom.length > 0) {
-        const first = defAllowFrom[0];
-        if (typeof first === 'string' && first.trim()) return first.trim();
-      }
-      if (typeof defAllowFrom === 'string' && defAllowFrom.trim()) {
-        return defAllowFrom
-          .split(',')
-          .map((item) => item.trim())
-          .find((item) => !!item) || '';
-      }
-    }
-  }
-
-  return '';
-};
-
-const getTelegramDefaultAccount = (config: Record<string, unknown>): Record<string, unknown> => {
-  const accounts = config.accounts;
-  if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts)) {
-    return {};
-  }
-  const def = (accounts as Record<string, unknown>).default;
-  if (!def || typeof def !== 'object' || Array.isArray(def)) {
-    return {};
-  }
-  return def as Record<string, unknown>;
-};
+import {
+  type ChannelConfig,
+  type ChannelField,
+  type FeishuPluginStatus,
+  type TestResult,
+  CHANNEL_DEFINITIONS,
+  maskToken,
+  deriveTelegramUserId,
+  getTelegramDefaultAccount,
+  hasValidConfig,
+} from './channelDefinitions';
 
 export function Channels() {
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
@@ -276,6 +60,24 @@ export function Channels() {
   
   // 跟踪哪些密码字段显示明文
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
+  
+  // WhatsApp 登录轮询定时器引用（用于防泄漏）
+  const whatsappPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const whatsappTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // 组件卸载时清理 WhatsApp 定时器
+  useEffect(() => {
+    return () => {
+      if (whatsappPollRef.current) {
+        clearInterval(whatsappPollRef.current);
+        whatsappPollRef.current = null;
+      }
+      if (whatsappTimeoutRef.current) {
+        clearTimeout(whatsappTimeoutRef.current);
+        whatsappTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const togglePasswordVisibility = (fieldKey: string) => {
     setVisiblePasswords((prev) => {
@@ -308,11 +110,11 @@ export function Channels() {
     setFeishuPluginInstalling(true);
     try {
       const result = await invoke<string>('install_feishu_plugin');
-      alert(result);
+      toast.success(result);
       // 刷新插件状态
       await checkFeishuPlugin();
     } catch (e) {
-      alert('安装失败: ' + e);
+      toast.error('安装失败: ' + e);
     } finally {
       setFeishuPluginInstalling(false);
     }
@@ -329,7 +131,7 @@ export function Channels() {
     if (!selectedChannel) return;
     
     const channel = channels.find((c) => c.id === selectedChannel);
-    const channelName = channel ? channelInfo[channel.channel_type]?.name || channel.channel_type : selectedChannel;
+    const channelName = channel ? CHANNEL_DEFINITIONS[channel.channel_type]?.name || channel.channel_type : selectedChannel;
     
     setShowClearConfirm(false);
     setClearing(true);
@@ -389,12 +191,23 @@ export function Channels() {
   // WhatsApp 扫码登录
   const handleWhatsAppLogin = async () => {
     setLoginLoading(true);
+    
+    // 先清理之前可能存在的定时器
+    if (whatsappPollRef.current) {
+      clearInterval(whatsappPollRef.current);
+      whatsappPollRef.current = null;
+    }
+    if (whatsappTimeoutRef.current) {
+      clearTimeout(whatsappTimeoutRef.current);
+      whatsappTimeoutRef.current = null;
+    }
+    
     try {
       // 调用后端命令启动 WhatsApp 登录
       await invoke('start_channel_login', { channelType: 'whatsapp' });
       
       // 开始轮询检查登录状态
-      const pollInterval = setInterval(async () => {
+      whatsappPollRef.current = setInterval(async () => {
         try {
           const result = await invoke<{
             success: boolean;
@@ -402,7 +215,15 @@ export function Channels() {
           }>('test_channel', { channelType: 'whatsapp' });
           
           if (result.success) {
-            clearInterval(pollInterval);
+            // 登录成功，清理所有定时器
+            if (whatsappPollRef.current) {
+              clearInterval(whatsappPollRef.current);
+              whatsappPollRef.current = null;
+            }
+            if (whatsappTimeoutRef.current) {
+              clearTimeout(whatsappTimeoutRef.current);
+              whatsappTimeoutRef.current = null;
+            }
             setLoginLoading(false);
             // 刷新渠道列表
             await fetchChannels();
@@ -412,20 +233,24 @@ export function Channels() {
               error: null,
             });
           }
-        } catch {
-          // 继续轮询
+        } catch (e) {
+          console.error("[Channels] WhatsApp login poll failed:", e);
         }
       }, 3000); // 每3秒检查一次
       
       // 60秒后停止轮询
-      setTimeout(() => {
-        clearInterval(pollInterval);
+      whatsappTimeoutRef.current = setTimeout(() => {
+        if (whatsappPollRef.current) {
+          clearInterval(whatsappPollRef.current);
+          whatsappPollRef.current = null;
+        }
+        whatsappTimeoutRef.current = null;
         setLoginLoading(false);
       }, 60000);
       
-      alert('请在弹出的终端窗口中扫描二维码完成登录\n\n登录成功后界面会自动更新');
+      toast.info('请在弹出的终端窗口中扫描二维码完成登录，登录成功后界面会自动更新');
     } catch (e) {
-      alert('启动登录失败: ' + e);
+      toast.error('启动登录失败: ' + e);
       setLoginLoading(false);
     }
   };
@@ -454,8 +279,8 @@ export function Channels() {
           setProjectContext(context);
           setEndpointStatus(endpoints);
           setClawbotBotMatrix(matrix);
-        } catch {
-          // 忽略上下文或端点状态读取失败
+        } catch (e) {
+          console.error("[Channels] Context/endpoint init failed:", e);
         }
         
         // 自动选择第一个已配置的渠道
@@ -480,7 +305,7 @@ export function Channels() {
     if (channel) {
       const form: Record<string, string> = {};
 
-      const info = channelInfo[channel.channel_type];
+      const info = CHANNEL_DEFINITIONS[channel.channel_type];
       if (info) {
         const telegramDefault =
           channel.channel_type === 'telegram'
@@ -528,7 +353,7 @@ export function Channels() {
       const channel = channels.find((c) => c.id === selectedChannel);
       if (!channel) return;
 
-      const info = channelInfo[channel.channel_type];
+      const info = CHANNEL_DEFINITIONS[channel.channel_type];
       if (!info) return;
       
       const config: Record<string, unknown> = {
@@ -596,17 +421,17 @@ export function Channels() {
       // 刷新列表
       await fetchChannels();
       
-      alert('渠道配置已保存！');
+      toast.success('渠道配置已保存！');
     } catch (e) {
       console.error('保存失败:', e);
-      alert('保存失败: ' + e);
+      toast.error('保存失败: ' + e);
     } finally {
       setSaving(false);
     }
   };
 
   const currentChannel = channels.find((c) => c.id === selectedChannel);
-  const currentInfo = currentChannel ? channelInfo[currentChannel.channel_type] : null;
+  const currentInfo = currentChannel ? CHANNEL_DEFINITIONS[currentChannel.channel_type] : null;
 
   const telegramDefaultConfig =
     currentChannel?.channel_type === 'telegram'
@@ -616,21 +441,6 @@ export function Channels() {
   const telegramMainUserId = currentChannel?.channel_type === 'telegram'
     ? deriveTelegramUserId(currentChannel.config)
     : '';
-
-  // 检查渠道是否有有效配置
-  const hasValidConfig = (channel: ChannelConfig) => {
-    const info = channelInfo[channel.channel_type];
-    if (!info) return channel.enabled;
-    
-    // 检查是否有必填字段已填写
-    const requiredFields = info.fields.filter((f) => f.required);
-    if (requiredFields.length === 0) return channel.enabled;
-    
-    return requiredFields.some((field) => {
-      const value = channel.config[field.key];
-      return value !== undefined && value !== null && value !== '';
-    });
-  };
 
   if (loading) {
     return (
@@ -650,14 +460,15 @@ export function Channels() {
               消息渠道
             </h3>
             {channels.map((channel) => {
-              const info = channelInfo[channel.channel_type] || {
+              const info = CHANNEL_DEFINITIONS[channel.channel_type] || {
                 name: channel.channel_type,
-                icon: <MessageSquare size={20} />,
+                icon: MessageSquare,
                 color: 'text-gray-400',
                 fields: [],
               };
               const isSelected = selectedChannel === channel.id;
               const isConfigured = hasValidConfig(channel);
+              const IconComponent = info.icon;
               
               return (
                 <button
@@ -676,7 +487,7 @@ export function Channels() {
                       isConfigured ? 'bg-dark-500' : 'bg-dark-600'
                     )}
                   >
-                    <span className={info.color}>{info.icon}</span>
+                    <span className={info.color}><IconComponent size={20} /></span>
                   </div>
                   <div className="flex-1 text-left">
                     <p
@@ -721,7 +532,7 @@ export function Channels() {
               >
                 <div className="flex items-center gap-3 mb-4">
                   <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center bg-dark-500', currentInfo.color)}>
-                    {currentInfo.icon}
+                    <currentInfo.icon size={20} />
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white">

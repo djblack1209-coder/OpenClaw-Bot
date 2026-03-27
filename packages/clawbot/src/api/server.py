@@ -4,15 +4,16 @@ ClawBot Internal API Server
 
 启动方式: 在 multi_main.py 中调用 start_api_server(port=18790)
 """
-import asyncio
 import logging
+import os
 import threading
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth import verify_api_token, log_token_status
 from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class APIServer:
             version="1.0.0",
             docs_url="/api/docs",
             redoc_url=None,
+            dependencies=[Depends(verify_api_token)],
         )
 
         self._configure_app()
@@ -50,16 +52,16 @@ class APIServer:
             CORSMiddleware,
             allow_origins=[
                 "http://localhost:1420",     # Tauri dev
-                "http://localhost:18789",    # OpenClaw gateway
+                f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}",    # OpenClaw gateway
                 "tauri://localhost",         # Tauri production
                 "https://tauri.localhost",   # Tauri production (Windows)
             ],
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE"],
+            allow_headers=["X-API-Token", "Content-Type", "Authorization"],
         )
 
-        # Public — no auth (localhost only, so OK)
+        # Routers — protected by global verify_api_token dependency
         self.app.include_router(router_system, prefix="/api/v1", tags=["System"])
         self.app.include_router(router_trading, prefix="/api/v1", tags=["Trading"])
         self.app.include_router(router_social, prefix="/api/v1", tags=["Social"])
@@ -72,6 +74,8 @@ class APIServer:
 
     def start(self):
         """Start uvicorn in a daemon thread"""
+        log_token_status()
+
         config = uvicorn.Config(
             app=self.app,
             host=self.host,

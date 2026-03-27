@@ -46,7 +46,7 @@ try:
 
     _litellm_instrumentor_cls = LiteLLMInstrumentor
 except ImportError:
-    pass
+    logger.info("[Observability] openinference-instrumentation-litellm 未安装，跳过 LiteLLM instrumentor")
 
 # CrewAI instrumentor — 可选，仅在安装了 openinference-instrumentation-crewai 时生效
 _crewai_instrumentor_cls = None
@@ -55,14 +55,14 @@ try:
 
     _crewai_instrumentor_cls = CrewAIInstrumentor
 except ImportError:
-    pass
+    logger.info("[Observability] openinference-instrumentation-crewai 未安装，跳过 CrewAI instrumentor")
 
 # OpenTelemetry trace API — 用于自定义 span
 _otel_trace = None
 try:
     from opentelemetry import trace as _otel_trace
 except ImportError:
-    pass
+    logger.info("[Observability] opentelemetry 未安装，跳过自定义 span 追踪")
 
 
 # ============================================================

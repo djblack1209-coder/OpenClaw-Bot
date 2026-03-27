@@ -2,9 +2,8 @@
 ClawBot - 长期记忆工具
 """
 import json
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from pathlib import Path
-from datetime import datetime
 import logging
 from src.utils import now_et
 
@@ -18,12 +17,9 @@ class MemoryTool:
         if storage_path:
             self.storage_path = Path(storage_path)
         else:
-            import os
-            env_dir = os.getenv('DATA_DIR')
-            if env_dir:
-                self.storage_path = Path(env_dir) / "memory.json"
-            else:
-                self.storage_path = Path(__file__).parent.parent.parent / "data" / "memory.json"
+            # 延迟导入避免循环依赖
+            from src.bot.globals import DATA_DIR
+            self.storage_path = Path(DATA_DIR) / "memory.json"
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         self.memories: Dict[str, Any] = {}
         self._load()

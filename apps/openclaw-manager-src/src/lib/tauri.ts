@@ -322,4 +322,30 @@ export const api = {
     invokeWithLog<ManagedEndpointStatus[]>('get_managed_endpoints_status'),
   getSkillsStatus: () =>
     invokeWithLog<SkillsStatus>('get_skills_status'),
+
+  // ClawBot 代理命令
+  clawbotSocialTopics: (limit?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_social_topics', { limit }),
+  clawbotEvolutionScan: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_evolution_scan'),
+  clawbotStatus: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_status'),
+  clawbotTradingSystem: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_trading_system'),
+  clawbotAutopilotStart: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_autopilot_start'),
+  clawbotAutopilotStop: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_autopilot_stop'),
+  omegaStatus: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_omega_status'),
+  clawbotEvolutionStats: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_evolution_stats'),
+  clawbotEvolutionGaps: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_evolution_gaps'),
+  clawbotEvolutionProposals: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_evolution_proposals'),
+  clawbotEvolutionUpdateProposal: (id: string, status: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_evolution_update_proposal', { id, status }),
 };
+
+export const CLAWBOT_WS_URL = `ws://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;

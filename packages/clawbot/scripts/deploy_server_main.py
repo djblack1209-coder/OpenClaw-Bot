@@ -33,7 +33,7 @@ def main():
     if os.path.exists(env_path):
         load_dotenv(env_path)
 
-    host = os.getenv("DEPLOY_HOST", "0.0.0.0")
+    host = os.getenv("DEPLOY_HOST", "127.0.0.1")
     port = int(os.getenv("DEPLOY_PORT", "18800"))
 
     # 优先使用 gunicorn（生产），fallback 到 Flask dev server

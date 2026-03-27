@@ -5,10 +5,12 @@
 import asyncio
 import logging
 
+from src.bot.auth import requires_auth
+from src.bot.error_messages import error_generic
+from src.telegram_ux import with_typing
 from src.bot.globals import (
     get_auto_trader, get_risk_manager, get_position_monitor,
     get_system_status, get_stock_quote, portfolio,
-    send_long_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -17,10 +19,10 @@ logger = logging.getLogger(__name__)
 class TradingCommandsMixin:
     """自动交易系统命令"""
 
+    @requires_auth
+    @with_typing
     async def cmd_autotrader(self, update, context):
         """/autotrader [start|stop|status|auto|manual|cycle]"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         trader = get_auto_trader()
         if not trader:
             await update.message.reply_text("AutoTrader 未初始化")
@@ -59,9 +61,9 @@ class TradingCommandsMixin:
         else:
             await update.message.reply_text(trader.format_status())
 
+    @requires_auth
+    @with_typing
     async def cmd_risk(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         rm = get_risk_manager()
         if not rm:
             await update.message.reply_text("风控系统未初始化")
@@ -111,9 +113,9 @@ class TradingCommandsMixin:
         
         await update.message.reply_text("\n".join(status_lines))
 
+    @requires_auth
+    @with_typing
     async def cmd_monitor(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         mon = get_position_monitor()
         if mon:
             # 文字状态
@@ -152,9 +154,9 @@ class TradingCommandsMixin:
         else:
             await update.message.reply_text("持仓监控器未初始化")
 
+    @requires_auth
+    @with_typing
     async def cmd_tradingsystem(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         status = get_system_status()
         if len(status) > 4000:
             parts = status.split("\n\n")
@@ -164,10 +166,10 @@ class TradingCommandsMixin:
         else:
             await update.message.reply_text(status)
 
+    @requires_auth
+    @with_typing
     async def cmd_backtest(self, update, context):
         """/backtest AAPL [period] [--ft|--freqtrade]"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args or []
         if not args:
             await update.message.reply_text(
@@ -335,11 +337,10 @@ class TradingCommandsMixin:
         except Exception as e:
             logger.debug("[Backtest] Bokeh 图表生成失败(非致命): %s", e)
 
+    @requires_auth
+    @with_typing
     async def cmd_rebalance(self, update, context):
         """/rebalance [set <preset>|status|run]"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-
         from src.rebalancer import rebalancer, PRESET_ALLOCATIONS
 
         args = context.args or []
@@ -396,4 +397,4 @@ class TradingCommandsMixin:
             else:
                 await update.message.reply_text(text)
         except Exception as e:
-            await update.message.reply_text("再平衡分析失败: %s" % e)
+            await update.message.reply_text(error_generic(str(e)))

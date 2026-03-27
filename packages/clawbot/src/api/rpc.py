@@ -11,10 +11,23 @@ Design principles:
 """
 import time
 import logging
-from typing import Optional, Any, Dict, List
-from datetime import datetime
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_error(e: Exception) -> str:
+    """脱敏异常信息,隐藏内部路径和技术细节"""
+    msg = str(e)
+    # 移除文件路径
+    import re
+    msg = re.sub(r'[/\\][\w/\\.-]+\.py', '[内部模块]', msg)
+    msg = re.sub(r'line \d+', '', msg)
+    # 截断过长信息
+    if len(msg) > 200:
+        msg = msg[:200] + '...'
+    return msg
+
 
 # Track process startup time for uptime calculation
 _start_time = time.time()
@@ -42,10 +55,9 @@ class ClawBotRPC:
     def _rpc_system_status() -> dict:
         """Aggregate full system status for dashboard display."""
         from src.bot.globals import (
-            bot_registry, ibkr, shared_memory, health_checker, metrics,
+            bot_registry, ibkr, shared_memory,
         )
         from src.litellm_router import free_pool
-        import src.bot.globals as g
 
         uptime = time.time() - _start_time
 
@@ -344,7 +356,7 @@ class ClawBotRPC:
             return result or {}
         except Exception as e:
             logger.error("Team vote failed for %s: %s", symbol, e)
-            return {"error": str(e)}
+            return {"error": _safe_error(e)}
 
     # ──────────────────────────────────────────────
     #  Social
@@ -427,7 +439,7 @@ class ClawBotRPC:
             return {"topics": topics or [], "status": "ok"}
         except Exception as e:
             logger.error("Topic discovery failed: %s", e)
-            return {"topics": [], "status": "error", "error": str(e)}
+            return {"topics": [], "status": "error", "error": _safe_error(e)}
 
     @staticmethod
     async def _rpc_social_compose(
@@ -476,7 +488,7 @@ class ClawBotRPC:
 
         except Exception as e:
             logger.error("Social compose failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
     async def _rpc_social_publish(
@@ -486,16 +498,13 @@ class ClawBotRPC:
         """Publish content to a social platform via browser worker.
 
         Uses the standalone worker_bridge to call social_browser_worker.py,
-        wrapped in asyncio.to_thread() because the subprocess call blocks.
+        using the native async version to avoid blocking the event loop.
         """
-        import asyncio
-        from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.worker_bridge import run_social_worker_async
 
         try:
             if platform in ("x", "twitter"):
-                result = await asyncio.to_thread(
-                    run_social_worker, "publish_x", {"text": content},
-                )
+                result = await run_social_worker_async("publish_x", {"text": content})
                 return result
 
             elif platform in ("xhs", "xiaohongshu"):
@@ -503,23 +512,17 @@ class ClawBotRPC:
                 lines = content.strip().splitlines()
                 title = lines[0].strip() if lines else "无标题"
                 body = "\n".join(lines[1:]).strip() if len(lines) > 1 else content
-                result = await asyncio.to_thread(
-                    run_social_worker, "publish_xhs", {"title": title, "body": body},
-                )
+                result = await run_social_worker_async("publish_xhs", {"title": title, "body": body})
                 return result
 
             elif platform == "both":
                 # X
-                x_result = await asyncio.to_thread(
-                    run_social_worker, "publish_x", {"text": content},
-                )
+                x_result = await run_social_worker_async("publish_x", {"text": content})
                 # XHS — extract title from first line
                 lines = content.strip().splitlines()
                 title = lines[0].strip() if lines else "无标题"
                 body = "\n".join(lines[1:]).strip() if len(lines) > 1 else content
-                xhs_result = await asyncio.to_thread(
-                    run_social_worker, "publish_xhs", {"title": title, "body": body},
-                )
+                xhs_result = await run_social_worker_async("publish_xhs", {"title": title, "body": body})
                 return {
                     "x": x_result,
                     "xhs": xhs_result,
@@ -530,7 +533,7 @@ class ClawBotRPC:
                 return {"success": False, "error": f"Unknown platform: {platform}"}
         except Exception as e:
             logger.error("Social publish failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
     async def _rpc_social_research(topic: str, count: int = 10) -> dict:
@@ -539,17 +542,14 @@ class ClawBotRPC:
         Delegates to the social_browser_worker "research" action which
         scrapes platform data and aggregates insights for the given topic.
         """
-        import asyncio
-        from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.worker_bridge import run_social_worker_async
 
         try:
-            result = await asyncio.to_thread(
-                run_social_worker, "research", {"topic": topic, "count": count},
-            )
+            result = await run_social_worker_async("research", {"topic": topic, "count": count})
             return result
         except Exception as e:
             logger.error("Social research failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
     async def _rpc_social_metrics() -> dict:
@@ -558,17 +558,14 @@ class ClawBotRPC:
         Returns follower counts, engagement stats, and growth data
         from the social_browser_worker "metrics" action.
         """
-        import asyncio
-        from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.worker_bridge import run_social_worker_async
 
         try:
-            result = await asyncio.to_thread(
-                run_social_worker, "metrics", {},
-            )
+            result = await run_social_worker_async("metrics", {})
             return result
         except Exception as e:
             logger.error("Social metrics failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     # ──────────────────────────────────────────────
     #  Social — Drafts
@@ -652,7 +649,7 @@ class ClawBotRPC:
             return SocialAutopilot().status()
         except Exception as e:
             logger.warning("Autopilot status failed: %s", e)
-            return {"running": False, "error": str(e)}
+            return {"running": False, "error": _safe_error(e)}
 
     @staticmethod
     def _rpc_autopilot_start() -> dict:
@@ -662,7 +659,7 @@ class ClawBotRPC:
             return SocialAutopilot().start()
         except Exception as e:
             logger.error("Autopilot start failed: %s", e)
-            return {"status": "error", "error": str(e)}
+            return {"status": "error", "error": _safe_error(e)}
 
     @staticmethod
     def _rpc_autopilot_stop() -> dict:
@@ -672,7 +669,7 @@ class ClawBotRPC:
             return SocialAutopilot().stop()
         except Exception as e:
             logger.error("Autopilot stop failed: %s", e)
-            return {"status": "error", "error": str(e)}
+            return {"status": "error", "error": _safe_error(e)}
 
     @staticmethod
     def _rpc_autopilot_trigger(job_id: str) -> dict:
@@ -682,7 +679,7 @@ class ClawBotRPC:
             return SocialAutopilot().trigger_job(job_id)
         except Exception as e:
             logger.error("Autopilot trigger failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
     def _rpc_social_personas() -> list:
@@ -741,7 +738,7 @@ class ClawBotRPC:
             return {"success": True, "days": days, "calendar": calendar}
         except Exception as e:
             logger.error("Social calendar generation failed: %s", e)
-            return {"success": False, "error": str(e), "calendar": []}
+            return {"success": False, "error": _safe_error(e), "calendar": []}
 
     # ──────────────────────────────────────────────
     #  Image Generation (ComfyUI + Cloud Fallback)
@@ -761,7 +758,7 @@ class ClawBotRPC:
             return {"success": bool(path), "path": path}
         except Exception as e:
             logger.error("Image generation RPC failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
     async def _rpc_generate_persona_photo(
@@ -779,7 +776,7 @@ class ClawBotRPC:
             return {"success": bool(path), "path": path}
         except Exception as e:
             logger.error("Persona photo RPC failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}
 
     # ──────────────────────────────────────────────
     #  Memory
@@ -922,4 +919,4 @@ class ClawBotRPC:
             }
         except Exception as e:
             logger.error("Price comparison failed for '%s': %s", query, e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": _safe_error(e)}

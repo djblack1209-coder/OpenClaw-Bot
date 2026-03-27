@@ -5,6 +5,7 @@
 import os
 import logging
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -13,37 +14,21 @@ try:
 except Exception:  # pragma: no cover
     load_dotenv = None
 
-from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker, CircuitOpenError
 from src.history_store import HistoryStore
-from src.message_sender import send_long_message
-from src.chat_router import ChatRouter, BotCapability, CollabOrchestrator
-from src.monitoring import StructuredLogger, HealthChecker, AutoRecovery
+from src.chat_router import ChatRouter, CollabOrchestrator
+from src.monitoring import StructuredLogger, HealthChecker
 from src.news_fetcher import NewsFetcher
 from src.tools.image_tool import ImageTool
 from src.context_manager import ContextManager
-from src.tool_executor import ToolExecutor, MULTI_BOT_TOOLS
+from src.tool_executor import ToolExecutor
 from src.shared_memory import SharedMemory
 from src.execution import ExecutionHub
-from config.bot_profiles import get_bot_config, BOT_PROFILES
 from src.litellm_router import init_free_pool
-from src.invest_tools import (
-    get_stock_quote, get_crypto_quote, get_market_summary,
-    format_quote, portfolio, warmup as invest_warmup,
-)
-from src.broker_bridge import ibkr
-from src.ta_engine import (
-    get_full_analysis, scan_market, format_analysis,
-    format_scan_results, compute_signal_score, calc_position_size,
-)
-from src.universe import full_market_scan, format_full_scan, get_universe_stats, get_full_universe
-from src.trading_journal import journal
-from src.trading_system import (
-    init_trading_system, start_trading_system, stop_trading_system,
-    get_risk_manager, get_position_monitor, get_auto_trader,
-    get_trading_pipeline, get_system_status,
-)
-from src.pipeline_helper import execute_trade_via_pipeline
 from src.utils import now_et
+from src.message_sender import send_long_message  # re-export: 78+ 处引用
+from src.invest_tools import get_stock_quote  # re-export: message_mixin 等引用
+from src.pipeline_helper import execute_trade_via_pipeline  # re-export
+from src.trading_system import get_trading_pipeline  # re-export
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +44,15 @@ def parse_ids(s):
         return set()
     return {int(x.strip()) for x in s.split(',') if x.strip().isdigit()}
 
+# 规范环境变量: ALLOWED_USER_IDS 是管理员用户 ID 的唯一事实源 (canonical env var)
 ALLOWED_USER_IDS = parse_ids(os.getenv('ALLOWED_USER_IDS', ''))
 
 SILICONFLOW_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_KEYS', '').split(',') if k.strip()]
 SILICONFLOW_BASE = os.getenv('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
 SILICONFLOW_PAID_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_PAID_KEYS', '').split(',') if k.strip()]
+
+# 数据目录 (所有持久化文件的根目录)
+DATA_DIR = os.getenv("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))
 CLAUDE_KEY = os.getenv('CLAUDE_API_KEY', '')
 CLAUDE_BASE = os.getenv('CLAUDE_BASE_URL', 'https://api.anthropic.com/v1')
 G4F_BASE = os.getenv('G4F_BASE_URL', 'http://127.0.0.1:18891/v1')
@@ -75,6 +64,12 @@ KIRO_KEY = os.getenv('KIRO_API_KEY', '')
 SERPAPI_KEY = os.getenv('SERPAPI_KEY', '')
 BRAVE_SEARCH_API_KEY = os.getenv('BRAVE_SEARCH_API_KEY', '')
 CLOUDCONVERT_API_KEY = os.getenv('CLOUDCONVERT_API_KEY', '')
+
+# Composio 外部服务集成 (250+ 应用: Gmail/Calendar/Slack/GitHub 等)
+COMPOSIO_API_KEY = os.getenv('COMPOSIO_API_KEY', '')
+
+# Skyvern 视觉 RPA (11k⭐, 截图 + LLM 理解页面)
+SKYVERN_API_KEY = os.getenv('SKYVERN_API_KEY', '')
 
 # 硅基流动 Key 管理
 current_sf_key_idx = 0
@@ -102,7 +97,7 @@ def update_key_balance(key: str, cost: float):
     if key in sf_key_balances:
         sf_key_balances[key] = max(0, sf_key_balances[key] - cost)
         if sf_key_balances[key] < LOW_BALANCE_THRESHOLD:
-            logger.warning(f"API Key {key[:20]}... 余额不足: {sf_key_balances[key]:.2f}元")
+            logger.warning(f"API Key {key[:8]}... 余额不足: {sf_key_balances[key]:.2f}元")
 
 
 def get_total_balance() -> float:
@@ -113,7 +108,7 @@ def mark_key_exhausted(key: str):
     """API 返回余额不足错误时，标记该 Key 为耗尽"""
     if key in sf_key_balances:
         sf_key_balances[key] = 0
-        logger.warning(f"API Key {key[:20]}... 已标记为耗尽（API返回余额不足）")
+        logger.warning(f"API Key {key[:8]}... 已标记为耗尽（API返回余额不足）")
 
 
 # ============ 全局共享组件 ============

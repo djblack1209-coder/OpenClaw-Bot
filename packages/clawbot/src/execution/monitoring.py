@@ -5,7 +5,6 @@ Execution Hub — 信息监控
 import os
 import logging
 import sqlite3
-from typing import List
 
 from src.execution._utils import normalize_monitor_text
 from src.notify_style import format_announcement

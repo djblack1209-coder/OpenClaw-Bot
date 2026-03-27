@@ -2,17 +2,17 @@
 # 搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 流式模式
 
 import asyncio
+import importlib.util
 import io
 import json
 import logging
 import re
 import time as _time
-from src.bot.globals import collab_orchestrator, bot_registry, send_long_message, _pending_trades, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
-from src.bot.rate_limiter import rate_limiter
+from src.bot.globals import collab_orchestrator, bot_registry, send_long_message, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
 from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 from src.notify_style import format_digest
 from src.telegram_markdown import md_to_html
-from src.bot.chinese_nlp_mixin import _CN_TICKER_MAP, _resolve_chinese_ticker, _match_chinese_command
+from src.bot.chinese_nlp_mixin import _match_chinese_command
 logger = logging.getLogger(__name__)
 
 # ── v3.0: 智能行动建议 — LLM回复后自动附加下一步按钮 ─────────
@@ -855,6 +855,38 @@ class MessageHandlerMixin:
             except Exception as e:
                 logger.debug(f"Brain routing failed, falling through to LLM: {e}")
 
+        # ── 模糊输入智能引导 — 无法识别明确意图时提供快捷操作按钮 ──
+        # 在 LLM 闲聊之前先发一组常用操作按钮，用户可以直接点击
+        # 条件: Brain 路由启用 + 私聊 + 未被上方 return 拦截（说明意图不明确）
+        if os.environ.get("ENABLE_BRAIN_ROUTING", "1").lower() not in ("0", "false", "no", "off") and not is_group:
+            try:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                # 基于系统活跃模块推荐常用操作
+                _fuzzy_suggestions = [
+                    ("📊 看持仓", "cmd:portfolio"),
+                    ("📋 今日简报", "cmd:brief"),
+                    ("📱 账单状态", "cmd:bill"),
+                ]
+                # 闲鱼模块可用时追加
+                if importlib.util.find_spec("src.xianyu.xianyu_context"):
+                    _fuzzy_suggestions.append(("🐟 闲鱼状态", "cmd:xianyu"))
+                _fuzzy_rows = [
+                    [InlineKeyboardButton(t, callback_data=cb)
+                     for t, cb in _fuzzy_suggestions[:3]],
+                ]
+                if len(_fuzzy_suggestions) > 3:
+                    _fuzzy_rows.append(
+                        [InlineKeyboardButton(t, callback_data=cb)
+                         for t, cb in _fuzzy_suggestions[3:]]
+                    )
+                await update.message.reply_text(
+                    "我不太确定你想做什么，试试这些？👇\n\n"
+                    "（或者直接告诉我更具体的需求）",
+                    reply_markup=InlineKeyboardMarkup(_fuzzy_rows),
+                )
+            except Exception:
+                logger.debug("模糊引导按钮发送失败", exc_info=True)
+
         # 消息频率限制 — 防止用户刷屏导致 API 过载
         from src.bot.globals import rate_limiter
         if rate_limiter:
@@ -909,6 +941,7 @@ class MessageHandlerMixin:
 
         # 发送 typing 指示器
         typing_task = asyncio.create_task(self._keep_typing(chat_id, context))
+        typing_task.add_done_callback(lambda t: t.exception() and logger.debug("typing指示器后台任务异常: %s", t.exception()))
 
         try:
             sent_message = None
@@ -1048,10 +1081,11 @@ class MessageHandlerMixin:
                         # LLM 流式路径补齐追问建议 — 先发消息，再异步更新按钮
                         # 搬运灵感: khoj follow_up / 前四轮只在 Brain 路径有，这里覆盖 80% 对话
                         if status == "finished" and sent_message:
-                            asyncio.create_task(self._async_update_suggestions(
+                            _sug_t = asyncio.create_task(self._async_update_suggestions(
                                 context, chat_id, sent_message.message_id,
                                 content, display, parse_mode, model_used,
                             ))
+                            _sug_t.add_done_callback(lambda t: t.exception() and logger.debug("追问建议更新后台任务异常: %s", t.exception()))
                         prev_text = content
                         last_edit_time = _time.monotonic()
                     except BadRequest as e:
@@ -1472,7 +1506,6 @@ class MessageHandlerMixin:
           itrade_cancel:{trade_key}    — 取消全部
         '''
         from src.bot.globals import _pending_trades, ibkr
-        from telegram import InlineKeyboardMarkup
 
         query = update.callback_query
         await query.answer()

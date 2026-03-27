@@ -79,14 +79,14 @@ ov grep "Telegram" --uri memory    # 模式搜索
 
 ## 触发条件
 
-当 Boss 提到以下关键词时激活:
+当 严总 提到以下关键词时激活:
 - "openviking"、"上下文数据库"、"记忆升级"、"viking"
 - "导入知识库"、"语义检索"
 
 ## 执行流程
 
 1. 检查 OpenViking 是否已安装 (`which ov`)
-2. 若未安装，引导 Boss 执行 `pip install openviking`
+2. 若未安装，引导 严总 执行 `pip install openviking`
 3. 启动服务并导入指定资源
 4. 配置 OpenClaw gateway 使用 OpenViking 作为记忆后端
 5. 验证检索功能正常

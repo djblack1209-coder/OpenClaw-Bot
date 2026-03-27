@@ -15,23 +15,28 @@
 """
 import json
 import logging
-import os
-from datetime import datetime, timedelta
+import re
+from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from src.utils import now_et
+from src.api.auth import verify_api_token, log_token_status
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="闲鱼管理面板", version="1.0")
+app = FastAPI(
+    title="闲鱼管理面板",
+    version="1.0",
+    dependencies=[Depends(verify_api_token)],
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["http://localhost:5173", "http://localhost:1420", "tauri://localhost"],
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 # 延迟初始化 (由 start_admin_server 注入)
@@ -219,6 +224,9 @@ class PromptUpdate(BaseModel):
 
 @app.post("/api/prompts")
 def update_prompt(req: PromptUpdate):
+    # Validate name: only alphanumeric, underscore, hyphen (prevent directory traversal)
+    if not re.match(r'^[a-zA-Z0-9_-]+$', req.name):
+        raise HTTPException(status_code=400, detail="Invalid prompt name")
     path = PROMPT_DIR / f"{req.name}.txt"
     if not path.exists():
         raise HTTPException(404, f"Prompt {req.name} not found")
@@ -297,7 +305,7 @@ def start_admin_server(
     ctx_manager,
     reply_bot=None,
     live_instance=None,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 18800,
 ):
     """启动闲鱼管理面板 (在独立线程中运行)"""
@@ -305,6 +313,8 @@ def start_admin_server(
     _ctx = ctx_manager
     _bot = reply_bot
     _live = live_instance
+
+    log_token_status()
 
     import threading
     import uvicorn

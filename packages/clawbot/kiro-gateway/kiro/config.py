@@ -82,7 +82,7 @@ def _get_raw_env_value(var_name: str, env_file: str = ".env") -> Optional[str]:
 
 # Server host (default: 0.0.0.0 - listen on all interfaces)
 # Use "127.0.0.1" to only allow local connections
-DEFAULT_SERVER_HOST: str = "0.0.0.0"
+DEFAULT_SERVER_HOST: str = "127.0.0.1"
 SERVER_HOST: str = os.getenv("SERVER_HOST", DEFAULT_SERVER_HOST)
 
 # Server port (default: 8000)

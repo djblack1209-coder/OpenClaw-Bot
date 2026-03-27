@@ -15,10 +15,10 @@ v3.0 变更 (2026-03-24):
 """
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Tuple, Sequence
+from typing import List, Tuple
 
 from src.execution._db import get_conn
-from src.notify_style import format_digest, kv, bullet, divider
+from src.notify_style import format_digest, kv, bullet
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,170 @@ def _section(title: str, items: List[str]) -> Tuple[str, List[str]]:
     return (title, items)
 
 
+async def _analyze_news_with_llm(
+    headlines: List[str], holdings: List[str]
+) -> List[str]:
+    """用最便宜的 LLM 对新闻标题做一句话分析 + 持仓影响关联。
+
+    成本控制: 用免费的 qwen 模型，max_tokens=300，prompt 限制100字回复。
+    失败时返回 None，由调用方降级到纯标题列表。
+    """
+    try:
+        from src.litellm_router import free_pool
+        if not free_pool:
+            return None
+
+        # 构建新闻列表文本
+        news_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(headlines))
+
+        # 构建 prompt — 精简控制 token 成本
+        holdings_part = ""
+        if holdings:
+            holdings_part = f"用户持有: {', '.join(holdings[:10])}\n"
+
+        prompt = (
+            f"你是金融新闻分析师。{holdings_part}"
+            f"以下是今日科技新闻标题:\n{news_text}\n\n"
+            f"请用中文，每条新闻一句话分析（15字以内），"
+            f"标注对用户持仓的影响（利好/利空/中性）。"
+            f"如果没有直接影响就不标注。总共不超过100字。"
+            f"格式: 每行一条，用 • 开头，影响用 → 标注。"
+        )
+
+        resp = await free_pool.acompletion(
+            model_family="qwen",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=300,
+            cache_ttl=1800,  # 缓存30分钟，避免重复调用
+        )
+        text = (resp.choices[0].message.content or "").strip()
+
+        if not text:
+            return None
+
+        # 解析 LLM 输出为行列表
+        lines = [
+            ln.strip() for ln in text.split("\n")
+            if ln.strip() and not ln.strip().startswith("```")
+        ]
+        if not lines:
+            return None
+
+        # 确保每行以 • 开头
+        result = []
+        for ln in lines:
+            ln = ln.lstrip("- ·•*0123456789.、）)")
+            ln = ln.strip()
+            if ln:
+                result.append(f"• {ln}")
+
+        return result if result else None
+
+    except Exception as e:
+        logger.debug(f"[DailyBrief] LLM 新闻分析失败，降级到纯标题: {e}")
+        return None
+
+
+async def _build_today_agenda(db_path=None) -> List[str]:
+    """今日日程 — 合并所有数据源按紧急度排序
+
+    数据源:
+      1. 持仓风险项 — position_monitor 距止损 <3%
+      2. 今日提醒 — reminders 今天到期
+      3. 账单到期 — bill_accounts remind_day == 今天
+      4. 今日待办 — top_tasks
+      5. 降价监控到期 — price_watches last_checked 超过1天
+
+    返回排序后的日程文本列表，空列表表示无日程。
+    """
+    # (优先级, 文本) — 数字越小越紧急
+    agenda: List[Tuple[int, str]] = []
+
+    # ── 1. 持仓风险项 — 接近止损的持仓 ──
+    try:
+        from src.position_monitor import position_monitor
+        if position_monitor and position_monitor.positions:
+            status = position_monitor.get_status()
+            for p in status.get("positions", []):
+                cur = p.get("current_price", 0)
+                sl = p.get("stop_loss", 0)
+                sym = p.get("symbol", "?")
+                if sl > 0 and cur > 0:
+                    distance = (cur - sl) / cur * 100
+                    if 0 < distance < 3:
+                        agenda.append((0, f"⚡ {sym} 距止损仅 {distance:.1f}%，注意！"))
+    except Exception as e:
+        logger.debug(f"[TodayAgenda] 持仓风险: {e}")
+
+    # ── 2. 今日提醒 ──
+    try:
+        from src.execution.life_automation import list_reminders
+        from src.utils import now_et
+        pending = list_reminders(status="pending", db_path=db_path)
+        if pending:
+            now = now_et()
+            today_end = now.replace(hour=23, minute=59, second=59)
+            for r in pending:
+                try:
+                    remind_time = datetime.fromisoformat(r["remind_at"])
+                    if remind_time <= today_end:
+                        time_str = remind_time.strftime("%H:%M")
+                        agenda.append((1, f"⏰ {time_str} {r['message']}"))
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        logger.debug(f"[TodayAgenda] 提醒: {e}")
+
+    # ── 3. 账单到期 ──
+    try:
+        from src.execution.life_automation import get_bill_reminders_due
+        bills = get_bill_reminders_due(db_path=db_path)
+        for b in bills:
+            name = b.get("account_name", b.get("account_type", "账单"))
+            balance = b.get("balance", 0)
+            threshold = b.get("low_threshold", 0)
+            alert = " ‼️ 低于阈值" if threshold and balance < threshold else ""
+            agenda.append((1, f"📱 {name} 余额 ¥{balance:.0f}{alert}"))
+    except Exception as e:
+        logger.debug(f"[TodayAgenda] 账单: {e}")
+
+    # ── 4. 今日待办 ──
+    try:
+        from src.execution.task_mgmt import top_tasks
+        tasks = top_tasks(limit=3, db_path=db_path)
+        for t in tasks:
+            agenda.append((2, f"📝 {t.get('title', '未命名任务')} (待办)"))
+    except Exception as e:
+        logger.debug(f"[TodayAgenda] 待办: {e}")
+
+    # ── 5. 降价监控到期 — 超过1天未检查的活跃监控 ──
+    try:
+        with get_conn(db_path) as conn:
+            rows = conn.execute(
+                "SELECT keyword, last_checked FROM price_watches "
+                "WHERE status='active' AND last_checked IS NOT NULL "
+                "AND (julianday('now') - julianday(last_checked)) > 1.0 "
+                "LIMIT 5"
+            ).fetchall()
+            for r in rows:
+                agenda.append((3, f"🛒 {r[0]} 监控已超1天未检查"))
+    except Exception as e:
+        logger.debug(f"[TodayAgenda] 降价监控: {e}")
+
+    if not agenda:
+        return []
+
+    # 按紧急度排序，同级保持插入顺序
+    agenda.sort(key=lambda x: x[0])
+    return [text for _, text in agenda]
+
+
 async def generate_daily_brief(monitors=None, db_path=None) -> str:
     """生成智能每日日报 — 10 个数据源自动聚合
 
     内容架构:
+    0. 今日日程 (合并提醒/待办/账单/持仓风险/降价监控)
     1. 持仓概览 (position_monitor)
     2. 昨日交易绩效 (trading_journal)
     3. 目标进度 (profit targets)
@@ -46,6 +206,14 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     sections: List[Tuple[str, List[str]]] = []
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     greeting = _get_greeting()
+
+    # ── 0. 今日日程 (所有源按紧急度排序，日报最前面) ──────────
+    try:
+        agenda_items = await _build_today_agenda(db_path=db_path)
+        if agenda_items:
+            sections.append(_section("📋 今日日程", agenda_items))
+    except Exception as e:
+        logger.debug(f"[DailyBrief] agenda: {e}")
 
     # ── 1. 持仓概览 ──────────────────────────────────────────
     try:
@@ -263,7 +431,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     except Exception as e:
         logger.debug(f"[DailyBrief] fng: {e}")
 
-    # ── 7. 科技/AI 新闻 ──────────────────────────────────────
+    # ── 7. 科技/AI 新闻 (LLM 深度分析 + 持仓关联) ──────────
     try:
         from src.news_fetcher import NewsFetcher
         nf = NewsFetcher()
@@ -271,8 +439,23 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         tech_news = await nf.fetch_by_category("tech_cn", count=3)
         news_items = (ai_news or []) + (tech_news or [])
         if news_items:
-            items = [f"• {item['title']}" for item in news_items[:5]]
-            sections.append(_section("📰 科技快讯", items))
+            headlines = [item['title'] for item in news_items[:5]]
+            # 收集用户持仓 symbols，用于关联分析
+            holdings = []
+            try:
+                from src.position_monitor import position_monitor as _pm
+                if _pm and _pm.positions:
+                    holdings = list(_pm.positions.keys())
+            except Exception:
+                pass
+            # 尝试用 LLM 生成深度分析
+            analyzed = await _analyze_news_with_llm(headlines, holdings)
+            if analyzed:
+                sections.append(_section("📰 科技快讯 (AI解读)", analyzed))
+            else:
+                # 降级: LLM 失败则回退到纯标题列表
+                items = [f"• {t}" for t in headlines]
+                sections.append(_section("📰 科技快讯", items))
     except Exception as e:
         logger.debug(f"[DailyBrief] news: {e}")
 
@@ -359,6 +542,19 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 pass
             if xlines:
                 sections.append(_section("🐟 闲鱼运营", xlines))
+            # 今日热销 Top3 — 调用 BI 商品排行接口
+            try:
+                top3 = xctx.get_item_rankings(days=1, limit=3)
+                if top3:
+                    top_lines = ["🏆 今日热销:"]
+                    for i, item in enumerate(top3, 1):
+                        title = item.get("title", "未知")[:10]
+                        consult = item.get("consultations", 0)
+                        convert = item.get("conversions", 0)
+                        top_lines.append(f"  {i}. {title} ({consult}咨询/{convert}成交)")
+                    sections.append(_section("", top_lines))
+            except Exception:
+                pass  # BI 数据获取失败不影响日报
     except Exception as e:
         logger.debug("日报段落生成异常: %s", e)
 
@@ -371,6 +567,24 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             for plat, data in eng.get("platforms", {}).items():
                 elines.append(f"  {plat}: ❤️{data['likes']} 💬{data['comments']} 👀{data['views']}")
             sections.append(_section("📱 社媒互动", elines))
+    except Exception as e:
+        logger.debug("日报段落生成异常: %s", e)
+
+    # ── 12.5 粉丝增长 ─────────────────────────────────────────
+    try:
+        from src.execution.life_automation import get_follower_growth
+        growth = get_follower_growth(days=1)
+        if growth:
+            _plat_names = {"x": "X", "xhs": "小红书"}
+            parts = []
+            for plat, data in growth.items():
+                name = _plat_names.get(plat, plat)
+                end = data.get("end", 0)
+                change = data.get("change", 0)
+                sign = "+" if change >= 0 else ""
+                parts.append(f"{name} {end:,}({sign}{change})")
+            if parts:
+                sections.append(_section("👥 粉丝", [" | ".join(parts)]))
     except Exception as e:
         logger.debug("日报段落生成异常: %s", e)
 
@@ -405,6 +619,283 @@ def _get_greeting() -> str:
         return "🌤 下午好"
     else:
         return "🌙 晚上好"
+
+
+async def weekly_report(
+    position_monitor=None,
+    trading_journal=None,
+    cost_analyzer=None,
+    autopilot=None,
+    xianyu_ctx=None,
+) -> str:
+    """综合周报 — 聚合投资+社媒+闲鱼+成本四个维度的7天数据
+
+    每个板块独立 try/except，一个失败不影响其他。
+    数据不存在则不显示，不做假数据填充。
+    """
+    sections: List[Tuple[str, List[str]]] = []
+    now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=7)).strftime("%m/%d")
+    week_end = now.strftime("%m/%d")
+
+    # ── 1. 💼 本周交易战绩 ───────────────────────────────────
+    try:
+        # 优先使用注入的 journal，降级到全局单例
+        tj = trading_journal
+        if tj is None:
+            from src.trading_journal import journal as _j
+            tj = _j
+        if tj:
+            recent = tj.get_recent_trades(days=7) if hasattr(tj, "get_recent_trades") else []
+            perf = tj.get_performance(days=7) if hasattr(tj, "get_performance") else {}
+            if perf and perf.get("total_trades", 0) > 0:
+                items = []
+                total = perf.get("total_trades", 0)
+                wins = perf.get("wins", 0)
+                losses = perf.get("losses", 0)
+                win_rate = perf.get("win_rate", 0)
+                total_pnl = perf.get("total_pnl", 0)
+                pnl_emoji = "📈" if total_pnl >= 0 else "📉"
+                items.append(kv("交易笔数", f"{total} 笔 (胜 {wins} / 负 {losses})"))
+                items.append(kv("周胜率", f"{win_rate:.0f}%"))
+                items.append(kv("周盈亏", f"{pnl_emoji} ${total_pnl:+,.2f}"))
+                if perf.get("sharpe"):
+                    items.append(kv("夏普比率", f"{perf['sharpe']:.2f}"))
+                if perf.get("max_drawdown"):
+                    items.append(kv("最大回撤", f"{perf['max_drawdown']:.1f}%"))
+                # 最佳/最差交易
+                if recent:
+                    closed = [t for t in recent if t.get("pnl") is not None]
+                    if closed:
+                        best = max(closed, key=lambda t: t.get("pnl", 0))
+                        worst = min(closed, key=lambda t: t.get("pnl", 0))
+                        items.append(bullet(
+                            f"最佳: {best.get('symbol', '?')} ${best.get('pnl', 0):+,.2f}", icon="🏆"
+                        ))
+                        items.append(bullet(
+                            f"最差: {worst.get('symbol', '?')} ${worst.get('pnl', 0):+,.2f}", icon="💔"
+                        ))
+                sections.append(_section("💼 本周交易战绩", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 交易战绩: %s", e)
+
+    # ── 2. 📊 持仓变化 ──────────────────────────────────────
+    try:
+        pm = position_monitor
+        if pm is None:
+            from src.position_monitor import position_monitor as _pm
+            pm = _pm
+        if pm and hasattr(pm, "get_status"):
+            status = pm.get_status()
+            if status:
+                items = []
+                total_pnl = status.get("total_unrealized_pnl", 0)
+                count = status.get("monitored_count", 0)
+                pnl_emoji = "📈" if total_pnl >= 0 else "📉"
+                items.append(kv("当前持仓", f"{count} 个"))
+                items.append(kv("总浮盈亏", f"{pnl_emoji} ${total_pnl:+,.2f}"))
+                for p in status.get("positions", [])[:5]:
+                    sym = p.get("symbol", "?")
+                    pnl_pct = p.get("unrealized_pnl_pct", 0)
+                    cur = p.get("current_price", 0)
+                    emoji = "🟢" if pnl_pct >= 0 else "🔴"
+                    items.append(bullet(
+                        f"{sym} ${cur:.2f} ({pnl_pct:+.1f}%)", icon=emoji
+                    ))
+                sections.append(_section("📊 持仓变化", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 持仓变化: %s", e)
+
+    # ── 3. 📱 社媒周报 ──────────────────────────────────────
+    try:
+        items = []
+        # 互动数据
+        try:
+            from src.execution.life_automation import get_engagement_summary
+            eng = get_engagement_summary(days=7)
+            if eng.get("success") and eng.get("total_posts", 0) > 0:
+                items.append(kv("本周发文", f"{eng['total_posts']} 篇"))
+                for plat, data in eng.get("platforms", {}).items():
+                    items.append(bullet(
+                        f"{plat}: ❤️{data.get('likes', 0)} 💬{data.get('comments', 0)} "
+                        f"👀{data.get('views', 0)}", icon="📌"
+                    ))
+        except Exception:
+            pass
+        # 发文绩效报告
+        try:
+            from src.content_pipeline import content_pipeline
+            if content_pipeline and hasattr(content_pipeline, "get_post_performance_report"):
+                post_report = content_pipeline.get_post_performance_report(days=7)
+                if post_report:
+                    if post_report.get("best_post"):
+                        bp = post_report["best_post"]
+                        items.append(bullet(
+                            f"最佳帖子: {bp.get('title', '无标题')[:30]} "
+                            f"({bp.get('engagement', 0)} 互动)", icon="⭐"
+                        ))
+                    if post_report.get("follower_change") is not None:
+                        fc = post_report["follower_change"]
+                        fc_emoji = "📈" if fc >= 0 else "📉"
+                        items.append(kv("粉丝变化", f"{fc_emoji} {fc:+d}"))
+        except Exception:
+            pass
+        # 社交自动驾驶状态
+        try:
+            ap = autopilot
+            if ap is None:
+                from src.social_scheduler import social_autopilot as _ap
+                ap = _ap
+            if ap and hasattr(ap, "status"):
+                s = ap.status()
+                if s and s.get("posts_today", 0) > 0:
+                    items.append(kv("自动驾驶", "运行中" if s.get("running") else "已停止"))
+        except Exception:
+            pass
+        # 粉丝增长趋势 (7天)
+        try:
+            from src.execution.life_automation import get_follower_growth
+            growth = get_follower_growth(days=7)
+            if growth:
+                _plat_names = {"x": "X", "xhs": "小红书"}
+                for plat, data in growth.items():
+                    name = _plat_names.get(plat, plat)
+                    change = data.get("change", 0)
+                    pct = data.get("change_pct", 0)
+                    fc_emoji = "📈" if change >= 0 else "📉"
+                    items.append(kv(f"{name} 粉丝", f"{fc_emoji} {data.get('end', 0):,} ({change:+d}, {pct:+.1f}%)"))
+        except Exception:
+            pass
+        if items:
+            sections.append(_section("📱 社媒周报", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 社媒: %s", e)
+
+    # ── 4. 🐟 闲鱼周报 ──────────────────────────────────────
+    try:
+        xctx = xianyu_ctx
+        if xctx is None:
+            try:
+                from src.xianyu.xianyu_context import XianyuContextManager
+                xctx = XianyuContextManager()
+            except ImportError:
+                xctx = None
+        if xctx:
+            items = []
+            # 尝试获取利润汇总（7天）
+            profit = {}
+            if hasattr(xctx, "get_profit_summary"):
+                try:
+                    profit = xctx.get_profit_summary(days=7) or {}
+                except Exception:
+                    pass
+            # 尝试获取日统计（聚合7天）
+            xstats = {}
+            if hasattr(xctx, "daily_stats"):
+                try:
+                    xstats = xctx.daily_stats() or {}
+                except Exception:
+                    pass
+            if profit.get("revenue", 0) > 0:
+                items.append(kv("营收", f"¥{profit['revenue']:,.0f}"))
+                items.append(kv("利润", f"¥{profit.get('profit', 0):,.0f}"))
+                if profit.get("orders", 0) > 0:
+                    avg = profit["revenue"] / profit["orders"]
+                    items.append(kv("成交", f"{profit['orders']} 单 | 客单价 ¥{avg:.0f}"))
+            if xstats.get("messages", 0) > 0:
+                items.append(kv("咨询", f"{xstats['messages']} 条"))
+            if xstats.get("conversion_rate"):
+                items.append(kv("转化率", f"{xstats['conversion_rate']}"))
+            if items:
+                sections.append(_section("🐟 闲鱼周报", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 闲鱼: %s", e)
+
+    # ── 5. 💰 成本周报 ──────────────────────────────────────
+    try:
+        ca = cost_analyzer
+        if ca is None:
+            from src.monitoring import cost_analyzer as _ca
+            ca = _ca
+        if ca:
+            items = []
+            # 使用 predict_monthly_cost 获取日均成本
+            prediction = ca.predict_monthly_cost() if hasattr(ca, "predict_monthly_cost") else {}
+            if prediction:
+                daily_avg = prediction.get("daily_average", 0)
+                monthly = prediction.get("monthly_prediction", 0)
+                if daily_avg > 0:
+                    weekly_est = daily_avg * 7
+                    items.append(kv("本周估算", f"${weekly_est:.2f}"))
+                    items.append(kv("日均成本", f"${daily_avg:.2f}"))
+                    items.append(kv("月度预估", f"${monthly:.2f}"))
+            # 如果有专门的周报方法则优先使用
+            if hasattr(ca, "get_weekly_report"):
+                try:
+                    wr = ca.get_weekly_report()
+                    if wr:
+                        if wr.get("this_week") is not None:
+                            items = [kv("本周成本", f"${wr['this_week']:.2f}")]
+                        if wr.get("last_week") is not None:
+                            change = wr["this_week"] - wr["last_week"]
+                            ch_emoji = "📈" if change > 0 else "📉" if change < 0 else "➡️"
+                            items.append(kv("环比变化", f"{ch_emoji} ${change:+,.2f}"))
+                        if wr.get("daily_average") is not None:
+                            items.append(kv("日均", f"${wr['daily_average']:.2f}"))
+                except Exception:
+                    pass
+            if items:
+                sections.append(_section("💰 成本周报", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 成本: %s", e)
+
+    # ── 6. 🎯 目标进度 ──────────────────────────────────────
+    try:
+        tj = trading_journal
+        if tj is None:
+            from src.trading_journal import journal as _j
+            tj = _j
+        if tj and hasattr(tj, "format_target_progress"):
+            progress_text = tj.format_target_progress()
+            if progress_text and len(progress_text.strip()) > 5:
+                # 将文本拆成行作为 items
+                items = [line.strip() for line in progress_text.strip().split("\n") if line.strip()]
+                if items:
+                    sections.append(_section("🎯 目标进度", items))
+        elif tj and hasattr(tj, "get_active_targets"):
+            targets = tj.get_active_targets()
+            if targets:
+                items = []
+                for t in targets[:3]:
+                    name = t.get("name", "目标")
+                    progress = t.get("progress_pct", 0)
+                    bar_len = 10
+                    filled = int(progress / 100 * bar_len)
+                    bar = "█" * filled + "░" * (bar_len - filled)
+                    items.append(f"{name}: [{bar}] {progress:.0f}%")
+                sections.append(_section("🎯 目标进度", items))
+    except Exception as e:
+        logger.debug("[WeeklyReport] 目标进度: %s", e)
+
+    # ── 组装最终周报 ─────────────────────────────────────────
+    if not sections:
+        sections.append(_section("📋 本周概况", ["暂无数据，所有数据源均不可用"]))
+
+    return format_digest(
+        title="📋 综合周报",
+        intro=f"📅 {week_start} — {week_end}",
+        sections=sections,
+        footer=f"💡 说「周报」随时查看 | ⏱ {_get_timestamp_tag()}",
+    )
+
+
+def _get_timestamp_tag() -> str:
+    """获取时间戳标签"""
+    try:
+        from src.notify_style import timestamp_tag
+        return timestamp_tag()
+    except Exception:
+        return datetime.now(timezone.utc).strftime("%H:%M UTC")
 
 
 async def _fetch_trending_projects() -> List[str]:

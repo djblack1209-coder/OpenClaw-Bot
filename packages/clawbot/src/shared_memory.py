@@ -37,12 +37,15 @@ except ImportError:
 
 def _build_mem0_config() -> dict:
     """构建 Mem0 配置，优先使用环境变量中的 API。"""
+    # 延迟导入避免循环依赖 (globals.py 导入了 SharedMemory)
+    from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE, DATA_DIR
+
     config: dict = {
         "vector_store": {
             "provider": "qdrant",
             "config": {
                 "collection_name": "clawbot_memory",
-                "path": str(Path(os.getenv("DATA_DIR", str(Path(__file__).parent.parent / "data"))) / "qdrant_data"),
+                "path": str(Path(DATA_DIR) / "qdrant_data"),
                 "on_disk": True,
                 "embedding_model_dims": 1024,  # BAAI/bge-m3 输出维度
             },
@@ -51,8 +54,7 @@ def _build_mem0_config() -> dict:
 
     # LLM 配置：优先 SILICONFLOW_UNLIMITED_KEY（无限额），回退 SILICONFLOW_KEYS，再回退 OpenAI
     sf_unlimited_key = os.getenv("SILICONFLOW_UNLIMITED_KEY", "").strip()
-    sf_keys = os.getenv("SILICONFLOW_KEYS", "")
-    sf_base = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+    sf_base = SILICONFLOW_BASE
     openai_key = os.getenv("OPENAI_API_KEY", "")
 
     # SILICONFLOW_UNLIMITED_URL 可能是完整路径如 https://apis.iflow.cn/v1/chat/completions
@@ -70,7 +72,7 @@ def _build_mem0_config() -> dict:
     # 选择可用的 SiliconFlow key 和对应 base URL
     # 优先使用标准 siliconflow.cn（稳定，支持 LLM + embeddings）
     # UNLIMITED_KEY 仅当 iflow.cn 可用时使用，但 iflow 不支持 embeddings，故统一用 siliconflow
-    _all_keys = [k.strip() for k in sf_keys.split(",") if k.strip()] if sf_keys else []
+    _all_keys = list(SILICONFLOW_KEYS)
     # 取最后一个 key（通常是有余额的）
     active_sf_key = _all_keys[-1] if _all_keys else sf_unlimited_key
     active_sf_base = sf_base  # 始终用 api.siliconflow.cn/v1（稳定）
@@ -90,7 +92,7 @@ def _build_mem0_config() -> dict:
         # embedder 必须用标准 SiliconFlow（支持 /v1/embeddings），
         # iflow.cn 只是 LLM 代理，不提供嵌入端点
         # 从 SILICONFLOW_KEYS 轮换选 key：尽量避开余额不足的 key（取最后一个作 fallback）
-        _emb_keys = [k.strip() for k in sf_keys.split(",") if k.strip()] if sf_keys else []
+        _emb_keys = list(SILICONFLOW_KEYS)
         emb_key = _emb_keys[-1] if len(_emb_keys) > 1 else (_emb_keys[0] if _emb_keys else first_key)
         emb_base = sf_base  # 始终用 api.siliconflow.cn/v1
         config["embedder"] = {
@@ -160,11 +162,9 @@ class SharedMemory:
         if db_path:
             self.db_path = Path(db_path)
         else:
-            env_dir = os.getenv("DATA_DIR")
-            if env_dir:
-                self.db_path = Path(env_dir) / "shared_memory.db"
-            else:
-                self.db_path = Path(__file__).parent.parent / "data" / "shared_memory.db"
+            # 延迟导入避免循环依赖 (globals.py 导入了 SharedMemory)
+            from src.bot.globals import DATA_DIR
+            self.db_path = Path(DATA_DIR) / "shared_memory.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._lock = threading.Lock()
@@ -176,17 +176,30 @@ class SharedMemory:
         self._using_mem0 = False
         if _mem0_available and Mem0Memory is not None:
             try:
-                config = _build_mem0_config()
-                # 临时屏蔽 OPENROUTER_API_KEY，防止 mem0 自动路由到 OpenRouter
-                # mem0 会扫描环境变量自动选 LLM provider，优先级高于显式 config
-                _or_key = os.environ.pop("OPENROUTER_API_KEY", None)
-                try:
-                    self._mem0 = Mem0Memory.from_config(config)
-                    self._using_mem0 = True
-                    logger.info("[SharedMemory] v4.0 Mem0 模式启动成功")
-                finally:
-                    if _or_key is not None:
-                        os.environ["OPENROUTER_API_KEY"] = _or_key
+                # 优先使用 Mem0 Cloud API（无需本地 qdrant + embedding）
+                mem0_api_key = os.getenv("MEM0_API_KEY", "").strip()
+                if mem0_api_key:
+                    try:
+                        from mem0 import MemoryClient
+                        self._mem0 = MemoryClient(api_key=mem0_api_key)
+                        self._using_mem0 = True
+                        logger.info("[SharedMemory] v4.1 Mem0 Cloud API 模式启动成功")
+                    except (ImportError, Exception) as e:
+                        logger.debug(f"[SharedMemory] Mem0 Cloud 初始化失败，尝试本地模式: {e}")
+
+                # 回退到本地 Mem0（qdrant + SiliconFlow LLM）
+                if not self._using_mem0:
+                    config = _build_mem0_config()
+                    # 临时屏蔽 OPENROUTER_API_KEY，防止 mem0 自动路由到 OpenRouter
+                    # mem0 会扫描环境变量自动选 LLM provider，优先级高于显式 config
+                    _or_key = os.environ.pop("OPENROUTER_API_KEY", None)
+                    try:
+                        self._mem0 = Mem0Memory.from_config(config)
+                        self._using_mem0 = True
+                        logger.info("[SharedMemory] v4.0 Mem0 本地模式启动成功")
+                    finally:
+                        if _or_key is not None:
+                            os.environ["OPENROUTER_API_KEY"] = _or_key
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 初始化失败，回退 SQLite: %s", e)
 
@@ -300,12 +313,30 @@ class SharedMemory:
                 }
                 if chat_id is not None:
                     metadata["chat_id"] = str(chat_id)
-                result = self._mem0.add(
-                    [{'role': 'user', 'content': content}],
-                    agent_id="clawbot",
-                    metadata=metadata,
-                    infer=False,  # 直接存储，不做 LLM 提取（保持与 v3 行为一致）
-                )
+                # 检查是否是 Cloud 模式 (MemoryClient)
+                try:
+                    from mem0 import MemoryClient
+                    is_cloud = isinstance(self._mem0, MemoryClient)
+                except ImportError:
+                    is_cloud = False
+
+                if is_cloud:
+                    # Cloud API: 第一个参数是字符串
+                    result = self._mem0.add(
+                        content,
+                        user_id=str(chat_id) if chat_id is not None else "global",
+                        metadata=metadata,
+                    )
+                else:
+                    # 本地 Memory 模式: 第一个参数是消息列表
+                    messages = [{"role": "user", "content": content}]
+                    result = self._mem0.add(
+                        messages,
+                        agent_id="clawbot",
+                        user_id=str(chat_id) if chat_id is not None else "global",
+                        metadata=metadata,
+                        infer=False,  # 直接存储，不做 LLM 提取（保持与 v3 行为一致）
+                    )
                 # 提取 mem0 返回的 ID
                 if isinstance(result, dict):
                     results_list = result.get("results", [])
@@ -425,7 +456,8 @@ class SharedMemory:
             }
         return {"success": False, "error": f"未找到: {key}"}
 
-    def search(self, query: str, limit: int = 10, mode: str = "hybrid") -> Dict[str, Any]:
+    def search(self, query: str, limit: int = 10, mode: str = "hybrid",
+               chat_id: Optional[int] = None) -> Dict[str, Any]:
         """混合搜索记忆。Mem0 模式下使用向量索引，SQLite 模式下使用关键词+本地嵌入。"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
@@ -434,7 +466,11 @@ class SharedMemory:
         mem0_results = []
         if self._using_mem0 and self._mem0 and mode in ("semantic", "hybrid"):
             try:
-                raw = self._mem0.search(query, limit=limit * 2, agent_id="clawbot")
+                user_id = str(chat_id) if chat_id else "global"
+                raw = self._mem0.search(
+                    query, limit=limit * 2, agent_id="clawbot",
+                    user_id=user_id,
+                )
                 items = raw.get("results", raw) if isinstance(raw, dict) else raw
                 for r in (items or []):
                     if not isinstance(r, dict):
@@ -539,7 +575,8 @@ class SharedMemory:
                 "results": results, "count": len(results)}
 
     def semantic_search(self, query: str, limit: int = 5,
-                        category: Optional[str] = None) -> List[Dict[str, Any]]:
+                        category: Optional[str] = None,
+                        chat_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """纯语义搜索。Mem0 模式下直接用向量索引。"""
         # ── Mem0 路径 ──
         if self._using_mem0 and self._mem0:
@@ -547,7 +584,10 @@ class SharedMemory:
                 filters = {}
                 if category:
                     filters["category"] = category
-                raw = self._mem0.search(query, limit=limit, filters=filters if filters else None)
+                raw = self._mem0.search(
+                    query, limit=limit, filters=filters if filters else None,
+                    user_id=str(chat_id) if chat_id else "global",
+                )
                 items = raw.get("results", raw) if isinstance(raw, dict) else raw
                 results = []
                 for r in (items or []):

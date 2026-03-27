@@ -67,8 +67,13 @@ class TelegramAlertNotifier:
 
         # 在事件循环中异步发送
         try:
-            loop = self._loop or asyncio.get_event_loop()
-            if loop.is_running():
+            loop = self._loop
+            if loop is None:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+            if loop and loop.is_running():
                 asyncio.ensure_future(self._send(rule_name, message))
             else:
                 loop.run_until_complete(self._send(rule_name, message))

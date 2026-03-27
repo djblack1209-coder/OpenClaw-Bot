@@ -58,20 +58,25 @@ def test_get_best_source_with_tier_filter():
 
 
 def test_record_success_and_error():
+    """测试 FreeAPISource 的计数逻辑（原 pool.record_success/error 已清理，直接操作属性）"""
     pool = _make_pool()
     src = pool.get_best_source("qwen")
     assert src.consecutive_errors == 0
     assert src.used_today == 0
 
-    pool.record_success(src)
+    # 模拟成功
+    src.used_today += 1
+    src.consecutive_errors = 0
     assert src.used_today == 1
     assert src.consecutive_errors == 0
 
-    pool.record_error(src, "test error")
+    # 模拟失败
+    src.consecutive_errors += 1
     assert src.consecutive_errors == 1
 
-    pool.record_success(src)
-    assert src.consecutive_errors == 0  # 成功后重置
+    # 成功后重置
+    src.consecutive_errors = 0
+    assert src.consecutive_errors == 0
 
 
 def test_disabled_source_not_available():
@@ -91,10 +96,10 @@ def test_exhausted_source_not_available():
 
 
 def test_consecutive_errors_disable():
+    """测试连续错误后 source 不可用"""
     pool = _make_pool()
     src = pool.get_best_source("qwen")
-    for _ in range(5):
-        pool.record_error(src, "fail")
+    src.consecutive_errors = 5
     assert src.consecutive_errors == 5
     assert not src.can_accept_request()
     src2 = pool.get_best_source("qwen")

@@ -1,0 +1,49 @@
+# 运行时数据和缓存
+data/
+logs/
+backups/
+
+# 虚拟环境
+.venv*/
+
+# Git
+.git/
+.gitignore
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# 部署产物
+deploy_bundle_final/
+deploy_resources/
+openclaw_deploy_final/
+
+# 独立子系统
+kiro-gateway/
+browser-agent/
+
+# 测试
+tests/
+pytest.ini
+
+# 文档
+docs/
+*.md
+
+# 敏感文件 — 绝不打入镜像
+config/.env
+config/.env.*
+*.pem
+*.key

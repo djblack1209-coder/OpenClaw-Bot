@@ -1,12 +1,19 @@
 """
-OpenClaw — vectorbt 回测引擎集成 v2.0
+OpenClaw — vectorbt 回测引擎集成 v3.0
 搬运整合自:
   - vectorbt (6.9k⭐)    — 向量化快速回测核心
   - quantstats (4.8k⭐)   — HTML 绩效报告 + Tearsheet
   - finlab_crypto (1.2k⭐) — Portfolio.from_signals 最佳实践
   - bt (1.7k⭐)           — 多策略对比框架思路
+  - FinRL (11k⭐)         — DRL 强化学习交易策略 (v3.0 新增)
+  - Qlib (18k⭐)          — Alpha 因子 + ML 信号策略 (v3.0 新增)
 
-新增 v2.0 功能:
+v3.0 新增:
+  - DRL 策略回测 (PPO/A2C via stable-baselines3)
+  - Alpha 因子策略回测 (16 因子 + LightGBM)
+  - 多策略对比扩展至最多 8 策略 (5 TA + 1 DRL + 2 因子)
+
+v2.0 功能:
   - 5 策略内置 (MA交叉 / RSI / MACD / 布林带 / 成交量突破)
   - 止损 / 止盈 / 手续费 / 滑点参数
   - 多策略并行对比 + Telegram 排名表
@@ -16,12 +23,11 @@ OpenClaw — vectorbt 回测引擎集成 v2.0
 
 与现有系统整合:
   - API: GET /api/v1/omega/investment/backtest
-  - strategy 参数: ma_cross / rsi / macd / bbands / volume / compare
+  - strategy 参数: ma_cross / rsi / macd / bbands / volume / drl / factor / compare
 """
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 from src.utils import now_et
@@ -504,6 +510,213 @@ class VectorbtBacktester:
 
         return await asyncio.to_thread(_run)
 
+    # ── 策略6: DRL 强化学习 (搬运自 FinRL) ─────────────────
+
+    async def run_drl_strategy(
+        self,
+        symbol: str,
+        period: str = "2y",
+        algorithm: str = "ppo",
+        train_timesteps: int = 50_000,
+    ) -> BacktestResult:
+        """DRL 强化学习策略回测 — 搬运自 FinRL (11k⭐)
+
+        使用 stable-baselines3 PPO/A2C 在前 80% 数据上训练，
+        后 20% 数据上验证收益表现。
+        """
+        strategy_name = f"DRL-{algorithm.upper()}"
+
+        def _run():
+            try:
+                from src.strategies.drl_strategy import StockTradingEnv, HAS_GYM, HAS_SB3
+            except ImportError:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": "drl_strategy 模块不可用"})
+
+            if not HAS_GYM or not HAS_SB3:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period,
+                                      details={"error": "需要 gymnasium + stable-baselines3"})
+
+            df = _fetch_ohlcv(symbol, period)
+            if df is None or df.empty:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": "无价格数据"})
+
+            # 准备数据
+            import numpy as np
+            ohlcv = pd.DataFrame({
+                "open": df["Open"].squeeze() if "Open" in df.columns else df["Close"].squeeze(),
+                "high": df["High"].squeeze() if "High" in df.columns else df["Close"].squeeze() * 1.01,
+                "low": df["Low"].squeeze() if "Low" in df.columns else df["Close"].squeeze() * 0.99,
+                "close": df["Close"].squeeze(),
+                "volume": df["Volume"].squeeze() if "Volume" in df.columns else 1_000_000,
+            })
+
+            # 前 80% 训练，后 20% 验证
+            split = int(len(ohlcv) * 0.8)
+            train_df = ohlcv.iloc[:split].reset_index(drop=True)
+            test_df = ohlcv.iloc[split:].reset_index(drop=True)
+
+            if len(train_df) < 30 or len(test_df) < 10:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": "数据不足以训练+测试"})
+
+            try:
+                from stable_baselines3 import PPO, A2C
+                from stable_baselines3.common.vec_env import DummyVecEnv
+
+                # 训练
+                train_env = DummyVecEnv([lambda: StockTradingEnv(df=train_df)])
+                if algorithm.lower() == "a2c":
+                    model = A2C("MlpPolicy", train_env, verbose=0, seed=42)
+                else:
+                    model = PPO("MlpPolicy", train_env, verbose=0, seed=42,
+                                n_steps=128, batch_size=64)
+                model.learn(total_timesteps=train_timesteps)
+
+                # 测试
+                test_env = StockTradingEnv(df=test_df, initial_amount=self.init_cash)
+                obs, _ = test_env.reset()
+                portfolio_values = [self.init_cash]
+
+                for _ in range(len(test_df) - 1):
+                    action, _ = model.predict(obs, deterministic=True)
+                    obs, reward, done, truncated, info = test_env.step(action)
+                    portfolio_values.append(test_env.portfolio_value)
+                    if done:
+                        break
+
+                # 计算指标
+                pv = np.array(portfolio_values)
+                total_return = (pv[-1] - pv[0]) / pv[0]
+                daily_returns = np.diff(pv) / pv[:-1]
+                sharpe = (np.mean(daily_returns) / max(np.std(daily_returns), 1e-10)) * np.sqrt(252)
+                max_dd = np.max(1 - pv / np.maximum.accumulate(pv))
+
+                # 下行波动率 → Sortino
+                downside = daily_returns[daily_returns < 0]
+                downside_std = np.std(downside) if len(downside) > 0 else 1e-10
+                sortino = (np.mean(daily_returns) / downside_std) * np.sqrt(252)
+
+                calmar = (total_return / max(max_dd, 1e-10)) if max_dd > 0 else 0
+
+                # 基准 (买入持有)
+                bm_return = (float(test_df["close"].iloc[-1]) - float(test_df["close"].iloc[0])) / float(test_df["close"].iloc[0])
+
+                return BacktestResult(
+                    symbol=symbol, strategy=strategy_name, period=period,
+                    total_return=float(total_return),
+                    sharpe_ratio=float(sharpe),
+                    sortino_ratio=float(sortino),
+                    calmar_ratio=float(calmar),
+                    max_drawdown=float(max_dd),
+                    win_rate=float(np.sum(daily_returns > 0) / max(len(daily_returns), 1)),
+                    num_trades=len(test_df),
+                    annual_return=float(total_return * 252 / max(len(test_df), 1)),
+                    benchmark_return=float(bm_return),
+                    alpha=float(total_return - bm_return),
+                    best_params={"algorithm": algorithm, "timesteps": train_timesteps},
+                    details={"final_value": round(float(pv[-1]), 2),
+                             "test_bars": len(test_df)},
+                )
+
+            except Exception as e:
+                logger.warning(f"[backtester] DRL 回测失败: {e}")
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": str(e)})
+
+        return await asyncio.to_thread(_run)
+
+    # ── 策略7: Alpha 因子 + ML (搬运自 Qlib) ─────────────
+
+    async def run_factor_strategy(
+        self,
+        symbol: str,
+        period: str = "2y",
+        use_ml: bool = True,
+    ) -> BacktestResult:
+        """Alpha 因子策略回测 — 搬运自 Qlib (Microsoft, 18k⭐)
+
+        使用 16 个 Alpha 因子 + 可选 LightGBM 生成买卖信号，
+        通过 vectorbt Portfolio.from_signals 回测。
+        """
+        strategy_name = "Alpha因子" + ("+ML" if use_ml else "")
+
+        if not self._available:
+            return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                  period=period, details={"error": "vectorbt 未安装"})
+
+        def _run():
+            try:
+                from src.strategies.factor_strategy import AlphaFactors, FactorScorer, FactorMLModel, HAS_LGB
+            except ImportError:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": "factor_strategy 模块不可用"})
+
+            df = _fetch_ohlcv(symbol, period)
+            if df is None or df.empty:
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": "无价格数据"})
+
+            import numpy as np
+
+            ohlcv = pd.DataFrame({
+                "open": df["Open"].squeeze() if "Open" in df.columns else df["Close"].squeeze(),
+                "high": df["High"].squeeze() if "High" in df.columns else df["Close"].squeeze() * 1.01,
+                "low": df["Low"].squeeze() if "Low" in df.columns else df["Close"].squeeze() * 0.99,
+                "close": df["Close"].squeeze(),
+                "volume": df["Volume"].squeeze() if "Volume" in df.columns else 1_000_000,
+            })
+
+            price = df["Close"].squeeze()
+
+            # 计算因子
+            factors = AlphaFactors.compute_all(ohlcv)
+
+            if use_ml and HAS_LGB:
+                # ML 路径: 训练 LightGBM 并生成预测信号
+                ml_model = FactorMLModel(symbol)
+                if ml_model.train(ohlcv):
+                    # 用模型预测每天的得分
+                    scores = []
+                    for i in range(len(factors)):
+                        if i < 60:  # 因子需要预热
+                            scores.append(0.0)
+                        else:
+                            sub = factors.iloc[:i+1]
+                            scores.append(ml_model.predict(sub))
+                    scores = np.array(scores)
+                    entries = pd.Series(scores > 0.3, index=price.index[:len(scores)])
+                    exits = pd.Series(scores < -0.3, index=price.index[:len(scores)])
+                else:
+                    # ML 训练失败，降级到规则
+                    scores = factors.apply(lambda row: FactorScorer.score(row) / 100, axis=1)
+                    entries = scores > 0.3
+                    exits = scores < -0.3
+            else:
+                # 纯规则路径
+                scores = factors.apply(lambda row: FactorScorer.score(row) / 100, axis=1)
+                entries = scores > 0.3
+                exits = scores < -0.3
+
+            # 对齐长度
+            min_len = min(len(price), len(entries), len(exits))
+            price = price.iloc[:min_len]
+            entries = entries.iloc[:min_len]
+            exits = exits.iloc[:min_len]
+
+            try:
+                pf = vbt.Portfolio.from_signals(price, entries, exits, **self._pf_kwargs())
+                return _extract_stats(pf, symbol, strategy_name, period,
+                                      benchmark_close=price)
+            except Exception as e:
+                logger.warning(f"[backtester] Factor 回测 Portfolio 构建失败: {e}")
+                return BacktestResult(symbol=symbol, strategy=strategy_name,
+                                      period=period, details={"error": str(e)})
+
+        return await asyncio.to_thread(_run)
+
     # ── 多策略对比 ────────────────────────────────────────
 
     async def run_multi_strategy_comparison(
@@ -511,14 +724,28 @@ class VectorbtBacktester:
         symbol: str,
         period: str = "2y",
     ) -> ComparisonResult:
-        """并行运行5个策略并排名"""
+        """并行运行所有可用策略并排名（含 DRL 和因子策略）"""
         tasks = [
             self.run_ma_cross(symbol, fast=10, slow=30, period=period),
             self.run_rsi_strategy(symbol, period=period),
             self.run_macd_strategy(symbol, period=period),
             self.run_bbands_strategy(symbol, period=period),
             self.run_volume_strategy(symbol, period=period),
+            self.run_factor_strategy(symbol, period=period, use_ml=False),
         ]
+        # DRL 和 ML 因子策略仅在依赖可用时加入
+        try:
+            from src.strategies.drl_strategy import HAS_GYM, HAS_SB3
+            if HAS_GYM and HAS_SB3:
+                tasks.append(self.run_drl_strategy(symbol, period=period))
+        except ImportError:
+            pass
+        try:
+            from src.strategies.factor_strategy import HAS_LGB
+            if HAS_LGB:
+                tasks.append(self.run_factor_strategy(symbol, period=period, use_ml=True))
+        except ImportError:
+            pass
         results = await asyncio.gather(*tasks, return_exceptions=True)
         valid = [r for r in results if isinstance(r, BacktestResult) and not r.details.get("error")]
         if not valid:
@@ -593,3 +820,95 @@ def get_backtester() -> VectorbtBacktester:
     if _backtester is None:
         _backtester = VectorbtBacktester()
     return _backtester
+
+
+# ── 快速信号验证（供投资团队调用）────────────────────────────
+
+async def quick_signal_validation(symbol: str, period: str = "6mo") -> Dict:
+    """快速信号验证 — 为投资决策提供历史胜率参考。
+
+    运行 3 个核心策略(MA/RSI/MACD)的简化回测,返回汇总结果。
+    设计目标: 5秒内完成,给投资团队提供"信心参考"而非精确回测。
+
+    Args:
+        symbol: 股票代码 (如 "AAPL")
+        period: 回测周期 (默认 6 个月)
+
+    Returns:
+        {
+            "symbol": "AAPL",
+            "period": "6mo",
+            "strategies": [
+                {"name": "MA(10/30)交叉", "win_rate": 0.67, "trades": 12, "sharpe": 1.2},
+                ...
+            ],
+            "avg_win_rate": 0.62,
+            "best_strategy": "RSI",
+            "best_win_rate": 0.72,
+            "confidence_label": "中等可信",  # <50% 低 / 50-65% 中等 / >65% 高
+            "available": True,
+        }
+    """
+    bt = get_backtester()
+    if not bt.available:
+        return {
+            "symbol": symbol, "period": period, "available": False,
+            "strategies": [], "avg_win_rate": 0, "best_strategy": "",
+            "best_win_rate": 0, "confidence_label": "无法验证",
+        }
+
+    try:
+        # 只跑 3 个核心策略(快速), 不跑 DRL/因子(太慢)
+        results = await asyncio.gather(
+            bt.run_ma_cross(symbol, fast=10, slow=30, period=period),
+            bt.run_rsi_strategy(symbol, period=period),
+            bt.run_macd_strategy(symbol, period=period),
+            return_exceptions=True,
+        )
+
+        strategies = []
+        for r in results:
+            if isinstance(r, BacktestResult) and not r.details.get("error"):
+                strategies.append({
+                    "name": r.strategy,
+                    "win_rate": round(r.win_rate, 3),
+                    "trades": r.num_trades,
+                    "sharpe": round(r.sharpe_ratio, 2),
+                    "total_return": round(r.total_return, 4),
+                })
+
+        if not strategies:
+            return {
+                "symbol": symbol, "period": period, "available": True,
+                "strategies": [], "avg_win_rate": 0, "best_strategy": "",
+                "best_win_rate": 0, "confidence_label": "数据不足",
+            }
+
+        avg_wr = sum(s["win_rate"] for s in strategies) / len(strategies)
+        best = max(strategies, key=lambda s: s["win_rate"])
+
+        if avg_wr >= 0.65:
+            label = "高可信"
+        elif avg_wr >= 0.50:
+            label = "中等可信"
+        else:
+            label = "低可信"
+
+        return {
+            "symbol": symbol,
+            "period": period,
+            "available": True,
+            "strategies": strategies,
+            "avg_win_rate": round(avg_wr, 3),
+            "best_strategy": best["name"],
+            "best_win_rate": best["win_rate"],
+            "confidence_label": label,
+        }
+
+    except Exception as e:
+        logger.warning(f"[QuickBacktest] {symbol} 信号验证失败: {e}")
+        return {
+            "symbol": symbol, "period": period, "available": False,
+            "strategies": [], "avg_win_rate": 0, "best_strategy": "",
+            "best_win_rate": 0, "confidence_label": "验证失败",
+        }

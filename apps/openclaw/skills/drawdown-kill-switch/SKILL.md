@@ -16,7 +16,7 @@ Use when equity drawdown, consecutive losses, or abnormal volatility threatens c
 
 ## Mandatory actions
 
-1. Notify Boss with concise incident details.
+1. Notify 严总 with concise incident details.
 2. Snapshot current exposure and risk.
 3. Cut or hedge positions according to predefined limits.
 4. Start postmortem log: what failed, why, and what changes before restart.
