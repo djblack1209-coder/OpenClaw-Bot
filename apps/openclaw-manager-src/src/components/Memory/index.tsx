@@ -30,6 +30,45 @@ export function Memory() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  // 删除指定记忆条目
+  const handleDelete = async (key: string) => {
+    if (!confirm('确定要删除这条记忆吗？删除后无法恢复。')) return;
+    try {
+      await fetch(`http://127.0.0.1:18790/api/v1/memory/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      setEntries(prev => prev.filter(e => e.key !== key));
+    } catch (e) {
+      console.warn('删除记忆失败:', e);
+    }
+  };
+
+  // 进入编辑模式
+  const handleEdit = (entry: MemoryEntry) => {
+    setEditingKey(entry.key);
+    setEditValue(entry.value);
+  };
+
+  // 保存编辑后的记忆内容
+  const handleSaveEdit = async () => {
+    if (!editingKey) return;
+    try {
+      await fetch('http://127.0.0.1:18790/api/v1/memory/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: editingKey, value: editValue }),
+      });
+      setEntries(prev => prev.map(e => e.key === editingKey ? { ...e, value: editValue } : e));
+      setEditingKey(null);
+    } catch (e) {
+      console.warn('更新记忆失败:', e);
+    }
+  };
 
   const fetchMemories = async () => {
     try {
@@ -129,7 +168,31 @@ export function Memory() {
                                         <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">高优先级</span>
                                     )}
                                 </div>
-                                <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-mono">
+                                {editingKey === entry.key ? (
+                                  <div className="space-y-2">
+                                    <textarea
+                                      value={editValue}
+                                      onChange={(e) => setEditValue(e.target.value)}
+                                      className="w-full bg-dark-900 border border-purple-500/50 rounded-lg p-3 text-sm text-white font-mono focus:outline-none focus:border-purple-500 resize-y min-h-[80px]"
+                                      rows={4}
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={handleSaveEdit}
+                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors"
+                                      >
+                                        保存
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingKey(null)}
+                                        className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs rounded-md transition-colors"
+                                      >
+                                        取消
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-mono">
                                     {isProfile ? (() => {
                                       try {
                                         return JSON.stringify(JSON.parse(entry.value), null, 2);
@@ -137,7 +200,8 @@ export function Memory() {
                                         return entry.value;
                                       }
                                     })() : entry.value}
-                                </div>
+                                  </div>
+                                )}
                                 <div className="mt-3 text-xs text-gray-600">
                                     来源: {entry.source_bot} | 更新: {new Date(entry.updated_at * 1000).toLocaleString()}
                                 </div>
@@ -145,10 +209,10 @@ export function Memory() {
                             
                             {/* 操作按钮 (仅悬浮显示) */}
                             <div className="absolute right-4 top-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500">
+                                <button onClick={() => handleEdit(entry)} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500">
                                     <Edit size={14} />
                                 </button>
-                                <button className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30">
+                                <button onClick={() => handleDelete(entry.key)} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30">
                                     <Trash2 size={14} />
                                 </button>
                             </div>

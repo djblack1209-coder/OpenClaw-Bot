@@ -84,7 +84,6 @@ def natural_time(dt=None, future: bool = False) -> str:
                 dt = _dt.fromtimestamp(dt)
             return humanize.naturaltime(dt, future=future)
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
     # 降级
     if dt is None:
@@ -107,7 +106,6 @@ def natural_size(num_bytes: int) -> str:
         try:
             return humanize.naturalsize(num_bytes)
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
     # 降级
     for unit in ['B', 'KB', 'MB', 'GB']:
@@ -129,7 +127,6 @@ def natural_number(n) -> str:
                 return humanize.intword(int(n))
             return humanize.intcomma(n)
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
     return f"{n:,}" if isinstance(n, (int, float)) else str(n)
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Share2, Flame, FileText, User, CalendarDays, Rocket,
@@ -39,8 +39,28 @@ export function Social() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [draftsLoading, setDraftsLoading] = useState(false);
-  const browserStatus = { x: 'unknown' as string, xhs: 'unknown' as string };
+  const [browserStatus, setBrowserStatus] = useState({ x: 'unknown', xhs: 'unknown' });
+
+  // 获取浏览器会话状态
+  useEffect(() => {
+    const fetchBrowserStatus = async () => {
+      try {
+        const resp = await fetch('http://127.0.0.1:18790/api/v1/social/browser-status');
+        if (resp.ok) {
+          const data = await resp.json();
+          setBrowserStatus({
+            x: data.x || data.twitter || 'unknown',
+            xhs: data.xhs || data.xiaohongshu || 'unknown',
+          });
+        }
+      } catch {
+        // 后端不可达时保持 unknown 状态
+      }
+    };
+    fetchBrowserStatus();
+    const interval = setInterval(fetchBrowserStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleAction = async (id: string, cmd: string, hasInput?: boolean) => {
     const input = inputs[id];
@@ -191,7 +211,18 @@ export function Social() {
                       待发布队列与草稿
                     </CardTitle>
                   </div>
-                  <button className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
+                  <button onClick={() => {
+                    const title = prompt('输入内容标题:');
+                    if (!title) return;
+                    const newDraft: Draft = {
+                      id: Date.now(),
+                      title,
+                      platforms: ['x', 'xhs'],
+                      status: 'draft',
+                      time: new Date(),
+                    };
+                    setDrafts(prev => [...prev, newDraft]);
+                  }} className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
                     <Plus size={14} /> 新建内容
                   </button>
                 </div>
@@ -233,11 +264,28 @@ export function Social() {
                         </div>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-2 hover:bg-dark-700 rounded-md text-gray-400 hover:text-white transition-colors">
+                        <button onClick={() => {
+                          const newTitle = prompt('编辑标题:', draft.title);
+                          if (newTitle) {
+                            setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, title: newTitle } : d));
+                          }
+                        }} className="p-2 hover:bg-dark-700 rounded-md text-gray-400 hover:text-white transition-colors">
                           编辑
                         </button>
                         {draft.status !== 'published' && (
-                          <button className="p-2 hover:bg-blue-500/20 rounded-md text-blue-400 transition-colors">
+                          <button onClick={async () => {
+                            setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'published' } : d));
+                            try {
+                              await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: `/post_social ${draft.title}` }),
+                              });
+                            } catch {
+                              // 发布失败时回滚状态
+                              setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'draft' } : d));
+                            }
+                          }} className="p-2 hover:bg-blue-500/20 rounded-md text-blue-400 transition-colors">
                             立即发布
                           </button>
                         )}

@@ -9,14 +9,14 @@ Trading — 重入队列管理 v2.0
 """
 import json
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 _PENDING_REENTRY_CONFIG_KEY = "pending_reentry_queue_json"
 
 
-def _normalize_item(item: dict) -> dict | None:
+def _normalize_item(item: dict) -> Optional[dict]:
     """规范化单条 reentry 记录，验证必要字段。"""
     if not isinstance(item, dict):
         return None

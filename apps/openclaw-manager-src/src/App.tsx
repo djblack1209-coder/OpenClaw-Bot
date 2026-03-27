@@ -18,6 +18,7 @@ const Logs = lazy(() => import('./components/Logs').then(m => ({ default: m.Logs
 const ExecutionFlow = lazy(() => import('./components/ExecutionFlow').then(m => ({ default: m.ExecutionFlow })));
 const Memory = lazy(() => import('./components/Memory').then(m => ({ default: m.Memory })));
 const Plugins = lazy(() => import('./components/Plugins').then(m => ({ default: m.Plugins })));
+const Evolution = lazy(() => import('./components/Evolution').then(m => ({ default: m.Evolution })));
 
 const PageLoader = () => (
   <div className="h-full flex items-center justify-center">
@@ -27,6 +28,7 @@ const PageLoader = () => (
 
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
+import { CommandPalette } from './components/CommandPalette';
 
 
 
@@ -44,7 +46,7 @@ import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 import { useAppStore } from './stores/appStore';
 
-export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory';
+export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory' | 'evolution';
 
 export interface EnvironmentStatus {
   node_installed: boolean;
@@ -147,6 +149,7 @@ function App() {
       testing: <Testing />,
       logs: <Logs />,
       settings: <Settings onEnvironmentChange={checkEnvironment} />,
+      evolution: <Evolution />,
     };
 
     return (
@@ -186,6 +189,7 @@ function App() {
   // 主界面
   return (
     <div className="flex h-screen bg-dark-900 overflow-hidden">
+      <CommandPalette />
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       

@@ -355,6 +355,16 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         app_name = str(data.get("app", data.get("name", ""))).strip()
         if not app_name:
             return {"success": False, "mode": "local", "error": "open_app 需要 app/name 字段"}
+        # 安全白名单：只允许打开这些应用
+        _ALLOWED_APPS = frozenset({
+            "safari", "chrome", "firefox", "finder", "terminal",
+            "notes", "calendar", "reminders", "messages", "mail",
+            "music", "photos", "preview", "textedit", "calculator",
+            "system preferences", "system settings", "activity monitor",
+        })
+        app_lower = app_name.lower().strip()
+        if app_lower not in _ALLOWED_APPS:
+            return {"success": False, "error": f"应用 '{app_name}' 不在安全白名单中"}
         cp = subprocess.run(
             ["open", "-a", app_name],
             check=False, capture_output=True, text=True, timeout=12,
@@ -385,6 +395,9 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         name = str(data.get("name", data.get("shortcut", ""))).strip()
         if not name:
             return {"success": False, "mode": "local", "error": "shortcut 需要 name/shortcut 字段"}
+        # 安全限制：快捷指令名称长度和字符检查
+        if len(name) > 100 or not re.match(r'^[\w\s\u4e00-\u9fff\-]+$', name):
+            return {"success": False, "error": "快捷指令名称包含非法字符"}
         cp = subprocess.run(
             ["shortcuts", "run", name],
             check=False, capture_output=True, text=True, timeout=30,

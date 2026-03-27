@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R11审计: 498处静默异常修复 + 11处前端命名修复 + 2个死模块接入 | 980/980 passed)
+> 最后更新: 2026-03-28 (R13审计: 前端7项功能接入+后端6处关键Bug修复+安全4项+TS零错误+980/980 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -74,7 +74,6 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| _(无阻塞项)_ | | | | |
 | HI-258 | `backend` | `bot/__init__.py` | 循环导入: telegram_ux ↔ bot (连锁加载10个Mixin) | 清除 `__init__.py` 中的模块级 `import MultiBot`（无消费者使用此便捷导入） | 2026-03-27 | 第四轮产品跃迁 |
 
 ### 🟠 重要
@@ -83,6 +82,8 @@
 |----|------|------|------|----------|
 | HI-277 | `deploy` | VPS failover | Mac 恢复后无 VPS 退让机制 — 可能导致双节点同时运行 Bot | 2026-03-27 |
 | HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 (已新建 vps_failover_check.sh) | 2026-03-27 |
+| HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在 | 2026-03-28 |
+| HI-349 | `security` | `code_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 — 需OS级隔离 | 2026-03-28 |
 
 ### 🟡 一般
 
@@ -91,6 +92,7 @@
 | HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
 | HI-282 | `backend` | `litellm_router.py` | 6个废弃方法未清理 (acquire/release/save/load/record_success/record_error) | 2026-03-27 |
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
+| HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
 
 ### 🔵 低优先
 
@@ -104,6 +106,16 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-357 | `security` | `.gitignore` | .openclaw/agents/ 和 identity/ 未在.gitignore中排除 | 添加安全敏感目录到.gitignore + git rm --cached移除42个文件 | 2026-03-28 | R13审计 |
+| HI-356 | `security` | `life_automation.py` | open_app/run_shortcut接受未验证用户输入(可执行任意应用) | 添加18项安全白名单+快捷指令名称校验 | 2026-03-28 | R13审计 |
+| HI-355 | `security` | `deploy_client.py` | cmd.split()替代shlex.split()存在命令注入风险 | 替换为shlex.split(cmd) | 2026-03-28 | R13审计 |
+| HI-354 | `backend` | `reentry_queue.py` | dict\|None语法不兼容Python 3.9(CI矩阵包含3.9) | 改为Optional[dict] | 2026-03-28 | R13审计 |
+| HI-353 | `backend` | `alpaca_bridge.py` | Mock数据无明确标识,用户可能误认为真实交易数据 | 添加⚠️模拟数据标签+logger.warning | 2026-03-28 | R13审计 |
+| HI-352 | `backend` | `multi_main.py` | 关机时subprocess.run阻塞异步事件循环+bots[0].bot属性不存在 | asyncio.to_thread包装+修正为bots[0].app.bot | 2026-03-28 | R13审计 |
+| HI-351 | `backend` | `multi_bot.py`, `notify_style.py` | pass后跟logger.debug(6处死代码,日志永远无法记录) | 移除pass,保留logger.debug作为except块体 | 2026-03-28 | R13审计 |
+| HI-347 | `backend` | `requirements.txt` | pyautogui/pyobjc在Linux部署时安装失败 | 添加sys_platform=='darwin'条件标记 | 2026-03-28 | R13审计 |
+| HI-346 | `frontend` | `App.tsx` | Evolution页面(569行)已实现但未接入路由,用户无法访问 | 添加PageType+lazy import+Sidebar菜单+Header标题 | 2026-03-28 | R13审计 |
+| HI-345 | `frontend` | `App.tsx` | CommandPalette(Cmd+K)已实现但未挂载到DOM | 在App主组件中渲染\<CommandPalette/\> | 2026-03-28 | R13审计 |
 | HI-344 | `deploy` | VPS | VPS代码过时+pandas依赖缺失+failover状态卡在active | rsync同步最新代码+pip install依赖+重置failover为standby | 2026-03-28 | R12审计 |
 | HI-343 | `frontend` | tauri.ts | 34个后端API命令前端未封装,桌面端无法调用 | 补入34个API函数+修正3个参数名 | 2026-03-28 | R12审计 |
 | HI-342 | `backend` | cmd_trading_mixin.py | 回测高级功能(蒙特卡洛/参数优化/前进分析)已实现但无用户入口 | /backtest monte/optimize/walkforward 子命令+中文触发词 | 2026-03-28 | R12审计 |
