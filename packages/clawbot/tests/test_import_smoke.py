@@ -42,6 +42,11 @@ MODULES_TO_TEST = [
     # 新增: 核心执行模块
     "src.execution.life_automation",
     "src.deployer.deploy_client",
+    # 新增: R18 拆分模块
+    "src.core.brain_graph_builders",
+    "src.core.brain_executors",
+    "src.execution.bookkeeping",
+    "src.execution.tracking",
 ]
 
 
