@@ -41,7 +41,7 @@ class MonitorManager:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute("SELECT * FROM monitors ORDER BY id DESC").fetchall()
                 return [dict(r) for r in rows]
-        except Exception:
+        except Exception as e:  # noqa: F841
             return []
 
     def remove_monitor(self, keyword=None) -> dict:

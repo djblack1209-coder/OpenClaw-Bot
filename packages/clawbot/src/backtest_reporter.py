@@ -673,7 +673,7 @@ class BokehVisualizer:
             if val is not None:
                 try:
                     formatted = format(val, fmt.lstrip(':')) if fmt else str(val)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:  # noqa: F841
                     formatted = str(val)
                 lines.append(f"{label}: {formatted}{suffix}")
         return "\n".join(lines)

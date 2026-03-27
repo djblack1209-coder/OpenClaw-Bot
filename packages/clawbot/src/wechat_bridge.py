@@ -242,7 +242,7 @@ def send_to_wechat_sync(text: str, user_id: Optional[str] = None) -> bool:
     try:
         try:
             loop = asyncio.get_running_loop()
-        except RuntimeError:
+        except RuntimeError as e:  # noqa: F841
             loop = None
         if loop and loop.is_running():
             # 在已有事件循环中，用线程池执行

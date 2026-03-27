@@ -235,5 +235,5 @@ def load_weights(path: str = None) -> Dict[str, float]:
     try:
         payload = json.loads(Path(path).read_text())
         return payload.get("weights", DEFAULT_WEIGHTS.copy())
-    except Exception:
+    except Exception as e:  # noqa: F841
         return DEFAULT_WEIGHTS.copy()

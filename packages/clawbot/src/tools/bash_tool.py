@@ -39,7 +39,7 @@ class BashTool:
             # 取命令名 (去掉路径前缀，如 /usr/bin/ls → ls)
             cmd_name = os.path.basename(args[0])
             return cmd_name in self.ALLOWED_COMMANDS
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             # shlex 解析失败 (如未闭合引号)，拒绝执行
             return False
     
@@ -100,7 +100,7 @@ class BashTool:
             try:
                 stdout, stderr = self.current_process.communicate(timeout=cmd_timeout)
                 returncode = self.current_process.returncode
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as e:  # noqa: F841
                 # 超时，终止进程
                 if os.name != 'nt':
                     os.killpg(os.getpgid(self.current_process.pid), signal.SIGTERM)

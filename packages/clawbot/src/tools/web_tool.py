@@ -40,7 +40,7 @@ class WebTool:
                     text = re.sub(r'\n{3,}', '\n\n', text)
                     return {"success": True, "url": url, "title": title, "content": text[:10000]}
                     
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:  # noqa: F841
             return {"success": False, "error": "请求超时"}
         except Exception as e:
             return {"success": False, "error": str(e)}

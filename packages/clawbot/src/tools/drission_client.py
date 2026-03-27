@@ -183,7 +183,7 @@ class DrissionBrowser:
             try:
                 el = page.ele(selector)
                 return el.text if el else ""
-            except Exception:
+            except Exception as e:  # noqa: F841
                 return ""
         return page.html
 
@@ -202,7 +202,7 @@ class DrissionBrowser:
             el = page.ele(selector)
             if el:
                 return el.attr(attr)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         return None
 
@@ -219,7 +219,7 @@ class DrissionBrowser:
         try:
             elements = page.eles(selector)
             return [el.text for el in elements if el]
-        except Exception:
+        except Exception as e:  # noqa: F841
             return []
 
     # ── 截图与调试 ─────────────────────────────────────
@@ -288,7 +288,7 @@ class DrissionBrowser:
         if self._page:
             try:
                 self._page.quit()
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
             self._page = None
             logger.info("[DrissionBrowser] 浏览器已关闭 profile=%s", self._profile)

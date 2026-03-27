@@ -385,7 +385,7 @@ class BasicCommandsMixin:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}/health")
                 gateway_status = "在线" if resp.status_code == 200 else "异常"
-        except Exception:
+        except Exception as e:  # noqa: F841
             gateway_status = "离线"
 
         # 免费 API 池状态
@@ -775,7 +775,7 @@ class BasicCommandsMixin:
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── /memory 命令 — 搬运自 mem0 的用户记忆管理 + karfly 的分页模式 ──
@@ -940,7 +940,7 @@ class BasicCommandsMixin:
                     text, parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                 )
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def handle_notify_action_callback(self, update, context):
@@ -1059,7 +1059,7 @@ class BasicCommandsMixin:
                             card, parse_mode="HTML",
                         ),
                     ))
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # 2. 记忆搜索
@@ -1080,7 +1080,7 @@ class BasicCommandsMixin:
                                 f"🧠 {val}",
                             ),
                         ))
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # 3. 命令快捷入口
@@ -1103,7 +1103,7 @@ class BasicCommandsMixin:
 
         try:
             await query.answer(results[:10], cache_time=30)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── /tts 命令 — 文字转语音 (edge-tts 10K⭐) ──
@@ -1191,7 +1191,7 @@ class BasicCommandsMixin:
             try:
                 from src.telegram_markdown import md_to_html
                 safe = md_to_html(result)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 import html as _html
                 safe = _html.escape(result)
 
@@ -1201,7 +1201,7 @@ class BasicCommandsMixin:
             # Delete the "thinking" message
             try:
                 await msg.delete()
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
         except Exception as e:

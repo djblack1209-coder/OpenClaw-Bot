@@ -47,7 +47,7 @@ class AutoShipper:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except Exception as e:  # noqa: F841
             conn.rollback()
             raise
         finally:
@@ -113,7 +113,7 @@ class AutoShipper:
                         (item_id, spec, card)
                     )
                     added += 1
-                except sqlite3.IntegrityError:
+                except sqlite3.IntegrityError as e:  # noqa: F841
                     duplicates += 1
         logger.info("[AutoShipper] 添加卡券: item=%s, 成功=%d, 重复=%d", item_id, added, duplicates)
         return {"added": added, "duplicates": duplicates}

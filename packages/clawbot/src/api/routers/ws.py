@@ -54,7 +54,7 @@ async def broadcast_event(event_type: WSMessageType, data: dict = None):
     for client in _clients:
         try:
             await client.send_text(message)
-        except Exception:
+        except Exception as e:  # noqa: F841
             disconnected.add(client)
 
     _clients.difference_update(disconnected)
@@ -101,7 +101,7 @@ async def websocket_events(websocket: WebSocket):
                 # Echo ping
                 if data == "ping":
                     await websocket.send_text("pong")
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:  # noqa: F841
                 # Drain buffered events on timeout too
                 while _event_buffer:
                     event = _event_buffer.popleft()
@@ -109,9 +109,9 @@ async def websocket_events(websocket: WebSocket):
                 # Send heartbeat
                 try:
                     await websocket.send_json({"type": "heartbeat", "timestamp": now_et().isoformat()})
-                except Exception:
+                except Exception as e:  # noqa: F841
                     break
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as e:  # noqa: F841
         pass
     except Exception as e:
         logger.debug("WebSocket error: %s", e)

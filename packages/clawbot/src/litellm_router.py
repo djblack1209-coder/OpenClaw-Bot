@@ -490,7 +490,7 @@ class LiteLLMPool:
                 if cached is not None:
                     logger.debug(f"[LiteLLMPool] cache HIT key={cache_key[:16]}… model={model}")
                     return cached
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)  # Cache read error → fall through to LLM
 
         start = time.time()
@@ -515,14 +515,14 @@ class LiteLLMPool:
                 try:
                     cost = litellm.completion_cost(completion_response=response)
                     self._total_cost += cost
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
 
             # ---- Store to cache ----
             if use_cache:
                 try:
                     _llm_cache_set(cache_key, response, cache_ttl)
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)  # Cache write error → ignore
 
             return response
@@ -576,7 +576,7 @@ class LiteLLMPool:
                     completion_tokens=completion_tokens,
                 )
                 self._total_cost += cost
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     # ---- 兼容旧接口 ----
@@ -765,7 +765,7 @@ class LiteLLMPool:
                 timeout=timeout,
             )
             return {"status": "ok"}
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:  # noqa: F841
             return {"status": "unreachable", "error": f"Timeout ({timeout}s)"}
         except Exception as e:
             err_str = _scrub_secrets(str(e))

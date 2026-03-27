@@ -29,7 +29,7 @@ class MemoryTool:
             try:
                 with open(self.storage_path, 'r', encoding='utf-8') as f:
                     self.memories = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as e:  # noqa: F841
                 self.memories = {}
     
     def _save(self):

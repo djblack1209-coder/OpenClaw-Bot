@@ -38,7 +38,7 @@ class TradingJournal:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except Exception as e:  # noqa: F841
             conn.rollback()
             raise
         finally:
@@ -623,7 +623,7 @@ class TradingJournal:
             try:
                 dt = datetime.strptime(r['d'], '%Y-%m-%d')
                 date_labels.append(f"{dt.month}/{dt.day}")
-            except Exception:
+            except Exception as e:  # noqa: F841
                 date_labels.append(r['d'] or '?')
 
         return (equity_values, date_labels)
@@ -898,7 +898,7 @@ class TradingJournal:
                 actual_close = quote.get('price', 0)
                 if actual_close <= 0:
                     continue
-            except Exception:
+            except Exception as e:  # noqa: F841
                 continue
 
             # 计算实际方向

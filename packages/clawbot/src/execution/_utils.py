@@ -38,7 +38,7 @@ def safe_int(raw=None, default=0):
         if raw is None:
             return default
         return int(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -47,7 +47,7 @@ def safe_float(raw=None, default=0.0):
         if raw is None:
             return default
         return float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -106,7 +106,7 @@ def extract_json_object(text=None):
                 payload = jloads(match.group(1))
                 if isinstance(payload, dict):
                     return payload
-            except Exception:
+            except Exception as e:  # noqa: F841
                 continue
     start = text.find("{")
     end = text.rfind("}")
@@ -115,7 +115,7 @@ def extract_json_object(text=None):
             payload = jloads(text[start : end + 1])
             if isinstance(payload, dict):
                 return payload
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
     return None
 

@@ -133,7 +133,7 @@ class IntentLLMOutput(BaseModel):
         # 安全地转换 task_type，无效值降级为 UNKNOWN
         try:
             task_type = TaskType(self.task_type)
-        except ValueError:
+        except ValueError as e:
             logger.warning(
                 f"LLM 返回未知 task_type: {self.task_type!r}，降级为 UNKNOWN"
             )
@@ -352,7 +352,7 @@ class IntentParser:
                                 known_params["_keywords"] = [
                                     {"word": w, "weight": round(s, 3)} for w, s in keywords
                                 ]
-                        except Exception:
+                        except Exception as e:
                             logger.debug("Silenced exception", exc_info=True)
 
                     # 投资类: 自动将中文名转为 ticker
@@ -429,7 +429,7 @@ class IntentParser:
 
             try:
                 task_type = TaskType(task_type_str)
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 return None
 
             logger.info(
@@ -444,7 +444,7 @@ class IntentParser:
                 raw_message=message,
             )
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             logger.debug("[IntentParser] LLM 分类超时")
             return None
         except Exception as e:
@@ -590,7 +590,7 @@ class IntentParser:
             parsed = json_repair.loads(raw_text)
             if not isinstance(parsed, dict):
                 raise ValueError("json_repair did not return a dict")
-        except Exception:
+        except Exception as e:  # noqa: F841
             json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
             if json_match:
                 parsed = json.loads(json_match.group())
@@ -601,7 +601,7 @@ class IntentParser:
         try:
             llm_output = IntentLLMOutput.model_validate(parsed)
             return llm_output.to_parsed_intent(raw_message=message)
-        except Exception:
+        except Exception as e:  # noqa: F841
             # 最终降级: 手动 dict 映射（兼容任何畸形 JSON）
             return ParsedIntent(
                 goal=parsed.get("goal", message),

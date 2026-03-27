@@ -52,7 +52,7 @@ class InvestCommandsMixin:
             entry_price = float(args[1])
             stop_loss = float(args[2])
             take_profit = float(args[3]) if len(args) > 3 else 0
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             await update.message.reply_text("❌ 价格必须是数字。用法: /calc TSLA 195 190")
             return
 
@@ -324,7 +324,7 @@ class InvestCommandsMixin:
         symbol = args[0].upper()
         try:
             quantity = float(args[1])
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             await update.message.reply_text("数量必须是数字")
             return
         # FIX 2: 校验正数
@@ -334,7 +334,7 @@ class InvestCommandsMixin:
         if len(args) >= 3:
             try:
                 price = float(args[2])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("价格必须是数字")
                 return
         else:
@@ -373,8 +373,9 @@ class InvestCommandsMixin:
                     current_positions = [{"symbol": k, "quantity": v.get("quantity", 0), "avg_price": v.get("avg_price", 0)} for k, v in positions.items()]
                 elif isinstance(positions, list):
                     current_positions = positions
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             check = rm.check_trade(symbol=symbol, side="BUY", quantity=quantity,
                                    entry_price=price, stop_loss=sl,
                                    current_positions=current_positions)
@@ -460,8 +461,9 @@ class InvestCommandsMixin:
                     await bus.publish("trade.executed", trade_data)
             except Exception as e:
                 logger.debug("交易事件发布失败: %s", e)
-        except Exception:
+        except Exception as e:
             pass  # 闭环增强不影响主流程
+            logger.debug("静默异常: %s", e)
 
     @requires_auth
     @with_typing
@@ -479,7 +481,7 @@ class InvestCommandsMixin:
         symbol = args[0].upper()
         try:
             quantity = float(args[1])
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             await update.message.reply_text("数量必须是数字")
             return
         # FIX 2: 校验正数
@@ -489,7 +491,7 @@ class InvestCommandsMixin:
         if len(args) >= 3:
             try:
                 price = float(args[2])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("价格必须是数字")
                 return
         else:
@@ -618,7 +620,7 @@ class InvestCommandsMixin:
         if args:
             try:
                 limit = int(args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("⚠️ 数量参数无效 '%s'，使用默认值10" % args[0])
         trades = portfolio.get_trades(limit=limit)
         if not trades:
@@ -758,8 +760,9 @@ class InvestCommandsMixin:
                             })
                     if months:
                         summary_data = {"months": months}
-                except Exception:
+                except Exception as e:
                     pass  # 汇总获取失败不影响明细导出
+                    logger.debug("静默异常: %s", e)
                 from src.tools.export_service import export_expenses
                 buf = export_expenses(expenses, summary=summary_data, format=fmt)
                 filename = f"expenses_{days}d.{fmt}"
@@ -802,7 +805,7 @@ class InvestCommandsMixin:
                 if len(args) >= 2:
                     try:
                         limit = int(args[1])
-                    except ValueError:
+                    except ValueError as e:  # noqa: F841
                         pass
                 trades = portfolio.get_trades(limit=limit)
                 if not trades:
@@ -862,7 +865,7 @@ class InvestCommandsMixin:
         if args:
             try:
                 capital = float(args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("⚠️ 资金参数无效 '%s'，使用默认值$100,000" % args[0])
         result = portfolio.reset_portfolio(initial_capital=capital)
         await update.message.reply_text(

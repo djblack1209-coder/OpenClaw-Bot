@@ -147,7 +147,7 @@ class TradingCommandsMixin:
                         chart = generate_portfolio_pie(pie_data)
                         await send_chart(update, context, chart, caption="📊 持仓分布")
                     return
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)  # 降级到原有文字格式
 
             await update.message.reply_text(status_text)
@@ -222,7 +222,7 @@ class TradingCommandsMixin:
                         # 发送纯文本摘要 + 提示有详细报告
                         summary = format_multi_report(reports)
                         summary += "\n\n📊 详细图表报告已生成（含权益曲线、回撤图、策略对比）"
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         summary = format_multi_report(reports)
                     if len(summary) > 4000:
                         for part in summary.split("\n\n"):
@@ -281,7 +281,7 @@ class TradingCommandsMixin:
                             reporter = BacktestReporter()
                             enhanced = reporter.generate_report(report)
                             result_text += "\n📊 详细图表报告已生成（权益曲线、回撤、交易明细）"
-                        except Exception:
+                        except Exception as e:
                             logger.debug("Silenced exception", exc_info=True)
                         try:
                             from src.telegram_ux import generate_equity_chart, generate_pnl_chart, send_chart

@@ -156,8 +156,9 @@ class ExecutionHub:
             if self.news_fetcher:
                 try:
                     items = await self.news_fetcher.fetch_from_google_news_rss(query, count=5)
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
             curated = self._curate_monitor_items(items or [], limit=3)
             util = utility_profile(plan.get("topic", ""))
             candidates.append({
@@ -567,8 +568,9 @@ class ExecutionHub:
                 try:
                     subprocess.run(["open", url], check=False, timeout=5)
                     opened.append(url)
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
         return {"success": True, "opened": len(opened)}
 
     # ── 场景12: X 平台高级功能 ──────────────────────────────

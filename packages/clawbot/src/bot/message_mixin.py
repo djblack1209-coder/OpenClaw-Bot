@@ -303,7 +303,7 @@ class MessageHandlerMixin:
                 payload = jloads(match.group(1))
                 if isinstance(payload, dict):
                     return payload
-            except Exception:
+            except Exception as e:  # noqa: F841
                 continue
         # 回退：直接找 JSON 对象
         start = text.find('{')
@@ -313,7 +313,7 @@ class MessageHandlerMixin:
                 payload = jloads(text[start:end + 1])
                 if isinstance(payload, dict):
                     return payload
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         return None
 
@@ -627,8 +627,9 @@ class MessageHandlerMixin:
                 "🚧 此功能正在开发中，暂时无法继续工作流。\n"
                 "请直接描述您的需求，我会用标准模式为您服务。"
             )
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
     
     async def handle_message(self, update, context):
@@ -669,8 +670,9 @@ class MessageHandlerMixin:
         # 用户超过 4 小时没互动后回来，在首条回复前生成"离线期间发生了什么"摘要
         try:
             _session_gap_handled = await self._check_session_resumption(chat_id, user.id, update, context)
-        except Exception:
+        except Exception as e:
             pass  # 会话恢复失败不影响主流程
+            logger.debug("静默异常: %s", e)
 
         # ── 纠错检测 — 搬运 ChatGPT correction handling ──────
         # 用户说"不对/说错了/我说的是X不是Y"时，把上一轮上下文 + 纠正指令合并重新处理
@@ -690,8 +692,9 @@ class MessageHandlerMixin:
                             _prev_context = " | ".join(
                                 m.get("content", "")[:200] for m in _recent
                             )
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
                 # 拼接纠正上下文到消息，让 LLM/Brain 理解这是纠正
                 _corrected_msg = f"[纠正上一条] {text}"
                 if _prev_context:
@@ -701,8 +704,9 @@ class MessageHandlerMixin:
                 # 发送确认
                 from src.bot.error_messages import correction_ack
                 await update.message.reply_text(correction_ack())
-        except Exception:
+        except Exception as e:
             pass  # 纠错检测失败不影响主流程
+            logger.debug("静默异常: %s", e)
 
         # ── Brain 追问回答路由 ──────────────────────────────
         # 如果上一条消息是 Brain 的追问（如"请问要分析哪只股票？"），
@@ -725,14 +729,15 @@ class MessageHandlerMixin:
                             _clarify_markup = _build_smart_reply_keyboard(
                                 _clarify_msg, self.bot_id, getattr(self, 'model', ''), chat_id
                             )
-                        except Exception:
+                        except Exception as e:
                             pass
+                            logger.debug("静默异常: %s", e)
                         try:
                             safe = md_to_html(_clarify_msg)
                             await update.message.reply_text(
                                 safe, parse_mode="HTML", reply_markup=_clarify_markup,
                             )
-                        except Exception:
+                        except Exception as e:  # noqa: F841
                             await update.message.reply_text(
                                 _clarify_msg, reply_markup=_clarify_markup,
                             )
@@ -762,7 +767,7 @@ class MessageHandlerMixin:
                         if not t.cancelled() and t.exception():
                             logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
                     _cmd_task.add_done_callback(_cmd_task_done)
-            except Exception:
+            except Exception as e:
                 logger.debug("SmartMemory 命令记录失败", exc_info=True)
             return  # Chinese command handled, skip LLM call
 
@@ -784,7 +789,7 @@ class MessageHandlerMixin:
                 if not quick_intent or not quick_intent.is_actionable:
                     try:
                         quick_intent = await _parser._try_llm_classify(text)
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         quick_intent = None
                 if quick_intent and quick_intent.is_actionable:
                     from src.core.brain import get_brain
@@ -808,8 +813,9 @@ class MessageHandlerMixin:
                                     user_msg, self.bot_id, getattr(self, 'model', ''), chat_id,
                                     ai_suggestions=_ai_suggestions,
                                 )
-                            except Exception:
+                            except Exception as e:
                                 pass
+                                logger.debug("静默异常: %s", e)
 
                             try:
                                 safe = md_to_html(user_msg)
@@ -817,7 +823,7 @@ class MessageHandlerMixin:
                                     safe, parse_mode="HTML",
                                     reply_markup=reply_markup,
                                 )
-                            except Exception:
+                            except Exception as e:  # noqa: F841
                                 await update.message.reply_text(
                                     user_msg,
                                     reply_markup=reply_markup,
@@ -838,7 +844,7 @@ class MessageHandlerMixin:
                                         _sm.on_message(chat_id, user.id, "assistant", user_msg[:1500], self.bot_id)
                                     )
                                     _brain_t2.add_done_callback(_brain_mem_done)
-                            except Exception:
+                            except Exception as e:
                                 logger.debug("Brain 路径 SmartMemory 写入失败", exc_info=True)
 
                             return
@@ -849,7 +855,7 @@ class MessageHandlerMixin:
                             try:
                                 safe = md_to_html(clarify_text)
                                 await update.message.reply_text(safe, parse_mode="HTML")
-                            except Exception:
+                            except Exception as e:  # noqa: F841
                                 await update.message.reply_text(clarify_text)
                             return
             except Exception as e:
@@ -884,7 +890,7 @@ class MessageHandlerMixin:
                     "（或者直接告诉我更具体的需求）",
                     reply_markup=InlineKeyboardMarkup(_fuzzy_rows),
                 )
-            except Exception:
+            except Exception as e:
                 logger.debug("模糊引导按钮发送失败", exc_info=True)
 
         # 消息频率限制 — 防止用户刷屏导致 API 过载
@@ -895,7 +901,7 @@ class MessageHandlerMixin:
                 logger.info("[%s] 消息频率限制: %s (user=%s)", self.name, reason, user.id)
                 try:
                     await update.message.reply_text("⏳ 请稍等，消息发送过于频繁。")
-                except Exception:
+                except Exception as e:
                     logger.debug("频率限制回复失败", exc_info=True)
                 return
 
@@ -930,7 +936,7 @@ class MessageHandlerMixin:
                     text=text[:200],
                     bot_id=getattr(self, 'bot_id', ''),
                 ))
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)  # 优先级队列不影响主流程
 
         # 智能记忆管道 — 记录用户消息（异步，不阻塞）
@@ -975,9 +981,9 @@ class MessageHandlerMixin:
                         phase_idx = min(phase_idx + 1, len(_thinking_phases) - 1)
                         try:
                             await sent_message.edit_text(_thinking_phases[phase_idx])
-                        except Exception:
+                        except Exception as e:  # noqa: F841
                             break
-                except asyncio.CancelledError:
+                except asyncio.CancelledError as e:  # noqa: F841
                     pass
 
             _thinking_task = asyncio.create_task(_animate_thinking())
@@ -998,7 +1004,7 @@ class MessageHandlerMixin:
                                 message_id=sent_message.message_id,
                                 text=prev_text[:TG_MSG_LIMIT],
                             )
-                        except BadRequest:
+                        except BadRequest as e:  # noqa: F841
                             pass
                     # P1-A: 溢出分段保留格式化渲染
                     remaining = content[TG_MSG_LIMIT:]
@@ -1010,7 +1016,7 @@ class MessageHandlerMixin:
                             sent_message = await update.message.reply_text(
                                 safe_chunk, parse_mode="HTML"
                             )
-                        except Exception:
+                        except Exception as e:
                             try:
                                 sent_message = await update.message.reply_text(chunk)
                             except Exception as e:
@@ -1063,7 +1069,7 @@ class MessageHandlerMixin:
                                 display = md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
-                            except Exception:
+                            except Exception as e:  # noqa: F841
                                 display = (content + f"\n\n`— {getattr(self, 'name', self.bot_id)}`")[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.MARKDOWN
                         else:
@@ -1102,7 +1108,7 @@ class MessageHandlerMixin:
                                 )
                                 prev_text = content
                                 last_edit_time = _time.monotonic()
-                            except BadRequest:
+                            except BadRequest as e:  # noqa: F841
                                 pass
                         else:
                             backoff_multiplier = min(backoff_multiplier * 2, 16.0)
@@ -1110,7 +1116,7 @@ class MessageHandlerMixin:
                     except RetryAfter as e:
                         backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                         await asyncio.sleep(e.retry_after)
-                    except TimedOut:
+                    except TimedOut as e:  # noqa: F841
                         backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                         await asyncio.sleep(0.5)
                     except Exception as e:
@@ -1137,7 +1143,7 @@ class MessageHandlerMixin:
                             parse_mode=constants.ParseMode.HTML,
                             reply_markup=fb_markup,
                         )
-                    except BadRequest:
+                    except BadRequest as e:
                         try:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
@@ -1145,7 +1151,7 @@ class MessageHandlerMixin:
                                 text=reply[:TG_MSG_LIMIT],
                                 reply_markup=fb_markup,
                             )
-                        except Exception:
+                        except Exception as e:
                             logger.debug("Silenced exception", exc_info=True)
                 else:
                     # 空回复 — 更新占位符
@@ -1155,7 +1161,7 @@ class MessageHandlerMixin:
                             message_id=sent_message.message_id,
                             text=error_ai_busy(),
                         )
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                     logger.info(f"[{self.bot_id}] 空回复 (chat={chat_id})")
 
@@ -1171,7 +1177,7 @@ class MessageHandlerMixin:
                     audio_bytes = await text_to_voice(final_content)
                     if audio_bytes:
                         await update.message.reply_voice(io.BytesIO(audio_bytes))
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)  # 语音是可选功能，不阻塞主流程
 
         except Exception as e:
@@ -1187,7 +1193,7 @@ class MessageHandlerMixin:
                             message_id=sent_message.message_id,
                             text=clean_text + "\n\n⚠️ 回复中断",
                         )
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
 
             # 分类错误提示 — 比"出错了"更有信息量
@@ -1205,16 +1211,16 @@ class MessageHandlerMixin:
             try:
                 from src.telegram_ux import send_error_with_retry
                 await send_error_with_retry(update, context, e, retry_command="")
-            except Exception:
+            except Exception as e:
                 try:
                     await update.message.reply_text(user_msg)
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
         finally:
             typing_task.cancel()
             try:
                 await typing_task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
 
     async def handle_voice(self, update, context):
@@ -1308,7 +1314,7 @@ class MessageHandlerMixin:
             while True:
                 await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
                 await asyncio.sleep(4.5)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as e:  # noqa: F841
             raise  # 让 finally 正常处理
         except Exception as e:
             # 网络错误等 — 静默退出但记录，不影响主流程
@@ -1387,8 +1393,9 @@ class MessageHandlerMixin:
                         movers.append(f"{sym} {pct:+.1f}%")
                 if movers:
                     summary_parts.append(f"📊 自选股异动: {', '.join(movers)}")
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         try:
             # 2. 闲鱼未读消息
@@ -1398,8 +1405,9 @@ class MessageHandlerMixin:
                 unread = xy.get_unread_count() if hasattr(xy, 'get_unread_count') else 0
                 if unread and unread > 0:
                     summary_parts.append(f"🛍️ 闲鱼 {unread} 条未读消息")
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         if not summary_parts:
             return False
@@ -1410,7 +1418,7 @@ class MessageHandlerMixin:
             greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
             await update.message.reply_text(greeting)
             return True
-        except Exception:
+        except Exception as e:  # noqa: F841
             return False
 
     async def handle_suggest_callback(self, update, context):
@@ -1468,8 +1476,9 @@ class MessageHandlerMixin:
                             getattr(self, 'model', ''), chat_id,
                             ai_suggestions=_suggestions,
                         )
-                    except Exception:
+                    except Exception as e:
                         pass
+                        logger.debug("静默异常: %s", e)
 
                     try:
                         from src.telegram_markdown import md_to_html
@@ -1478,7 +1487,7 @@ class MessageHandlerMixin:
                             safe, parse_mode="HTML",
                             reply_markup=reply_markup,
                         )
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         await query.message.reply_text(
                             user_msg, reply_markup=reply_markup,
                         )
@@ -1495,8 +1504,9 @@ class MessageHandlerMixin:
             logger.debug(f"处理追问建议按钮失败: {e}")
             try:
                 await query.message.reply_text(f"❌ 处理失败，请直接发送: {suggest_text}")
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
 
     async def handle_trade_callback(self, update, context):
         '''处理投资分析会议后的一键下单按钮回调

@@ -79,7 +79,7 @@ class WatchlistMonitor:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
         logger.info("📡 自选股异动监控已停止")
 
@@ -98,7 +98,7 @@ class WatchlistMonitor:
         while self._running:
             try:
                 await self._check_watchlist()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 break
             except Exception as e:
                 logger.debug(f"自选股异动检查异常 (将继续): {e}")
@@ -291,8 +291,9 @@ class WatchlistMonitor:
                         news = await nf.fetch_from_bing(sym, count=2)
                     if news:
                         news_map[sym] = news[0].get("title", "")
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
         except Exception as e:
             logger.debug(f"异动新闻搜索模块不可用: {e}")
 

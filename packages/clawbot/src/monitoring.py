@@ -205,7 +205,7 @@ class AlertRule:
             if self.condition_fn():
                 self.last_fired = now
                 return self.message_fn()
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         return None
 
@@ -416,7 +416,7 @@ class StructuredLogger:
         try:
             if path.stat().st_size < max_bytes:
                 return
-        except OSError:
+        except OSError as e:  # noqa: F841
             return
         # 轮转: events.jsonl.3 删除, .2 → .3, .1 → .2, events.jsonl → .1
         for i in range(max_backups, 0, -1):
@@ -606,7 +606,7 @@ class TaskObserver:
                         continue
                     try:
                         rec = json.loads(line)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:  # noqa: F841
                         continue
                     if rec.get("ts", "") < cutoff_iso:
                         continue
@@ -627,7 +627,7 @@ class TaskObserver:
                     entry["total_latency"] += rec.get("total_latency_ms", 0)
                     if qs > 0:
                         entry["quality_scores"].append(qs)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # 计算平均值
@@ -705,10 +705,11 @@ class HealthChecker:
                             "last_error": error,
                         }))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError:
+                    except RuntimeError as e:  # noqa: F841
                         pass
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
 
     def record_success(self, bot_id: str):
         """记录成功"""

@@ -114,7 +114,7 @@ def check_env() -> dict:
                 print(f"  ✅ {key}: {ver}")
             else:
                 print(f"  ❌ {key}: 未安装")
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             print(f"  ❌ {key}: 未安装")
         except Exception as e:
             logger.debug("[DeployClient] 异常: %s", e)
@@ -292,7 +292,7 @@ def install_openclaw(config: dict):
                 print(f"  ✅ Ollama: {r.stdout.strip()}")
             else:
                 raise FileNotFoundError
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             print("  安装 Ollama（本地模型运行引擎）...")
             os_type = detect_os()
             if os_type == "macos":
@@ -338,7 +338,7 @@ def verify_install():
         else:
             print("  ⚠️ openclaw 命令未找到")
             report.append("OpenClaw: 未找到")
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print("  ⚠️ openclaw 命令未找到")
         report.append("OpenClaw: 未找到")
 

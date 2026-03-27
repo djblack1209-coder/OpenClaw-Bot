@@ -57,7 +57,7 @@ def env_int(key: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -68,7 +68,7 @@ def env_float(key: str, default: float) -> float:
         return default
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 import json

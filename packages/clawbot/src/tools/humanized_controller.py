@@ -438,7 +438,7 @@ class HumanizedController:
             location = pyautogui.locateCenterOnScreen(
                 image_path, confidence=confidence, grayscale=grayscale)
             return location
-        except pyautogui.ImageNotFoundException:
+        except pyautogui.ImageNotFoundException as e:  # noqa: F841
             return None
         except Exception as e:
             # opencv 未安装时 confidence 参数不可用

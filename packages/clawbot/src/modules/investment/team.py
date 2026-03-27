@@ -324,7 +324,7 @@ class InvestmentTeam:
                 {"symbol": symbol, "analysis": analysis.to_dict()},
                 source="investment_team",
             )
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         logger.info(f"[投资团队] {symbol} 分析完成: {analysis.final_recommendation}")
@@ -359,7 +359,7 @@ class InvestmentTeam:
                 if social_signal:
                     data["social_signal"] = social_signal
                     data["social_sentiment"] = "热门讨论中"
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
             # 用 LLM 分析
@@ -592,7 +592,7 @@ class InvestmentTeam:
             quote = await get_quote(symbol)
             if quote and isinstance(quote, dict):
                 data.update({k: v for k, v in quote.items() if k not in data})
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         return data if data else {"error": "无数据", "symbol": symbol}
@@ -642,7 +642,7 @@ class InvestmentTeam:
                     "total_value": portfolio.get("total_value", 0),
                     "cash": portfolio.get("cash", 0),
                 }
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         return {"positions": [], "total_value": 0, "cash": 0, "note": "券商未连接"}
 
@@ -670,7 +670,7 @@ class InvestmentTeam:
             try:
                 import json_repair
                 return json_repair.loads(raw)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 import re
                 match = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
                 if match:
@@ -738,10 +738,11 @@ class StrategyHealthMonitor:
                             "backtest_return": backtest_return,
                         }))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError:
+                    except RuntimeError as e:  # noqa: F841
                         pass
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             return reason
         return None
 

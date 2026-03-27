@@ -1258,7 +1258,7 @@ class StreamingResponse:
         while True:
             try:
                 chunk = await asyncio.wait_for(self._queue.get(), timeout=60)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 logger.warning("[Streaming] Queue read timeout — producer may have crashed")
                 break
             if chunk is None:

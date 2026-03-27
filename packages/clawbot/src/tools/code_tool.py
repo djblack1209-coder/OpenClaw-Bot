@@ -84,7 +84,7 @@ class CodeTool:
                 "returncode": result.returncode
             }
             
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:  # noqa: F841
             return {"success": False, "error": f"执行超时 ({self.timeout}秒)"}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -135,9 +135,9 @@ process.exit = () => { throw new Error('process.exit 被禁用'); };
                 "returncode": result.returncode
             }
             
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:  # noqa: F841
             return {"success": False, "error": f"执行超时 ({self.timeout}秒)"}
-        except FileNotFoundError:
+        except FileNotFoundError as e:  # noqa: F841
             return {"success": False, "error": "Node.js 未安装"}
         except Exception as e:
             return {"success": False, "error": str(e)}

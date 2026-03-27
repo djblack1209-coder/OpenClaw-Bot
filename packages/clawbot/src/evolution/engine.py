@@ -381,7 +381,7 @@ class EvolutionEngine:
                     try:
                         from src.synergy import get_synergy
                         await get_synergy().on_evolution_proposal(proposal.to_dict())
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
 
                     # 高价值 + 低风险 → 自动批准
@@ -569,7 +569,7 @@ class EvolutionEngine:
         # 尝试直接解析
         try:
             return json.loads(text.strip())
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:  # noqa: F841
             pass
 
         # 尝试从 markdown 代码块中提取
@@ -577,7 +577,7 @@ class EvolutionEngine:
         if json_match:
             try:
                 return json.loads(json_match.group(1).strip())
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:  # noqa: F841
                 pass
 
         # 尝试找到第一个 { 和最后一个 }
@@ -586,7 +586,7 @@ class EvolutionEngine:
         if start != -1 and end != -1 and end > start:
             try:
                 return json.loads(text[start:end + 1])
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:  # noqa: F841
                 pass
 
         return None
@@ -681,14 +681,14 @@ class EvolutionEngine:
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 lines = f.readlines()
-        except Exception:
+        except Exception as e:  # noqa: F841
             return []
 
         results = []
         for line in reversed(lines[-limit:]):
             try:
                 results.append(json.loads(line.strip()))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:  # noqa: F841
                 continue
 
         return results
@@ -730,7 +730,7 @@ class EvolutionEngine:
                 proposal_data,
                 source="evolution_engine",
             )
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # ──────────────── Stats ────────────────

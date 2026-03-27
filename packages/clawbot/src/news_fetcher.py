@@ -153,7 +153,7 @@ class NewsFetcher:
                         "source": s.group(1) if s else "",
                     })
             return news
-        except Exception:
+        except Exception as e:  # noqa: F841
             return []
 
     @staticmethod

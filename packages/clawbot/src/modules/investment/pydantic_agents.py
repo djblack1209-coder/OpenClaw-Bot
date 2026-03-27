@@ -321,7 +321,7 @@ class PydanticInvestmentEngine:
             # Pydantic 校验
             try:
                 parsed = output_type.model_validate_json(raw)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 import json_repair
                 data_dict = json_repair.loads(raw)
                 parsed = output_type.model_validate(data_dict)
@@ -369,7 +369,7 @@ class PydanticInvestmentEngine:
             news = await fetch_news_about(f"{data.get('name', symbol)} stock news", max_length=800)
             if news and len(news) > 20:
                 data["recent_news"] = news
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         return data

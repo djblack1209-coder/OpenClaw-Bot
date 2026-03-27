@@ -476,8 +476,9 @@ def _cached_yfinance_get_quote(symbol: str) -> dict:
             data_date = result["_last_trade_date"]
             if data_date < today - timedelta(days=1):
                 result["_stale_warning"] = f"Data from {data_date}, today is {today}"
-    except Exception:
+    except Exception as e:
         pass  # staleness check is best-effort
+        logger.debug("静默异常: %s", e)
 
     _quote_cache[cache_key] = (now, result)
     return result
@@ -503,7 +504,7 @@ def _yfinance_get_quote_raw(symbol: str) -> dict:
         info = {}
         try:
             info = ticker.info
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         last_close = hist["Close"].iloc[-1]
@@ -515,8 +516,9 @@ def _yfinance_get_quote_raw(symbol: str) -> dict:
         last_trade_date = None
         try:
             last_trade_date = hist.index[-1].date()
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         return {
             "symbol": symbol.upper(),

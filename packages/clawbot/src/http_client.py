@@ -249,7 +249,7 @@ class ResilientHTTPClient:
             if retry_after:
                 try:
                     return min(float(retry_after), self.retry.max_delay)
-                except ValueError:
+                except ValueError as e:  # noqa: F841
                     pass
 
         delay = self.retry.base_delay * (self.retry.exponential_base ** attempt)

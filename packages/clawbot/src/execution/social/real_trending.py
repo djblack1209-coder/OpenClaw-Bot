@@ -199,7 +199,7 @@ async def fetch_real_trending(
                     source=item.get("source", "free_api"),
                     url="",
                 ))
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # 去重（按标题）

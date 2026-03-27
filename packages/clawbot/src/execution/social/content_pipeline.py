@@ -609,8 +609,9 @@ async def generate_content_calendar(days: int = 7) -> Dict:
         if best:
             hours_str = "、".join(f"{h}:00" for h in best[:3])
             best_hours_hint = f"根据历史数据，最佳发布时段: {hours_str}。"
-    except Exception:
+    except Exception as e:
         pass  # 获取失败不阻塞日历生成
+        logger.debug("静默异常: %s", e)
 
     prompt = (
         f"请为接下来 {days} 天生成一份社交媒体内容日历，"

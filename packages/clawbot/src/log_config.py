@@ -64,7 +64,7 @@ class InterceptHandler(logging.Handler):
         # 获取对应的 loguru level
         try:
             level = _loguru_logger.level(record.levelname).name
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             level = str(record.levelno)
 
         # 找到实际调用者的栈帧 (跳过 logging 内部帧)

@@ -5,6 +5,64 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R11 轮: 静默异常根治 + 前端命名修复 + 死模块接入
+
+> 领域: `backend` | `frontend`
+> 影响模块: 120个 Python 文件, tauri.ts, multi_main.py
+> 关联问题: HI-334~HI-337
+
+### 变更内容
+- 修复 498 处静默吞异常: 63处pass+logger.debug, 251处业务代码+as e, 147处具体异常+as e, 37处特殊异常+as e
+- 修复 11 处前端命令命名不匹配(clawbot_* → clawbot_api_*), 桌面端核心面板从全部报错恢复正常
+- 接入 2 个死模块: init_adaptive_router(自适应路由), init_goofish_monitor(闲鱼监控)
+- 部署验证: 8个LaunchAgent plist路径全部有效, 5个废弃模块确认清除, omega.yaml PLANNED标记准确
+
+### 文件变更
+- `packages/clawbot/src/**/*.py` — 120个文件中498处异常处理改进
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 11处命令名修复
+- `packages/clawbot/multi_main.py` — 接入自适应路由器和闲鱼监控初始化
+
+---
+
+## [2026-03-28] 修复 Tauri 命令命名 + 接入自适应路由器和闲鱼监控
+
+> 领域: `frontend` | `backend`
+> 影响模块: `tauri.ts`, `multi_main.py`
+> 关联问题: 无 (新发现的集成遗漏)
+
+### 变更内容
+- 修复前端 `tauri.ts` 中 11 处 Tauri 命令名缺少 `_api_` 前缀，导致前端调用与后端注册名不匹配
+- 在 `multi_main.py` 中接入 `init_adaptive_router()`（自适应路由器，动态调整 API 池路由权重）
+- 在 `multi_main.py` 中接入 `init_goofish_monitor()`（闲鱼监控，可选模块）
+- 两个新初始化均使用 try/except 包裹，失败不影响系统启动
+- 全部 980 测试通过，零回归
+
+### 文件变更
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 11 处 `clawbot_*` → `clawbot_api_*`
+- `packages/clawbot/multi_main.py` — 新增自适应路由器和闲鱼监控初始化
+
+---
+
+## [2026-03-28] 静默吞异常全量修复: 498 处 except 规范化
+
+> 领域: `backend`
+> 影响模块: 120 个 Python 文件 (`packages/clawbot/src/`)
+> 关联问题: HI-334
+
+### 变更内容
+- 修复 498 处静默吞异常 (silent exception swallowing)，覆盖 120 个源文件
+- 规则2: 63 处 `except Exception: pass` → 添加 `as e` + `logger.debug("静默异常: %s", e)`
+- 规则3: 251 处 `except Exception:` (有 body 无日志) → 添加 `as e` + `# noqa: F841`
+- 规则4: 147 处具体异常 (ValueError/TypeError 等) → 添加 `as e` + `# noqa: F841`
+- 规则6: 37 处 asyncio.CancelledError/RuntimeError/OSError → 添加 `as e` + `# noqa: F841`
+- 保留 153 处 `except ImportError:` 不修改 (可选依赖检测模式)
+- 全部 980 测试通过，零回归
+
+### 文件变更
+- `packages/clawbot/src/**/*.py` — 120 个文件的 except 块规范化
+
+---
+
 ## [2026-03-28] 全量审计第 R10 轮: 代码+前端+部署+SOP 大修
 
 > 领域: `backend` | `frontend` | `deploy` | `docs`

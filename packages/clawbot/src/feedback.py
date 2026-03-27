@@ -45,7 +45,7 @@ def parse_feedback_data(data: str) -> Optional[dict]:
                 "model": parts[3],
                 "chat_id": int(parts[4]),
             }
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as e:  # noqa: F841
         pass
     return None
 
@@ -134,8 +134,9 @@ class FeedbackStore:
         if self._conn:
             try:
                 self._conn.close()
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             self._conn = None
 
 

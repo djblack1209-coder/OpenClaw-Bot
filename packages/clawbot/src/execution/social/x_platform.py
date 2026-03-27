@@ -50,7 +50,7 @@ except ImportError:
 
 try:
     from src.utils import emit_flow_event as _emit_flow
-except Exception:
+except Exception as e:  # noqa: F841
     def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
         pass
 

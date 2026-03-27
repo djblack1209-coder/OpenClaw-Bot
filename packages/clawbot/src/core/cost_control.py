@@ -165,10 +165,11 @@ class CostController:
                             "usage_pct": self._today_spend / self._daily_budget,
                         }))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError:
+                    except RuntimeError as e:  # noqa: F841
                         pass
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
 
     def get_daily_spend(self) -> float:
         self._check_date_rollover()

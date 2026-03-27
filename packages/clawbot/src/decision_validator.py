@@ -585,7 +585,7 @@ class DecisionValidator:
 
         try:
             ts_float = float(ts)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:  # noqa: F841
             warnings.append(f"行情时间戳格式异常: {ts}")
             return issues, warnings
 

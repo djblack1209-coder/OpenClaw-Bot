@@ -35,7 +35,7 @@ class IBKRCommandsMixin:
         symbol = args[0].upper()
         try:
             qty = float(args[1])
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             await update.message.reply_text("数量必须是数字")
             return
         limit_price = 0
@@ -44,7 +44,7 @@ class IBKRCommandsMixin:
             try:
                 limit_price = float(args[2])
                 order_type = 'LMT'
-            except ValueError:
+            except ValueError as e:
                 await update.message.reply_text("⚠️ 限价格式无效 '%s'，将使用市价单" % args[2])
                 logger.warning("[IBKR] BUY限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
@@ -96,7 +96,7 @@ class IBKRCommandsMixin:
         symbol = args[0].upper()
         try:
             qty = float(args[1])
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             await update.message.reply_text("数量必须是数字")
             return
         limit_price = 0
@@ -105,7 +105,7 @@ class IBKRCommandsMixin:
             try:
                 limit_price = float(args[2])
                 order_type = 'LMT'
-            except ValueError:
+            except ValueError as e:
                 await update.message.reply_text("⚠️ 限价格式无效 '%s'，将使用市价单" % args[2])
                 logger.warning("[IBKR] SELL限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
@@ -157,7 +157,7 @@ class IBKRCommandsMixin:
             try:
                 order_id = int(args[0])
                 result = await ibkr.cancel_order(order_id)
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("订单号必须是数字")
                 return
         else:

@@ -53,7 +53,7 @@ def _auto_width(ws) -> None:
                 cell_len = len(str(cell.value or ""))
                 if cell_len > max_len:
                     max_len = cell_len
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 10), 40)
 

@@ -216,7 +216,7 @@ async def ocr_image(
         logger.info(f"[OCR] 成功: {len(text)} 字符, {tokens} tokens, user={user_id}")
         return OcrResult(ok=True, text=text, tokens_used=tokens)
 
-    except CircuitOpenError:
+    except CircuitOpenError as e:  # noqa: F841
         return OcrResult(ok=False, error="OCR 服务暂时不可用（熔断保护），请稍后重试")
     except Exception as e:
         logger.error(f"[OCR] 异常: {e}", exc_info=True)

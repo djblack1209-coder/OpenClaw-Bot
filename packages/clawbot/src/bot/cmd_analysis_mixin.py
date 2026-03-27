@@ -115,7 +115,7 @@ class AnalysisCommandsMixin:
         if context.args:
             try:
                 days = int(context.args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
         text = journal.format_performance(days)
         await send_long_message(update.effective_chat.id, text, context,
@@ -183,7 +183,7 @@ class AnalysisCommandsMixin:
                 for pi, part in enumerate(parts):
                     try:
                         await bot_tg.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         await bot_tg.send_message(chat_id=chat_id, text=part)
                     if pi < len(parts) - 1:
                         await asyncio.sleep(0.3)
@@ -257,7 +257,7 @@ class AnalysisCommandsMixin:
         if context.args:
             try:
                 days = int(context.args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text(
                     "⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
 
@@ -314,7 +314,7 @@ class AnalysisCommandsMixin:
         if context.args:
             try:
                 days = int(context.args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text(
                     "⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
 
@@ -392,7 +392,7 @@ class AnalysisCommandsMixin:
         if context.args:
             try:
                 limit = int(context.args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 pass
 
         try:
@@ -412,7 +412,7 @@ class AnalysisCommandsMixin:
                     from datetime import datetime
                     dt = datetime.fromisoformat(created)
                     date_str = dt.strftime("%m-%d %H:%M")
-                except Exception:
+                except Exception as e:  # noqa: F841
                     date_str = created[:16] if created else "未知"
 
                 # 星级评分 (基于 win_rate)

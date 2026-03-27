@@ -23,8 +23,9 @@ try:
     # 激活中文支持
     try:
         humanize.activate("zh_CN")
-    except Exception:
+    except Exception as e:
         pass  # 回退英文
+        logger.debug("静默异常: %s", e)
     _HAS_HUMANIZE = True
 except ImportError:
     humanize = None  # type: ignore[assignment]
@@ -63,7 +64,7 @@ def timestamp_tag() -> str:
     try:
         from src.utils import now_et
         return now_et().strftime("%H:%M ET")
-    except Exception:
+    except Exception as e:  # noqa: F841
         return now_et().strftime("%H:%M")
 
 
@@ -82,8 +83,9 @@ def natural_time(dt=None, future: bool = False) -> str:
                 from datetime import datetime as _dt
                 dt = _dt.fromtimestamp(dt)
             return humanize.naturaltime(dt, future=future)
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
     # 降级
     if dt is None:
         return "刚刚"
@@ -92,7 +94,7 @@ def natural_time(dt=None, future: bool = False) -> str:
         dt = _dt.fromtimestamp(dt)
     try:
         return dt.strftime("%m-%d %H:%M")
-    except Exception:
+    except Exception as e:  # noqa: F841
         return str(dt)
 
 
@@ -104,8 +106,9 @@ def natural_size(num_bytes: int) -> str:
     if _HAS_HUMANIZE and humanize is not None:
         try:
             return humanize.naturalsize(num_bytes)
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
     # 降级
     for unit in ['B', 'KB', 'MB', 'GB']:
         if num_bytes < 1024:
@@ -125,8 +128,9 @@ def natural_number(n) -> str:
             if isinstance(n, float) and n >= 1_000_000:
                 return humanize.intword(int(n))
             return humanize.intcomma(n)
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
     return f"{n:,}" if isinstance(n, (int, float)) else str(n)
 
 

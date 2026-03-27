@@ -126,7 +126,7 @@ class _ReportPDF(FPDF):
                             self.set_text_color(*_CLR_GREEN)
                         elif num < 0:
                             self.set_text_color(*_CLR_RED)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:  # noqa: F841
                     pass
                 self.cell(col_widths[i], 7, text_val, border=1, align="C", fill=True)
                 self.set_text_color(*_CLR_TEXT)

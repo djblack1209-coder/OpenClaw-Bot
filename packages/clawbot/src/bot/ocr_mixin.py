@@ -60,7 +60,7 @@ class OCRHandlerMixin:
             # 删除处理中提示
             try:
                 await hint_msg.delete()
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
             
             # OCR 失败
@@ -184,7 +184,7 @@ class OCRHandlerMixin:
                 await send_long_message(
                     update.effective_chat.id, f"⚠️ 图片处理异常: {e}", context,
                     reply_to_message_id=update.message.message_id)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     
@@ -261,7 +261,7 @@ class OCRHandlerMixin:
                                 # 删除处理中提示
                                 try:
                                     await hint_msg.delete()
-                                except Exception:
+                                except Exception as e:
                                     logger.debug("Silenced exception", exc_info=True)
                                 try:
                                     safe = md_to_html(result_text)
@@ -269,7 +269,7 @@ class OCRHandlerMixin:
                                         safe, parse_mode="HTML",
                                         reply_to_message_id=update.message.message_id,
                                     )
-                                except Exception:
+                                except Exception as e:  # noqa: F841
                                     # HTML 渲染失败 → 纯文本降级
                                     await send_long_message(
                                         chat_id, result_text, context,
@@ -280,7 +280,7 @@ class OCRHandlerMixin:
                             # 清理临时文件
                             try:
                                 os.unlink(local_path)
-                            except Exception:
+                            except Exception as e:
                                 logger.debug("Silenced exception", exc_info=True)
                 except Exception as e:
                     logger.debug(f"[DOC] Docling 处理失败，降级到 OCR: {e}")
@@ -299,7 +299,7 @@ class OCRHandlerMixin:
             # 删除处理中提示
             try:
                 await hint_msg.delete()
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
             
             if result.ok and result.text:
@@ -321,5 +321,5 @@ class OCRHandlerMixin:
                 await send_long_message(
                     update.effective_chat.id, f"⚠️ 文档处理异常: {e}", context,
                     reply_to_message_id=update.message.message_id)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)

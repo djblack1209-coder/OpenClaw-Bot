@@ -95,7 +95,7 @@ def init_db(db_path=None):
         ]:
             try:
                 conn.execute(col_sql)
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as e:  # noqa: F841
                 pass  # 列已存在
 
         # v2.1: 社媒互动数据表 — 记录帖子的点赞/评论/转发/浏览
@@ -127,7 +127,7 @@ def init_db(db_path=None):
         # v2.2.1: 给 expenses 表新增 type 列区分收入/支出 (安全 ALTER)
         try:
             conn.execute("ALTER TABLE expenses ADD COLUMN type TEXT DEFAULT 'expense'")
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:  # noqa: F841
             pass  # 列已存在
 
         # v2.2.2: 月预算表 — 存储用户的月度预算设定

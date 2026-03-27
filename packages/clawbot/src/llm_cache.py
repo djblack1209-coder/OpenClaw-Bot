@@ -229,7 +229,7 @@ def get_cache_stats() -> Dict[str, Any]:
         try:
             result["entries"] = len(cache)
             result["size_mb"] = round(cache.volume() / (1024 * 1024), 2)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     return result
@@ -266,6 +266,6 @@ def close_cache() -> None:
     if _cache is not None:
         try:
             _cache.close()
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         _cache = None

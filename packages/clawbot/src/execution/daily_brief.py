@@ -138,7 +138,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
                     if remind_time <= today_end:
                         time_str = remind_time.strftime("%H:%M")
                         agenda.append((1, f"⏰ {time_str} {r['message']}"))
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:  # noqa: F841
                     pass
     except Exception as e:
         logger.debug(f"[TodayAgenda] 提醒: {e}")
@@ -322,7 +322,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                     if remind_time <= today_end:
                         time_str = remind_time.strftime("%H:%M")
                         today_reminders.append(f"⏰ {time_str} — {r['message']}")
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:  # noqa: F841
                     pass
                 # 重复提醒也列出（不论时间）
                 recurrence = r.get("recurrence_rule", "")
@@ -355,8 +355,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                         sym = pos.get("symbol", "")
                         if sym:
                             watchlist_symbols.append(sym)
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         # 补充 watchlist 中的股票
         try:
@@ -365,8 +366,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             for sym in (wl or []):
                 if sym not in watchlist_symbols:
                     watchlist_symbols.append(sym)
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         if watchlist_symbols:
             quotes = await get_quick_quotes(watchlist_symbols[:10])  # 最多10只
@@ -446,8 +448,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 from src.position_monitor import position_monitor as _pm
                 if _pm and _pm.positions:
                     holdings = list(_pm.positions.keys())
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             # 尝试用 LLM 生成深度分析
             analyzed = await _analyze_news_with_llm(headlines, holdings)
             if analyzed:
@@ -538,8 +541,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                     if profit.get("orders", 0) > 0:
                         avg = profit["revenue"] / profit["orders"]
                         xlines.append(f"📊 客单价 ¥{avg:.0f}")
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             if xlines:
                 sections.append(_section("🐟 闲鱼运营", xlines))
             # 今日热销 Top3 — 调用 BI 商品排行接口
@@ -553,8 +557,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                         convert = item.get("conversions", 0)
                         top_lines.append(f"  {i}. {title} ({consult}咨询/{convert}成交)")
                     sections.append(_section("", top_lines))
-            except Exception:
+            except Exception as e:
                 pass  # BI 数据获取失败不影响日报
+                logger.debug("静默异常: %s", e)
     except Exception as e:
         logger.debug("日报段落生成异常: %s", e)
 
@@ -720,8 +725,9 @@ async def weekly_report(
                         f"{plat}: ❤️{data.get('likes', 0)} 💬{data.get('comments', 0)} "
                         f"👀{data.get('views', 0)}", icon="📌"
                     ))
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
         # 发文绩效报告
         try:
             from src.content_pipeline import content_pipeline
@@ -738,8 +744,9 @@ async def weekly_report(
                         fc = post_report["follower_change"]
                         fc_emoji = "📈" if fc >= 0 else "📉"
                         items.append(kv("粉丝变化", f"{fc_emoji} {fc:+d}"))
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
         # 社交自动驾驶状态
         try:
             ap = autopilot
@@ -750,8 +757,9 @@ async def weekly_report(
                 s = ap.status()
                 if s and s.get("posts_today", 0) > 0:
                     items.append(kv("自动驾驶", "运行中" if s.get("running") else "已停止"))
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
         # 粉丝增长趋势 (7天)
         try:
             from src.execution.life_automation import get_follower_growth
@@ -764,8 +772,9 @@ async def weekly_report(
                     pct = data.get("change_pct", 0)
                     fc_emoji = "📈" if change >= 0 else "📉"
                     items.append(kv(f"{name} 粉丝", f"{fc_emoji} {data.get('end', 0):,} ({change:+d}, {pct:+.1f}%)"))
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
         if items:
             sections.append(_section("📱 社媒周报", items))
     except Exception as e:
@@ -787,15 +796,17 @@ async def weekly_report(
             if hasattr(xctx, "get_profit_summary"):
                 try:
                     profit = xctx.get_profit_summary(days=7) or {}
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
             # 尝试获取日统计（聚合7天）
             xstats = {}
             if hasattr(xctx, "daily_stats"):
                 try:
                     xstats = xctx.daily_stats() or {}
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
             if profit.get("revenue", 0) > 0:
                 items.append(kv("营收", f"¥{profit['revenue']:,.0f}"))
                 items.append(kv("利润", f"¥{profit.get('profit', 0):,.0f}"))
@@ -842,8 +853,9 @@ async def weekly_report(
                             items.append(kv("环比变化", f"{ch_emoji} ${change:+,.2f}"))
                         if wr.get("daily_average") is not None:
                             items.append(kv("日均", f"${wr['daily_average']:.2f}"))
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
             if items:
                 sections.append(_section("💰 成本周报", items))
     except Exception as e:
@@ -894,7 +906,7 @@ def _get_timestamp_tag() -> str:
     try:
         from src.notify_style import timestamp_tag
         return timestamp_tag()
-    except Exception:
+    except Exception as e:  # noqa: F841
         return datetime.now(timezone.utc).strftime("%H:%M UTC")
 
 

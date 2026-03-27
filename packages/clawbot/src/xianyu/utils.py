@@ -123,7 +123,7 @@ def _json_ser(obj):
     if isinstance(obj, bytes):
         try:
             return obj.decode("utf-8")
-        except Exception:
+        except Exception as e:  # noqa: F841
             return base64.b64encode(obj).decode()
     return str(obj)
 
@@ -140,11 +140,11 @@ def decrypt(data: str) -> str:
         try:
             result = _MsgPackDecoder(raw).decode()
             return json.dumps(result, ensure_ascii=False, default=_json_ser)
-        except Exception:
+        except Exception as e:  # noqa: F841
             # fallback: 直接 UTF-8
             try:
                 return json.dumps({"text": raw.decode("utf-8")})
-            except Exception:
+            except Exception as e:  # noqa: F841
                 return json.dumps({"hex": raw.hex()})
     except Exception as e:
         return json.dumps({"error": str(e), "raw": data[:200]})

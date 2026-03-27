@@ -141,6 +141,6 @@ class OrderNotifier:
                     asyncio.get_running_loop()
                     # 在异步上下文中，用非阻塞方式等待
                     return  # 异步场景不做同步重试，避免阻塞事件循环
-                except RuntimeError:
+                except RuntimeError as e:  # noqa: F841
                     _time.sleep(2 ** attempt)  # 同步场景可以安全 sleep
         logger.warning("[订单通知] Telegram 3 次重试均失败")
