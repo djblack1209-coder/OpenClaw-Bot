@@ -5,6 +5,34 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R16 轮: 金融安全测试 + SELL止损缺口发现
+
+> 领域: `trading` | `backend`
+> 影响模块: position_monitor, risk_manager, auto_trader(parse_proposal), trading_journal
+> 关联问题: HI-361(SELL方向止损未实现)
+
+### 变更内容
+
+**金融安全测试 (Tier1 — 真金白银模块):**
+- 新增 test_position_monitor_v2.py (8个测试): 分批止盈1.5R触发/已执行跳过/小仓跳过/日亏损熔断/浮盈不误杀/SELL方向止损止盈
+- 新增 test_risk_manager_v2.py (7个测试): ATR飙升极端市场/闪崩检测/VIX超限/正常行情/凯利公式/历史不足回退/负期望值拒绝
+- 扩展 test_parse_proposal.py (+5个测试): JSON blob/中文买入/美元前缀/$价格/畸形JSON回退/垃圾输入HOLD
+
+**发现重大安全缺口:**
+- HI-361(NEW): position_monitor._check_exit_conditions() 只处理BUY方向，SELL方向持仓的止损/止盈未实现
+  意味着做空持仓只靠时间止损和日亏损限额保护，缺乏精准的价格止损
+
+**验证结果:** 1008/1008 通过 (比上轮增加20个测试)
+
+### 文件变更
+- `packages/clawbot/tests/test_position_monitor_v2.py` — 新建 (8个测试)
+- `packages/clawbot/tests/test_risk_manager_v2.py` — 新建 (7个测试)
+- `packages/clawbot/tests/test_parse_proposal.py` — 扩展 (+5个测试)
+- `docs/CHANGELOG.md` — 本条目
+- `docs/status/HEALTH.md` — 新增HI-361(SELL方向止损缺口)
+
+---
+
 ## [2026-03-28] 社媒效果追踪面板实装
 
 > 领域: `frontend`
