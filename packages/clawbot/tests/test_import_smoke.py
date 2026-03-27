@@ -47,6 +47,9 @@ MODULES_TO_TEST = [
     "src.core.brain_executors",
     "src.execution.bookkeeping",
     "src.execution.tracking",
+    # 新增: R18 message_mixin 拆分
+    "src.bot.workflow_mixin",
+    "src.bot.callback_mixin",
 ]
 
 
