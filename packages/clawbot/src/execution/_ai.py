@@ -14,6 +14,7 @@ try:
 except ImportError:
     log_generation = None  # type: ignore[assignment]
 
+# 与 task_graph.py 同名桩，待统一提取
 try:
     from src.utils import emit_flow_event as _emit_flow
 except Exception as e:  # noqa: F841

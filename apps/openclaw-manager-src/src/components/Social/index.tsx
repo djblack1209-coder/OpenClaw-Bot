@@ -36,6 +36,126 @@ interface Draft {
   time: Date;
 }
 
+/** 数据分析面板 — 展示粉丝增长、互动数据、热门帖子 */
+function AnalyticsPanel() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        setLoading(true);
+        const resp = await fetch('http://127.0.0.1:18790/api/v1/social/analytics?days=7');
+        if (resp.ok) {
+          setData(await resp.json());
+        }
+      } catch {
+        // 后端不可达
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAnalytics();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1,2,3,4].map(i => (
+          <Card key={i} className="bg-dark-800 border-dark-600 animate-pulse">
+            <CardContent className="p-5">
+              <div className="h-4 bg-dark-700 rounded w-1/2 mb-3" />
+              <div className="h-8 bg-dark-700 rounded w-1/3" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  // 从后端数据中提取统计信息，设置安全默认值
+  const engagement = data?.engagement || {};
+  const growth = data?.follower_growth || {};
+  const xFollowers = growth?.x?.current || 0;
+  const xGrowth = growth?.x?.net_change || 0;
+  const totalLikes = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_likes || 0), 0);
+  const totalComments = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_comments || 0), 0);
+  const totalShares = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_shares || 0), 0);
+  const topPosts = data?.top_posts || [];
+
+  return (
+    <div className="space-y-6">
+      {/* 概览卡片 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-dark-800 border-dark-600">
+          <CardContent className="p-5">
+            <div className="text-xs text-gray-500 mb-1">𝕏 粉丝数</div>
+            <div className="text-2xl font-bold text-white">{xFollowers.toLocaleString()}</div>
+            <div className={clsx("text-xs mt-1", xGrowth >= 0 ? "text-green-400" : "text-red-400")}>
+              {xGrowth >= 0 ? '+' : ''}{xGrowth} (7天)
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-dark-800 border-dark-600">
+          <CardContent className="p-5">
+            <div className="text-xs text-gray-500 mb-1">总互动量</div>
+            <div className="text-2xl font-bold text-white">{(totalLikes + totalComments + totalShares).toLocaleString()}</div>
+            <div className="text-xs text-gray-500 mt-1">赞 {totalLikes} · 评 {totalComments} · 转 {totalShares}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-dark-800 border-dark-600">
+          <CardContent className="p-5">
+            <div className="text-xs text-gray-500 mb-1">小红书</div>
+            <div className="text-2xl font-bold text-white">{growth?.xhs?.current || '—'}</div>
+            <div className="text-xs text-amber-400 mt-1">需登录创作者后台同步</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-dark-800 border-dark-600">
+          <CardContent className="p-5">
+            <div className="text-xs text-gray-500 mb-1">Top 帖子</div>
+            <div className="text-2xl font-bold text-white">{topPosts.length}</div>
+            <div className="text-xs text-gray-500 mt-1">近7天有互动的帖子</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 热门帖子排行 */}
+      {topPosts.length > 0 ? (
+        <Card className="bg-dark-800 border-dark-600">
+          <CardHeader className="pb-3 border-b border-dark-700">
+            <CardTitle className="text-sm text-gray-300 flex items-center gap-2">
+              <BarChart3 size={16} className="text-blue-400" />
+              热门内容排行
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-dark-700">
+              {topPosts.slice(0, 5).map((post: any, i: number) => (
+                <div key={i} className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-600 font-mono w-5">#{i+1}</span>
+                    <span className="text-sm text-gray-200 truncate max-w-[300px]">{post.preview || post.title || '无标题'}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>❤️ {post.likes || 0}</span>
+                    <span>💬 {post.comments || 0}</span>
+                    <span>🔁 {post.shares || 0}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex items-center justify-center h-40 text-gray-500 flex-col gap-3 border border-dark-600 border-dashed rounded-xl bg-dark-900/50">
+          <BarChart3 size={36} className="text-dark-600" />
+          <p>暂无发布数据 — 发布内容后自动统计互动效果</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Social() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
@@ -327,10 +447,7 @@ export function Social() {
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-0">
-            <div className="flex items-center justify-center h-64 text-gray-500 flex-col gap-4 border border-dark-600 border-dashed rounded-xl bg-dark-900/50">
-              <BarChart3 size={48} className="text-dark-600" />
-              <p>数据大盘模块正在接入各大平台 API，敬请期待...</p>
-            </div>
+            <AnalyticsPanel />
           </TabsContent>
 
         </Tabs>

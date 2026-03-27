@@ -5,6 +5,46 @@
 
 ---
 
+## [2026-03-28] 社媒效果追踪面板实装
+
+> 领域: `frontend`
+> 影响模块: `Social/index.tsx`
+> 关联问题: 无
+
+### 变更内容
+- 将社媒「效果追踪」Tab 从占位符替换为功能性 AnalyticsPanel 组件
+- 新增 4 张概览卡片：𝕏 粉丝数、总互动量、小红书、Top 帖子数
+- 新增热门内容排行表，展示近 7 天互动量 Top 5
+- 加载态使用骨架屏动画，后端不可达时静默降级
+- 数据来源: `/api/v1/social/analytics?days=7`
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 新增 AnalyticsPanel 内联组件，替换 "敬请期待" 占位符
+
+## [2026-03-28] litellm_router 废弃方法清理 + _emit_flow 桩标注
+
+> 领域: `backend`
+> 影响模块: `litellm_router.py`, `multi_main.py`, `_ai.py`, `x_platform.py`
+> 关联问题: HI-282, HI-284, HI-360
+
+### 变更内容
+- 删除 `remove_exhausted()` 废弃桩方法（返回 0，无调用者）
+- 删除 `init_adaptive_router()` 废弃桩函数（仅打日志，LiteLLM Router 内置自适应路由）
+- 清理 `multi_main.py` 中对 `init_adaptive_router()` 的调用
+- `_emit_flow` fallback stub 在 `_ai.py` 和 `x_platform.py` 添加 `# 与 task_graph.py 同名桩，待统一提取` 标注
+- 新增技术债 HI-360: 14个文件超过1000行(4个超1500行)，待拆分
+- HI-258 从活跃问题移除（已在已解决中）
+- HI-282 移至已解决
+
+### 文件变更
+- `packages/clawbot/src/litellm_router.py` — 删除 remove_exhausted() 和 init_adaptive_router()，添加 REMOVED 注释
+- `packages/clawbot/multi_main.py` — 移除 init_adaptive_router() 调用，改为日志说明
+- `packages/clawbot/src/execution/_ai.py` — 添加重复桩标注注释
+- `packages/clawbot/src/execution/social/x_platform.py` — 添加重复桩标注注释
+- `docs/status/HEALTH.md` — HI-258 移出活跃, HI-282 移至已解决, 新增 HI-360 技术债
+
+---
+
 ## [2026-03-28] 全量审计第 R14 轮: Git安全清除 + 架构重构 + 死代码清理 + API统一
 
 > 领域: `security` | `backend` | `frontend` | `infra`
