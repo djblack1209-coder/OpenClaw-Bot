@@ -126,9 +126,10 @@ class MonitoredPosition:
                             self.symbol, old, new_stop, price,
                         )
 
-        if price > self.highest_price:
-            self.highest_price = price
-            if self.side == "BUY":
+        if self.side == "BUY":
+            # BUY方向：价格创新高时上移追踪止损
+            if price > self.highest_price:
+                self.highest_price = price
                 # ATR 动态尾部止损（优先）或固定百分比尾部止损
                 if self.atr > 0:
                     new_trailing = round(price - 2.0 * self.atr, 2)
@@ -150,6 +151,37 @@ class MonitoredPosition:
                             )
                         logger.info(
                             "[Monitor] %s 追踪止损上移: $%.2f -> $%.2f (最高价$%.2f%s)",
+                            self.symbol, old, self.trailing_stop_price, price,
+                            " ATR=%.2f" % self.atr if self.atr > 0 else "",
+                        )
+        else:
+            # SELL方向（做空）：价格创新低时下移追踪止损
+            # highest_price 在SELL模式下复用为 lowest_price（最低价格）
+            if self.highest_price == 0 or price < self.highest_price:
+                self.highest_price = price  # 复用字段记录最低价
+                # ATR 动态追踪止损（在做空方向，止损在价格上方）
+                if self.atr > 0:
+                    new_trailing = round(price + 2.0 * self.atr, 2)
+                elif self.trailing_stop_pct > 0:
+                    new_trailing = round(price * (1 + self.trailing_stop_pct), 2)
+                else:
+                    new_trailing = 0
+
+                # SELL方向追踪止损应越来越低（即止损价格下移）
+                if new_trailing > 0 and (
+                    self.trailing_stop_price == 0 or new_trailing < self.trailing_stop_price
+                ):
+                    old = self.trailing_stop_price
+                    self.trailing_stop_price = new_trailing
+                    if old > 0:
+                        move_pct = ((old - new_trailing) / old * 100) if old > 0 else 0
+                        if move_pct >= 0.5:
+                            self._pending_adjustments.append(
+                                "📉 %s 空单追踪止损下移\n$%.2f → $%.2f (-%.1f%%)\n最低价: $%.2f"
+                                % (self.symbol, old, new_trailing, move_pct, price)
+                            )
+                        logger.info(
+                            "[Monitor] %s 空单追踪止损下移: $%.2f -> $%.2f (最低价$%.2f%s)",
                             self.symbol, old, self.trailing_stop_price, price,
                             " ATR=%.2f" % self.atr if self.atr > 0 else "",
                         )
@@ -386,6 +418,60 @@ class PositionMonitor:
                     trigger_price=price,
                     message=(
                         "止盈触发! %s 当前$%.2f >= 止盈$%.2f | 盈利$%.2f (%.1f%%)"
+                        % (pos.symbol, price, pos.take_profit,
+                           pos.unrealized_pnl, pos.unrealized_pnl_pct)
+                    ),
+                )
+
+        elif pos.side == "SELL":
+            # ── SELL方向（做空）止损止盈 ──
+            # 做空止损：价格上涨超过止损价时触发（方向反转）
+            if pos.stop_loss > 0 and price >= pos.stop_loss:
+                return ExitSignal(
+                    position=pos,
+                    reason=ExitReason.STOP_LOSS,
+                    trigger_price=price,
+                    message=(
+                        "空单止损触发! %s 当前$%.2f >= 止损$%.2f | 亏损$%.2f (%.1f%%)"
+                        % (pos.symbol, price, pos.stop_loss,
+                           pos.unrealized_pnl, pos.unrealized_pnl_pct)
+                    ),
+                )
+            # 做空追踪止损：价格回涨超过追踪止损价时触发
+            if pos.trailing_stop_price > 0 and price >= pos.trailing_stop_price:
+                return ExitSignal(
+                    position=pos,
+                    reason=ExitReason.TRAILING_STOP,
+                    trigger_price=price,
+                    message=(
+                        "空单追踪止损触发! %s 当前$%.2f >= 追踪$%.2f | 最低$%.2f | 盈亏$%.2f (%.1f%%)"
+                        % (pos.symbol, price, pos.trailing_stop_price,
+                           pos.highest_price, pos.unrealized_pnl, pos.unrealized_pnl_pct)
+                    ),
+                )
+            # 做空分批止盈：盈利达1.5R时平掉50%
+            if not pos.partial_exit_done and pos.stop_loss > 0 and pos.quantity >= 2:
+                risk_per_share = pos.stop_loss - pos.entry_price  # SELL: 风险 = 止损价 - 入场价
+                if risk_per_share > 0 and price <= pos.entry_price - risk_per_share * 1.5:
+                    return ExitSignal(
+                        position=pos,
+                        reason=ExitReason.PARTIAL_TAKE_PROFIT,
+                        trigger_price=price,
+                        message=(
+                            "空单分批止盈触发! %s 盈利达1.5R | 当前$%.2f | 平仓50%% (%d股) | 盈亏$%.2f"
+                            % (pos.symbol, price,
+                               int(pos.quantity * 0.5),
+                               pos.unrealized_pnl)
+                        ),
+                    )
+            # 做空止盈：价格下跌到目标价时触发
+            if pos.take_profit > 0 and price <= pos.take_profit:
+                return ExitSignal(
+                    position=pos,
+                    reason=ExitReason.TAKE_PROFIT,
+                    trigger_price=price,
+                    message=(
+                        "空单止盈触发! %s 当前$%.2f <= 止盈$%.2f | 盈利$%.2f (%.1f%%)"
                         % (pos.symbol, price, pos.take_profit,
                            pos.unrealized_pnl, pos.unrealized_pnl_pct)
                     ),

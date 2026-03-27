@@ -169,11 +169,10 @@ class TestSellPositionExitConditions:
     这是一个已知的代码缺口，测试记录当前行为以防回归。
     """
 
-    def test_sell_position_stop_loss_not_handled(self):
-        """SELL 持仓价格上涨超过 stop_loss 时，当前代码不会触发止损。
+    def test_sell_position_stop_loss_triggered(self):
+        """SELL 持仓价格上涨超过止损时，应正确触发止损。
 
-        这是因为 stop_loss 检查在 `if pos.side == "BUY"` 块内。
-        测试记录此行为，避免误以为 SELL 止损已覆盖。
+        做空止损: 价格>=止损价(入场价上方) → STOP_LOSS
         """
         mon = _make_monitor()
         pos = _make_pos(
@@ -188,16 +187,15 @@ class TestSellPositionExitConditions:
 
         signal = mon._check_exit_conditions(pos)
 
-        # 当前代码 BUG/缺口: SELL 方向止损未实现
-        assert signal is None, (
-            "SELL 方向 stop_loss 当前未在 _check_exit_conditions 中实现，"
-            "signal 应为 None（记录已知缺口）"
-        )
+        # 修复后: SELL 方向止损应正确触发
+        assert signal is not None, "SELL 方向止损应当触发"
+        assert signal.reason == ExitReason.STOP_LOSS
+        assert "空单止损" in signal.message
 
-    def test_sell_position_take_profit_not_handled(self):
-        """SELL 持仓价格下跌超过 take_profit 时，当前代码不会触发止盈。
+    def test_sell_position_take_profit_triggered(self):
+        """SELL 持仓价格下跌超过止盈时，应正确触发止盈。
 
-        同样因为 take_profit 检查在 `if pos.side == "BUY"` 块内。
+        做空止盈: 价格<=止盈价(入场价下方) → TAKE_PROFIT
         """
         mon = _make_monitor()
         pos = _make_pos(
@@ -212,9 +210,19 @@ class TestSellPositionExitConditions:
 
         signal = mon._check_exit_conditions(pos)
 
-        # 当前代码缺口: SELL 方向 take_profit 未实现
+        # 修复后: SELL 方向止盈应正确触发
+        assert signal is not None, "SELL 方向止盈应当触发"
+        assert signal.reason == ExitReason.TAKE_PROFIT
+        assert "空单止盈" in signal.message
+        pos.highest_price = 100.0
+        # 价格上涨到 $106，超过止损 $105
+        pos.update_price(106.0)
+
+        signal = mon._check_exit_conditions(pos)
+
+        # 当前代码 BUG/缺口: SELL 方向止损未实现
         assert signal is None, (
-            "SELL 方向 take_profit 当前未在 _check_exit_conditions 中实现，"
+            "SELL 方向 stop_loss 当前未在 _check_exit_conditions 中实现，"
             "signal 应为 None（记录已知缺口）"
         )
 
