@@ -589,6 +589,77 @@ class BasicCommandsMixin:
 
     @requires_auth
     @with_typing
+    async def cmd_keyhealth(self, update, context):
+        """API Key 健康检查: /keyhealth — 逐 key 验证所有 provider 的连通性"""
+        msg = await update.message.reply_text(f"{self.emoji} 正在验证所有 API Key，请稍候...")
+        try:
+            report = await free_pool.validate_keys(timeout=15.0)
+
+            providers = report.get("providers", {})
+            total = report.get("total_providers", 0)
+            healthy = report.get("healthy", 0)
+            unhealthy = report.get("unhealthy", 0)
+            elapsed = report.get("elapsed_s", 0)
+
+            # 状态图标映射
+            status_icons = {
+                "ok": "✅", "partial": "⚠️",
+                "auth_error": "🔴", "quota_exhausted": "🟠",
+                "unreachable": "❌", "unknown_error": "❓",
+            }
+
+            lines = [
+                "🔑 API Key 健康检查",
+                "━━━━━━━━━━━━━━━━━━━━━━",
+                f"总计: {total} 个 provider | ✅ {healthy} 健康 | ❌ {unhealthy} 异常",
+                f"耗时: {elapsed:.1f}s",
+                "",
+            ]
+
+            for name, info in sorted(providers.items()):
+                status = info.get("status", "unknown")
+                icon = status_icons.get(status, "❓")
+                line = f"{icon} {name}: {status}"
+
+                # 多 key provider 显示详细
+                keys_tested = info.get("keys_tested", 0)
+                if keys_tested > 1:
+                    keys_ok = info.get("keys_ok", 0)
+                    keys_dead = info.get("keys_dead", 0)
+                    line += f" ({keys_ok}/{keys_tested} key 可用"
+                    if keys_dead > 0:
+                        dead_idx = info.get("dead_indices", [])
+                        line += f", 失效: {dead_idx}"
+                    line += ")"
+
+                # 错误信息
+                error = info.get("error", "")
+                if error:
+                    line += f"\n   └ {error[:80]}"
+
+                errors = info.get("errors", [])
+                if errors and not error:
+                    for err in errors[:3]:
+                        line += f"\n   └ {err[:80]}"
+
+                lines.append(line)
+
+            await send_long_message(
+                update.effective_chat.id, "\n".join(lines), context,
+                reply_to_message_id=update.message.message_id,
+            )
+            # 删除等待提示
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error("[KeyHealth] API Key 验证失败: %s", e)
+            from src.bot.error_messages import error_service_failed
+            await msg.edit_text(error_service_failed("API Key 健康检查"))
+
+    @requires_auth
+    @with_typing
     async def cmd_context(self, update, context):
         """查看当前上下文状态"""
         chat_id = update.effective_chat.id

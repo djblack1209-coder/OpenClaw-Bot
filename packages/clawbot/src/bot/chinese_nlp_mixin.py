@@ -635,6 +635,36 @@ def _match_chinese_command(text=None):
         return ('autotrader_start', '')
     if re.search('停止自动|关闭自动|自动交易停止', cleaned):
         return ('autotrader_stop', '')
+
+    # ── 高级回测分析（优先于普通回测匹配） ──
+    # 蒙特卡洛模拟: "蒙特卡洛 AAPL" / "蒙特卡洛模拟 苹果"
+    m_mc = re.search(r'蒙特卡洛(?:模拟)?\s*([A-Za-z\-]{1,10}|\S{1,6})', cleaned)
+    if m_mc:
+        raw = m_mc.group(1).strip()
+        sym = raw.upper() if re.fullmatch(r'[A-Za-z\-]+', raw) else ''
+        if not sym:
+            sym = _resolve_chinese_ticker(raw)
+        if sym:
+            return ('backtest', 'monte %s' % sym)
+    # 参数优化: "参数优化 AAPL" / "优化参数 苹果"
+    m_opt = re.search(r'(?:参数优化|优化参数)\s*([A-Za-z\-]{1,10}|\S{1,6})', cleaned)
+    if m_opt:
+        raw = m_opt.group(1).strip()
+        sym = raw.upper() if re.fullmatch(r'[A-Za-z\-]+', raw) else ''
+        if not sym:
+            sym = _resolve_chinese_ticker(raw)
+        if sym:
+            return ('backtest', 'optimize %s' % sym)
+    # 前进分析: "前进分析 AAPL" / "walk forward 苹果"
+    m_wf = re.search(r'(?:前进分析|walk\s*forward)\s*([A-Za-z\-]{1,10}|\S{1,6})', cleaned)
+    if m_wf:
+        raw = m_wf.group(1).strip()
+        sym = raw.upper() if re.fullmatch(r'[A-Za-z\-]+', raw) else ''
+        if not sym:
+            sym = _resolve_chinese_ticker(raw)
+        if sym:
+            return ('backtest', 'walkforward %s' % sym)
+
     m_bt = re.search(r'(?:回测|测试策略|backtest)\s*([A-Za-z\-]{1,10})?', cleaned)
     if m_bt:
         sym = (m_bt.group(1) or '').strip().upper()
@@ -673,8 +703,8 @@ class ChineseNLPMixin:
         if not update or not action_type:
             return
 
-        # 构造 context.args
-        context.args = [action_arg] if action_arg else []
+        # 构造 context.args（按空格拆分，保持与 Telegram 命令行为一致）
+        context.args = action_arg.split() if action_arg else []
 
         # 命令映射表 — 将 NLP 匹配结果路由到实际命令
         dispatch_map = {

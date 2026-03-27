@@ -178,6 +178,10 @@ class TradingCommandsMixin:
                 "  /backtest NVDA 6mo    - 回测NVDA最近6个月\n"
                 "  /backtest list        - 回测默认标的列表\n"
                 "  /backtest AAPL --ft   - 使用Freqtrade引擎回测\n\n"
+                "高级分析:\n"
+                "  /backtest monte AAPL       - 蒙特卡洛模拟(1000次)\n"
+                "  /backtest optimize AAPL    - 参数优化(网格搜索)\n"
+                "  /backtest walkforward AAPL - 前进分析(过拟合检测)\n\n"
                 "支持的周期: 3mo, 6mo, 1y, 2y, 5y\n"
                 "引擎选项: --ft / --freqtrade (默认自研引擎)"
             )
@@ -188,6 +192,23 @@ class TradingCommandsMixin:
         clean_args = [a for a in args if a not in ("--ft", "--freqtrade")]
 
         subcmd = clean_args[0].upper() if clean_args else "LIST"
+
+        # ── 高级分析子命令: monte / optimize / walkforward ──
+        _ADVANCED_SUBCMDS = {"MONTE", "OPTIMIZE", "WALKFORWARD"}
+        if subcmd in _ADVANCED_SUBCMDS:
+            # 格式: /backtest monte AAPL [period]
+            adv_symbol = clean_args[1].upper() if len(clean_args) > 1 else ""
+            adv_period = clean_args[2] if len(clean_args) > 2 else "1y"
+            if adv_period not in ("1mo", "3mo", "6mo", "1y", "2y", "5y"):
+                adv_period = "1y"
+            if not adv_symbol:
+                await update.message.reply_text(
+                    "请指定标的代码\n\n用法: /backtest %s AAPL" % subcmd.lower())
+                return
+            await self._run_advanced_backtest(
+                update, context, subcmd, adv_symbol, adv_period)
+            return
+
         period = clean_args[1] if len(clean_args) > 1 else "1y"
         valid_periods = ["1mo", "3mo", "6mo", "1y", "2y", "5y"]
         if period not in valid_periods:
@@ -308,6 +329,89 @@ class TradingCommandsMixin:
                 except Exception as e:
                     from src.telegram_ux import send_error_with_retry
                     await send_error_with_retry(update, context, e, retry_command=f"/backtest {symbol} {period}")
+
+    async def _run_advanced_backtest(self, update, context, mode, symbol, period):
+        """执行高级回测分析（蒙特卡洛/参数优化/前进分析）"""
+        mode_labels = {
+            "MONTE": "蒙特卡洛模拟",
+            "OPTIMIZE": "参数优化(网格搜索)",
+            "WALKFORWARD": "前进分析(过拟合检测)",
+        }
+        label = mode_labels.get(mode, mode)
+        await update.message.reply_text(
+            "开始 %s — %s (%s)...\n⏳ 高级分析可能需要较长时间，请耐心等待"
+            % (label, symbol, period))
+
+        try:
+            from src.backtester import (
+                run_backtest,
+                run_monte_carlo, format_monte_carlo,
+                run_parameter_optimization, format_optimization_result,
+                run_walk_forward, format_walk_forward,
+                calc_enhanced_metrics,
+            )
+            from src.message_sender import send_long_message
+
+            if mode == "MONTE":
+                # 蒙特卡洛：先跑标准回测拿到 report，再模拟
+                report = await asyncio.to_thread(
+                    run_backtest, symbol, period=period)
+                mc_result = await asyncio.to_thread(
+                    run_monte_carlo, report, simulations=1000)
+                result_text = format_monte_carlo(mc_result)
+
+                # 附带增强指标
+                try:
+                    enhanced = calc_enhanced_metrics(report)
+                    if "error" not in enhanced:
+                        extra = (
+                            "\n\n📈 增强绩效指标:\n"
+                            "  Sortino比率: %.2f\n"
+                            "  Calmar比率: %.2f\n"
+                            "  最大连续亏损: %d次\n"
+                            "  最大连续盈利: %d次\n"
+                            "  恢复因子: %.2f"
+                            % (
+                                enhanced.get("sortino_ratio", 0),
+                                enhanced.get("calmar_ratio", 0),
+                                enhanced.get("max_consecutive_losses", 0),
+                                enhanced.get("max_consecutive_wins", 0),
+                                enhanced.get("recovery_factor", 0),
+                            )
+                        )
+                        result_text += extra
+                except Exception:
+                    pass
+
+            elif mode == "OPTIMIZE":
+                # 参数优化：使用默认参数网格
+                default_grid = {
+                    "min_score": [20, 30, 40],
+                    "atr_sl_mult": [1.0, 1.5, 2.0],
+                    "atr_tp_mult": [2.0, 3.0, 4.0],
+                }
+                opt_result = await asyncio.to_thread(
+                    run_parameter_optimization,
+                    symbol, default_grid, period=period)
+                result_text = format_optimization_result(opt_result)
+
+            elif mode == "WALKFORWARD":
+                # 前进分析
+                wf_result = await asyncio.to_thread(
+                    run_walk_forward, symbol, period=period)
+                result_text = format_walk_forward(wf_result)
+
+            else:
+                result_text = "未知的分析模式: %s" % mode
+
+            chat_id = update.effective_chat.id
+            await send_long_message(chat_id, result_text, context)
+
+        except Exception as e:
+            from src.telegram_ux import send_error_with_retry
+            await send_error_with_retry(
+                update, context, e,
+                retry_command="/backtest %s %s %s" % (mode.lower(), symbol, period))
 
     async def _send_bokeh_chart(self, update, context, symbol: str, period: str):
         """发送 backtesting.py Bokeh 可视化图表（非致命，失败静默）"""

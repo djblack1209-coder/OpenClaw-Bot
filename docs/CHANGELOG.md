@@ -5,6 +5,48 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R12 轮: 命令崩溃修复 + 功能接入 + API补全 + VPS同步
+
+> 领域: `backend` | `frontend` | `deploy`
+> 影响模块: cmd_analysis_mixin, cmd_basic_mixin, cmd_invest_mixin, cmd_trading_mixin, tauri.ts, multi_main.py, VPS
+> 关联问题: HI-338~HI-344
+
+### 变更内容
+- 修复3个崩溃命令: /drl(DRL策略分析) /factors(Alpha因子) /keyhealth(Key健康检查) 全部实现
+- 修复 /buy 交易日志路径错误(src.trading → src.trading_journal)
+- /backtest 新增3个子命令: monte(蒙特卡洛) optimize(参数优化) walkforward(前进分析) + 中文触发词
+- tauri.ts 补入34个后端API封装 + 修正3个参数名不匹配
+- VPS同步最新代码 + 安装缺失依赖 + 重置failover状态
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 新增 cmd_drl + cmd_factors
+- `packages/clawbot/src/bot/cmd_basic_mixin.py` — 新增 cmd_keyhealth
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — 修复交易日志导入路径
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — /backtest 新增3个子命令
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 新增回测高级功能中文触发词
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 新增34个API函数
+- `packages/clawbot/multi_main.py` — 接入自适应路由器+闲鱼监控初始化
+
+---
+
+## [2026-03-28] 回测高级分析功能接入用户入口
+
+> 领域: `backend` | `trading`
+> 影响模块: `cmd_trading_mixin`, `chinese_nlp_mixin`, `backtester`
+> 关联问题: 无 (功能接入，非 Bug 修复)
+
+### 变更内容
+- 接入 backtester.py 中 4 个已实现但无入口的高级功能: 蒙特卡洛模拟、参数优化、前进分析、增强绩效指标
+- 新增 /backtest 子命令: `monte`(蒙特卡洛)、`optimize`(参数优化)、`walkforward`(前进分析)
+- 新增中文触发词: "蒙特卡洛 AAPL"、"参数优化 AAPL"、"前进分析 AAPL" 自动路由到对应子命令
+- 修复中文分发层 context.args 拆分方式: 从 `[整串]` 改为 `.split()`，使多参数命令(如 buy/sell)在中文触发时也能正确解析
+
+### 文件变更
+- `src/bot/cmd_trading_mixin.py` — 新增 _run_advanced_backtest 方法 + 帮助文本更新
+- `src/bot/chinese_nlp_mixin.py` — 新增 3 组高级回测中文匹配规则 + context.args 拆分修复
+
+---
+
 ## [2026-03-28] 全量审计第 R11 轮: 静默异常根治 + 前端命名修复 + 死模块接入
 
 > 领域: `backend` | `frontend`
