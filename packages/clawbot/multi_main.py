@@ -261,13 +261,8 @@ async def main():
     g.ab_test_manager = ABTestManager()
     logger.info("  社交 A/B 测试管理器已初始化 → globals.ab_test_manager")
 
-    # 7. 初始化自适应路由器（动态调整 API 池路由权重）
-    try:
-        from src.litellm_router import init_adaptive_router
-        init_adaptive_router()
-        logger.info("  自适应路由器已初始化")
-    except Exception as e:
-        logger.debug("  自适应路由器初始化跳过: %s", e)
+    # 7. 自适应路由器已废弃 — LiteLLM Router 内置自适应路由，无需单独初始化
+    logger.info("  自适应路由: LiteLLM Router 内置，无需单独初始化")
 
     # 7.5 初始化闲鱼监控（可选）
     try:

@@ -613,8 +613,7 @@ class LiteLLMPool:
                 src.consecutive_errors = 0
                 src.disabled = False
 
-    def remove_exhausted(self):
-        return 0  # LiteLLM handles cooldown
+    # REMOVED: remove_exhausted() - 已废弃，无调用者（LiteLLM Router 内置 cooldown 机制）
 
     def get_stats(self) -> Dict:
         total = sum(len(v) for v in self._sources.values())
@@ -923,9 +922,6 @@ def init_free_pool():
     logger.info(f"[LiteLLMPool] {stats['total_sources']} sources, {stats['active_sources']} active, engine=litellm")
 
 
-def init_adaptive_router():
-    """兼容旧接口 — LiteLLM Router 内置自适应路由"""
-    logger.info("[LiteLLMPool] adaptive routing handled by LiteLLM Router")
-
+# REMOVED: init_adaptive_router() - 已废弃，LiteLLM Router 内置自适应路由，无需单独初始化
 
 adaptive_router = None  # 兼容旧 import

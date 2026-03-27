@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R14审计: Git历史密钥清除+God Object拆分+924行死代码清理+Tauri IPC统一+导入覆盖提升 | 980/980+28/28 passed)
+> 最后更新: 2026-03-28 (R14审计: Git历史密钥清除+God Object拆分+924行死代码清理+Tauri IPC统一+导入覆盖提升+litellm_router废弃方法清理 | 980/980+28/28 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -72,9 +72,7 @@
 
 ### 🔴 阻塞
 
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| HI-258 | `backend` | `bot/__init__.py` | 循环导入: telegram_ux ↔ bot (连锁加载10个Mixin) | 清除 `__init__.py` 中的模块级 `import MultiBot`（无消费者使用此便捷导入） | 2026-03-27 | 第四轮产品跃迁 |
+(无)
 
 ### 🟠 重要
 
@@ -90,7 +88,6 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
-| HI-282 | `backend` | `litellm_router.py` | 6个废弃方法未清理 (acquire/release/save/load/record_success/record_error) | 2026-03-27 |
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 | HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
 
@@ -106,6 +103,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-282 | `backend` | `litellm_router.py` | 2个废弃方法(remove_exhausted/init_adaptive_router)已清理 | 删除 remove_exhausted() + init_adaptive_router()，multi_main.py 移除调用，添加注释说明已废弃 | 2026-03-28 | 死代码清理 |
 | HI-357 | `security` | `.gitignore` | .openclaw/agents/ 和 identity/ 未在.gitignore中排除 | 添加安全敏感目录到.gitignore + git rm --cached移除42个文件 | 2026-03-28 | R13审计 |
 | HI-356 | `security` | `life_automation.py` | open_app/run_shortcut接受未验证用户输入(可执行任意应用) | 添加18项安全白名单+快捷指令名称校验 | 2026-03-28 | R13审计 |
 | HI-355 | `security` | `deploy_client.py` | cmd.split()替代shlex.split()存在命令注入风险 | 替换为shlex.split(cmd) | 2026-03-28 | R13审计 |
@@ -448,6 +446,7 @@
 | `backend` | ~~117 处 `datetime.now()` 裸调用~~ | 早期代码未统一时区策略 | **已解决**: 生产代码 9 处裸调用全部修复为 `datetime.now(timezone.utc)`, 仅剩测试代码 19 处 | HI-025 |
 | `backend` | ~~人格称呼/提示词/配置散落多处~~ | 早期无统一治理机制 | **已解决**: `config/prompts.py` SSOT + SOUL_CORE 统一 + env var 收敛 | HI-039~046 |
 | `backend` | src/ 根目录 61 个 .py 文件平铺 | 早期快速开发无分包 | 风险过高暂缓: utils.py 被 61 文件 import, 需先补测试覆盖再分批迁移 | — |
+| `backend` | 🟡 HI-360: 14个文件超过1000行(4个超过1500行)，top候选: brain.py/message_mixin.py/auto_trader.py/execution_life_automation.py | 早期快速开发+功能堆积 | 按 God Object 拆分模式逐文件拆解，优先拆 1500+ 行文件 | — |
 
 ---
 
@@ -468,10 +467,10 @@
 | 严重度 | 活跃 | 已解决 | 合计 |
 |--------|------|--------|------|
 | 🔴 阻塞 | 0 | 16 | 16 |
-| 🟠 重要 | 0 | 88 | 88 |
-| 🟡 一般 | 0 | 101 | 101 |
-| 🔵 低优先 | 0 | 31 | 31 |
-| **合计** | **0** | **236** | **236** |
+| 🟠 重要 | 4 | 88 | 92 |
+| 🟡 一般 | 3 | 102 | 105 |
+| 🔵 低优先 | 1 | 31 | 32 |
+| **合计** | **8** | **237** | **245** |
 
 ---
 
