@@ -12,7 +12,8 @@ import {
   Settings,
   Workflow,
   BrainCircuit,
-  Blocks
+  Blocks,
+  Dna
 } from 'lucide-react';
 import { PageType } from '../../App';
 import clsx from 'clsx';
@@ -39,6 +40,7 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'channels', label: '消息渠道', icon: MessageSquare },
   { id: 'social', label: '社媒总控', icon: Share2 },
   { id: 'money', label: '盈利总控', icon: DollarSign },
+  { id: 'evolution', label: '进化引擎', icon: Dna },
   { id: 'dev', label: '开发总控', icon: Code2 },
   { id: 'testing', label: '测试诊断', icon: FlaskConical },
   { id: 'logs', label: '应用日志', icon: ScrollText },

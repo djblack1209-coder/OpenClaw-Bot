@@ -104,9 +104,9 @@ ccxt>=4.4.0
 
 # PyAutoGUI — macOS 桌面控制 (12k⭐, BSD)
 # 搬运: Quartz 底层鼠标键盘模拟
-pyautogui>=0.9.54
-pyobjc-core>=10.0
-pyobjc-framework-Quartz>=10.0
+pyautogui>=0.9.54; sys_platform == 'darwin'
+pyobjc-core>=10.0; sys_platform == 'darwin'
+pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'
 
 # 测试依赖 → 见 requirements-dev.txt
 

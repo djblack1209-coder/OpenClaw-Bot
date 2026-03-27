@@ -69,7 +69,6 @@ def _build_live_context() -> str:
                 lines.append(line)
             sections.append("持仓: " + "; ".join(lines))
     except Exception as e:
-        pass
         logger.debug("静默异常: %s", e)
 
     # 2. 交易绩效 (from trading_journal — SQLite本地数据)
@@ -91,7 +90,6 @@ def _build_live_context() -> str:
                     f"盈亏${perf.get('total_pnl', 0):+,.2f}"
                 )
     except Exception as e:
-        pass
         logger.debug("静默异常: %s", e)
 
     # 3. 待办事项 (from task_mgmt — SQLite本地数据)
@@ -102,7 +100,6 @@ def _build_live_context() -> str:
             task_str = ", ".join(t.get("title", "")[:20] for t in tasks)
             sections.append(f"待办: {task_str}")
     except Exception as e:
-        pass
         logger.debug("静默异常: %s", e)
 
     # 4. 可用操作提示 (让 LLM 知道可以建议用户说什么)

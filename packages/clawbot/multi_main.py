@@ -844,7 +844,8 @@ async def main():
         vps_host = os.getenv("DEPLOY_VPS_HOST", "101.43.41.96")
         vps_user = os.getenv("DEPLOY_VPS_USER", "openclaw")
         # 1. 通知 VPS: 写入 shutdown 标记文件，VPS failover 可秒级切换
-        subprocess.run(
+        await asyncio.to_thread(
+            subprocess.run,
             ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
              f"{vps_user}@{vps_host}",
              "touch /opt/openclaw/data/primary_shutdown"],
@@ -859,7 +860,7 @@ async def main():
         admin_ids = os.getenv("ALLOWED_USER_IDS", "")
         if bots and admin_ids:
             first_admin = int(admin_ids.split(",")[0].strip())
-            await bots[0].bot.send_message(
+            await bots[0].app.bot.send_message(
                 chat_id=first_admin,
                 text="🔄 系统正在关机维护，服务将短暂中断。",
             )

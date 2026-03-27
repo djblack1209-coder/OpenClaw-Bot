@@ -5,6 +5,62 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R13 轮: 前端7项功能接入 + 后端6处关键Bug修复 + 安全4项加固
+
+> 领域: `frontend` | `backend` | `security`
+> 影响模块: App.tsx, Sidebar.tsx, Header.tsx, Memory, Plugins, Social, CommandPalette, Evolution, multi_main.py, multi_bot.py, notify_style.py, alpaca_bridge.py, reentry_queue.py, requirements.txt, life_automation.py, deploy_client.py, .gitignore
+> 关联问题: HI-345~HI-357
+
+### 变更内容
+
+**前端功能接入 (7项):**
+- Evolution页面(569行)接入路由/侧边栏/Header — 用户现在能访问进化引擎
+- CommandPalette(Cmd+K)挂载到DOM — 快捷命令面板现在可用
+- Memory记忆库的编辑/删除按钮接入API — 不再是装饰品
+- Plugins插件市场的安装/配置/卸载按钮全部接入事件 — 卸载有确认提示
+- Social草稿系统接入: 新建内容/编辑/立即发布 — 全流程可用
+- Social浏览器状态从硬编码改为定时轮询后端API
+- 修复4个TypeScript编译错误(Header缺evolution条目/未使用变量)
+
+**后端关键Bug修复 (6项):**
+- 修复6处死代码: pass后跟logger.debug(永远不会执行)
+- 修复关机时bots[0].bot属性不存在(改为bots[0].app.bot)
+- 修复关机时subprocess.run阻塞事件循环(改用asyncio.to_thread)
+- 修复Alpaca模拟数据无标识(添加⚠️模拟数据标签)
+- 修复reentry_queue.py的dict|None语法不兼容Python 3.9
+- 修复macOS专属依赖(pyautogui/pyobjc)在Linux部署失败
+
+**安全加固 (4项):**
+- .gitignore添加.openclaw/agents/、identity/、credentials/等敏感目录
+- 从Git索引移除42个含API密钥的文件(auth-profiles.json等)
+- deploy_client.py的cmd.split()改为shlex.split()防止命令注入
+- life_automation.py的open_app添加18项安全白名单+run_shortcut添加字符校验
+
+**验证结果:** TypeScript零错误 | Python 980/980测试全通过 | 14页面UI截图审查通过
+
+### 文件变更
+- `apps/openclaw-manager-src/src/App.tsx` — 接入Evolution+CommandPalette+修复PageType
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — 添加进化引擎菜单
+- `apps/openclaw-manager-src/src/components/Layout/Header.tsx` — 添加evolution标题
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 编辑/删除功能实现
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — 安装/配置/卸载事件
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 草稿+浏览器状态
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 修复TS未使用变量
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 修复TS未使用变量
+- `packages/clawbot/multi_main.py` — 关机崩溃+阻塞SSH修复
+- `packages/clawbot/src/bot/multi_bot.py` — 3处死代码修复
+- `packages/clawbot/src/notify_style.py` — 3处死代码修复
+- `packages/clawbot/src/alpaca_bridge.py` — Mock数据标识
+- `packages/clawbot/src/trading/reentry_queue.py` — Python 3.9兼容
+- `packages/clawbot/requirements.txt` — macOS条件依赖
+- `packages/clawbot/src/execution/life_automation.py` — 输入验证白名单
+- `packages/clawbot/src/deployer/deploy_client.py` — shlex.split修复
+- `.gitignore` — 安全敏感目录
+- `docs/status/HEALTH.md` — 登记13项修复+3项新问题
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R12 轮: 命令崩溃修复 + 功能接入 + API补全 + VPS同步
 
 > 领域: `backend` | `frontend` | `deploy`

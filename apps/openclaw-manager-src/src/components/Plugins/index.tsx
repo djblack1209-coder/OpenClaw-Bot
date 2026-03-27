@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -181,7 +182,7 @@ export function Plugins() {
                 活跃服务
               </span>
             </div>
-            <button className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
+            <button onClick={() => toast.info('MCP 插件安装功能即将上线，敬请期待')} className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
               <Plus size={18} /> 安装新插件
             </button>
           </div>
@@ -284,10 +285,18 @@ export function Plugins() {
                   </div>
                   
                   <div className="flex gap-2">
-                    <button className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置">
+                    <button onClick={() => toast.info(`插件 ${plugin.name} 的配置面板即将上线`)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置">
                       <Settings2 size={16} />
                     </button>
-                    <button className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载">
+                    <button onClick={() => {
+                      if (confirm(`确定要卸载插件 "${plugin.name}" 吗？`)) {
+                        setPlugins(prev => prev.filter(p => p.id !== plugin.id));
+                        toast.success(`已卸载 ${plugin.name}`);
+                        if (isTauri()) {
+                          invoke('remove_mcp_plugin', { id: plugin.id }).catch(console.error);
+                        }
+                      }
+                    }} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -297,7 +306,7 @@ export function Plugins() {
           ))}
           
           {/* Add Custom Plugin Card */}
-          <button className="flex flex-col items-center justify-center gap-3 bg-dark-900/30 border-2 border-dashed border-dark-600 hover:border-purple-500/50 hover:bg-dark-800/50 transition-all rounded-xl h-[260px] text-gray-500 hover:text-purple-400 group">
+          <button onClick={() => toast.info('自定义 MCP Server 功能即将上线，敬请期待')} className="flex flex-col items-center justify-center gap-3 bg-dark-900/30 border-2 border-dashed border-dark-600 hover:border-purple-500/50 hover:bg-dark-800/50 transition-all rounded-xl h-[260px] text-gray-500 hover:text-purple-400 group">
             <div className="w-14 h-14 rounded-full bg-dark-800 border border-dark-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
               <Plus size={24} />
             </div>

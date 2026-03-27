@@ -90,3 +90,12 @@ backups/
 
 # Node modules（所有位置）
 **/node_modules/
+
+# === 安全敏感目录（禁止跟踪） ===
+.openclaw/agents/
+.openclaw/identity/
+.openclaw/credentials/
+.openclaw/devices/
+*.pem
+*.key
+credentials.json

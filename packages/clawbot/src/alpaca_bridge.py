@@ -97,6 +97,7 @@ class AlpacaBridge:
     async def get_account_summary(self) -> Dict:
         """获取账户摘要 — 兼容 IBKRBridge.get_account_summary()"""
         if not self.connected:
+            logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
             return self._mock_account()
         try:
             def _get():
@@ -178,7 +179,8 @@ class AlpacaBridge:
         limit_price: Optional[float] = None,
     ) -> Dict:
         if not self.connected:
-            return {"status": "simulated", "symbol": symbol, "side": side,
+            logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
+            return {"status": "⚠️ 模拟数据 - simulated", "symbol": symbol, "side": side,
                     "quantity": quantity, "source": "alpaca_mock"}
 
         try:
@@ -319,7 +321,7 @@ class AlpacaBridge:
             "portfolio_value": 0.0,
             "day_pnl": 0.0,
             "day_pnl_pct": 0.0,
-            "status": "simulated",
+            "status": "⚠️ 模拟数据 - simulated",
             "source": "alpaca_mock",
         }
 

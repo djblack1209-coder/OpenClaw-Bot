@@ -46,7 +46,7 @@ export function Money() {
   const [ibkrConnected, setIbkrConnected] = useState(false);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [, setDataLoading] = useState(true);
 
   // 尝试从后端获取交易数据
   useEffect(() => {

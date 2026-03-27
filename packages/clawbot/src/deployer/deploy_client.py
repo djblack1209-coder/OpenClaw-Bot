@@ -107,7 +107,7 @@ def check_env() -> dict:
     for cmd, key in [("node --version", "node"), ("npm --version", "npm"),
                      ("python3 --version", "python"), ("git --version", "git")]:
         try:
-            r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=10)
+            r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
                 checks[key] = True
                 ver = r.stdout.strip() or r.stderr.strip()

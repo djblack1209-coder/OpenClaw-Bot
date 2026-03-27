@@ -28,7 +28,7 @@ import {
 } from '../../lib/tauri';
 import {
   type ChannelConfig,
-  type ChannelField,
+  type ChannelField as _ChannelField,
   type FeishuPluginStatus,
   type TestResult,
   CHANNEL_DEFINITIONS,
