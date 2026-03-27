@@ -123,3 +123,103 @@ class TestParseEdgeCases:
         result = parse_trade_proposal(text, "AAPL")
         # JSON should win over keyword "卖出"
         assert result.action == "BUY"
+
+
+# ============ v2 新增测试: JSON Blob / 中文关键词 / $ 前缀 / 容错 ============
+
+class TestParseJsonBlob:
+    """JSON blob 中包含 action/symbol/price 字段的解析"""
+
+    def test_parse_json_blob(self):
+        """文本中嵌入 JSON blob，正确提取 action/symbol/price
+
+        parse_trade_proposal 用正则找到 {"action":...} 形式的 JSON，
+        然后用 json_repair.loads 解析。
+        """
+        text = (
+            '根据分析结果，我的建议如下：\n'
+            '{"action": "BUY", "symbol": "NVDA", "entry_price": 450.0, '
+            '"stop_loss": 430.0, "take_profit": 490.0, "quantity": 8, '
+            '"reason": "突破前高"}'
+        )
+        result = parse_trade_proposal(text, "NVDA")
+
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.symbol == "NVDA"
+        assert result.entry_price == 450.0
+        assert result.stop_loss == 430.0
+        assert result.take_profit == 490.0
+        assert result.quantity == 8
+
+
+class TestParseChineseKeywords:
+    """中文关键词触发买入/卖出动作解析"""
+
+    def test_parse_chinese_keywords(self):
+        """'买入 AAPL 150' → 正确识别 BUY 动作
+
+        中文关键词列表: "买入", "做多", "建仓" → BUY
+        价格通过 $ 前缀或标签匹配提取。
+        """
+        text = "买入 AAPL，入场价 $150"
+        result = parse_trade_proposal(text, "AAPL")
+
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.symbol == "AAPL"
+        assert result.entry_price == 150.0
+
+
+class TestParseDollarPrefix:
+    """$ 前缀价格提取"""
+
+    def test_parse_dollar_prefix(self):
+        """'$150 AAPL' → 从 $ 前缀正确提取价格
+
+        当标签匹配失败时，降级用 $xxx 格式提取价格。
+        """
+        text = "建议买入 AAPL，价格 $150"
+        result = parse_trade_proposal(text, "AAPL")
+
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.entry_price == 150.0
+
+
+class TestParseMalformedJsonFallback:
+    """JSON 格式错误时降级到关键词匹配"""
+
+    def test_parse_malformed_json_fallback(self):
+        """输入包含无效 JSON → json_repair/json.loads 失败 → 降级关键词匹配
+
+        关键词 "买入" 应被正确识别为 BUY。
+        注意: json_repair 库容错性很强，可能修复大部分畸形 JSON。
+        我们用完全不合法的 JSON 来确保触发 fallback。
+        """
+        # action 值没有引号，键名也没有引号 — json_repair 可能仍能修复
+        # 使用截断的 JSON 确保失败
+        text = '买入 AAPL，{"action": "BUY", "symbol": "AAPL" -- 截断的无效json'
+        result = parse_trade_proposal(text, "AAPL")
+
+        assert result is not None
+        # 无论 JSON 解析成功还是关键词匹配，BUY 都应该被识别
+        assert result.action == "BUY"
+        assert result.symbol == "AAPL"
+
+
+class TestParseGarbageReturnsHold:
+    """无法识别的随机文本返回 HOLD"""
+
+    def test_parse_garbage_returns_hold(self):
+        """完全无关的文本 → 无法匹配任何关键词 → 默认 HOLD
+
+        parse_trade_proposal 初始 action="HOLD"，
+        只有匹配到 buy/sell 关键词才会改变。
+        """
+        text = "天气晴朗，适合出去散步，股市今天没什么动静"
+        result = parse_trade_proposal(text, "AAPL")
+
+        assert result is not None
+        assert result.action == "HOLD"
+        assert result.entry_price == 0  # 无价格信息

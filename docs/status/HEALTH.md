@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R14审计: Git历史密钥清除+God Object拆分+924行死代码清理+Tauri IPC统一+导入覆盖提升+litellm_router废弃方法清理 | 980/980+28/28 passed)
+> 最后更新: 2026-03-28 (R16审计: 20个金融安全测试+SELL止损缺口HI-361 | 1008/1008 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -82,6 +82,7 @@
 | HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 (已新建 vps_failover_check.sh) | 2026-03-27 |
 | HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在 | 2026-03-28 |
 | HI-349 | `security` | `code_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 — 需OS级隔离 | 2026-03-28 |
+| HI-361 | `trading` | `position_monitor.py` | 🔴 _check_exit_conditions()只处理BUY方向，SELL方向持仓无精准止损/止盈 — 做空只靠日亏损熔断保护 | 2026-03-28 |
 
 ### 🟡 一般
 
