@@ -5,11 +5,11 @@
 
 ---
 
-## [2026-03-28] 全量审计第 R18 轮: brain.py拆分(1623→839) + life_automation.py拆分(1555→449)
+## [2026-03-28] 全量审计第 R18 轮: brain拆分 + life_automation拆分 + message_mixin拆分
 
 > 领域: `backend`
-> 影响模块: core/brain, execution/life_automation
-> 关联问题: HI-360(14个大文件 — 已解决2个)
+> 影响模块: core/brain, execution/life_automation, bot/message_mixin
+> 关联问题: HI-360(14个大文件 — 已解决3个Top4)
 
 ### 变更内容
 
@@ -26,9 +26,15 @@
 - tracking.py (473行) — 社媒分析/价格监控/策略评估 (11个函数)
 - 向后兼容: life_automation.py 底部 re-export 所有被移出的函数，现有消费者零修改
 
-**导入测试扩展:** 28→32个模块 (+4个新拆分模块)
+**message_mixin.py 架构拆分 (1615行 → 3文件):**
+- message_mixin.py (966行) — 保留核心: handle_message(590行) + handle_voice + 流处理
+- workflow_mixin.py (476行) — WorkflowMixin: 24个链式讨论工作流方法
+- callback_mixin.py (286行) — CallbackMixin: 交易回调/建议回调/购物命令
+- MessageHandlerMixin 继承两个 Mixin, multi_bot.py 零修改
 
-**验证结果:** 1008/1008 + 32/32 导入测试
+**导入测试扩展:** 28→34个模块 (+6个新拆分模块)
+
+**验证结果:** 1012/1012 + 34/34 导入测试
 
 ### 文件变更
 - `packages/clawbot/src/core/brain.py` — 1623→839行
@@ -37,7 +43,10 @@
 - `packages/clawbot/src/execution/life_automation.py` — 1555→449行
 - `packages/clawbot/src/execution/bookkeeping.py` — 新建 (682行)
 - `packages/clawbot/src/execution/tracking.py` — 新建 (473行)
-- `packages/clawbot/tests/test_import_smoke.py` — 扩展到32模块
+- `packages/clawbot/tests/test_import_smoke.py` — 扩展到34模块
+- `packages/clawbot/src/bot/message_mixin.py` — 1615→966行
+- `packages/clawbot/src/bot/workflow_mixin.py` — 新建 (476行)
+- `packages/clawbot/src/bot/callback_mixin.py` — 新建 (286行)
 - `docs/status/HEALTH.md` — 更新
 - `docs/CHANGELOG.md` — 本条目
 
