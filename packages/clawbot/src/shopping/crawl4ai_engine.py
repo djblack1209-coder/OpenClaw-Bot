@@ -241,7 +241,7 @@ def _extract_price(text: str) -> float:
             val = float(match.group())
             if 0.01 <= val <= 999999:  # 合理价格范围
                 return val
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             pass
     return 0.0
 
@@ -326,7 +326,7 @@ async def _crawl_platform_css(
             if isinstance(extracted, str):
                 try:
                     extracted = json.loads(extracted)
-                except (json.JSONDecodeError, TypeError):
+                except (json.JSONDecodeError, TypeError) as e:
                     logger.debug(f"[crawl4ai] {platform_key} 解析 JSON 失败")
                     return []
 
@@ -353,7 +353,7 @@ async def _crawl_platform_css(
                     source="css",
                 ))
 
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as e:
         logger.warning(f"[crawl4ai] {platform_key} 超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} CSS 抽取异常: {e}")
@@ -394,7 +394,7 @@ async def _crawl_platform_llm(
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if api_key:
                 llm_provider = "openai/gpt-4o-mini"
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
     if not llm_provider:
@@ -448,7 +448,7 @@ async def _crawl_platform_llm(
             if isinstance(extracted, str):
                 try:
                     extracted = json.loads(extracted)
-                except (json.JSONDecodeError, TypeError):
+                except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
                     return []
 
             # LLM 可能返回 {"products": [...]} 或直接 [...]
@@ -466,7 +466,7 @@ async def _crawl_platform_llm(
                 price = 0.0
                 try:
                     price = float(item.get("price", 0))
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:  # noqa: F841
                     price = _extract_price(str(item.get("price", "")))
 
                 results.append(ProductPrice(
@@ -478,7 +478,7 @@ async def _crawl_platform_llm(
                     source="llm",
                 ))
 
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as e:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {e}")

@@ -261,6 +261,22 @@ async def main():
     g.ab_test_manager = ABTestManager()
     logger.info("  社交 A/B 测试管理器已初始化 → globals.ab_test_manager")
 
+    # 7. 初始化自适应路由器（动态调整 API 池路由权重）
+    try:
+        from src.litellm_router import init_adaptive_router
+        init_adaptive_router()
+        logger.info("  自适应路由器已初始化")
+    except Exception as e:
+        logger.debug("  自适应路由器初始化跳过: %s", e)
+
+    # 7.5 初始化闲鱼监控（可选）
+    try:
+        from src.xianyu.goofish_monitor import init_goofish_monitor
+        init_goofish_monitor()
+        logger.info("  闲鱼监控已初始化")
+    except Exception as e:
+        logger.debug("  闲鱼监控初始化跳过: %s", e)
+
     # 8. 挂载交易记忆桥接（自动将交易事件写入共享记忆）
     trading_memory_bridge.attach(shared_memory=shared_memory)
     logger.info("  交易记忆桥接已挂载 (开仓/平仓/复盘 → SharedMemory)")

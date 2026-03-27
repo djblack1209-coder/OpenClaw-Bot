@@ -71,13 +71,13 @@ class TelegramAlertNotifier:
             if loop is None:
                 try:
                     loop = asyncio.get_running_loop()
-                except RuntimeError:
+                except RuntimeError as e:  # noqa: F841
                     loop = None
             if loop and loop.is_running():
                 asyncio.ensure_future(self._send(rule_name, message))
             else:
                 loop.run_until_complete(self._send(rule_name, message))
-        except RuntimeError:
+        except RuntimeError as e:  # noqa: F841
             # 没有事件循环，用线程发送
             import threading
             threading.Thread(
@@ -121,7 +121,7 @@ def get_system_resources() -> Dict[str, Any]:
         result["cpu_load_1m"] = round(load[0], 2)
         result["cpu_load_5m"] = round(load[1], 2)
         result["cpu_load_15m"] = round(load[2], 2)
-    except (OSError, AttributeError):
+    except (OSError, AttributeError) as e:  # noqa: F841
         result["cpu_load_1m"] = -1
 
     # 内存 — 尝试 psutil，降级到 sysctl (macOS) 或 /proc/meminfo (Linux)
@@ -144,7 +144,7 @@ def get_system_resources() -> Dict[str, Any]:
             if "page size of" in first_line:
                 try:
                     page_size = int(first_line.split("page size of")[1].split("bytes")[0].strip())
-                except (ValueError, IndexError):
+                except (ValueError, IndexError) as e:  # noqa: F841
                     pass
             for line in out.splitlines():
                 if "Pages free" in line:
@@ -153,7 +153,7 @@ def get_system_resources() -> Dict[str, Any]:
                     pages_active = int(line.split(":")[1].strip().rstrip("."))
             result["memory_free_gb"] = round(pages_free * page_size / (1024**3), 1)
             result["memory_active_gb"] = round(pages_active * page_size / (1024**3), 1)
-        except Exception:
+        except Exception as e:  # noqa: F841
             result["memory_percent"] = -1
 
     # 磁盘
@@ -165,7 +165,7 @@ def get_system_resources() -> Dict[str, Any]:
         result["disk_total_gb"] = round(total / (1024**3), 1)
         result["disk_free_gb"] = round(free / (1024**3), 1)
         result["disk_used_percent"] = used_pct
-    except (OSError, AttributeError):
+    except (OSError, AttributeError) as e:  # noqa: F841
         result["disk_used_percent"] = -1
 
     return result

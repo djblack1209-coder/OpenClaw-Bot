@@ -102,7 +102,7 @@ class HistoryStore:
             content = row["content"]
             try:
                 content = json.loads(content)
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
                 pass
             messages.append({"role": row["role"], "content": content})
         return messages

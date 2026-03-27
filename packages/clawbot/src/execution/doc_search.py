@@ -46,7 +46,7 @@ def build_doc_index(roots=None, max_files=500) -> dict:
                     "size": size,
                 })
                 indexed += 1
-            except Exception:
+            except Exception as e:  # noqa: F841
                 skipped += 1
 
     return {
@@ -93,7 +93,7 @@ def search_docs(query=None, files=None, limit=10) -> List[dict]:
                         break
                 if len(results) >= limit:
                     break
-        except Exception:
+        except Exception as e:  # noqa: F841
             continue
 
     return results

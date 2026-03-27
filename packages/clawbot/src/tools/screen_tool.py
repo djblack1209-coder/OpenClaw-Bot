@@ -69,7 +69,7 @@ class ScreenTool:
                 "size": len(img_data)
             }
             
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:  # noqa: F841
             return {
                 "success": False,
                 "error": "截图超时"

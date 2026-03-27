@@ -175,7 +175,7 @@ def _sync_quick_screen(symbol: str) -> Optional[dict]:
             "volume": int(volume),
             "vol_ratio": round(vol_ratio, 2),
         }
-    except Exception:
+    except Exception as e:  # noqa: F841
         return None
 
 
@@ -292,7 +292,7 @@ async def full_market_scan(
     if env_top_n:
         try:
             final_top_n = min(max(5, int(env_top_n)), 200)  # 上限200防止返回过多
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             pass
 
     top_candidates = layer2_results[:final_top_n]

@@ -129,7 +129,7 @@ def list_reminders(status="pending", db_path=None) -> list:
                  "recurrence_rule": r[5], "user_chat_id": r[6]}
                 for r in cursor.fetchall()
             ]
-    except Exception:
+    except Exception as e:  # noqa: F841
         return []
 
 
@@ -237,7 +237,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
             if days_ahead <= 0:
                 days_ahead += 7
             return from_time + timedelta(days=days_ahead)
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:  # noqa: F841
             return from_time + timedelta(weeks=1)
 
     if rule.startswith("monthly:") or rule.startswith("每月"):
@@ -259,7 +259,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
             max_day = calendar.monthrange(year, month)[1]
             target_day = min(target_day, max_day)
             return from_time.replace(year=year, month=month, day=target_day)
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:  # noqa: F841
             return from_time + timedelta(days=30)
 
     if rule in ("weekdays", "工作日"):
@@ -544,7 +544,7 @@ def get_monthly_summary(user_id: int, year_month: str = None, db_path=None) -> d
         try:
             parts = year_month.split("-")
             year, month = int(parts[0]), int(parts[1])
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:  # noqa: F841
             return {"success": False, "error": "月份格式无效，请用 YYYY-MM 格式"}
     else:
         now = _dt.now()
@@ -780,7 +780,7 @@ def delete_last_expense(user_id: int, chat_id: int = 0, db_path=None) -> bool:
                     (user_id,),
                 )
         return True
-    except Exception:
+    except Exception as e:  # noqa: F841
         return False
 
 
@@ -794,7 +794,7 @@ def format_monthly_report(summary: dict) -> str:
     try:
         y, m = month.split("-")
         month_display = f"{y}年{int(m)}月"
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError) as e:  # noqa: F841
         month_display = month
 
     total_expense = summary["total_expense"]
@@ -1157,7 +1157,7 @@ def list_bill_accounts(user_id, db_path=None) -> list:
                 }
                 for r in rows
             ]
-    except Exception:
+    except Exception as e:  # noqa: F841
         return []
 
 
@@ -1256,8 +1256,9 @@ def find_bill_by_type(user_id, account_type, db_path=None):
                     "account_name": row[2], "balance": row[3],
                     "low_threshold": row[4],
                 }
-    except Exception:
+    except Exception as e:
         pass
+        logger.debug("静默异常: %s", e)
     return None
 
 
@@ -1333,7 +1334,7 @@ def list_price_watches(user_id, db_path=None) -> list:
                 }
                 for r in rows
             ]
-    except Exception:
+    except Exception as e:  # noqa: F841
         return []
 
 

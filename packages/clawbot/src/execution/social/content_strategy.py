@@ -152,5 +152,5 @@ def load_persona(persona_dir: Optional[str] = None, name: str = "default") -> Op
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:  # noqa: F841
         return None

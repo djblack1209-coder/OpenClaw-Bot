@@ -122,7 +122,7 @@ async def search_smzdm(keyword: str, limit: int = 10) -> List[PriceResult]:
                     logger.debug("SMZDM parse item error: %s", e)
                     continue
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         logger.warning("SMZDM search timed out for '%s'", keyword)
     except Exception as e:
         logger.warning("SMZDM search failed: %s", e)
@@ -197,10 +197,10 @@ async def search_jd(keyword: str, limit: int = 10) -> List[PriceResult]:
                     result = _parse_jd_item(item)
                     if result:
                         results.append(result)
-                except Exception:
+                except Exception as e:  # noqa: F841
                     continue
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         logger.warning("JD search timed out for '%s'", keyword)
     except Exception as e:
         logger.warning("JD search failed: %s", e)
@@ -223,7 +223,7 @@ def _parse_jd_item(item) -> Optional[PriceResult]:
     if price_el:
         try:
             price = float(price_el.text.strip())
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError) as e:  # noqa: F841
             pass
 
     if price <= 0:
@@ -269,7 +269,7 @@ def _extract_price(text: str) -> float:
             parsed = _PriceParser.fromstring(text)
             if parsed.amount is not None:
                 return float(parsed.amount)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # 路径2: regex 降级
@@ -278,7 +278,7 @@ def _extract_price(text: str) -> float:
     if match:
         try:
             return float(match.group())
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             pass
     return 0.0
 
@@ -422,7 +422,7 @@ def _extract_rss_price(text: str) -> float:
                 val = float(match.group(1))
                 if 1 < val < 100000:  # 合理价格范围
                     return val
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 continue
     return 0.0
 

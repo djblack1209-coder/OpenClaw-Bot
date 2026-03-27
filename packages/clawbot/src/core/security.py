@@ -224,10 +224,11 @@ class SecurityGate:
                                 "locked_minutes": 5,
                             }))
                             _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                        except RuntimeError:
+                        except RuntimeError as e:  # noqa: F841
                             pass
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
             self._pin_attempts[user_id] = state
         else:
             self._pin_attempts.pop(user_id, None)  # 成功后清除计数
@@ -343,7 +344,7 @@ class SecurityGate:
                         line = line.strip()
                         if line:
                             records.append(json.loads(line))
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         return records[-limit:]
 
@@ -361,7 +362,7 @@ def get_security_gate() -> SecurityGate:
             from src.bot.globals import ALLOWED_USER_IDS
             if ALLOWED_USER_IDS:
                 ids.extend(ALLOWED_USER_IDS)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         _gate = SecurityGate(admin_user_ids=list(set(ids)))
     return _gate

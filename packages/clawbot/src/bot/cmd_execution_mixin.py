@@ -123,7 +123,7 @@ class ExecutionCommandsMixin:
                     try:
                         with open(path, "rb") as f:
                             await context.bot.send_photo(chat_id=update.effective_chat.id, photo=f, caption=f"数字生命自拍 | {persona.get('name', '')}")
-                    except Exception:
+                    except Exception as e:
                         logger.exception("发送数字生命自拍失败: %s", path)
             else:
                 lines.append(error_service_failed("自拍生成", image_ret.get('error', '')))
@@ -365,7 +365,7 @@ class ExecutionCommandsMixin:
                 from src.bot.globals import user_prefs
                 if user_prefs.get(update.effective_user.id, "social_preview", False):
                     preview_mode = True
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
         if args and str(args[0]).lower() in {"x", "xhs", "xiaohongshu", "all", "both", "dual"}:
@@ -455,7 +455,7 @@ class ExecutionCommandsMixin:
                         variant_id, _ = ab_test_manager.get_content(test.test_id)
                         if plat_result.get("published", {}).get("success"):
                             ab_test_manager.record_engagement(test.test_id, variant_id, event="publish")
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)  # A/B 追踪不影响主流程
 
         hint = self._social_login_retry_hint(
@@ -863,7 +863,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 task_id = int(rest[0])
-            except Exception:
+            except Exception as e:  # noqa: F841
                 await update.message.reply_text("任务ID必须是数字")
                 return
             ret = await asyncio.to_thread(execution_hub.update_task_status, task_id, "done")
@@ -974,7 +974,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 minutes = int(rest[0])
-            except Exception:
+            except Exception as e:  # noqa: F841
                 await update.message.reply_text("分钟必须是数字")
                 return
             message = " ".join(rest[1:]).strip()
@@ -998,7 +998,7 @@ class ExecutionCommandsMixin:
                 if raw:
                     try:
                         payload = json.loads(raw)
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         payload = {"raw": raw}
             ret = await execution_hub.trigger_home_action(action=action, payload=payload)
             if ret.get("success"):
@@ -1344,7 +1344,7 @@ class ExecutionCommandsMixin:
             for a in remaining:
                 try:
                     numbers_found.append(float(a))
-                except ValueError:
+                except ValueError as e:  # noqa: F841
                     names_found.append(a)
             if names_found:
                 account_name = " ".join(names_found)
@@ -1382,7 +1382,7 @@ class ExecutionCommandsMixin:
             try:
                 acct_id = int(args[1])
                 balance = float(args[2])
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as e:  # noqa: F841
                 await update.message.reply_text("❌ 格式错误，示例: /bill update 1 45.5")
                 return
             # 通过列表序号查找真实 ID
@@ -1418,7 +1418,7 @@ class ExecutionCommandsMixin:
                             },
                             source="cmd_bill",
                         ))
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                 await update.message.reply_text(msg)
             else:
@@ -1432,7 +1432,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 acct_id = int(args[1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❌ 编号必须是数字")
                 return
             accounts = list_bill_accounts(user.id)
@@ -1755,7 +1755,7 @@ class ExecutionCommandsMixin:
         if args:
             try:
                 days = int(args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 pass
         days = min(max(days, 1), 90)  # 限制 1-90 天
 
@@ -1820,8 +1820,9 @@ class ExecutionCommandsMixin:
                         convert = item.get("conversions", 0)
                         rate = item.get("conversion_rate", "0%")
                         lines.append(f"{i}. {title} | 咨询 {consult}次 | 成交 {convert}单 | 转化率 {rate}")
-            except Exception:
+            except Exception as e:
                 pass  # BI 数据获取失败不影响主报表
+                logger.debug("静默异常: %s", e)
 
             # ── BI 板块2: 咨询高峰时段 (文本柱状图, 取前5) ──
             try:
@@ -1843,8 +1844,9 @@ class ExecutionCommandsMixin:
                             fire = "🔥" if sorted_hours.index(h) < 2 else "  "
                             next_hour = f"{int(hour_str) + 1:02d}" if int(hour_str) < 23 else "00"
                             lines.append(f"{fire} {hour_str}:00-{next_hour}:00  {bar} {msgs}条")
-            except Exception:
+            except Exception as e:
                 pass  # BI 数据获取失败不影响主报表
+                logger.debug("静默异常: %s", e)
 
             # ── BI 板块3: 转化漏斗 ──
             try:
@@ -1860,8 +1862,9 @@ class ExecutionCommandsMixin:
                     lines.append(f"💬 有回复:    {replied}人 ({funnel.get('replied_rate', '0%')})")
                     lines.append(f"💰 成交:      {converted}人 ({funnel.get('overall_rate', '0%')})")
                     lines.append(f"📦 发货:      {shipped}人 ({funnel.get('shipped_rate', '0%')})")
-            except Exception:
+            except Exception as e:
                 pass  # BI 数据获取失败不影响主报表
+                logger.debug("静默异常: %s", e)
 
             msg = "\n".join(lines)
             await update.message.reply_text(msg, parse_mode="HTML")
@@ -1885,7 +1888,7 @@ class ExecutionCommandsMixin:
             try:
                 r = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
                 status_line = "🟢 运行中" if r.stdout.strip() else "🔴 未运行"
-            except Exception:
+            except Exception as e:  # noqa: F841
                 status_line = "⚪ 状态未知"
             help_msg = (
                 "🐟 闲鱼 AI 客服管理\n"
@@ -1942,7 +1945,7 @@ class ExecutionCommandsMixin:
                     with open(log_path) as f:
                         last_lines = f.readlines()[-3:]
                         last_log = "\n".join(l.strip() for l in last_lines)
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
                 msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个\n\n最近日志:\n{last_log}"
                 await update.message.reply_text(msg[:4000])
@@ -1963,7 +1966,7 @@ class ExecutionCommandsMixin:
             if len(args) > 1:
                 try:
                     day_offset = int(args[1])
-                except ValueError:
+                except ValueError as e:  # noqa: F841
                     pass
             result = execution_hub.mark_calendar_done(day_offset=day_offset)
             if result.get("success"):
@@ -1979,7 +1982,7 @@ class ExecutionCommandsMixin:
         if args:
             try:
                 days = int(args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 pass
 
         # 先查DB已有计划
@@ -2032,7 +2035,7 @@ class ExecutionCommandsMixin:
         if context.args:
             try:
                 days = int(context.args[0])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 pass
         result = execution_hub.get_post_performance_report(days=days)
         if not result.get("success"):
@@ -2069,7 +2072,7 @@ class ExecutionCommandsMixin:
                                 imp = v.get("impressions", 0)
                                 clk = v.get("clicks", 0)
                                 lines.append(f"    变体{v.get('id', '?')[:6]}: {imp}曝光 {clk}点击 CTR={ctr:.1%}")
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)  # A/B 数据不影响主报告
 
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
@@ -2363,7 +2366,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 novel_id = int(args[1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ 小说ID必须是数字")
                 return
             await update.message.reply_text("✍️ 正在续写中，请稍候（约30秒）...")
@@ -2385,7 +2388,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 novel_id = int(args[1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ 小说ID必须是数字")
                 return
             status = writer.get_novel_status(novel_id)
@@ -2422,7 +2425,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 novel_id = int(args[1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ 小说ID必须是数字")
                 return
             path = writer.export_txt(novel_id)
@@ -2443,7 +2446,7 @@ class ExecutionCommandsMixin:
             try:
                 novel_id = int(args[1])
                 chapter_num = int(args[2])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ ID和章节号必须是数字")
                 return
             # 获取章节内容
@@ -2528,7 +2531,7 @@ class ExecutionCommandsMixin:
             # 最后一个参数是目标价，前面的都是商品关键词
             try:
                 target_price = float(args[-1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ 最后一个参数必须是目标价格（数字）")
                 return
             keyword = " ".join(args[1:-1])
@@ -2585,7 +2588,7 @@ class ExecutionCommandsMixin:
                 return
             try:
                 watch_id = int(args[1])
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 await update.message.reply_text("❓ 编号必须是数字")
                 return
             if remove_price_watch(watch_id, user_id):

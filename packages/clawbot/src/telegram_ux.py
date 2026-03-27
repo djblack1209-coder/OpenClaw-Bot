@@ -38,7 +38,7 @@ class TypingIndicator:
                     chat_id=self.chat_id, action=ChatAction.TYPING
                 )
                 await asyncio.sleep(self.interval)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as e:  # noqa: F841
             pass
         except Exception as e:
             logger.debug(f"[TypingIndicator] stopped: {e}")
@@ -52,7 +52,7 @@ class TypingIndicator:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
 
 
@@ -103,7 +103,7 @@ class ProgressTracker:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
         # Final update
         if self._message:
@@ -115,7 +115,7 @@ class ProgressTracker:
                 final += f"\n{steps_text}"
             try:
                 await self._message.edit_text(final)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def update(self, step: str):
@@ -142,9 +142,9 @@ class ProgressTracker:
                     text += f"\n{current}"
                 try:
                     await self._message.edit_text(text)
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as e:  # noqa: F841
             pass
 
 
@@ -269,7 +269,7 @@ class TelegramProgressBar:
                     text=self._render(detail),
                 )
                 self._last_edit = now
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def finish(self, summary: str = ""):
@@ -280,7 +280,7 @@ class TelegramProgressBar:
                 message_id=self.message.message_id,
                 text=text,
             )
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
 
@@ -321,7 +321,7 @@ async def send_error_with_retry(update, context, error: Exception,
         await update.effective_message.reply_text(
             user_msg, reply_markup=keyboard,
         )
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
 
@@ -533,7 +533,7 @@ def generate_equity_chart(equity_curve: list, title: str = "权益曲线") -> io
         png_bytes = plotly_equity(equity_curve, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
     # Fall through to matplotlib version below
     plt = _setup_chart_style()
@@ -580,7 +580,7 @@ def generate_pnl_chart(trades: list, title: str = "交易盈亏") -> io.BytesIO:
         png_bytes = plotly_pnl(trades, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
     # Fall through to matplotlib version below
     plt = _setup_chart_style()
@@ -628,7 +628,7 @@ def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.B
         png_bytes = plotly_pie(positions, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
     # Fall through to matplotlib version below
     plt = _setup_chart_style()

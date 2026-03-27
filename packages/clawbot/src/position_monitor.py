@@ -261,7 +261,7 @@ class PositionMonitor:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
         logger.info("[PositionMonitor] 监控循环已停止")
 
@@ -270,7 +270,7 @@ class PositionMonitor:
             try:
                 if self.positions:
                     await self._check_all_positions()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:
                 logger.info("[Monitor] 监控循环被取消")
                 raise  # 让 stop() 正常结束
             except Exception as e:
@@ -321,8 +321,9 @@ class PositionMonitor:
                                 "⚠️ %s 利润回撤预警\n%s\n当前浮盈: $%.2f"
                                 % (pos.symbol, pnl_warning.get("action", ""), pos.unrealized_pnl)
                             )
-                    except Exception:
+                    except Exception as e:
                         pass  # 不影响核心监控循环
+                        logger.debug("静默异常: %s", e)
 
                 signal = self._check_exit_conditions(pos)
                 if signal:
@@ -667,8 +668,9 @@ class PositionMonitor:
                     tags=["trading", "risk"],
                 )
                 return
-        except Exception:
+        except Exception as e:
             pass  # NotificationManager 不可用，降级
+            logger.debug("静默异常: %s", e)
 
         # 降级: 直接 Telegram callback
         if self.notify:
@@ -687,7 +689,7 @@ class PositionMonitor:
                     loop = asyncio.get_running_loop()
                     _t = loop.create_task(bus.publish(event_type, data))
                     _t.add_done_callback(lambda t: t.exception() and logger.debug("EventBus 发布异常: %s", t.exception()))
-                except RuntimeError:
+                except RuntimeError as e:  # noqa: F841
                     pass  # 无运行中的事件循环，跳过
         except Exception as e:
             logger.debug("EventBus 不可用: %s", e)

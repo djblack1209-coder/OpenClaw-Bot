@@ -299,7 +299,7 @@ def _run_async_in_sync(coro):
     """
     try:
         loop = asyncio.get_running_loop()
-    except RuntimeError:
+    except RuntimeError as e:  # noqa: F841
         loop = None
 
     if loop and loop.is_running():

@@ -30,7 +30,7 @@ def _env_int(key: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -40,7 +40,7 @@ def _env_float(key: str, default: float) -> float:
         return default
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -56,7 +56,7 @@ async def _safe_notify(notify_func: Optional[Callable], msg: str) -> None:
     if notify_func:
         try:
             await notify_func(msg)
-        except Exception:
+        except Exception as e:
             logger.debug("[TeamVote] notify failed: %s", msg[:80])
 
 
@@ -264,7 +264,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
     def _safe_float(value: Any) -> float:
         try:
             return float(str(value))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:  # noqa: F841
             return 0.0
 
     def _normalize_vote(raw: object) -> str:
@@ -297,7 +297,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
                     data = jloads(candidate)
                     if isinstance(data, dict) and "vote" in data:
                         return data
-                except Exception:
+                except Exception as e:  # noqa: F841
                     return None
             return None
 
@@ -367,7 +367,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
     confidence = data.get("confidence", 5)
     try:
         confidence = int(confidence)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         confidence = 5
 
     return BotVote(
@@ -396,7 +396,7 @@ def _has_value(value: object) -> bool:
 def _to_float(value: Any) -> float:
     try:
         return float(str(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return 0.0
 
 
@@ -563,7 +563,7 @@ async def run_team_vote(
                     caller(-999, prompt), timeout=timeout_per_bot,
                 )
                 return _parse_vote(response, bot_id, bot_id, role)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 last_err = "回复超时"
                 logger.warning("[TeamVote] %s 超时(%ds) [%d/%d]", bot_id, timeout_per_bot, attempt + 1, max_attempts)
             except Exception as e:
@@ -614,7 +614,7 @@ async def run_team_vote(
             latest_review = tj.get_latest_review("daily")
             if latest_review and latest_review.get("lessons_learned"):
                 trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
     commander_id = "claude_sonnet"
@@ -643,7 +643,7 @@ async def run_team_vote(
                 )
                 commander_vote_result = _parse_vote(response, commander_id, commander_id, role)
                 break
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", commander_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", commander_id, _attempt + 1, e)
@@ -688,7 +688,7 @@ async def run_team_vote(
                 )
                 strategist_vote_result = _parse_vote(response, strategist_id, strategist_id, role)
                 break
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", strategist_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", strategist_id, _attempt + 1, e)

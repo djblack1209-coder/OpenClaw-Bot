@@ -32,7 +32,7 @@ class FileTool:
         # 核心安全检查：resolved 必须在 base_dir 下
         try:
             resolved.relative_to(self.base_dir)
-        except ValueError:
+        except ValueError as e:  # noqa: F841
             raise PermissionError(
                 f"路径越权: {path} 解析为 {resolved}，不在允许范围 {self.base_dir} 内"
             )
@@ -73,7 +73,7 @@ class FileTool:
                 "shown_lines": len(selected),
                 "path": str(file_path)
             }
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as e:  # noqa: F841
             return {"success": False, "error": "无法读取二进制文件"}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -179,7 +179,7 @@ class FileTool:
                         if found:
                             match_info["content_matches"] = len(found)
                             matches.append(match_info)
-                    except (UnicodeDecodeError, OSError):
+                    except (UnicodeDecodeError, OSError) as e:  # noqa: F841
                         pass
                 else:
                     matches.append(match_info)

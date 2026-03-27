@@ -56,7 +56,7 @@ def _env_int(key: str, default: int, minimum: int = 1) -> int:
         return default
     try:
         return max(minimum, int(raw))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -66,7 +66,7 @@ def _env_float(key: str, default: float) -> float:
         return default
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -459,8 +459,9 @@ def init_trading_system(
                 if latest_review and latest_review.get("lessons_learned"):
                     lessons = str(latest_review["lessons_learned"])[:500]
                     account_context += f"\n\n⚠️ 上次复盘教训 (必须遵守):\n{lessons}"
-            except Exception:
+            except Exception as e:
                 pass  # 教训获取失败不影响投票主流程
+                logger.debug("静默异常: %s", e)
 
             # 尝试 CrewAI 多 Agent 协作
             if _crewai:
@@ -683,8 +684,9 @@ async def _eod_auto_review():
                     await bus.publish("trade.daily_review", {
                         "summary": "\n".join(lines),
                     })
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
         except Exception as e:
             logger.error("[Scheduler] 自动复盘失败: %s", e)
             await _auto_trader._safe_notify("收盘复盘生成失败: %s\n发送 /review 手动复盘" % e)

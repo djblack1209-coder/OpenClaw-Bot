@@ -770,7 +770,7 @@ class ChineseNLPMixin:
                     await update.message.reply_text(result if isinstance(result, str) else str(result))
                 except ImportError:
                     await update.message.reply_text("快递查询功能暂未配置")
-                except Exception:
+                except Exception as e:  # noqa: F841
                     await update.message.reply_text("查询失败，请稍后再试")
                 return
             elif action_type == 'expense_add':
@@ -874,7 +874,7 @@ class ChineseNLPMixin:
                         month_num = int(action_arg)
                         year = _dt.now().year
                         year_month = f"{year}-{month_num:02d}"
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:  # noqa: F841
                         pass
                 summary = get_monthly_summary(user.id, year_month=year_month)
                 if not summary.get("success") or (
@@ -938,8 +938,9 @@ class ChineseNLPMixin:
                                     },
                                     source="nlp_bill_update",
                                 ))
-                            except Exception:
+                            except Exception as e:
                                 pass
+                                logger.debug("静默异常: %s", e)
                         await update.message.reply_text(msg)
                     else:
                         await update.message.reply_text(f"❌ 更新失败: {result.get('error', '')}")

@@ -661,7 +661,7 @@ def _safe_parse_time(iso_str: str):
     try:
         from datetime import datetime
         return datetime.fromisoformat(iso_str)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:  # noqa: F841
         return None
 
 
@@ -745,7 +745,7 @@ async def periodic_proactive_check(engine: "ProactiveEngine"):
             try:
                 from src.watchlist import get_watchlist_symbols
                 wl = get_watchlist_symbols()
-            except Exception:
+            except Exception as e:  # noqa: F841
                 wl = []
             if wl:
                 quotes = await get_quick_quotes(wl[:5])

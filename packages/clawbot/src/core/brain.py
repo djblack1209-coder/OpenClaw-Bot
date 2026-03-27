@@ -272,8 +272,9 @@ class OpenClawBrain:
                 _chat_id = int(context.get("chat_id", 0))
                 if _tcm and _chat_id:
                     _tcm.core_set("current_task", f"{intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
 
             if not intent.is_actionable:
                 # ── 模糊输入智能引导 — 无法识别明确意图时提供快捷操作建议 ──
@@ -403,8 +404,9 @@ class OpenClawBrain:
                 try:
                     if _tcm and _chat_id:
                         _tcm.core_set("current_task", f"[已完成] {intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
-                except Exception:
+                except Exception as e:
                     pass
+                    logger.debug("静默异常: %s", e)
 
                 # 6. 响应合成 — 将数据结果转化为对话式回复
                 try:
@@ -499,7 +501,7 @@ class OpenClawBrain:
                 loop.call_later(
                     300, lambda tid=task_id: self._active_tasks.pop(tid, None)
                 )
-            except RuntimeError:
+            except RuntimeError as e:  # noqa: F841
                 self._active_tasks.pop(task_id, None)
 
         return result
@@ -780,7 +782,7 @@ class OpenClawBrain:
             )
             approved = check.approved if hasattr(check, 'approved') else True
             return {"source": "risk_manager_singleton", "approved": approved}
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         # FAIL-CLOSED: 风控模块不可用时，拒绝交易而非默认放行
         return {"source": "risk_default", "approved": False,
@@ -809,7 +811,7 @@ class OpenClawBrain:
                     if isinstance(data, dict):
                         data["source"] = "director_llm"
                         return data
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
                 return {"source": "director_llm", "decision": "hold", "confidence": 0.5, "reasoning": content[:200]}
         except Exception as e:
@@ -841,7 +843,7 @@ class OpenClawBrain:
             try:
                 trending = await asyncio.to_thread(crawler.get_trending, platform) if hasattr(crawler.get_trending, '__call__') else crawler.get_trending(platform)
                 results["trending"] = trending[:10] if trending else []
-            except Exception:
+            except Exception as e:  # noqa: F841
                 results["trending"] = []
 
             # Search related content if topic provided
@@ -849,7 +851,7 @@ class OpenClawBrain:
                 try:
                     related = crawler.search_platform(platform, [topic], limit=5)
                     results["related_posts"] = related
-                except Exception:
+                except Exception as e:  # noqa: F841
                     results["related_posts"] = []
 
             results["source"] = "media_crawler"
@@ -887,7 +889,7 @@ class OpenClawBrain:
                     image_url = await generate_image(image_prompt)
                     if image_url:
                         result_dict["image_url"] = image_url
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)  # Image generation is optional
                 return result_dict
         except Exception as e:
@@ -967,7 +969,7 @@ class OpenClawBrain:
                                     data["source"] = "tavily_smart_compare"
                                     data["product"] = product
                                     return data
-                            except Exception:
+                            except Exception as e:
                                 logger.debug("Silenced exception", exc_info=True)
                             return {"source": "tavily_smart_compare", "product": product,
                                     "raw": content, "recommendation": content[:200]}
@@ -1003,7 +1005,7 @@ class OpenClawBrain:
             raw = await jina_read(f"https://cn.bing.com/shop?q={q}", max_length=3000)
             if raw and len(raw) > 200:
                 jina_context = f"\n\n以下是网页搜索到的相关信息（用于参考）:\n{raw[:2000]}"
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # 2. 用 LLM 做智能比价分析（通过 litellm_router 统一路由）
@@ -1038,7 +1040,7 @@ class OpenClawBrain:
                             data["source"] = "llm_smart_compare"
                             data["product"] = product
                             return data
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                     return {"source": "llm_smart_compare", "product": product,
                             "raw": content, "recommendation": content[:200]}
@@ -1127,7 +1129,7 @@ class OpenClawBrain:
                         if isinstance(data, dict):
                             data["source"] = f"{search_source}_llm_search"
                             return data
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                     return {"source": f"{search_source}_search", "results": [], "raw": content[:500]}
             except Exception as e:

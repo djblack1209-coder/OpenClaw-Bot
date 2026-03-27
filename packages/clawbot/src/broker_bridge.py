@@ -163,7 +163,7 @@ class IBKRBridge:
         try:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(loop.create_task, self._notify_func(msg))
-        except RuntimeError:
+        except RuntimeError as e:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -294,7 +294,7 @@ class IBKRBridge:
                         self._connected = False
                         self._schedule_auto_reconnect()
                         break
-                except asyncio.CancelledError:
+                except asyncio.CancelledError as e:  # noqa: F841
                     break
                 except Exception as e:
                     logger.warning("[IBKR] 心跳异常: %s，触发自动重连", e)
@@ -305,7 +305,7 @@ class IBKRBridge:
         try:
             loop = asyncio.get_running_loop()
             self._keepalive_task = loop.create_task(_keepalive_loop())
-        except RuntimeError:
+        except RuntimeError as e:  # noqa: F841
             pass  # 没有事件循环时跳过
 
     def _schedule_auto_reconnect(self):
@@ -331,7 +331,7 @@ class IBKRBridge:
         try:
             loop = asyncio.get_running_loop()
             self._auto_reconnect_task = loop.create_task(_auto_reconnect())
-        except RuntimeError:
+        except RuntimeError as e:
             logger.debug("[IBKR] 无事件循环，跳过自动重连调度")
 
     def _on_disconnect(self):
@@ -665,7 +665,7 @@ class IBKRBridge:
             try:
                 if 'q_contract' in locals():
                     self.ib.cancelMktData(q_contract)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def _place_order(self, side: str, symbol: str, quantity: float,
@@ -744,7 +744,7 @@ class IBKRBridge:
                                 if pos.avgCost > 0:
                                     entry_cost = filled_qty * pos.avgCost
                                 break
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                     self.total_spent = max(0, self.total_spent - entry_cost)
                     self._save_budget_state()
@@ -852,7 +852,7 @@ class IBKRBridge:
             try:
                 # ib_insync 有时返回字符串时间
                 return datetime.fromisoformat(str(raw_time)).timestamp()
-            except Exception:
+            except Exception as e:  # noqa: F841
                 return 0.0
 
         fills = []
@@ -1116,7 +1116,7 @@ def get_broker():
         if HAS_IB and ib.is_connected():
             logger.debug("[BrokerSelector] 使用 IBKR (已连接)")
             return ib
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
     # 2. 检查 Alpaca 是否有 API Key

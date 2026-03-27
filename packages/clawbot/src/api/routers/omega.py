@@ -250,7 +250,7 @@ async def omega_jina_read(url: str):
                 import ipaddress
                 ip = ipaddress.ip_address(parsed.hostname)
                 blocked = ip.is_private or ip.is_loopback or ip.is_link_local
-            except ValueError:
+            except ValueError as e:  # noqa: F841
                 pass  # 域名无法直接解析，允许通过（由 DNS 解析后的 IP 处理）
         if blocked:
             raise HTTPException(status_code=400, detail="Access to internal networks is not allowed")

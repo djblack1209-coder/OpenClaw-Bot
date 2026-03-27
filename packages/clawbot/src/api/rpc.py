@@ -70,7 +70,7 @@ class ClawBotRPC:
                     and bot.app.updater
                     and bot.app.updater.running
                 )
-            except Exception:
+            except Exception as e:  # noqa: F841
                 alive = False
             bot_statuses.append({
                 "bot_id": bot_id,
@@ -86,7 +86,7 @@ class ClawBotRPC:
         pool_stats: dict = {}
         try:
             pool_stats = free_pool.get_stats()
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # ── IBKR broker status ──
@@ -95,7 +95,7 @@ class ClawBotRPC:
         try:
             ibkr_connected = ibkr.connected if ibkr else False
             ibkr_account = getattr(ibkr, "account", "") or ""
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         # ── Shared memory stats ──
@@ -103,7 +103,7 @@ class ClawBotRPC:
         try:
             mem_stats = shared_memory.get_stats()
             mem_entries = mem_stats.get("total_entries", 0)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         return {
@@ -139,7 +139,7 @@ class ClawBotRPC:
 
         try:
             connected = ibkr.connected if ibkr else False
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         if connected:
@@ -167,7 +167,7 @@ class ClawBotRPC:
 
             try:
                 account_summary = await ibkr.get_account_summary() or {}
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         else:
             # ── Fallback: local Portfolio (sync) ──
@@ -709,7 +709,7 @@ class ClawBotRPC:
                         "active": data.get("active", True),
                         "platform_style": data.get("platform_style", {}),
                     })
-                except Exception:
+                except Exception as e:  # noqa: F841
                     continue
         except Exception as e:
             logger.warning("Failed to list personas: %s", e)
@@ -882,7 +882,7 @@ class ClawBotRPC:
 
         try:
             return prom.render()
-        except Exception:
+        except Exception as e:  # noqa: F841
             return ""
 
     # ──────────────────────────────────────────────

@@ -513,8 +513,9 @@ def card_from_brain_result(result) -> ResponseCard:
                 # 替换文本但保留按钮
                 card._override_buttons = invest_card.action_buttons()
                 return card
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
         return card
 
     # 投资分析

@@ -92,7 +92,7 @@ def run_social_worker(
                 return data
             return {"success": False, "error": "worker 输出不是对象"}
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             last_err = {"success": False, "error": f"worker 超时 (action={action})"}
             logger.warning(
                 "[SocialWorker] %s 超时(attempt %d)", action, attempt + 1
@@ -140,7 +140,7 @@ async def run_social_worker_async(
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
                     proc.communicate(), timeout=300
                 )
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 proc.kill()
                 await proc.wait()
                 last_err = {"success": False, "error": f"worker 超时 (action={action})"}

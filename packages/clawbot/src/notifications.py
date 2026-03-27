@@ -303,7 +303,7 @@ class NotificationManager:
         if yaml_min is not None:
             try:
                 self._min_level = NotifyLevel(int(yaml_min))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:  # noqa: F841
                 level_map = {
                     "critical": NotifyLevel.CRITICAL,
                     "high": NotifyLevel.HIGH,

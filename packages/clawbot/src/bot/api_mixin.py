@@ -119,7 +119,7 @@ class APIMixin:
             chat_mode_extra = self._get_chat_mode_prompt(chat_id)
             if chat_mode_extra:
                 messages.insert(0, {"role": "system", "content": chat_mode_extra})
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
         try:
@@ -163,7 +163,7 @@ class APIMixin:
                         latency_ms=latency, input_tokens=input_tokens,
                         output_tokens=output_tokens, metadata={"chat_type": chat_type},
                     )
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
 
             return reply
@@ -235,7 +235,7 @@ class APIMixin:
                 system_prompt=getattr(self, 'system_prompt', ''),
             )
             return response.choices[0].message.content or "(无响应)"
-        except Exception:
+        except Exception as e:  # noqa: F841
             raise Exception("所有免费 API 渠道均不可用，如需使用付费模型请发 /claude")
 
     async def _call_claude_api(self, messages: list, use_tools: bool = True) -> str:
@@ -336,7 +336,7 @@ class APIMixin:
                     chat_id=chat_id,
                 )
                 was_compressed = meta.get("compressed", False)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 messages, was_compressed = context_manager.prepare_messages_for_api(messages)
         else:
             messages, was_compressed = context_manager.prepare_messages_for_api(messages)
@@ -354,8 +354,9 @@ class APIMixin:
                 _user_profile = _tcm.core_get("user_profile", chat_id=chat_id) or ""
                 if _user_profile:
                     _sys_prompt += f"\n\n[用户偏好] {_user_profile[:300]}"
-        except Exception:
+        except Exception as e:
             pass  # 画像获取失败不影响主流程
+            logger.debug("静默异常: %s", e)
 
         # 消息温度感知: 检测用户紧急/悠闲语气，调整回复风格
         # 搬运灵感: Google Gemini contextual response adaptation
@@ -365,8 +366,9 @@ class APIMixin:
                 _sys_prompt += "\n\n[语气感知] 用户当前很着急，请极简直给，不超过2句话，先给结论。"
             elif _tone == "detailed":
                 _sys_prompt += "\n\n[语气感知] 用户当前很有耐心，可以详细展开分析。"
-        except Exception:
+        except Exception as e:
             pass
+            logger.debug("静默异常: %s", e)
 
         try:
             response = await free_pool.acompletion(
@@ -414,7 +416,7 @@ class APIMixin:
                         output_tokens=output_tokens,
                         metadata={"chat_type": chat_type, "stream": True},
                     )
-                except Exception:
+                except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
 
             yield (full_text, "finished")

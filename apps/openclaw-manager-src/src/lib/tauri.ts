@@ -325,27 +325,27 @@ export const api = {
 
   // ClawBot 代理命令
   clawbotSocialTopics: (limit?: number) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_social_topics', { limit }),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_topics', { limit }),
   clawbotEvolutionScan: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_evolution_scan'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_scan'),
   clawbotStatus: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_status'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_status'),
   clawbotTradingSystem: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_trading_system'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_system'),
   clawbotAutopilotStart: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_autopilot_start'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_start'),
   clawbotAutopilotStop: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_autopilot_stop'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_stop'),
   omegaStatus: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_omega_status'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_status'),
   clawbotEvolutionStats: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_evolution_stats'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_stats'),
   clawbotEvolutionGaps: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_evolution_gaps'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_gaps'),
   clawbotEvolutionProposals: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_evolution_proposals'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_proposals'),
   clawbotEvolutionUpdateProposal: (id: string, status: string) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_evolution_update_proposal', { id, status }),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_update_proposal', { id, status }),
 };
 
 export const CLAWBOT_WS_URL = `ws://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;

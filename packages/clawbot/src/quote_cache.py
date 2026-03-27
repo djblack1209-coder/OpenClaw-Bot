@@ -179,7 +179,7 @@ class QuoteCache:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
         logger.info("[QuoteCache] 已停止")
 
@@ -190,7 +190,7 @@ class QuoteCache:
                 await asyncio.sleep(self.config.refresh_interval)
                 if self._watch_symbols:
                     await self.refresh()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 break
             except Exception as e:
                 logger.error("[QuoteCache] 刷新循环错误: %s", e)

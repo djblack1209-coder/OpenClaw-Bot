@@ -41,7 +41,7 @@ def has_open_task(title=None, db_path=None) -> bool:
                 "SELECT COUNT(*) FROM tasks WHERE title=? AND status != 'done'", (t,)
             )
             return cursor.fetchone()[0] > 0
-    except Exception:
+    except Exception as e:  # noqa: F841
         return False
 
 

@@ -88,7 +88,7 @@ class NovelWriter:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except Exception as e:  # noqa: F841
             conn.rollback()
             raise
         finally:
@@ -125,8 +125,9 @@ class NovelWriter:
             """)
             try:
                 conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_unique ON chapters(novel_id, chapter_num)")
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
 
     async def _llm_call(self, system: str, user: str, max_tokens: int = 4000) -> str:
         """调用 LLM（利用已有的 litellm_router 免费多模型路由）"""
@@ -162,7 +163,7 @@ class NovelWriter:
             json_match = re.search(r'\{[\s\S]*\}', raw)
             if json_match:
                 outline = json.loads(json_match.group())
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             logger.warning("[NovelWriter] 大纲 JSON 解析失败，使用原始文本")
             outline = {"title": f"{genre}小说", "raw_outline": raw}
 

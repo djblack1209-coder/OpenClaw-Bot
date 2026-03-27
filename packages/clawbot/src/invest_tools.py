@@ -34,7 +34,7 @@ def _get_global_quote_cache():
     try:
         from src.trading_system import get_quote_cache
         return get_quote_cache()
-    except Exception:
+    except Exception as e:  # noqa: F841
         return None
 
 
@@ -315,7 +315,7 @@ class Portfolio:
             conn.execute("PRAGMA journal_mode=WAL")
             yield conn
             conn.commit()
-        except Exception:
+        except Exception as e:  # noqa: F841
             conn.rollback()
             raise
         finally:
@@ -715,7 +715,7 @@ async def get_quick_quotes(symbols: list) -> Dict:
             quote = await get_stock_quote(sym)
             if quote:
                 results[sym] = quote
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
     return results
 

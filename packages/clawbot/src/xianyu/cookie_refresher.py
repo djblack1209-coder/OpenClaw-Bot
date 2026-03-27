@@ -14,7 +14,7 @@ def parse_h5_tk_timestamp(cookies: dict) -> float:
     if "_" in tk:
         try:
             return float(tk.split("_")[1]) / 1000.0
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:  # noqa: F841
             pass
     return 0.0
 
@@ -76,10 +76,10 @@ def update_env_file(cookie_str: str):
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(content)
                 os.replace(tmp, env_path)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 try:
                     os.unlink(tmp)
-                except OSError:
+                except OSError as e:  # noqa: F841
                     pass
                 raise
             logger.info("Cookie 已写回 .env")

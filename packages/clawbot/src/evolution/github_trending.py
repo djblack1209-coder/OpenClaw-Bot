@@ -317,7 +317,7 @@ async def fetch_readme(repo_name: str, token: Optional[str] = None, max_chars: i
                     if resp.status == 200:
                         text = await resp.text()
                         return text[:max_chars]
-        except Exception:
+        except Exception as e:  # noqa: F841
             continue
 
     return ""

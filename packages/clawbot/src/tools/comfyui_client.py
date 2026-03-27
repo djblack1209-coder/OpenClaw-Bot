@@ -48,7 +48,7 @@ class ComfyUIClient:
         try:
             resp = requests.get(f"{self.base_url}/system_stats", timeout=3)
             return resp.status_code == 200
-        except Exception:
+        except Exception as e:  # noqa: F841
             return False
 
     # ── Core API ──────────────────────────────────

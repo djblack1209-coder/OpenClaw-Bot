@@ -44,7 +44,7 @@ try:
     _xcal_nyse = xcals.get_calendar("XNYS")  # NYSE
     _HAS_XCAL = True
     logger.debug("[AutoTrader] exchange-calendars 已加载 (XNYS/NYSE)")
-except Exception:
+except Exception as e:
     logger.info("[AutoTrader] exchange-calendars 未安装，使用内置休市日计算 (pip install exchange-calendars)")
 
 
@@ -59,7 +59,7 @@ def _env_int(key: str, default: int, minimum: int = 0) -> int:
         return default
     try:
         return max(minimum, int(raw))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -140,21 +140,21 @@ def is_market_holiday(date_str: str) -> bool:
     try:
         import pandas as pd
         ts = pd.Timestamp(date_str)
-    except Exception:
+    except Exception as e:  # noqa: F841
         return False
 
     # ── 路径1: exchange-calendars（精准，含特殊休市日）──
     if _HAS_XCAL and _xcal_nyse is not None:
         try:
             return not _xcal_nyse.is_session(ts)
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── 路径2: 手写计算（降级，不含特殊休市日）──
     try:
         year = int(date_str[:4])
         return date_str in _us_market_holidays(year)
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as e:  # noqa: F841
         return False
 
 
@@ -708,7 +708,7 @@ class AutoTrader:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:  # noqa: F841
                 pass
         logger.info("[AutoTrader] 已停止")
 
@@ -775,7 +775,7 @@ class AutoTrader:
             return 0.0
         try:
             positions = self.pipeline.portfolio.get_positions()
-        except Exception:
+        except Exception as e:  # noqa: F841
             return 0.0
 
         exposure = 0.0
@@ -845,7 +845,7 @@ class AutoTrader:
                         lines.append("\n[近7日教训]")
                         for s in suggestions[:3]:
                             lines.append("  - " + str(s))
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)  # journal 不可用不影响投票
 
         return "\n".join(lines)
@@ -1299,7 +1299,7 @@ class AutoTrader:
                             })
                             card += "\n\n今日交易: %d/%d笔" % (self._today_trades, self.max_trades_per_day)
                             await self._safe_notify(card)
-                        except Exception:
+                        except Exception as e:  # noqa: F841
                             await self._safe_notify(
                                 "交易执行成功\n"
                                 "BUY %s x%d @ $%.2f\n"

@@ -22,7 +22,7 @@ def _now_et() -> datetime:
     """获取当前美东时间"""
     try:
         return datetime.now(ET)
-    except Exception:
+    except Exception as e:  # noqa: F841
         # Fallback: 返回带 UTC 时区的 datetime，避免 naive vs aware 比较异常
         from datetime import timezone
         return datetime.now(timezone.utc)

@@ -184,7 +184,7 @@ class ComparisonResult:
 def _safe_float(val, default: float = 0.0) -> float:
     try:
         return float(val) if val is not None else default
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -196,7 +196,7 @@ def _fetch_price(symbol: str, period: str):
             close = data.get("Close")
             if close is not None and not close.empty:
                 return close
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
     try:
         import yfinance as yf

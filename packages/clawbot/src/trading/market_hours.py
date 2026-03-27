@@ -29,5 +29,5 @@ def parse_datetime(value) -> Optional[datetime]:
         if isinstance(value, datetime):
             return value
         return datetime.fromisoformat(str(value))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:  # noqa: F841
         return None

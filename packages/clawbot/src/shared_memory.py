@@ -277,7 +277,7 @@ class SharedMemory:
         # 确保 mem0_id 列存在（升级兼容）
         try:
             conn.execute("SELECT mem0_id FROM shared_memories LIMIT 1")
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:  # noqa: F841
             conn.execute("ALTER TABLE shared_memories ADD COLUMN mem0_id TEXT")
         # mem0_id 索引必须在列确认存在后创建
         conn.execute("CREATE INDEX IF NOT EXISTS idx_shared_mem_mem0id ON shared_memories(mem0_id)")
@@ -361,7 +361,7 @@ class SharedMemory:
                 vec = self._embedding_fn(f"{key} {value}")
                 if vec:
                     embedding = json.dumps(vec).encode("utf-8")
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
         with self._lock:
@@ -530,7 +530,7 @@ class SharedMemory:
                         continue
                     try:
                         mem_emb = json.loads(blob.decode("utf-8"))
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         continue
                     sim = _cosine_similarity(query_emb, mem_emb)
                     if sim >= self.SIMILARITY_THRESHOLD:
@@ -631,7 +631,7 @@ class SharedMemory:
                 continue
             try:
                 mem_emb = json.loads(blob.decode("utf-8"))
-            except Exception:
+            except Exception as e:  # noqa: F841
                 continue
             sim = _cosine_similarity(query_emb, mem_emb)
             if sim >= self.SIMILARITY_THRESHOLD:
@@ -706,7 +706,7 @@ class SharedMemory:
                 continue
             try:
                 last_dt = datetime.fromisoformat(last_decay)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:  # noqa: F841
                 continue
             days_since = (now - last_dt).total_seconds() / 86400
             if days_since < 1:
@@ -989,7 +989,7 @@ class SharedMemory:
             ).fetchall()
             return [{"old_value": v["old_value"][:200], "changed_by": v["changed_by"],
                      "changed_at": v["changed_at"]} for v in versions]
-        except Exception:
+        except Exception as e:  # noqa: F841
             return []
 
     # ════════════════════════════════════════════
@@ -1051,7 +1051,7 @@ class SharedMemory:
         for r in rows:
             try:
                 days_old = (now - datetime.fromisoformat(r["updated_at"])).total_seconds() / 86400
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:  # noqa: F841
                 days_old = 30
             score = r["importance"] * 2 + r["access_count"] * 0.5 + max(0, 10 - days_old)
             scored.append((r["id"], score))

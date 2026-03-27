@@ -11,7 +11,7 @@ from typing import Dict, Optional
 
 try:
     from dotenv import load_dotenv
-except Exception:  # pragma: no cover
+except Exception as e:  # noqa: F841 # pragma: no cover
     load_dotenv = None
 
 from src.history_store import HistoryStore
@@ -156,7 +156,7 @@ def _cleanup_pending_trades():
             ts = datetime.fromisoformat(v.get("timestamp", ""))
             if (now - ts).total_seconds() > 3600:
                 expired.append(k)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:  # noqa: F841
             expired.append(k)  # 无效时间戳也清理
     for k in expired:
         _pending_trades.pop(k, None)
@@ -186,14 +186,14 @@ async def send_as_bot(bot_id: str, chat_id: int, text: str, reply_to_message_id:
                 chat_id=chat_id, text=part,
                 parse_mode="Markdown", reply_to_message_id=reply_id,
             )
-        except Exception:
+        except Exception as e:
             logger.debug("[send_as_bot] Markdown failed for %s, falling back to plain text", bot_id)
             try:
                 await bot_telegram.send_message(
                     chat_id=chat_id, text=part,
                     reply_to_message_id=reply_id,
                 )
-            except Exception:
+            except Exception as e:
                 logger.debug("[send_as_bot] reply fallback failed for %s, sending without reply", bot_id)
                 await bot_telegram.send_message(chat_id=chat_id, text=part)
         if i < len(parts) - 1:
@@ -204,7 +204,7 @@ async def safe_edit(msg, text: str, parse_mode: str = "Markdown"):
     """安全编辑消息，Markdown 失败回退纯文本"""
     try:
         await msg.edit_text(text, parse_mode=parse_mode)
-    except Exception:
+    except Exception as e:
         logger.debug("[safe_edit] parse_mode=%s failed, falling back to plain text", parse_mode)
         try:
             await msg.edit_text(text)
@@ -244,7 +244,7 @@ class UserPreferencesManager:
             try:
                 with open(self._filepath, 'r', encoding='utf-8') as f:
                     self._prefs = _json.load(f)
-            except Exception:
+            except Exception as e:  # noqa: F841
                 self._prefs = {}
 
     def _save(self):

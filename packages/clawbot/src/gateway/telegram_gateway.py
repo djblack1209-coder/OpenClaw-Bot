@@ -294,7 +294,7 @@ class OpenClawGateway:
                     await progress_msg.edit_text(
                         text, parse_mode="HTML", reply_markup=keyboard
                     )
-                except Exception:
+                except Exception as e:  # noqa: F841
                     # HTML 解析失败时降级为纯文本
                     await progress_msg.edit_text(
                         text.replace("<b>", "").replace("</b>", "")
@@ -313,7 +313,7 @@ class OpenClawGateway:
                     text = self._format_result(result)
                     try:
                         await progress_msg.edit_text(text, parse_mode="HTML")
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         # HTML 解析失败时降级为纯文本
                         await progress_msg.edit_text(text)
                 else:
@@ -351,7 +351,7 @@ class OpenClawGateway:
 
             try:
                 await query.edit_message_text(text, parse_mode="HTML")
-            except Exception:
+            except Exception as e:  # noqa: F841
                 await query.edit_message_text(text)
 
         except Exception as e:
@@ -374,7 +374,7 @@ class OpenClawGateway:
             user_msg = result.to_user_message()
             if user_msg:
                 return user_msg
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)  # 降级到原始格式化
 
         # 降级: 手动拼接
@@ -446,7 +446,7 @@ class OpenClawGateway:
                 else:
                     msg = await self._app.bot.send_message(uid, text)
                     self._progress_messages[uid] = msg.message_id
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def _broadcast_result(self, data: Dict) -> None:
@@ -459,7 +459,7 @@ class OpenClawGateway:
             try:
                 await self._app.bot.send_message(uid, text)
                 self._progress_messages.pop(uid, None)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     async def _broadcast_alert(self, data: Dict) -> None:
@@ -470,7 +470,7 @@ class OpenClawGateway:
         for uid in self._admin_ids:
             try:
                 await self._app.bot.send_message(uid, text)
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
     def _format_progress(self, progress: Dict) -> str:

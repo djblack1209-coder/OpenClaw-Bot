@@ -123,7 +123,7 @@ def format_error(error: Union[Exception, str], context: str = "") -> str:
         try:
             if matcher(error if isinstance(error, Exception) else None, err_str):
                 return user_msg
-        except Exception:
+        except Exception as e:  # noqa: F841
             continue
 
     # 兜底：不暴露任何技术细节
@@ -245,7 +245,7 @@ def format_result(result: dict, task_type: str = "") -> str:
         # 合成回复已经是自然语言，直接转换为 Telegram HTML
         try:
             return markdown_to_telegram_html(synthesized)
-        except Exception:
+        except Exception as e:  # noqa: F841
             return escape_html(synthesized)
 
     # 错误结果（顶层）

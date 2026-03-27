@@ -826,7 +826,7 @@ class RiskManager:
         if hasattr(self, '_last_refresh_ts') and self._last_refresh_ts:
             try:
                 elapsed = (now - self._last_refresh_ts).total_seconds()
-            except TypeError:
+            except TypeError as e:  # noqa: F841
                 # naive vs aware datetime mismatch — 强制刷新
                 elapsed = 999
             if elapsed < 300:  # 5分钟内不重复刷新
@@ -1043,7 +1043,7 @@ class RiskManager:
                         sector = info.get("sector", "未知")
                         if not sector:
                             sector = "未知"
-                    except Exception:
+                    except Exception as e:  # noqa: F841
                         sector = "未知"
                     result[sym] = sector
                     self._symbol_sectors[sym] = sector

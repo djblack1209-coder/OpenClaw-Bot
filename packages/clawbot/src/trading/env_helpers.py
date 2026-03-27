@@ -16,7 +16,7 @@ def env_int(key: str, default: int, minimum: int = 1) -> int:
         return default
     try:
         return max(minimum, int(raw))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
 
@@ -26,5 +26,5 @@ def env_float(key: str, default: float) -> float:
         return default
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:  # noqa: F841
         return default

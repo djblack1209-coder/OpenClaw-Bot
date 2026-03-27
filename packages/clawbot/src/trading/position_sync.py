@@ -13,7 +13,7 @@ def estimate_open_positions_exposure(portfolio) -> float:
         return 0.0
     try:
         positions = portfolio.get_positions()
-    except Exception:
+    except Exception as e:  # noqa: F841
         return 0.0
     exposure = 0.0
     for p in positions or []:

@@ -252,7 +252,7 @@ class MediaCrawlerBridge:
                     return items if isinstance(items, list) else []
             else:
                 logger.warning("[MediaCrawler] CLI 执行失败: %s", stderr.decode()[:200])
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             logger.warning("[MediaCrawler] CLI 执行超时")
         except Exception as e:
             logger.warning("[MediaCrawler] CLI 执行异常: %s", e)

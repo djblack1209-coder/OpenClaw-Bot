@@ -286,7 +286,7 @@ class BaseAgent:
                     self.agenerate(user_msg, item_desc, context, bargain_count),
                 )
                 return future.result(timeout=30)
-        except RuntimeError:
+        except RuntimeError as e:  # noqa: F841
             # 无事件循环 — 直接 asyncio.run
             return asyncio.run(
                 self.agenerate(user_msg, item_desc, context, bargain_count)
@@ -408,7 +408,7 @@ class XianyuReplyBot:
                     return pool.submit(
                         asyncio.run, self.agenerate_reply(user_msg, item_desc, context, item_id)
                     ).result(timeout=30)
-            except RuntimeError:
+            except RuntimeError as e:  # noqa: F841
                 return asyncio.run(self.agenerate_reply(user_msg, item_desc, context, item_id))
         except Exception as e:
             logger.error(f"[XianyuReplyBot] sync generate failed: {e}")

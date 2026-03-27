@@ -72,16 +72,19 @@ class XianyuContextManager:
             # 新增利润相关字段（兼容已有表）
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN amount REAL DEFAULT 0")
-            except Exception:
+            except Exception as e:
                 pass  # 字段已存在
+                logger.debug("静默异常: %s", e)
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN cost REAL DEFAULT 0")
-            except Exception:
+            except Exception as e:
                 pass
+                logger.debug("静默异常: %s", e)
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN commission_rate REAL DEFAULT 0.06")
-            except Exception:
+            except Exception as e:
                 pass  # 字段已存在
+                logger.debug("静默异常: %s", e)
             # 底价表
             c.execute("""CREATE TABLE IF NOT EXISTS floor_prices (
                 item_id TEXT PRIMARY KEY,
@@ -348,7 +351,7 @@ class XianyuContextManager:
                 # 从 items 表的 JSON 提取商品标题
                 try:
                     item_name = json.loads(r[7]).get("title", r[1] or "")
-                except Exception:
+                except Exception as e:  # noqa: F841
                     item_name = r[1] or ""
                 result.append({
                     "date": r[0] or "",
@@ -392,7 +395,7 @@ class XianyuContextManager:
                 # 从 items 表的 JSON 中提取商品标题
                 try:
                     title = json.loads(item_data_str).get("title", "")
-                except Exception:
+                except Exception as e:  # noqa: F841
                     title = ""
                 rate = round(converted / consult * 100, 1) if consult > 0 else 0.0
                 result.append({

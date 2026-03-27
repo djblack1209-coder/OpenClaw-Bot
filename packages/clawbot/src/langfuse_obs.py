@@ -132,7 +132,7 @@ def trace_llm_call(
                             },
                             metadata={"latency_ms": round(elapsed * 1000)},
                         )
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
 
                 return result
@@ -145,7 +145,7 @@ def trace_llm_call(
                             level="ERROR",
                             status_message=str(e),
                         )
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                 raise
 
@@ -206,7 +206,7 @@ def log_event(name: str, metadata: Dict[str, Any] = None):
             name=name,
             metadata=metadata or {},
         )
-    except Exception:
+    except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
 
@@ -215,7 +215,7 @@ def flush():
     if _langfuse_client:
         try:
             _langfuse_client.flush()
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
 
@@ -226,7 +226,7 @@ def shutdown():
         try:
             _langfuse_client.flush()
             _langfuse_client.shutdown()
-        except Exception:
+        except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
         _langfuse_client = None
 
@@ -262,7 +262,7 @@ def _safe_input(args, kwargs) -> str:
             if isinstance(a, str):
                 return a[:1000]
         return str(kwargs)[:500]
-    except Exception:
+    except Exception as e:  # noqa: F841
         return ""
 
 

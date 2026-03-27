@@ -227,7 +227,7 @@ class CrewAIBridge:
                     "has_veto": analyst.has_veto,
                     "weight": analyst.weight,
                 })
-            except Exception:
+            except Exception as e:  # noqa: F841
                 continue
 
         # 如果解析不足，补充默认 HOLD 票

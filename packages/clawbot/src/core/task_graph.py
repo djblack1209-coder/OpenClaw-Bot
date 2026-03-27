@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from src.utils import emit_flow_event as _emit_flow
-except Exception:
+except Exception as e:  # noqa: F841
     def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
         pass
 
@@ -277,11 +277,11 @@ class TaskGraphExecutor:
                 if self._on_node_complete:
                     try:
                         await self._on_node_complete(node)
-                    except Exception:
+                    except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                 return
 
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 node.error = f"超时 ({node.timeout_seconds}s)"
                 logger.warning(f"节点超时: {node.name} (尝试 {attempt}/{node.retry_count})")
                 _emit_flow(node.id, "hub", "error", f"超时: {node.name}",

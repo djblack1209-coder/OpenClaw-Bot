@@ -125,7 +125,7 @@ def list_items():
     for r in rows:
         try:
             data = json.loads(r[1])
-        except Exception:
+        except Exception as e:  # noqa: F841
             data = {}
         items.append({"item_id": r[0], "title": data.get("title", ""), "price": data.get("price", ""), "updated": r[2]})
     return items

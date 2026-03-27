@@ -58,10 +58,10 @@ def _atomic_json_write(path: Path, data: dict) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         os.replace(tmp, str(path))
-    except Exception:
+    except Exception as e:  # noqa: F841
         try:
             os.unlink(tmp)
-        except OSError:
+        except OSError as e:  # noqa: F841
             pass
         raise
 
@@ -133,7 +133,7 @@ class ContextManager:
         if _HAS_TIKTOKEN and _tiktoken_encoder is not None:
             try:
                 return len(_tiktoken_encoder.encode(text))
-            except Exception:
+            except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         # 降级: CJK 感知估算
         chinese = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
@@ -776,7 +776,7 @@ class TieredContextManager:
                 results = self.shared_memory.semantic_search(
                     "user preference fact", limit=5
                 )
-            except Exception:
+            except Exception as e:  # noqa: F841
                 results = []
 
             if results:
@@ -827,9 +827,9 @@ class TieredContextManager:
                                     )
                                 if chat_id != 0:
                                     self._core_dirty[chat_id] = True
-                    except (json.JSONDecodeError, TypeError):
+                    except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
                         pass
-            except Exception:
+            except Exception as e:
                 logger.debug("[TieredCtx] user_profile 同步失败", exc_info=True)
 
         except ImportError:
