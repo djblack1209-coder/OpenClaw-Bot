@@ -1,12 +1,12 @@
 ---
 name: guide
-description: 项目使用说明。输出当前 OpenClaw Bot 系统全景概览，帮助 Boss 快速了解项目能力、架构和运营状态。
+description: 项目使用说明。输出当前 OpenClaw Bot 系统全景概览，帮助 严总 快速了解项目能力、架构和运营状态。
 metadata: {"openclaw":{"emoji":"📖"}}
 ---
 
 # 使用说明 / Project Guide
 
-当 Boss 输入 `/guide` 或"使用说明"时，输出以下完整项目概览。
+当 严总 输入 `/guide` 或"使用说明"时，输出以下完整项目概览。
 
 ## 行为
 

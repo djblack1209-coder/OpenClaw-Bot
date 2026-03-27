@@ -12,7 +12,6 @@ ClawBot 回测报告生成器 v1.0（对标 TradingAgents 32.5k⭐ + freqtrade 4
 
 import math
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 from src.utils import now_et
 
@@ -560,7 +559,6 @@ class BokehVisualizer:
             "error": str,
         }
         """
-        import io
         import tempfile
 
         if not _bokeh_available:
@@ -619,17 +617,9 @@ class BokehVisualizer:
         """Bokeh HTML → PNG BytesIO（多种降级策略）"""
         import io
 
-        # 方案1: bokeh export_png (需要 selenium/geckodriver)
-        try:
-            from bokeh.io import export_png
-            from bokeh.models import Document
-            from bokeh.io import curdoc
-            from bokeh.embed import file_html
-            # export_png 需要 layout 对象，不能直接用 HTML
-            # 跳过，用方案2
-            raise ImportError("skip to playwright")
-        except (ImportError, Exception):
-            pass
+        # 方案1: bokeh export_png — 跳过，直接用 playwright
+        # (需要 selenium/geckodriver，且无法从 HTML 文件直接导出)
+        pass
 
         # 方案2: playwright 截图
         try:

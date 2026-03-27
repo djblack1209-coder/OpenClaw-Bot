@@ -8,7 +8,7 @@ import logging
 import os
 from datetime import time, datetime, timedelta
 from collections import OrderedDict
-from typing import Optional, Callable, Dict, List
+from typing import Optional, Dict, List
 
 from src.notify_style import (
     bullet,
@@ -76,7 +76,8 @@ def _estimate_open_positions_exposure(portfolio) -> float:
         return 0.0
     try:
         positions = portfolio.get_positions()
-    except Exception:
+    except Exception as e:
+        logger.debug("[TradingSystem] 获取持仓异常: %s", e)
         return 0.0
 
     exposure = 0.0
@@ -112,115 +113,39 @@ def _is_us_market_open_now() -> bool:
 def _parse_datetime(value: str) -> Optional[datetime]:
     """解析 ISO 日期字符串，确保返回 timezone-aware datetime (美东时间)"""
     try:
-        from src.utils import now_et
         dt = datetime.fromisoformat(str(value))
         if dt.tzinfo is None:
             # naive datetime → 假定为美东时间
             from zoneinfo import ZoneInfo
             dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
         return dt
-    except Exception:
+    except Exception as e:
+        logger.debug("[TradingSystem] 日期解析异常: %s", e)
         return None
 
 
 def _load_pending_reentry_queue() -> List[Dict]:
-    from src.trading_journal import journal as tj
-
-    raw = tj.get_config(_PENDING_REENTRY_CONFIG_KEY, "[]")
-    try:
-        payload = json.loads(raw)
-        if not isinstance(payload, list):
-            return []
-    except Exception as e:
-        logger.warning("[TradingSystem] 解析 reentry queue 失败: %s", e)
-        return []
-
-    normalized = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        symbol = str(item.get("symbol", "") or "").upper().strip()
-        qty = int(float(item.get("quantity", 0) or 0))
-        if not symbol or qty <= 0:
-            continue
-        normalized.append({
-            "symbol": symbol,
-            "quantity": qty,
-            "stop_loss": float(item.get("stop_loss", 0) or 0),
-            "take_profit": float(item.get("take_profit", 0) or 0),
-            "signal_score": int(float(item.get("signal_score", 0) or 0)),
-            "entry_reason": str(item.get("entry_reason", "") or ""),
-            "decided_by": str(item.get("decided_by", "") or "AutoTrader"),
-            "source_trade_id": int(float(item.get("source_trade_id", 0) or 0)),
-            "retry_count": int(float(item.get("retry_count", 0) or 0)),
-            "queued_at": str(item.get("queued_at", "") or ""),
-            "next_retry_at": str(item.get("next_retry_at", "") or ""),
-        })
-    return normalized
+    """从 trading_journal 加载重入队列 — 委托到 reentry_queue 模块"""
+    from src.trading.reentry_queue import load_pending_reentry_queue
+    return load_pending_reentry_queue()
 
 
 def _save_pending_reentry_queue(queue: List[Dict]) -> None:
-    from src.trading_journal import journal as tj
-
-    safe_queue = []
-    for item in queue:
-        if not isinstance(item, dict):
-            continue
-        symbol = str(item.get("symbol", "") or "").upper().strip()
-        qty = int(float(item.get("quantity", 0) or 0))
-        if not symbol or qty <= 0:
-            continue
-        safe_queue.append({
-            "symbol": symbol,
-            "quantity": qty,
-            "stop_loss": float(item.get("stop_loss", 0) or 0),
-            "take_profit": float(item.get("take_profit", 0) or 0),
-            "signal_score": int(float(item.get("signal_score", 0) or 0)),
-            "entry_reason": str(item.get("entry_reason", "") or ""),
-            "decided_by": str(item.get("decided_by", "") or "AutoTrader"),
-            "source_trade_id": int(float(item.get("source_trade_id", 0) or 0)),
-            "retry_count": int(float(item.get("retry_count", 0) or 0)),
-            "queued_at": str(item.get("queued_at", "") or ""),
-            "next_retry_at": str(item.get("next_retry_at", "") or ""),
-        })
-    tj.set_config(_PENDING_REENTRY_CONFIG_KEY, json.dumps(safe_queue, ensure_ascii=False))
+    """持久化重入队列 — 委托到 reentry_queue 模块"""
+    from src.trading.reentry_queue import save_pending_reentry_queue
+    save_pending_reentry_queue(queue=queue)
 
 
 def _queue_reentry_from_trade(trade: Dict, reason: str = "") -> bool:
-    """将撤单后的交易加入次日重挂队列（持久化到 config）"""
+    """将撤单后的交易加入次日重挂队列 — 委托到 reentry_queue 模块"""
     global _pending_reentry_queue
-
-    symbol = str(trade.get("symbol", "") or "").upper().strip()
-    quantity = int(float(trade.get("quantity", 0) or 0))
-    source_trade_id = int(float(trade.get("id", 0) or 0))
-    if not symbol or quantity <= 0:
-        return False
-
-    for item in _pending_reentry_queue:
-        if int(item.get("source_trade_id", 0) or 0) == source_trade_id:
-            return False
-
-    from src.utils import now_et
-    now = now_et().isoformat()
-    entry_reason = str(trade.get("entry_reason", "") or "")
-    if reason:
-        entry_reason = f"{entry_reason} | 重挂原因: {reason}".strip(" |")
-
-    _pending_reentry_queue.append({
-        "symbol": symbol,
-        "quantity": quantity,
-        "stop_loss": float(trade.get("stop_loss", 0) or 0),
-        "take_profit": float(trade.get("take_profit", 0) or 0),
-        "signal_score": int(float(trade.get("signal_score", 0) or 0)),
-        "entry_reason": entry_reason,
-        "decided_by": str(trade.get("decided_by", "") or "AutoTrader"),
-        "source_trade_id": source_trade_id,
-        "retry_count": 0,
-        "queued_at": now,
-        "next_retry_at": now,
-    })
-    _save_pending_reentry_queue(_pending_reentry_queue)
-    return True
+    from src.trading.reentry_queue import queue_reentry_from_trade
+    _pending_reentry_queue, success = queue_reentry_from_trade(
+        _pending_reentry_queue, trade, reason
+    )
+    if success:
+        _save_pending_reentry_queue(_pending_reentry_queue)
+    return success
 
 
 def _ensure_monitor_position_from_trade(trade: Dict) -> None:
@@ -412,7 +337,7 @@ def init_trading_system(
     ai_team_func = None
     try:
         from src.ta_engine import scan_market, get_full_analysis
-        from src.universe import full_market_scan, get_full_universe
+        from src.universe import full_market_scan
 
         # 使用全市场扫描（600+标的，多层漏斗筛选）替代小 watchlist
         async def _full_scan():
@@ -515,6 +440,28 @@ def init_trading_system(
                 logger.warning("[TradingSystem] AI团队API callers未注入，跳过投票")
                 return []
 
+            # 管道3: 获取AI历史预测准确率，供投票时自我校准
+            vote_history = None
+            try:
+                from src.trading_journal import journal as _tj
+                _acc = _tj.get_prediction_accuracy(days=30)
+                if _acc.get("total_predictions", 0) > 0:
+                    vote_history = _acc.get("by_ai", {})
+            except Exception as e:
+                logger.debug("[TradingSystem] 获取预测准确率失败: %s", e)
+
+            # 注入最近复盘教训（让全部6位 AI 投票时都能参考历史教训）
+            # 当前 ai_team_voter.py 仅在 Phase 2/3 注入教训，Phase 1 的4位分析师看不到
+            # 通过在此处注入到 account_context，确保所有 AI 从第一轮就遵守历史教训
+            try:
+                from src.trading_journal import journal as _tj_lessons
+                latest_review = _tj_lessons.get_latest_review()
+                if latest_review and latest_review.get("lessons_learned"):
+                    lessons = str(latest_review["lessons_learned"])[:500]
+                    account_context += f"\n\n⚠️ 上次复盘教训 (必须遵守):\n{lessons}"
+            except Exception:
+                pass  # 教训获取失败不影响投票主流程
+
             # 尝试 CrewAI 多 Agent 协作
             if _crewai:
                 try:
@@ -539,6 +486,7 @@ def init_trading_system(
                 notify_func=notify_func,
                 max_candidates=max_candidates,
                 account_context=account_context,
+                vote_history=vote_history,
             )
         ai_team_func = _ai_team_wrapper
         logger.info("[TradingSystem] AI团队投票模块已加载 (CrewAI: %s)", "可用" if _crewai else "不可用，使用原生")
@@ -584,19 +532,8 @@ def init_trading_system(
     logger.info("[TradingSystem] === 全部初始化完成 ===")
 
 
-async def start_trading_system():
-    """启动持仓监控和自动交易（在 main() 中调用）"""
-    global _pending_reentry_queue, _processed_fill_exec_ids
-
-    if not _initialized:
-        logger.error("[TradingSystem] 未初始化，无法启动")
-        return
-
-    _pending_reentry_queue = _load_pending_reentry_queue()
-    if _pending_reentry_queue:
-        logger.info("[TradingSystem] 恢复待重挂队列: %d 条", len(_pending_reentry_queue))
-
-    # P0-3: 从 journal 恢复未平仓持仓到 PositionMonitor
+async def _restore_open_positions():
+    """从 journal 恢复未平仓持仓到 PositionMonitor"""
     if _position_monitor and _risk_manager:
         try:
             from src.trading_journal import journal as tj
@@ -624,7 +561,9 @@ async def start_trading_system():
         except Exception as e:
             logger.error("[TradingSystem] 恢复持仓失败: %s", e)
 
-    # P0-4: 从 journal 恢复今日PnL到 RiskManager
+
+async def _restore_today_pnl():
+    """从 journal 恢复今日PnL到 RiskManager"""
     if _risk_manager:
         try:
             from src.trading_journal import journal as tj
@@ -636,7 +575,9 @@ async def start_trading_system():
         except Exception as e:
             logger.error("[TradingSystem] 恢复PnL失败: %s", e)
 
-    # P0-5: 从 journal 恢复今日已执行交易数到 AutoTrader (P1#17: 用ET时间)
+
+async def _restore_autotrader_count():
+    """恢复今日已执行交易数到 AutoTrader"""
     if _auto_trader:
         try:
             from src.trading_journal import journal as tj
@@ -650,11 +591,9 @@ async def start_trading_system():
         except Exception as e:
             logger.error("[TradingSystem] 恢复AutoTrader交易计数失败: %s", e)
 
-    if _position_monitor:
-        await _position_monitor.start()
-        logger.info("[TradingSystem] 持仓监控器已启动")
 
-    # P0-6: 从 IBKR 同步实际资金到 RiskManager 和 broker budget
+async def _sync_ibkr_capital():
+    """从 IBKR 同步实际资金到 RiskManager"""
     if _risk_manager:
         try:
             from src.broker_bridge import ibkr as _ibkr
@@ -666,699 +605,747 @@ async def start_trading_system():
         except Exception as e:
             logger.warning("[TradingSystem] IBKR资金同步失败，使用默认值: %s", e)
 
-    # AutoTrader 自动启动（全自动模式）
-    if _auto_trader:
-        await _auto_trader.start()
-        logger.info("[TradingSystem] AutoTrader 已自动启动 (auto_mode=%s, 间隔=%d分钟)",
-                    _auto_trader.auto_mode, _auto_trader.scan_interval)
 
-    # P4: 启动 Scheduler 定时任务
-    global _scheduler, _weekly_guard_last_week_key, _weekly_kill_switch_triggered
+# ============ Scheduler 定时任务函数 (模块级) ============
+
+
+async def _daily_risk_reset():
+    if _risk_manager:
+        _risk_manager.reset_daily()
+        logger.info("[Scheduler] 每日风控重置完成")
+    # 同时重置 IBKR 预算追踪
+    try:
+        from src.broker_bridge import ibkr as _ibkr
+        _ibkr.reset_budget()
+        logger.info("[Scheduler] IBKR预算已重置")
+    except Exception as e:
+        logger.warning("[Scheduler] IBKR预算重置失败: %s", e)
+    # 重置 AutoTrader 日交易计数
+    if _auto_trader:
+        _auto_trader._today_trades = 0
+        _auto_trader._today_date = ""
+        logger.info("[Scheduler] AutoTrader日交易计数已重置")
+
+
+
+async def _eod_auto_review():
+    if _auto_trader and _auto_trader.notify:
+        try:
+            from src.trading_journal import journal as tj
+            # 生成每日盈亏报告
+            today_pnl = tj.get_today_pnl()
+            perf = tj.format_performance(days=1)
+            open_trades = tj.get_open_trades()
+            closed = tj.get_closed_trades(days=1, limit=20)
+
+            # 管道2: 收盘验证AI预测准确率
+            try:
+                pred_result = tj.validate_predictions()
+                if pred_result.get("validated", 0) > 0:
+                    logger.info(
+                        "[Scheduler] 预测验证: %d/%d 正确 (%.1f%%)",
+                        pred_result.get("correct", 0),
+                        pred_result.get("validated", 0),
+                        pred_result.get("accuracy", 0),
+                    )
+            except Exception as e:
+                logger.debug("[Scheduler] 预测验证失败: %s", e)
+
+            lines = ["-- 每日自动复盘 --\n"]
+            lines.append("今日盈亏: $%.2f (%d笔交易)" % (
+                today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
+
+            if closed:
+                lines.append("\n已平仓:")
+                for t in closed:
+                    sign = "+" if t.get("pnl", 0) >= 0 else ""
+                    lines.append("  %s %s %s$%.2f" % (
+                        t.get("side", "?"), t.get("symbol", "?"),
+                        sign, abs(t.get("pnl", 0))))
+
+            if open_trades:
+                lines.append("\n持仓中: %d笔" % len(open_trades))
+                for t in open_trades:
+                    lines.append("  %s x%s 入场$%s" % (
+                        t.get("symbol", "?"),
+                        t.get("quantity", "?"),
+                        t.get("entry_price", "?")))
+
+            lines.append("\n" + perf)
+            lines.append("\n系统将在明日开盘自动继续交易。")
+
+            await _auto_trader._safe_notify("\n".join(lines))
+            # EventBus: 广播每日复盘数据
+            try:
+                from src.core.event_bus import get_event_bus
+                bus = get_event_bus()
+                if bus:
+                    await bus.publish("trade.daily_review", {
+                        "summary": "\n".join(lines),
+                    })
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error("[Scheduler] 自动复盘失败: %s", e)
+            await _auto_trader._safe_notify("收盘复盘生成失败: %s\n发送 /review 手动复盘" % e)
+
+
+
+async def _refresh_quotes():
+    if _quote_cache and _position_monitor:
+        # 监控中的标的加入缓存
+        syms = [p.symbol for p in _position_monitor.positions.values()]
+        if _rebalancer and _rebalancer.get_targets():
+            syms += [t.symbol for t in _rebalancer.get_targets()]
+        if syms:
+            _quote_cache.watch(list(set(syms)))
+            await _quote_cache.refresh()
+
+
+
+async def _daily_rebalance_check():
+    if _rebalancer and _rebalancer.get_targets() and _auto_trader and _auto_trader.notify:
+        try:
+            from src.invest_tools import portfolio
+            positions = portfolio.get_positions()
+            cash = portfolio.get_cash()
+            quotes = _quote_cache.get_all() if _quote_cache else {}
+            plan = _rebalancer.analyze(positions, quotes, cash)
+            if not plan.is_balanced and plan.trades_needed:
+                await _auto_trader._safe_notify(
+                    "每日再平衡检查\n\n" + plan.format()
+                )
+        except Exception as e:
+            logger.warning("[Scheduler] 再平衡检查失败: %s", e)
+
+
+
+async def _daily_capital_sync():
+    if _risk_manager:
+        try:
+            from src.broker_bridge import ibkr as _ibkr
+            if _ibkr.is_connected():
+                actual = await _ibkr.sync_capital()
+                if actual > 0:
+                    _risk_manager.config.total_capital = actual
+                    logger.info("[Scheduler] 资金同步: $%.2f", actual)
+            else:
+                logger.warning("[Scheduler] IBKR未连接，跳过资金同步")
+        except Exception as e:
+            logger.warning("[Scheduler] 资金同步失败: %s", e)
+
+
+
+async def _weekly_profit_guard():
+    global _weekly_guard_last_week_key, _weekly_kill_switch_triggered
+
+    enabled = _env_bool("WEEKLY_KILL_SWITCH", True)
+    target = _env_float("WEEKLY_PROFIT_TARGET", 50.0)
+    if not enabled:
+        return
+
+    from src.utils import now_et
+    now = now_et()
+
+    # 从持久化存储恢复 kill switch 状态
+    from src.trading_journal import journal as tj
+    _saved_ks = tj.get_config("weekly_kill_switch_state")
+    if _saved_ks:
+        try:
+            _ks_data = json.loads(_saved_ks)
+            if _ks_data.get("triggered") and _ks_data.get("week_key"):
+                # 检查是否仍在同一周（周一重置）
+                current_week_start = now.date() - timedelta(days=now.weekday())
+                if _ks_data["week_key"] >= current_week_start.isoformat():
+                    global _weekly_kill_switch_triggered
+                    if not _weekly_kill_switch_triggered:
+                        _weekly_kill_switch_triggered = True
+                        if _auto_trader:
+                            await _auto_trader.stop()
+                            try:
+                                from src.auto_trader import TraderState
+                                _auto_trader.state = TraderState.PAUSED
+                            except Exception as e:
+                                logger.debug("[TradingSystem] 异常: %s", e)
+                        logger.warning("[Scheduler] 从持久化恢复周度熔断状态 (week_key=%s)", _ks_data["week_key"])
+                    return
+        except Exception as e:
+            logger.debug("[Scheduler] 解析 weekly_kill_switch_state 失败: %s", e)
+
+    if now.weekday() != 0:  # 仅周一执行完整检查
+        return
+
+    current_week_start = now.date() - timedelta(days=now.weekday())
+    last_week_start = current_week_start - timedelta(days=7)
+    last_week_end = current_week_start - timedelta(days=1)
+    week_key = f"{last_week_start.isoformat()}::{last_week_end.isoformat()}"
+    if _weekly_guard_last_week_key == week_key:
+        return
+
+    _weekly_guard_last_week_key = week_key
+
+    from src.trading_journal import journal as tj
+    trades = tj.get_closed_trades(days=14, limit=1000)
+    week_trades = []
+    for trade in trades:
+        exit_time = trade.get("exit_time")
+        if not exit_time:
+            continue
+        try:
+            exit_dt = _parse_datetime(str(exit_time))
+            if not exit_dt:
+                continue
+            exit_date = exit_dt.date()
+        except Exception as e:
+            logger.debug("[TradingSystem] 异常: %s", e)
+            continue
+        if last_week_start <= exit_date <= last_week_end:
+            week_trades.append(trade)
+
+    week_pnl = sum(float(t.get("pnl", 0) or 0) for t in week_trades)
+    logger.info(
+        "[Scheduler] 周利润守卫检查 %s~%s: pnl=$%.2f, target=$%.2f, trades=%d",
+        last_week_start,
+        last_week_end,
+        week_pnl,
+        target,
+        len(week_trades),
+    )
+
+    if week_pnl >= target:
+        _weekly_kill_switch_triggered = False
+        # 清除持久化状态
+        tj.set_config("weekly_kill_switch_state", "")
+        return
+
+    _weekly_kill_switch_triggered = True
+    # 持久化 kill switch 状态
+    tj.set_config("weekly_kill_switch_state", json.dumps({
+        "triggered": True,
+        "week_key": current_week_start.isoformat(),
+        "week_pnl": week_pnl,
+        "target": target,
+    }))
+
+    if _auto_trader:
+        await _auto_trader.stop()
+        try:
+            from src.auto_trader import TraderState
+            _auto_trader.state = TraderState.PAUSED
+        except Exception as e:
+            logger.error("[Scheduler] 设置 AutoTrader PAUSED 状态失败: %s", e)
+
+    msg = (
+        "!! 周盈利硬规则触发，自动停机 !!\n"
+        "上周区间: %s ~ %s\n"
+        "上周已平仓PnL: $%.2f\n"
+        "最低目标: $%.2f\n"
+        "动作: AutoTrader 已强制停止 (state=PAUSED)"
+    ) % (
+        last_week_start,
+        last_week_end,
+        week_pnl,
+        target,
+    )
+    logger.warning("[Scheduler] %s", msg.replace("\n", " | "))
+    if _auto_trader and _auto_trader.notify:
+        try:
+            await _auto_trader._safe_notify(
+                format_notice(
+                    "周盈利守卫触发",
+                    bullets=[
+                        kv("周期", f"{last_week_start} ~ {last_week_end}"),
+                        kv("上周已平仓PnL", f"${week_pnl:.2f}"),
+                        kv("最低目标", f"${target:.2f}"),
+                        bullet("动作: AutoTrader 已强制停止 (state=PAUSED)"),
+                    ],
+                )
+            )
+        except Exception as e:
+            logger.warning("[Scheduler] 周利润守卫通知失败: %s", e)
+
+
+
+async def _reconcile_ibkr_entry_fills():
+    global _processed_fill_exec_ids
+
+    if not _env_bool("IBKR_FILL_RECONCILE_ENABLED", True):
+        return
+    if not _trading_pipeline or not _trading_pipeline.broker:
+        return
+
+    broker = _trading_pipeline.broker
+    if not hasattr(broker, "get_recent_fills"):
+        return
+
+    from src.trading_journal import journal as tj
+    pending = tj.get_pending_trades(
+        limit=_env_int("IBKR_PENDING_RECONCILE_LIMIT", 300, minimum=50)
+    )
+    open_with_order = [
+        t for t in tj.get_open_trades()
+        if str(t.get("entry_order_id", "") or "").strip()
+    ]
+
+    if not pending and not open_with_order:
+        return
+
+    fills = await broker.get_recent_fills(
+        lookback_hours=_env_int("IBKR_FILL_LOOKBACK_HOURS", 48, minimum=1)
+    )
+    fills = fills or []
+
+    aggregated = {}
+    new_exec = 0
+    for fill in fills:
+        exec_id = str(fill.get("exec_id", "") or "")
+        if not exec_id or exec_id in _processed_fill_exec_ids:
+            continue
+
+        _processed_fill_exec_ids[exec_id] = True
+        new_exec += 1
+
+        order_id = str(fill.get("order_id", "") or "").strip()
+        shares = float(fill.get("shares", 0) or 0)
+        price = float(fill.get("price", 0) or 0)
+        if not order_id or shares <= 0 or price <= 0:
+            continue
+
+        item = aggregated.setdefault(order_id, {
+            "shares": 0.0,
+            "notional": 0.0,
+            "symbol": str(fill.get("symbol", "") or "").upper(),
+            "latest_time": str(fill.get("time", "") or ""),
+        })
+        item["shares"] += shares
+        item["notional"] += shares * price
+        if fill.get("time"):
+            item["latest_time"] = str(fill.get("time"))
+
+    if len(_processed_fill_exec_ids) > 8000:
+        # 保留最近 4000 条（OrderedDict 保持插入顺序）
+        keys = list(_processed_fill_exec_ids.keys())
+        _processed_fill_exec_ids = OrderedDict.fromkeys(keys[-4000:], True)
+
+    pending_by_order = {}
+    for trade in pending:
+        oid = str(trade.get("entry_order_id", "") or "").strip()
+        if oid:
+            pending_by_order[oid] = trade
+
+    for order_id, fill_info in aggregated.items():
+        trade = pending_by_order.get(order_id)
+        if not trade:
+            continue
+
+        shares = float(fill_info.get("shares", 0) or 0)
+        notional = float(fill_info.get("notional", 0) or 0)
+        avg_price = notional / shares if shares > 0 else 0
+        if shares <= 0 or avg_price <= 0:
+            continue
+
+        trade_id = int(float(trade.get("id", 0) or 0))
+        update = tj.mark_trade_entry_filled(
+            trade_id=trade_id,
+            filled_qty=shares,
+            fill_price=avg_price,
+            entry_order_id=order_id,
+            fill_time=str(fill_info.get("latest_time", "") or ""),
+        )
+        if "error" in update:
+            logger.warning("[Reconcile] 回写失败 trade#%s: %s", trade_id, update["error"])
+            continue
+
+        refreshed = tj.get_trade(trade_id)
+        if refreshed:
+            _ensure_monitor_position_from_trade(refreshed)
+
+        logger.info(
+            "[Reconcile] 成交回写成功 trade#%d order#%s qty=%.4f @ %.4f",
+            trade_id,
+            order_id,
+            shares,
+            avg_price,
+        )
+
+        if _auto_trader and _auto_trader.notify:
+            try:
+                await _auto_trader._safe_notify(
+                    format_trade_fill_reconciled(
+                        trade_id,
+                        order_id,
+                        str(trade.get("symbol", "?") or "?").upper(),
+                        shares,
+                        avg_price,
+                    )
+                )
+            except Exception as e:
+                logger.debug("[Reconcile] 成交通知失败: %s", e)
+
+    # 兼容旧逻辑：open + entry_order_id 但无持仓/无挂单时，自动修正状态
+    if open_with_order:
+        open_orders = await broker.get_open_orders() if hasattr(broker, "get_open_orders") else []
+        open_order_ids = {
+            str(o.get("order_id", "") or "")
+            for o in open_orders
+            if o.get("order_id") is not None
+        }
+        snapshots = await broker.get_trade_snapshots() if hasattr(broker, "get_trade_snapshots") else []
+        snapshot_map = {
+            str(o.get("order_id", "") or ""): o
+            for o in snapshots
+            if o.get("order_id") is not None
+        }
+        positions = await broker.get_positions() if hasattr(broker, "get_positions") else []
+        pos_symbols = {
+            str(p.get("symbol", "") or "").upper(): abs(float(p.get("quantity", 0) or 0))
+            for p in positions
+        }
+        grace_minutes = _env_int("IBKR_LEGACY_ORDER_RECONCILE_GRACE_MIN", 30, minimum=5)
+
+        for trade in open_with_order:
+            trade_id = int(float(trade.get("id", 0) or 0))
+            order_id = str(trade.get("entry_order_id", "") or "").strip()
+            symbol = str(trade.get("symbol", "") or "").upper().strip()
+            if trade_id <= 0 or not order_id or not symbol:
+                continue
+
+            # 如果有真实持仓，视为已成交，无需处理
+            if pos_symbols.get(symbol, 0) > 0:
+                continue
+
+            entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
+            age_min = 0
+            if entry_dt is not None:
+                from src.utils import now_et
+                age_min = int(max(0, (now_et().replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
+
+            if order_id in open_order_ids:
+                # 旧记录修正为 pending，避免被误当成已持仓
+                if age_min >= grace_minutes:
+                    tj.set_trade_status(trade_id, "pending", reason="legacy_open_order_pending")
+                    if _position_monitor:
+                        _position_monitor.remove_position(trade_id)
+                    logger.info("[Reconcile] trade#%d 状态修正为 pending (order#%s)", trade_id, order_id)
+                continue
+
+            snap_status = str(snapshot_map.get(order_id, {}).get("status", "") or "")
+            # 既无持仓也无挂单，且过了宽限期 -> 取消旧记录
+            if age_min >= grace_minutes and snap_status in ("", "Cancelled", "ApiCancelled", "Inactive"):
+                tj.cancel_trade(trade_id, reason="reconcile_no_fill_no_position")
+                if _position_monitor:
+                    _position_monitor.remove_position(trade_id)
+                logger.info(
+                    "[Reconcile] trade#%d 无成交且无持仓，已取消 (order#%s)",
+                    trade_id,
+                    order_id,
+                )
+
+    if new_exec > 0:
+        logger.info("[Reconcile] 本轮处理新成交回报: %d 条", new_exec)
+
+
+
+async def _cancel_stale_pending_entries():
+    if not _env_bool("AUTO_CANCEL_PENDING_ENTRY_ORDERS", True):
+        return
+    if not _trading_pipeline or not _trading_pipeline.broker:
+        return
+
+    broker = _trading_pipeline.broker
+    if not hasattr(broker, "get_open_orders"):
+        return
+
+    from src.trading_journal import journal as tj
+    pending = tj.get_pending_trades(
+        limit=_env_int("PENDING_ENTRY_SCAN_LIMIT", 300, minimum=50)
+    )
+    if not pending:
+        return
+
+    market_open = _is_us_market_open_now()
+    stale_minutes = _env_int("PENDING_ENTRY_CANCEL_AFTER_MINUTES", 20, minimum=1)
+    deep_timeout = max(stale_minutes * 3, 60)
+
+    open_orders = await broker.get_open_orders()
+    open_map = {
+        str(o.get("order_id", "") or ""): o
+        for o in open_orders
+        if o.get("order_id") is not None
+    }
+
+    snapshots = []
+    if hasattr(broker, "get_trade_snapshots"):
+        snapshots = await broker.get_trade_snapshots()
+    snapshot_map = {
+        str(o.get("order_id", "") or ""): o
+        for o in snapshots
+        if o.get("order_id") is not None
+    }
+
+    cancelled_statuses = {"Cancelled", "ApiCancelled", "Inactive"}
+    from src.utils import now_et
+    now = now_et()
+
+    for trade in pending:
+        trade_id = int(float(trade.get("id", 0) or 0))
+        order_id = str(trade.get("entry_order_id", "") or "").strip()
+        if trade_id <= 0 or not order_id:
+            continue
+
+        entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
+        age_min = 9999
+        if entry_dt is not None:
+            age_min = max(0, int((now.replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
+
+        live_order = open_map.get(order_id)
+        snap = snapshot_map.get(order_id, {})
+        status = str((live_order or snap).get("status", "") or "")
+
+        need_cancel_api = False
+        cancel_reason = ""
+
+        if live_order and (not market_open) and age_min >= stale_minutes:
+            need_cancel_api = True
+            cancel_reason = f"offhours_pending_timeout_{age_min}m"
+        elif (not live_order) and status in cancelled_statuses:
+            cancel_reason = f"broker_{status.lower()}"
+        elif (not live_order) and (not status) and age_min >= deep_timeout:
+            cancel_reason = f"pending_timeout_{age_min}m"
+
+        if need_cancel_api:
+            try:
+                cancel_ret = await broker.cancel_order(int(float(order_id)))
+            except Exception as e:
+                logger.warning("[PendingCancel] 订单#%s 撤单异常: %s", order_id, e)
+                continue
+            if "error" in cancel_ret:
+                logger.warning("[PendingCancel] 订单#%s 撤单失败: %s", order_id, cancel_ret["error"])
+                continue
+
+        if not cancel_reason:
+            continue
+
+        tj.cancel_trade(trade_id, cancel_reason)
+        queued = False
+        if _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+            queued = _queue_reentry_from_trade(trade, reason=cancel_reason)
+
+        if _position_monitor:
+            _position_monitor.remove_position(trade_id)
+
+        logger.info(
+            "[PendingCancel] trade#%d order#%s 已取消，原因=%s，重挂=%s",
+            trade_id,
+            order_id,
+            cancel_reason,
+            queued,
+        )
+
+        if _auto_trader and _auto_trader.notify:
+            try:
+                await _auto_trader._safe_notify(
+                    format_notice(
+                        "待成交订单已撤单",
+                        bullets=[
+                            kv("Trade / Order", f"#{trade_id} / #{order_id}"),
+                            kv("原因", cancel_reason),
+                            kv("次日重挂", "已加入" if queued else "未加入"),
+                        ],
+                    )
+                )
+            except Exception as e:
+                logger.debug("[PendingCancel] 通知失败: %s", e)
+
+
+
+async def _submit_pending_reentry_queue():
+    global _pending_reentry_queue
+
+    if not _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+        return
+    if not _pending_reentry_queue:
+        return
+    if not _is_us_market_open_now():
+        return
+    if not _trading_pipeline:
+        return
+
+    max_per_cycle = _env_int("PENDING_REENTRY_MAX_PER_CYCLE", 1, minimum=1)
+    max_retries = _env_int("PENDING_REENTRY_MAX_RETRIES", 2, minimum=1)
+    retry_interval_min = _env_int("PENDING_REENTRY_RETRY_INTERVAL_MIN", 5, minimum=1)
+
+    from src.models import TradeProposal
+    from src.utils import now_et
+    from src.invest_tools import get_stock_quote
+
+    now_dt = now_et()
+    submitted_count = 0
+    next_queue = []
+
+    for item in list(_pending_reentry_queue):
+        if submitted_count >= max_per_cycle:
+            next_queue.append(item)
+            continue
+
+        next_retry_at = _parse_datetime(str(item.get("next_retry_at", "") or ""))
+        if next_retry_at and now_dt < next_retry_at:
+            next_queue.append(item)
+            continue
+
+        symbol = str(item.get("symbol", "") or "").upper().strip()
+        qty = int(float(item.get("quantity", 0) or 0))
+        if not symbol or qty <= 0:
+            continue
+
+        try:
+            quote_ret = get_stock_quote(symbol)
+            if asyncio.iscoroutine(quote_ret):
+                price_data = await quote_ret
+            else:
+                price_data = quote_ret
+        except Exception as e:
+            logger.warning("[ReEntry] %s 获取行情失败: %s", symbol, e)
+            price_data = {}
+
+        price = float(price_data.get("price", 0) or 0) if isinstance(price_data, dict) else 0
+        if price <= 0:
+            retry_count = int(float(item.get("retry_count", 0) or 0)) + 1
+            if retry_count <= max_retries:
+                item["retry_count"] = retry_count
+                item["next_retry_at"] = (now_dt + timedelta(minutes=retry_interval_min)).isoformat()
+                next_queue.append(item)
+            continue
+
+        stop = float(item.get("stop_loss", 0) or 0)
+        if stop <= 0 or stop >= price:
+            stop = round(price * 0.97, 2)
+        target = float(item.get("take_profit", 0) or 0)
+        if target <= 0 or target <= price:
+            target = round(price * 1.06, 2)
+
+        proposal = TradeProposal(
+            symbol=symbol,
+            action="BUY",
+            quantity=qty,
+            entry_price=price,
+            stop_loss=stop,
+            take_profit=target,
+            signal_score=int(float(item.get("signal_score", 0) or 0)),
+            confidence=0.55,
+            reason=str(item.get("entry_reason", "") or "")[:180] or "次日重挂执行",
+            decided_by=f"ReEntry/{str(item.get('decided_by', 'AutoTrader') or 'AutoTrader')}",
+        )
+
+        try:
+            exec_result = await _trading_pipeline.execute_proposal(proposal)
+        except Exception as e:
+            logger.warning("[ReEntry] %s 执行异常: %s", symbol, e)
+            exec_result = {"status": "error", "reason": str(e)}
+
+        status = str(exec_result.get("status", "") or "")
+        if status in ("executed", "submitted"):
+            submitted_count += 1
+            if _auto_trader and _auto_trader.notify:
+                try:
+                    await _auto_trader._safe_notify(
+                        format_pending_reentry(symbol, qty, price, status)
+                    )
+                except Exception as e:
+                    logger.debug("[TradingSystem] 异常: %s", e)
+            continue
+
+        retry_count = int(float(item.get("retry_count", 0) or 0)) + 1
+        if retry_count <= max_retries:
+            item["retry_count"] = retry_count
+            item["next_retry_at"] = (now_dt + timedelta(minutes=retry_interval_min)).isoformat()
+            next_queue.append(item)
+        else:
+            logger.warning("[ReEntry] %s 重挂失败超限，放弃: %s", symbol, exec_result)
+
+    _pending_reentry_queue = next_queue
+    _save_pending_reentry_queue(_pending_reentry_queue)
+
+
+
+async def _ibkr_health_check():
+    try:
+        from src.broker_bridge import ibkr as _ibkr
+        if not _ibkr.is_connected():
+            logger.warning("[Scheduler] IBKR断连，尝试重连...")
+            reconnected = await _ibkr.ensure_connected()
+            if reconnected:
+                logger.info("[Scheduler] IBKR重连成功")
+            else:
+                logger.error("[Scheduler] IBKR重连失败")
+    except Exception as e:
+        logger.warning("[Scheduler] IBKR健康检查失败: %s", e)
+    # P0#10: 清理过期的待确认交易
+    try:
+        from src.bot.globals import _cleanup_pending_trades
+        _cleanup_pending_trades()
+    except Exception as e:
+        logger.debug("[Scheduler] 清理待确认交易失败: %s", e)
+
+
+async def _setup_scheduler():
+    """启动 Scheduler 定时任务"""
+    global _scheduler
     try:
         from src.scheduler import Scheduler
         _scheduler = Scheduler()
 
-        # 每日风控重置（每天09:00）
-        async def _daily_risk_reset():
-            if _risk_manager:
-                _risk_manager.reset_daily()
-                logger.info("[Scheduler] 每日风控重置完成")
-            # 同时重置 IBKR 预算追踪
-            try:
-                from src.broker_bridge import ibkr as _ibkr
-                _ibkr.reset_budget()
-                logger.info("[Scheduler] IBKR预算已重置")
-            except Exception as e:
-                logger.warning("[Scheduler] IBKR预算重置失败: %s", e)
-            # 重置 AutoTrader 日交易计数
-            if _auto_trader:
-                _auto_trader._today_trades = 0
-                _auto_trader._today_date = ""
-                logger.info("[Scheduler] AutoTrader日交易计数已重置")
         _scheduler.add_task("daily_risk_reset", _daily_risk_reset,
                             schedule_time=time(9, 0))
-
-        # 每日收盘自动复盘 + 盈亏报告（每天16:05 美东）
-        async def _eod_auto_review():
-            if _auto_trader and _auto_trader.notify:
-                try:
-                    from src.trading_journal import journal as tj
-                    # 生成每日盈亏报告
-                    today_pnl = tj.get_today_pnl()
-                    perf = tj.format_performance(days=1)
-                    open_trades = tj.get_open_trades()
-                    closed = tj.get_closed_trades(days=1, limit=20)
-
-                    lines = ["-- 每日自动复盘 --\n"]
-                    lines.append("今日盈亏: $%.2f (%d笔交易)" % (
-                        today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
-
-                    if closed:
-                        lines.append("\n已平仓:")
-                        for t in closed:
-                            sign = "+" if t.get("pnl", 0) >= 0 else ""
-                            lines.append("  %s %s %s$%.2f" % (
-                                t.get("side", "?"), t.get("symbol", "?"),
-                                sign, abs(t.get("pnl", 0))))
-
-                    if open_trades:
-                        lines.append("\n持仓中: %d笔" % len(open_trades))
-                        for t in open_trades:
-                            lines.append("  %s x%s 入场$%s" % (
-                                t.get("symbol", "?"),
-                                t.get("quantity", "?"),
-                                t.get("entry_price", "?")))
-
-                    lines.append("\n" + perf)
-                    lines.append("\n系统将在明日开盘自动继续交易。")
-
-                    await _auto_trader._safe_notify("\n".join(lines))
-                except Exception as e:
-                    logger.error("[Scheduler] 自动复盘失败: %s", e)
-                    await _auto_trader._safe_notify("收盘复盘生成失败: %s\n发送 /review 手动复盘" % e)
         _scheduler.add_task("eod_auto_review", _eod_auto_review,
                             schedule_time=time(16, 5))
-
-        # 行情缓存定期刷新（每5分钟）
-        async def _refresh_quotes():
-            if _quote_cache and _position_monitor:
-                # 监控中的标的加入缓存
-                syms = [p.symbol for p in _position_monitor.positions.values()]
-                if _rebalancer and _rebalancer.get_targets():
-                    syms += [t.symbol for t in _rebalancer.get_targets()]
-                if syms:
-                    _quote_cache.watch(list(set(syms)))
-                    await _quote_cache.refresh()
         _scheduler.add_task("quote_refresh", _refresh_quotes,
                             interval_minutes=5)
-
-        # 每日再平衡检查（09:35，开盘后5分钟）
-        async def _daily_rebalance_check():
-            if _rebalancer and _rebalancer.get_targets() and _auto_trader and _auto_trader.notify:
-                try:
-                    from src.invest_tools import portfolio
-                    positions = portfolio.get_positions()
-                    cash = portfolio.get_cash()
-                    quotes = _quote_cache.get_all() if _quote_cache else {}
-                    plan = _rebalancer.analyze(positions, quotes, cash)
-                    if not plan.is_balanced and plan.trades_needed:
-                        await _auto_trader._safe_notify(
-                            "每日再平衡检查\n\n" + plan.format()
-                        )
-                except Exception as e:
-                    logger.warning("[Scheduler] 再平衡检查失败: %s", e)
         _scheduler.add_task("daily_rebalance", _daily_rebalance_check,
                             schedule_time=time(9, 35))
-
-        # 每日资金同步（09:25 ET，开盘前5分钟从IBKR同步实际资金）
-        async def _daily_capital_sync():
-            if _risk_manager:
-                try:
-                    from src.broker_bridge import ibkr as _ibkr
-                    if _ibkr.is_connected():
-                        actual = await _ibkr.sync_capital()
-                        if actual > 0:
-                            _risk_manager.config.total_capital = actual
-                            logger.info("[Scheduler] 资金同步: $%.2f", actual)
-                    else:
-                        logger.warning("[Scheduler] IBKR未连接，跳过资金同步")
-                except Exception as e:
-                    logger.warning("[Scheduler] 资金同步失败: %s", e)
         _scheduler.add_task("daily_capital_sync", _daily_capital_sync,
                             schedule_time=time(9, 25))
-
-        # 每周利润硬规则（周一 09:20 ET，检查上周已平仓PnL）
-        async def _weekly_profit_guard():
-            global _weekly_guard_last_week_key, _weekly_kill_switch_triggered
-
-            enabled = _env_bool("WEEKLY_KILL_SWITCH", True)
-            target = _env_float("WEEKLY_PROFIT_TARGET", 50.0)
-            if not enabled:
-                return
-
-            from src.utils import now_et
-            now = now_et()
-
-            # 从持久化存储恢复 kill switch 状态
-            from src.trading_journal import journal as tj
-            _saved_ks = tj.get_config("weekly_kill_switch_state")
-            if _saved_ks:
-                try:
-                    _ks_data = json.loads(_saved_ks)
-                    if _ks_data.get("triggered") and _ks_data.get("week_key"):
-                        # 检查是否仍在同一周（周一重置）
-                        current_week_start = now.date() - timedelta(days=now.weekday())
-                        if _ks_data["week_key"] >= current_week_start.isoformat():
-                            global _weekly_kill_switch_triggered
-                            if not _weekly_kill_switch_triggered:
-                                _weekly_kill_switch_triggered = True
-                                if _auto_trader:
-                                    await _auto_trader.stop()
-                                    try:
-                                        from src.auto_trader import TraderState
-                                        _auto_trader.state = TraderState.PAUSED
-                                    except Exception:
-                                        logger.debug("Silenced exception", exc_info=True)
-                                logger.warning("[Scheduler] 从持久化恢复周度熔断状态 (week_key=%s)", _ks_data["week_key"])
-                            return
-                except Exception as e:
-                    logger.debug("[Scheduler] 解析 weekly_kill_switch_state 失败: %s", e)
-
-            if now.weekday() != 0:  # 仅周一执行完整检查
-                return
-
-            current_week_start = now.date() - timedelta(days=now.weekday())
-            last_week_start = current_week_start - timedelta(days=7)
-            last_week_end = current_week_start - timedelta(days=1)
-            week_key = f"{last_week_start.isoformat()}::{last_week_end.isoformat()}"
-            if _weekly_guard_last_week_key == week_key:
-                return
-
-            _weekly_guard_last_week_key = week_key
-
-            from src.trading_journal import journal as tj
-            trades = tj.get_closed_trades(days=14, limit=1000)
-            week_trades = []
-            for trade in trades:
-                exit_time = trade.get("exit_time")
-                if not exit_time:
-                    continue
-                try:
-                    exit_dt = _parse_datetime(str(exit_time))
-                    if not exit_dt:
-                        continue
-                    exit_date = exit_dt.date()
-                except Exception:
-                    continue
-                if last_week_start <= exit_date <= last_week_end:
-                    week_trades.append(trade)
-
-            week_pnl = sum(float(t.get("pnl", 0) or 0) for t in week_trades)
-            logger.info(
-                "[Scheduler] 周利润守卫检查 %s~%s: pnl=$%.2f, target=$%.2f, trades=%d",
-                last_week_start,
-                last_week_end,
-                week_pnl,
-                target,
-                len(week_trades),
-            )
-
-            if week_pnl >= target:
-                _weekly_kill_switch_triggered = False
-                # 清除持久化状态
-                tj.set_config("weekly_kill_switch_state", "")
-                return
-
-            _weekly_kill_switch_triggered = True
-            # 持久化 kill switch 状态
-            tj.set_config("weekly_kill_switch_state", json.dumps({
-                "triggered": True,
-                "week_key": current_week_start.isoformat(),
-                "week_pnl": week_pnl,
-                "target": target,
-            }))
-
-            if _auto_trader:
-                await _auto_trader.stop()
-                try:
-                    from src.auto_trader import TraderState
-                    _auto_trader.state = TraderState.PAUSED
-                except Exception as e:
-                    logger.error("[Scheduler] 设置 AutoTrader PAUSED 状态失败: %s", e)
-
-            msg = (
-                "!! 周盈利硬规则触发，自动停机 !!\n"
-                "上周区间: %s ~ %s\n"
-                "上周已平仓PnL: $%.2f\n"
-                "最低目标: $%.2f\n"
-                "动作: AutoTrader 已强制停止 (state=PAUSED)"
-            ) % (
-                last_week_start,
-                last_week_end,
-                week_pnl,
-                target,
-            )
-            logger.warning("[Scheduler] %s", msg.replace("\n", " | "))
-            if _auto_trader and _auto_trader.notify:
-                try:
-                    await _auto_trader._safe_notify(
-                        format_notice(
-                            "周盈利守卫触发",
-                            bullets=[
-                                kv("周期", f"{last_week_start} ~ {last_week_end}"),
-                                kv("上周已平仓PnL", f"${week_pnl:.2f}"),
-                                kv("最低目标", f"${target:.2f}"),
-                                bullet("动作: AutoTrader 已强制停止 (state=PAUSED)"),
-                            ],
-                        )
-                    )
-                except Exception as e:
-                    logger.warning("[Scheduler] 周利润守卫通知失败: %s", e)
-
         _scheduler.add_task(
             "weekly_profit_guard",
             _weekly_profit_guard,
             schedule_time=time(9, 20),
         )
-
-        # 成交回写校验器：pending 入场订单 -> 成交回写到 journal + monitor
-        async def _reconcile_ibkr_entry_fills():
-            global _processed_fill_exec_ids
-
-            if not _env_bool("IBKR_FILL_RECONCILE_ENABLED", True):
-                return
-            if not _trading_pipeline or not _trading_pipeline.broker:
-                return
-
-            broker = _trading_pipeline.broker
-            if not hasattr(broker, "get_recent_fills"):
-                return
-
-            from src.trading_journal import journal as tj
-            pending = tj.get_pending_trades(
-                limit=_env_int("IBKR_PENDING_RECONCILE_LIMIT", 300, minimum=50)
-            )
-            open_with_order = [
-                t for t in tj.get_open_trades()
-                if str(t.get("entry_order_id", "") or "").strip()
-            ]
-
-            if not pending and not open_with_order:
-                return
-
-            fills = await broker.get_recent_fills(
-                lookback_hours=_env_int("IBKR_FILL_LOOKBACK_HOURS", 48, minimum=1)
-            )
-            fills = fills or []
-
-            aggregated = {}
-            new_exec = 0
-            for fill in fills:
-                exec_id = str(fill.get("exec_id", "") or "")
-                if not exec_id or exec_id in _processed_fill_exec_ids:
-                    continue
-
-                _processed_fill_exec_ids[exec_id] = True
-                new_exec += 1
-
-                order_id = str(fill.get("order_id", "") or "").strip()
-                shares = float(fill.get("shares", 0) or 0)
-                price = float(fill.get("price", 0) or 0)
-                if not order_id or shares <= 0 or price <= 0:
-                    continue
-
-                item = aggregated.setdefault(order_id, {
-                    "shares": 0.0,
-                    "notional": 0.0,
-                    "symbol": str(fill.get("symbol", "") or "").upper(),
-                    "latest_time": str(fill.get("time", "") or ""),
-                })
-                item["shares"] += shares
-                item["notional"] += shares * price
-                if fill.get("time"):
-                    item["latest_time"] = str(fill.get("time"))
-
-            if len(_processed_fill_exec_ids) > 8000:
-                # 保留最近 4000 条（OrderedDict 保持插入顺序）
-                keys = list(_processed_fill_exec_ids.keys())
-                _processed_fill_exec_ids = OrderedDict.fromkeys(keys[-4000:], True)
-
-            pending_by_order = {}
-            for trade in pending:
-                oid = str(trade.get("entry_order_id", "") or "").strip()
-                if oid:
-                    pending_by_order[oid] = trade
-
-            for order_id, fill_info in aggregated.items():
-                trade = pending_by_order.get(order_id)
-                if not trade:
-                    continue
-
-                shares = float(fill_info.get("shares", 0) or 0)
-                notional = float(fill_info.get("notional", 0) or 0)
-                avg_price = notional / shares if shares > 0 else 0
-                if shares <= 0 or avg_price <= 0:
-                    continue
-
-                trade_id = int(float(trade.get("id", 0) or 0))
-                update = tj.mark_trade_entry_filled(
-                    trade_id=trade_id,
-                    filled_qty=shares,
-                    fill_price=avg_price,
-                    entry_order_id=order_id,
-                    fill_time=str(fill_info.get("latest_time", "") or ""),
-                )
-                if "error" in update:
-                    logger.warning("[Reconcile] 回写失败 trade#%s: %s", trade_id, update["error"])
-                    continue
-
-                refreshed = tj.get_trade(trade_id)
-                if refreshed:
-                    _ensure_monitor_position_from_trade(refreshed)
-
-                logger.info(
-                    "[Reconcile] 成交回写成功 trade#%d order#%s qty=%.4f @ %.4f",
-                    trade_id,
-                    order_id,
-                    shares,
-                    avg_price,
-                )
-
-                if _auto_trader and _auto_trader.notify:
-                    try:
-                        await _auto_trader._safe_notify(
-                            format_trade_fill_reconciled(
-                                trade_id,
-                                order_id,
-                                str(trade.get("symbol", "?") or "?").upper(),
-                                shares,
-                                avg_price,
-                            )
-                        )
-                    except Exception as e:
-                        logger.debug("[Reconcile] 成交通知失败: %s", e)
-
-            # 兼容旧逻辑：open + entry_order_id 但无持仓/无挂单时，自动修正状态
-            if open_with_order:
-                open_orders = await broker.get_open_orders() if hasattr(broker, "get_open_orders") else []
-                open_order_ids = {
-                    str(o.get("order_id", "") or "")
-                    for o in open_orders
-                    if o.get("order_id") is not None
-                }
-                snapshots = await broker.get_trade_snapshots() if hasattr(broker, "get_trade_snapshots") else []
-                snapshot_map = {
-                    str(o.get("order_id", "") or ""): o
-                    for o in snapshots
-                    if o.get("order_id") is not None
-                }
-                positions = await broker.get_positions() if hasattr(broker, "get_positions") else []
-                pos_symbols = {
-                    str(p.get("symbol", "") or "").upper(): abs(float(p.get("quantity", 0) or 0))
-                    for p in positions
-                }
-                grace_minutes = _env_int("IBKR_LEGACY_ORDER_RECONCILE_GRACE_MIN", 30, minimum=5)
-
-                for trade in open_with_order:
-                    trade_id = int(float(trade.get("id", 0) or 0))
-                    order_id = str(trade.get("entry_order_id", "") or "").strip()
-                    symbol = str(trade.get("symbol", "") or "").upper().strip()
-                    if trade_id <= 0 or not order_id or not symbol:
-                        continue
-
-                    # 如果有真实持仓，视为已成交，无需处理
-                    if pos_symbols.get(symbol, 0) > 0:
-                        continue
-
-                    entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
-                    age_min = 0
-                    if entry_dt is not None:
-                        from src.utils import now_et
-                        age_min = int(max(0, (now_et().replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
-
-                    if order_id in open_order_ids:
-                        # 旧记录修正为 pending，避免被误当成已持仓
-                        if age_min >= grace_minutes:
-                            tj.set_trade_status(trade_id, "pending", reason="legacy_open_order_pending")
-                            if _position_monitor:
-                                _position_monitor.remove_position(trade_id)
-                            logger.info("[Reconcile] trade#%d 状态修正为 pending (order#%s)", trade_id, order_id)
-                        continue
-
-                    snap_status = str(snapshot_map.get(order_id, {}).get("status", "") or "")
-                    # 既无持仓也无挂单，且过了宽限期 -> 取消旧记录
-                    if age_min >= grace_minutes and snap_status in ("", "Cancelled", "ApiCancelled", "Inactive"):
-                        tj.cancel_trade(trade_id, reason="reconcile_no_fill_no_position")
-                        if _position_monitor:
-                            _position_monitor.remove_position(trade_id)
-                        logger.info(
-                            "[Reconcile] trade#%d 无成交且无持仓，已取消 (order#%s)",
-                            trade_id,
-                            order_id,
-                        )
-
-            if new_exec > 0:
-                logger.info("[Reconcile] 本轮处理新成交回报: %d 条", new_exec)
-
         _scheduler.add_task(
             "ibkr_fill_reconcile",
             _reconcile_ibkr_entry_fills,
             interval_minutes=_env_int("IBKR_FILL_RECONCILE_INTERVAL_MIN", 2, minimum=1),
         )
-
-        # 非交易时段 pending 订单自动撤单 + 加入次日重挂队列
-        async def _cancel_stale_pending_entries():
-            if not _env_bool("AUTO_CANCEL_PENDING_ENTRY_ORDERS", True):
-                return
-            if not _trading_pipeline or not _trading_pipeline.broker:
-                return
-
-            broker = _trading_pipeline.broker
-            if not hasattr(broker, "get_open_orders"):
-                return
-
-            from src.trading_journal import journal as tj
-            pending = tj.get_pending_trades(
-                limit=_env_int("PENDING_ENTRY_SCAN_LIMIT", 300, minimum=50)
-            )
-            if not pending:
-                return
-
-            market_open = _is_us_market_open_now()
-            stale_minutes = _env_int("PENDING_ENTRY_CANCEL_AFTER_MINUTES", 20, minimum=1)
-            deep_timeout = max(stale_minutes * 3, 60)
-
-            open_orders = await broker.get_open_orders()
-            open_map = {
-                str(o.get("order_id", "") or ""): o
-                for o in open_orders
-                if o.get("order_id") is not None
-            }
-
-            snapshots = []
-            if hasattr(broker, "get_trade_snapshots"):
-                snapshots = await broker.get_trade_snapshots()
-            snapshot_map = {
-                str(o.get("order_id", "") or ""): o
-                for o in snapshots
-                if o.get("order_id") is not None
-            }
-
-            cancelled_statuses = {"Cancelled", "ApiCancelled", "Inactive"}
-            from src.utils import now_et
-            now = now_et()
-
-            for trade in pending:
-                trade_id = int(float(trade.get("id", 0) or 0))
-                order_id = str(trade.get("entry_order_id", "") or "").strip()
-                if trade_id <= 0 or not order_id:
-                    continue
-
-                entry_dt = _parse_datetime(str(trade.get("entry_time", "") or ""))
-                age_min = 9999
-                if entry_dt is not None:
-                    age_min = max(0, int((now.replace(tzinfo=None) - entry_dt.replace(tzinfo=None)).total_seconds() / 60))
-
-                live_order = open_map.get(order_id)
-                snap = snapshot_map.get(order_id, {})
-                status = str((live_order or snap).get("status", "") or "")
-
-                need_cancel_api = False
-                cancel_reason = ""
-
-                if live_order and (not market_open) and age_min >= stale_minutes:
-                    need_cancel_api = True
-                    cancel_reason = f"offhours_pending_timeout_{age_min}m"
-                elif (not live_order) and status in cancelled_statuses:
-                    cancel_reason = f"broker_{status.lower()}"
-                elif (not live_order) and (not status) and age_min >= deep_timeout:
-                    cancel_reason = f"pending_timeout_{age_min}m"
-
-                if need_cancel_api:
-                    try:
-                        cancel_ret = await broker.cancel_order(int(float(order_id)))
-                    except Exception as e:
-                        logger.warning("[PendingCancel] 订单#%s 撤单异常: %s", order_id, e)
-                        continue
-                    if "error" in cancel_ret:
-                        logger.warning("[PendingCancel] 订单#%s 撤单失败: %s", order_id, cancel_ret["error"])
-                        continue
-
-                if not cancel_reason:
-                    continue
-
-                tj.cancel_trade(trade_id, cancel_reason)
-                queued = False
-                if _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
-                    queued = _queue_reentry_from_trade(trade, reason=cancel_reason)
-
-                if _position_monitor:
-                    _position_monitor.remove_position(trade_id)
-
-                logger.info(
-                    "[PendingCancel] trade#%d order#%s 已取消，原因=%s，重挂=%s",
-                    trade_id,
-                    order_id,
-                    cancel_reason,
-                    queued,
-                )
-
-                if _auto_trader and _auto_trader.notify:
-                    try:
-                        await _auto_trader._safe_notify(
-                            format_notice(
-                                "待成交订单已撤单",
-                                bullets=[
-                                    kv("Trade / Order", f"#{trade_id} / #{order_id}"),
-                                    kv("原因", cancel_reason),
-                                    kv("次日重挂", "已加入" if queued else "未加入"),
-                                ],
-                            )
-                        )
-                    except Exception as e:
-                        logger.debug("[PendingCancel] 通知失败: %s", e)
-
         _scheduler.add_task(
             "pending_entry_cancel",
             _cancel_stale_pending_entries,
             interval_minutes=_env_int("PENDING_ENTRY_CANCEL_CHECK_INTERVAL_MIN", 5, minimum=1),
         )
-
-        # 次日重挂：交易时段开启后按队列重提单
-        async def _submit_pending_reentry_queue():
-            global _pending_reentry_queue
-
-            if not _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
-                return
-            if not _pending_reentry_queue:
-                return
-            if not _is_us_market_open_now():
-                return
-            if not _trading_pipeline:
-                return
-
-            max_per_cycle = _env_int("PENDING_REENTRY_MAX_PER_CYCLE", 1, minimum=1)
-            max_retries = _env_int("PENDING_REENTRY_MAX_RETRIES", 2, minimum=1)
-            retry_interval_min = _env_int("PENDING_REENTRY_RETRY_INTERVAL_MIN", 5, minimum=1)
-
-            from src.models import TradeProposal
-            from src.utils import now_et
-            from src.invest_tools import get_stock_quote
-
-            now_dt = now_et()
-            submitted_count = 0
-            next_queue = []
-
-            for item in list(_pending_reentry_queue):
-                if submitted_count >= max_per_cycle:
-                    next_queue.append(item)
-                    continue
-
-                next_retry_at = _parse_datetime(str(item.get("next_retry_at", "") or ""))
-                if next_retry_at and now_dt < next_retry_at:
-                    next_queue.append(item)
-                    continue
-
-                symbol = str(item.get("symbol", "") or "").upper().strip()
-                qty = int(float(item.get("quantity", 0) or 0))
-                if not symbol or qty <= 0:
-                    continue
-
-                try:
-                    quote_ret = get_stock_quote(symbol)
-                    if asyncio.iscoroutine(quote_ret):
-                        price_data = await quote_ret
-                    else:
-                        price_data = quote_ret
-                except Exception as e:
-                    logger.warning("[ReEntry] %s 获取行情失败: %s", symbol, e)
-                    price_data = {}
-
-                price = float(price_data.get("price", 0) or 0) if isinstance(price_data, dict) else 0
-                if price <= 0:
-                    retry_count = int(float(item.get("retry_count", 0) or 0)) + 1
-                    if retry_count <= max_retries:
-                        item["retry_count"] = retry_count
-                        item["next_retry_at"] = (now_dt + timedelta(minutes=retry_interval_min)).isoformat()
-                        next_queue.append(item)
-                    continue
-
-                stop = float(item.get("stop_loss", 0) or 0)
-                if stop <= 0 or stop >= price:
-                    stop = round(price * 0.97, 2)
-                target = float(item.get("take_profit", 0) or 0)
-                if target <= 0 or target <= price:
-                    target = round(price * 1.06, 2)
-
-                proposal = TradeProposal(
-                    symbol=symbol,
-                    action="BUY",
-                    quantity=qty,
-                    entry_price=price,
-                    stop_loss=stop,
-                    take_profit=target,
-                    signal_score=int(float(item.get("signal_score", 0) or 0)),
-                    confidence=0.55,
-                    reason=str(item.get("entry_reason", "") or "")[:180] or "次日重挂执行",
-                    decided_by=f"ReEntry/{str(item.get('decided_by', 'AutoTrader') or 'AutoTrader')}",
-                )
-
-                try:
-                    exec_result = await _trading_pipeline.execute_proposal(proposal)
-                except Exception as e:
-                    logger.warning("[ReEntry] %s 执行异常: %s", symbol, e)
-                    exec_result = {"status": "error", "reason": str(e)}
-
-                status = str(exec_result.get("status", "") or "")
-                if status in ("executed", "submitted"):
-                    submitted_count += 1
-                    if _auto_trader and _auto_trader.notify:
-                        try:
-                            await _auto_trader._safe_notify(
-                                format_pending_reentry(symbol, qty, price, status)
-                            )
-                        except Exception:
-                            logger.debug("Silenced exception", exc_info=True)
-                    continue
-
-                retry_count = int(float(item.get("retry_count", 0) or 0)) + 1
-                if retry_count <= max_retries:
-                    item["retry_count"] = retry_count
-                    item["next_retry_at"] = (now_dt + timedelta(minutes=retry_interval_min)).isoformat()
-                    next_queue.append(item)
-                else:
-                    logger.warning("[ReEntry] %s 重挂失败超限，放弃: %s", symbol, exec_result)
-
-            _pending_reentry_queue = next_queue
-            _save_pending_reentry_queue(_pending_reentry_queue)
-
         _scheduler.add_task(
             "pending_reentry_submit",
             _submit_pending_reentry_queue,
             interval_minutes=_env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
         )
-
-        # IBKR 连接健康检查（每10分钟）
-        async def _ibkr_health_check():
-            try:
-                from src.broker_bridge import ibkr as _ibkr
-                if not _ibkr.is_connected():
-                    logger.warning("[Scheduler] IBKR断连，尝试重连...")
-                    reconnected = await _ibkr.ensure_connected()
-                    if reconnected:
-                        logger.info("[Scheduler] IBKR重连成功")
-                    else:
-                        logger.error("[Scheduler] IBKR重连失败")
-            except Exception as e:
-                logger.warning("[Scheduler] IBKR健康检查失败: %s", e)
-            # P0#10: 清理过期的待确认交易
-            try:
-                from src.bot.globals import _cleanup_pending_trades
-                _cleanup_pending_trades()
-            except Exception as e:
-                logger.debug("[Scheduler] 清理待确认交易失败: %s", e)
         _scheduler.add_task("ibkr_health_check", _ibkr_health_check,
                             interval_minutes=3)
+
+        # 每日成本报告 — 23:00 ET 发送当日 LLM 花费汇总
+        async def _cost_daily_report():
+            try:
+                from src.core.cost_control import get_cost_controller
+                from src.core.event_bus import get_event_bus
+                cc = get_cost_controller()
+                if cc:
+                    bus = get_event_bus()
+                    if bus:
+                        await bus.publish("system.cost_daily_report", {
+                            "daily_spend": cc.get_daily_spend(),
+                            "report": cc.get_weekly_report() if hasattr(cc, 'get_weekly_report') else {},
+                        })
+            except Exception as e:
+                logger.debug("[Scheduler] 每日成本报告失败: %s", e)
+
+        _scheduler.add_task("cost_daily_report", _cost_daily_report,
+                            schedule_time=time(23, 0))
 
         _scheduler.start()
         logger.info(
@@ -1368,6 +1355,41 @@ async def start_trading_system():
         )
     except Exception as e:
         logger.warning("[TradingSystem] Scheduler启动失败: %s", e)
+
+
+async def start_trading_system():
+    """启动持仓监控和自动交易（在 main() 中调用）"""
+    global _pending_reentry_queue, _processed_fill_exec_ids
+
+    if not _initialized:
+        logger.error("[TradingSystem] 未初始化，无法启动")
+        return
+
+    # 1. 恢复持久化状态
+    _pending_reentry_queue = _load_pending_reentry_queue()
+    if _pending_reentry_queue:
+        logger.info("[TradingSystem] 恢复待重挂队列: %d 条", len(_pending_reentry_queue))
+
+    await _restore_open_positions()
+    await _restore_today_pnl()
+    await _restore_autotrader_count()
+
+    # 2. 启动持仓监控
+    if _position_monitor:
+        await _position_monitor.start()
+        logger.info("[TradingSystem] 持仓监控器已启动")
+
+    # 3. 同步 IBKR 资金
+    await _sync_ibkr_capital()
+
+    # 4. 启动 AutoTrader
+    if _auto_trader:
+        await _auto_trader.start()
+        logger.info("[TradingSystem] AutoTrader 已自动启动 (auto_mode=%s, 间隔=%d分钟)",
+                    _auto_trader.auto_mode, _auto_trader.scan_interval)
+
+    # 5. 启动定时任务调度器
+    await _setup_scheduler()
 
 
 async def stop_trading_system():

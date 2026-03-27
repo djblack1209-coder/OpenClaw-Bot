@@ -1,13 +1,15 @@
 """
 ClawBot - 屏幕截图工具
 """
+import logging
 import subprocess
 import tempfile
 import base64
 import os
 from pathlib import Path
-from datetime import datetime
 from src.utils import now_et
+
+logger = logging.getLogger(__name__)
 
 class ScreenTool:
     """屏幕截图和GUI操作"""
@@ -167,5 +169,6 @@ class ScreenTool:
                     count += 1
             
             return {"cleaned": count}
-        except Exception:
+        except Exception as e:
+            logger.debug("[ScreenTool] 异常: %s", e)
             return {"cleaned": 0}

@@ -17,7 +17,7 @@ v2.0 新增 (2026-03-23):
 6. [NEW] 有效前沿优化：PyPortfolioOpt 自动计算最优权重
 """
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)

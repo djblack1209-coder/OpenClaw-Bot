@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import platform
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -42,7 +43,8 @@ def verify_key(key):
         if time.time() > int(exp, 16):
             return {"ok": False, "message": "激活码已过期"}
         return {"ok": True, "expires": time.strftime("%Y-%m-%d", time.localtime(int(exp, 16)))}
-    except Exception:
+    except Exception as e:
+        logger.debug("[WebInstaller] 异常: %s", e)
         return {"ok": False, "message": "验证失败"}
 
 # ---- 退款销毁功能 ----
@@ -72,9 +74,7 @@ def load_agents_md():
             return f.read()
     except Exception as e:
         logger.debug(f"Failed to read agents.md: {e}")
-        return """# OpenClaw 龙虾 — 私人AI助手
-你是"龙虾"(OpenClaw)，用户的私人AI助手。以三省六部制为内部工作流，高效、准确地完成任务。
-"""
+        return "你是 OpenClaw，严总的全能AI助手。直接给帮助，跳过废话。有自己的观点。用中文回复。"
 
 # ---- Manager UI 下载链接 ----
 MANAGER_UI_URLS = {
@@ -154,9 +154,7 @@ MODEL_GUIDE = """
 """
 
 def check_deps():
-    try:
-        import flask
-    except ImportError:
+    if importlib.util.find_spec("flask") is None:
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "flask"], capture_output=True)
 
 def run_web():
@@ -460,7 +458,8 @@ async function doDeploy(){
                 r = subprocess.run(["openclaw", "--version"], capture_output=True, text=True, timeout=10)
                 if r.returncode == 0:
                     yield f"data: ✅ OpenClaw {r.stdout.strip()} 已就绪\n\n"
-            except Exception:
+            except Exception as e:
+                logger.debug("[WebInstaller] 异常: %s", e)
                 yield "data: ✅ OpenClaw 已安装\n\n"
 
             yield "data: [DONE]\n\n"

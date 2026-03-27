@@ -1,0 +1,58 @@
+services:
+  # ── Redis（可选，用于任务队列持久化）──────────────
+  redis:
+    image: redis:7.2-alpine
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── OpenClaw 主服务 ──────────────────────────────
+  # NOTE: 需要先创建 packages/clawbot/Dockerfile 才能使用 docker compose build
+  # 当前仅支持 docker compose up redis (Redis 独立运行)
+  openclaw:
+    build:
+      context: ./packages/clawbot
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:18790:18790"   # 内控 API（仅本机访问）
+      - "127.0.0.1:9090:9090"     # Prometheus metrics（仅本机访问）
+    volumes:
+      - ./packages/clawbot/config:/app/config
+      - ./packages/clawbot/data:/app/data
+      - ./packages/clawbot/logs:/app/logs
+    env_file:
+      - ./packages/clawbot/config/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OMEGA_DAILY_BUDGET=50.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.5'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18790/api/v1/ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  redis_data:

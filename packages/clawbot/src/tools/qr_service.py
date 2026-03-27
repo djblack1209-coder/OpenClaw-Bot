@@ -74,8 +74,9 @@ def generate_qr(
             image_factory=StyledPilImage,
             module_drawer=RoundedModuleDrawer(),
         )
-    except Exception:
+    except Exception as e:
         # 降级到默认样式
+        logger.debug("[QRService] 异常: %s", e)
         img = qr.make_image(fill_color="black", back_color="white")
 
     # 嵌入 logo

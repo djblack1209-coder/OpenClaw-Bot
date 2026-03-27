@@ -14,9 +14,9 @@ ClawBot 统一数据提供层 v1.0
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta
+import time as _time
+from datetime import timedelta
 from enum import Enum
-from typing import Optional
 
 from src.utils import now_et
 
@@ -444,10 +444,54 @@ def get_history_sync(symbol: str, period: str = "3mo",
         return _yfinance_get_history(symbol, period=period, interval=interval)
 
 
+# ============ yfinance 行情缓存 ============
+
+_quote_cache: dict[str, tuple[float, dict]] = {}  # symbol -> (timestamp, data)
+QUOTE_CACHE_TTL = 60  # seconds
+
+
+def _cached_yfinance_get_quote(symbol: str) -> dict:
+    """带 TTL 缓存的 yfinance 行情查询，避免高频重复网络请求"""
+    now = _time.time()
+    cache_key = symbol.upper()
+
+    if cache_key in _quote_cache:
+        ts, data = _quote_cache[cache_key]
+        if now - ts < QUOTE_CACHE_TTL:
+            result = dict(data)  # shallow copy to avoid mutating cache
+            result["_cached"] = True
+            result["_cache_age_s"] = round(now - ts, 1)
+            return result
+
+    # Fetch fresh data via raw yfinance call
+    result = _yfinance_get_quote_raw(symbol)
+    result["_fetched_at"] = now
+    result["_cached"] = False
+
+    # Staleness detection: warn if data is from a different trading day
+    try:
+        today = now_et().date()
+        # yfinance history index contains the last trade date
+        if result.get("_last_trade_date"):
+            data_date = result["_last_trade_date"]
+            if data_date < today - timedelta(days=1):
+                result["_stale_warning"] = f"Data from {data_date}, today is {today}"
+    except Exception:
+        pass  # staleness check is best-effort
+
+    _quote_cache[cache_key] = (now, result)
+    return result
+
+
 # ============ yfinance 内部封装 ============
 
 def _yfinance_get_quote(symbol: str) -> dict:
-    """yfinance 行情查询 (内部使用)"""
+    """yfinance 行情查询 (内部使用) — 走缓存层"""
+    return _cached_yfinance_get_quote(symbol)
+
+
+def _yfinance_get_quote_raw(symbol: str) -> dict:
+    """yfinance 行情查询 (原始网络调用, 无缓存)"""
     yf = _ensure_yfinance()
     try:
         ticker = yf.Ticker(symbol)
@@ -467,6 +511,13 @@ def _yfinance_get_quote(symbol: str) -> dict:
         change = last_close - prev_close
         change_pct = (change / prev_close) * 100 if prev_close else 0
 
+        # Track the last trade date for staleness detection
+        last_trade_date = None
+        try:
+            last_trade_date = hist.index[-1].date()
+        except Exception:
+            pass
+
         return {
             "symbol": symbol.upper(),
             "name": info.get("shortName", symbol),
@@ -482,6 +533,7 @@ def _yfinance_get_quote(symbol: str) -> dict:
             "52w_low": info.get("fiftyTwoWeekLow", 0),
             "currency": info.get("currency", "USD"),
             "market": Market.US.value,
+            "_last_trade_date": last_trade_date,
         }
     except Exception as e:
         return {"error": f"查询 {symbol} 失败: {e}"}

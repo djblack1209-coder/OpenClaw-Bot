@@ -1,12 +1,12 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-03-27 | 新增 /calc 仓位计算器 + /xianyu_report 收入报表
+> 最后更新: 2026-03-28 | 新增 /review_history 复盘历史查询命令 + cmd_chart K线图实装，总数 92
 
 ---
 
-## 1. 注册命令一览（82 个）
+## 1. 注册命令一览（91 个）
 
-命令在 `multi_bot.py:171-278` 统一注册。
+命令在 `multi_bot.py:171-340` 统一注册。
 
 ### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行)
 
@@ -38,15 +38,15 @@
 |---|------|---------|------|:-:|
 | 19 | `/quote` | `cmd_quote` | 行情查询 (富卡片 + 操作按钮) | Y |
 | 20 | `/market` | `cmd_market` | 市场概览 | Y |
-| 21 | `/portfolio` | `cmd_portfolio` | 投资组合 (卡片 + 饼图 + IBKR) | Y |
+| 21 | `/portfolio` | `cmd_portfolio` | 投资组合 (卡片 + 风险敞口 + SPY对标 + 饼图 + 行业分布 + IBKR) | Y |
 | 22 | `/buy` | `cmd_buy` | 模拟买入 (风控→IBKR→模拟降级) | Y |
 | 23 | `/sell` | `cmd_sell` | 模拟卖出 | Y |
 | 24 | `/watchlist` | `cmd_watchlist` | 自选股管理 | N |
 | 25 | `/trades` | `cmd_trades` | 交易记录 + PnL 图表 | N |
 | 26 | `/reset_portfolio` | `cmd_reset_portfolio` | 重置投资组合 | N |
-| 27 | `/export` | `cmd_export` | 导出 trades/watchlist/portfolio (xlsx/csv) | N |
+| 27 | `/export` | `cmd_export` | 导出 trades/watchlist/portfolio/expenses/xianyu (xlsx/csv) | N |
 
-### 1.3 技术分析 — `AnalysisCommandsMixin` (cmd_analysis_mixin.py, 242 行)
+### 1.3 技术分析 — `AnalysisCommandsMixin` (cmd_analysis_mixin.py, 362 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
@@ -59,6 +59,12 @@
 | 34 | `/chart` | `cmd_chart` | K线图 (MA+成交量, Plotly candlestick) | N |
 | 35 | `/drl` | `cmd_drl` | DRL 强化学习策略分析 (PPO, FinRL) | N |
 | 36 | `/factors` | `cmd_factors` | 16 Alpha 因子分析 (Qlib, LightGBM) | N |
+| 37 | `/calc` | `cmd_calc` | 仓位计算器: 固定比例法+凯利公式 (搬运 TradingView Position Size Calculator) | N |
+| 38 | `/weekly` | `cmd_weekly` | 综合周报 (投资+社媒+闲鱼+成本 7 天聚合) | N |
+| 39 | `/accuracy` | `cmd_accuracy` | AI预测准确率面板 (按AI分组显示历史预测表现) | N |
+| 40 | `/equity` | `cmd_equity` | 权益曲线图表 (按日聚合累计收益变化) | N |
+| 41 | `/targets` | `cmd_targets` | 盈利目标进度 (日/周/月目标达成百分比) | N |
+| 42 | `/review_history` | `cmd_review_history` | 复盘历史查询 (近N次复盘记录+教训+星级评分) | N |
 
 ### 1.4 IBKR 实盘 — `IBKRCommandsMixin` (cmd_ibkr_mixin.py, 165 行)
 
@@ -121,11 +127,15 @@
 | 76 | `/dualpost` | `cmd_dual_post` | 一键双平台发文 (AI生成→预览→确认) | N |
 | 77 | `/publish` | `cmd_publish` | 社媒多平台发布 — sau_bridge (抖音/B站/小红书/快手) | N |
 | 78 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
-| 79 | `/social_calendar` | `cmd_social_calendar` | 未来 7 天内容日历 | N |
+| 79 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
 | 80 | `/social_report` | `cmd_social_report` | 社媒效果报告 + A/B 测试 | N |
 | 81 | `/agent` | `cmd_agent` | 智能 Agent — 自然语言驱动多工具链 (smolagents) | N |
 | 82 | `/novel` | `cmd_novel` | AI 小说工坊 — 网文大纲/续写/导出/TTS (inkos+MuMuAINovel) | N |
 | 83 | `/ship` | `cmd_ship` | 闲鱼卡券管理 — add/stock/rule/stats/test (auto_shipper) | N |
+| 84 | `/xianyu_report` | `cmd_xianyu_report` | 闲鱼收入报表 — 日报/周报/月报 + 爆款排行 + BI三板块(热销排行/高峰时段/转化漏斗) | N |
+| 85 | `/xianyu_style` | `cmd_xianyu_style` | 闲鱼 AI 客服回复配置 — 自定义回复风格/FAQ模板/商品规则 (set/faq/rule/show) | N |
+| 86 | `/bill` | `cmd_bill` | 生活账单追踪 — 话费/水电费余额检测 + 低余额告警 + 定期提醒 (add/update/list/remove + 中文NLP) | N |
+| 86 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
 
 ---
 
@@ -141,7 +151,7 @@
 | 4 | `^fb\|` | `handle_feedback_callback` | cmd_basic_mixin | 👍/👎/🔄 反馈按钮 |
 | 5 | `^mem_` | `handle_memory_callback` | cmd_basic_mixin | 记忆分页/清除 |
 | 6 | `^settings\|` | `handle_settings_callback` | cmd_basic_mixin | 设置切换按钮 |
-| 7 | `^cmd:` | `handle_notify_action_callback` | cmd_basic_mixin | 交易通知 actionable 按钮 |
+| 7 | `^cmd:` | `handle_notify_action_callback` | cmd_basic_mixin | 交易通知 actionable 按钮 + 模糊引导快捷操作 (bill/xianyu 已加入 cmd_map) |
 | 8 | `^social_confirm:` | `handle_social_confirm_callback` | cmd_execution_mixin | 社交发文预览确认/取消/重生成 |
 | 9 | `^ops_` | `handle_ops_menu_callback` | cmd_execution_mixin | /ops 交互菜单按钮 |
 | 10 | `^(ta_\|buy_\|watch_)` | `handle_quote_action_callback` | cmd_invest_mixin | 行情卡片操作 (技术分析/买入/加自选) |
@@ -225,6 +235,17 @@
 | 资讯监控列表/新闻监控列表 | `ops_monitor_list` | `/ops monitor list` |
 | 运行资讯监控/扫描资讯监控 | `ops_monitor_run` | `/ops monitor run` |
 
+### 3.3b 闲鱼 BI 触发词
+
+| 触发文本 | Action Type | Maps To |
+|----------|-------------|---------|
+| 闲鱼报告/闲鱼数据/闲鱼报表/闲鱼分析 | `xianyu_report` | `/xianyu_report` |
+| 商品排行/哪个商品卖得好/热销排行 | `xianyu_report` | `/xianyu_report` |
+| 咨询高峰/什么时候咨询最多 | `xianyu_report` | `/xianyu_report` |
+| 转化率/转化漏斗/闲鱼转化 | `xianyu_report` | `/xianyu_report` |
+| 闲鱼风格/闲鱼回复风格/客服风格/AI客服风格 | `xianyu_style_show` | `/xianyu_style show` |
+| 闲鱼常见问题/闲鱼FAQ | `xianyu_style_faq_list` | `/xianyu_style faq list` |
+
 ### 3.4 投资/交易触发词
 
 | 触发文本 | Action Type | Maps To |
@@ -249,3 +270,19 @@
 | 回测/测试策略/backtest + SYMBOL | `backtest` | `/backtest` |
 | 再平衡/调仓/rebalance/配置组合 | `rebalance` | `/rebalance` |
 | 投资/讨论/分析 + 一下 + 话题 | `invest` | `/invest` |
+
+### 3.5 购物 & 降价监控触发词
+
+| 触发文本 | Action Type | Maps To |
+|----------|-------------|---------|
+| 帮我找便宜的X / 比较一下X的价格 / X哪里买最便宜 | `smart_shop` | 比价搜索 |
+| 帮我盯着X，降到N告诉我 | `pricewatch_add` | `/pricewatch add X N` |
+| X降价提醒 N / X降到N提醒我 | `pricewatch_add` | `/pricewatch add X N` |
+| 降价监控 / 我的监控 / 价格提醒列表 | `pricewatch_list` | `/pricewatch list` |
+
+### 3.6 导出触发词
+
+| 触发文本 | Action Type | Maps To |
+|----------|-------------|---------|
+| 导出记账 / 导出账单 / 导出支出 / 导出开支 [N天] | `export_expenses` | `/export expenses [N]` |
+| 导出闲鱼 / 闲鱼报表导出 / 闲鱼订单导出 [N天] | `export_xianyu` | `/export xianyu [N]` |

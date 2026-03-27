@@ -116,7 +116,8 @@ async def _send_safe(
             parse_mode="Markdown",
             reply_to_message_id=reply_to_message_id,
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("[MessageSender] 异常: %s", e)
         try:
             # Markdown 失败，回退纯文本
             await context.bot.send_message(
@@ -124,7 +125,8 @@ async def _send_safe(
                 text=text,
                 reply_to_message_id=reply_to_message_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("[MessageSender] 异常: %s", e)
             try:
                 # reply_to 消息不存在时，去掉回复直接发送
                 await context.bot.send_message(

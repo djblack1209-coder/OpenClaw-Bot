@@ -1,5 +1,4 @@
 """Evolution API endpoints — scan, proposals, capability gaps"""
-import asyncio
 import logging
 from typing import Optional
 

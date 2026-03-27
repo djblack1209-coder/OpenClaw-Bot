@@ -5,11 +5,14 @@ GitHub Trending 数据采集器
 1. 爬取 github.com/trending 页面 (无需 Token)
 2. GitHub Search API 查询快速增长的仓库 (需要 Token 获取更高限额)
 """
+import asyncio
 import logging
 import os
 import re
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+from src.utils import now_et
 from typing import List, Optional
 from urllib.parse import quote
 
@@ -74,12 +77,21 @@ async def fetch_trending(
     repos: List[TrendingRepo] = []
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
-                if resp.status != 200:
-                    logger.warning("[trending] HTTP %d for %s", resp.status, url)
-                    return repos
-                html = await resp.text()
+        timeout_obj = aiohttp.ClientTimeout(total=timeout, sock_connect=10)
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+            for attempt in range(3):
+                try:
+                    async with session.get(url, headers=headers, timeout=timeout_obj) as resp:
+                        if resp.status != 200:
+                            logger.warning("[trending] HTTP %d for %s", resp.status, url)
+                            return repos
+                        html = await resp.text()
+                        break
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt == 2:
+                        raise
+                    logger.debug("[trending] 请求重试 attempt=%d: %s", attempt + 1, e)
+                    await asyncio.sleep(2 ** attempt)
     except aiohttp.ClientError as e:
         logger.error("[trending] Network error: %s", e)
         return repos
@@ -199,7 +211,7 @@ async def fetch_fast_growing_repos(
         TrendingRepo 列表，按 star 降序
     """
     token = token or os.getenv("GITHUB_TOKEN", "")
-    cutoff = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    cutoff = (now_et() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
     # 构建搜索查询
     q_parts = [f"stars:>={min_stars}", f"pushed:>={cutoff}"]
@@ -224,19 +236,28 @@ async def fetch_fast_growing_repos(
     repos: List[TrendingRepo] = []
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, params=params, headers=headers,
-                timeout=aiohttp.ClientTimeout(total=timeout),
-            ) as resp:
-                if resp.status == 403:
-                    logger.warning("[search_api] Rate limited (403). Use GITHUB_TOKEN for higher quota.")
-                    return repos
-                if resp.status != 200:
-                    body = await resp.text()
-                    logger.warning("[search_api] HTTP %d: %s", resp.status, body[:200])
-                    return repos
-                data = await resp.json()
+        timeout_obj = aiohttp.ClientTimeout(total=timeout, sock_connect=10)
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+            for attempt in range(3):
+                try:
+                    async with session.get(
+                        url, params=params, headers=headers,
+                        timeout=timeout_obj,
+                    ) as resp:
+                        if resp.status == 403:
+                            logger.warning("[search_api] Rate limited (403). Use GITHUB_TOKEN for higher quota.")
+                            return repos
+                        if resp.status != 200:
+                            body = await resp.text()
+                            logger.warning("[search_api] HTTP %d: %s", resp.status, body[:200])
+                            return repos
+                        data = await resp.json()
+                        break
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt == 2:
+                        raise
+                    logger.debug("[search_api] 请求重试 attempt=%d: %s", attempt + 1, e)
+                    await asyncio.sleep(2 ** attempt)
     except aiohttp.ClientError as e:
         logger.error("[search_api] Network error: %s", e)
         return repos
@@ -288,7 +309,7 @@ async def fetch_readme(repo_name: str, token: Optional[str] = None, max_chars: i
     for branch in ("main", "master"):
         url = f"https://raw.githubusercontent.com/{repo_name}/{branch}/README.md"
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
                 async with session.get(
                     url, headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),

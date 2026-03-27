@@ -13,8 +13,8 @@ import json
 import logging
 import asyncio
 import time
-from typing import List, Dict, Optional, Callable, Any
-from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Callable
+from dataclasses import dataclass
 from src.utils import emit_flow_event
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,8 @@ class SmartMemoryPipeline:
         self._pending_messages: Dict[int, List[Dict]] = {}  # chat_id -> recent messages
         self._lock = asyncio.Lock()
         self._extracting: set = set()  # chat_ids currently running extraction
+        self._last_extract_time: float = 0  # 全局限流: 防止多聊天并发触发 LLM 风暴
+        self._extract_min_interval: float = 30.0  # 两次提取之间至少间隔 30 秒
 
     def set_llm_fn(self, llm_fn: Callable):
         """延迟设置 LLM 函数（启动后注入）"""
@@ -155,11 +157,16 @@ class SmartMemoryPipeline:
         # 实时偏好检测 — 零 LLM 成本的正则捕获（搬运 ChatGPT Memory 模式）
         # 用户说"简短点"/"我喜欢..."/"以后别..."时立即写入记忆，不等 extract_interval
         if role == "user":
-            asyncio.create_task(self._detect_instant_preference(content, chat_id, user_id, bot_id))
+            _pref_t = asyncio.create_task(self._detect_instant_preference(content, chat_id, user_id, bot_id))
+            _pref_t.add_done_callback(lambda t: t.exception() and logger.debug("偏好检测后台任务异常: %s", t.exception()))
 
-        # 到达提取阈值 — 异步触发，不阻塞（跳过已在提取中的 chat）
-        if turn % self.extract_interval == 0 and self.llm_fn and chat_id not in self._extracting:
+        # 到达提取阈值 — 异步触发，不阻塞（跳过已在提取中的 chat + 全局限流）
+        now_ts = time.time()
+        if (turn % self.extract_interval == 0 and self.llm_fn
+                and chat_id not in self._extracting
+                and now_ts - self._last_extract_time >= self._extract_min_interval):
             self._extracting.add(chat_id)
+            self._last_extract_time = now_ts
             _t = asyncio.create_task(self._extract_and_store(chat_id, user_id, bot_id))
             _t.add_done_callback(lambda t: (self._extracting.discard(chat_id), t.exception() and logger.debug("事实提取后台任务异常: %s", t.exception())))
 
@@ -203,13 +210,13 @@ class SmartMemoryPipeline:
                 return
 
             # 立即写入 SharedMemory（不等定期提取）
-            if self.shared_memory:
+            if self.memory:
                 pref_fact = f"[{matched_category}] {text[:100]}"
-                self.shared_memory.remember(
-                    pref_fact,
-                    user_id=str(user_id),
+                self.memory.remember(
+                    key=pref_fact,
+                    value=text[:200],
                     category="user_preference",
-                    importance="high",
+                    importance=5,
                 )
                 logger.info(f"💬 实时偏好捕获: {pref_fact[:60]}")
 
@@ -364,7 +371,7 @@ class SmartMemoryPipeline:
                 try:
                     import os
                     from pathlib import Path
-                    ws_dir = os.environ.get("OPENCLAW_WORKSPACE", "/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw")
+                    ws_dir = os.environ.get("OPENCLAW_WORKSPACE", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "apps", "openclaw"))
                     memory_file = Path(ws_dir) / "MEMORY.md"
                     
                     if memory_file.exists():

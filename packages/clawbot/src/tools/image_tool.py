@@ -6,7 +6,6 @@ import httpx
 import urllib.parse
 from typing import Dict, Any, Optional
 from pathlib import Path
-from datetime import datetime
 import logging
 from src.utils import now_et
 
@@ -99,7 +98,7 @@ class ImageTool:
             for i, img_data in enumerate(images):
                 img_url = img_data.get("url", "")
                 if img_url:
-                    async with httpx.AsyncClient() as client:
+                    async with httpx.AsyncClient(timeout=30) as client:
                         img_response = await client.get(img_url)
                         img_bytes = img_response.content
                 else:

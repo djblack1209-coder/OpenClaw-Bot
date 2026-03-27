@@ -26,15 +26,13 @@ v2.0 新增：
 """
 import asyncio
 import logging
-import math
 import os
 import json
-import tempfile
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
-from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from src.utils import now_et
+from config.prompts import BACKTEST_ANALYST_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -606,7 +604,7 @@ class FreqtradeBacktestBridge:
             resp = await free_pool.acompletion(
                 model_family="fast",
                 messages=[{"role": "user", "content": prompt}],
-                system_prompt="你是专业量化交易分析师，擅长回测结果解读。回答简洁精准。",
+                system_prompt=BACKTEST_ANALYST_PROMPT,
             )
             analysis = resp.choices[0].message.content if resp and resp.choices else ""
             logger.info("[FTBridge] LLM 分析完成 (%d chars)", len(analysis))

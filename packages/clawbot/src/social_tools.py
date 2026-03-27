@@ -22,9 +22,8 @@ import random
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -469,9 +468,9 @@ class ContentAdapter:
 # ============ 发布时间优化器 ============
 
 class PostTimeOptimizer:
-    """基于历史互动数据推荐最佳发布时间"""
+    """基于历史互动数据推荐最佳发布时间（带 JSON 持久化）"""
 
-    def __init__(self):
+    def __init__(self, data_dir: Optional[str] = None):
         # 默认最佳时段（基于通用社交媒体研究）
         self._default_hours = {
             "telegram": [9, 12, 18, 21],
@@ -479,6 +478,14 @@ class PostTimeOptimizer:
             "weibo": [8, 12, 18, 22],
         }
         self._engagement_by_hour: Dict[int, List[float]] = {}
+        # 持久化路径：优先使用传入目录，否则用包级 data/ 目录
+        if data_dir:
+            self._data_path = Path(data_dir) / "post_time_optimizer.json"
+        else:
+            self._data_path = Path(__file__).parent.parent / "data" / "post_time_optimizer.json"
+        self._data_path.parent.mkdir(parents=True, exist_ok=True)
+        # 启动时从磁盘加载历史数据
+        self._load()
 
     def record_engagement(self, hour: int, engagement_rate: float):
         """记录某小时的互动率"""
@@ -488,6 +495,8 @@ class PostTimeOptimizer:
         # 只保留最近 100 条
         if len(self._engagement_by_hour[hour]) > 100:
             self._engagement_by_hour[hour] = self._engagement_by_hour[hour][-50:]
+        # 每次记录后持久化到磁盘
+        self._save()
 
     def best_hours(self, platform: str = "telegram", top_n: int = 3) -> List[int]:
         """推荐最佳发布时间"""
@@ -500,3 +509,37 @@ class PostTimeOptimizer:
 
         sorted_hours = sorted(avg_by_hour.items(), key=lambda x: -x[1])
         return [h for h, _ in sorted_hours[:top_n]]
+
+    def _save(self):
+        """将互动数据写入 JSON 文件"""
+        try:
+            # key 转为字符串（JSON 不支持整数 key）
+            data = {str(h): rates for h, rates in self._engagement_by_hour.items()}
+            with open(self._data_path, "w") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.debug("[PostTimeOptimizer] 保存失败: %s", e)
+
+    def _load(self):
+        """从 JSON 文件加载历史互动数据"""
+        if not self._data_path.exists():
+            return
+        try:
+            with open(self._data_path) as f:
+                data = json.load(f)
+            # JSON key 是字符串，还原为整数
+            self._engagement_by_hour = {int(h): rates for h, rates in data.items()}
+        except Exception as e:
+            logger.debug("[PostTimeOptimizer] 加载失败: %s", e)
+
+
+# ── PostTimeOptimizer 全局单例 ──
+_post_time_optimizer_instance: Optional[PostTimeOptimizer] = None
+
+
+def get_post_time_optimizer(data_dir: Optional[str] = None) -> PostTimeOptimizer:
+    """获取 PostTimeOptimizer 全局单例，避免每次调用新建实例导致数据丢失"""
+    global _post_time_optimizer_instance
+    if _post_time_optimizer_instance is None:
+        _post_time_optimizer_instance = PostTimeOptimizer(data_dir=data_dir)
+    return _post_time_optimizer_instance

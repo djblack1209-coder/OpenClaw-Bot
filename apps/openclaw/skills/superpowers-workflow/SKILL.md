@@ -12,7 +12,7 @@ metadata: {"openclaw":{"emoji":"⚡"}}
 
 ### Phase 1: Brainstorming（头脑风暴）
 
-- 不要直接写代码。先问 Boss 真正想要什么。
+- 不要直接写代码。先问 严总 真正想要什么。
 - 通过提问细化需求，探索替代方案。
 - 分段展示设计，每段足够短以便阅读和消化。
 - 输出: 设计文档（保存到 `memory/development/`）
@@ -50,10 +50,10 @@ metadata: {"openclaw":{"emoji":"⚡"}}
 
 ## 在 Telegram 中的使用方式
 
-当 Boss 发起开发任务时:
+当 严总 发起开发任务时:
 
 ```
-Boss: 帮我加一个新功能...
+严总: 帮我加一个新功能...
 
 Agent 回复:
 📋 开发计划 (superpowers 模式)
@@ -74,6 +74,6 @@ Phase 1 - 需求确认:
 
 ## 触发条件
 
-- Boss 说 "用 superpowers 模式"、"结构化开发"、"TDD 模式"
+- 严总 说 "用 superpowers 模式"、"结构化开发"、"TDD 模式"
 - 复杂开发任务（自动判断）
 - `/dev` 命令 + 复杂任务描述

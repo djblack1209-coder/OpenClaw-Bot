@@ -21,10 +21,9 @@ import logging
 import os
 import re
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Union
+from typing import Callable, Coroutine, Dict, List, Optional
 
 import httpx
 
@@ -158,6 +157,7 @@ class SelfHealEngine:
 
     def __init__(self):
         self._solution_cache: Dict[str, str] = {}
+        self._max_solution_cache = 500  # 防止无限增长
         self._heal_history: List[Dict] = []
         self._max_history = 200
         self._circuit_breaker: Dict[str, tuple] = {}
@@ -424,6 +424,12 @@ class SelfHealEngine:
                     solution = results[0].get("content", "")
                     if solution:
                         self._solution_cache[cache_key] = solution
+                        # 缓存容量限制
+                        if len(self._solution_cache) > self._max_solution_cache:
+                            # 删除最早的一半条目
+                            keys = list(self._solution_cache.keys())
+                            for k in keys[:len(keys) // 2]:
+                                del self._solution_cache[k]
                         return solution
         except Exception as e:
             logger.debug(f"本地搜索失败: {e}")
@@ -575,6 +581,12 @@ class SelfHealEngine:
         except Exception as e:
             logger.debug("记忆记录失败: %s", e)
         self._solution_cache[error_msg[:100]] = solution
+        # 缓存容量限制
+        if len(self._solution_cache) > self._max_solution_cache:
+            # 删除最早的一半条目
+            keys = list(self._solution_cache.keys())
+            for k in keys[:len(keys) // 2]:
+                del self._solution_cache[k]
 
     async def _notify_human(self, error: Exception, attempts: List[Dict]) -> None:
         """Step 6: 通知用户"""
@@ -603,6 +615,24 @@ class SelfHealEngine:
             "healed": True,
             "timestamp": time.time(),
         })
+        # EventBus: 通知自愈成功（与 SELF_HEAL_FAILED 对称）
+        try:
+            from src.core.event_bus import get_event_bus
+            bus = get_event_bus()
+            if bus:
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    _t = loop.create_task(bus.publish("system.self_heal", {
+                        "error": error_msg[:200],
+                        "solution": solution,
+                        "healed": True,
+                    }))
+                    _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                except RuntimeError:
+                    pass
+        except Exception:
+            pass
 
     def get_stats(self) -> Dict:
         """获取自愈统计"""

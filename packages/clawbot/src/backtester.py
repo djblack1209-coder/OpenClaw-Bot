@@ -20,10 +20,9 @@ import logging
 import math
 import random
 import itertools
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-from copy import deepcopy
 
 from src.risk_manager import RiskManager, RiskConfig
 

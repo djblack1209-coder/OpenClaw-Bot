@@ -15,9 +15,9 @@ browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
 集成方式：browser-use 不可用时自动降级回原有 Playwright 逻辑。
 """
 import logging
-import os
-import asyncio
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional
+
+from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,8 @@ class BrowserUseBridge:
             return self._llm
         try:
             from langchain_openai import ChatOpenAI
-            sf_key = (os.getenv("SILICONFLOW_KEYS", "").split(",") or [""])[0].strip()
-            sf_base = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+            sf_key = SILICONFLOW_KEYS[0] if SILICONFLOW_KEYS else ""
+            sf_base = SILICONFLOW_BASE
             if sf_key:
                 self._llm = ChatOpenAI(
                     model="Qwen/Qwen3-8B",
@@ -176,8 +176,8 @@ class BrowserUseBridge:
         if self._browser:
             try:
                 await self._browser.close()
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
+            except Exception as e:
+                logger.debug("[BrowserUseBridge] 异常: %s", e)
             self._browser = None
 
 

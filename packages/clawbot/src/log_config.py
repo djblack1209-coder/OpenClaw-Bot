@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 # ── Graceful degradation: 没装 loguru 时回退到 stdlib ──────────
 try:
@@ -156,7 +155,7 @@ def setup_logging(
             filter=module_filter,
             colorize=None,  # 自动检测 TTY
             backtrace=True,
-            diagnose=True,
+            diagnose=False,
         )
 
     # ── 4. File sinks ──────────────────────────────────────────
@@ -174,7 +173,7 @@ def setup_logging(
         compression="gz",
         filter=module_filter,
         backtrace=True,
-        diagnose=True,
+        diagnose=False,  # 安全: 防止变量值泄露到日志文件
         encoding="utf-8",
     )
 
@@ -190,7 +189,7 @@ def setup_logging(
         retention="7 days",
         compression="gz",
         backtrace=True,
-        diagnose=True,
+        diagnose=False,  # 安全: 防止变量值泄露到日志文件
         encoding="utf-8",
     )
 

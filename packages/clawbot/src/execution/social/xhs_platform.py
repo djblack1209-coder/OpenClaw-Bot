@@ -10,7 +10,7 @@ Social — 小红书 (Xiaohongshu) 集成层
 - 更新个人资料
 """
 import logging
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 

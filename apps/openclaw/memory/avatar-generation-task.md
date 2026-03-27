@@ -1,6 +1,6 @@
 ## 头像生成任务
 
-Boss，我已经准备好了头像生成prompt（在 `tools/avatar-generation-prompt.md`），但我无法直接调用AI绘图工具。
+严总，我已经准备好了头像生成prompt（在 `tools/avatar-generation-prompt.md`），但我无法直接调用AI绘图工具。
 
 你需要：
 1. 打开 Midjourney/DALL-E/Stable Diffusion

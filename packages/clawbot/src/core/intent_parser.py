@@ -156,51 +156,11 @@ class IntentLLMOutput(BaseModel):
 
 # ── 意图解析器 ──────────────────────────────────────────
 
-# LLM 解析提示词
-_PARSE_SYSTEM_PROMPT = """你是 OpenClaw 的意图解析器。用户通过 Telegram 给你发送自然语言指令。
-你需要将指令解析为结构化 JSON。
-
-## 任务类型
-- investment: 投资分析、交易、持仓查询、策略回测
-- social: 社媒发帖、热点追踪、内容创作
-- shopping: 购物比价、优惠券、砍价
-- booking: 餐厅/酒店/机票/医院预订
-- life: 快递追踪、日历管理、账单、旅行规划
-- code: 编程、开发、GitHub相关
-- info: 知识查询、新闻、天气
-- communication: 消息代发、邮件
-- system: OpenClaw系统管理、设置
-- evolution: 进化扫描、能力评估
-- unknown: 无法判断
-
-## 输出格式（严格JSON）
-{
-  "goal": "一句话核心目标",
-  "task_type": "枚举值",
-  "known_params": {"key": "value"},
-  "missing_critical": ["缺失的关键参数名"],
-  "missing_optional": ["缺失的可选参数名"],
-  "constraints": ["约束条件"],
-  "urgency": "urgent/normal/background",
-  "reversible": true/false,
-  "requires_confirmation": true/false,
-  "confidence": 0.0-1.0
-}
-
-## 关键规则
-1. missing_critical 只放真正无法执行的关键信息（如预订需要日期/人数）
-2. 能通过常识推断的参数放到 known_params（如"附近"→用户当前位置）
-3. 投资相关的 requires_confirmation 始终为 true
-4. 涉及资金流出的 reversible 为 false
-5. 尽量少放 missing_critical，让系统能先执行再补充"""
-
-_PARSE_USER_TEMPLATE = """解析以下用户指令：
-
-消息内容: {message}
-消息类型: {message_type}
-附加上下文: {context}
-
-输出 JSON:"""
+# LLM 解析提示词 — 从中央注册表导入
+from config.prompts import (
+    INTENT_PARSER_PROMPT as _PARSE_SYSTEM_PROMPT,
+    INTENT_PARSER_USER_TEMPLATE as _PARSE_USER_TEMPLATE,
+)
 
 
 class IntentParser:
@@ -257,7 +217,7 @@ class IntentParser:
                 "goal_template": "查看热点趋势",
                 "param_key": None,
             },
-            # 购物类
+            # 购物类 (v2.0: 排除股票/投资上下文)
             {
                 "patterns": [r"买(.+)", r"比价(.+)", r"搜(.+)价格",
                              r"(.+)多少钱", r"帮我找(.+)",
@@ -266,6 +226,8 @@ class IntentParser:
                 "task_type": TaskType.SHOPPING,
                 "goal_template": "购物比价: {match}",
                 "param_key": "product_hint",
+                # v2.0: 排除股票上下文 (含"股/手/份/期权/基金"则不走购物)
+                "exclude_pattern": r"股|手|份|期权|基金|债券|ETF|AAPL|TSLA|NVDA|GOOGL|MSFT",
             },
             # 预订类
             {
@@ -369,6 +331,11 @@ class IntentParser:
             for pattern in pattern_group["patterns"]:
                 match = re.search(pattern, msg_lower)
                 if match:
+                    # v2.0: 排除不匹配的上下文 (如"买100股苹果"不应走购物)
+                    exclude = pattern_group.get("exclude_pattern")
+                    if exclude and re.search(exclude, msg_lower, re.IGNORECASE):
+                        continue  # 跳过此 pattern group
+
                     # 提取匹配的参数（使用最后一个捕获组，避免中间组干扰）
                     matched_text = match.group(match.lastindex) if match.lastindex else ""
                     goal = pattern_group["goal_template"].format(match=matched_text)
@@ -404,6 +371,85 @@ class IntentParser:
                         confidence=0.85,
                     )
         return None
+
+    async def _try_llm_classify(self, message: str) -> Optional[ParsedIntent]:
+        """轻量 LLM 意图分类 — fast_parse 的降级路径。
+
+        用最便宜的模型快速判断消息是否属于可执行的任务类型。
+        不解析完整参数（那是 parse() 的 LLM 路径做的事），
+        只判断 task_type 和 confidence，让 Brain 有机会接管。
+
+        设计原则：
+        - 零正则：完全依赖 LLM 语义理解
+        - 低成本：用 qwen（最便宜）+ max_tokens=100
+        - 高召回：阈值比 fast_parse 宽松（confidence >= 0.6）
+        - 快速失败：超时 5 秒直接放弃
+        """
+        try:
+            from src.litellm_router import free_pool
+            if not free_pool:
+                return None
+
+            classify_prompt = (
+                "判断以下用户消息属于哪个任务类型。只返回 JSON。\n"
+                "任务类型: investment(投资/股票/交易/行情), social(社媒/发帖), "
+                "shopping(购物/比价), booking(预订/订餐/订酒店), "
+                "life(天气/快递/提醒/日程), info(查询/搜索/新闻), "
+                "system(系统/状态), unknown(闲聊/不确定)\n\n"
+                f"用户消息: {message[:200]}\n\n"
+                '返回格式: {"task_type": "...", "confidence": 0.0-1.0, "goal": "一句话目标"}'
+            )
+
+            import asyncio
+            resp = await asyncio.wait_for(
+                free_pool.acompletion(
+                    model_family="qwen",
+                    messages=[{"role": "user", "content": classify_prompt}],
+                    temperature=0.1,
+                    max_tokens=100,
+                ),
+                timeout=5.0,
+            )
+
+            text = resp.choices[0].message.content or ""
+
+            # 用 json_repair 容错解析
+            from json_repair import loads as jloads
+            data = jloads(text)
+            if not isinstance(data, dict):
+                return None
+
+            task_type_str = data.get("task_type", "unknown")
+            confidence = float(data.get("confidence", 0.0))
+            goal = data.get("goal", message[:50])
+
+            # unknown 或低置信度 → 放弃
+            if task_type_str == "unknown" or confidence < 0.6:
+                return None
+
+            try:
+                task_type = TaskType(task_type_str)
+            except ValueError:
+                return None
+
+            logger.info(
+                f"[IntentParser] LLM 分类成功: {task_type_str} "
+                f"(conf={confidence:.2f}) — \"{message[:40]}\""
+            )
+
+            return ParsedIntent(
+                goal=goal,
+                task_type=task_type,
+                confidence=confidence,
+                raw_message=message,
+            )
+
+        except asyncio.TimeoutError:
+            logger.debug("[IntentParser] LLM 分类超时")
+            return None
+        except Exception as e:
+            logger.debug(f"[IntentParser] LLM 分类失败: {e}")
+            return None
 
     @staticmethod
     def _resolve_ticker(text: str) -> Optional[str]:

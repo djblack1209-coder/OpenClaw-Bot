@@ -257,6 +257,7 @@ class TestGetSystemStatus:
 # ============ stop_trading_system ============
 
 class TestStopTradingSystem:
+    @pytest.mark.asyncio
     async def test_stop_calls_all_components(self):
         pm = MagicMock()
         pm.stop = AsyncMock()
@@ -280,6 +281,7 @@ class TestStopTradingSystem:
         qc.stop.assert_awaited_once()
         sched.stop.assert_called_once()
 
+    @pytest.mark.asyncio
     async def test_stop_with_no_components(self):
         # Should not raise
         await ts.stop_trading_system()
@@ -288,12 +290,14 @@ class TestStopTradingSystem:
 # ============ start_trading_system ============
 
 class TestStartTradingSystem:
+    @pytest.mark.asyncio
     async def test_guard_not_initialized(self):
         """Should return early when not initialized."""
         await ts.start_trading_system()
         # No error, nothing happened
         assert ts._scheduler is None
 
+    @pytest.mark.asyncio
     @patch("src.trading_system._risk_manager")
     async def test_start_runs_components(self, _mock_rm):
         ts._initialized = True

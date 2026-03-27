@@ -20,11 +20,8 @@ OpenClaw OMEGA — 多智能体投资团队 (Investment Team)
 import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from src.utils import now_et
 
@@ -126,6 +123,22 @@ class TeamAnalysis:
         else:
             lines.append("🛡️ 风控: 暂无数据")
 
+        # 历史信号验证
+        if self.quant_report and self.quant_report.data.get("signal_validation"):
+            sv = self.quant_report.data["signal_validation"]
+            if sv.get("available") and sv.get("avg_win_rate", 0) > 0:
+                lines.append("")
+                avg_wr = sv["avg_win_rate"]
+                avg_pct = avg_wr * 100 if isinstance(avg_wr, (int, float)) and avg_wr <= 1 else avg_wr
+                confidence = sv.get("confidence_label", "未知")
+                emoji = "🟢" if confidence == "高可信" else ("🟡" if confidence == "中等可信" else "🔴")
+                lines.append(f"📋 历史信号验证 ({sv.get('period', '6mo')}):")
+                lines.append(f"   {emoji} 平均胜率: {avg_pct:.1f}% ({confidence})")
+                if sv.get("best_strategy"):
+                    best_wr = sv["best_win_rate"]
+                    best_pct = best_wr * 100 if isinstance(best_wr, (int, float)) and best_wr <= 1 else best_wr
+                    lines.append(f"   🏆 最优策略: {sv['best_strategy']} ({best_pct:.1f}%)")
+
         # 最终决策
         lines.extend([
             "",
@@ -153,76 +166,18 @@ class DailyBrief:
     portfolio_status: Dict = field(default_factory=dict)
 
 
-# ── 角色提示词 ──────────────────────────────────────────
+# ── 角色提示词 — 从中央注册表导入 ──────────────────────
+# config.prompts.INVESTMENT_ROLES 是所有投资角色提示词的唯一定义点。
+# 此处创建模块级别名，保持下游代码（_run_researcher 等）零改动。
 
-DIRECTOR_PROMPT = """你是OpenClaw投资团队的投资总监。你的职责是：
-1. 汇总研究员、技术分析师、量化工程师的分析报告
-2. 综合考虑基本面、技术面、量化指标做出最终投资决策
-3. 在报告给用户时，用简洁清晰的中文说明决策理由
-4. 如果团队意见分歧大（标准差>2），倾向保守
-5. 风控官有一票否决权，如果风控否决则必须服从
+from config.prompts import INVESTMENT_ROLES as _ROLES
 
-输出JSON格式：
-{"recommendation": "buy/sell/hold", "confidence": 0-1, "reasoning": "简明理由",
- "target_price": 数字, "stop_loss": 数字, "position_size_pct": 0-1}"""
-
-RESEARCHER_PROMPT = """你是OpenClaw投资团队的市场研究员。你的职责是：
-1. 分析标的的基本面数据（营收/利润/估值/行业地位）
-2. 分析行业竞争格局和公司护城河
-3. 搜索最新新闻和社媒舆情
-4. 对比历史估值区间，判断当前估值水平
-
-输出JSON格式：
-{"score": 0-10, "recommendation": "buy/sell/hold",
- "valuation": "高估/合理/低估", "catalysts": ["催化剂列表"],
- "risks": ["风险因素"], "reasoning": "详细分析"}"""
-
-TA_PROMPT = """你是OpenClaw投资团队的技术分析师。你的职责是：
-1. 分析K线形态（日/周/月线）
-2. 计算核心指标：MA/EMA/MACD/RSI/布林带/成交量
-3. 识别支撑位和压力位
-4. 判断当前趋势（上涨/下跌/震荡/突破）
-5. 给出明确的交易信号
-
-输出JSON格式：
-{"score": 0-10, "recommendation": "buy/sell/hold",
- "trend": "上涨/下跌/震荡", "support": [价格], "resistance": [价格],
- "key_signal": "最重要的信号", "reasoning": "技术分析摘要"}"""
-
-QUANT_PROMPT = """你是OpenClaw投资团队的量化工程师。你的职责是：
-1. 计算关键因子：动量/波动率/价值/质量
-2. 统计分析：夏普比率/最大回撤/胜率
-3. 如有回测数据，评估策略表现
-4. 分析异常成交量和价格模式
-
-输出JSON格式：
-{"score": 0-10, "recommendation": "buy/sell/hold",
- "sharpe_ratio": 数字, "momentum_score": 0-10,
- "volatility": "低/中/高", "reasoning": "量化分析摘要"}"""
-
-RISK_PROMPT = f"""你是OpenClaw投资团队的首席风控官。你有一票否决权。
-
-硬性规则（任何情况不得违反）：
-- 单笔投资 ≤ 总资产 {RISK_RULES['max_position_single']:.0%}
-- 同行业总仓位 ≤ {RISK_RULES['max_sector_position']:.0%}
-- 总仓位 ≤ {RISK_RULES['max_total_position']:.0%}
-- 任何标的亏损 ≥ {RISK_RULES['max_drawdown_stop']:.0%} 自动止损
-- 单日最大亏损 ≥ {RISK_RULES['daily_loss_limit']:.0%} 停止所有交易
-
-输出JSON格式：
-{{"approved": true/false, "risk_level": "低/中/高/极高",
- "position_size_suggestion": 0-1, "stop_loss": 价格,
- "veto_reason": "否决理由（如果否决）", "reasoning": "风控评估"}}"""
-
-REVIEWER_PROMPT = """你是OpenClaw投资团队的复盘官。每笔交易完成后：
-1. 分析决策过程是否正确（不以结果论英雄）
-2. 识别认知偏差（过度自信/锚定效应/损失厌恶/从众）
-3. 提炼可改进的具体规则
-4. 如果策略表现偏离回测>20%，建议暂停策略
-
-输出JSON格式：
-{"decision_quality": "优/良/中/差", "bias_detected": ["偏差列表"],
- "lesson": "最重要的教训", "strategy_update": "建议修改的规则"}"""
+DIRECTOR_PROMPT = _ROLES["director"]
+RESEARCHER_PROMPT = _ROLES["researcher"]
+TA_PROMPT = _ROLES["ta_analyst"]
+QUANT_PROMPT = _ROLES["quant"]
+RISK_PROMPT = _ROLES["risk_manager"]
+REVIEWER_PROMPT = _ROLES["reviewer"]
 
 
 # ── 投资团队 ──────────────────────────────────────────
@@ -248,7 +203,7 @@ class InvestmentTeam:
         if self._initialized:
             return
         try:
-            from crewai import Agent, Task, Crew, Process
+            from crewai import Agent
 
             # 创建6个Agent
             self._director = Agent(
@@ -453,6 +408,26 @@ class InvestmentTeam:
 
         try:
             quant_data = await self._fetch_quant_data(symbol)
+
+            # 信号历史验证 — 为 LLM 提供回测胜率参考
+            signal_validation = {}
+            try:
+                from src.modules.investment.backtester_vbt import quick_signal_validation
+                signal_validation = await asyncio.wait_for(
+                    quick_signal_validation(symbol, period="6mo"),
+                    timeout=15.0,
+                )
+                if signal_validation.get("available"):
+                    quant_data["signal_validation"] = {
+                        "avg_win_rate": f"{signal_validation['avg_win_rate']*100:.1f}%",
+                        "best_strategy": signal_validation["best_strategy"],
+                        "best_win_rate": f"{signal_validation['best_win_rate']*100:.1f}%",
+                        "confidence": signal_validation["confidence_label"],
+                        "strategies_tested": len(signal_validation["strategies"]),
+                    }
+            except Exception as bt_err:
+                logger.debug(f"量化分析师信号验证跳过: {bt_err}")
+
             analysis = await self._llm_analyze(
                 QUANT_PROMPT,
                 f"分析标的: {symbol}\n量化数据:\n{json.dumps(quant_data, ensure_ascii=False, default=str)}",
@@ -461,6 +436,7 @@ class InvestmentTeam:
             report.recommendation = analysis.get("recommendation", "hold")
             report.reasoning = analysis.get("reasoning", "无分析结果")
             report.data = analysis
+            report.data["signal_validation"] = signal_validation
         except Exception as e:
             report.reasoning = f"分析失败: {e}"
             logger.warning(f"量化工程师分析失败: {e}")
@@ -564,11 +540,11 @@ class InvestmentTeam:
         brief = DailyBrief()
         # 复用现有的简报功能
         try:
-            from src.execution.daily_brief import generate_brief
-            data = await generate_brief()
-            brief.market_overview = data.get("summary", "")
-            brief.opportunities = data.get("opportunities", [])
-            brief.risks = data.get("risks", [])
+            from src.execution.daily_brief import generate_daily_brief
+            brief_text = await generate_daily_brief()
+            brief.market_overview = brief_text[:2000] if brief_text else ""
+            brief.opportunities = []
+            brief.risks = []
         except Exception as e:
             brief.market_overview = f"简报生成失败: {e}"
         return brief
@@ -634,7 +610,6 @@ class InvestmentTeam:
         """获取量化数据"""
         try:
             import yfinance as yf
-            import numpy as np
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="1y")
             if hist.empty:
@@ -749,6 +724,24 @@ class StrategyHealthMonitor:
             )
             self._suspended_strategies.add(strategy_name)
             logger.warning(f"[策略健康] 暂停: {reason}")
+            # EventBus: 通知策略挂起
+            try:
+                from src.core.event_bus import get_event_bus
+                bus = get_event_bus()
+                if bus:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        _t = loop.create_task(bus.publish("trade.strategy_suspended", {
+                            "strategy": strategy_name, "reason": reason,
+                            "deviation": deviation, "live_return": live_return,
+                            "backtest_return": backtest_return,
+                        }))
+                        _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                    except RuntimeError:
+                        pass
+            except Exception:
+                pass
             return reason
         return None
 

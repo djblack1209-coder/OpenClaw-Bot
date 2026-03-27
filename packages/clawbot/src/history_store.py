@@ -8,7 +8,6 @@ import threading
 import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-from datetime import datetime
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -21,12 +20,9 @@ class HistoryStore:
         if db_path:
             self.db_path = Path(db_path)
         else:
-            import os
-            env_dir = os.getenv('DATA_DIR')
-            if env_dir:
-                self.db_path = Path(env_dir) / "history.db"
-            else:
-                self.db_path = Path(__file__).parent.parent / "data" / "history.db"
+            # 延迟导入避免循环依赖 (globals.py 导入了 HistoryStore)
+            from src.bot.globals import DATA_DIR
+            self.db_path = Path(DATA_DIR) / "history.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._local = threading.local()

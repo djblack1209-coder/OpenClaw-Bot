@@ -15,7 +15,7 @@ Continuously convert noisy market information into ranked, tradable opportunitie
 1. Scan multi-source feeds.
 2. Build ranked watchlist by catalyst quality and timing.
 3. Attach entry trigger and invalidation for each setup.
-4. Publish shortlist to Boss with recommended priority.
+4. Publish shortlist to 严总 with recommended priority.
 
 ## Success metrics
 

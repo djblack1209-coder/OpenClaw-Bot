@@ -8,9 +8,7 @@ ClawBot 超短线技术分析引擎 v1.0
 """
 import asyncio
 import logging
-import time as _time
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +17,6 @@ logger = logging.getLogger(__name__)
 def compute_indicators(df) -> dict:
     """计算全套超短线技术指标，输入pandas DataFrame(OHLCV)"""
     import ta
-    import numpy as np
 
     if df is None or len(df) < 20:
         return {"error": "数据不足，至少需要20根K线"}

@@ -20,10 +20,9 @@ OpenClaw OMEGA — 跨模块协同管道 (Synergy Pipelines)
 import asyncio
 import json
 import logging
-import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -69,15 +68,19 @@ class SynergyPipelines:
             "risk_to_social_filter": True,
             "news_sentiment_to_risk": True,
             "behavior_to_recommend": True,
+            "profit_celebration": True,
         }
         self._vetoed_symbols: Set[str] = set()  # 被风控否决的标的
         self._social_signals: Dict[str, Dict] = {}  # 社交信号缓存
         self._recent_events: List[Dict] = []
+        self._last_news_scan_ts: float = 0.0       # 上次新闻情感扫描时间戳
+        self._news_scan_task: Optional[asyncio.Task] = None  # 管道5定时扫描后台任务
         self._stats = {
             "pipelines_triggered": 0,
             "social_drafts_created": 0,
             "trade_scans_triggered": 0,
             "evolution_broadcasts": 0,
+            "news_risk_alerts": 0,
         }
         logger.info("SynergyPipelines 初始化")
 
@@ -119,13 +122,27 @@ class SynergyPipelines:
                     "synergy:risk→social", priority=3,  # 高优先级
                 )
 
-            # 管道5: 策略暂停 → 全局通知
+            # 管道5: 新闻情感 → 投资风险信号（每4小时定时扫描持仓相关新闻）
+            if self._pipeline_config["news_sentiment_to_risk"]:
+                self._news_scan_task = asyncio.ensure_future(
+                    self._news_sentiment_loop()
+                )
+                logger.info("[协同] 管道5已启动: 新闻情感→风控 (每4小时)")
+
+            # 策略暂停 → 全局通知
             bus.subscribe(
                 EventType.STRATEGY_SUSPENDED, self._on_strategy_suspended,
                 "synergy:strategy→alert", priority=2,
             )
 
-            logger.info(f"SynergyPipelines 已注册 {sum(self._pipeline_config.values())} 条管道")
+            # 管道6: 盈利庆祝 — 平仓盈利 > 10% 时自动生成社媒草稿
+            if self._pipeline_config["profit_celebration"]:
+                bus.subscribe(
+                    EventType.TRADE_EXECUTED, self._on_profit_celebration,
+                    "synergy:profit→celebration", priority=9,
+                )
+
+            logger.info(f"SynergyPipelines 已注册 {sum(self._pipeline_config.values())} 条管道（含盈利庆祝）")
 
         except Exception as e:
             logger.warning(f"SynergyPipelines 注册失败: {e}")
@@ -286,6 +303,207 @@ class SynergyPipelines:
         except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
+    # ── 管道5: 新闻情感 → 投资风险信号 ──────────────
+
+    async def _news_sentiment_loop(self) -> None:
+        """后台循环: 每4小时执行一次新闻情感扫描
+
+        首次延迟90秒启动，避免影响 Bot 主启动流程。
+        之后每4小时扫描一次，失败不影响其他管道。
+        """
+        await asyncio.sleep(90)  # 首次延迟，等 Bot 完全启动
+        while self._enabled:
+            try:
+                await self.run_news_sentiment_scan()
+            except Exception as e:
+                logger.warning(f"[协同] 新闻情感循环异常: {e}")
+            await asyncio.sleep(4 * 3600)  # 每4小时
+
+    async def run_news_sentiment_scan(self) -> int:
+        """管道5实装: 扫描最新新闻，对持仓相关标的的负面新闻发出 RISK_ALERT
+
+        流程:
+          1. 获取用户当前持仓标的列表（trading_journal.get_open_trades）
+          2. 抓取多源最新新闻（RSS 三级降级，不调 LLM）
+          3. 对每条新闻做零成本情感分析（snownlp/textblob/词袋）
+          4. 匹配新闻标题中的持仓标的（ticker + 公司名双匹配）
+          5. 强负面新闻（sentiment < -0.5）→ 发布 RISK_ALERT + 通知用户
+
+        Returns:
+            检测到的风险警报数量
+        """
+        if not self._pipeline_config.get("news_sentiment_to_risk"):
+            return 0
+
+        risk_count = 0
+
+        try:
+            # 步骤1: 获取用户当前持仓标的
+            held_symbols: Set[str] = set()
+            try:
+                from src.trading_journal import journal as tj
+                if tj:
+                    open_trades = tj.get_open_trades()
+                    for t in open_trades:
+                        sym = str(t.get("symbol", "")).upper().strip()
+                        if sym:
+                            held_symbols.add(sym)
+            except Exception:
+                logger.debug("[协同] 获取持仓失败", exc_info=True)
+
+            if not held_symbols:
+                logger.debug("[协同] 新闻情感扫描: 无持仓标的，跳过")
+                return 0
+
+            # 步骤2: 构建反向映射 ticker→公司名集合（用于匹配新闻标题）
+            ticker_to_names: Dict[str, Set[str]] = {}
+            for name, ticker in _NAME_TO_TICKER.items():
+                ticker_to_names.setdefault(ticker, set()).add(name.lower())
+
+            # 步骤3: 抓取多源最新新闻（RSS 三级降级，不调 LLM）
+            from src.news_fetcher import NewsFetcher
+            fetcher = NewsFetcher()
+            all_news: List[Dict] = []
+            for category in ("finance", "tech_en", "tech_cn"):
+                try:
+                    items = await fetcher.fetch_by_category(category, count=10)
+                    all_news.extend(items)
+                except Exception:
+                    pass
+                await asyncio.sleep(1)  # 避免请求过快
+
+            if not all_news:
+                logger.debug("[协同] 新闻情感扫描: 未获取到新闻")
+                return 0
+
+            # 步骤4: 对每条新闻做情感分析 + 持仓匹配
+            from src.social_tools import analyze_sentiment
+
+            for item in all_news:
+                title = item.get("title", "")
+                if not title:
+                    continue
+
+                title_lower = title.lower()
+
+                # 匹配持仓标的（ticker 直匹配 + 公司名匹配）
+                matched_symbols: Set[str] = set()
+                for sym in held_symbols:
+                    # 直接 ticker 匹配（如 "NVDA" 出现在标题中）
+                    if sym.lower() in title_lower:
+                        matched_symbols.add(sym)
+                    # 公司名匹配（如 "英伟达"、"nvidia" 出现在标题中）
+                    names = ticker_to_names.get(sym, set())
+                    for name in names:
+                        if name in title_lower:
+                            matched_symbols.add(sym)
+                            break
+
+                if not matched_symbols:
+                    continue
+
+                # 零成本情感分析（snownlp/textblob/词袋，不调 LLM）
+                sentiment = analyze_sentiment(title)
+
+                # 步骤5: 强负面新闻触发风险警报
+                if sentiment.score < -0.5:
+                    for sym in matched_symbols:
+                        risk_count += 1
+
+                        # 发布 RISK_ALERT 事件到 EventBus（管道4会自动禁止社媒推荐）
+                        try:
+                            from src.core.event_bus import get_event_bus, EventType
+                            bus = get_event_bus()
+                            await bus.publish(
+                                EventType.RISK_ALERT,
+                                {
+                                    "symbol": sym,
+                                    "source": "news_sentiment",
+                                    "news_title": title[:120],
+                                    "sentiment_score": sentiment.score,
+                                    "sentiment_label": sentiment.label,
+                                    "reason": f"负面新闻情感分数 {sentiment.score:.2f}",
+                                },
+                                source="synergy:news→risk",
+                            )
+                        except Exception:
+                            logger.debug("RISK_ALERT 发布失败", exc_info=True)
+
+                        # 通过通知事件推送给用户
+                        try:
+                            bus = get_event_bus()
+                            alert_msg = (
+                                f"⚠️ {sym} 出现负面新闻: "
+                                f"'{title[:80]}'\n"
+                                f"情感分数: {sentiment.score:.2f} — 建议关注风险"
+                            )
+                            await bus.publish(
+                                "system.notification",
+                                {"message": alert_msg, "level": "important"},
+                                source="synergy:news→risk",
+                            )
+                        except Exception:
+                            logger.debug("风险通知发送失败", exc_info=True)
+
+                        logger.warning(
+                            f"[协同] 负面新闻风险: {sym} ← "
+                            f"'{title[:60]}' (score={sentiment.score:.2f})"
+                        )
+
+            self._stats["pipelines_triggered"] += 1
+            self._stats["news_risk_alerts"] += risk_count
+            self._last_news_scan_ts = time.time()
+
+            logger.info(
+                f"[协同] 新闻情感扫描完成: {len(all_news)}条新闻, "
+                f"{risk_count}个风险警报, 持仓标的: {held_symbols}"
+            )
+            return risk_count
+
+        except Exception as e:
+            logger.warning(f"[协同] 新闻情感扫描异常: {e}")
+            return 0
+
+    # ── 管道6: 盈利庆祝 → 社媒草稿 ──────────────────
+
+    async def _on_profit_celebration(self, event) -> None:
+        """盈利庆祝 — PnL > 10% 时自动生成社媒草稿（模板，不调LLM省成本）"""
+        data = event.data
+        pnl_pct = data.get("pnl_pct", 0)
+        if pnl_pct < 10:
+            return  # 小赚不发
+
+        symbol = data.get("symbol", "")
+        pnl = data.get("pnl", 0)
+
+        self._stats["pipelines_triggered"] += 1
+
+        try:
+            # 生成庆祝内容（简单模板，不调LLM省成本）
+            content = (
+                f"🎯 {symbol} 止盈平仓 +{pnl_pct:.1f}%\n\n"
+                f"这次交易的关键：严格执行止盈纪律，不贪不恋。\n"
+                f"收益: ${pnl:+.2f}\n\n"
+                f"#投资日记 #交易心得"
+            )
+
+            # 存为草稿
+            try:
+                from src.execution.social.drafts import save_social_draft
+                save_social_draft(
+                    platform="both", title="", body=content, topic="投资分享",
+                )
+            except Exception as e:
+                logger.debug("[协同] 庆祝帖草稿保存失败: %s", e)
+
+            # 同时写入 synergy 草稿文件（双保险）
+            await self._save_social_draft(content, symbol=symbol, source="profit_celebration")
+            self._stats["social_drafts_created"] += 1
+            logger.info(f"[协同] 盈利庆祝→社媒草稿: {symbol} +{pnl_pct:.1f}%")
+
+        except Exception as e:
+            logger.warning(f"[协同] 盈利庆祝管道失败: {e}")
+
     # ── 查询接口 ──────────────────────────────────
 
     def get_social_signal(self, symbol: str) -> Optional[Dict]:
@@ -305,6 +523,8 @@ class SynergyPipelines:
             "active_pipelines": sum(self._pipeline_config.values()),
             "vetoed_symbols": list(self._vetoed_symbols),
             "social_signals": len(self._social_signals),
+            "last_news_scan": datetime.fromtimestamp(self._last_news_scan_ts).isoformat()
+                if self._last_news_scan_ts > 0 else "未扫描",
         }
 
     def get_context_enrichment(self) -> str:

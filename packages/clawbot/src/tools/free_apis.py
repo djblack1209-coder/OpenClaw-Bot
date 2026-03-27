@@ -16,7 +16,7 @@ OpenClaw — free-api.com 公共 API 集成
     trending = await get_multi_trending()
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import httpx
 
@@ -169,6 +169,48 @@ async def get_exchange_rate(from_currency: str = "USD", to_currency: str = "CNY"
 
 
 # ── IP 查询 ──────────────────────────────────────
+
+# ── 快递查询 ──────────────────────────────────────
+
+async def query_express(tracking_number: str) -> str:
+    """快递单号查询 — 自动识别快递公司
+
+    使用公开 API 查询快递物流轨迹，返回格式化文本。
+    """
+    if not tracking_number or not tracking_number.strip():
+        return "请提供快递单号"
+    tracking_number = tracking_number.strip()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as c:
+            # 使用 kuaidi100 免费查询接口（自动识别快递公司）
+            r = await c.get(
+                f"https://api.pearktrue.cn/api/express/",
+                params={"number": tracking_number},
+            )
+            if r.status_code == 200:
+                d = r.json()
+                if d.get("code") == 200 or d.get("status") == 200:
+                    company = d.get("company", d.get("com", "未知快递"))
+                    state_map = {"0": "运输中", "1": "揽收", "2": "疑难", "3": "已签收",
+                                 "4": "退签", "5": "派件中", "6": "退回"}
+                    state = state_map.get(str(d.get("state", "")), str(d.get("state", "查询中")))
+                    lines = [f"📦 快递: {company}", f"📋 单号: {tracking_number}", f"📌 状态: {state}", ""]
+                    traces = d.get("data", d.get("traces", []))
+                    if isinstance(traces, list):
+                        for item in traces[:8]:
+                            time_str = item.get("time", item.get("ftime", ""))
+                            context_str = item.get("context", item.get("content", ""))
+                            if context_str:
+                                lines.append(f"  🕐 {time_str}")
+                                lines.append(f"     {context_str}")
+                    return "\n".join(lines) if len(lines) > 4 else f"📦 {company} | {tracking_number} | {state}\n暂无详细物流信息"
+                else:
+                    msg = d.get("msg", d.get("message", ""))
+                    return f"📦 单号 {tracking_number} 查询失败: {msg or '未找到物流信息'}"
+    except Exception as e:
+        logger.debug(f"快递查询失败: {e}")
+    return f"📦 单号 {tracking_number} 查询失败，请稍后再试"
+
 
 async def get_ip_info(ip: str = "") -> Dict:
     """IP 归属地查询"""

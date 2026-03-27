@@ -20,7 +20,7 @@ v2.0 新增 (2026-03-23):
 """
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,11 @@ _ERROR_PATTERNS: List[Tuple[Any, str]] = [
 
 
 def format_error(error: Union[Exception, str], context: str = "") -> str:
-    """将任何错误转换为用户友好的中文消息。
+    """将任何错误转换为用户友好的中文消息 (错误格式化的 SSOT)。
+
+    与 error_messages.py 的关系:
+      error_messages.py 提供简单的静态模板函数 (error_ai_busy 等)，
+      本函数提供智能模式匹配分类。两者应逐步统一到此处。
 
     绝不暴露原始异常类名、traceback 或文件路径给用户。
     真实错误信息通过 logger 记录，供开发调试。
@@ -218,6 +222,7 @@ def format_result(result: dict, task_type: str = "") -> str:
     """将 Brain TaskResult.final_result 转换为人类可读的中文 HTML 消息。
 
     根据 task_type 使用不同的格式化策略：
+      - synthesized → 合成后的对话式回复（优先）
       - investment → 买/卖/持有 + 置信度 + 理由
       - shopping  → 商品列表 + 最佳选择
       - social    → 已发布/已生成 + 平台 + 链接
@@ -233,6 +238,15 @@ def format_result(result: dict, task_type: str = "") -> str:
     """
     if not result:
         return "✅ 操作已完成"
+
+    # ★ 优先使用合成后的对话式回复 (ResponseSynthesizer 生成)
+    if isinstance(result, dict) and result.get("synthesized_reply"):
+        synthesized = result["synthesized_reply"]
+        # 合成回复已经是自然语言，直接转换为 Telegram HTML
+        try:
+            return markdown_to_telegram_html(synthesized)
+        except Exception:
+            return escape_html(synthesized)
 
     # 错误结果（顶层）
     if isinstance(result, dict) and result.get("error"):
@@ -279,7 +293,13 @@ def _flatten_result(result: dict) -> dict:
 
 
 def _format_investment(data: dict) -> str:
-    """投资分析结果格式化。"""
+    """投资分析结果格式化 (纯文本降级路径)。
+
+    渲染优先级:
+      1. synthesized_reply (ResponseSynthesizer 对话式合成) ← format_result() 最先检查
+      2. InvestmentAnalysisCard (response_cards.py 富卡片 + 按钮) ← gateway 层
+      3. 本函数 (纯文本) ← 前两者都不可用时的最终降级
+    """
     sections: List[Tuple[str, str]] = []
 
     # 优先使用 Pydantic 引擎的 telegram_text

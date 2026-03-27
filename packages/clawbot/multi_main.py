@@ -100,6 +100,14 @@ _COMMON_COMMANDS = [
     # --- 群聊 & 系统 ---
     BotCommand("lanes", "群聊分流规则"),
     BotCommand("xianyu", "闲鱼AI客服 start/stop/status"),
+    BotCommand("pricewatch", "降价提醒 add/list/remove"),
+    # --- 补全缺失命令 ---
+    BotCommand("accuracy", "AI预测准确率"),
+    BotCommand("equity", "权益曲线"),
+    BotCommand("targets", "盈利目标进度"),
+    BotCommand("weekly", "综合周报"),
+    BotCommand("bill", "话费水电费追踪"),
+    BotCommand("xianyu_report", "闲鱼运营报表"),
 ]
 
 # Free-LLM-Bot 简化命令集（聚焦核心功能，避免冗余）
@@ -813,6 +821,36 @@ async def main():
 
     # 优雅关闭
     logger.info("正在停止...")
+
+    # ── 关机通知: 通知 VPS + Telegram 管理员 ──
+    try:
+        import subprocess
+        vps_host = os.getenv("DEPLOY_VPS_HOST", "101.43.41.96")
+        vps_user = os.getenv("DEPLOY_VPS_USER", "openclaw")
+        # 1. 通知 VPS: 写入 shutdown 标记文件，VPS failover 可秒级切换
+        subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
+             f"{vps_user}@{vps_host}",
+             "touch /opt/openclaw/data/primary_shutdown"],
+            timeout=5, capture_output=True,
+        )
+        logger.info("  已通知 VPS 主节点关机")
+    except Exception as e:
+        logger.debug("  VPS 关机通知失败 (非阻塞): %s", e)
+
+    try:
+        # 2. 通知 Telegram 管理员
+        admin_ids = os.getenv("ALLOWED_USER_IDS", "")
+        if bots and admin_ids:
+            first_admin = int(admin_ids.split(",")[0].strip())
+            await bots[0].bot.send_message(
+                chat_id=first_admin,
+                text="🔄 系统正在关机维护，服务将短暂中断。",
+            )
+            logger.info("  已通知管理员关机")
+    except Exception as e:
+        logger.debug("  管理员关机通知失败 (非阻塞): %s", e)
+
     # 停止自选股异动监控
     try:
         from src.watchlist_monitor import get_watchlist_monitor

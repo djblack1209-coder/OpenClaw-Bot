@@ -14,7 +14,6 @@ v2.1 变更 (2026-03-23):
   - 新增 natural_number(): "1,234,567" / "1.2 million"
 """
 
-from datetime import datetime
 from typing import Iterable, Optional, Sequence, Tuple
 
 # ── humanize (2.9k⭐) — 自然语言格式化 ──────────────────────

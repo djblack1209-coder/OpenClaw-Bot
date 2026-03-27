@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """自动下载OpenClaw完整资源包"""
 import os
+import shlex
 import subprocess
-import sys
 
 def run(cmd):
     print(f"$ {cmd}")
-    subprocess.run(cmd, shell=True, check=True)
+    subprocess.run(shlex.split(cmd), check=True)
 
 def main():
     print("📦 下载OpenClaw完整资源...")

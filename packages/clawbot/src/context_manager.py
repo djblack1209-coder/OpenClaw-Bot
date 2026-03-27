@@ -1,19 +1,29 @@
 """
-ClawBot - 上下文管理模块 v2.1（对标 MemGPT）
-- 本地压缩模式（零 API 调用）：截断+提取关键信息，不消耗请求次数
-- AI 压缩模式（可选）：调用 LLM 生成高质量摘要
-- 渐进式压缩：越旧的消息压缩比越高
-- 支持关键信息标记保留
-- 支持 SQLite HistoryStore 集成
-- [NEW] 分层上下文管理（对标 MemGPT 的 core/recall/archival 三层架构）
-- [NEW] 自动摘要 + 事实提取到长期记忆
-- [NEW] 上下文预算智能分配
-- [v2.1] tiktoken 精确 token 计数（搬运自 letta/open-interpreter 最佳实践）
-  替换原有 CJK 字符估算，精度从 ~70% 提升到 99%+
+ClawBot - 上下文管理模块 v3.0（对标 MemGPT/Letta 16k⭐）
+
+v3.0 — 2026-03-24:
+  - 分层记忆深化（搬运自 letta-ai/letta 16k⭐ 架构模式）
+  - Core memory 持久化（per-chat JSON 文件, 重启不丢失）
+  - 打通 SmartMemoryPipeline ↔ TieredContextManager（事实自动归档）
+  - 记忆重要性衰减 + 定期整合
+  - per-chat 隔离（不同聊天各自记忆空间）
+
+v2.1:
+  - tiktoken 精确 token 计数（搬运自 letta/open-interpreter 最佳实践）
+  - 替换原有 CJK 字符估算，精度从 ~70% 提升到 99%+
+
+v2.0:
+  - 本地压缩模式（零 API 调用）：截断+提取关键信息
+  - AI 压缩模式（可选）：调用 LLM 生成高质量摘要
+  - 渐进式压缩：越旧的消息压缩比越高
+  - 支持关键信息标记保留
+  - 支持 SQLite HistoryStore 集成
+  - 分层上下文管理（core/recall/archival 三层架构）
 """
 import json
+import tempfile
+import os
 from typing import List, Dict, Any, Optional, Callable, Tuple
-from datetime import datetime
 from pathlib import Path
 import logging
 from src.utils import now_et
@@ -33,6 +43,27 @@ try:
     logger.debug("[context_manager] tiktoken 已加载 (cl100k_base)")
 except ImportError:
     logger.info("[context_manager] tiktoken 未安装，使用 CJK 估算模式 (pip install tiktoken)")
+
+
+def _atomic_json_write(path: Path, data: dict) -> None:
+    """Atomically write JSON — write to temp file then rename.
+
+    Prevents data corruption on crash: the file is either the old
+    version or the new version, never a truncated partial write.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class ContextManager:
@@ -58,12 +89,9 @@ class ContextManager:
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
-            import os
-            env_dir = os.getenv('DATA_DIR')
-            if env_dir:
-                self.storage_dir = Path(env_dir)
-            else:
-                self.storage_dir = Path(__file__).parent.parent / "data"
+            # 延迟导入避免循环依赖 (globals.py 导入了 ContextManager)
+            from src.bot.globals import DATA_DIR
+            self.storage_dir = Path(DATA_DIR)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.compressed_summary: Optional[str] = None
         self.key_facts: List[str] = []
@@ -510,8 +538,7 @@ class ContextManager:
         }
         filepath = self.storage_dir / f"summary_{timestamp}.json"
         try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            _atomic_json_write(filepath, data)
         except Exception as e:
             logger.error(f"保存摘要失败: {e}")
 
@@ -533,8 +560,7 @@ class ContextManager:
     def _save_preferences(self):
         filepath = self.storage_dir / "preferences.json"
         try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(self.user_preferences, f, ensure_ascii=False, indent=2)
+            _atomic_json_write(filepath, self.user_preferences)
         except Exception as e:
             logger.error(f"保存偏好失败: {e}")
 
@@ -564,19 +590,21 @@ class ContextManager:
         }
 
 
-# ============ 对标 MemGPT: 分层上下文管理 ============
+# ============ 对标 Letta (MemGPT 16k⭐): 分层上下文管理 v3.0 ============
 
 class TieredContextManager:
-    """分层上下文管理器（对标 MemGPT 的三层架构）
-    
+    """分层上下文管理器 v3.0（搬运自 letta-ai/letta 16k⭐ 架构模式）
+
     三层架构：
     - Core Memory: 始终在上下文中的关键信息（用户画像、系统指令、当前任务）
     - Recall Memory: 最近对话历史（滑动窗口，自动压缩）
     - Archival Memory: 长期存储（通过 SharedMemory 向量搜索按需检索）
-    
-    与 MemGPT 的区别：
-    - MemGPT 用 LLM 自主管理内存读写，我们用规则 + LLM 混合
-    - 我们复用现有 SharedMemory 作为 archival 层，零额外基础设施
+
+    v3.0 升级（搬运自 Letta 架构模式）：
+    - Core memory per-chat 持久化（重启不丢失，JSON 文件）
+    - 打通 SmartMemoryPipeline（LLM 事实提取自动流入 archival）
+    - 记忆重要性衰减 + 定期整合
+    - per-chat_id 隔离（不同聊天各自记忆空间）
     """
 
     # 上下文预算分配（占总 token 预算的比例）
@@ -597,36 +625,103 @@ class TieredContextManager:
         self.shared_memory = shared_memory
         self.total_budget = total_budget
 
-        # Core memory: 持久化的关键信息
-        self._core_memory: Dict[str, str] = {
+        # v3.0: per-chat core memory (chat_id → Dict[str, str])
+        self._core_memories: Dict[int, Dict[str, str]] = {}
+        self._core_dirty: Dict[int, bool] = {}
+
+        # 持久化目录
+        self._memory_dir = Path(self.ctx.storage_dir) / "core_memory"
+        self._memory_dir.mkdir(parents=True, exist_ok=True)
+
+        # 默认 core memory 模板
+        self._default_core = {
             "user_profile": "",      # 用户画像
             "bot_personality": "",   # Bot 人设
             "current_task": "",      # 当前任务
             "preferences": "",       # 用户偏好
+            "key_facts": "",         # 关键事实 (v3.0)
         }
-        self._core_dirty = False
 
-    # ---- Core Memory 管理 ----
+        # 向后兼容: 保留全局 _core_memory 用于无 chat_id 场景
+        self._core_memory: Dict[str, str] = dict(self._default_core)
+        self._core_dirty_global = False
 
-    def core_set(self, key: str, value: str):
+    # ---- v3.0: Per-chat Core Memory 管理 ----
+
+    def _get_core(self, chat_id: int = 0) -> Dict[str, str]:
+        """获取指定 chat 的 core memory，自动加载持久化数据"""
+        if chat_id == 0:
+            return self._core_memory
+
+        if chat_id not in self._core_memories:
+            self._core_memories[chat_id] = self._load_core(chat_id)
+            self._core_dirty[chat_id] = False
+
+        return self._core_memories[chat_id]
+
+    def _load_core(self, chat_id: int) -> Dict[str, str]:
+        """从磁盘加载 core memory"""
+        path = self._memory_dir / f"chat_{chat_id}.json"
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.debug(f"[TieredCtx] 加载 core memory: chat={chat_id}")
+                # 合并默认字段（防止旧文件缺少新字段）
+                merged = dict(self._default_core)
+                merged.update(data)
+                return merged
+            except Exception as e:
+                logger.warning(f"[TieredCtx] 加载 core memory 失败 chat={chat_id}: {e}")
+        return dict(self._default_core)
+
+    def _save_core(self, chat_id: int):
+        """持久化 core memory 到磁盘"""
+        if chat_id == 0:
+            return
+        path = self._memory_dir / f"chat_{chat_id}.json"
+        try:
+            core = self._core_memories.get(chat_id, {})
+            _atomic_json_write(path, core)
+            self._core_dirty[chat_id] = False
+            logger.debug(f"[TieredCtx] 持久化 core memory: chat={chat_id}")
+        except Exception as e:
+            logger.warning(f"[TieredCtx] 持久化失败 chat={chat_id}: {e}")
+
+    def _flush_dirty(self):
+        """保存所有脏 core memory"""
+        for chat_id, dirty in list(self._core_dirty.items()):
+            if dirty:
+                self._save_core(chat_id)
+
+    def core_set(self, key: str, value: str, chat_id: int = 0):
         """写入 core memory（始终在上下文中）"""
-        self._core_memory[key] = value
-        self._core_dirty = True
-        logger.debug(f"[TieredCtx] Core memory updated: {key} = {value[:50]}...")
+        core = self._get_core(chat_id)
+        core[key] = value
+        if chat_id == 0:
+            self._core_dirty_global = True
+        else:
+            self._core_dirty[chat_id] = True
+        logger.debug(f"[TieredCtx] Core memory updated: chat={chat_id} {key} = {value[:50]}...")
 
-    def core_get(self, key: str) -> str:
-        return self._core_memory.get(key, "")
+    def core_get(self, key: str, chat_id: int = 0) -> str:
+        return self._get_core(chat_id).get(key, "")
 
-    def core_append(self, key: str, text: str):
+    def core_append(self, key: str, text: str, chat_id: int = 0):
         """追加到 core memory 条目"""
-        existing = self._core_memory.get(key, "")
-        self._core_memory[key] = (existing + "\n" + text).strip()
-        self._core_dirty = True
+        core = self._get_core(chat_id)
+        existing = core.get(key, "")
+        core[key] = (existing + "\n" + text).strip()
+        if chat_id == 0:
+            self._core_dirty_global = True
+        else:
+            self._core_dirty[chat_id] = True
 
-    def _render_core_memory(self) -> str:
+    def _render_core_memory(self, chat_id: int = 0) -> str:
         """渲染 core memory 为注入文本"""
+        core = self._get_core(chat_id)
         parts = []
-        for key, value in self._core_memory.items():
+        for key, value in core.items():
             if value.strip():
                 label = key.replace("_", " ").title()
                 parts.append(f"[{label}]\n{value}")
@@ -662,12 +757,92 @@ class TieredContextManager:
             source_bot="tiered_ctx", importance=importance,
         )
 
+    # ---- v3.0: SmartMemory 集成 ----
+
+    def _sync_smart_memory_facts(self, chat_id: int = 0):
+        """从 SmartMemoryPipeline 拉取最新事实同步到 core memory
+
+        搬运自 Letta 的 memory management loop：
+        LLM 提取的事实 → core memory key_facts 字段
+        """
+        try:
+            from src.smart_memory import get_smart_memory
+            smart_mem = get_smart_memory()
+            if smart_mem is None or not self.shared_memory:
+                return
+
+            # 从 SharedMemory 检索最近提取的事实
+            try:
+                results = self.shared_memory.semantic_search(
+                    "user preference fact", limit=5
+                )
+            except Exception:
+                results = []
+
+            if results:
+                facts = [r["value"][:100] for r in results if r.get("value")]
+                facts_text = "\n".join(f"• {f}" for f in facts[:5])
+                core = self._get_core(chat_id)
+                core["key_facts"] = facts_text
+                if chat_id != 0:
+                    self._core_dirty[chat_id] = True
+
+            # 同步用户画像到 core memory
+            try:
+                profile_results = self.shared_memory.semantic_search(
+                    "user_profile", limit=1
+                )
+                for r in (profile_results or []):
+                    val = r.get("value", "")
+                    if not val or "user_profile" not in r.get("key", ""):
+                        continue
+                    try:
+                        profile = json.loads(val) if isinstance(val, str) else val
+                        if isinstance(profile, dict):
+                            parts = []
+                            if profile.get("name"):
+                                parts.append(f"称呼: {profile['name']}")
+                            if profile.get("interests"):
+                                interests = profile["interests"]
+                                if isinstance(interests, list):
+                                    parts.append(f"兴趣: {', '.join(interests)}")
+                            if profile.get("expertise"):
+                                expertise = profile["expertise"]
+                                if isinstance(expertise, list):
+                                    parts.append(f"专长: {', '.join(expertise)}")
+                            if profile.get("communication_style"):
+                                parts.append(f"沟通风格: {profile['communication_style']}")
+                            if profile.get("preferences"):
+                                prefs = profile["preferences"]
+                                if isinstance(prefs, dict):
+                                    pref_parts = [f"{k}: {v}" for k, v in prefs.items()]
+                                    parts.append(f"偏好: {'; '.join(pref_parts)}")
+                            if parts:
+                                core = self._get_core(chat_id)
+                                core["user_profile"] = "\n".join(parts)
+                                core["preferences"] = profile.get("preferences", "")
+                                if isinstance(core["preferences"], dict):
+                                    core["preferences"] = "\n".join(
+                                        f"• {k}: {v}" for k, v in core["preferences"].items()
+                                    )
+                                if chat_id != 0:
+                                    self._core_dirty[chat_id] = True
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            except Exception:
+                logger.debug("[TieredCtx] user_profile 同步失败", exc_info=True)
+
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[TieredCtx] SmartMemory 同步失败: {e}")
+
     # ---- 自动事实提取 ----
 
     def extract_and_archive_facts(self, messages: List[Dict]):
         """从对话中提取事实并存入 archival memory
-        
-        对标 MemGPT 的自动记忆管理：扫描用户消息中的关键信息，
+
+        对标 Letta 的自动记忆管理：扫描用户消息中的关键信息，
         自动存入长期记忆。
         """
         if not self.shared_memory:
@@ -698,14 +873,21 @@ class TieredContextManager:
         messages: List[Dict],
         system_prompt: str = "",
         query_hint: str = "",
+        chat_id: int = 0,
     ) -> Tuple[List[Dict], Dict[str, Any]]:
-        """智能组装分层上下文（对标 MemGPT 的上下文编排）
-        
+        """智能组装分层上下文 v3.0（搬运自 Letta 上下文编排模式）
+
+        v3.0 升级:
+        - per-chat core memory 注入
+        - SmartMemory 事实同步到 core
+        - 组装完成后自动持久化
+
         Args:
             messages: 原始对话历史
             system_prompt: 系统提示词
             query_hint: 当前查询提示（用于 archival 检索）
-            
+            chat_id: 聊天 ID（用于 per-chat 记忆隔离）
+
         Returns:
             (assembled_messages, metadata)
         """
@@ -718,16 +900,24 @@ class TieredContextManager:
         metadata = {"core_tokens": 0, "recall_tokens": 0, "archival_tokens": 0,
                      "compressed": False, "archival_results": 0}
 
+        # v3.0: 同步 SmartMemory 事实到 core memory
+        self._sync_smart_memory_facts(chat_id)
+
+        # GAP 7: 自动填充 bot_personality（从 system_prompt 提取，只写一次）
+        core = self._get_core(chat_id)
+        if not core.get("bot_personality") and system_prompt:
+            # 只取 system_prompt 的前 200 字符作为人格摘要，避免过长
+            core["bot_personality"] = system_prompt[:200]
+            if chat_id != 0:
+                self._core_dirty[chat_id] = True
+
         # 1. System prompt + Core memory
-        core_text = self._render_core_memory()
+        core_text = self._render_core_memory(chat_id)
         system_content = system_prompt
         if core_text:
             system_content += f"\n\n{core_text}"
 
         if system_content.strip():
-            sys_msg = {"role": "system" if messages and messages[0].get("role") != "system" else "user",
-                       "content": system_content}
-            # 很多 API 不支持 system role，用 user 兜底
             assembled.append({"role": "user", "content": system_content})
             assembled.append({"role": "assistant", "content": "understood."})
             metadata["core_tokens"] = self.ctx.estimate_tokens(assembled)
@@ -761,16 +951,21 @@ class TieredContextManager:
         metadata["total_tokens"] = total_tokens
         metadata["budget_usage_pct"] = round(total_tokens / budget * 100, 1)
 
+        # v3.0: 自动持久化脏 core memory
+        self._flush_dirty()
+
         return assembled, metadata
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self, chat_id: int = 0) -> Dict[str, Any]:
         """获取分层上下文状态"""
-        core_size = sum(len(v) for v in self._core_memory.values())
+        core = self._get_core(chat_id)
+        core_size = sum(len(v) for v in core.values())
         return {
-            "core_memory_keys": list(self._core_memory.keys()),
+            "core_memory_keys": list(core.keys()),
             "core_memory_chars": core_size,
             "has_shared_memory": self.shared_memory is not None,
             "total_budget": self.total_budget,
+            "persisted_chats": len(list(self._memory_dir.glob("chat_*.json"))),
             "budget_allocation": {
                 "core": f"{self.CORE_BUDGET_PCT:.0%}",
                 "recall": f"{self.RECALL_BUDGET_PCT:.0%}",

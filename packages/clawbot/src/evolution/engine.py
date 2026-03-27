@@ -19,12 +19,11 @@ import os
 import re
 import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from .github_trending import (
 from src.utils import now_et
+from .github_trending import (
     TrendingRepo,
     fetch_trending,
     fetch_fast_growing_repos,
@@ -725,7 +724,6 @@ class EvolutionEngine:
         # EventBus 推送（新增 — 触发协同管道广播）
         try:
             from src.core.event_bus import get_event_bus, EventType
-            import asyncio
             bus = get_event_bus()
             await bus.publish(
                 EventType.EVOLUTION_PROPOSAL,

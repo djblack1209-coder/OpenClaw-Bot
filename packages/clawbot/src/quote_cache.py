@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time as _time
 from typing import Dict, List, Optional, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,10 @@ class QuoteCache:
             return
         self._running = True
         self._task = asyncio.create_task(self._refresh_loop())
+        def _quote_refresh_done(t):
+            if not t.cancelled() and t.exception():
+                logger.warning("[QuoteCache] 刷新循环崩溃: %s", t.exception())
+        self._task.add_done_callback(_quote_refresh_done)
         logger.info("[QuoteCache] 自动刷新已启动 (间隔%.0fs)", self.config.refresh_interval)
 
     async def stop(self):

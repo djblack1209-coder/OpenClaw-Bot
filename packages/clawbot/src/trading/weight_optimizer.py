@@ -12,9 +12,9 @@ Trading — 投票权重优化器 (基于 Optuna 11k⭐)
 """
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 

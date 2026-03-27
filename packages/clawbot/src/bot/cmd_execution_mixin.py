@@ -18,8 +18,7 @@ from src.bot.auth import requires_auth
 from src.telegram_ux import with_typing
 from src.notify_style import (
     format_social_published, format_social_dual_result,
-    format_hotpost_result, format_cost_card, format_bounty_result,
-    kv, bullet, divider, timestamp_tag, format_notice,
+    format_hotpost_result, format_cost_card,
 )
 
 logger = logging.getLogger(__name__)
@@ -1246,6 +1245,222 @@ class ExecutionCommandsMixin:
 
         await update.message.reply_text("未知 tweet 子命令，用法: plan|run|watch")
 
+    # ---- 生活账单追踪 (话费/水电费余额检测提醒) ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_bill(self, update, context):
+        """生活账单管理 — 话费/水电费余额追踪与低余额提醒
+
+        用法:
+        /bill add 话费 移动138xxx 30    — 添加追踪，低于30元提醒
+        /bill update 1 45.5             — 更新第1个账单余额为45.5元
+        /bill list                      — 查看我的账单列表
+        /bill remove 2                  — 删除第2个追踪
+        """
+        import time as _time
+        from src.execution.life_automation import (
+            add_bill_account, update_bill_balance, list_bill_accounts,
+            remove_bill_account, resolve_bill_type,
+            BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+        )
+
+        user = update.effective_user
+        chat_id = update.effective_chat.id if update.effective_chat else 0
+        args = context.args or []
+        sub = args[0].lower() if args else "list"
+
+        # ── /bill list — 账单列表 ──
+        if sub in {"list", "列表", "ls"}:
+            accounts = list_bill_accounts(user.id)
+            if not accounts:
+                await update.message.reply_text(
+                    "📋 还没有追踪任何账单\n\n"
+                    "快速添加:\n"
+                    "  /bill add 话费 移动138xxx 30\n"
+                    "  /bill add 电费 南方电网 50\n\n"
+                    "也可以直接说中文:\n"
+                    "  「帮我盯着话费，低于30块提醒我」"
+                )
+                return
+            lines = ["📱 我的账单追踪", "━━━━━━━━━━━━━━━"]
+            for idx, acct in enumerate(accounts, 1):
+                emoji = BILL_TYPE_EMOJI.get(acct["account_type"], "📄")
+                label = BILL_TYPE_LABEL.get(acct["account_type"], acct["account_type"])
+                name_part = f" — {acct['account_name']}" if acct.get("account_name") else ""
+                # 余额显示
+                balance = acct["balance"]
+                threshold = acct["low_threshold"]
+                is_low = balance <= threshold and acct.get("last_updated", 0) > 0
+                balance_str = f"¥{balance:.1f}"
+                if is_low:
+                    balance_str += " ‼️ 低于阈值!"
+                # 更新时间
+                last_updated = acct.get("last_updated", 0)
+                if last_updated > 0:
+                    days_ago = int((_time.time() - last_updated) / 86400)
+                    if days_ago == 0:
+                        time_str = "今天"
+                    elif days_ago == 1:
+                        time_str = "1天前"
+                    else:
+                        time_str = f"{days_ago}天前"
+                else:
+                    time_str = "未更新"
+                lines.append(f"\n{idx}. {emoji} {label}{name_part}")
+                lines.append(f"   💰 余额: {balance_str} | ⚠️ 阈值: ¥{threshold:.0f}")
+                lines.append(f"   📅 上次更新: {time_str}")
+                if acct.get("remind_day", 0) > 0:
+                    lines.append(f"   🔔 每月{acct['remind_day']}号提醒查询")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            return
+
+        # ── /bill add <类型> [名称] [阈值] [每月提醒日] ──
+        if sub in {"add", "添加", "新增"}:
+            if len(args) < 2:
+                await update.message.reply_text(
+                    "用法: /bill add <类型> [名称] [阈值]\n\n"
+                    "类型: 话费/电费/水费/燃气费/宽带\n"
+                    "示例:\n"
+                    "  /bill add 话费 移动138xxx 30\n"
+                    "  /bill add 电费 南方电网 50 15"
+                )
+                return
+            raw_type = args[1]
+            account_type = resolve_bill_type(raw_type)
+            if not account_type:
+                await update.message.reply_text(
+                    f"❌ 不认识「{raw_type}」\n"
+                    "支持: 话费/电费/水费/燃气费/宽带"
+                )
+                return
+            account_name = ""
+            threshold = 30
+            remind_day = 0
+            # 解析后续参数: 名称(非数字) 阈值(数字) 提醒日(数字)
+            remaining = args[2:]
+            numbers_found = []
+            names_found = []
+            for a in remaining:
+                try:
+                    numbers_found.append(float(a))
+                except ValueError:
+                    names_found.append(a)
+            if names_found:
+                account_name = " ".join(names_found)
+            if len(numbers_found) >= 1:
+                threshold = numbers_found[0]
+            if len(numbers_found) >= 2:
+                remind_day = int(numbers_found[1])
+            result = add_bill_account(
+                user_id=user.id, chat_id=chat_id,
+                account_type=account_type, account_name=account_name,
+                low_threshold=threshold, remind_day=remind_day,
+            )
+            if result.get("success"):
+                emoji = BILL_TYPE_EMOJI.get(account_type, "📄")
+                label = BILL_TYPE_LABEL.get(account_type, account_type)
+                msg = (
+                    f"✅ 账单追踪已添加\n\n"
+                    f"{emoji} {label}"
+                    f"{' — ' + account_name if account_name else ''}\n"
+                    f"⚠️ 低于 ¥{threshold:.0f} 时提醒\n"
+                )
+                if remind_day > 0:
+                    msg += f"🔔 每月{remind_day}号提醒查询\n"
+                msg += f"\n💡 说「{label}还剩xx块」可更新余额"
+                await update.message.reply_text(msg)
+            else:
+                await update.message.reply_text(f"❌ {result.get('error', '添加失败')}")
+            return
+
+        # ── /bill update <ID> <余额> ──
+        if sub in {"update", "更新", "set"}:
+            if len(args) < 3:
+                await update.message.reply_text("用法: /bill update <编号> <余额>\n示例: /bill update 1 45.5")
+                return
+            try:
+                acct_id = int(args[1])
+                balance = float(args[2])
+            except (ValueError, IndexError):
+                await update.message.reply_text("❌ 格式错误，示例: /bill update 1 45.5")
+                return
+            # 通过列表序号查找真实 ID
+            accounts = list_bill_accounts(user.id)
+            if acct_id < 1 or acct_id > len(accounts):
+                await update.message.reply_text(f"❌ 编号 {acct_id} 不存在，先用 /bill list 查看")
+                return
+            real_id = accounts[acct_id - 1]["id"]
+            result = update_bill_balance(real_id, balance, user_id=user.id)
+            if result.get("success"):
+                emoji = BILL_TYPE_EMOJI.get(result["account_type"], "📄")
+                label = BILL_TYPE_LABEL.get(result["account_type"], result["account_type"])
+                name = result.get("account_name", "")
+                msg = f"✅ 余额已更新\n\n{emoji} {label}"
+                if name:
+                    msg += f" — {name}"
+                msg += f"\n💰 余额: ¥{result['balance']:.1f}"
+                if result.get("is_low"):
+                    msg += f"\n⚠️ 低于阈值 ¥{result['threshold']:.0f}，请注意充值！"
+                    # 发布 BILL_DUE 事件
+                    try:
+                        from src.core.event_bus import get_event_bus, EventType
+                        import asyncio
+                        bus = get_event_bus()
+                        asyncio.ensure_future(bus.publish(
+                            EventType.BILL_DUE,
+                            {
+                                "user_id": str(user.id), "chat_id": str(chat_id),
+                                "account_type": result["account_type"],
+                                "account_name": name,
+                                "balance": result["balance"],
+                                "threshold": result["threshold"],
+                            },
+                            source="cmd_bill",
+                        ))
+                    except Exception:
+                        logger.debug("Silenced exception", exc_info=True)
+                await update.message.reply_text(msg)
+            else:
+                await update.message.reply_text(f"❌ {result.get('error', '更新失败')}")
+            return
+
+        # ── /bill remove <ID> ──
+        if sub in {"remove", "删除", "rm", "del"}:
+            if len(args) < 2:
+                await update.message.reply_text("用法: /bill remove <编号>\n示例: /bill remove 2")
+                return
+            try:
+                acct_id = int(args[1])
+            except ValueError:
+                await update.message.reply_text("❌ 编号必须是数字")
+                return
+            accounts = list_bill_accounts(user.id)
+            if acct_id < 1 or acct_id > len(accounts):
+                await update.message.reply_text(f"❌ 编号 {acct_id} 不存在")
+                return
+            real_id = accounts[acct_id - 1]["id"]
+            acct = accounts[acct_id - 1]
+            if remove_bill_account(real_id, user.id):
+                emoji = BILL_TYPE_EMOJI.get(acct["account_type"], "📄")
+                label = BILL_TYPE_LABEL.get(acct["account_type"], acct["account_type"])
+                await update.message.reply_text(f"✅ 已删除 {emoji} {label} 的追踪")
+            else:
+                await update.message.reply_text("❌ 删除失败")
+            return
+
+        # ── 未知子命令 ──
+        await update.message.reply_text(
+            "📱 账单管理\n\n"
+            "/bill list          — 查看追踪列表\n"
+            "/bill add 话费 名称 30  — 添加追踪\n"
+            "/bill update 1 45.5 — 更新余额\n"
+            "/bill remove 2      — 删除追踪\n\n"
+            "也可以直接说中文:\n"
+            "「话费还剩30块」→ 自动更新余额\n"
+            "「帮我盯着电费」→ 添加追踪"
+        )
+
     def _ops_help(self) -> str:
         return (
             "执行场景命令\n\n"
@@ -1295,7 +1510,7 @@ class ExecutionCommandsMixin:
     @with_typing
     async def cmd_publish(self, update, context):
         """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
-        from src.sau_bridge import publish_video, publish_note, get_supported_platforms, format_publish_result, PLATFORMS
+        from src.sau_bridge import publish_video, publish_note, get_supported_platforms, PLATFORMS
 
         args = context.args or []
         if len(args) < 2:
@@ -1334,6 +1549,198 @@ class ExecutionCommandsMixin:
             await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
 
     # ---- 闲鱼 AI 客服控制 ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_xianyu_style(self, update, context):
+        """闲鱼 AI 客服回复风格 / FAQ / 商品规则管理
+
+        /xianyu_style set 热情活泼，多用emoji    — 设置回复风格
+        /xianyu_style faq add 发货 拍下后24小时内自动发货  — 添加FAQ
+        /xianyu_style faq list                  — 查看所有FAQ
+        /xianyu_style faq remove 发货            — 删除FAQ
+        /xianyu_style rule 商品ID 这个商品强调正版授权  — 商品规则
+        /xianyu_style rule_remove 商品ID         — 删除商品规则
+        /xianyu_style show                      — 查看当前配置
+        """
+        from src.xianyu.xianyu_context import XianyuContextManager
+
+        xctx = XianyuContextManager()
+        args = context.args or []
+        sub = args[0].lower() if args else "show"
+
+        # ── /xianyu_style show — 查看当前配置 ──
+        if sub in {"show", "查看", "status"}:
+            try:
+                config = xctx.get_reply_config()
+                lines = ["🐟 闲鱼 AI 客服回复配置", "━━━━━━━━━━━━━━━"]
+
+                # 风格
+                style = config.get("style")
+                lines.append(f"\n🎨 回复风格: {style or '默认（未设置）'}")
+
+                # FAQ
+                faqs = config.get("faqs", [])
+                lines.append(f"\n❓ 常见问题 ({len(faqs)}/{xctx._FAQ_LIMIT}):")
+                if faqs:
+                    for i, faq in enumerate(faqs, 1):
+                        lines.append(f"  {i}. 「{faq['key']}」→ {faq['value'][:50]}{'...' if len(faq['value']) > 50 else ''}")
+                else:
+                    lines.append("  （暂无）")
+
+                # 商品规则
+                rules = config.get("item_rules", {})
+                lines.append(f"\n📦 商品规则 ({len(rules)}/{xctx._ITEM_RULE_LIMIT}):")
+                if rules:
+                    for item_id, rule in list(rules.items())[:10]:
+                        lines.append(f"  • {item_id}: {rule[:50]}{'...' if len(rule) > 50 else ''}")
+                else:
+                    lines.append("  （暂无）")
+
+                await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            except Exception as e:
+                await update.message.reply_text(f"❌ 读取配置失败: {e}")
+            return
+
+        # ── /xianyu_style set <风格> — 设置回复风格 ──
+        if sub in {"set", "设置", "style"}:
+            tone = " ".join(args[1:]).strip()
+            if not tone:
+                await update.message.reply_text(
+                    "用法: /xianyu_style set <风格描述>\n\n"
+                    "示例:\n"
+                    "  /xianyu_style set 热情活泼，多用emoji\n"
+                    "  /xianyu_style set 专业简洁，直奔主题\n"
+                    "  /xianyu_style set 可爱卖萌，用颜文字"
+                )
+                return
+            try:
+                xctx.set_reply_style(tone)
+                await update.message.reply_text(f"✅ 回复风格已设置: {tone}")
+            except Exception as e:
+                await update.message.reply_text(f"❌ 设置失败: {e}")
+            return
+
+        # ── /xianyu_style faq <子命令> — FAQ 管理 ──
+        if sub == "faq":
+            faq_sub = args[1].lower() if len(args) > 1 else "list"
+
+            if faq_sub in {"list", "列表", "ls"}:
+                try:
+                    faqs = xctx.get_faqs()
+                    if not faqs:
+                        await update.message.reply_text(
+                            "❓ 暂无 FAQ\n\n"
+                            "添加: /xianyu_style faq add <关键词> <回复内容>\n"
+                            "示例: /xianyu_style faq add 发货 拍下后24小时内自动发货"
+                        )
+                        return
+                    lines = [f"❓ 闲鱼 FAQ ({len(faqs)}/{xctx._FAQ_LIMIT})", ""]
+                    for i, faq in enumerate(faqs, 1):
+                        lines.append(f"{i}. 关键词: 「{faq['key']}」")
+                        lines.append(f"   回复: {faq['value']}")
+                    await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+                except Exception as e:
+                    await update.message.reply_text(f"❌ 读取失败: {e}")
+                return
+
+            if faq_sub in {"add", "添加", "新增"}:
+                if len(args) < 4:
+                    await update.message.reply_text(
+                        "用法: /xianyu_style faq add <关键词> <回复内容>\n\n"
+                        "示例:\n"
+                        "  /xianyu_style faq add 发货 拍下后24小时内自动发货到您的账号\n"
+                        "  /xianyu_style faq add 退款 部署前可全额退款，部署后7天免费售后"
+                    )
+                    return
+                keyword = args[2]
+                answer = " ".join(args[3:])
+                try:
+                    ok = xctx.add_faq(keyword, answer)
+                    if ok:
+                        await update.message.reply_text(
+                            f"✅ FAQ 已添加\n\n"
+                            f"关键词: 「{keyword}」\n"
+                            f"回复: {answer}"
+                        )
+                    else:
+                        await update.message.reply_text(f"❌ FAQ 已达上限 ({xctx._FAQ_LIMIT} 条)")
+                except Exception as e:
+                    await update.message.reply_text(f"❌ 添加失败: {e}")
+                return
+
+            if faq_sub in {"remove", "删除", "rm", "del"}:
+                if len(args) < 3:
+                    await update.message.reply_text("用法: /xianyu_style faq remove <关键词>")
+                    return
+                keyword = args[2]
+                try:
+                    ok = xctx.remove_faq(keyword)
+                    if ok:
+                        await update.message.reply_text(f"✅ FAQ 已删除: 「{keyword}」")
+                    else:
+                        await update.message.reply_text(f"❌ 未找到关键词「{keyword}」")
+                except Exception as e:
+                    await update.message.reply_text(f"❌ 删除失败: {e}")
+                return
+
+            await update.message.reply_text("未知 FAQ 子命令，用法: add | list | remove")
+            return
+
+        # ── /xianyu_style rule <商品ID> <规则> — 商品规则 ──
+        if sub in {"rule", "规则"}:
+            if len(args) < 3:
+                await update.message.reply_text(
+                    "用法: /xianyu_style rule <商品ID> <特殊规则>\n\n"
+                    "示例:\n"
+                    "  /xianyu_style rule item_001 这个商品重点强调正版授权\n"
+                    "  /xianyu_style rule item_002 不支持win7系统，提前告知买家"
+                )
+                return
+            item_id = args[1]
+            rule = " ".join(args[2:])
+            try:
+                ok = xctx.set_item_rule(item_id, rule)
+                if ok:
+                    await update.message.reply_text(
+                        f"✅ 商品规则已设置\n\n"
+                        f"商品: {item_id}\n"
+                        f"规则: {rule}"
+                    )
+                else:
+                    await update.message.reply_text(f"❌ 商品规则已达上限 ({xctx._ITEM_RULE_LIMIT} 条)")
+            except Exception as e:
+                await update.message.reply_text(f"❌ 设置失败: {e}")
+            return
+
+        # ── /xianyu_style rule_remove <商品ID> — 删除商品规则 ──
+        if sub in {"rule_remove", "删除规则"}:
+            if len(args) < 2:
+                await update.message.reply_text("用法: /xianyu_style rule_remove <商品ID>")
+                return
+            item_id = args[1]
+            try:
+                ok = xctx.remove_item_rule(item_id)
+                if ok:
+                    await update.message.reply_text(f"✅ 商品规则已删除: {item_id}")
+                else:
+                    await update.message.reply_text(f"❌ 未找到商品「{item_id}」的规则")
+            except Exception as e:
+                await update.message.reply_text(f"❌ 删除失败: {e}")
+            return
+
+        # ── 未知子命令 — 显示帮助 ──
+        await update.message.reply_text(
+            "🐟 闲鱼 AI 客服回复管理\n\n"
+            "/xianyu_style show                    — 查看当前配置\n"
+            "/xianyu_style set <风格>               — 设置回复风格\n"
+            "/xianyu_style faq add <关键词> <回复>   — 添加FAQ\n"
+            "/xianyu_style faq list                — 查看FAQ列表\n"
+            "/xianyu_style faq remove <关键词>      — 删除FAQ\n"
+            "/xianyu_style rule <商品ID> <规则>      — 商品规则\n"
+            "/xianyu_style rule_remove <商品ID>     — 删除商品规则\n\n"
+            "也可以说中文: \"闲鱼风格\" \"闲鱼FAQ\""
+        )
 
     @requires_auth
     @with_typing
@@ -1401,6 +1808,61 @@ class ExecutionCommandsMixin:
                 for ship in pending_ship[:5]:
                     lines.append(f"  • {ship.get('item_id', '?')} ({ship.get('hours_ago', '?')}h 前付款)")
 
+            # ── BI 板块1: 商品热度排行 ──
+            try:
+                rankings = xctx.get_item_rankings(days=days, limit=5)
+                if rankings:
+                    lines.append("")
+                    lines.append(f"━━━ 🏆 热销排行 (近{days}天) ━━━")
+                    for i, item in enumerate(rankings, 1):
+                        title = item.get("title", "未知商品")[:12]
+                        consult = item.get("consultations", 0)
+                        convert = item.get("conversions", 0)
+                        rate = item.get("conversion_rate", "0%")
+                        lines.append(f"{i}. {title} | 咨询 {consult}次 | 成交 {convert}单 | 转化率 {rate}")
+            except Exception:
+                pass  # BI 数据获取失败不影响主报表
+
+            # ── BI 板块2: 咨询高峰时段 (文本柱状图, 取前5) ──
+            try:
+                peak_hours = xctx.get_peak_hours(days=days)
+                if peak_hours:
+                    # 按消息量降序取前5个时段
+                    sorted_hours = sorted(peak_hours, key=lambda x: x["messages"], reverse=True)[:5]
+                    max_msgs = sorted_hours[0]["messages"] if sorted_hours else 1
+                    if max_msgs > 0:
+                        lines.append("")
+                        lines.append("━━━ ⏰ 咨询高峰时段 ━━━")
+                        for h in sorted_hours:
+                            hour_str = h["hour"]
+                            msgs = h["messages"]
+                            # 柱状图: 最长12格, 按比例缩放
+                            bar_len = round(msgs / max_msgs * 12) if max_msgs > 0 else 0
+                            bar = "█" * bar_len
+                            # 前2名标🔥
+                            fire = "🔥" if sorted_hours.index(h) < 2 else "  "
+                            next_hour = f"{int(hour_str) + 1:02d}" if int(hour_str) < 23 else "00"
+                            lines.append(f"{fire} {hour_str}:00-{next_hour}:00  {bar} {msgs}条")
+            except Exception:
+                pass  # BI 数据获取失败不影响主报表
+
+            # ── BI 板块3: 转化漏斗 ──
+            try:
+                funnel = xctx.get_conversion_funnel(days=days)
+                if funnel and funnel.get("total_consultations", 0) > 0:
+                    lines.append("")
+                    lines.append("━━━ 🔄 转化漏斗 ━━━")
+                    total = funnel["total_consultations"]
+                    replied = funnel.get("replied", 0)
+                    converted = funnel.get("converted", 0)
+                    shipped = funnel.get("shipped", 0)
+                    lines.append(f"👀 总咨询:    {total}人")
+                    lines.append(f"💬 有回复:    {replied}人 ({funnel.get('replied_rate', '0%')})")
+                    lines.append(f"💰 成交:      {converted}人 ({funnel.get('overall_rate', '0%')})")
+                    lines.append(f"📦 发货:      {shipped}人 ({funnel.get('shipped_rate', '0%')})")
+            except Exception:
+                pass  # BI 数据获取失败不影响主报表
+
             msg = "\n".join(lines)
             await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -1411,12 +1873,38 @@ class ExecutionCommandsMixin:
     async def cmd_xianyu(self, update, context):
         """闲鱼 AI 客服远程控制"""
         args = (context.args or [])
-        action = args[0].lower() if args else "status"
+        action = args[0].lower() if args else ""
 
         import subprocess
 
         LABEL = "ai.openclaw.xianyu"
         PLIST = os.path.expanduser("~/Library/LaunchAgents/ai.openclaw.xianyu.plist")
+
+        # 无参数时展示帮助菜单 + 一行状态概要
+        if not action:
+            try:
+                r = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
+                status_line = "🟢 运行中" if r.stdout.strip() else "🔴 未运行"
+            except Exception:
+                status_line = "⚪ 状态未知"
+            help_msg = (
+                "🐟 闲鱼 AI 客服管理\n"
+                "━━━━━━━━━━━━━━━\n"
+                "/xianyu start    — 启动 AI 客服\n"
+                "/xianyu stop     — 停止 AI 客服\n"
+                "/xianyu status   — 查看运行状态\n"
+                "/xianyu reload   — 重载配置\n"
+                "\n"
+                "📊 运营数据:\n"
+                "/xianyu_report   — 运营报表 (含热销排行/高峰时段/转化漏斗)\n"
+                "/xianyu_style    — AI 回复风格/FAQ/商品规则管理\n"
+                "\n"
+                f"当前状态: {status_line}\n"
+                "\n"
+                "💡 也可以说中文: \"闲鱼数据\" \"商品排行\" \"转化率\" \"闲鱼风格\" \"闲鱼FAQ\""
+            )
+            await update.message.reply_text(help_msg)
+            return
 
         if action == "start":
             r = subprocess.run(["launchctl", "load", PLIST], capture_output=True, text=True)
@@ -1444,7 +1932,7 @@ class ExecutionCommandsMixin:
             else:
                 await update.message.reply_text("⚠️ 闲鱼客服进程未运行")
 
-        else:  # status
+        else:  # status (显式传 status 或其他未知参数)
             r = subprocess.run(["pgrep", "-fl", "xianyu_main"], capture_output=True, text=True)
             if r.stdout.strip():
                 lines = r.stdout.strip().split("\n")
@@ -1466,28 +1954,72 @@ class ExecutionCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_social_calendar(self, update, context):
-        """生成未来 7 天的内容日历"""
+        """生成/查看内容日历，支持 /social_calendar done N 标记完成"""
+        args = context.args or []
+
+        # 子命令: /social_calendar done 3 — 标记第3天已完成
+        if args and args[0].lower() == "done":
+            day_offset = 1
+            if len(args) > 1:
+                try:
+                    day_offset = int(args[1])
+                except ValueError:
+                    pass
+            result = execution_hub.mark_calendar_done(day_offset=day_offset)
+            if result.get("success"):
+                await update.message.reply_text(
+                    f"✅ 第 {day_offset} 天（{result.get('date', '')}）已标记完成，"
+                    f"更新 {result.get('updated', 0)} 条"
+                )
+            else:
+                await update.message.reply_text(f"❌ {result.get('error', '标记失败')}")
+            return
+
         days = 7
-        if context.args:
+        if args:
             try:
-                days = int(context.args[0])
+                days = int(args[0])
             except ValueError:
                 pass
-        await update.message.reply_text(f"📅 正在生成 {days} 天内容日历...")
+
+        # 先查DB已有计划
         result = await execution_hub.generate_content_calendar(days=days)
         if not result.get("success"):
             await update.message.reply_text(format_error(result.get('error', '未知错误'), "生成内容日历"))
             return
-        calendar = result.get("calendar", [])
+
+        # 如果是从数据库返回的已有计划
+        if result.get("from_db"):
+            items = result.get("calendar_items", [])
+            lines = [f"📅 内容日历（{days}天，已有计划）"]
+            lines.append("")
+            status_icon = {"planned": "⬜", "drafted": "📝", "published": "✅", "skipped": "⏭"}
+            for item in items:
+                icon = status_icon.get(item.get("status", "planned"), "⬜")
+                plat = "𝕏" if item.get("platform") == "x" else ("📕" if item.get("platform") == "xhs" else "📱")
+                time_str = item.get("scheduled_time", "")
+                lines.append(
+                    f"{icon} {item.get('plan_date', '')} {time_str} {plat} "
+                    f"{item.get('topic', '')} [{item.get('content_type', '')}]"
+                )
+            lines.append("")
+            lines.append("💡 用 /social_calendar done N 标记第N天已完成")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            return
+
+        # AI 新生成的日历
+        calendar = result.get("calendar", result.get("days", []))
         trending = result.get("trending", [])
-        lines = [f"📅 内容日历（{days}天）"]
+        lines = [f"📅 内容日历（{days}天，新生成）"]
         if trending:
             lines.append(f"🔥 热点参考: {', '.join(trending[:3])}")
         lines.append("")
         for item in calendar:
             platform = "𝕏" if item.get("platform") == "x" else "📕"
-            lines.append(f"Day {item.get('day', '?')} {item.get('time', '')} {platform} {item.get('topic', '')}")
-            lines.append(f"  → {item.get('hook', '')}")
+            lines.append(f"Day {item.get('day', item.get('date', '?'))} {item.get('time', '')} {platform} {item.get('topic', '')}")
+            lines.append(f"  → {item.get('hook', item.get('type', ''))}")
+        lines.append("")
+        lines.append("💡 用 /social_calendar done N 标记第N天已完成")
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)
 
     # ---- 社媒发帖效果报告 ----
@@ -1943,3 +2475,125 @@ class ExecutionCommandsMixin:
             return
         
         await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /novel help 查看帮助")
+
+    # ---- 降价监控管理 ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_pricewatch(self, update, context):
+        """降价提醒管理
+
+        用法:
+        /pricewatch add AirPods Pro 800  — 盯着这个商品，降到800通知我
+        /pricewatch list               — 查看我的监控列表
+        /pricewatch remove 3           — 删除第3个监控
+        """
+        from src.execution.life_automation import (
+            add_price_watch, list_price_watches, remove_price_watch,
+        )
+
+        user = update.effective_user
+        user_id = user.id
+        chat_id = update.effective_chat.id
+        args = context.args or []
+        sub = args[0].lower() if args else "help"
+
+        # ── 帮助 ──
+        if sub in ("help", "帮助", "h"):
+            help_text = (
+                "🔔 降价提醒管理\n\n"
+                "子命令:\n"
+                "  /pricewatch add <商品> <目标价>  — 添加监控\n"
+                "  /pricewatch list               — 我的监控\n"
+                "  /pricewatch remove <编号>       — 删除监控\n\n"
+                "示例:\n"
+                "  /pricewatch add AirPods Pro 800\n"
+                "  /pricewatch add iPhone 16 5000\n\n"
+                "也可以直接说:\n"
+                "  「帮我盯着AirPods，降到800告诉我」\n"
+                "  「AirPods降价提醒 800」\n\n"
+                f"📌 每人最多 10 个监控，每 6 小时检查一次"
+            )
+            await update.message.reply_text(help_text)
+            return
+
+        # ── 添加监控 ──
+        if sub in ("add", "添加", "盯着", "a"):
+            if len(args) < 3:
+                await update.message.reply_text(
+                    "❓ 用法: /pricewatch add <商品关键词> <目标价>\n"
+                    "例: /pricewatch add AirPods Pro 800"
+                )
+                return
+            # 最后一个参数是目标价，前面的都是商品关键词
+            try:
+                target_price = float(args[-1])
+            except ValueError:
+                await update.message.reply_text("❓ 最后一个参数必须是目标价格（数字）")
+                return
+            keyword = " ".join(args[1:-1])
+            if not keyword:
+                await update.message.reply_text("❓ 请输入商品关键词")
+                return
+
+            result = add_price_watch(user_id, chat_id, keyword, target_price)
+            if result.get("success"):
+                await update.message.reply_text(
+                    f"✅ 降价监控已添加！\n\n"
+                    f"📦 商品: {keyword}\n"
+                    f"🎯 目标价: ¥{target_price}\n"
+                    f"🔔 降到这个价格会自动通知你\n"
+                    f"⏰ 每 6 小时检查一次\n\n"
+                    f"💡 发送 /pricewatch list 查看所有监控"
+                )
+            else:
+                await update.message.reply_text(
+                    f"⚠️ 添加失败: {result.get('error', '未知错误')}"
+                )
+            return
+
+        # ── 列表 ──
+        if sub in ("list", "列表", "ls", "l"):
+            watches = list_price_watches(user_id)
+            if not watches:
+                await update.message.reply_text(
+                    "📋 暂无降价监控\n\n"
+                    "发送 /pricewatch add <商品> <目标价> 开始监控\n"
+                    "或直接说：帮我盯着AirPods，降到800告诉我"
+                )
+                return
+            lines = ["🔔 我的降价监控:\n"]
+            for i, w in enumerate(watches, 1):
+                status_icon = "🟢" if w["status"] == "active" else "⏸️"
+                price_info = ""
+                if w["current_price"] > 0:
+                    price_info = f"  当前 ¥{w['current_price']}"
+                    if w["lowest_price"] > 0:
+                        price_info += f" | 最低 ¥{w['lowest_price']}"
+                lines.append(
+                    f"{status_icon} #{w['id']} {w['keyword']}\n"
+                    f"  🎯 目标价 ¥{w['target_price']}{price_info}"
+                )
+            lines.append(f"\n💡 /pricewatch remove <编号> 删除监控")
+            await update.message.reply_text("\n".join(lines))
+            return
+
+        # ── 删除 ──
+        if sub in ("remove", "delete", "rm", "del", "删除"):
+            if len(args) < 2:
+                await update.message.reply_text("❓ 请指定监控编号: /pricewatch remove 3")
+                return
+            try:
+                watch_id = int(args[1])
+            except ValueError:
+                await update.message.reply_text("❓ 编号必须是数字")
+                return
+            if remove_price_watch(watch_id, user_id):
+                await update.message.reply_text(f"✅ 监控 #{watch_id} 已删除")
+            else:
+                await update.message.reply_text(f"❌ 删除失败 — 编号不存在或无权限")
+            return
+
+        await update.message.reply_text(
+            f"❓ 未知子命令: {sub}\n发送 /pricewatch help 查看帮助"
+        )

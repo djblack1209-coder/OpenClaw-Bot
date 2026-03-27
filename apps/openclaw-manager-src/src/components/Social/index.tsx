@@ -27,30 +27,44 @@ const actions = [
   { id: 'autopilot', label: '全托管运营', desc: '开启无人值守模式 (Auto-pilot)', icon: Rocket, cmd: '/autopilot', confirm: true },
 ];
 
-const mockDrafts = [
-  { id: 1, title: '苹果 WWDC 深度解析', platforms: ['X', '小红书'], status: 'draft', time: new Date() },
-  { id: 2, title: '独立开发者如何找到第一批用户', platforms: ['X'], status: 'scheduled', time: new Date(Date.now() + 86400000) },
-  { id: 3, title: '2026年 AI 趋势预测', platforms: ['小红书'], status: 'published', time: new Date(Date.now() - 86400000) },
-];
+interface Draft {
+  id: number;
+  title: string;
+  platforms: string[];
+  status: string;
+  time: Date;
+}
 
 export function Social() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
-  const browserStatus = { x: 'ready', xhs: 'login_needed' };
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const browserStatus = { x: 'unknown' as string, xhs: 'unknown' as string };
 
   const handleAction = async (id: string, cmd: string, hasInput?: boolean) => {
     const input = inputs[id];
     if (hasInput && !input) return;
 
     setStatuses(prev => ({ ...prev, [id]: { running: true } }));
-    
-    // Simulate
-    setTimeout(() => {
+
+    try {
+      const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `${cmd} ${input || ''}`.trim() }),
+      });
+      const data = await resp.json();
       setStatuses(prev => ({
         ...prev,
-        [id]: { running: false, lastResult: `Command ${cmd} ${input || ''} executed successfully.` }
+        [id]: { running: false, lastResult: data.result || data.response || '执行完成' }
       }));
-    }, 1500);
+    } catch (e) {
+      setStatuses(prev => ({
+        ...prev,
+        [id]: { running: false, lastResult: `执行失败: ${e instanceof Error ? e.message : '服务不可达'}` }
+      }));
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -60,9 +74,9 @@ export function Social() {
   };
 
   const getStatusText = (status: string) => {
-    if (status === 'ready') return <span className="text-green-500 font-medium">Session Active</span>;
-    if (status === 'login_needed') return <span className="text-amber-500 font-medium">Auth Required</span>;
-    return <span className="text-gray-500 font-medium">Offline</span>;
+    if (status === 'ready') return <span className="text-green-500 font-medium">会话活跃</span>;
+    if (status === 'login_needed') return <span className="text-amber-500 font-medium">需要登录</span>;
+    return <span className="text-gray-500 font-medium">离线</span>;
   };
 
   return (
@@ -73,7 +87,7 @@ export function Social() {
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
               <Share2 className="text-blue-400 h-6 w-6" />
-              社媒与内容中枢 (Social Hub)
+              社媒与内容中枢
             </h2>
             <p className="text-gray-400 text-sm mt-1">跨平台矩阵分发、自动化互动与多模态内容生成</p>
           </div>
@@ -184,7 +198,12 @@ export function Social() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-dark-700/50">
-                  {mockDrafts.map(draft => (
+                  {drafts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-gray-500 gap-3">
+                      <FileText size={40} className="text-dark-600" />
+                      <p>暂无草稿，点击「新建内容」或通过命令生成</p>
+                    </div>
+                  ) : drafts.map(draft => (
                     <div key={draft.id} className="p-5 flex items-center justify-between hover:bg-dark-800/30 transition-colors group">
                       <div className="flex items-start gap-4">
                         <div className={clsx(

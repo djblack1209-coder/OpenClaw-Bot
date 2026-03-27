@@ -1,6 +1,6 @@
 """
 OpenClaw OMEGA — 多路径执行引擎 (Executor)
-按优先级尝试: API直连 → 浏览器自动化 → AI电话 → 人工通知。
+按优先级尝试: API直连 → 浏览器自动化 → AI电话 → Composio外部服务 → 人工通知。
 
 设计原则:
   1. 每个路径独立，一个失败不影响其他
@@ -14,8 +14,7 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from src.utils import now_et
@@ -30,7 +29,7 @@ class ExecutionResult:
     """执行结果"""
     success: bool = False
     data: Any = None
-    execution_path: str = ""    # api / browser / voice_call / human
+    execution_path: str = ""    # api / browser / voice_call / composio / skyvern / human
     elapsed_seconds: float = 0.0
     cost_usd: float = 0.0
     error: Optional[str] = None
@@ -57,6 +56,7 @@ PLATFORM_REGISTRY: Dict[str, Dict] = {
     "pdd": {"browser_url": "https://www.pinduoduo.com"},
     "smzdm": {"api": "https://www.smzdm.com/rss", "browser_url": "https://www.smzdm.com"},
     "xianyu": {"browser_url": "https://www.goofish.com"},
+    "composio": {"composio": True},  # 250+ 外部服务 (Gmail/Calendar/Slack/GitHub 等)
 }
 
 
@@ -112,13 +112,17 @@ class MultiPathExecutor:
       1. API 直连（httpx）
       2. 浏览器自动化（Playwright / DrissionPage）
       3. AI 语音电话（Retell / Twilio）
-      4. 通知用户人工处理
+      4. Composio 外部服务（250+ 应用: Gmail/Calendar/Slack/GitHub 等）
+      5. Skyvern 视觉 RPA（截图 + LLM 理解页面，无需 selector）
+      6. 通知用户人工处理
 
     用法:
         executor = MultiPathExecutor()
         result = await executor.execute_with_fallback([
             {"type": "api", "endpoint": "...", "params": {...}},
             {"type": "browser", "url": "...", "actions": [...]},
+            {"type": "composio", "action": "GMAIL_SEND_EMAIL", "params": {...}},
+            {"type": "skyvern", "url": "...", "goal": "...", "max_steps": 10},
             {"type": "voice_call", "phone": "...", "objective": "..."},
         ])
     """
@@ -185,6 +189,20 @@ class MultiPathExecutor:
                         strategy,
                     )
                     data = {"action": "human_notified"}
+                elif exec_type == "composio":
+                    data = await self.execute_via_composio(
+                        strategy.get("action", ""),
+                        strategy.get("params", {}),
+                        strategy.get("entity_id"),
+                        strategy.get("connected_account_id"),
+                    )
+                elif exec_type == "skyvern":
+                    data = await self.execute_via_skyvern(
+                        strategy.get("url", ""),
+                        strategy.get("goal", ""),
+                        strategy.get("max_steps", 10),
+                        strategy.get("data_extraction_schema"),
+                    )
                 else:
                     continue
 
@@ -349,6 +367,74 @@ class MultiPathExecutor:
             raise RuntimeError("Retell AI 和 Twilio 均未安装")
         except Exception as e:
             raise RuntimeError(f"电话拨号失败: {e}")
+
+    async def execute_via_composio(
+        self,
+        action: str,
+        params: Optional[Dict] = None,
+        entity_id: Optional[str] = None,
+        connected_account_id: Optional[str] = None,
+    ) -> Any:
+        """Composio 外部服务 — 250+ 应用集成 (Gmail/Calendar/Slack/GitHub 等)"""
+        if not action:
+            raise ValueError("Composio action 为空")
+
+        try:
+            from src.integrations.composio_bridge import get_composio_bridge
+        except ImportError:
+            raise RuntimeError("composio_bridge 模块不可用")
+
+        bridge = get_composio_bridge()
+        if not bridge.is_available():
+            raise RuntimeError("Composio 不可用 (SDK 未安装或 API Key 未设置)")
+
+        # ComposioToolSet.execute_action 是同步方法，放到线程池避免阻塞事件循环
+        result = await asyncio.to_thread(
+            bridge.execute_action,
+            action,
+            params or {},
+            entity_id,
+            connected_account_id,
+        )
+
+        if not result.get("success"):
+            raise RuntimeError(f"Composio 执行失败: {result.get('error', 'unknown')}")
+
+        return result.get("data")
+
+    async def execute_via_skyvern(
+        self,
+        url: str,
+        goal: str,
+        max_steps: int = 10,
+        data_extraction_schema: Optional[Dict] = None,
+    ) -> Any:
+        """Skyvern 视觉 RPA — 通过截图 + LLM 理解页面，无需 CSS selector"""
+        if not url:
+            raise ValueError("URL 为空")
+        if not goal:
+            raise ValueError("goal 为空")
+
+        try:
+            from src.integrations.skyvern_bridge import get_skyvern_bridge
+        except ImportError:
+            raise RuntimeError("skyvern_bridge 模块不可用")
+
+        bridge = get_skyvern_bridge()
+        if not bridge.is_available():
+            raise RuntimeError("Skyvern 不可用 (SDK 未安装或 API Key 未设置)")
+
+        result = await bridge.run_task(
+            url=url,
+            goal=goal,
+            max_steps=max_steps,
+            data_extraction_schema=data_extraction_schema,
+        )
+
+        if not result.get("success"):
+            raise RuntimeError(f"Skyvern 执行失败: {result.get('error', 'unknown')}")
+
+        return result.get("data")
 
     async def fallback_to_human(
         self, task_description: str, context: Dict

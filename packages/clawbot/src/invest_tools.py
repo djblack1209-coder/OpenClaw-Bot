@@ -17,7 +17,6 @@ import sqlite3
 import os
 import time as _time
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Optional, Dict, Tuple
 
 from src.utils import now_et
@@ -311,8 +310,9 @@ class Portfolio:
     @contextmanager
     def _conn(self):
         """SQLite 连接 context manager，自动提交/关闭，防泄漏"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=10)
         try:
+            conn.execute("PRAGMA journal_mode=WAL")
             yield conn
             conn.commit()
         except Exception:

@@ -137,10 +137,10 @@ export function Logs() {
             className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
           >
             <option value="all">所有级别</option>
-            <option value="debug">Debug</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="error">Error</option>
+            <option value="debug">调试</option>
+            <option value="info">信息</option>
+            <option value="warn">警告</option>
+            <option value="error">错误</option>
           </select>
         </div>
 

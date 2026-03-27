@@ -112,3 +112,76 @@ def run_social_worker(
             time.sleep(3)
 
     return last_err or {"success": False, "error": "unknown"}
+
+
+async def run_social_worker_async(
+    action: str,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """异步版本 run_social_worker — 不阻塞事件循环。
+
+    与同步版本逻辑完全一致，但使用 asyncio.create_subprocess_exec 和 asyncio.sleep。
+    """
+    import asyncio
+    worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
+    payload = payload or {}
+    max_retries = 2 if action and "publish" in str(action) else 1
+    last_err: Optional[Dict[str, Any]] = None
+
+    for attempt in range(max_retries):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python3", str(worker), action,
+                json.dumps(payload, ensure_ascii=False),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=300
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                last_err = {"success": False, "error": f"worker 超时 (action={action})"}
+                logger.warning("[SocialWorker] %s 超时(attempt %d)", action, attempt + 1)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(3)
+                continue
+
+            stdout = (stdout_bytes or b"").decode().strip()
+            stderr = (stderr_bytes or b"").decode().strip()
+
+            if proc.returncode != 0:
+                last_err = {"success": False, "error": f"worker exited {proc.returncode}",
+                            "stderr": stderr, "stdout": stdout}
+                if attempt < max_retries - 1:
+                    logger.warning("[SocialWorker] %s 失败(attempt %d)，重试中...", action, attempt + 1)
+                    await asyncio.sleep(3)
+                    continue
+                return last_err
+
+            if not stdout:
+                last_err = {"success": False, "error": "worker produced no output"}
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(3)
+                    continue
+                return last_err
+
+            data = json.loads(stdout)
+            if isinstance(data, dict):
+                data.setdefault("success", True)
+                return data
+            return {"success": False, "error": "worker 输出不是对象"}
+
+        except json.JSONDecodeError as e:
+            last_err = {"success": False, "error": f"worker 输出解析失败: {e}"}
+            logger.warning("[SocialWorker] %s JSON解析失败: %s", action, e)
+        except Exception as e:
+            last_err = {"success": False, "error": str(e)}
+            logger.warning("[SocialWorker] %s 异常(attempt %d): %s", action, attempt + 1, e)
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(3)
+
+    return last_err or {"success": False, "error": "unknown"}

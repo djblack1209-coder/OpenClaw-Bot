@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -42,6 +42,7 @@ import { Header } from './components/Layout/Header';
 
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
+import { useAppStore } from './stores/appStore';
 
 export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory';
 
@@ -63,10 +64,14 @@ interface ServiceStatus {
 }
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<PageType>('control');
-  const [isReady, setIsReady] = useState<boolean | null>(null);
-  const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
-  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
+  const currentPage = useAppStore((s) => s.currentPage);
+  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
+  const isReady = useAppStore((s) => s.isReady);
+  const setIsReady = useAppStore((s) => s.setIsReady);
+  const envStatus = useAppStore((s) => s.envStatus);
+  const setEnvStatus = useAppStore((s) => s.setEnvStatus);
+  const serviceStatus = useAppStore((s) => s.serviceStatus);
+  const setServiceStatus = useAppStore((s) => s.setServiceStatus);
 
   // 检查环境
   const checkEnvironment = useCallback(async () => {

@@ -4,6 +4,9 @@ IBKR 实盘命令 Mixin — 从 multi_main.py L1488-L1649 提取
 """
 import logging
 
+from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
+from src.telegram_ux import with_typing
 from src.bot.globals import (
     ibkr, get_stock_quote, get_risk_manager,
     send_long_message,
@@ -15,10 +18,10 @@ logger = logging.getLogger(__name__)
 class IBKRCommandsMixin:
     """IBKR 实盘交易命令"""
 
+    @requires_auth
+    @with_typing
     async def cmd_ibuy(self, update, context):
         """IBKR买入: /ibuy AAPL 5 或 /ibuy AAPL 5 150.5"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if not args or len(args) < 2:
             await update.message.reply_text(
@@ -64,7 +67,7 @@ class IBKRCommandsMixin:
         result = await ibkr.buy(symbol, qty, order_type, limit_price,
                                 decided_by=self.name, reason="Telegram手动下单")
         if "error" in result:
-            await update.message.reply_text("下单失败: %s" % result["error"])
+            await update.message.reply_text(error_service_failed("IBKR买入"))
         else:
             price_info = "$%.2f" % result["avg_price"] if result["avg_price"] > 0 else "待成交"
             text = (
@@ -77,10 +80,10 @@ class IBKRCommandsMixin:
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_isell(self, update, context):
         """IBKR卖出: /isell AAPL 5"""
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if not args or len(args) < 2:
             await update.message.reply_text(
@@ -110,7 +113,7 @@ class IBKRCommandsMixin:
         result = await ibkr.sell(symbol, qty, order_type, limit_price,
                                  decided_by=self.name, reason="Telegram手动下单")
         if "error" in result:
-            await update.message.reply_text("下单失败: %s" % result["error"])
+            await update.message.reply_text(error_service_failed("IBKR卖出"))
         else:
             price_info = "$%.2f" % result["avg_price"] if result["avg_price"] > 0 else "待成交"
             text = (
@@ -122,33 +125,33 @@ class IBKRCommandsMixin:
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_ipositions(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text("%s 查询IBKR持仓..." % self.emoji)
         text = await ibkr.get_positions_text()
         await send_long_message(update.effective_chat.id, text, context,
                                 reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_iorders(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         text = await ibkr.get_orders_text()
         await send_long_message(update.effective_chat.id, text, context,
                                 reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_iaccount(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         await update.message.reply_text("%s 查询IBKR账户..." % self.emoji)
         text = await ibkr.get_account_value()
         text += "\n\n" + ibkr.get_budget_status()
         await send_long_message(update.effective_chat.id, text, context,
                                 reply_to_message_id=update.message.message_id)
 
+    @requires_auth
+    @with_typing
     async def cmd_icancel(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            return
         args = context.args
         if args:
             try:
@@ -160,6 +163,6 @@ class IBKRCommandsMixin:
         else:
             result = await ibkr.cancel_all_orders()
         if "error" in result:
-            await update.message.reply_text("取消失败: %s" % result["error"])
+            await update.message.reply_text(error_service_failed("IBKR取消订单"))
         else:
             await update.message.reply_text("订单已取消")

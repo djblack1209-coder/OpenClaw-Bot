@@ -13,6 +13,7 @@ OpenClaw OMEGA — 核心编排器 (Brain)
     result = await brain.process_message("telegram", "帮我分析茅台今天能买吗")
 """
 import asyncio
+import importlib.util
 import logging
 import time
 import uuid
@@ -275,6 +276,19 @@ class OpenClawBrain:
                 pass
 
             if not intent.is_actionable:
+                # ── 模糊输入智能引导 — 无法识别明确意图时提供快捷操作建议 ──
+                # 搬运灵感: ChatGPT suggested prompts / Google Gemini 推荐操作
+                # 这些建议会被 message_mixin 渲染成 InlineKeyboard 按钮
+                _suggestions = [
+                    ("📊 看持仓", "cmd:portfolio"),
+                    ("📋 今日简报", "cmd:brief"),
+                    ("📱 账单状态", "cmd:bill"),
+                ]
+                # 检查闲鱼模块是否可用
+                if importlib.util.find_spec("src.xianyu.xianyu_context"):
+                    _suggestions.append(("🐟 闲鱼状态", "cmd:xianyu"))
+                result.extra_data["quick_suggestions"] = _suggestions
+
                 # GAP 10 修复: 调用方明确要求跳过聊天降级时，直接返回 forward_to_chat
                 # 这避免了 Brain 用低质量路径（无用户画像/300token上限）生成次优回复
                 if skip_chat_fallback:

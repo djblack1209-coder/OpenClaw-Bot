@@ -5,7 +5,7 @@ Execution Hub — AI 调用层 (LiteLLM 版)
 import logging
 import os
 import time
-from typing import Dict, Optional, Callable
+from typing import Dict, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class AICallerPool:
         """通过 LiteLLM Router 调用 — 替代手写 HTTP"""
         if not prompt:
             return {"success": False, "error": "empty prompt"}
-        from src.litellm_router import free_pool, BOT_MODEL_FAMILY
+        from src.litellm_router import free_pool
         messages = [{"role": "user", "content": prompt}]
         t0 = time.time()
         try:

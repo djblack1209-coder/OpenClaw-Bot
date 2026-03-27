@@ -24,7 +24,7 @@ v2.0 新增（对标 freqtrade）：
 15. 交易频率限制：防止过度交易
 """
 import logging
-import math
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -37,15 +37,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RiskConfig:
-    """风控参数配置"""
+    """风控参数配置
+    
+    ⚠️ 权威数值来源: 本 dataclass 为运行时真值 (single source of truth)。
+    config/omega.yaml investment.risk_rules 必须与此处保持同步。
+    bot_profiles.py 风控提示词中的数字也必须匹配。
+    修改任一处时，三处都要同步更新。
+    """
     # 资金管理
-    total_capital: float = 2000.0           # 总资金
-    max_risk_per_trade_pct: float = 0.02    # 单笔最大风险比例 (2%)
-    daily_loss_limit: float = 100.0         # 日亏损上限 (USD)
+    total_capital: float = 2000.0           # 总资金 (USD) — omega.yaml: total_capital
+    max_risk_per_trade_pct: float = 0.02    # 单笔最大风险比例 2% ($40) — omega.yaml: max_risk_per_trade
+    daily_loss_limit: float = 100.0         # 日亏损上限 $100 (=5% of $2000) — omega.yaml: daily_loss_limit=0.05
     
     # 仓位控制
-    max_position_pct: float = 0.30          # 单只标的最大仓位比例 (30%)
-    max_total_exposure_pct: float = 0.80    # 总敞口上限 (80%)
+    max_position_pct: float = 0.30          # 单只标的最大仓位 30% — omega.yaml: max_position_single
+    max_total_exposure_pct: float = 0.80    # 总敞口上限 80% — omega.yaml: max_total_position
     max_open_positions: int = 5             # 最大同时持仓数
     
     # 交易质量
@@ -151,6 +157,7 @@ class RiskManager:
         self.journal = journal  # TradingJournal 实例
         
         # 运行时状态
+        self._state_lock = threading.Lock()
         self._consecutive_losses: int = 0
         self._cooldown_until: Optional[datetime] = None
         self._today_pnl: float = 0.0
@@ -211,6 +218,18 @@ class RiskManager:
         
         symbol = symbol.upper()
         side = side.upper()
+        
+        # === 检查-1: 参数合法性 ===
+        if entry_price <= 0:
+            return RiskCheckResult(
+                approved=False,
+                reason=f"入场价必须大于零 (got {entry_price})"
+            )
+        if quantity <= 0:
+            return RiskCheckResult(
+                approved=False,
+                reason=f"交易数量必须大于零 (got {quantity})"
+            )
         
         # === 检查0: 黑名单 ===
         if symbol in self.config.blacklist:
@@ -466,6 +485,11 @@ class RiskManager:
 
     def record_trade_result(self, pnl: float, symbol: str = ""):
         """记录交易结果，更新连续亏损计数、日PnL、滚动窗口、阶梯熔断"""
+        with self._state_lock:
+            self._record_trade_result_inner(pnl, symbol)
+
+    def _record_trade_result_inner(self, pnl: float, symbol: str = ""):
+        """内部实现 — 由 _state_lock 保护"""
         self._today_pnl += pnl
         self._today_trades += 1
         
@@ -528,9 +552,12 @@ class RiskManager:
         self._today_trades = 0
         self._consecutive_losses = 0
         self._cooldown_until = None
+        # FIX 9: 同步重置分层状态，确保每日干净启动
+        self._current_tier = 0
+        self._position_scale = 1.0
         self._last_pnl_update = now_et().strftime('%Y-%m-%d')
         self._last_refresh_ts = None
-        logger.info("[RiskManager] 日重置完成（含连续亏损和熔断清零）")
+        logger.info("[RiskManager] 日重置完成（含连续亏损、熔断、分层状态清零）")
 
     def force_clear_cooldown(self):
         """强制解除熔断（管理员操作）"""
@@ -673,7 +700,7 @@ class RiskManager:
         
         risk_per_share = abs(entry_price - stop_loss)
         if risk_per_share <= 0:
-            return {"error": "止损价不能等于入场价"}
+            return {"error": "止损价不能等于入场价", "shares": 0}
         
         # 基于风险的数量
         shares_by_risk = int(max_risk / risk_per_share)
@@ -708,7 +735,7 @@ class RiskManager:
             "",
             f"总资金: ${s['capital']:,.2f}  |  峰值: ${s['peak_capital']:,.2f}",
             f"今日PnL: ${s['today_pnl']:+.2f} / 限额-${s['daily_loss_limit']:.0f}",
-            f"今日剩余额度: ${s['remaining_daily_budget']:.2f}",
+            f"今日剩余额度: ${s['remaining_daily_loss_budget']:.2f}",
             f"今日交易: {s['today_trades']}笔",
             "",
             f"单笔最大风险: ${s['max_risk_per_trade']:.2f} "
@@ -990,6 +1017,113 @@ class RiskManager:
         for symbol, sector in mapping.items():
             self._symbol_sectors[symbol.upper()] = sector
 
+    def lookup_sectors(self, symbols: List[str]) -> Dict[str, str]:
+        """查询标的所属行业，优先用缓存，缓存未命中时用 yfinance 查询
+
+        返回 {symbol: sector} 映射，查询失败的标记为 '未知'。
+        结果会写回 _symbol_sectors 缓存，避免重复查询。
+        """
+        result: Dict[str, str] = {}
+        to_fetch: List[str] = []
+        for sym in symbols:
+            s = sym.upper()
+            cached = self._symbol_sectors.get(s)
+            if cached:
+                result[s] = cached
+            else:
+                to_fetch.append(s)
+
+        if to_fetch:
+            try:
+                import yfinance as yf
+                for sym in to_fetch:
+                    try:
+                        ticker = yf.Ticker(sym)
+                        info = ticker.info or {}
+                        sector = info.get("sector", "未知")
+                        if not sector:
+                            sector = "未知"
+                    except Exception:
+                        sector = "未知"
+                    result[sym] = sector
+                    self._symbol_sectors[sym] = sector
+            except ImportError:
+                # yfinance 不可用，全部标记未知
+                for sym in to_fetch:
+                    result[sym] = "未知"
+                    self._symbol_sectors[sym] = "未知"
+
+        return result
+
+    def get_risk_exposure_summary(
+        self, positions: List[Dict], cash: float = 0
+    ) -> Dict:
+        """生成风险敞口摘要数据，供 /portfolio 展示
+
+        返回包含单只最大占比、行业最大占比、总仓位、日亏损额度等信息的字典。
+        """
+        self._refresh_today_pnl()
+
+        total_market_value = sum(
+            abs(p.get("market_value", 0)) for p in positions
+        )
+        total_value = total_market_value + cash
+
+        # 单只最大占比
+        max_single_sym = ""
+        max_single_pct = 0.0
+        for p in positions:
+            mv = abs(p.get("market_value", 0))
+            pct = (mv / total_value * 100) if total_value > 0 else 0
+            if pct > max_single_pct:
+                max_single_pct = pct
+                max_single_sym = p.get("symbol", "?")
+
+        # 行业聚合占比
+        sector_values: Dict[str, float] = {}
+        symbols = [p.get("symbol", "") for p in positions]
+        sector_map = self.lookup_sectors(symbols)
+        for p in positions:
+            sym = p.get("symbol", "").upper()
+            sector = sector_map.get(sym, "未知")
+            mv = abs(p.get("market_value", 0))
+            sector_values[sector] = sector_values.get(sector, 0) + mv
+
+        max_sector_name = ""
+        max_sector_pct = 0.0
+        for sector, val in sector_values.items():
+            pct = (val / total_value * 100) if total_value > 0 else 0
+            if pct > max_sector_pct:
+                max_sector_pct = pct
+                max_sector_name = sector
+
+        # 总仓位占比
+        total_position_pct = (
+            (total_market_value / total_value * 100) if total_value > 0 else 0
+        )
+
+        # 日亏损额度
+        remaining_daily = self.config.daily_loss_limit + self._today_pnl
+
+        return {
+            "max_single_symbol": max_single_sym,
+            "max_single_pct": round(max_single_pct, 1),
+            "max_single_threshold": round(self.config.max_position_pct * 100, 0),
+            "max_sector_name": max_sector_name,
+            "max_sector_pct": round(max_sector_pct, 1),
+            "max_sector_threshold": round(
+                self.config.max_sector_exposure_pct * 100, 0
+            ),
+            "total_position_pct": round(total_position_pct, 1),
+            "total_position_threshold": round(
+                self.config.max_total_exposure_pct * 100, 0
+            ),
+            "daily_loss_used": round(abs(min(self._today_pnl, 0)), 2),
+            "daily_loss_limit": round(self.config.daily_loss_limit, 2),
+            "sector_values": sector_values,
+            "sector_map": sector_map,
+        }
+
     # ============ v2.0 凯利公式仓位计算 ============
 
     def calc_kelly_quantity(
@@ -1045,7 +1179,7 @@ class RiskManager:
         # 计算仓位
         risk_per_share = abs(entry_price - stop_loss)
         if risk_per_share <= 0:
-            return {"error": "止损价不能等于入场价"}
+            return {"error": "止损价不能等于入场价", "shares": 0}
         
         kelly_amount = cap * kelly_pct
         shares = int(kelly_amount / risk_per_share)
@@ -1161,7 +1295,7 @@ class RiskManager:
             "today_pnl": round(self._today_pnl, 2),
             "today_trades": self._today_trades,
             "daily_loss_limit": self.config.daily_loss_limit,
-            "remaining_daily_budget": round(max(0, remaining_daily), 2),
+            "remaining_daily_loss_budget": round(max(0, remaining_daily), 2),
             "consecutive_losses": self._consecutive_losses,
             "in_cooldown": self._is_in_cooldown(),
             "cooldown_until": self._cooldown_until.isoformat() if self._cooldown_until else None,

@@ -1,0 +1,44 @@
+[
+  {
+    "title": "突发：AI大模型价格战全面爆发，GPT-5刚刚发布",
+    "source": "trending",
+    "type": "trending",
+    "url": "https://x.com/search?q=GPT-5",
+    "interaction": {"likes": 34500, "comments": 5200}
+  },
+  {
+    "title": "刚刚！考研党必备：AI学习助手帮你制定复习计划",
+    "source": "hot_search", 
+    "type": "hot_search",
+    "url": "https://www.xiaohongshu.com/explore",
+    "interaction": {"likes": 25600, "comments": 4800, "collects": 7200}
+  },
+  {
+    "title": "最新：OpenAI发布新Agent框架，开发者疯狂测试中",
+    "source": "viral_post",
+    "type": "search",
+    "url": "https://x.com/search?q=AI%20agent",
+    "interaction": {"likes": 28900, "comments": 6500}
+  },
+  {
+    "title": "效率工具推荐：这5个AI应用让工作效率翻倍",
+    "source": "search_trend",
+    "type": "search_trend", 
+    "url": "https://www.xiaohongshu.com/search_result?keyword=效率工具",
+    "interaction": {"likes": 23400, "comments": 3800, "collects": 5600}
+  },
+  {
+    "title": "刚刚发布：Claude 3.7推理能力大幅提升",
+    "source": "kol_post",
+    "type": "aggregator",
+    "url": "https://news.ycombinator.com",
+    "interaction": {"votes": 1890, "comments": 320}
+  },
+  {
+    "title": "AI绘画新突破：一键生成高清4K图片",
+    "source": "search_trend",
+    "type": "search_trend",
+    "url": "https://www.xiaohongshu.com/search_result?keyword=AI教程",
+    "interaction": {"likes": 18700, "comments": 3100, "collects": 4900}
+  }
+]

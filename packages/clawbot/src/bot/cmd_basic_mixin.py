@@ -32,6 +32,7 @@ def _build_help_main_keyboard():
          InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
         [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
          InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
+        [InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu")],
         [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
     ])
 
@@ -137,7 +138,10 @@ class BasicCommandsMixin:
                 "/draw <描述>  AI 生图\n"
                 "/news  科技早报\n"
                 "/context  查看上下文用量\n"
-                "/compact  压缩上下文"
+                "/compact  压缩上下文\n"
+                "/weekly  综合周报\n"
+                "/pricewatch  降价提醒\n"
+                "/bill  话费水电费追踪"
             ),
             "social": (
                 "📱 社媒一键发\n"
@@ -176,7 +180,10 @@ class BasicCommandsMixin:
                 "/tradingsystem  交易系统状态\n"
                 "/performance  投资绩效\n"
                 "/review  交易复盘\n"
-                "/journal  交易日志"
+                "/journal  交易日志\n"
+                "/accuracy  AI预测准确率\n"
+                "/equity  权益曲线\n"
+                "/targets  盈利目标进度"
             ),
             "ibkr": (
                 "🏦 IBKR 实盘\n"
@@ -198,6 +205,12 @@ class BasicCommandsMixin:
                 "/discuss <轮数> <主题>  多 Bot 讨论\n"
                 "/lanes  群聊分流标签\n"
                 "/config  运行配置"
+            ),
+            "xianyu": (
+                "🛒 闲鱼运营\n"
+                "───────────────────\n"
+                "/xianyu  闲鱼AI客服 start/stop/status\n"
+                "/xianyu_report  闲鱼运营报表"
             ),
             "system": (
                 "🔧 系统工具\n"
@@ -984,6 +997,8 @@ class BasicCommandsMixin:
             "invest": self.cmd_invest,
             "evolve": self.cmd_status,
             "tasks": self.cmd_ops,
+            "bill": self.cmd_bill,
+            "xianyu": self.cmd_xianyu,
         }
 
         handler = cmd_map.get(cmd_name)

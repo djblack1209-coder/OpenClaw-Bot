@@ -25,9 +25,9 @@ Use when service health degrades, endpoints fail, or message routing stalls.
 
 ## Notification rules
 
-- **All healthy** → Silent (no message to Boss)
+- **All healthy** → Silent (no message to 严总)
 - **Auto-recovery succeeded** → Silent
-- **Auto-recovery failed (consecutiveCount >= 2)** → Notify Boss with concise incident note + root cause hypothesis
+- **Auto-recovery failed (consecutiveCount >= 2)** → Notify 严总 with concise incident note + root cause hypothesis
 
 ## Stability rule
 

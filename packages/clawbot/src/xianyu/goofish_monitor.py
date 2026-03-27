@@ -18,11 +18,9 @@
 """
 import logging
 import os
-import json
 import asyncio
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +79,12 @@ class GoofishMonitor:
                 logger.error("[GoofishMonitor] httpx 未安装")
                 return None
         return self._session
+
+    async def close(self):
+        """关闭 httpx 会话，防止连接泄漏"""
+        if self._session:
+            await self._session.aclose()
+            self._session = None
 
     async def authenticate(self) -> bool:
         """登录 ai-goofish-monitor Web UI"""

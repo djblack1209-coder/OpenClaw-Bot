@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-27 (六轮产品跃迁: 16项能力+41项测试+2Bug修复 | 946/946 passed | 活跃问题清零)
+> 最后更新: 2026-03-28 (第十轮全量审计R10: 代码+前端+部署+SOP大修 | 980/980 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -46,16 +46,22 @@
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 |
-| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控 |
-| 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 |
-| 备用节点 | 🟢 待命中 | 腾讯云 2C2G 已部署 |
-| 测试通过率 | 🟢 100% | 946/946 Python (含41项AI助手能力测试), 0 TypeScript错误 |
-| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行 |
+| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警 |
+| 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
+| 备用节点 | 🟡 待命中 | 腾讯云 2C2G — 代码已同步, systemd 服务已创建, failover timer 运行中, 待心跳恢复后自动切换 |
+| 测试通过率 | 🟢 100% | 980/980 Python (含41项AI助手能力测试), 0 TypeScript错误 |
+| 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
+| 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
+| 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
+| 生活自动化 | 🟢 运行中 | 提醒(周期性)+记账(收入/支出/月预算/超支告警/月度聚合)+话费水电费余额追踪+定时低余额告警 |
+| 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发 |
+| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 前端 Mock 数据替换 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复 |
-| 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 |
+| 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
+| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
 | 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
 | 通知可靠性 | 🟢 加固 | P0通知3次重试 + 关机刷新批处理 + EventBus异常日志 |
@@ -69,24 +75,28 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | _(无阻塞项)_ | | | | |
+| HI-258 | `backend` | `bot/__init__.py` | 循环导入: telegram_ux ↔ bot (连锁加载10个Mixin) | 清除 `__init__.py` 中的模块级 `import MultiBot`（无消费者使用此便捷导入） | 2026-03-27 | 第四轮产品跃迁 |
 
 ### 🟠 重要
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| _(无重要项)_ | | | | |
+| HI-277 | `deploy` | VPS failover | Mac 恢复后无 VPS 退让机制 — 可能导致双节点同时运行 Bot | 2026-03-27 |
+| HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 (已新建 vps_failover_check.sh) | 2026-03-27 |
 
 ### 🟡 一般
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| _(无一般项)_ | | | | |
+| HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
+| HI-282 | `backend` | `litellm_router.py` | 6个废弃方法未清理 (acquire/release/save/load/record_success/record_error) | 2026-03-27 |
+| HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 
 ### 🔵 低优先
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| _(无低优先项)_ | | | | |
+| HI-284 | `backend` | 3个文件 | _emit_flow fallback stub 在 task_graph/execution/_ai/x_platform 重复定义 | 2026-03-27 |
 
 ---
 
@@ -94,6 +104,66 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-333 | `docs` | AGENTS.md | 开发 SOP 不够系统，用户需代入技术角色 | 升级为 AI CEO SOP (8 阶段完整流水线) | 2026-03-28 | 全量审计R10 |
+| HI-332 | `deploy` | requirements.txt | 7 个依赖无版本上界 + 测试依赖混入生产 | 添加上界 + 新建 requirements-dev.txt | 2026-03-28 | 全量审计R10 |
+| HI-331 | `deploy` | deploy_server_main.py | 默认绑定 0.0.0.0 暴露公网 | 改为 127.0.0.1 | 2026-03-28 | 全量审计R10 |
+| HI-330 | `deploy` | docker-compose.mediacrawler.yml | 缺资源限制和健康检查 | 添加 limits + healthcheck | 2026-03-28 | 全量审计R10 |
+| HI-329 | `deploy` | docker-compose.goofish.yml | 注释含默认密码 admin/admin123 + 缺资源限制 | 删除密码 + 添加 limits + healthcheck | 2026-03-28 | 全量审计R10 |
+| HI-328 | `deploy` | .gitignore + Git 索引 | .venv(12K)+node_modules(35K)+browser(1.5K) 文件被 Git 跟踪导致仓库 483MB | git rm --cached 清理 + .gitignore 补充 | 2026-03-28 | 全量审计R10 |
+| HI-327 | `frontend` | Channels/index.tsx | 约 250 行代码与 channelDefinitions.ts 重复 | 统一从 channelDefinitions.ts 导入 | 2026-03-28 | 全量审计R10 |
+| HI-326 | `frontend` | Channels/index.tsx | WhatsApp 登录定时器泄漏 | useRef + useEffect cleanup | 2026-03-28 | 全量审计R10 |
+| HI-325 | `frontend` | Social+Money+Memory | 6 处硬编码 Mock 数据误导用户 | 替换为 API 调用 + 空态 UI | 2026-03-28 | 全量审计R10 |
+| HI-324 | `frontend` | Memory/index.tsx | JSON.parse 未保护，非法 JSON 导致白屏崩溃 | try-catch 包裹，失败回退原始字符串 | 2026-03-28 | 全量审计R10 |
+| HI-323 | `backend` | globals.py | ruff 误删 3 个 re-export (send_long_message/get_stock_quote/execute_trade_via_pipeline) | 恢复 re-export 导入 | 2026-03-28 | 全量审计R10 |
+| HI-322 | `backend` | 6 个文件 | 6 处 fire-and-forget create_task 异步异常被静默丢失 | add_done_callback 捕获异常 | 2026-03-28 | 全量审计R10 |
+| HI-321 | `backend` | 110 个文件 | 273 处未使用 import (F401) 影响启动速度和代码清洁 | ruff 自动修复 254 + 手动修复 19 | 2026-03-28 | 全量审计R10 |
+| HI-320 | `backend` | `life_automation.py` | 周期性提醒首次触发错误地设为5分钟后 — NLP 层不生成 time_text 导致走 delay 降级 | create_reminder 中新增分支: time_text 为空且有 recurrence_rule 时用 _calc_next_occurrence 计算首次触发 | 2026-03-28 | 周期提醒首次触发修复 |
+| HI-309 | `trading` | `auto_trader.py` | 投资信号预测从未被记录 — record_prediction() 死代码 | execute_proposal() 中 open_trade 后追加 record_prediction 调用 | 2026-03-27 | 第五轮产品跃迁 |
+| HI-310 | `trading` | `trading_system.py` | 收盘复盘不验证AI预测准确率 — validate_predictions() 死代码 | _eod_auto_review() 中追加 validate_predictions 调用 | 2026-03-27 | 第五轮产品跃迁 |
+| HI-311 | `trading` | `trading_system.py` | AI投票无历史准确率反馈 — vote_history 从未被传递 | _ai_team_wrapper() 中获取 get_prediction_accuracy 并传入 | 2026-03-27 | 第五轮产品跃迁 |
+| HI-312 | `xianyu` | `xianyu_live.py` | record_order() 未传 amount — 利润核算永远为0 | 从商品 SKU/soldPrice 提取价格传入 amount 参数 | 2026-03-27 | 第五轮产品跃迁 |
+| HI-313 | `xianyu` | `xianyu_live.py` | mark_converted() 参数传反 — 转化率统计失真 | 交换参数顺序对齐签名 (chat_id, item_id) | 2026-03-27 | 第五轮产品跃迁 |
+| HI-314 | `social` | `social_scheduler.py` | 浏览器采集的互动数据不存储 — post_engagement 表永远为空 | job_late_review 中调用 record_post_engagement() | 2026-03-27 | 第五轮产品跃迁 |
+| HI-315 | `social` | `content_pipeline.py` | /social_report 空壳 — by_platform/top_posts 字段不存在 | get_post_performance_report() 接入真实互动数据 | 2026-03-27 | 第五轮产品跃迁 |
+| HI-316 | `social` | `social_scheduler.py` | KPI 检查路径错误 — result.get("x").get("views") 永远返回0 | 修正为正确的嵌套路径 result["x"]["stats"]["..."] | 2026-03-27 | 第五轮产品跃迁 |
+| HI-317 | `social` | `social_tools.py` | PostTimeOptimizer 内存dict重启丢失+每次新建实例 | JSON持久化 + 全局单例 get_post_time_optimizer() | 2026-03-27 | 第六轮产品跃迁 |
+| HI-318 | `backend` | `response_synthesizer.py` | 购物比价LLM承诺\"设降价提醒\"但功能不存在 | 移除空头承诺改为\"直接买/再等等/改天再搜\" | 2026-03-27 | 第六轮产品跃迁 |
+| HI-319 | `xianyu` | `cmd_execution_mixin.py` | 闲鱼BI三个查询方法无任何用户入口 | /xianyu_report升级+12个中文触发词+日报Top3 | 2026-03-27 | 第六轮产品跃迁 |
+
+| ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
+|----|------|------|------|----------|----------|-----------|
+| HI-305 | `social` | `social_scheduler.py` | job_late_review 采集数据后不存数据库，post_engagement 表永远为空 | 调用 record_post_engagement() 存入 X/XHS 互动数据 | 2026-03-27 | 社媒数据管道修复 |
+| HI-306 | `social` | `content_pipeline.py` | get_post_performance_report() 不返回 by_platform/top_posts，/social_report 命令展示空白 | 整合 get_engagement_summary() 真实数据 + DB top_posts 查询 | 2026-03-27 | 社媒数据管道修复 |
+| HI-307 | `social` | `social_scheduler.py` | PostTimeOptimizer 无数据源，永远返回默认时段 | job_late_review 中喂入互动率数据 | 2026-03-27 | 社媒数据管道修复 |
+| HI-308 | `social` | `social_scheduler.py` | KPI 检查路径错误: result.get("x").get("views") 但实际数据在 result["x"]["stats"] 层 | 修正为 result.get("x",{}).get("stats",{}) | 2026-03-27 | 社媒数据管道修复 |
+| HI-280 | `xianyu` | `xianyu_live.py` | record_order() 未传 amount，利润核算永远为 0 | 从商品 SKU/soldPrice 提取价格传入 amount | 2026-03-27 | 闲鱼参数Bug修复 |
+| HI-281 | `xianyu` | `xianyu_live.py` | mark_converted() 参数传反，转化标记无效 | 交换参数顺序: mark_converted(uid, item_id) | 2026-03-27 | 闲鱼参数Bug修复 |
+| HI-300 | `backend` | `auth.py` | API Token 比较不防时序攻击 | 改用 hmac.compare_digest() | 2026-03-27 | 全量审计R9 |
+| HI-301 | `backend` | `monitoring.py` | cost_analytics.db 缺 WAL 模式 | 添加 PRAGMA journal_mode=WAL | 2026-03-27 | 全量审计R9 |
+| HI-302 | `backend` | `feedback.py` | 路径硬编码不同工作目录会找错 | Path(__file__).parent 模式 | 2026-03-27 | 全量审计R9 |
+| HI-303 | `backend` | `omega.py` | SSRF 172.* 判断过宽误判公网 | ipaddress.is_private 精确判断 | 2026-03-27 | 全量审计R9 |
+| HI-276 | `deploy` | VPS | VPS 备用节点完全未部署 | 代码同步+systemd服务+failover timer+心跳恢复 | 2026-03-27 | 全量审计R3 |
+| HI-279 | `deploy` | Git | .venv312/+node_modules/ 被 Git 跟踪 (47K文件) | git rm --cached 清理 | 2026-03-27 | 全量审计R3 |
+| HI-285 | `xianyu` | `xianyu_context.py` | get_recent_item_id() 查询不存在的 conversations 表，自动发货链路断裂 | 改为查 messages 表 | 2026-03-27 | 全量审计R4 |
+| HI-286 | `backend` | `smart_memory.py` | 偏好检测死代码: self.shared_memory不存在+参数错误 | self.memory + 正确参数 | 2026-03-27 | 全量审计R4 |
+| HI-287 | `xianyu` | `xianyu_live.py` | record_order() 参数错位 | 改用具名参数 | 2026-03-27 | 全量审计R4 |
+| HI-288 | `backend` | `order_notifier.py` | time.sleep() 在异步上下文阻塞事件循环 | 异步场景跳过同步重试 | 2026-03-27 | 全量审计R4 |
+| HI-289 | `social` | `social_scheduler.py` | 午间互动两操作共享try块 | 拆分独立try块 | 2026-03-27 | 全量审计R4 |
+| HI-261 | `deploy` | `.gitignore` | .venv312/ 未被 .gitignore 排除 (3.1GB 虚拟环境被跟踪) | `.venv/` → `.venv*/` 通配符 | 2026-03-27 | 第49轮全量审计 |
+| HI-262 | `deploy` | `.dockerignore` | Docker 镜像包含 config/.env 密钥文件 | 添加 `config/.env` + `*.pem` + `*.key` 排除规则 | 2026-03-27 | 第49轮全量审计 |
+| HI-263 | `deploy` | `requirements.txt` | playwright 未列入依赖，VPS/Docker 部署 ImportError | 添加 `playwright>=1.40.0` | 2026-03-27 | 第49轮全量审计 |
+| HI-264 | `deploy` | `kiro-gateway/docker-compose.yml` | 端口绑定 0.0.0.0 暴露公网 + 废弃 version 字段 | `127.0.0.1:8000:8000` + 删除 version | 2026-03-27 | 第49轮全量审计 |
+| HI-265 | `deploy` | `docker-compose.mediacrawler.yml` | 端口 8080 绑定 0.0.0.0 | `127.0.0.1:8080:8080` | 2026-03-27 | 第49轮全量审计 |
+| HI-266 | `deploy` | `docker-compose.goofish.yml` | 端口 8000 绑定 0.0.0.0 | `127.0.0.1:8000:8000` | 2026-03-27 | 第49轮全量审计 |
+| HI-267 | `backend` | 6个文件 | asyncio.get_event_loop() 在 Python 3.12 已废弃 (7处) | 统一改用 get_running_loop() 或 asyncio.run() | 2026-03-27 | 第49轮全量审计 |
+| HI-268 | `backend` | 4个文件 | fire-and-forget create_task 无异常回调 (4处) | 添加 add_done_callback + logger.debug | 2026-03-27 | 第49轮全量审计 |
+| HI-269 | `backend` | `feedback.py` | SQLite 连接无自动关闭机制 | atexit.register(self.close) | 2026-03-27 | 第49轮全量审计 |
+| HI-270 | `backend` | `monitoring.py` | CostAnalyzer._init_db() SQLite 缺 timeout 参数 | 添加 timeout=10 | 2026-03-27 | 第49轮全量审计 |
+| HI-271 | `backend` | `github_trending.py` | aiohttp.ClientSession() 无默认超时 (3处) | 添加 session 级 timeout 兜底 | 2026-03-27 | 第49轮全量审计 |
+| HI-272 | `frontend` | `Memory/index.tsx` | API 返回数据使用 any 类型 | 定义 MemoryApiResult 接口 | 2026-03-27 | 第49轮全量审计 |
+| HI-273 | `frontend` | `Plugins/index.tsx` | targetStatus as any 类型断言 | 改为 MCPPlugin['status'] 精确类型 | 2026-03-27 | 第49轮全量审计 |
+| HI-274 | `frontend` | `Setup/index.tsx` | setTimeout 未清理，组件卸载后可能操作已销毁组件 | 添加 clearTimeout 清理 | 2026-03-27 | 第49轮全量审计 |
+| HI-275 | `frontend` | `Settings/index.tsx` | setTimeout 未清理，同上 | 添加 clearTimeout 返回清理函数 | 2026-03-27 | 第49轮全量审计 |
 | HI-258 | `backend` | `bot/__init__.py` | 循环导入: telegram_ux ↔ bot (连锁加载10个Mixin) | 清除 `__init__.py` 中的模块级 `import MultiBot`（无消费者使用此便捷导入） | 2026-03-27 | 第四轮产品跃迁 |
 | HI-171 | `deploy` | `heartbeat-sender.plist` | SSH StrictHostKeyChecking=no 中间人攻击风险 | `StrictHostKeyChecking=accept-new` | 2026-03-26 | 基础设施修复 |
 | HI-180 | `backend` | `message_mixin.py` 等5个 | 5个 Callback Handler 无用户身份验证，群组内任何人可点击交易/发布按钮 | 每个 handler 添加 `_is_authorized()` 检查 | 2026-03-26 | 第32轮审计 |

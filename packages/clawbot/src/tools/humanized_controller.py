@@ -10,15 +10,17 @@ macOS 权限需求:
   pip3 install pyautogui pyobjc-core pyobjc-framework-Quartz
 """
 
+import logging
 import math
 import os
 import random
-import string
 import time
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Callable
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 import pyautogui
+
+logger = logging.getLogger(__name__)
 
 # ── 安全设置 ───────────────────────────────────────────────
 # 鼠标移到屏幕左上角时自动中止 (pyautogui 内置安全机制)
@@ -438,13 +440,15 @@ class HumanizedController:
             return location
         except pyautogui.ImageNotFoundException:
             return None
-        except Exception:
+        except Exception as e:
             # opencv 未安装时 confidence 参数不可用
+            logger.debug("[HumanizedController] 异常: %s", e)
             try:
                 location = pyautogui.locateCenterOnScreen(
                     image_path, grayscale=grayscale)
                 return location
-            except Exception:
+            except Exception as e:
+                logger.debug("[HumanizedController] 异常: %s", e)
                 return None
 
     def click_image(
@@ -537,7 +541,8 @@ class HumanizedController:
             if event is None:
                 return False
             return True
-        except Exception:
+        except Exception as e:
+            logger.debug("[HumanizedController] 异常: %s", e)
             return False
 
     @staticmethod

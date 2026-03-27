@@ -67,7 +67,7 @@ export function Header({ currentPage }: HeaderProps) {
           title="打开 Web Dashboard"
         >
           {opening ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
-          <span>Dashboard</span>
+          <span>控制面板</span>
         </button>
       </div>
     </header>

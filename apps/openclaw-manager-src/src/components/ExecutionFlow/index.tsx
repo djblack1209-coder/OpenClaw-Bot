@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ReactFlow, Controls, Background, useNodesState, useEdgesState, addEdge, BackgroundVariant, Node, Edge } from '@xyflow/react';
+import { ReactFlow, Controls, Background, useNodesState, useEdgesState, addEdge, BackgroundVariant, Node, Edge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Play, Square, Loader2, Workflow, Terminal, Info } from 'lucide-react';
@@ -8,7 +8,7 @@ import { isTauri } from '../../lib/tauri';
 import clsx from 'clsx';
 import dagre from 'dagre';
 
-// Flow Event definition matched with Python backend
+// 流程事件定义 — 与 Python 后端对齐
 interface FlowEvent {
   source: string;
   target: string;
@@ -18,7 +18,7 @@ interface FlowEvent {
   timestamp?: number;
 }
 
-// Initial default layout
+// 初始默认布局
 const initialNodes: Node[] = [
   { id: 'hub', position: { x: 250, y: 50 }, data: { label: '执行核心 (Hub)' }, type: 'input', className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
   { id: 'llm', position: { x: 100, y: 150 }, data: { label: 'AI 决策 (LLM)' }, className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
@@ -75,11 +75,12 @@ export function ExecutionFlow() {
   const [logs, setLogs] = useState<string[]>([]);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [useRealLogs, setUseRealLogs] = useState(true);
+  const simulationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // 用于追踪已经被添加过的动态节点，避免重复添加
   const seenNodes = useRef<Set<string>>(new Set(initialNodes.map(n => n.id)));
 
-  // Auto-scroll logs
+  // 自动滚动日志到底部
   useEffect(() => {
     if (logsContainerRef.current) {
       logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
@@ -187,14 +188,14 @@ export function ExecutionFlow() {
       });
 
     } catch (e) {
-      console.error("Failed to parse flow event", e);
+      console.error("流程事件解析失败", e);
     }
   }, [addLog, edges, setEdges, setNodes]);
 
   useEffect(() => {
     if (!isTauri() || !useRealLogs) return;
     
-    // Poll real logs from the clawbot backend
+    // 从 clawbot 后端轮询实时日志
     const pollLogs = async () => {
       try {
         const newLogs = await invoke<string[]>('get_managed_service_logs', { label: 'ai.openclaw.agent', lines: 50 });
@@ -214,7 +215,7 @@ export function ExecutionFlow() {
           }
         }
       } catch (e) {
-        // Fallback to simulation if backend logs are unavailable
+        console.error("[ExecutionFlow] Log polling failed:", e);
       }
     };
     
@@ -244,6 +245,10 @@ export function ExecutionFlow() {
     if (isRunning) {
       setIsRunning(false);
       setActiveNode(null);
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
+      }
       addLog("手动中止执行");
       return;
     }
@@ -267,13 +272,24 @@ export function ExecutionFlow() {
         setIsRunning(false);
         setActiveNode(null);
         clearInterval(interval);
+        simulationIntervalRef.current = null;
       }
     }, 2500);
+    simulationIntervalRef.current = interval;
   };
 
-  const onConnect = useCallback((params: any) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+  // 组件卸载时清理轮询定时器
+  useEffect(() => {
+    return () => {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
   
-  const onNodeClick = useCallback((_: any, node: Node) => {
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
      if (node.data && node.data.lastEvent) {
          setSelectedNodeData({ id: node.id, event: node.data.lastEvent as FlowEvent });
      } else {
@@ -318,7 +334,7 @@ export function ExecutionFlow() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-claw-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-claw-500"></span>
               </span>
-              <span className="text-xs font-medium text-claw-400 uppercase tracking-wider">Tracing Active</span>
+              <span className="text-xs font-medium text-claw-400 uppercase tracking-wider">追踪中</span>
             </div>
           )}
           <ReactFlow
@@ -359,11 +375,11 @@ export function ExecutionFlow() {
                   {selectedNodeData.event ? (
                     <div className="space-y-4">
                         <div>
-                            <span className="text-gray-500">Msg: </span>
+                            <span className="text-gray-500">消息: </span>
                             <span className="text-white">{selectedNodeData.event.msg}</span>
                         </div>
                         <div>
-                            <span className="text-gray-500">Status: </span>
+                            <span className="text-gray-500">状态: </span>
                             <span className={clsx(
                                 "px-1.5 py-0.5 rounded",
                                 selectedNodeData.event.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
@@ -372,7 +388,7 @@ export function ExecutionFlow() {
                             )}>{selectedNodeData.event.status.toUpperCase()}</span>
                         </div>
                         <div className="border-t border-dark-700 pt-2 mt-2">
-                            <span className="text-gray-500 block mb-2">Payload Data:</span>
+                            <span className="text-gray-500 block mb-2">载荷数据:</span>
                             <pre className="bg-dark-900 p-2 rounded overflow-x-auto text-claw-200">
                                 {JSON.stringify(selectedNodeData.event.data, null, 2)}
                             </pre>
@@ -405,7 +421,7 @@ export function ExecutionFlow() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                   </span>
-                  Live Polling
+                  实时轮询
                 </div>
               )}
             </div>

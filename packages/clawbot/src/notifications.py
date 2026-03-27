@@ -369,7 +369,8 @@ class NotificationManager:
 
         # 默认渠道
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
                 None,
                 lambda: self._ap.notify(
                     body=body,
@@ -391,7 +392,7 @@ class NotificationManager:
                 if tag_ap is None:
                     continue
                 try:
-                    result = await asyncio.get_event_loop().run_in_executor(
+                    result = await loop.run_in_executor(
                         None,
                         lambda _ap=tag_ap: _ap.notify(
                             body=body,
@@ -405,6 +406,15 @@ class NotificationManager:
                 except Exception as e:
                     self._error_count += 1
                     logger.error(f"通知发送失败 (标签 {tag}): {e}")
+
+        # ── 微信同步推送 (与 Telegram 同颗粒度) ──
+        try:
+            from src.wechat_bridge import is_wechat_notify_enabled, send_to_wechat
+            if is_wechat_notify_enabled():
+                wx_text = f"{'🔴' if level == NotifyLevel.CRITICAL else '🟠' if level == NotifyLevel.HIGH else '📢'} {title}\n{body}" if title else body
+                await send_to_wechat(wx_text)
+        except Exception as e:
+            logger.debug("[通知] 微信桥接异常: %s", e)
 
         return success
 

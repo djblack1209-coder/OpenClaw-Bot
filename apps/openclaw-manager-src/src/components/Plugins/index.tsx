@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   Blocks, Search, Plus, Settings2, Trash2,
   Github, Database, Globe, HardDrive,
-  RefreshCw, AlertCircle, User, Loader2
+  RefreshCw, AlertCircle, User, Loader2,
+  type LucideIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,7 @@ interface MCPPlugin {
   author: string;
   type: 'stdio' | 'sse';
   status: 'running' | 'stopped' | 'error';
-  icon: any;
+  icon: LucideIcon;
   tags: string[];
 }
 
@@ -37,7 +38,7 @@ const defaultPlugins: MCPPlugin[] = [
   {
     id: 'mcp-github',
     name: 'GitHub MCP Server',
-    description: 'Provide read/write access to GitHub repositories, issues, and PRs.',
+    description: '提供 GitHub 仓库、Issue 和 PR 的读写访问。',
     version: '1.0.2',
     author: 'modelcontextprotocol',
     type: 'stdio',
@@ -48,7 +49,7 @@ const defaultPlugins: MCPPlugin[] = [
   {
     id: 'mcp-sqlite',
     name: 'SQLite Database',
-    description: 'Direct SQL execution and schema inspection for local SQLite databases.',
+    description: '本地 SQLite 数据库的 SQL 执行与结构检查。',
     version: '0.9.5',
     author: 'modelcontextprotocol',
     type: 'stdio',
@@ -59,7 +60,7 @@ const defaultPlugins: MCPPlugin[] = [
   {
     id: 'mcp-browser-use',
     name: 'Browser-Use Agent',
-    description: 'Control a real Chromium browser via Playwright for web automation.',
+    description: '通过 Playwright 控制 Chromium 浏览器实现网页自动化。',
     version: '2.1.0',
     author: 'browser-use',
     type: 'sse',
@@ -77,7 +78,7 @@ export function Plugins() {
 
   const fetchPlugins = async () => {
     if (!isTauri()) {
-      // Mock mode
+      // 模拟模式
       setPlugins(defaultPlugins);
       setLoading(false);
       return;
@@ -86,22 +87,22 @@ export function Plugins() {
     try {
       const data = await invoke<MCPPlugin[]>('get_mcp_plugins');
       if (data && data.length > 0) {
-        // Map string icons to actual Lucide components
+        // 字符串图标名映射为 Lucide 组件
         const mapped = data.map(p => ({
           ...p,
           icon: getIconForPlugin(p.id)
         }));
         setPlugins(mapped);
       } else {
-        // Seed default plugins if none exist
+        // 无插件时填充默认列表
         for (const p of defaultPlugins) {
-          const toSave = { ...p, icon: "default" }; // Rust struct doesn't accept React elements
+          const toSave = { ...p, icon: "default" }; // Rust 结构体不接受 React 元素
           await invoke('save_mcp_plugin', { plugin: toSave });
         }
         setPlugins(defaultPlugins);
       }
     } catch (e) {
-      console.error("Failed to fetch plugins", e);
+      console.error("获取插件列表失败", e);
       setPlugins(defaultPlugins);
     } finally {
       setLoading(false);
@@ -119,11 +120,11 @@ export function Plugins() {
   };
 
   const togglePlugin = async (id: string, currentStatus: string) => {
-    const targetStatus = currentStatus === 'running' ? 'stopped' : 'running';
+    const targetStatus: MCPPlugin['status'] = currentStatus === 'running' ? 'stopped' : 'running';
     
-    // Optimistic update
+    // 乐观更新
     setPlugins(prev => prev.map(p => {
-      if (p.id === id) return { ...p, status: targetStatus as any };
+      if (p.id === id) return { ...p, status: targetStatus };
       return p;
     }));
 
@@ -131,8 +132,8 @@ export function Plugins() {
       try {
         await invoke('toggle_mcp_plugin_status', { id, targetStatus });
       } catch (e) {
-        console.error("Failed to toggle status", e);
-        // Revert on failure
+        console.error("切换插件状态失败", e);
+        // 失败时回滚
         fetchPlugins();
       }
     }
@@ -177,7 +178,7 @@ export function Plugins() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                 </span>
-                Active Servers
+                活跃服务
               </span>
             </div>
             <button className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
@@ -269,24 +270,24 @@ export function Plugins() {
                   <div className="flex items-center gap-1.5">
                     {plugin.status === 'running' ? (
                       <Badge className="bg-green-500/10 text-green-400 hover:bg-green-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Connected
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 已连接
                       </Badge>
                     ) : plugin.status === 'error' ? (
                       <Badge className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border-none px-2 shadow-none gap-1.5">
-                        <AlertCircle size={10} /> Failed
+                        <AlertCircle size={10} /> 已失败
                       </Badge>
                     ) : (
                       <Badge className="bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span> Stopped
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span> 已停止
                       </Badge>
                     )}
                   </div>
                   
                   <div className="flex gap-2">
-                    <button className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="Configuration">
+                    <button className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置">
                       <Settings2 size={16} />
                     </button>
-                    <button className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="Uninstall">
+                    <button className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载">
                       <Trash2 size={16} />
                     </button>
                   </div>

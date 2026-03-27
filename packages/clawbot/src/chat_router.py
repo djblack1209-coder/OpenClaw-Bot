@@ -8,7 +8,6 @@ import re
 import time
 import logging
 import asyncio
-import os
 import threading
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Callable, Awaitable, Any
@@ -248,6 +247,7 @@ class ChatRouter:
                 "history": [],
                 "active": True,
                 "type": discuss_type,
+                "created_at": time.time(),
             }
 
             bot_names = [self.bots[bid].name for bid in participants if bid in self.bots]
@@ -789,6 +789,21 @@ class ChatRouter:
         ]
         for msg_id in expired:
             del self._recent_responses[msg_id]
+
+    def cleanup_stale_sessions(self, max_age_seconds: int = 1800):
+        """Remove discuss sessions and service workflows inactive for > max_age."""
+        now = time.time()
+        stale_discuss = [k for k, v in self._discuss_sessions.items()
+                         if now - v.get("created_at", 0) > max_age_seconds]
+        for k in stale_discuss:
+            del self._discuss_sessions[k]
+        stale_workflows = [k for k, v in self._service_workflows.items()
+                           if now - v.created_at > max_age_seconds]
+        for k in stale_workflows:
+            del self._service_workflows[k]
+        if stale_discuss or stale_workflows:
+            logger.debug("Cleaned %d discuss + %d workflow sessions",
+                         len(stale_discuss), len(stale_workflows))
 
     def get_routing_info(self, text: str) -> Dict:
         """获取路由信息（调试用）"""

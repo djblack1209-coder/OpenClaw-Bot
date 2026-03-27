@@ -10,7 +10,7 @@ router = APIRouter()
 def search_memory(
     query: str,
     limit: int = Query(10, ge=1, le=100),
-    mode: str = Query("hybrid", regex="^(keyword|semantic|hybrid)$"),
+    mode: str = Query("hybrid", pattern="^(keyword|semantic|hybrid)$"),
     category: str = None,
 ):
     return ClawBotRPC._rpc_memory_search(

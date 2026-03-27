@@ -2,9 +2,10 @@
 """OpenClaw 一键部署客户端 — 跨平台 (Win/Mac/Linux)"""
 import hashlib
 import json
+import logging
 import os
 import platform
-import shutil
+import shlex
 import subprocess
 import sys
 import uuid
@@ -12,7 +13,8 @@ from getpass import getpass
 from typing import Optional
 
 import requests
-from src.utils import now_et
+
+logger = logging.getLogger(__name__)
 
 SERVER_URL = os.getenv("OPENCLAW_DEPLOY_SERVER", "https://deploy.openclaw.ai")
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
@@ -114,7 +116,8 @@ def check_env() -> dict:
                 print(f"  ❌ {key}: 未安装")
         except FileNotFoundError:
             print(f"  ❌ {key}: 未安装")
-        except Exception:
+        except Exception as e:
+            logger.debug("[DeployClient] 异常: %s", e)
             print(f"  ❌ {key}: 检测失败")
 
     return checks
@@ -252,7 +255,7 @@ def config_wizard(license_key: str) -> dict:
     # Fallback: 本地生成
     config = {
         "version": "2026.3",
-        "gateway": {"port": 18789},
+        "gateway": {"port": int(os.environ.get("GATEWAY_PORT", "18789"))},
         "models": {"providers": providers},
         "channels": {"telegram": {"enabled": bool(tg_token), "token": tg_token}},
         "skills_bundle": ["self-improving-agent", "openclaw-backup", "find-skills", "crawl4ai"],
@@ -368,8 +371,8 @@ def verify_install():
             icon = "✅" if "连通" in status else "❌"
             print(f"  {icon} 模型 [{name}]: {status}")
             report.append(f"模型 [{name}]: {status}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("[DeployClient] 异常: %s", e)
 
     # Skills
     skills_dir = os.path.join(OPENCLAW_HOME, "skills") if os.path.exists(os.path.join(OPENCLAW_HOME, "skills")) else ""
@@ -405,7 +408,7 @@ def verify_install():
 
 def _run(cmd: str):
     print(f"  $ {cmd}")
-    subprocess.run(cmd, shell=True, check=False)
+    subprocess.run(shlex.split(cmd), check=False)
 
 
 # ---- 入口 ----

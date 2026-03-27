@@ -6,7 +6,7 @@ metadata: {"openclaw":{"emoji":"📡"}}
 
 # Alpha Research Pipeline
 
-Use when Boss asks for market scanning, opportunity discovery, earnings tracking, or signal prioritization.
+Use when 严总 asks for market scanning, opportunity discovery, earnings tracking, or signal prioritization.
 
 ## Pipeline
 

@@ -1,8 +1,10 @@
 """Social media endpoints — status, topics, compose, publish, autopilot"""
 import logging
-from fastapi import APIRouter
+from typing import Any, Dict
+
+from fastapi import APIRouter, Query
 from ..rpc import ClawBotRPC
-from ..schemas import SocialStatus, SocialPublishRequest, StatusMsg
+from ..schemas import SocialStatus, SocialPublishRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,12 +15,12 @@ def get_social_status():
     return ClawBotRPC._rpc_social_status()
 
 
-@router.post("/social/topics")
-async def discover_topics(count: int = 10):
+@router.post("/social/topics", response_model=Dict[str, Any])
+async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
     return await ClawBotRPC._rpc_social_discover_topics(count=count)
 
 
-@router.post("/social/compose")
+@router.post("/social/compose", response_model=Dict[str, Any])
 async def compose_content(
     topic: str,
     platform: str = "x",
@@ -36,7 +38,7 @@ async def compose_content(
     )
 
 
-@router.post("/social/publish")
+@router.post("/social/publish", response_model=Dict[str, Any])
 async def publish_content(req: SocialPublishRequest):
     """Publish content to social platform via browser worker.
 
@@ -49,37 +51,37 @@ async def publish_content(req: SocialPublishRequest):
     )
 
 
-@router.post("/social/research")
-async def deep_research(topic: str, count: int = 10):
+@router.post("/social/research", response_model=Dict[str, Any])
+async def deep_research(topic: str, count: int = Query(default=10, ge=1, le=50)):
     """Deep topic research — scrapes platform data and aggregates insights."""
     return await ClawBotRPC._rpc_social_research(topic=topic, count=count)
 
 
-@router.get("/social/metrics")
+@router.get("/social/metrics", response_model=Dict[str, Any])
 async def get_metrics():
     """Social metrics/analytics — follower counts, engagement stats."""
     return await ClawBotRPC._rpc_social_metrics()
 
 
-@router.get("/social/personas")
+@router.get("/social/personas", response_model=Dict[str, Any])
 def list_personas():
     """List available social personas from data/social_personas/."""
     return ClawBotRPC._rpc_social_personas()
 
 
-@router.get("/social/calendar")
-async def get_calendar(days: int = 7):
+@router.get("/social/calendar", response_model=Dict[str, Any])
+async def get_calendar(days: int = Query(default=7, ge=1, le=30)):
     """Content calendar generation — trending topics mapped to a day-by-day plan."""
     return await ClawBotRPC._rpc_social_calendar(days=days)
 
 
-@router.post("/social/generate-image")
+@router.post("/social/generate-image", response_model=Dict[str, Any])
 async def gen_image(prompt: str):
     """Generate image via ComfyUI (local) or cloud fallback."""
     return await ClawBotRPC._rpc_generate_image(prompt)
 
 
-@router.post("/social/generate-persona-photo")
+@router.post("/social/generate-persona-photo", response_model=Dict[str, Any])
 async def gen_persona_photo(
     persona: str = "default",
     scenario: str = "working in a cafe",
@@ -93,25 +95,25 @@ async def gen_persona_photo(
 #  Autopilot — 社交自动驾驶
 # ──────────────────────────────────────────────
 
-@router.get("/social/autopilot/status")
+@router.get("/social/autopilot/status", response_model=Dict[str, Any])
 def autopilot_status():
     """Get autopilot scheduler status — running, jobs, next action."""
     return ClawBotRPC._rpc_autopilot_status()
 
 
-@router.post("/social/autopilot/start")
+@router.post("/social/autopilot/start", response_model=Dict[str, Any])
 def autopilot_start():
     """Start the social autopilot scheduler (5 daily cron jobs)."""
     return ClawBotRPC._rpc_autopilot_start()
 
 
-@router.post("/social/autopilot/stop")
+@router.post("/social/autopilot/stop", response_model=Dict[str, Any])
 def autopilot_stop():
     """Stop the social autopilot scheduler."""
     return ClawBotRPC._rpc_autopilot_stop()
 
 
-@router.post("/social/autopilot/trigger/{job_id}")
+@router.post("/social/autopilot/trigger/{job_id}", response_model=Dict[str, Any])
 def autopilot_trigger(job_id: str):
     """Manually trigger a specific autopilot job.
 
@@ -125,25 +127,25 @@ def autopilot_trigger(job_id: str):
 #  Drafts — 草稿管理
 # ──────────────────────────────────────────────
 
-@router.get("/social/drafts")
+@router.get("/social/drafts", response_model=Dict[str, Any])
 def list_drafts():
     """List all drafts from autopilot state."""
     return ClawBotRPC._rpc_social_drafts()
 
 
-@router.patch("/social/drafts/{index}")
+@router.patch("/social/drafts/{index}", response_model=Dict[str, Any])
 def update_draft(index: int, text: str):
     """Update a draft's text content."""
     return ClawBotRPC._rpc_social_draft_update(index, text)
 
 
-@router.delete("/social/drafts/{index}")
+@router.delete("/social/drafts/{index}", response_model=Dict[str, Any])
 def delete_draft(index: int):
     """Delete a draft by index."""
     return ClawBotRPC._rpc_social_draft_delete(index)
 
 
-@router.post("/social/drafts/{index}/publish")
+@router.post("/social/drafts/{index}/publish", response_model=Dict[str, Any])
 async def publish_draft(index: int):
     """Publish a draft immediately."""
     return await ClawBotRPC._rpc_social_draft_publish(index)

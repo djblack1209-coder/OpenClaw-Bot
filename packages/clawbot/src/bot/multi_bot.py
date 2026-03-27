@@ -6,8 +6,7 @@ from typing import Tuple, Optional
 
 from src.bot.globals import (
     chat_router, health_checker, shared_memory,
-    history_store, context_manager,
-    bot_registry, ALLOWED_USER_IDS,
+    ALLOWED_USER_IDS,
     BotCapability, get_bot_config,
 )
 from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker
@@ -246,7 +245,7 @@ class MultiBot(
             logger.warning(f"[{self.name}] 未配置 Token，跳过")
             return None
 
-        from telegram import Update, BotCommand
+        from telegram import Update
         from telegram.ext import (
             ApplicationBuilder, CommandHandler,
             MessageHandler, CallbackQueryHandler, filters,
@@ -295,6 +294,9 @@ class MultiBot(
         self.app.add_handler(CommandHandler("performance", self.cmd_performance))
         self.app.add_handler(CommandHandler("review", self.cmd_review))
         self.app.add_handler(CommandHandler("journal", self.cmd_journal))
+        self.app.add_handler(CommandHandler("accuracy", self.cmd_accuracy))
+        self.app.add_handler(CommandHandler("equity", self.cmd_equity))
+        self.app.add_handler(CommandHandler("targets", self.cmd_targets))
         self.app.add_handler(CommandHandler("chart", self.cmd_chart))
         self.app.add_handler(CommandHandler("drl", self.cmd_drl))
         self.app.add_handler(CommandHandler("factors", self.cmd_factors))
@@ -334,10 +336,11 @@ class MultiBot(
         self.app.add_handler(CommandHandler("xpost", self.cmd_xpost))
         self.app.add_handler(CommandHandler("xhsdraft", self.cmd_xhsdraft))
         self.app.add_handler(CommandHandler("xhspost", self.cmd_xhspost))
-        self.app.add_handler(CommandHandler("dualpost", self.cmd_dual_post))
+        self.app.add_handler(CommandHandler("dualpost", self.cmd_post))  # dualpost 是 post 的别名
         self.app.add_handler(CommandHandler("publish", self.cmd_publish))
         self.app.add_handler(CommandHandler("xianyu", self.cmd_xianyu))
         self.app.add_handler(CommandHandler("xianyu_report", self.cmd_xianyu_report))
+        self.app.add_handler(CommandHandler("xianyu_style", self.cmd_xianyu_style))
         self.app.add_handler(CommandHandler("social_calendar", self.cmd_social_calendar))
         self.app.add_handler(CommandHandler("social_report", self.cmd_social_report))
         self.app.add_handler(CommandHandler("model", self.cmd_model))
@@ -352,6 +355,10 @@ class MultiBot(
         self.app.add_handler(CommandHandler("tts", self.cmd_tts))
         self.app.add_handler(CommandHandler("novel", self.cmd_novel))
         self.app.add_handler(CommandHandler("ship", self.cmd_ship))
+        self.app.add_handler(CommandHandler("weekly", self.cmd_weekly))
+        self.app.add_handler(CommandHandler("review_history", self.cmd_review_history))
+        self.app.add_handler(CommandHandler("bill", self.cmd_bill))
+        self.app.add_handler(CommandHandler("pricewatch", self.cmd_pricewatch))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_trade_callback, pattern=r"^itrade"))
         self.app.add_handler(CallbackQueryHandler(

@@ -2506,3 +2506,972 @@ Command not found
 2026-03-23T17:45:28.218+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 2.07s.
 2026-03-23T18:46:00.348+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
 2026-03-23T19:00:43.222+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/social/SOC-002-batch-20260314.md'
+2026-03-24T02:51:08.301+08:00 [memory] embeddings rate limited; retrying in 521ms
+2026-03-24T02:51:08.517+08:00 [memory] embeddings rate limited; retrying in 575ms
+2026-03-24T02:51:08.536+08:00 [memory] embeddings rate limited; retrying in 510ms
+2026-03-24T02:51:08.544+08:00 [memory] embeddings rate limited; retrying in 520ms
+2026-03-24T02:51:09.023+08:00 [memory] embeddings rate limited; retrying in 1067ms
+2026-03-24T02:51:09.268+08:00 [memory] embeddings rate limited; retrying in 1097ms
+2026-03-24T02:51:09.277+08:00 [memory] embeddings rate limited; retrying in 1191ms
+2026-03-24T02:51:09.286+08:00 [memory] embeddings rate limited; retrying in 1077ms
+2026-03-24T02:51:10.293+08:00 [memory] embeddings rate limited; retrying in 2015ms
+2026-03-24T02:51:10.635+08:00 [memory] embeddings rate limited; retrying in 2046ms
+2026-03-24T02:51:10.683+08:00 [memory] embeddings rate limited; retrying in 2007ms
+2026-03-24T02:51:10.733+08:00 [memory] embeddings rate limited; retrying in 2300ms
+2026-03-24T02:51:13.245+08:00 [memory] sync failed (watch): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260323185039511687641ZjccJ7rH)","type":"new_api_error"}}
+2026-03-24T04:00:29.550+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T04:00:29.658+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T04:00:29.869+08:00 [delivery-recovery] Retry failed for delivery c0a25484-8def-43b7-96fc-2c67d4386a90: sendWeixinOutbound: contextToken is required
+2026-03-24T04:00:29.873+08:00 [delivery-recovery] Retry failed for delivery 5ba3c331-ecf2-42ec-9042-2f7cf3cb85a1: sendWeixinOutbound: contextToken is required
+2026-03-24T04:00:29.878+08:00 [delivery-recovery] Retry failed for delivery 103afc50-086b-4644-90a8-40d83367a18c: sendWeixinOutbound: contextToken is required
+2026-03-24T04:00:29.882+08:00 [delivery-recovery] Retry failed for delivery 303b8d57-1757-4b5b-8924-275d92f08988: sendWeixinOutbound: contextToken is required
+2026-03-24T04:00:29.885+08:00 [delivery-recovery] Retry failed for delivery c4c75514-c9fd-4fe6-8c9a-71c6fb7d3894: sendWeixinOutbound: contextToken is required
+2026-03-24T04:30:21.681+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T04:30:21.784+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T04:30:21.984+08:00 [delivery-recovery] Retry failed for delivery c0a25484-8def-43b7-96fc-2c67d4386a90: sendWeixinOutbound: contextToken is required
+2026-03-24T04:30:21.989+08:00 [delivery-recovery] Retry failed for delivery 5ba3c331-ecf2-42ec-9042-2f7cf3cb85a1: sendWeixinOutbound: contextToken is required
+2026-03-24T04:30:21.995+08:00 [delivery-recovery] Retry failed for delivery 103afc50-086b-4644-90a8-40d83367a18c: sendWeixinOutbound: contextToken is required
+2026-03-24T04:30:21.999+08:00 [delivery-recovery] Retry failed for delivery 303b8d57-1757-4b5b-8924-275d92f08988: sendWeixinOutbound: contextToken is required
+2026-03-24T04:30:22.002+08:00 [delivery-recovery] Retry failed for delivery c4c75514-c9fd-4fe6-8c9a-71c6fb7d3894: sendWeixinOutbound: contextToken is required
+2026-03-24T05:00:17.800+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.026+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T05:30:21.095+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T05:30:21.258+08:00 [delivery-recovery] Retry failed for delivery c0a25484-8def-43b7-96fc-2c67d4386a90: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.262+08:00 [delivery-recovery] Retry failed for delivery 5ba3c331-ecf2-42ec-9042-2f7cf3cb85a1: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.265+08:00 [delivery-recovery] Retry failed for delivery 103afc50-086b-4644-90a8-40d83367a18c: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.268+08:00 [delivery-recovery] Retry failed for delivery 303b8d57-1757-4b5b-8924-275d92f08988: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.273+08:00 [delivery-recovery] Retry failed for delivery c4c75514-c9fd-4fe6-8c9a-71c6fb7d3894: sendWeixinOutbound: contextToken is required
+2026-03-24T05:30:21.276+08:00 [delivery-recovery] Retry failed for delivery 6d366cbc-03b5-43ca-8084-0be0fd62379a: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.589+08:00 [gateway] [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T06:00:19.617+08:00 [plugins] openclaw-weixin: loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records (/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/extensions/openclaw-weixin/index.ts)
+2026-03-24T06:00:19.781+08:00 [delivery-recovery] Retry failed for delivery c0a25484-8def-43b7-96fc-2c67d4386a90: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.784+08:00 [delivery-recovery] Retry failed for delivery 5ba3c331-ecf2-42ec-9042-2f7cf3cb85a1: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.787+08:00 [delivery-recovery] Retry failed for delivery 103afc50-086b-4644-90a8-40d83367a18c: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.790+08:00 [delivery-recovery] Retry failed for delivery 303b8d57-1757-4b5b-8924-275d92f08988: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.792+08:00 [delivery-recovery] Retry failed for delivery c4c75514-c9fd-4fe6-8c9a-71c6fb7d3894: sendWeixinOutbound: contextToken is required
+2026-03-24T06:00:19.795+08:00 [delivery-recovery] Retry failed for delivery 6d366cbc-03b5-43ca-8084-0be0fd62379a: sendWeixinOutbound: contextToken is required
+2026-03-24T06:27:37.185+08:00 [telegram] Polling stall detected (no getUpdates for 1009.81s); forcing restart.
+2026-03-24T06:27:37.220+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 2.26s.
+2026-03-24T06:30:31.896+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T07:00:42.545+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T07:30:57.964+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T08:01:01.785+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-24T08:01:09.533+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T08:08:36.810+08:00 [telegram] Polling stall detected (no getUpdates for 376.91s); forcing restart.
+2026-03-24T08:08:36.824+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 3.87s.
+2026-03-24T08:26:32.678+08:00 [telegram] Polling stall detected (no getUpdates for 1008.64s); forcing restart.
+2026-03-24T08:26:32.696+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 6.54s.
+2026-03-24T08:45:57.757+08:00 [telegram] Polling stall detected (no getUpdates for 971.92s); forcing restart.
+2026-03-24T08:45:57.761+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 14.04s.
+2026-03-24T08:55:06.200+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-24T08:55:09.552+08:00 [tools] exec failed: zsh:1: no such file or directory: /brief
+
+Command not found
+2026-03-24T08:55:11.048+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-24T08:55:12.979+08:00 [memory] embeddings rate limited; retrying in 569ms
+2026-03-24T08:55:13.202+08:00 [memory] embeddings rate limited; retrying in 515ms
+2026-03-24T08:55:13.220+08:00 [memory] embeddings rate limited; retrying in 591ms
+2026-03-24T08:55:13.228+08:00 [memory] embeddings rate limited; retrying in 598ms
+2026-03-24T08:55:13.760+08:00 [memory] embeddings rate limited; retrying in 1188ms
+2026-03-24T08:55:13.928+08:00 [memory] embeddings rate limited; retrying in 1087ms
+2026-03-24T08:55:14.035+08:00 [memory] embeddings rate limited; retrying in 1110ms
+2026-03-24T08:55:14.045+08:00 [memory] embeddings rate limited; retrying in 1033ms
+2026-03-24T08:55:15.166+08:00 [memory] embeddings rate limited; retrying in 2176ms
+2026-03-24T08:55:15.247+08:00 [memory] embeddings rate limited; retrying in 2368ms
+2026-03-24T08:55:15.275+08:00 [memory] embeddings rate limited; retrying in 2040ms
+2026-03-24T08:55:15.367+08:00 [memory] embeddings rate limited; retrying in 2109ms
+2026-03-24T08:55:17.831+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324005443823427815ANxQ7ptL)","type":"new_api_error"}}
+2026-03-24T08:55:17.837+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324005443823427815ANxQ7ptL)","type":"new_api_error"}}
+2026-03-24T09:00:18.527+08:00 [tools] browser failed: Error: Could not connect to Chrome. Check if Chrome is running.
+Cause: Could not find DevToolsActivePort for chrome at /Users/blackdj/Library/Application Support/Google/Chrome/DevToolsActivePort
+2026-03-24T09:00:34.890+08:00 [tools] browser failed: Error: Could not connect to Chrome. Check if Chrome is running.
+Cause: Could not find DevToolsActivePort for chrome at /Users/blackdj/Library/Application Support/Google/Chrome/DevToolsActivePort
+2026-03-24T09:00:48.271+08:00 [security] blocked URL fetch (url-fetch) target=https://news.ycombinator.com/ reason=Blocked: resolves to private/internal/special-use IP address
+2026-03-24T09:00:48.280+08:00 [tools] web_fetch failed: Blocked: resolves to private/internal/special-use IP address
+2026-03-24T09:00:55.417+08:00 [memory] embeddings rate limited; retrying in 536ms
+2026-03-24T09:00:55.438+08:00 [memory] embeddings rate limited; retrying in 547ms
+2026-03-24T09:00:55.626+08:00 [memory] embeddings rate limited; retrying in 516ms
+2026-03-24T09:00:55.659+08:00 [memory] embeddings rate limited; retrying in 559ms
+2026-03-24T09:00:56.165+08:00 [memory] embeddings rate limited; retrying in 1037ms
+2026-03-24T09:00:56.180+08:00 [memory] embeddings rate limited; retrying in 1046ms
+2026-03-24T09:00:56.367+08:00 [memory] embeddings rate limited; retrying in 1158ms
+2026-03-24T09:00:56.444+08:00 [memory] embeddings rate limited; retrying in 1010ms
+2026-03-24T09:00:57.433+08:00 [memory] embeddings rate limited; retrying in 2210ms
+2026-03-24T09:00:57.441+08:00 [memory] embeddings rate limited; retrying in 2388ms
+2026-03-24T09:00:57.655+08:00 [memory] embeddings rate limited; retrying in 2275ms
+2026-03-24T09:00:57.733+08:00 [memory] embeddings rate limited; retrying in 2259ms
+2026-03-24T09:01:00.241+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324010026137807875hQE4ixPj)","type":"new_api_error"}}
+2026-03-24T09:01:00.249+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324010026137807875hQE4ixPj)","type":"new_api_error"}}
+2026-03-24T09:24:30.544+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-24T09:30:28.562+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T10:00:06.605+08:00 [tools] exec failed: Running risk check...
+zsh:1: no such file or directory: ./risk
+
+Command not found
+2026-03-24T10:00:08.236+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/risk/SKILL.md'
+2026-03-24T10:00:16.112+08:00 [memory] embeddings rate limited; retrying in 594ms
+2026-03-24T10:00:16.387+08:00 [memory] embeddings rate limited; retrying in 592ms
+2026-03-24T10:00:16.398+08:00 [memory] embeddings rate limited; retrying in 582ms
+2026-03-24T10:00:16.405+08:00 [memory] embeddings rate limited; retrying in 536ms
+2026-03-24T10:00:16.934+08:00 [memory] embeddings rate limited; retrying in 1138ms
+2026-03-24T10:00:17.152+08:00 [memory] embeddings rate limited; retrying in 1132ms
+2026-03-24T10:00:17.186+08:00 [memory] embeddings rate limited; retrying in 1006ms
+2026-03-24T10:00:17.195+08:00 [memory] embeddings rate limited; retrying in 1133ms
+2026-03-24T10:00:18.294+08:00 [memory] embeddings rate limited; retrying in 2296ms
+2026-03-24T10:00:18.417+08:00 [memory] embeddings rate limited; retrying in 2275ms
+2026-03-24T10:00:18.505+08:00 [memory] embeddings rate limited; retrying in 2277ms
+2026-03-24T10:00:18.525+08:00 [memory] embeddings rate limited; retrying in 2398ms
+2026-03-24T10:00:21.142+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603240159469872872341g7EOWJH)","type":"new_api_error"}}
+2026-03-24T10:00:21.148+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603240159469872872341g7EOWJH)","type":"new_api_error"}}
+2026-03-24T10:01:12.210+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T10:30:10.983+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T11:00:56.512+08:00 [telegram] Polling stall detected (no getUpdates for 972.34s); forcing restart.
+2026-03-24T11:00:56.517+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 22.12s.
+2026-03-24T11:01:03.412+08:00 [memory] embeddings rate limited; retrying in 502ms
+2026-03-24T11:01:03.424+08:00 [memory] embeddings rate limited; retrying in 553ms
+2026-03-24T11:01:03.635+08:00 [memory] embeddings rate limited; retrying in 512ms
+2026-03-24T11:01:03.644+08:00 [memory] embeddings rate limited; retrying in 561ms
+2026-03-24T11:01:04.136+08:00 [memory] embeddings rate limited; retrying in 1197ms
+2026-03-24T11:01:04.199+08:00 [memory] embeddings rate limited; retrying in 1127ms
+2026-03-24T11:01:04.359+08:00 [memory] embeddings rate limited; retrying in 1177ms
+2026-03-24T11:01:04.417+08:00 [memory] embeddings rate limited; retrying in 1032ms
+2026-03-24T11:01:05.544+08:00 [memory] embeddings rate limited; retrying in 2213ms
+2026-03-24T11:01:05.560+08:00 [memory] embeddings rate limited; retrying in 2023ms
+2026-03-24T11:01:05.659+08:00 [memory] embeddings rate limited; retrying in 2326ms
+2026-03-24T11:01:05.759+08:00 [memory] embeddings rate limited; retrying in 2090ms
+2026-03-24T11:01:08.186+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 2026032403003387294714471yp0tBu)","type":"new_api_error"}}
+2026-03-24T11:01:11.526+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T11:02:14.030+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T11:44:16.352+08:00 [telegram] Polling stall detected (no getUpdates for 902.76s); forcing restart.
+2026-03-24T11:44:16.373+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-24T11:44:31.381+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T11:44:35.997+08:00 [diagnostic] lane wait exceeded: lane=session:agent:main:main waitedMs=19375 queueAhead=0
+2026-03-24T11:45:14.649+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T12:00:07.729+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/risk/SKILL.md'
+2026-03-24T12:00:22.497+08:00 [memory] embeddings rate limited; retrying in 540ms
+2026-03-24T12:00:22.713+08:00 [memory] embeddings rate limited; retrying in 554ms
+2026-03-24T12:00:22.722+08:00 [memory] embeddings rate limited; retrying in 535ms
+2026-03-24T12:00:22.729+08:00 [memory] embeddings rate limited; retrying in 560ms
+2026-03-24T12:00:23.258+08:00 [memory] embeddings rate limited; retrying in 1163ms
+2026-03-24T12:00:23.473+08:00 [memory] embeddings rate limited; retrying in 1177ms
+2026-03-24T12:00:23.482+08:00 [memory] embeddings rate limited; retrying in 1012ms
+2026-03-24T12:00:23.886+08:00 [memory] embeddings rate limited; retrying in 1029ms
+2026-03-24T12:00:24.654+08:00 [memory] embeddings rate limited; retrying in 2130ms
+2026-03-24T12:00:24.708+08:00 [memory] embeddings rate limited; retrying in 2120ms
+2026-03-24T12:00:24.872+08:00 [memory] embeddings rate limited; retrying in 2050ms
+2026-03-24T12:00:25.127+08:00 [memory] embeddings rate limited; retrying in 2091ms
+2026-03-24T12:00:27.445+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324035952981687638KdC2eKk4)","type":"new_api_error"}}
+2026-03-24T12:33:31.176+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-24T12:45:53.623+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T13:46:23.801+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T14:09:38.213+08:00 [telegram] Polling stall detected (no getUpdates for 827.85s); forcing restart.
+2026-03-24T14:09:38.231+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-24T14:09:44.767+08:00 [memory] embeddings rate limited; retrying in 546ms
+2026-03-24T14:09:44.982+08:00 [memory] embeddings rate limited; retrying in 543ms
+2026-03-24T14:09:44.990+08:00 [memory] embeddings rate limited; retrying in 598ms
+2026-03-24T14:09:44.995+08:00 [memory] embeddings rate limited; retrying in 552ms
+2026-03-24T14:09:45.527+08:00 [memory] embeddings rate limited; retrying in 1174ms
+2026-03-24T14:09:45.738+08:00 [memory] embeddings rate limited; retrying in 1083ms
+2026-03-24T14:09:45.751+08:00 [memory] embeddings rate limited; retrying in 1141ms
+2026-03-24T14:09:45.815+08:00 [memory] embeddings rate limited; retrying in 1158ms
+2026-03-24T14:09:46.917+08:00 [memory] embeddings rate limited; retrying in 2295ms
+2026-03-24T14:09:47.042+08:00 [memory] embeddings rate limited; retrying in 2364ms
+2026-03-24T14:09:47.116+08:00 [memory] embeddings rate limited; retrying in 2198ms
+2026-03-24T14:09:47.192+08:00 [memory] embeddings rate limited; retrying in 2395ms
+2026-03-24T14:09:49.809+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260324060915194531233E76U3lNr)","type":"new_api_error"}}
+2026-03-24T14:09:53.230+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T14:52:01.075+08:00 [telegram] Polling stall detected (no getUpdates for 1029.23s); forcing restart.
+2026-03-24T14:52:01.159+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-24T14:52:16.102+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T14:55:16.744+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_CONNECT_TIMEOUT)
+2026-03-24T15:00:06.143+08:00 [tools] exec failed: zsh:1: no such file or directory: ./risk
+
+Command not found
+2026-03-24T15:22:09.941+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/social/SOC-002-interaction-runs.md'
+2026-03-24T15:30:29.665+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T15:35:05.497+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-24T15:57:14.979+08:00 [telegram] Polling stall detected (no getUpdates for 990.73s); forcing restart.
+2026-03-24T15:57:15.045+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-24T16:10:38.958+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T16:10:39.079+08:00 [session-write-lock] releasing lock held for 803818ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/a93c327a-bf29-4f99-bf6f-d16e56afd0cb.jsonl.lock
+2026-03-24T16:10:39.083+08:00 [agent/embedded] embedded run timeout: runId=02488e8e-6733-44ab-b9c0-486845c8245a sessionId=a93c327a-bf29-4f99-bf6f-d16e56afd0cb timeoutMs=600000
+2026-03-24T16:10:39.096+08:00 [agent/embedded] embedded run failover decision: runId=02488e8e-6733-44ab-b9c0-486845c8245a stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-24T16:10:39.099+08:00 [diagnostic] lane task error: lane=main durationMs=803843 error="FailoverError: LLM request timed out."
+2026-03-24T16:10:39.101+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=803848 error="FailoverError: LLM request timed out."
+2026-03-24T16:10:39.108+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-24T16:10:41.337+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-24T16:10:45.729+08:00 [memory] embeddings rate limited; retrying in 589ms
+2026-03-24T16:10:45.945+08:00 [memory] embeddings rate limited; retrying in 591ms
+2026-03-24T16:10:45.961+08:00 [memory] embeddings rate limited; retrying in 589ms
+2026-03-24T16:10:45.969+08:00 [memory] embeddings rate limited; retrying in 542ms
+2026-03-24T16:21:39.870+08:00 [telegram] Polling stall detected (no getUpdates for 658.66s); forcing restart.
+2026-03-24T16:21:39.873+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-24T16:21:40.130+08:00 [agent/embedded] embedded run timeout: runId=13dc31c4-6c31-4da2-88fc-8f1d3d926349 sessionId=13dc31c4-6c31-4da2-88fc-8f1d3d926349 timeoutMs=600000
+2026-03-24T16:21:40.150+08:00 [memory] sync failed (search): Error: memory embeddings batch timed out after 120s
+2026-03-24T16:21:40.154+08:00 [agent/embedded] embedded run failover decision: runId=13dc31c4-6c31-4da2-88fc-8f1d3d926349 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-24T16:21:40.158+08:00 [diagnostic] lane task error: lane=nested durationMs=660981 error="FailoverError: LLM request timed out."
+2026-03-24T16:21:40.161+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=660988 error="FailoverError: LLM request timed out."
+2026-03-24T16:21:40.168+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-24T16:21:43.172+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/daily/2026-03-24.md'
+2026-03-24T16:21:54.921+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-24T16:23:06.178+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-24T16:23:43.660+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T16:30:33.664+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T17:00:24.110+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T17:30:32.317+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T18:30:54.079+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T18:56:30.313+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-24T19:00:17.790+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T19:31:11.270+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T20:31:33.962+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T21:32:06.875+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T22:32:33.800+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-24T23:33:02.494+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-25T00:33:18.099+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-25T01:33:40.725+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-25T02:34:03.304+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-25T03:34:27.143+08:00 [heartbeat] failed: sendWeixinOutbound: contextToken is required
+2026-03-25T04:24:04.477+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/social/SOC-002-comment-interactions.md'
+2026-03-25T04:24:49.436+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/选题库/AI工具实操'
+2026-03-25T04:25:00.390+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/social/SOC-002-batch-20260314.md'
+2026-03-25T04:35:21.220+08:00 [tools] exec failed: zsh:1: command not found: lsof
+
+Command not found
+2026-03-25T08:00:52.140+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-25T08:00:54.159+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-25T08:00:56.176+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-25T08:00:56.186+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-25T08:01:26.202+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-25T08:01:28.218+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-25T08:01:30.244+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-25T08:01:30.253+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-25T08:01:35.631+08:00 [agent/embedded] embedded run agent end: runId=3111867d-0a19-4dd8-95e5-b775aedf4344 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-25T08:01:39.154+08:00 [agent/embedded] embedded run agent end: runId=3111867d-0a19-4dd8-95e5-b775aedf4344 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-25T08:01:44.488+08:00 [agent/embedded] embedded run agent end: runId=3111867d-0a19-4dd8-95e5-b775aedf4344 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-25T08:33:24.195+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-25T08:33:26.988+08:00 [tools] message failed: Unknown target "严总" for Telegram. Hint: <chatId>
+2026-03-25T08:55:06.107+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-25T08:55:07.701+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief'
+2026-03-25T08:55:17.641+08:00 [memory] embeddings rate limited; retrying in 527ms
+2026-03-25T08:55:17.871+08:00 [memory] embeddings rate limited; retrying in 539ms
+2026-03-25T08:55:17.879+08:00 [memory] embeddings rate limited; retrying in 551ms
+2026-03-25T08:55:17.888+08:00 [memory] embeddings rate limited; retrying in 526ms
+2026-03-25T08:55:18.384+08:00 [memory] embeddings rate limited; retrying in 1065ms
+2026-03-25T08:55:18.636+08:00 [memory] embeddings rate limited; retrying in 1077ms
+2026-03-25T08:55:18.647+08:00 [memory] embeddings rate limited; retrying in 1030ms
+2026-03-25T08:55:18.656+08:00 [memory] embeddings rate limited; retrying in 1136ms
+2026-03-25T08:55:19.671+08:00 [memory] embeddings rate limited; retrying in 2234ms
+2026-03-25T08:55:19.882+08:00 [memory] embeddings rate limited; retrying in 2370ms
+2026-03-25T08:55:19.919+08:00 [memory] embeddings rate limited; retrying in 2221ms
+2026-03-25T08:55:19.998+08:00 [memory] embeddings rate limited; retrying in 2240ms
+2026-03-25T08:55:22.457+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325005445941584439Ybz9TiXY)","type":"new_api_error"}}
+2026-03-25T10:00:30.310+08:00 [memory] embeddings rate limited; retrying in 554ms
+2026-03-25T10:00:30.323+08:00 [memory] embeddings rate limited; retrying in 552ms
+2026-03-25T10:00:30.331+08:00 [memory] embeddings rate limited; retrying in 505ms
+2026-03-25T10:00:30.370+08:00 [memory] embeddings rate limited; retrying in 547ms
+2026-03-25T10:00:31.068+08:00 [memory] embeddings rate limited; retrying in 1074ms
+2026-03-25T10:00:31.079+08:00 [memory] embeddings rate limited; retrying in 1197ms
+2026-03-25T10:00:31.088+08:00 [memory] embeddings rate limited; retrying in 1045ms
+2026-03-25T10:00:31.140+08:00 [memory] embeddings rate limited; retrying in 1148ms
+2026-03-25T10:00:32.365+08:00 [memory] embeddings rate limited; retrying in 2185ms
+2026-03-25T10:00:32.375+08:00 [memory] embeddings rate limited; retrying in 2381ms
+2026-03-25T10:00:32.504+08:00 [memory] embeddings rate limited; retrying in 2281ms
+2026-03-25T10:00:32.513+08:00 [memory] embeddings rate limited; retrying in 2159ms
+2026-03-25T10:00:35.011+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325015958463478595Qxt5zse9)","type":"new_api_error"}}
+2026-03-25T11:00:06.914+08:00 [memory] embeddings rate limited; retrying in 507ms
+2026-03-25T11:00:06.925+08:00 [memory] embeddings rate limited; retrying in 504ms
+2026-03-25T11:00:06.932+08:00 [memory] embeddings rate limited; retrying in 540ms
+2026-03-25T11:00:07.144+08:00 [memory] embeddings rate limited; retrying in 522ms
+2026-03-25T11:00:07.632+08:00 [memory] embeddings rate limited; retrying in 1012ms
+2026-03-25T11:00:07.641+08:00 [memory] embeddings rate limited; retrying in 1122ms
+2026-03-25T11:00:07.684+08:00 [memory] embeddings rate limited; retrying in 1042ms
+2026-03-25T11:00:07.885+08:00 [memory] embeddings rate limited; retrying in 1120ms
+2026-03-25T11:00:08.857+08:00 [memory] embeddings rate limited; retrying in 2033ms
+2026-03-25T11:00:08.934+08:00 [memory] embeddings rate limited; retrying in 2162ms
+2026-03-25T11:00:08.964+08:00 [memory] embeddings rate limited; retrying in 2090ms
+2026-03-25T11:00:09.208+08:00 [memory] embeddings rate limited; retrying in 2139ms
+2026-03-25T11:00:11.581+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325025934731864505JlpelYrz)","type":"new_api_error"}}
+2026-03-25T12:00:06.816+08:00 [tools] exec failed: Running risk check...
+zsh:1: no such file or directory: ./risk
+
+Command not found
+2026-03-25T13:00:06.425+08:00 [memory] embeddings rate limited; retrying in 569ms
+2026-03-25T13:00:06.435+08:00 [memory] embeddings rate limited; retrying in 538ms
+2026-03-25T13:00:06.648+08:00 [memory] embeddings rate limited; retrying in 546ms
+2026-03-25T13:00:06.657+08:00 [memory] embeddings rate limited; retrying in 599ms
+2026-03-25T13:00:07.197+08:00 [memory] embeddings rate limited; retrying in 1117ms
+2026-03-25T13:00:07.211+08:00 [memory] embeddings rate limited; retrying in 1128ms
+2026-03-25T13:00:07.410+08:00 [memory] embeddings rate limited; retrying in 1193ms
+2026-03-25T13:00:07.470+08:00 [memory] embeddings rate limited; retrying in 1093ms
+2026-03-25T13:00:08.617+08:00 [memory] embeddings rate limited; retrying in 2373ms
+2026-03-25T13:00:08.622+08:00 [memory] embeddings rate limited; retrying in 2054ms
+2026-03-25T13:00:08.811+08:00 [memory] embeddings rate limited; retrying in 2037ms
+2026-03-25T13:00:08.830+08:00 [memory] embeddings rate limited; retrying in 2367ms
+2026-03-25T13:00:11.413+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325045934310389060PCxTwdqI)","type":"new_api_error"}}
+2026-03-25T14:00:19.772+08:00 [memory] embeddings rate limited; retrying in 564ms
+2026-03-25T14:00:19.920+08:00 [memory] embeddings rate limited; retrying in 522ms
+2026-03-25T14:00:19.930+08:00 [memory] embeddings rate limited; retrying in 535ms
+2026-03-25T14:00:19.937+08:00 [memory] embeddings rate limited; retrying in 556ms
+2026-03-25T14:00:20.544+08:00 [memory] embeddings rate limited; retrying in 1004ms
+2026-03-25T14:00:20.660+08:00 [memory] embeddings rate limited; retrying in 1083ms
+2026-03-25T14:00:20.682+08:00 [memory] embeddings rate limited; retrying in 1157ms
+2026-03-25T14:00:20.704+08:00 [memory] embeddings rate limited; retrying in 1000ms
+2026-03-25T14:00:21.760+08:00 [memory] embeddings rate limited; retrying in 2064ms
+2026-03-25T14:00:21.896+08:00 [memory] embeddings rate limited; retrying in 2069ms
+2026-03-25T14:00:21.956+08:00 [memory] embeddings rate limited; retrying in 2388ms
+2026-03-25T14:00:22.045+08:00 [memory] embeddings rate limited; retrying in 2253ms
+2026-03-25T14:00:24.536+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325055947354528881YLZp0Wc5)","type":"new_api_error"}}
+2026-03-25T14:00:33.858+08:00 [tools] read failed: EISDIR: illegal operation on a directory, read
+2026-03-25T14:45:22.921+08:00 [telegram] Polling stall detected (no getUpdates for 828.19s); forcing restart.
+2026-03-25T14:45:22.926+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T14:52:18.096+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T15:00:06.136+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/risk/SKILL.md'
+2026-03-25T15:00:09.895+08:00 [tools] exec failed: zsh:1: no such file or directory: /risk
+
+Command not found
+2026-03-25T15:00:18.370+08:00 [memory] embeddings rate limited; retrying in 518ms
+2026-03-25T15:00:18.380+08:00 [memory] embeddings rate limited; retrying in 542ms
+2026-03-25T15:00:18.388+08:00 [memory] embeddings rate limited; retrying in 520ms
+2026-03-25T15:00:18.617+08:00 [memory] embeddings rate limited; retrying in 564ms
+2026-03-25T15:00:19.111+08:00 [memory] embeddings rate limited; retrying in 1197ms
+2026-03-25T15:00:19.123+08:00 [memory] embeddings rate limited; retrying in 1039ms
+2026-03-25T15:00:19.132+08:00 [memory] embeddings rate limited; retrying in 1093ms
+2026-03-25T15:00:19.387+08:00 [memory] embeddings rate limited; retrying in 1086ms
+2026-03-25T15:00:20.388+08:00 [memory] embeddings rate limited; retrying in 2398ms
+2026-03-25T15:00:20.436+08:00 [memory] embeddings rate limited; retrying in 2269ms
+2026-03-25T15:00:20.527+08:00 [memory] embeddings rate limited; retrying in 2331ms
+2026-03-25T15:00:20.695+08:00 [memory] embeddings rate limited; retrying in 2098ms
+2026-03-25T15:00:23.083+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325065946146728920vOVfeQPA)","type":"new_api_error"}}
+2026-03-25T15:23:46.437+08:00 [telegram] Polling stall detected (no getUpdates for 158.23s); forcing restart.
+2026-03-25T15:23:46.599+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T15:24:01.549+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T15:35:06.192+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/daily/2026-03-25.md'
+2026-03-25T16:00:07.075+08:00 [memory] embeddings rate limited; retrying in 545ms
+2026-03-25T16:00:07.094+08:00 [memory] embeddings rate limited; retrying in 533ms
+2026-03-25T16:00:07.101+08:00 [memory] embeddings rate limited; retrying in 597ms
+2026-03-25T16:00:07.107+08:00 [memory] embeddings rate limited; retrying in 527ms
+2026-03-25T16:00:07.825+08:00 [memory] embeddings rate limited; retrying in 1099ms
+2026-03-25T16:00:07.837+08:00 [memory] embeddings rate limited; retrying in 1140ms
+2026-03-25T16:00:07.846+08:00 [memory] embeddings rate limited; retrying in 1064ms
+2026-03-25T16:00:07.910+08:00 [memory] embeddings rate limited; retrying in 1006ms
+2026-03-25T16:00:09.119+08:00 [memory] embeddings rate limited; retrying in 2280ms
+2026-03-25T16:00:09.129+08:00 [memory] embeddings rate limited; retrying in 2306ms
+2026-03-25T16:00:09.136+08:00 [memory] embeddings rate limited; retrying in 2181ms
+2026-03-25T16:00:09.180+08:00 [memory] embeddings rate limited; retrying in 2006ms
+2026-03-25T16:00:11.644+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325075934541046768eMlBcpE1)","type":"new_api_error"}}
+2026-03-25T16:27:17.730+08:00 [telegram] Polling stall detected (no getUpdates for 109.11s); forcing restart.
+2026-03-25T16:27:17.744+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T16:27:32.746+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T17:05:34.786+08:00 [telegram] Polling stall detected (no getUpdates for 939.19s); forcing restart.
+2026-03-25T17:05:34.790+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T17:05:49.800+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T17:19:28.972+08:00 [telegram] Polling stall detected (no getUpdates for 802.46s); forcing restart.
+2026-03-25T17:19:29.055+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T17:19:44.006+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T17:25:25.401+08:00 [telegram] Polling stall detected (no getUpdates for 263.41s); forcing restart.
+2026-03-25T17:25:25.408+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T17:25:40.413+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T17:58:18.578+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-25T20:00:40.603+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/memory/daily/2026-03-25.md'
+2026-03-25T21:31:54.462+08:00 [memory] embeddings rate limited; retrying in 588ms
+2026-03-25T21:31:54.472+08:00 [memory] embeddings rate limited; retrying in 589ms
+2026-03-25T21:31:54.478+08:00 [memory] embeddings rate limited; retrying in 570ms
+2026-03-25T21:31:54.692+08:00 [memory] embeddings rate limited; retrying in 521ms
+2026-03-25T21:31:55.292+08:00 [memory] embeddings rate limited; retrying in 1046ms
+2026-03-25T21:31:55.300+08:00 [memory] embeddings rate limited; retrying in 1166ms
+2026-03-25T21:31:55.475+08:00 [memory] embeddings rate limited; retrying in 1041ms
+2026-03-25T21:31:55.641+08:00 [memory] embeddings rate limited; retrying in 1075ms
+2026-03-25T21:31:56.575+08:00 [memory] embeddings rate limited; retrying in 2069ms
+2026-03-25T21:31:56.708+08:00 [memory] embeddings rate limited; retrying in 2184ms
+2026-03-25T21:31:56.843+08:00 [memory] embeddings rate limited; retrying in 2001ms
+2026-03-25T21:31:56.945+08:00 [memory] embeddings rate limited; retrying in 2015ms
+2026-03-25T21:31:59.186+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325133121464281291hZSDL4K3)","type":"new_api_error"}}
+2026-03-25T21:31:59.193+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260325133121464281291hZSDL4K3)","type":"new_api_error"}}
+2026-03-25T21:32:00.908+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/cost/SKILL.md'
+2026-03-25T22:50:04.776+08:00 [telegram] Polling stall detected (no getUpdates for 478.85s); forcing restart.
+2026-03-25T22:50:05.056+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-25T22:50:19.791+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-25T23:06:00.452+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-26T00:01:05.208+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T01:31:15.217+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T02:01:20.307+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T02:31:21.879+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T03:01:13.583+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T03:31:07.298+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-26T03:57:06.964+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-26T06:31:35.359+08:00 [telegram] Polling stall detected (no getUpdates for 929.98s); forcing restart.
+2026-03-26T06:31:35.526+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T06:47:26.993+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T06:47:27.256+08:00 [session-write-lock] releasing lock held for 949178ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T06:47:27.486+08:00 [agent/embedded] embedded run timeout: runId=b570c452-2758-43a0-8498-c8bc891cf967 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T06:47:27.763+08:00 [agent/embedded] embedded run failover decision: runId=b570c452-2758-43a0-8498-c8bc891cf967 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T06:47:27.810+08:00 [diagnostic] lane task error: lane=main durationMs=950016 error="FailoverError: LLM request timed out."
+2026-03-26T06:47:27.861+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=950104 error="FailoverError: LLM request timed out."
+2026-03-26T06:47:27.948+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T07:03:24.850+08:00 [telegram] Polling stall detected (no getUpdates for 954.74s); forcing restart.
+2026-03-26T07:03:24.933+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T07:03:24.950+08:00 [session-write-lock] releasing lock held for 956198ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T07:03:25.034+08:00 [agent/embedded] embedded run timeout: runId=b570c452-2758-43a0-8498-c8bc891cf967 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T07:03:25.073+08:00 [agent/embedded] embedded run failover decision: runId=b570c452-2758-43a0-8498-c8bc891cf967 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T07:03:25.078+08:00 [diagnostic] lane task error: lane=main durationMs=957095 error="FailoverError: LLM request timed out."
+2026-03-26T07:03:25.083+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=957112 error="FailoverError: LLM request timed out."
+2026-03-26T07:03:25.090+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T07:03:26.596+08:00 [agent/embedded] embedded run agent end: runId=b570c452-2758-43a0-8498-c8bc891cf967 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T07:03:26.624+08:00 [agent/embedded] embedded run failover decision: runId=b570c452-2758-43a0-8498-c8bc891cf967 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T07:03:26.628+08:00 [diagnostic] lane task error: lane=main durationMs=1524 error="FailoverError: 403 status code (no body)"
+2026-03-26T07:03:26.632+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1532 error="FailoverError: 403 status code (no body)"
+2026-03-26T07:03:26.638+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T07:03:27.561+08:00 [agent/embedded] embedded run agent end: runId=b570c452-2758-43a0-8498-c8bc891cf967 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T07:03:27.598+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T07:20:00.842+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T07:20:00.983+08:00 [session-write-lock] releasing lock held for 993120ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T07:20:00.987+08:00 [agent/embedded] embedded run timeout: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T07:20:01.007+08:00 [agent/embedded] embedded run failover decision: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T07:20:01.012+08:00 [diagnostic] lane task error: lane=main durationMs=993190 error="FailoverError: 422 status code (no body)"
+2026-03-26T07:20:01.015+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=993198 error="FailoverError: 422 status code (no body)"
+2026-03-26T07:20:01.021+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T07:37:56.821+08:00 [telegram] Polling stall detected (no getUpdates for 1073.38s); forcing restart.
+2026-03-26T07:37:56.901+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T07:37:56.931+08:00 [session-write-lock] releasing lock held for 1075881ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T07:37:56.935+08:00 [agent/embedded] embedded run timeout: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T07:37:56.983+08:00 [agent/embedded] embedded run failover decision: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T07:37:56.985+08:00 [diagnostic] lane task error: lane=main durationMs=1075944 error="FailoverError: LLM request timed out."
+2026-03-26T07:37:56.988+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1075954 error="FailoverError: LLM request timed out."
+2026-03-26T07:37:56.993+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T07:37:58.135+08:00 [agent/embedded] embedded run agent end: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T07:37:58.163+08:00 [agent/embedded] embedded run failover decision: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T07:37:58.168+08:00 [diagnostic] lane task error: lane=main durationMs=1164 error="FailoverError: 403 status code (no body)"
+2026-03-26T07:37:58.171+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1171 error="FailoverError: 403 status code (no body)"
+2026-03-26T07:37:58.178+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T07:37:58.225+08:00 [agent/embedded] embedded run agent end: runId=75da9123-8759-40ce-8c3d-7594f5a1b49f isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T07:37:58.241+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T07:54:52.783+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T07:54:52.977+08:00 [session-write-lock] releasing lock held for 1014591ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T07:54:53.004+08:00 [agent/embedded] embedded run timeout: runId=0c0363f1-602c-4669-b2fe-402f0a2278d4 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T07:54:53.022+08:00 [agent/embedded] embedded run failover decision: runId=0c0363f1-602c-4669-b2fe-402f0a2278d4 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T07:54:53.026+08:00 [diagnostic] lane task error: lane=main durationMs=1014646 error="FailoverError: LLM request timed out."
+2026-03-26T07:54:53.029+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1014652 error="FailoverError: LLM request timed out."
+2026-03-26T07:54:53.035+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T07:54:58.468+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T08:11:49.746+08:00 [telegram] Polling stall detected (no getUpdates for 1014.63s); forcing restart.
+2026-03-26T08:11:49.838+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T08:11:49.931+08:00 [session-write-lock] releasing lock held for 1010969ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T08:11:49.938+08:00 [agent/embedded] embedded run timeout: runId=de2ced41-dd98-482f-907a-8c33111a8b72 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T08:11:49.957+08:00 [agent/embedded] embedded run failover decision: runId=de2ced41-dd98-482f-907a-8c33111a8b72 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T08:11:49.960+08:00 [diagnostic] lane task error: lane=main durationMs=1011081 error="FailoverError: LLM request timed out."
+2026-03-26T08:11:49.962+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1011087 error="FailoverError: LLM request timed out."
+2026-03-26T08:11:49.968+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T08:12:04.840+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T08:12:05.170+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T08:33:39.741+08:00 [session-write-lock] releasing lock held for 1294007ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T08:33:39.750+08:00 [telegram] Polling stall detected (no getUpdates for 983.95s); forcing restart.
+2026-03-26T08:33:39.755+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T08:33:39.757+08:00 [agent/embedded] embedded run timeout: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T08:33:39.768+08:00 [agent/embedded] embedded run failover decision: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T08:33:39.770+08:00 [diagnostic] lane task error: lane=main durationMs=1294046 error="FailoverError: LLM request timed out."
+2026-03-26T08:33:39.773+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1294052 error="FailoverError: LLM request timed out."
+2026-03-26T08:33:39.777+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T08:51:19.687+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T08:51:19.831+08:00 [session-write-lock] releasing lock held for 1060007ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T08:51:19.856+08:00 [agent/embedded] embedded run timeout: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T08:51:19.881+08:00 [agent/embedded] embedded run failover decision: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T08:51:19.885+08:00 [diagnostic] lane task error: lane=main durationMs=1060099 error="FailoverError: Request was aborted."
+2026-03-26T08:51:19.888+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1060105 error="FailoverError: Request was aborted."
+2026-03-26T08:51:19.897+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T08:51:21.019+08:00 [agent/embedded] embedded run agent end: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T08:51:21.044+08:00 [agent/embedded] embedded run failover decision: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T08:51:21.049+08:00 [diagnostic] lane task error: lane=main durationMs=1140 error="FailoverError: 403 status code (no body)"
+2026-03-26T08:51:21.053+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1148 error="FailoverError: 403 status code (no body)"
+2026-03-26T08:51:21.059+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T08:51:21.107+08:00 [agent/embedded] embedded run agent end: runId=ce0b1e2c-4409-4b48-b0d5-d5aa42ec8702 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T08:51:21.123+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T09:06:42.657+08:00 [telegram] Polling stall detected (no getUpdates for 920.64s); forcing restart.
+2026-03-26T09:06:42.732+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T09:06:42.757+08:00 [session-write-lock] releasing lock held for 920879ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T09:06:42.762+08:00 [agent/embedded] embedded run timeout: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T09:06:42.780+08:00 [agent/embedded] embedded run failover decision: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T09:06:42.783+08:00 [diagnostic] lane task error: lane=main durationMs=920913 error="FailoverError: 422 status code (no body)"
+2026-03-26T09:06:42.786+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=920920 error="FailoverError: 422 status code (no body)"
+2026-03-26T09:06:42.791+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T09:06:49.966+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-26T09:06:54.517+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-26T09:18:14.616+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T09:18:14.817+08:00 [agent/embedded] embedded run timeout: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T09:18:14.828+08:00 [agent/embedded] embedded run timeout: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 sessionId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 timeoutMs=600000
+2026-03-26T09:18:14.842+08:00 [agent/embedded] embedded run failover decision: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T09:18:14.844+08:00 [diagnostic] lane task error: lane=nested durationMs=691981 error="FailoverError: LLM request timed out."
+2026-03-26T09:18:14.846+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3 durationMs=691985 error="FailoverError: LLM request timed out."
+2026-03-26T09:18:14.849+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T09:18:14.857+08:00 [agent/embedded] embedded run failover decision: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T09:18:14.859+08:00 [diagnostic] lane task error: lane=main durationMs=692057 error="FailoverError: LLM request timed out."
+2026-03-26T09:18:14.861+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=692063 error="FailoverError: LLM request timed out."
+2026-03-26T09:18:14.864+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T09:18:16.197+08:00 [agent/embedded] embedded run agent end: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T09:18:16.227+08:00 [agent/embedded] embedded run failover decision: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T09:18:16.231+08:00 [diagnostic] lane task error: lane=main durationMs=1357 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:18:16.234+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1364 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:18:16.240+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T09:18:16.288+08:00 [agent/embedded] embedded run agent end: runId=2e727ee7-22d8-48c6-ad62-761384fbc57b isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T09:18:16.304+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T09:34:47.589+08:00 [telegram] Polling stall detected (no getUpdates for 990.43s); forcing restart.
+2026-03-26T09:34:47.652+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T09:34:47.673+08:00 [session-write-lock] releasing lock held for 992794ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/cff26b63-8b7b-46c3-8f1a-98032262a8b6.jsonl.lock
+2026-03-26T09:34:47.679+08:00 [agent/embedded] embedded run timeout: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 sessionId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 timeoutMs=600000
+2026-03-26T09:34:47.699+08:00 [agent/embedded] embedded run failover decision: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T09:34:47.702+08:00 [diagnostic] lane task error: lane=nested durationMs=992845 error="FailoverError: LLM request timed out."
+2026-03-26T09:34:47.704+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3 durationMs=992850 error="FailoverError: LLM request timed out."
+2026-03-26T09:34:47.708+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T09:34:49.023+08:00 [agent/embedded] embedded run agent end: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T09:34:49.035+08:00 [agent/embedded] embedded run failover decision: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T09:34:49.038+08:00 [diagnostic] lane task error: lane=nested durationMs=1319 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:34:49.039+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3 durationMs=1325 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:34:49.043+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T09:49:55.556+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T09:49:55.667+08:00 [session-write-lock] releasing lock held for 907838ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T09:49:55.670+08:00 [agent/embedded] embedded run timeout: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T09:49:55.687+08:00 [agent/embedded] embedded run failover decision: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T09:49:55.690+08:00 [diagnostic] lane task error: lane=main durationMs=907866 error="FailoverError: 422 status code (no body)"
+2026-03-26T09:49:55.693+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=907871 error="FailoverError: 422 status code (no body)"
+2026-03-26T09:49:55.698+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T09:49:55.708+08:00 [agent/embedded] embedded run timeout: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 sessionId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 timeoutMs=600000
+2026-03-26T09:49:55.724+08:00 [agent/embedded] embedded run failover decision: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T09:49:55.726+08:00 [diagnostic] lane task error: lane=nested durationMs=906675 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:49:55.728+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3 durationMs=906680 error="FailoverError: 403 status code (no body)"
+2026-03-26T09:49:55.732+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=auth next=kiro_local/deepseek-3.2
+2026-03-26T09:49:57.268+08:00 [agent/embedded] embedded run agent end: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T09:50:00.613+08:00 [agent/embedded] embedded run agent end: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T10:06:17.527+08:00 [telegram] Polling stall detected (no getUpdates for 979.76s); forcing restart.
+2026-03-26T10:06:17.547+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T10:06:17.568+08:00 [session-write-lock] releasing lock held for 981816ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T10:06:17.572+08:00 [agent/embedded] embedded run timeout: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T10:06:17.583+08:00 [agent/embedded] embedded run failover decision: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T10:06:17.585+08:00 [diagnostic] lane task error: lane=main durationMs=981877 error="FailoverError: LLM request timed out."
+2026-03-26T10:06:17.587+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=981883 error="FailoverError: LLM request timed out."
+2026-03-26T10:06:17.590+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T10:06:17.599+08:00 [agent/embedded] embedded run timeout: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 sessionId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 timeoutMs=600000
+2026-03-26T10:06:17.614+08:00 [agent/embedded] embedded run failover decision: runId=cff26b63-8b7b-46c3-8f1a-98032262a8b6 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T10:06:17.617+08:00 [diagnostic] lane task error: lane=nested durationMs=981876 error="FailoverError: Request was aborted"
+2026-03-26T10:06:17.619+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:2107fec4-2d61-44b3-98f6-3d9cca2a77a3 durationMs=981881 error="FailoverError: Request was aborted"
+2026-03-26T10:06:17.623+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=kiro_local/deepseek-3.2 reason=unknown next=none
+2026-03-26T10:06:19.229+08:00 [agent/embedded] embedded run agent end: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T10:06:19.254+08:00 [agent/embedded] embedded run failover decision: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T10:06:19.259+08:00 [diagnostic] lane task error: lane=main durationMs=1658 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:06:19.263+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1665 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:06:19.269+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T10:06:19.320+08:00 [agent/embedded] embedded run agent end: runId=f0656cb9-50d2-44eb-bb9e-33d89db49913 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T10:06:19.335+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T10:19:15.504+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T10:19:15.637+08:00 [session-write-lock] releasing lock held for 776196ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T10:19:15.649+08:00 [agent/embedded] embedded run timeout: runId=6b40657a-69df-4416-bb5a-4a8274041f93 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T10:19:15.678+08:00 [agent/embedded] embedded run failover decision: runId=6b40657a-69df-4416-bb5a-4a8274041f93 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T10:19:15.681+08:00 [diagnostic] lane task error: lane=main durationMs=776247 error="FailoverError: 422 status code (no body)"
+2026-03-26T10:19:15.685+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=776253 error="FailoverError: 422 status code (no body)"
+2026-03-26T10:19:15.691+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T10:35:12.479+08:00 [telegram] Polling stall detected (no getUpdates for 954.76s); forcing restart.
+2026-03-26T10:35:12.567+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T10:35:12.588+08:00 [session-write-lock] releasing lock held for 956861ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T10:35:12.592+08:00 [agent/embedded] embedded run timeout: runId=6b40657a-69df-4416-bb5a-4a8274041f93 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T10:35:12.608+08:00 [agent/embedded] embedded run failover decision: runId=6b40657a-69df-4416-bb5a-4a8274041f93 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T10:35:12.612+08:00 [diagnostic] lane task error: lane=main durationMs=956909 error="FailoverError: LLM request timed out."
+2026-03-26T10:35:12.615+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=956916 error="FailoverError: LLM request timed out."
+2026-03-26T10:35:12.621+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T10:35:12.634+08:00 [agent/embedded] embedded run timeout: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 sessionId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 timeoutMs=600000
+2026-03-26T10:35:12.653+08:00 [agent/embedded] embedded run failover decision: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T10:35:12.655+08:00 [diagnostic] lane task error: lane=nested durationMs=956902 error="FailoverError: LLM request timed out."
+2026-03-26T10:35:12.657+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:social-hotspot-scan durationMs=956907 error="FailoverError: LLM request timed out."
+2026-03-26T10:35:12.660+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T10:35:14.243+08:00 [agent/embedded] embedded run agent end: runId=6b40657a-69df-4416-bb5a-4a8274041f93 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T10:35:14.258+08:00 [agent/embedded] embedded run failover decision: runId=6b40657a-69df-4416-bb5a-4a8274041f93 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T10:35:14.260+08:00 [diagnostic] lane task error: lane=main durationMs=1629 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:35:14.262+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1634 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:35:14.265+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T10:35:14.302+08:00 [agent/embedded] embedded run agent end: runId=6b40657a-69df-4416-bb5a-4a8274041f93 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T10:35:14.319+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T10:35:16.105+08:00 [tools] browser failed: Error: Could not connect to Chrome. Check if Chrome is running.
+Cause: Could not find DevToolsActivePort for chrome at /Users/blackdj/Library/Application Support/Google/Chrome/DevToolsActivePort
+2026-03-26T10:52:19.447+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T10:52:19.496+08:00 [session-write-lock] releasing lock held for 1026821ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/2374df09-5f58-4aa6-8f66-d7680d1c0e00.jsonl.lock
+2026-03-26T10:52:19.499+08:00 [agent/embedded] embedded run timeout: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 sessionId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 timeoutMs=600000
+2026-03-26T10:52:19.510+08:00 [agent/embedded] embedded run failover decision: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T10:52:19.512+08:00 [diagnostic] lane task error: lane=nested durationMs=1026844 error="FailoverError: LLM request timed out."
+2026-03-26T10:52:19.514+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:social-hotspot-scan durationMs=1026849 error="FailoverError: LLM request timed out."
+2026-03-26T10:52:19.517+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T10:52:19.525+08:00 [agent/embedded] embedded run timeout: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T10:52:19.540+08:00 [agent/embedded] embedded run failover decision: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T10:52:19.542+08:00 [diagnostic] lane task error: lane=main durationMs=1025123 error="FailoverError: 422 status code (no body)"
+2026-03-26T10:52:19.544+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1025128 error="FailoverError: 422 status code (no body)"
+2026-03-26T10:52:19.547+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T10:52:20.523+08:00 [agent/embedded] embedded run agent end: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T10:52:20.551+08:00 [agent/embedded] embedded run failover decision: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T10:52:20.556+08:00 [diagnostic] lane task error: lane=nested durationMs=1029 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:52:20.559+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:social-hotspot-scan durationMs=1036 error="FailoverError: 403 status code (no body)"
+2026-03-26T10:52:20.566+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T11:07:49.420+08:00 [telegram] Polling stall detected (no getUpdates for 927.69s); forcing restart.
+2026-03-26T11:07:49.504+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T11:07:49.525+08:00 [session-write-lock] releasing lock held for 929959ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T11:07:49.531+08:00 [agent/embedded] embedded run timeout: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T11:07:49.546+08:00 [agent/embedded] embedded run failover decision: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T11:07:49.550+08:00 [diagnostic] lane task error: lane=main durationMs=929993 error="FailoverError: LLM request timed out."
+2026-03-26T11:07:49.554+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=930000 error="FailoverError: LLM request timed out."
+2026-03-26T11:07:49.561+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T11:07:49.574+08:00 [agent/embedded] embedded run timeout: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 sessionId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 timeoutMs=600000
+2026-03-26T11:07:49.611+08:00 [agent/embedded] embedded run failover decision: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T11:07:49.614+08:00 [diagnostic] lane task error: lane=nested durationMs=929035 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:07:49.616+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:social-hotspot-scan durationMs=929043 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:07:49.621+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=auth next=kiro_local/deepseek-3.2
+2026-03-26T11:07:50.965+08:00 [agent/embedded] embedded run agent end: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T11:07:50.989+08:00 [agent/embedded] embedded run failover decision: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T11:07:50.994+08:00 [diagnostic] lane task error: lane=main durationMs=1419 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:07:50.998+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1428 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:07:51.004+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T11:07:51.072+08:00 [agent/embedded] embedded run agent end: runId=c8acde40-b7fa-4e63-9e69-578c691dc3a4 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T11:07:51.088+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T11:07:51.245+08:00 [agent/embedded] embedded run agent end: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T11:07:54.701+08:00 [agent/embedded] embedded run agent end: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T11:20:15.434+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T11:20:15.590+08:00 [session-write-lock] releasing lock held for 745928ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/2374df09-5f58-4aa6-8f66-d7680d1c0e00.jsonl.lock
+2026-03-26T11:20:15.597+08:00 [agent/embedded] embedded run timeout: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 sessionId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 timeoutMs=600000
+2026-03-26T11:20:15.622+08:00 [agent/embedded] embedded run failover decision: runId=2374df09-5f58-4aa6-8f66-d7680d1c0e00 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T11:20:15.624+08:00 [diagnostic] lane task error: lane=nested durationMs=745993 error="FailoverError: Request was aborted"
+2026-03-26T11:20:15.627+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:social-hotspot-scan durationMs=745999 error="FailoverError: Request was aborted"
+2026-03-26T11:20:15.631+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=kiro_local/deepseek-3.2 reason=unknown next=none
+2026-03-26T11:20:15.633+08:00 [agent/embedded] embedded run timeout: runId=bafba3e3-7989-401c-94aa-247ab1daa519 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T11:20:15.648+08:00 [agent/embedded] embedded run failover decision: runId=bafba3e3-7989-401c-94aa-247ab1daa519 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T11:20:15.650+08:00 [diagnostic] lane task error: lane=main durationMs=744466 error="FailoverError: 422 status code (no body)"
+2026-03-26T11:20:15.652+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=744469 error="FailoverError: 422 status code (no body)"
+2026-03-26T11:20:15.655+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T11:20:23.645+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/risk/SKILL.md'
+2026-03-26T11:35:39.376+08:00 [telegram] Polling stall detected (no getUpdates for 921.53s); forcing restart.
+2026-03-26T11:35:39.396+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T11:35:39.414+08:00 [session-write-lock] releasing lock held for 923745ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T11:35:39.422+08:00 [agent/embedded] embedded run timeout: runId=bafba3e3-7989-401c-94aa-247ab1daa519 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T11:35:39.433+08:00 [agent/embedded] embedded run failover decision: runId=bafba3e3-7989-401c-94aa-247ab1daa519 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T11:35:39.435+08:00 [diagnostic] lane task error: lane=main durationMs=923772 error="FailoverError: LLM request timed out."
+2026-03-26T11:35:39.436+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=923777 error="FailoverError: LLM request timed out."
+2026-03-26T11:35:39.440+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T11:35:39.448+08:00 [agent/embedded] embedded run timeout: runId=36bc5e14-bffb-49d8-9080-a90237390f4c sessionId=36bc5e14-bffb-49d8-9080-a90237390f4c timeoutMs=600000
+2026-03-26T11:35:39.463+08:00 [agent/embedded] embedded run failover decision: runId=36bc5e14-bffb-49d8-9080-a90237390f4c stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T11:35:39.465+08:00 [diagnostic] lane task error: lane=nested durationMs=921695 error="FailoverError: LLM request timed out."
+2026-03-26T11:35:39.467+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=921701 error="FailoverError: LLM request timed out."
+2026-03-26T11:35:39.471+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T11:35:40.340+08:00 [agent/embedded] embedded run agent end: runId=bafba3e3-7989-401c-94aa-247ab1daa519 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T11:35:40.365+08:00 [agent/embedded] embedded run failover decision: runId=bafba3e3-7989-401c-94aa-247ab1daa519 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T11:35:40.369+08:00 [diagnostic] lane task error: lane=main durationMs=920 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:35:40.373+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=927 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:35:40.379+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T11:35:40.431+08:00 [agent/embedded] embedded run agent end: runId=bafba3e3-7989-401c-94aa-247ab1daa519 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T11:35:40.447+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T11:52:42.349+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T11:52:42.489+08:00 [session-write-lock] releasing lock held for 1023000ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/36bc5e14-bffb-49d8-9080-a90237390f4c.jsonl.lock
+2026-03-26T11:52:42.493+08:00 [agent/embedded] embedded run timeout: runId=36bc5e14-bffb-49d8-9080-a90237390f4c sessionId=36bc5e14-bffb-49d8-9080-a90237390f4c timeoutMs=600000
+2026-03-26T11:52:42.510+08:00 [agent/embedded] embedded run failover decision: runId=36bc5e14-bffb-49d8-9080-a90237390f4c stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T11:52:42.514+08:00 [diagnostic] lane task error: lane=nested durationMs=1023034 error="FailoverError: LLM request timed out."
+2026-03-26T11:52:42.517+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=1023040 error="FailoverError: LLM request timed out."
+2026-03-26T11:52:42.522+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T11:52:43.400+08:00 [agent/embedded] embedded run agent end: runId=36bc5e14-bffb-49d8-9080-a90237390f4c isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T11:52:43.422+08:00 [agent/embedded] embedded run failover decision: runId=36bc5e14-bffb-49d8-9080-a90237390f4c stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T11:52:43.426+08:00 [diagnostic] lane task error: lane=nested durationMs=892 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:52:43.430+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=900 error="FailoverError: 403 status code (no body)"
+2026-03-26T11:52:43.436+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T12:09:51.322+08:00 [telegram] Polling stall detected (no getUpdates for 1026.67s); forcing restart.
+2026-03-26T12:09:51.349+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T12:09:51.426+08:00 [session-write-lock] releasing lock held for 1028796ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T12:09:51.433+08:00 [agent/embedded] embedded run timeout: runId=d469eca1-0446-4e74-93d0-19af68da56d6 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T12:09:51.450+08:00 [agent/embedded] embedded run failover decision: runId=d469eca1-0446-4e74-93d0-19af68da56d6 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T12:09:51.453+08:00 [diagnostic] lane task error: lane=main durationMs=1028826 error="FailoverError: 422 status code (no body)"
+2026-03-26T12:09:51.455+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1028831 error="FailoverError: 422 status code (no body)"
+2026-03-26T12:09:51.461+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T12:09:51.473+08:00 [agent/embedded] embedded run timeout: runId=36bc5e14-bffb-49d8-9080-a90237390f4c sessionId=36bc5e14-bffb-49d8-9080-a90237390f4c timeoutMs=600000
+2026-03-26T12:09:51.490+08:00 [agent/embedded] embedded run failover decision: runId=36bc5e14-bffb-49d8-9080-a90237390f4c stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T12:09:51.492+08:00 [diagnostic] lane task error: lane=nested durationMs=1028045 error="FailoverError: 403 status code (no body)"
+2026-03-26T12:09:51.494+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=1028051 error="FailoverError: 403 status code (no body)"
+2026-03-26T12:09:51.498+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=auth next=kiro_local/deepseek-3.2
+2026-03-26T12:09:53.029+08:00 [agent/embedded] embedded run agent end: runId=36bc5e14-bffb-49d8-9080-a90237390f4c isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T12:09:56.587+08:00 [agent/embedded] embedded run agent end: runId=36bc5e14-bffb-49d8-9080-a90237390f4c isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T12:10:01.895+08:00 [agent/embedded] embedded run agent end: runId=36bc5e14-bffb-49d8-9080-a90237390f4c isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T12:10:06.336+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T12:10:11.330+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T12:10:11.390+08:00 [agent/embedded] embedded run agent end: runId=36bc5e14-bffb-49d8-9080-a90237390f4c isError=true model=deepseek-3.2 provider=kiro_local error=HTTP 500: Internal Server Error
+2026-03-26T12:10:11.405+08:00 [agent/embedded] embedded run failover decision: runId=36bc5e14-bffb-49d8-9080-a90237390f4c stage=assistant decision=fallback_model reason=timeout provider=kiro_local/deepseek-3.2 profile=-
+2026-03-26T12:10:11.407+08:00 [diagnostic] lane task error: lane=nested durationMs=19901 error="FailoverError: HTTP 500: Internal Server Error"
+2026-03-26T12:10:11.409+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=19906 error="FailoverError: HTTP 500: Internal Server Error"
+2026-03-26T12:10:11.414+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=kiro_local/deepseek-3.2 reason=timeout next=none
+2026-03-26T12:21:15.310+08:00 [telegram] Polling stall detected (no getUpdates for 652.18s); forcing restart.
+2026-03-26T12:21:15.332+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T12:21:15.355+08:00 [agent/embedded] embedded run timeout: runId=b67bea23-db4d-49e6-a14d-8bd9af6a39c3 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T12:21:15.368+08:00 [agent/embedded] embedded run failover decision: runId=b67bea23-db4d-49e6-a14d-8bd9af6a39c3 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T12:21:15.370+08:00 [diagnostic] lane task error: lane=main durationMs=663838 error="FailoverError: LLM request timed out."
+2026-03-26T12:21:15.372+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=663844 error="FailoverError: LLM request timed out."
+2026-03-26T12:21:15.375+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T12:21:22.263+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T12:38:54.278+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T12:54:17.258+08:00 [telegram] Polling stall detected (no getUpdates for 920.53s); forcing restart.
+2026-03-26T12:54:17.314+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T12:54:17.331+08:00 [session-write-lock] releasing lock held for 922822ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T12:54:17.334+08:00 [agent/embedded] embedded run timeout: runId=95788a69-fef6-4d83-8912-40c11852b936 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T12:54:17.343+08:00 [agent/embedded] embedded run failover decision: runId=95788a69-fef6-4d83-8912-40c11852b936 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T12:54:17.345+08:00 [diagnostic] lane task error: lane=main durationMs=922857 error="FailoverError: LLM request timed out."
+2026-03-26T12:54:17.347+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=922861 error="FailoverError: LLM request timed out."
+2026-03-26T12:54:17.350+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T13:09:39.266+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T13:09:39.324+08:00 [session-write-lock] releasing lock held for 921948ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T13:09:39.327+08:00 [agent/embedded] embedded run timeout: runId=95788a69-fef6-4d83-8912-40c11852b936 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T13:09:39.342+08:00 [agent/embedded] embedded run failover decision: runId=95788a69-fef6-4d83-8912-40c11852b936 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T13:09:39.344+08:00 [diagnostic] lane task error: lane=main durationMs=921986 error="FailoverError: LLM request timed out."
+2026-03-26T13:09:39.346+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=921991 error="FailoverError: LLM request timed out."
+2026-03-26T13:09:39.351+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T13:09:40.704+08:00 [agent/embedded] embedded run agent end: runId=95788a69-fef6-4d83-8912-40c11852b936 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T13:09:40.728+08:00 [agent/embedded] embedded run failover decision: runId=95788a69-fef6-4d83-8912-40c11852b936 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T13:09:40.732+08:00 [diagnostic] lane task error: lane=main durationMs=1366 error="FailoverError: 403 status code (no body)"
+2026-03-26T13:09:40.736+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1377 error="FailoverError: 403 status code (no body)"
+2026-03-26T13:09:40.742+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T13:09:40.786+08:00 [agent/embedded] embedded run agent end: runId=95788a69-fef6-4d83-8912-40c11852b936 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T13:09:40.805+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T13:22:15.215+08:00 [telegram] Polling stall detected (no getUpdates for 753.57s); forcing restart.
+2026-03-26T13:22:15.296+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T13:22:15.313+08:00 [session-write-lock] releasing lock held for 755885ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/0c618ca3-ac5d-43df-9943-a9df1efcc428.jsonl.lock
+2026-03-26T13:22:15.316+08:00 [agent/embedded] embedded run timeout: runId=0c618ca3-ac5d-43df-9943-a9df1efcc428 sessionId=0c618ca3-ac5d-43df-9943-a9df1efcc428 timeoutMs=600000
+2026-03-26T13:22:15.329+08:00 [agent/embedded] embedded run failover decision: runId=0c618ca3-ac5d-43df-9943-a9df1efcc428 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T13:22:15.331+08:00 [diagnostic] lane task error: lane=nested durationMs=755912 error="FailoverError: LLM request timed out."
+2026-03-26T13:22:15.334+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=755917 error="FailoverError: LLM request timed out."
+2026-03-26T13:22:15.338+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T13:22:15.352+08:00 [agent/embedded] embedded run timeout: runId=6bb4d5df-c9eb-4555-9d5e-0fddeb5181ee sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T13:22:15.372+08:00 [agent/embedded] embedded run failover decision: runId=6bb4d5df-c9eb-4555-9d5e-0fddeb5181ee stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T13:22:15.374+08:00 [diagnostic] lane task error: lane=main durationMs=754468 error="FailoverError: 422 status code (no body)"
+2026-03-26T13:22:15.376+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=754473 error="FailoverError: 422 status code (no body)"
+2026-03-26T13:22:15.380+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T13:22:17.548+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T13:22:21.946+08:00 [tools] web_search failed: Perplexity API error (402): {"error":{"message":"This request requires more credits, or fewer max_tokens. You requested up to 8000 tokens, but can only afford 1933. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account","code":402,"metadata":{"provider_name":null}},"user_id":"user_3AvRrQEU85D12HAgV3obBRp0VS4"}
+2026-03-26T13:23:52.211+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T13:23:52.657+08:00 [agent/embedded] embedded run agent end: runId=0c618ca3-ac5d-43df-9943-a9df1efcc428 isError=true model=qwen3-235b-a22b-instruct provider=iflow error=terminated
+2026-03-26T13:24:03.412+08:00 [tools] web_search failed: Perplexity API error (402): {"error":{"message":"This request requires more credits, or fewer max_tokens. You requested up to 8000 tokens, but can only afford 1933. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account","code":402,"metadata":{"provider_name":null}},"user_id":"user_3AvRrQEU85D12HAgV3obBRp0VS4"}
+2026-03-26T13:24:05.519+08:00 [tools] message failed: Unknown target "self" for Telegram. Hint: <chatId>
+2026-03-26T13:24:07.557+08:00 [memory] embeddings rate limited; retrying in 541ms
+2026-03-26T13:24:07.564+08:00 [memory] embeddings rate limited; retrying in 561ms
+2026-03-26T13:24:07.748+08:00 [memory] embeddings rate limited; retrying in 570ms
+2026-03-26T13:24:07.808+08:00 [memory] embeddings rate limited; retrying in 526ms
+2026-03-26T13:24:08.307+08:00 [memory] embeddings rate limited; retrying in 1003ms
+2026-03-26T13:24:08.333+08:00 [memory] embeddings rate limited; retrying in 1087ms
+2026-03-26T13:24:08.542+08:00 [memory] embeddings rate limited; retrying in 1151ms
+2026-03-26T13:24:08.551+08:00 [memory] embeddings rate limited; retrying in 1053ms
+2026-03-26T13:24:09.500+08:00 [memory] embeddings rate limited; retrying in 2120ms
+2026-03-26T13:24:09.620+08:00 [memory] embeddings rate limited; retrying in 2029ms
+2026-03-26T13:24:09.814+08:00 [memory] embeddings rate limited; retrying in 2182ms
+2026-03-26T13:24:09.903+08:00 [memory] embeddings rate limited; retrying in 2332ms
+2026-03-26T13:40:05.257+08:00 [telegram] Polling stall detected (no getUpdates for 970.85s); forcing restart.
+2026-03-26T13:40:05.262+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T13:40:05.312+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T13:40:06.839+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 202603260539271404615831gvlq6wm)","type":"new_api_error"}}
+2026-03-26T13:55:22.169+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T13:55:22.246+08:00 [session-write-lock] releasing lock held for 916809ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T13:55:22.249+08:00 [agent/embedded] embedded run timeout: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T13:55:22.261+08:00 [agent/embedded] embedded run failover decision: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T13:55:22.263+08:00 [diagnostic] lane task error: lane=main durationMs=916839 error="FailoverError: 422 status code (no body)"
+2026-03-26T13:55:22.267+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=916844 error="FailoverError: 422 status code (no body)"
+2026-03-26T13:55:22.273+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T14:12:50.138+08:00 [telegram] Polling stall detected (no getUpdates for 1045.75s); forcing restart.
+2026-03-26T14:12:50.169+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T14:12:50.244+08:00 [session-write-lock] releasing lock held for 1047939ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T14:12:50.249+08:00 [agent/embedded] embedded run timeout: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T14:12:50.262+08:00 [agent/embedded] embedded run failover decision: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T14:12:50.266+08:00 [diagnostic] lane task error: lane=main durationMs=1047982 error="FailoverError: LLM request timed out."
+2026-03-26T14:12:50.269+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1047990 error="FailoverError: LLM request timed out."
+2026-03-26T14:12:50.275+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T14:12:50.996+08:00 [agent/embedded] embedded run agent end: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T14:12:51.026+08:00 [agent/embedded] embedded run failover decision: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T14:12:51.030+08:00 [diagnostic] lane task error: lane=main durationMs=742 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:12:51.033+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=750 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:12:51.040+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T14:12:51.084+08:00 [agent/embedded] embedded run agent end: runId=43a2d7ec-8739-413d-ac56-464ca06f1e72 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T14:12:51.099+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T14:23:16.126+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T14:23:16.268+08:00 [agent/embedded] embedded run timeout: runId=c51fd970-c27c-488a-86f6-b0d638672d5f sessionId=c51fd970-c27c-488a-86f6-b0d638672d5f timeoutMs=600000
+2026-03-26T14:23:16.288+08:00 [agent/embedded] embedded run timeout: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T14:23:16.317+08:00 [agent/embedded] embedded run failover decision: runId=c51fd970-c27c-488a-86f6-b0d638672d5f stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T14:23:16.320+08:00 [diagnostic] lane task error: lane=nested durationMs=625983 error="FailoverError: LLM request timed out."
+2026-03-26T14:23:16.322+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=625988 error="FailoverError: LLM request timed out."
+2026-03-26T14:23:16.327+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T14:23:16.340+08:00 [agent/embedded] embedded run failover decision: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T14:23:16.342+08:00 [diagnostic] lane task error: lane=main durationMs=625136 error="FailoverError: 422 status code (no body)"
+2026-03-26T14:23:16.345+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=625141 error="FailoverError: 422 status code (no body)"
+2026-03-26T14:23:16.349+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T14:41:07.101+08:00 [telegram] Polling stall detected (no getUpdates for 1068.41s); forcing restart.
+2026-03-26T14:41:07.120+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T14:41:07.138+08:00 [session-write-lock] releasing lock held for 1070702ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/c51fd970-c27c-488a-86f6-b0d638672d5f.jsonl.lock
+2026-03-26T14:41:07.144+08:00 [agent/embedded] embedded run timeout: runId=c51fd970-c27c-488a-86f6-b0d638672d5f sessionId=c51fd970-c27c-488a-86f6-b0d638672d5f timeoutMs=600000
+2026-03-26T14:41:07.156+08:00 [agent/embedded] embedded run failover decision: runId=c51fd970-c27c-488a-86f6-b0d638672d5f stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T14:41:07.159+08:00 [diagnostic] lane task error: lane=nested durationMs=1070822 error="FailoverError: LLM request timed out."
+2026-03-26T14:41:07.161+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=1070828 error="FailoverError: LLM request timed out."
+2026-03-26T14:41:07.164+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T14:41:07.172+08:00 [agent/embedded] embedded run timeout: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T14:41:07.188+08:00 [agent/embedded] embedded run failover decision: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T14:41:07.190+08:00 [diagnostic] lane task error: lane=main durationMs=1070831 error="FailoverError: LLM request timed out."
+2026-03-26T14:41:07.192+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1070837 error="FailoverError: LLM request timed out."
+2026-03-26T14:41:07.196+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T14:41:08.011+08:00 [agent/embedded] embedded run agent end: runId=c51fd970-c27c-488a-86f6-b0d638672d5f isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T14:41:08.020+08:00 [agent/embedded] embedded run failover decision: runId=c51fd970-c27c-488a-86f6-b0d638672d5f stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T14:41:08.022+08:00 [diagnostic] lane task error: lane=nested durationMs=851 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:41:08.024+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=855 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:41:08.028+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T14:41:08.065+08:00 [agent/embedded] embedded run agent end: runId=c51fd970-c27c-488a-86f6-b0d638672d5f isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T14:41:08.081+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T14:41:08.154+08:00 [agent/embedded] embedded run agent end: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T14:41:08.168+08:00 [agent/embedded] embedded run failover decision: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T14:41:08.170+08:00 [diagnostic] lane task error: lane=main durationMs=967 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:41:08.172+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=972 error="FailoverError: 403 status code (no body)"
+2026-03-26T14:41:08.176+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T14:41:08.213+08:00 [agent/embedded] embedded run agent end: runId=d8af0dea-3493-422e-bd63-7890f73af6d0 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T14:41:08.230+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T14:56:18.078+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T14:56:18.129+08:00 [session-write-lock] releasing lock held for 908890ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T14:56:18.131+08:00 [agent/embedded] embedded run timeout: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T14:56:18.143+08:00 [agent/embedded] embedded run failover decision: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T14:56:18.146+08:00 [diagnostic] lane task error: lane=main durationMs=908911 error="FailoverError: 422 status code (no body)"
+2026-03-26T14:56:18.147+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=908916 error="FailoverError: 422 status code (no body)"
+2026-03-26T14:56:18.151+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T15:13:57.051+08:00 [telegram] Polling stall detected (no getUpdates for 1056.34s); forcing restart.
+2026-03-26T15:13:57.071+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T15:13:57.087+08:00 [session-write-lock] releasing lock held for 1058918ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T15:13:57.094+08:00 [agent/embedded] embedded run timeout: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T15:13:57.104+08:00 [agent/embedded] embedded run failover decision: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 stage=assistant decision=fallback_model reason=timeout provider=iflow/qwen3-235b-a22b-instruct profile=-
+2026-03-26T15:13:57.106+08:00 [diagnostic] lane task error: lane=main durationMs=1058948 error="FailoverError: LLM request timed out."
+2026-03-26T15:13:57.108+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=1058952 error="FailoverError: LLM request timed out."
+2026-03-26T15:13:57.112+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=siliconflow/Qwen/Qwen3-235B-A22B
+2026-03-26T15:13:57.841+08:00 [agent/embedded] embedded run agent end: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 isError=true model=Qwen/Qwen3-235B-A22B provider=siliconflow error=403 status code (no body)
+2026-03-26T15:13:57.858+08:00 [agent/embedded] embedded run failover decision: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 stage=assistant decision=fallback_model reason=auth provider=siliconflow/Qwen/Qwen3-235B-A22B profile=-
+2026-03-26T15:13:57.861+08:00 [diagnostic] lane task error: lane=main durationMs=741 error="FailoverError: 403 status code (no body)"
+2026-03-26T15:13:57.863+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=746 error="FailoverError: 403 status code (no body)"
+2026-03-26T15:13:57.867+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=siliconflow/Qwen/Qwen3-235B-A22B reason=auth next=g4f_local/qwen-3-235b
+2026-03-26T15:13:57.904+08:00 [agent/embedded] embedded run agent end: runId=022a0f4f-b503-4176-8871-8201cb00d4f0 isError=true model=qwen-3-235b provider=g4f_local error=422 status code (no body)
+2026-03-26T15:13:57.919+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=g4f_local/qwen-3-235b reason=unknown next=none
+2026-03-26T15:24:17.038+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T15:24:17.193+08:00 [agent/embedded] embedded run timeout: runId=73a36c21-a9ab-4fd6-b059-98349ea24a55 sessionId=73a36c21-a9ab-4fd6-b059-98349ea24a55 timeoutMs=600000
+2026-03-26T15:24:17.212+08:00 [agent/embedded] embedded run timeout: runId=1320c735-9fb2-4098-aa0d-8ce9ad748997 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T15:24:17.233+08:00 [agent/embedded] embedded run failover decision: runId=1320c735-9fb2-4098-aa0d-8ce9ad748997 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T15:24:17.236+08:00 [diagnostic] lane task error: lane=main durationMs=619161 error="FailoverError: 422 status code (no body)"
+2026-03-26T15:24:17.238+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=619166 error="FailoverError: 422 status code (no body)"
+2026-03-26T15:24:17.242+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T15:24:17.251+08:00 [agent/embedded] embedded run failover decision: runId=73a36c21-a9ab-4fd6-b059-98349ea24a55 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T15:24:17.253+08:00 [diagnostic] lane task error: lane=nested durationMs=620085 error="FailoverError: LLM request timed out."
+2026-03-26T15:24:17.254+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:5e401547-128d-4614-bd72-a8e620e8b731 durationMs=620090 error="FailoverError: LLM request timed out."
+2026-03-26T15:24:17.258+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T15:24:21.146+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T15:24:22.973+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T15:40:37.014+08:00 [telegram] Polling stall detected (no getUpdates for 977.6s); forcing restart.
+2026-03-26T15:40:37.085+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T15:40:37.097+08:00 [session-write-lock] releasing lock held for 972946ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/63a460a1-d85a-4fd2-b18f-0a631c8771ad.jsonl.lock
+2026-03-26T15:40:37.103+08:00 [agent/embedded] embedded run timeout: runId=af86989c-2465-4f28-8a77-762e5080a8f2 sessionId=63a460a1-d85a-4fd2-b18f-0a631c8771ad timeoutMs=600000
+2026-03-26T15:40:37.120+08:00 [agent/embedded] embedded run failover decision: runId=af86989c-2465-4f28-8a77-762e5080a8f2 stage=assistant decision=fallback_model reason=timeout provider=g4f_local/qwen-3-235b profile=-
+2026-03-26T15:40:37.124+08:00 [diagnostic] lane task error: lane=main durationMs=972980 error="FailoverError: 422 status code (no body)"
+2026-03-26T15:40:37.127+08:00 [diagnostic] lane task error: lane=session:agent:main:main durationMs=972989 error="FailoverError: 422 status code (no body)"
+2026-03-26T15:40:37.131+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T15:40:41.483+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T15:40:45.275+08:00 [tools] read failed: ENOENT: no such file or directory, access '/Users/blackdj/Desktop/OpenClaw Bot/apps/openclaw/skills/brief/SKILL.md'
+2026-03-26T15:40:52.091+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T15:57:13.083+08:00 [session-write-lock] releasing lock held for 993818ms (max=720000ms): /Users/blackdj/Desktop/OpenClaw Bot/.openclaw/agents/main/sessions/21ed49b5-9afe-48e5-8adb-2016e1008d10.jsonl.lock
+2026-03-26T15:57:13.085+08:00 [agent/embedded] embedded run timeout: runId=21ed49b5-9afe-48e5-8adb-2016e1008d10 sessionId=21ed49b5-9afe-48e5-8adb-2016e1008d10 timeoutMs=600000
+2026-03-26T15:57:13.107+08:00 [agent/embedded] embedded run failover decision: runId=21ed49b5-9afe-48e5-8adb-2016e1008d10 stage=assistant decision=fallback_model reason=timeout provider=iflow/deepseek-v3.2 profile=-
+2026-03-26T15:57:13.110+08:00 [diagnostic] lane task error: lane=nested durationMs=993854 error="FailoverError: LLM request timed out."
+2026-03-26T15:57:13.112+08:00 [diagnostic] lane task error: lane=session:agent:main:cron:76d73a4e-38e2-46d6-af39-eb186952f6f7 durationMs=993861 error="FailoverError: LLM request timed out."
+2026-03-26T15:57:13.119+08:00 [model-fallback/decision] model fallback decision: decision=candidate_failed requested=iflow/deepseek-v3.2 candidate=iflow/deepseek-v3.2 reason=unknown next=iflow/qwen3-235b-a22b-instruct
+2026-03-26T15:57:16.479+08:00 [memory] embeddings rate limited; retrying in 557ms
+2026-03-26T15:57:16.486+08:00 [memory] embeddings rate limited; retrying in 562ms
+2026-03-26T15:57:16.705+08:00 [memory] embeddings rate limited; retrying in 501ms
+2026-03-26T15:57:16.725+08:00 [memory] embeddings rate limited; retrying in 554ms
+2026-03-26T15:57:17.240+08:00 [memory] embeddings rate limited; retrying in 1032ms
+2026-03-26T15:57:17.248+08:00 [memory] embeddings rate limited; retrying in 1103ms
+2026-03-26T15:57:17.402+08:00 [memory] embeddings rate limited; retrying in 1112ms
+2026-03-26T15:57:17.479+08:00 [memory] embeddings rate limited; retrying in 1105ms
+2026-03-26T15:57:20.344+08:00 [memory] embeddings rate limited; retrying in 2351ms
+2026-03-26T15:57:20.345+08:00 [memory] embeddings rate limited; retrying in 2384ms
+2026-03-26T15:57:20.347+08:00 [memory] embeddings rate limited; retrying in 2396ms
+2026-03-26T15:57:20.434+08:00 [memory] embeddings rate limited; retrying in 2080ms
+2026-03-26T15:57:22.951+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260326075643385361587L483iLNG)","type":"new_api_error"}}
+2026-03-26T15:57:22.960+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260326075643385361587L483iLNG)","type":"new_api_error"}}
+2026-03-26T15:57:26.229+08:00 [model-fallback/decision] model fallback decision: decision=candidate_succeeded requested=iflow/deepseek-v3.2 candidate=iflow/qwen3-235b-a22b-instruct reason=unknown next=none
+2026-03-26T16:00:06.235+08:00 [memory] embeddings rate limited; retrying in 533ms
+2026-03-26T16:00:06.246+08:00 [memory] embeddings rate limited; retrying in 586ms
+2026-03-26T16:00:06.396+08:00 [memory] embeddings rate limited; retrying in 517ms
+2026-03-26T16:00:06.417+08:00 [memory] embeddings rate limited; retrying in 554ms
+2026-03-26T16:00:06.977+08:00 [memory] embeddings rate limited; retrying in 1040ms
+2026-03-26T16:00:07.034+08:00 [memory] embeddings rate limited; retrying in 1159ms
+2026-03-26T16:00:07.110+08:00 [memory] embeddings rate limited; retrying in 1160ms
+2026-03-26T16:00:07.181+08:00 [memory] embeddings rate limited; retrying in 1134ms
+2026-03-26T16:00:07.985+08:00 [tools] exec failed: zsh:1: no such file or directory: /risk
+
+Command not found
+2026-03-26T16:00:08.211+08:00 [memory] embeddings rate limited; retrying in 2096ms
+2026-03-26T16:00:08.400+08:00 [memory] embeddings rate limited; retrying in 2292ms
+2026-03-26T16:00:08.480+08:00 [memory] embeddings rate limited; retrying in 2105ms
+2026-03-26T16:00:08.520+08:00 [memory] embeddings rate limited; retrying in 2137ms
+2026-03-26T16:00:10.884+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260326075931185472849UQaO3TzD)","type":"new_api_error"}}
+2026-03-26T17:57:02.517+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-26T18:19:14.888+08:00 [telegram] Polling stall detected (no getUpdates for 93.66s); forcing restart.
+2026-03-26T18:19:23.661+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T18:19:29.902+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T18:21:23.734+08:00 [telegram] Polling stall detected (no getUpdates for 90s); forcing restart.
+2026-03-26T18:21:38.747+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T18:21:38.753+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T18:23:58.809+08:00 [telegram] Polling stall detected (no getUpdates for 90s); forcing restart.
+2026-03-26T18:24:13.822+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-26T18:24:13.831+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-26T19:00:09.128+08:00 [memory] embeddings rate limited; retrying in 512ms
+2026-03-26T19:00:09.235+08:00 [memory] embeddings rate limited; retrying in 553ms
+2026-03-26T19:00:09.417+08:00 [memory] embeddings rate limited; retrying in 596ms
+2026-03-26T19:00:09.425+08:00 [memory] embeddings rate limited; retrying in 573ms
+2026-03-26T19:00:09.838+08:00 [memory] embeddings rate limited; retrying in 1063ms
+2026-03-26T19:00:09.990+08:00 [memory] embeddings rate limited; retrying in 1080ms
+2026-03-26T19:00:10.198+08:00 [memory] embeddings rate limited; retrying in 1045ms
+2026-03-26T19:00:10.210+08:00 [memory] embeddings rate limited; retrying in 1113ms
+2026-03-26T19:00:11.116+08:00 [memory] embeddings rate limited; retrying in 2042ms
+2026-03-26T19:00:11.307+08:00 [memory] embeddings rate limited; retrying in 2267ms
+2026-03-26T19:00:11.456+08:00 [memory] embeddings rate limited; retrying in 2089ms
+2026-03-26T19:00:11.532+08:00 [memory] embeddings rate limited; retrying in 2117ms
+2026-03-26T19:00:13.859+08:00 [memory] sync failed (session-start): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260326105933725454074HBrAn5x8)","type":"new_api_error"}}
+2026-03-26T19:00:13.866+08:00 [memory] sync failed (search): Error: openai embeddings failed: 503 {"error":{"code":"model_not_found","message":"分组 default 下模型 text-embedding-3-small 无可用渠道（distributor） (request id: 20260326105933725454074HBrAn5x8)","type":"new_api_error"}}
+2026-03-26T19:00:13.943+08:00 [tools] read failed: EISDIR: illegal operation on a directory, read
+2026-03-26T19:07:07.985+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_SOCKET)
+2026-03-26T23:00:04.915+08:00 [agent/embedded] embedded run agent end: runId=a5d939d1-4a4f-404d-a41a-24dcbbe00672 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-26T23:00:08.396+08:00 [agent/embedded] embedded run agent end: runId=a5d939d1-4a4f-404d-a41a-24dcbbe00672 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-27T01:00:03.632+08:00 [agent/embedded] embedded run agent end: runId=31caef88-18a1-43ec-b227-33870a9abf03 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-27T01:00:06.965+08:00 [agent/embedded] embedded run agent end: runId=31caef88-18a1-43ec-b227-33870a9abf03 isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-27T01:30:05.497+08:00 [agent/embedded] embedded run agent end: runId=4b6968dd-e451-422a-9bca-b1bfd35a4b8a isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-27T01:30:08.953+08:00 [agent/embedded] embedded run agent end: runId=4b6968dd-e451-422a-9bca-b1bfd35a4b8a isError=true model=deepseek-v3.2 provider=iflow error=LLM request timed out.
+2026-03-27T02:10:11.821+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:10:16.950+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:10:22.010+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:10:22.018+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:10:57.148+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:11:02.388+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:11:07.491+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:11:07.501+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:11:47.714+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:12:00.232+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:12:12.751+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:12:12.761+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:12:53.282+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:12:57.752+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:13:00.959+08:00 [telegram] Polling stall detected (no getUpdates for 103.84s); forcing restart.
+2026-03-27T02:13:10.266+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:13:10.273+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:13:15.969+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-27T02:13:15.980+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-27T02:13:50.794+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:14:03.311+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:14:11.305+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=UND_ERR_CONNECT_TIMEOUT)
+2026-03-27T02:14:15.820+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:14:15.827+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:14:47.775+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:14:52.874+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:14:57.917+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:14:57.925+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:15:38.435+08:00 [openclaw-weixin] weixin getUpdates error (1/3): TypeError: fetch failed
+2026-03-27T02:15:44.942+08:00 [openclaw-weixin] weixin getUpdates error (2/3): TypeError: fetch failed
+2026-03-27T02:15:49.978+08:00 [openclaw-weixin] weixin getUpdates error (3/3): TypeError: fetch failed
+2026-03-27T02:15:49.987+08:00 [openclaw-weixin] weixin getUpdates: 3 consecutive failures, backing off 30s
+2026-03-27T02:15:51.828+08:00 [telegram] Polling stall detected (no getUpdates for 90s); forcing restart.
+2026-03-27T02:16:06.839+08:00 [telegram] Polling runner stop timed out after 15s; forcing restart cycle.
+2026-03-27T02:16:06.847+08:00 [telegram] polling runner stopped (polling stall detected); restarting in 30s.
+2026-03-27T02:31:26.989+08:00 [telegram] fetch fallback: enabling sticky IPv4-only dispatcher (codes=ETIMEDOUT)
+2026-03-27T04:27:43.861+08:00 [tools] message failed: Channel is required when multiple channels are configured: telegram, openclaw-weixin
+2026-03-27T04:45:45.086+08:00 [gateway] shutdown timed out; exiting without full cleanup

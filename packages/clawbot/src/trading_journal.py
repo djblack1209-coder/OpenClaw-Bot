@@ -469,6 +469,18 @@ class TradingJournal:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_review_history(self, limit: int = 5) -> List[Dict]:
+        """获取历史复盘记录列表"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, date, session_type, trades_reviewed, total_pnl,
+                          win_rate, lessons_learned, improvements, created_at
+                   FROM review_sessions
+                   ORDER BY created_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ============ 绩效统计 ============
 
     def get_performance(self, days: int = 30) -> Dict:
@@ -578,6 +590,43 @@ class TradingJournal:
             "limit": float(self.get_config('daily_loss_limit', '100')),
             "hit_limit": pnl <= -float(self.get_config('daily_loss_limit', '100')),
         }
+
+    def get_equity_curve(self, days: int = 30) -> tuple:
+        """生成权益曲线数据（按日聚合）。
+
+        Returns:
+            (equity_values, date_labels) — 累计权益序列和日期标签。
+            无交易时返回空列表。
+        """
+        since = (now_et() - timedelta(days=days)).isoformat()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT date(exit_time) AS d, SUM(pnl) AS daily_pnl
+                   FROM trades
+                   WHERE status='closed' AND exit_time>=?
+                   GROUP BY d ORDER BY d ASC""",
+                (since,),
+            ).fetchall()
+
+        if not rows:
+            return ([], [])
+
+        initial_capital = float(self.get_config('initial_capital', '2000'))
+        equity_values: List[float] = []
+        date_labels: List[str] = []
+        running = initial_capital
+
+        for r in rows:
+            running += r['daily_pnl']
+            equity_values.append(round(running, 2))
+            # 日期标签: "3/15"
+            try:
+                dt = datetime.strptime(r['d'], '%Y-%m-%d')
+                date_labels.append(f"{dt.month}/{dt.day}")
+            except Exception:
+                date_labels.append(r['d'] or '?')
+
+        return (equity_values, date_labels)
 
     def format_performance(self, days: int = 30) -> str:
         """格式化绩效报告"""
@@ -1025,6 +1074,21 @@ class TradingJournal:
             suggestions.append("近期无明显失败模式，继续保持当前策略")
 
         return suggestions
+
+    # ============ 数据清理 ============
+
+    def cleanup(self, days: int = 365) -> int:
+        """Delete closed trades older than N days. Returns deleted count."""
+        cutoff = (now_et() - timedelta(days=days)).isoformat()
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM trades WHERE status='closed' AND exit_time IS NOT NULL AND exit_time < ?",
+                (cutoff,),
+            )
+            deleted = cursor.rowcount
+        if deleted:
+            logger.info("[TradingJournal] cleanup: deleted %d trades older than %d days", deleted, days)
+        return deleted
 
 
 # ============ 交易记忆桥接 ============

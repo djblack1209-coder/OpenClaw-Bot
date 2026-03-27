@@ -5,12 +5,12 @@ import asyncio
 import json
 import logging
 from collections import deque
-from datetime import datetime
 from typing import Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..schemas import WSMessageType
+from ..auth import verify_ws_token
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,16 @@ async def broadcast_event(event_type: WSMessageType, data: dict = None):
 async def websocket_events(websocket: WebSocket):
     """WebSocket endpoint for real-time event streaming.
     Clients connect and receive all events (trade signals, alerts, etc.)
+
+    Authentication: query param ?token=<OPENCLAW_API_TOKEN>
+    If OPENCLAW_API_TOKEN is not configured, all connections are accepted.
     """
+    # Verify token before accepting the connection
+    if not verify_ws_token(websocket):
+        await websocket.close(code=1008, reason="Invalid or missing API token")
+        logger.warning("WebSocket connection rejected: invalid token")
+        return
+
     await websocket.accept()
     _clients.add(websocket)
     logger.info("WebSocket client connected (total: %d)", len(_clients))

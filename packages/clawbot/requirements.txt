@@ -5,12 +5,18 @@ python-dotenv~=1.2.1
 beautifulsoup4~=4.14.3
 requests~=2.32.0
 
+# Flask — 部署服务器 (deployer/deploy_server.py, web_installer.py)
+flask>=3.0.0,<4.0.0
+
+# aiohttp — 异步 HTTP (evolution/github_trending.py)
+aiohttp>=3.9.0,<4.0.0
+
 # JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
 json-repair~=0.30.0
 
 # loguru — 结构化日志 (23.7k⭐, MIT)
 # 搬运: 拦截 stdlib logging → 彩色控制台 + JSON 文件日志 + 自动轮转
-loguru>=0.7.0
+loguru~=0.7.0
 
 # instructor — 结构化 LLM 输出 (10k⭐, MIT)
 # 搬运: Pydantic model 强制 LLM 返回类型安全的结构化数据
@@ -35,7 +41,7 @@ ta~=0.11.0                # 技术分析指标库（RSI/MACD/布林带等）
 
 # LiteLLM — 统一 LLM 路由 (39k⭐, MIT)
 # 替换自研 free_api_pool.py: 负载均衡、故障转移、速率限制
-litellm>=1.70.0
+litellm>=1.70.0,<2.0.0
 
 # mem0 — AI 记忆层 (50k⭐, Apache 2.0)
 # 替换 shared_memory.py 的 RAG 部分: 向量嵌入、语义搜索、冲突消解
@@ -43,11 +49,15 @@ mem0ai>=0.1.30
 
 # browser-use — AI 浏览器代理 (81k⭐, MIT)
 # 替换自研 ai_browser.py: DOM 解析、LLM 决策循环、反检测
-browser-use>=0.2.0
+browser-use>=0.2.0,<1.0.0
+
+# Playwright — 浏览器自动化 (browser-use 底层依赖)
+# 安装后需运行 `playwright install chromium` 安装浏览器二进制
+playwright>=1.40.0,<2.0.0
 
 # Langfuse — LLM 观测平台 (23.4k⭐, MIT)
 # 替换自研 CostAnalyzer/PrometheusMetrics: 全链路追踪、成本分析、质量评估
-langfuse>=2.0.0
+langfuse>=2.0.0,<3.0.0
 
 # Freqtrade — 量化交易框架 (47.8k⭐, GPL-3.0)
 # 替换自研 backtester/strategy_engine: 策略框架、回测引擎、超参优化
@@ -55,24 +65,24 @@ langfuse>=2.0.0
 
 # CrewAI — 多 Agent 协作框架 (46.6k⭐, MIT)
 # 升级 ai_team_voter: 动态角色、结构化任务编排、工具调用
-crewai>=0.80.0
+crewai>=0.80.0,<1.0.0
 
 # Optuna — 超参数优化 (11k⭐, MIT)
 # Phase 3: AI 团队投票权重优化
 optuna>=4.0.0
 
 # IBKR 券商对接（可选，不安装则自动降级为模拟盘）
-# ib_insync~=0.9.86
+ib_insync~=0.9.86
 
 # ── Phase 3 新增: 内控 API 服务器 ──────────────────────────────
 
 # FastAPI — 内控 API 框架 (80k⭐, MIT)
 # 搬运 freqtrade RPC + Open WebUI 模式，暴露 REST API 给 Tauri Manager
-fastapi>=0.115.0
+fastapi~=0.115.0
 
 # Uvicorn — ASGI 服务器 (9k⭐, BSD)
 # 搬运 freqtrade 的线程内 uvicorn 模式，与 Telegram bot 共存
-uvicorn[standard]>=0.32.0
+uvicorn[standard]~=0.32.0
 
 # APScheduler — 定时任务调度 (6.3k⭐, MIT)
 # 搬运: 社交自动驾驶日程管理 (BackgroundScheduler, cron trigger)
@@ -98,16 +108,13 @@ pyautogui>=0.9.54
 pyobjc-core>=10.0
 pyobjc-framework-Quartz>=10.0
 
-# 测试依赖
-pytest~=8.4.2
-pytest-asyncio~=1.2.0
-pytest-cov~=7.0.0
+# 测试依赖 → 见 requirements-dev.txt
 
 # ── Phase 5 新增: 自愈引擎真正重试 ──────────────────────────────
 
 # Tenacity — 重试库 (6k⭐, Apache 2.0)
 # 替换 self_heal.py 的假重试: 真正的指数退避、stop_after_attempt、retry_if_exception_type
-tenacity>=9.0.0
+tenacity~=9.0.0
 
 # pandas-ta — 标准技术分析指标库 (5k⭐, MIT)
 # 替换 strategy_engine.py 手写 RSI/MA: 200+ 标准指标，与交易平台数值一致
@@ -115,23 +122,23 @@ pandas-ta>=0.3.14b1
 
 # diskcache — SQLite 持久化缓存 (2.8k⭐, Apache 2.0)
 # LLM 响应缓存: 相同请求直接返回，按 TTL 自动过期，线程安全
-diskcache>=5.6.0
+diskcache~=5.6.0
 
 # ── Phase 5 新增: 统一通知系统 ──────────────────────────────
 
 # crawl4ai — 结构化网页抽取 (62.4k⭐, Apache 2.0)
 # 替换 httpx+bs4 脆弱爬虫: AsyncWebCrawler + JsonCssExtractionStrategy + LLM 降级
 # 用于购物比价引擎的三级降级链 (CSS → LLM → Jina fallback)
-crawl4ai>=0.6.0
+crawl4ai~=0.6.0
 
 # Apprise — 多渠道通知 (16.1k⭐, BSD)
 # 替换仅 Telegram 通知: 100+ 渠道 (Discord/Slack/WeChat/Email/Ntfy/Webhook 等)
 # URL 配置，零代码添加新渠道
-apprise>=1.9.0
+apprise~=1.9.0
 
 # jieba — 中文分词 (34.8k⭐, MIT)
 # 增强 intent_parser.py: TF-IDF 关键词提取，自定义电商/金融词典
-jieba>=0.42.1
+jieba~=0.42.1
 
 # ── Phase 5 新增: Phoenix OTEL 可观测性 ──────────────────────────────
 
@@ -146,24 +153,24 @@ openinference-instrumentation-litellm>=0.1.0
 # mistletoe — Markdown AST 解析器 (1k⭐, MIT)
 # 搬运: 将 LLM 输出的标准 Markdown 安全转换为 Telegram MarkdownV2/HTML
 # 替换 message_sender.py 的 regex 清理，AST 级别精确转换
-mistletoe>=1.4.0
+mistletoe~=1.4.0
 
 # stamina — 声明式重试 (1.4k⭐, MIT)
 # 搬运: 替换分散的 tenacity 配置，更干净的 API + structlog 集成
 # 降级链: stamina → tenacity → 手写指数退避
-stamina>=2.0.0
+stamina~=2.0.0
 
 # PyrateLimiter — 令牌桶限流 (485⭐, MIT)
 # 搬运: 统一 API 限流，替换手写滑动窗口
 # 预配置: yfinance(2000/h), akshare(100/m), telegram(30/s)
-pyrate-limiter>=3.0.0
+pyrate-limiter~=3.0.0
 
 # ── Phase 7 新增: 高级图表引擎 ──────────────────────────────
 
 # Plotly — 交互式图表库 (18.4k⭐, MIT)
 # 搬运: 替换 telegram_ux.py 的 matplotlib 图表
 # K线图/瀑布图/仪表盘等，plotly_dark 主题，Telegram 友好
-plotly>=6.0.0
+plotly>=6.0.0,<7.0.0
 
 # Kaleido — Plotly 静态导出引擎 (400⭐, MIT)
 # 搬运: 将 plotly 图表导出为 PNG bytes，零浏览器依赖
@@ -172,7 +179,7 @@ kaleido>=0.2.0
 # edge-tts — 微软 Edge TTS (10.3k⭐, GPL-3.0)
 # 搬运: 零成本文本转语音，300+ 声音，40+ 语言，无需 API Key
 # 默认中文女声 zh-CN-XiaoxiaoNeural，男声 zh-CN-YunxiNeural
-edge-tts>=6.0.0
+edge-tts~=6.0.0
 
 # ── Phase 7 新增: 小工具模块 ──────────────────────────────
 
@@ -188,7 +195,7 @@ qrcode[pil]>=7.0
 
 # fpdf2 — PDF 生成 (1.1k⭐, LGPL)
 # 搬运: 每日简报/交易报告 PDF 导出，支持 CJK 字体
-fpdf2==2.7.9
+fpdf2~=2.7.9
 
 # ── Phase 8 新增: AI 搜索引擎 ──────────────────────────────
 
@@ -200,7 +207,7 @@ tavily-python>=0.5.0
 # smolagents — 轻量 AI Agent 框架 (26.2k⭐, Apache 2.0)
 # 搬运: HuggingFace 出品，CodeAgent 模式让 LLM 写代码串联工具调用
 # 用途: /agent 命令，自然语言驱动多工具链 (行情+分析+搜索+风控)
-smolagents>=1.0.0
+smolagents>=1.0.0,<2.0.0
 
 # ── Phase 9 新增: 文档理解 ──────────────────────────────
 
@@ -208,4 +215,27 @@ smolagents>=1.0.0
 # 搬运: PDF/DOCX/PPTX/XLSX/图片 → 结构化 Markdown
 # 表格保留结构，公式解析，代码块提取
 # 要求 Python ≥3.10 (项目已使用 3.12)
-docling>=2.0.0
+docling>=2.0.0,<3.0.0
+
+# ── Phase 10 新增: 外部服务集成 ──────────────────────────────
+
+# Composio — 250+ 外部服务集成 SDK (20k⭐, Apache 2.0)
+# 搬运: Gmail/Calendar/Slack/GitHub/Notion 等 250+ 服务统一 SDK
+# 通过 OMEGA 执行引擎 composio 路径调用
+# composio-core>=0.7.0  # 可选: pip install composio-core
+
+# Skyvern — 视觉 RPA 浏览器自动化 (11k⭐, AGPL-3.0)
+# 搬运: 通过截图 + LLM 理解页面，无需 CSS selector
+# 通过 OMEGA 执行引擎 skyvern 路径调用
+# skyvern>=1.0.0  # 可选: pip install skyvern
+
+# FinRL — DRL 强化学习交易策略 (11k⭐, MIT)
+# 搬运: PPO/A2C 策略训练环境 + stable-baselines3 Agent
+# 通过 strategy_engine v3.0 DRLStrategy 调用
+# gymnasium>=1.0.0  # 可选: pip install gymnasium stable-baselines3
+# stable-baselines3>=2.3.0  # 可选: DRL Agent (PPO/A2C)
+
+# Qlib — 微软量化因子平台 (18k⭐, MIT)
+# 搬运: 16 Alpha 因子库 + LightGBM ML 信号
+# 通过 strategy_engine v3.0 FactorStrategy 调用
+# lightgbm>=4.0.0  # 可选: pip install lightgbm (因子 ML 信号)

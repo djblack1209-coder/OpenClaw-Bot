@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import tempfile
 import time
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,20 @@ def update_env_file(cookie_str: str):
                 f"XIANYU_COOKIES={cookie_str}",
                 content,
             )
-            with open(env_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            # Atomic write: temp file + rename to prevent corruption
+            fd, tmp = tempfile.mkstemp(
+                dir=os.path.dirname(env_path), suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                os.replace(tmp, env_path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
             logger.info("Cookie 已写回 .env")
     except Exception as e:
         logger.error(f"写回 .env 失败: {e}")

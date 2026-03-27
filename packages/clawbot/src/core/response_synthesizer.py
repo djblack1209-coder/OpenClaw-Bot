@@ -18,7 +18,7 @@ OpenClaw 响应合成层 — 从"数据堆砌"到"对话式回复"
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from config.prompts import SOUL_CORE, RESPONSE_SYNTH_PROMPT, FOLLOWUP_SUGGESTIONS_PROMPT
 
@@ -57,7 +57,7 @@ class ResponseSynthesizer:
         ),
         "shopping": (
             "这是购物比价结果。重点说: 最便宜在哪 + 价差多大 + 值不值得买。"
-            "结尾建议: 设降价提醒/直接买/再等等。"
+            "结尾建议: 设降价提醒(告诉用户发'/pricewatch add 商品名 目标价')/直接买/再等等。"
         ),
         "social": (
             "这是社媒运营结果。重点说: 做了什么 + 效果预期。"

@@ -7,7 +7,6 @@ import asyncio
 from datetime import datetime, time, timedelta
 from typing import Callable, Dict, Any, Optional, List
 import logging
-from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +142,8 @@ class Scheduler:
                     try:
                         logger.info(f"执行任务: {task.name}")
                         # P1#14: 用 create_task 并发执行，避免一个慢任务阻塞其他
-                        asyncio.create_task(self._safe_run_task(task))
+                        _t = asyncio.create_task(self._safe_run_task(task))
+                        _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                     except Exception as e:
                         logger.error(f"任务调度错误: {e}")
             
@@ -164,6 +164,7 @@ class Scheduler:
         
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
+        self._task.add_done_callback(lambda t: t.exception() and logger.error("调度器主循环崩溃: %s", t.exception()))
         logger.info("调度器已启动")
     
     def stop(self):

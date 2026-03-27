@@ -11,8 +11,8 @@ OCR 场景路由器 — 识别图片类型，分发到对应业务处理链
 """
 import re
 import logging
-from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from dataclasses import dataclass
+from typing import List, Tuple
 from enum import Enum
 
 logger = logging.getLogger(__name__)

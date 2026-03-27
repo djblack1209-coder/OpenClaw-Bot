@@ -24,10 +24,10 @@ Usage:
 """
 import asyncio
 import functools
+import importlib.util
 import logging
 import time
 import threading
-from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import (
     Any,
@@ -38,7 +38,6 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,12 +58,10 @@ try:
     _RETRY_BACKEND = "stamina"
     logger.debug("[resilience] 使用 stamina 作为重试后端")
 except ImportError:
-    try:
-        import tenacity
-
+    if importlib.util.find_spec("tenacity") is not None:
         _RETRY_BACKEND = "tenacity"
         logger.debug("[resilience] stamina 未安装，降级到 tenacity")
-    except ImportError:
+    else:
         logger.info(
             "[resilience] stamina 和 tenacity 均未安装，使用手写指数退避。"
             "pip install stamina>=2.0.0 以启用最佳重试体验。"

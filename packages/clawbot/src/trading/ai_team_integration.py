@@ -3,7 +3,7 @@ Trading — AI 团队集成
 AI 团队投票的注入点和包装器
 """
 import logging
-from typing import Dict, Callable, List, Optional
+from typing import Dict, Callable, Optional
 
 logger = logging.getLogger(__name__)
 

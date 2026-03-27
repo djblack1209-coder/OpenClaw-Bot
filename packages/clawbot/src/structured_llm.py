@@ -25,7 +25,7 @@ Usage:
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Type, TypeVar
 
 from pydantic import BaseModel
 

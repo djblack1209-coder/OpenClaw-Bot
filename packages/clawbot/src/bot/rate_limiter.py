@@ -9,7 +9,7 @@ Bot 发言质量与频率控制模块
 import time
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)

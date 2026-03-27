@@ -9,7 +9,6 @@ ClawBot - 结构化错误处理 v1.0
 - Telegram 通知（发给管理员）
 - 与 monitoring.py StructuredLogger 集成
 """
-import asyncio
 import logging
 import traceback
 import time

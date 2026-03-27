@@ -78,11 +78,11 @@ async def reply_xianyu_customer(message):
 1. **社交媒体发布** — 替代 `social-browser-adapter.mjs` 中的 Playwright 硬编码
 2. **闲鱼操作** — 替代 WebSocket 方式的备用方案
 3. **网页数据采集** — 替代 `crawl4ai` 的部分场景
-4. **任意网页交互** — Boss 说"帮我在 xxx 网站上做 yyy"
+4. **任意网页交互** — 严总 说"帮我在 xxx 网站上做 yyy"
 
 ## 触发条件
 
-- Boss 说 "page-agent"、"自然语言控制浏览器"、"网页操作"
+- 严总 说 "page-agent"、"自然语言控制浏览器"、"网页操作"
 - 需要浏览器自动化但 Playwright 脚本太脆弱时
 - 社交发布流程中 DOM 选择器失效时自动降级
 

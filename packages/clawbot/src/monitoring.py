@@ -5,19 +5,21 @@ ClawBot - 结构化日志 + 健康检查 + 自动恢复 + Prometheus 指标 v2.0
 import os
 import time
 import json
-import math
 import asyncio
 import logging
 import sqlite3
 from collections import deque
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
+
+# 模块启动时间（用于 /health 端点计算 uptime）
+_start_time = time.time()
 
 
 # ============ 对标 LiteLLM: Prometheus 指标收集器 ============
@@ -103,7 +105,7 @@ class PrometheusMetrics:
             for name, buckets in self._histograms.items():
                 if name in self._help:
                     lines.append(f"# HELP {name} {self._help[name]}")
-                lines.append(f"# TYPE {name} summary")
+                lines.append(f"# TYPE {name} histogram")
                 for lk, vals in buckets.items():
                     if not vals:
                         continue
@@ -153,10 +155,19 @@ class _MetricsHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/health":
+            health = {
+                "status": "ok",
+                "uptime_seconds": int(time.time() - _start_time),
+                "components": {
+                    "bot": "running",
+                    "api": "running",
+                },
+            }
+            body = json.dumps(health).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
+            self.wfile.write(body)
         else:
             self.send_response(404)
             self.end_headers()
@@ -680,6 +691,24 @@ class HealthChecker:
         status["last_error"] = error
         if status["consecutive_errors"] >= 5:
             status["healthy"] = False
+            # EventBus: Bot 健康状态变更为不健康
+            try:
+                from src.core.event_bus import get_event_bus
+                bus = get_event_bus()
+                if bus:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        _t = loop.create_task(bus.publish("system.bot_health", {
+                            "bot_id": bot_id, "healthy": False,
+                            "consecutive_errors": status["consecutive_errors"],
+                            "last_error": error,
+                        }))
+                        _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                    except RuntimeError:
+                        pass
+            except Exception:
+                pass
 
     def record_success(self, bot_id: str):
         """记录成功"""
@@ -830,6 +859,10 @@ class AutoRecovery:
             return
         self._running = True
         self._task = asyncio.create_task(self._check_loop())
+        def _recovery_done(t):
+            if not t.cancelled() and t.exception():
+                logger.warning("[AutoRecovery] 自动恢复循环崩溃: %s", t.exception())
+        self._task.add_done_callback(_recovery_done)
         logger.info("自动恢复管理器已启动")
 
     def stop(self):
@@ -865,31 +898,35 @@ class CostAnalyzer:
         self._max_recent = 1000
 
     def _init_db(self):
-        conn = sqlite3.connect(self._db_path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS cost_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                bot_id TEXT NOT NULL,
-                user_id INTEGER DEFAULT 0,
-                feature TEXT DEFAULT '',
-                model TEXT NOT NULL,
-                provider TEXT DEFAULT '',
-                input_tokens INTEGER DEFAULT 0,
-                output_tokens INTEGER DEFAULT 0,
-                cost_usd REAL DEFAULT 0.0,
-                latency_ms REAL DEFAULT 0.0,
-                success INTEGER DEFAULT 1
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_cost_ts ON cost_events(ts)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_cost_bot ON cost_events(bot_id)
-        """)
-        conn.commit()
-        conn.close()
+        conn = sqlite3.connect(self._db_path, timeout=10)
+        try:
+            # WAL 模式: 多线程高频写入场景防止 database is locked
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS cost_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    bot_id TEXT NOT NULL,
+                    user_id INTEGER DEFAULT 0,
+                    feature TEXT DEFAULT '',
+                    model TEXT NOT NULL,
+                    provider TEXT DEFAULT '',
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    cost_usd REAL DEFAULT 0.0,
+                    latency_ms REAL DEFAULT 0.0,
+                    success INTEGER DEFAULT 1
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cost_ts ON cost_events(ts)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cost_bot ON cost_events(bot_id)
+            """)
+            conn.commit()
+        finally:
+            conn.close()
 
     def record(self, bot_id: str, model: str, input_tokens: int = 0,
                output_tokens: int = 0, cost_usd: float = 0.0,
@@ -910,17 +947,15 @@ class CostAnalyzer:
                 self._recent = self._recent[-self._max_recent:]
         # 异步写入 DB（不阻塞主线程）
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute(
-                "INSERT INTO cost_events (ts,bot_id,user_id,feature,model,provider,"
-                "input_tokens,output_tokens,cost_usd,latency_ms,success) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (now, bot_id, user_id, feature, model, provider,
-                 input_tokens, output_tokens, cost_usd, latency_ms,
-                 1 if success else 0)
-            )
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute(
+                    "INSERT INTO cost_events (ts,bot_id,user_id,feature,model,provider,"
+                    "input_tokens,output_tokens,cost_usd,latency_ms,success) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (now, bot_id, user_id, feature, model, provider,
+                     input_tokens, output_tokens, cost_usd, latency_ms,
+                     1 if success else 0)
+                )
         except Exception as e:
             logger.debug(f"[CostAnalyzer] DB写入失败: {e}")
 
@@ -929,13 +964,12 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT bot_id, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
-                "COUNT(*), AVG(latency_ms), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) "
-                "FROM cost_events WHERE ts > ? GROUP BY bot_id", (cutoff,)
-            ).fetchall()
-            conn.close()
+            with sqlite3.connect(self._db_path) as conn:
+                rows = conn.execute(
+                    "SELECT bot_id, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
+                    "COUNT(*), AVG(latency_ms), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) "
+                    "FROM cost_events WHERE ts > ? GROUP BY bot_id", (cutoff,)
+                ).fetchall()
             for r in rows:
                 result[r[0]] = {
                     "cost_usd": round(r[1] or 0, 4),
@@ -954,14 +988,13 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT model, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
-                "COUNT(*), AVG(latency_ms) "
-                "FROM cost_events WHERE ts > ? GROUP BY model ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            conn.close()
+            with sqlite3.connect(self._db_path) as conn:
+                rows = conn.execute(
+                    "SELECT model, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
+                    "COUNT(*), AVG(latency_ms) "
+                    "FROM cost_events WHERE ts > ? GROUP BY model ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,)
+                ).fetchall()
             for r in rows:
                 result[r[0]] = {
                     "cost_usd": round(r[1] or 0, 4),
@@ -979,14 +1012,13 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[int, Dict[str, Any]] = {}
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT user_id, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
-                "FROM cost_events WHERE ts > ? AND user_id > 0 GROUP BY user_id "
-                "ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            conn.close()
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                rows = conn.execute(
+                    "SELECT user_id, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
+                    "FROM cost_events WHERE ts > ? AND user_id > 0 GROUP BY user_id "
+                    "ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,)
+                ).fetchall()
             for r in rows:
                 result[r[0]] = {
                     "cost_usd": round(r[1] or 0, 4),
@@ -1002,14 +1034,13 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT feature, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
-                "FROM cost_events WHERE ts > ? AND feature != '' GROUP BY feature "
-                "ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            conn.close()
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                rows = conn.execute(
+                    "SELECT feature, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
+                    "FROM cost_events WHERE ts > ? AND feature != '' GROUP BY feature "
+                    "ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,)
+                ).fetchall()
             for r in rows:
                 result[r[0]] = {
                     "cost_usd": round(r[1] or 0, 4),
@@ -1044,10 +1075,9 @@ class CostAnalyzer:
         """清理过期数据"""
         cutoff = time.time() - days * 86400
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute("DELETE FROM cost_events WHERE ts < ?", (cutoff,))
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("DELETE FROM cost_events WHERE ts < ?", (cutoff,))
+                conn.commit()
         except Exception as e:
             logger.debug(f"[CostAnalyzer] 清理失败: {e}")
 
@@ -1224,7 +1254,6 @@ class AnomalyDetector:
             lat = list(self._latency_window)
             err = list(self._error_window)
             cost = list(self._cost_window)
-        import math
         avg_lat = sum(lat) / len(lat) if lat else 0
         p95_lat = sorted(lat)[int(len(lat) * 0.95)] if len(lat) > 5 else 0
         err_rate = sum(1 for e in err if e) / len(err) if err else 0
@@ -1243,3 +1272,21 @@ class AnomalyDetector:
 
 cost_analyzer = CostAnalyzer()
 anomaly_detector = AnomalyDetector()
+
+# ============ 监控增强 (从 monitoring_extras 集成) ============
+
+def get_system_resources():
+    """获取系统资源 — 代理到 monitoring_extras"""
+    try:
+        from src.monitoring_extras import get_system_resources as _get
+        return _get()
+    except ImportError:
+        return {"cpu_load_1m": -1, "memory_percent": -1, "disk_used_percent": -1}
+
+async def check_g4f_health(**kwargs):
+    """检查 g4f 服务健康 — 代理到 monitoring_extras"""
+    try:
+        from src.monitoring_extras import check_g4f_health as _check
+        return await _check(**kwargs)
+    except ImportError:
+        return {"alive": False, "error": "monitoring_extras 不可用"}

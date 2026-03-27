@@ -3,7 +3,6 @@ ClawBot - 共享工具执行器
 供 multi_main.py 中的 MultiBot 使用，让 Claude bot 在多 bot 模式下也能调用工具。
 支持工具熔断、结果截断、危险命令检测。
 """
-import json
 import time
 import logging
 from typing import Dict, Any, Optional, List

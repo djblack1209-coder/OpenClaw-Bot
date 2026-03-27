@@ -30,7 +30,6 @@ import asyncio
 import logging
 import os
 from typing import Dict, List, Optional
-from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -203,16 +202,56 @@ class AlpacaBridge:
                     )
 
                 order = self._client.submit_order(req)  # type: ignore[union-attr]
-                return {
-                    "status": "submitted",
-                    "order_id": str(order.id),
-                    "symbol": order.symbol,
-                    "side": side,
-                    "quantity": float(order.qty or quantity),
-                    "type": order.type.value if hasattr(order.type, "value") else order_type,
-                    "source": "alpaca",
-                }
-            return await asyncio.to_thread(_exec)
+                return str(order.id), order.symbol, float(order.qty or quantity), \
+                    order.type.value if hasattr(order.type, "value") else order_type
+
+            order_id, ord_symbol, ord_qty, ord_type = await asyncio.to_thread(_exec)
+
+            # Poll for fill status (up to 30s)
+            for _ in range(15):  # 15 * 2s = 30s max
+                await asyncio.sleep(2)
+                try:
+                    def _poll(oid=order_id):
+                        return self._client.get_order_by_id(oid)  # type: ignore[union-attr]
+                    updated = await asyncio.to_thread(_poll)
+                    updated_status = updated.status.value if hasattr(updated.status, "value") else str(updated.status)
+                    if updated_status in ("filled", "partially_filled"):
+                        return {
+                            "status": updated_status,
+                            "filled_qty": float(updated.filled_qty or 0),
+                            "avg_price": float(updated.filled_avg_price or 0),
+                            "order_id": order_id,
+                            "symbol": ord_symbol,
+                            "side": side,
+                            "quantity": ord_qty,
+                            "type": ord_type,
+                            "source": "alpaca",
+                        }
+                    if updated_status in ("cancelled", "expired", "rejected"):
+                        return {
+                            "status": updated_status,
+                            "error": f"Order {updated_status}",
+                            "order_id": order_id,
+                            "symbol": ord_symbol,
+                            "side": side,
+                            "source": "alpaca",
+                        }
+                except Exception as e:
+                    logger.warning("[AlpacaBridge] order poll error: %s", e)
+
+            # Timeout — return pending status
+            logger.warning("[AlpacaBridge] order %s poll timeout (30s), returning pending", order_id)
+            return {
+                "status": "pending",
+                "order_id": order_id,
+                "symbol": ord_symbol,
+                "side": side,
+                "quantity": ord_qty,
+                "type": ord_type,
+                "filled_qty": 0,
+                "avg_price": 0,
+                "source": "alpaca",
+            }
         except Exception as e:
             logger.error(f"[AlpacaBridge] 下单失败: {e}")
             return {"status": "error", "error": str(e), "source": "alpaca"}
