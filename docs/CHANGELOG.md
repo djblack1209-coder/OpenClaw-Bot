@@ -5,6 +5,67 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R14 轮: Git安全清除 + 架构重构 + 死代码清理 + API统一
+
+> 领域: `security` | `backend` | `frontend` | `infra`
+> 影响模块: cmd_execution_mixin(拆分), ChannelForm/OmegaStatus(删除), tauri.ts, clawbot_api.rs, Social/Money/Memory组件
+> 关联问题: HI-348(密钥历史), HI-358(God Object)
+
+### 变更内容
+
+**安全 — Git历史密钥清除:**
+- 使用 git-filter-repo 从所有 commit 历史中彻底删除 auth-profiles.json 和 device-auth.json
+- 相关 API Key (Anthropic/OpenAI) 已从 Git 历史中永久移除
+- 重新配置 origin remote 并强制推送清洁历史
+
+**架构重构 — God Object 拆分:**
+- cmd_execution_mixin.py (2602行) → 5个独立Mixin + 27行垫片聚合类
+  - cmd_social_mixin.py (802行) — 社媒发布/热点/人设/日历
+  - cmd_xianyu_mixin.py (536行) — 闲鱼客服/风格/报表/发货
+  - cmd_life_mixin.py (643行) — 账单/比价/赏金/自动化
+  - cmd_novel_mixin.py (197行) — AI小说工坊
+  - cmd_ops_mixin.py (514行) — 运维中枢/邮件/会议/任务
+- multi_bot.py 继承链完全不变，零破坏性变更
+
+**前端死代码清理 (924行):**
+- 删除 ChannelForm.tsx (616行) — 与 Channels/index.tsx 重复实现
+- 删除 OmegaStatus.tsx (154行) — 从未被任何组件导入
+- 删除 WhatsAppLogin.tsx (154行) — 仅被死代码 ChannelForm 引用
+
+**API模式统一 — 8处fetch迁移为Tauri IPC:**
+- 新增4个Rust Tauri命令: social_browser_status, trading_status, memory_delete, memory_update
+- 新增4个TypeScript API封装函数
+- Social/Money/Memory 3个组件的8处直接fetch改为 isTauri() 分流模式
+- Tauri环境走IPC，浏览器环境保留HTTP降级
+
+**测试覆盖提升:**
+- import smoke 从19个模块扩展到28个(+47%覆盖)
+- 新增5个拆分Mixin + 3个关键模块的导入测试
+
+**验证结果:** Python 980/980 | Import 28/28 | TypeScript 零错误
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 2602行→27行垫片
+- `packages/clawbot/src/bot/cmd_social_mixin.py` — 新建 (802行)
+- `packages/clawbot/src/bot/cmd_xianyu_mixin.py` — 新建 (536行)
+- `packages/clawbot/src/bot/cmd_life_mixin.py` — 新建 (643行)
+- `packages/clawbot/src/bot/cmd_novel_mixin.py` — 新建 (197行)
+- `packages/clawbot/src/bot/cmd_ops_mixin.py` — 新建 (514行)
+- `packages/clawbot/tests/test_import_smoke.py` — 扩展到28个模块
+- `apps/openclaw-manager-src/src/components/Channels/ChannelForm.tsx` — 删除
+- `apps/openclaw-manager-src/src/components/Dashboard/OmegaStatus.tsx` — 删除
+- `apps/openclaw-manager-src/src/components/Channels/WhatsAppLogin.tsx` — 删除
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 新增4个API函数
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — 新增4个Rust命令
+- `apps/openclaw-manager-src/src-tauri/src/main.rs` — 注册4个新命令
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 迁移3处fetch
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 迁移2处fetch
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 迁移3处fetch
+- `docs/status/HEALTH.md` — 更新状态
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R13 轮: 前端7项功能接入 + 后端6处关键Bug修复 + 安全4项加固
 
 > 领域: `frontend` | `backend` | `security`

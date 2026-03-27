@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R13审计: 前端7项功能接入+后端6处关键Bug修复+安全4项+TS零错误+980/980 passed)
+> 最后更新: 2026-03-28 (R14审计: Git历史密钥清除+God Object拆分+924行死代码清理+Tauri IPC统一+导入覆盖提升 | 980/980+28/28 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -116,6 +116,7 @@
 | HI-347 | `backend` | `requirements.txt` | pyautogui/pyobjc在Linux部署时安装失败 | 添加sys_platform=='darwin'条件标记 | 2026-03-28 | R13审计 |
 | HI-346 | `frontend` | `App.tsx` | Evolution页面(569行)已实现但未接入路由,用户无法访问 | 添加PageType+lazy import+Sidebar菜单+Header标题 | 2026-03-28 | R13审计 |
 | HI-345 | `frontend` | `App.tsx` | CommandPalette(Cmd+K)已实现但未挂载到DOM | 在App主组件中渲染\<CommandPalette/\> | 2026-03-28 | R13审计 |
+| HI-358 | `backend` | `cmd_social_mixin.py` 等5个文件 | cmd_execution_mixin.py(2602行)已拆分完成 | 移至已解决 | 2026-03-28 | R14审计 |
 | HI-344 | `deploy` | VPS | VPS代码过时+pandas依赖缺失+failover状态卡在active | rsync同步最新代码+pip install依赖+重置failover为standby | 2026-03-28 | R12审计 |
 | HI-343 | `frontend` | tauri.ts | 34个后端API命令前端未封装,桌面端无法调用 | 补入34个API函数+修正3个参数名 | 2026-03-28 | R12审计 |
 | HI-342 | `backend` | cmd_trading_mixin.py | 回测高级功能(蒙特卡洛/参数优化/前进分析)已实现但无用户入口 | /backtest monte/optimize/walkforward 子命令+中文触发词 | 2026-03-28 | R12审计 |

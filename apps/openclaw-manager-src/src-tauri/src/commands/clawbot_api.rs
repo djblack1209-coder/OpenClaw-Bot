@@ -107,6 +107,13 @@ pub async fn clawbot_api_status() -> Result<Value, String> {
 
 // ──── Trading ────
 
+/// 获取交易系统实时状态（连接、持仓、图表数据）
+#[command]
+pub async fn clawbot_api_trading_status() -> Result<Value, String> {
+    api_get("/trading/status").await
+}
+
+/// 当前持仓列表
 #[command]
 pub async fn clawbot_api_trading_positions() -> Result<Value, String> {
     api_get("/trading/positions").await
@@ -141,6 +148,13 @@ pub async fn clawbot_api_trading_vote(symbol: String, period: String) -> Result<
 
 // ──── Social ────
 
+/// 获取社媒浏览器会话状态（X / 小红书）
+#[command]
+pub async fn clawbot_api_social_browser_status() -> Result<Value, String> {
+    api_get("/social/browser-status").await
+}
+
+/// 社媒系统运行状态
 #[command]
 pub async fn clawbot_api_social_status() -> Result<Value, String> {
     api_get("/social/status").await
@@ -311,6 +325,7 @@ pub async fn clawbot_api_generate_persona_photo(
 
 // ──── Memory ────
 
+/// 搜索记忆库
 #[command]
 pub async fn clawbot_api_memory_search(
     query: String,
@@ -330,9 +345,22 @@ pub async fn clawbot_api_memory_search(
     api_get(&url).await
 }
 
+/// 记忆库统计信息
 #[command]
 pub async fn clawbot_api_memory_stats() -> Result<Value, String> {
     api_get("/memory/stats").await
+}
+
+/// 删除指定记忆条目
+#[command]
+pub async fn clawbot_api_memory_delete(key: String) -> Result<Value, String> {
+    api_post("/memory/delete", serde_json::json!({ "key": key })).await
+}
+
+/// 更新指定记忆条目
+#[command]
+pub async fn clawbot_api_memory_update(key: String, value: String) -> Result<Value, String> {
+    api_post("/memory/update", serde_json::json!({ "key": key, "value": value })).await
 }
 
 // ──── API Pool ────

@@ -31,6 +31,17 @@ MODULES_TO_TEST = [
     "src.universe",
     "src.notify_style",
     "src.message_sender",
+    # 新增: 架构重构后的5个拆分Mixin
+    "src.bot.cmd_social_mixin",
+    "src.bot.cmd_xianyu_mixin",
+    "src.bot.cmd_life_mixin",
+    "src.bot.cmd_novel_mixin",
+    "src.bot.cmd_ops_mixin",
+    # 新增: 交易子模块
+    "src.trading.reentry_queue",
+    # 新增: 核心执行模块
+    "src.execution.life_automation",
+    "src.deployer.deploy_client",
 ]
 
 

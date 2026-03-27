@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { api, isTauri } from '@/lib/tauri';
 
 interface ActionStatus {
   running: boolean;
@@ -45,13 +46,23 @@ export function Social() {
   useEffect(() => {
     const fetchBrowserStatus = async () => {
       try {
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/social/browser-status');
-        if (resp.ok) {
-          const data = await resp.json();
+        if (isTauri()) {
+          // Tauri 环境：通过 IPC 调用
+          const data = await api.clawbotSocialBrowserStatus();
           setBrowserStatus({
-            x: data.x || data.twitter || 'unknown',
-            xhs: data.xhs || data.xiaohongshu || 'unknown',
+            x: data?.x || 'unknown',
+            xhs: data?.xhs || 'unknown',
           });
+        } else {
+          // 降级: 直接HTTP调用
+          const resp = await fetch('http://127.0.0.1:18790/api/v1/social/browser-status');
+          if (resp.ok) {
+            const data = await resp.json();
+            setBrowserStatus({
+              x: data.x || data.twitter || 'unknown',
+              xhs: data.xhs || data.xiaohongshu || 'unknown',
+            });
+          }
         }
       } catch {
         // 后端不可达时保持 unknown 状态
@@ -69,15 +80,27 @@ export function Social() {
     setStatuses(prev => ({ ...prev, [id]: { running: true } }));
 
     try {
-      const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `${cmd} ${input || ''}`.trim() }),
-      });
-      const data = await resp.json();
+      const text = `${cmd} ${input || ''}`.trim();
+      let result: string;
+
+      if (isTauri()) {
+        // Tauri 环境：通过 IPC 调用
+        const data = await api.omegaProcess(text);
+        result = (data as any)?.result || (data as any)?.response || '执行完成';
+      } else {
+        // 降级: 直接HTTP调用
+        const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await resp.json();
+        result = data.result || data.response || '执行完成';
+      }
+
       setStatuses(prev => ({
         ...prev,
-        [id]: { running: false, lastResult: data.result || data.response || '执行完成' }
+        [id]: { running: false, lastResult: result }
       }));
     } catch (e) {
       setStatuses(prev => ({
@@ -276,11 +299,17 @@ export function Social() {
                           <button onClick={async () => {
                             setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'published' } : d));
                             try {
-                              await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ text: `/post_social ${draft.title}` }),
-                              });
+                              if (isTauri()) {
+                                // Tauri 环境：通过 IPC 调用
+                                await api.omegaProcess(`/post_social ${draft.title}`);
+                              } else {
+                                // 降级: 直接HTTP调用
+                                await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ text: `/post_social ${draft.title}` }),
+                                });
+                              }
                             } catch {
                               // 发布失败时回滚状态
                               setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'draft' } : d));
