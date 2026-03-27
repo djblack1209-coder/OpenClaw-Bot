@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { api, isTauri } from '@/lib/tauri';
 
 import clsx from 'clsx';
 
@@ -37,11 +38,17 @@ export function Memory() {
   const handleDelete = async (key: string) => {
     if (!confirm('确定要删除这条记忆吗？删除后无法恢复。')) return;
     try {
-      await fetch(`http://127.0.0.1:18790/api/v1/memory/delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
-      });
+      if (isTauri()) {
+        // Tauri 环境：通过 IPC 调用
+        await api.clawbotMemoryDelete(key);
+      } else {
+        // 降级: 直接HTTP调用
+        await fetch(`http://127.0.0.1:18790/api/v1/memory/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+      }
       setEntries(prev => prev.filter(e => e.key !== key));
     } catch (e) {
       console.warn('删除记忆失败:', e);
@@ -58,11 +65,17 @@ export function Memory() {
   const handleSaveEdit = async () => {
     if (!editingKey) return;
     try {
-      await fetch('http://127.0.0.1:18790/api/v1/memory/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: editingKey, value: editValue }),
-      });
+      if (isTauri()) {
+        // Tauri 环境：通过 IPC 调用
+        await api.clawbotMemoryUpdate(editingKey, editValue);
+      } else {
+        // 降级: 直接HTTP调用
+        await fetch('http://127.0.0.1:18790/api/v1/memory/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: editingKey, value: editValue }),
+        });
+      }
       setEntries(prev => prev.map(e => e.key === editingKey ? { ...e, value: editValue } : e));
       setEditingKey(null);
     } catch (e) {
@@ -73,24 +86,30 @@ export function Memory() {
   const fetchMemories = async () => {
     try {
       setLoading(true);
-      const resp = await fetch('http://127.0.0.1:18790/api/v1/memory/search?q=&limit=50');
-      if (resp.ok) {
-        const data = await resp.json();
-        // API 返回 { results: [...] } 格式
-        const results = data.results || data.entries || data || [];
-        if (Array.isArray(results) && results.length > 0) {
-          setEntries(results.map((r: MemoryApiResult) => ({
-            key: r.key || r.id || 'unknown',
-            value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
-            source_bot: r.source_bot || r.source || 'system',
-            importance: r.importance || r.score || 3,
-            updated_at: r.updated_at || Date.now() / 1000,
-          })));
-        } else {
-          setEntries([]);
-        }
+      let results: any[] = [];
+
+      if (isTauri()) {
+        // Tauri 环境：通过 IPC 调用
+        const data = await api.clawbotMemorySearch('', 50) as any;
+        results = data?.results || data?.entries || data || [];
       } else {
-        console.warn('记忆API返回非200:', resp.status);
+        // 降级: 直接HTTP调用
+        const resp = await fetch('http://127.0.0.1:18790/api/v1/memory/search?q=&limit=50');
+        if (resp.ok) {
+          const data = await resp.json();
+          results = data.results || data.entries || data || [];
+        }
+      }
+
+      if (Array.isArray(results) && results.length > 0) {
+        setEntries(results.map((r: MemoryApiResult) => ({
+          key: r.key || r.id || 'unknown',
+          value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
+          source_bot: r.source_bot || r.source || 'system',
+          importance: r.importance || r.score || 3,
+          updated_at: r.updated_at || Date.now() / 1000,
+        })));
+      } else {
         setEntries([]);
       }
     } catch (e) {

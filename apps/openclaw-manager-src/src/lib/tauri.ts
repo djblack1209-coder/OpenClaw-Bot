@@ -355,6 +355,18 @@ export const api = {
   clawbotTradingVote: (symbol: string, period: string) =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_trading_vote', { symbol, period }),
 
+  // ──── 社媒浏览器状态 ────
+
+  // 获取社媒浏览器会话状态（X / 小红书）
+  clawbotSocialBrowserStatus: () =>
+    invokeWithLog<{ x: string; xhs: string }>('clawbot_api_social_browser_status'),
+
+  // ──── 交易状态 ────
+
+  // 获取交易系统实时状态（连接、持仓、图表数据）
+  clawbotTradingStatus: () =>
+    invokeWithLog<any>('clawbot_api_trading_status'),
+
   // ──── 社媒运营 ────
 
   // 社媒系统运行状态
@@ -440,6 +452,14 @@ export const api = {
   // 搜索记忆库
   clawbotMemorySearch: (query: string, limit?: number, mode?: string, category?: string) =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_memory_search', { query, limit, mode, category }),
+
+  // 删除指定记忆条目
+  clawbotMemoryDelete: (key: string) =>
+    invokeWithLog<void>('clawbot_api_memory_delete', { key }),
+
+  // 更新指定记忆条目
+  clawbotMemoryUpdate: (key: string, value: string) =>
+    invokeWithLog<void>('clawbot_api_memory_update', { key, value }),
 
   // 记忆库统计信息
   clawbotMemoryStats: () =>

@@ -8,6 +8,7 @@ import {
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { api, isTauri } from '@/lib/tauri';
 
 interface ActionStatus {
   running: boolean;
@@ -52,13 +53,19 @@ export function Money() {
   useEffect(() => {
     const fetchTradingData = async () => {
       try {
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/trading/status');
-        if (resp.ok) {
-          const data = await resp.json();
-          setIbkrConnected(data.connected ?? false);
-          if (data.chart_data) setChartData(data.chart_data);
-          if (data.assets) setAssets(data.assets);
+        let data: any;
+        if (isTauri()) {
+          // Tauri 环境：通过 IPC 调用
+          data = await api.clawbotTradingStatus();
+        } else {
+          // 降级: 直接HTTP调用
+          const resp = await fetch('http://127.0.0.1:18790/api/v1/trading/status');
+          if (!resp.ok) return;
+          data = await resp.json();
         }
+        setIbkrConnected(data?.connected ?? false);
+        if (data?.chart_data) setChartData(data.chart_data);
+        if (data?.assets) setAssets(data.assets);
       } catch {
         // 后端不可达时保持默认的断开状态
       } finally {
@@ -75,15 +82,27 @@ export function Money() {
     setStatuses(prev => ({ ...prev, [id]: { running: true } }));
 
     try {
-      const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `${cmd} ${input || ''}`.trim() }),
-      });
-      const data = await resp.json();
+      const text = `${cmd} ${input || ''}`.trim();
+      let result: string;
+
+      if (isTauri()) {
+        // Tauri 环境：通过 IPC 调用
+        const data = await api.omegaProcess(text);
+        result = (data as any)?.result || (data as any)?.response || '执行完成';
+      } else {
+        // 降级: 直接HTTP调用
+        const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await resp.json();
+        result = data.result || data.response || '执行完成';
+      }
+
       setStatuses(prev => ({
         ...prev,
-        [id]: { running: false, lastResult: data.result || data.response || '执行完成' }
+        [id]: { running: false, lastResult: result }
       }));
     } catch (e) {
       setStatuses(prev => ({

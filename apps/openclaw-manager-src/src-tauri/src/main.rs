@@ -95,11 +95,13 @@ fn main() {
             // ClawBot Internal API (FastAPI :18790)
             clawbot_api::clawbot_api_ping,
             clawbot_api::clawbot_api_status,
+            clawbot_api::clawbot_api_trading_status,
             clawbot_api::clawbot_api_trading_positions,
             clawbot_api::clawbot_api_trading_pnl,
             clawbot_api::clawbot_api_trading_signals,
             clawbot_api::clawbot_api_trading_system,
             clawbot_api::clawbot_api_trading_vote,
+            clawbot_api::clawbot_api_social_browser_status,
             clawbot_api::clawbot_api_social_status,
             clawbot_api::clawbot_api_social_topics,
             clawbot_api::clawbot_api_social_compose,
@@ -123,6 +125,8 @@ fn main() {
             clawbot_api::clawbot_api_generate_persona_photo,
             clawbot_api::clawbot_api_memory_search,
             clawbot_api::clawbot_api_memory_stats,
+            clawbot_api::clawbot_api_memory_delete,
+            clawbot_api::clawbot_api_memory_update,
             clawbot_api::clawbot_api_pool_stats,
             // Evolution Engine
             clawbot_api::clawbot_api_evolution_scan,
