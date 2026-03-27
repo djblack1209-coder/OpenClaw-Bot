@@ -5,6 +5,44 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R18 轮: brain.py拆分(1623→839) + life_automation.py拆分(1555→449)
+
+> 领域: `backend`
+> 影响模块: core/brain, execution/life_automation
+> 关联问题: HI-360(14个大文件 — 已解决2个)
+
+### 变更内容
+
+**brain.py 架构拆分 (1623行 → 3文件):**
+- brain.py (839行) — 保留编排核心: process_message, 任务管理, 回调处理, 单例
+- brain_graph_builders.py (184行) — BrainGraphBuilderMixin: 9个 _build_*_graph 方法
+- brain_executors.py (652行) — BrainExecutorMixin: 25个 _exec_* 方法
+- OpenClawBrain 通过 Mixin 继承组合，Python MRO 自动解析 self._exec_* 引用
+- 外部导入路径零变更 (get_brain/init_brain/OpenClawBrain 均留在原文件)
+
+**life_automation.py 架构拆分 (1555行 → 3文件):**
+- life_automation.py (449行) — 保留核心: 提醒/日程/Mac自动化 + 向后兼容re-export
+- bookkeeping.py (682行) — 收支记录/预算管理/账单跟踪 (24个函数)
+- tracking.py (473行) — 社媒分析/价格监控/策略评估 (11个函数)
+- 向后兼容: life_automation.py 底部 re-export 所有被移出的函数，现有消费者零修改
+
+**导入测试扩展:** 28→32个模块 (+4个新拆分模块)
+
+**验证结果:** 1008/1008 + 32/32 导入测试
+
+### 文件变更
+- `packages/clawbot/src/core/brain.py` — 1623→839行
+- `packages/clawbot/src/core/brain_graph_builders.py` — 新建 (184行)
+- `packages/clawbot/src/core/brain_executors.py` — 新建 (652行)
+- `packages/clawbot/src/execution/life_automation.py` — 1555→449行
+- `packages/clawbot/src/execution/bookkeeping.py` — 新建 (682行)
+- `packages/clawbot/src/execution/tracking.py` — 新建 (473行)
+- `packages/clawbot/tests/test_import_smoke.py` — 扩展到32模块
+- `docs/status/HEALTH.md` — 更新
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R17 轮: 修复HI-361 SELL方向止损止盈(真金白银安全修复)
 
 > 领域: `trading`
