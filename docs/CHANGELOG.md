@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R17 轮: 修复HI-361 SELL方向止损止盈(真金白银安全修复)
+
+> 领域: `trading`
+> 影响模块: position_monitor.py
+> 关联问题: HI-361(已解决)
+
+### 变更内容
+
+**做空持仓安全修复 (position_monitor.py):**
+- 新增 `_check_exit_conditions()` 的 `elif pos.side == "SELL"` 完整分支:
+  - 做空止损: 价格上涨 >= stop_loss → STOP_LOSS
+  - 做空追踪止损: 价格回涨 >= trailing_stop_price → TRAILING_STOP
+  - 做空分批止盈: 盈利达1.5R → PARTIAL_TAKE_PROFIT (平仓50%)
+  - 做空止盈: 价格下跌 <= take_profit → TAKE_PROFIT
+- 新增 `update_price()` 的 SELL 方向追踪止损逻辑:
+  - 价格创新低时下移追踪止损价 (ATR动态/固定百分比)
+  - 复用 highest_price 字段记录最低价
+  - 追踪止损调整通知 (📉 空单追踪止损下移)
+- 更新测试: 2个旧"记录缺口"测试改为"验证正确触发"测试
+
+**验证结果:** 1008/1008 通过
+
+### 文件变更
+- `packages/clawbot/src/position_monitor.py` — SELL止损止盈完整实现(+72行)
+- `packages/clawbot/tests/test_position_monitor_v2.py` — 测试更新为验证触发
+- `docs/status/HEALTH.md` — HI-361移至已解决
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R16 轮: 金融安全测试 + SELL止损缺口发现
 
 > 领域: `trading` | `backend`

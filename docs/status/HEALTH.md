@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R16审计: 20个金融安全测试+SELL止损缺口HI-361 | 1008/1008 passed)
+> 最后更新: 2026-03-28 (R17审计: HI-361修复SELL止损止盈+追踪止损+分批止盈 | 1008/1008 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -82,7 +82,6 @@
 | HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 (已新建 vps_failover_check.sh) | 2026-03-27 |
 | HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在 | 2026-03-28 |
 | HI-349 | `security` | `code_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 — 需OS级隔离 | 2026-03-28 |
-| HI-361 | `trading` | `position_monitor.py` | 🔴 _check_exit_conditions()只处理BUY方向，SELL方向持仓无精准止损/止盈 — 做空只靠日亏损熔断保护 | 2026-03-28 |
 
 ### 🟡 一般
 
@@ -115,6 +114,7 @@
 | HI-347 | `backend` | `requirements.txt` | pyautogui/pyobjc在Linux部署时安装失败 | 添加sys_platform=='darwin'条件标记 | 2026-03-28 | R13审计 |
 | HI-346 | `frontend` | `App.tsx` | Evolution页面(569行)已实现但未接入路由,用户无法访问 | 添加PageType+lazy import+Sidebar菜单+Header标题 | 2026-03-28 | R13审计 |
 | HI-345 | `frontend` | `App.tsx` | CommandPalette(Cmd+K)已实现但未挂载到DOM | 在App主组件中渲染\<CommandPalette/\> | 2026-03-28 | R13审计 |
+| HI-361 | `trading` | `position_monitor.py` | SELL方向持仓无止损/止盈/追踪止损/分批止盈 — 做空只靠日亏损熔断 | 实现完整SELL分支: 止损(价格>=SL)、追踪止损(价格>=trailing)、分批止盈(1.5R)、止盈(价格<=TP) + 追踪止损下移逻辑 | 2026-03-28 | R17审计 |
 | HI-358 | `backend` | `cmd_social_mixin.py` 等5个文件 | cmd_execution_mixin.py(2602行)已拆分完成 | 移至已解决 | 2026-03-28 | R14审计 |
 | HI-344 | `deploy` | VPS | VPS代码过时+pandas依赖缺失+failover状态卡在active | rsync同步最新代码+pip install依赖+重置failover为standby | 2026-03-28 | R12审计 |
 | HI-343 | `frontend` | tauri.ts | 34个后端API命令前端未封装,桌面端无法调用 | 补入34个API函数+修正3个参数名 | 2026-03-28 | R12审计 |
