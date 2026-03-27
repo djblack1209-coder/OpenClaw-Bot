@@ -323,29 +323,207 @@ export const api = {
   getSkillsStatus: () =>
     invokeWithLog<SkillsStatus>('get_skills_status'),
 
-  // ClawBot 代理命令
-  clawbotSocialTopics: (limit?: number) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_social_topics', { limit }),
-  clawbotEvolutionScan: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_scan'),
+  // ──── ClawBot 系统 ────
+
+  // 后端健康检查 ping
+  clawbotPing: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_ping'),
+
+  // ClawBot 整体运行状态
   clawbotStatus: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_status'),
+
+  // ──── 交易系统 ────
+
+  // 交易系统概览
   clawbotTradingSystem: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_trading_system'),
+
+  // 当前持仓列表
+  clawbotTradingPositions: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_positions'),
+
+  // 盈亏统计
+  clawbotTradingPnl: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_pnl'),
+
+  // 交易信号列表
+  clawbotTradingSignals: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_signals'),
+
+  // 对标的进行多空投票
+  clawbotTradingVote: (symbol: string, period: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_vote', { symbol, period }),
+
+  // ──── 社媒运营 ────
+
+  // 社媒系统运行状态
+  clawbotSocialStatus: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_status'),
+
+  // 获取热门话题列表
+  clawbotSocialTopics: (count?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_topics', { count }),
+
+  // 根据话题生成社媒内容
+  clawbotSocialCompose: (topic: string, platform?: string, persona?: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_compose', { topic, platform, persona }),
+
+  // 发布内容到指定平台
+  clawbotSocialPublish: (platform: string, content: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_publish', { platform, content }),
+
+  // 对指定话题进行调研
+  clawbotSocialResearch: (topic: string, count?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_research', { topic, count }),
+
+  // 社媒运营数据指标
+  clawbotSocialMetrics: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_metrics'),
+
+  // 获取可用人设列表
+  clawbotSocialPersonas: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_personas'),
+
+  // 获取发布日历
+  clawbotSocialCalendar: (days?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_calendar', { days }),
+
+  // ──── 社媒自动驾驶 ────
+
+  // 自动驾驶运行状态
+  clawbotAutopilotStatus: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_status'),
+
+  // 启动自动驾驶
   clawbotAutopilotStart: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_start'),
+
+  // 停止自动驾驶
   clawbotAutopilotStop: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_stop'),
-  omegaStatus: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_status'),
-  clawbotEvolutionStats: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_stats'),
+
+  // 手动触发指定自动驾驶任务
+  clawbotAutopilotTrigger: (jobId: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_autopilot_trigger', { jobId }),
+
+  // ──── 社媒草稿管理 ────
+
+  // 获取所有草稿
+  clawbotSocialDrafts: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_drafts'),
+
+  // 更新指定草稿内容
+  clawbotSocialDraftUpdate: (index: number, text: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_update', { index, text }),
+
+  // 删除指定草稿
+  clawbotSocialDraftDelete: (index: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_delete', { index }),
+
+  // 发布指定草稿
+  clawbotSocialDraftPublish: (index: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_publish', { index }),
+
+  // ──── 图像生成 ────
+
+  // 根据提示词生成图片
+  clawbotGenerateImage: (prompt: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_generate_image', { prompt }),
+
+  // 生成人设角色照片
+  clawbotGeneratePersonaPhoto: (persona?: string, scenario?: string, mood?: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_generate_persona_photo', { persona, scenario, mood }),
+
+  // ──── 记忆系统 ────
+
+  // 搜索记忆库
+  clawbotMemorySearch: (query: string, limit?: number, mode?: string, category?: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_memory_search', { query, limit, mode, category }),
+
+  // 记忆库统计信息
+  clawbotMemoryStats: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_memory_stats'),
+
+  // ──── API 池 ────
+
+  // API 池使用统计
+  clawbotPoolStats: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_pool_stats'),
+
+  // ──── 自进化系统 ────
+
+  // 触发自进化扫描
+  clawbotEvolutionScan: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_scan'),
+
+  // 获取进化提案列表
+  clawbotEvolutionProposals: (status?: string, limit?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_proposals', { status, limit }),
+
+  // 获取能力缺口分析
   clawbotEvolutionGaps: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_gaps'),
-  clawbotEvolutionProposals: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_proposals'),
-  clawbotEvolutionUpdateProposal: (id: string, status: string) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_update_proposal', { id, status }),
+
+  // 自进化统计数据
+  clawbotEvolutionStats: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_stats'),
+
+  // 更新进化提案状态
+  clawbotEvolutionUpdateProposal: (proposalId: string, status: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_update_proposal', { proposalId, status }),
+
+  // ──── 比价引擎 ────
+
+  // 商品比价搜索
+  clawbotShoppingCompare: (query: string, limit?: number, aiSummary?: boolean) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_shopping_compare', { query, limit, aiSummary }),
+
+  // ──── OMEGA v2.0 ────
+
+  // OMEGA 系统状态
+  omegaStatus: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_status'),
+
+  // OMEGA 成本统计
+  omegaCost: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_cost'),
+
+  // OMEGA 事件历史
+  omegaEvents: (eventType?: string, limit?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_events', { eventType, limit }),
+
+  // OMEGA 审计日志
+  omegaAudit: (limit?: number) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_audit', { limit }),
+
+  // OMEGA 活跃任务列表
+  omegaTasks: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_tasks'),
+
+  // OMEGA Brain 处理消息
+  omegaProcess: (message: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_process', { message }),
+
+  // OMEGA 投资团队状态
+  omegaInvestmentTeam: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_investment_team'),
+
+  // OMEGA 投资分析（指定标的和市场）
+  omegaInvestmentAnalyze: (symbol: string, market?: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_investment_analyze', { symbol, market }),
+
+  // OMEGA AI 图像生成
+  omegaGenerateImage: (prompt: string, model?: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_generate_image', { prompt, model }),
+
+  // OMEGA AI 视频生成
+  omegaGenerateVideo: (prompt: string) =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_generate_video', { prompt }),
+
+  // OMEGA 可用媒体生成模型列表
+  omegaMediaModels: () =>
+    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_media_models'),
 };
 
 export const CLAWBOT_WS_URL = `ws://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;

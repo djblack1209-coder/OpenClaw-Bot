@@ -451,6 +451,219 @@ class AnalysisCommandsMixin:
 
     @requires_auth
     @with_typing
+    async def cmd_drl(self, update, context):
+        """DRL 强化学习策略分析: /drl AAPL"""
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "🧠 DRL 强化学习策略分析\n\n"
+                "用法: /drl 代码\n"
+                "示例: /drl AAPL\n"
+                "示例: /drl BTC-USD\n\n"
+                "使用 PPO 强化学习模型分析交易信号"
+            )
+            return
+        symbol = args[0].upper()
+        msg = await update.message.reply_text(f"{self.emoji} 正在运行 DRL 策略分析 {symbol} ...")
+        try:
+            from src.strategies.drl_strategy import DRLStrategy, HAS_GYM, HAS_SB3
+
+            # 检查依赖是否安装
+            if not HAS_GYM or not HAS_SB3:
+                missing = []
+                if not HAS_GYM:
+                    missing.append("gymnasium")
+                if not HAS_SB3:
+                    missing.append("stable-baselines3")
+                await safe_edit(
+                    msg,
+                    f"⚠️ DRL 策略需要安装额外依赖:\n"
+                    f"pip install {' '.join(missing)}\n\n"
+                    f"安装后重启 Bot 即可使用。"
+                )
+                return
+
+            # 获取市场数据
+            from src.data_providers import get_history_sync
+            df = get_history_sync(symbol, period="6mo", interval="1d")
+            if df is None or df.empty:
+                await safe_edit(msg, f"⚠️ 未找到 {symbol} 的历史数据")
+                return
+
+            # 构造 MarketData
+            from src.strategy_engine import MarketData
+            closes = df["Close"].tolist() if "Close" in df.columns else df["close"].tolist()
+            volumes = df["Volume"].tolist() if "Volume" in df.columns else df.get("volume", [0] * len(closes)).tolist()
+            highs = df["High"].tolist() if "High" in df.columns else df.get("high", closes).tolist()
+            lows = df["Low"].tolist() if "Low" in df.columns else df.get("low", closes).tolist()
+            opens = df["Open"].tolist() if "Open" in df.columns else df.get("open", closes).tolist()
+
+            market_data = MarketData(
+                symbol=symbol,
+                closes=closes,
+                volumes=volumes,
+                highs=highs,
+                lows=lows,
+                opens=opens,
+                timeframe="1d",
+            )
+
+            # 运行 DRL 策略
+            strategy = DRLStrategy()
+            signal = strategy.analyze(market_data)
+
+            # 格式化结果
+            ind = signal.indicators or {}
+            action = ind.get("drl_action", 0)
+            confidence = ind.get("drl_confidence", 0)
+            algo = ind.get("algorithm", "PPO")
+
+            # 信号图标
+            signal_icons = {
+                "STRONG_BUY": "🟢🟢", "BUY": "🟢",
+                "STRONG_SELL": "🔴🔴", "SELL": "🔴",
+                "HOLD": "🟡",
+            }
+            sig_name = signal.signal.name if hasattr(signal.signal, "name") else str(signal.signal)
+            icon = signal_icons.get(sig_name, "🟡")
+
+            lines = [
+                f"🧠 DRL 强化学习分析 — {symbol}",
+                "━━━━━━━━━━━━━━━━━━━━━━",
+                f"📊 算法: {algo}",
+                f"💰 当前价: ${ind.get('price', 0):.2f}",
+                f"",
+                f"{icon} 信号: {sig_name}",
+                f"📈 得分: {signal.score:+.1f}",
+                f"🎯 动作值: {action:+.3f}",
+                f"📊 置信度: {confidence:.1%}",
+                f"",
+                f"💡 {signal.reason}",
+            ]
+
+            if signal.stop_loss_pct:
+                lines.append(f"🛡 建议止损: {signal.stop_loss_pct}%")
+            if signal.take_profit_pct:
+                lines.append(f"🎯 建议止盈: {signal.take_profit_pct}%")
+
+            await safe_edit(msg, "\n".join(lines))
+        except Exception as e:
+            logger.error("[DRL] 分析失败: %s", e)
+            await safe_edit(msg, error_service_failed("DRL 策略分析"))
+
+    @requires_auth
+    @with_typing
+    async def cmd_factors(self, update, context):
+        """Alpha 因子分析: /factors AAPL — 16 Alpha 因子分析"""
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "📊 Alpha 因子分析 (16 因子)\n\n"
+                "用法: /factors 代码\n"
+                "示例: /factors AAPL\n"
+                "示例: /factors BTC-USD\n\n"
+                "动量/均值回归/波动率/成交量/技术面/价格形态"
+            )
+            return
+        symbol = args[0].upper()
+        msg = await update.message.reply_text(f"{self.emoji} 正在计算 {symbol} 的 Alpha 因子 ...")
+        try:
+            from src.strategies.factor_strategy import (
+                FactorStrategy, AlphaFactors, FactorScorer, HAS_LGB,
+            )
+
+            # 获取市场数据
+            from src.data_providers import get_history_sync
+            df = get_history_sync(symbol, period="6mo", interval="1d")
+            if df is None or df.empty:
+                await safe_edit(msg, f"⚠️ 未找到 {symbol} 的历史数据")
+                return
+
+            # 构造 MarketData
+            from src.strategy_engine import MarketData
+            closes = df["Close"].tolist() if "Close" in df.columns else df["close"].tolist()
+            volumes = df["Volume"].tolist() if "Volume" in df.columns else df.get("volume", [0] * len(closes)).tolist()
+            highs = df["High"].tolist() if "High" in df.columns else df.get("high", closes).tolist()
+            lows = df["Low"].tolist() if "Low" in df.columns else df.get("low", closes).tolist()
+            opens = df["Open"].tolist() if "Open" in df.columns else df.get("open", closes).tolist()
+
+            market_data = MarketData(
+                symbol=symbol,
+                closes=closes,
+                volumes=volumes,
+                highs=highs,
+                lows=lows,
+                opens=opens,
+                timeframe="1d",
+            )
+
+            # 运行因子策略
+            strategy = FactorStrategy()
+            signal = strategy.analyze(market_data)
+
+            # 获取详细因子报告
+            report = strategy.get_factor_report(market_data)
+            factors = report.get("factors", {})
+
+            # ML 状态
+            ml_status = "✅ LightGBM 已启用" if HAS_LGB else "⚠️ LightGBM 未安装 (纯规则模式)"
+
+            ind = signal.indicators or {}
+            method = ind.get("method", "纯规则")
+
+            # 信号图标
+            signal_icons = {
+                "STRONG_BUY": "🟢🟢", "BUY": "🟢",
+                "STRONG_SELL": "🔴🔴", "SELL": "🔴",
+                "HOLD": "🟡",
+            }
+            sig_name = signal.signal.name if hasattr(signal.signal, "name") else str(signal.signal)
+            icon = signal_icons.get(sig_name, "🟡")
+
+            lines = [
+                f"📊 Alpha 因子分析 — {symbol}",
+                "━━━━━━━━━━━━━━━━━━━━━━",
+                f"💰 当前价: ${ind.get('price', 0):.2f}",
+                f"🔬 方法: {method} | {ml_status}",
+                f"",
+                f"{icon} 信号: {sig_name} (得分: {signal.score:+.1f})",
+                f"📊 置信度: {signal.confidence:.1%}",
+                f"",
+                "▸ 动量因子",
+                f"  5日: {factors.get('mom_5d', 0):+.4f}  10日: {factors.get('mom_10d', 0):+.4f}",
+                f"  20日: {factors.get('mom_20d', 0):+.4f}  60日: {factors.get('mom_60d', 0):+.4f}",
+                "",
+                "▸ 均值回归",
+                f"  5日偏离: {factors.get('mean_reversion_5d', 0):+.4f}",
+                f"  20日偏离: {factors.get('mean_reversion_20d', 0):+.4f}",
+                "",
+                "▸ 波动率",
+                f"  5日: {factors.get('volatility_5d', 0):.4f}  20日: {factors.get('volatility_20d', 0):.4f}",
+                "",
+                "▸ 成交量",
+                f"  量比5日: {factors.get('volume_ratio_5d', 0):.2f}  量比20日: {factors.get('volume_ratio_20d', 0):.2f}",
+                f"  OBV斜率: {factors.get('obv_slope', 0):.2f}",
+                "",
+                "▸ 技术面",
+                f"  RSI14: {factors.get('rsi_14', 0):.3f}  MACD柱: {factors.get('macd_hist', 0):.4f}",
+                f"  BB位置: {factors.get('bb_position', 0):.3f}",
+                "",
+                "▸ 价格形态",
+                f"  日内振幅: {factors.get('price_range', 0):.4f}  跳空比: {factors.get('gap_ratio', 0):.4f}",
+                "",
+                f"💡 {signal.reason}",
+            ]
+
+            if not HAS_LGB:
+                lines.append("\n💡 安装 lightgbm 可启用 ML 增强: pip install lightgbm")
+
+            await safe_edit(msg, "\n".join(lines))
+        except Exception as e:
+            logger.error("[Factors] 因子分析失败: %s", e)
+            await safe_edit(msg, error_service_failed("Alpha 因子分析"))
+
+    @requires_auth
+    @with_typing
     async def cmd_chart(self, update, context):
         """K线图表: /chart NVDA — 生成K线图"""
         args = context.args

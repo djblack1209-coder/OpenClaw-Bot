@@ -1,6 +1,6 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-03-28 | 新增 /review_history 复盘历史查询命令 + cmd_chart K线图实装，总数 92
+> 最后更新: 2026-03-28 | 新增 /backtest 高级分析子命令 (monte/optimize/walkforward) + 中文触发词，总数 92
 
 ---
 
@@ -85,7 +85,7 @@
 | 44 | `/risk` | `cmd_risk` | 风控状态 + IBKR 实时数据 | Y |
 | 45 | `/monitor` | `cmd_monitor` | 持仓监控 (卡片 + 饼图) | N |
 | 46 | `/tradingsystem` | `cmd_tradingsystem` | 交易系统全状态 | N |
-| 47 | `/backtest` | `cmd_backtest` | 回测 (自研引擎 / Freqtrade + Bokeh) | Y |
+| 47 | `/backtest` | `cmd_backtest` | 回测 (自研引擎 / Freqtrade + Bokeh + 高级分析) | Y |
 | 48 | `/rebalance` | `cmd_rebalance` | 再平衡 (preset 配置 + 漂移分析) | N |
 
 ### 1.6 协作命令 — `CollabCommandsMixin` (cmd_collab_mixin.py, 824 行)
@@ -268,6 +268,9 @@
 | 启动自动/开启自动/自动交易启动 | `autotrader_start` | `/autotrader start` |
 | 停止自动/关闭自动/自动交易停止 | `autotrader_stop` | `/autotrader stop` |
 | 回测/测试策略/backtest + SYMBOL | `backtest` | `/backtest` |
+| 蒙特卡洛(模拟) + SYMBOL | `backtest` | `/backtest monte SYMBOL` |
+| 参数优化/优化参数 + SYMBOL | `backtest` | `/backtest optimize SYMBOL` |
+| 前进分析/walk forward + SYMBOL | `backtest` | `/backtest walkforward SYMBOL` |
 | 再平衡/调仓/rebalance/配置组合 | `rebalance` | `/rebalance` |
 | 投资/讨论/分析 + 一下 + 话题 | `invest` | `/invest` |
 

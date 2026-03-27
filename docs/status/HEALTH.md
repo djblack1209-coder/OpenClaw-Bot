@@ -104,6 +104,13 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-344 | `deploy` | VPS | VPS代码过时+pandas依赖缺失+failover状态卡在active | rsync同步最新代码+pip install依赖+重置failover为standby | 2026-03-28 | R12审计 |
+| HI-343 | `frontend` | tauri.ts | 34个后端API命令前端未封装,桌面端无法调用 | 补入34个API函数+修正3个参数名 | 2026-03-28 | R12审计 |
+| HI-342 | `backend` | cmd_trading_mixin.py | 回测高级功能(蒙特卡洛/参数优化/前进分析)已实现但无用户入口 | /backtest monte/optimize/walkforward 子命令+中文触发词 | 2026-03-28 | R12审计 |
+| HI-341 | `backend` | cmd_invest_mixin.py | /buy 交易日志导入路径错误(src.trading.trading_journal),日志静默丢失 | 修正为 src.trading_journal 匹配实际位置 | 2026-03-28 | R12审计 |
+| HI-340 | `backend` | cmd_basic_mixin.py | /keyhealth 命令注册但 handler 不存在,触发崩溃 | 实现 cmd_keyhealth 方法(API Key健康验证) | 2026-03-28 | R12审计 |
+| HI-339 | `backend` | cmd_analysis_mixin.py | /factors 命令注册但 handler 不存在,触发崩溃 | 实现 cmd_factors 方法(16 Alpha因子分析) | 2026-03-28 | R12审计 |
+| HI-338 | `backend` | cmd_analysis_mixin.py | /drl 命令注册但 handler 不存在,触发崩溃 | 实现 cmd_drl 方法(DRL策略分析+优雅降级) | 2026-03-28 | R12审计 |
 | HI-337 | `backend` | multi_main.py | init_goofish_monitor从未调用 — 闲鱼监控无法启动 | 在启动流程中接入初始化(try/except保护) | 2026-03-28 | R11审计 |
 | HI-336 | `backend` | multi_main.py | init_adaptive_router从未调用 — 自适应路由器形同虚设 | 在启动流程中接入初始化(try/except保护) | 2026-03-28 | R11审计 |
 | HI-335 | `frontend` | tauri.ts | 11处前端命令名与后端不匹配(缺_api_前缀) — 桌面端核心面板全部报错 | 统一添加_api_前缀匹配后端注册名 | 2026-03-28 | R11审计 |

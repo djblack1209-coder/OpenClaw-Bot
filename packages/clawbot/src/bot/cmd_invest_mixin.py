@@ -439,8 +439,7 @@ class InvestCommandsMixin:
             }
             # 交易日志
             try:
-                from src.trading.trading_journal import get_trading_journal
-                journal = get_trading_journal()
+                from src.trading_journal import journal
                 if journal:
                     journal.open_trade(symbol, "BUY", quantity, price, stop_loss=round(price * 0.97, 2))
             except Exception as e:
