@@ -25,7 +25,8 @@ loguru~=0.7.0
 instructor[litellm]>=1.7.0
 
 # Pydantic Settings — 统一配置管理（类型校验 + env + .env）
-pydantic-settings~=2.7.0
+# 注意: 未直接 import，由 instructor/pydantic 隐式使用
+# pydantic-settings~=2.7.0
 
 # 闲鱼模块依赖
 websockets~=13.0
@@ -103,10 +104,10 @@ akshare>=1.15.0
 ccxt>=4.4.0
 
 # PyAutoGUI — macOS 桌面控制 (12k⭐, BSD)
-# 搬运: Quartz 底层鼠标键盘模拟
-pyautogui>=0.9.54; sys_platform == 'darwin'
-pyobjc-core>=10.0; sys_platform == 'darwin'
-pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'
+# 已删除: humanized_controller.py 已移除，不再需要
+# pyautogui>=0.9.54; sys_platform == 'darwin'
+# pyobjc-core>=10.0; sys_platform == 'darwin'
+# pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'
 
 # 测试依赖 → 见 requirements-dev.txt
 
@@ -194,8 +195,8 @@ openpyxl>=3.1.0
 qrcode[pil]>=7.0
 
 # fpdf2 — PDF 生成 (1.1k⭐, LGPL)
-# 搬运: 每日简报/交易报告 PDF 导出，支持 CJK 字体
-fpdf2~=2.7.9
+# 已删除: pdf_report.py 已移除，不再需要
+# fpdf2~=2.7.9
 
 # ── Phase 8 新增: AI 搜索引擎 ──────────────────────────────
 

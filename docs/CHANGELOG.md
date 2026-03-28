@@ -5,6 +5,52 @@
 
 ---
 
+## [2026-03-29] R22续: 修复31个运行时崩溃 + 安全密钥清理 + 9个死import清除
+
+> 领域: `backend`, `security`
+> 影响模块: `bot/callback_mixin`, `bot/workflow_mixin`, `notify_style`, `core/proactive_engine`, `xianyu/xianyu_agent`, `execution/social/x_platform`, `api/rpc`, `modules/investment/team`, `config/.env.example`, `requirements.txt`
+> 关联问题: HI-364 (新建并解决), HI-365 (新建并解决), HI-362 (追加修复)
+
+### 变更内容
+
+**P0: 修复6个文件中14个未定义名称 (运行时NameError崩溃)**
+- `callback_mixin.py` — 恢复 `send_long_message`/`get_trading_pipeline`/`execute_trade_via_pipeline`/`get_stock_quote`/`_build_smart_reply_keyboard` 5个缺失导入
+- `workflow_mixin.py` — 恢复 `bot_registry`/`collab_orchestrator`/`send_long_message`/`format_digest` 4个缺失导入
+- `notify_style.py` — 添加缺失的 `import logging` 和 `logger` 初始化
+- `proactive_engine.py` — 修复 `admin_ids` 在定义前使用的bug + `get_history_store` 幻影导入
+- `xianyu_agent.py` — 新增缺失的 `PriceAgent` 类 (议价专家，温度随轮次递增)
+- `x_platform.py` — 新增缺失的 `_fetch_via_tweepy` 函数 (tweepy API v2 用户时间线获取)
+
+**P0: 安全密钥清理 (HI-365)**
+- `config/.env.example` — 替换2个真实Telegram Bot Token和1个真实Mem0 API Key为占位符
+- `config/.env.example` — 删除重复的 MEM0_API_KEY 定义块 (L344-346)
+- 删除过时的 `packages/clawbot/.env.example` (旧5-Bot版本, 114行)
+
+**P1: 修复4个幻影导入 (延迟导入路径错误)**
+- `callback_mixin.py` L187 — `ibkr` 从 `globals` 改为 `broker_selector`
+- `rpc.py` L58/134/214 — `ibkr` 改为 `broker_selector`，`portfolio` 改为 `invest_tools`
+- `team.py` L643 — 同上
+
+**P2: 清除9个未使用imports + 5个死依赖**
+- 7个文件中移除9个确认无用的import (auto_trader, freqtrade_bridge, trading_journal, context_manager, shared_memory, trading/_helpers, cmd_analysis_mixin)
+- `requirements.txt` — 注释掉 `fpdf2`(已删模块)、`pyautogui`+`pyobjc-*`(已删模块)、`pydantic-settings`(未使用)
+- 修正 `test_parse_proposal.py` 导入路径 (auto_trader → trading_pipeline)
+
+### 文件变更
+- `src/bot/callback_mixin.py` — 恢复5个顶层导入 + 修复ibkr幻影导入
+- `src/bot/workflow_mixin.py` — 恢复4个顶层导入
+- `src/notify_style.py` — 添加logging初始化
+- `src/core/proactive_engine.py` — 修复admin_ids引用 + get_history_store幻影导入
+- `src/xianyu/xianyu_agent.py` — 新增PriceAgent类
+- `src/execution/social/x_platform.py` — 新增_fetch_via_tweepy函数
+- `src/api/rpc.py` — 3处ibkr/portfolio导入路径修正
+- `src/modules/investment/team.py` — ibkr/portfolio导入路径修正
+- `config/.env.example` — 密钥脱敏 + 删除重复项
+- `requirements.txt` — 注释掉5个死依赖
+- `tests/test_parse_proposal.py` — 修正导入路径
+- 7个文件清理未使用import (auto_trader, freqtrade_bridge, trading_journal, context_manager, shared_memory, trading/_helpers, cmd_analysis_mixin)
+- 删除 `packages/clawbot/.env.example` (过时文件)
+
 ## [2026-03-29] 深度审计清理: 删除4,000+行死代码 + 合并重复函数
 
 > 领域: `backend`

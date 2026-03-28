@@ -640,7 +640,8 @@ class InvestmentTeam:
     def _get_portfolio_context(self) -> Dict:
         """获取当前持仓上下文"""
         try:
-            from src.bot.globals import ibkr, portfolio
+            from src.broker_selector import ibkr
+            from src.invest_tools import portfolio
             if ibkr and portfolio:
                 return {
                     "positions": portfolio.get("positions", []),

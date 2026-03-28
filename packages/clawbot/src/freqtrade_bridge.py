@@ -31,7 +31,7 @@ import json
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
-from src.utils import now_et, env_float, env_int
+from src.utils import now_et, env_float
 from config.prompts import BACKTEST_ANALYST_PROMPT
 
 logger = logging.getLogger(__name__)
