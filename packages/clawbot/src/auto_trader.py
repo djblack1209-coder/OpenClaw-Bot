@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # 从拆分后的模块导入
 from src.trading.market_calendar import is_market_holiday
-from src.trading_pipeline import TradingPipeline, TraderState, parse_trade_proposal
+from src.trading_pipeline import TradingPipeline, TraderState
 
 class AutoTrader:
     """

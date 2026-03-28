@@ -1084,5 +1084,3 @@ class TradingJournal:
 # 全局实例
 journal = TradingJournal()
 
-# 向后兼容：TradingMemoryBridge 已拆分到独立模块
-from src.trading_memory_bridge import TradingMemoryBridge, trading_memory_bridge  # noqa: E402, F401 — 向后兼容

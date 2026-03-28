@@ -55,8 +55,9 @@ class ClawBotRPC:
     def _rpc_system_status() -> dict:
         """Aggregate full system status for dashboard display."""
         from src.bot.globals import (
-            bot_registry, ibkr, shared_memory,
+            bot_registry, shared_memory,
         )
+        from src.broker_selector import ibkr
         from src.litellm_router import free_pool
 
         uptime = time.time() - _start_time
@@ -131,7 +132,8 @@ class ClawBotRPC:
         Returns dict with keys: connected, positions (list), account_summary.
         IBKR bridge methods (get_positions, get_account_summary) are async.
         """
-        from src.bot.globals import ibkr, portfolio
+        from src.broker_selector import ibkr
+        from src.invest_tools import portfolio
 
         connected = False
         positions: List[dict] = []
@@ -209,7 +211,7 @@ class ClawBotRPC:
     @staticmethod
     async def _rpc_trading_pnl() -> dict:
         """Get PnL summary from trading journal + IBKR account."""
-        from src.bot.globals import ibkr
+        from src.broker_selector import ibkr
         from src.trading_journal import journal
 
         result = {

@@ -571,7 +571,7 @@ class AnalysisCommandsMixin:
         msg = await update.message.reply_text(f"{self.emoji} 正在计算 {symbol} 的 Alpha 因子 ...")
         try:
             from src.strategies.factor_strategy import (
-                FactorStrategy, AlphaFactors, FactorScorer, HAS_LGB,
+                FactorStrategy, HAS_LGB,
             )
 
             # 获取市场数据

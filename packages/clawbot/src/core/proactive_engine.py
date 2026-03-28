@@ -777,12 +777,12 @@ async def periodic_proactive_check(engine: "ProactiveEngine"):
         # 9. 使用行为洞察 — 搬运 Spotify Wrapped / Apple 屏幕使用时间洞察模式
         # 从历史消息中检测行为模式，生成主动建议
         try:
-            from src.bot.globals import get_history_store
-            _hs = get_history_store()
+            from src.bot.globals import history_store as _history_store_ref
+            _hs = _history_store_ref
             if _hs:
                 # 获取最近 100 条用户消息，提取频繁操作模式
                 _any_bot = next(iter(bot_registry.keys()), "")
-                _admin = admin_ids[0] if admin_ids else 0
+                _admin = list(ALLOWED_USER_IDS)[0] if ALLOWED_USER_IDS else 0
                 if _any_bot and _admin:
                     recent = _hs.get_messages(_any_bot, int(_admin), limit=100)
                     user_msgs = [m.get("content", "") for m in (recent or []) if m.get("role") == "user"]

@@ -3,7 +3,6 @@ Trading — 内部工具函数
 从 trading_system.py 提取的纯工具函数，不依赖全局状态（或通过延迟导入访问）
 """
 import logging
-import os
 from datetime import datetime
 from typing import Optional, Dict, List
 

@@ -16,6 +16,10 @@ v2.1 变更 (2026-03-23):
 
 from typing import Iterable, Optional, Sequence, Tuple
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ── humanize (2.9k⭐) — 自然语言格式化 ──────────────────────
 _HAS_HUMANIZE = False
 try:

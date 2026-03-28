@@ -3,11 +3,14 @@ Bot — 链式讨论工作流 Mixin
 包含多模型协作的服务需求分析工作流方法。
 从 message_mixin.py 拆分以改善可维护性。
 
-> 最后更新: 2026-03-28
+> 最后更新: 2026-03-29
 """
 import json
 import logging
 import re
+
+from src.bot.globals import bot_registry, collab_orchestrator, send_long_message
+from src.notify_style import format_digest
 
 logger = logging.getLogger(__name__)
 

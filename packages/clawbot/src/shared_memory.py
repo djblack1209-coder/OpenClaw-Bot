@@ -19,7 +19,7 @@ import hashlib
 import math
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import timedelta
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)

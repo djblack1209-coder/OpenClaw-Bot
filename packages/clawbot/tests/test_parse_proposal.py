@@ -3,7 +3,7 @@ Tests for parse_trade_proposal() - pure function, no mocking needed.
 """
 import pytest
 
-from src.auto_trader import parse_trade_proposal
+from src.trading_pipeline import parse_trade_proposal
 from src.models import TradeProposal
 
 

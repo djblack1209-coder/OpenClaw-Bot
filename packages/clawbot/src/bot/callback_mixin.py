@@ -3,9 +3,17 @@ Bot — 回调处理 Mixin
 包含 Telegram 回调按钮和内联命令的处理方法。
 从 message_mixin.py 拆分以改善可维护性。
 
-> 最后更新: 2026-03-28
+> 最后更新: 2026-03-29
 """
 import logging
+
+from src.bot.globals import (
+    send_long_message,
+    get_trading_pipeline,
+    execute_trade_via_pipeline,
+    get_stock_quote,
+)
+from src.bot.message_mixin import _build_smart_reply_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +192,8 @@ class CallbackMixin:
           itrade_all:{trade_key}       — 执行全部交易
           itrade_cancel:{trade_key}    — 取消全部
         '''
-        from src.bot.globals import _pending_trades, ibkr
+        from src.bot.globals import _pending_trades
+        from src.broker_selector import ibkr
 
         query = update.callback_query
         await query.answer()

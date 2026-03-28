@@ -99,6 +99,39 @@ async def fetch_x_profile_posts(
     return []
 
 
+async def _fetch_via_tweepy(handle: str, count: int) -> List[Dict]:
+    """通过 tweepy API v2 获取用户最近推文 (Bearer Token 认证)"""
+    try:
+        # 先获取用户 ID
+        user_resp = _tweepy_client.get_user(username=handle)
+        if not user_resp or not user_resp.data:
+            logger.debug("[X.tweepy] 找不到用户 @%s", handle)
+            return []
+
+        user_id = user_resp.data.id
+        # 获取最近推文
+        tweets_resp = _tweepy_client.get_users_tweets(
+            user_id,
+            max_results=min(count, 100),
+            tweet_fields=["created_at", "text"],
+        )
+        if not tweets_resp or not tweets_resp.data:
+            return []
+
+        items = []
+        for tweet in tweets_resp.data[:count]:
+            items.append({
+                "title": str(tweet.text)[:200],
+                "source": f"@{handle}",
+                "url": f"https://x.com/{handle}/status/{tweet.id}",
+                "digest_key": str(tweet.id),
+            })
+        return items
+    except Exception as e:
+        logger.debug("[X.tweepy] @%s 获取失败: %s", handle, e)
+        return []
+
+
 async def _fetch_via_jina(handle: str, count: int) -> List[Dict]:
     """通过 Jina reader 抓取 X 动态"""
     import httpx
