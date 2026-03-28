@@ -24,21 +24,6 @@ except Exception as e:
     logger.info("[AutoTrader] exchange-calendars 未安装，使用内置休市日计算 (pip install exchange-calendars)")
 
 
-def _env_bool(key: str, default: bool) -> bool:
-    from src.utils import env_bool
-    return env_bool(key, default)
-
-
-def _env_int(key: str, default: int, minimum: int = 0) -> int:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return max(minimum, int(raw))
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
-
-
 def _easter(year: int) -> date:
     """Anonymous Gregorian algorithm for Easter Sunday."""
     a = year % 19

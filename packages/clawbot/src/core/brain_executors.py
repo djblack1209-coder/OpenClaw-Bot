@@ -7,7 +7,6 @@ Core — 节点执行器 Mixin
 """
 import asyncio
 import logging
-import re
 from typing import Dict
 
 from config.prompts import SOUL_CORE, INFO_QUERY_PROMPT, INVEST_DIRECTOR_DECISION_PROMPT

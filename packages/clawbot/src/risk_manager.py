@@ -433,12 +433,6 @@ class RiskManager:
                 f"限额=-${self.config.daily_loss_limit:.2f}，今日停止交易"
             )
 
-    def update_capital(self, new_capital: float):
-        """更新总资金（用于动态调整风控参数）"""
-        old = self.config.total_capital
-        self.config.total_capital = new_capital
-        logger.info(f"[RiskManager] 资金更新: ${old:.2f} -> ${new_capital:.2f}")
-
     def reset_daily(self):
         """每日重置（新交易日开始时调用）"""
         self._today_pnl = 0.0
@@ -451,12 +445,6 @@ class RiskManager:
         self._last_pnl_update = now_et().strftime('%Y-%m-%d')
         self._last_refresh_ts = None
         logger.info("[RiskManager] 日重置完成（含连续亏损、熔断、分层状态清零）")
-
-    def force_clear_cooldown(self):
-        """强制解除熔断（管理员操作）"""
-        self._cooldown_until = None
-        self._consecutive_losses = 0
-        logger.warning("[RiskManager] 熔断已被强制解除")
 
     # ============ 极端行情检测 ============
 
@@ -901,15 +889,6 @@ class RiskManager:
                     f"${max_sector:.2f}({self.config.max_sector_exposure_pct*100}%)")
         return None
 
-    def set_symbol_sector(self, symbol: str, sector: str):
-        """设置标的所属板块（用于相关性/集中度检查）"""
-        self._symbol_sectors[symbol.upper()] = sector
-
-    def set_symbol_sectors_batch(self, mapping: Dict[str, str]):
-        """批量设置标的板块映射"""
-        for symbol, sector in mapping.items():
-            self._symbol_sectors[symbol.upper()] = sector
-
     def lookup_sectors(self, symbols: List[str]) -> Dict[str, str]:
         """查询标的所属行业，优先用缓存，缓存未命中时用 yfinance 查询
 
@@ -1163,11 +1142,6 @@ class RiskManager:
                     "action": "建议部分止盈或移动止损",
                 }
         return None
-
-    def clear_position_tracking(self, symbol: str):
-        """清除已平仓标的的浮盈追踪"""
-        symbol = symbol.upper()
-        self._position_peak_pnl.pop(symbol, None)
 
     # ============ v2.0 增强状态查询 ============
 

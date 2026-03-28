@@ -35,9 +35,6 @@ _PENDING_REENTRY_CONFIG_KEY = "pending_reentry_queue_json"
 
 # 工具函数
 from src.trading._helpers import (  # noqa: E402, F401
-    _env_bool,
-    _env_int,
-    _env_float,
     _estimate_open_positions_exposure,
     _is_us_market_open_now,
     _parse_datetime,
@@ -46,6 +43,8 @@ from src.trading._helpers import (  # noqa: E402, F401
     _queue_reentry_from_trade,
     _ensure_monitor_position_from_trade,
 )
+# 环境变量工具已统一到 src.utils (消除重复包装函数)
+from src.utils import env_bool, env_int, env_float  # noqa: E402, F401
 
 # 初始化
 from src.trading._init_system import (  # noqa: E402, F401

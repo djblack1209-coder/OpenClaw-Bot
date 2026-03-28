@@ -50,15 +50,19 @@ def env_bool(key: str, default: bool) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def env_int(key: str, default: int) -> int:
-    """从环境变量读取整数"""
+def env_int(key: str, default: int, minimum: int = None) -> int:
+    """从环境变量读取整数，支持可选最小值限制"""
     raw = os.getenv(key)
     if raw is None:
-        return default
-    try:
-        return int(raw)
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
+        val = default
+    else:
+        try:
+            val = int(raw)
+        except (TypeError, ValueError):
+            val = default
+    if minimum is not None:
+        val = max(minimum, val)
+    return val
 
 
 def env_float(key: str, default: float) -> float:

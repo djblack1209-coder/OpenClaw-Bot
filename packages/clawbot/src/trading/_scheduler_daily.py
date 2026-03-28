@@ -7,7 +7,8 @@ import logging
 from datetime import time, timedelta
 
 from src.notify_style import format_notice, kv, bullet
-from src.trading._helpers import _env_bool, _env_int, _env_float, _parse_datetime
+from src.utils import env_bool, env_int, env_float
+from src.trading._helpers import _parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +161,8 @@ async def _weekly_profit_guard():
     """周利润守卫 — 如果上周盈利未达标，强制停机"""
     import src.trading_system as _ts
 
-    enabled = _env_bool("WEEKLY_KILL_SWITCH", True)
-    target = _env_float("WEEKLY_PROFIT_TARGET", 50.0)
+    enabled = env_bool("WEEKLY_KILL_SWITCH", True)
+    target = env_float("WEEKLY_PROFIT_TARGET", 50.0)
     if not enabled:
         return
 
@@ -342,17 +343,17 @@ async def _setup_scheduler():
         _ts._scheduler.add_task(
             "ibkr_fill_reconcile",
             _reconcile_ibkr_entry_fills,
-            interval_minutes=_env_int("IBKR_FILL_RECONCILE_INTERVAL_MIN", 2, minimum=1),
+            interval_minutes=env_int("IBKR_FILL_RECONCILE_INTERVAL_MIN", 2, minimum=1),
         )
         _ts._scheduler.add_task(
             "pending_entry_cancel",
             _cancel_stale_pending_entries,
-            interval_minutes=_env_int("PENDING_ENTRY_CANCEL_CHECK_INTERVAL_MIN", 5, minimum=1),
+            interval_minutes=env_int("PENDING_ENTRY_CANCEL_CHECK_INTERVAL_MIN", 5, minimum=1),
         )
         _ts._scheduler.add_task(
             "pending_reentry_submit",
             _submit_pending_reentry_queue,
-            interval_minutes=_env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
+            interval_minutes=env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
         )
         _ts._scheduler.add_task("ibkr_health_check", _ibkr_health_check,
                                 interval_minutes=3)

@@ -4,13 +4,10 @@
 import asyncio
 import importlib.util
 import io
-import json
 import logging
 import re
 import time as _time
-from src.bot.globals import collab_orchestrator, bot_registry, send_long_message, get_stock_quote, execute_trade_via_pipeline, get_trading_pipeline
 from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
-from src.notify_style import format_digest
 from src.telegram_markdown import md_to_html
 from src.bot.chinese_nlp_mixin import _match_chinese_command
 logger = logging.getLogger(__name__)

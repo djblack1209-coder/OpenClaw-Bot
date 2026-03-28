@@ -14,9 +14,8 @@ from src.notify_style import (
     format_trade_fill_reconciled,
     kv,
 )
+from src.utils import env_bool, env_int
 from src.trading._helpers import (
-    _env_bool,
-    _env_int,
     _is_us_market_open_now,
     _parse_datetime,
     _queue_reentry_from_trade,
@@ -33,7 +32,7 @@ async def _reconcile_ibkr_entry_fills():
     """定期将 IBKR 成交回报回写到 trading_journal"""
     import src.trading_system as _ts
 
-    if not _env_bool("IBKR_FILL_RECONCILE_ENABLED", True):
+    if not env_bool("IBKR_FILL_RECONCILE_ENABLED", True):
         return
     if not _ts._trading_pipeline or not _ts._trading_pipeline.broker:
         return
@@ -44,7 +43,7 @@ async def _reconcile_ibkr_entry_fills():
 
     from src.trading_journal import journal as tj
     pending = tj.get_pending_trades(
-        limit=_env_int("IBKR_PENDING_RECONCILE_LIMIT", 300, minimum=50)
+        limit=env_int("IBKR_PENDING_RECONCILE_LIMIT", 300, minimum=50)
     )
     open_with_order = [
         t for t in tj.get_open_trades()
@@ -55,7 +54,7 @@ async def _reconcile_ibkr_entry_fills():
         return
 
     fills = await broker.get_recent_fills(
-        lookback_hours=_env_int("IBKR_FILL_LOOKBACK_HOURS", 48, minimum=1)
+        lookback_hours=env_int("IBKR_FILL_LOOKBACK_HOURS", 48, minimum=1)
     )
     fills = fills or []
 
@@ -165,7 +164,7 @@ async def _reconcile_ibkr_entry_fills():
             str(p.get("symbol", "") or "").upper(): abs(float(p.get("quantity", 0) or 0))
             for p in positions
         }
-        grace_minutes = _env_int("IBKR_LEGACY_ORDER_RECONCILE_GRACE_MIN", 30, minimum=5)
+        grace_minutes = env_int("IBKR_LEGACY_ORDER_RECONCILE_GRACE_MIN", 30, minimum=5)
 
         for trade in open_with_order:
             trade_id = int(float(trade.get("id", 0) or 0))
@@ -216,7 +215,7 @@ async def _cancel_stale_pending_entries():
     """自动撤销超时的待成交入场订单"""
     import src.trading_system as _ts
 
-    if not _env_bool("AUTO_CANCEL_PENDING_ENTRY_ORDERS", True):
+    if not env_bool("AUTO_CANCEL_PENDING_ENTRY_ORDERS", True):
         return
     if not _ts._trading_pipeline or not _ts._trading_pipeline.broker:
         return
@@ -227,13 +226,13 @@ async def _cancel_stale_pending_entries():
 
     from src.trading_journal import journal as tj
     pending = tj.get_pending_trades(
-        limit=_env_int("PENDING_ENTRY_SCAN_LIMIT", 300, minimum=50)
+        limit=env_int("PENDING_ENTRY_SCAN_LIMIT", 300, minimum=50)
     )
     if not pending:
         return
 
     market_open = _is_us_market_open_now()
-    stale_minutes = _env_int("PENDING_ENTRY_CANCEL_AFTER_MINUTES", 20, minimum=1)
+    stale_minutes = env_int("PENDING_ENTRY_CANCEL_AFTER_MINUTES", 20, minimum=1)
     deep_timeout = max(stale_minutes * 3, 60)
 
     open_orders = await broker.get_open_orders()
@@ -297,7 +296,7 @@ async def _cancel_stale_pending_entries():
 
         tj.cancel_trade(trade_id, cancel_reason)
         queued = False
-        if _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+        if env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
             queued = _queue_reentry_from_trade(trade, reason=cancel_reason)
 
         if _ts._position_monitor:
@@ -335,7 +334,7 @@ async def _submit_pending_reentry_queue():
     import src.trading_system as _ts
     from src.trading._helpers import _save_pending_reentry_queue
 
-    if not _env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+    if not env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
         return
     if not _ts._pending_reentry_queue:
         return
@@ -344,9 +343,9 @@ async def _submit_pending_reentry_queue():
     if not _ts._trading_pipeline:
         return
 
-    max_per_cycle = _env_int("PENDING_REENTRY_MAX_PER_CYCLE", 1, minimum=1)
-    max_retries = _env_int("PENDING_REENTRY_MAX_RETRIES", 2, minimum=1)
-    retry_interval_min = _env_int("PENDING_REENTRY_RETRY_INTERVAL_MIN", 5, minimum=1)
+    max_per_cycle = env_int("PENDING_REENTRY_MAX_PER_CYCLE", 1, minimum=1)
+    max_retries = env_int("PENDING_REENTRY_MAX_RETRIES", 2, minimum=1)
+    retry_interval_min = env_int("PENDING_REENTRY_RETRY_INTERVAL_MIN", 5, minimum=1)
 
     from src.models import TradeProposal
     from src.utils import now_et

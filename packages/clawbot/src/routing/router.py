@@ -19,14 +19,9 @@ from src.routing.constants import (
 )
 from src.routing.models import BotCapability
 from src.routing.sessions import SessionMixin
+from src.utils import env_bool
 
 logger = logging.getLogger(__name__)
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    """读取布尔型环境变量"""
-    from src.utils import env_bool
-    return env_bool(name, default)
 
 
 class ChatRouter(SessionMixin):
@@ -208,8 +203,8 @@ class ChatRouter(SessionMixin):
         if not bot:
             return False, "bot 未注册"
 
-        group_intent_enabled = _env_bool("CHAT_ROUTER_ENABLE_GROUP_INTENT", False)
-        group_fallback_enabled = _env_bool("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", False)
+        group_intent_enabled = env_bool("CHAT_ROUTER_ENABLE_GROUP_INTENT", False)
+        group_fallback_enabled = env_bool("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", False)
 
         # 私聊总是回复
         if chat_type == "private":
@@ -315,9 +310,9 @@ class ChatRouter(SessionMixin):
         if not bot:
             return False, "bot 未注册"
 
-        group_llm_enabled = _env_bool("CHAT_ROUTER_ENABLE_GROUP_LLM", False)
-        group_intent_enabled = _env_bool("CHAT_ROUTER_ENABLE_GROUP_INTENT", False)
-        group_fallback_enabled = _env_bool("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", False)
+        group_llm_enabled = env_bool("CHAT_ROUTER_ENABLE_GROUP_LLM", False)
+        group_intent_enabled = env_bool("CHAT_ROUTER_ENABLE_GROUP_INTENT", False)
+        group_fallback_enabled = env_bool("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", False)
 
         # 私聊总是回复
         if chat_type == "private":

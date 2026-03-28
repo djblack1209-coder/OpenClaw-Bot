@@ -5,13 +5,9 @@ Execution — 社交分析与价格追踪
 
 > 最后更新: 2026-03-28
 """
-import json
 import logging
-import re
-from datetime import datetime, timezone
 
 from src.execution._db import get_conn
-from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 

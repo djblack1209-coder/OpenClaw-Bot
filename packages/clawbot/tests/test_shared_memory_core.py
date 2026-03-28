@@ -168,53 +168,6 @@ class TestGetContext:
         assert "OpenClaw Bot" in ctx
 
 
-# ============ auto_compress_all ============
-
-class TestAutoCompress:
-
-    def test_auto_compress_merges_above_threshold(self, memory):
-        """auto_compress_all should merge entries when category exceeds threshold."""
-        # Insert 15 items in one category
-        for i in range(15):
-            memory.remember(
-                key=f"item_{i}", value=f"value_{i}",
-                category="test_cat", importance=1,
-            )
-        result = memory.auto_compress_all(max_per_category=10)
-        if "test_cat" in result:
-            assert result["test_cat"]["compressed"] is True
-            assert result["test_cat"]["after"] <= 11  # 10 + 1 compressed entry
-
-    def test_auto_compress_no_op_below_threshold(self, memory):
-        """auto_compress_all should do nothing if below threshold."""
-        for i in range(3):
-            memory.remember(key=f"small_{i}", value=f"val_{i}", category="tiny")
-        result = memory.auto_compress_all(max_per_category=10)
-        assert "tiny" not in result
-
-
-# ============ smart_cleanup ============
-
-class TestSmartCleanup:
-
-    def test_smart_cleanup_enforces_max_count(self, memory):
-        """smart_cleanup should delete lowest-scored entries to enforce max."""
-        for i in range(25):
-            memory.remember(
-                key=f"cleanup_{i}", value=f"data_{i}",
-                category="general", importance=1,
-            )
-        result = memory.smart_cleanup(max_total=20)
-        assert result["cleaned"] > 0
-        assert result["after"] <= 20
-
-    def test_smart_cleanup_no_op_below_max(self, memory):
-        """smart_cleanup should do nothing if total is below max."""
-        memory.remember(key="only_one", value="val")
-        result = memory.smart_cleanup(max_total=100)
-        assert result["cleaned"] == 0
-
-
 # ============ _cleanup_expired ============
 
 class TestCleanupExpired:

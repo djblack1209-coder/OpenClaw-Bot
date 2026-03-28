@@ -19,29 +19,11 @@ import statistics
 from dataclasses import dataclass, field
 
 from config.prompts import INVEST_VOTE_PROMPTS
+from src.execution._utils import safe_float
+from src.utils import env_int, env_float
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
-
-
-def _env_int(key: str, default: int) -> int:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
-
-
-def _env_float(key: str, default: float) -> float:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
 
 
 def _env_text(key: str, default: str) -> str:
@@ -261,12 +243,6 @@ VOTE_ORDER = ["claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonne
 def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
     """从 AI 回复中解析投票，优先 JSON，失败时做稳健回退。"""
 
-    def _safe_float(value: Any) -> float:
-        try:
-            return float(str(value))
-        except (TypeError, ValueError) as e:  # noqa: F841
-            return 0.0
-
     def _normalize_vote(raw: object) -> str:
         token = str(raw or "").upper().strip()
         if token in ("BUY", "HOLD", "SKIP"):
@@ -377,9 +353,9 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
         vote=vote,
         confidence=max(1, min(10, confidence)),
         reasoning=_clean_reasoning(data.get("reasoning", "")),
-        entry_price=_safe_float(data.get("entry_price", 0)),
-        stop_loss=_safe_float(data.get("stop_loss", 0)),
-        take_profit=_safe_float(data.get("take_profit", 0)),
+        entry_price=safe_float(str(data.get("entry_price", 0))),
+        stop_loss=safe_float(str(data.get("stop_loss", 0))),
+        take_profit=safe_float(str(data.get("take_profit", 0))),
     )
 
 
@@ -710,8 +686,8 @@ async def run_team_vote(
     result.divergence = statistics.stdev(all_confidences) if len(all_confidences) > 1 else 0.0
     result.is_high_divergence = result.divergence > 2.5
 
-    min_buy_votes = max(2, _env_int("TEAM_MIN_BUY_VOTES", 3))
-    min_avg_buy_conf = max(1.0, min(10.0, _env_float("TEAM_MIN_AVG_BUY_CONF", 5.5)))
+    min_buy_votes = max(2, env_int("TEAM_MIN_BUY_VOTES", 3))
+    min_avg_buy_conf = max(1.0, min(10.0, env_float("TEAM_MIN_AVG_BUY_CONF", 5.5)))
     veto_mode = _env_text("TEAM_VETO_MODE", "dual").lower()  # off / single / dual
 
     # 风控官 / 首席策略师 否决规则（可配置）

@@ -345,90 +345,6 @@ class ContextManager:
 
         return result
 
-    # ============ AI 压缩（消耗1次 API 请求）============
-
-    async def compress_with_ai(
-        self,
-        messages: List[Dict],
-        ai_chat_func: Callable,
-    ) -> Tuple[List[Dict], str]:
-        """
-        AI 辅助压缩 - 消耗1次 API 请求生成高质量摘要。
-        仅在用户主动触发 /compact 时使用。
-
-        Falls back to local compression on failure.
-        """
-        if not self.should_compress(messages):
-            return messages, ""
-
-        total = len(messages)
-        recent = messages[-self.KEEP_RECENT_MESSAGES:]
-        older = messages[:-self.KEEP_RECENT_MESSAGES]
-
-        if not older:
-            return messages, ""
-
-        # 分离关键消息
-        key_messages = []
-        normal_messages = []
-        for msg in older:
-            if self._is_key_message(msg):
-                key_messages.append(msg)
-            else:
-                normal_messages.append(msg)
-
-        # 构建摘要 prompt
-        summary_prompt = self._build_progressive_summary_prompt(
-            normal_messages, key_messages
-        )
-
-        try:
-            summary = await ai_chat_func(
-                summary_prompt,
-                system_override=(
-                    "你是对话摘要助手。请按以下格式输出：\n"
-                    "【关键决定】列出用户做出的重要决定\n"
-                    "【已完成】列出已完成的任务\n"
-                    "【待办】列出未完成的事项\n"
-                    "【用户信息】列出用户透露的个人信息/偏好\n"
-                    "【对话要点】简要概括对话主题和结论\n"
-                    "保持简洁，每项不超过一行。"
-                )
-            )
-        except Exception as e:
-            logger.warning(f"AI 摘要失败，回退到本地压缩: {e}")
-            return self.compress_local(messages)
-
-        self.compressed_summary = summary
-        self._save_summary(summary, older)
-
-        # 重建消息列表
-        new_messages = []
-        new_messages.append({
-            "role": "user",
-            "content": f"[之前对话摘要 - {total - self.KEEP_RECENT_MESSAGES} 条消息]\n\n{summary}"
-        })
-        new_messages.append({
-            "role": "assistant",
-            "content": "好的，我已了解之前的对话内容。请继续。"
-        })
-
-        if key_messages:
-            for msg in key_messages[-10:]:
-                new_messages.append(msg)
-
-        new_messages.extend(recent)
-
-        compressed_tokens = self.estimate_tokens(new_messages)
-        original_tokens = self.estimate_tokens(messages)
-        logger.info(
-            f"AI压缩: {original_tokens} -> {compressed_tokens} tokens "
-            f"({total} -> {len(new_messages)} 条消息, "
-            f"保留 {len(key_messages)} 条关键消息)"
-        )
-
-        return new_messages, summary
-
     # ============ HistoryStore 集成方法 ============
 
     def prepare_messages_for_api(
@@ -489,45 +405,6 @@ class ContextManager:
 
     # ============ 辅助方法 ============
 
-    def _build_progressive_summary_prompt(
-        self,
-        normal_messages: List[Dict],
-        key_messages: List[Dict],
-    ) -> str:
-        """构建渐进式摘要 prompt"""
-        parts = []
-
-        msgs_to_summarize = normal_messages[-30:]
-        for msg in msgs_to_summarize:
-            role = "用户" if msg["role"] == "user" else "助手"
-            text = self._get_message_text(msg, max_len=200)
-            if text.strip():
-                parts.append(f"{role}: {text}")
-
-        key_parts = []
-        for msg in key_messages:
-            role = "用户" if msg["role"] == "user" else "助手"
-            text = self._get_message_text(msg, max_len=300)
-            if text.strip():
-                key_parts.append(f"[重要] {role}: {text}")
-
-        prompt = "请总结以下对话的关键信息：\n\n"
-        if key_parts:
-            prompt += "=== 重要消息 ===\n" + "\n".join(key_parts) + "\n\n"
-        prompt += "=== 对话内容 ===\n" + "\n".join(parts)
-
-        return prompt
-
-    def _simple_summary(self, messages: List[Dict]) -> str:
-        """简单摘要（回退方案）"""
-        parts = ["对话摘要:"]
-        for msg in messages[-20:]:
-            role = "用户" if msg["role"] == "user" else "助手"
-            text = self._get_message_text(msg, max_len=80)
-            if text.strip() and len(text) > 10:
-                parts.append(f"- {role}: {text}...")
-        return "\n".join(parts)
-
     def _save_summary(self, summary: str, original_messages: List[Dict]):
         """保存摘要到文件"""
         timestamp = now_et().strftime("%Y%m%d_%H%M%S")
@@ -541,38 +418,6 @@ class ContextManager:
             _atomic_json_write(filepath, data)
         except Exception as e:
             logger.error(f"保存摘要失败: {e}")
-
-    def extract_key_facts(self, messages: List[Dict]) -> List[str]:
-        """提取关键事实"""
-        facts = []
-        for msg in messages:
-            if self._is_key_message(msg):
-                text = self._get_message_text(msg, max_len=150)
-                if text:
-                    facts.append(text)
-        self.key_facts = facts[-10:]
-        return self.key_facts
-
-    def add_user_preference(self, key: str, value: Any):
-        self.user_preferences[key] = value
-        self._save_preferences()
-
-    def _save_preferences(self):
-        filepath = self.storage_dir / "preferences.json"
-        try:
-            _atomic_json_write(filepath, self.user_preferences)
-        except Exception as e:
-            logger.error(f"保存偏好失败: {e}")
-
-    def load_preferences(self) -> Dict[str, Any]:
-        filepath = self.storage_dir / "preferences.json"
-        if filepath.exists():
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    self.user_preferences = json.load(f)
-            except Exception as e:
-                logger.error(f"加载偏好失败: {e}")
-        return self.user_preferences
 
     def get_context_status(self, messages: List[Dict]) -> Dict[str, Any]:
         """获取上下文状态信息"""

@@ -3,12 +3,9 @@ Trading — 系统初始化
 init_trading_system 和 set_ai_team_callers 的实现
 """
 import logging
-from typing import Optional
 
+from src.utils import env_bool, env_int, env_float
 from src.trading._helpers import (
-    _env_bool,
-    _env_int,
-    _env_float,
     _estimate_open_positions_exposure,
 )
 
@@ -60,10 +57,10 @@ def init_trading_system(
     from src.risk_config import RiskConfig
     from src.risk_manager import RiskManager
     effective_capital = float(capital)
-    if portfolio and _env_bool("AUTO_SCALE_CAPITAL_FROM_PORTFOLIO", True):
+    if portfolio and env_bool("AUTO_SCALE_CAPITAL_FROM_PORTFOLIO", True):
         exposure = _estimate_open_positions_exposure(portfolio)
-        exposure_limit = max(0.3, min(0.95, _env_float("AUTO_SCALE_CAPITAL_EXPOSURE_LIMIT", 0.8)))
-        buffer_ratio = max(1.0, _env_float("AUTO_SCALE_CAPITAL_BUFFER", 1.25))
+        exposure_limit = max(0.3, min(0.95, env_float("AUTO_SCALE_CAPITAL_EXPOSURE_LIMIT", 0.8)))
+        buffer_ratio = max(1.0, env_float("AUTO_SCALE_CAPITAL_BUFFER", 1.25))
         required_capital = (exposure / exposure_limit) * buffer_ratio if exposure > 0 else 0
         if required_capital > effective_capital:
             logger.warning(
@@ -161,8 +158,8 @@ def init_trading_system(
 
     # 4. 自主交易调度器 — 全市场扫描 + AI团队投票
     from src.auto_trader import AutoTrader
-    max_scan_candidates = _env_int("MAX_SCAN_CANDIDATES", 50, minimum=10)
-    max_vote_candidates = _env_int("MAX_VOTE_CANDIDATES", 10, minimum=3)
+    max_scan_candidates = env_int("MAX_SCAN_CANDIDATES", 50, minimum=10)
+    max_vote_candidates = env_int("MAX_VOTE_CANDIDATES", 10, minimum=3)
     scan_func = None
     analyze_func = None
     ai_team_func = None
@@ -175,13 +172,13 @@ def init_trading_system(
             """全市场扫描漏斗: 600+ -> 快速筛选 -> 技术分析 -> Top候选"""
             try:
                 dynamic_symbols = None
-                if broker and _env_bool("USE_IBKR_DYNAMIC_UNIVERSE", True):
+                if broker and env_bool("USE_IBKR_DYNAMIC_UNIVERSE", True):
                     try:
                         if hasattr(broker, "get_market_scanner_symbols"):
                             dynamic_symbols = await broker.get_market_scanner_symbols(
-                                max_symbols=_env_int("IBKR_SCANNER_MAX_SYMBOLS", 800, minimum=100),
-                                include_us=_env_bool("IBKR_SCANNER_INCLUDE_US", True),
-                                include_hk=_env_bool("IBKR_SCANNER_INCLUDE_HK", True),
+                                max_symbols=env_int("IBKR_SCANNER_MAX_SYMBOLS", 800, minimum=100),
+                                include_us=env_bool("IBKR_SCANNER_INCLUDE_US", True),
+                                include_hk=env_bool("IBKR_SCANNER_INCLUDE_HK", True),
                             )
                     except Exception as scan_err:
                         logger.warning("[TradingSystem] IBKR 动态标的池获取失败: %s", scan_err)

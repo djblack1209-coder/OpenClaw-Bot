@@ -19,27 +19,14 @@ v1.1 变更 (2026-03-23):
 import asyncio
 import logging
 import os
-import re
-from datetime import datetime, date
+from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
 
 from src.models import TradeProposal
-from src.utils import now_et as _now_et
+from src.utils import now_et as _now_et, env_bool, env_int
 
 logger = logging.getLogger(__name__)
-def _env_bool(key: str, default: bool) -> bool:
-    from src.utils import env_bool
-    return env_bool(key, default)
 
-
-def _env_int(key: str, default: int, minimum: int = 0) -> int:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return max(minimum, int(raw))
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
 
 # 从拆分后的模块导入
 from src.trading.market_calendar import is_market_holiday
@@ -93,10 +80,10 @@ class AutoTrader:
         self._forced_trades_today = 0
 
         # 防空仓策略：连续空仓后，允许执行小规模探索交易（仍经过风控）
-        self.force_trade_on_idle = _env_bool("FORCE_TRADE_ON_IDLE", True)
-        self.force_trade_after_idle_cycles = _env_int("FORCE_TRADE_AFTER_IDLE_CYCLES", 3, minimum=1)
-        self.force_trade_min_score = _env_int("FORCE_TRADE_MIN_SCORE", 30, minimum=10)
-        self.max_forced_trades_per_day = _env_int("MAX_FORCED_TRADES_PER_DAY", 1, minimum=0)
+        self.force_trade_on_idle = env_bool("FORCE_TRADE_ON_IDLE", True)
+        self.force_trade_after_idle_cycles = env_int("FORCE_TRADE_AFTER_IDLE_CYCLES", 3, minimum=1)
+        self.force_trade_min_score = env_int("FORCE_TRADE_MIN_SCORE", 30, minimum=10)
+        self.max_forced_trades_per_day = env_int("MAX_FORCED_TRADES_PER_DAY", 1, minimum=0)
 
         logger.info(
             "[AutoTrader] 初始化 | 扫描间隔=%dmin | 自动模式=%s | 日限%d笔 | 候选池%d | 防空仓=%s(%d轮/%d分)",
@@ -283,7 +270,7 @@ class AutoTrader:
         """用 IBKR 实时快照刷新候选现价，减少数据滞后"""
         if not candidates:
             return
-        if not _env_bool("ENRICH_CANDIDATES_WITH_IBKR_QUOTES", True):
+        if not env_bool("ENRICH_CANDIDATES_WITH_IBKR_QUOTES", True):
             return
         if not self.pipeline or not self.pipeline.broker:
             return
@@ -291,7 +278,7 @@ class AutoTrader:
         if not hasattr(broker, "get_realtime_snapshot"):
             return
 
-        limit = min(len(candidates), _env_int("IBKR_QUOTE_ENRICH_TOP", 12, minimum=1))
+        limit = min(len(candidates), env_int("IBKR_QUOTE_ENRICH_TOP", 12, minimum=1))
         sem = asyncio.Semaphore(4)
 
         async def _fetch_and_apply(item: Dict):
@@ -1036,4 +1023,4 @@ class AutoTrader:
 
 # ── 向后兼容导出 (v6.0 拆分) ──
 from src.trading.market_calendar import is_market_holiday  # noqa: F401
-from src.trading_pipeline import TradingPipeline, TraderState, parse_trade_proposal  # noqa: F401
+from src.trading_pipeline import TradingPipeline, TraderState  # noqa: F401

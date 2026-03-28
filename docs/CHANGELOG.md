@@ -5,6 +5,73 @@
 
 ---
 
+## [2026-03-29] 深度审计清理: 删除4,000+行死代码 + 合并重复函数
+
+> 领域: `backend`
+> 影响模块: 全项目 (~40个文件)
+> 关联问题: HI-363 (新建并解决)
+
+### 变更内容
+
+**1. 删除 15 个死文件 + 3 个空目录 (3,461 行)**
+
+| 来源 | 删除文件 | 行数 |
+|------|---------|------|
+| deployer/ | `web_installer.py`, `auto_download.py`, `deploy_client.py` | 978 |
+| tools/ | `drission_client.py`, `humanized_controller.py`, `pdf_report.py`, `screen_tool.py`, `sentiment_service.py` | 1,579 |
+| trading/ | `env_helpers.py`, `market_hours.py`, `position_sync.py`, `ai_team_integration.py`, `strategy_pipeline.py`, `weight_optimizer.py`, `protections.py` | 904 |
+| models/ | 空目录 `drl/`, `factor/` + 父目录 | 0 |
+
+清理了 `tools/__init__.py` 和 `trading/__init__.py` 中对应的死重导出。
+
+**2. 清理 38 个未使用 import (12 个文件)**
+
+最大清理: `message_mixin.py` (8个)、`brain.py` (6个)、`trading_pipeline.py` (5个)、`tracking.py` (5个)
+
+**3. 删除 28 个死代码单元 (~536 行)**
+
+| 模块 | 删除数量 | 详情 |
+|------|---------|------|
+| `shared_memory.py` | 11 个方法 | `get_related`, `get_recent`, `get_by_category`, `decay_importance`, `remember_with_conflict_resolution`, `detect_conflicts`, `get_version_history`, `compress_category`, `auto_compress_all`, `smart_cleanup`, `get_all` |
+| `context_manager.py` | 7 个方法 | `compress_with_ai`, `_build_progressive_summary_prompt`, `_simple_summary`, `extract_key_facts`, `add_user_preference`, `_save_preferences`, `load_preferences` |
+| `risk_manager.py` | 5 个方法 | `update_capital`, `force_clear_cooldown`, `set_symbol_sector`, `set_symbol_sectors_batch`, `clear_position_tracking` |
+| `trading_journal.py` | 1 个方法 | `add_review` |
+| `litellm_router.py` | 4 个常量 | `ROUTE_STRONGEST`, `ROUTE_LOWEST_LATENCY`, `ROUTE_LEAST_BUSY`, `ROUTE_COST_OPTIMIZED` |
+
+同步清理了 5 个引用已删方法的测试用例。
+
+**4. 合并 17 个重复工具函数**
+
+- `env_bool`/`env_int`/`env_float`: 14 个副本合并到 `src/utils.py` 规范源
+- `env_int` 增强 `minimum` 参数，统一 3 种不兼容变体
+- `safe_float`: 2 个副本合并到 `src/execution/_utils.py`
+- `strip_markdown`: 1 个副本合并到 `src/message_format.py`
+
+### 文件变更
+- **删除**: 15 个 .py 文件 + 3 个空目录
+- **修改**: ~40 个文件 (import 清理 + 死方法删除 + 重复函数合并)
+- **测试**: 1046/1046 passed (减少 8 个测试 = 删除了引用已删 API 的测试用例)
+
+---
+
+## [2026-03-29] 去重: strip_markdown + safe_float 合并为单一规范源
+
+> 领域: `backend`
+> 影响模块: `social_tools`, `backtester_vbt`, `ai_team_voter`, `message_format`, `execution._utils`
+> 关联问题: 无 (代码质量改善)
+
+### 变更内容
+- 删除 `social_tools.py` 中重复的 `_strip_markdown` 静态方法 (5 条正则)，改用 `message_format.strip_markdown` (11 条正则，更全面)
+- 删除 `backtester_vbt.py` 中重复的 `_safe_float` 函数，改用 `execution._utils.safe_float`
+- 删除 `ai_team_voter.py` 中嵌套的 `_safe_float` 函数，改用 `execution._utils.safe_float`，保留 `str()` 强转行为
+
+### 文件变更
+- `src/social_tools.py` — 删除 `_strip_markdown`，导入 `strip_markdown`，更新调用点
+- `src/modules/investment/backtester_vbt.py` — 删除 `_safe_float`，导入 `safe_float`，重命名 9 处调用
+- `src/ai_team_voter.py` — 删除嵌套 `_safe_float`，导入 `safe_float`，更新 3 处调用为 `safe_float(str(...))`
+
+---
+
 ## [2026-03-29] 修复 22 个幻影导入: Bot 启动崩溃根治
 
 > 领域: `backend`
