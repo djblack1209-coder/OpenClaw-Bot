@@ -56,15 +56,51 @@ try:
 
 except ImportError:
     _HAS_LLM_CACHE = False
+    # llm_cache 模块不可用时，尝试直接使用 diskcache 作为降级方案
+    _fallback_cache = None
+    try:
+        import diskcache as _dc
+        from pathlib import Path as _Path
+        import hashlib as _hashlib
+        import json as _json_cache
+
+        _fallback_cache_dir = _Path(__file__).resolve().parent.parent / "data" / "llm_cache"
+        _fallback_cache_dir.mkdir(parents=True, exist_ok=True)
+        _fallback_cache = _dc.Cache(
+            str(_fallback_cache_dir),
+            size_limit=512 * 1024 * 1024,
+            eviction_policy="least-recently-used",
+        )
+        _HAS_LLM_CACHE = True  # diskcache 可用，启用缓存
+        logger.info("[LLM Cache] llm_cache 模块不可用，已降级为 diskcache 直连")
+    except ImportError:
+        logger.info("[LLM Cache] diskcache 未安装，缓存功能禁用")
 
     def _llm_cache_get(key: str):  # type: ignore[misc]
-        return None
+        # 从降级的 diskcache 中读取缓存
+        if _fallback_cache is None:
+            return None
+        try:
+            return _fallback_cache.get(key)
+        except Exception:
+            return None
 
     def _llm_cache_set(key: str, value, ttl: int):  # type: ignore[misc]
-        pass
+        # 写入降级的 diskcache 缓存
+        if _fallback_cache is None:
+            return
+        try:
+            _fallback_cache.set(key, value, expire=ttl)
+        except Exception as e:
+            logger.debug("[LLM Cache] 降级缓存写入失败: %s", e)
 
     def _make_cache_key(*args, **kwargs) -> str:  # type: ignore[misc]
-        return ""
+        # 降级版缓存 key 生成：对参数做 SHA-256 哈希
+        try:
+            raw = _json_cache.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
+            return "llm:" + _hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        except Exception:
+            return ""
 
 # 静默 LiteLLM 内部日志
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)

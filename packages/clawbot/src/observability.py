@@ -229,6 +229,76 @@ def get_phoenix_url() -> Optional[str]:
     return endpoint.rstrip("/")
 
 
+# ============================================================
+# 示例函数：演示 trace_function 装饰器的用法
+# ============================================================
+
+
+@trace_function(name="parse_intent")
+async def parse_intent(text: str) -> Dict[str, Any]:
+    """解析用户意图 — 演示 trace_function 装饰器的用法。
+
+    该函数展示如何用 @trace_function 为异步函数创建 OTEL span，
+    Phoenix 未初始化时自动退化为普通函数调用。
+
+    Args:
+        text: 用户输入的自然语言文本
+
+    Returns:
+        包含 intent（意图标签）和 confidence（置信度）的字典
+    """
+    # 简单的关键词匹配意图识别，实际项目中应替换为 LLM 调用
+    text_lower = text.strip().lower()
+    if any(kw in text_lower for kw in ["买", "卖", "交易", "trade", "buy", "sell"]):
+        return {"intent": "trade", "confidence": 0.85, "raw_text": text[:100]}
+    elif any(kw in text_lower for kw in ["查", "搜索", "search", "find", "看看"]):
+        return {"intent": "search", "confidence": 0.80, "raw_text": text[:100]}
+    elif any(kw in text_lower for kw in ["帮助", "help", "怎么", "如何"]):
+        return {"intent": "help", "confidence": 0.90, "raw_text": text[:100]}
+    return {"intent": "chat", "confidence": 0.50, "raw_text": text[:100]}
+
+
+@trace_function(attributes={"component": "trading"})
+async def execute_trade(order: Dict[str, Any]) -> Dict[str, Any]:
+    """执行交易指令 — 演示带自定义属性的 trace_function 用法。
+
+    该函数展示如何用 attributes 参数为 span 附加业务维度标签，
+    便于在 Phoenix UI 中按 component 过滤和分析。
+
+    Args:
+        order: 交易指令字典，包含 symbol（标的）、action（买/卖）、amount（数量）等
+
+    Returns:
+        包含交易执行结果的字典
+    """
+    import time as _time
+
+    symbol = order.get("symbol", "UNKNOWN")
+    action = order.get("action", "buy")
+    amount = order.get("amount", 0)
+
+    # 记录交易开始时间
+    start = _time.time()
+
+    # 参数校验
+    if not symbol or symbol == "UNKNOWN":
+        return {"success": False, "error": "交易标的不能为空", "symbol": symbol}
+    if amount <= 0:
+        return {"success": False, "error": "交易数量必须大于零", "symbol": symbol}
+
+    # 模拟交易执行延迟（实际项目中调用交易 API）
+    elapsed_ms = (_time.time() - start) * 1000
+    logger.info("[Trade] %s %s x%s 执行完成 (%.1fms)", action, symbol, amount, elapsed_ms)
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "action": action,
+        "amount": amount,
+        "elapsed_ms": round(elapsed_ms, 2),
+    }
+
+
 def get_stats() -> Dict[str, Any]:
     """获取 Phoenix 观测层状态。"""
     return {
