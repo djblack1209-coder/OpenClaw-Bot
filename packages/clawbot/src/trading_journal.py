@@ -426,16 +426,6 @@ class TradingJournal:
 
     # ============ 复盘 ============
 
-    def add_review(self, trade_id: int, review_notes: str,
-                   review_score: int = 3, lessons: str = ''):
-        """给交易添加复盘笔记"""
-        with self._conn() as conn:
-            conn.execute("""
-                UPDATE trades SET review_notes=?, review_score=?, lessons=?,
-                    updated_at=datetime('now')
-                WHERE id=?
-            """, (review_notes, review_score, lessons, trade_id))
-
     def save_review_session(self, date: str, session_type: str = 'daily',
                             **kwargs) -> int:
         """保存复盘会议"""

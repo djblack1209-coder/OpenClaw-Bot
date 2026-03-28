@@ -209,14 +209,6 @@ class TestGetPerformance:
 # ============ 复盘 ============
 
 class TestReview:
-    def test_add_review(self, journal):
-        tid = journal.open_trade("AAPL", "BUY", 10, 150.0)
-        journal.add_review(tid, "好的入场时机", review_score=4, lessons="耐心等待信号")
-
-        trade = journal.get_trade(tid)
-        assert trade["review_notes"] == "好的入场时机"
-        assert trade["review_score"] == 4
-
     def test_save_and_get_review_session(self, journal):
         session_id = journal.save_review_session(
             date="2025-02-24",

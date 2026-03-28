@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-29 | R22 新增: risk_config/trading_memory_bridge/broker_selector + cmd_basic子包拆分
+> 最后更新: 2026-03-29 | R22 深度清理: 删除15个死文件 + env_*函数合并到utils.py
 
 ---
 

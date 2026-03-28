@@ -19,7 +19,7 @@ import time as _time
 from contextlib import contextmanager
 from typing import Optional, Dict, Tuple
 
-from src.utils import now_et
+from src.utils import now_et, env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +77,6 @@ def _set_cached_quote(symbol: str, quote: dict):
 # ============ yfinance 同步封装 ============
 
 _yf_module = None  # 延迟加载，预热后复用
-
-
-def _env_bool(key: str, default: bool) -> bool:
-    from src.utils import env_bool
-    return env_bool(key, default)
 
 
 def _ensure_yf():
@@ -159,7 +154,7 @@ async def get_stock_quote(symbol: str) -> dict:
     if cached:
         return cached
 
-    if _env_bool("PREFER_IBKR_QUOTES", True):
+    if env_bool("PREFER_IBKR_QUOTES", True):
         try:
             from src.broker_selector import ibkr as _ibkr
             if hasattr(_ibkr, "ensure_connected"):

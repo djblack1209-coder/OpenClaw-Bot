@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from src.message_format import strip_markdown
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -444,7 +445,7 @@ class ContentAdapter:
 
         # 去除不支持的格式
         if not limits.get("supports_markdown"):
-            content = cls._strip_markdown(content)
+            content = strip_markdown(content)
 
         # 截断
         if len(content) > max_chars:
@@ -453,16 +454,6 @@ class ContentAdapter:
             content = content[:max_chars - reserve] + "..."
 
         return content
-
-    @staticmethod
-    def _strip_markdown(text: str) -> str:
-        """去除 Markdown 格式"""
-        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # bold
-        text = re.sub(r'\*(.*?)\*', r'\1', text)       # italic
-        text = re.sub(r'`(.*?)`', r'\1', text)         # code
-        text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text) # links
-        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headers
-        return text
 
 
 # ============ 发布时间优化器 ============

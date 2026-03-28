@@ -6,10 +6,9 @@ Core — 任务图构建器 Mixin
 > 最后更新: 2026-03-28
 """
 import logging
-from typing import Dict, Optional
 
 from src.core.task_graph import TaskGraph, TaskGraphBuilder, ExecutorType
-from src.core.intent_parser import ParsedIntent, TaskType
+from src.core.intent_parser import ParsedIntent
 
 logger = logging.getLogger(__name__)
 

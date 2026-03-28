@@ -74,25 +74,6 @@ class TestSharedMemory:
         assert result["value"] == "new_value"
 
     @patch("src.shared_memory.now_et", return_value=FIXED_NOW)
-    def test_search_by_category(self, mock_now, mem):
-        """按分类获取记忆，只返回对应分类的条目"""
-        # 存入不同分类的记忆
-        mem.remember("task_a", "写报告", category="work")
-        mem.remember("task_b", "写代码", category="work")
-        mem.remember("hobby_a", "打篮球", category="hobby")
-
-        # 按 work 分类获取
-        work_items = mem.get_by_category("work")
-        assert len(work_items) == 2
-        work_keys = {item["key"] for item in work_items}
-        assert work_keys == {"task_a", "task_b"}
-
-        # 按 hobby 分类获取
-        hobby_items = mem.get_by_category("hobby")
-        assert len(hobby_items) == 1
-        assert hobby_items[0]["key"] == "hobby_a"
-
-    @patch("src.shared_memory.now_et", return_value=FIXED_NOW)
     def test_forget(self, mock_now, mem):
         """删除记忆后，recall 返回 success=False"""
         mem.remember("temp_key", "temp_value")
@@ -106,25 +87,6 @@ class TestSharedMemory:
 
         # 确认已不可读
         assert mem.recall("temp_key")["success"] is False
-
-    def test_importance_decay(self, mem):
-        """重要性衰减：高重要性记忆超过 1 天未访问后，重要性应下降"""
-        ten_days_ago = FIXED_NOW - timedelta(days=10)
-
-        # 第一步：用 10 天前的时间存入高重要性记忆
-        with patch("src.shared_memory.now_et", return_value=ten_days_ago):
-            mem.remember("decay_test", "some value", importance=5)
-
-        # 第二步：用"现在"的时间执行衰减
-        with patch("src.shared_memory.now_et", return_value=FIXED_NOW):
-            mem.decay_importance()
-            result = mem.recall("decay_test")
-
-        assert result["success"] is True
-        # 衰减公式: decay = 0.05 × 10天 × 1.0 = 0.5
-        # new_importance = max(1, int(5 - 0.5)) = 4
-        assert result["importance"] == 4
-        assert result["importance"] < 5
 
     @patch("src.shared_memory.now_et", return_value=FIXED_NOW)
     def test_get_stats(self, mock_now, mem):

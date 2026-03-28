@@ -30,6 +30,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+from src.execution._utils import safe_float
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -181,12 +182,6 @@ class ComparisonResult:
 
 # ── 工具函数 ──────────────────────────────────────────────
 
-def _safe_float(val, default: float = 0.0) -> float:
-    try:
-        return float(val) if val is not None else default
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
-
 
 def _fetch_price(symbol: str, period: str):
     """下载收盘价 — 优先 vectorbt YFData，回退 yfinance"""
@@ -233,14 +228,14 @@ def _extract_stats(
         stats = pf.stats()
         s = stats.to_dict() if hasattr(stats, "to_dict") else {}
 
-        total_return = _safe_float(s.get("Total Return [%]")) / 100
-        sharpe = _safe_float(s.get("Sharpe Ratio"))
-        sortino = _safe_float(s.get("Sortino Ratio"))
-        calmar = _safe_float(s.get("Calmar Ratio"))
-        max_dd = abs(_safe_float(s.get("Max Drawdown [%]"))) / 100
-        win_rate = _safe_float(s.get("Win Rate [%]")) / 100
-        num_trades = int(_safe_float(s.get("Total Trades")))
-        ann_return = _safe_float(s.get("Annualized Return [%]", total_return * 52)) / 100
+        total_return = safe_float(s.get("Total Return [%]")) / 100
+        sharpe = safe_float(s.get("Sharpe Ratio"))
+        sortino = safe_float(s.get("Sortino Ratio"))
+        calmar = safe_float(s.get("Calmar Ratio"))
+        max_dd = abs(safe_float(s.get("Max Drawdown [%]"))) / 100
+        win_rate = safe_float(s.get("Win Rate [%]")) / 100
+        num_trades = int(safe_float(s.get("Total Trades")))
+        ann_return = safe_float(s.get("Annualized Return [%]", total_return * 52)) / 100
 
         bm_return = 0.0
         alpha = total_return
@@ -376,7 +371,7 @@ class VectorbtBacktester:
                 exits = fast_ma.ma_crossed_below(slow_ma)
                 pf = vbt.Portfolio.from_signals(price, entries, exits, **self._pf_kwargs())
                 s = pf.stats().to_dict() if hasattr(pf.stats(), "to_dict") else {}
-                return _safe_float(s.get("Sharpe Ratio"))
+                return safe_float(s.get("Sharpe Ratio"))
 
             study = optuna.create_study(direction="maximize")
             study.optimize(objective, n_trials=n_trials, show_progress_bar=False)

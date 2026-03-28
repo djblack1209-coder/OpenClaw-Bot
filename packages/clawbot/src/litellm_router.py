@@ -116,11 +116,7 @@ if os.getenv("LANGFUSE_SECRET_KEY") and os.getenv("LANGFUSE_PUBLIC_KEY"):
     litellm.failure_callback = ["langfuse"]
     logger.info("[LiteLLM] Langfuse callback 已启用")
 
-# ---- 路由策略常量 (兼容旧代码 import) ----
-ROUTE_STRONGEST = "strongest"
-ROUTE_LOWEST_LATENCY = "lowest-latency"
-ROUTE_LEAST_BUSY = "least-busy"
-ROUTE_COST_OPTIMIZED = "cost-optimized"
+# ---- 路由策略常量 ----
 ROUTE_BALANCED = "balanced"
 
 # ---- 模型强度分级 ----

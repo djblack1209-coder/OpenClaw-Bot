@@ -24,21 +24,16 @@ from typing import Any, Dict, List, Optional
 from src.core.event_bus import EventType, get_event_bus
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.task_graph import (
-    TaskGraph, TaskGraphBuilder, TaskGraphExecutor,
-    TaskNode, ExecutorType, NodeStatus,
+    TaskGraph, TaskGraphExecutor,
+    TaskNode, NodeStatus,
 )
 from config.prompts import (
     CHAT_FALLBACK_PROMPT,
-    INFO_QUERY_PROMPT,
-    INVEST_DIRECTOR_DECISION_PROMPT,
-    SOUL_CORE,
 )
 from src.core.response_synthesizer import (
     get_response_synthesizer,
     get_context_collector,
 )
-from src.bot.error_messages import error_ai_busy
-
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.resilience import api_limiter
 

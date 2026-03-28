@@ -5,9 +5,7 @@ Bot — 回调处理 Mixin
 
 > 最后更新: 2026-03-28
 """
-import asyncio
 import logging
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

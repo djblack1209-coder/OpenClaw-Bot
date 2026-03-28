@@ -10,37 +10,6 @@ from typing import Optional, Dict, List
 logger = logging.getLogger(__name__)
 
 
-# ============ 环境变量读取 ============
-
-
-def _env_bool(key: str, default: bool) -> bool:
-    """读取布尔型环境变量"""
-    from src.utils import env_bool
-    return env_bool(key, default)
-
-
-def _env_int(key: str, default: int, minimum: int = 1) -> int:
-    """读取整型环境变量，带最小值约束"""
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return max(minimum, int(raw))
-    except (TypeError, ValueError):
-        return default
-
-
-def _env_float(key: str, default: float) -> float:
-    """读取浮点型环境变量"""
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return default
-
-
 # ============ 通用工具 ============
 
 

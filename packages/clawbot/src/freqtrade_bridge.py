@@ -31,7 +31,7 @@ import json
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
-from src.utils import now_et
+from src.utils import now_et, env_float, env_int
 from config.prompts import BACKTEST_ANALYST_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -46,26 +46,6 @@ except ImportError:
     IStrategy = None  # type: ignore[assignment,misc]
     Trade = None  # type: ignore[assignment,misc]
     logger.info("[FreqtradeBridge] freqtrade 未安装，集成层禁用")
-
-
-def _env_float(key: str, default: float) -> float:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
-
-
-def _env_int(key: str, default: int) -> int:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except (TypeError, ValueError) as e:  # noqa: F841
-        return default
 
 
 def get_freqtrade_config(
@@ -90,7 +70,7 @@ def get_freqtrade_config(
         "stake_amount": "unlimited",
         "tradable_balance_ratio": 0.99,
         "dry_run": dry_run,
-        "dry_run_wallet": _env_float("FT_DRY_RUN_WALLET", 10000),
+        "dry_run_wallet": env_float("FT_DRY_RUN_WALLET", 10000),
         "cancel_open_orders_on_exit": True,
         "trading_mode": "spot",
         "margin_mode": "",
