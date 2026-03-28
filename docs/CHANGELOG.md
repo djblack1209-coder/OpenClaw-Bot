@@ -5,6 +5,43 @@
 
 ---
 
+## [2026-03-28] 全量审计第 R19 轮: API认证激活 + auto_trader拆分 + clawbotFetch统一
+
+> 领域: `security` | `backend` | `frontend`
+> 影响模块: api/auth, tauri.ts, Social/Memory/Money组件, auto_trader, trading_pipeline
+
+### 变更内容
+
+**API认证安全加固:**
+- 生成 OPENCLAW_API_TOKEN (urlsafe 256-bit) 并写入 config/.env
+- API 服务器 `dependencies=[Depends(verify_api_token)]` 已激活保护所有端点
+- 前端新增 `clawbotFetch()` helper 函数 — 自动附加 X-API-Token header
+- 9处直接 `fetch('http://127.0.0.1:18790/...')` 全部迁移为 `clawbotFetch('/...')`
+  (Social x4, Memory x3, Money x2)
+
+**auto_trader.py 架构拆分 (1606行 → 3文件):**
+- auto_trader.py (1045行) — 保留 AutoTrader 主类 + 向后兼容 re-export
+- trading_pipeline.py (500行) — TradingPipeline + TraderState + parse_trade_proposal
+- trading/market_calendar.py (134行) — 美股市场假日计算
+
+**导入测试扩展:** 34→36个模块
+**验证结果:** 1014/1014 通过
+
+### 文件变更
+- `packages/clawbot/config/.env` — OPENCLAW_API_TOKEN 激活
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 新增 clawbotFetch() + API Token 读取
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 4处fetch→clawbotFetch
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 3处fetch→clawbotFetch
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 2处fetch→clawbotFetch
+- `packages/clawbot/src/auto_trader.py` — 1606→1045行
+- `packages/clawbot/src/trading_pipeline.py` — 新建 (500行)
+- `packages/clawbot/src/trading/market_calendar.py` — 新建 (134行)
+- `packages/clawbot/tests/test_import_smoke.py` — 扩展到36模块
+- `docs/status/HEALTH.md` — 更新
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R18 轮: brain拆分 + life_automation拆分 + message_mixin拆分
 
 > 领域: `backend`

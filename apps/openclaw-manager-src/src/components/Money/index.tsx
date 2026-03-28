@@ -8,7 +8,7 @@ import {
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { api, isTauri } from '@/lib/tauri';
+import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 
 interface ActionStatus {
   running: boolean;
@@ -59,7 +59,7 @@ export function Money() {
           data = await api.clawbotTradingStatus();
         } else {
           // 降级: 直接HTTP调用
-          const resp = await fetch('http://127.0.0.1:18790/api/v1/trading/status');
+          const resp = await clawbotFetch('/api/v1/trading/status');
           if (!resp.ok) return;
           data = await resp.json();
         }
@@ -91,9 +91,8 @@ export function Money() {
         result = (data as any)?.result || (data as any)?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+        const resp = await clawbotFetch('/api/v1/omega/process', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
         });
         const data = await resp.json();

@@ -50,6 +50,9 @@ MODULES_TO_TEST = [
     # 新增: R18 message_mixin 拆分
     "src.bot.workflow_mixin",
     "src.bot.callback_mixin",
+    # 新增: R19 auto_trader 拆分
+    "src.trading.market_calendar",
+    "src.trading_pipeline",
 ]
 
 

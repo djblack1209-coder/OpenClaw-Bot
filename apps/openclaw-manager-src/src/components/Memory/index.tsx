@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api, isTauri } from '@/lib/tauri';
+import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 
 import clsx from 'clsx';
 
@@ -43,9 +43,8 @@ export function Memory() {
         await api.clawbotMemoryDelete(key);
       } else {
         // 降级: 直接HTTP调用
-        await fetch(`http://127.0.0.1:18790/api/v1/memory/delete`, {
+        await clawbotFetch('/api/v1/memory/delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key }),
         });
       }
@@ -70,9 +69,8 @@ export function Memory() {
         await api.clawbotMemoryUpdate(editingKey, editValue);
       } else {
         // 降级: 直接HTTP调用
-        await fetch('http://127.0.0.1:18790/api/v1/memory/update', {
+        await clawbotFetch('/api/v1/memory/update', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key: editingKey, value: editValue }),
         });
       }
@@ -94,7 +92,7 @@ export function Memory() {
         results = data?.results || data?.entries || data || [];
       } else {
         // 降级: 直接HTTP调用
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/memory/search?q=&limit=50');
+        const resp = await clawbotFetch('/api/v1/memory/search?q=&limit=50');
         if (resp.ok) {
           const data = await resp.json();
           results = data.results || data.entries || data || [];

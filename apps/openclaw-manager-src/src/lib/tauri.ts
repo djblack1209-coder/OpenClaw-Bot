@@ -547,3 +547,22 @@ export const api = {
 };
 
 export const CLAWBOT_WS_URL = `ws://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;
+
+// ── API Token 认证 ──
+// 浏览器降级模式下的 HTTP 请求需要携带 X-API-Token
+const CLAWBOT_API_TOKEN = import.meta.env.VITE_CLAWBOT_API_TOKEN || '';
+const CLAWBOT_API_BASE = `http://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}`;
+
+/**
+ * 带认证的 fetch 封装 — 浏览器降级模式下自动附加 X-API-Token
+ */
+export async function clawbotFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (CLAWBOT_API_TOKEN) {
+    headers.set('X-API-Token', CLAWBOT_API_TOKEN);
+  }
+  if (!headers.has('Content-Type') && init?.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return fetch(`${CLAWBOT_API_BASE}${path}`, { ...init, headers });
+}
