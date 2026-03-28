@@ -153,8 +153,8 @@ def compose_human_x_post(topic: str = "", strategy: Optional[Dict] = None, sourc
     lines = [
         f"今天都在聊「{trend_label}」，但对普通创作者更重要的不是复述热点。",
         "",
-        f"没有 X Premium 的免费号，别幻想靠 For You 自然起量。",
-        f"我现在用 OpenClaw 跑 0 成本 AI SOP：",
+        "没有 X Premium 的免费号，别幻想靠 For You 自然起量。",
+        "我现在用 OpenClaw 跑 0 成本 AI SOP：",
         "1. 先用热点做 MVP 选题",
         f"2. {x_tactic}",
         "3. 再把同题改写成小红书教程，先看收藏率",

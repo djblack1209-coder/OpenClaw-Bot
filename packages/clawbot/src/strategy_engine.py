@@ -385,7 +385,7 @@ class MACDStrategy(BaseStrategy):
             return TradeSignal(
                 symbol=data.symbol, signal=SignalType.BUY, score=score,
                 strategy_name=self.name, timeframe=data.timeframe,
-                confidence=0.6, reason=f"MACD histogram crossed above zero",
+                confidence=0.6, reason="MACD histogram crossed above zero",
                 indicators=indicators, stop_loss_pct=3.0, take_profit_pct=7.0,
             )
         # MACD 柱状图从正转负 → 看跌
@@ -394,7 +394,7 @@ class MACDStrategy(BaseStrategy):
             return TradeSignal(
                 symbol=data.symbol, signal=SignalType.SELL, score=score,
                 strategy_name=self.name, timeframe=data.timeframe,
-                confidence=0.6, reason=f"MACD histogram crossed below zero",
+                confidence=0.6, reason="MACD histogram crossed below zero",
                 indicators=indicators,
             )
 

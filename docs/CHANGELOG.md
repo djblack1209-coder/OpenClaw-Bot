@@ -5,6 +5,25 @@
 
 ---
 
+## [2026-03-29] R23: 冗余文件清理 + 无占位符 f-string 修复
+
+> 领域: `backend`, `infra`
+> 影响模块: 15个src/文件, `.gitignore`, `deploy_bundle_final/`
+> 关联问题: HI-368, HI-369
+
+### 变更内容
+- 清理 19 个幽灵 .pyc 文件（对应源文件已在 R22 中删除，缓存残留在文件系统）
+- 删除 5 个空目录：`deploy_resources/`, `openclaw_deploy_final/`, `src/deployer/templates/`, `src/models/drl/`, `src/models/factor/`
+- 从 Git 索引移除 `deploy_bundle_final/`（4 个文件，pack_final.sh 的构建产物），加入 `.gitignore`
+- 使用 Python 3.12 AST 精确修复 33 个无占位符 f-string（跨 15 个文件）
+
+### 文件变更
+- `deploy_bundle_final/` — 从 Git 索引移除（4 文件）
+- `.gitignore` — 新增 `deploy_bundle_final/`, `openclaw_deploy_final/`
+- 15 个 src/*.py 文件 — f-string `f"text"` → `"text"` 修复
+
+---
+
 ## [2026-03-29] HI-359: globals.py 循环依赖拆解 — 提取 bot/config.py
 
 > 领域: `backend`

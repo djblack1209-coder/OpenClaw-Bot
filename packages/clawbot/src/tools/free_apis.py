@@ -184,7 +184,7 @@ async def query_express(tracking_number: str) -> str:
         async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as c:
             # 使用 kuaidi100 免费查询接口（自动识别快递公司）
             r = await c.get(
-                f"https://api.pearktrue.cn/api/express/",
+                "https://api.pearktrue.cn/api/express/",
                 params={"number": tracking_number},
             )
             if r.status_code == 200:

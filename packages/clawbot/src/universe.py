@@ -317,7 +317,7 @@ async def full_market_scan(
 def format_full_scan(result: Dict) -> str:
     """格式化全市场扫描结果"""
     lines = [
-        f"全市场扫描报告",
+        "全市场扫描报告",
         f"扫描: {result['total_scanned']}个标的 | "
         f"层1通过: {result['layer1_passed']} | "
         f"层2信号: {result['layer2_passed']} | "

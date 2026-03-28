@@ -618,7 +618,7 @@ class LifeCommandsMixin:
                     f"{status_icon} #{w['id']} {w['keyword']}\n"
                     f"  🎯 目标价 ¥{w['target_price']}{price_info}"
                 )
-            lines.append(f"\n💡 /pricewatch remove <编号> 删除监控")
+            lines.append("\n💡 /pricewatch remove <编号> 删除监控")
             await update.message.reply_text("\n".join(lines))
             return
 
@@ -635,7 +635,7 @@ class LifeCommandsMixin:
             if remove_price_watch(watch_id, user_id):
                 await update.message.reply_text(f"✅ 监控 #{watch_id} 已删除")
             else:
-                await update.message.reply_text(f"❌ 删除失败 — 编号不存在或无权限")
+                await update.message.reply_text("❌ 删除失败 — 编号不存在或无权限")
             return
 
         await update.message.reply_text(

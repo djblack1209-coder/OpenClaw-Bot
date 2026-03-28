@@ -186,7 +186,7 @@ class NovelCommandsMixin:
                         await update.message.reply_voice(voice=f)
                     Path(audio).unlink(missing_ok=True)
                 except Exception as e:
-                    await update.message.reply_text(f"⚠️ 音频发送失败")
+                    await update.message.reply_text("⚠️ 音频发送失败")
             else:
                 await update.message.reply_text("⚠️ 语音生成失败")
             return

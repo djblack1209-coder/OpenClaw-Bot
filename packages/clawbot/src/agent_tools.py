@@ -105,11 +105,11 @@ class TechnicalAnalysisTool(Tool):
         lines = [
             f"=== {result.get('name', sym)} ({sym}) 技术分析 ===",
             f"价格: {result['price']}  涨跌: {result['change_pct']:+.2f}%",
-            f"",
+            "",
             f"信号评分: {signal.get('score', 0)} / 100  → {signal.get('signal_cn', '中性')}",
             f"市场状态: {signal.get('regime', 'N/A')}",
-            f"",
-            f"--- 指标 ---",
+            "",
+            "--- 指标 ---",
             f"RSI(14): {indicators.get('rsi_14', 'N/A')}  RSI(6): {indicators.get('rsi_6', 'N/A')}",
             f"MACD: {indicators.get('macd', 'N/A')}  Signal: {indicators.get('macd_signal', 'N/A')}",
             f"BB位置: {indicators.get('bb_position', 'N/A')} (0=下轨, 1=上轨)",
@@ -123,8 +123,8 @@ class TechnicalAnalysisTool(Tool):
 
         reasons = signal.get("reasons", [])
         if reasons:
-            lines.append(f"")
-            lines.append(f"--- 信号理由 ---")
+            lines.append("")
+            lines.append("--- 信号理由 ---")
             for r in reasons[:5]:
                 lines.append(f"• {r}")
 

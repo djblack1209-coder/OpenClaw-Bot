@@ -77,7 +77,7 @@ class InvestCommandsMixin:
 
         lines = [
             f"📐 <b>仓位计算 — {symbol}</b>",
-            f"",
+            "",
             f"入场价: ${entry_price:.2f}",
             f"止损价: ${stop_loss:.2f} (风险 {risk_pct:.1f}%)",
         ]
@@ -85,16 +85,16 @@ class InvestCommandsMixin:
             rr = (take_profit - entry_price) / risk_per_share
             lines.append(f"目标价: ${take_profit:.2f} (盈亏比 {rr:.1f}:1)")
 
-        lines.append(f"")
-        lines.append(f"━━━ 固定比例法 (2%风险) ━━━")
+        lines.append("")
+        lines.append("━━━ 固定比例法 (2%风险) ━━━")
         if safe:
             lines.append(f"建议数量: <b>{safe.get('quantity', 0)}</b> 股")
             lines.append(f"投入金额: ${safe.get('total_cost', 0):,.0f}")
             lines.append(f"最大亏损: ${safe.get('max_loss', 0):,.0f}")
 
         if kelly and kelly.get("quantity", 0) > 0:
-            lines.append(f"")
-            lines.append(f"━━━ 凯利公式法 (保守1/4) ━━━")
+            lines.append("")
+            lines.append("━━━ 凯利公式法 (保守1/4) ━━━")
             lines.append(f"建议数量: <b>{kelly.get('quantity', 0)}</b> 股")
             lines.append(f"投入金额: ${kelly.get('total_cost', 0):,.0f}")
             if kelly.get("kelly_pct"):
@@ -412,7 +412,7 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text(f"⚠️ 实盘暂不可用，已为您在模拟组合中执行")
+                await update.message.reply_text("⚠️ 实盘暂不可用，已为您在模拟组合中执行")
         if not ibkr_ok:
             result = portfolio.buy(symbol, quantity, price, decided_by=self.name, reason="手动买入")
             if "error" in result:
@@ -563,7 +563,7 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text(f"⚠️ 实盘暂不可用，已为您在模拟组合中执行")
+                await update.message.reply_text("⚠️ 实盘暂不可用，已为您在模拟组合中执行")
         if not ibkr_ok:
             result = portfolio.sell(symbol, quantity, price, decided_by=self.name, reason="手动卖出")
             if "error" in result:
