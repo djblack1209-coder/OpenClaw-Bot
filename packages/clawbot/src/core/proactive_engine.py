@@ -39,6 +39,9 @@ from config.prompts import (
     SOUL_CORE,
 )
 
+# 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.resilience import api_limiter
+
 logger = logging.getLogger(__name__)
 
 
@@ -291,15 +294,6 @@ class ProactiveEngine:
 
             if not free_pool:
                 return None
-
-            try:
-                from src.resilience import api_limiter
-            except ImportError:
-                from contextlib import asynccontextmanager
-
-                @asynccontextmanager
-                async def api_limiter(service: str = "generic"):
-                    yield
 
             async with api_limiter("llm"):
                 resp = await free_pool.acompletion(

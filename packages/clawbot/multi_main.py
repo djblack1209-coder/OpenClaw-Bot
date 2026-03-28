@@ -47,7 +47,8 @@ from src.trading_system import (
     init_trading_system, start_trading_system, stop_trading_system,
     set_ai_team_callers,
 )
-from src.trading_journal import journal, trading_memory_bridge
+from src.trading_journal import journal
+from src.trading_memory_bridge import trading_memory_bridge
 from src.litellm_router import free_pool, ROUTE_BALANCED
 from src.context_manager import TieredContextManager
 from src.chat_router import PriorityMessageQueue

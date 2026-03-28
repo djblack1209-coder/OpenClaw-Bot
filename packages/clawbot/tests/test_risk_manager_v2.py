@@ -8,7 +8,8 @@ RiskManager v2 高优先级测试 — 极端行情检测 + 凯利公式仓位计
 import pytest
 from unittest.mock import MagicMock
 
-from src.risk_manager import RiskManager, RiskConfig
+from src.risk_config import RiskConfig
+from src.risk_manager import RiskManager
 from src.utils import now_et
 
 

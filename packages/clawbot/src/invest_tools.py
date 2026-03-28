@@ -161,7 +161,7 @@ async def get_stock_quote(symbol: str) -> dict:
 
     if _env_bool("PREFER_IBKR_QUOTES", True):
         try:
-            from src.broker_bridge import ibkr as _ibkr
+            from src.broker_selector import ibkr as _ibkr
             if hasattr(_ibkr, "ensure_connected"):
                 connected = await _ibkr.ensure_connected()
                 if connected and hasattr(_ibkr, "get_realtime_snapshot"):

@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R21全方位审计: 13阶段全覆盖+文件治理+安全清理 | 1054/1054 passed)
+> 最后更新: 2026-03-29 (R22代码架构重构: cmd_basic子包拆分+3模块提取+api_limiter去重+静默异常修复 | 1054/1054 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -90,10 +90,8 @@
 | HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 | HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
-| HI-358 | `backend` | 23个文件 | 23个Python文件超800行待拆分(前8个>1100行最紧迫: cmd_basic_mixin/risk_manager/monitoring等) | 2026-03-29 |
+| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有~15个文件>800行待拆 | 2026-03-29 |
 | HI-359 | `backend` | `bot/globals.py` | 循环依赖中心 — 与context_manager/shared_memory/history_store互引，需提取纯数据层 | 2026-03-29 |
-| HI-360 | `backend` | 多模块 | `api_limiter` 在resilience.py和5个core/文件中重复定义，应提取为公共工具 | 2026-03-29 |
-
 ### 🔵 低优先
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
@@ -106,6 +104,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-360 | `backend` | 5个core/文件 | `api_limiter` 在5个consumer文件中重复try/except fallback | 移除冗余fallback，统一为 `from src.resilience import api_limiter` 直接导入 | 2026-03-29 | HI-360修复 |
 | HI-282 | `backend` | `litellm_router.py` | 2个废弃方法(remove_exhausted/init_adaptive_router)已清理 | 删除 remove_exhausted() + init_adaptive_router()，multi_main.py 移除调用，添加注释说明已废弃 | 2026-03-28 | 死代码清理 |
 | HI-357 | `security` | `.gitignore` | .openclaw/agents/ 和 identity/ 未在.gitignore中排除 | 添加安全敏感目录到.gitignore + git rm --cached移除42个文件 | 2026-03-28 | R13审计 |
 | HI-356 | `security` | `life_automation.py` | open_app/run_shortcut接受未验证用户输入(可执行任意应用) | 添加18项安全白名单+快捷指令名称校验 | 2026-03-28 | R13审计 |

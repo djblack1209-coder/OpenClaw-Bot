@@ -1,6 +1,70 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-27 | R9 补充核心模块: browser_use_bridge/crewai_bridge/trading_journal/novel_writer/position_monitor/skyvern_bridge/strategies/
+> 最后更新: 2026-03-29 | R22 新增: risk_config/trading_memory_bridge/broker_selector + cmd_basic子包拆分
+
+---
+
+## 0. R22 架构重构新增模块
+
+以下模块在 R22 代码架构重构中从超长文件提取而来。
+
+### 0.1 risk_config.py — 风控配置数据类
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/risk_config.py` |
+| 行数 | ~110 |
+| 导入方 | risk_manager, backtester, trading/_init_system, 多个测试文件 |
+| 依赖 | dataclasses, typing |
+
+**Public API:**
+- `RiskConfig` — 风控配置数据类 (total_capital, max_position_pct, daily_loss_limit 等 20+ 参数)
+- `RiskCheckResult` — 风控检查结果数据类 (allowed, reasons, risk_score, position_size)
+
+### 0.2 trading_memory_bridge.py — 交易记忆桥接
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/trading_memory_bridge.py` |
+| 行数 | ~140 |
+| 导入方 | multi_main |
+| 依赖 | logging, trading_journal |
+
+**Public API:**
+- `TradingMemoryBridge` — 将交易事件 (开仓/平仓/复盘) 通过 monkey-patch 写入 SharedMemory
+- `trading_memory_bridge` — 全局实例 (绑定到 journal)
+
+### 0.3 broker_selector.py — 券商选择器
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/broker_selector.py` |
+| 行数 | ~65 |
+| 导入方 | brain_executors, trading/_scheduler_daily, trading/_lifecycle, invest_tools |
+| 依赖 | logging, os, broker_bridge |
+
+**Public API:**
+- `get_ibkr()` — 懒加载 IBKRBridge 单例
+- `ibkr` — 懒代理对象 (向后兼容)
+- `get_broker()` — 统一券商选择器 (IBKR > Alpaca > 模拟盘)
+
+### 0.4 cmd_basic/ — 基础命令子包
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/cmd_basic/` |
+| 文件数 | 8 (含 __init__.py) |
+| 总行数 | ~1358 (原 cmd_basic_mixin.py 拆分) |
+| 导入方 | multi_bot (通过 cmd_basic_mixin.py 转发) |
+
+**子模块:**
+- `help_mixin.py` — 帮助菜单和新用户引导 (cmd_start, handle_help_callback)
+- `status_mixin.py` — 系统状态查询 (cmd_status/metrics/model/pool/keyhealth)
+- `settings_mixin.py` — 用户设置 (cmd_settings, handle_settings_callback)
+- `memory_mixin.py` — 记忆管理 (cmd_memory, handle_memory/feedback_callback)
+- `callback_mixin.py` — 按钮回调 (handle_notify/card/clarification_callback)
+- `tools_mixin.py` — 工具命令 (cmd_draw/news/qr/tts/agent, handle_inline_query)
+- `context_mixin.py` — 上下文管理 (cmd_context/compact/clear/voice/lanes)
 
 ---
 

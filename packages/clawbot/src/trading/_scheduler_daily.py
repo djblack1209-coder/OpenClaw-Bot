@@ -24,7 +24,7 @@ async def _daily_risk_reset():
         logger.info("[Scheduler] 每日风控重置完成")
     # 同时重置 IBKR 预算追踪
     try:
-        from src.broker_bridge import ibkr as _ibkr
+        from src.broker_selector import ibkr as _ibkr
         _ibkr.reset_budget()
         logger.info("[Scheduler] IBKR预算已重置")
     except Exception as e:
@@ -141,7 +141,7 @@ async def _daily_capital_sync():
 
     if _ts._risk_manager:
         try:
-            from src.broker_bridge import ibkr as _ibkr
+            from src.broker_selector import ibkr as _ibkr
             if _ibkr.is_connected():
                 actual = await _ibkr.sync_capital()
                 if actual > 0:
@@ -290,7 +290,7 @@ async def _weekly_profit_guard():
 async def _ibkr_health_check():
     """定期检查 IBKR 连接状态，断连时自动重连"""
     try:
-        from src.broker_bridge import ibkr as _ibkr
+        from src.broker_selector import ibkr as _ibkr
         if not _ibkr.is_connected():
             logger.warning("[Scheduler] IBKR断连，尝试重连...")
             reconnected = await _ibkr.ensure_connected()

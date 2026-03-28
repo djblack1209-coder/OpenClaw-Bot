@@ -87,7 +87,7 @@ async def _sync_ibkr_capital():
 
     if _ts._risk_manager:
         try:
-            from src.broker_bridge import ibkr as _ibkr
+            from src.broker_selector import ibkr as _ibkr
             if _ibkr.is_connected():
                 actual_capital = await _ibkr.sync_capital()
                 if actual_capital > 0:
@@ -198,7 +198,7 @@ def get_system_status():
 
     # IBKR 连接状态
     try:
-        from src.broker_bridge import ibkr as _ibkr
+        from src.broker_selector import ibkr as _ibkr
         parts.append(_ibkr.get_connection_status())
         if _ibkr.is_connected():
             remaining = _ibkr.budget - _ibkr.total_spent

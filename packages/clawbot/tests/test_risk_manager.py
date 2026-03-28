@@ -5,7 +5,8 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
+from src.risk_config import RiskConfig, RiskCheckResult
+from src.risk_manager import RiskManager
 from src.utils import now_et
 
 

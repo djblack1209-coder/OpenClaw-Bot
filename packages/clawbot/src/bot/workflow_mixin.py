@@ -473,4 +473,4 @@ class WorkflowMixin:
                 "请直接描述您的需求，我会用标准模式为您服务。"
             )
         except Exception as e:
-            pass
+            logger.debug("回复工作流提示消息失败: %s", e)

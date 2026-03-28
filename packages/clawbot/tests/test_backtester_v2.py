@@ -14,7 +14,7 @@ from src.backtester import (
     run_monte_carlo, calc_enhanced_metrics, format_monte_carlo,
     format_optimization_result,
 )
-from src.risk_manager import RiskConfig
+from src.risk_config import RiskConfig
 
 
 # ============ 辅助函数 ============
