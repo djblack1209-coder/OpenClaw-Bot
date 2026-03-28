@@ -262,7 +262,15 @@ export function Channels() {
       return result;
     } catch (e) {
       console.error('获取渠道配置失败:', e);
-      return [];
+      // Tauri invoke 不可用时，用静态定义构建默认渠道列表
+      const fallback: ChannelConfig[] = Object.keys(CHANNEL_DEFINITIONS).map((key) => ({
+        id: key,
+        channel_type: key,
+        enabled: false,
+        config: {},
+      }));
+      setChannels(fallback);
+      return fallback;
     }
   };
 

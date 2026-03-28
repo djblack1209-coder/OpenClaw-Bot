@@ -173,7 +173,8 @@ class _MetricsHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_message(self, format, *args):
-        pass  # 静默 HTTP 日志
+        # 将 HTTP 请求日志降级为 debug 级别，避免刷屏但仍可通过调高日志级别查看
+        logger.debug("[Metrics HTTP] %s", format % args if args else format)
 
 
 def start_metrics_server(port: int = 9090):

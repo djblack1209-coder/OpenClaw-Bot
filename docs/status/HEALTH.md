@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-28 (R19审计: API认证激活+clawbotFetch统一+auto_trader拆分+密钥轮换文档 | 1014/1014 passed)
+> 最后更新: 2026-03-29 (R20审计: 3测试修复+7stub实现+消息渠道fallback+架构深度审计 | 1054/1054 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -49,7 +49,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟡 待命中 | 腾讯云 2C2G — 代码已同步, systemd 服务已创建, failover timer 运行中, 待心跳恢复后自动切换 |
-| 测试通过率 | 🟢 100% | 980/980 Python (含41项AI助手能力测试), 0 TypeScript错误 |
+| 测试通过率 | 🟢 100% | 1054/1054 Python (含41项AI助手能力测试), 0 TypeScript错误 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |

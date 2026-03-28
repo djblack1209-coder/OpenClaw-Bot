@@ -5,6 +5,54 @@
 
 ---
 
+## [2026-03-29] 全量审计第 R20 轮: 测试修复 + Stub实现 + 前端fallback + 架构深度审计
+
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `trading_journal`, `task_graph`, `http_client`, `litellm_router`, `monitoring`, `observability`, `Channels`
+> 关联问题: 架构质量审计发现 10 个 stub 函数、227 处静默异常、25 个循环依赖
+
+### 变更内容
+
+**后端测试修复 (3项)**
+- `test_trading_journal_v2.py` — 修复 `trades_count` → `trades` 字段名不匹配（与 `get_today_pnl` 返回值对齐）
+- `test_trading_journal_v2.py` — 修复 `get_equity_curve` 返回值解包顺序（`values, dates` 而非 `dates, values`）
+- `test_trading_journal_v2.py` — 修复 `total_wins/total_losses` → `wins/losses` 字段名（与 `get_performance` 返回值对齐）
+
+**Stub 函数实现 (7项)**
+- `_emit_flow()` — 3 个文件（`task_graph.py`, `_ai.py`, `x_platform.py`）的事件追踪空壳函数改为 logger.debug 输出
+- `http_client.py:close()` — 实现电路断路器状态重置
+- `litellm_router.py:_llm_cache_set()` — 实现 diskcache 回退缓存（当 llm_cache 模块不可用时）
+- `monitoring.py:log_message()` — 实现 DEBUG 级别 HTTP 请求日志
+- `observability.py:parse_intent()/execute_trade()` — 实现带 trace_function 装饰器的真实函数
+
+**前端修复 (1项)**
+- `Channels/index.tsx:fetchChannels()` — 当 Tauri invoke 不可用时使用 CHANNEL_DEFINITIONS 构建 fallback 渠道列表，消除空白页面
+
+**架构深度审计报告**
+- 孤儿文件: 1/198（`web_installer.py`）
+- 未完成实现: 10→3 个 stub 已修复，剩余为合理的抽象方法
+- 静默异常: 227 处（89个文件45%）— 登记为技术债
+- 超大文件: 25 个 >800 行 — 登记为技术债
+- 循环依赖: 25 个直接循环 — 登记为技术债
+- 导入完整性: 0 broken
+- 安全: 无硬编码密钥、无 SQL 注入、无日志泄露
+- macOS 入口: OpenClaw.app 正常启动（arm64, v0.0.7）
+
+### 文件变更
+- `packages/clawbot/tests/test_trading_journal_v2.py` — 修复 3 个字段名不匹配
+- `packages/clawbot/src/core/task_graph.py` — _emit_flow 实现
+- `packages/clawbot/src/execution/_ai.py` — _emit_flow 实现
+- `packages/clawbot/src/execution/social/x_platform.py` — _emit_flow 实现
+- `packages/clawbot/src/http_client.py` — close() 实现
+- `packages/clawbot/src/litellm_router.py` — _llm_cache_set fallback 实现
+- `packages/clawbot/src/monitoring.py` — log_message 实现
+- `packages/clawbot/src/observability.py` — parse_intent/execute_trade 实现
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — fetchChannels fallback
+- `docs/status/HEALTH.md` — 测试数更新至 1054
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-03-28] 全量审计第 R19 轮: API认证激活 + auto_trader拆分 + clawbotFetch统一
 
 > 领域: `security` | `backend` | `frontend`

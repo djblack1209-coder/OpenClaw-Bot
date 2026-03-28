@@ -19,7 +19,8 @@ try:
     from src.utils import emit_flow_event as _emit_flow
 except Exception as e:  # noqa: F841
     def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
-        pass
+        # 当 emit_flow_event 不可用时，降级为 debug 日志输出，避免事件丢失
+        logger.debug("[FlowEvent] %s→%s [%s] %s data=%s", src, tgt, status, msg, data)
 
 
 class AICallerPool:

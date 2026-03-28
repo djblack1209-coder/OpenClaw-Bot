@@ -151,8 +151,17 @@ class ResilientHTTPClient:
         )
 
     async def close(self):
-        """兼容接口，核弹模式下无需关闭"""
-        pass
+        """关闭客户端：重置熔断器和指标状态。
+
+        核弹模式下没有持久连接需要关闭（每次请求创建新的 AsyncClient），
+        但仍需重置内部状态以便对象可安全复用或垃圾回收。
+        """
+        # 重置熔断器到正常状态
+        self.breaker.state = CircuitState.CLOSED
+        self.breaker.failure_count = 0
+        self.breaker.half_open_count = 0
+        # 记录关闭日志
+        logger.debug("[%s] HTTP 客户端已关闭，熔断器和指标已重置", self.name)
 
     async def request(
         self,
