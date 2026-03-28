@@ -360,7 +360,12 @@ class MultiPathExecutor:
             call = client.calls.create(
                 to=phone,
                 from_=os.environ.get("TWILIO_FROM_NUMBER", ""),
-                url="http://demo.twilio.com/docs/voice.xml",
+                # TwiML 应答 URL — 默认使用 Twilio 官方 demo，
+                # 生产环境应配置 TWILIO_TWIML_URL 为自己的通知语音
+                url=os.environ.get(
+                    "TWILIO_TWIML_URL",
+                    "https://demo.twilio.com/docs/voice.xml",
+                ),
             )
             return {"call_sid": call.sid, "status": "initiated"}
         except ImportError:

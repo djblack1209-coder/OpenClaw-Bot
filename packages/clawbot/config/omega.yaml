@@ -108,35 +108,38 @@ omega:
       # Retell API Key: ${RETELL_API_KEY}
       # Twilio: ${TWILIO_ACCOUNT_SID}, ${TWILIO_AUTH_TOKEN}
 
-  # ── 自进化 ──────────────────────────────────────── [PLANNED - not yet consumed by code; EvolutionEngine uses evolution_config.json]
-  evolution:
-    scan_interval_hours: 24
-    auto_approve_threshold: 8.0      # 价值分 >=8 且 LOW 风险自动通过
-    auto_integrate: false            # 需要人工确认
+  # ── 自进化 ──────────────────────────────────────────
+  # 以下配置暂未被代码消费，EvolutionEngine 实际使用 evolution_config.json
+  # 保留供未来迁移参考
+  # evolution:
+  #   scan_interval_hours: 24
+  #   auto_approve_threshold: 8.0
+  #   auto_integrate: false
 
   # ── 模型路由 ────────────────────────────────────────
   routing:
     default_strategy: "balanced"
-    # 任务类型 → 模型映射 [PLANNED - not yet consumed by code]
-    task_routing:
-      complex_reasoning: "claude-opus-4"
-      fast_execution: "claude-sonnet-4"
-      chinese_understanding: "qwen3-235b-a22b"
-      code_tasks: "claude-code-cli"
-      local_private: "ollama/qwen2.5"
-      intent_parsing: "qwen3-235b-a22b"        # 意图解析用便宜模型
-      investment_analysis: "claude-sonnet-4"     # 投资分析用中端模型
-      content_generation: "qwen3-235b-a22b"      # 内容生成用免费模型
+    # 以下任务路由映射暂未被代码消费，LiteLLM Router 有独立配置
+    # task_routing:
+    #   complex_reasoning: "claude-opus-4"
+    #   fast_execution: "claude-sonnet-4"
+    #   chinese_understanding: "qwen3-235b-a22b"
+    #   code_tasks: "claude-code-cli"
+    #   local_private: "ollama/qwen2.5"
+    #   intent_parsing: "qwen3-235b-a22b"
+    #   investment_analysis: "claude-sonnet-4"
+    #   content_generation: "qwen3-235b-a22b"
 
   # ── 社媒运营 ────────────────────────────────────────
-  social:
-    # 平台算法最佳发布时间 [PLANNED - not yet consumed by code]
-    optimal_times:
-      douyin: ["18:00", "19:00", "20:00", "21:00"]
-      xiaohongshu: ["12:00", "13:00", "20:00", "22:00"]
-      x_twitter: ["09:00", "15:00", "21:00"]    # UTC+8
+  # 以下发布时间配置暂未被代码消费，SocialAutopilot 使用硬编码 cron
+  # social:
+  #   optimal_times:
+  #     douyin: ["18:00", "19:00", "20:00", "21:00"]
+  #     xiaohongshu: ["12:00", "13:00", "20:00", "22:00"]
+  #     x_twitter: ["09:00", "15:00", "21:00"]
 
-  # ── 生活服务 ──────────────────────────────────────── [PLANNED - not yet consumed by code]
-  life:
-    calendar_reminder_minutes_before: 120
-    delivery_check_interval_hours: 4
+  # ── 生活服务 ──────────────────────────────────────────
+  # 以下生活服务配置暂未被代码消费
+  # life:
+  #   calendar_reminder_minutes_before: 120
+  #   delivery_check_interval_hours: 4

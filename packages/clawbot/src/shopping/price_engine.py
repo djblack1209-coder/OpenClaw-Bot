@@ -24,6 +24,8 @@ from typing import List, Optional
 import httpx
 from bs4 import BeautifulSoup
 
+from src.constants import DEFAULT_USER_AGENT
+
 logger = logging.getLogger(__name__)
 
 # ── price-parser (4.2k⭐) — 从文本中智能提取价格 ──────────
@@ -71,11 +73,7 @@ class ComparisonReport:
 # ──────────────────────────────────────────────
 
 _DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": DEFAULT_USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 }

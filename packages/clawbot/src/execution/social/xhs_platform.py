@@ -9,6 +9,7 @@ Social — 小红书 (Xiaohongshu) 集成层
 - 回复评论
 - 更新个人资料
 """
+import asyncio
 import logging
 from typing import Dict
 
@@ -30,7 +31,8 @@ async def publish_xhs_article(
         payload = {"title": title, "body": body}
         if image_path:
             payload["image"] = image_path
-        result = worker_fn("publish_xhs", payload)
+        # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
+        result = await asyncio.to_thread(worker_fn, "publish_xhs", payload)
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.publish] failed: {e}")
@@ -48,10 +50,12 @@ async def reply_to_xhs_comment(
     if not worker_fn:
         return {"success": False, "error": "browser worker 未配置"}
     try:
-        result = worker_fn("reply_xhs", {
+        # 浏览器自动化是同步阻塞操作，必须丢到线程池
+        reply_payload = {
             "url": note_url,
             "text": reply_text,
-        })
+        }
+        result = await asyncio.to_thread(worker_fn, "reply_xhs", reply_payload)
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.reply] failed: {e}")
@@ -69,7 +73,8 @@ async def update_xhs_profile(
         payload = {}
         if bio:
             payload["bio"] = bio
-        result = worker_fn("update_xhs_profile", payload)
+        # 浏览器自动化是同步阻塞操作，必须丢到线程池
+        result = await asyncio.to_thread(worker_fn, "update_xhs_profile", payload)
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.profile] failed: {e}")

@@ -8,20 +8,10 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..error_utils import safe_error as _safe_error
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/omega")
-
-
-def _safe_error(e: Exception) -> str:
-    """将异常转为安全的错误消息，不泄露内部路径和技术细节"""
-    msg = str(e)
-    # 过滤掉包含文件路径、模块名、类名的技术信息
-    if any(kw in msg for kw in ("/", "\\", "src.", "Traceback", "line ", "File ")):
-        return "内部服务错误，请稍后重试"
-    # 保留简短的业务错误消息（如 "vectorbt 未安装"）
-    if len(msg) > 200:
-        return "内部服务错误，请稍后重试"
-    return msg
 
 
 @router.get("/status", response_model=Dict[str, Any])

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import timedelta
 
 from src.utils import now_et
+from src.constants import DEFAULT_USER_AGENT
 from typing import List, Optional
 from urllib.parse import quote
 
@@ -67,9 +68,7 @@ async def fetch_trending(
     lang_path = f"/{quote(language)}" if language else ""
     url = f"https://github.com/trending{lang_path}?since={since}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/131.0.0.0 Safari/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "en-US,en;q=0.9",
     }

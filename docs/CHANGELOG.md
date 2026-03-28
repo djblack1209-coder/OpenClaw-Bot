@@ -5,6 +5,43 @@
 
 ---
 
+## [2026-03-29] R24: API 安全加固 + 并发安全 + async 修复 + UA 统一 + 死配置清理
+
+> 领域: `backend`, `infra`
+> 影响模块: `api/error_utils.py`(新), `api/routers/`(8文件), `bot/config.py`, `execution/social/x_platform.py`, `execution/social/xhs_platform.py`, `constants.py`(新), `core/executor.py`, `config/omega.yaml`, + 6个UA消费文件
+> 关联问题: HI-370, HI-371, HI-372, HI-373, HI-374
+
+### 变更内容
+- **P1-A: 24 个 API 端点加错误处理** — 提取 `safe_error()` 为共享工具 (`api/error_utils.py`)，消除 omega.py 中的内联定义；给 trading/social/memory/pool/system/shopping/evolution 7 个 router 全量覆盖 try/except + 中文日志 + 安全错误消息
+- **P1-B: SF Key 轮换竞态修复** — 在 `bot/config.py` 添加 `threading.Lock()`，保护 `get_siliconflow_key()` / `update_key_balance()` / `mark_key_exhausted()` / `get_total_balance()` 四个函数
+- **P1-C: 6 个社交函数 async 修复** — `x_platform.py` 3 处 + `xhs_platform.py` 3 处同步 `worker_fn()` 调用改为 `await asyncio.to_thread()`，避免 5-30 秒浏览器自动化阻塞事件循环
+- **P2-A: User-Agent 统一** — 新建 `src/constants.py` 定义 `DEFAULT_USER_AGENT` (macOS Chrome) + `XIANYU_USER_AGENT` (Windows Chrome)，6 个文件改为导入常量，Chrome 版本统一为 134.0.0.0
+- **P2-B: 死配置清理** — `executor.py` Twilio demo URL 从 HTTP→HTTPS + 环境变量可配置；`omega.yaml` 4 段未消费配置 (evolution/task_routing/social_times/life) 注释掉并标注原因
+
+### 文件变更
+- `src/api/error_utils.py` — 新增: 共享安全错误消息工具 (17行)
+- `src/api/routers/omega.py` — `_safe_error()` 改为导入共享版本
+- `src/api/routers/trading.py` — 5 个端点加 try/except + 中文注释
+- `src/api/routers/social.py` — 18 个端点加 try/except + 中文注释
+- `src/api/routers/memory.py` — 2 个端点加 try/except + logging
+- `src/api/routers/pool.py` — 1 个端点加 try/except + logging
+- `src/api/routers/system.py` — 2 个端点加 try/except + logging
+- `src/api/routers/shopping.py` — 1 个端点加 try/except + 中文注释
+- `src/api/routers/evolution.py` — 6 个端点加 try/except + 中文注释
+- `src/bot/config.py` — 添加 `threading.Lock()` + 4 个函数加锁保护
+- `src/execution/social/x_platform.py` — 3 处 worker_fn → asyncio.to_thread
+- `src/execution/social/xhs_platform.py` — 3 处 worker_fn → asyncio.to_thread
+- `src/constants.py` — 新增: DEFAULT_USER_AGENT + XIANYU_USER_AGENT
+- `src/execution/social/real_trending.py` — UA 改为导入常量
+- `src/evolution/github_trending.py` — UA 改为导入常量
+- `src/shopping/price_engine.py` — UA 改为导入常量
+- `src/xianyu/xianyu_apis.py` — UA 改为导入常量
+- `src/xianyu/xianyu_live.py` — 2 处 UA 改为导入常量
+- `src/core/executor.py` — Twilio URL HTTP→HTTPS + env var 可配置
+- `config/omega.yaml` — 4 段死配置注释掉
+
+---
+
 ## [2026-03-29] R23: 冗余文件清理 + 无占位符 f-string 修复
 
 > 领域: `backend`, `infra`
