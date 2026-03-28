@@ -17,7 +17,7 @@ browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
 import logging
 from typing import Dict, Any, Optional
 
-from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE
+from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE
 
 logger = logging.getLogger(__name__)
 

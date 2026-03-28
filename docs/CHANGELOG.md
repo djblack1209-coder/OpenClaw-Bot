@@ -5,6 +5,31 @@
 
 ---
 
+## [2026-03-29] HI-359: globals.py 循环依赖拆解 — 提取 bot/config.py
+
+> 领域: `backend`
+> 影响模块: `bot/config.py`(新), `bot/globals.py`, `history_store`, `context_manager`, `shared_memory`, `tools/memory_tool`, `browser_use_bridge`, `crewai_bridge`
+> 关联问题: HI-359, HI-367
+
+### 变更内容
+- 新建 `src/bot/config.py` (107行)，提取纯配置: 环境变量定义 + 硅基流动 Key 管理 + parse_ids 工具函数
+- `globals.py` 瘦身: 移除 ~80 行配置代码，改为从 config.py re-export (向后兼容，其他 50+ 个 consumer 无需改动)
+- 4 个循环依赖 consumer 切换 import 路径: history_store/context_manager/shared_memory/memory_tool → `from src.bot.config import DATA_DIR`
+- 2 个顶层 import consumer 切换: browser_use_bridge/crewai_bridge → `from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE`
+- 循环依赖链彻底打断: globals.py → HistoryStore → globals.py (DATA_DIR) 等 3 条循环链路不再存在
+
+### 文件变更
+- `src/bot/config.py` — 新建: 纯配置层 (无 src.* 依赖)
+- `src/bot/globals.py` — 移除配置代码，改为 re-export
+- `src/history_store.py` — import DATA_DIR 从 globals → config
+- `src/context_manager.py` — 同上
+- `src/shared_memory.py` — import SILICONFLOW_KEYS/BASE/DATA_DIR 从 globals → config
+- `src/tools/memory_tool.py` — import DATA_DIR 从 globals → config
+- `src/browser_use_bridge.py` — import SILICONFLOW_KEYS/BASE 从 globals → config
+- `src/crewai_bridge.py` — 同上
+
+---
+
 ## [2026-03-29] R22续: 修复31个运行时崩溃 + 安全密钥清理 + 9个死import清除
 
 > 领域: `backend`, `security`

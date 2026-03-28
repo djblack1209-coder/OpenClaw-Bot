@@ -17,8 +17,8 @@ class MemoryTool:
         if storage_path:
             self.storage_path = Path(storage_path)
         else:
-            # 延迟导入避免循环依赖
-            from src.bot.globals import DATA_DIR
+            # 从 config 导入避免循环依赖
+            from src.bot.config import DATA_DIR
             self.storage_path = Path(DATA_DIR) / "memory.json"
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         self.memories: Dict[str, Any] = {}

@@ -20,8 +20,8 @@ class HistoryStore:
         if db_path:
             self.db_path = Path(db_path)
         else:
-            # 延迟导入避免循环依赖 (globals.py 导入了 HistoryStore)
-            from src.bot.globals import DATA_DIR
+            # 从 config 导入避免循环依赖 (globals.py 导入了 HistoryStore, 但 config.py 无此依赖)
+            from src.bot.config import DATA_DIR
             self.db_path = Path(DATA_DIR) / "history.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 

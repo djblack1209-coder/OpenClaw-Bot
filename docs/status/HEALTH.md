@@ -91,7 +91,6 @@
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 | HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
 | HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有~15个文件>800行待拆 | 2026-03-29 |
-| HI-359 | `backend` | `bot/globals.py` | 循环依赖中心 — 与context_manager/shared_memory/history_store互引，需提取纯数据层 | 2026-03-29 |
 ### 🔵 低优先
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
@@ -104,6 +103,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-367 | `backend` | `bot/globals.py` → `bot/config.py` | 循环依赖中心: globals↔history_store/context_manager/shared_memory互引(延迟import绕行) | 提取纯配置到config.py(107行)+6个consumer切换import路径+globals.py re-export向后兼容 | 2026-03-29 | HI-359修复 |
 | HI-366 | `backend` | 7个文件 | 9个未使用import(auto_trader/freqtrade_bridge/trading_journal/context_manager/shared_memory/_helpers/cmd_analysis_mixin)+5个死依赖 | 删除import+注释requirements.txt中fpdf2/pyautogui/pyobjc-core/pyobjc-framework-Quartz/pydantic-settings | 2026-03-29 | R22续审计 |
 | HI-365 | `security` | `config/.env.example` | 3个真实密钥(2个Telegram Bot Token+1个Mem0 API Key)暴露在示例文件+重复MEM0_API_KEY定义+过期5-Bot .env.example | 替换为占位符+删除重复+删除过期文件 | 2026-03-29 | R22续审计 |
 | HI-364 | `backend` | 8个文件 | 14个未定义名称+4个幻影导入: callback_mixin(5缺失import+ibkr幻影)/workflow_mixin(4缺失import)/notify_style(缺logging)/proactive_engine(admin_ids逻辑Bug+get_history_store幻影)/xianyu_agent(PriceAgent不存在)/x_platform(_fetch_via_tweepy不存在)/rpc(3幻影)/team(2幻影) | 恢复import+重定向幻影+创建PriceAgent类+实现_fetch_via_tweepy+修复admin_ids为ALLOWED_USER_IDS | 2026-03-29 | R22续审计 |
