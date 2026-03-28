@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { api, isTauri } from '@/lib/tauri';
+import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 
 interface ActionStatus {
   running: boolean;
@@ -45,7 +45,7 @@ function AnalyticsPanel() {
     const fetchAnalytics = async () => {
       try {
         setLoading(true);
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/social/analytics?days=7');
+        const resp = await clawbotFetch('/api/v1/social/analytics?days=7');
         if (resp.ok) {
           setData(await resp.json());
         }
@@ -175,7 +175,7 @@ export function Social() {
           });
         } else {
           // 降级: 直接HTTP调用
-          const resp = await fetch('http://127.0.0.1:18790/api/v1/social/browser-status');
+          const resp = await clawbotFetch('/api/v1/social/browser-status');
           if (resp.ok) {
             const data = await resp.json();
             setBrowserStatus({
@@ -209,9 +209,8 @@ export function Social() {
         result = (data as any)?.result || (data as any)?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
-        const resp = await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+        const resp = await clawbotFetch('/api/v1/omega/process', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
         });
         const data = await resp.json();
@@ -424,9 +423,8 @@ export function Social() {
                                 await api.omegaProcess(`/post_social ${draft.title}`);
                               } else {
                                 // 降级: 直接HTTP调用
-                                await fetch('http://127.0.0.1:18790/api/v1/omega/process', {
+                                await clawbotFetch('/api/v1/omega/process', {
                                   method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ text: `/post_social ${draft.title}` }),
                                 });
                               }
