@@ -121,7 +121,7 @@ class OpenClawGateway:
             bus.subscribe("system.self_heal_failed", on_alert, "gateway_heal_alert")
 
         except Exception as e:
-            logger.warning(f"EventBus 订阅失败: {e}")
+            logger.exception("EventBus 订阅失败")
 
     # ── 命令处理 ──────────────────────────────────────
 
@@ -161,6 +161,7 @@ class OpenClawGateway:
                 f"券商: {'已连接' if status.get('broker', {}).get('connected') else '未连接'}"
             )
         except Exception as e:
+            logger.exception("获取系统状态失败")
             text = f"获取状态失败: {e}"
         await update.message.reply_text(text)
 
@@ -180,6 +181,7 @@ class OpenClawGateway:
                 lines.append(f"{status} {t.get('goal', '未知')} [{t.get('elapsed', 0):.1f}s]")
             await update.message.reply_text("\n".join(lines))
         except Exception as e:
+            logger.exception("获取活跃任务失败")
             await update.message.reply_text(f"查询失败: {e}")
 
     async def _cmd_cost(self, update: Update, context) -> None:
@@ -198,6 +200,7 @@ class OpenClawGateway:
                 f"用量: {spend/budget:.1%}" if budget > 0 else ""
             )
         except Exception as e:
+            logger.exception("获取费用信息失败")
             text = f"费用查询失败: {e}"
         await update.message.reply_text(text)
 
@@ -217,6 +220,7 @@ class OpenClawGateway:
             else:
                 await update.message.reply_text(f"扫描失败: {result.error}")
         except Exception as e:
+            logger.exception("进化扫描执行失败")
             await update.message.reply_text(f"扫描异常: {e}")
 
     async def _cmd_cancel(self, update: Update, context) -> None:
@@ -294,8 +298,9 @@ class OpenClawGateway:
                     await progress_msg.edit_text(
                         text, parse_mode="HTML", reply_markup=keyboard
                     )
-                except Exception as e:  # noqa: F841
+                except Exception as e:
                     # HTML 解析失败时降级为纯文本
+                    logger.exception("Telegram HTML 渲染失败，降级为纯文本")
                     await progress_msg.edit_text(
                         text.replace("<b>", "").replace("</b>", "")
                         .replace("<i>", "").replace("</i>", ""),
@@ -313,8 +318,9 @@ class OpenClawGateway:
                     text = self._format_result(result)
                     try:
                         await progress_msg.edit_text(text, parse_mode="HTML")
-                    except Exception as e:  # noqa: F841
+                    except Exception as e:
                         # HTML 解析失败时降级为纯文本
+                        logger.exception("Telegram HTML 渲染失败，降级为纯文本")
                         await progress_msg.edit_text(text)
                 else:
                     await progress_msg.edit_text(f"执行失败: {result.error}")
@@ -351,10 +357,13 @@ class OpenClawGateway:
 
             try:
                 await query.edit_message_text(text, parse_mode="HTML")
-            except Exception as e:  # noqa: F841
+            except Exception as e:
+                # HTML 解析失败时降级为纯文本
+                logger.exception("回调结果 HTML 渲染失败，降级为纯文本")
                 await query.edit_message_text(text)
 
         except Exception as e:
+            logger.exception("回调处理失败")
             await query.edit_message_text(f"回调处理失败: {e}")
 
     # ── 格式化 ──────────────────────────────────────
@@ -375,7 +384,7 @@ class OpenClawGateway:
             if user_msg:
                 return user_msg
         except Exception as e:
-            logger.debug("Silenced exception", exc_info=True)  # 降级到原始格式化
+            logger.exception("TaskResult.to_user_message() 调用失败，降级到原始格式化")
 
         # 降级: 手动拼接
         intent = result.intent
@@ -447,7 +456,7 @@ class OpenClawGateway:
                     msg = await self._app.bot.send_message(uid, text)
                     self._progress_messages[uid] = msg.message_id
             except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
+                logger.warning("向用户 %s 广播进度消息失败", uid, exc_info=True)
 
     async def _broadcast_result(self, data: Dict) -> None:
         """广播任务完成"""
@@ -460,7 +469,7 @@ class OpenClawGateway:
                 await self._app.bot.send_message(uid, text)
                 self._progress_messages.pop(uid, None)
             except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
+                logger.warning("向用户 %s 广播任务完成消息失败", uid, exc_info=True)
 
     async def _broadcast_alert(self, data: Dict) -> None:
         """广播告警"""
@@ -471,7 +480,7 @@ class OpenClawGateway:
             try:
                 await self._app.bot.send_message(uid, text)
             except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
+                logger.warning("向用户 %s 广播告警消息失败", uid, exc_info=True)
 
     def _format_progress(self, progress: Dict) -> str:
         """格式化进度消息"""

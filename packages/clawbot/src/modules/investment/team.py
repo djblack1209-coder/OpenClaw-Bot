@@ -546,6 +546,7 @@ class InvestmentTeam:
             brief.opportunities = []
             brief.risks = []
         except Exception as e:
+            logger.exception("简报生成失败")
             brief.market_overview = f"简报生成失败: {e}"
         return brief
 
@@ -575,6 +576,7 @@ class InvestmentTeam:
                 "sector": info.get("sector", ""),
             })
         except Exception as e:
+            logger.exception("yfinance 基本面数据获取失败: %s", symbol)
             data["yfinance_error"] = str(e)
 
         # 源2: Jina Reader 获取最新新闻（零成本，替代爬虫）
@@ -584,6 +586,7 @@ class InvestmentTeam:
             news = await fetch_news_about(f"{company_name} {symbol} 最新消息 财报", max_length=2000)
             data["recent_news"] = news
         except Exception as e:
+            logger.exception("新闻数据获取失败: %s", symbol)
             data["news_error"] = str(e)
 
         # 源3: 统一数据提供者（akshare/ccxt）
@@ -604,6 +607,7 @@ class InvestmentTeam:
             result = await get_full_analysis(symbol)
             return result or {}
         except Exception as e:
+            logger.exception("技术分析数据获取失败: %s", symbol)
             return {"error": str(e), "symbol": symbol}
 
     async def _fetch_quant_data(self, symbol: str) -> Dict:
@@ -630,6 +634,7 @@ class InvestmentTeam:
                 "avg_volume": float(hist["Volume"].mean()),
             }
         except Exception as e:
+            logger.exception("量化数据获取失败: %s", symbol)
             return {"error": str(e)}
 
     def _get_portfolio_context(self) -> Dict:
@@ -670,7 +675,8 @@ class InvestmentTeam:
             try:
                 import json_repair
                 return json_repair.loads(raw)
-            except Exception as e:  # noqa: F841
+            except Exception as e:
+                logger.exception("LLM 响应 JSON 解析失败")
                 import re
                 match = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
                 if match:

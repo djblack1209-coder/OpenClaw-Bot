@@ -280,7 +280,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             await update.message.reply_text(
                                 safe, parse_mode="HTML", reply_markup=_clarify_markup,
                             )
-                        except Exception as e:  # noqa: F841
+                        except Exception as e:
+                            logger.exception("Brain 追问回答 HTML 渲染失败")
                             await update.message.reply_text(
                                 _clarify_msg, reply_markup=_clarify_markup,
                             )
@@ -332,7 +333,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 if not quick_intent or not quick_intent.is_actionable:
                     try:
                         quick_intent = await _parser._try_llm_classify(text)
-                    except Exception as e:  # noqa: F841
+                    except Exception as e:
+                        logger.exception("LLM 轻量分类器调用失败")
                         quick_intent = None
                 if quick_intent and quick_intent.is_actionable:
                     from src.core.brain import get_brain
@@ -366,7 +368,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                     safe, parse_mode="HTML",
                                     reply_markup=reply_markup,
                                 )
-                            except Exception as e:  # noqa: F841
+                            except Exception as e:
+                                logger.exception("Brain 路由回复 HTML 渲染失败")
                                 await update.message.reply_text(
                                     user_msg,
                                     reply_markup=reply_markup,
@@ -398,7 +401,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             try:
                                 safe = md_to_html(clarify_text)
                                 await update.message.reply_text(safe, parse_mode="HTML")
-                            except Exception as e:  # noqa: F841
+                            except Exception as e:
+                                logger.exception("Brain 追问消息 HTML 渲染失败")
                                 await update.message.reply_text(clarify_text)
                             return
             except Exception as e:
@@ -524,7 +528,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         phase_idx = min(phase_idx + 1, len(_thinking_phases) - 1)
                         try:
                             await sent_message.edit_text(_thinking_phases[phase_idx])
-                        except Exception as e:  # noqa: F841
+                        except Exception as e:
+                            logger.exception("思考动画更新失败")
                             break
                 except asyncio.CancelledError as e:  # noqa: F841
                     pass
@@ -612,7 +617,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 display = md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
-                            except Exception as e:  # noqa: F841
+                            except Exception as e:
+                                logger.exception("流式消息 HTML 渲染失败，降级为 Markdown")
                                 display = (content + f"\n\n`— {getattr(self, 'name', self.bot_id)}`")[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.MARKDOWN
                         else:
@@ -962,5 +968,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
             await update.message.reply_text(greeting)
             return True
-        except Exception as e:  # noqa: F841
+        except Exception as e:
+            logger.exception("会话恢复摘要发送失败")
             return False

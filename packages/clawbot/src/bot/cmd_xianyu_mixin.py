@@ -35,7 +35,8 @@ class XianyuCommandsMixin:
             try:
                 r = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
                 status_line = "🟢 运行中" if r.stdout.strip() else "🔴 未运行"
-            except Exception as e:  # noqa: F841
+            except Exception as e:
+                logger.exception("闲鱼客服进程状态检测失败")
                 status_line = "⚪ 状态未知"
             help_msg = (
                 "🐟 闲鱼 AI 客服管理\n"
@@ -150,6 +151,7 @@ class XianyuCommandsMixin:
 
                 await send_long_message(update.effective_chat.id, "\n".join(lines), context)
             except Exception as e:
+                logger.exception("闲鱼回复配置读取失败")
                 await update.message.reply_text(f"❌ 读取配置失败: {e}")
             return
 
@@ -169,6 +171,7 @@ class XianyuCommandsMixin:
                 xctx.set_reply_style(tone)
                 await update.message.reply_text(f"✅ 回复风格已设置: {tone}")
             except Exception as e:
+                logger.exception("闲鱼回复风格设置失败")
                 await update.message.reply_text(f"❌ 设置失败: {e}")
             return
 
@@ -192,6 +195,7 @@ class XianyuCommandsMixin:
                         lines.append(f"   回复: {faq['value']}")
                     await send_long_message(update.effective_chat.id, "\n".join(lines), context)
                 except Exception as e:
+                    logger.exception("闲鱼 FAQ 列表读取失败")
                     await update.message.reply_text(f"❌ 读取失败: {e}")
                 return
 
@@ -217,6 +221,7 @@ class XianyuCommandsMixin:
                     else:
                         await update.message.reply_text(f"❌ FAQ 已达上限 ({xctx._FAQ_LIMIT} 条)")
                 except Exception as e:
+                    logger.exception("闲鱼 FAQ 添加失败")
                     await update.message.reply_text(f"❌ 添加失败: {e}")
                 return
 
@@ -232,6 +237,7 @@ class XianyuCommandsMixin:
                     else:
                         await update.message.reply_text(f"❌ 未找到关键词「{keyword}」")
                 except Exception as e:
+                    logger.exception("闲鱼 FAQ 删除失败")
                     await update.message.reply_text(f"❌ 删除失败: {e}")
                 return
 
@@ -261,6 +267,7 @@ class XianyuCommandsMixin:
                 else:
                     await update.message.reply_text(f"❌ 商品规则已达上限 ({xctx._ITEM_RULE_LIMIT} 条)")
             except Exception as e:
+                logger.exception("闲鱼商品规则设置失败")
                 await update.message.reply_text(f"❌ 设置失败: {e}")
             return
 
@@ -277,6 +284,7 @@ class XianyuCommandsMixin:
                 else:
                     await update.message.reply_text(f"❌ 未找到商品「{item_id}」的规则")
             except Exception as e:
+                logger.exception("闲鱼商品规则删除失败")
                 await update.message.reply_text(f"❌ 删除失败: {e}")
             return
 

@@ -369,7 +369,7 @@ class ToolExecutor:
 
         except Exception as e:
             self.breaker.record_failure(tool_name)
-            logger.error(f"[ToolExecutor] {tool_name} 执行异常: {e}")
+            logger.exception("[ToolExecutor] %s 执行异常", tool_name)
             return {"success": False, "error": str(e)}
 
     async def _dispatch(self, tool_name: str, tool_input: Dict) -> Dict[str, Any]:
@@ -531,6 +531,7 @@ class ToolExecutor:
                 return {"success": False, "error": quote["error"]}
             return {"success": True, "content": format_quote(quote)}
         except Exception as e:
+            logger.exception("[ToolExecutor] get_quote 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}
 
     async def _tool_technical_analysis(self, tool_input: Dict) -> Dict:
@@ -558,6 +559,7 @@ class ToolExecutor:
                 text += f"\n信号详情: {sig.get('reason', '')}"
             return {"success": True, "content": text}
         except Exception as e:
+            logger.exception("[ToolExecutor] technical_analysis 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}
 
     async def _tool_scan_market(self, tool_input: Dict) -> Dict:
@@ -581,6 +583,7 @@ class ToolExecutor:
                 )
             return {"success": True, "content": "\n".join(lines)}
         except Exception as e:
+            logger.exception("[ToolExecutor] scan_market 失败")
             return {"success": False, "error": str(e)}
 
     async def _tool_market_overview(self, _: Dict) -> Dict:
@@ -589,6 +592,7 @@ class ToolExecutor:
             text = await get_market_summary()
             return {"success": True, "content": text}
         except Exception as e:
+            logger.exception("[ToolExecutor] market_overview 失败")
             return {"success": False, "error": str(e)}
 
     async def _tool_get_positions(self, _: Dict) -> Dict:
@@ -614,6 +618,7 @@ class ToolExecutor:
                 lines.append(f"\n-- 模拟组合 --\n{sim_summary}")
             return {"success": True, "content": "\n".join(lines) if lines else "无持仓数据"}
         except Exception as e:
+            logger.exception("[ToolExecutor] get_positions 失败")
             return {"success": False, "error": str(e)}
 
     async def _tool_portfolio_summary(self, _: Dict) -> Dict:
@@ -630,11 +635,10 @@ class ToolExecutor:
                 sys_status = get_system_status()
                 lines.append(f"\n{sys_status}")
             except Exception as e:
-                logger.debug("[ToolExecutor] 交易系统状态获取失败: %s", e)
+                logger.exception("[ToolExecutor] 交易系统状态获取失败")
             return {"success": True, "content": "\n".join(lines) if lines else "无组合数据"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
-        except Exception as e:
+            logger.exception("[ToolExecutor] portfolio_summary 失败")
             return {"success": False, "error": str(e)}
 
     async def _tool_risk_status(self, _: Dict) -> Dict:
@@ -656,6 +660,7 @@ class ToolExecutor:
             ]
             return {"success": True, "content": "\n".join(lines)}
         except Exception as e:
+            logger.exception("[ToolExecutor] risk_status 失败")
             return {"success": False, "error": str(e)}
 
     async def _tool_search_news(self, tool_input: Dict) -> Dict:
@@ -689,6 +694,7 @@ class ToolExecutor:
                 ),
             }
         except Exception as e:
+            logger.exception("[ToolExecutor] search_news 失败 (query=%s)", tool_input.get("query"))
             return {"success": False, "error": str(e)}
 
     async def _tool_calc_position_size(self, tool_input: Dict) -> Dict:
@@ -716,4 +722,5 @@ class ToolExecutor:
             ]
             return {"success": True, "content": "\n".join(l for l in lines if l)}
         except Exception as e:
+            logger.exception("[ToolExecutor] calc_position_size 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}
