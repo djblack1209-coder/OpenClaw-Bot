@@ -5,6 +5,59 @@
 
 ---
 
+## [2026-03-29] 修复 22 个幻影导入: Bot 启动崩溃根治
+
+> 领域: `backend`
+> 影响模块: `multi_main`, `multi_bot`, `cmd_ibkr_mixin`, `cmd_invest_mixin`, `cmd_trading_mixin`, `cmd_analysis_mixin`, `cmd_collab_mixin`, `message_mixin`, `response_synthesizer`
+> 关联问题: HI-362 (新建并解决)
+
+### 变更内容
+
+**问题**: 9 个文件从 `globals.py` 导入 22 个符号，但这些符号在 `globals.py` 中根本不存在。
+7 个文件是顶层导入(无 try/except)，意味着 Bot 启动时会立即 `ImportError` 崩溃。
+测试通过仅因为这些模块在测试中未被直接导入。
+
+**修复**: 将每个幻影符号重定向到实际定义它的模块:
+
+| 幻影符号 | 原(错误)来源 | 修正为 |
+|----------|-------------|--------|
+| `ibkr` | `globals` | `src.broker_selector` |
+| `portfolio` | `globals` | `src.invest_tools` |
+| `invest_warmup` | `globals` (不存在) | `src.invest_tools.warmup` (别名) |
+| `BotCapability` | `globals` | `src.routing.models` |
+| `get_bot_config` | `globals` | `config.bot_profiles` |
+| `get_risk_manager` | `globals` | `src.trading._lifecycle` |
+| `get_auto_trader` | `globals` | `src.trading._lifecycle` |
+| `get_position_monitor` | `globals` | `src.trading._lifecycle` |
+| `get_system_status` | `globals` | `src.trading._lifecycle` |
+| `get_crypto_quote` | `globals` | `src.invest_tools` |
+| `get_market_summary` | `globals` | `src.invest_tools` |
+| `format_quote` | `globals` | `src.invest_tools` |
+| `get_full_analysis` | `globals` | `src.ta_engine` |
+| `scan_market` | `globals` | `src.ta_engine` |
+| `format_analysis` | `globals` | `src.ta_engine` |
+| `format_scan_results` | `globals` | `src.ta_engine` |
+| `journal` | `globals` | `src.trading_journal` |
+| `get_full_universe` | `globals` | `src.universe` |
+| `full_market_scan` | `globals` | `src.universe` |
+| `rate_limiter` | `globals` (延迟) | `src.bot.rate_limiter` |
+| `get_shared_memory` | `globals` (不存在) | `globals.shared_memory` (直接实例) |
+| `get_context_managers` | `globals` (不存在) | `globals.tiered_context_manager` (直接实例) |
+| `get_history_store` | `globals` (不存在) | `globals.history_store` (直接实例) |
+
+### 文件变更
+- `multi_main.py` — 3 个幻影修复: ibkr→broker_selector, portfolio→invest_tools, invest_warmup→invest_tools.warmup
+- `src/bot/multi_bot.py` — 2 个幻影修复: BotCapability→routing.models, get_bot_config→bot_profiles
+- `src/bot/cmd_ibkr_mixin.py` — 2 个幻影修复: ibkr→broker_selector, get_risk_manager→_lifecycle
+- `src/bot/cmd_invest_mixin.py` — 6 个幻影修复: 投资相关符号→invest_tools/_lifecycle/broker_selector
+- `src/bot/cmd_trading_mixin.py` — 6 个幻影修复: 交易系统符号→_lifecycle/invest_tools/broker_selector
+- `src/bot/cmd_analysis_mixin.py` — 5 个幻影修复: 分析符号→ta_engine/trading_journal
+- `src/bot/cmd_collab_mixin.py` — 8 个幻影修复: 协作符号→多个实际模块
+- `src/bot/message_mixin.py` — 1 个延迟幻影修复: rate_limiter→rate_limiter模块
+- `src/core/response_synthesizer.py` — 3 个延迟幻影修复: 不存在的getter→直接使用globals实例
+
+---
+
 ## [2026-03-29] 代码架构重构: 超长文件拆分 + 模块提取 + 静默异常修复
 
 > 领域: `backend`

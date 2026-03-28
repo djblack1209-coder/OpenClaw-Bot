@@ -39,9 +39,12 @@ from src.bot.globals import (
     SILICONFLOW_KEYS, CLAUDE_KEY, ALLOWED_USER_IDS,
     history_store, chat_router, collab_orchestrator,
     metrics, health_checker, shared_memory,
-    bot_registry, ibkr, portfolio, execution_hub,
-    get_stock_quote, invest_warmup, context_manager,
+    bot_registry, execution_hub,
+    get_stock_quote, context_manager,
 )
+# 幻影导入修复: ibkr/portfolio/warmup 从实际定义模块导入
+from src.broker_selector import ibkr
+from src.invest_tools import portfolio, warmup as invest_warmup
 from src.monitoring import AutoRecovery, start_metrics_server, AlertManager, AlertRule
 from src.trading_system import (
     init_trading_system, start_trading_system, stop_trading_system,

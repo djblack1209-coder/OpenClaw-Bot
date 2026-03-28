@@ -441,7 +441,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 logger.debug("模糊引导按钮发送失败", exc_info=True)
 
         # 消息频率限制 — 防止用户刷屏导致 API 过载
-        from src.bot.globals import rate_limiter
+        # 幻影导入修复: rate_limiter 从实际定义模块导入
+        from src.bot.rate_limiter import rate_limiter
         if rate_limiter:
             allowed, reason = rate_limiter.check(self.bot_id, "private" if not is_group else "group")
             if not allowed:

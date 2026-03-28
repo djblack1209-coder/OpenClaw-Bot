@@ -19,19 +19,17 @@ from src.bot.globals import (
     chat_router,
     collab_orchestrator,
     bot_registry,
-    ibkr,
-    journal,
-    get_full_universe,
-    full_market_scan,
-    get_full_analysis,
-    format_analysis,
-    format_quote,
-    get_market_summary,
     safe_edit,
     send_as_bot,
     shared_memory,
     _pending_trades,
 )
+# 幻影导入修复: 8 个符号从实际定义模块导入
+from src.broker_selector import ibkr
+from src.trading_journal import journal
+from src.universe import get_full_universe, full_market_scan
+from src.ta_engine import get_full_analysis, format_analysis
+from src.invest_tools import format_quote, get_market_summary
 
 logger = logging.getLogger(__name__)
 

@@ -9,9 +9,14 @@ from src.bot.auth import requires_auth
 from src.bot.error_messages import error_generic
 from src.telegram_ux import with_typing
 from src.bot.globals import (
-    get_auto_trader, get_risk_manager, get_position_monitor,
-    get_system_status, get_stock_quote, portfolio,
+    get_stock_quote,
 )
+# 幻影导入修复: 5 个符号从实际定义模块导入
+from src.trading._lifecycle import (
+    get_auto_trader, get_risk_manager, get_position_monitor, get_system_status,
+)
+from src.invest_tools import portfolio
+from src.broker_selector import ibkr
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +74,7 @@ class TradingCommandsMixin:
             await update.message.reply_text("风控系统未初始化")
             return
         
-        # 先从 IBKR 拉取实时数据
-        from src.bot.globals import ibkr
+        # 先从 IBKR 拉取实时数据 (ibkr 已在文件顶部从 broker_selector 导入)
         status_lines = []
         
         if ibkr and ibkr.is_connected():

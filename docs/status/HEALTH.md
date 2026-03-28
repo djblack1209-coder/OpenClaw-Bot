@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R22代码架构重构: cmd_basic子包拆分+3模块提取+api_limiter去重+静默异常修复 | 1054/1054 passed)
+> 最后更新: 2026-03-29 (R22幻影导入修复: 22个phantom symbols从9个文件修正到实际定义模块 | 1054/1054 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -104,6 +104,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-362 | `backend` | 9个bot/core文件 | 22个幻影导入(从globals.py导入不存在的符号) — Bot启动时ImportError崩溃 | 将每个符号重定向到实际定义模块(broker_selector/invest_tools/_lifecycle/ta_engine等) | 2026-03-29 | 幻影导入修复 |
 | HI-360 | `backend` | 5个core/文件 | `api_limiter` 在5个consumer文件中重复try/except fallback | 移除冗余fallback，统一为 `from src.resilience import api_limiter` 直接导入 | 2026-03-29 | HI-360修复 |
 | HI-282 | `backend` | `litellm_router.py` | 2个废弃方法(remove_exhausted/init_adaptive_router)已清理 | 删除 remove_exhausted() + init_adaptive_router()，multi_main.py 移除调用，添加注释说明已废弃 | 2026-03-28 | 死代码清理 |
 | HI-357 | `security` | `.gitignore` | .openclaw/agents/ 和 identity/ 未在.gitignore中排除 | 添加安全敏感目录到.gitignore + git rm --cached移除42个文件 | 2026-03-28 | R13审计 |

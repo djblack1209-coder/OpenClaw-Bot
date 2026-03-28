@@ -7,8 +7,10 @@ from typing import Tuple, Optional
 from src.bot.globals import (
     chat_router, health_checker, shared_memory,
     ALLOWED_USER_IDS,
-    BotCapability, get_bot_config,
 )
+# 幻影导入修复: BotCapability/get_bot_config 从实际定义模块导入
+from src.routing.models import BotCapability
+from config.bot_profiles import get_bot_config
 from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker
 
 from src.bot.api_mixin import APIMixin

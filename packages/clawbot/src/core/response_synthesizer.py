@@ -365,9 +365,10 @@ class BrainContextCollector:
             return self._profile_cache[user_id]
 
         try:
-            from src.bot.globals import get_shared_memory
+            # 幻影导入修复: shared_memory 直接从 globals 获取实例
+            from src.bot.globals import shared_memory
 
-            sm = get_shared_memory()
+            sm = shared_memory
             if not sm:
                 return ""
 
@@ -405,10 +406,10 @@ class BrainContextCollector:
     async def _get_conversation_summary(self, chat_id: str, bot_id: str) -> str:
         """从 TieredContextManager 获取对话摘要。"""
         try:
-            from src.bot.globals import get_context_managers
+            # 幻影导入修复: tiered_context_manager 直接从 globals 获取实例
+            from src.bot.globals import tiered_context_manager
 
-            managers = get_context_managers()
-            tcm = managers.get("tiered") if managers else None
+            tcm = tiered_context_manager
             if not tcm:
                 return ""
 
@@ -437,9 +438,10 @@ class BrainContextCollector:
     ) -> str:
         """获取最近 N 条消息文本。"""
         try:
-            from src.bot.globals import get_history_store
+            # 幻影导入修复: history_store 直接从 globals 获取实例
+            from src.bot.globals import history_store
 
-            hs = get_history_store()
+            hs = history_store
             if not hs:
                 return ""
 
