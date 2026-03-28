@@ -37,6 +37,7 @@ async def omega_status():
             "pending_callbacks": len(brain._pending_callbacks),
         }
     except Exception as e:
+        logger.exception("获取 Brain 状态失败")
         result["brain"] = {"error": _safe_error(e)}
 
     try:
@@ -44,6 +45,7 @@ async def omega_status():
         bus = get_event_bus()
         result["event_bus"] = bus.get_stats()
     except Exception as e:
+        logger.exception("获取 EventBus 状态失败")
         result["event_bus"] = {"error": _safe_error(e)}
 
     try:
@@ -51,6 +53,7 @@ async def omega_status():
         cc = get_cost_controller()
         result["cost"] = cc.get_stats()
     except Exception as e:
+        logger.exception("获取成本控制状态失败")
         result["cost"] = {"error": _safe_error(e)}
 
     try:
@@ -58,6 +61,7 @@ async def omega_status():
         gate = get_security_gate()
         result["security"] = gate.get_stats()
     except Exception as e:
+        logger.exception("获取安全网关状态失败")
         result["security"] = {"error": _safe_error(e)}
 
     try:
@@ -65,6 +69,7 @@ async def omega_status():
         engine = get_self_heal_engine()
         result["self_heal"] = engine.get_stats()
     except Exception as e:
+        logger.exception("获取自愈引擎状态失败")
         result["self_heal"] = {"error": _safe_error(e)}
 
     try:
@@ -72,6 +77,7 @@ async def omega_status():
         executor = get_executor()
         result["executor"] = executor.get_stats()
     except Exception as e:
+        logger.exception("获取执行器状态失败")
         result["executor"] = {"error": _safe_error(e)}
 
     return result
@@ -85,6 +91,7 @@ async def omega_cost():
         cc = get_cost_controller()
         return cc.get_weekly_report()
     except Exception as e:
+        logger.exception("获取成本周报失败")
         return {"error": _safe_error(e)}
 
 
@@ -96,6 +103,7 @@ async def omega_events(event_type: str = "", limit: int = Query(default=50, ge=1
         bus = get_event_bus()
         return {"events": bus.get_recent_events(event_type, limit)}
     except Exception as e:
+        logger.exception("获取事件历史失败")
         return {"error": _safe_error(e)}
 
 
@@ -107,6 +115,7 @@ async def omega_audit(limit: int = Query(default=50, ge=1, le=500)):
         gate = get_security_gate()
         return {"operations": gate.get_recent_operations(limit)}
     except Exception as e:
+        logger.exception("获取审计日志失败")
         return {"error": _safe_error(e)}
 
 
@@ -118,6 +127,7 @@ async def omega_tasks():
         brain = get_brain()
         return {"tasks": brain.get_active_tasks()}
     except Exception as e:
+        logger.exception("获取活跃任务失败")
         return {"error": _safe_error(e)}
 
 
@@ -130,6 +140,7 @@ async def omega_process(message: str = Query(max_length=1000), source: str = "ap
         result = await brain.process_message(source=source, message=message)
         return result.to_dict()
     except Exception as e:
+        logger.exception("Brain API 消息处理失败")
         return {"error": _safe_error(e)}
 
 
@@ -145,6 +156,7 @@ async def omega_investment_team():
             "portfolio": team.get_portfolio_status(),
         }
     except Exception as e:
+        logger.exception("获取投资团队状态失败")
         return {"error": _safe_error(e)}
 
 
@@ -159,7 +171,8 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
             result = await engine.full_analysis(symbol)
             return result.to_dict()
     except Exception as e:
-        pass
+        # Pydantic AI 引擎不可用，降级到原有团队
+        logger.exception("Pydantic AI 投资分析引擎调用失败，降级到原有团队")
     # 降级: 原有团队
     try:
         from src.modules.investment.team import get_investment_team
@@ -167,6 +180,7 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         analysis = await team.analyze(symbol, market)
         return analysis.to_dict()
     except Exception as e:
+        logger.exception("投资分析失败 (symbol=%s, market=%s)", symbol, market)
         return {"error": _safe_error(e)}
 
 
@@ -228,6 +242,7 @@ async def omega_investment_backtest(
 
         return result.to_dict()
     except Exception as e:
+        logger.exception("策略回测失败 (symbol=%s, strategy=%s)", symbol, strategy)
         return {"error": _safe_error(e)}
 
 
@@ -259,6 +274,7 @@ async def omega_jina_read(url: str):
         content = await jina_read(url)
         return {"url": url, "content": content or "无法获取内容"}
     except Exception as e:
+        logger.exception("Jina Reader 读取URL失败: %s", url)
         return {"error": _safe_error(e)}
 
 
@@ -270,6 +286,7 @@ async def omega_jina_search(query: str):
         content = await jina_search(query)
         return {"query": query, "results": content or "无搜索结果"}
     except Exception as e:
+        logger.exception("Jina Search 搜索失败: %s", query)
         return {"error": _safe_error(e)}
 
 
@@ -281,6 +298,7 @@ async def omega_generate_image(prompt: str, model: str = "fal-ai/flux/schnell"):
         url = await generate_image(prompt, model=model)
         return {"prompt": prompt, "image_url": url, "model": model}
     except Exception as e:
+        logger.exception("AI 图像生成失败")
         return {"error": _safe_error(e)}
 
 
@@ -292,6 +310,7 @@ async def omega_generate_video(prompt: str, model: str = "fal-ai/kling-video/v1/
         url = await generate_video(prompt, model=model)
         return {"prompt": prompt, "video_url": url, "model": model}
     except Exception as e:
+        logger.exception("AI 视频生成失败")
         return {"error": _safe_error(e)}
 
 
@@ -302,4 +321,5 @@ async def omega_media_models():
         from src.tools.fal_client import get_available_models
         return {"models": get_available_models()}
     except Exception as e:
+        logger.exception("获取媒体模型列表失败")
         return {"error": _safe_error(e)}

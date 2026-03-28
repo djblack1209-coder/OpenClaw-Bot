@@ -5,6 +5,49 @@
 
 ---
 
+## [2026-03-29] 全量审计第 R20 轮续: 84处静默异常修复 + 2大文件拆分 + 14页UI截图审计
+
+> 领域: `backend` | `frontend`
+> 影响模块: `omega`, `telegram_gateway`, `tool_executor`, `cmd_trading_mixin`, `cmd_xianyu_mixin`, `broker_bridge`, `message_mixin`, `agent_tools`, `investment/team`, `trading_system`, `chat_router`
+> 关联问题: 架构质量审计发现的 227 处静默异常 + 25 个 >800 行超大文件
+
+### 变更内容
+
+**静默异常修复 (84处/9个文件)**
+- `api/routers/omega.py` — 20 处: API 层所有吞掉的异常改为 logger.exception()
+- `gateway/telegram_gateway.py` — 12 处: 消息网关错误不再被静默吞掉
+- `tool_executor.py` — 12 处: 工具执行器错误现在可被观测 + 删除1处重复死代码
+- `bot/cmd_trading_mixin.py` — 8 处: IBKR/回测/再平衡等交易命令
+- `bot/cmd_xianyu_mixin.py` — 8 处: 闲鱼进程/配置/FAQ/商品规则
+- `broker_bridge.py` — 5 处: 券商接口错误不再被吞
+- `bot/message_mixin.py` — 7 处: 消息发送/渲染降级
+- `agent_tools.py` — 6 处: Agent工具调用失败
+- `modules/investment/team.py` — 6 处: 投资团队决策
+
+**超大文件拆分 (2个)**
+- `trading_system.py` (1465行) → 5 个模块: `_helpers.py` + `_init_system.py` + `_scheduler_tasks.py` + `_scheduler_daily.py` + `_lifecycle.py` + 67 行 shim
+- `chat_router.py` (1430行) → 8 个模块: `routing/constants.py` + `models.py` + `sessions.py` + `router.py` + `orchestrator.py` + `streaming.py` + `priority_queue.py` + 44 行 shim
+
+**UI 全量截图审计 (14页)**
+- 总控中心、概览、智能流监控、记忆脑图、MCP插件市场、AI配置、消息渠道、社媒总控、盈利总控、进化引擎、开发总控、测试诊断、应用日志、设置 — 全部正常
+
+### 文件变更
+- `src/api/routers/omega.py` — 20处异常日志添加
+- `src/gateway/telegram_gateway.py` — 12处异常日志添加
+- `src/tool_executor.py` — 12处异常日志添加+1处死代码删除
+- `src/bot/cmd_trading_mixin.py` — 8处异常日志添加
+- `src/bot/cmd_xianyu_mixin.py` — 8处异常日志添加
+- `src/broker_bridge.py` — 5处异常日志添加
+- `src/bot/message_mixin.py` — 7处异常日志添加
+- `src/agent_tools.py` — 6处异常日志添加
+- `src/modules/investment/team.py` — 6处异常日志添加
+- `src/trading_system.py` — 拆分为5子模块+shim
+- `src/trading/` — 新增 `_helpers.py`, `_init_system.py`, `_scheduler_tasks.py`, `_scheduler_daily.py`, `_lifecycle.py`
+- `src/chat_router.py` — 拆分为8子模块+shim
+- `src/routing/` — 新增 `constants.py`, `models.py`, `sessions.py`, `router.py`, `orchestrator.py`, `streaming.py`, `priority_queue.py`, `__init__.py`
+
+---
+
 ## [2026-03-29] 全量审计第 R20 轮: 测试修复 + Stub实现 + 前端fallback + 架构深度审计
 
 > 领域: `backend` | `frontend` | `docs`

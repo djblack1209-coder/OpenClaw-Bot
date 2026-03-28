@@ -153,6 +153,7 @@ class WebSearchTool(Tool):
             from src.tools.tavily_search import quick_answer
             return _run_async_in_sync(quick_answer(query))
         except Exception as e:
+            logger.exception("Agent 网络搜索失败")
             return f"搜索失败: {e}"
 
 
@@ -173,6 +174,7 @@ class PortfolioTool(Tool):
             summary = _run_async_in_sync(portfolio.get_portfolio_summary())
             return summary
         except Exception as e:
+            logger.exception("Agent 投资组合查询失败")
             return f"获取投资组合失败: {e}"
 
 
@@ -211,6 +213,7 @@ class NewsSearchTool(Tool):
                 return f"=== {topic} 新闻 ===\n" + "\n".join(lines)
             return f"未找到关于 {topic} 的新闻"
         except Exception as e:
+            logger.exception("Agent 新闻搜索失败")
             return f"新闻搜索失败: {e}"
 
 
@@ -231,6 +234,7 @@ class MarketOverviewTool(Tool):
             from src.invest_tools import get_market_summary
             return _run_async_in_sync(get_market_summary())
         except Exception as e:
+            logger.exception("Agent 市场概览获取失败")
             return f"获取市场概览失败: {e}"
 
 
@@ -251,6 +255,7 @@ class RiskAnalysisTool(Tool):
             rm = RiskManager()
             return rm.format_status()
         except Exception as e:
+            logger.exception("Agent 风控状态获取失败")
             return f"获取风控状态失败: {e}"
 
 
@@ -287,6 +292,7 @@ class SentimentAnalysisTool(Tool):
                 )
             return f"未能获取 {topic} 的情绪数据，搜索服务暂不可用"
         except Exception as e:
+            logger.exception("Agent 情绪分析数据获取失败")
             return f"情绪分析数据获取失败: {e}"
 
 

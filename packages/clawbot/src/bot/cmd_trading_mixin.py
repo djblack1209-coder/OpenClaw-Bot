@@ -102,6 +102,7 @@ class TradingCommandsMixin:
                     status_lines.append("当前持仓: 无")
                     status_lines.append("")
             except Exception as e:
+                logger.exception("IBKR 实时数据拉取失败")
                 status_lines.append(f"⚠️ IBKR数据拉取失败: {e}")
                 status_lines.append("")
         else:
@@ -243,7 +244,8 @@ class TradingCommandsMixin:
                         # 发送纯文本摘要 + 提示有详细报告
                         summary = format_multi_report(reports)
                         summary += "\n\n📊 详细图表报告已生成（含权益曲线、回撤图、策略对比）"
-                    except Exception as e:  # noqa: F841
+                    except Exception as e:
+                        logger.exception("回测 HTML 报告生成失败")
                         summary = format_multi_report(reports)
                     if len(summary) > 4000:
                         for part in summary.split("\n\n"):
@@ -254,6 +256,7 @@ class TradingCommandsMixin:
                 else:
                     await update.message.reply_text("所有标的回测失败。")
             except Exception as e:
+                logger.exception("批量回测执行失败")
                 from src.telegram_ux import send_error_with_retry
                 await send_error_with_retry(update, context, e, retry_command="/backtest list")
         else:
@@ -285,6 +288,7 @@ class TradingCommandsMixin:
                     # Bokeh 可视化图表（增强）
                     await self._send_bokeh_chart(update, context, symbol, period)
                 except Exception as e:
+                    logger.exception("Freqtrade 回测执行失败")
                     from src.telegram_ux import send_error_with_retry
                     await send_error_with_retry(
                         update, context, e,
@@ -327,6 +331,7 @@ class TradingCommandsMixin:
                     # Bokeh 可视化图表（增强）
                     await self._send_bokeh_chart(update, context, symbol, period)
                 except Exception as e:
+                    logger.exception("自研引擎回测执行失败")
                     from src.telegram_ux import send_error_with_retry
                     await send_error_with_retry(update, context, e, retry_command=f"/backtest {symbol} {period}")
 
@@ -381,7 +386,7 @@ class TradingCommandsMixin:
                         )
                         result_text += extra
                 except Exception:
-                    pass
+                    logger.exception("蒙特卡洛增强指标计算失败")
 
             elif mode == "OPTIMIZE":
                 # 参数优化：使用默认参数网格
@@ -408,6 +413,7 @@ class TradingCommandsMixin:
             await send_long_message(chat_id, result_text, context)
 
         except Exception as e:
+            logger.exception("高级回测分析执行失败")
             from src.telegram_ux import send_error_with_retry
             await send_error_with_retry(
                 update, context, e,
@@ -501,4 +507,5 @@ class TradingCommandsMixin:
             else:
                 await update.message.reply_text(text)
         except Exception as e:
+            logger.exception("再平衡分析执行失败")
             await update.message.reply_text(error_generic(str(e)))

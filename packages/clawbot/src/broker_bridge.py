@@ -387,6 +387,7 @@ class IBKRBridge:
                     }
             return result
         except Exception as e:
+            logger.exception("获取账户摘要失败")
             return {"error": f"获取账户摘要失败: {e}"}
 
     async def get_account_value(self) -> str:
@@ -660,6 +661,7 @@ class IBKRBridge:
                 "timestamp": now_et().isoformat(),
             }
         except Exception as e:
+            logger.exception("获取 IBKR 实时快照失败: %s", symbol)
             return {"error": f"获取快照失败: {e}"}
         finally:
             try:
@@ -852,7 +854,8 @@ class IBKRBridge:
             try:
                 # ib_insync 有时返回字符串时间
                 return datetime.fromisoformat(str(raw_time)).timestamp()
-            except Exception as e:  # noqa: F841
+            except Exception as e:
+                logger.exception("时间戳转换失败")
                 return 0.0
 
         fills = []
@@ -913,6 +916,7 @@ class IBKRBridge:
                     return {"order_id": order_id, "status": "cancelled"}
             return {"error": f"找不到订单 #{order_id}"}
         except Exception as e:
+            logger.exception("取消订单失败: order_id=%s", order_id)
             return {"error": f"取消订单失败: {e}"}
 
     async def cancel_all_orders(self) -> Dict:
@@ -925,6 +929,7 @@ class IBKRBridge:
             await asyncio.sleep(1)
             return {"status": "all_cancelled"}
         except Exception as e:
+            logger.exception("取消所有订单失败")
             return {"error": f"取消所有订单失败: {e}"}
 
     # ============ 滑点估算 ============
