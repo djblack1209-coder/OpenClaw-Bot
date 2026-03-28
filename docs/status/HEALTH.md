@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R20审计续: 84处静默异常修复+2大文件拆分+14页UI截图 | 1054/1054 passed)
+> 最后更新: 2026-03-29 (R21全方位审计: 13阶段全覆盖+文件治理+安全清理 | 1054/1054 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -61,7 +61,7 @@
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
 | 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
-| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充 |
+| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
 | 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
 | 通知可靠性 | 🟢 加固 | P0通知3次重试 + 关机刷新批处理 + EventBus异常日志 |
@@ -90,6 +90,9 @@
 | HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 | HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
+| HI-358 | `backend` | 23个文件 | 23个Python文件超800行待拆分(前8个>1100行最紧迫: cmd_basic_mixin/risk_manager/monitoring等) | 2026-03-29 |
+| HI-359 | `backend` | `bot/globals.py` | 循环依赖中心 — 与context_manager/shared_memory/history_store互引，需提取纯数据层 | 2026-03-29 |
+| HI-360 | `backend` | 多模块 | `api_limiter` 在resilience.py和5个core/文件中重复定义，应提取为公共工具 | 2026-03-29 |
 
 ### 🔵 低优先
 
