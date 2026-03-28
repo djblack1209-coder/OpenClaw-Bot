@@ -37,8 +37,8 @@ except ImportError:
 
 def _build_mem0_config() -> dict:
     """构建 Mem0 配置，优先使用环境变量中的 API。"""
-    # 延迟导入避免循环依赖 (globals.py 导入了 SharedMemory)
-    from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE, DATA_DIR
+    # 从 config 导入避免循环依赖 (globals.py 导入了 SharedMemory, 但 config.py 无此依赖)
+    from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE, DATA_DIR
 
     config: dict = {
         "vector_store": {
@@ -162,8 +162,8 @@ class SharedMemory:
         if db_path:
             self.db_path = Path(db_path)
         else:
-            # 延迟导入避免循环依赖 (globals.py 导入了 SharedMemory)
-            from src.bot.globals import DATA_DIR
+            # 从 config 导入避免循环依赖 (globals.py 导入了 SharedMemory, 但 config.py 无此依赖)
+            from src.bot.config import DATA_DIR
             self.db_path = Path(DATA_DIR) / "shared_memory.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()

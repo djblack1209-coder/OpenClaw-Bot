@@ -89,8 +89,8 @@ class ContextManager:
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
-            # 延迟导入避免循环依赖 (globals.py 导入了 ContextManager)
-            from src.bot.globals import DATA_DIR
+            # 从 config 导入避免循环依赖 (globals.py 导入了 ContextManager, 但 config.py 无此依赖)
+            from src.bot.config import DATA_DIR
             self.storage_dir = Path(DATA_DIR)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.compressed_summary: Optional[str] = None

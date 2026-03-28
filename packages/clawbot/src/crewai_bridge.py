@@ -19,7 +19,7 @@ import os
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass
 
-from src.bot.globals import SILICONFLOW_KEYS, SILICONFLOW_BASE
+from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE
 
 logger = logging.getLogger(__name__)
 

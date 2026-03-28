@@ -1,6 +1,9 @@
 """
 全局共享状态 — 从 multi_main.py 提取
 所有 mixin 通过 import 此模块访问共享组件，避免循环依赖。
+
+注意: 纯配置(环境变量/API Key管理)已提取到 src.bot.config (HI-359)。
+本模块保留运行时共享状态 + 向后兼容 re-export。
 """
 import os
 import logging
@@ -9,10 +12,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-try:
-    from dotenv import load_dotenv
-except Exception as e:  # noqa: F841 # pragma: no cover
-    load_dotenv = None
+# ---- 从 config.py 导入纯配置 (HI-359: 打破循环依赖) ----
+from src.bot.config import (  # noqa: F401 — 向后兼容 re-export
+    parse_ids,
+    ALLOWED_USER_IDS,
+    SILICONFLOW_KEYS, SILICONFLOW_BASE, SILICONFLOW_PAID_KEYS,
+    DATA_DIR, CLAUDE_KEY, CLAUDE_BASE,
+    G4F_BASE, G4F_KEY, KIRO_BASE, KIRO_KEY,
+    SERPAPI_KEY, BRAVE_SEARCH_API_KEY, CLOUDCONVERT_API_KEY,
+    COMPOSIO_API_KEY, SKYVERN_API_KEY,
+    current_sf_key_idx, sf_key_balances, LOW_BALANCE_THRESHOLD,
+    get_siliconflow_key, update_key_balance, get_total_balance, mark_key_exhausted,
+)
 
 from src.history_store import HistoryStore
 from src.chat_router import ChatRouter, CollabOrchestrator
@@ -31,85 +42,6 @@ from src.pipeline_helper import execute_trade_via_pipeline  # re-export
 from src.trading_system import get_trading_pipeline  # re-export
 
 logger = logging.getLogger(__name__)
-
-if load_dotenv:
-    _config_env_path = Path(__file__).resolve().parents[2] / "config" / ".env"
-    if _config_env_path.exists():
-        load_dotenv(_config_env_path)
-
-# ============ 环境变量 / API 配置 ============
-
-def parse_ids(s):
-    if not s:
-        return set()
-    return {int(x.strip()) for x in s.split(',') if x.strip().isdigit()}
-
-# 规范环境变量: ALLOWED_USER_IDS 是管理员用户 ID 的唯一事实源 (canonical env var)
-ALLOWED_USER_IDS = parse_ids(os.getenv('ALLOWED_USER_IDS', ''))
-
-SILICONFLOW_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_KEYS', '').split(',') if k.strip()]
-SILICONFLOW_BASE = os.getenv('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
-SILICONFLOW_PAID_KEYS = [k.strip() for k in os.getenv('SILICONFLOW_PAID_KEYS', '').split(',') if k.strip()]
-
-# 数据目录 (所有持久化文件的根目录)
-DATA_DIR = os.getenv("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))
-CLAUDE_KEY = os.getenv('CLAUDE_API_KEY', '')
-CLAUDE_BASE = os.getenv('CLAUDE_BASE_URL', 'https://api.anthropic.com/v1')
-G4F_BASE = os.getenv('G4F_BASE_URL', 'http://127.0.0.1:18891/v1')
-G4F_KEY = os.getenv('G4F_API_KEY', 'dummy')
-KIRO_BASE = os.getenv('KIRO_BASE_URL', 'http://127.0.0.1:18793/v1')
-KIRO_KEY = os.getenv('KIRO_API_KEY', '')
-
-# 搜索/工具 API
-SERPAPI_KEY = os.getenv('SERPAPI_KEY', '')
-BRAVE_SEARCH_API_KEY = os.getenv('BRAVE_SEARCH_API_KEY', '')
-CLOUDCONVERT_API_KEY = os.getenv('CLOUDCONVERT_API_KEY', '')
-
-# Composio 外部服务集成 (250+ 应用: Gmail/Calendar/Slack/GitHub 等)
-COMPOSIO_API_KEY = os.getenv('COMPOSIO_API_KEY', '')
-
-# Skyvern 视觉 RPA (11k⭐, 截图 + LLM 理解页面)
-SKYVERN_API_KEY = os.getenv('SKYVERN_API_KEY', '')
-
-# 硅基流动 Key 管理
-current_sf_key_idx = 0
-_sf_init_balance = float(os.getenv("SF_INITIAL_BALANCE", "13.0"))
-sf_key_balances = {k: _sf_init_balance for k in SILICONFLOW_KEYS}
-LOW_BALANCE_THRESHOLD = float(os.getenv('SF_LOW_BALANCE', '1.0'))
-
-
-def get_siliconflow_key():
-    """获取可用的硅基流动 Key，自动跳过低余额的"""
-    global current_sf_key_idx
-    if not SILICONFLOW_KEYS:
-        return None
-    for _ in range(len(SILICONFLOW_KEYS)):
-        key = SILICONFLOW_KEYS[current_sf_key_idx % len(SILICONFLOW_KEYS)]
-        current_sf_key_idx += 1
-        balance = sf_key_balances.get(key, 0)
-        if balance > LOW_BALANCE_THRESHOLD:
-            return key
-    logger.warning("所有 API Key 余额不足！")
-    return SILICONFLOW_KEYS[0] if SILICONFLOW_KEYS else None
-
-
-def update_key_balance(key: str, cost: float):
-    if key in sf_key_balances:
-        sf_key_balances[key] = max(0, sf_key_balances[key] - cost)
-        if sf_key_balances[key] < LOW_BALANCE_THRESHOLD:
-            logger.warning(f"API Key {key[:8]}... 余额不足: {sf_key_balances[key]:.2f}元")
-
-
-def get_total_balance() -> float:
-    return sum(sf_key_balances.values())
-
-
-def mark_key_exhausted(key: str):
-    """API 返回余额不足错误时，标记该 Key 为耗尽"""
-    if key in sf_key_balances:
-        sf_key_balances[key] = 0
-        logger.warning(f"API Key {key[:8]}... 已标记为耗尽（API返回余额不足）")
-
 
 # ============ 全局共享组件 ============
 
