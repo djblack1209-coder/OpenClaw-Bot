@@ -9,10 +9,12 @@ from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
 from src.telegram_ux import with_typing
 from src.bot.globals import (
-    get_full_analysis, scan_market, format_analysis, format_scan_results,
-    journal, chat_router, collab_orchestrator, bot_registry,
+    chat_router, collab_orchestrator, bot_registry,
     send_long_message, safe_edit,
 )
+# 幻影导入修复: 5 个符号从实际定义模块导入
+from src.ta_engine import get_full_analysis, scan_market, format_analysis, format_scan_results
+from src.trading_journal import journal
 
 logger = logging.getLogger(__name__)
 

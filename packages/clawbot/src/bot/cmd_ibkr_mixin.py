@@ -8,9 +8,12 @@ from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
 from src.telegram_ux import with_typing
 from src.bot.globals import (
-    ibkr, get_stock_quote, get_risk_manager,
+    get_stock_quote,
     send_long_message,
 )
+# 幻影导入修复: ibkr/get_risk_manager 从实际定义模块导入
+from src.broker_selector import ibkr
+from src.trading._lifecycle import get_risk_manager
 
 logger = logging.getLogger(__name__)
 

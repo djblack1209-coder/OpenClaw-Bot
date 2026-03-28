@@ -7,10 +7,12 @@ import time as _time
 from typing import Dict
 
 from src.bot.globals import (
-    get_stock_quote, get_crypto_quote, get_market_summary,
-    format_quote, portfolio, send_long_message,
-    get_risk_manager, ibkr,
+    get_stock_quote, send_long_message,
 )
+# 幻影导入修复: 6 个符号从实际定义模块导入
+from src.invest_tools import get_crypto_quote, get_market_summary, format_quote, portfolio
+from src.trading._lifecycle import get_risk_manager
+from src.broker_selector import ibkr
 from src.message_format import format_error
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
