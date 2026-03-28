@@ -12,7 +12,8 @@ from src.utils import now_et
 
 from src.models import TradeProposal
 from src.auto_trader import TradingPipeline, AutoTrader
-from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
+from src.risk_config import RiskConfig, RiskCheckResult
+from src.risk_manager import RiskManager
 from src.decision_validator import DecisionValidator, ValidationResult
 from src.position_monitor import PositionMonitor, MonitoredPosition
 

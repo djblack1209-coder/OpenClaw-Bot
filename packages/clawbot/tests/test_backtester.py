@@ -8,7 +8,7 @@ from src.backtester import (
     Backtester, BacktestConfig, BacktestTrade, Bar, PerformanceReport,
     bars_to_dataframe,
 )
-from src.risk_manager import RiskConfig
+from src.risk_config import RiskConfig
 
 
 def _make_bars(prices, start=None, volume=1000000):

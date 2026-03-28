@@ -13,7 +13,8 @@ from datetime import timedelta
 from src.position_monitor import (
     PositionMonitor, MonitoredPosition, ExitReason, ExitSignal,
 )
-from src.risk_manager import RiskManager, RiskConfig
+from src.risk_config import RiskConfig
+from src.risk_manager import RiskManager
 from src.utils import now_et
 
 

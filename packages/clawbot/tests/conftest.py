@@ -8,7 +8,8 @@ from datetime import datetime
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.risk_manager import RiskManager, RiskConfig, RiskCheckResult
+from src.risk_config import RiskConfig, RiskCheckResult
+from src.risk_manager import RiskManager
 from src.models import TradeProposal
 from src.auto_trader import TradingPipeline
 from src.position_monitor import PositionMonitor, MonitoredPosition, ExitReason

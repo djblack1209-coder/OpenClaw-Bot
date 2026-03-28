@@ -24,7 +24,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from src.risk_manager import RiskManager, RiskConfig
+from src.risk_config import RiskConfig
+from src.risk_manager import RiskManager
 
 logger = logging.getLogger(__name__)
 

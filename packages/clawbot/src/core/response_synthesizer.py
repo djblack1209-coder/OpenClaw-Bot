@@ -22,6 +22,9 @@ from typing import Any, Dict, Optional
 
 from config.prompts import SOUL_CORE, RESPONSE_SYNTH_PROMPT, FOLLOWUP_SUGGESTIONS_PROMPT
 
+# 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.resilience import api_limiter
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,15 +128,6 @@ class ResponseSynthesizer:
 
             if not free_pool:
                 return None
-
-            try:
-                from src.resilience import api_limiter
-            except ImportError:
-                from contextlib import asynccontextmanager
-
-                @asynccontextmanager
-                async def api_limiter(service: str = "generic"):
-                    yield
 
             async with api_limiter("llm"):
                 resp = await free_pool.acompletion(
@@ -257,16 +251,7 @@ class ResponseSynthesizer:
                 f"一句话总结:"
             )
 
-            try:
-                from src.resilience import api_limiter as _limiter
-            except ImportError:
-                from contextlib import asynccontextmanager
-
-                @asynccontextmanager
-                async def _limiter(service: str = "generic"):
-                    yield
-
-            async with _limiter("llm"):
+            async with api_limiter("llm"):
                 resp = await free_pool.acompletion(
                     model_family="g4f",
                     messages=[{"role": "user", "content": prompt}],

@@ -25,16 +25,8 @@ try:
 except ImportError:
     HAS_JIEBA = False
 
-# Resilience integration — rate-limit LLM calls
-try:
-    from src.resilience import api_limiter
-except ImportError:
-    from contextlib import asynccontextmanager
-
-    @asynccontextmanager
-    async def api_limiter(service: str = "generic"):  # type: ignore[misc]
-        """No-op fallback when resilience module is unavailable."""
-        yield
+# 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
 

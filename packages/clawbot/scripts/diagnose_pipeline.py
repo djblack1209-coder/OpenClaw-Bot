@@ -241,7 +241,8 @@ async def stage5_risk_check(candidates):
         return
 
     try:
-        from src.risk_manager import RiskManager, RiskConfig
+        from src.risk_config import RiskConfig
+        from src.risk_manager import RiskManager
         config = RiskConfig(total_capital=2000.0)
         rm = RiskManager(config)
 

@@ -95,7 +95,7 @@ def _init_patches():
     """Return a dict of patch objects for all lazy imports in init_trading_system."""
     return {
         "RiskManager": patch("src.risk_manager.RiskManager"),
-        "RiskConfig": patch("src.risk_manager.RiskConfig"),
+        "RiskConfig": patch("src.risk_config.RiskConfig"),
         "PositionMonitor": patch("src.position_monitor.PositionMonitor"),
         "TradingPipeline": patch("src.auto_trader.TradingPipeline"),
         "AutoTrader": patch("src.auto_trader.AutoTrader"),
@@ -240,7 +240,7 @@ class TestGetSystemStatus:
         at.format_status.return_value = "AutoTrader: idle"
         ts._auto_trader = at
 
-        with patch("src.broker_bridge.ibkr") as mock_ibkr:
+        with patch("src.broker_selector.ibkr") as mock_ibkr:
             mock_ibkr.get_connection_status.return_value = "IBKR: connected"
             mock_ibkr.is_connected.return_value = True
             mock_ibkr.budget = 1000.0

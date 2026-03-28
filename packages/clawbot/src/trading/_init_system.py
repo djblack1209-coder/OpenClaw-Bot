@@ -57,7 +57,8 @@ def init_trading_system(
     quote_func = get_quote_func or _noop_quote
 
     # 1. 风控引擎 — 根据已有持仓自动校准资金基准
-    from src.risk_manager import RiskManager, RiskConfig
+    from src.risk_config import RiskConfig
+    from src.risk_manager import RiskManager
     effective_capital = float(capital)
     if portfolio and _env_bool("AUTO_SCALE_CAPITAL_FROM_PORTFOLIO", True):
         exposure = _estimate_open_positions_exposure(portfolio)

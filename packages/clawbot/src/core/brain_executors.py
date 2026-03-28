@@ -13,13 +13,8 @@ from typing import Dict
 from config.prompts import SOUL_CORE, INFO_QUERY_PROMPT, INVEST_DIRECTOR_DECISION_PROMPT
 from src.bot.error_messages import error_ai_busy
 
-try:
-    from src.resilience import api_limiter
-except ImportError:
-    from contextlib import asynccontextmanager
-    @asynccontextmanager
-    async def api_limiter(service: str = "generic"):
-        yield
+# 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -581,7 +576,7 @@ class BrainExecutorMixin:
     async def _exec_portfolio_query(self, params: Dict) -> Dict:
         """持仓查询 — 先检查连接状态，避免超时等待"""
         try:
-            from src.broker_bridge import ibkr
+            from src.broker_selector import ibkr
             # 快速检查连接状态（不等待重连）
             if not getattr(ibkr, '_connected', False):
                 return {"source": "portfolio", "positions": [],

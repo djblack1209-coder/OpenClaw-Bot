@@ -229,7 +229,8 @@ class TestExecuteTradeBrokerTimeout:
         import asyncio
         from unittest.mock import AsyncMock as _AsyncMock
         from src.auto_trader import TradingPipeline
-        from src.risk_manager import RiskManager, RiskConfig
+        from src.risk_config import RiskConfig
+        from src.risk_manager import RiskManager
         from src.models import TradeProposal
         from src.utils import now_et
 

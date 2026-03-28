@@ -39,16 +39,8 @@ from src.core.response_synthesizer import (
 )
 from src.bot.error_messages import error_ai_busy
 
-# Resilience integration — rate-limit external LLM/API calls
-try:
-    from src.resilience import api_limiter
-except ImportError:
-    from contextlib import asynccontextmanager
-
-    @asynccontextmanager
-    async def api_limiter(service: str = "generic"):  # type: ignore[misc]
-        """No-op fallback when resilience module is unavailable."""
-        yield
+# 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.resilience import api_limiter
 
 from src.core.brain_graph_builders import BrainGraphBuilderMixin
 from src.core.brain_executors import BrainExecutorMixin

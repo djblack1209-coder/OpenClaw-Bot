@@ -5,6 +5,56 @@
 
 ---
 
+## [2026-03-29] 代码架构重构: 超长文件拆分 + 模块提取 + 静默异常修复
+
+> 领域: `backend`
+> 影响模块: `cmd_basic_mixin`, `risk_manager`, `trading_journal`, `broker_bridge`, `workflow_mixin`
+> 关联问题: HI-358, HI-360
+
+### 变更内容
+
+**1. cmd_basic_mixin.py 子包拆分 (1358行 → 7个子模块)**
+- 创建 `src/bot/cmd_basic/` 子包，将 28 个方法按职责拆分为 7 个 Mixin
+- `help_mixin.py` — 帮助菜单和新用户引导 (cmd_start, handle_help_callback)
+- `status_mixin.py` — 系统状态查询 (cmd_status/metrics/model/pool/keyhealth)
+- `settings_mixin.py` — 用户设置 (cmd_settings, handle_settings_callback)
+- `memory_mixin.py` — 记忆管理 (cmd_memory, handle_memory/feedback_callback)
+- `callback_mixin.py` — 按钮回调 (handle_notify/card/clarification_callback)
+- `tools_mixin.py` — 工具命令 (cmd_draw/news/qr/tts/agent, handle_inline_query)
+- `context_mixin.py` — 上下文管理 (cmd_context/compact/clear/voice/lanes)
+- `__init__.py` — MRO 组装 BasicCommandsMixin
+
+**2. 模块提取**
+- `risk_config.py` — 从 risk_manager.py 提取 RiskConfig + RiskCheckResult 数据类
+- `trading_memory_bridge.py` — 从 trading_journal.py 提取 TradingMemoryBridge 类
+- `broker_selector.py` — 从 broker_bridge.py 提取 get_ibkr/ibkr/get_broker 单例工厂
+
+**3. 静默异常修复**
+- `cmd_basic_mixin.py:654` — `except Exception: pass` → `logger.debug("删除等待提示消息失败")`
+- `workflow_mixin.py:475` — `except Exception as e: pass` → `logger.debug("回复工作流提示消息失败")`
+
+**4. 向后兼容**
+- 所有原始模块保留 re-export，现有 import 路径不受影响
+- `broker_bridge.py` 使用 `__getattr__` 懒加载避免循环导入
+- 12 个消费者文件的 import 路径已更新到新位置
+
+### 文件变更
+- `src/bot/cmd_basic/` — **新建** 子包 (8个文件)
+- `src/bot/cmd_basic_mixin.py` — 1358行 → re-export 转发文件
+- `src/risk_config.py` — **新建** RiskConfig/RiskCheckResult 数据类
+- `src/risk_manager.py` — 移除数据类定义，改为导入
+- `src/trading_memory_bridge.py` — **新建** TradingMemoryBridge 类
+- `src/trading_journal.py` — 移除 TradingMemoryBridge (~140行)
+- `src/broker_selector.py` — **新建** 券商选择器/单例工厂
+- `src/broker_bridge.py` — 移除选择器代码 (~65行)，改用 __getattr__ 兼容
+- `src/bot/workflow_mixin.py` — 静默异常修复
+- `src/core/brain.py` — api_limiter import 清理 (HI-360)
+- `src/core/brain_executors.py` — api_limiter import 清理 (HI-360)
+- `src/core/intent_parser.py` — api_limiter import 清理 (HI-360)
+- `src/core/proactive_engine.py` — api_limiter import 清理 (HI-360)
+- `src/core/response_synthesizer.py` — api_limiter import 清理 (HI-360)
+- `tests/test_trading_system.py` — mock 路径更新适配新模块位置
+
 ## [2026-03-29] 全量审计 R21: 全方位健康体检 + 文件治理 + 安全清理
 
 > 领域: `backend` | `frontend` | `docs` | `infra`
