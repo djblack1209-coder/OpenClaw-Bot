@@ -290,7 +290,7 @@ class EvolutionCard(ResponseCard):
 
     def to_telegram(self) -> str:
         lines = [
-            f"🧬 <b>进化扫描完成</b>",
+            "🧬 <b>进化扫描完成</b>",
             f"发现 {self.proposals_count} 个候选项目",
             "",
         ]
@@ -315,7 +315,7 @@ class EvolutionCard(ResponseCard):
             name = p.get("repo_name", "?")[:12]
             buttons.append([
                 InlineKeyboardButton(f"✅ 批准 {name}", callback_data=f"evo:approve:{pid}"),
-                InlineKeyboardButton(f"❌ 拒绝", callback_data=f"evo:reject:{pid}"),
+                InlineKeyboardButton("❌ 拒绝", callback_data=f"evo:reject:{pid}"),
             ])
         return InlineKeyboardMarkup(buttons)
 
@@ -464,7 +464,7 @@ class ShoppingCard(ResponseCard):
         if self.products:
             first_name = self.products[0].get("name", "商品")[:10]
             buttons.append([
-                InlineKeyboardButton(f"🔄 重新比价", callback_data=f"shop:refresh:{self.product[:20]}"),
+                InlineKeyboardButton("🔄 重新比价", callback_data=f"shop:refresh:{self.product[:20]}"),
             ])
         return InlineKeyboardMarkup(buttons) if buttons else None
 

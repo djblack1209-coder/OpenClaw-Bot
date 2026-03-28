@@ -132,7 +132,7 @@ class SessionMixin:
             if history_text:
                 prompt += f"\n之前的讨论:\n{history_text}\n"
             prompt += (
-                f"\n请就此主题发表你的观点。"
+                "\n请就此主题发表你的观点。"
                 f"如果之前有其他人发言，请回应或补充，不要重复已有观点。"
                 f"保持简洁，每次发言控制在200字以内。"
             )

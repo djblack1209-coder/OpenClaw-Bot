@@ -415,7 +415,7 @@ def format_trade_card(trade: dict) -> str:
 
     lines = [
         f"{emoji} <b>{side_label} {symbol}</b> x{qty}",
-        f"━━━━━━━━━━━━━━━",
+        "━━━━━━━━━━━━━━━",
         f"📈 价格: ${entry:.2f}",
     ]
 

@@ -143,7 +143,7 @@ class _StatusMixin:
     async def cmd_pool(self, update, context):
         """查看免费 API 池 + 智能路由状态"""
         pool_stats = free_pool.get_stats()
-        text = f"🆓 **免费 API 池状态**\n\n"
+        text = "🆓 **免费 API 池状态**\n\n"
         text += f"总源数: {pool_stats['total_sources']}\n"
         text += f"活跃源: {pool_stats['active_sources']}\n"
         text += f"模型族: {pool_stats['model_families']}\n\n"

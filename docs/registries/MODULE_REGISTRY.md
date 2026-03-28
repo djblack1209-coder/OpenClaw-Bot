@@ -504,7 +504,8 @@
 |------|------|------|----------|
 | auth.py | `src/api/auth.py` | 75 | API 共享密钥认证 (X-API-Token header + WS query param) |
 | multi_bot.py | `src/bot/multi_bot.py` | 420 | MultiBot 核心类，组合 11 个 Mixin |
-| globals.py | `src/bot/globals.py` | 300 | 全局共享对象 + DATA_DIR + SiliconFlow SSOT |
+| globals.py | `src/bot/globals.py` | 200 | 全局共享对象实例 + 辅助函数 + UserPreferences (纯配置已提取到 config.py) |
+| config.py | `src/bot/config.py` | 107 | 纯配置层: 环境变量 + API Key管理 + SF Key轮转 (HI-359: 打破循环依赖) |
 | api_mixin.py | `src/bot/api_mixin.py` | 371 | LLM API 调用 (流式/非流式) |
 | rate_limiter.py | `src/bot/rate_limiter.py` | 243 | 消息频率限制 + Token 预算 |
 | sau_bridge.py | `src/sau_bridge.py` | 175 | 社媒发布桥接层 — CLI 调用 social-auto-upload (抖音/B站/小红书/快手) |

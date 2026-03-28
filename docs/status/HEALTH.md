@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R22续: 14个未定义名称修复+4个幻影导入修复+3个真实密钥清洗+9个死import清理+5个死依赖注释 | 1046/1046 passed)
+> 最后更新: 2026-03-29 (R23清理: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string修复+新增bot/config.py | 1046/1046 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -55,13 +55,13 @@
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
 | 生活自动化 | 🟢 运行中 | 提醒(周期性)+记账(收入/支出/月预算/超支告警/月度聚合)+话费水电费余额追踪+定时低余额告警 |
 | 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发 |
-| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 |
+| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
 | 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
-| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录 |
+| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
 | 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
 | 通知可靠性 | 🟢 加固 | P0通知3次重试 + 关机刷新批处理 + EventBus异常日志 |
@@ -103,6 +103,8 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-369 | `backend` | 15个文件 | 33个无占位符f-string(f"text"应为"text") — 微浪费性能+代码规范问题 | Python 3.12 AST精确检测+列偏移定位修复(跨15文件) | 2026-03-29 | R23清理 |
+| HI-368 | `infra` | 全项目 | 19个幽灵.pyc(源文件已删除)+5个空目录+deploy_bundle_final(4文件)被git跟踪 | 删除.pyc+删除空目录+git rm deploy_bundle_final+.gitignore补充 | 2026-03-29 | R23清理 |
 | HI-367 | `backend` | `bot/globals.py` → `bot/config.py` | 循环依赖中心: globals↔history_store/context_manager/shared_memory互引(延迟import绕行) | 提取纯配置到config.py(107行)+6个consumer切换import路径+globals.py re-export向后兼容 | 2026-03-29 | HI-359修复 |
 | HI-366 | `backend` | 7个文件 | 9个未使用import(auto_trader/freqtrade_bridge/trading_journal/context_manager/shared_memory/_helpers/cmd_analysis_mixin)+5个死依赖 | 删除import+注释requirements.txt中fpdf2/pyautogui/pyobjc-core/pyobjc-framework-Quartz/pydantic-settings | 2026-03-29 | R22续审计 |
 | HI-365 | `security` | `config/.env.example` | 3个真实密钥(2个Telegram Bot Token+1个Mem0 API Key)暴露在示例文件+重复MEM0_API_KEY定义+过期5-Bot .env.example | 替换为占位符+删除重复+删除过期文件 | 2026-03-29 | R22续审计 |

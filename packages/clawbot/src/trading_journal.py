@@ -729,7 +729,7 @@ class TradingJournal:
                 )
 
         p = data['performance_30d']
-        lines.append(f"\n-- 近30天绩效 --")
+        lines.append("\n-- 近30天绩效 --")
         lines.append(f"总交易:{p['total_trades']} 胜率:{p['win_rate']}% 总PnL:${p['total_pnl']:+.2f}")
         lines.append(f"夏普:{p['sharpe']} 最大回撤:${p['max_drawdown']:.2f} 期望值:${p['expectancy']:+.2f}")
 

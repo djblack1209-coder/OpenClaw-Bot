@@ -72,3 +72,5 @@ htmlcov/
 # 分发
 dist/
 build/
+deploy_bundle_final/
+openclaw_deploy_final/

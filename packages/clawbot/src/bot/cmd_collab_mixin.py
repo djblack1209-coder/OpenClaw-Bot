@@ -746,7 +746,7 @@ class CollabCommandsMixin:
             # 如果审查不通过且可以重试，进行修订
             if not task.review_passed and task.retry_count < task.max_retries:
                 await safe_edit(status_msg,
-                    f"**🤝 协作模式**\n\n"
+                    "**🤝 协作模式**\n\n"
                     f"**阶段 1/4** ✅ 规划完成\n"
                     f"**阶段 2/4** 🔄 修订执行中 (Claude Opus 4.6)\n"
                     f"**阶段 3/4** - 待重新审查\n"
