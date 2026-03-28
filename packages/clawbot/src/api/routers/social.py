@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Query
+from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import SocialStatus, SocialPublishRequest
 
@@ -12,12 +13,22 @@ router = APIRouter()
 
 @router.get("/social/status", response_model=SocialStatus)
 def get_social_status():
-    return ClawBotRPC._rpc_social_status()
+    """获取社交媒体状态"""
+    try:
+        return ClawBotRPC._rpc_social_status()
+    except Exception as e:
+        logger.exception("获取社交媒体状态失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/topics", response_model=Dict[str, Any])
 async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
-    return await ClawBotRPC._rpc_social_discover_topics(count=count)
+    """发现热门话题"""
+    try:
+        return await ClawBotRPC._rpc_social_discover_topics(count=count)
+    except Exception as e:
+        logger.exception("发现话题失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/compose", response_model=Dict[str, Any])
@@ -26,59 +37,86 @@ async def compose_content(
     platform: str = "x",
     persona: str = "default",
 ):
-    """AI content generation — returns ready-to-publish text for review.
+    """AI 内容生成 — 返回可发布的文本供审核。
 
-    Full pipeline: persona loading → strategy derivation → content composition.
+    完整管道：人设加载 → 策略推导 → 内容创作。
     搬运 content_strategy.py 的三步管道。
     """
-    return await ClawBotRPC._rpc_social_compose(
-        topic=topic,
-        platform=platform,
-        persona_name=persona,
-    )
+    try:
+        return await ClawBotRPC._rpc_social_compose(
+            topic=topic,
+            platform=platform,
+            persona_name=persona,
+        )
+    except Exception as e:
+        logger.exception("AI 内容生成失败 (topic=%s, platform=%s)", topic, platform)
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/publish", response_model=Dict[str, Any])
 async def publish_content(req: SocialPublishRequest):
-    """Publish content to social platform via browser worker.
+    """发布内容到社交平台（通过浏览器 worker）。
 
-    Note: Requires browser worker to be configured. Returns error
-    with clear message if worker is not available.
+    需要浏览器 worker 已配置，否则返回明确的错误消息。
     """
-    return await ClawBotRPC._rpc_social_publish(
-        platform=req.platform,
-        content=req.content,
-    )
+    try:
+        return await ClawBotRPC._rpc_social_publish(
+            platform=req.platform,
+            content=req.content,
+        )
+    except Exception as e:
+        logger.exception("社交内容发布失败 (platform=%s)", req.platform)
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/research", response_model=Dict[str, Any])
 async def deep_research(topic: str, count: int = Query(default=10, ge=1, le=50)):
-    """Deep topic research — scrapes platform data and aggregates insights."""
-    return await ClawBotRPC._rpc_social_research(topic=topic, count=count)
+    """深度话题研究 — 抓取平台数据并聚合洞察"""
+    try:
+        return await ClawBotRPC._rpc_social_research(topic=topic, count=count)
+    except Exception as e:
+        logger.exception("深度话题研究失败 (topic=%s)", topic)
+        return {"error": _safe_error(e)}
 
 
 @router.get("/social/metrics", response_model=Dict[str, Any])
 async def get_metrics():
-    """Social metrics/analytics — follower counts, engagement stats."""
-    return await ClawBotRPC._rpc_social_metrics()
+    """社交指标/分析 — 粉丝数、互动率等"""
+    try:
+        return await ClawBotRPC._rpc_social_metrics()
+    except Exception as e:
+        logger.exception("获取社交指标失败")
+        return {"error": _safe_error(e)}
 
 
 @router.get("/social/personas", response_model=Dict[str, Any])
 def list_personas():
-    """List available social personas from data/social_personas/."""
-    return ClawBotRPC._rpc_social_personas()
+    """列出可用的社交人设（data/social_personas/）"""
+    try:
+        return ClawBotRPC._rpc_social_personas()
+    except Exception as e:
+        logger.exception("列出社交人设失败")
+        return {"error": _safe_error(e)}
 
 
 @router.get("/social/calendar", response_model=Dict[str, Any])
 async def get_calendar(days: int = Query(default=7, ge=1, le=30)):
-    """Content calendar generation — trending topics mapped to a day-by-day plan."""
-    return await ClawBotRPC._rpc_social_calendar(days=days)
+    """内容日历生成 — 热门话题映射为逐日计划"""
+    try:
+        return await ClawBotRPC._rpc_social_calendar(days=days)
+    except Exception as e:
+        logger.exception("内容日历生成失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/generate-image", response_model=Dict[str, Any])
 async def gen_image(prompt: str):
-    """Generate image via ComfyUI (local) or cloud fallback."""
-    return await ClawBotRPC._rpc_generate_image(prompt)
+    """通过 ComfyUI（本地）或云端降级生成图片"""
+    try:
+        return await ClawBotRPC._rpc_generate_image(prompt)
+    except Exception as e:
+        logger.exception("图片生成失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/generate-persona-photo", response_model=Dict[str, Any])
@@ -87,8 +125,12 @@ async def gen_persona_photo(
     scenario: str = "working in a cafe",
     mood: str = "natural",
 ):
-    """Generate persona-consistent photo for social media content."""
-    return await ClawBotRPC._rpc_generate_persona_photo(persona, scenario, mood)
+    """生成与人设一致的社交媒体照片"""
+    try:
+        return await ClawBotRPC._rpc_generate_persona_photo(persona, scenario, mood)
+    except Exception as e:
+        logger.exception("人设照片生成失败 (persona=%s)", persona)
+        return {"error": _safe_error(e)}
 
 
 # ──────────────────────────────────────────────
@@ -97,30 +139,46 @@ async def gen_persona_photo(
 
 @router.get("/social/autopilot/status", response_model=Dict[str, Any])
 def autopilot_status():
-    """Get autopilot scheduler status — running, jobs, next action."""
-    return ClawBotRPC._rpc_autopilot_status()
+    """获取自动驾驶调度状态 — 运行中、任务列表、下次动作"""
+    try:
+        return ClawBotRPC._rpc_autopilot_status()
+    except Exception as e:
+        logger.exception("获取自动驾驶状态失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/autopilot/start", response_model=Dict[str, Any])
 def autopilot_start():
-    """Start the social autopilot scheduler (5 daily cron jobs)."""
-    return ClawBotRPC._rpc_autopilot_start()
+    """启动社交自动驾驶调度器（5 个定时任务）"""
+    try:
+        return ClawBotRPC._rpc_autopilot_start()
+    except Exception as e:
+        logger.exception("启动自动驾驶失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/autopilot/stop", response_model=Dict[str, Any])
 def autopilot_stop():
-    """Stop the social autopilot scheduler."""
-    return ClawBotRPC._rpc_autopilot_stop()
+    """停止社交自动驾驶调度器"""
+    try:
+        return ClawBotRPC._rpc_autopilot_stop()
+    except Exception as e:
+        logger.exception("停止自动驾驶失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/autopilot/trigger/{job_id}", response_model=Dict[str, Any])
 def autopilot_trigger(job_id: str):
-    """Manually trigger a specific autopilot job.
+    """手动触发特定的自动驾驶任务。
 
-    Valid job_ids: morning_scan, noon_engage, evening_produce,
-    night_publish, late_review.
+    有效 job_id: morning_scan, noon_engage, evening_produce,
+    night_publish, late_review。
     """
-    return ClawBotRPC._rpc_autopilot_trigger(job_id)
+    try:
+        return ClawBotRPC._rpc_autopilot_trigger(job_id)
+    except Exception as e:
+        logger.exception("手动触发自动驾驶任务失败 (job_id=%s)", job_id)
+        return {"error": _safe_error(e)}
 
 
 # ──────────────────────────────────────────────
@@ -129,23 +187,39 @@ def autopilot_trigger(job_id: str):
 
 @router.get("/social/drafts", response_model=Dict[str, Any])
 def list_drafts():
-    """List all drafts from autopilot state."""
-    return ClawBotRPC._rpc_social_drafts()
+    """列出自动驾驶状态中的所有草稿"""
+    try:
+        return ClawBotRPC._rpc_social_drafts()
+    except Exception as e:
+        logger.exception("列出草稿失败")
+        return {"error": _safe_error(e)}
 
 
 @router.patch("/social/drafts/{index}", response_model=Dict[str, Any])
 def update_draft(index: int, text: str):
-    """Update a draft's text content."""
-    return ClawBotRPC._rpc_social_draft_update(index, text)
+    """更新草稿文本内容"""
+    try:
+        return ClawBotRPC._rpc_social_draft_update(index, text)
+    except Exception as e:
+        logger.exception("更新草稿失败 (index=%d)", index)
+        return {"error": _safe_error(e)}
 
 
 @router.delete("/social/drafts/{index}", response_model=Dict[str, Any])
 def delete_draft(index: int):
-    """Delete a draft by index."""
-    return ClawBotRPC._rpc_social_draft_delete(index)
+    """按索引删除草稿"""
+    try:
+        return ClawBotRPC._rpc_social_draft_delete(index)
+    except Exception as e:
+        logger.exception("删除草稿失败 (index=%d)", index)
+        return {"error": _safe_error(e)}
 
 
 @router.post("/social/drafts/{index}/publish", response_model=Dict[str, Any])
 async def publish_draft(index: int):
-    """Publish a draft immediately."""
-    return await ClawBotRPC._rpc_social_draft_publish(index)
+    """立即发布指定草稿"""
+    try:
+        return await ClawBotRPC._rpc_social_draft_publish(index)
+    except Exception as e:
+        logger.exception("发布草稿失败 (index=%d)", index)
+        return {"error": _safe_error(e)}

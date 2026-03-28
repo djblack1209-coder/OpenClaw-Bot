@@ -13,6 +13,7 @@ v2.0 变更 (2026-03-23):
 - 监控 X 动态
 - 推文分析和转发策略
 """
+import asyncio
 import logging
 import os
 import hashlib
@@ -201,7 +202,8 @@ async def publish_x_post(
         if image_path:
             payload["image"] = image_path
         _emit_flow("llm", "browser", "running", "启动浏览器发布 X 推文", {"length": len(content)})
-        result = worker_fn("publish_x", payload)
+        # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
+        result = await asyncio.to_thread(worker_fn, "publish_x", payload)
         _emit_flow("browser", "social", "success", "X 推文发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:
@@ -222,10 +224,12 @@ async def reply_to_x_post(
         return {"success": False, "error": "browser worker 未配置"}
     try:
         _emit_flow("llm", "browser", "running", "启动浏览器回复 X 推文", {"url": tweet_url[:60]})
-        result = worker_fn("reply_x", {
+        # 浏览器自动化是同步阻塞操作，必须丢到线程池
+        reply_payload = {
             "url": tweet_url,
             "text": reply_text,
-        })
+        }
+        result = await asyncio.to_thread(worker_fn, "reply_x", reply_payload)
         _emit_flow("browser", "social", "success", "X 回复发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:
@@ -371,7 +375,8 @@ async def fetch_x_reader_payload(
     if not worker_fn:
         return {"success": False, "error": "worker_fn not provided"}
     try:
-        result = worker_fn("x_read", {"url": url})
+        # 浏览器自动化是同步阻塞操作，必须丢到线程池
+        result = await asyncio.to_thread(worker_fn, "x_read", {"url": url})
         return result if isinstance(result, dict) else {"success": False, "error": "invalid result"}
     except Exception as e:
         return {"success": False, "error": str(e)}

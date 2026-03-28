@@ -1,12 +1,37 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-29 | R22 深度清理: 删除15个死文件 + env_*函数合并到utils.py
+> 最后更新: 2026-03-29 | R24 审计修复: error_utils.py + constants.py 新增，8个router加固
 
 ---
 
-## 0. R22 架构重构新增模块
+## 0. R22-R24 架构重构新增模块
 
-以下模块在 R22 代码架构重构中从超长文件提取而来。
+以下模块在 R22-R24 代码架构重构中提取/新增而来。
+
+### 0.0a error_utils.py — API 错误处理工具
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/api/error_utils.py` |
+| 行数 | ~17 |
+| 导入方 | `api/routers/omega.py`, `trading.py`, `social.py`, `memory.py`, `pool.py`, `system.py`, `shopping.py`, `evolution.py` (8个router) |
+| 依赖 | 无 (纯标准库) |
+
+**Public API:**
+- `safe_error(e: Exception) -> str` — 将异常转为安全的错误消息，过滤内部路径和技术细节
+
+### 0.0b constants.py — 全局常量
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/constants.py` |
+| 行数 | ~22 |
+| 导入方 | `real_trending.py`, `github_trending.py`, `price_engine.py`, `xianyu_apis.py`, `xianyu_live.py` (5个文件) |
+| 依赖 | 无 |
+
+**Public API:**
+- `DEFAULT_USER_AGENT` — 通用 Web 抓取 User-Agent (macOS Chrome)
+- `XIANYU_USER_AGENT` — 闲鱼专用 User-Agent (Windows Chrome)
 
 ### 0.1 risk_config.py — 风控配置数据类
 

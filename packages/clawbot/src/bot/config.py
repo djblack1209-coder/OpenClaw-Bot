@@ -8,6 +8,7 @@ HI-359: 2026-03-29
 """
 import os
 import logging
+import threading
 from pathlib import Path
 
 # ---- dotenv 加载 (.env 文件) ----
@@ -73,37 +74,44 @@ _sf_init_balance = float(os.getenv("SF_INITIAL_BALANCE", "13.0"))
 sf_key_balances = {k: _sf_init_balance for k in SILICONFLOW_KEYS}
 LOW_BALANCE_THRESHOLD = float(os.getenv('SF_LOW_BALANCE', '1.0'))
 
+# 保护 Key 轮转的线程锁（asyncio 事件循环 + BackgroundScheduler 线程共用）
+_sf_lock = threading.Lock()
+
 
 def get_siliconflow_key():
-    """获取可用的硅基流动 Key，自动跳过低余额的"""
+    """获取可用的硅基流动 Key，自动跳过低余额的（线程安全）"""
     global current_sf_key_idx
     if not SILICONFLOW_KEYS:
         return None
-    for _ in range(len(SILICONFLOW_KEYS)):
-        key = SILICONFLOW_KEYS[current_sf_key_idx % len(SILICONFLOW_KEYS)]
-        current_sf_key_idx += 1
-        balance = sf_key_balances.get(key, 0)
-        if balance > LOW_BALANCE_THRESHOLD:
-            return key
+    with _sf_lock:
+        for _ in range(len(SILICONFLOW_KEYS)):
+            key = SILICONFLOW_KEYS[current_sf_key_idx % len(SILICONFLOW_KEYS)]
+            current_sf_key_idx += 1
+            balance = sf_key_balances.get(key, 0)
+            if balance > LOW_BALANCE_THRESHOLD:
+                return key
     logger.warning("所有 API Key 余额不足！")
     return SILICONFLOW_KEYS[0] if SILICONFLOW_KEYS else None
 
 
 def update_key_balance(key: str, cost: float):
-    """扣减指定 Key 的余额，低于阈值时发出警告"""
-    if key in sf_key_balances:
-        sf_key_balances[key] = max(0, sf_key_balances[key] - cost)
-        if sf_key_balances[key] < LOW_BALANCE_THRESHOLD:
-            logger.warning(f"API Key {key[:8]}... 余额不足: {sf_key_balances[key]:.2f}元")
+    """扣减指定 Key 的余额，低于阈值时发出警告（线程安全）"""
+    with _sf_lock:
+        if key in sf_key_balances:
+            sf_key_balances[key] = max(0, sf_key_balances[key] - cost)
+            if sf_key_balances[key] < LOW_BALANCE_THRESHOLD:
+                logger.warning(f"API Key {key[:8]}... 余额不足: {sf_key_balances[key]:.2f}元")
 
 
 def get_total_balance() -> float:
     """返回所有硅基流动 Key 的余额总和"""
-    return sum(sf_key_balances.values())
+    with _sf_lock:
+        return sum(sf_key_balances.values())
 
 
 def mark_key_exhausted(key: str):
-    """API 返回余额不足错误时，标记该 Key 为耗尽"""
-    if key in sf_key_balances:
-        sf_key_balances[key] = 0
-        logger.warning(f"API Key {key[:8]}... 已标记为耗尽（API返回余额不足）")
+    """API 返回余额不足错误时，标记该 Key 为耗尽（线程安全）"""
+    with _sf_lock:
+        if key in sf_key_balances:
+            sf_key_balances[key] = 0
+            logger.warning(f"API Key {key[:8]}... 已标记为耗尽（API返回余额不足）")

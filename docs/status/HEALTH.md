@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R23清理: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string修复+新增bot/config.py | 1046/1046 passed)
+> 最后更新: 2026-03-29 (R24审计修复: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 | 1046/1046 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -55,7 +55,7 @@
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
 | 生活自动化 | 🟢 运行中 | 提醒(周期性)+记账(收入/支出/月预算/超支告警/月度聚合)+话费水电费余额追踪+定时低余额告警 |
 | 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发 |
-| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 |
+| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 + R24: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
@@ -103,6 +103,11 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-374 | `backend` | 7个router文件 | 24个API端点无try/except — 原始Python异常直接泄露给API客户端 | 提取共享safe_error()到error_utils.py+7个router全量覆盖try/except | 2026-03-29 | R24审计修复 |
+| HI-373 | `backend` | `bot/config.py` | SF Key轮转函数(get_siliconflow_key/update_key_balance/mark_key_exhausted)无线程锁 — asyncio事件循环+BackgroundScheduler线程竞态 | 添加threading.Lock()保护3个函数+get_total_balance | 2026-03-29 | R24审计修复 |
+| HI-372 | `backend` | `x_platform.py`, `xhs_platform.py` | 6个async def函数内同步调用worker_fn() — 浏览器自动化(5-30s)冻结事件循环 | 包装为await asyncio.to_thread(worker_fn, ...) | 2026-03-29 | R24审计修复 |
+| HI-371 | `backend` | 6个文件 | 6处硬编码User-Agent字符串版本不一致(Chrome 131 vs 133) | 提取到src/constants.py(DEFAULT_USER_AGENT+XIANYU_USER_AGENT)+6文件引用常量 | 2026-03-29 | R24审计修复 |
+| HI-370 | `backend` | `executor.py`, `omega.yaml` | Twilio demo URL用HTTP不安全+omega.yaml 4段死配置(evolution/task_routing/social_times/life)未被代码消费 | Twilio URL改HTTPS+env var可配置; yaml 4段注释掉并标注原因 | 2026-03-29 | R24审计修复 |
 | HI-369 | `backend` | 15个文件 | 33个无占位符f-string(f"text"应为"text") — 微浪费性能+代码规范问题 | Python 3.12 AST精确检测+列偏移定位修复(跨15文件) | 2026-03-29 | R23清理 |
 | HI-368 | `infra` | 全项目 | 19个幽灵.pyc(源文件已删除)+5个空目录+deploy_bundle_final(4文件)被git跟踪 | 删除.pyc+删除空目录+git rm deploy_bundle_final+.gitignore补充 | 2026-03-29 | R23清理 |
 | HI-367 | `backend` | `bot/globals.py` → `bot/config.py` | 循环依赖中心: globals↔history_store/context_manager/shared_memory互引(延迟import绕行) | 提取纯配置到config.py(107行)+6个consumer切换import路径+globals.py re-export向后兼容 | 2026-03-29 | HI-359修复 |

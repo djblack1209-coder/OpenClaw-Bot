@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter
+from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import (
     TradingPositions, PnLSummary,
@@ -15,47 +16,71 @@ router = APIRouter()
 
 @router.get("/trading/positions", response_model=TradingPositions)
 async def get_positions():
-    return await ClawBotRPC._rpc_trading_positions()
+    """获取当前交易持仓"""
+    try:
+        return await ClawBotRPC._rpc_trading_positions()
+    except Exception as e:
+        logger.exception("获取交易持仓失败")
+        return {"error": _safe_error(e)}
 
 
 @router.get("/trading/pnl", response_model=PnLSummary)
 async def get_pnl():
-    return await ClawBotRPC._rpc_trading_pnl()
+    """获取盈亏摘要"""
+    try:
+        return await ClawBotRPC._rpc_trading_pnl()
+    except Exception as e:
+        logger.exception("获取盈亏摘要失败")
+        return {"error": _safe_error(e)}
 
 
 @router.get("/trading/signals", response_model=Dict[str, Any])
 def get_signals():
-    return ClawBotRPC._rpc_trading_signals()
+    """获取交易信号"""
+    try:
+        return ClawBotRPC._rpc_trading_signals()
+    except Exception as e:
+        logger.exception("获取交易信号失败")
+        return {"error": _safe_error(e)}
 
 
 @router.get("/trading/system", response_model=Dict[str, Any])
 def get_trading_system():
-    return ClawBotRPC._rpc_trading_system_status()
+    """获取交易系统状态"""
+    try:
+        return ClawBotRPC._rpc_trading_system_status()
+    except Exception as e:
+        logger.exception("获取交易系统状态失败")
+        return {"error": _safe_error(e)}
 
 
 @router.post("/trading/vote", response_model=Dict[str, Any])
 async def trigger_vote(req: TeamVoteRequest):
-    """Trigger AI team vote for a symbol.
-    
-    Automatically fetches technical analysis first (搬运 freqtrade 的
-    analysis-before-vote 模式), then passes to team voting.
+    """触发 AI 团队投票
+
+    搬运 freqtrade 的 analysis-before-vote 模式：
+    先获取技术分析数据，再提交给团队投票。
     """
-    # Step 1: Fetch technical analysis (required by run_team_vote)
+    # 第一步：获取技术分析数据（团队投票必须依赖分析结果）
     try:
         from src.ta_engine import get_full_analysis
         analysis = await get_full_analysis(
             symbol=req.symbol, period=req.period,
         )
     except Exception as e:
-        logger.error("Failed to get analysis for %s: %s", req.symbol, e)
-        return {"error": f"Technical analysis failed: {e}"}
+        logger.exception("获取 %s 技术分析失败", req.symbol)
+        return {"error": _safe_error(e)}
 
     if not analysis:
-        return {"error": f"No market data available for {req.symbol}"}
+        return {"error": f"无法获取 {req.symbol} 的市场数据"}
 
-    # Step 2: Run AI team vote with analysis
-    result = await ClawBotRPC._rpc_trigger_team_vote(
-        symbol=req.symbol,
-        analysis=analysis,
-    )
-    return result
+    # 第二步：用分析数据跑 AI 团队投票
+    try:
+        result = await ClawBotRPC._rpc_trigger_team_vote(
+            symbol=req.symbol,
+            analysis=analysis,
+        )
+        return result
+    except Exception as e:
+        logger.exception("AI 团队投票失败 (symbol=%s)", req.symbol)
+        return {"error": _safe_error(e)}
