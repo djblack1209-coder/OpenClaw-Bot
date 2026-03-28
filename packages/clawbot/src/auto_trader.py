@@ -17,19 +17,13 @@ v1.1 变更 (2026-03-23):
 7. 收盘复盘（trading_journal）
 """
 import asyncio
-import json
 import logging
 import os
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Dict, List, Optional, Callable, Any
-from enum import Enum
 
 from src.models import TradeProposal
-from src.notify_style import (
-    format_trade_executed,
-    format_trade_submitted,
-)
 from src.utils import now_et as _now_et
 
 logger = logging.getLogger(__name__)

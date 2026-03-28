@@ -5,6 +5,45 @@
 
 ---
 
+## [2026-03-29] 全量审计 R21: 全方位健康体检 + 文件治理 + 安全清理
+
+> 领域: `backend` | `frontend` | `docs` | `infra`
+> 影响模块: `auto_trader`, `.gitignore`, `config`, 根目录文件治理
+> 关联问题: HI-351, HI-352, HI-353, HI-354
+
+### 审计范围 (13个阶段全覆盖)
+- **UI/UX审计**: 14个页面全部截图检查，深色模式渲染正常，无容器漂移/字间距/排版问题
+- **交互测试**: 所有按钮/导航/空态提示正常，Tauri IPC 降级优雅处理
+- **后端测试**: 1054/1054 全通过，Python 语法零错误，TypeScript 类型零错误
+- **架构审计**: 识别 23 个 >800 行文件、27 对循环引用、5 处未使用 import
+- **安全审计**: 无真实密钥泄露，.env 未被 Git 跟踪，闲鱼 app-key 硬编码已登记
+- **文件治理**: 清理残留目录、审计截图、数据库文件，修正 .gitignore 规则
+- **API审计**: 16 个 LLM Provider/60+ 模型 deployment 配置完整
+- **macOS App**: OpenClaw.app (arm64) 可正常启动运行
+- **远程服务器**: 腾讯云备用节点正常 (Ubuntu 22.04, 磁盘 42% 已用)
+
+### 变更内容
+- `auto_trader.py` — 清理 5 个未使用的 import (json, timedelta, Enum, format_trade_executed, format_trade_submitted)
+- `.gitignore` — 添加 `*.db` 和 `audit-*.png` 排除规则，防止数据库和临时截图污染仓库
+- 从 Git 索引移除 24 个审计截图(4.2MB) + 2 个 SQLite 数据库文件
+- 删除顶层 `clawbot/` 残留目录（正式代码在 `packages/clawbot/`）
+- 创建 `config/.env.example` 模板文件(350行)，帮助新部署了解所需环境变量
+
+### 文件变更
+- `packages/clawbot/src/auto_trader.py` — 清理未使用 import
+- `.gitignore` — 新增 *.db 和审计截图排除规则
+- `packages/clawbot/config/.env.example` — 新建环境变量模板
+- `clawbot/` — 删除残留目录
+- `audit-*.png` (24个) — 从 Git 索引移除
+- `clawbot/data/*.db` (2个) — 从 Git 索引移除
+
+### 架构审计发现 (登记为技术债，本轮不拆分)
+- 23 个 >800 行文件待拆分（前 8 个 >1100 行最紧迫）
+- `bot.globals` 是循环依赖中心（与 context_manager/shared_memory/history_store 互引）
+- `auto_trader.py` (1045行) 仍为完整单体，建议后续拆分
+
+---
+
 ## [2026-03-29] 全量审计第 R20 轮续: 84处静默异常修复 + 2大文件拆分 + 14页UI截图审计
 
 > 领域: `backend` | `frontend`

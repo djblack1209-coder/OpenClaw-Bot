@@ -82,8 +82,13 @@ backups/
 .openclaw/browser/
 
 # SQLite 数据库
+*.db
 *.db-wal
 *.db-shm
+
+# 审计截图（临时产物）
+audit-*.png
+R21-*.png
 
 # Python 虚拟环境（确保通配符覆盖）
 .venv*/
