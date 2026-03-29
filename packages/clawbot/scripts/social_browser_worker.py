@@ -43,7 +43,33 @@ SOCIAL_BROWSER_DIR = Path(
 )
 SOCIAL_BROWSER_PORT = int(os.getenv("OPENCLAW_SOCIAL_BROWSER_PORT", "19222"))
 SOCIAL_BROWSER_CDP_URL = f"http://127.0.0.1:{SOCIAL_BROWSER_PORT}"
-FONT_PATH = "/System/Library/Fonts/Hiragino Sans GB.ttc"
+def _detect_font_path() -> str:
+    """自动检测系统中可用的中文字体路径（支持 macOS 和 Linux）"""
+    import platform
+    candidates = []
+    if platform.system() == "Darwin":
+        candidates = [
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
+        ]
+    else:
+        # Linux 常见中文字体路径
+        candidates = [
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    # 均未找到时返回空字符串，PIL 会使用默认字体
+    return ""
+
+FONT_PATH = os.getenv("OPENCLAW_FONT_PATH", "") or _detect_font_path()
 CHROME_CANDIDATES = [
     os.getenv("OPENCLAW_SOCIAL_CHROME_BIN", "").strip(),
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",

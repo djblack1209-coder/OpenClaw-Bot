@@ -37,7 +37,7 @@ export function Dev() {
       try {
         const res = await invoke<SystemResources>('get_system_resources');
         setResources(res);
-      } catch { /* Tauri command may not exist yet */ }
+      } catch { /* Tauri 命令可能尚未注册 */ }
     };
     poll();
     const timer = setInterval(poll, 15000);
@@ -51,7 +51,7 @@ export function Dev() {
     setStatuses(prev => ({ ...prev, [actionId]: { running: true } }));
     try {
       const result = await invoke<string>('send_telegram_command', { command: fullCmd });
-      setStatuses(prev => ({ ...prev, [actionId]: { running: false, lastResult: result || 'sent' } }));
+      setStatuses(prev => ({ ...prev, [actionId]: { running: false, lastResult: result || '已发送' } }));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatuses(prev => ({ ...prev, [actionId]: { running: false, error: msg } }));
@@ -145,7 +145,7 @@ export function Dev() {
                 </button>
 
                 {status?.lastResult && !status.running && (
-                  <p className="text-xs text-green-400 mt-1.5 truncate">sent</p>
+                  <p className="text-xs text-green-400 mt-1.5 truncate">已发送</p>
                 )}
                 {status?.error && !status.running && (
                   <p className="text-xs text-red-400 mt-1.5 truncate">{status.error}</p>

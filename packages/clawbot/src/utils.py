@@ -2,7 +2,9 @@
 ClawBot 共享工具函数
 避免跨模块重复的样板代码
 """
+import json
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
@@ -39,8 +41,6 @@ def today_et_str(fmt: str = "%Y-%m-%d") -> str:
 
 # ============ 环境变量工具 ============
 
-import os
-
 
 def env_bool(key: str, default: bool) -> bool:
     """从环境变量读取布尔值，支持 1/true/yes/on"""
@@ -75,9 +75,6 @@ def env_float(key: str, default: float) -> float:
     except (TypeError, ValueError) as e:  # noqa: F841
         return default
 
-import json
-import logging
-from src.utils import now_et
 
 def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict = None):
     """

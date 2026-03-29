@@ -49,13 +49,7 @@ try:
 except ImportError:
     logger.info("[X] tweepy 未安装 (pip install tweepy)")
 
-# 与 task_graph.py 同名桩，待统一提取
-try:
-    from src.utils import emit_flow_event as _emit_flow
-except Exception as e:  # noqa: F841
-    def _emit_flow(src, tgt, status, msg, data=None):  # type: ignore[misc]
-        # 当 emit_flow_event 不可用时，降级为 debug 日志输出，避免事件丢失
-        logger.debug("[FlowEvent] %s→%s [%s] %s data=%s", src, tgt, status, msg, data)
+from src.utils import emit_flow_event as _emit_flow
 
 
 async def fetch_x_profile_posts(

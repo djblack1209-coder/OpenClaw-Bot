@@ -66,24 +66,4 @@ pub async fn check_port_in_use(port: u16) -> Result<bool, String> {
     }
 }
 
-/// 获取 Node.js 版本
-#[allow(dead_code)]
-#[command]
-pub async fn get_node_version() -> Result<Option<String>, String> {
-    info!("[进程检查] 获取 Node.js 版本...");
-    if !shell::command_exists("node") {
-        info!("[进程检查] Node.js 未安装");
-        return Ok(None);
-    }
-    
-    match shell::run_command_output("node", &["--version"]) {
-        Ok(version) => {
-            info!("[进程检查] Node.js 版本: {}", version);
-            Ok(Some(version))
-        },
-        Err(e) => {
-            debug!("[进程检查] 获取 Node.js 版本失败: {}", e);
-            Ok(None)
-        },
-    }
-}
+

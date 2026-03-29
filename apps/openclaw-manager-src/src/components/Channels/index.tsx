@@ -233,7 +233,7 @@ export function Channels() {
             });
           }
         } catch (e) {
-          console.error("[Channels] WhatsApp login poll failed:", e);
+          console.error("[Channels] WhatsApp 登录轮询失败:", e);
         }
       }, 3000); // 每3秒检查一次
       
@@ -287,7 +287,7 @@ export function Channels() {
           setEndpointStatus(endpoints);
           setClawbotBotMatrix(matrix);
         } catch (e) {
-          console.error("[Channels] Context/endpoint init failed:", e);
+          console.error("[Channels] 上下文/端点初始化失败:", e);
         }
         
         // 自动选择第一个已配置的渠道

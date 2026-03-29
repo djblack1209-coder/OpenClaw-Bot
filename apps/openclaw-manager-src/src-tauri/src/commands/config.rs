@@ -54,6 +54,12 @@ pub(crate) fn get_home_dir() -> Result<String, String> {
 }
 
 fn get_default_workspace_path() -> Result<String, String> {
+    // 优先从环境变量 OPENCLAW_PROJECT_DIR 获取项目根目录，支持部署到任意路径
+    if let Ok(dir) = std::env::var("OPENCLAW_PROJECT_DIR") {
+        if !dir.is_empty() {
+            return Ok(format!("{}/apps/openclaw", dir));
+        }
+    }
     let home = get_home_dir()?;
     Ok(format!("{}/Desktop/OpenClaw Bot/apps/openclaw", home))
 }

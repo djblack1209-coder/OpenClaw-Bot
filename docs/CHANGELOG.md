@@ -5,6 +5,46 @@
 
 ---
 
+## [2026-03-29] R26: 遗留问题全量修复 — 7个HI关闭 (Rust环境变量+死代码+字体路径+前端中文化+闲鱼app-key+emit_flow去重+日志轮转)
+
+> 领域: `backend`, `frontend`, `infra`, `xianyu`
+> 影响模块: 7个Rust文件, `social_browser_worker.py`, `xianyu_live.py`, `utils.py`, `task_graph.py`, `_ai.py`, `x_platform.py`, 8个前端TS/TSX文件, `newsyslog.openclaw.conf`(新)
+> 关联问题: HI-375, HI-376, HI-377, HI-283, HI-350, HI-284, HI-280
+
+### 变更内容
+- **R26-1: HI-375 Rust硬编码路径→环境变量** — `clawbot.rs`/`config.rs`/`shell.rs` 三个文件中 `Desktop/OpenClaw Bot` 硬编码路径改为优先读取 `OPENCLAW_PROJECT_DIR` 环境变量，当前路径作为 fallback
+- **R26-2: HI-376 Rust dead_code审计** — `models/config.rs` 移除文件级 `#![allow(dead_code)]`，改为11个确实未使用的结构体加针对性 `#[allow(dead_code)]` (JSON schema文档用途); `utils/file.rs` 移除文件级注解+删除2个死函数(`append_file`/`read_last_lines`)+移除未使用import; `shell.rs` 删除死函数 `spawn_background()`; `process.rs` 删除死函数 `get_node_version()`; `platform.rs` 删除死函数 `get_log_file_path()`
+- **R26-3: HI-377 字体路径跨平台** — `social_browser_worker.py` 硬编码macOS字体路径改为 `_detect_font_path()` 自动检测函数，支持 macOS (Hiragino/PingFang/Arial Unicode) 和 Linux (文泉驿/Noto CJK/Droid) 双平台回退，支持 `OPENCLAW_FONT_PATH` 环境变量覆盖
+- **R26-4: HI-283 前端英文→中文** — 8个文件共11处修改: `useGlobalToasts.ts` 2处英文注释→中文; `OfflineGuide.tsx` JSDoc英文→中文; `Dev/index.tsx` 1处注释+2处 "sent"→"已发送"; `command.tsx` 默认参数 "Command Palette"→"命令面板"+"Search for a command to run..."→"搜索要执行的命令..."; `Channels/index.tsx` 2处console.error英文→中文; `ExecutionFlow/index.tsx` 1处console.error英文→中文; `Testing/index.tsx` 1处console.error英文→中文
+- **R26-5: HI-350 闲鱼app-key外部化** — `xianyu_live.py` 硬编码 `app-key` 改为 `os.getenv("XIANYU_APP_KEY", "当前值")`
+- **R26-6: HI-284 emit_flow stub去重** — 删除 `task_graph.py`/`_ai.py`/`x_platform.py` 三个文件中相同的 try/except fallback stub (共18行重复代码)，替换为直接 `from src.utils import emit_flow_event as _emit_flow`; 同时修复 `utils.py` 自引用bug (`from src.utils import now_et`→删除) + 整理import顺序
+- **R26-7: HI-280 macOS日志轮转** — 新建 `scripts/newsyslog.openclaw.conf` 配置文件，5个日志文件各50MB上限×5份归档×gzip压缩，总占用≤250MB
+
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — `get_base_dir()` 加 `OPENCLAW_PROJECT_DIR` env var
+- `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` — `get_default_workspace_path()` 加 env var
+- `apps/openclaw-manager-src/src-tauri/src/utils/shell.rs` — `get_unix_openclaw_paths()` 加 env var + 删除 `spawn_background()`
+- `apps/openclaw-manager-src/src-tauri/src/models/config.rs` — 文件级 `#![allow(dead_code)]` → 11个结构体针对性注解
+- `apps/openclaw-manager-src/src-tauri/src/utils/file.rs` — 删除 `append_file`/`read_last_lines` + 移除 `BufRead`/`BufReader`
+- `apps/openclaw-manager-src/src-tauri/src/commands/process.rs` — 删除 `get_node_version()`
+- `apps/openclaw-manager-src/src-tauri/src/utils/platform.rs` — 删除 `get_log_file_path()`
+- `packages/clawbot/scripts/social_browser_worker.py` — `FONT_PATH` 硬编码 → `_detect_font_path()` 自动检测
+- `packages/clawbot/src/xianyu/xianyu_live.py` — `app-key` 硬编码 → `os.getenv()`
+- `packages/clawbot/src/utils.py` — 删除自引用import + 整理import顺序(json/os提到顶部)
+- `packages/clawbot/src/core/task_graph.py` — try/except fallback stub → 直接import
+- `packages/clawbot/src/execution/_ai.py` — 同上
+- `packages/clawbot/src/execution/social/x_platform.py` — 同上
+- `apps/openclaw-manager-src/src/hooks/useGlobalToasts.ts` — 2处英文注释→中文
+- `apps/openclaw-manager-src/src/components/shared/OfflineGuide.tsx` — JSDoc英文→中文
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — 注释+UI文本 "sent"→"已发送"
+- `apps/openclaw-manager-src/src/components/ui/command.tsx` — 默认参数中文化
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 2处console.error中文化
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — console.error中文化
+- `apps/openclaw-manager-src/src/components/Testing/index.tsx` — console.error中文化
+- `packages/clawbot/scripts/newsyslog.openclaw.conf` — 新建: macOS日志轮转配置
+
+---
+
 ## [2026-03-29] R25: Git 仓库瘦身 (9101文件) + 脚本修复 + Rust 安全加固 + 前端类型修复
 
 > 领域: `backend`, `frontend`, `infra`, `deploy`

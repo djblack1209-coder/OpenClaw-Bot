@@ -9,8 +9,8 @@ interface OfflineGuideProps {
 }
 
 /**
- * Contextual offline state — tells users WHAT TO DO, not just "offline".
- * Drop this into any page that depends on ClawBot API connectivity.
+ * 离线引导组件 — 告知用户如何恢复连接，而不仅仅显示"离线"。
+ * 适用于依赖 ClawBot API 连接的任何页面。
  */
 export function OfflineGuide({ title, description, action, showSkeleton }: OfflineGuideProps) {
   return (

@@ -235,23 +235,6 @@ pub fn run_script_output(script: &str) -> Result<String, String> {
     }
 }
 
-/// 后台执行命令（不等待结果）
-#[allow(dead_code)]
-pub fn spawn_background(script: &str) -> io::Result<()> {
-    if platform::is_windows() {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/c", script]);
-
-        #[cfg(windows)]
-        cmd.creation_flags(CREATE_NO_WINDOW);
-
-        cmd.spawn()?;
-    } else {
-        Command::new("bash").arg("-c").arg(script).spawn()?;
-    }
-    Ok(())
-}
-
 /// 获取 openclaw 可执行文件路径
 /// 检测多个可能的安装路径，因为 GUI 应用不继承用户 shell 的 PATH
 pub fn get_openclaw_path() -> Option<String> {
@@ -305,8 +288,10 @@ fn get_unix_openclaw_paths() -> Vec<String> {
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
 
-        // 项目本地 openclaw-cli（最高优先级）
-        let local_cli = format!("{}/Desktop/OpenClaw Bot/apps/openclaw-cli", home_str);
+        // 项目本地 openclaw-cli（最高优先级），优先从环境变量获取项目路径
+        let project_dir = std::env::var("OPENCLAW_PROJECT_DIR")
+            .unwrap_or_else(|_| format!("{}/Desktop/OpenClaw Bot", home_str));
+        let local_cli = format!("{}/apps/openclaw-cli", project_dir);
         if std::path::Path::new(&local_cli).exists() {
             paths.insert(0, local_cli);
         }

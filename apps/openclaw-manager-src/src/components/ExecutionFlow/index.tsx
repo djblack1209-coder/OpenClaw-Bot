@@ -215,7 +215,7 @@ export function ExecutionFlow() {
           }
         }
       } catch (e) {
-        console.error("[ExecutionFlow] Log polling failed:", e);
+        console.error("[ExecutionFlow] 日志轮询失败:", e);
       }
     };
     
