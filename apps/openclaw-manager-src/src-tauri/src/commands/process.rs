@@ -52,7 +52,9 @@ pub async fn check_port_in_use(port: u16) -> Result<bool, String> {
     use std::time::Duration;
     
     let addr = format!("127.0.0.1:{}", port);
-    match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(500)) {
+    let sock_addr: std::net::SocketAddr = addr.parse()
+        .map_err(|e| format!("地址解析失败: {}", e))?;
+    match TcpStream::connect_timeout(&sock_addr, Duration::from_millis(500)) {
         Ok(_) => {
             info!("[进程检查] 端口 {} 被占用", port);
             Ok(true)

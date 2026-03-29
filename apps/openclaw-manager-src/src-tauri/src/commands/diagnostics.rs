@@ -160,10 +160,15 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
     // 运行 openclaw doctor
     if openclaw_installed {
         let doctor_result = shell::run_openclaw(&["doctor"]);
+        // 用 match 替代 unwrap，避免潜在的 panic
+        let (passed, message) = match doctor_result {
+            Ok(output) => (!output.contains("invalid"), output),
+            Err(e) => (false, e),
+        };
         results.push(DiagnosticResult {
             name: "OpenClaw Doctor".to_string(),
-            passed: doctor_result.is_ok() && !doctor_result.as_ref().unwrap().contains("invalid"),
-            message: doctor_result.unwrap_or_else(|e| e),
+            passed,
+            message,
             suggestion: None,
         });
     }

@@ -6,7 +6,7 @@ set -e
 
 PLIST_NAME="com.clawbot.agent"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
-BOT_DIR="$HOME/Desktop/OpenClaw Bot/clawbot"
+BOT_DIR="$HOME/Desktop/OpenClaw Bot/packages/clawbot"
 PYTHON="/usr/bin/python3"
 
 # 检查项目目录

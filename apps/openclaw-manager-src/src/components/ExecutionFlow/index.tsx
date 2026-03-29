@@ -14,7 +14,7 @@ interface FlowEvent {
   target: string;
   status: 'pending' | 'running' | 'success' | 'failed';
   msg: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   timestamp?: number;
 }
 

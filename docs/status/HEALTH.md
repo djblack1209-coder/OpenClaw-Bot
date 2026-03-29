@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R24审计修复: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 | 1046/1046 passed)
+> 最后更新: 2026-03-29 (R25: Git仓库瘦身9101文件+6脚本修复+7处Rust安全加固+14个前端any替换+.gitignore补全 | 1046/1046 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -55,13 +55,13 @@
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
 | 生活自动化 | 🟢 运行中 | 提醒(周期性)+记账(收入/支出/月预算/超支告警/月度聚合)+话费水电费余额追踪+定时低余额告警 |
 | 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发 |
-| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 + R24: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 |
+| 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 + R24: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 + R25: 6脚本修复+7处Rust安全加固+14个前端any替换 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
-| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充 |
+| Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
 | 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
 | 通知可靠性 | 🟢 加固 | P0通知3次重试 + 关机刷新批处理 + EventBus异常日志 |
@@ -91,6 +91,9 @@
 | HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
 | HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
 | HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有~15个文件>800行待拆 | 2026-03-29 |
+| HI-375 | `frontend` | 4个Rust文件 | 硬编码 `Desktop/OpenClaw Bot` 路径在 clawbot.rs/config.rs 等4个Rust文件中 — 应使用环境变量或配置 | 2026-03-29 |
+| HI-376 | `backend` | 2个Rust文件 | `#[allow(dead_code)]` 应用在 `models/config.rs` 和 `utils/file.rs` 整个文件上 — 需审计哪些确实未使用 | 2026-03-29 |
+| HI-377 | `backend` | `social_browser_worker.py` | macOS 字体路径硬编码(line 46) — Linux 部署需要 fallback | 2026-03-29 |
 ### 🔵 低优先
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
@@ -103,6 +106,9 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-380 | `frontend` | 8个TSX/TS文件 | 14个 `any` 类型使用 — 绕过TypeScript类型检查，可能隐藏运行时错误 | 替换为 `Record<string, unknown>` + 专用接口(PlatformEngagement/TopPost/AnalyticsData); 移除1个未使用导入 | 2026-03-29 | R25 |
+| HI-379 | `frontend` | 6个Rust命令文件 | 7处安全隐患: URL编码多字节字符错误+token生成仅用时间戳+2个重复函数+3处 `.unwrap()` 可能panic | `urlencoding_encode` 改用 `.bytes()`; `generate_token` 读 `/dev/urandom`; 提取共享函数; `.unwrap()` → 安全替代 | 2026-03-29 | R25 |
+| HI-378 | `infra` | `.gitignore` + Git索引 | 9101个运行时/构建文件被git跟踪(node_modules 6139+dist 2896+.openclaw ~60+其他) | `git rm --cached -r` 移除全部 + .gitignore新增15+规则防止重新加入 | 2026-03-29 | R25 |
 | HI-374 | `backend` | 7个router文件 | 24个API端点无try/except — 原始Python异常直接泄露给API客户端 | 提取共享safe_error()到error_utils.py+7个router全量覆盖try/except | 2026-03-29 | R24审计修复 |
 | HI-373 | `backend` | `bot/config.py` | SF Key轮转函数(get_siliconflow_key/update_key_balance/mark_key_exhausted)无线程锁 — asyncio事件循环+BackgroundScheduler线程竞态 | 添加threading.Lock()保护3个函数+get_total_balance | 2026-03-29 | R24审计修复 |
 | HI-372 | `backend` | `x_platform.py`, `xhs_platform.py` | 6个async def函数内同步调用worker_fn() — 浏览器自动化(5-30s)冻结事件循环 | 包装为await asyncio.to_thread(worker_fn, ...) | 2026-03-29 | R24审计修复 |

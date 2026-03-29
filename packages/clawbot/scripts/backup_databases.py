@@ -55,12 +55,10 @@ def backup_all() -> dict:
             continue
 
         try:
-            # Use SQLite online backup API (safe during concurrent writes)
-            source_conn = sqlite3.connect(str(src))
-            backup_conn = sqlite3.connect(str(dst))
-            source_conn.backup(backup_conn)
-            backup_conn.close()
-            source_conn.close()
+            # 使用 SQLite 在线备份 API（并发写入安全）
+            with sqlite3.connect(str(src)) as source_conn, \
+                 sqlite3.connect(str(dst)) as backup_conn:
+                source_conn.backup(backup_conn)
 
             # 验证备份完整性
             try:

@@ -104,3 +104,25 @@ R21-*.png
 *.pem
 *.key
 credentials.json
+
+# === .openclaw 运行时数据（禁止跟踪） ===
+.openclaw/memory/
+.openclaw/logs/
+.openclaw/delivery-queue/
+.openclaw/cron/runs/
+.openclaw/cron/*.bak
+.openclaw/subagents/
+.openclaw/telegram/
+.openclaw/update-check.json
+.openclaw/openclaw-weixin/
+.openclaw/env
+.openclaw/*.bak*
+.openclaw/workspace
+*.sqlite
+*.sqlite3
+
+# === 构建产物（禁止跟踪） ===
+packages/openclaw-npm/dist/
+
+# === Playwright 调试产物 ===
+.playwright-cli/

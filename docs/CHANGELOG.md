@@ -5,6 +5,45 @@
 
 ---
 
+## [2026-03-29] R25: Git 仓库瘦身 (9101文件) + 脚本修复 + Rust 安全加固 + 前端类型修复
+
+> 领域: `backend`, `frontend`, `infra`, `deploy`
+> 影响模块: `.gitignore`, 6个scripts/, 6个Rust命令文件, 8个TSX/TS前端文件
+> 关联问题: HI-375, HI-376, HI-377, HI-378, HI-379, HI-380
+
+### 变更内容
+- **R25-1: 6个脚本修复** — `backup_databases.py` SQLite连接改用 `with` 上下文管理器防泄漏; `start_all.sh`/`start_xianyu.sh` 硬编码 `.venv312/bin/python3` 改为自动探测 `$PY` 变量+多层fallback; `setup_unattended_mode.sh` 硬编码绝对路径改为相对路径+修正项目子目录; `install_service.sh` 修正工作目录 `clawbot` → `packages/clawbot`; `gemini_image_gen.py` 裸 `except:` 改为 `except Exception:`
+- **R25-2: Git 索引清理 (9101文件)** — 从 git 索引移除: `packages/openclaw-npm/extensions/*/node_modules/` (6139文件), `packages/openclaw-npm/dist/` (2896文件), `.openclaw/` 运行时数据 (~60文件, 含memory/*.sqlite/cron/delivery-queue/logs/telegram状态/设备配置/微信账号/备份配置), `.playwright-cli/` (2文件), `packages/clawbot/scripts/__pycache__/` (1文件)
+- **R25-3: .gitignore 补全** — 新增 15+ 规则: `.openclaw/` 各子目录, `*.sqlite`, `dist/`, `.playwright-cli/`, `__pycache__/`
+- **R25-4: Rust 安全加固 (7处修复)** — `clawbot_api.rs` URL编码函数从 `.chars()` + `c as u32` (Unicode码点，多字节字符编码错误) 改为 `.bytes()` 迭代器; `config.rs` token生成从仅 `SystemTime` 改为读取 `/dev/urandom` 48字节+时间戳fallback; `config.rs` 提取 `get_home_dir()`/`mask_secret()` 为 `pub(crate)`, `clawbot.rs` 移除重复定义改为导入; 3处 `.unwrap()` 替换为安全替代 (`process.rs` → `.map_err()`, `installer.rs` → `.unwrap_or_default()`, `diagnostics.rs` → `match`)
+- **R25-5: 前端类型安全 (14个any替换)** — `Social/index.tsx` 新增3个接口(PlatformEngagement/TopPost/AnalyticsData)+4个any替换; `Money/index.tsx` 2个any替换; `Memory/index.tsx` 2个any替换; `Evolution/index.tsx` 3个any替换; `ExecutionFlow/index.tsx` 1个any替换; `CommandPalette.tsx` 1个any替换; `tauri.ts` 1个any替换; `Channels/index.tsx` 移除未使用的 `_ChannelField` 导入
+
+### 文件变更
+- `.gitignore` — 新增 15+ 规则覆盖 .openclaw 运行时数据和构建产物
+- `packages/clawbot/scripts/backup_databases.py` — SQLite连接 → `with` 上下文管理器
+- `packages/clawbot/scripts/start_all.sh` — 硬编码venv → 自动探测 `$PY`
+- `packages/clawbot/scripts/start_xianyu.sh` — 同上
+- `packages/clawbot/scripts/setup_unattended_mode.sh` — 硬编码路径 → 相对路径
+- `packages/clawbot/scripts/install_service.sh` — `clawbot` → `packages/clawbot`
+- `packages/clawbot/scripts/gemini_image_gen.py` — `except:` → `except Exception:`
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — `urlencoding_encode()` 重写
+- `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` — `generate_token()` 重写 + 2函数提取为 pub(crate)
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — 移除重复函数, 导入共享版本
+- `apps/openclaw-manager-src/src-tauri/src/commands/process.rs` — `.unwrap()` → `.map_err()`
+- `apps/openclaw-manager-src/src-tauri/src/commands/installer.rs` — `.unwrap()` → `.unwrap_or_default()`
+- `apps/openclaw-manager-src/src-tauri/src/commands/diagnostics.rs` — `.unwrap()` → `match`
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 3个接口 + 4个any替换
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 2个any替换
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 2个any替换
+- `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — 3个any替换
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 1个any替换
+- `apps/openclaw-manager-src/src/components/CommandPalette.tsx` — 1个any替换
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 1个any替换
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 移除未使用导入
+- 9101 个文件从 Git 索引中删除 (node_modules/dist/.openclaw运行时数据等)
+
+---
+
 ## [2026-03-29] R24: API 安全加固 + 并发安全 + async 修复 + UA 统一 + 死配置清理
 
 > 领域: `backend`, `infra`

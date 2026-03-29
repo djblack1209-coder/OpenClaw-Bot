@@ -99,7 +99,7 @@ def generate_image(prompt: str, name: str, timeout_ms: int = 120000) -> dict:
             debug_path = OUTPUT_DIR / f"gemini_debug_{name}.png"
             try:
                 page.screenshot(path=str(debug_path))
-            except:
+            except Exception:
                 pass
             return {"success": False, "error": str(e), "debug_screenshot": str(debug_path)}
         finally:

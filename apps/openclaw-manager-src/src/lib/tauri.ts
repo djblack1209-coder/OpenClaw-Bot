@@ -365,7 +365,7 @@ export const api = {
 
   // 获取交易系统实时状态（连接、持仓、图表数据）
   clawbotTradingStatus: () =>
-    invokeWithLog<any>('clawbot_api_trading_status'),
+    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_status'),
 
   // ──── 社媒运营 ────
 

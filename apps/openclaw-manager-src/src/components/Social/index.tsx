@@ -36,9 +36,32 @@ interface Draft {
   time: Date;
 }
 
+/** 平台互动数据 */
+interface PlatformEngagement {
+  total_likes?: number;
+  total_comments?: number;
+  total_shares?: number;
+}
+
+/** 热门帖子 */
+interface TopPost {
+  preview?: string;
+  title?: string;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+}
+
+/** 数据分析面板返回结构 */
+interface AnalyticsData {
+  engagement?: Record<string, PlatformEngagement>;
+  follower_growth?: Record<string, { current?: number; net_change?: number }>;
+  top_posts?: TopPost[];
+}
+
 /** 数据分析面板 — 展示粉丝增长、互动数据、热门帖子 */
 function AnalyticsPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,9 +101,9 @@ function AnalyticsPanel() {
   const growth = data?.follower_growth || {};
   const xFollowers = growth?.x?.current || 0;
   const xGrowth = growth?.x?.net_change || 0;
-  const totalLikes = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_likes || 0), 0);
-  const totalComments = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_comments || 0), 0);
-  const totalShares = Object.values(engagement).reduce((sum: number, p: any) => sum + (p?.total_shares || 0), 0);
+  const totalLikes = Object.values(engagement).reduce((sum: number, p: PlatformEngagement) => sum + (p?.total_likes || 0), 0);
+  const totalComments = Object.values(engagement).reduce((sum: number, p: PlatformEngagement) => sum + (p?.total_comments || 0), 0);
+  const totalShares = Object.values(engagement).reduce((sum: number, p: PlatformEngagement) => sum + (p?.total_shares || 0), 0);
   const topPosts = data?.top_posts || [];
 
   return (
@@ -130,7 +153,7 @@ function AnalyticsPanel() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-dark-700">
-              {topPosts.slice(0, 5).map((post: any, i: number) => (
+              {topPosts.slice(0, 5).map((post: TopPost, i: number) => (
                 <div key={i} className="px-5 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-gray-600 font-mono w-5">#{i+1}</span>
@@ -206,7 +229,8 @@ export function Social() {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         const data = await api.omegaProcess(text);
-        result = (data as any)?.result || (data as any)?.response || '执行完成';
+        const d = data as Record<string, string>;
+        result = d?.result || d?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/omega/process', {
