@@ -700,6 +700,36 @@ class AutoTrader:
                         self._today_trades += 1
                         if proposal.decided_by == "AntiIdlePolicy":
                             self._forced_trades_today += 1
+
+                        # 发射结构化交易事件 — 供 ProactiveEngine 延迟跟进
+                        try:
+                            from src.core.event_bus import get_event_bus, EventType as _EvtType
+                            _trade_event_data = {
+                                "symbol": proposal.symbol,
+                                "direction": proposal.action,
+                                "quantity": proposal.quantity,
+                                "entry_price": proposal.entry_price,
+                                "stop_loss": proposal.stop_loss,
+                                "take_profit": proposal.take_profit,
+                                "confidence": getattr(proposal, "confidence", 0),
+                                "decided_by": getattr(proposal, "decided_by", ""),
+                                "timestamp": _now_et().isoformat(),
+                            }
+                            _evt_task = asyncio.create_task(
+                                get_event_bus().publish(
+                                    _EvtType.TRADE_EXECUTED,
+                                    _trade_event_data,
+                                    source="auto_trader",
+                                )
+                            )
+                            _evt_task.add_done_callback(
+                                lambda t: t.exception() and logger.debug(
+                                    "[AutoTrader] EventBus 交易事件发射异常: %s", t.exception()
+                                )
+                            )
+                        except Exception as _evt_err:
+                            logger.debug("[AutoTrader] 交易事件发射失败(非致命): %s", _evt_err)
+
                         # 结构化交易卡片 — 搬运自 freqtrade 通知格式
                         try:
                             from src.telegram_ux import format_trade_card

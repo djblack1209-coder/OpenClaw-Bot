@@ -364,18 +364,22 @@ def job_night_publish() -> None:
         except Exception as e:
             logger.warning("[Autopilot] sau 多平台同步异常: %s", e)
 
-        # EventBus: 社媒发布事件
+        # EventBus: 社媒发布事件（逐篇发射，触发主动引擎 1 小时后跟进）
         if published:
             try:
                 from src.core.event_bus import get_event_bus, EventType
                 bus = get_event_bus()
-                await bus.publish(
-                    EventType.SOCIAL_PUBLISHED,
-                    {"count": len(published), "platforms": [p.get("platform") for p in published]},
-                    source="social_scheduler",
-                )
+                for draft in published:
+                    _platform = draft.get("platform", "")
+                    _text = draft.get("text", "")
+                    _title = _text.strip().splitlines()[0].strip()[:50] if _text.strip() else "无标题"
+                    await bus.publish(
+                        EventType.SOCIAL_PUBLISHED,
+                        {"platform": _platform, "title": _title},
+                        source="social_scheduler",
+                    )
             except Exception as e:
-                logger.debug("[SocialScheduler] 异常: %s", e)
+                logger.debug("[SocialScheduler] 发布事件发射失败: %s", e)
 
         _notify(
             f"发布完成: {len(published)} 成功, {len(failed)} 失败",
@@ -473,6 +477,44 @@ def job_late_review() -> None:
             except Exception as e:
                 logger.warning("[Autopilot] 存储粉丝快照失败(不影响主流程): %s", e)
 
+            # ── 粉丝里程碑检测 — 突破整数关口时发射事件 ──
+            _MILESTONES = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
+            try:
+                from src.execution.life_automation import get_follower_growth
+                for _plat in ("x", "xhs"):
+                    _growth = get_follower_growth(platform=_plat, days=2)
+                    if not _growth or not _growth.get("success"):
+                        continue
+                    _snapshots = _growth.get("snapshots", [])
+                    if len(_snapshots) < 2:
+                        continue
+                    _prev = _snapshots[-2].get("followers", 0)
+                    _curr = _snapshots[-1].get("followers", 0)
+                    if _curr <= 0 or _prev <= 0:
+                        continue
+                    # 检查是否跨越了任何里程碑
+                    for ms in _MILESTONES:
+                        if _prev < ms <= _curr:
+                            try:
+                                from src.core.event_bus import get_event_bus, EventType
+                                _bus = get_event_bus()
+                                # job_late_review 在独立线程中用 asyncio.run()
+                                # 此处已在同步上下文，需创建临时事件循环发布
+                                import asyncio as _aio
+                                _loop = _aio.new_event_loop()
+                                _loop.run_until_complete(_bus.publish(
+                                    EventType.FOLLOWER_MILESTONE,
+                                    {"platform": _plat, "count": ms},
+                                    source="social_scheduler",
+                                ))
+                                _loop.close()
+                                logger.info("[Autopilot] 粉丝里程碑: %s 突破 %d", _plat, ms)
+                            except Exception as _me:
+                                logger.debug("[Autopilot] 粉丝里程碑事件发射失败: %s", _me)
+                            break  # 一次只触发最近的一个里程碑
+            except Exception as e:
+                logger.debug("[Autopilot] 粉丝里程碑检测失败(不影响主流程): %s", e)
+
             # ── 管道接通: 喂数据给 PostTimeOptimizer 学习最佳发布时间 ──
             try:
                 from src.social_tools import get_post_time_optimizer
@@ -496,6 +538,30 @@ def job_late_review() -> None:
                 logger.info("[Autopilot] PostTimeOptimizer 已记录 hour=%d rate=%.2f%%", current_hour, engagement_rate)
             except Exception as e:
                 logger.warning("[Autopilot] PostTimeOptimizer 记录失败(不影响主流程): %s", e)
+
+            # ── 根据今日互动数据更新明日发布时间 ──
+            try:
+                from src.social_tools import get_post_time_optimizer as _get_optimizer
+                _opt = _get_optimizer()
+                new_best = _opt.best_hours("twitter", top_n=1)
+                if new_best:
+                    new_hour = new_best[0]
+                    # 通过单例获取 SocialAutopilot 实例的调度器
+                    autopilot = SocialAutopilot._instance
+                    if autopilot and autopilot._scheduler and autopilot._scheduler.running:
+                        current_publish_hour = getattr(autopilot, "_current_publish_hour", 20)
+                        if new_hour != current_publish_hour:
+                            autopilot._scheduler.reschedule_job(
+                                "night_publish",
+                                trigger=CronTrigger(hour=new_hour, minute=30, timezone=_TIMEZONE),
+                            )
+                            logger.info(
+                                "[社媒] 明日发布时间调整: %d:30 → %d:30",
+                                current_publish_hour, new_hour,
+                            )
+                            autopilot._current_publish_hour = new_hour
+            except Exception as e:
+                logger.debug("[社媒] 更新发布时间失败: %s", e)
 
         state["last_review"] = now_et().isoformat()
         _save_state(state)
@@ -565,9 +631,25 @@ class SocialAutopilot:
             id="evening_produce", name="社媒晚产",
             replace_existing=True, misfire_grace_time=3600,
         )
-        # 20:30 — 自动发布
+        # 20:30 — 自动发布（数据驱动：根据历史互动数据选择最佳发布时间）
+        try:
+            from src.social_tools import get_post_time_optimizer
+            optimizer = get_post_time_optimizer()
+            best = optimizer.best_hours("twitter", top_n=1)
+            publish_hour = best[0] if best else 20  # 默认 20 点（没有数据时）
+            if best:
+                logger.info("[社媒] 发布时间设定为 %d:30 (数据驱动)", publish_hour)
+            else:
+                logger.info("[社媒] 发布时间使用默认 20:30")
+        except Exception as e:
+            publish_hour = 20
+            logger.warning("[社媒] 查询最佳发布时间失败, 使用默认 20:30: %s", e)
+
+        # 记录当前发布小时，供 job_late_review 比对和更新
+        self._current_publish_hour = publish_hour
+
         self._scheduler.add_job(
-            job_night_publish, CronTrigger(hour=20, minute=30, timezone=_TIMEZONE),
+            job_night_publish, CronTrigger(hour=publish_hour, minute=30, timezone=_TIMEZONE),
             id="night_publish", name="社媒晚发",
             replace_existing=True, misfire_grace_time=3600,
         )
