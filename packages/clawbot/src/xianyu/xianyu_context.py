@@ -545,6 +545,115 @@ class XianyuContextManager:
                 item_rules[key] = value
         return {"style": style, "faqs": faqs, "item_rules": item_rules}
 
+    # ---- 买家画像 ----
+    def get_buyer_profile(self, user_id: str) -> dict:
+        """构建买家画像 — 从历史咨询/订单/议价数据中生成买家特征
+
+        返回包含以下字段的字典:
+        - total_consultations: 总咨询次数
+        - total_orders: 总成交次数
+        - items_consulted: 咨询过的不同商品数
+        - bargain_tendency: 砍价倾向 ("低"/"中"/"高"/"未知")
+        - last_contact_days: 距上次联系天数
+        - avg_msg_count: 平均每次对话消息数
+        - is_repeat_buyer: 是否回头客
+        - total_spent: 历史总消费金额
+        """
+        # 新买家默认画像 — 全部归零
+        empty_profile = {
+            "total_consultations": 0,
+            "total_orders": 0,
+            "items_consulted": 0,
+            "bargain_tendency": "未知",
+            "last_contact_days": -1,
+            "avg_msg_count": 0.0,
+            "is_repeat_buyer": False,
+            "total_spent": 0.0,
+        }
+
+        # 1) 咨询统计 — 总次数、不同商品数、平均消息数、最近联系时间
+        try:
+            with self._conn() as c:
+                consult_rows = c.execute(
+                    "SELECT COUNT(*), COUNT(DISTINCT item_id), "
+                    "AVG(msg_count), MAX(last_ts) "
+                    "FROM consultations WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+        except Exception as e:
+            logger.debug("get_buyer_profile 查询咨询数据异常: %s", e)
+            consult_rows = None
+
+        if not consult_rows or consult_rows[0] == 0:
+            return empty_profile
+
+        total_consultations = consult_rows[0] or 0
+        items_consulted = consult_rows[1] or 0
+        avg_msg_count = round(consult_rows[2] or 0.0, 1)
+        last_ts_str = consult_rows[3]
+
+        # 计算距上次联系天数
+        last_contact_days = -1
+        if last_ts_str:
+            try:
+                from datetime import datetime
+                last_ts = datetime.strptime(last_ts_str, "%Y-%m-%d %H:%M:%S")
+                delta = now_et().replace(tzinfo=None) - last_ts
+                last_contact_days = max(delta.days, 0)
+            except Exception as e:
+                logger.debug("get_buyer_profile 解析 last_ts 异常: %s", e)
+
+        # 2) 订单统计 — 成交次数、累计消费金额
+        total_orders = 0
+        total_spent = 0.0
+        try:
+            with self._conn() as c:
+                order_row = c.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(amount), 0) "
+                    "FROM orders WHERE user_id = ? AND status IN ('paid', 'shipped', 'completed', '交易成功')",
+                    (user_id,),
+                ).fetchone()
+            if order_row:
+                total_orders = order_row[0] or 0
+                total_spent = round(order_row[1] or 0.0, 2)
+        except Exception as e:
+            logger.debug("get_buyer_profile 查询订单数据异常: %s", e)
+
+        # 3) 砍价倾向 — 从 bargain_counts 表获取该用户所有对话的平均砍价次数
+        bargain_tendency = "未知"
+        try:
+            with self._conn() as c:
+                bargain_row = c.execute(
+                    "SELECT AVG(b.count) FROM bargain_counts b "
+                    "INNER JOIN consultations cs ON b.chat_id = cs.chat_id "
+                    "WHERE cs.user_id = ?",
+                    (user_id,),
+                ).fetchone()
+            if bargain_row and bargain_row[0] is not None:
+                avg_bargain = bargain_row[0]
+                if avg_bargain < 2:
+                    bargain_tendency = "低"
+                elif avg_bargain < 4:
+                    bargain_tendency = "中"
+                else:
+                    bargain_tendency = "高"
+        except Exception as e:
+            logger.debug("get_buyer_profile 查询砍价数据异常: %s", e)
+
+        # 4) 是否回头客 — 有过成交且咨询次数超过 1
+        is_repeat_buyer = total_orders > 0 and total_consultations > 1
+
+        return {
+            "total_consultations": total_consultations,
+            "total_orders": total_orders,
+            "items_consulted": items_consulted,
+            "bargain_tendency": bargain_tendency,
+            "last_contact_days": last_contact_days,
+            "avg_msg_count": avg_msg_count,
+            "is_repeat_buyer": is_repeat_buyer,
+            "total_spent": total_spent,
+        }
+
     def get_conversion_funnel(self, days: int = 7) -> dict:
         """转化漏斗: 总咨询 → 有回复 → 成交 → 发货，各阶段数量和转化率"""
         try:

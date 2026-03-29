@@ -5,6 +5,53 @@
 
 ---
 
+## [2026-03-30] Wave 1: 全系统智能化跃迁 — 从「被动工具」到「智能助手」
+
+> 领域: `backend`, `xianyu`, `trading`, `social`, `infra`
+> 影响模块: `daily_brief`, `xianyu_context`, `xianyu_agent`, `xianyu_live`, `social_scheduler`, `event_bus`, `proactive_engine`, `bookkeeping`, `auto_trader`
+> 关联问题: 无新增（设计文档 `docs/specs/2026-03-30-intelligence-wave1-design.md`）
+
+### 变更内容
+
+#### Task 1: 日报智能化 — 从「数据报表」到「决策参谋」
+- **新增 LLM 生成的当日概况** — 在日报开头用 2 句话总结全天态势（持仓盈亏/闲鱼成交/社媒互动/预算状态），LLM 不可用时降级为模板
+- **新增 3 条数据驱动建议** — 在日报末尾根据当日数据生成可操作建议（引用具体数字，不泛泛而谈）
+- **新增趋势对比标注** — 关键数字旁显示「↑3条」「↓$50」等 vs 昨天的变化量
+
+#### Task 2: 闲鱼买家画像注入
+- **新增买家画像查询** — `XianyuContextManager.get_buyer_profile()` 从 consultations/orders 表构建买家画像（历史咨询数、成交数、砍价倾向、上次联系天数）
+- **画像注入 AI 回复** — BaseAgent、TechAgent、PriceAgent 三个 AI 代理的 prompt 中注入买家画像，使 AI 回复因人而异
+- **PriceAgent 温度自适应** — 对回头客降低 0.1 温度（更稳定回复），对爱砍价的买家升高 0.1 温度（更灵活应对）
+
+#### Task 3: 社媒发帖时间优化
+- **动态发布时间** — 启动时查询 `PostTimeOptimizer.best_hours()` 设定发布时间，不再硬编码 20:30
+- **每日自动调整** — 晚复盘时根据当日互动数据重新计算最佳发布时间，自动调整次日 cron 任务
+
+#### Task 4: 主动引擎扩展 — 从「只管 3 件事」到「全局感知」
+- **3 个新事件类型** — `XIANYU_ORDER_PAID`（闲鱼付款）、`BUDGET_EXCEEDED`（预算超支）、`FOLLOWER_MILESTONE`（粉丝里程碑）
+- **4 个新事件处理器** — 闲鱼付款提醒发货、预算超支消费提醒、社媒发布 1 小时后跟进互动、粉丝里程碑庆祝
+- **事件发射端补充** — `xianyu_live.py`（付款）、`bookkeeping.py`（超支）、`social_scheduler.py`（发布+粉丝增长）
+
+#### Task 5: 交易后自动跟进 — 从「买完就忘」到「持续关注」
+- **结构化交易事件** — `auto_trader.py` 执行成功后发射包含 symbol/direction/quantity/entry_price/stop_loss/take_profit 的结构化事件（替代 multi_main.py 的字符串匹配文本）
+- **延迟 2 小时跟进** — ProactiveEngine 在交易执行后启动后台任务，2 小时后查询当前价格与买入价对比，跌破止损或突破止盈时主动通知
+
+#### 回归验证
+- Python pytest: 1047/1047 passed（基线无变化，零回归）
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — Task 1: +409 行（概况+建议+趋势对比）
+- `packages/clawbot/src/xianyu/xianyu_context.py` — Task 2: +109 行（买家画像查询）
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — Task 2: +55 行（画像注入 AI 回复）
+- `packages/clawbot/src/xianyu/xianyu_live.py` — Task 2+4: +17 行（user_id 传递 + 付款事件发射）
+- `packages/clawbot/src/social_scheduler.py` — Task 3+4: +82 行（动态发布时间 + 社媒/粉丝事件发射）
+- `packages/clawbot/src/core/event_bus.py` — Task 4: +9 行（3 个新 EventType）
+- `packages/clawbot/src/core/proactive_engine.py` — Task 4+5: +138 行（4 个新处理器 + 交易延迟跟进）
+- `packages/clawbot/src/execution/bookkeeping.py` — Task 4: +22 行（预算超支事件发射）
+- `packages/clawbot/src/auto_trader.py` — Task 5: +23 行（结构化交易事件发射）
+
+---
+
 ## [2026-03-30] R30: 全方位审计 — 前端降级修复+后端静默异常修复+重复方法清理+文件治理+VPS运维
 
 > 领域: `frontend`, `backend`, `infra`, `deploy`

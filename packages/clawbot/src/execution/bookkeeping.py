@@ -262,6 +262,28 @@ def check_budget_alert(user_id, db_path=None) -> tuple:
     month = summary.get("month", "")
 
     if pct > 100:
+        # 发射预算超支事件到 EventBus — 触发主动通知引擎
+        try:
+            import asyncio
+            from src.core.event_bus import get_event_bus, EventType
+            bus = get_event_bus()
+            _event_data = {
+                "category": "总支出",
+                "amount": spent,
+                "budget": budget,
+            }
+            try:
+                loop = asyncio.get_running_loop()
+                # 有事件循环时创建异步任务
+                loop.create_task(bus.publish(
+                    EventType.BUDGET_EXCEEDED, _event_data, source="life_automation",
+                ))
+            except RuntimeError:
+                # 无事件循环（同步调用场景），跳过事件发射
+                pass
+        except Exception as e:
+            logger.debug(f"[预算] 发射超支事件失败: {e}")
+
         msg = (
             f"🔴 {month} 已超预算!\n"
             f"预算: ¥{budget:,.0f} | 已花: ¥{spent:,.0f} ({pct:.1f}%)\n"

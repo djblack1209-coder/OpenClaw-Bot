@@ -71,6 +71,15 @@ class EventType:
     GATEWAY_MESSAGE = "gateway.message"
     GATEWAY_CALLBACK = "gateway.callback"
 
+    # 闲鱼事件
+    XIANYU_ORDER_PAID = "xianyu.order_paid"          # 闲鱼订单支付
+
+    # 预算事件
+    BUDGET_EXCEEDED = "life.budget_exceeded"          # 预算超支
+
+    # 粉丝里程碑
+    FOLLOWER_MILESTONE = "social.follower_milestone"  # 粉丝里程碑
+
     # 自选股事件
     WATCHLIST_ANOMALY = "watchlist.anomaly"          # 自选股异动（价格/放量/RSI极值）
     WATCHLIST_PRICE_ALERT = "watchlist.price_alert"  # 触达目标价/止损价

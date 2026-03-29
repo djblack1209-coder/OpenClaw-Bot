@@ -360,13 +360,22 @@ async def setup_proactive_listeners(engine: "ProactiveEngine"):
         bus = get_event_bus()
 
         async def on_trade_executed(event_data: Dict[str, Any]):
-            """交易成交后评估是否需要通知其他关联信息。"""
+            """交易成交后评估是否需要通知其他关联信息 + 延迟跟进。"""
             try:
-                user_id = str(event_data.get("user_id", ""))
-                symbol = event_data.get("symbol", "")
-                action = event_data.get("action", "")
-                context = f"严总刚刚 {action} 了 {symbol}。交易详情: {event_data}"
+                # 兼容 Event 对象和原始 dict 两种格式
+                data = event_data.data if hasattr(event_data, "data") else event_data
+                user_id = str(data.get("user_id", "default"))
+                symbol = data.get("symbol", "")
+                direction = data.get("direction", data.get("action", data.get("signal", "")))
+                quantity = data.get("quantity", 0)
+                entry_price = data.get("entry_price", 0)
 
+                # 立即: 评估跨域通知（如闲鱼有钱了可以补货）
+                context = (
+                    f"严总刚刚 {direction} 了 {symbol}"
+                    + (f" x{quantity} @ ${entry_price:.2f}" if entry_price else "")
+                    + f"。交易详情: {data}"
+                )
                 notification = await engine.evaluate(
                     context_type="cross_domain",
                     current_context=context,
@@ -374,6 +383,50 @@ async def setup_proactive_listeners(engine: "ProactiveEngine"):
                 )
                 if notification:
                     await _send_proactive(user_id, notification)
+
+                # 延迟 2 小时: 跟进交易状态变化
+                if symbol and entry_price > 0:
+                    async def _trade_followup():
+                        """交易执行 2 小时后查询当前价格并评估是否通知。"""
+                        await asyncio.sleep(7200)  # 2 小时
+                        try:
+                            from src.invest_tools import get_stock_quote
+                            quote = await get_stock_quote(symbol)
+                            if not quote or not quote.get("price"):
+                                return
+                            current_price = float(quote["price"])
+                            pnl_pct = (current_price - entry_price) / entry_price * 100
+                            stop_loss = data.get("stop_loss", 0)
+                            take_profit = data.get("take_profit", 0)
+
+                            # 构建跟进上下文
+                            followup_parts = [
+                                f"2小时前严总 {direction} 了 {symbol}，"
+                                f"买入价 ${entry_price:.2f}，当前 ${current_price:.2f}，"
+                                f"浮动 {pnl_pct:+.1f}%。",
+                            ]
+                            if stop_loss and current_price < stop_loss:
+                                followup_parts.append(f"⚠️ 已跌破止损价 ${stop_loss:.2f}！")
+                            elif take_profit and current_price > take_profit:
+                                followup_parts.append(f"🎯 已突破止盈目标 ${take_profit:.2f}！")
+
+                            followup_context = " ".join(followup_parts)
+                            followup_notification = await engine.evaluate(
+                                context_type="task_followup",
+                                current_context=followup_context,
+                                user_id=user_id,
+                            )
+                            if followup_notification:
+                                await _send_proactive(user_id, followup_notification)
+                        except Exception as exc:
+                            logger.debug("交易延迟跟进异常: %s", exc)
+
+                    _followup_task = asyncio.create_task(_trade_followup())
+                    _followup_task.add_done_callback(
+                        lambda t: t.exception() and logger.debug(
+                            "交易跟进后台任务异常: %s", t.exception()
+                        )
+                    )
             except Exception as e:
                 logger.debug(f"交易后主动通知评估失败: {e}")
 
@@ -593,6 +646,104 @@ async def setup_proactive_listeners(engine: "ProactiveEngine"):
                 logger.debug(f"进度推送异常: {e}")
 
         await bus.subscribe("brain.progress", on_brain_progress)
+
+        # ── 闲鱼订单支付 — 提醒发货 ──
+        async def on_xianyu_order_paid(event_data):
+            """闲鱼订单支付 — 提醒卖家尽快发货。"""
+            try:
+                data = event_data.data if hasattr(event_data, "data") else event_data
+                item_name = data.get("item_name", "商品")
+                amount = data.get("amount", 0)
+                context = f"闲鱼有人刚付款了: {item_name}，金额 ¥{amount:.0f}。可能需要尽快发货。"
+                notification = await engine.evaluate(
+                    context_type="cross_domain",
+                    current_context=context,
+                    user_id="default",
+                )
+                if notification:
+                    await _send_proactive("default", notification)
+            except Exception as e:
+                logger.debug(f"闲鱼订单主动通知失败: {e}")
+
+        if hasattr(EventType, "XIANYU_ORDER_PAID"):
+            bus.subscribe(EventType.XIANYU_ORDER_PAID, on_xianyu_order_paid)
+
+        # ── 月度预算超支提醒 ──
+        async def on_budget_exceeded(event_data):
+            """月度预算超支 — 主动推送消费提醒。"""
+            try:
+                data = event_data.data if hasattr(event_data, "data") else event_data
+                category = data.get("category", "总支出")
+                amount = data.get("amount", 0)
+                budget = data.get("budget", 0)
+                pct = (amount / budget * 100) if budget > 0 else 0
+                context = f"消费提醒: {category}已花 ¥{amount:.0f}，超出预算 ¥{budget:.0f} 的 {pct:.0f}%。"
+                notification = await engine.evaluate(
+                    context_type="reminder",
+                    current_context=context,
+                    user_id="default",
+                )
+                if notification:
+                    await _send_proactive("default", notification)
+            except Exception as e:
+                logger.debug(f"预算超支主动通知失败: {e}")
+
+        if hasattr(EventType, "BUDGET_EXCEEDED"):
+            bus.subscribe(EventType.BUDGET_EXCEEDED, on_budget_exceeded)
+
+        # ── 社媒内容发布后 — 延迟 1 小时检查初始互动 ──
+        async def on_social_published(event_data):
+            """社媒内容发布后 — 延迟 1 小时跟进初始互动数据。"""
+            try:
+                data = event_data.data if hasattr(event_data, "data") else event_data
+                platform = data.get("platform", "")
+                title = data.get("title", "新帖子")[:30]
+
+                async def _social_followup():
+                    """社媒发布 1 小时后跟进"""
+                    await asyncio.sleep(3600)
+                    try:
+                        context = f"1小时前在{platform}发布了「{title}」，可以去看看初始互动数据了。"
+                        notification = await engine.evaluate(
+                            context_type="info",
+                            current_context=context,
+                            user_id="default",
+                        )
+                        if notification:
+                            await _send_proactive("default", notification)
+                    except Exception as exc:
+                        logger.debug(f"社媒发布跟进异常: {exc}")
+
+                task = asyncio.create_task(_social_followup())
+                task.add_done_callback(
+                    lambda t: t.exception() and logger.debug("社媒跟进后台任务异常: %s", t.exception())
+                )
+            except Exception as e:
+                logger.debug(f"社媒发布主动通知失败: {e}")
+
+        if hasattr(EventType, "SOCIAL_PUBLISHED"):
+            bus.subscribe(EventType.SOCIAL_PUBLISHED, on_social_published)
+
+        # ── 粉丝里程碑庆祝 ──
+        async def on_follower_milestone(event_data):
+            """粉丝数突破里程碑 — 庆祝通知。"""
+            try:
+                data = event_data.data if hasattr(event_data, "data") else event_data
+                platform = data.get("platform", "")
+                count = data.get("count", 0)
+                context = f"恭喜！{platform}平台粉丝突破 {count} 了！"
+                notification = await engine.evaluate(
+                    context_type="opportunity",
+                    current_context=context,
+                    user_id="default",
+                )
+                if notification:
+                    await _send_proactive("default", notification)
+            except Exception as e:
+                logger.debug(f"粉丝里程碑主动通知失败: {e}")
+
+        if hasattr(EventType, "FOLLOWER_MILESTONE"):
+            bus.subscribe(EventType.FOLLOWER_MILESTONE, on_follower_milestone)
 
         logger.info("主动智能引擎已注册 EventBus 监听器")
     except Exception as e:
