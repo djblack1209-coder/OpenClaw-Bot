@@ -30,7 +30,7 @@ export function useGlobalToasts() {
             const msg = JSON.parse(e.data)
             handleEvent(msg)
           } catch {
-            // malformed message — ignore
+            // 格式异常的消息 — 忽略
           }
         }
 
@@ -39,7 +39,7 @@ export function useGlobalToasts() {
           delay = Math.min(delay * 2, 30000)
         }
       } catch {
-        // connection failed — will retry via onclose
+        // 连接失败 — 通过 onclose 自动重试
       }
     }
 

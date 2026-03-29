@@ -1,6 +1,5 @@
-#![allow(dead_code)]
 use std::fs;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::path::Path;
 
 /// 读取文件内容
@@ -17,29 +16,9 @@ pub fn write_file(path: &str, content: &str) -> io::Result<()> {
     fs::write(path, content)
 }
 
-/// 追加文件内容
-pub fn append_file(path: &str, content: &str) -> io::Result<()> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-
-    writeln!(file, "{}", content)
-}
-
 /// 检查文件是否存在
 pub fn file_exists(path: &str) -> bool {
     Path::new(path).exists()
-}
-
-/// 读取文件最后 N 行
-pub fn read_last_lines(path: &str, n: usize) -> io::Result<Vec<String>> {
-    let file = fs::File::open(path)?;
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
-
-    let start = if lines.len() > n { lines.len() - n } else { 0 };
-    Ok(lines[start..].to_vec())
 }
 
 /// 从环境变量文件读取值

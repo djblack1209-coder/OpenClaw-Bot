@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-29 (R25: Git仓库瘦身9101文件+6脚本修复+7处Rust安全加固+14个前端any替换+.gitignore补全 | 1046/1046 passed)
+> 最后更新: 2026-03-29 (R26: 7个HI关闭—Rust环境变量+死代码+字体路径+前端中文化+闲鱼app-key+emit_flow去重+日志轮转 | 1046/1046 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -87,18 +87,11 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-280 | `deploy` | LaunchAgent | macOS 日志累积 185MB 无轮转，需 newsyslog 配置 | 2026-03-27 |
-| HI-283 | `frontend` | 多组件 | 21处英文注释 + 5处英文 console 消息违反中文化规范 | 2026-03-27 |
-| HI-350 | `backend` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中(非私密但应外部化) | 2026-03-28 |
 | HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有~15个文件>800行待拆 | 2026-03-29 |
-| HI-375 | `frontend` | 4个Rust文件 | 硬编码 `Desktop/OpenClaw Bot` 路径在 clawbot.rs/config.rs 等4个Rust文件中 — 应使用环境变量或配置 | 2026-03-29 |
-| HI-376 | `backend` | 2个Rust文件 | `#[allow(dead_code)]` 应用在 `models/config.rs` 和 `utils/file.rs` 整个文件上 — 需审计哪些确实未使用 | 2026-03-29 |
-| HI-377 | `backend` | `social_browser_worker.py` | macOS 字体路径硬编码(line 46) — Linux 部署需要 fallback | 2026-03-29 |
+
 ### 🔵 低优先
 
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| HI-284 | `backend` | 3个文件 | _emit_flow fallback stub 在 task_graph/execution/_ai/x_platform 重复定义 | 2026-03-27 |
+(无)
 
 ---
 
@@ -106,6 +99,13 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-377 | `backend` | `social_browser_worker.py` | macOS字体路径硬编码 — Linux部署必崩 | `_detect_font_path()` 自动检测macOS/Linux字体+`OPENCLAW_FONT_PATH` env var覆盖 | 2026-03-29 | R26 |
+| HI-376 | `infra` | 7个Rust文件 | 文件级 `#![allow(dead_code)]` 隐藏死代码 — 2个文件全量放行 | 移除文件级注解; 删除5个死函数; 11个结构体添加精确`#[allow(dead_code)]` | 2026-03-29 | R26 |
+| HI-375 | `infra` | 3个Rust命令文件 | 硬编码macOS项目路径 — 非标准安装位置或Linux部署必崩 | `get_base_dir()`/`get_default_workspace_path()`/`get_unix_openclaw_paths()` 优先读 `OPENCLAW_PROJECT_DIR` env var | 2026-03-29 | R26 |
+| HI-350 | `security` | `xianyu_live.py` | 闲鱼app-key硬编码在源码中 | `os.getenv("XIANYU_APP_KEY", "默认值")` 外部化 | 2026-03-29 | R26 |
+| HI-284 | `backend` | `task_graph.py`+`_ai.py`+`x_platform.py`+`utils.py` | emit_flow 3处重复try/except fallback stub(18行×3)+utils.py自导入Bug | 删除3个stub改为直接import; 修复utils.py自引用; 合并分散的import | 2026-03-29 | R26 |
+| HI-283 | `frontend` | 8个TSX/TS文件 | 前端残留英文注释/UI文案(11处) | 注释→中文; "sent"→"已发送"; "Command Palette"→"命令面板"; console.error→中文 | 2026-03-29 | R26 |
+| HI-280 | `infra` | `scripts/newsyslog.openclaw.conf` | macOS LaunchAgent日志无轮转 — 无限增长吃磁盘 | newsyslog配置: 5日志×50MB×5归档×gzip(≤250MB) | 2026-03-29 | R26 |
 | HI-380 | `frontend` | 8个TSX/TS文件 | 14个 `any` 类型使用 — 绕过TypeScript类型检查，可能隐藏运行时错误 | 替换为 `Record<string, unknown>` + 专用接口(PlatformEngagement/TopPost/AnalyticsData); 移除1个未使用导入 | 2026-03-29 | R25 |
 | HI-379 | `frontend` | 6个Rust命令文件 | 7处安全隐患: URL编码多字节字符错误+token生成仅用时间戳+2个重复函数+3处 `.unwrap()` 可能panic | `urlencoding_encode` 改用 `.bytes()`; `generate_token` 读 `/dev/urandom`; 提取共享函数; `.unwrap()` → 安全替代 | 2026-03-29 | R25 |
 | HI-378 | `infra` | `.gitignore` + Git索引 | 9101个运行时/构建文件被git跟踪(node_modules 6139+dist 2896+.openclaw ~60+其他) | `git rm --cached -r` 移除全部 + .gitignore新增15+规则防止重新加入 | 2026-03-29 | R25 |

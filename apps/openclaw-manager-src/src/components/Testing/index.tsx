@@ -35,7 +35,7 @@ export function Testing() {
         setProjectContext(context);
         setEndpointResults(endpoints);
       } catch (e) {
-        console.error("[Testing] Context init failed:", e);
+        console.error("[Testing] 上下文初始化失败:", e);
       }
     };
     init();

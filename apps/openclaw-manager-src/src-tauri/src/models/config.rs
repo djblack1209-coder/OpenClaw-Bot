@@ -1,8 +1,8 @@
-#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// OpenClaw 完整配置 - 对应 openclaw.json 结构
+/// OpenClaw 完整配置 - 对应 openclaw.json 结构（JSON Schema 文档结构，部分字段暂未使用）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenClawConfig {
     /// Agent 配置
@@ -25,7 +25,8 @@ pub struct OpenClawConfig {
     pub meta: MetaConfig,
 }
 
-/// Agent 配置
+/// Agent 配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentsConfig {
     /// 默认配置
@@ -33,7 +34,8 @@ pub struct AgentsConfig {
     pub defaults: AgentDefaults,
 }
 
-/// Agent 默认配置
+/// Agent 默认配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentDefaults {
     /// 模型配置
@@ -59,7 +61,8 @@ pub struct AgentDefaults {
     pub subagents: Option<serde_json::Value>,
 }
 
-/// Agent 模型配置
+/// Agent 模型配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentModelConfig {
     /// 主模型 (格式: provider/model-id)
@@ -67,7 +70,8 @@ pub struct AgentModelConfig {
     pub primary: Option<String>,
 }
 
-/// 模型配置
+/// 模型配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelsConfig {
     /// Provider 配置映射
@@ -75,7 +79,8 @@ pub struct ModelsConfig {
     pub providers: HashMap<String, ProviderConfig>,
 }
 
-/// Provider 配置
+/// Provider 配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     /// API 地址
@@ -129,7 +134,8 @@ pub struct ModelCostConfig {
     pub cache_write: f64,
 }
 
-/// 网关配置
+/// 网关配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewayConfig {
     /// 模式：local 或 cloud
@@ -140,7 +146,8 @@ pub struct GatewayConfig {
     pub auth: Option<GatewayAuthConfig>,
 }
 
-/// 网关认证配置
+/// 网关认证配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewayAuthConfig {
     #[serde(default)]
@@ -149,7 +156,8 @@ pub struct GatewayAuthConfig {
     pub token: Option<String>,
 }
 
-/// 插件配置
+/// 插件配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PluginsConfig {
     #[serde(default)]
@@ -160,7 +168,8 @@ pub struct PluginsConfig {
     pub installs: HashMap<String, serde_json::Value>,
 }
 
-/// 元数据配置
+/// 元数据配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MetaConfig {
     #[serde(rename = "lastTouchedAt", default)]
@@ -299,7 +308,8 @@ pub struct ChannelConfig {
     pub config: HashMap<String, serde_json::Value>,
 }
 
-/// 环境变量配置
+/// 环境变量配置（JSON Schema 文档结构）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvConfig {
     pub key: String,
