@@ -1,4 +1,0 @@
-export OPENCLAW_STATE_DIR="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw"
-export OPENCLAW_CONFIG_PATH="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json"
-export OPENCLAW_GATEWAY_PORT="18789"
-export OPENCLAW_GATEWAY_TOKEN="openclaw-manager-local-token"

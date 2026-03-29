@@ -426,22 +426,22 @@ pub async fn clawbot_api_shopping_compare(
     .await
 }
 
-/// Simple URL encoding for query parameters
+/// URL 编码：逐字节处理，正确支持非 ASCII 字符（如中文）
 fn urlencoding_encode(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            ' ' => "%20".to_string(),
-            '&' => "%26".to_string(),
-            '=' => "%3D".to_string(),
-            '#' => "%23".to_string(),
-            '?' => "%3F".to_string(),
-            '+' => "%2B".to_string(),
-            _ if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' => {
-                c.to_string()
+    let mut encoded = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            // RFC 3986 未保留字符：字母、数字、- _ . ~
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
             }
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect()
+            // 其他字节全部百分号编码
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
 }
 
 // ── OMEGA v2.0 API Commands ──────────────────────────────────

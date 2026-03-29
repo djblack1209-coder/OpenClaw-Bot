@@ -1050,9 +1050,9 @@ pub async fn check_openclaw_update() -> Result<UpdateInfo, String> {
         });
     }
     
-    // 比较版本
-    let current = current_version.clone().unwrap();
-    let latest = latest_version.clone().unwrap();
+    // 比较版本（经过前面的 None 检查，此处理论上不会是 None，但用 unwrap_or_default 兜底）
+    let current = current_version.clone().unwrap_or_default();
+    let latest = latest_version.clone().unwrap_or_default();
     let update_available = compare_versions(&current, &latest);
     
     info!("[版本检查] 是否有更新: {}", update_available);

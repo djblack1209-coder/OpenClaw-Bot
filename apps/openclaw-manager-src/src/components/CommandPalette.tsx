@@ -40,7 +40,7 @@ export function CommandPalette() {
     setOpen(false)
   }
 
-  const runAction = async (label: string, action: () => Promise<any>) => {
+  const runAction = async (label: string, action: () => Promise<unknown>) => {
     setOpen(false)
     toast.promise(action(), {
       loading: `${label}...`,

@@ -5,7 +5,17 @@
 set -e
 cd "$(dirname "$0")/.."
 
-echo "🚀 OpenClaw 全系统启动中..."
+# 自动检测 Python 解释器：优先 .venv312，其次 python3
+if [ -x ".venv312/bin/python3" ]; then
+    PY=".venv312/bin/python3"
+elif command -v python3 &>/dev/null; then
+    PY="python3"
+else
+    echo "错误: 未找到 python3，请安装 Python 3.10+"
+    exit 1
+fi
+
+echo "🚀 OpenClaw 全系统启动中... (Python: $PY)"
 
 # 1. 启动 g4f API (端口 18891)
 echo "[1/4] 启动 g4f API..."
@@ -23,7 +33,7 @@ echo "[2/4] 启动部署授权服务..."
 if lsof -ti:18800 > /dev/null 2>&1; then
     echo "  ✅ 部署服务已在运行 (端口 18800)"
 else
-    nohup .venv312/bin/python3 -c "from src.deployer.deploy_server import run_server; run_server()" > logs/deploy_server.log 2>&1 &
+    nohup "$PY" -c "from src.deployer.deploy_server import run_server; run_server()" > logs/deploy_server.log 2>&1 &
     echo $! > /tmp/deploy_server.pid
     sleep 1
     echo "  ✅ 部署服务已启动 (PID: $(cat /tmp/deploy_server.pid))"
@@ -42,7 +52,7 @@ echo "[4/4] 启动 6 个 Telegram Bot..."
 if [ -f /tmp/clawbot.pid ] && kill -0 $(cat /tmp/clawbot.pid) 2>/dev/null; then
     echo "  ✅ ClawBot 已在运行 (PID: $(cat /tmp/clawbot.pid))"
 else
-    nohup .venv312/bin/python3 multi_main.py > logs/multi_bot.log 2>&1 &
+    nohup "$PY" multi_main.py > logs/multi_bot.log 2>&1 &
     echo $! > /tmp/clawbot.pid
     sleep 3
     echo "  ✅ ClawBot 已启动 (PID: $(cat /tmp/clawbot.pid))"

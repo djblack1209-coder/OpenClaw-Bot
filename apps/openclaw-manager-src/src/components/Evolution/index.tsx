@@ -116,7 +116,7 @@ export function Evolution() {
 
       // 统计数据
       if (rawStats.status === 'fulfilled' && rawStats.value) {
-        const s = rawStats.value as Record<string, any>;
+        const s = rawStats.value as Record<string, unknown>;
         setStats({
           total_proposals: s.total_proposals ?? s.proposals_count ?? 0,
           total_scans: s.total_scans ?? s.scans_count ?? 0,
@@ -130,7 +130,7 @@ export function Evolution() {
 
       // 差距分析
       if (rawGaps.status === 'fulfilled' && rawGaps.value) {
-        const raw = rawGaps.value as Record<string, any>;
+        const raw = rawGaps.value as Record<string, unknown>;
         const gapList: Record<string, unknown>[] = Array.isArray(raw)
           ? raw
           : (raw?.gaps ?? raw?.data ?? []);
@@ -146,7 +146,7 @@ export function Evolution() {
 
       // 提案列表
       if (rawProposals.status === 'fulfilled' && rawProposals.value) {
-        const rawP = rawProposals.value as Record<string, any>;
+        const rawP = rawProposals.value as Record<string, unknown>;
         const propList: Record<string, unknown>[] = Array.isArray(rawP)
           ? rawP
           : (rawP?.proposals ?? rawP?.data ?? []);

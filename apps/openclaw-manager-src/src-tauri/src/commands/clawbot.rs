@@ -1,4 +1,5 @@
 use crate::utils::shell;
+use super::config::{get_home_dir, mask_secret};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -130,17 +131,7 @@ pub struct ClawbotBotMatrixEntry {
     pub ready: bool,
 }
 
-fn get_home_dir() -> Result<String, String> {
-    // 优先使用 HOME 环境变量（更可靠，不受 Tauri 沙箱影响）
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            return Ok(home);
-        }
-    }
-    dirs::home_dir()
-        .map(|p| p.display().to_string())
-        .ok_or_else(|| "无法获取用户 Home 目录".to_string())
-}
+// get_home_dir 已提取至 config.rs，通过 use super::config::get_home_dir 导入
 
 fn get_base_dir() -> Result<String, String> {
     let home = get_home_dir()?;
@@ -622,12 +613,7 @@ fn should_autostart_ibkr(action: &str) -> Result<bool, String> {
     Ok(parse_env_bool(env_map.get("IBKR_AUTOSTART"), true))
 }
 
-fn mask_secret(value: &str) -> String {
-    if value.len() <= 8 {
-        return "****".to_string();
-    }
-    format!("{}...{}", &value[..4], &value[value.len() - 4..])
-}
+// mask_secret 已提取至 config.rs，通过 use super::config::mask_secret 导入
 
 fn get_route_base_url(provider: &str, env_map: &HashMap<String, String>) -> String {
     match provider {

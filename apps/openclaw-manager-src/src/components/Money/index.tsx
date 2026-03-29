@@ -53,7 +53,7 @@ export function Money() {
   useEffect(() => {
     const fetchTradingData = async () => {
       try {
-        let data: any;
+        let data: Record<string, unknown>;
         if (isTauri()) {
           // Tauri 环境：通过 IPC 调用
           data = await api.clawbotTradingStatus();
@@ -88,7 +88,8 @@ export function Money() {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         const data = await api.omegaProcess(text);
-        result = (data as any)?.result || (data as any)?.response || '执行完成';
+        const d = data as Record<string, string>;
+        result = d?.result || d?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/omega/process', {

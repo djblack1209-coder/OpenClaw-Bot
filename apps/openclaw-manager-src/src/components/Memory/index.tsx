@@ -84,11 +84,11 @@ export function Memory() {
   const fetchMemories = async () => {
     try {
       setLoading(true);
-      let results: any[] = [];
+      let results: Record<string, unknown>[] = [];
 
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
-        const data = await api.clawbotMemorySearch('', 50) as any;
+        const data = await api.clawbotMemorySearch('', 50) as Record<string, unknown>;
         results = data?.results || data?.entries || data || [];
       } else {
         // 降级: 直接HTTP调用
