@@ -17,6 +17,7 @@ from src.trading._lifecycle import (
 )
 from src.invest_tools import portfolio
 from src.broker_selector import ibkr
+from src.constants import TG_SAFE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ class TradingCommandsMixin:
     @with_typing
     async def cmd_tradingsystem(self, update, context):
         status = get_system_status()
-        if len(status) > 4000:
+        if len(status) > TG_SAFE_LENGTH:
             parts = status.split("\n\n")
             for part in parts:
                 if part.strip():
@@ -251,7 +252,7 @@ class TradingCommandsMixin:
                     except Exception as e:
                         logger.exception("回测 HTML 报告生成失败")
                         summary = format_multi_report(reports)
-                    if len(summary) > 4000:
+                    if len(summary) > TG_SAFE_LENGTH:
                         for part in summary.split("\n\n"):
                             if part.strip():
                                 await update.message.reply_text(part)
@@ -283,7 +284,7 @@ class TradingCommandsMixin:
                     if not result.success:
                         result_text = "回测失败: %s" % result.error
 
-                    if len(result_text) > 4000:
+                    if len(result_text) > TG_SAFE_LENGTH:
                         for part in result_text.split("\n\n"):
                             if part.strip():
                                 await update.message.reply_text(part)
@@ -326,7 +327,7 @@ class TradingCommandsMixin:
                                     await send_chart(update, context, pnl_chart, caption=f"📊 {symbol} 交易盈亏")
                         except Exception as chart_err:
                             logger.debug("[Backtest] 图表生成失败(非致命): %s", chart_err)
-                    if len(result_text) > 4000:
+                    if len(result_text) > TG_SAFE_LENGTH:
                         for part in result_text.split("\n\n"):
                             if part.strip():
                                 await update.message.reply_text(part)
@@ -504,7 +505,7 @@ class TradingCommandsMixin:
 
             plan = rebalancer.analyze(positions, quotes, cash)
             text = plan.format()
-            if len(text) > 4000:
+            if len(text) > TG_SAFE_LENGTH:
                 for part in text.split("\n\n"):
                     if part.strip():
                         await update.message.reply_text(part)

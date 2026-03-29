@@ -203,11 +203,6 @@ class GoofishMonitor:
         except Exception as e:
             return {"status": "offline", "message": str(e), "url": self.base_url}
 
-    async def close(self):
-        if self._session:
-            await self._session.aclose()
-            self._session = None
-
 
 class XianyuMonitorBridge:
     """

@@ -63,9 +63,9 @@ export function Money() {
           if (!resp.ok) return;
           data = await resp.json();
         }
-        setIbkrConnected(data?.connected ?? false);
-        if (data?.chart_data) setChartData(data.chart_data);
-        if (data?.assets) setAssets(data.assets);
+        setIbkrConnected((data?.connected ?? false) as boolean);
+        if (data?.chart_data) setChartData(data.chart_data as ChartDataPoint[]);
+        if (data?.assets) setAssets(data.assets as AssetItem[]);
       } catch {
         // 后端不可达时保持默认的断开状态
       } finally {

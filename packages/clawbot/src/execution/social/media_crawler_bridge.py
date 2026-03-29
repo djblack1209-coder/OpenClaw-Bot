@@ -207,11 +207,6 @@ class MediaCrawlerBridge:
         except Exception as e:
             return {"status": "offline", "message": str(e)}
 
-    async def close(self):
-        if self._session:
-            await self._session.aclose()
-            self._session = None
-
     # ── CLI 回退模式 ──
 
     async def _cli_search(

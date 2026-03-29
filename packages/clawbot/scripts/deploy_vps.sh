@@ -69,46 +69,31 @@ fi
 id -u clawbot &>/dev/null || useradd -m -s /bin/bash clawbot
 chown -R clawbot:clawbot /home/clawbot/clawbot
 
-# 创建 systemd 服务（安全加固）
-cat > /etc/systemd/system/clawbot.service << 'SERVICEEOF'
-[Unit]
-Description=ClawBot Telegram AI Assistant
-After=network.target
+# 安装 systemd 单元文件（从独立文件复制，不再内联）
+cp ${REMOTE_DIR}/scripts/systemd/clawbot.service /etc/systemd/system/
+cp ${REMOTE_DIR}/scripts/systemd/clawbot-failover.service /etc/systemd/system/
+cp ${REMOTE_DIR}/scripts/systemd/clawbot-failover.timer /etc/systemd/system/
 
-[Service]
-Type=simple
-User=clawbot
-Group=clawbot
-WorkingDirectory=/home/clawbot/clawbot
-ExecStart=/home/clawbot/clawbot/.venv/bin/python -u /home/clawbot/clawbot/multi_main.py
-EnvironmentFile=/home/clawbot/clawbot/config/.env
-Restart=always
-RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=300
-
-# --- 安全加固 ---
-NoNewPrivileges=yes
-ProtectSystem=strict
-PrivateTmp=yes
-# ProtectHome=read-only 允许读取 /home 但禁止写入（除 ReadWritePaths）
-ProtectHome=read-only
-ReadWritePaths=/home/clawbot/clawbot/data /home/clawbot/clawbot/logs
-MemoryMax=2G
-CPUQuota=150%
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+# 安装 failover 检查脚本到 /opt/openclaw/scripts/
+mkdir -p /opt/openclaw/{scripts,data}
+cp ${REMOTE_DIR}/scripts/vps_failover_check.sh /opt/openclaw/scripts/
+chmod +x /opt/openclaw/scripts/vps_failover_check.sh
+chown -R openclaw:openclaw /opt/openclaw 2>/dev/null || true
 
 # 重载并启动服务
 systemctl daemon-reload
 systemctl enable clawbot
 systemctl restart clawbot
 
+# 启用 failover 定时器（VPS 备节点自动接管）
+systemctl enable --now clawbot-failover.timer
+
 echo ""
 echo "服务状态:"
 systemctl status clawbot --no-pager
+echo ""
+echo "Failover 定时器状态:"
+systemctl status clawbot-failover.timer --no-pager 2>/dev/null || echo "(failover timer 未运行)"
 REMOTECMD
 
 echo ""

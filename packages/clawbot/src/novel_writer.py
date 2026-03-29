@@ -126,8 +126,7 @@ class NovelWriter:
             try:
                 conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_unique ON chapters(novel_id, chapter_num)")
             except Exception as e:
-                pass
-                logger.debug("静默异常: %s", e)
+                logger.debug(f"创建章节唯一索引失败: {e}")
 
     async def _llm_call(self, system: str, user: str, max_tokens: int = 4000) -> str:
         """调用 LLM（利用已有的 litellm_router 免费多模型路由）"""

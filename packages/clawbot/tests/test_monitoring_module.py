@@ -33,7 +33,7 @@ def tmp_dir():
 
 class TestStructuredLogger:
 
-    @patch("src.monitoring.now_et", return_value=FIXED_NOW)
+    @patch("src.monitoring.logger.now_et", return_value=FIXED_NOW)
     def test_structured_logger_log(self, mock_now, tmp_dir):
         """记录一条消息后，total_messages 计数器应加 1"""
         from src.monitoring import StructuredLogger
@@ -46,7 +46,7 @@ class TestStructuredLogger:
         # 验证当日消息也被记录
         assert sl._stats["daily_messages"].get("2026-03-27") == 1
 
-    @patch("src.monitoring.now_et", return_value=FIXED_NOW)
+    @patch("src.monitoring.logger.now_et", return_value=FIXED_NOW)
     def test_structured_logger_get_summary(self, mock_now, tmp_dir):
         """记录多条消息和 API 调用后，get_stats 返回正确的汇总数据"""
         from src.monitoring import StructuredLogger

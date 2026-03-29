@@ -42,8 +42,9 @@ class TestSafeCommandAllowed:
     def test_cat_allowed(self, tool):
         assert tool.is_allowed("cat /etc/hostname") is True
 
-    def test_python_allowed(self, tool):
-        assert tool.is_allowed("python3 --version") is True
+    def test_python_not_allowed(self, tool):
+        """R27 安全加固后 python3 已从白名单移除"""
+        assert tool.is_allowed("python3 --version") is False
 
     def test_safe_command_executes(self, tool):
         """echo hello actually runs and returns success."""
@@ -60,12 +61,13 @@ class TestSafeCommandAllowed:
     def test_git_status_allowed(self, tool):
         assert tool.is_allowed("git status") is True
 
-    def test_pip_list_allowed(self, tool):
-        assert tool.is_allowed("pip list") is True
+    def test_pip_not_allowed(self, tool):
+        """R27 安全加固后 pip 已从白名单移除"""
+        assert tool.is_allowed("pip list") is False
 
-    def test_printenv_allowed(self, tool):
-        """printenv is in the whitelist — should be allowed."""
-        assert tool.is_allowed("printenv HOME") is True
+    def test_printenv_not_allowed(self, tool):
+        """printenv 不在白名单中 — R27 安全加固后被移除"""
+        assert tool.is_allowed("printenv HOME") is False
 
 
 # ── 2. Non-whitelisted commands blocked ─────────────────
@@ -214,27 +216,34 @@ class TestOutputTruncated:
 class TestEnvVarsNotLeaked:
     """Sensitive environment variables must not appear in command output."""
 
-    def test_env_command_does_not_leak_secrets(self, tool):
-        """Even if `env` is run, BashTool itself should not inject extra
-        sensitive vars.  This test verifies the tool copies os.environ
-        (line 70) and does not add secrets like API keys."""
+    def test_env_command_blocked(self, tool):
+        """env 不在白名单中，执行应直接被拦截，不会调用 subprocess"""
+        with patch("subprocess.Popen") as mock_popen:
+            result = tool.execute("env")
+
+        assert result["success"] is False
+        assert "不在允许列表" in result.get("error", "")
+        mock_popen.assert_not_called()
+
+    def test_allowed_command_passes_environ(self, tool):
+        """白名单命令执行时，BashTool 会将 os.environ 传递给子进程。
+        验证环境变量传递行为（当前未过滤敏感变量 — 已知技术债）。"""
         captured_env = {}
 
         def fake_popen(cmd, **kwargs):
             captured_env.update(kwargs.get("env", {}))
             mock = MagicMock()
-            mock.communicate.return_value = (b"", b"")
+            mock.communicate.return_value = (b"hello\n", b"")
             mock.returncode = 0
             return mock
 
         with patch("subprocess.Popen", side_effect=fake_popen), \
              patch.dict("os.environ", {"SECRET_API_KEY": "sk-12345"}, clear=False):
-            tool.execute("env")
+            result = tool.execute("echo hello")
 
-        # The tool passes os.environ.copy() — it does not filter.
-        # This test documents the current behavior: env vars ARE passed through.
-        # A future hardening should strip SENSITIVE vars.
-        assert "SECRET_API_KEY" in captured_env  # current behavior: leaked
+        assert result["success"] is True
+        # 当前行为：环境变量原样传递（未过滤），记录为已知技术债
+        assert "SECRET_API_KEY" in captured_env
 
 
 # ── 6. Edge cases ──────────────────────────────────────

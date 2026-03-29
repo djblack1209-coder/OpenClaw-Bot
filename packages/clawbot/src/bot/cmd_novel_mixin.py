@@ -8,6 +8,7 @@ Bot — AI 小说工坊 命令 Mixin
 import logging
 from pathlib import Path
 
+from src.constants import TG_SAFE_LENGTH
 from src.bot.auth import requires_auth
 
 logger = logging.getLogger(__name__)
@@ -88,10 +89,10 @@ class NovelCommandsMixin:
             if "error" in result:
                 await update.message.reply_text(f"⚠️ 续写失败: {result['error']}")
                 return
-            # Telegram 消息长度限制 4096
+            # Telegram 消息长度限制 (TG_SAFE_LENGTH from constants)
             content = result["content"]
             header = f"📖 《续写》第{result['chapter_num']}章 {result['title']}\n字数: {result['word_count']}\n\n"
-            if len(header + content) > 4000:
+            if len(header + content) > TG_SAFE_LENGTH:
                 content = content[:3900] + "\n\n...(完整内容请导出 TXT)"
             await update.message.reply_text(header + content)
             return

@@ -1,0 +1,31 @@
+# ClawBot 主服务 — Telegram AI 助手
+# 部署路径: /etc/systemd/system/clawbot.service
+# 安装: sudo systemctl daemon-reload && sudo systemctl enable --now clawbot
+
+[Unit]
+Description=ClawBot Telegram AI Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=clawbot
+Group=clawbot
+WorkingDirectory=/home/clawbot/clawbot
+ExecStart=/home/clawbot/clawbot/.venv/bin/python -u /home/clawbot/clawbot/multi_main.py
+EnvironmentFile=/home/clawbot/clawbot/config/.env
+Restart=always
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# --- 安全加固 ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ProtectHome=read-only
+ReadWritePaths=/home/clawbot/clawbot/data /home/clawbot/clawbot/logs
+MemoryMax=2G
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target

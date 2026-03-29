@@ -1,9 +1,15 @@
 """
-全局常量 — 各模块共享的 HTTP 请求头、版本号等。
+全局常量 — 各模块共享的 HTTP 请求头、版本号、平台限制等。
 
 统一管理 User-Agent 字符串，避免散落在各文件中导致版本不一致。
 更新 Chrome 版本只需改此处一行。
 """
+
+# ── Telegram 消息长度限制 ──────────────────────────────────────
+# 真实 API 上限（超过会被 Telegram 服务器拒绝）
+TG_MSG_LIMIT = 4096
+# 安全发送上限（留 96 字符给 footer / bot 签名 / HTML 标签等）
+TG_SAFE_LENGTH = 4000
 
 # 通用 Web 抓取 User-Agent（macOS Chrome）
 # 用于 GitHub trending、SMZDM 比价、社交热搜等公开页面抓取

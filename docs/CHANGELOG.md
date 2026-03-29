@@ -5,6 +5,208 @@
 
 ---
 
+## [2026-03-30] R30: 全方位审计 — 前端降级修复+后端静默异常修复+重复方法清理+文件治理+VPS运维
+
+> 领域: `frontend`, `backend`, `infra`, `deploy`
+> 影响模块: `AIConfig`, `Testing`, `media_crawler_bridge`, `goofish_monitor`, `globals`, `code_tool`, `logger`, `metrics`, `brain`, `cost_control`, `self_heal`, `synergy_pipelines`, `response_cards`, `novel_writer`, `watchlist_monitor`
+> 关联问题: HI-385(新增), HI-386(新增)
+
+### 变更内容
+
+#### 前端修复 (3项)
+- **AI 配置页非 Tauri 环境降级** — 之前在浏览器中打开会显示红色错误条 `TypeError: Cannot read properties of undefined (reading 'invoke')`，现在优雅降级为空状态
+- **测试诊断页非 Tauri 环境修复** — 跳过 Tauri-only 的初始化调用，避免控制台报错
+- **AI 测试连接按钮** — 非 Tauri 环境下禁用并提示用户通过桌面应用使用
+
+#### 后端修复 (14项)
+- **8 处高风险静默异常修复** — `except Exception as e: pass` 全部替换为带上下文的 `logger.debug()` 调用:
+  - `brain.py` (2处): 写入/更新 core memory 任务状态失败
+  - `cost_control.py`: 发布成本预警事件失败
+  - `self_heal.py`: 发布自愈成功事件失败
+  - `synergy_pipelines.py`: 抓取新闻类别失败
+  - `response_cards.py`: 构建投资卡片回退
+  - `novel_writer.py`: 创建章节索引失败
+  - `watchlist_monitor.py`: 获取异动新闻失败
+- **2 处重复方法定义修复** — `media_crawler_bridge.py` 和 `goofish_monitor.py` 各有两个 `close()` 方法，删除重复的第二个定义
+- **4 处死导入清理** — `globals.py`(os), `logger.py`(List), `metrics.py`(Any), `code_tool.py`(io)
+- **4 处 re-export 导入加 noqa** — `globals.py` 的 4 个向后兼容 re-export 加 `# noqa: F401`
+
+#### 文件治理 (1项)
+- **清理根目录 69 个审计截图残留** — 删除所有 `audit-*.png` 和 `R21-*.png` 文件
+
+#### 运维 (1项)
+- **VPS failover 状态重置** — `CONSECUTIVE_FAILS` 从 4931 重置为 0，`CURRENT_ROLE` 从 active 恢复为 standby
+
+#### 构建验证
+- TypeScript: 0 错误
+- Vite 构建: 3600 模块成功编译
+- Python pytest: 1047/1047 passed（基线无变化）
+- macOS App: 可启动，窗口正常
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — 非 Tauri 环境降级
+- `apps/openclaw-manager-src/src/components/Testing/index.tsx` — 非 Tauri 初始化跳过
+- `packages/clawbot/src/execution/social/media_crawler_bridge.py` — 删除重复 close()
+- `packages/clawbot/src/xianyu/goofish_monitor.py` — 删除重复 close()
+- `packages/clawbot/src/bot/globals.py` — 删除死导入 os + re-export 加 noqa
+- `packages/clawbot/src/monitoring/logger.py` — 删除死导入 List
+- `packages/clawbot/src/monitoring/metrics.py` — 删除死导入 Any
+- `packages/clawbot/src/tools/code_tool.py` — 删除死导入 io
+- `packages/clawbot/src/core/brain.py` — 2处静默异常修复
+- `packages/clawbot/src/core/cost_control.py` — 静默异常修复
+- `packages/clawbot/src/core/self_heal.py` — 静默异常修复
+- `packages/clawbot/src/core/synergy_pipelines.py` — 静默异常修复
+- `packages/clawbot/src/core/response_cards.py` — 静默异常修复
+- `packages/clawbot/src/novel_writer.py` — 静默异常修复
+- `packages/clawbot/src/watchlist_monitor.py` — 静默异常修复
+
+---
+
+## [2026-03-30] R29: 全量审计 — 测试修复+死代码清理+Git索引清理+注释修正
+
+> 领域: `backend`, `infra`, `docs`
+> 影响模块: `test_bash_tool`, `test_monitoring_module`, `test_security`, `backtest_reporter`, `bookkeeping`, `.gitignore`, `OpenClaw.app`
+> 关联问题: HI-037(注释同步), HI-351(pass死代码续修)
+
+### 变更内容
+- **修复 5 个测试失败**（全部为测试代码 Bug，非产品 Bug）:
+  - `test_bash_tool.py` — 4 个测试因 R27 安全加固（白名单化）后断言过时而失败，更新为 `is False`；新增 1 个白名单命令覆盖测试
+  - `test_monitoring_module.py` — 2 个 `@patch` 路径错误（`src.monitoring.now_et` → `src.monitoring.logger.now_et`），因模块迁移后直接导入路径变化
+- **清理死代码**:
+  - `backtest_reporter.py:622` — 移除无意义的 bare `pass`（注释之间的占位）
+  - `bookkeeping.py:679` — 移除 `pass` 后紧跟 `logger.debug` 的冗余代码（HI-351 续修）
+- **Git 索引清理**:
+  - `git rm --cached` 移除 `apps/OpenClaw.app/` 3 个文件（Info.plist、二进制、icon.icns）
+  - `.gitignore` 新增 `apps/OpenClaw.app/` 和 `*.png` 排除规则
+  - 删除项目根目录 `openclaw-app-check.png`（审计截图残留）
+- **测试注释修正**:
+  - `test_security.py:256-267` — 更新过时注释块：标注 `sanitize_input()` 已存在于 `security.py:281` 但为死代码(HI-037)；移除关于 xfail 标记的错误描述（实际全文无 xfail 标记）
+- **测试结果**: 1047/1047 passed（基线 1046 + 新增 1 个测试）
+
+### 文件变更
+- `packages/clawbot/tests/test_bash_tool.py` — 4 个断言更新 + 1 个新测试
+- `packages/clawbot/tests/test_monitoring_module.py` — 2 个 `@patch` 路径修正
+- `packages/clawbot/tests/test_security.py` — 注释块重写 (11 行)
+- `packages/clawbot/src/backtest_reporter.py` — 移除 bare `pass`
+- `packages/clawbot/src/execution/bookkeeping.py` — 移除冗余 `pass`
+- `.gitignore` — 新增 2 条排除规则
+- `docs/status/HEALTH.md` — 更新测试通过率 + 新增 flaky test 记录
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-30] 新增 5 大用户保护协议 (§13-§17)
+
+> 领域: `docs`
+> 影响模块: `AGENTS.md`
+> 关联问题: 无（预防性协议，非 Bug 修复）
+
+### 变更内容
+- **新增 §13 回归防护协议 (REGRESSION GUARD)** — 强制 AI 在改代码前拍"测试基线快照"，改完后比对，发现回归立即修复，杜绝"修一个坏两个"的循环
+  - 包含：基线快照规则、变更后比对规则、回归处理流程、大规模变更额外保护、自检清单
+- **新增 §14 会话交接协议 (SESSION HANDOFF)** — 解决 AI 跨对话记忆清零的问题，强制"老 AI"留交接文档、"新 AI"先读交接再动手
+  - 新增 `docs/status/HANDOFF.md` 交接文件（只保留最近 5 条）
+  - 包含：触发条件、交接写入格式、交接读取流程、管理规则
+- **新增 §15 错误翻译协议 (ERROR TRANSLATION)** — 禁止 AI 向用户展示任何技术报错原文，强制翻译为中文大白话+类比
+  - 包含：三步翻译法、20+ 常见错误标准翻译对照表、30+ 禁止术语清单
+- **新增 §16 用户可感知验证协议 (USER-PERCEIVABLE VERIFICATION)** — 禁止"空口验证"（如"pytest通过了"），强制用截图/演示/数据展示等用户能看到的方式证明工作完成
+  - 包含：验证方式矩阵、截图规范、Telegram Bot 验证规范、后端替代验证方式
+- **新增 §17 定期健康汇报协议 (PERIODIC HEALTH REPORT)** — AI 定期用大白话生成"系统体检报告"，将 HEALTH.md 中的技术信息翻译为用户能理解的状态汇报
+  - 包含：触发场景、汇报格式模板、技术翻译对照表、简要/完整汇报区分
+
+### 文件变更
+- `AGENTS.md` — 末尾追加 §13-§17（约 500 行），从 943 行扩展至约 1440 行
+- `docs/status/HANDOFF.md` — 新建交接文件（§14 引用）
+- `docs/CHANGELOG.md` — 追加本条目
+
+---
+
+## [2026-03-30] 新增官方文档优先协议 (DOCS-FIRST PROTOCOL)
+
+> 领域: `docs`
+> 影响模块: `AGENTS.md`
+> 关联问题: HI-382 (硬编码LLM模型名), HI-219 (mem0 API不兼容), HI-159/160 (httpx连接泄漏), HI-373 (APScheduler线程竞态), HI-267 (asyncio废弃API)
+
+### 变更内容
+- **新增 §12 官方文档优先协议** — 完整的技术文档拉取 SOP，约束 AI 在修改技术栈代码前必须先查阅官方文档，用文档事实替代可能过时的训练数据记忆
+- **核心改进**（相比初稿）:
+  - 新增 Context7 工具作为文档拉取首选方式（精准查 API 签名，比 WebFetch 省上下文）
+  - URL 速查表增加「项目版本」列，与 DEPENDENCY_MAP.md 绑定，防止拉到错误版本的文档
+  - PTB 文档 URL 锁定为 `/en/v22.5/`（项目实际版本），不再指向 `/en/stable/`（可能已是 v23）
+  - 新增 §12.4 多技术栈同时触发时的上下文预算分配策略
+  - 新增 §12.8 文档拉取失败时的降级策略（三级降级，不卡死流程）
+  - 幻觉高风险清单从 8 项扩充到 12 项，新增 mem0/httpx/APScheduler/subprocess 四个历史高频踩坑点，并关联对应 HI-ID
+  - 新增 §12.10 自检清单（6 项检查，任务完成前强制过一遍）
+  - 明确协议在全流程 SOP 中的位置：阶段 2 末尾 → §12.3 → 阶段 3/4
+  - §12.7 不符处理：情形B 改为主动告知用户而非追问（符合「用户是甲方老板」原则）
+
+### 文件变更
+- `AGENTS.md` — 末尾追加 §12（约 280 行），覆盖 12.1-12.10 共 10 个子章节
+
+---
+
+## [2026-03-29] R28: macOS 清理 — App去重+日志瘦身+遗留目录清除+Phase1矩阵更新
+
+> 领域: `infra`, `docs`
+> 影响模块: `OpenClaw.app`, `HEALTH.md`, `CHANGELOG.md`
+> 关联问题: HI-037(半完成—死代码), HI-011(确认已解决), HI-006(确认已解决)
+
+### 变更内容
+- **macOS App 去重** — 删除 `apps/OpenClaw.app` 中间副本(3/18版)，删除旧名 `OpenClaw Bot.app`×2，将最新 3/20 版本安装到 `/Applications/OpenClaw.app`，现在系统中只有一个入口
+- **日志瘦身** — 清空 2 个超大 stderr 日志(共118MB)，删除 7 天前旧日志，从 185MB/138 文件降至 31MB/116 文件
+- **遗留目录清除** — 删除 `~/Library/Application Support/ClawdBot/` 空目录（旧名遗留）
+- **Phase 1 矩阵更新** — HI-011(Telegram flood) 和 HI-006(execution_hub) 标记为已完成；HI-037(sanitize_input) 标记为半完成（方法存在但无调用点）
+- **App 验证** — 打开 `/Applications/OpenClaw.app` 确认 Tauri 桌面管理端正常运行，总控中心、服务矩阵、所有 13 个导航模块均可见
+
+### 文件变更
+- `/Applications/OpenClaw.app` — 从最新 release build 复制安装
+- `apps/OpenClaw.app` — 已删除（中间副本）
+- `packages/clawbot/logs/` — 清理旧日志 (185MB→31MB)
+- `docs/status/HEALTH.md` — Phase 1 矩阵状态更新 + 日期更新
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
+## [2026-03-29] R27: 架构清理 — 风控SSOT+提示词SSOT+称谓统一+TG常量提取+MODULE_REGISTRY全量补录
+
+> 领域: `backend`, `docs`
+> 影响模块: `risk_config.py`, `omega.yaml`, `prompts.py`, `bot_profiles.py`, `brain_executors.py`, `team.py`, `cmd_analysis_mixin.py`, `multi_bot.py`, `error_messages.py`, `constants.py`, `message_mixin.py`, `cmd_collab_mixin.py`, `cmd_novel_mixin.py`, `cmd_xianyu_mixin.py`, `cmd_trading_mixin.py`, `globals.py`, `message_sender.py`, `social_tools.py`, `wechat_bridge.py`, `docling_service.py`, `MODULE_REGISTRY.md`, `HEALTH.md`
+> 关联问题: HI-358(仍开放), HI-381(新登记), HI-382(新登记), HI-383(新登记)
+
+### 变更内容
+- **R27-P0: 风控值统一 (SSOT)** — 4 个文件统一到 STRICT 标准: 20% 仓位 / 35% 行业 / 3% 日亏 / 8% 回撤, total_capital=$2000 与 .env IBKR_BUDGET 对齐
+- **R27-P1: 系统提示词 SSOT (4文件)** — brain_executors.py Jina fallback 改用 SOUL_CORE; team.py 6个 CrewAI backstory 引用 INVESTMENT_ROLES; cmd_analysis_mixin.py+prompts.py 提取 REVIEW_ROLES 常量; multi_bot.py fallback prompt 改用 SOUL_CORE
+- **R27-P2: 错误消息"严总"称谓统一** — error_messages.py 全部 13 条用户错误消息从中性"你"改为"严总"
+- **R27-P4: TG 消息限制常量提取** — constants.py 新增 TG_MSG_LIMIT=4096 + TG_SAFE_LENGTH=4000, 替换 11 个文件中的裸数字 4096/4000
+- **R27-P5: MODULE_REGISTRY 全量补录** — 替换 monitoring.py 过期条目为 monitoring/ 包 (7文件/1394行); 替换 3 个 trading/ 过期条目; 新增 57 个缺失文件注册 (按 12 个域分组); 合并 Section 5 (R9补充) 10 个独有条目到 Section 2.2 后删除冗余 Section 5; 共注册 67 个新条目 (~21K 行代码)
+- **R27-P6~P9: 技术债评估** — 4 项高成本低收益改动 (内联错误字符串/硬编码模型名/HTTP碎片化/大文件拆分) 评估后登记到 HEALTH.md 推迟处理
+
+### 文件变更
+- `packages/clawbot/src/risk_config.py` — 风控值统一到 STRICT 标准
+- `packages/clawbot/config/omega.yaml` — 风控值统一到 STRICT 标准
+- `packages/clawbot/config/prompts.py` — 风控值统一 + 新增 REVIEW_ROLES 常量
+- `packages/clawbot/config/bot_profiles.py` — 风控值统一到 STRICT 标准
+- `packages/clawbot/src/core/brain_executors.py` — Jina fallback → SOUL_CORE
+- `packages/clawbot/src/modules/investment/team.py` — 6个 backstory → INVESTMENT_ROLES
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 3个 review role → REVIEW_ROLES + TG常量
+- `packages/clawbot/src/bot/multi_bot.py` — fallback prompt → SOUL_CORE
+- `packages/clawbot/src/bot/error_messages.py` — 13条消息"严总"称谓
+- `packages/clawbot/src/constants.py` — 新增 TG_MSG_LIMIT + TG_SAFE_LENGTH
+- `packages/clawbot/src/bot/message_mixin.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/bot/cmd_novel_mixin.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/bot/cmd_xianyu_mixin.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/bot/globals.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/message_sender.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/social_tools.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/wechat_bridge.py` — 裸数字 → TG 常量
+- `packages/clawbot/src/tools/docling_service.py` — 裸数字 → TG 常量
+- `docs/registries/MODULE_REGISTRY.md` — 全量补录 67 条目 + monitoring→包 + 删除 Section 5
+- `docs/status/HEALTH.md` — 更新日期 + 登记 HI-381~383 技术债
+
+---
+
 ## [2026-03-29] R26: 遗留问题全量修复 — 7个HI关闭 (Rust环境变量+死代码+字体路径+前端中文化+闲鱼app-key+emit_flow去重+日志轮转)
 
 > 领域: `backend`, `frontend`, `infra`, `xianyu`

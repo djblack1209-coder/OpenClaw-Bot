@@ -676,6 +676,5 @@ def find_bill_by_type(user_id, account_type, db_path=None):
                     "low_threshold": row[4],
                 }
     except Exception as e:
-        pass
         logger.debug("静默异常: %s", e)
     return None

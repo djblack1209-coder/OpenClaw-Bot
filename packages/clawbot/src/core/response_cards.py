@@ -514,8 +514,7 @@ def card_from_brain_result(result) -> ResponseCard:
                 card._override_buttons = invest_card.action_buttons()
                 return card
             except Exception as e:
-                pass
-                logger.debug("静默异常: %s", e)
+                logger.debug(f"构建投资卡片失败，回退到通用卡片: {e}")
         return card
 
     # 投资分析

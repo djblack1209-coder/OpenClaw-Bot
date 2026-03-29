@@ -1,0 +1,13 @@
+# ClawBot 故障切换定时器 — 每30秒触发一次检查
+# 部署路径: /etc/systemd/system/clawbot-failover.timer
+# 安装: sudo systemctl daemon-reload && sudo systemctl enable --now clawbot-failover.timer
+
+[Unit]
+Description=ClawBot Failover Check Timer
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+
+[Install]
+WantedBy=timers.target

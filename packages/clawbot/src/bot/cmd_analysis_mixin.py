@@ -15,6 +15,8 @@ from src.bot.globals import (
 # 幻影导入修复: 5 个符号从实际定义模块导入
 from src.ta_engine import get_full_analysis, scan_market, format_analysis, format_scan_results
 from src.trading_journal import journal
+from config.prompts import REVIEW_ROLES
+from src.constants import TG_SAFE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +156,8 @@ class AnalysisCommandsMixin:
         from src.message_sender import _clean_for_telegram, _split_message
 
         review_roles = {
-            "claude_haiku": ("复盘记录员", f"你是交易团队的复盘记录员。请基于以下交易数据，快速整理：\n1. 今日交易概况\n2. 每笔交易的简要回顾\n3. 市场环境总结\n\n{review_prompt}"),
-            "deepseek_v3": ("风控审计", f"你是交易团队的风控审计。请审查今日交易：\n1. 哪些交易遵守了风控规则（止损、仓位）\n2. 哪些交易违反了规则\n3. 风险敞口是否合理\n4. 改进建议\n\n{review_prompt}"),
-            "claude_sonnet": ("首席复盘官", f"你是交易团队的首席复盘官。请做最终复盘总结：\n1. 今日做得好的地方（具体到哪笔交易）\n2. 今日做得差的地方（具体到哪笔交易）\n3. 经验教训（可复用的规则）\n4. 明日交易计划和关注点\n5. 团队整体评分(1-10)\n\n{review_prompt}"),
+            bot_id: (name, prompt.format(review_prompt=review_prompt))
+            for bot_id, (name, prompt) in REVIEW_ROLES.items()
         }
 
         previous = []
@@ -180,7 +181,7 @@ class AnalysisCommandsMixin:
                 full_report_parts.append(f"[{role_name}]\n{response}")
 
                 cleaned = _clean_for_telegram(response)
-                parts = _split_message(cleaned, 4000)
+                parts = _split_message(cleaned, TG_SAFE_LENGTH)
                 bot_tg = target_bot.app.bot
                 for pi, part in enumerate(parts):
                     try:

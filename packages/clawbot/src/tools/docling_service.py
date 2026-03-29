@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import List, Tuple
 
+from src.constants import TG_SAFE_LENGTH
+
 logger = logging.getLogger(__name__)
 
 # ── Graceful degradation ─────────────────────────────────────
@@ -24,8 +26,6 @@ except ImportError:
     HAS_DOCLING = False
     logger.info("[Docling] docling 未安装，文档理解功能不可用。pip install docling>=2.0.0")
 
-# Telegram 消息安全长度 (留 96 字符余量给 footer/tag)
-TG_CHAR_LIMIT = 4000
 TRUNCATION_INDICATOR = "\n\n⋯ (文档内容过长，已截断)"
 
 # 支持的文件扩展名
@@ -40,7 +40,7 @@ def _is_supported(file_path: str) -> bool:
     return Path(file_path).suffix.lower() in SUPPORTED_EXTENSIONS
 
 
-def _truncate(text: str, limit: int = TG_CHAR_LIMIT) -> str:
+def _truncate(text: str, limit: int = TG_SAFE_LENGTH) -> str:
     """截断文本到 Telegram 安全长度。"""
     if len(text) <= limit:
         return text
@@ -87,7 +87,7 @@ async def convert_document(
 
     Returns:
         (markdown_text, extracted_tables)
-        - markdown_text: 文档内容的 Markdown 文本 (截断到 TG_CHAR_LIMIT)
+        - markdown_text: 文档内容的 Markdown 文本 (截断到 TG_SAFE_LENGTH)
         - extracted_tables: 表格列表，每个元素为 dict
 
     Raises:

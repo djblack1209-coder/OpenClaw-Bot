@@ -369,8 +369,7 @@ class SynergyPipelines:
                     items = await fetcher.fetch_by_category(category, count=10)
                     all_news.extend(items)
                 except Exception as e:
-                    pass
-                    logger.debug("静默异常: %s", e)
+                    logger.debug(f"抓取 {category} 类别新闻失败: {e}")
                 await asyncio.sleep(1)  # 避免请求过快
 
             if not all_news:

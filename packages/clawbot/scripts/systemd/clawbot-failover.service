@@ -1,0 +1,12 @@
+# ClawBot 故障切换检查服务 — 被 timer 触发的一次性任务
+# 检查 Mac 主节点心跳，超时则自动接管
+# 部署路径: /etc/systemd/system/clawbot-failover.service
+
+[Unit]
+Description=ClawBot Failover Check
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/openclaw/scripts/vps_failover_check.sh

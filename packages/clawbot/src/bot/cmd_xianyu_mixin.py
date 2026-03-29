@@ -11,6 +11,7 @@ Bot — 闲鱼客服 / 风格 / 报表 / 发货 命令 Mixin
 import logging
 import os
 
+from src.constants import TG_SAFE_LENGTH
 from src.bot.globals import send_long_message
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
@@ -96,7 +97,7 @@ class XianyuCommandsMixin:
                 except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
                 msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个\n\n最近日志:\n{last_log}"
-                await update.message.reply_text(msg[:4000])
+                await update.message.reply_text(msg[:TG_SAFE_LENGTH])
             else:
                 await update.message.reply_text("🔴 闲鱼 AI 客服未运行\n\n发送 /xianyu start 启动")
 
