@@ -28,6 +28,8 @@ import random
 from pathlib import Path
 from typing import Optional
 
+from src.constants import TG_SAFE_LENGTH
+
 logger = logging.getLogger(__name__)
 
 # ── 配置 ────────────────────────────────────────────────
@@ -157,7 +159,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     """将通知文本发送到微信用户。
 
     Args:
-        text: 通知文本（自动截断到 4000 字符）
+        text: 通知文本（自动截断到 TG_SAFE_LENGTH 字符）
         user_id: 微信用户 ID (默认使用凭证文件中的 userId)
 
     Returns:
@@ -180,7 +182,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
             _warned_not_configured = True
         return False
 
-    text = text[:4000]
+    text = text[:TG_SAFE_LENGTH]
 
     # 获取 contextToken
     context_token = await _get_context_token(token, target)

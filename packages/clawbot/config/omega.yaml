@@ -64,11 +64,11 @@ omega:
     risk_rules:
       total_capital: 2000             # 总资金基准 (USD)
       max_risk_per_trade: 0.02        # 单笔最大风险 2% ($40 on $2000)
-      max_position_single: 0.30       # 单标的最大仓位 30% — 与 risk_manager.py 对齐
-      max_sector_position: 0.50       # 同行业最大仓位 50% — 与 risk_manager.py max_sector_exposure_pct 对齐
+      max_position_single: 0.20       # 单标的最大仓位 20% — 与 risk_manager.py 对齐
+      max_sector_position: 0.35       # 同行业最大仓位 35% — 与 risk_manager.py max_sector_exposure_pct 对齐
       max_total_position: 0.80        # 总仓位上限 80%
-      max_drawdown_stop: 0.10         # 滚动窗口回撤 >10% 暂停交易 — 与 risk_manager.py drawdown_halt_pct 对齐
-      daily_loss_limit: 0.05          # 单日亏损 >5% 暂停交易 — 与 risk_manager.py 对齐: $100 on $2000 capital
+      max_drawdown_stop: 0.08         # 滚动窗口回撤 >8% 暂停交易 — 与 risk_manager.py drawdown_halt_pct 对齐
+      daily_loss_limit: 0.03          # 单日亏损 >3% 暂停交易 — $60 on $2000 capital
       require_human_approval_rmb: 100000  # 单笔 >10万需人工确认
       correlation_check: true
       liquidity_check: true

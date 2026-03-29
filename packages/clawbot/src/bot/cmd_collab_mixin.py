@@ -30,6 +30,7 @@ from src.trading_journal import journal
 from src.universe import get_full_universe, full_market_scan
 from src.ta_engine import get_full_analysis, format_analysis
 from src.invest_tools import format_quote, get_market_summary
+from src.constants import TG_SAFE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +378,7 @@ class CollabCommandsMixin:
                     last_response = response
 
                 cleaned = _clean_for_telegram(response)
-                parts = _split_message(cleaned, 4000)
+                parts = _split_message(cleaned, TG_SAFE_LENGTH)
                 for pi, part in enumerate(parts):
                     reply_id = message_id if pi == 0 else None
                     try:
@@ -584,7 +585,7 @@ class CollabCommandsMixin:
                 chat_router.record_discuss_message(chat_id, bot_name, response)
                 # 用该 bot 自己的 Telegram 账号发送到群组
                 cleaned = _clean_for_telegram(response)
-                parts = _split_message(cleaned, 4000)
+                parts = _split_message(cleaned, TG_SAFE_LENGTH)
                 for pi, part in enumerate(parts):
                     reply_id = reply_to if pi == 0 else None
                     try:

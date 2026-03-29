@@ -16,13 +16,26 @@ class BashTool:
     """执行Bash命令 (白名单模式)"""
     
     # 允许执行的命令白名单
+    # 安全原则: 只保留只读/信息查询类命令，移除可执行任意代码的命令
+    # 已移除: python3, node, npm (可绕过沙箱执行任意代码)
+    # 已移除: ssh, scp, rsync (可访问远程系统)
+    # 已移除: docker (可逃逸到宿主机)
+    # 已移除: pip (可安装恶意包)
     ALLOWED_COMMANDS = frozenset({
+        # 文件查看 (只读)
         "ls", "cat", "head", "tail", "grep", "find", "wc", "sort", "uniq",
-        "echo", "pwd", "date", "whoami", "uname", "df", "du", "file",
-        "pip", "python3", "node", "npm", "git", "docker", "curl", "wget",
-        "tar", "zip", "unzip", "gzip", "mkdir", "cp", "mv", "touch",
-        "which", "env", "printenv", "ps", "top", "htop", "free",
-        "ssh", "scp", "rsync",
+        "file",
+        # 系统信息 (只读)
+        "echo", "pwd", "date", "whoami", "uname", "df", "du",
+        "which", "ps", "free",
+        # 安全的文件操作 (用户工作目录内)
+        "mkdir", "cp", "mv", "touch",
+        # 网络下载 (只读，不可上传)
+        "curl", "wget",
+        # 压缩/解压
+        "tar", "zip", "unzip", "gzip",
+        # 版本控制 (只读操作)
+        "git",
     })
     
     def __init__(self, working_dir: Optional[str] = None, timeout: int = 120):

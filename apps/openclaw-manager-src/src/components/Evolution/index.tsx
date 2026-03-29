@@ -118,13 +118,13 @@ export function Evolution() {
       if (rawStats.status === 'fulfilled' && rawStats.value) {
         const s = rawStats.value as Record<string, unknown>;
         setStats({
-          total_proposals: s.total_proposals ?? s.proposals_count ?? 0,
-          total_scans: s.total_scans ?? s.scans_count ?? 0,
-          capability_gaps: s.capability_gaps ?? s.gaps_count ?? 0,
-          last_scan: s.last_scan ?? s.last_scan_at ?? undefined,
-          approved: s.approved ?? undefined,
-          rejected: s.rejected ?? undefined,
-          pending: s.pending ?? undefined,
+          total_proposals: (s.total_proposals ?? s.proposals_count ?? 0) as number,
+          total_scans: (s.total_scans ?? s.scans_count ?? 0) as number,
+          capability_gaps: (s.capability_gaps ?? s.gaps_count ?? 0) as number,
+          last_scan: (s.last_scan ?? s.last_scan_at ?? undefined) as string | undefined,
+          approved: (s.approved ?? undefined) as number | undefined,
+          rejected: (s.rejected ?? undefined) as number | undefined,
+          pending: (s.pending ?? undefined) as number | undefined,
         });
       }
 
@@ -133,7 +133,7 @@ export function Evolution() {
         const raw = rawGaps.value as Record<string, unknown>;
         const gapList: Record<string, unknown>[] = Array.isArray(raw)
           ? raw
-          : (raw?.gaps ?? raw?.data ?? []);
+          : ((raw?.gaps ?? raw?.data ?? []) as Record<string, unknown>[]);
         setGaps(
           gapList.map((g) => ({
             module: (g.module ?? g.category ?? 'unknown') as string,
@@ -149,7 +149,7 @@ export function Evolution() {
         const rawP = rawProposals.value as Record<string, unknown>;
         const propList: Record<string, unknown>[] = Array.isArray(rawP)
           ? rawP
-          : (rawP?.proposals ?? rawP?.data ?? []);
+          : ((rawP?.proposals ?? rawP?.data ?? []) as Record<string, unknown>[]);
         setProposals(
           propList.map((p) => ({
             id: (p.id ?? p.proposal_id) as string | undefined,

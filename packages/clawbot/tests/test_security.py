@@ -253,18 +253,17 @@ class TestGetStats:
 # Security bypass / attack-vector tests
 # ════════════════════════════════════════════════════════════
 #
-# NOTE: security.py does NOT have a dedicated sanitize_input() method.
-# The closest existing methods are contains_sensitive_data() and
-# redact_sensitive(), which only cover SENSITIVE_PATTERNS (credit cards,
-# SSN, passwords, tokens).
+# NOTE: security.py 在第 281 行已实现 sanitize_input() 方法，
+# 但全项目无调用点 — 属于死代码 (HI-037)。
+# 现有检测面: contains_sensitive_data() 覆盖 SENSITIVE_PATTERNS
+# (信用卡、SSN、密码、Token) + 攻击向量 (XSS/SQL注入/路径穿越/
+# 命令注入/Unicode绕过)。
 #
-# The tests below verify whether common attack vectors are caught by
-# the existing detection surface.  Tests marked @pytest.mark.xfail
-# document known security GAPS — they assert that the attack SHOULD be
-# detected, but the current code does not cover the pattern.
+# 以下测试验证 contains_sensitive_data() 对常见攻击向量的检测能力。
+# 所有测试直接 assert is True — 当前检测面已覆盖全部测试用例。
 #
-# When a sanitize_input() method is implemented, remove the xfail
-# markers and update assertions accordingly.
+# TODO(HI-037): 将 sanitize_input() 接入消息处理管道后，
+# 为其添加独立测试用例。
 # ════════════════════════════════════════════════════════════
 
 

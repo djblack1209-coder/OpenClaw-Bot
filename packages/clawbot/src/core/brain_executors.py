@@ -339,7 +339,7 @@ class BrainExecutorMixin:
                         model_family="deepseek",
                         messages=[
                             {"role": "system", "content": (
-                                "你是专业购物比价助手。根据用户需求提供各平台价格对比和购买建议。"
+                                SOUL_CORE + "\n\n你现在在做购物比价任务。根据用户需求提供各平台价格对比和购买建议。"
                                 "输出JSON格式: {\"products\":[{\"name\":\"商品名\",\"price\":\"价格\","
                                 "\"platform\":\"平台\",\"note\":\"备注\"}],"
                                 "\"recommendation\":\"购买建议\",\"best_deal\":\"最佳选择\","

@@ -89,7 +89,7 @@ export function Memory() {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         const data = await api.clawbotMemorySearch('', 50) as Record<string, unknown>;
-        results = data?.results || data?.entries || data || [];
+        results = (data?.results || data?.entries || data || []) as Record<string, unknown>[];
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/memory/search?q=&limit=50');

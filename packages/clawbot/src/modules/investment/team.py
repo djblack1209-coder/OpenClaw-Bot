@@ -209,41 +209,38 @@ class InvestmentTeam:
             self._director = Agent(
                 role="投资总监",
                 goal="汇总团队分析，做出最优投资决策",
-                backstory="你是一位经验丰富的基金经理，管理着OpenClaw的投资组合。"
-                          "你擅长综合基本面、技术面和量化信号做出理性决策。",
+                backstory=DIRECTOR_PROMPT,
                 verbose=False,
                 allow_delegation=True,
             )
             self._researcher = Agent(
                 role="市场研究员",
                 goal="深入分析标的基本面，发现价值洼地和风险点",
-                backstory="你是一位资深卖方分析师，擅长行业研究和公司估值。"
-                          "你对中国和美国市场都有深入了解。",
+                backstory=RESEARCHER_PROMPT,
                 verbose=False,
             )
             self._ta_analyst = Agent(
                 role="技术分析师",
                 goal="通过K线和技术指标判断最佳买卖时机",
-                backstory="你是一位有15年经验的技术分析师，精通各种形态识别和指标应用。",
+                backstory=TA_PROMPT,
                 verbose=False,
             )
             self._quant = Agent(
                 role="量化工程师",
                 goal="用数据和统计方法验证投资假设",
-                backstory="你是一位量化对冲基金的研究员，擅长因子分析和策略回测。",
+                backstory=QUANT_PROMPT,
                 verbose=False,
             )
             self._risk_officer = Agent(
                 role="首席风控官",
                 goal="确保每笔交易的风险在可控范围内，保护本金安全",
-                backstory="你是一位严格的风控专家。你有一票否决权。"
-                          "你的信条是：保住本金永远比追求收益重要。",
+                backstory=RISK_PROMPT,
                 verbose=False,
             )
             self._reviewer = Agent(
                 role="交易复盘官",
                 goal="从每笔交易中提炼教训，持续改进投资策略",
-                backstory="你是一位行为金融学专家，擅长识别认知偏差和决策错误。",
+                backstory=REVIEWER_PROMPT,
                 verbose=False,
             )
             self._initialized = True

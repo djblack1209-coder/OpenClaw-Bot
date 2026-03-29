@@ -292,8 +292,7 @@ class WatchlistMonitor:
                     if news:
                         news_map[sym] = news[0].get("title", "")
                 except Exception as e:
-                    pass
-                    logger.debug("静默异常: %s", e)
+                    logger.debug(f"获取标的 {sym} 的异动新闻失败: {e}")
         except Exception as e:
             logger.debug(f"异动新闻搜索模块不可用: {e}")
 

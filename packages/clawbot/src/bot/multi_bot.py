@@ -11,6 +11,7 @@ from src.bot.globals import (
 # 幻影导入修复: BotCapability/get_bot_config 从实际定义模块导入
 from src.routing.models import BotCapability
 from config.bot_profiles import get_bot_config
+from config.prompts import SOUL_CORE
 from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker
 
 from src.bot.api_mixin import APIMixin
@@ -150,7 +151,7 @@ class MultiBot(
         self.emoji = profile.get("emoji", "\U0001f916")
         self.role = profile.get("personality", "AI助手")
         self._base_system_prompt = profile.get(
-            "system_prompt", f"你是 {self.name}，一个友好的AI助手。"
+            "system_prompt", SOUL_CORE
         )
 
         self.max_messages = 30

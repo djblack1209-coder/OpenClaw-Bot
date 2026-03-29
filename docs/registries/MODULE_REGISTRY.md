@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-29 | R24 审计修复: error_utils.py + constants.py 新增，8个router加固
+> 最后更新: 2026-03-29 | R27 架构清理: 全量补录 85 个缺失模块，清理 4 个过时条目，monitoring 重构为包
 
 ---
 
@@ -546,7 +546,7 @@
 | history_store.py | `src/history_store.py` | ~400 | SQLite 对话历史存储 |
 | risk_manager.py | `src/risk_manager.py` | ~1320 | 风控引擎 (仓位/止损/集中度/行业查询/风险敞口摘要) |
 | social_tools.py | `src/social_tools.py` | ~700 | 社媒内容生成 + 发布 |
-| monitoring.py | `src/monitoring.py` | 1243 | Prometheus 监控 + 健康检查 |
+| monitoring/ | `src/monitoring/` | 1394 (7文件) | Prometheus 监控包 — metrics.py(采集) + health.py(健康检查) + alerts.py(告警) + anomaly_detector.py(异常检测) + cost_analyzer.py(成本分析) + logger.py(日志) |
 | message_format.py | `src/message_format.py` | 528 | OMEGA 结构化响应 + 格式化 |
 | message_sender.py | `src/message_sender.py` | 135 | Telegram 消息清洗 + 分割 |
 | social_scheduler.py | `src/social_scheduler.py` | 542 | APScheduler 社交自动驾驶 |
@@ -585,9 +585,12 @@
 | code_tool.py | `src/tools/code_tool.py` | 155 | ✅ Python/Node.js 代码沙箱: import hook 禁用14个危险模块 + open()禁用 + subclasses阻断 + Node.js 12模块黑名单 + 代码长度限制(10KB) |
 | bash_tool.py | `src/tools/bash_tool.py` | 161 | ✅ 安全 Shell 执行: 白名单命令模式(35个安全命令) + shell=False + shlex.split 解析 + 进程组超时终止 + execute_dangerous 已禁用 |
 | **交易 (src/trading/)** | | | |
-| ai_team_integration.py | `src/trading/ai_team_integration.py` | 50 | AI 团队集成 (投票注入点/包装器) |
-| env_helpers.py | `src/trading/env_helpers.py` | 30 | 交易环境变量工具 (bool/int 安全读取) |
-| market_hours.py | `src/trading/market_hours.py` | 33 | 市场时间判断 (美股交易时段/休市日检测) |
+| _helpers.py | `src/trading/_helpers.py` | 142 | 交易工具函数 (纯工具，无全局状态依赖) |
+| _init_system.py | `src/trading/_init_system.py` | 358 | 交易系统初始化 + AI 团队配置 |
+| _lifecycle.py | `src/trading/_lifecycle.py` | 230 | 启停/状态恢复/便捷访问器 |
+| _scheduler_daily.py | `src/trading/_scheduler_daily.py` | 387 | 每日定时任务 (风控重置/收盘复盘/行情刷新) |
+| _scheduler_tasks.py | `src/trading/_scheduler_tasks.py` | 440 | 调度重型任务 (IBKR 成交回写/撤单/重入队列) |
+| market_calendar.py | `src/trading/market_calendar.py` | 119 | 美股市场日历 (假日计算+开盘日判断) |
 | reentry_queue.py | `src/trading/reentry_queue.py` | 61 | 重入队列管理 (盘后取消→下一交易日重新提交) |
 | **闲鱼 (src/xianyu/)** | | | |
 | cookie_refresher.py | `src/xianyu/cookie_refresher.py` | 87 | Cookie 自动刷新 (_m_h5_tk 过期监控/主动续期) |
@@ -641,6 +644,133 @@
 | notify_style.py | `src/notify_style.py` | 440 | humanize (2.9k⭐) natural_time/size/number | humanize |
 | config_validator.py | `src/core/config_validator.py` | 130 | 启动配置验证: 7 Bot Token + 12 LLM Key + 文件检查 | — |
 
+
+### 2.2 R27 全量补录 — 缺失模块注册
+
+> 以下模块在 R1~R26 审计中均未注册，R27 统一补录。含原 Section 5 (R9补充) 去重后的独有条目。
+
+#### Bot 命令层 (src/bot/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| cmd_basic_mixin.py | `src/bot/cmd_basic_mixin.py` | 14 | 基础命令入口 (转发到 cmd_basic/ 子包) |
+| cmd_analysis_mixin.py | `src/bot/cmd_analysis_mixin.py` | 718 | 分析命令 (研报/对比/评审) |
+| cmd_invest_mixin.py | `src/bot/cmd_invest_mixin.py` | 877 | 投资命令 (行情/持仓/回测/再平衡) |
+| cmd_trading_mixin.py | `src/bot/cmd_trading_mixin.py` | 516 | 交易命令 (买卖/止损/账单) |
+| cmd_ibkr_mixin.py | `src/bot/cmd_ibkr_mixin.py` | 171 | IBKR 专项命令 (连接/状态/订单) |
+| cmd_social_mixin.py | `src/bot/cmd_social_mixin.py` | 802 | 社媒命令 (发帖/日历/草稿) |
+| cmd_collab_mixin.py | `src/bot/cmd_collab_mixin.py` | 812 | 协作命令 (研究/深度分析/辩论) |
+| cmd_xianyu_mixin.py | `src/bot/cmd_xianyu_mixin.py` | 545 | 闲鱼命令 (上架/客服/订单) |
+| cmd_novel_mixin.py | `src/bot/cmd_novel_mixin.py` | 198 | 小说命令 (创建/续写/导出) |
+| cmd_life_mixin.py | `src/bot/cmd_life_mixin.py` | 643 | 生活命令 (记账/提醒/待办/日程) |
+| cmd_ops_mixin.py | `src/bot/cmd_ops_mixin.py` | 514 | 运维命令 (部署/日志/健康/Key管理) |
+| cmd_execution_mixin.py | `src/bot/cmd_execution_mixin.py` | 27 | 执行命令入口 (转发到 execution/) |
+| workflow_mixin.py | `src/bot/workflow_mixin.py` | 478 | 工作流编排 (多步骤任务串联) |
+| callback_mixin.py | `src/bot/callback_mixin.py` | 293 | 按钮回调路由 (InlineKeyboard 事件分发) |
+
+#### Core 引擎 (src/core/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| brain_executors.py | `src/core/brain_executors.py` | 646 | Brain 执行器 — 各路径 (投资/社媒/闲鱼/工具) 的具体执行逻辑 |
+| response_cards.py | `src/core/response_cards.py` | 809 | 响应卡片模板 — 结构化 HTML 卡片 (交易/持仓/分析/社媒) |
+| brain_graph_builders.py | `src/core/brain_graph_builders.py` | 183 | Brain 图构建器 — LangGraph 状态图节点定义 |
+
+#### 交易/投资系统 (src/ 根级)
+
+| 模块 | 路径 | 行数 | 说明 | 搬运来源 |
+|------|------|------|------|----------|
+| trading_pipeline.py | `src/trading_pipeline.py` | 496 | 交易管道 — 信号→筛选→风控→执行完整流程 | 自研 |
+| ai_team_voter.py | `src/ai_team_voter.py` | 822 | AI 团队投票器 — 多 Agent 协商 + 加权投票决策 | 自研 |
+| decision_validator.py | `src/decision_validator.py` | 734 | 决策验证器 — 交易决策多维度校验 (风控/仓位/市场) | 自研 |
+| freqtrade_bridge.py | `src/freqtrade_bridge.py` | 651 | Freqtrade 桥接 — 兼容 freqtrade 策略接口 | freqtrade (35k⭐) |
+| tool_executor.py | `src/tool_executor.py` | 726 | 工具执行器 — 统一工具调用框架 (参数验证/超时/日志) | 自研 |
+| models.py | `src/models.py` | 23 | 数据模型 — 共享 Pydantic/dataclass 定义 | — |
+| browser_use_bridge.py | `src/browser_use_bridge.py` | ~220 | AI 浏览器代理桥接 — DOM 解析/LLM 决策/反检测 | browser-use (81k⭐) |
+| crewai_bridge.py | `src/crewai_bridge.py` | ~180 | CrewAI 多 Agent 协作桥接 | crewai (27k⭐) |
+| trading_journal.py | `src/trading_journal.py` | ~350 | 交易日志 — 开仓/平仓/盈亏记录 | 自研 |
+| novel_writer.py | `src/novel_writer.py` | ~450 | AI 小说工坊 — 大纲/续写/TTS | inkos + MuMuAINovel |
+| position_monitor.py | `src/position_monitor.py` | ~700 | 持仓实时监控 — 止损/止盈/异动告警 | 自研 |
+| data_providers.py | `src/data_providers.py` | ~400 | 多市场数据源聚合 (yfinance/Alpha Vantage) | yfinance (16k⭐) |
+| backtester.py | `src/backtester.py` | ~350 | 回测引擎主模块 | vectorbt (5.4k⭐) |
+
+#### 策略层 (src/strategies/)
+
+| 模块 | 路径 | 行数 | 说明 | 搬运来源 |
+|------|------|------|------|----------|
+| drl_strategy.py | `src/strategies/drl_strategy.py` | ~200 | 深度强化学习交易策略 (PPO) | FinRL (10k⭐) |
+| factor_strategy.py | `src/strategies/factor_strategy.py` | ~300 | 16 Alpha 因子量化策略 | Qlib (16k⭐) |
+
+#### 执行层 (src/execution/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| scheduler.py | `src/execution/scheduler.py` | 547 | 执行调度器 — 定时任务注册/取消/状态查询 |
+| bookkeeping.py | `src/execution/bookkeeping.py` | 681 | 记账系统 — 收支记录/分类统计/预算管理 |
+| tracking.py | `src/execution/tracking.py` | 469 | 任务追踪 — 进度/状态/提醒/超期检测 |
+| task_mgmt.py | `src/execution/task_mgmt.py` | 108 | 任务管理 — CRUD + 优先级排序 |
+| monitoring.py | `src/execution/monitoring.py` | 160 | 执行监控 — 任务健康/超时/失败告警 |
+| doc_search.py | `src/execution/doc_search.py` | 99 | 文档搜索 — 本地知识库检索 |
+| bounty.py | `src/execution/bounty.py` | 225 | 赏金任务 — 悬赏/投稿/评选 |
+| email_triage.py | `src/execution/email_triage.py` | 66 | 邮件分拣 — AI 分类/摘要/优先级 |
+
+#### 社媒执行 (src/execution/social/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| real_trending.py | `src/execution/social/real_trending.py` | 230 | 实时热搜 — 多平台热点抓取/排名 |
+| xhs_platform.py | `src/execution/social/xhs_platform.py` | 81 | 小红书平台 — 笔记发布适配 |
+| media_crawler_bridge.py | `src/execution/social/media_crawler_bridge.py` | 302 | MediaCrawler 桥接 — 社媒数据采集 |
+| content_strategy.py | `src/execution/social/content_strategy.py` | 156 | 内容策略 — 发帖时机/频率/A/B测试 |
+
+#### 工具集 (src/tools/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| free_apis.py | `src/tools/free_apis.py` | 225 | 免费 API 集合 — 天气/汇率/新闻/名言 |
+| file_tool.py | `src/tools/file_tool.py` | 189 | 文件操作 — 读写/格式转换/压缩 |
+| memory_tool.py | `src/tools/memory_tool.py` | 98 | 记忆工具 — Agent 记忆读写接口 |
+| web_tool.py | `src/tools/web_tool.py` | 69 | 网页工具 — URL 抓取/摘要 |
+| jina_reader.py | `src/tools/jina_reader.py` | 112 | Jina Reader — 网页→Markdown 转换 |
+| comfyui_client.py | `src/tools/comfyui_client.py` | 486 | ComfyUI 客户端 — 图片生成工作流 |
+| fal_client.py | `src/tools/fal_client.py` | 190 | fal.ai 客户端 — 云端 AI 模型调用 |
+| deepgram_stt.py | `src/tools/deepgram_stt.py` | 101 | Deepgram STT — 语音转文字 |
+| image_tool.py | `src/tools/image_tool.py` | ~100 | 图片生成工具 (硅基流动 FLUX/SD3/SDXL) |
+
+#### 闲鱼 (src/xianyu/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| xianyu_live.py | `src/xianyu/xianyu_live.py` | 778 | 闲鱼实时客服 — WebSocket 长连接/自动回复 |
+| xianyu_agent.py | `src/xianyu/xianyu_agent.py` | 497 | 闲鱼 AI Agent — 多轮对话/砍价/推荐 |
+| xianyu_admin.py | `src/xianyu/xianyu_admin.py` | 328 | 闲鱼管理后台 — 商品/订单/统计 |
+| goofish_monitor.py | `src/xianyu/goofish_monitor.py` | 336 | 闲鱼监控 — 竞品价格/销量追踪 |
+
+#### API 层 (src/api/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| server.py | `src/api/server.py` | 122 | FastAPI 服务器 — 应用工厂/中间件/生命周期 |
+| routers/evolution.py | `src/api/routers/evolution.py` | 189 | 进化端点 — 自我进化/指标/报告 |
+| routers/social.py | `src/api/routers/social.py` | 225 | 社媒端点 — 发布/日历/分析 |
+| routers/trading.py | `src/api/routers/trading.py` | 86 | 交易端点 — 下单/持仓/历史 |
+| routers/ws.py | `src/api/routers/ws.py` | 120 | WebSocket 端点 — 实时消息推送 |
+
+#### 投资模块 (src/modules/investment/)
+
+| 模块 | 路径 | 行数 | 说明 | 搬运来源 |
+|------|------|------|------|----------|
+| team.py | `src/modules/investment/team.py` | 776 | 投资 AI 团队 — CrewAI 多角色协作 (分析师/策略师/风控) | crewai (27k⭐) |
+| pydantic_agents.py | `src/modules/investment/pydantic_agents.py` | 430 | Pydantic AI Agent — 结构化投资分析 | pydantic-ai (13k⭐) |
+
+#### 购物/网关/部署
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| crawl4ai_engine.py | `src/shopping/crawl4ai_engine.py` | 650 | Crawl4AI 比价引擎 — 多电商平台爬取/价格对比 |
+| telegram_gateway.py | `src/gateway/telegram_gateway.py` | 528 | OMEGA 网关 Bot — 统一入口/路由分发到 7 Bot |
+| license_manager.py | `src/deployer/license_manager.py` | 240 | 授权管理 — License 生成/验证/过期检查 |
+| deploy_server.py | `src/deployer/deploy_server.py` | 157 | 部署服务器 — 远程部署/更新/回滚 |
 
 ---
 
@@ -717,24 +847,4 @@
 
 ---
 
-## 5. R9 补充的核心模块条目
 
-以下模块在 R1~R8 审计中发现缺失注册，现统一补充。
-
-| 模块 | 路径 | 行数 | 说明 | 搬运来源 |
-|------|------|------|------|---------|
-| `browser_use_bridge.py` | `src/browser_use_bridge.py` | ~220 | AI 浏览器代理桥接 — DOM 解析/LLM 决策/反检测 | browser-use (81k⭐) |
-| `crewai_bridge.py` | `src/crewai_bridge.py` | ~180 | CrewAI 多 Agent 协作桥接 | crewai (27k⭐) |
-| `trading_journal.py` | `src/trading_journal.py` | ~350 | 交易日志 — 开仓/平仓/盈亏记录 | 自研 |
-| `novel_writer.py` | `src/novel_writer.py` | ~450 | AI 小说工坊 — 大纲/续写/TTS | inkos + MuMuAINovel |
-| `position_monitor.py` | `src/position_monitor.py` | ~700 | 持仓实时监控 — 止损/止盈/异动告警 | 自研 |
-| `social_scheduler.py` | `src/social_scheduler.py` | ~580 | 社媒自动驾驶 — 5 个定时任务 (APScheduler) | 自研 |
-| `auto_trader.py` | `src/auto_trader.py` | ~680 | 自动交易引擎 — 信号扫描/执行/管理 | 自研 |
-| `data_providers.py` | `src/data_providers.py` | ~400 | 多市场数据源聚合 (yfinance/Alpha Vantage) | yfinance (16k⭐) |
-| `backtester.py` | `src/backtester.py` | ~350 | 回测引擎主模块 | vectorbt (5.4k⭐) |
-| `skyvern_bridge.py` | `src/integrations/skyvern_bridge.py` | ~150 | Skyvern 浏览器 RPA 桥接 | skyvern (14k⭐) |
-| `strategies/drl_strategy.py` | `src/strategies/drl_strategy.py` | ~200 | 深度强化学习交易策略 (PPO) | FinRL (10k⭐) |
-| `strategies/factor_strategy.py` | `src/strategies/factor_strategy.py` | ~300 | 16 Alpha 因子量化策略 | Qlib (16k⭐) |
-| `image_tool.py` | `src/tools/image_tool.py` | ~100 | 图片生成工具 (硅基流动 FLUX/SD3/SDXL) | 自研 |
-| `bash_tool.py` | `src/tools/bash_tool.py` | ~80 | Bash 命令执行工具 (沙箱) | smolagents |
-| `code_tool.py` | `src/tools/code_tool.py` | ~120 | Python 代码执行工具 (沙箱) | smolagents |

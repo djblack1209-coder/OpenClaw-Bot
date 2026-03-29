@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx';
 import { toast } from 'sonner';
 import { aiLogger } from '../../lib/logger';
-import { api, type ProjectContext } from '../../lib/tauri';
+import { api, isTauri, type ProjectContext } from '../../lib/tauri';
 import ProviderDialog from './ProviderDialog';
 import ProviderCard from './ProviderCard';
 import type {
@@ -61,6 +61,10 @@ export function AIConfig() {
 
   const runAITest = async () => {
     aiLogger.action('测试 AI 连接');
+    if (!isTauri()) {
+      toast.error('请通过 OpenClaw 桌面应用启动后使用此功能');
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
@@ -89,6 +93,13 @@ export function AIConfig() {
   const loadData = useCallback(async () => {
     aiLogger.info('AIConfig 组件加载数据...');
     setError(null);
+    
+    // 非 Tauri 环境下优雅降级：显示空状态而非错误
+    if (!isTauri()) {
+      aiLogger.warn('不在 Tauri 环境中，AI 配置使用离线模式');
+      setLoading(false);
+      return;
+    }
     
     try {
       const [officials, config] = await Promise.all([

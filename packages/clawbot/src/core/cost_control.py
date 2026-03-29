@@ -168,8 +168,7 @@ class CostController:
                     except RuntimeError as e:  # noqa: F841
                         pass
             except Exception as e:
-                pass
-                logger.debug("静默异常: %s", e)
+                logger.debug(f"发布成本预警事件失败: {e}")
 
     def get_daily_spend(self) -> float:
         self._check_date_rollover()

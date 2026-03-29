@@ -1,13 +1,18 @@
 #!/bin/bash
 # VPS Failover 检查脚本
 # 部署方式: 在 VPS 上用 systemd timer 每 30 秒执行一次
-# 检查 /opt/openclaw/data/primary_heartbeat 文件的修改时间
+# 检查 /opt/openclaw/data/primary_heartbeat 文件的修改时间和内容
 # 连续 3 次失败 (90秒无心跳) → 自动切换为主节点
+#
+# 心跳文件格式: "bot_alive|<unix_timestamp>"
+#   - "bot_alive" 标识 Mac 端 Bot 进程确实在运行
+#   - 仅当内容包含 "bot_alive" 且文件未超时时才视为有效心跳
 #
 # 安装步骤:
 #   1. 复制到 VPS: scp vps_failover_check.sh openclaw@VPS:/opt/openclaw/scripts/
-#   2. 创建 systemd timer (见文件末尾注释)
-#   3. sudo systemctl enable --now clawbot-failover.timer
+#   2. 复制 systemd 单元文件到 /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now clawbot-failover.timer
 
 set -euo pipefail
 
@@ -32,6 +37,7 @@ if [ -f "$SHUTDOWN_FILE" ]; then
 fi
 
 # ── 检查心跳文件 ──
+FAIL=0
 if [ ! -f "$HEARTBEAT_FILE" ]; then
     log "心跳文件不存在: $HEARTBEAT_FILE"
     FAIL=1
@@ -44,20 +50,28 @@ else
         log "心跳超时: ${AGE}秒 > ${MAX_HEARTBEAT_AGE}秒"
         FAIL=1
     else
-        # 心跳正常 — 重置计数器
-        rm -f "$FAIL_COUNT_FILE"
+        # 验证心跳文件内容: 必须包含 "bot_alive" 标记
+        HEARTBEAT_CONTENT=$(cat "$HEARTBEAT_FILE" 2>/dev/null || echo "")
+        if echo "$HEARTBEAT_CONTENT" | grep -q "bot_alive"; then
+            # 心跳有效 — Bot 确实在运行，重置计数器
+            rm -f "$FAIL_COUNT_FILE"
 
-        # 如果 VPS 上的 clawbot 正在运行（Mac 恢复后的退让机制）
-        if systemctl is-active --quiet "$CLAWBOT_SERVICE" 2>/dev/null; then
-            log "主节点心跳恢复，VPS 退让: 停止 $CLAWBOT_SERVICE"
-            systemctl stop "$CLAWBOT_SERVICE" 2>/dev/null
+            # 退让机制: Mac Bot 确认存活后，VPS 应让位
+            if systemctl is-active --quiet "$CLAWBOT_SERVICE" 2>/dev/null; then
+                log "主节点 Bot 确认存活 (心跳内容: $HEARTBEAT_CONTENT)，VPS 退让: 停止 $CLAWBOT_SERVICE"
+                systemctl stop "$CLAWBOT_SERVICE" 2>/dev/null
+            fi
+            exit 0
+        else
+            # 心跳文件存在但不含 bot_alive — Mac 开机但 Bot 未运行
+            log "心跳文件存在但 Bot 未运行 (内容: $HEARTBEAT_CONTENT)，视为失败"
+            FAIL=1
         fi
-        exit 0
     fi
 fi
 
 # ── 累加失败计数 ──
-if [ "${FAIL:-0}" -eq 1 ]; then
+if [ "$FAIL" -eq 1 ]; then
     CURRENT_COUNT=0
     [ -f "$FAIL_COUNT_FILE" ] && CURRENT_COUNT=$(cat "$FAIL_COUNT_FILE")
     CURRENT_COUNT=$((CURRENT_COUNT + 1))
@@ -71,29 +85,3 @@ if [ "${FAIL:-0}" -eq 1 ]; then
         log "心跳失败 $CURRENT_COUNT/$MAX_FAIL_COUNT"
     fi
 fi
-
-# ── systemd 安装说明 ──
-# 创建 /etc/systemd/system/clawbot-failover.service:
-#   [Unit]
-#   Description=ClawBot Failover Check
-#   After=network.target
-#
-#   [Service]
-#   Type=oneshot
-#   User=openclaw
-#   ExecStart=/opt/openclaw/scripts/vps_failover_check.sh
-#
-# 创建 /etc/systemd/system/clawbot-failover.timer:
-#   [Unit]
-#   Description=ClawBot Failover Check Timer
-#
-#   [Timer]
-#   OnBootSec=30
-#   OnUnitActiveSec=30
-#
-#   [Install]
-#   WantedBy=timers.target
-#
-# 安装:
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now clawbot-failover.timer

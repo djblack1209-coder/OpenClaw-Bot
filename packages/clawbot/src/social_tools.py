@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from src.constants import TG_MSG_LIMIT
 from src.message_format import strip_markdown
 from src.utils import now_et
 
@@ -430,7 +431,7 @@ class ContentAdapter:
     """多平台内容适配器 — 将同一内容适配到不同平台格式"""
 
     PLATFORM_LIMITS = {
-        "telegram": {"max_chars": 4096, "supports_markdown": True, "supports_html": True},
+        "telegram": {"max_chars": TG_MSG_LIMIT, "supports_markdown": True, "supports_html": True},
         "twitter": {"max_chars": 280, "supports_markdown": False, "supports_html": False},
         "weibo": {"max_chars": 2000, "supports_markdown": False, "supports_html": False},
         "discord": {"max_chars": 2000, "supports_markdown": True, "supports_html": False},

@@ -263,8 +263,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 if _tcm and _chat_id:
                     _tcm.core_set("current_task", f"{intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
             except Exception as e:
-                pass
-                logger.debug("静默异常: %s", e)
+                logger.debug(f"写入 current_task 到 core memory 失败: {e}")
 
             if not intent.is_actionable:
                 # ── 模糊输入智能引导 — 无法识别明确意图时提供快捷操作建议 ──
@@ -395,8 +394,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     if _tcm and _chat_id:
                         _tcm.core_set("current_task", f"[已完成] {intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
                 except Exception as e:
-                    pass
-                    logger.debug("静默异常: %s", e)
+                    logger.debug(f"更新已完成任务的 current_task 状态失败: {e}")
 
                 # 6. 响应合成 — 将数据结果转化为对话式回复
                 try:

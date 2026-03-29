@@ -10,6 +10,7 @@ import time as _time
 from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 from src.telegram_markdown import md_to_html
 from src.bot.chinese_nlp_mixin import _match_chinese_command
+from src.constants import TG_MSG_LIMIT
 logger = logging.getLogger(__name__)
 
 # ── v3.0: 智能行动建议 — LLM回复后自动附加下一步按钮 ─────────
@@ -186,7 +187,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         from src.smart_memory import get_smart_memory
         from src.feedback import build_feedback_keyboard
 
-        TG_MSG_LIMIT = 4096
         # ── HI-011 flood 根治: 时间门控 + 编辑次数上限 ──
         # Telegram 群聊 editMessageText 限制约 20次/分钟
         EDIT_INTERVAL_GROUP = 3.0     # 群聊: 每条消息最少间隔 3 秒

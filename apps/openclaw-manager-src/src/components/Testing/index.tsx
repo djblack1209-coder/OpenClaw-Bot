@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { testingLogger } from '../../lib/logger';
-import { api, type ManagedEndpointStatus, type ProjectContext } from '../../lib/tauri';
+import { api, isTauri, type ManagedEndpointStatus, type ProjectContext } from '../../lib/tauri';
 
 interface DiagnosticResult {
   name: string;
@@ -27,6 +27,8 @@ export function Testing() {
 
   useEffect(() => {
     const init = async () => {
+      // 非 Tauri 环境下跳过初始化，避免报错
+      if (!isTauri()) return;
       try {
         const [context, endpoints] = await Promise.all([
           api.getProjectContext(),

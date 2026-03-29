@@ -619,7 +619,6 @@ class BokehVisualizer:
 
         # 方案1: bokeh export_png — 跳过，直接用 playwright
         # (需要 selenium/geckodriver，且无法从 HTML 文件直接导出)
-        pass
 
         # 方案2: playwright 截图
         try:

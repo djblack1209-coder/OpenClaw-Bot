@@ -632,8 +632,7 @@ class SelfHealEngine:
                 except RuntimeError as e:  # noqa: F841
                     pass
         except Exception as e:
-            pass
-            logger.debug("静默异常: %s", e)
+            logger.debug(f"发布自愈成功事件到 EventBus 失败: {e}")
 
     def get_stats(self) -> Dict:
         """获取自愈统计"""

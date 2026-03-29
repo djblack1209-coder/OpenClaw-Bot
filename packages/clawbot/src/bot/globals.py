@@ -5,7 +5,6 @@
 注意: 纯配置(环境变量/API Key管理)已提取到 src.bot.config (HI-359)。
 本模块保留运行时共享状态 + 向后兼容 re-export。
 """
-import os
 import logging
 import asyncio
 from datetime import datetime
@@ -25,6 +24,7 @@ from src.bot.config import (  # noqa: F401 — 向后兼容 re-export
     get_siliconflow_key, update_key_balance, get_total_balance, mark_key_exhausted,
 )
 
+from src.constants import TG_SAFE_LENGTH
 from src.history_store import HistoryStore
 from src.chat_router import ChatRouter, CollabOrchestrator
 from src.monitoring import StructuredLogger, HealthChecker
@@ -36,10 +36,10 @@ from src.shared_memory import SharedMemory
 from src.execution import ExecutionHub
 from src.litellm_router import init_free_pool
 from src.utils import now_et
-from src.message_sender import send_long_message  # re-export: 78+ 处引用
-from src.invest_tools import get_stock_quote  # re-export: message_mixin 等引用
-from src.pipeline_helper import execute_trade_via_pipeline  # re-export
-from src.trading_system import get_trading_pipeline  # re-export
+from src.message_sender import send_long_message  # noqa: F401 re-export: 78+ 处引用
+from src.invest_tools import get_stock_quote  # noqa: F401 re-export: message_mixin 等引用
+from src.pipeline_helper import execute_trade_via_pipeline  # noqa: F401 re-export
+from src.trading_system import get_trading_pipeline  # noqa: F401 re-export
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def send_as_bot(bot_id: str, chat_id: int, text: str, reply_to_message_id:
 
     bot_telegram = target_bot.app.bot
     cleaned = _clean_for_telegram(text)
-    parts = _split_message(cleaned, 4000)
+    parts = _split_message(cleaned, TG_SAFE_LENGTH)
 
     for i, part in enumerate(parts):
         reply_id = reply_to_message_id if i == 0 else None

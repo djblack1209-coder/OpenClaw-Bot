@@ -10,6 +10,8 @@ from typing import Optional
 
 from telegram.ext import ContextTypes
 
+from src.constants import TG_SAFE_LENGTH
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +53,7 @@ async def send_long_message(
     text: str,
     context: ContextTypes.DEFAULT_TYPE,
     reply_to_message_id: Optional[int] = None,
-    max_length: int = 4000,
+    max_length: int = TG_SAFE_LENGTH,
     chunk_delay: float = 0.3,
 ):
     """

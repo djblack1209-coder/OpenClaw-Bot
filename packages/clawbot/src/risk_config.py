@@ -21,10 +21,10 @@ class RiskConfig:
     # 资金管理
     total_capital: float = 2000.0           # 总资金 (USD) — omega.yaml: total_capital
     max_risk_per_trade_pct: float = 0.02    # 单笔最大风险比例 2% ($40) — omega.yaml: max_risk_per_trade
-    daily_loss_limit: float = 100.0         # 日亏损上限 $100 (=5% of $2000) — omega.yaml: daily_loss_limit=0.05
+    daily_loss_limit: float = 60.0          # 日亏损上限 $60 (=3% of $2000) — omega.yaml: daily_loss_limit=0.03
 
     # 仓位控制
-    max_position_pct: float = 0.30          # 单只标的最大仓位 30% — omega.yaml: max_position_single
+    max_position_pct: float = 0.20          # 单只标的最大仓位 20% — omega.yaml: max_position_single
     max_total_exposure_pct: float = 0.80    # 总敞口上限 80% — omega.yaml: max_total_position
     max_open_positions: int = 5             # 最大同时持仓数
 
@@ -58,7 +58,7 @@ class RiskConfig:
     # 动态回撤保护（Drawdown Guard）
     drawdown_window_days: int = 7                 # 滚动窗口天数
     drawdown_warn_pct: float = 0.05              # 回撤5%触发警告（降仓50%）
-    drawdown_halt_pct: float = 0.10              # 回撤10%触发停止交易
+    drawdown_halt_pct: float = 0.08              # 回撤8%触发停止交易
 
     # 凯利公式仓位（Kelly Criterion）
     kelly_enabled: bool = True                    # 是否启用凯利公式
@@ -66,7 +66,7 @@ class RiskConfig:
     kelly_min_trades: int = 10                    # 最少交易次数才启用凯利
 
     # 相关性风险
-    max_sector_exposure_pct: float = 0.50         # 同板块最大敞口50%
+    max_sector_exposure_pct: float = 0.35         # 同板块最大敞口35%
     correlation_threshold: float = 0.70           # 相关系数>0.7视为高相关
 
     # 阶梯式熔断（替代一刀切）
