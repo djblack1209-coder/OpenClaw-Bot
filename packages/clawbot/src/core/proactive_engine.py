@@ -40,6 +40,7 @@ from config.prompts import (
 )
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.constants import FAMILY_G4F, FAMILY_QWEN
 from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
@@ -272,7 +273,7 @@ class ProactiveEngine:
             cheap: True 时使用最便宜模型 (g4f)，适用于 Gate 步骤节省 token
         """
         # 根据用途选择模型: Gate 步骤用最便宜模型，Generate/Critic 用 qwen
-        model = os.environ.get("PROACTIVE_MODEL", "g4f" if cheap else "qwen")
+        model = os.environ.get("PROACTIVE_MODEL", FAMILY_G4F if cheap else FAMILY_QWEN)
         max_tok = 100 if cheap else 300
         
         try:

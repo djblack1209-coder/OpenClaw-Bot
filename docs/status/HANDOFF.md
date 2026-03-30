@@ -4,6 +4,36 @@
 
 ---
 
+## [2026-03-31 Session 14] HI-382 模型名常量提取完成 — 16常量+26文件85处替换
+
+### 本次完成了什么
+- **HI-382 常量定义**: `src/constants.py` 新增 16 个模型名常量 (7 Bot ID + 6 Model Family + 3 Image Model)
+- **HI-382 全量替换**: 26 个源文件中 ~85 处硬编码字符串替换为常量引用
+- **有意跳过**: `cost_control.py`（自包含定价注册表）和 `litellm_router.py`（规范模型配置中心）不做替换
+- **文档同步**: HEALTH.md 更新 (HI-382 从活跃移至已解决), CHANGELOG.md 新增条目
+- **回归验证**: 1047/1047 Python passed, 0 TypeScript errors
+
+### 未完成的工作（按优先级排列）
+1. **HI-358** — 8 个 >1000 行大文件拆分 (🟡 高成本，需逐文件设计拆分方案)
+   - `chinese_nlp_mixin.py` (1,217), `risk_manager.py` (1,191), `daily_brief.py` (1,157), `backtester.py` (1,124), `trading_journal.py` (1,086), `broker_bridge.py` (1,085), `auto_trader.py` (1,056), `proactive_engine.py` (1,011)
+2. **HI-348** — API keys 在 Git 历史中，需 `git filter-repo` (🟠 破坏性操作，需用户确认)
+3. **HI-381** — 统一 120+ 内联错误字符串到 error_messages.py (🟡 高成本)
+4. **HI-383** — HTTP 客户端/缓存碎片化 (🟡 高成本)
+5. **HI-384** — 不稳定测试 `test_investment_full_pipeline` (🟡 LiteLLM cooldown 相关)
+
+### 需要注意的坑
+- `routing/constants.py` 是替换最密集的文件 (~30 处)，后续修改 Bot ID 映射时留意 import 路径
+- `cost_control.py` 中的模型名 (如 `"claude-opus-4"`, `"qwen3-235b"`) 是 LiteLLM 路由层短名，与 Bot ID (`"claude_opus"`, `"qwen235b"`) 完全不同，不要混淆
+
+### 关键决策记录
+- 将模型名分三组（Bot ID / Model Family / Image Model）而非混在一起——三种用途不同，避免命名混乱
+- 不修改 `cost_control.py` 和 `litellm_router.py`——它们使用的是 LiteLLM 路由层模型名，与 Bot ID 体系完全独立
+
+### 当前系统状态
+- 测试: 1047/1047 Python passed, 0 TS errors
+- 活跃问题: 6 (1🟠 + 4🟡 + 1🔵)
+- **全量审计完成**: P0 ✅ | P1 ✅ | P2 ✅ | P3 ✅ | P4 ✅ | P5 ✅ | P6 ✅
+
 ## [2026-03-31 Session 13] P6 安全加固完成 — 沙箱OS隔离+快捷指令白名单+SSRF防护
 
 ### 本次完成了什么
@@ -80,14 +110,5 @@
 ### 当前系统状态
 - 测试: 1047/1047 passed, 0 TS errors
 - P0: ✅ | P1: ✅ | P2: ✅ | P3: ✅
-
-## [2026-03-30 Session 7] P1 功能完整性审计完成 — 文档同步收尾
-
-### 本次完成了什么
-- **P1 审计全部完成**: 后端 32 处多余 `pass` 修复 + 前端 11 个死文件删除 + 5 处静默 catch + 3 处空状态 + 25 处 console→logger
-
-### 当前系统状态
-- 测试: 1047/1047 passed, 0 TS errors
-- P0: ✅ | P1: ✅
 
 ---

@@ -10,13 +10,15 @@ import base64
 import logging
 from typing import Optional
 
+from src.constants import FAMILY_GEMINI
+
 logger = logging.getLogger(__name__)
 
 
 async def analyze_image(
     image_bytes: bytes,
     prompt: str = "描述这张图片的内容",
-    model_family: str = "gemini",
+    model_family: str = FAMILY_GEMINI,
 ) -> Optional[str]:
     """用 Vision 模型分析图片。
 

@@ -8,6 +8,10 @@ import logging
 import asyncio
 from typing import Dict, List, Optional, Tuple
 
+from src.constants import (
+    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET,
+)
 from src.routing.constants import (
     SERVICE_WORKFLOW_ACTION_HINTS,
     SERVICE_WORKFLOW_NOUN_HINTS,
@@ -178,7 +182,7 @@ class SessionMixin:
 
     def _select_service_workflow_starter(self) -> str:
         """选择服务工作流的启动 bot（按优先级挑选已注册的 bot）"""
-        preferred = ["qwen235b", "claude_haiku", "claude_sonnet", "deepseek_v3", "gptoss"]
+        preferred = [BOT_QWEN, BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_DEEPSEEK, BOT_GPTOSS]
         for bot_id in preferred:
             if bot_id in self.bots:
                 return bot_id

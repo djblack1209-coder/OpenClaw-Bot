@@ -11,6 +11,7 @@ from src.message_format import format_error
 from src.bot.error_messages import error_generic
 from src.telegram_ux import with_typing, ProgressTracker
 from src.bot.auth import requires_auth
+from src.constants import IMG_MODEL_FLUX
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class _ToolsMixin:
             return
 
         prompt_parts = []
-        model = "flux"
+        model = IMG_MODEL_FLUX
         i = 0
         while i < len(args):
             if args[i] == "--model" and i + 1 < len(args):

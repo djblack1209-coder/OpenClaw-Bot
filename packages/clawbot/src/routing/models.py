@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Dict, List, Any
 from dataclasses import dataclass, field
 
+from src.constants import BOT_CLAUDE_SONNET, BOT_QWEN
+
 
 @dataclass
 class BotCapability:
@@ -62,9 +64,9 @@ class CollabTask:
     original_text: str              # 用户原始指令
     phase: CollabPhase = CollabPhase.PLANNING
     planner_id: str = ""            # 规划者 bot_id
-    executor_id: str = "claude_sonnet"     # 执行者（默认 Claude Sonnet 4.5）
+    executor_id: str = BOT_CLAUDE_SONNET     # 执行者（默认 Claude Sonnet 4.5）
     reviewer_id: str = ""           # 审查者（默认由规划者审查）
-    summarizer_id: str = "qwen235b"  # 汇总者（默认 Qwen 235B）
+    summarizer_id: str = BOT_QWEN  # 汇总者（默认 Qwen 235B）
     plan_result: str = ""           # 规划结果
     exec_result: str = ""           # 执行结果
     review_result: str = ""         # 审查结果

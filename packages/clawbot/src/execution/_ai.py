@@ -14,6 +14,11 @@ try:
 except ImportError:
     log_generation = None  # type: ignore[assignment]
 
+from src.constants import (
+    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_FREE_LLM,
+    FAMILY_QWEN,
+)
 from src.utils import emit_flow_event as _emit_flow
 
 
@@ -27,12 +32,12 @@ class AICallerPool:
         self._callers = dict(callers or {})
 
     def pick_bot_id(self) -> str:
-        preferred = os.getenv("OPS_SOCIAL_AI_BOT_ID", "qwen235b").strip()
+        preferred = os.getenv("OPS_SOCIAL_AI_BOT_ID", BOT_QWEN).strip()
         if preferred in self._callers:
             return preferred
         fallback_order = [
-            "qwen235b", "gptoss", "deepseek_v3",
-            "claude_haiku", "claude_sonnet", "free_llm",
+            BOT_QWEN, BOT_GPTOSS, BOT_DEEPSEEK,
+            BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_FREE_LLM,
         ]
         for candidate in fallback_order:
             if candidate in self._callers:
@@ -66,9 +71,9 @@ class AICallerPool:
         messages = [{"role": "user", "content": prompt}]
         t0 = time.time()
         try:
-            _emit_flow("hub", "llm", "running", "LiteLLM 路由调用", {"model_family": "qwen"})
+            _emit_flow("hub", "llm", "running", "LiteLLM 路由调用", {"model_family": FAMILY_QWEN})
             response = await free_pool.acompletion(
-                model_family="qwen",  # 社交内容默认用 qwen
+                model_family=FAMILY_QWEN,  # 社交内容默认用 qwen
                 messages=messages,
                 system_prompt=system_prompt or "",
                 temperature=0.7,
@@ -83,7 +88,7 @@ class AICallerPool:
                 try:
                     log_generation(
                         name="ai_pool/litellm",
-                        model="qwen",
+                        model=FAMILY_QWEN,
                         input_text=prompt[:1000],
                         output_text=text[:1000],
                         bot_id="ai_pool",

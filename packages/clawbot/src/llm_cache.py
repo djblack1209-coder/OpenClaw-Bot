@@ -13,7 +13,7 @@ Usage:
 
     # Automatic caching wrapper
     result = await cached_completion(
-        model_family="qwen",
+        model_family=FAMILY_QWEN,
         messages=[...],
         cache_ttl=3600,  # 1 hour
     )
@@ -23,6 +23,8 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 

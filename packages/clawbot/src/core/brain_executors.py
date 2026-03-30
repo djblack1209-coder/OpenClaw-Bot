@@ -11,6 +11,7 @@ from typing import Dict
 
 from config.prompts import SOUL_CORE, INFO_QUERY_PROMPT, INVEST_DIRECTOR_DECISION_PROMPT
 from src.bot.error_messages import error_ai_busy
+from src.constants import FAMILY_DEEPSEEK, FAMILY_QWEN
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.resilience import api_limiter
@@ -120,7 +121,7 @@ class BrainExecutorMixin:
                 context_summary = params.get("_upstream_results", "")
                 async with api_limiter("llm"):
                     resp = await free_pool.acompletion(
-                        model_family="deepseek",
+                        model_family=FAMILY_DEEPSEEK,
                         messages=[{"role": "user", "content": f"Based on the analysis for {symbol}, give a final investment recommendation. Previous analysis: {context_summary}"}],
                         system_prompt=INVEST_DIRECTOR_DECISION_PROMPT,
                         temperature=0.3,
@@ -265,7 +266,7 @@ class BrainExecutorMixin:
                     if free_pool:
                         async with api_limiter("llm"):
                             resp = await free_pool.acompletion(
-                                model_family="deepseek",
+                                model_family=FAMILY_DEEPSEEK,
                                 messages=[
                                     {"role": "system", "content": (
                                         SOUL_CORE + "\n\n你现在在做购物比价任务。"
@@ -336,7 +337,7 @@ class BrainExecutorMixin:
             if free_pool:
                 async with api_limiter("llm"):
                     resp = await free_pool.acompletion(
-                        model_family="deepseek",
+                        model_family=FAMILY_DEEPSEEK,
                         messages=[
                             {"role": "system", "content": (
                                 SOUL_CORE + "\n\n你现在在做购物比价任务。根据用户需求提供各平台价格对比和购买建议。"
@@ -439,7 +440,7 @@ class BrainExecutorMixin:
                 from src.litellm_router import free_pool
                 if free_pool:
                     resp = await free_pool.acompletion(
-                        model_family="qwen",
+                        model_family=FAMILY_QWEN,
                         messages=[{"role": "user", "content": f"从以下搜索结果中提取预订选项:\n{raw[:3000]}"}],
                         system_prompt='提取预订选项列表。JSON格式: {"results": [{"name": "名称", "price": "价格", "address": "地址", "rating": "评分", "url": "链接"}]}',
                         temperature=0.2, max_tokens=800,
@@ -514,7 +515,7 @@ class BrainExecutorMixin:
 
                 async with api_limiter("llm"):
                     resp = await free_pool.acompletion(
-                        model_family="qwen",
+                        model_family=FAMILY_QWEN,
                         messages=messages,
                         temperature=0.7,
                         max_tokens=1000,
@@ -628,7 +629,7 @@ class BrainExecutorMixin:
                 from src.litellm_router import free_pool
                 if free_pool:
                     resp = await free_pool.acompletion(
-                        model_family="deepseek",
+                        model_family=FAMILY_DEEPSEEK,
                         messages=[{"role": "user", "content": task_desc}],
                         system_prompt=SOUL_CORE + "\n\n你现在在做代码生成任务。只输出可执行的Python代码，不要解释。用```python代码块包裹。",
                         temperature=0.2, max_tokens=2000,

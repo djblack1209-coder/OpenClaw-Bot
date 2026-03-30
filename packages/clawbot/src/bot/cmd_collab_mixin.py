@@ -31,6 +31,10 @@ from src.universe import get_full_universe, full_market_scan
 from src.ta_engine import get_full_analysis, format_analysis
 from src.invest_tools import format_quote, get_market_summary
 from src.constants import TG_SAFE_LENGTH
+from src.constants import (
+    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +227,7 @@ class CollabCommandsMixin:
         message_id = update.message.message_id
 
         # 投资讨论顺序：Haiku情报 -> Qwen基本面 -> GPT技术面 -> DeepSeek风控 -> Sonnet决策
-        invest_order = ["claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonnet", "claude_opus"]
+        invest_order = [BOT_CLAUDE_HAIKU, BOT_QWEN, BOT_GPTOSS, BOT_DEEPSEEK, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS]
 
         # 先获取市场数据作为上下文
         await update.message.reply_text(f"{self.emoji} 正在获取市场数据和技术指标...")
@@ -575,7 +579,7 @@ class CollabCommandsMixin:
             bot_telegram = target_bot.app.bot  # 该 bot 自己的 Telegram 实例
 
             # 根据模型设置超时：R1 需要更长时间思考
-            timeout_sec = 300 if bot_id == "deepseek_v3" else 120
+            timeout_sec = 300 if bot_id == BOT_DEEPSEEK else 120
 
             try:
                 response = await asyncio.wait_for(
@@ -670,7 +674,7 @@ class CollabCommandsMixin:
         i = 0
         while i < len(args):
             if args[i] == "--planner" and i + 1 < len(args):
-                planner_map = {"r1": "deepseek_v3", "deepseek": "deepseek_v3", "qwen": "qwen235b"}
+                planner_map = {"r1": BOT_DEEPSEEK, "deepseek": BOT_DEEPSEEK, "qwen": BOT_QWEN}
                 planner_override = planner_map.get(args[i + 1].lower(), args[i + 1])
                 i += 2
             else:
@@ -686,7 +690,7 @@ class CollabCommandsMixin:
         task = await collab_orchestrator.start_collab(chat_id, task_text, planner_override)
 
         # 发送启动通知
-        planner_name = {"deepseek_v3": "DeepSeek V3 🐉", "qwen235b": "Qwen 235B 🧠"}.get(task.planner_id, task.planner_id)
+        planner_name = {BOT_DEEPSEEK: "DeepSeek V3 🐉", BOT_QWEN: "Qwen 235B 🧠"}.get(task.planner_id, task.planner_id)
         status_msg = await update.message.reply_text(
             f"**🤝 协作模式启动**\n\n"
             f"任务: {task_text[:100]}{'...' if len(task_text) > 100 else ''}\n\n"
@@ -732,7 +736,7 @@ class CollabCommandsMixin:
             )
 
             # 用 Claude 自己的 Telegram 账号发送执行结果
-            await send_as_bot("claude_sonnet", chat_id,
+            await send_as_bot(BOT_CLAUDE_SONNET, chat_id,
                 f"⚡ 执行结果\n\n{exec_result}",
                 reply_to_message_id=update.message.message_id)
 
@@ -760,7 +764,7 @@ class CollabCommandsMixin:
                     await safe_edit(status_msg, f"协作失败（修订执行）: {task.error}")
                     return
 
-                await send_as_bot("claude_sonnet", chat_id,
+                await send_as_bot(BOT_CLAUDE_SONNET, chat_id,
                     f"🔄 修订结果\n\n{exec_result}",
                     reply_to_message_id=update.message.message_id)
 
@@ -788,7 +792,7 @@ class CollabCommandsMixin:
             )
 
             # 用 ClawBot 自己的 Telegram 账号发送最终汇总
-            await send_as_bot("qwen235b", chat_id,
+            await send_as_bot(BOT_QWEN, chat_id,
                 f"📊 最终汇总\n\n{summary_result}",
                 reply_to_message_id=update.message.message_id)
 

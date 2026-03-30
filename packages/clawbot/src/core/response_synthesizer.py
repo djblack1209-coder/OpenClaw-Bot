@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 from config.prompts import SOUL_CORE, RESPONSE_SYNTH_PROMPT, FOLLOWUP_SUGGESTIONS_PROMPT
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.constants import FAMILY_QWEN, FAMILY_G4F
 from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,7 @@ class ResponseSynthesizer:
 
             async with api_limiter("llm"):
                 resp = await free_pool.acompletion(
-                    model_family="qwen",
+                    model_family=FAMILY_QWEN,
                     messages=[
                         {"role": "system", "content": SOUL_CORE},
                         {"role": "user", "content": prompt},
@@ -203,7 +204,7 @@ class ResponseSynthesizer:
 
             async with _limiter("llm"):
                 resp = await free_pool.acompletion(
-                    model_family="g4f",
+                    model_family=FAMILY_G4F,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7,
                     max_tokens=100,
@@ -253,7 +254,7 @@ class ResponseSynthesizer:
 
             async with api_limiter("llm"):
                 resp = await free_pool.acompletion(
-                    model_family="g4f",
+                    model_family=FAMILY_G4F,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                     max_tokens=60,

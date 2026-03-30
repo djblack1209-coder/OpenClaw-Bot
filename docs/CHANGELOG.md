@@ -5,6 +5,79 @@
 
 ---
 
+## [2026-03-31] HI-382 模型名常量提取 — 16 常量 + 26 文件 85 处替换
+
+> 领域: `backend`
+> 影响模块: `constants.py`, `routing/`, `bot/`, `core/`, `execution/`, `tools/`, `xianyu/`, `modules/investment/`
+> 关联问题: HI-382(resolved)
+
+### 变更内容
+
+#### 问题背景
+全项目 38 个文件中散布着硬编码的 LLM 模型名字符串（如 `"qwen235b"`, `"deepseek_v3"`, `"flux"` 等），改名时需要逐文件搜索替换，容易遗漏导致路由失效。
+
+#### 常量定义 (src/constants.py)
+新增 16 个常量，分三组：
+
+**Bot ID 常量 (7 个)** — Telegram Bot 实例标识符：
+- `BOT_QWEN = "qwen235b"`, `BOT_DEEPSEEK = "deepseek_v3"`, `BOT_GPTOSS = "gptoss"`
+- `BOT_CLAUDE_HAIKU = "claude_haiku"`, `BOT_CLAUDE_SONNET = "claude_sonnet"`, `BOT_CLAUDE_OPUS = "claude_opus"`
+- `BOT_FREE_LLM = "free_llm"`
+
+**Model Family 常量 (6 个)** — 模型族标识：
+- `FAMILY_QWEN = "qwen"`, `FAMILY_DEEPSEEK = "deepseek"`, `FAMILY_CLAUDE = "claude"`
+- `FAMILY_G4F = "g4f"`, `FAMILY_GEMINI = "gemini"`, `FAMILY_GPT_OSS = "gpt-oss"`
+
+**Image Model 常量 (3 个)** — 图像生成模型键：
+- `IMG_MODEL_FLUX = "flux"`, `IMG_MODEL_SD3 = "sd3"`, `IMG_MODEL_SDXL = "sdxl"`
+
+#### 代码替换 (26 文件, ~85 处)
+所有散布的硬编码字符串替换为对应常量引用，按模块分组：
+
+- **routing/** (4 文件, ~40 处): `constants.py` / `models.py` / `router.py` / `sessions.py` — Bot ID 和 Model Family 替换最密集的区域
+- **bot/** (5 文件, ~16 处): `cmd_collab_mixin.py` / `api_mixin.py` / `cmd_analysis_mixin.py` / `cmd_basic/tools_mixin.py` / `cmd_social_mixin.py`
+- **core/** (5 文件, ~14 处): `brain.py` / `brain_executors.py` / `intent_parser.py` / `response_synthesizer.py` / `proactive_engine.py`
+- **execution/** (2 文件, ~8 处): `_ai.py` / `daily_brief.py`
+- **tools/** (2 文件, ~3 处): `image_tool.py` / `vision.py`
+- **其他** (8 文件, ~4 处): `structured_llm.py` / `llm_cache.py` / `ocr_processors.py` / `xianyu/xianyu_agent.py` / `modules/investment/team.py` / `tool_executor.py` / `ai_team_voter.py`
+
+#### 有意不修改的文件
+- `cost_control.py` — 自包含的定价注册表，使用 LiteLLM 路由层模型短名（如 `"claude-opus-4"`），与 Bot ID 完全不同
+- `litellm_router.py` — 100+ 模型字符串的规范注册表，本身就是配置中心
+
+#### 测试验证
+- 全量测试: 1047/1047 passed, 0 TS errors
+- 无回归: 测试通过数与基线一致
+
+### 文件变更
+- `packages/clawbot/src/constants.py` — 新增 16 个模型名常量 (7 Bot ID + 6 Family + 3 Image)
+- `packages/clawbot/src/routing/constants.py` — ~30 处 Bot ID 替换
+- `packages/clawbot/src/routing/models.py` — 2 处替换
+- `packages/clawbot/src/routing/router.py` — 3 处替换
+- `packages/clawbot/src/routing/sessions.py` — 5 处替换
+- `packages/clawbot/src/ai_team_voter.py` — 8 处替换
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — 8 处替换
+- `packages/clawbot/src/bot/api_mixin.py` — 3 处替换
+- `packages/clawbot/src/bot/cmd_analysis_mixin.py` — 3 处替换
+- `packages/clawbot/src/bot/cmd_basic/tools_mixin.py` — 1 处替换
+- `packages/clawbot/src/bot/cmd_social_mixin.py` — 1 处替换
+- `packages/clawbot/src/core/brain.py` — 1 处替换
+- `packages/clawbot/src/core/brain_executors.py` — 6 处替换
+- `packages/clawbot/src/core/intent_parser.py` — 3 处替换
+- `packages/clawbot/src/core/response_synthesizer.py` — 3 处替换
+- `packages/clawbot/src/core/proactive_engine.py` — 1 处替换
+- `packages/clawbot/src/execution/_ai.py` — 5 处替换
+- `packages/clawbot/src/execution/daily_brief.py` — 3 处替换
+- `packages/clawbot/src/tools/image_tool.py` — 2 处替换
+- `packages/clawbot/src/tools/vision.py` — 1 处替换
+- `packages/clawbot/src/structured_llm.py` — 2 处替换
+- `packages/clawbot/src/llm_cache.py` — 1 处替换
+- `packages/clawbot/src/ocr_processors.py` — 1 处替换
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — 2 处替换
+- `packages/clawbot/src/modules/investment/team.py` — 1 处替换
+- `packages/clawbot/src/tool_executor.py` — 1 处替换
+- `docs/status/HEALTH.md` — HI-382 从活跃移至已解决
+
 ## [2026-03-31] P6 安全加固 — 沙箱OS级隔离 + 快捷指令白名单 + DNS重绑定SSRF防护
 
 > 领域: `backend`

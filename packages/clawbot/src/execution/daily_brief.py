@@ -24,6 +24,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
 
+from src.constants import FAMILY_QWEN
 from src.execution._db import get_conn
 from src.notify_style import format_digest, kv, bullet
 
@@ -66,7 +67,7 @@ async def _analyze_news_with_llm(
         )
 
         resp = await free_pool.acompletion(
-            model_family="qwen",
+            model_family=FAMILY_QWEN,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=300,
@@ -159,7 +160,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
         )
 
         resp = await free_pool.acompletion(
-            model_family="qwen",
+            model_family=FAMILY_QWEN,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=200,
@@ -256,7 +257,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
         )
 
         resp = await free_pool.acompletion(
-            model_family="qwen",
+            model_family=FAMILY_QWEN,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=300,
