@@ -225,9 +225,9 @@ class TestEnvVarsNotLeaked:
         assert "不在允许列表" in result.get("error", "")
         mock_popen.assert_not_called()
 
-    def test_allowed_command_passes_environ(self, tool):
-        """白名单命令执行时，BashTool 会将 os.environ 传递给子进程。
-        验证环境变量传递行为（当前未过滤敏感变量 — 已知技术债）。"""
+    def test_allowed_command_sanitizes_environ(self, tool):
+        """白名单命令执行时，BashTool 通过 _make_safe_env() 过滤环境变量。
+        验证敏感变量（如 API Key）不会传递给子进程。"""
         captured_env = {}
 
         def fake_popen(cmd, **kwargs):
@@ -238,12 +238,15 @@ class TestEnvVarsNotLeaked:
             return mock
 
         with patch("subprocess.Popen", side_effect=fake_popen), \
-             patch.dict("os.environ", {"SECRET_API_KEY": "sk-12345"}, clear=False):
+             patch.dict("os.environ", {"SECRET_API_KEY": "sk-12345",
+                                       "HOME": "/Users/test"}, clear=False):
             result = tool.execute("echo hello")
 
         assert result["success"] is True
-        # 当前行为：环境变量原样传递（未过滤），记录为已知技术债
-        assert "SECRET_API_KEY" in captured_env
+        # 安全行为：敏感环境变量被过滤，只保留白名单变量
+        assert "SECRET_API_KEY" not in captured_env
+        # 白名单变量应正常传递
+        assert captured_env.get("HOME") == "/Users/test"
 
 
 # ── 6. Edge cases ──────────────────────────────────────

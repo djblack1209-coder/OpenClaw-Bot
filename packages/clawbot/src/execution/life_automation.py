@@ -405,6 +405,18 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         # 安全限制：快捷指令名称长度和字符检查
         if len(name) > 100 or not re.match(r'^[\w\s\u4e00-\u9fff\-]+$', name):
             return {"success": False, "error": "快捷指令名称包含非法字符"}
+        # 安全限制：白名单校验 — 仅允许预定义的快捷指令名称执行
+        _SHORTCUT_WHITELIST = frozenset({
+            "开灯", "关灯", "回家模式", "离家模式", "晚安", "早安",
+            "睡眠模式", "工作模式", "勿扰模式", "省电模式",
+            "Turn On Lights", "Turn Off Lights", "Good Morning", "Good Night",
+        })
+        if name not in _SHORTCUT_WHITELIST:
+            logger.warning("[生活自动化] 快捷指令 '%s' 不在白名单中，已拦截", name)
+            return {
+                "success": False, "mode": "local",
+                "error": f"快捷指令 '{name}' 不在允许列表中，请联系管理员添加",
+            }
         cp = subprocess.run(
             ["shortcuts", "run", name],
             check=False, capture_output=True, text=True, timeout=30,

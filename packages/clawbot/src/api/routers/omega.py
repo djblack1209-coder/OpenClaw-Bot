@@ -239,26 +239,36 @@ async def omega_investment_backtest(
 @router.get("/tools/jina-read", response_model=Dict[str, Any])
 async def omega_jina_read(url: str):
     """读取URL内容（Jina Reader）"""
-    # SSRF protection: validate URL scheme and block internal networks
+    # SSRF 防护: 校验 URL 协议 + 解析域名 IP 后再次校验（防 DNS 重绑定）
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="Only HTTP(S) URLs allowed")
     if parsed.hostname:
-        # 使用 ipaddress 标准库精确判断私网地址（防止 SSRF）
-        # 原来 startswith("172.") 会误判 172.0-15.* 和 172.32+.* 等公网地址
-        blocked = False
+        import ipaddress
+        import socket
+        # 第一层: 静态黑名单（已知内网/云元数据地址）
         if parsed.hostname in {"169.254.169.254", "metadata.google.internal",
                                "localhost", "127.0.0.1", "0.0.0.0", "::1"}:
-            blocked = True
-        else:
-            try:
-                import ipaddress
-                ip = ipaddress.ip_address(parsed.hostname)
-                blocked = ip.is_private or ip.is_loopback or ip.is_link_local
-            except ValueError as e:  # noqa: F841
-                pass  # 域名无法直接解析，允许通过（由 DNS 解析后的 IP 处理）
-        if blocked:
             raise HTTPException(status_code=400, detail="Access to internal networks is not allowed")
+        # 第二层: 直接 IP 检查
+        try:
+            ip = ipaddress.ip_address(parsed.hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                raise HTTPException(status_code=400, detail="Access to internal networks is not allowed")
+        except ValueError:
+            # 域名而非 IP — 做 DNS 解析后检查实际 IP（防 DNS 重绑定攻击）
+            try:
+                resolved_ips = socket.getaddrinfo(parsed.hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+                for family, _type, _proto, _canonname, sockaddr in resolved_ips:
+                    resolved_ip = ipaddress.ip_address(sockaddr[0])
+                    if resolved_ip.is_private or resolved_ip.is_loopback or resolved_ip.is_link_local:
+                        logger.warning("[SSRF] 域名 %s 解析到内网 IP %s，已拦截", parsed.hostname, resolved_ip)
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Access to internal networks is not allowed"
+                        )
+            except socket.gaierror:
+                raise HTTPException(status_code=400, detail=f"无法解析域名: {parsed.hostname}")
     try:
         from src.tools.jina_reader import jina_read
         content = await jina_read(url)

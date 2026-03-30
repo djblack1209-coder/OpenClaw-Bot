@@ -5,6 +5,48 @@
 
 ---
 
+## [2026-03-31] P6 安全加固 — 沙箱OS级隔离 + 快捷指令白名单 + DNS重绑定SSRF防护
+
+> 领域: `backend`
+> 影响模块: `code_tool.py`, `bash_tool.py`, `life_automation.py`, `omega.py`, `test_bash_tool.py`
+> 关联问题: HI-349(resolved), HI-388(resolved), HI-389(resolved), HI-277(resolved), HI-278(resolved)
+
+### 变更内容
+
+#### HI-349: Python/Node.js 代码沙箱 OS 级隔离
+- `code_tool.py` **完全重写**: 所有 Python 执行从 host 进程内 `exec()` 迁移到独立子进程
+- 资源限制: `resource.setrlimit` — CPU 30s, MEM 256MB, NPROC=0(禁止fork), FSIZE 1MB
+- 进程组隔离: `os.setsid()` + SIGKILL 确保超时后清理干净
+- 环境变量白名单: `_make_safe_env()` 仅传递 PATH/HOME/LANG/PYTHONPATH，过滤所有 API KEY/TOKEN
+- RestrictedPython 降级为 Layer 1 AST 预检（只做静态分析不执行），增强沙箱前缀阻止 gc/inspect/threading/asyncio/_ctypes 等模块
+- `bash_tool.py` 同步添加 `_SAFE_ENV_KEYS` 白名单 + `_make_safe_env()` 环境变量过滤
+
+#### HI-388: 快捷指令白名单
+- `life_automation.py` 新增 `_SHORTCUT_WHITELIST` frozenset，包含 14 个预定义快捷指令名称（中英文家庭自动化场景）
+- 未在白名单中的快捷指令执行请求被拦截，记录 logger.warning 并返回用户友好错误消息
+
+#### HI-389: DNS 重绑定 SSRF 防护
+- `omega.py` `/tools/jina-read` 端点重写 SSRF 防护逻辑
+- 新增 `socket.getaddrinfo` DNS 预解析，对所有解析到的 IP 地址逐一检查 `is_private/is_loopback/is_link_local`
+- 域名解析失败返回 400 错误（而非放行）
+
+#### HI-277/278: 活跃问题复核
+- VPS 退让机制已确认存在于 `scripts/vps_failover_check.sh:59-63`（心跳有效时自动 stop）
+- failover 脚本已在 Git 仓库内，`deploy_vps.sh` 自动部署
+- 两个问题从活跃移至已解决
+
+#### 测试验证
+- `test_bash_tool.py` 更新: `test_allowed_command_sanitizes_environ` 验证敏感环境变量被过滤（非透传）
+- 全量测试: 1047/1047 passed, 0 TS errors
+
+### 文件变更
+- `packages/clawbot/src/tools/code_tool.py` — 完全重写: subprocess 执行 + 资源限制 + 环境白名单
+- `packages/clawbot/src/tools/bash_tool.py` — 新增 `_make_safe_env()` 环境变量过滤
+- `packages/clawbot/tests/test_bash_tool.py` — 测试更新: 验证 env 过滤而非透传
+- `packages/clawbot/src/execution/life_automation.py` — 新增 `_SHORTCUT_WHITELIST` 快捷指令白名单
+- `packages/clawbot/src/api/routers/omega.py` — DNS 预解析 SSRF 防护重写
+- `docs/status/HEALTH.md` — HI-349/388/389/277/278 移至已解决
+
 ## [2026-03-31] P5 文档完整性 + 工程基础设施审计
 
 > 领域: `docs`, `infra`

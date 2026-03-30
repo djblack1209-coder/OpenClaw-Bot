@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-31 (P4 UI/UX审计全4批完成: 确认对话框+aria-labels+中文翻译+Toast挂载+表单验证+空状态+页面级ErrorBoundary+未保存变更警告 | 1047/1047 passed, 0 TS errors)
+> 最后更新: 2026-03-31 (P6安全加固: 沙箱OS级隔离+快捷指令白名单+DNS重绑定SSRF防护 | 1047/1047 passed, 0 TS errors)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -80,22 +80,17 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-277 | `deploy` | VPS failover | Mac 恢复后无 VPS 退让机制 — 可能导致双节点同时运行 Bot | 2026-03-27 |
-| HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 (已新建 vps_failover_check.sh) | 2026-03-27 |
 | HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在 | 2026-03-28 |
-| HI-349 | `security` | `code_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 — 需OS级隔离 | 2026-03-28 |
 
 ### 🟡 一般
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有~15个文件>800行待拆 | 2026-03-29 |
+| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有22个文件>800行待拆(其中8个>1000行) | 2026-03-29 |
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-382 | `backend` | 多文件 | P7: 硬编码 LLM 模型名散落在多个文件中 — 应提取到 litellm_router 或 constants.py (中等成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
-| HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 2026-03-30 |
-| HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 — 首次解析为公网IP通过检查后,DNS切换到内网IP | 2026-03-30 |
 
 ### 🔵 低优先
 
@@ -109,6 +104,11 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-349 | `security` | `code_tool.py` + `bash_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 | code_tool.py 重写: 全部Python执行移至subprocess+resource.setrlimit(CPU 30s/MEM 256MB/NPROC=0/FSIZE 1MB)+进程组隔离+环境变量白名单; bash_tool.py: _make_safe_env()过滤敏感环境变量; RestrictedPython仅做AST预检不执行 | 2026-03-31 | P6安全加固 |
+| HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 添加 _SHORTCUT_WHITELIST frozenset 白名单，仅允许预定义快捷指令名称执行，未在白名单中的指令被拦截并记录日志 | 2026-03-31 | P6安全加固 |
+| HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 | 添加 socket.getaddrinfo DNS 预解析，对所有解析到的 IP 逐一检查 is_private/is_loopback/is_link_local，域名解析失败返回 400 | 2026-03-31 | P6安全加固 |
+| HI-277 | `deploy` | VPS failover | Mac 恢复后无 VPS 退让机制 — 可能导致双节点同时运行 Bot | `vps_failover_check.sh` 第59-63行已实现退让逻辑: 心跳有效时自动 `systemctl stop clawbot`; HI-344已完成部署 | 2026-03-31 | 活跃问题复核 |
+| HI-278 | `deploy` | VPS failover | failover timer 脚本原不在 Git 仓库 — VPS 重装后机制丢失 | 脚本已在 `scripts/vps_failover_check.sh` + systemd 配置在 `scripts/systemd/`; `deploy_vps.sh` 自动部署 | 2026-03-31 | 活跃问题复核 |
 | HI-390 | `trading` | `trading_journal.py` | SQLite `date()` 将 ET 时区 ISO 字符串转为 UTC 日期 — 晚 8 点后平仓的交易在当日统计中消失 | 全部 9 处 `date(exit_time/prediction_time)` 替换为 `substr(...,1,10)` 直接提取 ET 本地日期 | 2026-03-30 | P2架构审计 |
 | HI-385 | `backend` | `data_providers.py` | 5处类型注解引用未定义的 `pd` (pandas) | 添加 `from typing import TYPE_CHECKING` + `if TYPE_CHECKING: import pandas as pd` 条件导入 | 2026-03-31 | P2续审计 |
 
