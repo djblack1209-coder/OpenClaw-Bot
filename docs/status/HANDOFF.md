@@ -1,10 +1,65 @@
 # HANDOFF — 会话交接摘要
 
 > 最后更新: 2026-03-31
-> 本文件由 AI 自动维护，记录每次对话结束时的工作状态，供下一次对话接续使用。
-> 管理规则见 `AGENTS.md` §14.4：只保留最近 5 条，超过时删除最旧的。
 
 ---
+
+## [2026-03-31 Session 10/11] P4 UI/UX 审计全部完成 — 4 批次修复
+
+### 本次完成了什么
+- **P4 Batch 1 (C-02 + C-04)**: 创建 `confirm-dialog.tsx` 和 `prompt-dialog.tsx` 可复用组件，替换 6 个文件中所有浏览器原生 `confirm()`/`alert()`/`prompt()` 为应用内对话框
+- **P4 Batch 2 (C-01 + I-05)**: 12 个组件文件新增 31 个 aria-label 无障碍属性；5 个文件中 6 处残留英文 UI 文本翻译为中文
+- **P4 Batch 3 (M-08 + I-02 + I-07)**: App.tsx 挂载 `<Toaster />`（修复 sonner toast 全局静默问题 HI-386）；ControlCenter/Settings toast 迁移；5 个组件表单校验；Channels + Plugins 空状态
+- **P4 Batch 4 (M-03 + M-06)**: 创建 `PageErrorBoundary.tsx` 包裹全部 14 个页面；Settings 脏状态追踪 + 导航守卫 + 未保存确认弹窗
+- **文档同步**: HEALTH.md + CHANGELOG.md 已更新，HANDOFF.md 本条
+- **回归验证**: 1047/1047 Python passed, 0 TypeScript errors
+
+### 未完成的工作（按优先级排列）
+1. **Git commit** — P4 全部修改（20 modified + 3 new files）需提交
+2. **P5 审计** — 文档完整性、CI/CD 流水线、可维护性（最终审计阶段）
+
+### 需要注意的坑
+- `<Toaster />` 使用 `richColors` + `position="top-right"` + `closeButton`，与项目 shadcn 主题一致
+- `PageErrorBoundary` 是 class component（React 要求），内联渲染错误 UI 而非弹窗
+- Settings 导航守卫通过 `appStore.navigationGuard` 实现，App.tsx `handleNavigate` 检查守卫 — 如果新增页面也需要脏状态保护，需注册同样的守卫
+- `confirm-dialog.tsx` 和 `prompt-dialog.tsx` 都支持自定义标题/描述/按钮文案，可复用于后续功能
+
+### 关键决策记录
+- Toaster 挂载在 App.tsx 而非 main.tsx — 保持 main.tsx 只做 StrictMode + ErrorBoundary 最小责任
+- ErrorBoundary 分两层：main.tsx 的全局级（兜底白屏）+ PageErrorBoundary 页面级（单页面崩溃不影响导航）
+- Settings 脏状态追踪基于 JSON.stringify 快照对比，不用 deep-equal 库 — 避免新增依赖
+- aria-label 只加在可交互元素（button/input/select）上，纯展示元素不加
+
+### 当前系统状态
+- 测试: 1047/1047 Python passed, 0 TS errors
+- 活跃问题总数: 12 (4个🟠重要 + 7个🟡一般 + 1个🔵低优先)
+- P0: ✅ | P1: ✅ | P2: ✅ | P3: ✅ | P4: ✅ | P5: 待做
+
+## [2026-03-31 Session 9] I-05 前端英文残留翻译完成
+
+### 本次完成了什么
+- **I-05 前端 UI 英文残留翻译**: 扫描全部 34 个 TSX 组件文件，找到 5 个文件中 6 处残留英文 UI 文本并翻译为中文
+- 翻译对照: Net Value→净值, (Proactive Observability)→移除, Live Socket/Simulation→实时连接/模拟演示, (Smart Memory)→移除, Provider→服务商, Skills→技能模块
+- **类型检查通过**: `npx tsc --noEmit` 无新增错误（仅有 Plugins/index.tsx 的既有未使用导入警告）
+- **文档同步**: CHANGELOG.md + HANDOFF.md 已更新
+
+### 未完成的工作（按优先级排列）
+1. **Git commit + push** — 本次翻译修改 + 之前 P2/P3 修改需提交
+2. **P4 审计** — UI/UX 全覆盖（需 Tauri 桌面端运行时做视觉检查）
+3. **P5 审计** — 文档、CI/CD、可维护性
+4. **既有技术债** — HI-358(大文件拆分)、HI-381-383(错误字符串/模型名/HTTP碎片化)、HI-386(WebSocket通知待建)、HI-388/389(安全)
+
+### 需要注意的坑
+- Plugins/index.tsx 有一个未使用的 `ConfirmDialog` 导入（TS6133 警告），不影响运行但可顺手清理
+
+### 关键决策记录
+- Evolution/index.tsx 中 risk_level (LOW/MEDIUM/HIGH) 和 status (pending/approved/rejected) 是从后端 API 返回的动态数据值，不在前端翻译 — 应在后端 API 层面处理
+- 英文括号注释如 (Proactive Observability)、(Smart Memory) 直接移除而非翻译 — 中文标题已足够说明含义，保持界面简洁
+
+### 当前系统状态
+- 测试: 1047/1047 Python passed, 0 新增 TS errors
+- I-05 状态: ✅ 已完成
+- P0: ✅ | P1: ✅ | P2: ✅ | P3: ✅ | P4-P5: 待做
 
 ## [2026-03-31 Session 8] P2 续 + P3 审计完成 — 文档同步完成
 
@@ -111,43 +166,6 @@
 - 已解决问题: HI-387（本轮修复）
 - 活跃问题总数: 13 (4个🟠重要 + 8个🟡一般 + 1个🔵低优先)
 - 改动文件: auth.py, test_security.py, HEALTH.md, CHANGELOG.md, HANDOFF.md
-
-## [2026-03-30 Session 5] Wave 1: 全系统智能化跃迁 — 5 个子任务全部完成
-
-### 本次完成了什么
-- **Wave 1 全部 5 个实现任务已完成**，从「被动工具」升级为「智能助手」
-- **Task 1: 日报智能化** — 新增 LLM 当日概况（2 句话总结）、3 条数据驱动建议、趋势对比标注（↑↓变化量）
-- **Task 2: 闲鱼买家画像** — 新增买家画像查询，注入 3 个 AI 代理 prompt，PriceAgent 温度自适应
-- **Task 3: 社媒发帖时间** — 发布时间跟随 PostTimeOptimizer 动态调整，晚复盘时自动更新次日时间
-- **Task 4: 主动引擎扩展** — 3 个新事件类型 + 4 个新处理器（闲鱼付款/预算超支/社媒发布跟进/粉丝里程碑）
-- **Task 5: 交易后跟进** — auto_trader 发射结构化交易事件 + ProactiveEngine 延迟 2 小时跟进价格变化
-- **回归验证**: 1047/1047 passed（与基线完全一致，零回归）
-- **文档同步**: CHANGELOG(Wave 1 条目) + HEALTH.md(时间戳) + HANDOFF.md(本摘要)
-
-### 未完成的工作（按优先级排列）
-1. **Git commit + push** — 本轮 Wave 1 所有修改需提交到远程仓库
-2. **VPS 代码同步** — rsync 最新代码到 101.43.41.96
-3. **Wave 2 设计** — 「让系统会学习」：谈判策略学习、内容效果反馈环、交易复盘学习、消费模式识别
-4. **Wave 3 设计** — 「融会贯通」：跨模块数据联动（闲鱼→投资、社媒→投资、全部→生活）
-5. **既有技术债** — HI-037(sanitize_input)、HI-358(大文件拆分)、HI-385(pd类型注解)、HI-386(Toaster死代码)
-
-### 需要注意的坑
-- `multi_main.py` 中仍有一处旧的 TRADE_EXECUTED 事件发射（字符串匹配方式，第 632-645 行），现在 auto_trader.py 也会发射结构化事件——两处会同时触发，ProactiveEngine 的 `on_trade_executed` 可能收到两次，但因为频率限制（每小时 3 条）不会重复通知
-- 日报的 LLM 生成部分使用 `free_pool.acompletion(model_family="qwen")`，如果 qwen 不可用会降级为模板输出
-- 社媒发布时间动态调整使用 `_current_publish_hour` 属性而非直接读 APScheduler trigger 字段，更可靠
-- `bus.subscribe()` 是同步方法，新代码不再用 `await bus.subscribe()`
-
-### 关键决策记录
-- Wave 1 策略是「把已有数据用起来」——不新增数据采集，只增加反馈循环
-- 延迟跟进使用 `asyncio.create_task` + `asyncio.sleep` 而非 APScheduler，重启会丢失——设计文档明确说可接受（辅助功能）
-- 买家画像温度调整幅度 ±0.1，保守选择以避免过度影响回复质量
-- 所有新增 LLM 调用都有降级路径（模板/跳过），确保 LLM 不可用时系统仍正常运行
-
-### 当前系统状态
-- 测试: 1047/1047 passed
-- 新增问题: 无
-- 活跃问题总数: 11 (与上次相同，本次无新增)
-- 改动文件: daily_brief.py, xianyu_context.py, xianyu_agent.py, xianyu_live.py, social_scheduler.py, event_bus.py, proactive_engine.py, bookkeeping.py, auto_trader.py, CHANGELOG.md, HEALTH.md, HANDOFF.md
 
 ---
 

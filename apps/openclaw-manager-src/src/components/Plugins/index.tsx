@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -80,6 +81,8 @@ export function Plugins() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  // 卸载确认对话框状态
+  const [uninstallTarget, setUninstallTarget] = useState<MCPPlugin | null>(null);
 
   const fetchPlugins = useCallback(async () => {
     if (!isTauri()) {
@@ -202,6 +205,7 @@ export function Plugins() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-dark-800 border border-dark-600 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-gray-600"
+              aria-label="搜索插件"
             />
           </div>
           <button 
@@ -214,6 +218,13 @@ export function Plugins() {
         </div>
 
         {/* Plugin Grid */}
+        {filteredPlugins.length === 0 ? (
+          /* 搜索无结果时的占位提示 */
+          <div className="flex flex-col items-center justify-center h-32 text-dark-500">
+            <p className="text-sm">未找到匹配的插件</p>
+            <p className="text-xs mt-1">试试其他关键词</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredPlugins.map((plugin) => (
             <Card 
@@ -289,18 +300,10 @@ export function Plugins() {
                   </div>
                   
                   <div className="flex gap-2">
-                    <button onClick={() => toast.info(`插件 ${plugin.name} 的配置面板即将上线`)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置">
+                    <button onClick={() => toast.info(`插件 ${plugin.name} 的配置面板即将上线`)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置" aria-label="配置插件">
                       <Settings2 size={16} />
                     </button>
-                    <button onClick={() => {
-                      if (confirm(`确定要卸载插件 "${plugin.name}" 吗？`)) {
-                        setPlugins(prev => prev.filter(p => p.id !== plugin.id));
-                        toast.success(`已卸载 ${plugin.name}`);
-                        if (isTauri()) {
-                          invoke('remove_mcp_plugin', { id: plugin.id }).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
-                        }
-                      }
-                    }} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载">
+                    <button onClick={() => setUninstallTarget(plugin)} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载" aria-label="卸载插件">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -320,7 +323,27 @@ export function Plugins() {
             </div>
           </button>
         </div>
+        )}
       </div>
+
+      {/* 卸载确认对话框 */}
+      <ConfirmDialog
+        open={!!uninstallTarget}
+        onClose={() => setUninstallTarget(null)}
+        onConfirm={() => {
+          if (!uninstallTarget) return;
+          setPlugins(prev => prev.filter(p => p.id !== uninstallTarget.id));
+          toast.success(`已卸载 ${uninstallTarget.name}`);
+          if (isTauri()) {
+            invoke('remove_mcp_plugin', { id: uninstallTarget.id }).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
+          }
+          setUninstallTarget(null);
+        }}
+        title="卸载插件"
+        description={`确定要卸载插件「${uninstallTarget?.name ?? ''}」吗？`}
+        confirmText="卸载"
+        destructive
+      />
     </div>
   );
 }

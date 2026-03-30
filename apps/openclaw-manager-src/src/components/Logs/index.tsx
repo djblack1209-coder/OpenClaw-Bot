@@ -135,6 +135,7 @@ export function Logs() {
             value={filter}
             onChange={(e) => setFilter(e.target.value as FilterLevel)}
             className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
+            aria-label="按日志级别过滤"
           >
             <option value="all">所有级别</option>
             <option value="debug">调试</option>
@@ -149,6 +150,7 @@ export function Logs() {
           value={moduleFilter}
           onChange={(e) => setModuleFilter(e.target.value)}
           className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
+          aria-label="按模块过滤"
         >
           <option value="all">所有模块</option>
           {modules.map(module => (
@@ -180,6 +182,7 @@ export function Logs() {
             onClick={handleExport}
             className="icon-button text-gray-400 hover:text-white"
             title="导出日志"
+            aria-label="导出日志"
           >
             <Download size={16} />
           </button>
@@ -187,6 +190,7 @@ export function Logs() {
             onClick={() => setLogs(logStore.getAll())}
             className="icon-button text-gray-400 hover:text-white"
             title="刷新"
+            aria-label="刷新日志"
           >
             <RefreshCw size={16} />
           </button>
@@ -194,6 +198,7 @@ export function Logs() {
             onClick={handleClear}
             className="icon-button text-gray-400 hover:text-red-400"
             title="清除日志"
+            aria-label="清除日志"
           >
             <Trash2 size={16} />
           </button>

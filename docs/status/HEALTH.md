@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-31 (P2续+P3审计: TYPE_CHECKING修复+resilience安全+8处useEffect依赖+5处阻塞subprocess异步化+5处无界数据结构加cap+2处SQLite close()补全 | 1047/1047 passed, 0 TS errors)
+> 最后更新: 2026-03-31 (P4 UI/UX审计全4批完成: 确认对话框+aria-labels+中文翻译+Toast挂载+表单验证+空状态+页面级ErrorBoundary+未保存变更警告 | 1047/1047 passed, 0 TS errors)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -51,7 +51,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟡 待命中 | 腾讯云 2C2G — 代码已同步, systemd 服务已创建, failover timer 运行中, 待心跳恢复后自动切换 |
-| 测试通过率 | 🟢 100% | 1047/1047 Python (含41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 | P2续+P3审计: TYPE_CHECKING+resilience安全+useEffect deps+subprocess异步化+缓存cap+SQLite close |
+| 测试通过率 | 🟢 100% | 1047/1047 Python (含41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 | P4: 确认对话框+aria-labels+中文翻译+Toast挂载+表单验证+空状态+PageErrorBoundary+未保存变更警告 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -61,7 +61,7 @@
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
@@ -102,7 +102,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-386 | `frontend` | `App.tsx` | `useGlobalToasts` hook 和 `Toaster` 组件(sonner)是死代码 — 已实现但未在 App.tsx 中渲染，WebSocket 通知机制无法触发。**P1部分解决**: 已删除 `useGlobalToasts.ts` + `sonner.tsx` + 5个未使用UI组件 + console→logger迁移(25处)，剩余WebSocket通知基础设施待建立 | 2026-03-30 |
+| HI-386 | `frontend` | `App.tsx` | ~~`useGlobalToasts` hook 和 `Toaster` 组件(sonner)是死代码~~ **P4已解决**: `<Toaster />` 已挂载到 App.tsx, ControlCenter+Settings 已迁移到 toast 通知, `useGlobalToasts.ts` + `sonner.tsx` 等死文件已删除。剩余: WebSocket 实时通知基础设施待建立 | 2026-03-30 |
 
 ---
 

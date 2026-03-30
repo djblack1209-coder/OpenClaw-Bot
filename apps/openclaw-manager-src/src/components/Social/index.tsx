@@ -9,6 +9,7 @@ import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
 import { format } from 'date-fns';
 import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
@@ -197,6 +198,8 @@ export function Social() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [newDraftDialogOpen, setNewDraftDialogOpen] = useState(false);
+  const [editDraftTarget, setEditDraftTarget] = useState<Draft | null>(null);
   const [browserStatus, setBrowserStatus] = useState({ x: 'unknown', xhs: 'unknown' });
 
   // 获取浏览器会话状态
@@ -334,6 +337,7 @@ export function Social() {
                             "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
                             isRunning ? "bg-dark-600" : "bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white"
                           )}
+                          aria-label={`执行${action.label}`}
                         >
                           {isRunning ? <Loader2 size={16} className="animate-spin text-gray-400" /> : <Play size={14} className="ml-0.5" />}
                         </button>
@@ -350,6 +354,7 @@ export function Social() {
                           onChange={(e) => setInputs(prev => ({ ...prev, [action.id]: e.target.value }))}
                           onKeyDown={(e) => e.key === 'Enter' && handleAction(action.id, action.cmd, true)}
                           className="w-full bg-dark-900 border border-dark-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all placeholder:text-dark-400"
+                          aria-label={action.label}
                         />
                       ) : (
                         <div className="h-[38px] flex items-center">
@@ -390,18 +395,7 @@ export function Social() {
                       待发布队列与草稿
                     </CardTitle>
                   </div>
-                  <button onClick={() => {
-                    const title = prompt('输入内容标题:');
-                    if (!title) return;
-                    const newDraft: Draft = {
-                      id: Date.now(),
-                      title,
-                      platforms: ['x', 'xhs'],
-                      status: 'draft',
-                      time: new Date(),
-                    };
-                    setDrafts(prev => [...prev, newDraft]);
-                  }} className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
+                  <button onClick={() => setNewDraftDialogOpen(true)} className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
                     <Plus size={14} /> 新建内容
                   </button>
                 </div>
@@ -443,12 +437,7 @@ export function Social() {
                         </div>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => {
-                          const newTitle = prompt('编辑标题:', draft.title);
-                          if (newTitle) {
-                            setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, title: newTitle } : d));
-                          }
-                        }} className="p-2 hover:bg-dark-700 rounded-md text-gray-400 hover:text-white transition-colors">
+                        <button onClick={() => setEditDraftTarget(draft)} className="p-2 hover:bg-dark-700 rounded-md text-gray-400 hover:text-white transition-colors">
                           编辑
                         </button>
                         {draft.status !== 'published' && (
@@ -487,6 +476,40 @@ export function Social() {
 
         </Tabs>
       </div>
+
+      {/* 新建内容对话框 */}
+      <PromptDialog
+        open={newDraftDialogOpen}
+        onClose={() => setNewDraftDialogOpen(false)}
+        onConfirm={(title) => {
+          const newDraft: Draft = {
+            id: Date.now(),
+            title,
+            platforms: ['x', 'xhs'],
+            status: 'draft',
+            time: new Date(),
+          };
+          setDrafts(prev => [...prev, newDraft]);
+          setNewDraftDialogOpen(false);
+        }}
+        title="新建内容"
+        placeholder="输入内容标题"
+      />
+
+      {/* 编辑草稿标题对话框 */}
+      <PromptDialog
+        open={editDraftTarget !== null}
+        onClose={() => setEditDraftTarget(null)}
+        onConfirm={(newTitle) => {
+          if (editDraftTarget) {
+            setDrafts(prev => prev.map(d => d.id === editDraftTarget.id ? { ...d, title: newTitle } : d));
+          }
+          setEditDraftTarget(null);
+        }}
+        title="编辑标题"
+        defaultValue={editDraftTarget?.title ?? ''}
+        placeholder="输入新标题"
+      />
     </div>
   );
 }

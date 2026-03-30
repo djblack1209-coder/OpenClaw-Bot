@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import {
@@ -12,10 +12,11 @@ import {
   AlertTriangle,
   X,
   HardDrive,
-  CheckCircle,
 } from 'lucide-react';
 import { api, type ProjectContext } from '../../lib/tauri';
 import { createLogger } from '@/lib/logger';
+import { useAppStore } from '@/stores/appStore';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 // 设置模块日志实例
 const settingsLogger = createLogger('Settings');
@@ -42,13 +43,50 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [openingSystemSettings, setOpeningSystemSettings] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
+
+  // 未保存变更警告相关状态
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const pendingNavigationRef = useRef<string | null>(null);
+
+  // 记录从服务端加载的初始值，用于检测是否有未保存修改
+  const initialIdentityRef = useRef(identity);
+  const initialSecurityRef = useRef(security);
+
+  /** 判断当前表单是否有未保存的修改 */
+  const isDirty = useCallback(() => {
+    const initId = initialIdentityRef.current;
+    const initSec = initialSecurityRef.current;
+    return (
+      identity.botName !== initId.botName ||
+      identity.userName !== initId.userName ||
+      identity.timezone !== initId.timezone ||
+      security.enableWhitelist !== initSec.enableWhitelist ||
+      security.allowFileAccess !== initSec.allowFileAccess
+    );
+  }, [identity, security]);
+
+  const setNavigationGuard = useAppStore((s) => s.setNavigationGuard);
+  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
+
+  // 注册导航守卫：离开设置页时检测未保存修改
+  useEffect(() => {
+    setNavigationGuard((targetPage) => {
+      if (isDirty()) {
+        // 有未保存修改，弹出确认对话框，暂停导航
+        pendingNavigationRef.current = targetPage;
+        setShowUnsavedDialog(true);
+        return false; // 阻止导航
+      }
+      return true; // 允许导航
+    });
+    // 组件卸载时清除守卫
+    return () => setNavigationGuard(null);
+  }, [isDirty, setNavigationGuard]);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -59,17 +97,22 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           api.getAppSettings(),
         ]);
         setProjectContext(context);
-        setIdentity({
+        const loadedIdentity = {
           botName: settings.identity.bot_name,
           userName: settings.identity.user_name,
           timezone: settings.identity.timezone,
-        });
-        setSecurity({
+        };
+        const loadedSecurity = {
           enableWhitelist: settings.security.enable_whitelist,
           allowFileAccess: settings.security.allow_file_access,
-        });
+        };
+        setIdentity(loadedIdentity);
+        setSecurity(loadedSecurity);
+        // 记录初始值用于脏状态检测
+        initialIdentityRef.current = loadedIdentity;
+        initialSecurityRef.current = loadedSecurity;
       } catch (e) {
-        setSaveError(`读取设置失败: ${String(e)}`);
+        toast.error(`读取设置失败: ${String(e)}`);
       } finally {
         setLoading(false);
       }
@@ -79,9 +122,12 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   }, []);
 
   const handleSave = async () => {
+    // 验证 Bot 名称不能为空
+    if (!identity.botName.trim()) {
+      toast.error('Bot 名称不能为空');
+      return;
+    }
     setSaving(true);
-    setSaveMessage(null);
-    setSaveError(null);
     try {
       const message = await api.saveAppSettings({
         identity: {
@@ -94,9 +140,12 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           allow_file_access: security.allowFileAccess,
         },
       });
-      setSaveMessage(message);
+      toast.success(message);
+      // 保存成功后，更新初始值基线（此时不再算"未保存"）
+      initialIdentityRef.current = { ...identity };
+      initialSecurityRef.current = { ...security };
     } catch (e) {
-      setSaveError(`保存失败: ${String(e)}`);
+      toast.error(`保存失败: ${String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -114,13 +163,11 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
 
   const openFullDiskAccessSettings = async () => {
     setOpeningSystemSettings(true);
-    setSaveMessage(null);
-    setSaveError(null);
     try {
       const message = await api.openMacOSFullDiskAccessSettings();
-      setSaveMessage(message);
+      toast.success(message);
     } catch (e) {
-      setSaveError(String(e));
+      toast.error(String(e));
     } finally {
       setOpeningSystemSettings(false);
     }
@@ -374,6 +421,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                     setUninstallResult(null);
                   }}
                   className="text-gray-400 hover:text-white transition-colors"
+                  aria-label="关闭对话框"
                 >
                   <X size={20} />
                 </button>
@@ -447,15 +495,6 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
         )}
 
         {/* 保存按钮 */}
-        {(saveMessage || saveError) && (
-          <div className={saveError ? 'p-3 rounded-lg bg-red-500/10 border border-red-500/30' : 'p-3 rounded-lg bg-green-500/10 border border-green-500/30'}>
-            <p className={saveError ? 'text-sm text-red-400' : 'text-sm text-green-400 flex items-center gap-2'}>
-              {!saveError && <CheckCircle size={16} />}
-              {saveError || saveMessage}
-            </p>
-          </div>
-        )}
-
         <div className="flex justify-end">
           <button
             onClick={handleSave}
@@ -471,6 +510,32 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           </button>
         </div>
       </div>
+
+      {/* 离开页面前的未保存修改确认对话框 */}
+      <ConfirmDialog
+        open={showUnsavedDialog}
+        onClose={() => {
+          // 用户选择留在当前页
+          setShowUnsavedDialog(false);
+          pendingNavigationRef.current = null;
+        }}
+        onConfirm={() => {
+          // 用户选择放弃修改并离开
+          setShowUnsavedDialog(false);
+          const target = pendingNavigationRef.current;
+          pendingNavigationRef.current = null;
+          if (target) {
+            // 先清除守卫再导航，避免再次触发拦截
+            setNavigationGuard(null);
+            setCurrentPage(target as import('../../App').PageType);
+          }
+        }}
+        title="有未保存的修改"
+        description="你还有设置没有保存。离开此页面将丢失这些修改。"
+        confirmText="放弃修改"
+        cancelText="继续编辑"
+        destructive
+      />
     </div>
   );
 }

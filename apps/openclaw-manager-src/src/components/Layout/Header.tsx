@@ -63,6 +63,7 @@ export function Header({ currentPage }: HeaderProps) {
           onClick={() => window.location.reload()}
           className="icon-button text-gray-400 hover:text-white"
           title="刷新"
+          aria-label="刷新页面"
         >
           <RefreshCw size={16} />
         </button>

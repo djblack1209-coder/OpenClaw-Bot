@@ -309,10 +309,10 @@ export function ExecutionFlow() {
             <div>
               <CardTitle className="text-xl font-bold text-white flex items-center gap-2">
                 <Workflow className="text-claw-400 h-6 w-6" />
-                全景智能监控流 (Proactive Observability)
+                全景智能监控流
               </CardTitle>
               <CardDescription className="mt-1 text-gray-400">
-                实时可视化 AI Agent 的思维链(CoT)、API调用及工具执行数据。当前模式: {useRealLogs ? 'Live Socket' : 'Simulation'}
+                实时可视化 AI Agent 的思维链(CoT)、API调用及工具执行数据。当前模式: {useRealLogs ? '实时连接' : '模拟演示'}
               </CardDescription>
             </div>
             <button
@@ -366,6 +366,7 @@ export function ExecutionFlow() {
                 <button 
                   onClick={() => setSelectedNodeData(null)}
                   className="absolute top-3 right-3 text-gray-400 hover:text-white z-10"
+                  aria-label="关闭节点详情"
                 >
                   <Square size={16} />
                 </button>
