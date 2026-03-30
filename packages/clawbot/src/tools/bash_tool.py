@@ -1,6 +1,6 @@
 """
 ClawBot - Bash命令执行工具
-安全加固版: 白名单模式 + shell=False
+安全加固版: 白名单模式 + shell=False + 环境变量清洗
 """
 import subprocess
 import shlex
@@ -11,6 +11,12 @@ from typing import Optional
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# 安全的环境变量白名单 — 阻止 API Key / Token 泄漏
+_SAFE_ENV_KEYS = frozenset({
+    "PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE",
+    "TERM", "TMPDIR", "TZ", "SHELL",
+})
 
 class BashTool:
     """执行Bash命令 (白名单模式)"""
@@ -106,7 +112,7 @@ class BashTool:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,
-                env=os.environ.copy(),
+                env=_make_safe_env(),
                 preexec_fn=os.setsid if os.name != 'nt' else None
             )
             
@@ -172,3 +178,8 @@ class BashTool:
                 logger.debug("[BashTool] 异常: %s", e)
                 return {"success": False, "error": "取消失败"}
         return {"success": False, "error": "没有正在执行的命令"}
+
+
+def _make_safe_env() -> dict:
+    """构建安全的子进程环境变量 (只保留白名单内的 key, 阻止敏感信息泄漏)"""
+    return {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
