@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { api, isTauri, clawbotFetch, type MemorySearchResponse, type MemoryEntryRaw } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
+import { toast } from 'sonner';
 
 import clsx from 'clsx';
 
@@ -24,10 +26,11 @@ export function Memory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // 删除确认对话框状态
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  // 删除指定记忆条目
-  const handleDelete = async (key: string) => {
-    if (!confirm('确定要删除这条记忆吗？删除后无法恢复。')) return;
+  // 执行删除记忆条目（由确认对话框触发）
+  const executeDelete = async (key: string) => {
     try {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
@@ -42,7 +45,7 @@ export function Memory() {
       setEntries(prev => prev.filter(e => e.key !== key));
     } catch (e) {
       memoryLogger.error('删除记忆失败', e);
-      alert('删除失败，请稍后重试');
+      toast.error('删除失败，请稍后重试');
     }
   };
 
@@ -55,6 +58,11 @@ export function Memory() {
   // 保存编辑后的记忆内容
   const handleSaveEdit = async () => {
     if (!editingKey) return;
+    // 验证记忆内容不能为空
+    if (!editValue.trim()) {
+      toast.error('记忆内容不能为空');
+      return;
+    }
     try {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
@@ -70,7 +78,7 @@ export function Memory() {
       setEditingKey(null);
     } catch (e) {
       memoryLogger.error('更新记忆失败', e);
-      alert('更新失败，请稍后重试');
+      toast.error('更新失败，请稍后重试');
     }
   };
 
@@ -126,7 +134,7 @@ export function Memory() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <BrainCircuit className="text-purple-400" />
-            记忆库 (Smart Memory)
+            记忆库
           </h1>
           <p className="text-gray-400 mt-1">
             基于 Mem0 架构的长期记忆库。AI Agent 会自动从对话中提取事实、更新画像并解决记忆冲突。
@@ -152,6 +160,7 @@ export function Memory() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-dark-800 border border-dark-600 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-purple-500/50 transition-colors"
+              aria-label="搜索记忆"
             />
           </div>
 
@@ -185,6 +194,7 @@ export function Memory() {
                                       onChange={(e) => setEditValue(e.target.value)}
                                       className="w-full bg-dark-900 border border-purple-500/50 rounded-lg p-3 text-sm text-white font-mono focus:outline-none focus:border-purple-500 resize-y min-h-[80px]"
                                       rows={4}
+                                      aria-label="编辑记忆内容"
                                     />
                                     <div className="flex gap-2">
                                       <button
@@ -219,10 +229,10 @@ export function Memory() {
                             
                             {/* 操作按钮 (仅悬浮显示) */}
                             <div className="absolute right-4 top-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleEdit(entry)} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500">
+                                <button onClick={() => handleEdit(entry)} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500" aria-label="编辑记忆">
                                     <Edit size={14} />
                                 </button>
-                                <button onClick={() => handleDelete(entry.key)} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30">
+                                <button onClick={() => setDeleteTarget(entry.key)} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30" aria-label="删除记忆">
                                     <Trash2 size={14} />
                                 </button>
                             </div>
@@ -288,6 +298,21 @@ export function Memory() {
             </Card>
         </div>
       </div>
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            executeDelete(deleteTarget);
+            setDeleteTarget(null);
+          }
+        }}
+        title="删除记忆"
+        description="确定要删除这条记忆吗？删除后无法恢复。"
+        confirmText="删除"
+        destructive
+      />
     </div>
   );
 }

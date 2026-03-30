@@ -132,8 +132,24 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
   const handleSave = async (forceOverride: boolean = false) => {
     setFormError(null);
     
-    if (!providerName || !baseUrl || selectedModels.length === 0) {
-      setFormError('请填写完整的 Provider 信息和至少选择一个模型');
+    if (!providerName.trim()) {
+      setFormError('请填写 Provider 名称');
+      return;
+    }
+
+    if (!baseUrl.trim()) {
+      setFormError('请填写 API 地址');
+      return;
+    }
+
+    // 验证需要 API Key 的 Provider 在新建时必须填写
+    if (selectedOfficial?.requires_api_key && !apiKey.trim() && !isEditing) {
+      setFormError('请填写 API Key');
+      return;
+    }
+
+    if (selectedModels.length === 0) {
+      setFormError('请至少选择一个模型');
       return;
     }
 
@@ -205,7 +221,7 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
               ? `编辑 Provider: ${editingProvider?.name}` 
               : (step === 'select' ? '添加 AI Provider' : `配置 ${selectedOfficial?.name || '自定义 Provider'}`)}
           </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">
+          <button onClick={onClose} className="text-gray-500 hover:text-white" aria-label="关闭对话框">
             ✕
           </button>
         </div>
@@ -340,11 +356,13 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                         ? "留空保持原有 API Key 不变，或输入新的 Key" 
                         : "sk-..."}
                       className="input-base pr-10"
+                      aria-label="API 密钥"
                     />
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                      aria-label={showApiKey ? "隐藏密钥" : "显示密钥"}
                     >
                       {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -423,11 +441,13 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                       placeholder="输入自定义模型 ID"
                       className="input-base flex-1"
                       onKeyDown={e => e.key === 'Enter' && addCustomModel()}
+                      aria-label="自定义模型 ID"
                     />
                     <button
                       onClick={addCustomModel}
                       disabled={!customModelId}
                       className="btn-secondary px-4"
+                      aria-label="添加自定义模型"
                     >
                       <Plus size={16} />
                     </button>
@@ -447,6 +467,7 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                             <button
                               onClick={() => toggleModel(modelId)}
                               className="text-gray-500 hover:text-red-400"
+                              aria-label="移除模型"
                             >
                               ✕
                             </button>

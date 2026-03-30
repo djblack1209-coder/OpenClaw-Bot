@@ -25,13 +25,8 @@ import {
   ManagedServiceStatus,
   OpenclawUsageSnapshot,
 } from '../../lib/tauri';
-
-type NoticeType = 'success' | 'error';
-
-interface NoticeState {
-  type: NoticeType;
-  message: string;
-}
+import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const ACTION_LABEL: Record<ManagedServiceAction, string> = {
   start: '启动',
@@ -101,11 +96,12 @@ export function ControlCenter() {
   const [serviceActionLoading, setServiceActionLoading] = useState<Record<string, ManagedServiceAction | null>>({});
   const [savingConfig, setSavingConfig] = useState(false);
   const [savingAndRestarting, setSavingAndRestarting] = useState(false);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [selectedLogLabel, setSelectedLogLabel] = useState<string>(DEFAULT_LOG_LABEL);
   const [serviceLogs, setServiceLogs] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
+  const [showStopAllConfirm, setShowStopAllConfirm] = useState(false);
+  const [stopServiceTarget, setStopServiceTarget] = useState<string | null>(null);
 
   const runningCount = useMemo(
     () => services.filter((service) => service.running).length,
@@ -165,7 +161,7 @@ export function ControlCenter() {
           setUsageSnapshot({ providers: [] });
         });
     } catch (error) {
-      setNotice({ type: 'error', message: `刷新失败: ${String(error)}` });
+      toast.error(`刷新失败: ${String(error)}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -210,14 +206,13 @@ export function ControlCenter() {
 
   const handleAllAction = async (action: ManagedServiceAction) => {
     setAllActionLoading(action);
-    setNotice(null);
     try {
       const result = await api.controlAllManagedServices(action);
-      setNotice({ type: 'success', message: result || `全部服务已${ACTION_LABEL[action]}` });
+      toast.success(result || `全部服务已${ACTION_LABEL[action]}`);
       await fetchAll(true);
       await fetchLogs(selectedLogLabel);
     } catch (error) {
-      setNotice({ type: 'error', message: `总控操作失败: ${String(error)}` });
+      toast.error(`总控操作失败: ${String(error)}`);
     } finally {
       setAllActionLoading(null);
     }
@@ -225,14 +220,13 @@ export function ControlCenter() {
 
   const handleServiceAction = async (label: string, action: ManagedServiceAction) => {
     setServiceActionLoading((prev) => ({ ...prev, [label]: action }));
-    setNotice(null);
     try {
       const result = await api.controlManagedService(label, action);
-      setNotice({ type: 'success', message: result });
+      toast.success(result);
       await fetchAll(true);
       await fetchLogs(selectedLogLabel);
     } catch (error) {
-      setNotice({ type: 'error', message: `服务操作失败: ${String(error)}` });
+      toast.error(`服务操作失败: ${String(error)}`);
     } finally {
       setServiceActionLoading((prev) => ({ ...prev, [label]: null }));
     }
@@ -243,32 +237,62 @@ export function ControlCenter() {
   };
 
   const handleSaveConfig = async () => {
+    // 验证数值字段（端口号和预算金额）
+    if (runtimeConfig.IBKR_PORT.trim()) {
+      const port = Number(runtimeConfig.IBKR_PORT);
+      if (isNaN(port) || port < 0 || !Number.isInteger(port)) {
+        toast.error('IBKR 端口号必须是非负整数');
+        return;
+      }
+    }
+    if (runtimeConfig.IBKR_BUDGET.trim()) {
+      const budget = Number(runtimeConfig.IBKR_BUDGET);
+      if (isNaN(budget) || budget < 0) {
+        toast.error('IBKR 预算金额不能为负数');
+        return;
+      }
+    }
+
     setSavingConfig(true);
-    setNotice(null);
     try {
       const result = await api.saveClawbotRuntimeConfig(runtimeConfig);
-      setNotice({ type: 'success', message: result });
+      toast.success(result);
       await fetchAll(true);
     } catch (error) {
-      setNotice({ type: 'error', message: `保存配置失败: ${String(error)}` });
+      toast.error(`保存配置失败: ${String(error)}`);
     } finally {
       setSavingConfig(false);
     }
   };
 
   const handleSaveAndRestart = async () => {
+    // 验证数值字段（端口号和预算金额）
+    if (runtimeConfig.IBKR_PORT.trim()) {
+      const port = Number(runtimeConfig.IBKR_PORT);
+      if (isNaN(port) || port < 0 || !Number.isInteger(port)) {
+        toast.error('IBKR 端口号必须是非负整数');
+        return;
+      }
+    }
+    if (runtimeConfig.IBKR_BUDGET.trim()) {
+      const budget = Number(runtimeConfig.IBKR_BUDGET);
+      if (isNaN(budget) || budget < 0) {
+        toast.error('IBKR 预算金额不能为负数');
+        return;
+      }
+    }
+
     setSavingAndRestarting(true);
-    setNotice(null);
     try {
       await api.saveClawbotRuntimeConfig(runtimeConfig);
       for (const label of CLAWBOT_PIPELINE_LABELS) {
         await api.controlManagedService(label, 'restart');
       }
-      setNotice({ type: 'success', message: 'ClawBot 链路配置已保存并重启（g4f / Kiro / Agent）' });
+      toast.success('ClawBot 链路配置已保存并重启（g4f / Kiro / Agent）');
       await fetchAll(true);
       await fetchLogs(selectedLogLabel);
     } catch (error) {
-      setNotice({ type: 'error', message: `保存并重启失败: ${String(error)}` });
+      toast.error(`保存并重启失败: ${String(error)}`);
     } finally {
       setSavingAndRestarting(false);
     }
@@ -323,7 +347,7 @@ export function ControlCenter() {
                 全部启动
               </button>
               <button
-                onClick={() => handleAllAction('stop')}
+                onClick={() => setShowStopAllConfirm(true)}
                 disabled={allActionLoading !== null}
                 className="btn-secondary flex items-center gap-2"
               >
@@ -344,19 +368,6 @@ export function ControlCenter() {
               </button>
             </div>
           </div>
-
-          {notice && (
-            <div
-              className={clsx(
-                'mt-4 rounded-xl border px-4 py-3 text-sm whitespace-pre-wrap',
-                notice.type === 'success'
-                  ? 'bg-green-500/10 border-green-500/30 text-green-300'
-                  : 'bg-red-500/10 border-red-500/30 text-red-300'
-              )}
-            >
-              {notice.message}
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -405,7 +416,7 @@ export function ControlCenter() {
                           {actionLoading === 'start' ? <Loader2 size={14} className="animate-spin" /> : '启动'}
                         </button>
                         <button
-                          onClick={() => handleServiceAction(service.label, 'stop')}
+                          onClick={() => setStopServiceTarget(service.label)}
                           disabled={!!actionLoading}
                           className="btn-secondary px-3 py-2 text-sm"
                         >
@@ -628,7 +639,7 @@ export function ControlCenter() {
               <div className="mt-5 pt-5 border-t border-dark-600">
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <p className="text-sm font-medium text-gray-300">成本与配额快照</p>
-                  <span className="text-xs text-gray-500">Provider {usageProviderCount}</span>
+                  <span className="text-xs text-gray-500">服务商 {usageProviderCount}</span>
                 </div>
 
                 {usageProviderCount === 0 ? (
@@ -679,6 +690,7 @@ export function ControlCenter() {
                   value={selectedLogLabel}
                   onChange={(e) => setSelectedLogLabel(e.target.value)}
                   className="appearance-none bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 pr-8 text-sm text-gray-200"
+                  aria-label="选择日志服务"
                 >
                   {services.map((service) => (
                     <option key={service.label} value={service.label}>
@@ -739,6 +751,36 @@ export function ControlCenter() {
           </div>
         </div>
       </motion.div>
+
+      {/* 全部停止确认对话框 */}
+      <ConfirmDialog
+        open={showStopAllConfirm}
+        onClose={() => setShowStopAllConfirm(false)}
+        onConfirm={() => {
+          setShowStopAllConfirm(false);
+          handleAllAction('stop');
+        }}
+        title="全部停止"
+        description="确定要停止所有服务吗？停止后所有 Bot 和后台功能将暂停运行。"
+        confirmText="全部停止"
+        destructive
+      />
+
+      {/* 单个服务停止确认对话框 */}
+      <ConfirmDialog
+        open={stopServiceTarget !== null}
+        onClose={() => setStopServiceTarget(null)}
+        onConfirm={() => {
+          if (stopServiceTarget) {
+            handleServiceAction(stopServiceTarget, 'stop');
+          }
+          setStopServiceTarget(null);
+        }}
+        title="停止服务"
+        description={`确定要停止「${services.find(s => s.label === stopServiceTarget)?.name ?? stopServiceTarget}」服务吗？`}
+        confirmText="停止"
+        destructive
+      />
     </div>
   );
 }

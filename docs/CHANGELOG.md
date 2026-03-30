@@ -5,6 +5,160 @@
 
 ---
 
+## [2026-03-31] P4 UI/UX 审计 Batch 4 — 页面级 ErrorBoundary + Settings 未保存变更警告
+
+> 领域: `frontend`
+> 影响模块: `App.tsx`, `PageErrorBoundary`(新), `Settings`, `appStore`
+> 关联问题: 无新增HI
+
+### 变更内容
+
+#### M-03: 页面级 ErrorBoundary (14 页面)
+- 新建 `PageErrorBoundary.tsx` — 轻量级类组件，页面崩溃时显示内联错误卡片（含重试按钮和可展开的错误详情），不影响其他页面
+- `App.tsx` 的 `renderPage()` 中所有 14 个页面组件用 `<PageErrorBoundary pageName="...">` 包裹
+- 与根级 `ErrorBoundary.tsx`（全屏崩溃 UI）互补：根级捕获框架级错误，页面级捕获业务组件错误
+
+#### M-06: Settings 未保存变更警告
+- `appStore.ts` 新增 `navigationGuard` 状态 + `setNavigationGuard` setter — 导航守卫回调，返回 `false` 阻止页面切换
+- `App.tsx` 的 `handleNavigate` 增加守卫检查 — 切换页面前先调用 guard
+- `Settings/index.tsx` 增加脏状态检测 — 用 `useRef` 记录初始值，`isDirty()` 对比当前值与初始值
+- 离开未保存设置页时弹出确认对话框（"放弃修改"/"继续编辑"）
+- 保存成功后更新初始值引用，清除脏状态
+
+#### 回归验证
+- Python pytest: 1047/1047 passed
+- TypeScript: 0 errors
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/PageErrorBoundary.tsx` — 新建: 页面级错误边界组件
+- `apps/openclaw-manager-src/src/App.tsx` — 14 页面 PageErrorBoundary 包裹 + 导航守卫检查
+- `apps/openclaw-manager-src/src/stores/appStore.ts` — navigationGuard 状态 + setter
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 脏状态检测 + 导航守卫注册 + 未保存对话框
+
+---
+
+## [2026-03-31] P4 UI/UX 审计 Batch 3 — Toast 挂载 + 表单验证 + 空状态
+
+> 领域: `frontend`
+> 影响模块: `App.tsx`, `ControlCenter`, `Settings`, `Dashboard/SystemInfo`, `Channels`, `Plugins`
+> 关联问题: HI-386(进一步解决)
+
+### 变更内容
+
+#### M-08: Toast 通知系统挂载
+- `App.tsx` 挂载 `<Toaster />` 组件 — 项目已安装 sonner v2.0.7 且多组件调用 `toast.success()`/`toast.error()`，但 `<Toaster />` 从未挂载，所有 toast 调用被静默忽略
+- `ControlCenter/index.tsx` — 服务启停操作成功/失败从 `alert()` 迁移到 `toast.success()`/`toast.error()`
+- `Settings/index.tsx` — 保存操作成功从 `alert()` 迁移到 `toast.success()`
+
+#### I-02: 表单验证 (5 组件)
+- `ControlCenter` — API Token 输入非空验证 + 空态提示
+- `Settings` — 安全 PIN 长度验证(4-8位) + bot token 格式验证
+- `Dashboard/SystemInfo` — 执行命令非空验证
+- `Channels` — 频道配置 API Key 非空验证
+- `Plugins` — 插件 URL 非空验证
+
+#### I-07: 空状态 (Channels + Plugins)
+- `Channels/index.tsx` — 频道列表为空时显示友好空状态卡片
+- `Plugins/index.tsx` — 插件列表为空时显示友好空状态卡片
+
+#### 回归验证
+- Python pytest: 1047/1047 passed
+- TypeScript: 0 errors
+
+### 文件变更
+- `apps/openclaw-manager-src/src/App.tsx` — 挂载 `<Toaster />`
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — alert→toast + 表单验证
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — alert→toast + PIN/token 验证
+- `apps/openclaw-manager-src/src/components/Dashboard/SystemInfo.tsx` — 命令非空验证
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — API Key 验证 + 空状态
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — URL 验证 + 空状态
+
+---
+
+## [2026-03-31] P4 UI/UX 审计 Batch 2 — 无障碍 aria-labels + 中文翻译收尾
+
+> 领域: `frontend`
+> 影响模块: `Header`, `Logs`, `ProviderDialog`, `Money`, `Dev`, `Channels`, `ExecutionFlow`, `Dashboard`, `ControlCenter`, `Memory`, `Plugins`, `Settings`
+> 关联问题: C-01, I-05
+
+### 变更内容
+
+#### C-01: 无障碍 aria-labels (12 文件, 31 处)
+- 所有交互元素（按钮、输入框、选择框、切换开关）添加描述性 `aria-label`
+- 覆盖: Header(3), Logs(2), ProviderDialog(4), Money(2), Dev(3), Channels(3), ExecutionFlow(2), Dashboard(1), ControlCenter(4), Memory(2), Plugins(3), Settings(2)
+
+#### I-05: 中文翻译收尾 (5 文件, 6 处)
+- 已在前一个 CHANGELOG 条目中记录
+
+#### 回归验证
+- TypeScript: 0 errors
+
+### 文件变更
+- 12 个前端组件文件 — 添加 aria-label 属性
+
+---
+
+## [2026-03-31] P4 UI/UX 审计 Batch 1 — 确认对话框组件 + 危险操作确认
+
+> 领域: `frontend`
+> 影响模块: `confirm-dialog`(新), `prompt-dialog`(新), `Plugins`, `Memory`, `Social`, `ControlCenter`, `Dashboard`, `Evolution`
+> 关联问题: C-02, C-04
+
+### 变更内容
+
+#### C-02: 替换浏览器原生对话框 (6 文件)
+- 新建 `confirm-dialog.tsx` — 可复用确认对话框组件，支持标题/描述/确认文本/取消文本/危险模式
+- 新建 `prompt-dialog.tsx` — 可复用输入提示对话框，替代 `window.prompt()`
+- 6 个组件中所有 `window.confirm()`/`window.alert()`/`window.prompt()` 替换为自定义对话框
+
+#### C-04: 危险操作确认
+- 删除操作（记忆删除、插件删除、服务停止等）使用红色危险样式确认框
+- 确认按钮文本明确操作内容（如"确认删除"而非"确定"）
+
+#### 回归验证
+- TypeScript: 0 errors
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/ui/confirm-dialog.tsx` — 新建: 可复用确认对话框
+- `apps/openclaw-manager-src/src/components/ui/prompt-dialog.tsx` — 新建: 可复用输入提示对话框
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — confirm()→ConfirmDialog
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — confirm()+prompt()→对话框组件
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — confirm()→ConfirmDialog
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — confirm()+alert()→对话框组件
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — prompt()→PromptDialog
+- `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — confirm()→ConfirmDialog
+
+---
+
+## [2026-03-31] 前端 UI 英文残留翻译 — 5 文件 6 处英文文本汉化
+
+> 领域: `frontend`
+> 影响模块: `Money`, `ExecutionFlow`, `Memory`, `ControlCenter`, `Dashboard/SystemInfo`
+> 关联问题: I-05
+
+### 变更内容
+- 扫描全部 34 个 TSX 组件文件，找到 5 个文件中 6 处残留英文 UI 文本并翻译为中文
+- 翻译不涉及任何逻辑、样式或功能变更
+
+### 翻译对照表
+| 文件 | 英文原文 | 中文翻译 |
+|------|---------|---------|
+| Money/index.tsx | `'Net Value'` | `'净值'` |
+| ExecutionFlow/index.tsx | `(Proactive Observability)` | 移除（保留中文标题） |
+| ExecutionFlow/index.tsx | `'Live Socket'` / `'Simulation'` | `'实时连接'` / `'模拟演示'` |
+| Memory/index.tsx | `(Smart Memory)` | 移除（保留中文标题） |
+| ControlCenter/index.tsx | `Provider` | `服务商` |
+| Dashboard/SystemInfo.tsx | `Skills` | `技能模块` |
+
+### 文件变更
+- `src/components/Money/index.tsx` — Tooltip 标签 'Net Value' → '净值'
+- `src/components/ExecutionFlow/index.tsx` — 标题移除英文注释，模式文本汉化
+- `src/components/Memory/index.tsx` — 标题移除英文注释
+- `src/components/ControlCenter/index.tsx` — Provider 标签 → 服务商
+- `src/components/Dashboard/SystemInfo.tsx` — Skills 标签 → 技能模块
+
+---
+
 ## [2026-03-31] P3 性能与稳定性审计 — 阻塞subprocess异步化 + 无界数据结构加cap + SQLite连接泄漏修复
 
 > 领域: `backend`, `xianyu`

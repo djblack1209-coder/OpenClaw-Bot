@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { Toaster } from 'sonner';
 
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -29,6 +30,7 @@ const PageLoader = () => (
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
 import { CommandPalette } from './components/CommandPalette';
+import { PageErrorBoundary } from './components/PageErrorBoundary';
 
 
 
@@ -122,8 +124,13 @@ function App() {
     checkEnvironment();
   }, [checkEnvironment]);
 
-  // 页面切换处理
+  // 页面切换处理 — 支持导航守卫（如 Settings 页未保存提示）
   const handleNavigate = (page: PageType) => {
+    const guard = useAppStore.getState().navigationGuard;
+    if (guard && !guard(page)) {
+      // 导航被守卫拦截（页面内会弹出确认对话框）
+      return;
+    }
     appLogger.action('页面切换', { from: currentPage, to: page });
     setCurrentPage(page);
   };
@@ -135,21 +142,22 @@ function App() {
       exit: { opacity: 0, x: -20 },
     };
 
+    // 每个页面用 PageErrorBoundary 隔离崩溃，单页出错不影响侧边栏和其他页面
     const pages: Record<PageType, JSX.Element> = {
-      control: <ControlCenter />,
-      dashboard: <Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} />,
-      flow: <ExecutionFlow />,
-      memory: <Memory />,
-      plugins: <Plugins />,
-      ai: <AIConfig />,
-      channels: <Channels />,
-      social: <Social />,
-      money: <Money />,
-      dev: <Dev />,
-      testing: <Testing />,
-      logs: <Logs />,
-      settings: <Settings onEnvironmentChange={checkEnvironment} />,
-      evolution: <Evolution />,
+      control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
+      dashboard: <PageErrorBoundary pageName="仪表盘"><Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} /></PageErrorBoundary>,
+      flow: <PageErrorBoundary pageName="执行流"><ExecutionFlow /></PageErrorBoundary>,
+      memory: <PageErrorBoundary pageName="记忆"><Memory /></PageErrorBoundary>,
+      plugins: <PageErrorBoundary pageName="插件"><Plugins /></PageErrorBoundary>,
+      ai: <PageErrorBoundary pageName="AI 配置"><AIConfig /></PageErrorBoundary>,
+      channels: <PageErrorBoundary pageName="频道"><Channels /></PageErrorBoundary>,
+      social: <PageErrorBoundary pageName="社媒"><Social /></PageErrorBoundary>,
+      money: <PageErrorBoundary pageName="财务"><Money /></PageErrorBoundary>,
+      dev: <PageErrorBoundary pageName="开发"><Dev /></PageErrorBoundary>,
+      testing: <PageErrorBoundary pageName="测试"><Testing /></PageErrorBoundary>,
+      logs: <PageErrorBoundary pageName="日志"><Logs /></PageErrorBoundary>,
+      settings: <PageErrorBoundary pageName="设置"><Settings onEnvironmentChange={checkEnvironment} /></PageErrorBoundary>,
+      evolution: <PageErrorBoundary pageName="进化"><Evolution /></PageErrorBoundary>,
     };
 
     return (
@@ -190,6 +198,14 @@ function App() {
   return (
     <div className="flex h-screen bg-dark-900 overflow-hidden">
       <CommandPalette />
+      {/* 全局通知提示 */}
+      <Toaster 
+        theme="dark"
+        position="top-right"
+        toastOptions={{
+          className: 'bg-dark-800 border-dark-700 text-dark-100',
+        }}
+      />
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       

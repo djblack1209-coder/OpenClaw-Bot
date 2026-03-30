@@ -7,6 +7,7 @@ import {
   XCircle, Package, Target, Zap,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   api, isTauri,
   type EvolutionStatsRaw, type EvolutionGapsRaw, type EvolutionProposalsRaw,
@@ -102,6 +103,7 @@ export function Evolution() {
   const [scanning, setScanning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [apiOnline, setApiOnline] = useState(true);
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -478,7 +480,7 @@ export function Evolution() {
                           批准
                         </button>
                         <button
-                          onClick={() => handleReject(p.id)}
+                          onClick={() => setRejectTarget(p.id ?? null)}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs rounded-lg transition-colors border border-red-500/30"
                         >
                           <XCircle size={13} />
@@ -493,6 +495,20 @@ export function Evolution() {
           </div>
         )}
       </section>
+
+      {/* 拒绝提案确认弹窗 */}
+      <ConfirmDialog
+        open={rejectTarget !== null}
+        onClose={() => setRejectTarget(null)}
+        onConfirm={() => {
+          if (rejectTarget) handleReject(rejectTarget);
+          setRejectTarget(null);
+        }}
+        title="拒绝提案"
+        description="确定要拒绝该进化提案吗？此操作不可撤销。"
+        confirmText="拒绝"
+        destructive
+      />
     </div>
   );
 

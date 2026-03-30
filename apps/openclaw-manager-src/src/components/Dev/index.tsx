@@ -135,6 +135,7 @@ export function Dev() {
                     value={inputs[action.id] || ''}
                     onChange={(e) => setInputs(prev => ({ ...prev, [action.id]: e.target.value }))}
                     className="w-full bg-dark-600 border border-dark-400 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 mb-2 focus:outline-none focus:border-cyan-500/50"
+                    aria-label={action.label}
                   />
                 )}
 

@@ -12,6 +12,7 @@ import { Terminal, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import { EnvironmentStatus } from '../../App';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface DashboardProps {
   envStatus: EnvironmentStatus | null;
@@ -25,6 +26,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const [logs, setLogs] = useState<string[]>([]);
   const [logsExpanded, setLogsExpanded] = useState(true);
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const statusFailedRef = useRef(false);
   const logsFailedRef = useRef(false);
@@ -220,6 +222,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                           }}
                           className="text-gray-500 hover:text-white transition-colors"
                           title="刷新日志"
+                          aria-label="刷新日志"
                         >
                           <RefreshCw size={14} />
                         </button>
@@ -265,7 +268,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                 status={status}
                 loading={actionLoading}
                 onStart={handleStart}
-                onStop={handleStop}
+                onStop={() => setShowStopConfirm(true)}
                 onRestart={handleRestart}
               />
             </motion.div>
@@ -277,6 +280,20 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
           </div>
         </div>
       </motion.div>
+
+      {/* 停止服务确认弹窗 */}
+      <ConfirmDialog
+        open={showStopConfirm}
+        onClose={() => setShowStopConfirm(false)}
+        onConfirm={() => {
+          handleStop();
+          setShowStopConfirm(false);
+        }}
+        title="停止服务"
+        description="确定要停止服务吗？停止后 Bot 将暂停运行。"
+        confirmText="停止"
+        destructive
+      />
     </div>
   );
 }

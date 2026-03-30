@@ -170,7 +170,7 @@ export function Money() {
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#1a1a1d', borderColor: '#3d3d44', color: '#fff', borderRadius: '8px' }}
                       itemStyle={{ color: '#4ade80', fontWeight: 'bold' }}
-                      formatter={(value) => [`$${value}`, 'Net Value']}
+                      formatter={(value) => [`$${value}`, '净值']}
                     />
                     <Area type="monotone" dataKey="value" stroke="#4ade80" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
                   </AreaChart>
@@ -244,6 +244,7 @@ export function Money() {
                         "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
                         isRunning ? "bg-dark-600" : "bg-claw-500/10 text-claw-400 hover:bg-claw-500 hover:text-white"
                       )}
+                      aria-label={`执行${action.label}`}
                     >
                       {isRunning ? <Loader2 size={16} className="animate-spin text-gray-400" /> : <Play size={14} className="ml-0.5" />}
                     </button>
@@ -260,6 +261,7 @@ export function Money() {
                       onChange={(e) => setInputs(prev => ({ ...prev, [action.id]: e.target.value }))}
                       onKeyDown={(e) => e.key === 'Enter' && handleAction(action.id, action.cmd, true)}
                       className="w-full bg-dark-900 border border-dark-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-claw-500/50 focus:ring-1 focus:ring-claw-500/50 transition-all placeholder:text-dark-400"
+                      aria-label={action.label}
                     />
                   ) : (
                     <div className="h-[38px] flex items-center">

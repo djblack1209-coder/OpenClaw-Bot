@@ -107,7 +107,7 @@ export function SystemInfo() {
               <Sparkles size={18} className="text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 font-medium">Skills</p>
+              <p className="text-xs text-gray-500 font-medium">技能模块</p>
               <p className="text-sm text-white font-medium truncate">
                 {skillsStatus
                   ? `${skillsStatus.enabled}/${skillsStatus.total} 已启用`

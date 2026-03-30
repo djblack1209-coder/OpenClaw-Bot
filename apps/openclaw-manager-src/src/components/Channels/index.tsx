@@ -360,14 +360,23 @@ export function Channels() {
   const handleSave = async () => {
     if (!selectedChannel) return;
     
+    // 验证必填字段是否已填写
+    const channel = channels.find((c) => c.id === selectedChannel);
+    if (!channel) return;
+
+    const info = CHANNEL_DEFINITIONS[channel.channel_type];
+    if (!info) return;
+
+    const missingRequired = info.fields
+      .filter((field) => field.required && !(configForm[field.key] || '').trim())
+      .map((field) => field.label);
+    if (missingRequired.length > 0) {
+      toast.error(`请填写必填字段：${missingRequired.join('、')}`);
+      return;
+    }
+
     setSaving(true);
     try {
-      const channel = channels.find((c) => c.id === selectedChannel);
-      if (!channel) return;
-
-      const info = CHANNEL_DEFINITIONS[channel.channel_type];
-      if (!info) return;
-      
       const config: Record<string, unknown> = {
         ...channel.config,
       };
@@ -471,7 +480,13 @@ export function Channels() {
             <h3 className="text-sm font-medium text-gray-400 mb-3 px-1">
               消息渠道
             </h3>
-            {channels.map((channel) => {
+            {channels.length === 0 ? (
+              /* 渠道列表为空时的占位提示 */
+              <div className="flex flex-col items-center justify-center h-32 text-dark-500">
+                <p className="text-sm">暂无渠道配置</p>
+                <p className="text-xs mt-1">点击上方「添加」按钮创建新渠道</p>
+              </div>
+            ) : channels.map((channel) => {
               const info = CHANNEL_DEFINITIONS[channel.channel_type] || {
                 name: channel.channel_type,
                 icon: MessageSquare,
@@ -718,6 +733,7 @@ export function Channels() {
                             onClick={() => togglePasswordVisibility(field.key)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
                             title={visiblePasswords.has(field.key) ? '隐藏' : '显示'}
+                            aria-label={visiblePasswords.has(field.key) ? '隐藏密码' : '显示密码'}
                           >
                             {visiblePasswords.has(field.key) ? (
                               <EyeOff size={18} />
@@ -771,6 +787,7 @@ export function Channels() {
                           disabled={testing}
                           className="btn-secondary flex items-center justify-center gap-2 px-4"
                           title="刷新状态"
+                          aria-label="刷新登录状态"
                         >
                           {testing ? (
                             <Loader2 size={16} className="animate-spin" />
