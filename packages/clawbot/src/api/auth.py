@@ -11,6 +11,7 @@ FastAPI API 认证中间件 — 共享密钥 Token 验证。
   - 轻量: 纯 Header 验证, 无 JWT/数据库
   - WebSocket 兼容: WS 连接通过 query param ?token= 验证
 """
+import hmac
 import os
 import logging
 from typing import Optional
@@ -33,8 +34,9 @@ def log_token_status() -> None:
     """启动时记录 Token 配置状态 — 应在 app 启动后调用一次。"""
     if not _API_TOKEN:
         # 检查是否绑定到非 localhost (可能是生产环境)
+        # 注意: 0.0.0.0 绑定全部网络接口，应视为外网暴露 (HI-387)
         bind_host = os.getenv("API_HOST", "127.0.0.1")
-        if bind_host not in ("127.0.0.1", "localhost", "0.0.0.0"):
+        if bind_host not in ("127.0.0.1", "localhost"):
             logger.critical(
                 "[API Auth] ⚠️ 危险: API 绑定到外网地址 %s 但未配置认证 Token! "
                 "设置 OPENCLAW_API_TOKEN 环境变量或改为绑定 127.0.0.1", bind_host
@@ -57,6 +59,7 @@ async def verify_api_token(
     """
     global _warned_no_token
 
+    # 开发模式: 未配置 Token 时放行所有请求
     if not _API_TOKEN:
         if not _warned_no_token:
             logger.warning(
@@ -65,18 +68,11 @@ async def verify_api_token(
             _warned_no_token = True
         return
 
-    if not api_key or not _API_TOKEN:
-        if not _API_TOKEN:
-            if not _warned_no_token:
-                logger.warning(
-                    "[API Auth] 请求未验证 — 设置 OPENCLAW_API_TOKEN 环境变量以启用认证"
-                )
-                _warned_no_token = True
-            return
+    # Token 已配置但请求未携带
+    if not api_key:
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
     # 使用 hmac.compare_digest 防止时序攻击（逐字符比较时间相同）
-    import hmac
     if not hmac.compare_digest(api_key, _API_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
@@ -92,4 +88,5 @@ def verify_ws_token(websocket: WebSocket) -> bool:
         return True
 
     token = websocket.query_params.get("token", "")
-    return token == _API_TOKEN
+    # 使用 hmac.compare_digest 防止时序攻击（与 HTTP 认证保持一致）
+    return hmac.compare_digest(token, _API_TOKEN)

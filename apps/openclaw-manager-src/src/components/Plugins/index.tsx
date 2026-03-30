@@ -12,6 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { isTauri } from '../../lib/tauri';
+import { createLogger } from '@/lib/logger';
+
+// 插件管理模块日志实例
+const pluginsLogger = createLogger('Plugins');
 
 interface MCPPlugin {
   id: string;
@@ -103,7 +107,7 @@ export function Plugins() {
         setPlugins(defaultPlugins);
       }
     } catch (e) {
-      console.error("获取插件列表失败", e);
+      pluginsLogger.error('获取插件列表失败', e);
       setPlugins(defaultPlugins);
     } finally {
       setLoading(false);
@@ -133,7 +137,7 @@ export function Plugins() {
       try {
         await invoke('toggle_mcp_plugin_status', { id, targetStatus });
       } catch (e) {
-        console.error("切换插件状态失败", e);
+        pluginsLogger.error('切换插件状态失败', e);
         // 失败时回滚
         fetchPlugins();
       }
@@ -293,7 +297,7 @@ export function Plugins() {
                         setPlugins(prev => prev.filter(p => p.id !== plugin.id));
                         toast.success(`已卸载 ${plugin.name}`);
                         if (isTauri()) {
-                          invoke('remove_mcp_plugin', { id: plugin.id }).catch(console.error);
+                          invoke('remove_mcp_plugin', { id: plugin.id }).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
                         }
                       }
                     }} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载">

@@ -73,18 +73,15 @@ class XianyuContextManager:
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN amount REAL DEFAULT 0")
             except Exception as e:
-                pass  # 字段已存在
-                logger.debug("静默异常: %s", e)
+                logger.debug("静默异常: %s", e)  # 字段已存在
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN cost REAL DEFAULT 0")
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             try:
                 c.execute("ALTER TABLE orders ADD COLUMN commission_rate REAL DEFAULT 0.06")
             except Exception as e:
-                pass  # 字段已存在
-                logger.debug("静默异常: %s", e)
+                logger.debug("静默异常: %s", e)  # 字段已存在
             # 底价表
             c.execute("""CREATE TABLE IF NOT EXISTS floor_prices (
                 item_id TEXT PRIMARY KEY,

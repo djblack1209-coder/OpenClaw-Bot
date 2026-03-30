@@ -157,7 +157,6 @@ class ExecutionHub:
                 try:
                     items = await self.news_fetcher.fetch_from_google_news_rss(query, count=5)
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
             curated = self._curate_monitor_items(items or [], limit=3)
             util = utility_profile(plan.get("topic", ""))
@@ -569,7 +568,6 @@ class ExecutionHub:
                     subprocess.run(["open", url], check=False, timeout=5)
                     opened.append(url)
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
         return {"success": True, "opened": len(opened)}
 

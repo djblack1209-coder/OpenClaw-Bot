@@ -96,7 +96,6 @@ async def _eod_auto_review():
                         "summary": "\n".join(lines),
                     })
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
         except Exception as e:
             logger.error("[Scheduler] 自动复盘失败: %s", e)

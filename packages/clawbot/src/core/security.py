@@ -227,7 +227,6 @@ class SecurityGate:
                         except RuntimeError as e:  # noqa: F841
                             pass
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
             self._pin_attempts[user_id] = state
         else:

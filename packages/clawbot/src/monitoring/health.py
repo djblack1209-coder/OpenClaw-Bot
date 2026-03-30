@@ -61,7 +61,6 @@ class HealthChecker:
                     except RuntimeError as e:  # noqa: F841
                         pass
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
 
     def record_success(self, bot_id: str):

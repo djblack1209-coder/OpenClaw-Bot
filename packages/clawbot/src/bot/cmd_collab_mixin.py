@@ -128,6 +128,7 @@ class CollabCommandsMixin:
         try:
             scan_result = await full_market_scan()
         except Exception as e:
+            logger.error("协作市场扫描失败: %s", e)
             await safe_edit(msg, error_service_failed("市场扫描"))
             return
 

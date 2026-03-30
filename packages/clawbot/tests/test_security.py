@@ -253,17 +253,14 @@ class TestGetStats:
 # Security bypass / attack-vector tests
 # ════════════════════════════════════════════════════════════
 #
-# NOTE: security.py 在第 281 行已实现 sanitize_input() 方法，
-# 但全项目无调用点 — 属于死代码 (HI-037)。
+# NOTE: security.py 在第 281 行实现了 sanitize_input() 方法，
+# 已在 message_mixin.py:214 接入消息处理管道 (HI-037 已解决, 2026-03-30)。
 # 现有检测面: contains_sensitive_data() 覆盖 SENSITIVE_PATTERNS
 # (信用卡、SSN、密码、Token) + 攻击向量 (XSS/SQL注入/路径穿越/
 # 命令注入/Unicode绕过)。
 #
 # 以下测试验证 contains_sensitive_data() 对常见攻击向量的检测能力。
 # 所有测试直接 assert is True — 当前检测面已覆盖全部测试用例。
-#
-# TODO(HI-037): 将 sanitize_input() 接入消息处理管道后，
-# 为其添加独立测试用例。
 # ════════════════════════════════════════════════════════════
 
 

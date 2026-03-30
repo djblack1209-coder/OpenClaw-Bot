@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Package, Folder, CheckCircle, XCircle, Sparkles } from 'lucide-react';
 import { api, SystemInfo as SystemInfoType, SkillsStatus, isTauri } from '../../lib/tauri';
+import { dashboardLogger } from '../../lib/logger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function SystemInfo() {
@@ -22,7 +23,7 @@ export function SystemInfo() {
         setInfo(sysInfo);
         setSkillsStatus(skills);
       } catch (e) {
-        console.warn('获取系统信息失败', e);
+        dashboardLogger.warn('获取系统信息失败', e);
       } finally {
         setLoading(false);
       }

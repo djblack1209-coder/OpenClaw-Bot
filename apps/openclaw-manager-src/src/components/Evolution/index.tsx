@@ -7,7 +7,15 @@ import {
   XCircle, Package, Target, Zap,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { api, isTauri } from '../../lib/tauri';
+import {
+  api, isTauri,
+  type EvolutionStatsRaw, type EvolutionGapsRaw, type EvolutionProposalsRaw,
+  type CapabilityGapRaw, type EvolutionProposalRaw,
+} from '../../lib/tauri';
+import { createLogger } from '@/lib/logger';
+
+// 进化模块日志实例
+const evolutionLogger = createLogger('Evolution');
 import clsx from 'clsx';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -116,54 +124,50 @@ export function Evolution() {
 
       // 统计数据
       if (rawStats.status === 'fulfilled' && rawStats.value) {
-        const s = rawStats.value as Record<string, unknown>;
+        const s: EvolutionStatsRaw = rawStats.value;
         setStats({
-          total_proposals: (s.total_proposals ?? s.proposals_count ?? 0) as number,
-          total_scans: (s.total_scans ?? s.scans_count ?? 0) as number,
-          capability_gaps: (s.capability_gaps ?? s.gaps_count ?? 0) as number,
-          last_scan: (s.last_scan ?? s.last_scan_at ?? undefined) as string | undefined,
-          approved: (s.approved ?? undefined) as number | undefined,
-          rejected: (s.rejected ?? undefined) as number | undefined,
-          pending: (s.pending ?? undefined) as number | undefined,
+          total_proposals: (s.total_proposals ?? s.proposals_count ?? 0),
+          total_scans: (s.total_scans ?? s.scans_count ?? 0),
+          capability_gaps: (s.capability_gaps ?? s.gaps_count ?? 0),
+          last_scan: s.last_scan ?? s.last_scan_at ?? undefined,
+          approved: s.approved ?? undefined,
+          rejected: s.rejected ?? undefined,
+          pending: s.pending ?? undefined,
         });
       }
 
       // 差距分析
       if (rawGaps.status === 'fulfilled' && rawGaps.value) {
-        const raw = rawGaps.value as Record<string, unknown>;
-        const gapList: Record<string, unknown>[] = Array.isArray(raw)
-          ? raw
-          : ((raw?.gaps ?? raw?.data ?? []) as Record<string, unknown>[]);
+        const raw: EvolutionGapsRaw = rawGaps.value;
+        const gapList: CapabilityGapRaw[] = (raw?.gaps ?? raw?.data ?? []);
         setGaps(
           gapList.map((g) => ({
-            module: (g.module ?? g.category ?? 'unknown') as string,
-            description: (g.description ?? g.gap ?? g.name ?? '') as string,
-            priority: (g.priority ?? g.severity) as string | undefined,
-            discovered_at: (g.discovered_at ?? g.created_at) as string | undefined,
+            module: (g.module ?? g.category ?? 'unknown'),
+            description: (g.description ?? g.gap ?? g.name ?? ''),
+            priority: g.priority ?? g.severity,
+            discovered_at: g.discovered_at ?? g.created_at,
           }))
         );
       }
 
       // 提案列表
       if (rawProposals.status === 'fulfilled' && rawProposals.value) {
-        const rawP = rawProposals.value as Record<string, unknown>;
-        const propList: Record<string, unknown>[] = Array.isArray(rawP)
-          ? rawP
-          : ((rawP?.proposals ?? rawP?.data ?? []) as Record<string, unknown>[]);
+        const rawP: EvolutionProposalsRaw = rawProposals.value;
+        const propList: EvolutionProposalRaw[] = (rawP?.proposals ?? rawP?.data ?? []);
         setProposals(
           propList.map((p) => ({
-            id: (p.id ?? p.proposal_id) as string | undefined,
-            repo_name: (p.repo_name ?? p.repo ?? p.name ?? 'unknown') as string,
-            repo_url: (p.repo_url ?? p.url) as string | undefined,
-            stars: (p.stars ?? p.stargazers_count) as number | undefined,
-            growth_rate: (p.growth_rate ?? p.weekly_growth) as number | undefined,
-            target_module: (p.target_module ?? p.module ?? 'core') as string,
-            value_score: (p.value_score ?? p.score ?? 0) as number,
-            difficulty_score: (p.difficulty_score ?? p.difficulty) as number | undefined,
-            risk_level: (p.risk_level ?? p.risk ?? 'MEDIUM') as string,
-            integration_approach: (p.integration_approach ?? p.approach) as string | undefined,
-            status: (p.status ?? 'pending') as string,
-            created_at: p.created_at as string | undefined,
+            id: p.id ?? p.proposal_id,
+            repo_name: (p.repo_name ?? p.repo ?? p.name ?? 'unknown'),
+            repo_url: p.repo_url ?? p.url,
+            stars: p.stars ?? p.stargazers_count,
+            growth_rate: p.growth_rate ?? p.weekly_growth,
+            target_module: (p.target_module ?? p.module ?? 'core'),
+            value_score: (p.value_score ?? p.score ?? 0),
+            difficulty_score: p.difficulty_score ?? p.difficulty,
+            risk_level: (p.risk_level ?? p.risk ?? 'MEDIUM'),
+            integration_approach: p.integration_approach ?? p.approach,
+            status: (p.status ?? 'pending'),
+            created_at: p.created_at,
           }))
         );
       }
@@ -502,7 +506,7 @@ export function Evolution() {
         prev.map((p) => (p.id === id ? { ...p, status: 'approved' } : p))
       );
     } catch (err) {
-      console.error('审批提案失败:', err);
+      evolutionLogger.error('审批提案失败:', err);
       toast.error('审批通过失败: ' + (err instanceof Error ? err.message : '未知错误'));
     }
   }
@@ -515,7 +519,7 @@ export function Evolution() {
         prev.map((p) => (p.id === id ? { ...p, status: 'rejected' } : p))
       );
     } catch (err) {
-      console.error('拒绝提案失败:', err);
+      evolutionLogger.error('拒绝提案失败:', err);
       toast.error('审批拒绝失败: ' + (err instanceof Error ? err.message : '未知错误'));
     }
   }

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 from src.execution._db import get_conn
-from src.execution._utils import safe_int, run_osascript
+from src.execution._utils import safe_int
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -290,14 +290,10 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
 # cancel_reminder 已在上方行 126 定义（安全版: 仅取消 status='pending' 的提醒）
 
 
-def trigger_home_action_script(action_script: str) -> str:
-    """通过 AppleScript 触发 HomeKit/系统操作 (简单版)"""
-    if not action_script:
-        return "操作脚本不能为空"
-    return run_osascript(action_script) or "操作已执行"
-
-
 # ── 智能家居动作路由 (从 execution_hub.py 迁移) ─────────────
+# 注意: trigger_home_action_script() 和 run_osascript() 已于 2026-03-30 移除
+# 原因: 接受任意 AppleScript 字符串执行是严重的命令注入风险 (P0 安全审计)
+# 如需 HomeKit 控制，请使用下方 _run_local_home_action() 的白名单路由
 
 def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
     """执行本地 macOS 智能家居动作
@@ -380,8 +376,18 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         voice = data.get("voice")
         if not text:
             return {"success": False, "mode": "local", "error": "say 需要 text 字段"}
+        # 安全限制: 文本长度上限 + 去除前导连字符防止被解释为命令参数
+        if len(text) > 2000:
+            text = text[:2000]
+        text = text.lstrip("-")
+        if not text:
+            return {"success": False, "mode": "local", "error": "say text 无效(空文本)"}
         cmd = ["say"]
         if voice:
+            # 安全限制: voice 必须是合法的名称字符，防止参数注入
+            voice = str(voice).strip()
+            if not re.match(r'^[A-Za-z\u4e00-\u9fff\s\-]+$', voice) or len(voice) > 50:
+                return {"success": False, "mode": "local", "error": "voice 名称包含非法字符"}
             cmd.extend(["-v", voice])
         cmd.append(text)
         cp = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=20)

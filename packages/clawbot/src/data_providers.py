@@ -517,7 +517,6 @@ def _yfinance_get_quote_raw(symbol: str) -> dict:
         try:
             last_trade_date = hist.index[-1].date()
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         return {

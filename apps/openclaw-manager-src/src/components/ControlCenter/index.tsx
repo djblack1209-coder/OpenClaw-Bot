@@ -366,7 +366,11 @@ export function ControlCenter() {
             </div>
 
             <div className="space-y-3">
-              {services.map((service) => {
+              {services.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-gray-500 text-sm bg-dark-800 rounded-xl border border-dark-600 border-dashed">
+                  暂无已注册服务
+                </div>
+              ) : services.map((service) => {
                 const actionLoading = serviceActionLoading[service.label];
                 return (
                   <div
@@ -430,7 +434,11 @@ export function ControlCenter() {
                 <p className="text-sm font-medium text-gray-300">链路连通性</p>
               </div>
               <div className="space-y-2">
-                {endpoints.map((endpoint) => (
+                {endpoints.length === 0 ? (
+                  <div className="flex items-center justify-center py-6 text-gray-500 text-sm bg-dark-800 rounded-lg border border-dark-600 border-dashed">
+                    暂无链路端点
+                  </div>
+                ) : endpoints.map((endpoint) => (
                   <div
                     key={endpoint.id}
                     className="bg-dark-800 rounded-lg border border-dark-600 px-3 py-2 flex items-center justify-between gap-3"
@@ -580,7 +588,11 @@ export function ControlCenter() {
                 </div>
 
                 <div className="space-y-2">
-                  {botMatrix.map((bot) => (
+                  {botMatrix.length === 0 ? (
+                    <div className="flex items-center justify-center py-6 text-gray-500 text-sm bg-dark-800 rounded-lg border border-dark-600 border-dashed">
+                      暂无 Bot 配置
+                    </div>
+                  ) : botMatrix.map((bot) => (
                     <div
                       key={bot.id}
                       className="bg-dark-800 rounded-lg border border-dark-600 px-3 py-2"

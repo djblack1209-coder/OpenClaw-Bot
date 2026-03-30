@@ -643,7 +643,6 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                         if sym:
                             watchlist_symbols.append(sym)
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         # 补充 watchlist 中的股票
@@ -654,7 +653,6 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 if sym not in watchlist_symbols:
                     watchlist_symbols.append(sym)
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         if watchlist_symbols:
@@ -736,7 +734,6 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 if _pm and _pm.positions:
                     holdings = list(_pm.positions.keys())
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             # 尝试用 LLM 生成深度分析
             analyzed = await _analyze_news_with_llm(headlines, holdings)
@@ -829,7 +826,6 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                         avg = profit["revenue"] / profit["orders"]
                         xlines.append(f"📊 客单价 ¥{avg:.0f}")
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             if xlines:
                 sections.append(_section("🐟 闲鱼运营", xlines))
@@ -900,8 +896,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 _st = _pm_ref.get_status()
                 sections_data["portfolio_pnl"] = _st.get("total_unrealized_pnl", 0)
                 sections_data["positions_count"] = _st.get("monitored_count", 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("日报指标收集-持仓盈亏异常: %s", e)
 
         # 闲鱼数据
         try:
@@ -911,8 +907,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             if _xst:
                 sections_data["xianyu_consultations"] = _xst.get("consultations", 0)
                 sections_data["xianyu_orders"] = _xst.get("orders", 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("日报指标收集-闲鱼数据异常: %s", e)
 
         # 社媒发帖
         try:
@@ -920,8 +916,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             _eng = get_engagement_summary(days=1, db_path=db_path)
             if _eng.get("success"):
                 sections_data["social_posts"] = _eng.get("total_posts", 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("日报指标收集-社媒发帖异常: %s", e)
 
         # API 成本
         try:
@@ -930,8 +926,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 _pred = _ca_ref.predict_monthly_cost()
                 if _pred:
                     sections_data["api_daily_cost"] = _pred.get("daily_average", 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("日报指标收集-API成本异常: %s", e)
 
         # 市场情绪
         try:
@@ -940,202 +936,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             if _fng and _fng.get("source") != "fallback":
                 sections_data["market_sentiment"] = (
                     f"{_fng.get('value', 0)} ({_fng.get('label', '')})"
-                )
-        except Exception:
-            pass
-
-    except Exception as e:
-        logger.debug(f"[DailyBrief] 指标收集异常: {e}")
-
-    # ── 获取昨日数据并计算趋势 delta ──────────────────────────
-    deltas = {}
-    try:
-        yesterday_data = await _get_yesterday_comparison(db_path=db_path)
-        if yesterday_data:
-            deltas = _calc_deltas(sections_data, yesterday_data)
-            sections_data["deltas"] = deltas
-    except Exception as e:
-        logger.debug(f"[DailyBrief] 昨日对比异常: {e}")
-
-    # ── 注入 "vs 昨日" 标注到已有 sections ─────────────────────
-    if deltas:
-        _inject_delta_annotations(sections, deltas)
-
-    # ── 生成执行摘要并插入到最前面 ────────────────────────────
-    try:
-        summary_text = await _generate_executive_summary(sections_data)
-        if summary_text:
-            sections.insert(0, _section("📊 今日概况", [summary_text]))
-    except Exception as e:
-        logger.debug(f"[DailyBrief] 执行摘要生成异常: {e}")
-
-    # ── 生成智能建议并追加到末尾 ──────────────────────────────
-    try:
-        recommendations = await _generate_daily_recommendations(sections_data)
-        if recommendations:
-            rec_items = [f"{i+1}. {r}" for i, r in enumerate(recommendations)]
-            sections.append(_section("💡 今日建议", rec_items))
-    except Exception as e:
-        logger.debug(f"[DailyBrief] 今日建议生成异常: {e}")
-
-    if not sections:
-        sections.append(_section("📋 今日概况", ["暂无数据，所有数据源均不可用"]))
-
-    return format_digest(
-        title=f"{greeting} | 智能日报",
-        intro=f"📅 {today}",
-        sections=sections,
-        footer="💡 说「帮我买100股苹果」直接交易 | 说「帮我找便宜的AirPods」自动比价",
-    )
-
-
-def _inject_delta_annotations(
-    sections: List[Tuple[str, List[str]]], deltas: dict
-) -> None:
-    """将 "vs 昨日" 趋势标注注入到已有 section 的 items 中。
-
-    在持仓概览、闲鱼运营、社媒互动三个 section 的第一行末尾追加 delta 标注。
-    原地修改 sections 列表，不返回新对象。
-
-    Args:
-        sections: 已组装的 (title, items) 列表
-        deltas: 中文标签到 delta 值的映射
-    """
-    # 定义 section 标题到 delta key 的映射
-    title_delta_map = {
-        "💼 持仓概览": ("持仓盈亏", "$"),
-        "🐟 闲鱼运营": ("闲鱼咨询", "条"),
-        "📱 社媒互动": ("社媒发帖", "篇"),
-    }
-
-    for idx, (title, items) in enumerate(sections):
-        mapping = title_delta_map.get(title)
-        if not mapping or not items:
-            continue
-        delta_key, unit = mapping
-        delta_val = deltas.get(delta_key, 0)
-        if delta_val == 0:
-            continue
-        # 在第一行末尾追加 delta 标注
-        annotation = _format_delta(delta_val, unit)
-        if annotation:
-            items[0] = items[0] + annotation
-
-
-def _get_greeting() -> str:
-    """根据时间返回问候语"""
-    hour = datetime.now(timezone.utc).hour
-    if hour < 6:
-        return "🌙 深夜好"
-    elif hour < 12:
-        return "☀️ 早上好"
-    elif hour < 18:
-        return "🌤 下午好"
-    else:
-        return "🌙 晚上好"
-
-
-async def weekly_report(
-    position_monitor=None,
-    trading_journal=None,
-    cost_analyzer=None,
-    autopilot=None,
-    xianyu_ctx=None,
-) -> str:
-    """综合周报 — 聚合投资+社媒+闲鱼+成本四个维度的7天数据
-
-    每个板块独立 try/except，一个失败不影响其他。
-    数据不存在则不显示，不做假数据填充。
-    """
-    sections: List[Tuple[str, List[str]]] = []
-    now = datetime.now(timezone.utc)
-    week_start = (now - timedelta(days=7)).strftime("%m/%d")
-    week_end = now.strftime("%m/%d")
-
-    # ── 1. 💼 本周交易战绩 ───────────────────────────────────
-    try:
-        # 优先使用注入的 journal，降级到全局单例
-        tj = trading_journal
-        if tj is None:
-            from src.trading_journal import journal as _j
-            tj = _j
-        if tj:
-            recent = tj.get_recent_trades(days=7) if hasattr(tj, "get_recent_trades") else []
-            perf = tj.get_performance(days=7) if hasattr(tj, "get_performance") else {}
-            if perf and perf.get("total_trades", 0) > 0:
-                items = []
-                total = perf.get("total_trades", 0)
-                wins = perf.get("wins", 0)
-                losses = perf.get("losses", 0)
-                win_rate = perf.get("win_rate", 0)
-                total_pnl = perf.get("total_pnl", 0)
-                pnl_emoji = "📈" if total_pnl >= 0 else "📉"
-                items.append(kv("交易笔数", f"{total} 笔 (胜 {wins} / 负 {losses})"))
-                items.append(kv("周胜率", f"{win_rate:.0f}%"))
-                items.append(kv("周盈亏", f"{pnl_emoji} ${total_pnl:+,.2f}"))
-                if perf.get("sharpe"):
-                    items.append(kv("夏普比率", f"{perf['sharpe']:.2f}"))
-                if perf.get("max_drawdown"):
-                    items.append(kv("最大回撤", f"{perf['max_drawdown']:.1f}%"))
-                # 最佳/最差交易
-                if recent:
-                    closed = [t for t in recent if t.get("pnl") is not None]
-                    if closed:
-                        best = max(closed, key=lambda t: t.get("pnl", 0))
-                        worst = min(closed, key=lambda t: t.get("pnl", 0))
-                        items.append(bullet(
-                            f"最佳: {best.get('symbol', '?')} ${best.get('pnl', 0):+,.2f}", icon="🏆"
-                        ))
-                        items.append(bullet(
-                            f"最差: {worst.get('symbol', '?')} ${worst.get('pnl', 0):+,.2f}", icon="💔"
-                        ))
-                sections.append(_section("💼 本周交易战绩", items))
-    except Exception as e:
-        logger.debug("[WeeklyReport] 交易战绩: %s", e)
-
-    # ── 2. 📊 持仓变化 ──────────────────────────────────────
-    try:
-        pm = position_monitor
-        if pm is None:
-            from src.position_monitor import position_monitor as _pm
-            pm = _pm
-        if pm and hasattr(pm, "get_status"):
-            status = pm.get_status()
-            if status:
-                items = []
-                total_pnl = status.get("total_unrealized_pnl", 0)
-                count = status.get("monitored_count", 0)
-                pnl_emoji = "📈" if total_pnl >= 0 else "📉"
-                items.append(kv("当前持仓", f"{count} 个"))
-                items.append(kv("总浮盈亏", f"{pnl_emoji} ${total_pnl:+,.2f}"))
-                for p in status.get("positions", [])[:5]:
-                    sym = p.get("symbol", "?")
-                    pnl_pct = p.get("unrealized_pnl_pct", 0)
-                    cur = p.get("current_price", 0)
-                    emoji = "🟢" if pnl_pct >= 0 else "🔴"
-                    items.append(bullet(
-                        f"{sym} ${cur:.2f} ({pnl_pct:+.1f}%)", icon=emoji
-                    ))
-                sections.append(_section("📊 持仓变化", items))
-    except Exception as e:
-        logger.debug("[WeeklyReport] 持仓变化: %s", e)
-
-    # ── 3. 📱 社媒周报 ──────────────────────────────────────
-    try:
-        items = []
-        # 互动数据
-        try:
-            from src.execution.life_automation import get_engagement_summary
-            eng = get_engagement_summary(days=7)
-            if eng.get("success") and eng.get("total_posts", 0) > 0:
-                items.append(kv("本周发文", f"{eng['total_posts']} 篇"))
-                for plat, data in eng.get("platforms", {}).items():
-                    items.append(bullet(
-                        f"{plat}: ❤️{data.get('likes', 0)} 💬{data.get('comments', 0)} "
-                        f"👀{data.get('views', 0)}", icon="📌"
-                    ))
+                    )
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
         # 发文绩效报告
         try:
@@ -1154,7 +956,6 @@ async def weekly_report(
                         fc_emoji = "📈" if fc >= 0 else "📉"
                         items.append(kv("粉丝变化", f"{fc_emoji} {fc:+d}"))
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
         # 社交自动驾驶状态
         try:
@@ -1167,7 +968,6 @@ async def weekly_report(
                 if s and s.get("posts_today", 0) > 0:
                     items.append(kv("自动驾驶", "运行中" if s.get("running") else "已停止"))
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
         # 粉丝增长趋势 (7天)
         try:
@@ -1182,7 +982,6 @@ async def weekly_report(
                     fc_emoji = "📈" if change >= 0 else "📉"
                     items.append(kv(f"{name} 粉丝", f"{fc_emoji} {data.get('end', 0):,} ({change:+d}, {pct:+.1f}%)"))
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
         if items:
             sections.append(_section("📱 社媒周报", items))
@@ -1206,7 +1005,6 @@ async def weekly_report(
                 try:
                     profit = xctx.get_profit_summary(days=7) or {}
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
             # 尝试获取日统计（聚合7天）
             xstats = {}
@@ -1214,7 +1012,6 @@ async def weekly_report(
                 try:
                     xstats = xctx.daily_stats() or {}
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
             if profit.get("revenue", 0) > 0:
                 items.append(kv("营收", f"¥{profit['revenue']:,.0f}"))
@@ -1263,7 +1060,6 @@ async def weekly_report(
                         if wr.get("daily_average") is not None:
                             items.append(kv("日均", f"${wr['daily_average']:.2f}"))
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
             if items:
                 sections.append(_section("💰 成本周报", items))

@@ -565,7 +565,7 @@ class TradingJournal:
         today = today_et_str()
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM trades WHERE status='closed' AND date(exit_time)=?",
+                "SELECT * FROM trades WHERE status='closed' AND substr(exit_time,1,10)=?",
                 (today,)
             ).fetchall()
         trades = [dict(r) for r in rows]
@@ -591,7 +591,7 @@ class TradingJournal:
         since = (now_et() - timedelta(days=days)).isoformat()
         with self._conn() as conn:
             rows = conn.execute(
-                """SELECT date(exit_time) AS d, SUM(pnl) AS daily_pnl
+                """SELECT substr(exit_time,1,10) AS d, SUM(pnl) AS daily_pnl
                    FROM trades
                    WHERE status='closed' AND exit_time>=?
                    GROUP BY d ORDER BY d ASC""",
@@ -669,7 +669,7 @@ class TradingJournal:
 
         with self._conn() as conn:
             trades = conn.execute(
-                "SELECT * FROM trades WHERE date(exit_time)=? AND status='closed' ORDER BY exit_time",
+                "SELECT * FROM trades WHERE substr(exit_time,1,10)=? AND status='closed' ORDER BY exit_time",
                 (date,)
             ).fetchall()
             open_trades = conn.execute(
@@ -786,7 +786,7 @@ class TradingJournal:
                 # 统计周期内已平仓交易
                 rows = conn.execute("""
                     SELECT pnl FROM trades
-                    WHERE status='closed' AND date(exit_time) BETWEEN ? AND ?
+                    WHERE status='closed' AND substr(exit_time,1,10) BETWEEN ? AND ?
                 """, (t['period_start'], t['period_end'])).fetchall()
 
                 pnls = [r['pnl'] for r in rows]
@@ -866,7 +866,7 @@ class TradingJournal:
         with self._conn() as conn:
             preds = conn.execute("""
                 SELECT * FROM predictions
-                WHERE date(prediction_time)=? AND validation_time IS NULL
+                WHERE substr(prediction_time,1,10)=? AND validation_time IS NULL
             """, (date,)).fetchall()
 
         if not preds:
@@ -947,7 +947,7 @@ class TradingJournal:
                        SUM(CASE WHEN direction_correct=1 THEN 1 ELSE 0 END) as correct,
                        AVG(ABS(deviation_pct)) as avg_deviation
                 FROM predictions
-                WHERE validation_time IS NOT NULL AND date(prediction_time) >= ?
+                WHERE validation_time IS NOT NULL AND substr(prediction_time,1,10) >= ?
                 GROUP BY decided_by
             """, (since,)).fetchall()
 
@@ -984,14 +984,14 @@ class TradingJournal:
             # 所有亏损交易
             bad_trades = conn.execute("""
                 SELECT * FROM trades
-                WHERE status='closed' AND pnl < 0 AND date(exit_time) >= ?
+                WHERE status='closed' AND pnl < 0 AND substr(exit_time,1,10) >= ?
                 ORDER BY pnl ASC
             """, (since,)).fetchall()
 
             # 所有盈利交易
             good_trades = conn.execute("""
                 SELECT * FROM trades
-                WHERE status='closed' AND pnl > 0 AND date(exit_time) >= ?
+                WHERE status='closed' AND pnl > 0 AND substr(exit_time,1,10) >= ?
                 ORDER BY pnl DESC
             """, (since,)).fetchall()
 
@@ -999,7 +999,7 @@ class TradingJournal:
             wrong_preds = conn.execute("""
                 SELECT * FROM predictions
                 WHERE validation_time IS NOT NULL AND direction_correct=0
-                    AND date(prediction_time) >= ?
+                    AND substr(prediction_time,1,10) >= ?
             """, (since,)).fetchall()
 
         bad_trades = [dict(r) for r in bad_trades]

@@ -135,7 +135,6 @@ class FeedbackStore:
             try:
                 self._conn.close()
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             self._conn = None
 

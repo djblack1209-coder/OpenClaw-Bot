@@ -214,6 +214,7 @@ class NewsFetcher:
                 return news
                 
         except Exception as e:
+            logger.debug("Bing新闻抓取失败: %s", e)
             return []
     
     async def fetch_from_google_news_rss(self, query: str, count: int = 5) -> List[Dict[str, str]]:
@@ -250,6 +251,7 @@ class NewsFetcher:
                 return news
                 
         except Exception as e:
+            logger.debug("Google News RSS抓取失败: %s", e)
             return []
     
     async def fetch_topic_news(self, topic: str, count: int = 3) -> List[Dict[str, str]]:

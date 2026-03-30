@@ -45,6 +45,7 @@ class AnalysisCommandsMixin:
             text = format_analysis(data)
             await safe_edit(msg, text)
         except Exception as e:
+            logger.error("技术分析失败: %s", e)
             await safe_edit(msg, error_service_failed("技术分析"))
 
     @requires_auth
@@ -61,6 +62,7 @@ class AnalysisCommandsMixin:
             text = format_scan_results(signals)
             await safe_edit(msg, text)
         except Exception as e:
+            logger.error("市场扫描失败: %s", e)
             await safe_edit(msg, error_service_failed("市场扫描"))
 
     @requires_auth
@@ -109,6 +111,7 @@ class AnalysisCommandsMixin:
                     lines.append(f"  阻力: {sr['resistances'][0]}")
             await safe_edit(msg, "\n".join(lines))
         except Exception as e:
+            logger.error("信号分析失败: %s", e)
             await safe_edit(msg, error_service_failed("信号分析"))
 
     @requires_auth

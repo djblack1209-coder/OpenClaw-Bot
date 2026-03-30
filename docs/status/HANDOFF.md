@@ -6,6 +6,75 @@
 
 ---
 
+## [2026-03-30 Session 7] P1 功能完整性审计完成 — 文档同步收尾
+
+### 本次完成了什么
+- **P1 审计全部完成**，涵盖后端 + 前端两大方向
+- **后端**: 扫描全部 TODO/FIXME/STUB/HACK/XXX（均为误报），审计 104 处 `pass` 语句，修复 32 处多余 `pass`（13 文件）
+- **前端**: 11 个死文件删除 + 5 处静默 catch 块修复 + 3 处空状态添加 + 1 个死状态移除 + 25 处 console→logger 迁移（10 文件）
+- **回归验证**: 1047/1047 Python passed, 0 TypeScript errors
+- **文档同步**: CHANGELOG(P1条目) + HEALTH.md(时间戳+HI-386备注) + HANDOFF.md(本摘要)
+
+### 未完成的工作（按优先级排列）
+1. **P2 审计** — 架构与工程质量（文件结构/命名/状态管理/错误处理/类型安全）
+2. **P3 审计** — 性能与稳定性（首屏/API 性能/崩溃防护）
+3. **P4 审计** — UI/UX 全覆盖（每个页面/组件的视觉+交互检查）
+4. **P5 审计** — 文档、CI/CD、可维护性
+5. **Git commit + push** — P1 所有修改需提交
+6. **既有技术债** — HI-358(大文件拆分)、HI-381-385(后端技术债)、HI-386(前端WebSocket通知待建)、HI-388/389(安全)
+
+### 需要注意的坑
+- P1 前端修复使用了项目 `src/lib/logger.ts` 的结构化日志系统（`createLogger()` 工厂 + 预置模块 logger），后续前端新增组件应延续此模式
+- `Memory/index.tsx` 的删除/更新失败用了 `alert()` 做用户反馈——临时方案，后续应改为 toast 通知（待 WebSocket 通知基础设施建立）
+- HI-386 只是部分解决（删了死文件+迁移了 console），WebSocket 通知机制本身还不存在
+
+### 关键决策记录
+- P1 审计策略: 扫描后立即修复，不留登记。32 处 `pass` 全部是 `pass` + `logger.debug()` 模式中多余的 `pass`
+- 前端 `main.tsx` 和 `ErrorBoundary.tsx` 中的 `console.error` 保持不动——属于基础设施级代码，不适合替换为模块 logger
+- 11 个删除的文件通过 `grep -r` 确认无任何引用后才删除
+
+### 当前系统状态
+- 测试: 1047/1047 passed, 0 TS errors
+- 活跃问题总数: 13 (4个🟠重要 + 8个🟡一般 + 1个🔵低优先)
+- P0: ✅ 完成 | P1: ✅ 完成 | P2-P5: 待做
+
+## [2026-03-30 Session 6] P0 安全审计收尾 — auth.py 深度清理 + 文档同步完成
+
+### 本次完成了什么
+- **P0 安全审计全部收尾工作完成**，共 16 项安全修复（跨 2 个会话）
+- **auth.py 深度清理**: 移除 `0.0.0.0` 安全主机(HI-387) + 删除死代码块(97→90行) + `import hmac` 提升至顶层
+- **test_security.py 注释修正**: 过时注释（标注 sanitize_input 为死代码 + TODO）更新为「HI-037 已解决」
+- **HEALTH.md 更新**: HI-387 移至已解决 + HI-388/389 新增登记
+- **CHANGELOG.md 更新**: P0 收尾条目追加
+- **回归验证**: 1047/1047 passed（与基线完全一致，零回归）
+
+### 未完成的工作（按优先级排列）
+1. **P1 审计** — 功能完整性（TODO/stub/mock/未连接UI/缺失状态）— 初步扫描已完成，未发现严重问题
+2. **P2 审计** — 架构与工程质量（文件结构/命名/状态管理/错误处理/类型安全）
+3. **P3 审计** — 性能与稳定性（首屏/API 性能/崩溃防护）
+4. **P4 审计** — UI/UX 全覆盖（每个页面/组件的视觉+交互检查）
+5. **P5 审计** — 文档、CI/CD、可维护性
+6. **HI-388**: `shortcuts run` 命令无白名单
+7. **HI-389**: SSRF DNS 重绑定防护缺失
+8. **Git commit + push** — 本轮所有修改需提交
+9. **既有技术债** — HI-358(大文件拆分)、HI-381-385(各类后端技术债)、HI-386(前端死代码)
+
+### 需要注意的坑
+- P0 审计发现 auth.py 的 `verify_api_token()` 在 `OPENCLAW_API_TOKEN` 未设置时放行所有请求——这是开发环境设计，但生产部署时必须设置该环境变量
+- `crewai` 和 `browser-use` 的依赖版本与 pip 安装的版本有冲突（crewai 要求 litellm==1.72.6 但装了 1.82.6），目前不影响运行但升级时需注意
+- HI-349(代码沙箱绕过)和 HI-348(Git历史中的API密钥)是已知的🟠重要安全问题，需 OS 级隔离和 git filter-branch 分别处理
+
+### 关键决策记录
+- P0 审计策略: 发现即修复，不只是登记。16 项中 13 项已修复，3 项(HI-348/349/388/389)因需架构级改动而登记跟踪
+- auth.py 清理保持了向后兼容——`verify_api_token()` 的行为不变，只移除了重复代码
+
+### 当前系统状态
+- 测试: 1047/1047 passed
+- 新增问题: HI-388, HI-389（本轮新发现）
+- 已解决问题: HI-387（本轮修复）
+- 活跃问题总数: 13 (4个🟠重要 + 8个🟡一般 + 1个🔵低优先)
+- 改动文件: auth.py, test_security.py, HEALTH.md, CHANGELOG.md, HANDOFF.md
+
 ## [2026-03-30 Session 5] Wave 1: 全系统智能化跃迁 — 5 个子任务全部完成
 
 ### 本次完成了什么
@@ -83,76 +152,3 @@
 
 ---
 
-## [2026-03-30 Session 3] R29 全量审计 — 测试修复+文档同步完成，前端审计待做
-
-### 本次完成了什么
-- 修复 `test_security.py:256-267` 过时注释块（标注 `sanitize_input()` 存在但为死代码）
-- 运行完整测试套件：1047/1047 passed（基线对齐）
-- 发现 1 个 flaky test：`test_investment_full_pipeline` 依赖外部 LLM API 状态（已登记 HI-384）
-- 更新 CHANGELOG.md（R29 条目）
-- 更新 HEALTH.md（测试通过率 1047 + HI-384 flaky test）
-- 更新 HANDOFF.md（本摘要）
-
-### 跨 3 个会话的 R29 累计完成
-- 修复 5 个测试失败（test_bash_tool 4个 + test_monitoring_module 1个）— 全部是测试代码 Bug
-- 新增 1 个测试（bash 白名单覆盖）
-- 清理 2 处死代码（backtest_reporter + bookkeeping bare pass）
-- Git 索引移除 OpenClaw.app + 删除审计截图残留
-- .gitignore 新增 2 条规则
-- test_security.py 注释修正
-- 全部文档同步完成（CHANGELOG/HEALTH/HANDOFF）
-
-### 未完成的工作（按优先级排列）
-1. ~~**前端构建验证**~~ — R30 已完成
-2. ~~**UI 截图审计**~~ — R30 已完成
-3. ~~**UX 交互审计**~~ — R30 已完成
-4. **连接 useGlobalToasts 死代码** — 在 App.tsx 渲染 `<Toaster />`（登记为 HI-386）
-5. ~~**DevOps/部署审计**~~ — R30 已完成
-6. **剩余技术债** — HI-358(大文件拆分)、HI-381(错误字符串统一)、HI-382(硬编码模型名)、HI-383(HTTP客户端碎片化)
-7. ~~**修复 xianyu_apis.py:87**~~ — 已在 R26 修复(HI-350)
-8. **接入 sanitize_input()** (HI-037) — 死代码需接入消息管道
-9. ~~**最终提交 R29**~~ — 与 R30 一并提交
-
-### 需要注意的坑
-- `test_investment_full_pipeline` 是 flaky test（HI-384），跑完整套件时偶尔失败，单独跑通过——受 LiteLLM Cooldown 影响
-- 前端 `useGlobalToasts` 和 `Toaster` 组件是死代码，接入时需注意 WebSocket 连接逻辑是否正确
-- 完整测试套件约 70 秒，单次超时设 30 秒/测试即可
-
-### 关键决策记录
-- R29 的所有测试修复都是测试代码层面的修正，未改动任何产品代码逻辑
-- flaky test 登记为 🟡 一般（不影响产品功能，是测试基础设施问题）
-
-### 当前系统状态
-- 测试: 1047/1047 passed
-- 新增问题: HI-384 (flaky test)
-- 活跃问题总数: 9 (4个🟠重要 + 5个🟡一般)
-- 改动文件（本会话）: `test_security.py`, `CHANGELOG.md`, `HEALTH.md`, `HANDOFF.md`
-- 改动文件（R29 累计）: 上述 + `test_bash_tool.py`, `test_monitoring_module.py`, `backtest_reporter.py`, `bookkeeping.py`, `.gitignore`
-
----
-
-## [2026-03-30 Session 1] 新增 5 大用户保护协议 (§13-§17)
-
-### 本次完成了什么
-- 为 AGENTS.md 新增了 5 个用户保护协议（§13-§17）
-  - §13 回归防护协议 — 防止"修一个坏两个"
-  - §14 会话交接协议 — 防止换对话丢失上下文
-  - §15 错误翻译协议 — 禁止对用户说技术术语
-  - §16 用户可感知验证协议 — 禁止"空口验证"
-  - §17 定期健康汇报协议 — 用大白话给用户做"体检报告"
-- 创建了本文件 (HANDOFF.md) 作为交接载体
-- 更新了 CHANGELOG.md 记录变更
-
-### 未完成的工作（按优先级排列）
-- ~~R29 全量审计~~（已由后续会话完成）
-- ~~R30 全方位审计~~（已由 Session 4 完成）
-
-### 需要注意的坑
-- AGENTS.md 现在约 1440 行，已经很长。后续如果还需要加协议，可以考虑拆分为多个文件
-
-### 关键决策记录
-- 5 个协议的设计核心：一切围绕"用户完全不懂代码"这个前提
-
-### 当前系统状态
-- 测试: 未运行（本次为纯文档变更）
-- 改动文件: `AGENTS.md`, `docs/CHANGELOG.md`, `docs/status/HANDOFF.md`

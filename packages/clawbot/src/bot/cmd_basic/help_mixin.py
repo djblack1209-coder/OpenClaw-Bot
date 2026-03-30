@@ -286,6 +286,7 @@ class _HelpMixin:
                 report = await news_fetcher.generate_morning_report()
                 await context.bot.send_message(chat_id=chat_id, text=report)
             except Exception as e:
+                logger.error("新闻获取失败: %s", e)
                 await context.bot.send_message(chat_id=chat_id, text=error_service_failed("新闻获取"))
 
         elif action == "draw":

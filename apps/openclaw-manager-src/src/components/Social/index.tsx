@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { api, isTauri, clawbotFetch } from '@/lib/tauri';
+import { createLogger } from '@/lib/logger';
 
 interface ActionStatus {
   running: boolean;
@@ -59,10 +60,13 @@ interface AnalyticsData {
   top_posts?: TopPost[];
 }
 
+const socialLogger = createLogger('Social');
+
 /** 数据分析面板 — 展示粉丝增长、互动数据、热门帖子 */
 function AnalyticsPanel() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -72,8 +76,9 @@ function AnalyticsPanel() {
         if (resp.ok) {
           setData(await resp.json());
         }
-      } catch {
-        // 后端不可达
+      } catch (e) {
+        socialLogger.error('获取社媒分析数据失败', e);
+        setAnalyticsError('社媒分析数据获取失败');
       } finally {
         setLoading(false);
       }
@@ -92,6 +97,15 @@ function AnalyticsPanel() {
             </CardContent>
           </Card>
         ))}
+      </div>
+    );
+  }
+
+  if (analyticsError) {
+    return (
+      <div className="flex items-center justify-center h-40 text-red-400 flex-col gap-3 border border-red-500/20 border-dashed rounded-xl bg-red-500/5">
+        <XCircle size={36} className="text-red-500/50" />
+        <p>{analyticsError}</p>
       </div>
     );
   }
@@ -207,8 +221,8 @@ export function Social() {
             });
           }
         }
-      } catch {
-        // 后端不可达时保持 unknown 状态
+      } catch (e) {
+        socialLogger.warn('获取浏览器会话状态失败，保持离线状态', e);
       }
     };
     fetchBrowserStatus();
@@ -229,8 +243,7 @@ export function Social() {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         const data = await api.omegaProcess(text);
-        const d = data as Record<string, string>;
-        result = d?.result || d?.response || '执行完成';
+        result = data?.result || data?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/omega/process', {

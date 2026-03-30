@@ -96,7 +96,17 @@ SERVER_PORT: int = int(os.getenv("SERVER_PORT", str(DEFAULT_SERVER_PORT)))
 # ==================================================================================================
 
 # API key for proxy access (clients must pass it in Authorization header)
-PROXY_API_KEY: str = os.getenv("PROXY_API_KEY", "my-super-secret-password-123")
+# 安全提醒: 必须通过环境变量 PROXY_API_KEY 设置，不提供默认值
+_proxy_key = os.getenv("PROXY_API_KEY", "")
+if not _proxy_key:
+    import warnings
+    warnings.warn(
+        "PROXY_API_KEY 未设置! Kiro Gateway 将拒绝所有代理请求。"
+        "请在环境变量或 .env 中设置 PROXY_API_KEY。",
+        RuntimeWarning,
+        stacklevel=1,
+    )
+PROXY_API_KEY: str = _proxy_key
 
 # ==================================================================================================
 # VPN/Proxy Settings for Kiro API Access
