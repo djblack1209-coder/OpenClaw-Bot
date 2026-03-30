@@ -26,6 +26,7 @@ except ImportError:
     HAS_JIEBA = False
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
+from src.constants import FAMILY_QWEN
 from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
@@ -395,7 +396,7 @@ class IntentParser:
             import asyncio
             resp = await asyncio.wait_for(
                 free_pool.acompletion(
-                    model_family="qwen",
+                    model_family=FAMILY_QWEN,
                     messages=[{"role": "user", "content": classify_prompt}],
                     temperature=0.1,
                     max_tokens=100,
@@ -517,7 +518,7 @@ class IntentParser:
             llm_output = await structured_completion(
                 response_model=IntentLLMOutput,
                 messages=[{"role": "user", "content": prompt}],
-                model_family="qwen",
+                model_family=FAMILY_QWEN,
                 system_prompt=_PARSE_SYSTEM_PROMPT,
                 temperature=0.1,
                 max_tokens=800,
@@ -565,7 +566,7 @@ class IntentParser:
 
         async with api_limiter("llm"):
             response = await free_pool.acompletion(
-                model_family="qwen",
+                model_family=FAMILY_QWEN,
                 messages=[
                     {"role": "user", "content": prompt},
                 ],

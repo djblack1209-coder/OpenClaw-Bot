@@ -17,6 +17,7 @@ from src.message_format import format_error
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
 from src.telegram_ux import with_typing
+from src.constants import IMG_MODEL_FLUX
 from src.notify_style import (
     format_social_published, format_social_dual_result,
     format_hotpost_result,
@@ -116,7 +117,7 @@ class SocialCommandsMixin:
             generation_prompt = f"{prompt}, avoid underage appearance, adult woman only"
             if negative_prompt:
                 generation_prompt += f", negative prompt guidance: {negative_prompt}"
-            image_ret = await image_tool.generate(generation_prompt, model="flux", size=str(image_payload.get("size", "1024x1024") or "1024x1024"))
+            image_ret = await image_tool.generate(generation_prompt, model=IMG_MODEL_FLUX, size=str(image_payload.get("size", "1024x1024") or "1024x1024"))
             provider = str(image_ret.get("provider", "siliconflow") or "siliconflow")
             generated_paths = list(image_ret.get("paths", []) or [])
             if image_ret.get("success"):

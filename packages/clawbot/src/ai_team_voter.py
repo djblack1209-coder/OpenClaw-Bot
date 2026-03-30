@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 from config.prompts import INVEST_VOTE_PROMPTS
 from src.execution._utils import safe_float
 from src.utils import env_int, env_float
+from src.constants import (
+    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+)
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -237,7 +241,7 @@ class VoteResult:
 VOTE_PROMPTS = INVEST_VOTE_PROMPTS
 
 # 投票顺序: 雷达->宏观->图表->风控->指挥官->首席策略师
-VOTE_ORDER = ["claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonnet", "claude_opus"]
+VOTE_ORDER = [BOT_CLAUDE_HAIKU, BOT_QWEN, BOT_GPTOSS, BOT_DEEPSEEK, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS]
 
 
 def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
@@ -508,7 +512,7 @@ async def run_team_vote(
         )
 
     # --- 阶段1: 前4个分析师并行投票（雷达/宏观/图表/风控）---
-    parallel_bots = [b for b in VOTE_ORDER if b not in ("claude_sonnet", "claude_opus")]
+    parallel_bots = [b for b in VOTE_ORDER if b not in (BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS)]
 
     async def _call_bot(bot_id: str) -> BotVote:
         prompt_cfg = VOTE_PROMPTS.get(bot_id)
@@ -593,7 +597,7 @@ async def run_team_vote(
     except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
 
-    commander_id = "claude_sonnet"
+    commander_id = BOT_CLAUDE_SONNET
     prompt_cfg = VOTE_PROMPTS.get(commander_id)
     caller = api_callers.get(commander_id)
     if prompt_cfg and caller:
@@ -633,12 +637,12 @@ async def run_team_vote(
 
     # --- 阶段3: 首席策略师串行投票（看到前5人结果）---
     # 更新 previous_votes_text，加入指挥官的投票
-    commander_vote = next((v for v in result.votes if v.bot_id == "claude_sonnet"), None)
+    commander_vote = next((v for v in result.votes if v.bot_id == BOT_CLAUDE_SONNET), None)
     if commander_vote:
         vote_icon = {"BUY": "+", "HOLD": "=", "SKIP": "-"}.get(commander_vote.vote, "?")
         previous_votes_text += f"[{vote_icon}] {commander_vote.role}: {commander_vote.vote}({commander_vote.confidence}/10) {commander_vote.reasoning}\n"
 
-    strategist_id = "claude_opus"
+    strategist_id = BOT_CLAUDE_OPUS
     prompt_cfg = VOTE_PROMPTS.get(strategist_id)
     caller = api_callers.get(strategist_id)
     if prompt_cfg and caller:
@@ -691,8 +695,8 @@ async def run_team_vote(
     veto_mode = _env_text("TEAM_VETO_MODE", "dual").lower()  # off / single / dual
 
     # 风控官 / 首席策略师 否决规则（可配置）
-    risk_vote = next((v for v in result.votes if v.bot_id == "deepseek_v3"), None)
-    strategist_vote = next((v for v in result.votes if v.bot_id == "claude_opus"), None)
+    risk_vote = next((v for v in result.votes if v.bot_id == BOT_DEEPSEEK), None)
+    strategist_vote = next((v for v in result.votes if v.bot_id == BOT_CLAUDE_OPUS), None)
     risk_skip = bool(risk_vote and risk_vote.vote == "SKIP")
     strategist_skip = bool(strategist_vote and strategist_vote.vote == "SKIP")
 

@@ -13,6 +13,7 @@ import logging
 from typing import Dict, List, Optional
 
 from src.bot.error_messages import error_ai_busy
+from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +272,7 @@ def _safe_filter(text: str) -> str:
 # ---- Agent 基类 ----
 
 class BaseAgent:
-    def __init__(self, system_prompt: str, model_family: str = "qwen"):
+    def __init__(self, system_prompt: str, model_family: str = FAMILY_QWEN):
         self.system_prompt = system_prompt
         self.model_family = model_family
 
@@ -419,7 +420,7 @@ class IntentRouter:
 class XianyuReplyBot:
     def __init__(self, ctx=None):
         # 从环境变量读取模型族偏好，默认 qwen (免费)
-        self.model_family = os.getenv("XIANYU_MODEL_FAMILY", "qwen")
+        self.model_family = os.getenv("XIANYU_MODEL_FAMILY", FAMILY_QWEN)
         self.ctx = ctx  # XianyuContextManager 实例 — 用于读取回复配置
         self._load_agents()
         self.router = IntentRouter(self.agents["classify"])

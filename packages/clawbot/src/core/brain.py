@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.constants import FAMILY_QWEN
 from src.core.event_bus import EventType, get_event_bus
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.task_graph import (
@@ -315,7 +316,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
                         async with api_limiter("llm"):
                             resp = await free_pool.acompletion(
-                                model_family="qwen",
+                                model_family=FAMILY_QWEN,
                                 messages=messages,
                                 temperature=0.7,
                                 max_tokens=1000,

@@ -21,6 +21,7 @@ from src.bot.rate_limiter import rate_limiter, token_budget, quality_gate
 from src.bot.error_messages import error_generic, error_circuit_open, error_tool_abuse
 from src.http_client import CircuitOpenError
 from src.litellm_router import free_pool, BOT_MODEL_FAMILY
+from src.constants import BOT_CLAUDE_OPUS, FAMILY_CLAUDE, FAMILY_G4F
 
 try:
     from src.langfuse_obs import log_generation
@@ -203,12 +204,12 @@ class APIMixin:
         2. LiteLLM Router 的 g4f family (免费)
         3. 任意可用免费模型 (qwen/deepseek/gemini 等)
         """
-        bot_name = getattr(self, "name", "claude_opus")
+        bot_name = getattr(self, "name", BOT_CLAUDE_OPUS)
 
         # 1. 免费 Claude (Kiro)
         try:
             response = await free_pool.acompletion(
-                model_family="claude", messages=messages,
+                model_family=FAMILY_CLAUDE, messages=messages,
                 system_prompt=getattr(self, 'system_prompt', ''),
             )
             logger.info(f"[{bot_name}] 免费 Claude 成功")
@@ -219,7 +220,7 @@ class APIMixin:
         # 2. g4f
         try:
             response = await free_pool.acompletion(
-                model_family="g4f", messages=messages,
+                model_family=FAMILY_G4F, messages=messages,
                 system_prompt=getattr(self, 'system_prompt', ''),
             )
             logger.info(f"[{bot_name}] g4f 成功")

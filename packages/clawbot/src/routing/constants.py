@@ -2,6 +2,10 @@
 路由常量定义 — 意图关键词、分流规则、触发词等
 从 chat_router.py 拆分而来，集中管理所有路由相关常量。
 """
+from src.constants import (
+    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+)
 
 # 链式讨论触发词（统一定义，避免重复）
 CHAIN_DISCUSS_TRIGGERS = [
@@ -48,29 +52,29 @@ class Intent:
 
 # 意图 -> 最佳 bot 映射（每个 bot 至少有一个 rank 0 场景）
 INTENT_BOT_MAP = {
-    Intent.CODE: ["deepseek_v3", "qwen235b", "claude_opus"],
-    Intent.MATH: ["deepseek_v3", "qwen235b"],
-    Intent.CREATIVE: ["claude_sonnet", "claude_haiku"],
-    Intent.KNOWLEDGE: ["qwen235b", "claude_haiku"],
-    Intent.GENERAL: ["gptoss", "qwen235b"],
-    Intent.IMAGE: ["claude_sonnet"],
-    Intent.ANALYSIS: ["claude_opus", "claude_sonnet", "deepseek_v3"],
+    Intent.CODE: [BOT_DEEPSEEK, BOT_QWEN, BOT_CLAUDE_OPUS],
+    Intent.MATH: [BOT_DEEPSEEK, BOT_QWEN],
+    Intent.CREATIVE: [BOT_CLAUDE_SONNET, BOT_CLAUDE_HAIKU],
+    Intent.KNOWLEDGE: [BOT_QWEN, BOT_CLAUDE_HAIKU],
+    Intent.GENERAL: [BOT_GPTOSS, BOT_QWEN],
+    Intent.IMAGE: [BOT_CLAUDE_SONNET],
+    Intent.ANALYSIS: [BOT_CLAUDE_OPUS, BOT_CLAUDE_SONNET, BOT_DEEPSEEK],
 }
 
 # 显式分流通道（topic/forum 不可用时的替代方案）
 # 规则：用户在消息里带上 lane marker，即可强制路由到指定 bot。
 LANE_ROUTE_RULES = [
-    ("risk", "claude_sonnet", ["[risk]", "#risk", "#风控", "#风险"]),
-    ("alpha", "qwen235b", ["[alpha]", "#alpha", "#研究", "#策略"]),
-    ("exec", "deepseek_v3", ["[exec]", "#exec", "#执行", "#下单"]),
-    ("fast", "gptoss", ["[fast]", "#fast", "#快问", "#速答"]),
-    ("cn", "deepseek_v3", ["[cn]", "#cn", "#中文"]),
-    ("brain", "claude_opus", ["[brain]", "#brain", "#终极", "#深度"]),
-    ("creative", "claude_haiku", ["[creative]", "#creative", "#文案", "#创意"]),
+    ("risk", BOT_CLAUDE_SONNET, ["[risk]", "#risk", "#风控", "#风险"]),
+    ("alpha", BOT_QWEN, ["[alpha]", "#alpha", "#研究", "#策略"]),
+    ("exec", BOT_DEEPSEEK, ["[exec]", "#exec", "#执行", "#下单"]),
+    ("fast", BOT_GPTOSS, ["[fast]", "#fast", "#快问", "#速答"]),
+    ("cn", BOT_DEEPSEEK, ["[cn]", "#cn", "#中文"]),
+    ("brain", BOT_CLAUDE_OPUS, ["[brain]", "#brain", "#终极", "#深度"]),
+    ("creative", BOT_CLAUDE_HAIKU, ["[creative]", "#creative", "#文案", "#创意"]),
 ]
 
 # 兜底轮换列表（排除付费 Opus 和 Free-LLM，其余 5 个 bot 轮换）
-FALLBACK_ROTATION = ["qwen235b", "gptoss", "deepseek_v3", "claude_haiku", "claude_sonnet"]
+FALLBACK_ROTATION = [BOT_QWEN, BOT_GPTOSS, BOT_DEEPSEEK, BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET]
 
 # 意图检测关键词表
 INTENT_KEYWORDS = {

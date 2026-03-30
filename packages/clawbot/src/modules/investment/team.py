@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from src.utils import now_et
+from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 
@@ -659,7 +660,7 @@ class InvestmentTeam:
                 raise RuntimeError("LLM 路由器未初始化")
 
             resp = await free_pool.acompletion(
-                model_family="qwen",
+                model_family=FAMILY_QWEN,
                 messages=[
                     {"role": "user", "content": user_content},
                 ],

@@ -1,8 +1,9 @@
 """
-全局常量 — 各模块共享的 HTTP 请求头、版本号、平台限制等。
+全局常量 — 各模块共享的 HTTP 请求头、版本号、平台限制、Bot ID、模型族等。
 
-统一管理 User-Agent 字符串，避免散落在各文件中导致版本不一致。
-更新 Chrome 版本只需改此处一行。
+统一管理 User-Agent、Bot ID、Model Family 字符串，
+避免散落在各文件中导致拼写不一致或更换模型时需逐文件修改。
+更新 Chrome 版本、切换模型只需改此处。
 """
 
 # ── Telegram 消息长度限制 ──────────────────────────────────────
@@ -25,3 +26,30 @@ XIANYU_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36"
 )
+
+# ── Bot ID 常量 ─────────────────────────────────────────────────
+# 7 个 Bot 的内部标识符，对应 multi_main.py 中注册的 bot_id
+# 修改 bot 名称/增删 bot 只需改此处
+BOT_QWEN = "qwen235b"           # 通义千问 235B (主力免费模型)
+BOT_DEEPSEEK = "deepseek_v3"    # DeepSeek V3 (编程/数学)
+BOT_GPTOSS = "gptoss"           # GPT 开源替代 (快速通用)
+BOT_CLAUDE_HAIKU = "claude_haiku"    # Claude Haiku (创意/轻量)
+BOT_CLAUDE_SONNET = "claude_sonnet"  # Claude Sonnet (复杂推理)
+BOT_CLAUDE_OPUS = "claude_opus"      # Claude Opus (终极分析)
+BOT_FREE_LLM = "free_llm"           # 免费 LLM 兜底
+
+# ── Model Family 常量 ──────────────────────────────────────────
+# model_family 参数值，决定 litellm_router 走哪条降级链
+# 修改降级链路由只需改此处映射
+FAMILY_QWEN = "qwen"           # 千问系免费链 (SiliconFlow → Groq → ...)
+FAMILY_DEEPSEEK = "deepseek"   # DeepSeek 链
+FAMILY_CLAUDE = "claude"       # Claude 链 (Anthropic → g4f)
+FAMILY_G4F = "g4f"             # 纯免费 g4f 兜底
+FAMILY_GEMINI = "gemini"       # Google Gemini 链
+FAMILY_GPT_OSS = "gpt-oss"    # GPT 开源替代链
+
+# ── 图片生成模型 Key ────────────────────────────────────────────
+# image_tool.py 中使用的模型 key
+IMG_MODEL_FLUX = "flux"        # FLUX.1-schnell (默认)
+IMG_MODEL_SD3 = "sd3"          # Stable Diffusion 3
+IMG_MODEL_SDXL = "sdxl"        # Stable Diffusion XL

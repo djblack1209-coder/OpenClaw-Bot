@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import logging
 from src.utils import now_et
+from src.constants import IMG_MODEL_FLUX
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,12 @@ class ImageTool:
             path = self._save_image_bytes(response.content, prefix="pollinations")
         return {"success": True, "prompt": prompt, "model": f"{model}-fallback", "paths": [path], "provider": "pollinations"}
 
-    async def generate(self, prompt: str, model: str = "flux", size: str = "1024x1024") -> Dict[str, Any]:
+    async def generate(self, prompt: str, model: str = IMG_MODEL_FLUX, size: str = "1024x1024") -> Dict[str, Any]:
         """生成图片"""
         if not self.api_key:
             return await self._generate_via_pollinations(prompt, model, size)
 
-        model_id = self.MODELS.get(model, self.MODELS["flux"])
+        model_id = self.MODELS.get(model, self.MODELS[IMG_MODEL_FLUX])
 
         try:
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}

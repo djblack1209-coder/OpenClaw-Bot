@@ -13,6 +13,7 @@ from .tools.file_tool import FileTool
 from .tools.web_tool import WebTool
 from .tools.code_tool import CodeTool
 from .tools.memory_tool import MemoryTool
+from src.constants import FAMILY_CLAUDE
 
 logger = logging.getLogger(__name__)
 
@@ -438,7 +439,7 @@ class ToolExecutor:
                     tool_input["key"],
                     tool_input["value"],
                     tool_input.get("category", "general"),
-                    source_bot="claude",
+                    source_bot=FAMILY_CLAUDE,
                 )
             return self.memory_tool.remember(
                 tool_input["key"],

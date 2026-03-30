@@ -17,6 +17,8 @@ import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
+from src.constants import FAMILY_QWEN
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,7 +90,7 @@ async def _llm_extract(prompt: str, ocr_text: str) -> Optional[Dict]:
         from src.litellm_router import free_pool
         filled_prompt = prompt.format(ocr_text=ocr_text[:2000])
         response = await free_pool.acompletion(
-            model_family="qwen",
+            model_family=FAMILY_QWEN,
             messages=[{"role": "user", "content": filled_prompt}],
             temperature=0.1,
             max_tokens=1000,

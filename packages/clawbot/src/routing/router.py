@@ -9,6 +9,7 @@ import asyncio
 import threading
 from typing import Dict, List, Optional, Tuple, Callable
 
+from src.constants import BOT_DEEPSEEK, BOT_QWEN
 from src.routing.constants import (
     CHAIN_DISCUSS_TRIGGERS,
     Intent,
@@ -465,11 +466,11 @@ class ChatRouter(SessionMixin):
         """
         intents = self.classify_intent(text)
         if not intents:
-            return "qwen235b"
+            return BOT_QWEN
 
         top_intent = intents[0][0]
         tech_intents = {Intent.CODE, Intent.MATH, Intent.ANALYSIS}
         if top_intent in tech_intents:
-            return "deepseek_v3"
+            return BOT_DEEPSEEK
 
-        return "qwen235b"
+        return BOT_QWEN

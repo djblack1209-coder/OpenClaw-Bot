@@ -18,7 +18,7 @@ Usage:
     result = await structured_completion(
         response_model=MyOutput,
         messages=[{"role": "user", "content": "..."}],
-        model_family="qwen",
+        model_family=FAMILY_QWEN,
     )
     # result is a validated MyOutput instance — guaranteed
 """
@@ -28,6 +28,7 @@ import re
 from typing import Any, Dict, List, Type, TypeVar
 
 from pydantic import BaseModel
+from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def _get_instructor_client(router: Any) -> Any:
 async def structured_completion(
     response_model: Type[T],
     messages: List[Dict[str, str]],
-    model_family: str = "qwen",
+    model_family: str = FAMILY_QWEN,
     system_prompt: str = "",
     temperature: float = 0.1,
     max_tokens: int = 800,

@@ -16,7 +16,7 @@ from src.bot.globals import (
 from src.ta_engine import get_full_analysis, scan_market, format_analysis, format_scan_results
 from src.trading_journal import journal
 from config.prompts import REVIEW_ROLES
-from src.constants import TG_SAFE_LENGTH
+from src.constants import TG_SAFE_LENGTH, BOT_CLAUDE_HAIKU, BOT_DEEPSEEK, BOT_CLAUDE_SONNET
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class AnalysisCommandsMixin:
         msg = await update.message.reply_text(f"{self.emoji} 正在召开复盘会议...")
 
         review_prompt = journal.format_review_prompt()
-        review_order = ["claude_haiku", "deepseek_v3", "claude_sonnet"]
+        review_order = [BOT_CLAUDE_HAIKU, BOT_DEEPSEEK, BOT_CLAUDE_SONNET]
         info = await chat_router.start_discuss(chat_id, "每日复盘", 1, review_order, discuss_type="invest")
         if "已有进行中" in info:
             await safe_edit(msg, info)
