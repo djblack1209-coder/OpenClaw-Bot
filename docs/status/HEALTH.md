@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-30 (Wave 1: 全系统智能化跃迁 — 日报+闲鱼+社媒+主动引擎+交易跟进 | 1047/1047 passed)
+> 最后更新: 2026-03-30 (P2架构审计: 9处时区日期Bug修复+35处前端as断言替换+4处高危静默异常修复 | 45/45 trading_journal passed, 0 TS errors)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -14,11 +14,11 @@
 
 | # | 功能 | 痛点(1-5) | 成本(1-5) | 得分 | 决策 | 关联 HI |
 |---|-----|----------|----------|------|------|---------|
-| 1 | sanitize_input 安全实现 | 5 | 2 | 8 | 🟡 半完成 | HI-037 |
+| 1 | sanitize_input 安全实现 | 5 | 2 | 8 | ✅ 完成 | HI-037 |
 | 2 | ~~Telegram flood 根治~~ | 4 | 3 | 5 | ✅ 完成 | HI-011 |
 | 3 | ~~execution_hub.py 引用切换完成~~ | 4 | 4 | 4 | ✅ 完成 | HI-006 |
 
-> **HI-037 备注**: `sanitize_input()` 方法已在 `security.py:281` 实现，但全项目无调用点（死代码）。需要在消息处理管道中接入。
+> **HI-037 备注**: ✅ 已在 `message_mixin.py:214` 接入消息处理管道 (P0安全审计修复, 2026-03-30)。`sanitize_input()` 方法定义在 `security.py:281`。
 
 ### Phase 2 — 核心价值兑现
 
@@ -95,12 +95,14 @@
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
 | HI-385 | `backend` | `data_providers.py` | 5处类型注解引用未定义的 `pd` (pandas) — 需要 `TYPE_CHECKING` 条件导入或改用字符串注解 | 2026-03-30 |
+| HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 2026-03-30 |
+| HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 — 首次解析为公网IP通过检查后,DNS切换到内网IP | 2026-03-30 |
 
 ### 🔵 低优先
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-386 | `frontend` | `App.tsx` | `useGlobalToasts` hook 和 `Toaster` 组件(sonner)是死代码 — 已实现但未在 App.tsx 中渲染，WebSocket 通知机制无法触发 | 2026-03-30 |
+| HI-386 | `frontend` | `App.tsx` | `useGlobalToasts` hook 和 `Toaster` 组件(sonner)是死代码 — 已实现但未在 App.tsx 中渲染，WebSocket 通知机制无法触发。**P1部分解决**: 已删除 `useGlobalToasts.ts` + `sonner.tsx` + 5个未使用UI组件 + console→logger迁移(25处)，剩余WebSocket通知基础设施待建立 | 2026-03-30 |
 
 ---
 
@@ -108,6 +110,11 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-390 | `trading` | `trading_journal.py` | SQLite `date()` 将 ET 时区 ISO 字符串转为 UTC 日期 — 晚 8 点后平仓的交易在当日统计中消失 | 全部 9 处 `date(exit_time/prediction_time)` 替换为 `substr(...,1,10)` 直接提取 ET 本地日期 | 2026-03-30 | P2架构审计 |
+
+| ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
+|----|------|------|------|----------|----------|-----------|
+| HI-387 | `security` | `auth.py` | `log_token_status()` 将 `0.0.0.0` 列为安全主机 — 绑定 0.0.0.0 时不触发 CRITICAL 警告 | 从安全主机元组中移除 `0.0.0.0`，仅保留 `127.0.0.1` 和 `localhost` | 2026-03-30 | P0安全审计 |
 | HI-377 | `backend` | `social_browser_worker.py` | macOS字体路径硬编码 — Linux部署必崩 | `_detect_font_path()` 自动检测macOS/Linux字体+`OPENCLAW_FONT_PATH` env var覆盖 | 2026-03-29 | R26 |
 | HI-376 | `infra` | 7个Rust文件 | 文件级 `#![allow(dead_code)]` 隐藏死代码 — 2个文件全量放行 | 移除文件级注解; 删除5个死函数; 11个结构体添加精确`#[allow(dead_code)]` | 2026-03-29 | R26 |
 | HI-375 | `infra` | 3个Rust命令文件 | 硬编码macOS项目路径 — 非标准安装位置或Linux部署必崩 | `get_base_dir()`/`get_default_workspace_path()`/`get_unix_openclaw_paths()` 优先读 `OPENCLAW_PROJECT_DIR` env var | 2026-03-29 | R26 |

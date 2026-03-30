@@ -5,6 +5,177 @@
 
 ---
 
+## [2026-03-30] P2 架构与工程质量审计 — 时区日期Bug修复 + 前端类型安全加固 + 静默异常修复
+
+> 领域: `backend`, `frontend`, `trading`
+> 影响模块: `trading_journal`, `daily_brief`, 前端全组件
+> 关联问题: HI-390(已解决)
+
+### 变更内容
+
+#### 交易日志时区日期Bug修复 (HI-390 — 关键发现)
+- **根因**: `close_trade()` 写入 `now_et().isoformat()` (如 `2026-03-29T20:43:19-04:00`)，SQLite `date()` 将其转为 UTC 日期 (`2026-03-30`)，但 `get_today_pnl()` 用 ET 日期 (`2026-03-29`) 比较 — 晚 8 点后平仓的交易在当日统计中消失
+- **修复**: 全部 9 处 `date(exit_time)` / `date(prediction_time)` 替换为 `substr(...,1,10)` — 直接提取 ISO 字符串中的 ET 本地日期，避免 UTC 转换
+- 影响查询: `get_today_pnl`, `get_equity_curve`, `generate_review_data`, `check_profit_targets`, `generate_iteration_report`(2处), `validate_predictions`, `get_prediction_accuracy`, `wrong_preds`
+
+#### 前端 35 处 `as` 类型断言替换为安全类型接口
+- Tauri `invoke()` 返回 `Record<string, unknown>` — 35 处用强类型接口替换 `as` 断言
+- 新增接口: `ServiceConfig`, `ChannelConfig`, `SystemResource`, `SchedulerStatus` 等
+
+#### 后端 4 处高危静默异常修复 (daily_brief.py)
+- 4 处 `except Exception: pass` 改为 `except Exception: logger.debug(...)` — 保留诊断信息
+
+#### 回归验证
+- Python pytest: 45/45 trading_journal 测试通过（含 v2）
+- TypeScript: 0 errors
+
+### 文件变更
+- `packages/clawbot/src/trading_journal.py` — 9 处 date()→substr() 时区修复
+- `packages/clawbot/src/execution/daily_brief.py` — 4 处静默异常修复
+- `apps/openclaw-manager-src/src/components/` — 35 处 as 断言→类型接口
+
+---
+
+## [2026-03-30] P1 功能完整性审计 — 32 pass 清理 + 11 死文件删除 + 前端状态修复 + 日志规范化
+
+> 领域: `backend`, `frontend`
+> 影响模块: `daily_brief`, `message_mixin`, `callback_mixin`, `api_mixin`, `cmd_invest_mixin`, `chinese_nlp_mixin`, `health`, `investment/team`, `security`, `xianyu_context`, `_scheduler_daily`, `execution/__init__`, `feedback`, `Social`, `Money`, `Dev`, `Memory`, `ControlCenter`, `Dashboard`, `Channels`, `Plugins`, `Settings`, `AIConfig`, `Evolution`, `ExecutionFlow`, `Testing`, `Header`
+> 关联问题: HI-386(部分解决)
+
+### 变更内容
+
+#### 后端: 32 处多余 pass 语句清理 (13 文件)
+- `pass` + `logger.debug(...)` 模式中 `pass` 多余（`pass` 后面的 `logger.debug` 是可达代码但 `pass` 无意义），全部移除
+- 涉及文件: `daily_brief.py`(11处), `message_mixin.py`(6处), `callback_mixin.py`(2处), `api_mixin.py`(1处), `cmd_invest_mixin.py`(1处), `chinese_nlp_mixin.py`(1处), `health.py`(1处), `investment/team.py`(1处), `security.py`(1处), `xianyu_context.py`(3处), `_scheduler_daily.py`(1处), `execution/__init__.py`(2处), `feedback.py`(1处)
+
+#### 前端: 11 个死文件删除
+- `OfflineGuide.tsx`, `Layout/index.ts`, `useGlobalToasts.ts`, `useService.ts` — 未被任何组件引用
+- 7 个未使用 UI 组件: `skeleton.tsx`, `sonner.tsx`, `scroll-area.tsx`, `table.tsx`, `label.tsx`, `select.tsx`, `avatar.tsx`
+
+#### 前端: 5 处静默 catch 块修复 (4 文件)
+- `Social/index.tsx` — analytics 获取失败添加错误状态 + 红色错误卡片 UI + browser status catch 日志
+- `Money/index.tsx` — 移除死状态 `dataLoading` + 添加 catch 日志
+- `Dev/index.tsx` — 系统资源 catch 添加 debug 级日志
+- `Memory/index.tsx` — 删除/更新失败添加 `alert()` 用户反馈
+
+#### 前端: 3 处空状态添加 (ControlCenter)
+- 服务列表: `暂无已注册服务`
+- 端点列表: `暂无链路端点`
+- Bot 矩阵: `暂无 Bot 配置`
+
+#### 前端: 25 处 console.log/error/warn → 结构化 logger (10 文件)
+- 使用项目 `src/lib/logger.ts` 提供的模块 logger（如 `dashboardLogger`, `testingLogger`）或 `createLogger()` 工厂
+- 替换分布: `Header`(1), `Testing`(1), `AIConfig`(1), `Evolution`(2), `ExecutionFlow`(2), `Channels`(5), `Plugins`(3), `Settings`(1), `Dashboard/SystemInfo`(1), `Dashboard/index`(5), `Memory`(3)
+
+#### 回归验证
+- Python pytest: 1047/1047 passed（基线无变化，零回归）
+- TypeScript: 0 errors（`npx tsc --noEmit` 通过）
+
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief.py` — 11 pass 移除
+- `packages/clawbot/src/bot/message_mixin.py` — 6 pass 移除
+- `packages/clawbot/src/bot/callback_mixin.py` — 2 pass 移除
+- `packages/clawbot/src/bot/api_mixin.py` — 1 pass 移除
+- `packages/clawbot/src/bot/cmd_invest_mixin.py` — 1 pass 移除
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 1 pass 移除
+- `packages/clawbot/src/monitoring/health.py` — 1 pass 移除
+- `packages/clawbot/src/modules/investment/team.py` — 1 pass 移除
+- `packages/clawbot/src/core/security.py` — 1 pass 移除
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 3 pass 移除
+- `packages/clawbot/src/trading/_scheduler_daily.py` — 1 pass 移除
+- `packages/clawbot/src/execution/__init__.py` — 2 pass 移除
+- `packages/clawbot/src/feedback.py` — 1 pass 移除
+- `apps/openclaw-manager-src/src/components/shared/OfflineGuide.tsx` — 已删除
+- `apps/openclaw-manager-src/src/components/Layout/index.ts` — 已删除
+- `apps/openclaw-manager-src/src/hooks/useGlobalToasts.ts` — 已删除
+- `apps/openclaw-manager-src/src/hooks/useService.ts` — 已删除
+- `apps/openclaw-manager-src/src/components/ui/{skeleton,sonner,scroll-area,table,label,select,avatar}.tsx` — 已删除
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — logger + 错误状态 + catch 修复
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — logger + 死状态移除 + catch
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — logger + catch
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — logger + alert 用户反馈
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — 3 处空状态
+- `apps/openclaw-manager-src/src/components/{Header,Testing,AIConfig,Evolution,ExecutionFlow,Channels,Plugins,Settings,Dashboard/SystemInfo,Dashboard/index}.tsx` — console→logger 替换
+
+---
+
+## [2026-03-30] P0 安全审计收尾 — auth.py 深度清理 + 3 项新增安全 HI
+
+> 领域: `backend`, `security`, `docs`
+> 影响模块: `auth`, `test_security`, `HEALTH.md`
+> 关联问题: HI-387(已解决), HI-388(新增), HI-389(新增)
+
+### 变更内容
+
+#### auth.py 深度清理 (4项)
+- **0.0.0.0 安全主机移除 (HI-387)** — `log_token_status()` 的安全主机元组包含 `0.0.0.0`，绑定该地址时不触发 CRITICAL 警告。已移除，仅保留 `127.0.0.1` 和 `localhost`
+- **死代码移除** — `verify_api_token()` 第 68-75 行与第 60-66 行逻辑重复，已删除死代码块，函数从 97 行精简至 90 行
+- **hmac 导入提升** — `import hmac` 从函数内部内联导入移至文件顶层第 2 行，消除重复导入
+- **test_security.py 注释修正** — 第 252-267 行过时注释（标注 sanitize_input 为死代码+TODO）已更新为「HI-037 已解决，已接入消息管道」
+
+#### 新增安全问题登记 (2项)
+- **HI-388** — `shortcuts run` 命令仅做正则校验无白名单，恶意快捷指令名可能绕过
+- **HI-389** — `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击
+
+#### 回归验证
+- Python pytest: 1047/1047 passed（基线无变化，零回归）
+
+### 文件变更
+- `packages/clawbot/src/api/auth.py` — 移除 0.0.0.0 安全主机 + 删除死代码块 + hmac 顶层导入（97→90行）
+- `packages/clawbot/tests/test_security.py` — 更新第 252-267 行注释块（HI-037 已解决）
+- `docs/status/HEALTH.md` — 时间戳更新 + HI-387 移至已解决 + HI-388/389 新增
+
+---
+
+## [2026-03-30] P0 安全审计 — 13 项安全漏洞修复
+
+> 领域: `backend`, `frontend`, `deploy`, `security`
+> 影响模块: `auth`, `message_mixin`, `life_automation`, `data_providers`, `xianyu_live`, `kiro-gateway/config`, `docker-compose`, `Header.tsx`, `tauri.ts`, `.gitignore`
+> 关联问题: HI-037(已解决), HI-387(新增), HI-388(新增), HI-389(新增)
+
+### 变更内容
+
+#### 密钥与凭证防护 (3项)
+- **keypool.json 排除** — 包含 3 个真实 SiliconFlow API 密钥的文件未被 .gitignore 排除，已添加排除规则
+- **Kiro Gateway 默认密码移除** — `config.py` 中硬编码的 `"my-super-secret-password-123"` 已移除，改为强制从环境变量读取
+- **Redis 认证启用** — `docker-compose.yml` 中 Redis 无密码认证，已添加 `--requirepass` 参数（通过 `REDIS_PASSWORD` 环境变量配置）
+
+#### 认证安全加固 (2项)
+- **WebSocket 时序攻击修复** — `auth.py:95` 的 Token 比较从 `==` 改为 `hmac.compare_digest()`，防止通过响应时间推断 Token 内容
+- **sanitize_input() 接入消息管道** — `security.py:281` 中的输入消毒函数原为死代码（HI-037），现已在 `message_mixin.py:214` 接入，所有用户消息经过消毒后再处理
+
+#### 命令注入防护 (2项)
+- **say 命令注入防护** — `life_automation.py` 的 `say` 命令添加文本长度限制(500字符)、前导连字符剥离、voice 参数正则校验
+- **AppleScript 执行死代码移除** — `life_automation.py` 中的 `trigger_home_action_script()` 函数（原始 AppleScript 执行，无沙箱）为死代码，已移除函数和 `run_osascript` 导入
+
+#### 前端地址外部化 (2项)
+- **Dashboard 端口外部化** — `Header.tsx` 中硬编码的 `localhost:18789` 提取为 `VITE_DASHBOARD_PORT` 环境变量
+- **API Host 外部化** — `tauri.ts` 中硬编码的 `127.0.0.1` 提取为 `VITE_API_HOST` 环境变量（WebSocket 和 HTTP 均适用）
+
+#### 代码质量修复 (4项)
+- **死代码路径修复** — `data_providers.py:520` 的 `pass` 导致后续 `logger.debug()` 永远无法执行，已移除 `pass`
+- **占位符默认值验证** — `xianyu_live.py:676-677` 的百度网盘链接/提取码占位符添加验证逻辑，未配置时记录警告而非发送无效链接
+- **HEALTH.md 时间戳更新** — 更新最后修改日期为当日
+- **测试注释修正** — `test_security.py:256-267` 的过时注释（标注 sanitize_input 为死代码）已在上一个会话修正
+
+#### 回归验证
+- Python pytest: 1047/1047 passed（基线无变化，零回归）
+
+### 文件变更
+- `.gitignore` — 新增 `keypool.json` 排除规则
+- `docker-compose.yml` — Redis 添加 `--requirepass` + `REDIS_URL` 含密码
+- `packages/clawbot/kiro-gateway/kiro/config.py` — 移除硬编码默认密码，强制环境变量
+- `packages/clawbot/src/api/auth.py` — WebSocket Token 比较改用 `hmac.compare_digest()`
+- `packages/clawbot/src/bot/message_mixin.py` — 第 214 行接入 `sanitize_input()` 调用
+- `packages/clawbot/src/execution/life_automation.py` — say 命令输入消毒 + 移除 `trigger_home_action_script()` + 移除 `run_osascript` 导入
+- `packages/clawbot/src/data_providers.py` — 移除阻塞 logger.debug 的 `pass`
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 百度网盘占位符验证
+- `apps/openclaw-manager-src/src/components/Layout/Header.tsx` — `VITE_DASHBOARD_PORT` 环境变量
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — `VITE_API_HOST` 环境变量
+- `docs/status/HEALTH.md` — 时间戳更新
+
+---
+
 ## [2026-03-30] Wave 1: 全系统智能化跃迁 — 从「被动工具」到「智能助手」
 
 > 领域: `backend`, `xianyu`, `trading`, `social`, `infra`

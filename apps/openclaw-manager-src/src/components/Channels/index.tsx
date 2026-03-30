@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import { createLogger } from '@/lib/logger';
+
+// 渠道管理模块日志实例
+const channelsLogger = createLogger('Channels');
 import {
   MessageSquare,
   Check,
@@ -97,7 +101,7 @@ export function Channels() {
       const status = await invoke<FeishuPluginStatus>('check_feishu_plugin');
       setFeishuPluginStatus(status);
     } catch (e) {
-      console.error('检查飞书插件失败:', e);
+      channelsLogger.error('检查飞书插件失败:', e);
       setFeishuPluginStatus({ installed: false, version: null, plugin_name: null });
     } finally {
       setFeishuPluginLoading(false);
@@ -233,7 +237,7 @@ export function Channels() {
             });
           }
         } catch (e) {
-          console.error("[Channels] WhatsApp 登录轮询失败:", e);
+          channelsLogger.error('[Channels] WhatsApp 登录轮询失败:', e);
         }
       }, 3000); // 每3秒检查一次
       
@@ -260,7 +264,7 @@ export function Channels() {
       setChannels(result);
       return result;
     } catch (e) {
-      console.error('获取渠道配置失败:', e);
+      channelsLogger.error('获取渠道配置失败:', e);
       // Tauri invoke 不可用时，用静态定义构建默认渠道列表
       const fallback: ChannelConfig[] = Object.keys(CHANNEL_DEFINITIONS).map((key) => ({
         id: key,
@@ -287,7 +291,7 @@ export function Channels() {
           setEndpointStatus(endpoints);
           setClawbotBotMatrix(matrix);
         } catch (e) {
-          console.error("[Channels] 上下文/端点初始化失败:", e);
+          channelsLogger.error('[Channels] 上下文/端点初始化失败:', e);
         }
         
         // 自动选择第一个已配置的渠道
@@ -430,7 +434,7 @@ export function Channels() {
       
       toast.success('渠道配置已保存！');
     } catch (e) {
-      console.error('保存失败:', e);
+      channelsLogger.error('保存失败:', e);
       toast.error('保存失败: ' + e);
     } finally {
       setSaving(false);

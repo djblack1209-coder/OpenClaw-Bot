@@ -154,7 +154,6 @@ class CallbackMixin:
                             ai_suggestions=_suggestions,
                         )
                     except Exception as e:
-                        pass
                         logger.debug("静默异常: %s", e)
 
                     try:
@@ -182,7 +181,6 @@ class CallbackMixin:
             try:
                 await query.message.reply_text(f"❌ 处理失败，请直接发送: {suggest_text}")
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
 
     async def handle_trade_callback(self, update, context):

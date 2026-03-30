@@ -206,6 +206,15 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         if not self._is_authorized(user.id):
             return
 
+        # ── 输入消毒 — 拦截 XSS/SQL注入/命令注入等攻击载荷 (HI-037) ──
+        # 所有用户消息在进入 LLM/Brain 处理前先过安全过滤
+        try:
+            from src.core.security import get_security_gate
+            _sec_gate = get_security_gate()
+            text = _sec_gate.sanitize_input(text)
+        except Exception as _sanitize_err:
+            logger.debug("输入消毒失败（不阻塞主流程）: %s", _sanitize_err)
+
         # ── 会话恢复问候 — 搬运 Apple Intelligence 摘要 / Slack Catch Up ──
         # 用户超过 4 小时没互动后回来，在首条回复前生成"离线期间发生了什么"摘要
         try:
@@ -233,7 +242,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 m.get("content", "")[:200] for m in _recent
                             )
                 except Exception as e:
-                    pass
                     logger.debug("静默异常: %s", e)
                 # 拼接纠正上下文到消息，让 LLM/Brain 理解这是纠正
                 _corrected_msg = f"[纠正上一条] {text}"
@@ -245,7 +253,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 from src.bot.error_messages import correction_ack
                 await update.message.reply_text(correction_ack())
         except Exception as e:
-            pass  # 纠错检测失败不影响主流程
+            # 纠错检测失败不影响主流程
             logger.debug("静默异常: %s", e)
 
         # ── Brain 追问回答路由 ──────────────────────────────
@@ -270,7 +278,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 _clarify_msg, self.bot_id, getattr(self, 'model', ''), chat_id
                             )
                         except Exception as e:
-                            pass
                             logger.debug("静默异常: %s", e)
                         try:
                             safe = md_to_html(_clarify_msg)
@@ -356,7 +363,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                     ai_suggestions=_ai_suggestions,
                                 )
                             except Exception as e:
-                                pass
                                 logger.debug("静默异常: %s", e)
 
                             try:
@@ -942,7 +948,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 if movers:
                     summary_parts.append(f"📊 自选股异动: {', '.join(movers)}")
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         try:
@@ -954,7 +959,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 if unread and unread > 0:
                     summary_parts.append(f"🛍️ 闲鱼 {unread} 条未读消息")
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         if not summary_parts:

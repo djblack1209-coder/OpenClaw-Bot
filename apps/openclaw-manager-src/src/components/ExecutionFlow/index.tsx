@@ -5,6 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Play, Square, Loader2, Workflow, Terminal, Info } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from '../../lib/tauri';
+import { createLogger } from '@/lib/logger';
+
+// 执行流程模块日志实例
+const executionFlowLogger = createLogger('ExecutionFlow');
 import clsx from 'clsx';
 import dagre from 'dagre';
 
@@ -188,7 +192,7 @@ export function ExecutionFlow() {
       });
 
     } catch (e) {
-      console.error("流程事件解析失败", e);
+      executionFlowLogger.error('流程事件解析失败', e);
     }
   }, [addLog, edges, setEdges, setNodes]);
 
@@ -215,7 +219,7 @@ export function ExecutionFlow() {
           }
         }
       } catch (e) {
-        console.error("[ExecutionFlow] 日志轮询失败:", e);
+        executionFlowLogger.error('[ExecutionFlow] 日志轮询失败:', e);
       }
     };
     

@@ -8,7 +8,10 @@ import {
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { api, isTauri, clawbotFetch } from '@/lib/tauri';
+import { api, isTauri, clawbotFetch, type TradingStatusResponse } from '@/lib/tauri';
+import { createLogger } from '@/lib/logger';
+
+const moneyLogger = createLogger('Money');
 
 interface ActionStatus {
   running: boolean;
@@ -47,13 +50,11 @@ export function Money() {
   const [ibkrConnected, setIbkrConnected] = useState(false);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
-  const [, setDataLoading] = useState(true);
-
   // 尝试从后端获取交易数据
   useEffect(() => {
     const fetchTradingData = async () => {
       try {
-        let data: Record<string, unknown>;
+        let data: TradingStatusResponse;
         if (isTauri()) {
           // Tauri 环境：通过 IPC 调用
           data = await api.clawbotTradingStatus();
@@ -63,13 +64,11 @@ export function Money() {
           if (!resp.ok) return;
           data = await resp.json();
         }
-        setIbkrConnected((data?.connected ?? false) as boolean);
-        if (data?.chart_data) setChartData(data.chart_data as ChartDataPoint[]);
-        if (data?.assets) setAssets(data.assets as AssetItem[]);
-      } catch {
-        // 后端不可达时保持默认的断开状态
-      } finally {
-        setDataLoading(false);
+        setIbkrConnected(data?.connected ?? false);
+        if (data?.chart_data) setChartData(data.chart_data);
+        if (data?.assets) setAssets(data.assets);
+      } catch (e) {
+        moneyLogger.warn('获取交易数据失败，保持默认断开状态', e);
       }
     };
     fetchTradingData();
@@ -88,8 +87,7 @@ export function Money() {
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         const data = await api.omegaProcess(text);
-        const d = data as Record<string, string>;
-        result = d?.result || d?.response || '执行完成';
+        result = data?.result || data?.response || '执行完成';
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/omega/process', {

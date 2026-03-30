@@ -5,6 +5,9 @@ import {
   Code2, ListTodo, Settings, FileCode, Play, Loader2,
   Terminal, Cpu, HardDrive, MemoryStick, RefreshCw
 } from 'lucide-react';
+import { createLogger } from '@/lib/logger';
+
+const devLogger = createLogger('Dev');
 
 interface ActionStatus {
   running: boolean;
@@ -37,7 +40,7 @@ export function Dev() {
       try {
         const res = await invoke<SystemResources>('get_system_resources');
         setResources(res);
-      } catch { /* Tauri 命令可能尚未注册 */ }
+      } catch (e) { devLogger.debug('系统资源查询失败（Tauri命令可能尚未注册）', e); }
     };
     poll();
     const timer = setInterval(poll, 15000);

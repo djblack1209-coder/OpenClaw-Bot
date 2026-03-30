@@ -969,7 +969,6 @@ class ChineseNLPMixin:
                                     source="nlp_bill_update",
                                 ))
                             except Exception as e:
-                                pass
                                 logger.debug("静默异常: %s", e)
                         await update.message.reply_text(msg)
                     else:

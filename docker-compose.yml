@@ -6,7 +6,7 @@ services:
       - "6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "${REDIS_PASSWORD:-openclaw_redis_2026}"
     restart: unless-stopped
     deploy:
       resources:
@@ -36,7 +36,7 @@ services:
     env_file:
       - ./packages/clawbot/config/.env
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-openclaw_redis_2026}@redis:6379/0
       - OMEGA_DAILY_BUDGET=50.0
     depends_on:
       redis:

@@ -112,7 +112,7 @@ export function AIConfig() {
         const context = await api.getProjectContext();
         setProjectContext(context);
       } catch (e) {
-        console.debug('[AIConfig] 获取项目上下文失败:', e);
+        aiLogger.debug('[AIConfig] 获取项目上下文失败:', e);
       }
       aiLogger.info(`加载完成: ${officials.length} 个官方 Provider, ${config.configured_providers.length} 个已配置`);
     } catch (e) {

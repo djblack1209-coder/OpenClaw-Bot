@@ -15,6 +15,10 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { api, type ProjectContext } from '../../lib/tauri';
+import { createLogger } from '@/lib/logger';
+
+// 设置模块日志实例
+const settingsLogger = createLogger('Settings');
 
 interface InstallResult {
   success: boolean;
@@ -103,7 +107,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
       const { open } = await import('@tauri-apps/plugin-shell');
       await open(projectContext?.config_dir ?? (await invoke<{ config_dir: string }>('get_system_info')).config_dir);
     } catch (e) {
-      console.error('打开目录失败:', e);
+      settingsLogger.error('打开目录失败:', e);
       toast.error('打开目录失败: ' + (e instanceof Error ? e.message : '未知错误'));
     }
   };

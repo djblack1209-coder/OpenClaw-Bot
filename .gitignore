@@ -130,3 +130,7 @@ apps/OpenClaw.app/
 
 # === Playwright 调试产物 ===
 .playwright-cli/
+
+# === 浏览器代理密钥池（含真实 API Key）===
+packages/clawbot/browser-agent/keypool.json
+packages/clawbot/browser-agent/*.json

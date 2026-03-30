@@ -7,6 +7,7 @@ import { QuickActions } from './QuickActions';
 import { SystemInfo } from './SystemInfo';
 import { Setup } from '../Setup';
 import { api, ServiceStatus, isTauri } from '../../lib/tauri';
+import { dashboardLogger } from '../../lib/logger';
 import { Terminal, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import { EnvironmentStatus } from '../../App';
@@ -38,7 +39,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       setStatus(result);
       statusFailedRef.current = false;
     } catch (e) {
-      console.warn('获取状态失败', e);
+      dashboardLogger.warn('获取状态失败', e);
       if (!statusFailedRef.current) {
         statusFailedRef.current = true;
         toast.warning('服务连接异常，状态刷新暂停');
@@ -55,7 +56,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       setLogs(result);
       logsFailedRef.current = false;
     } catch (e) {
-      console.warn('获取日志失败', e);
+      dashboardLogger.warn('获取日志失败', e);
       if (!logsFailedRef.current) {
         logsFailedRef.current = true;
         toast.warning('服务连接异常，日志刷新暂停');
@@ -92,7 +93,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchStatus();
       await fetchLogs();
     } catch (e) {
-      console.error('启动失败:', e);
+      dashboardLogger.error('启动失败:', e);
       toast.error('启动失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);
@@ -107,7 +108,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchStatus();
       await fetchLogs();
     } catch (e) {
-      console.error('停止失败:', e);
+      dashboardLogger.error('停止失败:', e);
       toast.error('停止失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);
@@ -122,7 +123,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       await fetchStatus();
       await fetchLogs();
     } catch (e) {
-      console.error('重启失败:', e);
+      dashboardLogger.error('重启失败:', e);
       toast.error('重启失败: ' + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setActionLoading(false);

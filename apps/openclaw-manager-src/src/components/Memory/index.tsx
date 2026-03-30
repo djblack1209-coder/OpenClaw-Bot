@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api, isTauri, clawbotFetch } from '@/lib/tauri';
+import { api, isTauri, clawbotFetch, type MemorySearchResponse, type MemoryEntryRaw } from '@/lib/tauri';
+import { createLogger } from '@/lib/logger';
 
 import clsx from 'clsx';
+
+const memoryLogger = createLogger('Memory');
 
 interface MemoryEntry {
   key: string;
@@ -15,18 +18,6 @@ interface MemoryEntry {
 }
 
 // API 返回的记忆条目原始格式
-interface MemoryApiResult {
-  key?: string;
-  id?: string;
-  value?: string | Record<string, unknown>;
-  content?: string;
-  source_bot?: string;
-  source?: string;
-  importance?: number;
-  score?: number;
-  updated_at?: number;
-}
-
 export function Memory() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +41,8 @@ export function Memory() {
       }
       setEntries(prev => prev.filter(e => e.key !== key));
     } catch (e) {
-      console.warn('删除记忆失败:', e);
+      memoryLogger.error('删除记忆失败', e);
+      alert('删除失败，请稍后重试');
     }
   };
 
@@ -77,19 +69,20 @@ export function Memory() {
       setEntries(prev => prev.map(e => e.key === editingKey ? { ...e, value: editValue } : e));
       setEditingKey(null);
     } catch (e) {
-      console.warn('更新记忆失败:', e);
+      memoryLogger.error('更新记忆失败', e);
+      alert('更新失败，请稍后重试');
     }
   };
 
   const fetchMemories = async () => {
     try {
       setLoading(true);
-      let results: Record<string, unknown>[] = [];
+      let results: MemoryEntryRaw[] = [];
 
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
-        const data = await api.clawbotMemorySearch('', 50) as Record<string, unknown>;
-        results = (data?.results || data?.entries || data || []) as Record<string, unknown>[];
+        const data: MemorySearchResponse = await api.clawbotMemorySearch('', 50);
+        results = data?.results || data?.entries || [];
       } else {
         // 降级: 直接HTTP调用
         const resp = await clawbotFetch('/api/v1/memory/search?q=&limit=50');
@@ -100,7 +93,7 @@ export function Memory() {
       }
 
       if (Array.isArray(results) && results.length > 0) {
-        setEntries(results.map((r: MemoryApiResult) => ({
+        setEntries(results.map((r: MemoryEntryRaw) => ({
           key: r.key || r.id || 'unknown',
           value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
           source_bot: r.source_bot || r.source || 'system',
@@ -111,7 +104,7 @@ export function Memory() {
         setEntries([]);
       }
     } catch (e) {
-      console.warn('记忆API不可用，显示空状态:', e);
+      memoryLogger.warn('记忆API不可用，显示空状态', e);
       setEntries([]);
     } finally {
       setLoading(false);

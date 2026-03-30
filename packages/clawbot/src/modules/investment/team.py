@@ -745,7 +745,6 @@ class StrategyHealthMonitor:
                     except RuntimeError as e:  # noqa: F841
                         pass
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             return reason
         return None

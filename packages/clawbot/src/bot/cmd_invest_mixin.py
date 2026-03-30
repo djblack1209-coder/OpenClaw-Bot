@@ -376,7 +376,6 @@ class InvestCommandsMixin:
                 elif isinstance(positions, list):
                     current_positions = positions
             except Exception as e:
-                pass
                 logger.debug("静默异常: %s", e)
             check = rm.check_trade(symbol=symbol, side="BUY", quantity=quantity,
                                    entry_price=price, stop_loss=sl,

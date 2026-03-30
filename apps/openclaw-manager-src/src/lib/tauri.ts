@@ -234,6 +234,109 @@ export interface ProjectContext {
   settings_file: string;
 }
 
+// ── ClawBot API 响应类型定义 ──────────────────────────────────
+
+// 自进化系统 — 统计数据
+export interface EvolutionStatsRaw {
+  total_proposals?: number;
+  proposals_count?: number;
+  total_scans?: number;
+  scans_count?: number;
+  capability_gaps?: number;
+  gaps_count?: number;
+  last_scan?: string;
+  last_scan_at?: string;
+  approved?: number;
+  rejected?: number;
+  pending?: number;
+}
+
+// 自进化系统 — 能力缺口条目
+export interface CapabilityGapRaw {
+  module?: string;
+  category?: string;
+  description?: string;
+  gap?: string;
+  name?: string;
+  priority?: string;
+  severity?: string;
+  discovered_at?: string;
+  created_at?: string;
+}
+
+// 自进化系统 — 能力缺口响应（数组或包装对象）
+export interface EvolutionGapsRaw {
+  gaps?: CapabilityGapRaw[];
+  data?: CapabilityGapRaw[];
+}
+
+// 自进化系统 — 提案条目
+export interface EvolutionProposalRaw {
+  id?: string;
+  proposal_id?: string;
+  repo_name?: string;
+  repo?: string;
+  name?: string;
+  repo_url?: string;
+  url?: string;
+  stars?: number;
+  stargazers_count?: number;
+  growth_rate?: number;
+  weekly_growth?: number;
+  target_module?: string;
+  module?: string;
+  value_score?: number;
+  score?: number;
+  difficulty_score?: number;
+  difficulty?: number;
+  risk_level?: string;
+  risk?: string;
+  integration_approach?: string;
+  approach?: string;
+  status?: string;
+  created_at?: string;
+}
+
+// 自进化系统 — 提案列表响应（数组或包装对象）
+export interface EvolutionProposalsRaw {
+  proposals?: EvolutionProposalRaw[];
+  data?: EvolutionProposalRaw[];
+}
+
+// 交易系统 — 实时状态响应
+export interface TradingStatusResponse {
+  connected?: boolean;
+  chart_data?: Array<{ name: string; value: number }>;
+  assets?: Array<{ name: string; value: number; pnl: number }>;
+  [key: string]: unknown;
+}
+
+// 记忆系统 — 搜索响应
+export interface MemorySearchResponse {
+  results?: MemoryEntryRaw[];
+  entries?: MemoryEntryRaw[];
+}
+
+// 记忆系统 — 条目
+export interface MemoryEntryRaw {
+  key?: string;
+  id?: string;
+  value?: string | Record<string, unknown>;
+  content?: string;
+  source_bot?: string;
+  source?: string;
+  importance?: number;
+  score?: number;
+  updated_at?: number;
+}
+
+// OMEGA — 通用处理响应
+export interface OmegaProcessResponse {
+  result?: string;
+  response?: string;
+  [key: string]: unknown;
+}
+
 // API 封装（带日志）
 export const api = {
   // 服务管理
@@ -365,7 +468,7 @@ export const api = {
 
   // 获取交易系统实时状态（连接、持仓、图表数据）
   clawbotTradingStatus: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_trading_status'),
+    invokeWithLog<TradingStatusResponse>('clawbot_api_trading_status'),
 
   // ──── 社媒运营 ────
 
@@ -451,7 +554,7 @@ export const api = {
 
   // 搜索记忆库
   clawbotMemorySearch: (query: string, limit?: number, mode?: string, category?: string) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_memory_search', { query, limit, mode, category }),
+    invokeWithLog<MemorySearchResponse>('clawbot_api_memory_search', { query, limit, mode, category }),
 
   // 删除指定记忆条目
   clawbotMemoryDelete: (key: string) =>
@@ -479,15 +582,15 @@ export const api = {
 
   // 获取进化提案列表
   clawbotEvolutionProposals: (status?: string, limit?: number) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_proposals', { status, limit }),
+    invokeWithLog<EvolutionProposalsRaw>('clawbot_api_evolution_proposals', { status, limit }),
 
   // 获取能力缺口分析
   clawbotEvolutionGaps: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_gaps'),
+    invokeWithLog<EvolutionGapsRaw>('clawbot_api_evolution_gaps'),
 
   // 自进化统计数据
   clawbotEvolutionStats: () =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_evolution_stats'),
+    invokeWithLog<EvolutionStatsRaw>('clawbot_api_evolution_stats'),
 
   // 更新进化提案状态
   clawbotEvolutionUpdateProposal: (proposalId: string, status: string) =>
@@ -523,7 +626,7 @@ export const api = {
 
   // OMEGA Brain 处理消息
   omegaProcess: (message: string) =>
-    invokeWithLog<Record<string, unknown>>('clawbot_api_omega_process', { message }),
+    invokeWithLog<OmegaProcessResponse>('clawbot_api_omega_process', { message }),
 
   // OMEGA 投资团队状态
   omegaInvestmentTeam: () =>
@@ -546,12 +649,14 @@ export const api = {
     invokeWithLog<Record<string, unknown>>('clawbot_api_omega_media_models'),
 };
 
-export const CLAWBOT_WS_URL = `ws://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;
+// WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost
+const CLAWBOT_API_HOST = import.meta.env.VITE_API_HOST || '127.0.0.1';
+export const CLAWBOT_WS_URL = `ws://${CLAWBOT_API_HOST}:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;
 
 // ── API Token 认证 ──
 // 浏览器降级模式下的 HTTP 请求需要携带 X-API-Token
 const CLAWBOT_API_TOKEN = import.meta.env.VITE_CLAWBOT_API_TOKEN || '';
-const CLAWBOT_API_BASE = `http://127.0.0.1:${import.meta.env.VITE_API_PORT || '18790'}`;
+const CLAWBOT_API_BASE = `http://${CLAWBOT_API_HOST}:${import.meta.env.VITE_API_PORT || '18790'}`;
 
 /**
  * 带认证的 fetch 封装 — 浏览器降级模式下自动附加 X-API-Token

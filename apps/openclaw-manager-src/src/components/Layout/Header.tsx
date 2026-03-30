@@ -3,6 +3,10 @@ import { PageType } from '../../App';
 import { RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '@/lib/logger';
+
+// Header 组件日志记录器
+const headerLogger = createLogger('Header');
 
 interface HeaderProps {
   currentPage: PageType;
@@ -36,9 +40,10 @@ export function Header({ currentPage }: HeaderProps) {
       const url = await invoke<string>('get_dashboard_url');
       await open(url);
     } catch (e) {
-      console.error('打开 Dashboard 失败:', e);
-      // 降级方案：使用 window.open（不带 token）
-      window.open('http://localhost:18789', '_blank');
+      headerLogger.error('打开 Dashboard 失败:', e);
+      // 降级方案：使用 window.open（不带 token），端口从环境变量读取
+      const fallbackPort = import.meta.env.VITE_DASHBOARD_PORT || '18789';
+      window.open(`http://localhost:${fallbackPort}`, '_blank');
     } finally {
       setOpening(false);
     }

@@ -367,7 +367,6 @@ class APIMixin:
             elif _tone == "detailed":
                 _sys_prompt += "\n\n[语气感知] 用户当前很有耐心，可以详细展开分析。"
         except Exception as e:
-            pass
             logger.debug("静默异常: %s", e)
 
         try:
