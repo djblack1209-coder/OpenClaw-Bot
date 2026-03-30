@@ -1,6 +1,6 @@
 # API_POOL_REGISTRY — LLM API 号池注册表
 
-> 最后更新: 2026-03-26
+> 最后更新: 2026-03-31
 > 本文件记录所有 API 提供商、Key 状态、官方限制、模型可用性。修改 API Key 或新增提供商时必须同步更新。
 
 ---
@@ -35,7 +35,7 @@
 | 19 | fal.ai | 图像/视频生成 | 按额度 | `FAL_KEY` |
 | 20 | Deepgram | 语音转文字 | 按额度 | `DEEPGRAM_API_KEY` |
 | 21 | Mem0 Cloud | 云端记忆 | 按额度 | `MEM0_API_KEY` |
-| 22 | Kling AI | 视频生成 | 按额度 | `KLING_ACCESS_KEY` |
+| 22 | Kling AI | 视频生成 | 按额度 | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` |
 | 23 | Manus AI | 联网搜索+编程 | 按额度 | `MANUS_API_KEY` |
 | 24 | Vercel AI Gateway | AI网关 | 按额度 | `VERCEL_AI_KEY` |
 | 25 | HuggingFace | 模型部署 | 免费额度 | `HUGGINGFACE_TOKEN` |
@@ -43,6 +43,9 @@
 | 27 | Brave Search | 网页搜索 | 50QPS | `BRAVE_SEARCH_API_KEY` |
 | 28 | CloudConvert | 文件格式转换 | 按额度 | `CLOUDCONVERT_API_KEY` |
 | 29 | Tavily | AI搜索 | 免费1000次/月 | `TAVILY_API_KEY` |
+| 30 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
+| 31 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
+| 32 | 微信通知 | 微信消息推送 | 无 | `WECHAT_NOTIFY_ENABLED` |
 
 ---
 

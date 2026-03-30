@@ -537,7 +537,15 @@
 | message_mixin.py | `src/bot/message_mixin.py` | 1128 | 消息处理 + 流式输出 + 链式工作流 (从1914行拆分) |
 | chinese_nlp_mixin.py | `src/bot/chinese_nlp_mixin.py` | 565 | 中文NLP命令匹配(模糊容错) + ticker映射 + 噪音清洗 + "你是不是想说"建议 |
 | ocr_mixin.py | `src/bot/ocr_mixin.py` | 325 | 图片/文档OCR处理 (从message_mixin提取) |
-| chat_router.py | `src/chat_router.py` | ~1200 | 群聊路由 + 讨论管理 + 优先级队列 |
+| **路由包 (src/routing/)** | | **~1563 (8文件)** | **从 chat_router.py 拆分的群聊智能路由包** |
+| \_\_init\_\_.py | `src/routing/__init__.py` | 72 | routing 包入口 — 群聊智能路由 + 协作编排 |
+| constants.py | `src/routing/constants.py` | 105 | 路由常量 — 意图关键词、分流规则、触发词 |
+| models.py | `src/routing/models.py` | 101 | 路由数据模型 — dataclass 和 Enum 定义 |
+| orchestrator.py | `src/routing/orchestrator.py` | 364 | CollabOrchestrator — 多 Bot 协作编排器 |
+| priority_queue.py | `src/routing/priority_queue.py` | 73 | PriorityMessageQueue — 优先级消息队列 |
+| router.py | `src/routing/router.py` | 475 | ChatRouter — 群聊消息智能路由器 |
+| sessions.py | `src/routing/sessions.py` | 251 | SessionMixin — 讨论会话 + 服务工作流管理 |
+| streaming.py | `src/routing/streaming.py` | 122 | StreamingResponse — 流式传输支持 |
 | litellm_router.py | `src/litellm_router.py` | ~830 | LiteLLM 统一路由: 15+ provider, 50+ deployment, 模型强度排名, 10条付费硅基Key池, validate_keys() 健康验证 |
 | smart_memory.py | `src/smart_memory.py` | ~800 | mem0 集成 + 用户画像 |
 | shared_memory.py | `src/shared_memory.py` | 1111 | ✅ 共享记忆层 v4.0: Mem0 Cloud → qdrant → SQLite 三级降级, user_id 隔离 + Cloud API 签名兼容, 冲突检测 + 重要性衰减 + 自动压缩 |
