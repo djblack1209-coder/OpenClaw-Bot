@@ -94,7 +94,6 @@
 | HI-382 | `backend` | 多文件 | P7: 硬编码 LLM 模型名散落在多个文件中 — 应提取到 litellm_router 或 constants.py (中等成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
-| HI-385 | `backend` | `data_providers.py` | ~~5处类型注解引用未定义的 `pd` (pandas) — 需要 `TYPE_CHECKING` 条件导入或改用字符串注解~~ **已解决**: 添加 `TYPE_CHECKING` 条件导入 (2026-03-31) | 2026-03-30 |
 | HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 2026-03-30 |
 | HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 — 首次解析为公网IP通过检查后,DNS切换到内网IP | 2026-03-30 |
 

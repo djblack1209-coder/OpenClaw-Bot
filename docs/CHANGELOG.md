@@ -5,6 +5,62 @@
 
 ---
 
+## [2026-03-31] P5 文档完整性 + 工程基础设施审计
+
+> 领域: `docs`, `infra`
+> 影响模块: 4 个注册表, HEALTH.md, CI/CD, 工程配置
+> 关联问题: HI-385 移出活跃
+
+### 变更内容
+
+#### D1-D2: MODULE_REGISTRY + PROJECT_MAP
+- MODULE_REGISTRY 行数/描述与代码实际值对齐
+- PROJECT_MAP 7 处过时信息修正 (文件数/行数/模块数/Docker数)
+
+#### D3: DEPENDENCY_MAP
+- 替换已移除的 `tiktoken` 行为 `RestrictedPython>=8.0` (code_tool.py 实际使用)
+- `fpdf2` 标注「⚠️ 已注释 (HI-366)」
+
+#### D4: COMMAND_REGISTRY
+- 全表重新编号: 修复 1.4-1.7 节与前节编号重叠问题 (旧 #37-86 → 新 #44-94)
+- 修复 #86 重复编号 (`/bill` + `/pricewatch`)
+- 总数从错误的 87 更正为 94
+
+#### D5: API_POOL_REGISTRY
+- 新增 `KLING_SECRET_KEY` (与 KLING_ACCESS_KEY 配对)
+- 新增 `XIANYU_LLM_API_KEY` / `XIANYU_LLM_BASE_URL` / `XIANYU_LLM_MODEL` (闲鱼AI客服)
+- 新增 `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_HOST` (LLM观测)
+- 新增 `WECHAT_NOTIFY_ENABLED` (微信通知开关)
+
+#### D6: HEALTH.md
+- HI-385 从活跃问题中移除 (已在已解决区，活跃区残留清理)
+
+#### E1-E6: 工程基础设施
+- 新建 `.github/workflows/ci.yml` — monorepo 级 CI (pytest + tsc --noEmit)
+- 新建 `packages/clawbot/ruff.toml` — Python 代码检查配置
+- 修复 `requirements-dev.txt` — `pytest-asyncio~=1.2.0` → `>=1.2.0`, `pytest-cov~=7.0.0` → `>=7.0.0` (与实际安装版本兼容)
+- 新建根目录 `Makefile` — test/lint/format/typecheck/docker 快捷命令
+- 新建 `.editorconfig` — 跨编辑器格式统一
+- 新建 `.pre-commit-config.yaml` — 提交前自动检查 (ruff + detect-secrets)
+
+#### 回归验证
+- Python pytest: 1047/1047 passed
+- TypeScript: 0 errors
+
+### 文件变更
+- `docs/registries/MODULE_REGISTRY.md` — 行数/描述修正
+- `docs/PROJECT_MAP.md` — 7 处过时数据修正
+- `docs/registries/DEPENDENCY_MAP.md` — tiktoken→RestrictedPython, fpdf2 标注
+- `docs/registries/COMMAND_REGISTRY.md` — 全表重编号 (#44-94), 总数 94
+- `docs/registries/API_POOL_REGISTRY.md` — 新增 4 条 (7 个环境变量)
+- `docs/status/HEALTH.md` — HI-385 活跃残留移除
+- `.github/workflows/ci.yml` — 新建: monorepo CI
+- `packages/clawbot/ruff.toml` — 新建: Python linter 配置
+- `packages/clawbot/requirements-dev.txt` — 版本限制放宽
+- `Makefile` — 新建: 根目录任务入口
+- `.editorconfig` — 新建: 编辑器格式
+- `.pre-commit-config.yaml` — 新建: pre-commit hooks
+
 ## [2026-03-31] P4 UI/UX 审计 Batch 4 — 页面级 ErrorBoundary + Settings 未保存变更警告
 
 > 领域: `frontend`

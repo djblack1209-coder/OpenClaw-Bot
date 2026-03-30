@@ -1,10 +1,10 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-03-28 | 新增 /backtest 高级分析子命令 (monte/optimize/walkforward) + 中文触发词，总数 92
+> 最后更新: 2026-03-31 | P5审计修正编号冲突+重新编号，总数 94
 
 ---
 
-## 1. 注册命令一览（91 个）
+## 1. 注册命令一览（94 个）
 
 命令在 `multi_bot.py:171-340` 统一注册。
 
@@ -36,106 +36,106 @@
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 19 | `/quote` | `cmd_quote` | 行情查询 (富卡片 + 操作按钮) | Y |
-| 20 | `/market` | `cmd_market` | 市场概览 | Y |
-| 21 | `/portfolio` | `cmd_portfolio` | 投资组合 (卡片 + 风险敞口 + SPY对标 + 饼图 + 行业分布 + IBKR) | Y |
-| 22 | `/buy` | `cmd_buy` | 模拟买入 (风控→IBKR→模拟降级) | Y |
-| 23 | `/sell` | `cmd_sell` | 模拟卖出 | Y |
-| 24 | `/watchlist` | `cmd_watchlist` | 自选股管理 | N |
-| 25 | `/trades` | `cmd_trades` | 交易记录 + PnL 图表 | N |
-| 26 | `/reset_portfolio` | `cmd_reset_portfolio` | 重置投资组合 | N |
-| 27 | `/export` | `cmd_export` | 导出 trades/watchlist/portfolio/expenses/xianyu (xlsx/csv) | N |
+| 20 | `/quote` | `cmd_quote` | 行情查询 (富卡片 + 操作按钮) | Y |
+| 21 | `/market` | `cmd_market` | 市场概览 | Y |
+| 22 | `/portfolio` | `cmd_portfolio` | 投资组合 (卡片 + 风险敞口 + SPY对标 + 饼图 + 行业分布 + IBKR) | Y |
+| 23 | `/buy` | `cmd_buy` | 模拟买入 (风控→IBKR→模拟降级) | Y |
+| 24 | `/sell` | `cmd_sell` | 模拟卖出 | Y |
+| 25 | `/watchlist` | `cmd_watchlist` | 自选股管理 | N |
+| 26 | `/trades` | `cmd_trades` | 交易记录 + PnL 图表 | N |
+| 27 | `/reset_portfolio` | `cmd_reset_portfolio` | 重置投资组合 | N |
+| 28 | `/export` | `cmd_export` | 导出 trades/watchlist/portfolio/expenses/xianyu (xlsx/csv) | N |
 
 ### 1.3 技术分析 — `AnalysisCommandsMixin` (cmd_analysis_mixin.py, 362 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 28 | `/ta` | `cmd_ta` | 全套超短线技术指标 | Y |
-| 29 | `/scan` | `cmd_scan` | 市场多标的扫描 | N |
-| 30 | `/signal` | `cmd_signal` | 快速买卖信号 (多标的并行) | N |
-| 31 | `/performance` | `cmd_performance` | 绩效仪表盘 | N |
-| 32 | `/review` | `cmd_review` | AI 团队复盘今日交易 | N |
-| 33 | `/journal` | `cmd_journal` | 交易日志 (持仓 + 已平仓) | N |
-| 34 | `/chart` | `cmd_chart` | K线图 (MA+成交量, Plotly candlestick) | N |
-| 35 | `/drl` | `cmd_drl` | DRL 强化学习策略分析 (PPO, FinRL) | N |
-| 36 | `/factors` | `cmd_factors` | 16 Alpha 因子分析 (Qlib, LightGBM) | N |
-| 37 | `/calc` | `cmd_calc` | 仓位计算器: 固定比例法+凯利公式 (搬运 TradingView Position Size Calculator) | N |
-| 38 | `/weekly` | `cmd_weekly` | 综合周报 (投资+社媒+闲鱼+成本 7 天聚合) | N |
-| 39 | `/accuracy` | `cmd_accuracy` | AI预测准确率面板 (按AI分组显示历史预测表现) | N |
-| 40 | `/equity` | `cmd_equity` | 权益曲线图表 (按日聚合累计收益变化) | N |
-| 41 | `/targets` | `cmd_targets` | 盈利目标进度 (日/周/月目标达成百分比) | N |
-| 42 | `/review_history` | `cmd_review_history` | 复盘历史查询 (近N次复盘记录+教训+星级评分) | N |
+| 29 | `/ta` | `cmd_ta` | 全套超短线技术指标 | Y |
+| 30 | `/scan` | `cmd_scan` | 市场多标的扫描 | N |
+| 31 | `/signal` | `cmd_signal` | 快速买卖信号 (多标的并行) | N |
+| 32 | `/performance` | `cmd_performance` | 绩效仪表盘 | N |
+| 33 | `/review` | `cmd_review` | AI 团队复盘今日交易 | N |
+| 34 | `/journal` | `cmd_journal` | 交易日志 (持仓 + 已平仓) | N |
+| 35 | `/chart` | `cmd_chart` | K线图 (MA+成交量, Plotly candlestick) | N |
+| 36 | `/drl` | `cmd_drl` | DRL 强化学习策略分析 (PPO, FinRL) | N |
+| 37 | `/factors` | `cmd_factors` | 16 Alpha 因子分析 (Qlib, LightGBM) | N |
+| 38 | `/calc` | `cmd_calc` | 仓位计算器: 固定比例法+凯利公式 (搬运 TradingView Position Size Calculator) | N |
+| 39 | `/weekly` | `cmd_weekly` | 综合周报 (投资+社媒+闲鱼+成本 7 天聚合) | N |
+| 40 | `/accuracy` | `cmd_accuracy` | AI预测准确率面板 (按AI分组显示历史预测表现) | N |
+| 41 | `/equity` | `cmd_equity` | 权益曲线图表 (按日聚合累计收益变化) | N |
+| 42 | `/targets` | `cmd_targets` | 盈利目标进度 (日/周/月目标达成百分比) | N |
+| 43 | `/review_history` | `cmd_review_history` | 复盘历史查询 (近N次复盘记录+教训+星级评分) | N |
 
 ### 1.4 IBKR 实盘 — `IBKRCommandsMixin` (cmd_ibkr_mixin.py, 165 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 37 | `/ibuy` | `cmd_ibuy` | IBKR 买入 (市价/限价) | N |
-| 38 | `/isell` | `cmd_isell` | IBKR 卖出 | N |
-| 39 | `/ipositions` | `cmd_ipositions` | IBKR 持仓查询 | N |
-| 40 | `/iorders` | `cmd_iorders` | IBKR 挂单查询 | N |
-| 41 | `/iaccount` | `cmd_iaccount` | IBKR 账户信息 + 预算 | N |
-| 42 | `/icancel` | `cmd_icancel` | 取消 IBKR 订单 | N |
+| 44 | `/ibuy` | `cmd_ibuy` | IBKR 买入 (市价/限价) | N |
+| 45 | `/isell` | `cmd_isell` | IBKR 卖出 | N |
+| 46 | `/ipositions` | `cmd_ipositions` | IBKR 持仓查询 | N |
+| 47 | `/iorders` | `cmd_iorders` | IBKR 挂单查询 | N |
+| 48 | `/iaccount` | `cmd_iaccount` | IBKR 账户信息 + 预算 | N |
+| 49 | `/icancel` | `cmd_icancel` | 取消 IBKR 订单 | N |
 
 ### 1.5 自动交易 — `TradingCommandsMixin` (cmd_trading_mixin.py, 399 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 43 | `/autotrader` | `cmd_autotrader` | AutoTrader 控制 (start/stop/auto/manual/cycle/confirm/cancel) | N |
-| 44 | `/risk` | `cmd_risk` | 风控状态 + IBKR 实时数据 | Y |
-| 45 | `/monitor` | `cmd_monitor` | 持仓监控 (卡片 + 饼图) | N |
-| 46 | `/tradingsystem` | `cmd_tradingsystem` | 交易系统全状态 | N |
-| 47 | `/backtest` | `cmd_backtest` | 回测 (自研引擎 / Freqtrade + Bokeh + 高级分析) | Y |
-| 48 | `/rebalance` | `cmd_rebalance` | 再平衡 (preset 配置 + 漂移分析) | N |
+| 50 | `/autotrader` | `cmd_autotrader` | AutoTrader 控制 (start/stop/auto/manual/cycle/confirm/cancel) | N |
+| 51 | `/risk` | `cmd_risk` | 风控状态 + IBKR 实时数据 | Y |
+| 52 | `/monitor` | `cmd_monitor` | 持仓监控 (卡片 + 饼图) | N |
+| 53 | `/tradingsystem` | `cmd_tradingsystem` | 交易系统全状态 | N |
+| 54 | `/backtest` | `cmd_backtest` | 回测 (自研引擎 / Freqtrade + Bokeh + 高级分析) | Y |
+| 55 | `/rebalance` | `cmd_rebalance` | 再平衡 (preset 配置 + 漂移分析) | N |
 
 ### 1.6 协作命令 — `CollabCommandsMixin` (cmd_collab_mixin.py, 824 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 49 | `/invest` | `cmd_invest` | 6 位 AI 投资分析会议 | Y |
-| 50 | `/discuss` | `cmd_discuss` | 多 Bot 多轮讨论 (1-10 轮) | N |
-| 51 | `/stop_discuss` | `cmd_stop_discuss` | 中断讨论/投资会议 | N |
-| 52 | `/collab` | `cmd_collab` | 多模型协作 (规划→执行→审查→汇总) | N |
+| 56 | `/invest` | `cmd_invest` | 6 位 AI 投资分析会议 | Y |
+| 57 | `/discuss` | `cmd_discuss` | 多 Bot 多轮讨论 (1-10 轮) | N |
+| 58 | `/stop_discuss` | `cmd_stop_discuss` | 中断讨论/投资会议 | N |
+| 59 | `/collab` | `cmd_collab` | 多模型协作 (规划→执行→审查→汇总) | N |
 
 ### 1.7 执行场景 — `ExecutionCommandsMixin` (cmd_execution_mixin.py, 1737 行)
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 53 | `/ops` | `cmd_ops` | 自动化工作台 (交互菜单) | Y |
-| 54 | `/dev` | `cmd_dev` | 开发流程 (→ops dev) | N |
-| 55 | `/brief` | `cmd_brief` | 执行简报 | N |
-| 56 | `/hot` | `cmd_hot` | 热点发文 (→cmd_hotpost) | Y |
-| 57 | `/hotpost` | `cmd_hotpost` | 抓热点 + 一键发文 (支持 --preview) | N |
-| 58 | `/cost` | `cmd_cost` | 成本/配额/节流状态 | N |
-| 59 | `/config` | `cmd_config` | 运行配置概览 | N |
-| 60 | `/topic` | `cmd_topic` | 题材深度研究 | N |
-| 61 | `/xhs` | `cmd_xhs` | 小红书发文 | N |
-| 62 | `/post` | `cmd_post` | 双平台发文 (无题材→热点) | Y |
-| 63 | `/social_plan` | `cmd_social_plan` | 发文计划 | N |
-| 64 | `/social_repost` | `cmd_social_repost` | 双平台改写草稿 | N |
-| 65 | `/social_launch` | `cmd_social_launch` | 数字生命首发包 | N |
-| 66 | `/social_persona` | `cmd_social_persona` | 当前社媒人设 | N |
-| 67 | `/post_social` | `cmd_post_social` | 双平台发文 (→cmd_post) | N |
-| 68 | `/post_x` | `cmd_post_x` | 发 X (→cmd_xpost) | N |
-| 69 | `/post_xhs` | `cmd_post_xhs` | 发小红书 (→cmd_xhspost) | N |
-| 70 | `/xwatch` | `cmd_xwatch` | X 博主监控导入 | N |
-| 71 | `/xbrief` | `cmd_xbrief` | X 博主更新摘要 | N |
-| 72 | `/xdraft` | `cmd_xdraft` | 生成 X 草稿 | N |
-| 73 | `/xpost` | `cmd_xpost` | 自动发 X | N |
-| 74 | `/xhsdraft` | `cmd_xhsdraft` | 生成小红书草稿 | N |
-| 75 | `/xhspost` | `cmd_xhspost` | 自动发小红书 | N |
-| 76 | `/dualpost` | `cmd_dual_post` | 一键双平台发文 (AI生成→预览→确认) | N |
-| 77 | `/publish` | `cmd_publish` | 社媒多平台发布 — sau_bridge (抖音/B站/小红书/快手) | N |
-| 78 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
-| 79 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
-| 80 | `/social_report` | `cmd_social_report` | 社媒效果报告 + A/B 测试 | N |
-| 81 | `/agent` | `cmd_agent` | 智能 Agent — 自然语言驱动多工具链 (smolagents) | N |
-| 82 | `/novel` | `cmd_novel` | AI 小说工坊 — 网文大纲/续写/导出/TTS (inkos+MuMuAINovel) | N |
-| 83 | `/ship` | `cmd_ship` | 闲鱼卡券管理 — add/stock/rule/stats/test (auto_shipper) | N |
-| 84 | `/xianyu_report` | `cmd_xianyu_report` | 闲鱼收入报表 — 日报/周报/月报 + 爆款排行 + BI三板块(热销排行/高峰时段/转化漏斗) | N |
-| 85 | `/xianyu_style` | `cmd_xianyu_style` | 闲鱼 AI 客服回复配置 — 自定义回复风格/FAQ模板/商品规则 (set/faq/rule/show) | N |
-| 86 | `/bill` | `cmd_bill` | 生活账单追踪 — 话费/水电费余额检测 + 低余额告警 + 定期提醒 (add/update/list/remove + 中文NLP) | N |
-| 86 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
+| 60 | `/ops` | `cmd_ops` | 自动化工作台 (交互菜单) | Y |
+| 61 | `/dev` | `cmd_dev` | 开发流程 (→ops dev) | N |
+| 62 | `/brief` | `cmd_brief` | 执行简报 | N |
+| 63 | `/hot` | `cmd_hot` | 热点发文 (→cmd_hotpost) | Y |
+| 64 | `/hotpost` | `cmd_hotpost` | 抓热点 + 一键发文 (支持 --preview) | N |
+| 65 | `/cost` | `cmd_cost` | 成本/配额/节流状态 | N |
+| 66 | `/config` | `cmd_config` | 运行配置概览 | N |
+| 67 | `/topic` | `cmd_topic` | 题材深度研究 | N |
+| 68 | `/xhs` | `cmd_xhs` | 小红书发文 | N |
+| 69 | `/post` | `cmd_post` | 双平台发文 (无题材→热点) | Y |
+| 70 | `/social_plan` | `cmd_social_plan` | 发文计划 | N |
+| 71 | `/social_repost` | `cmd_social_repost` | 双平台改写草稿 | N |
+| 72 | `/social_launch` | `cmd_social_launch` | 数字生命首发包 | N |
+| 73 | `/social_persona` | `cmd_social_persona` | 当前社媒人设 | N |
+| 74 | `/post_social` | `cmd_post_social` | 双平台发文 (→cmd_post) | N |
+| 75 | `/post_x` | `cmd_post_x` | 发 X (→cmd_xpost) | N |
+| 76 | `/post_xhs` | `cmd_post_xhs` | 发小红书 (→cmd_xhspost) | N |
+| 77 | `/xwatch` | `cmd_xwatch` | X 博主监控导入 | N |
+| 78 | `/xbrief` | `cmd_xbrief` | X 博主更新摘要 | N |
+| 79 | `/xdraft` | `cmd_xdraft` | 生成 X 草稿 | N |
+| 80 | `/xpost` | `cmd_xpost` | 自动发 X | N |
+| 81 | `/xhsdraft` | `cmd_xhsdraft` | 生成小红书草稿 | N |
+| 82 | `/xhspost` | `cmd_xhspost` | 自动发小红书 | N |
+| 83 | `/dualpost` | `cmd_dual_post` | 一键双平台发文 (AI生成→预览→确认) | N |
+| 84 | `/publish` | `cmd_publish` | 社媒多平台发布 — sau_bridge (抖音/B站/小红书/快手) | N |
+| 85 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
+| 86 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
+| 87 | `/social_report` | `cmd_social_report` | 社媒效果报告 + A/B 测试 | N |
+| 88 | `/agent` | `cmd_agent` | 智能 Agent — 自然语言驱动多工具链 (smolagents) | N |
+| 89 | `/novel` | `cmd_novel` | AI 小说工坊 — 网文大纲/续写/导出/TTS (inkos+MuMuAINovel) | N |
+| 90 | `/ship` | `cmd_ship` | 闲鱼卡券管理 — add/stock/rule/stats/test (auto_shipper) | N |
+| 91 | `/xianyu_report` | `cmd_xianyu_report` | 闲鱼收入报表 — 日报/周报/月报 + 爆款排行 + BI三板块(热销排行/高峰时段/转化漏斗) | N |
+| 92 | `/xianyu_style` | `cmd_xianyu_style` | 闲鱼 AI 客服回复配置 — 自定义回复风格/FAQ模板/商品规则 (set/faq/rule/show) | N |
+| 93 | `/bill` | `cmd_bill` | 生活账单追踪 — 话费/水电费余额检测 + 低余额告警 + 定期提醒 (add/update/list/remove + 中文NLP) | N |
+| 94 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
 
 ---
 

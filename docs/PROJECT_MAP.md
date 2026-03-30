@@ -98,25 +98,25 @@ OpenClaw Bot/
 │       │   │   ├── api_mixin.py    #   内控API mixin (371行)
 │       │   │   ├── globals.py      #   全局DI容器 (300行)
 │       │   │   └── rate_limiter.py #   请求限流 (243行)
-│       │   ├── tools/              # 工具服务层 (3,879行)
-│       │   │   ├── humanized_controller.py# macOS桌面控制 (566行)
-│       │   │   ├── comfyui_client.py#  ComfyUI 图片生成 (487行)
-│       │   │   ├── drission_client.py#  反检测浏览器 (349行)
-│       │   │   ├── export_service.py#  Excel/CSV导出 (291行)
-│       │   │   ├── pdf_report.py   #   PDF报告生成 (281行)
-│       │   │   ├── sentiment_service.py# 情感分析 (204行)
+│       │   ├── tools/              # 工具服务层 (3,442行, 18文件)
+│       │   │   ├── export_service.py#  Excel/CSV导出 (540行)
+│       │   │   ├── comfyui_client.py#  ComfyUI 图片生成 (486行)
+│       │   │   ├── code_tool.py    #   代码执行沙箱 (307行)
+│       │   │   ├── free_apis.py    #   免费API聚合 (225行)
+│       │   │   ├── docling_service.py# 文档理解 (215行)
+│       │   │   ├── tavily_search.py#   AI搜索 (206行)
 │       │   │   ├── fal_client.py   #   fal.ai 图片API (190行)
 │       │   │   ├── file_tool.py    #   文件读写 (189行)
-│       │   │   ├── free_apis.py    #   免费API聚合 (183行)
-│       │   │   ├── screen_tool.py  #   屏幕截图 (170行)
-│       │   │   ├── bash_tool.py    #   安全Shell执行 (158行)
-│       │   │   ├── qr_service.py   #   二维码生成 (120行)
+│       │   │   ├── bash_tool.py    #   安全Shell执行 (174行)
+│       │   │   ├── qr_service.py   #   二维码生成 (121行)
 │       │   │   ├── image_tool.py   #   图片处理 (117行)
 │       │   │   ├── jina_reader.py  #   网页摘要 (112行)
-│       │   │   ├── code_tool.py    #   代码执行 (108行)
-│       │   │   ├── memory_tool.py  #   记忆工具 (101行)
+│       │   │   ├── tts_tool.py     #   文字转语音 (112行)
+│       │   │   ├── web_tool.py     #   网页抓取 (113行)
 │       │   │   ├── deepgram_stt.py #   语音转文字 (101行)
-│       │   │   └── web_tool.py     #   网页抓取 (69行)
+│       │   │   ├── memory_tool.py  #   记忆工具 (98行)
+│       │   │   ├── vision.py       #   视觉处理 (65行)
+│       │   │   └── __init__.py     #   工具注册 (71行)
 │       │   ├── xianyu/             # 闲鱼自动客服 (2,379行)
 │       │   │   ├── xianyu_live.py  #   WebSocket实时聊天 (597行)
 │       │   │   ├── xianyu_agent.py #   AI客服Agent (436行)
@@ -167,12 +167,26 @@ OpenClaw Bot/
 │       │   │   ├── deploy_client.py#   部署客户端 (435行)
 │       │   │   ├── license_manager.py# 许可证管理 (232行)
 │       │   │   └── deploy_server.py#   部署服务端 (157行)
+│       │   ├── routing/             # 群聊智能路由包 (1,563行, 8文件)
+│       │   │   ├── orchestrator.py #   路由编排器 (核心)
+│       │   │   ├── router.py       #   路由引擎
+│       │   │   ├── priority_queue.py#  优先级队列
+│       │   │   ├── sessions.py     #   会话管理
+│       │   │   ├── streaming.py    #   流式输出
+│       │   │   ├── models.py       #   数据模型
+│       │   │   └── constants.py    #   常量定义
 │       │   ├── ~~execution_hub.py~~  # ⚠️ DEPRECATED — 已迁移到 src/execution/ 模块化包
-│       │   ├── chat_router.py      # 群聊智能路由+协作编排 (1,415行)
+│       │   ├── chat_router.py      # 群聊路由入口 — 实际逻辑已重构到 src/routing/ 包 (1,415行)
 │       │   ├── auto_trader.py      # 自动交易引擎 (1,530行)
 │       │   ├── trading_system.py   # 交易系统统一入口 (1,431行)
 │       │   ├── shared_memory.py    # 共享记忆层 (1,070行)
-│       │   ├── monitoring.py       # 系统监控 (1,243行)
+│       │   ├── monitoring/          # 系统监控包 (1,393行, 7文件)
+│       │   │   ├── logger.py       #   结构化日志 (433行)
+│       │   │   ├── cost_analyzer.py#   成本分析 (225行)
+│       │   │   ├── health.py       #   健康检查 (224行)
+│       │   │   ├── anomaly_detector.py# 异常检测 (200行)
+│       │   │   ├── metrics.py      #   指标采集 (182行)
+│       │   │   └── alerts.py       #   告警通知 (60行)
 │       │   ├── risk_manager.py     # 风控引擎 (1,183行)
 │       │   ├── trading_journal.py  # 交易日志 (1,170行)
 │       │   ├── backtester.py       # 回测引擎 (1,124行)
@@ -247,8 +261,8 @@ OpenClaw Bot/
     │
     ▼
 ┌─────────────────────────────┐
-│ multi_bot.py                │  Handler 注册, 75个命令
-│ ├─ CommandHandler (/xxx)    │  ← 75个斜杠命令
+│ multi_bot.py                │  Handler 注册, 92个命令
+│ ├─ CommandHandler (/xxx)    │  ← 92个斜杠命令
 │ ├─ MessageHandler (文本)    │  ← 自然语言路由
 │ └─ CallbackQueryHandler     │  ← 13个回调模式
 └─────────────┬───────────────┘
@@ -403,18 +417,18 @@ CREW          # CrewAI 多智能体
 ### 工具层
 | 路径 | 行数 | 说明 |
 |---|---|---|
-| `src/tools/humanized_controller.py` | 566 | macOS 桌面控制 (PyAutoGUI) |
-| `src/tools/comfyui_client.py` | 487 | ComfyUI 图片生成 |
-| `src/tools/drission_client.py` | 349 | 反检测浏览器 (DrissionPage) |
-| `src/tools/export_service.py` | 291 | Excel/CSV 导出 |
-| `src/tools/pdf_report.py` | 281 | PDF 报告 (fpdf2) |
-| `src/tools/sentiment_service.py` | 204 | 情感分析 |
+| `src/tools/export_service.py` | 540 | Excel/CSV 导出 |
+| `src/tools/comfyui_client.py` | 486 | ComfyUI 图片生成 |
+| `src/tools/code_tool.py` | 307 | 代码执行沙箱 (RestrictedPython) |
+| `src/tools/free_apis.py` | 225 | 免费 API 聚合 |
+| `src/tools/docling_service.py` | 215 | 文档理解引擎 (PDF/DOCX→MD) |
+| `src/tools/tavily_search.py` | 206 | AI 搜索 (Tavily) |
 | `src/tools/fal_client.py` | 190 | fal.ai 图片 API |
 
 ### 基础设施
 | 路径 | 行数 | 说明 |
 |---|---|---|
-| `src/monitoring.py` | 1,243 | 系统监控 + Prometheus |
+| `src/monitoring/` | 1,393 | 系统监控包 (logger/metrics/health/alerts/anomaly/cost) |
 | `src/shared_memory.py` | 1,070 | 共享记忆层 (mem0) |
 | `src/resilience.py` | 615 | 韧性层 (限流/重试/熔断) |
 | `src/notifications.py` | 588 | Apprise 多渠道通知 |
@@ -469,7 +483,7 @@ CREW          # CrewAI 多智能体
 
 ## 命令系统概览
 
-### 75+4个斜杠命令 (按功能分组)
+### 92个斜杠命令 (按功能分组)
 
 **基础 (6个)**
 `/start` `/help` `/clear` `/status` `/config` `/settings`

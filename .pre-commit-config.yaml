@@ -1,0 +1,36 @@
+# Pre-commit hooks — 提交前自动检查
+# 安装: pip install pre-commit && pre-commit install
+# 手动运行: pre-commit run --all-files
+
+repos:
+  # ─── 通用检查 ───
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+
+  # ─── Python: Ruff 检查 + 格式化 ───
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --config, packages/clawbot/ruff.toml]
+        files: ^packages/clawbot/
+      - id: ruff-format
+        args: [--config, packages/clawbot/ruff.toml]
+        files: ^packages/clawbot/
+
+  # ─── 安全: 检测硬编码密钥 ───
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '(\.env\.example|package-lock\.json|\.github/)$'

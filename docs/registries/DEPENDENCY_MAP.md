@@ -1,13 +1,13 @@
 # OpenClaw Bot — 依赖清单
 
-> 最后更新: 2026-03-27 | 共 80+ 个 Python 包 (全量审计 R8 同步)
+> 最后更新: 2026-03-31 | 共 80+ 个 Python 包 (全量审计 R8 同步, P5审计修正)
 
 ## 搬运的高星项目 (37 个, 累计 ~470k Stars)
 
 | 包 | Stars | 用途 | 文件 | 版本 |
 |----|-------|------|------|------|
 | crawl4ai | 62.4k | 购物比价引擎 | shopping/crawl4ai_engine.py | >=0.6.0 |
-| tiktoken | 12.5k | 精确 token 计数 | context_manager.py | >=0.7.0 |
+| RestrictedPython | 1.2k | 代码沙箱安全执行 | tools/code_tool.py | >=8.0 |
 | jieba | 34.8k | 中文分词+意图识别 | core/intent_parser.py | >=0.42.1 |
 | loguru | 23.7k | 全局结构化日志 | log_config.py | >=0.7.0 |
 | plotly | 18.4k | K线图/饼图/瀑布图 | charts.py | >=6.0.0 |
@@ -22,7 +22,7 @@
 | quantstats | 4.8k | 回测 HTML 报告 | modules/investment/backtester_vbt.py | >=0.0.62 |
 | qrcode | 4.9k | 二维码生成 | tools/qr_service.py | >=7.0 |
 | diskcache | 2.8k | LLM 响应缓存 | llm_cache.py | >=5.6.0 |
-| fpdf2 | 1.5k | PDF 报告 | tools/pdf_report.py | ==2.7.9 |
+| fpdf2 | 1.5k | PDF 报告 | tools/pdf_report.py | ==2.7.9 | ⚠️ 已注释 (HI-366) |
 | stamina | 1.4k | 声明式重试 | resilience.py | >=2.0.0 |
 | kaleido | 1.2k | Plotly 静态导出 | charts.py | >=0.2.0 |
 | mistletoe | 1k | Telegram MD 渲染 | telegram_markdown.py | >=1.4.0 |
@@ -91,5 +91,5 @@
 | `openinference-instrumentation-litellm` | `>=0.1.0` | LiteLLM OTEL 插桩 | requirements.txt 已有但注册表漏登 |
 | `pytest` / `pytest-asyncio` / `pytest-cov` | 多版本 | 测试框架 | requirements.txt 已有但注册表漏登 |
 
-**已移除**: `tiktoken` — 注册表曾列出但 requirements.txt 未包含，代码中也未使用
+**已移除**: `tiktoken` — 注册表曾列出但 requirements.txt 未包含，代码中也未使用 (P5审计已从搬运表中替换为 RestrictedPython)
 - 最低支持: Python 3.10 (`docling>=2.0.0` 要求)

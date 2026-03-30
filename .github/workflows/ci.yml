@@ -1,0 +1,68 @@
+# Monorepo CI — Python 后端测试 + 前端类型检查
+# 触发: push/PR 到 main 分支
+
+name: OpenClaw Bot CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Python 后端测试 ───
+  python-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/clawbot
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('packages/clawbot/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ --tb=short -q --cov=src --cov-report=term-missing
+
+      - name: Syntax check source files
+        run: |
+          python -m py_compile multi_main.py
+          find src/ -name "*.py" -exec python -m py_compile {} +
+
+  # ─── 前端 TypeScript 类型检查 ───
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/openclaw-manager-src
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit

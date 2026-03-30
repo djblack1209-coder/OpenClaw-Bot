@@ -1,0 +1,37 @@
+# Ruff 配置 — Python 代码检查与格式化
+# 使用: ruff check src/ && ruff format src/
+
+target-version = "py312"
+line-length = 120
+
+[lint]
+# 启用的规则集
+select = [
+    "E",    # pycodestyle 错误
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes
+    "I",    # isort (import 排序)
+    "UP",   # pyupgrade (Python 版本升级建议)
+    "B",    # flake8-bugbear (常见 bug 模式)
+    "SIM",  # flake8-simplify (代码简化)
+    "RUF",  # ruff 专有规则
+]
+
+# 忽略的规则
+ignore = [
+    "E501",   # 行长度由 line-length 控制
+    "B008",   # 函数调用作为默认参数 (FastAPI Depends 需要)
+    "B905",   # zip() 不强制 strict=True
+    "SIM108", # 不强制三元表达式
+    "RUF012", # ClassVar 注解 — 与 Pydantic BaseModel 冲突
+]
+
+[lint.per-file-ignores]
+# 测试文件放宽规则
+"tests/**/*.py" = ["B", "SIM"]
+# __init__.py 允许 unused imports (模块导出用)
+"__init__.py" = ["F401"]
+
+[lint.isort]
+# import 排序风格
+known-first-party = ["src"]
