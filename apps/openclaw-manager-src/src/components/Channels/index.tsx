@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -258,7 +258,7 @@ export function Channels() {
     }
   };
 
-  const fetchChannels = async () => {
+  const fetchChannels = useCallback(async () => {
     try {
       const result = await invoke<ChannelConfig[]>('get_channels_config');
       setChannels(result);
@@ -275,7 +275,7 @@ export function Channels() {
       setChannels(fallback);
       return fallback;
     }
-  };
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -304,7 +304,8 @@ export function Channels() {
       }
     };
     init();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchChannels]);
 
   const handleChannelSelect = (channelId: string, channelList?: ChannelConfig[]) => {
     setSelectedChannel(channelId);

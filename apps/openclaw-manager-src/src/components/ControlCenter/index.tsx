@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -127,7 +127,7 @@ export function ControlCenter() {
     [usageSnapshot]
   );
 
-  const fetchAll = async (silent = false) => {
+  const fetchAll = useCallback(async (silent = false) => {
     if (!isTauri()) {
       setLoading(false);
       return;
@@ -170,9 +170,10 @@ export function ControlCenter() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLogLabel]);
 
-  const fetchLogs = async (label: string) => {
+  const fetchLogs = useCallback(async (label: string) => {
     if (!label || !isTauri()) {
       setServiceLogs([]);
       return;
@@ -187,15 +188,15 @@ export function ControlCenter() {
     } finally {
       setLogsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAll();
   }, []);
 
   useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  useEffect(() => {
     fetchLogs(selectedLogLabel);
-  }, [selectedLogLabel]);
+  }, [selectedLogLabel, fetchLogs]);
 
   useEffect(() => {
     if (!autoRefreshLogs || !selectedLogLabel) {
@@ -205,7 +206,7 @@ export function ControlCenter() {
       fetchLogs(selectedLogLabel);
     }, 3000);
     return () => clearInterval(timer);
-  }, [autoRefreshLogs, selectedLogLabel]);
+  }, [autoRefreshLogs, selectedLogLabel, fetchLogs]);
 
   const handleAllAction = async (action: ManagedServiceAction) => {
     setAllActionLoading(action);

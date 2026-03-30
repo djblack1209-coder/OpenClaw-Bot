@@ -14,6 +14,9 @@ services:
       dockerfile: Dockerfile
     container_name: mediacrawler
     restart: unless-stopped
+    # 安全: 限制容器权限
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

@@ -209,7 +209,7 @@ class SmartMemoryPipeline:
             if not matched_category:
                 return
 
-            # 立即写入 SharedMemory（不等定期提取）
+            # 立即写入 SharedMemory（不等定期提取），传入 chat_id 确保用户隔离
             if self.memory:
                 pref_fact = f"[{matched_category}] {text[:100]}"
                 self.memory.remember(
@@ -217,6 +217,7 @@ class SmartMemoryPipeline:
                     value=text[:200],
                     category="user_preference",
                     importance=5,
+                    chat_id=chat_id,
                 )
                 logger.info(f"💬 实时偏好捕获: {pref_fact[:60]}")
 

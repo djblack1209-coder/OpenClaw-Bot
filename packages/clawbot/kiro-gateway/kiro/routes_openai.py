@@ -67,6 +67,8 @@ async def verify_api_key(auth_header: str = Security(api_key_header)) -> bool:
     Verify API key in Authorization header.
     
     Expects format: "Bearer {PROXY_API_KEY}"
+    使用 hmac.compare_digest 防止时序攻击。
+    PROXY_API_KEY 为空时强制拒绝所有请求。
     
     Args:
         auth_header: Authorization header value
@@ -77,7 +79,16 @@ async def verify_api_key(auth_header: str = Security(api_key_header)) -> bool:
     Raises:
         HTTPException: 401 if key is invalid or missing
     """
-    if not auth_header or auth_header != f"Bearer {PROXY_API_KEY}":
+    import hmac
+    # PROXY_API_KEY 为空时拒绝所有请求（不允许空密码绕过）
+    if not PROXY_API_KEY:
+        logger.error("PROXY_API_KEY 未配置，拒绝所有请求。请设置 PROXY_API_KEY 环境变量。")
+        raise HTTPException(status_code=503, detail="API Key not configured")
+    if not auth_header:
+        logger.warning("Access attempt with missing API key.")
+        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+    expected = f"Bearer {PROXY_API_KEY}"
+    if not hmac.compare_digest(auth_header, expected):
         logger.warning("Access attempt with invalid API key.")
         raise HTTPException(status_code=401, detail="Invalid or missing API Key")
     return True

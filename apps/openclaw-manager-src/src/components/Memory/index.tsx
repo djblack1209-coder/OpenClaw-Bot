@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,7 +74,7 @@ export function Memory() {
     }
   };
 
-  const fetchMemories = async () => {
+  const fetchMemories = useCallback(async () => {
     try {
       setLoading(true);
       let results: MemoryEntryRaw[] = [];
@@ -109,11 +109,11 @@ export function Memory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMemories();
-  }, []);
+  }, [fetchMemories]);
 
   const filteredEntries = entries.filter(e => 
     e.value.toLowerCase().includes(searchQuery.toLowerCase()) || 

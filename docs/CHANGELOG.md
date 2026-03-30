@@ -5,6 +5,88 @@
 
 ---
 
+## [2026-03-31] P3 性能与稳定性审计 — 阻塞subprocess异步化 + 无界数据结构加cap + SQLite连接泄漏修复
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `cmd_xianyu_mixin`, `life_automation`, `xianyu_live`, `data_providers`, `shared_memory`, `history_store`
+> 关联问题: 无新增HI
+
+### 变更内容
+
+#### 阻塞 subprocess 异步化 (2 文件, 6 处)
+- **cmd_xianyu_mixin.py** — 5 处 `subprocess.run()` 在 `async def` 中阻塞事件循环，替换为 `asyncio.create_subprocess_exec()` + `await proc.communicate()`
+- **life_automation.py** — `trigger_home_action()` 调用同步 `_run_local_home_action()`，包装为 `await asyncio.to_thread()`
+
+#### 无界数据结构加上限 (2 文件, 2 处)
+- **xianyu_live.py** — `_notified_chats` 集合无上限，长期运行可能占用大量内存。添加 `_NOTIFIED_CHATS_MAX = 10000`，超限时清空重置
+- **data_providers.py** — `_quote_cache` 字典无上限。添加 `_QUOTE_CACHE_MAX_SIZE = 500`，超限时驱逐过期条目，仍超限则全部清空
+
+#### SQLite 线程本地连接泄漏修复 (2 文件)
+- **shared_memory.py** — 添加 `close()` 方法，遍历 `threading.local()` 存储的所有连接并关闭
+- **history_store.py** — 同上，添加 `close()` 方法处理线程本地 SQLite 连接
+
+#### 未发现问题的扫描项
+- 所有 httpx/aiohttp 客户端已有显式超时 — 无修复需要
+- `message_mixin._last_interaction` / `smart_memory._turn_count` / `response_synthesizer._profile_cache` — 按用户增长，单进程场景下不会无界增长
+
+#### 回归验证
+- Python pytest: 1047/1047 passed
+- TypeScript: 0 errors
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_xianyu_mixin.py` — 5 处 subprocess.run→asyncio.create_subprocess_exec
+- `packages/clawbot/src/execution/life_automation.py` — asyncio.to_thread 包装 + import asyncio
+- `packages/clawbot/src/xianyu/xianyu_live.py` — _notified_chats 上限 10000
+- `packages/clawbot/src/data_providers.py` — _quote_cache 上限 500 + 过期驱逐
+- `packages/clawbot/src/shared_memory.py` — close() 方法
+- `packages/clawbot/src/history_store.py` — close() 方法
+
+---
+
+## [2026-03-31] P2 架构与工程质量审计续 — TYPE_CHECKING修复 + resilience安全 + useEffect依赖 + 设计注释
+
+> 领域: `backend`, `frontend`
+> 影响模块: `data_providers`, `resilience`, `message_mixin`, `response_synthesizer`, 前端6组件
+> 关联问题: HI-385(已解决)
+
+### 变更内容
+
+#### data_providers.py TYPE_CHECKING 修复 (HI-385)
+- 添加 `from typing import TYPE_CHECKING` + `if TYPE_CHECKING: import pandas as pd` — 解决 5 处 `"pd.DataFrame"` 字符串注解在静态分析工具中无法解析的问题
+
+#### resilience.py last_exc 安全守卫 (2 处)
+- `retry_with_fallback()` 和 `retry_with_fallback_sync()` 中 `raise last_exc` 可能在 `last_exc` 为 None 时抛出 TypeError — 添加 `if last_exc is not None` 显式检查 + `RuntimeError` 兜底
+
+#### 前端 8 处 useEffect 依赖修复 (6 组件)
+- `Dashboard/index.tsx` — `fetchStatus`/`fetchLogs` 用 `useCallback` 包裹，添加到 `useEffect` deps
+- `ControlCenter/index.tsx` — `fetchAll`/`fetchLogs` 同上
+- `Channels/index.tsx` — `fetchChannels` 同上
+- `Memory/index.tsx` — `fetchMemories` 同上
+- `Plugins/index.tsx` — `fetchPlugins` 同上
+- `Setup/index.tsx` — `checkEnvironment` 用 `useCallback` + `onComplete` dep
+
+#### 类级可变默认值设计注释 (2 处)
+- `message_mixin.py:908 _last_interaction` — 标注单进程单例模式，设计意图为跨实例共享
+- `response_synthesizer.py:52 _first_time_flags` — 同上
+
+#### 回归验证
+- Python pytest: 1047/1047 passed
+- TypeScript: 0 errors
+
+### 文件变更
+- `packages/clawbot/src/data_providers.py` — TYPE_CHECKING 导入
+- `packages/clawbot/src/resilience.py` — last_exc None 守卫 (2 处)
+- `packages/clawbot/src/bot/message_mixin.py` — 设计注释
+- `packages/clawbot/src/core/response_synthesizer.py` — 设计注释
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — useCallback + deps
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — useCallback + deps
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — useCallback + deps
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — useCallback + deps
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — useCallback + deps
+- `apps/openclaw-manager-src/src/components/Setup/index.tsx` — useCallback + deps
+
+---
+
 ## [2026-03-30] P2 架构与工程质量审计 — 时区日期Bug修复 + 前端类型安全加固 + 静默异常修复
 
 > 领域: `backend`, `frontend`, `trading`

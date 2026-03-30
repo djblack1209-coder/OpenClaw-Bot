@@ -221,6 +221,15 @@ class SharedMemory:
             self._local.conn.row_factory = sqlite3.Row
         return self._local.conn
 
+    def close(self):
+        """关闭当前线程的 SQLite 连接，释放资源"""
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            try:
+                self._local.conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
+
     def _init_db(self):
         conn = self._get_conn()
         conn.executescript("""
@@ -491,16 +500,26 @@ class SharedMemory:
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 搜索失败: %s", e)
 
-        # ── SQLite 关键词搜索 ──
+        # ── SQLite 关键词搜索（含 chat_id 隔离）──
         keyword_results = []
         if mode in ("keyword", "hybrid"):
             escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            rows = conn.execute(
-                "SELECT * FROM shared_memories "
-                "WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' "
-                "ORDER BY importance DESC, updated_at DESC LIMIT ?",
-                (f"%{escaped}%", f"%{escaped}%", limit * 2),
-            ).fetchall()
+            # 按 chat_id 隔离搜索，防止跨用户记忆泄漏
+            if chat_id is not None:
+                rows = conn.execute(
+                    "SELECT * FROM shared_memories "
+                    "WHERE (key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\') "
+                    "AND chat_id = ? "
+                    "ORDER BY importance DESC, updated_at DESC LIMIT ?",
+                    (f"%{escaped}%", f"%{escaped}%", str(chat_id), limit * 2),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM shared_memories "
+                    "WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' "
+                    "ORDER BY importance DESC, updated_at DESC LIMIT ?",
+                    (f"%{escaped}%", f"%{escaped}%", limit * 2),
+                ).fetchall()
             for r in rows:
                 keyword_results.append({
                     "id": r["id"],

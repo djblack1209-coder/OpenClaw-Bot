@@ -49,7 +49,7 @@ class ResponseSynthesizer:
 
     # 首次能力引导标志 — 每种能力第一次触发时加一句说明
     # 搬运灵感: Apple 新功能首次使用时的 one-time tooltip
-    _first_time_flags: dict = {}
+    _first_time_flags: dict = {}  # 类级共享: 所有实例共享标志状态(设计如此，单进程单实例)
 
     # 任务类型 → 合成时的附加指引
     _TASK_HINTS: Dict[str, str] = {

@@ -41,6 +41,15 @@ class HistoryStore:
             self._local.conn.row_factory = sqlite3.Row
         return self._local.conn
 
+    def close(self):
+        """关闭当前线程的 SQLite 连接，释放资源"""
+        if hasattr(self._local, 'conn') and self._local.conn is not None:
+            try:
+                self._local.conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
+
     def _init_db(self):
         conn = self._get_conn()
         conn.executescript("""

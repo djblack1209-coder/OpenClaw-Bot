@@ -8,6 +8,7 @@ v2.0 变更 (2026-03-23):
   - 支持中英文: "10分钟后" / "下周一" / "in 2 hours" / "next Friday 3pm"
   - dateparser 不可用时降级到 delay_minutes 模式
 """
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
@@ -423,7 +424,8 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
 async def trigger_home_action(action: str = "", payload: dict = None) -> dict:
     """触发智能家居/本地 macOS 动作 (异步入口)"""
     try:
-        return _run_local_home_action(action, payload)
+        # 使用 to_thread 避免 subprocess.run 阻塞事件循环
+        return await asyncio.to_thread(_run_local_home_action, action, payload)
     except Exception as e:
         logger.error(f"[TriggerHome] failed: {e}")
         return {"success": False, "error": str(e)}
