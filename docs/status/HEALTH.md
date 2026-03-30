@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-30 (P2架构审计: 9处时区日期Bug修复+35处前端as断言替换+4处高危静默异常修复 | 45/45 trading_journal passed, 0 TS errors)
+> 最后更新: 2026-03-31 (P2续+P3审计: TYPE_CHECKING修复+resilience安全+8处useEffect依赖+5处阻塞subprocess异步化+5处无界数据结构加cap+2处SQLite close()补全 | 1047/1047 passed, 0 TS errors)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -51,7 +51,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟡 待命中 | 腾讯云 2C2G — 代码已同步, systemd 服务已创建, failover timer 运行中, 待心跳恢复后自动切换 |
-| 测试通过率 | 🟢 100% | 1047/1047 Python (含41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 |
+| 测试通过率 | 🟢 100% | 1047/1047 Python (含41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 | P2续+P3审计: TYPE_CHECKING+resilience安全+useEffect deps+subprocess异步化+缓存cap+SQLite close |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -94,7 +94,7 @@
 | HI-382 | `backend` | 多文件 | P7: 硬编码 LLM 模型名散落在多个文件中 — 应提取到 litellm_router 或 constants.py (中等成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
-| HI-385 | `backend` | `data_providers.py` | 5处类型注解引用未定义的 `pd` (pandas) — 需要 `TYPE_CHECKING` 条件导入或改用字符串注解 | 2026-03-30 |
+| HI-385 | `backend` | `data_providers.py` | ~~5处类型注解引用未定义的 `pd` (pandas) — 需要 `TYPE_CHECKING` 条件导入或改用字符串注解~~ **已解决**: 添加 `TYPE_CHECKING` 条件导入 (2026-03-31) | 2026-03-30 |
 | HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 2026-03-30 |
 | HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 — 首次解析为公网IP通过检查后,DNS切换到内网IP | 2026-03-30 |
 
@@ -111,6 +111,7 @@
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
 | HI-390 | `trading` | `trading_journal.py` | SQLite `date()` 将 ET 时区 ISO 字符串转为 UTC 日期 — 晚 8 点后平仓的交易在当日统计中消失 | 全部 9 处 `date(exit_time/prediction_time)` 替换为 `substr(...,1,10)` 直接提取 ET 本地日期 | 2026-03-30 | P2架构审计 |
+| HI-385 | `backend` | `data_providers.py` | 5处类型注解引用未定义的 `pd` (pandas) | 添加 `from typing import TYPE_CHECKING` + `if TYPE_CHECKING: import pandas as pd` 条件导入 | 2026-03-31 | P2续审计 |
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|

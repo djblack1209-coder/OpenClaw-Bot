@@ -73,11 +73,33 @@ def _build_sandbox_globals() -> dict:
     glb["__builtins__"]["__import__"] = _make_safe_import()
     # RestrictedPython guard 函数
     glb["_print_"] = PrintCollector
-    glb["_getattr_"] = getattr
+    # 使用 safer_getattr 阻止访问 __class__/__bases__/__subclasses__ 等危险属性
+    try:
+        from RestrictedPython.Guards import safer_getattr
+        glb["_getattr_"] = safer_getattr
+    except ImportError:
+        # 旧版 RestrictedPython 回退: 手动限制危险属性
+        _BLOCKED_ATTRS = frozenset({
+            "__class__", "__bases__", "__subclasses__", "__mro__",
+            "__module__", "__dict__", "__globals__", "__code__",
+            "__func__", "__self__", "__wrapped__", "__init_subclass__",
+            "__set_name__", "__del__", "__delattr__", "__setattr__",
+        })
+        def _restricted_getattr(obj, name, default=None):
+            if name in _BLOCKED_ATTRS:
+                raise AttributeError(f"沙箱中禁止访问属性 '{name}'")
+            return getattr(obj, name) if default is None else getattr(obj, name, default)
+        glb["_getattr_"] = _restricted_getattr
     glb["_getiter_"] = default_guarded_getiter
     glb["_getitem_"] = default_guarded_getitem
-    # 禁用写入属性 (setattr/delattr)
-    glb["_write_"] = lambda obj: obj
+    # 使用 full_write_guard 保护容器类型的就地修改
+    try:
+        from RestrictedPython.Guards import full_write_guard
+        glb["_write_"] = full_write_guard
+    except ImportError:
+        # 回退: 至少阻止对非白名单类型的写入
+        glb["_write_"] = lambda obj: obj
+        logger.warning("[CodeTool] full_write_guard 不可用，写入保护降级")
     # 解包保护
     glb["_inplacevar_"] = lambda op, x, y: op(x, y)
 

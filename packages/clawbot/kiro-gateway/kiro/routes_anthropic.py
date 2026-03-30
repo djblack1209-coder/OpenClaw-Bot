@@ -76,6 +76,8 @@ async def verify_anthropic_api_key(
     Supports two authentication methods:
     1. x-api-key header (Anthropic native)
     2. Authorization: Bearer $API_TOKEN (for compatibility)
+    使用 hmac.compare_digest 防止时序攻击。
+    PROXY_API_KEY 为空时强制拒绝所有请求。
     
     Args:
         x_api_key: Value from x-api-key header
@@ -87,12 +89,17 @@ async def verify_anthropic_api_key(
     Raises:
         HTTPException: 401 if key is invalid or missing
     """
-    # Check x-api-key first (Anthropic native)
-    if x_api_key and x_api_key == PROXY_API_KEY:
+    import hmac
+    # PROXY_API_KEY 为空时拒绝所有请求（不允许空密码绕过）
+    if not PROXY_API_KEY:
+        logger.error("PROXY_API_KEY 未配置，拒绝所有请求。")
+        raise HTTPException(status_code=503, detail="API Key not configured")
+    
+    # 使用 hmac.compare_digest 防止时序攻击
+    if x_api_key and hmac.compare_digest(x_api_key, PROXY_API_KEY):
         return True
     
-    # Fall back to Authorization: Bearer
-    if authorization and authorization == f"Bearer {PROXY_API_KEY}":
+    if authorization and hmac.compare_digest(authorization, f"Bearer {PROXY_API_KEY}"):
         return True
     
     logger.warning("Access attempt with invalid API key (Anthropic endpoint)")

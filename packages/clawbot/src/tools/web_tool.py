@@ -1,13 +1,54 @@
 """
-ClawBot - 网页抓取工具
+ClawBot - 网页抓取工具（含 SSRF 防护）
 """
 import httpx
+import ipaddress
 import re
+import socket
 from typing import Dict, Any
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import logging
 
 logger = logging.getLogger(__name__)
+
+# SSRF 防护: 禁止访问的主机名黑名单
+_SSRF_BLOCKED_HOSTS = frozenset({
+    "169.254.169.254", "metadata.google.internal",
+    "metadata.internal", "100.100.100.200",
+    "localhost", "127.0.0.1", "0.0.0.0", "::1",
+})
+
+
+def _is_ssrf_safe(url: str) -> bool:
+    """检查 URL 是否安全（非内网/非元数据服务），防止 SSRF 攻击。
+    通过 DNS 解析验证目标 IP，防止 DNS 重绑定攻击。
+    """
+    try:
+        parsed = urlparse(url)
+        # 只允许 http/https
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # 黑名单检查
+        if hostname in _SSRF_BLOCKED_HOSTS:
+            return False
+        # DNS 解析后检查 IP（防止 DNS 重绑定攻击）
+        try:
+            resolved_ips = socket.getaddrinfo(hostname, None)
+            for family, _type, proto, canonname, sockaddr in resolved_ips:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    logger.warning("[WebTool] SSRF 拦截: %s 解析到内网地址 %s", url, ip)
+                    return False
+        except (socket.gaierror, ValueError):
+            # DNS 解析失败 → 放行（可能是合法的外部域名暂时解析失败）
+            pass
+        return True
+    except Exception:
+        return False
 
 
 class WebTool:
@@ -19,7 +60,10 @@ class WebTool:
         }
     
     async def fetch(self, url: str, format: str = "text") -> Dict[str, Any]:
-        """抓取网页内容"""
+        """抓取网页内容（含 SSRF 防护）"""
+        # SSRF 防护: 检查 URL 是否指向内网/敏感地址
+        if not _is_ssrf_safe(url):
+            return {"success": False, "error": "URL 安全检查未通过（禁止访问内网地址）"}
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 response = await client.get(url, headers=self.headers)

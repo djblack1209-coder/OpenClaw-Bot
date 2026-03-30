@@ -289,7 +289,10 @@ def _make_retry_decorator(
                                     f"(等待 {delay:.1f}s)"
                                 )
                                 await asyncio.sleep(delay)
-                    raise last_exc  # type: ignore[misc]
+                    # 安全保护: attempts=0 时 last_exc 仍为 None
+                    if last_exc is not None:
+                        raise last_exc
+                    raise RuntimeError(f"[{name}] 重试耗尽但未捕获异常 (attempts={attempts})")
 
                 return async_wrapper  # type: ignore[return-value]
             else:
@@ -317,7 +320,10 @@ def _make_retry_decorator(
                                     f"(等待 {delay:.1f}s)"
                                 )
                                 _time.sleep(delay)
-                    raise last_exc  # type: ignore[misc]
+                    # 安全保护: attempts=0 时 last_exc 仍为 None
+                    if last_exc is not None:
+                        raise last_exc
+                    raise RuntimeError(f"[{name}] 重试耗尽但未捕获异常 (attempts={attempts})")
 
                 return sync_wrapper  # type: ignore[return-value]
 

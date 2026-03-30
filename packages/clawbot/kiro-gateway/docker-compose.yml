@@ -54,6 +54,14 @@ services:
     
     restart: unless-stopped
     
+    # 安全: 限制容器权限
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    
     # Health check
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]

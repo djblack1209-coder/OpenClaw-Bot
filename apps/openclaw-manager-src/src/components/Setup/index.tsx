@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -43,7 +43,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'check' | 'install' | 'complete'>('check');
 
-  const checkEnvironment = async () => {
+  const checkEnvironment = useCallback(async () => {
     setupLogger.info('检查系统环境...');
     setChecking(true);
     setError(null);
@@ -68,12 +68,12 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     } finally {
       setChecking(false);
     }
-  };
+  }, [onComplete]);
 
   useEffect(() => {
     setupLogger.info('Setup 组件初始化');
     checkEnvironment();
-  }, []);
+  }, [checkEnvironment]);
 
   const handleInstallNodejs = async () => {
     setupLogger.action('安装 Node.js');

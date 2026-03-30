@@ -8,8 +8,10 @@ Bot — 闲鱼客服 / 风格 / 报表 / 发货 命令 Mixin
   - 自动发货 (AutoShipper)
 """
 
+import asyncio
 import logging
 import os
+import subprocess
 
 from src.constants import TG_SAFE_LENGTH
 from src.bot.globals import send_long_message
@@ -26,16 +28,19 @@ class XianyuCommandsMixin:
         args = (context.args or [])
         action = args[0].lower() if args else ""
 
-        import subprocess
-
         LABEL = "ai.openclaw.xianyu"
         PLIST = os.path.expanduser("~/Library/LaunchAgents/ai.openclaw.xianyu.plist")
 
         # 无参数时展示帮助菜单 + 一行状态概要
         if not action:
             try:
-                r = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
-                status_line = "🟢 运行中" if r.stdout.strip() else "🔴 未运行"
+                # 使用异步子进程避免阻塞事件循环
+                proc = await asyncio.create_subprocess_exec(
+                    "pgrep", "-f", "xianyu_main",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                status_line = "🟢 运行中" if stdout.decode().strip() else "🔴 未运行"
             except Exception as e:
                 logger.exception("闲鱼客服进程状态检测失败")
                 status_line = "⚪ 状态未知"
@@ -59,15 +64,23 @@ class XianyuCommandsMixin:
             return
 
         if action == "start":
-            r = subprocess.run(["launchctl", "load", PLIST], capture_output=True, text=True)
-            if r.returncode == 0:
+            proc = await asyncio.create_subprocess_exec(
+                "launchctl", "load", PLIST,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, _ = await proc.communicate()
+            if proc.returncode == 0:
                 await update.message.reply_text("🦞 闲鱼 AI 客服已启动")
             else:
                 await update.message.reply_text(error_service_failed("服务启动"))
 
         elif action == "stop":
-            r = subprocess.run(["launchctl", "unload", PLIST], capture_output=True, text=True)
-            if r.returncode == 0:
+            proc = await asyncio.create_subprocess_exec(
+                "launchctl", "unload", PLIST,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, _ = await proc.communicate()
+            if proc.returncode == 0:
                 await update.message.reply_text("🔴 闲鱼 AI 客服已停止")
             else:
                 await update.message.reply_text(error_service_failed("服务停止"))
@@ -75,8 +88,12 @@ class XianyuCommandsMixin:
         elif action == "reload":
             # 发送 SIGUSR1 热更新 Cookie
             import signal
-            r = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
-            pids = r.stdout.strip().split()
+            proc = await asyncio.create_subprocess_exec(
+                "pgrep", "-f", "xianyu_main",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            pids = stdout.decode().strip().split()
             if pids:
                 for pid in pids:
                     os.kill(int(pid), signal.SIGUSR1)
@@ -85,9 +102,14 @@ class XianyuCommandsMixin:
                 await update.message.reply_text("⚠️ 闲鱼客服进程未运行")
 
         else:  # status (显式传 status 或其他未知参数)
-            r = subprocess.run(["pgrep", "-fl", "xianyu_main"], capture_output=True, text=True)
-            if r.stdout.strip():
-                lines = r.stdout.strip().split("\n")
+            proc = await asyncio.create_subprocess_exec(
+                "pgrep", "-fl", "xianyu_main",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            output = stdout.decode().strip()
+            if output:
+                lines = output.split("\n")
                 log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "com-clawbot-xianyu.stderr.log")
                 last_log = ""
                 try:

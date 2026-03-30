@@ -8,13 +8,17 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "${REDIS_PASSWORD:-openclaw_redis_2026}"
     restart: unless-stopped
+    # 安全: 非 root 用户运行 (redis 镜像内置 redis 用户)
+    user: "999:999"
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-openclaw_redis_2026}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -42,6 +46,13 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # 安全: 限制容器权限
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     deploy:
       resources:
         limits:

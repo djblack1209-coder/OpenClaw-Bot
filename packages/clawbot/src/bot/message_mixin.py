@@ -905,7 +905,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
     # 用户超过 SESSION_GAP_THRESHOLD 小时没互动，回来时生成离线摘要
 
     _SESSION_GAP_THRESHOLD = 4 * 3600  # 4 小时
-    _last_interaction: dict = {}  # chat_id → monotonic timestamp
+    _last_interaction: dict = {}  # chat_id → monotonic timestamp (类级共享: 单进程单实例设计)
 
     async def _check_session_resumption(self, chat_id: int, user_id: int, update, context) -> bool:
         """检测用户是否从长时间离线中回来，如果是则发送离线摘要。

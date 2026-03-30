@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -29,7 +29,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const statusFailedRef = useRef(false);
   const logsFailedRef = useRef(false);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     if (!isTauri()) {
       setLoading(false);
       return;
@@ -47,9 +47,9 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     if (!isTauri()) return;
     try {
       const result = await invoke<string[]>('get_logs', { lines: 50 });
@@ -62,7 +62,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
         toast.warning('服务连接异常，日志刷新暂停');
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStatus();
@@ -76,7 +76,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
       clearInterval(statusInterval);
       if (logsInterval) clearInterval(logsInterval);
     };
-  }, [autoRefreshLogs]);
+  }, [autoRefreshLogs, fetchStatus, fetchLogs]);
 
   // 自动滚动到日志底部（仅在日志容器内部滚动，不影响页面）
   useEffect(() => {

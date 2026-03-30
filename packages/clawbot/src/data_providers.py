@@ -17,8 +17,12 @@ import re
 import time as _time
 from datetime import timedelta
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from src.utils import now_et
+
+if TYPE_CHECKING:
+    import pandas as pd  # 仅用于类型注解，运行时通过函数内局部导入
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +452,7 @@ def get_history_sync(symbol: str, period: str = "3mo",
 
 _quote_cache: dict[str, tuple[float, dict]] = {}  # symbol -> (timestamp, data)
 QUOTE_CACHE_TTL = 60  # seconds
+_QUOTE_CACHE_MAX_SIZE = 500  # 最多缓存 500 个 symbol，超出时淘汰过期条目
 
 
 def _cached_yfinance_get_quote(symbol: str) -> dict:
@@ -481,6 +486,11 @@ def _cached_yfinance_get_quote(symbol: str) -> dict:
         logger.debug("静默异常: %s", e)
 
     _quote_cache[cache_key] = (now, result)
+    # 超出上限时淘汰所有过期条目
+    if len(_quote_cache) > _QUOTE_CACHE_MAX_SIZE:
+        expired_keys = [k for k, (ts, _) in _quote_cache.items() if now - ts >= QUOTE_CACHE_TTL]
+        for k in expired_keys:
+            del _quote_cache[k]
     return result
 
 

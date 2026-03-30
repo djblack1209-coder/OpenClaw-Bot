@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Blocks, Search, Plus, Settings2, Trash2,
@@ -81,7 +81,7 @@ export function Plugins() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchPlugins = async () => {
+  const fetchPlugins = useCallback(async () => {
     if (!isTauri()) {
       // 模拟模式
       setPlugins(defaultPlugins);
@@ -113,11 +113,11 @@ export function Plugins() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPlugins();
-  }, []);
+  }, [fetchPlugins]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);

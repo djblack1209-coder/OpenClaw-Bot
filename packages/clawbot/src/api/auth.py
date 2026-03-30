@@ -59,8 +59,15 @@ async def verify_api_token(
     """
     global _warned_no_token
 
-    # 开发模式: 未配置 Token 时放行所有请求
+    # 未配置 Token 时：仅允许 localhost 请求通过（开发模式安全降级）
     if not _API_TOKEN:
+        bind_host = os.getenv("API_HOST", "127.0.0.1")
+        if bind_host not in ("127.0.0.1", "localhost"):
+            # 绑定到非 localhost 地址但未配置 Token → 强制拒绝所有请求
+            raise HTTPException(
+                status_code=503,
+                detail="API 认证未配置且绑定到外网地址，拒绝所有请求。请设置 OPENCLAW_API_TOKEN 环境变量。"
+            )
         if not _warned_no_token:
             logger.warning(
                 "[API Auth] 请求未验证 — 设置 OPENCLAW_API_TOKEN 环境变量以启用认证"

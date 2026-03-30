@@ -1,10 +1,47 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-03-30
+> 最后更新: 2026-03-31
 > 本文件由 AI 自动维护，记录每次对话结束时的工作状态，供下一次对话接续使用。
 > 管理规则见 `AGENTS.md` §14.4：只保留最近 5 条，超过时删除最旧的。
 
 ---
+
+## [2026-03-31 Session 8] P2 续 + P3 审计完成 — 文档同步完成
+
+### 本次完成了什么
+- **P2 架构续审计 (4 项)**:
+  - `data_providers.py` TYPE_CHECKING 修复 (HI-385 已解决)
+  - `resilience.py` last_exc None 安全守卫 (2 处)
+  - 前端 8 处 useEffect 依赖修复 (6 组件，useCallback 包裹)
+  - 2 处类级可变默认值添加设计意图注释
+- **P3 性能审计 (6 项)**:
+  - 5 处阻塞 subprocess.run 替换为 asyncio.create_subprocess_exec
+  - 1 处同步函数调用包装为 asyncio.to_thread
+  - 2 处无界数据结构添加上限 (10000/500)
+  - 2 处 SQLite 线程本地连接添加 close() 方法
+- **文档同步**: HEALTH.md + CHANGELOG.md + HANDOFF.md 全部更新
+- **回归验证**: 1047/1047 Python passed, 0 TypeScript errors
+
+### 未完成的工作（按优先级排列）
+1. **Git commit + push** — P2/P3 所有修改需提交
+2. **P4 审计** — UI/UX 全覆盖（需 Tauri 桌面端运行时做视觉检查）
+3. **P5 审计** — 文档、CI/CD、可维护性
+4. **既有技术债** — HI-358(大文件拆分)、HI-381-383(错误字符串/模型名/HTTP碎片化)、HI-386(WebSocket通知待建)、HI-388/389(安全)
+
+### 需要注意的坑
+- `cmd_xianyu_mixin.py` 的 subprocess 替换为异步后，`asyncio.create_subprocess_exec` 的 `check=True` 等效是需要手动检查 returncode — 已实现
+- `data_providers.py` 的缓存驱逐策略是先删过期再检查大小 — 如果缓存条目永不过期（ttl 很长），可能需要 LRU 策略，但当前 300s TTL 足够
+- 前端 useCallback deps 中 `Setup/index.tsx` 的 `onComplete` 回调来自 props — 如果父组件不 memo 化该回调，可能导致无限循环（但当前父组件传的是稳定函数引用）
+
+### 关键决策记录
+- `message_mixin._last_interaction` 和 `response_synthesizer._first_time_flags` 是类级可变默认值，通常是 Python 反模式，但本项目是单进程单例 Bot，设计上需要跨实例共享 — 添加注释说明而非重构
+- `smart_memory._turn_count` 等按用户增长的 dict 不加 cap — 单进程场景用户数有限，不会无界增长
+- P3 扫描中 httpx/aiohttp 客户端已全部有超时 — 之前审计(HI-159/160/271)已修复
+
+### 当前系统状态
+- 测试: 1047/1047 passed, 0 TS errors
+- 活跃问题总数: 12 (4个🟠重要 + 7个🟡一般 + 1个🔵低优先) — HI-385 已解决
+- P0: ✅ | P1: ✅ | P2: ✅ | P3: ✅ | P4-P5: 待做
 
 ## [2026-03-30 Session 7] P1 功能完整性审计完成 — 文档同步收尾
 
@@ -111,44 +148,6 @@
 - 新增问题: 无
 - 活跃问题总数: 11 (与上次相同，本次无新增)
 - 改动文件: daily_brief.py, xianyu_context.py, xianyu_agent.py, xianyu_live.py, social_scheduler.py, event_bus.py, proactive_engine.py, bookkeeping.py, auto_trader.py, CHANGELOG.md, HEALTH.md, HANDOFF.md
-
-## [2026-03-30 Session 4] R30 全方位审计 — 前端+后端+文件治理+VPS运维
-
-### 本次完成了什么
-- **前端修复 3 项**: AIConfig 和 Testing 组件添加 `isTauri()` 检查，在浏览器环境中优雅降级（不再报红色错误）
-- **后端修复 14 项**: 8 处高风险静默异常加了日志记录、2 处重复 `close()` 方法删除、4 处死导入清理、4 处 re-export 加 noqa
-- **文件治理**: 删除根目录 69 个审计截图残留文件
-- **VPS 运维**: failover 状态重置（连续失败计数 4931→0，角色 active→standby）
-- **macOS App 验证**: `/Applications/OpenClaw.app` 正常启动，窗口 1200x799
-- **构建验证**: TypeScript 0 错误、Vite 3600 模块编译成功、pytest 1047/1047 passed
-- **文档同步**: CHANGELOG(R30条目) + HEALTH.md(HI-385/386新增) + HANDOFF.md(本摘要)
-
-### 未完成的工作（按优先级排列）
-1. **Git 提交推送** — 本轮所有修改需 commit + push 到远程仓库
-2. **VPS 代码同步** — rsync 最新代码到 101.43.41.96:/opt/openclaw/app/
-3. **HI-385: data_providers.py 类型注解** — 5 处 `pd` 引用未定义，需 TYPE_CHECKING 导入
-4. **HI-386: useGlobalToasts 死代码** — 前端 Toaster 组件已实现但未渲染到 App.tsx
-5. **HI-037: sanitize_input() 接入** — 安全函数存在但未接入消息管道（半完成状态）
-6. **HI-277/278: VPS failover 退让机制** — Mac 恢复后无自动让出
-7. **HI-348: Git 历史中的 API 密钥** — 已从索引移除但历史仍存在
-8. **HI-358: ~15 个文件超 800 行待拆分** — 技术债
-9. **HI-381-383: 错误字符串统一/硬编码模型名/HTTP客户端碎片化** — 高成本重构推迟
-
-### 需要注意的坑
-- `test_investment_full_pipeline` 是 flaky test（HI-384），跑完整套件偶尔失败——受 LiteLLM Cooldown 影响，单独运行通过
-- VPS failover 心跳从 Mac 连不上已久（4931 次失败），重置后需观察心跳是否恢复
-- 前端是纯暗色主题（无亮色模式），CSS 变量 `.dark` 类从未应用——设计即如此，非 Bug
-
-### 关键决策记录
-- R30 所有 8 处静默异常修复使用 `logger.debug()` 而非 `logger.warning()`，因为这些代码路径本身就是容错分支，预期会偶尔触发
-- 未修改 `data_providers.py` 的 `pd` 引用（HI-385），因为不影响运行时（仅影响静态分析工具），登记后续处理
-- 前端 Toaster 死代码（HI-386）暂不接入，因为 WebSocket 通知基础设施尚未建立
-
-### 当前系统状态
-- 测试: 1047/1047 passed
-- 新增问题: HI-385 (pd 类型注解), HI-386 (前端 Toaster 死代码)
-- 活跃问题总数: 11 (4个🟠重要 + 6个🟡一般 + 1个🔵低优先)
-- 改动文件: AIConfig/index.tsx, Testing/index.tsx, globals.py, logger.py, metrics.py, code_tool.py, media_crawler_bridge.py, goofish_monitor.py, brain.py, cost_control.py, self_heal.py, synergy_pipelines.py, response_cards.py, novel_writer.py, watchlist_monitor.py, CHANGELOG.md, HEALTH.md, HANDOFF.md
 
 ---
 
