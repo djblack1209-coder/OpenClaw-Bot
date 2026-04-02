@@ -163,13 +163,9 @@ class IBKRBridge:
         try:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(loop.create_task, self._notify_func(msg))
-        except RuntimeError as e:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.call_soon_threadsafe(asyncio.ensure_future, self._notify_func(msg))
-            except Exception as e:
-                logger.debug("[IBKR] 断连通知发送失败: %s", e)
+        except RuntimeError:
+            # 没有运行中的事件循环（IBKR 回调在独立线程中），静默跳过
+            logger.debug("[IBKR] 无运行中的事件循环，断连通知跳过")
 
     async def connect(self) -> bool:
         """连接到 IB Gateway（带指数退避重连）"""
@@ -233,22 +229,32 @@ class IBKRBridge:
             if _os.getenv("IBKR_AUTOSTART", "").lower() in {"1", "true", "yes", "on"}:
                 start_cmd = _os.getenv("IBKR_START_CMD", "")
                 if start_cmd and not self._autostart_attempted:
-                    self._autostart_attempted = True
-                    logger.info("[IBKR] 连接失败，尝试自动启动 Gateway: %s", start_cmd)
-                    try:
-                        proc = await asyncio.create_subprocess_exec(
-                            *shlex.split(start_cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                        )
-                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=150)
-                        if proc.returncode == 0:
-                            logger.info("[IBKR] Gateway 启动成功，重试连接...")
-                            await asyncio.sleep(5)
-                            # 递归重试一次连接
-                            return await self.connect()
-                        else:
-                            logger.warning("[IBKR] Gateway 启动失败: rc=%d, %s", proc.returncode, stderr.decode()[:200])
-                    except Exception as e:
-                        logger.warning("[IBKR] Gateway 自动启动异常: %s", e)
+                    # 安全修复: 校验 IBKR_START_CMD 中的可执行文件是否在白名单内
+                    _ALLOWED_GATEWAY_CMDS = frozenset({
+                        "ibc", "ibgateway", "IBController", "ibcontroller",
+                        "IBGateway", "start_ibkr_gateway.sh",
+                    })
+                    cmd_parts = shlex.split(start_cmd)
+                    cmd_basename = _os.path.basename(cmd_parts[0]) if cmd_parts else ""
+                    if not cmd_basename or cmd_basename not in _ALLOWED_GATEWAY_CMDS:
+                        logger.warning("[IBKR] IBKR_START_CMD 不在白名单中，拒绝执行: %s", start_cmd[:80])
+                    else:
+                        self._autostart_attempted = True
+                        logger.info("[IBKR] 连接失败，尝试自动启动 Gateway: %s", start_cmd)
+                        try:
+                            proc = await asyncio.create_subprocess_exec(
+                                *shlex.split(start_cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                            )
+                            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=150)
+                            if proc.returncode == 0:
+                                logger.info("[IBKR] Gateway 启动成功，重试连接...")
+                                await asyncio.sleep(5)
+                                # 递归重试一次连接
+                                return await self.connect()
+                            else:
+                                logger.warning("[IBKR] Gateway 启动失败: rc=%d, %s", proc.returncode, stderr.decode()[:200])
+                        except Exception as e:
+                            logger.warning("[IBKR] Gateway 自动启动异常: %s", e)
 
             # 增加退避时间（最大 120s）
             self._reconnect_backoff = min(self._reconnect_backoff * 2, 120.0)

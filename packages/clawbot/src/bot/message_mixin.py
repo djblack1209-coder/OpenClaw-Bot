@@ -208,12 +208,15 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
         # ── 输入消毒 — 拦截 XSS/SQL注入/命令注入等攻击载荷 (HI-037) ──
         # 所有用户消息在进入 LLM/Brain 处理前先过安全过滤
+        # 安全策略: fail-close — 消毒失败时拒绝处理，防止恶意输入绕过
         try:
             from src.core.security import get_security_gate
             _sec_gate = get_security_gate()
             text = _sec_gate.sanitize_input(text)
         except Exception as _sanitize_err:
-            logger.debug("输入消毒失败（不阻塞主流程）: %s", _sanitize_err)
+            logger.warning("输入消毒失败（fail-close，拒绝处理）: %s", _sanitize_err)
+            await update.message.reply_text("⚠️ 消息处理出现异常，请稍后重试。")
+            return
 
         # ── 会话恢复问候 — 搬运 Apple Intelligence 摘要 / Slack Catch Up ──
         # 用户超过 4 小时没互动后回来，在首条回复前生成"离线期间发生了什么"摘要
@@ -436,7 +439,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                          for t, cb in _fuzzy_suggestions[3:]]
                     )
                 await update.message.reply_text(
-                    "我不太确定你想做什么，试试这些？👇\n\n"
+                    "严总，我不太确定你想做什么，试试这些？👇\n\n"
                     "（或者直接告诉我更具体的需求）",
                     reply_markup=InlineKeyboardMarkup(_fuzzy_rows),
                 )
@@ -451,7 +454,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             if not allowed:
                 logger.info("[%s] 消息频率限制: %s (user=%s)", self.name, reason, user.id)
                 try:
-                    await update.message.reply_text("⏳ 请稍等，消息发送过于频繁。")
+                    await update.message.reply_text("⏳ 严总，您发得太快啦，等几秒再发就好。")
                 except Exception as e:
                     logger.debug("频率限制回复失败", exc_info=True)
                 return
@@ -723,15 +726,21 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 _t2 = asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:1500], self.bot_id))
                 _t2.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(AI回复)后台任务异常: %s", t.exception()))
 
-            # 可选语音回复 — 用户通过 /voice 开启后，短回复自动附带语音
+            # 语音回复 — 两种触发条件:
+            # 1. 用户通过 /voice 手动开启语音回复模式 (短回复 <500字)
+            # 2. 用户发送的是语音消息 (_voice_input 标记)，自动以语音回复 (闭环)
+            #    语音输入时放宽长度限制到 2000 字，超长文本 TTS 会自动截断
             try:
-                if final_content and context.user_data.get("voice_reply") and len(final_content) < 500:
+                _is_voice_input = context.user_data.get("_voice_input", False)
+                _voice_mode = context.user_data.get("voice_reply", False)
+                _voice_len_limit = 2000 if _is_voice_input else 500
+                if final_content and (_is_voice_input or _voice_mode) and len(final_content) < _voice_len_limit:
                     from src.tts_engine import text_to_voice
                     audio_bytes = await text_to_voice(final_content)
                     if audio_bytes:
                         await update.message.reply_voice(io.BytesIO(audio_bytes))
             except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)  # 语音是可选功能，不阻塞主流程
+                logger.debug("语音回复生成失败 (不影响文字回复): %s", e)
 
         except Exception as e:
             logger.error(f"[{self.bot_id}] handle_message 异常: {e}", exc_info=True)
@@ -777,9 +786,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 pass
 
     async def handle_voice(self, update, context):
-        """处理语音消息 — 搬运自 father-bot/chatgpt-telegram-bot 的 Whisper 模式
-        
-        下载语音 → OpenAI Whisper 转文字 → 当作文本消息处理
+        """处理语音消息 — 完整语音交互闭环
+
+        STT 降级链: Groq Whisper (免费) → OpenAI Whisper (付费) → Deepgram Nova-3 → 失败提示
+        流程: 下载语音 → STT 转文字 → LLM 处理 → TTS 回语音
+
+        语音输入时自动以语音回复（无需手动开启 /voice），实现真正的对话闭环。
         """
         if not self._is_authorized(update.effective_user.id):
             return
@@ -799,37 +811,96 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             buf.seek(0)
             buf.name = "voice.ogg"
 
-            # 尝试 OpenAI Whisper API
+            import os
             transcribed = None
-            try:
-                import os
-                openai_key = os.environ.get("OPENAI_API_KEY", "")
-                if openai_key:
+            stt_source = ""  # 记录最终使用的转写来源
+
+            # ── 第一优先: Groq 免费 Whisper ──────────────────────
+            # Groq 提供免费的 whisper-large-v3-turbo，与 OpenAI Whisper 请求格式完全相同
+            # 限制: 20 RPM (每分钟 20 次请求)
+            groq_key = os.environ.get("GROQ_API_KEY", "")
+            if groq_key and not transcribed:
+                try:
                     import httpx
+                    # 每次请求需要独立的 BytesIO 游标位置
+                    buf.seek(0)
                     async with httpx.AsyncClient(timeout=30) as client:
                         resp = await client.post(
-                            "https://api.openai.com/v1/audio/transcriptions",
-                            headers={"Authorization": f"Bearer {openai_key}"},
+                            "https://api.groq.com/openai/v1/audio/transcriptions",
+                            headers={"Authorization": f"Bearer {groq_key}"},
                             files={"file": ("voice.ogg", buf, "audio/ogg")},
-                            data={"model": "whisper-1"},
+                            data={
+                                "model": "whisper-large-v3-turbo",
+                                "language": "zh",  # 优先中文识别
+                            },
                         )
                         if resp.status_code == 200:
                             transcribed = resp.json().get("text", "")
-            except Exception as whisper_err:
-                logger.debug("[Voice] Whisper API 失败: %s", whisper_err)
+                            if transcribed:
+                                stt_source = "Groq"
+                                logger.info("[Voice] Groq Whisper 转写成功 (%d 字符)", len(transcribed))
+                        elif resp.status_code == 429:
+                            # Groq 免费版 20 RPM 限速，降级到 OpenAI
+                            logger.info("[Voice] Groq Whisper 触发限速 (429)，降级到 OpenAI")
+                        else:
+                            logger.debug("[Voice] Groq Whisper 返回 %d: %s",
+                                         resp.status_code, resp.text[:200])
+                except Exception as groq_err:
+                    logger.debug("[Voice] Groq Whisper 失败，降级到 OpenAI: %s", groq_err)
 
+            # ── 第二优先: OpenAI Whisper (付费) ──────────────────
+            if not transcribed:
+                openai_key = os.environ.get("OPENAI_API_KEY", "")
+                if openai_key:
+                    try:
+                        import httpx
+                        buf.seek(0)
+                        async with httpx.AsyncClient(timeout=30) as client:
+                            resp = await client.post(
+                                "https://api.openai.com/v1/audio/transcriptions",
+                                headers={"Authorization": f"Bearer {openai_key}"},
+                                files={"file": ("voice.ogg", buf, "audio/ogg")},
+                                data={"model": "whisper-1"},
+                            )
+                            if resp.status_code == 200:
+                                transcribed = resp.json().get("text", "")
+                                if transcribed:
+                                    stt_source = "OpenAI"
+                                    logger.info("[Voice] OpenAI Whisper 转写成功 (%d 字符)", len(transcribed))
+                    except Exception as whisper_err:
+                        logger.debug("[Voice] OpenAI Whisper 失败: %s", whisper_err)
+
+            # ── 第三优先: Deepgram Nova-3 (付费) ─────────────────
+            # 搬运 deepgram_stt.py 的能力，作为 Whisper 全部失败时的降级
+            if not transcribed:
+                try:
+                    from src.tools.deepgram_stt import transcribe_audio
+                    buf.seek(0)
+                    audio_data = buf.read()
+                    deepgram_result = await transcribe_audio(audio_data, language="zh")
+                    if deepgram_result:
+                        transcribed = deepgram_result
+                        stt_source = "Deepgram"
+                        logger.info("[Voice] Deepgram Nova-3 转写成功 (%d 字符)", len(transcribed))
+                except Exception as dg_err:
+                    logger.debug("[Voice] Deepgram 转写失败: %s", dg_err)
+
+            # ── 全部失败 ─────────────────────────────────────────
             if not transcribed:
                 await update.message.reply_text(
-                    "🎤 语音识别暂不可用（需要 OPENAI_API_KEY）\n请发送文字消息",
+                    "抱歉，没听清你说什么，请再说一次或者发文字消息吧。",
                     reply_to_message_id=update.message.message_id,
                 )
                 return
 
-            # 显示识别结果，然后当作文本处理
+            # 显示识别结果
             await update.message.reply_text(
                 f"🎤 识别: {transcribed[:200]}",
                 reply_to_message_id=update.message.message_id,
             )
+
+            # 标记本次为语音输入 — handle_message 结束后会自动以语音回复
+            context.user_data["_voice_input"] = True
 
             # 伪造文本消息，复用 handle_message 流程
             update.message.text = transcribed
@@ -837,7 +908,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
         except Exception as e:
             logger.error("[Voice] 语音处理失败: %s", e)
-            await update.message.reply_text("🎤 语音处理失败，请发送文字消息")
+            await update.message.reply_text("抱歉，语音处理出了点问题，请发文字消息吧。")
+        finally:
+            # 清理语音输入标记，防止后续文本消息被误判
+            context.user_data.pop("_voice_input", None)
 
 
     @staticmethod
@@ -951,15 +1025,24 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             logger.debug("静默异常: %s", e)
 
         try:
-            # 2. 闲鱼未读消息
-            from src.xianyu.xianyu_live_session import get_xianyu_live
-            xy = get_xianyu_live()
-            if xy:
-                unread = xy.get_unread_count() if hasattr(xy, 'get_unread_count') else 0
-                if unread and unread > 0:
-                    summary_parts.append(f"🛍️ 闲鱼 {unread} 条未读消息")
+            # 2. 闲鱼未读消息 — 通过 FastAPI 内部 API 查询闲鱼进程状态
+            import os as _os
+            import httpx as _httpx
+            api_token = _os.environ.get("OPENCLAW_API_TOKEN", "")
+            async with _httpx.AsyncClient(timeout=5.0) as _client:
+                resp = await _client.get(
+                    "http://127.0.0.1:18790/api/v1/system/status",
+                    headers={"X-API-Token": api_token} if api_token else {},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # 从系统状态中提取闲鱼相关信息
+                    xianyu_status = data.get("components", {}).get("xianyu", {})
+                    unread = xianyu_status.get("unread_count", 0)
+                    if unread > 0:
+                        summary_parts.append(f"🐟 闲鱼: {unread} 条未读消息")
         except Exception as e:
-            logger.debug("静默异常: %s", e)
+            logger.debug("闲鱼状态查询跳过: %s", e)
 
         if not summary_parts:
             return False

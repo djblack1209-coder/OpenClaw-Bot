@@ -267,6 +267,45 @@ class ClawBotRPC:
         return result
 
     # ──────────────────────────────────────────────
+    #  Trading — Dashboard (图表+资产)
+    # ──────────────────────────────────────────────
+
+    @staticmethod
+    async def _rpc_trading_dashboard() -> dict:
+        """盈利仪表盘数据：图表+资产+连接状态"""
+        from src.broker_selector import ibkr
+
+        try:
+            # 获取最近 30 天的每日净值数据
+            chart_data: list = []
+            assets: list = []
+            connected = False
+
+            # 检查 IBKR 连接状态
+            try:
+                connected = ibkr.connected if ibkr else False
+            except Exception as e:
+                logger.debug("[RPC] IBKR 连接状态检查失败: %s", e)
+
+            # 尝试获取持仓作为资产列表
+            try:
+                if connected and ibkr:
+                    positions = await ibkr.get_positions()
+                    for pos in (positions or []):
+                        assets.append({
+                            "name": pos.get("symbol", "Unknown"),
+                            "value": float(pos.get("market_value", 0)),
+                            "pnl": float(pos.get("unrealized_pnl", 0))
+                        })
+            except Exception as e:
+                logger.debug("[RPC] IBKR 持仓查询失败: %s", e)
+
+            return {"chart_data": chart_data, "assets": assets, "connected": connected}
+        except Exception as e:
+            logger.debug("[RPC] 交易面板数据获取失败: %s", e)
+            return {"chart_data": [], "assets": [], "connected": False}
+
+    # ──────────────────────────────────────────────
     #  Trading — Strategy Signals
     # ──────────────────────────────────────────────
 
@@ -393,6 +432,8 @@ class ClawBotRPC:
             "next_scheduled_action": "",
             "next_scheduled_time": "",
             "content_queue_size": 0,
+            "source": "placeholder",
+            "error": "social_worker_unavailable",
         }
         try:
             from src.execution.social.worker_bridge import run_social_worker

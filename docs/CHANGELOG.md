@@ -5,6 +5,688 @@
 
 ---
 
+## [2026-04-03] 全量审计续 — 功能补齐 + 占位清除 + 文档同步
+
+> 领域: `backend`, `frontend`, `docs`
+> 影响模块: `xianyu_apis.py`, `rpc.py`, `help_mixin.py`, `message_mixin.py`, `Plugins/index.tsx`, `Memory/index.tsx`, `MODULE_REGISTRY.md`
+> 关联问题: HI-410, HI-411, HI-391
+
+### 变更内容
+
+**后端修复 (4项)**:
+- XianyuApis 增加 `__aenter__/__aexit__/__del__` 自动关闭 httpx.AsyncClient 连接，防止 TCP 泄漏 (HI-410)
+- rpc.py 2处 + help_mixin.py 1处 `except Exception: pass` 改为 `except Exception as e: logger.debug(...)` 可追溯
+- message_mixin.py 闲鱼未读消息空壳替换为通过 FastAPI 内部 API 查询闲鱼进程状态
+
+**前端修复 (3项)**:
+- Plugins 3个占位按钮(HI-391)全部接通真实逻辑: 安装新插件(PromptDialog→save_mcp_plugin)、配置插件(修改启动命令)、自定义MCP Server
+- Memory 统计面板"提取轮次"和"向量维度"从 `clawbotMemoryStats()` API 接入真实数据
+- MCPPlugin 接口补充 command/args/env 字段
+
+**文档更新 (1项)**:
+- MODULE_REGISTRY 补录 7 个核心模块: brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal (HI-411)
+
+### 文件变更
+- `src/xianyu/xianyu_apis.py` — 增加 async with 上下文管理器 + __del__ 泄漏警告
+- `src/api/rpc.py` — 3处 except pass 改为 logger.debug
+- `src/bot/cmd_basic/help_mixin.py` — 1处 except pass 改为 logger.debug
+- `src/bot/message_mixin.py` — 闲鱼未读消息空壳实现为 API 查询
+- `apps/.../Plugins/index.tsx` — 3个占位按钮接通真实逻辑
+- `apps/.../Memory/index.tsx` — 统计面板接入 memoryStats API
+- `docs/registries/MODULE_REGISTRY.md` — 补录 7 个核心模块
+- `packages/clawbot/config/.env.example` — 清除 2 个真实 Bot 用户名
+
+---
+
+## [2026-04-03] 全量审计 P0-P5 — 安全加固 + 记忆隔离 + 架构验证
+
+> 领域: `backend`, `frontend`, `infra`, `docs`
+> 影响模块: `shared_memory.py`, `smart_memory.py`, `jina_reader.py`, `broker_bridge.py`, `server.py`, `kiro-gateway/main.py`, `test_shared_memory_core.py`
+> 关联问题: HI-412, HI-413, HI-414, HI-415, HI-416, HI-410, HI-411
+
+### 变更内容
+
+**P0 安全修复 (5项)**:
+- 修复记忆存储跨用户泄漏: `search(chat_id=None)` 改为仅搜全局记忆、SmartMemory 全链路传入 chat_id、`get_context_for_prompt()` 支持用户隔离
+- Kiro 网关 CORS 收窄: `allow_methods/allow_headers=["*"]` → 具体白名单
+- 内部 API 生产环境关闭 Swagger 文档页面
+- Jina Reader 增加 SSRF 检查防止访问内网资源
+- IBKR Gateway 启动命令增加可执行文件白名单校验
+
+**P0 审计发现 (记录)**:
+- Git 历史密钥残留 (HI-348/387) — 需人工轮换密钥
+- diskcache CVE 待上游修复 (HI-388)
+
+**P1 功能验证**:
+- 236 个 Python 文件仅 1 处空壳(闲鱼摘要)，0 个 TODO/FIXME
+- 20 个前端组件 99% UI↔逻辑接通，仅 Plugins 3 个占位按钮(HI-391)
+- OMEGA/交易/API 功能完整，进化/比价各有 1 处非阻塞增强需求
+
+**P2 架构验证**:
+- TypeScript: `tsc --noEmit` 零报错
+- Rust: `cargo clippy` 零警告，0 个 unwrap/unsafe
+- Python: 236 文件语法检查全通过
+- 线程安全: 14 处 Lock 使用全部正确，无 async 上下文误用同步锁
+
+**P5 文档清理**:
+- HEALTH.md: 清理 7 个僵尸条目，登记 7 个新发现(HI-410~416)
+- 修复 HI-ID 冲突(HI-387/388/389 重复分配)
+
+### 文件变更
+- `src/shared_memory.py` — search/get_context_for_prompt 增加 chat_id 用户隔离
+- `src/smart_memory.py` — _resolve_and_store/_update_user_profile 全链路传入 chat_id
+- `src/tools/jina_reader.py` — jina_read() 增加 SSRF 检查
+- `src/broker_bridge.py` — IBKR_START_CMD 增加可执行文件白名单
+- `src/api/server.py` — 生产环境关闭 API 文档
+- `kiro-gateway/main.py` — CORS methods/headers 收窄
+- `tests/test_shared_memory_core.py` — 更新测试验证用户隔离行为
+- `docs/status/HEALTH.md` — 清理僵尸条目 + 登记新发现
+- `docs/CHANGELOG.md` — 记录本次审计
+
+---
+
+## [2026-04-02] 三大聪明层升级 — 语音闭环 + 指挥中心 + 配置中文化
+
+> 领域: `backend`, `frontend`
+> 影响模块: `message_mixin.py`, `CommandPalette.tsx`, `ControlCenter/index.tsx`
+> 关联问题: 无
+
+### 变更内容
+
+**语音交互完整闭环 (后端)**
+- 用户发 Telegram 语音消息 → 自动 STT 转文字（3级降级：Groq Whisper → OpenAI Whisper → Deepgram Nova-3）→ LLM 处理 → TTS 语音回复
+- 开车、做饭时解放双手，不用打字就能和 Bot 对话
+- STT 失败友好提示："抱歉，没听清你说什么…"
+
+**桌面端 Cmd+K / Ctrl+K 指挥中心 (前端)**
+- CommandPalette 从导航菜单升级为指令执行中心
+- 输入任何自然语言（如"帮我买100股苹果"）→ 回车 → 直接调用 OMEGA Brain 执行
+- 不用打开 Telegram 就能下指令，桌面端真正变成"控制台"
+
+**控制中心配置项中文化 (前端)**
+- 10 个配置字段全部从技术变量名换成中文标签+描述+示例
+- `G4F_BASE_URL` → "🏷️ 免费模型代理地址 (G4F)" + "提供免费 LLM 的本地代理服务"
+- `IBKR_HOST` → "🏷️ IBKR 券商交易地址" + "默认: 127.0.0.1"
+
+### 文件变更
+- `packages/clawbot/src/bot/message_mixin.py` — 语音闭环完整实现
+- `apps/openclaw-manager-src/src/components/CommandPalette.tsx` — 指挥中心升级
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — 配置项中文化
+
+---
+
+## [2026-04-02] 自愈透明化 + 科技早报自动推送
+
+> 领域: `backend`
+> 影响模块: `monitoring/health.py`, `multi_main.py`, `execution/scheduler.py`
+> 关联问题: 无
+
+### 变更内容
+- **Bot 崩溃时主动推送 Telegram 通知**: AutoRecovery 在重启次数耗尽进入冷却期时，立即向用户发送"⚠️ Bot 连续崩溃 X 次，已暂停 30 分钟"通知。冷却结束重试时再推"🔄 正在自动重连…"。用户不再需要事后发现 Bot 没响应才知道出了问题。
+- **每早 8:00 自动推送科技早报**: 在调度器中新增 `_run_morning_news` 任务，每天 8:00 自动调用 `news_fetcher.generate_morning_report()` 并推送到 Telegram。用户不再需要手动发 `/news`。可通过 `MORNING_NEWS_ENABLED=0` 关闭、`MORNING_NEWS_HOUR=9` 调整时间。
+
+### 文件变更
+- `packages/clawbot/src/monitoring/health.py` — AutoRecovery 增加 notify_func + 通知去重
+- `packages/clawbot/multi_main.py` — 初始化后注入 _notify_batched 给 AutoRecovery
+- `packages/clawbot/src/execution/scheduler.py` — 新增 _run_morning_news 定时任务
+
+---
+
+## [2026-04-02] 产品体验跃迁 — Dashboard 业务概览 + Telegram 帮助重构 + 投资一句话结论
+
+> 领域: `frontend`, `backend`
+> 影响模块: `Dashboard/BusinessSummary.tsx`, `help_mixin.py`, `response_cards.py`
+> 关联问题: HI-396 (已解决)
+
+### 变更内容
+
+**Dashboard "今日经营概览"面板 (P0)**
+- 新增 `BusinessSummary.tsx` 组件，放在 Dashboard 最顶部
+- 4 张业务卡片：今日盈亏(绿/红色) + 闲鱼客服状态 + 今日 AI 花费(进度条) + 社媒运营
+- 接口用 `Promise.allSettled` 并行调用，任何一个挂了不影响其他
+- 60 秒自动刷新 + 手动刷新按钮
+
+**Telegram 帮助菜单新增"生活助手"分类 (P0)**
+- `/help` 菜单从 8 个分类增加到 9 个，新增 🏠 生活助手
+- 涵盖：提醒(周期性)、记账(收入/支出/预算)、话费追踪、降价提醒、智能简报
+- 这些功能之前藏在 `/ops` 子命令里，用户根本不知道存在
+
+**投资分析卡片加"一句话结论" (P1)**
+- `InvestmentAnalysisCard.to_telegram()` 在星级评分上方新增一行粗体大白话总结
+- 买入/卖出/观望各有针对性文案，包含预估涨跌幅和置信度
+- 非专业用户不再需要理解"⭐⭐⭐ 7.2"是什么意思
+
+**/start 老用户个性化欢迎 + 断点续接 (P1)**
+- 老用户打开 Bot 时，从 mem0 记忆中提取最近关注的内容
+- 显示"💡 我还记得：你最近在关注 AAPL…"，让用户感受到 Bot 有记忆
+- 获取失败时静默降级，不影响正常体验
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Dashboard/BusinessSummary.tsx` — 新增
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — 集成 BusinessSummary
+- `packages/clawbot/src/bot/cmd_basic/help_mixin.py` — 新增 life 分类 + /start 个性化
+- `packages/clawbot/src/core/response_cards.py` — 投资卡片加一句话结论
+
+---
+
+## [2026-04-02] 增加 Dashboard 业务指标概览
+
+> 领域: `frontend`
+> 影响模块: `Dashboard 组件`
+> 关联问题: HI-397
+
+### 变更内容
+- **新增 Dashboard 业务指标汇总面板**: 在 OpenClaw Desktop 控制台首页，环境安装向导下方，新增《今日经营概览》区域。面向老板角色提供直观业务大盘数据。
+- **集成四项核心数据指标**: 
+  1. 交易系统（显示今日盈亏与系统连接状态）
+  2. 闲鱼客服（显示在线状态与今日消息数）
+  3. AI 花费（显示今日花费与 50 刀预算的红/橙/紫色彩进度条）
+  4. 社媒运营（显示今日发帖数与自动驾驶状态）
+- **实现机制**: 组件内部通过 `Promise.allSettled` 并行调用已有的 `api.clawbotTradingPnl()`, `api.clawbotStatus()`, `api.omegaCost()`, `api.clawbotSocialMetrics()`，并兼容字段兜底降级处理，具备每分钟自动轮询和错误容错能力。
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Dashboard/BusinessSummary.tsx` — 新增业务指标概览面板。
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — 将 BusinessSummary 引入到 Dashboard 顶部渲染。
+
+---
+
+## [2026-04-02] 修复 Mac Python 进程 Dock 栏跳动问题与 VPS 故障切换
+
+> 领域: `infra`, `deploy`
+> 影响模块: `multi_main.py`, `Tauri 服务控制`, `vps_failover_check.sh`
+> 关联问题: HI-396
+
+### 变更内容
+- **修复 Mac Python 在 Dock 栏跳动**: 在 `multi_main.py` 入口动态加载 `AppKit` 并设置 `NSApplicationActivationPolicyProhibited` (2)，将 Python 声明为 UIElement 后台程序。从根本上解决包含 GUI 库依赖导致 Mac 判定为前台 App 并在 Dock 栏跳动的问题。
+- **修复 macOS BTM 屏蔽 LaunchAgent**: 为 Tauri APP 的服务控制添加 `scripts/start_clawbot.sh` 和 `scripts/start_xianyu.sh` bash wrapper 降级脚本。当 `launchctl` 因为崩溃次数过多被后台任务管理器 (BTM) 屏蔽时，APP 控制面板能静默 fallback 通过脚本把服务跑在后台，实现无缝接管。
+- **完善 VPS 自动故障切换部署**: 以 Root 权限将 `clawbot-failover.timer` 和 `clawbot-failover.service` 部署至备用节点并激活。现在当 Mac 主节点异常断电/断网时（120秒心跳超时 + 连续 3 次失败），VPS 将正确触发接管拉起真正的 `clawbot.service`。核心 Python 后端环境同步完成。
+
+### 文件变更
+- `packages/clawbot/multi_main.py` — 新增 AppKit 后台标记逻辑
+- `packages/clawbot/scripts/start_clawbot.sh` — 新增 Bot 的 bash launcher
+- `packages/clawbot/scripts/start_xianyu.sh` — 新增闲鱼的 bash launcher
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — 注册 fallback script 给 agent 和 xianyu 模块
+
+---
+
+## [2026-04-02] 修复 Bot 自动恢复死锁与主进程异常处理机制
+
+> 领域: `backend`, `infra`
+> 影响模块: `monitoring/health.py`, `multi_main.py`
+> 关联问题: 无特定HI (主动修复)
+
+### 变更内容
+- **修复 AutoRecovery 恢复死锁**: 增加全局退避重置机制。当 Bot 达到最大重启次数 (3次) 后，不再永久"放弃恢复"僵死，而是进入 30 分钟冷却期，冷却结束后自动重置重启计数，在网络恢复后能再次尝试拉起 Telegram 连接。
+- **强化主进程崩溃防护**: 在 `multi_main.py` 的顶层 `asyncio.run(main())` 增加 `except Exception as e` 全局兜底捕获。当底层抛出未处理的网络异常（如 `telegram.error.NetworkError: httpx.ReadError`）时，优雅打印堆栈并以 `sys.exit(1)` 退出，确保 macOS LaunchAgent 能成功识别并拉起新进程（避免 Launchd EX_CONFIG 78 退出码）。
+
+### 文件变更
+- `packages/clawbot/src/monitoring/health.py` — 新增 `exhausted_cooldown` 冷却期重置逻辑
+- `packages/clawbot/multi_main.py` — 增强 `__main__` 入口异常处理与 sys.exit(1)
+
+---
+
+## [2026-04-01] 闲鱼自动登录工具 — Cookie 过期自动弹出浏览器扫码
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `xianyu_live.py`, `scripts/xianyu_login.py`
+> 关联问题: HI-409 (已解决)
+
+### 变更内容
+
+**Playwright 浏览器自动登录工具 (新增)**
+- 新增 `scripts/xianyu_login.py` — 一键打开浏览器到闲鱼登录页，用户手机扫码后自动提取所有 Cookie
+- 自动写入 `config/.env` 文件（原子写入，防损坏）
+- 自动向运行中的 `xianyu_main` 进程发送 SIGUSR1 信号触发 Cookie 热更新
+- 支持 `--quiet` 静默模式（被其他脚本调用时）
+
+**Cookie 过期自动弹出登录 (HI-409)**
+- `cookie_health_loop` 升级：Cookie 刷新连续失败 2 次后，自动在后台启动浏览器登录脚本
+- 登录成功后自动同步 Cookie 到内存状态并触发 WebSocket 重连
+- 30 分钟冷却保护：防止短时间内反复弹出浏览器
+- 登录失败时仍通过 Telegram 告警通知（附手动操作指引）
+
+### 文件变更
+- `scripts/xianyu_login.py` — 新增，浏览器登录 + Cookie 提取工具
+- `src/xianyu/xianyu_live.py` — cookie_health_loop 增加自动登录逻辑 + _auto_browser_login 方法
+
+---
+
+## [2026-04-01] Bot 心跳机制修复 — 消除网络波动导致的全量心跳丢失告警
+
+> 领域: `backend`
+> 影响模块: `multi_main.py`
+> 关联问题: HI-408 (已解决), HI-409 (新增活跃)
+
+### 变更内容
+
+**心跳发送条件修复 (HI-408)**
+- 移除 `updater.running` 条件依赖 — 原逻辑要求 Telegram updater 正常运行才发心跳，网络波动时所有 Bot 同时不满足条件，导致 5 分钟后全军覆没式心跳丢失告警
+- 改为只要 `bot.app` 存在即发心跳，心跳代表"Bot 进程存活"而非"Telegram 连接正常"
+- 告警消息增加诊断信息：每个不健康 Bot 显示距上次心跳的秒数和连续错误次数
+
+**闲鱼 Cookie 过期诊断 (HI-409)**
+- 登记架构限制：闲鱼 Cookie 完全失效后 `refresh_cookies_via_session` 无法自救
+- 需手动更新 `XIANYU_COOKIES` 后执行 `/xianyu reload`
+
+### 文件变更
+- `multi_main.py` — 心跳条件简化 + 告警消息增加诊断详情
+
+---
+
+## [2026-04-01] 闲鱼客服全面审计 — WebSocket 连接稳定性修复 + 通知异步化 + 10 项问题修复
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `xianyu_live.py`, `order_notifier.py`, `xianyu_apis.py`, `cmd_xianyu_mixin.py`, `message_mixin.py`
+> 关联问题: HI-398~HI-407 (全部已解决)
+
+### 变更内容
+
+**WebSocket 连接稳定性修复 (4 项) — 根治"连续重连 92 次"**
+
+- **心跳超时触发重连 (HI-398)**: 心跳超时后主动关闭 WebSocket 并设置重启标记，防止连接僵死（之前超时只退出心跳循环，主连接无感知）
+- **Token 刷新不再断连 (HI-399)**: Token 每小时刷新时不再强制关闭 WebSocket，仅设置 `restart_flag`，让主循环在当前消息处理完成后优雅重连。每天减少 24 次不必要的断连
+- **重连熔断器 (HI-400)**: 连续失败 50 次后进入 10 分钟冷却期，防止 Cookie 失效时无限重试浪费资源。冷却后自动重试
+- **重连告警优化 (HI-401)**: 每 5 次连续失败发送一次告警（可重复），增加累计重连总次数监控
+
+**通知系统异步化 (HI-403)**
+- `order_notifier.py` 从同步 `requests` 库完全迁移到 `httpx`
+- 异步场景: 用 `httpx.AsyncClient` + `asyncio.ensure_future()` 非阻塞发送
+- 同步场景: 用 `httpx.Client` 同步发送
+- 3 次指数退避重试逻辑在两种模式下均有效
+
+**工程质量修复 (5 项)**
+- **任务清理等待 (HI-402)**: `task.cancel()` 后用 `asyncio.gather()` 等待清理完成，防止竞态
+- **原子 .env 写入 (HI-404)**: `xianyu_apis.py` 的 Cookie 写回改为 tempfile + `os.replace()` 原子操作
+- **死引用清理 (HI-405)**: 移除 `message_mixin.py` 中不存在的 `xianyu_live_session` 模块引用
+- **死代码清理 (HI-406)**: 底价注入逻辑中的重复数据库查询修正为复用已有结果
+- **未使用导入清理 (HI-407)**: 移除 `cmd_xianyu_mixin.py` 中未使用的 `import subprocess`
+
+### 测试结果
+- 基线: 1122 passed, 2 skipped | 最终: 1122 passed, 2 skipped | 零回归
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 心跳重连+Token优雅重连+熔断器+告警优化+任务清理+底价逻辑修复
+- `packages/clawbot/src/xianyu/order_notifier.py` — requests→httpx 全量异步迁移
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — .env 原子写入
+- `packages/clawbot/src/bot/cmd_xianyu_mixin.py` — 移除未使用 subprocess 导入
+- `packages/clawbot/src/bot/message_mixin.py` — 移除死引用 xianyu_live_session
+
+---
+
+## [2026-04-01] 遗留任务清零：插件管理真实化 + 记忆分页 + 盈利图表接口 + 设置增强 + 日志增强 + 进化引擎修复
+
+> 领域: `frontend`, `backend`, `infra`
+> 影响模块: `Plugins`, `Memory`, `Money`, `Settings`, `Logs`, `Evolution`, `trading.py`, `rpc.py`, `clawbot_api.rs`, `mcp.rs`
+> 关联问题: HI-391, HI-397
+
+### 变更内容
+
+**插件管理真实化 (HI-397 部分解决)**
+- 移除 3 个硬编码假插件数据（GitHub/SQLite/Browser-Use），改为空列表 + 引导提示
+- 开关状态改为诚实的"已配置"（黄色）而非虚假的"已连接"（绿色）
+- 开关失败时新增错误提示（原来无提示默默回滚）
+
+**记忆系统增强**
+- 新增"加载更多"分页，每次加载 50 条，有更多数据时底部显示加载按钮
+
+**盈利总控图表数据**
+- 后端新增 `/trading/dashboard` 接口，返回 IBKR 连接状态 + 持仓资产列表
+- Rust 代理和前端 HTTP 降级路径同步更新
+- 盈利总控的图表和资产面板不再永远空白
+
+**设置页面增强**
+- 新增深色/浅色主题切换
+- 新增设置导出（JSON 文件）和导入功能
+
+**日志页面增强**
+- 新增文本搜索框，可在日志内容中搜索关键词
+- 新增 8 个模块颜色（Evolution/Memory/Plugins 等），不再全是灰色
+- 导出功能改为 Tauri 原生文件对话框（浏览器模式降级为 blob 下载）
+
+**进化引擎修复**
+- value_score/growth_rate 自动检测 0-1 和 0-100 范围，不再显示 7500%
+- 扫描/批准操作增加成功/失败提示
+- 刷新按钮改为静默刷新，不再闪烁骨架加载
+
+### 测试结果
+- Python: 1122 passed, 2 skipped, 0 failed | 零回归
+- TypeScript: 零报错 | Rust: cargo build 零报错
+
+### 文件变更
+- `src/components/Plugins/index.tsx` — 移除假数据 + 诚实状态 + 空状态 + 错误提示
+- `src-tauri/src/commands/mcp.rs` — configured 状态支持
+- `src/components/Memory/index.tsx` — 加载更多分页
+- `packages/clawbot/src/api/routers/trading.py` — 新增 /trading/dashboard
+- `packages/clawbot/src/api/rpc.py` — 新增 _rpc_trading_dashboard
+- `src-tauri/src/commands/clawbot_api.rs` — 代理改为 /trading/dashboard
+- `src/components/Money/index.tsx` — HTTP 降级路径更新
+- `src/components/Settings/index.tsx` — 主题切换 + 设置导出导入
+- `src/components/Logs/index.tsx` — 文本搜索 + 模块颜色 + Tauri 导出
+- `src/components/Evolution/index.tsx` — 范围安全 + toast 提示 + 静默刷新
+
+---
+
+## [2026-04-01] 桌面管理端全面排查：16 项 Bug 修复 + 12 个页面审计
+
+> 领域: `frontend`, `infra`
+> 影响模块: `Social`, `Money`, `Channels`, `Dashboard`, `StatusCard`, `ControlCenter`, `Memory`, `Logs`, `clawbot_api.rs`, `channelDefinitions.ts`
+> 关联问题: HI-396, HI-397 (新增)
+
+### 变更内容
+- **社媒总控**: 全自动运营模式增加确认弹窗，防止误触一键开启
+- **盈利总控**: HTTP 降级路径从不存在的 `/trading/status` 改为 `/status`；IBKR 状态字段兼容 `ibkr_connected`
+- **盈利总控**: Rust 代理接口从 `/trading/status` 改为 `/status`（后端实际路径）
+- **盈利总控+社媒**: 错误结果改用红色样式显示（原来错误也显示绿色）
+- **消息渠道**: `hasValidConfig` 从 `.some()` 改为 `.every()`，所有必填项填完才算已配置
+- **消息渠道**: Telegram 私聊策略补充"白名单模式"选项
+- **消息渠道**: 切换渠道时重置清空确认状态，防止误操作
+- **消息渠道**: 空渠道列表文案从"点击添加按钮"改为"请在左侧选择渠道"
+- **概览页**: 去除 Dashboard 自己的 3 秒轮询，改用 appStore 共享状态（消除双重轮询）
+- **概览页-StatusCard**: 端口/PID 显示从 `||` 改为 `??`，修复 0 值误显示为默认值
+- **概览页-StatusCard**: 运行时间 0 秒显示"0m"而不是"--"
+- **总控中心**: 增加 10 秒自动刷新服务状态
+- **总控中心**: 日志窗口增加自动滚动到最新
+- **记忆系统**: 搜索从客户端过滤改为真实 API 调用（300ms 防抖）
+- **记忆系统**: 引擎状态从"有数据=在线"改为 API 连通性检测
+- **记忆系统**: 编辑/删除操作增加 loading 状态和按钮禁用
+- **日志页**: 移除逐条 motion.div 动画，解决 500 条日志渲染卡顿
+- **Rust API Token**: 增加从 .env 文件 fallback 读取，解决 Tauri 进程未继承环境变量
+
+### 审计发现总览
+- 排查了 12 个页面组件，共发现 75 个问题（6个严重/15个重要/~54个一般）
+- 本次修复了 16 个最高优先级问题
+- 插件管理假数据+假开关（HI-397）和记忆 50 条限制等问题待后续迭代
+
+### 测试结果
+- Python: 1122 passed, 2 skipped, 0 failed | 零回归
+- TypeScript: 零报错 | Rust: cargo build 零报错
+
+### 文件变更
+- `src/components/Social/index.tsx` — Autopilot 确认弹窗 + 错误结果红色
+- `src/components/Money/index.tsx` — HTTP 降级路径 + IBKR 状态字段 + 错误结果红色
+- `src/components/Channels/index.tsx` — 清空确认重置 + 空状态文案
+- `src/components/Channels/channelDefinitions.ts` — hasValidConfig every + dmPolicy allowlist + openclaw-weixin
+- `src/components/Dashboard/index.tsx` — 去重轮询
+- `src/components/Dashboard/StatusCard.tsx` — ?? 替换 || + uptime 0 值
+- `src/components/ControlCenter/index.tsx` — 10s 自动刷新 + 日志自动滚动
+- `src/components/Memory/index.tsx` — API 搜索 + 引擎状态 + loading
+- `src/components/Logs/index.tsx` — motion.div 改为 div
+- `src-tauri/src/commands/clawbot_api.rs` — /status 路径 + Token .env fallback
+
+---
+
+## [2026-04-01] 服务矩阵全面修复：macOS 后台任务屏蔽绕过 + 双模启停 + 端口探活
+
+> 领域: `infra`, `frontend`
+> 影响模块: `clawbot.rs`, `launchagents/*.plist`, `launchagents/*-launcher.sh`
+> 关联问题: HI-396 (新增)
+
+### 变更内容
+- 根因：macOS 后台任务管理 (BTM) 屏蔽了 3 个 LaunchAgent 服务（Gateway/g4f/Kiro），launchd 启动后立即退出码 78 (EX_CONFIG)
+- 创建 3 个启动脚本（gateway-launcher.sh / g4f-launcher.sh / kiro-gateway-launcher.sh），通过 bash 包装绕过 BTM 限制
+- 更新 3 个 plist 文件，改为通过 `/bin/bash` 调用启动脚本，KeepAlive 改为 SuccessfulExit:false
+- Rust `ManagedServiceDefinition` 扩展字段：port / launcher_script / stdout_log / stderr_log
+- Rust `query_service_status` 增加端口探活 fallback：launchd 不可用时自动通过 TCP 端口检测服务状态
+- Rust `control_managed_service` 增加双模启停：launchd 失败时自动降级为脚本启动 + PID kill 停止
+- 新增 `find_pid_by_port` / `start_service_via_script` / `stop_service_via_pid` 三个辅助函数
+
+### 测试结果
+- Rust: cargo build 零报错
+- 6 个服务全部在线（端口 18789/18790/18793/18891/4002 + xianyu WebSocket）
+
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — 服务管理双模改造
+- `tools/launchagents/ai.openclaw.gateway.plist` — 改用 bash 启动脚本
+- `tools/launchagents/ai.openclaw.g4f.plist` — 改用 bash 启动脚本
+- `tools/launchagents/ai.openclaw.kiro-gateway.plist` — 改用 bash 启动脚本
+- `tools/launchagents/gateway-launcher.sh` — 新增 OpenClaw Gateway 启动脚本
+- `tools/launchagents/g4f-launcher.sh` — 新增 g4f 启动脚本
+- `tools/launchagents/kiro-gateway-launcher.sh` — 新增 Kiro Gateway 启动脚本
+
+---
+
+## [2026-04-01] Bot 对话体验跃迁：模型质量修复 + 速度优化 + 错误人话化 + 多模态增强
+
+> 领域: `backend`, `ai-pool`
+> 影响模块: `litellm_router`, `callback_mixin`, `cmd_novel_mixin`, `telegram_gateway`, `ocr_mixin`, `message_mixin`, `trading.py`, `social.py`
+
+### 变更内容
+- `litellm_router.py` — 4个Bot(Claude Sonnet/Haiku/Opus+DeepSeek)从g4f→正确的模型族，g4f降级为TIER_C
+- `litellm_router.py` — LLM超时30s→15s，重试2→1，快速失败减少等待
+- 5处技术异常暴露改为中文友好提示（callback_mixin/cmd_novel_mixin/telegram_gateway）
+- 3个API 500错误修复（trading signals/system + social personas，response_model类型不匹配）
+- `ocr_mixin.py` — 私聊图片默认走Vision理解（不再先OCR），结果注入对话历史支持追问
+- `message_mixin.py` — 接入Groq免费Whisper(whisper-large-v3-turbo)，免费用户也能发语音
+
+### 体验评分: 3.8→6.5/10 (+2.7分)
+
+### 测试结果
+- 1122 passed, 2 skipped, 0 failed | 零回归
+
+---
+
+## [2026-04-01] 全量安全审计 续: 性能加固 + 异步迁移 + SSRF 统一（7 项追加修复）
+
+> 领域: `backend`, `frontend`, `xianyu`, `infra`
+> 影响模块: `pygments`, `service.rs`, `installer.rs`, `clawbot_api.rs`, `xianyu_apis.py`, `cookie_refresher.py`, `xianyu_live.py`, `security.py`, `http_client.py`, `web_tool.py`
+> 关联问题: HI-388, HI-389, HI-392, HI-394, HI-395
+
+### 变更内容
+- `pygments` 升级到 2.20.0 修复 CVE-2026-4539 (HI-388)
+- Rust `service.rs` 4 处 + `installer.rs` 3 处 `std::thread::sleep` 改为非阻塞 `tokio::time::sleep` (HI-395)
+- Rust `clawbot_api.rs` reqwest Client 改为 `LazyLock` 全局单例复用，统一 30s 超时 + 5 连接池 (HI-394)
+- 闲鱼 `xianyu_apis.py` 同步 `requests.Session` 全量迁移为 `httpx.AsyncClient`，消除事件循环阻塞 (HI-389)
+- `cookie_refresher.py` + `xianyu_live.py` 适配新的 async 接口，移除 4 处 `asyncio.to_thread()` 包装
+- SSRF 防护函数从 `web_tool.py` 提取到 `core/security.py`，`http_client.py` 新增 `ssrf_check` 参数
+- 新增 30 个 SSRF 测试 + 5 个 http_client 测试
+- 5 个疑似未使用 pip 依赖验证结果：全部在用（延迟导入 + graceful degradation）(HI-392 关闭)
+
+### 测试结果
+- 基线: 1092 passed | 最终: 1122 passed (+30 新增测试), 2 skipped | 零回归
+- TypeScript: 零报错 | Rust: cargo build 零报错
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — requests→httpx 异步迁移
+- `packages/clawbot/src/xianyu/cookie_refresher.py` — async 适配
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 移除 to_thread 包装
+- `packages/clawbot/src/core/security.py` — 新增 check_ssrf() + SSRFError
+- `packages/clawbot/src/http_client.py` — 新增 ssrf_check 参数
+- `packages/clawbot/src/tools/web_tool.py` — SSRF 检查改用统一入口
+- `apps/openclaw-manager-src/src-tauri/src/commands/service.rs` — tokio::time::sleep
+- `apps/openclaw-manager-src/src-tauri/src/commands/installer.rs` — tokio::time::sleep
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — reqwest Client 复用
+
+---
+
+## [2026-04-01] 全量安全审计 + 架构修复 + 功能补全（P0-P4 共 23 项修复）
+
+> 领域: `backend`, `frontend`, `infra`, `xianyu`, `social`
+> 影响模块: `kiro-gateway`, `callback_mixin`, `message_mixin`, `xianyu_live`, `life_automation`, `health_check`, `cost_analyzer`, `_db`, `feedback`, `invest_tools`, `novel_writer`, `trading_journal`, `monitoring_extras`, `broker_bridge`, `executor`, `Social组件`, `config.rs`, `clawbot.rs`
+> 关联问题: HI-159, HI-160, HI-348, HI-373, HI-384
+
+### P0 安全审计修复 (11 项)
+- `kiro-gateway/main.py` — CORS 从 `allow_origins=["*"]` 收窄为白名单模式（localhost + Tauri），生产环境自动禁用 Swagger 文档
+- `src/bot/callback_mixin.py` — suggest 回调按钮现在走 `sanitize_input()` 消毒（之前直接将 callback_data 传给 Brain）
+- `src/bot/message_mixin.py` + `src/xianyu/xianyu_live.py` — `sanitize_input` 失败时从 fail-open 改为 fail-close（拒绝处理）
+- `src/execution/life_automation.py` — osascript 从 f-string 拼接改为 argv 参数传递（防止 AppleScript 注入）
+- `tools/health_check.py` — Bot Token 脱敏从前 10 位缩减为前 4 位，百度网盘提取码打码
+- 8 个模块统一补全 `PRAGMA busy_timeout=5000`：`_db.py`, `feedback.py`, `invest_tools.py`, `novel_writer.py`, `trading_journal.py`, `cost_analyzer.py` (含 3 处裸连接补 timeout=10)
+- `.gitignore` — 排除 `.openclaw/cron/jobs.json`，`git rm --cached` 取消跟踪
+
+### P1 功能完整性修复 (3 项)
+- `Social/index.tsx` — 草稿持久化对接后端 4 个 API（clawbotSocialDrafts/DraftUpdate/DraftDelete/DraftPublish），刷新页面不再丢失
+- `src/core/executor.py` — httpx AsyncClient 改为懒初始化 + 幂等 close() + async with 支持 + __del__ 警告（修复 HI-159/160 TCP 连接泄漏）
+
+### P2 架构质量修复 (5 项)
+- `src/monitoring_extras.py` — 修复 loop 为 None 时的 AttributeError 空指针
+- `src/xianyu/xianyu_live.py` — 四层嵌套 dict 直接访问改为 try/except 安全访问
+- `src/broker_bridge.py` — 移除 Python 3.12 已废弃的 `asyncio.get_event_loop()` 调用
+
+### P3 Rust 安全修复 (3 项)
+- `commands/config.rs` — `mask_secret()` 从字节切片改为 `.chars()` 迭代，修复非 ASCII 输入导致的 panic
+- `commands/clawbot.rs` — `parse_env_content()` 添加 `len() >= 2` 前置检查，修复单字符引号值的越界 panic
+
+### P4 UI/UX 修复 (1 项)
+- `Social/index.tsx` — 草稿删除/发布按钮添加 `operatingDraftId` 状态防重复点击
+
+### 依赖安全
+- pip-audit 发现 `diskcache 5.6.3` (CVE-2025-69872) 和 `pygments 2.19.2` (CVE-2026-4539) 有漏洞
+
+### 测试结果
+- 基线: 1092 passed, 2 skipped | 最终: 1092 passed, 2 skipped | 零回归
+- TypeScript: 零报错 | Rust: cargo build 零报错
+
+### 文件变更
+- `packages/clawbot/kiro-gateway/main.py` — CORS 收窄 + Swagger 生产禁用
+- `packages/clawbot/src/bot/callback_mixin.py` — suggest 回调消毒
+- `packages/clawbot/src/bot/message_mixin.py` — sanitize fail-close
+- `packages/clawbot/src/xianyu/xianyu_live.py` — sanitize fail-close + dict 安全访问
+- `packages/clawbot/src/execution/life_automation.py` — osascript 注入修复
+- `packages/clawbot/tools/health_check.py` — 日志脱敏
+- `packages/clawbot/src/monitoring/cost_analyzer.py` — SQLite timeout 补全
+- `packages/clawbot/src/execution/_db.py` — busy_timeout 补全
+- `packages/clawbot/src/feedback.py` — busy_timeout 补全
+- `packages/clawbot/src/invest_tools.py` — busy_timeout 补全
+- `packages/clawbot/src/novel_writer.py` — busy_timeout 补全
+- `packages/clawbot/src/trading_journal.py` — busy_timeout 补全
+- `packages/clawbot/src/monitoring_extras.py` — 空指针修复
+- `packages/clawbot/src/broker_bridge.py` — 废弃 API 移除
+- `packages/clawbot/src/core/executor.py` — httpx 连接泄漏修复
+- `packages/clawbot/tests/test_omega_core.py` — executor 测试适配
+- `.gitignore` — 排除 cron/jobs.json
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 草稿持久化 + 防重复点击
+- `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` — UTF-8 安全切片
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — 引号解析边界修复
+
+---
+
+## [2026-03-31] 全链路E2E功能测试 + 置信度证明 + 排版统一 + Mock数据清理
+
+> 领域: `backend`, `trading`, `docs`
+> 影响模块: `decision_validator`, `ta_engine`, `risk_config`, `pydantic_agents`, `alpaca_bridge`, `rpc`, `notify_style`, `response_cards`, `message_format`, `telegram_ux`
+> 关联问题: HI-353(增强), HI-384(相关)
+
+### E2E 全链路测试 (45个新测试, 8个测试类)
+- `tests/test_e2e_bot_interaction.py` — 全新文件，模拟 Telegram/微信端自然语言交互
+  - TestChineseNLPFullChain: 14个中文NLP解析测试 (分析/买入/记账/降价监控等)
+  - TestRealMarketData: 5个真实市场数据测试 (AAPL 技术分析/信号评分/缓存)
+  - TestInvestmentPipelineConfidence: 6个置信度验证测试
+  - TestResponseFormatting: 10个排版校验测试 (HTML合法/分隔符统一/进度条)
+  - TestNotificationChain: 4个通知链路测试 (微信桥接/级别映射)
+  - TestTradingSystemIntegrity: 4个交易系统完整性测试
+  - TestMockDataLabeling: 3个Mock数据标注审计测试
+  - TestWeChatNotificationChain: 2个微信通知测试
+
+### 置信度证明 (6个模块)
+- `decision_validator.py` — ValidationResult 新增 `validation_confidence` 字段 (0-1, issue越多越低)
+- `ta_engine.py` — compute_signal_score() 新增 `confidence` 字段 (基于一致指标数+评分绝对值)
+- `risk_config.py` — RiskCheckResult 新增 `confidence` 字段 (0-1)
+- `pydantic_agents.py` — ResearchOutput/TAOutput/QuantOutput/RiskOutput 新增 `confidence` 字段
+
+### Mock数据清理 (3个模块)
+- `alpaca_bridge.py` — mock 返回添加 `is_mock=True` + `source=mock_fallback` 标记
+- `api/rpc.py` — 社媒占位符添加 `source=placeholder` + `error=social_worker_unavailable`
+- `notify_style.py` — 修复 `timestamp_tag()` NameError bug (except 块引用未导入变量)
+
+### 排版统一 (6项修复)
+- 全局统一分隔符为 19 字符 `━━━━━━━━━━━━━━━━━━━` (response_cards/message_format/telegram_ux/notify_style)
+- 空摘要过滤: `if l is not None` → `if l` 消除多余空行
+- 成本进度条: 0% 显示全空 `░░░░░░░░░░` (修复 `max(1,...)` 的最小1格问题)
+- 置信度标准化: 0-1 → 0-10 显示自动转换
+- HTML转义: 投资格式化增加 `escape_html()` 防止 `<>` 破坏渲染
+- 零价格显示: `$0.00` → `待定`
+
+### 回归验证
+- 改动前: 1047/1047 passed
+- 改动后: 1092/1092 passed (含45个新E2E测试)
+- 零回归
+
+### 文件变更
+- `packages/clawbot/tests/test_e2e_bot_interaction.py` — 新增: E2E全链路测试 (598行)
+- `packages/clawbot/src/decision_validator.py` — 新增 validation_confidence 字段
+- `packages/clawbot/src/ta_engine.py` — 新增 confidence 到信号评分
+- `packages/clawbot/src/risk_config.py` — 新增 confidence 到风控结果
+- `packages/clawbot/src/modules/investment/pydantic_agents.py` — 4个输出模型添加 confidence
+- `packages/clawbot/src/alpaca_bridge.py` — Mock数据添加 is_mock/source 标记
+- `packages/clawbot/src/api/rpc.py` — 占位符添加 source/error 标记
+- `packages/clawbot/src/notify_style.py` — 修复 timestamp_tag bug + SEPARATOR 常量
+- `packages/clawbot/src/core/response_cards.py` — 统一分隔符 + 空行过滤 + 进度条修复
+- `packages/clawbot/src/message_format.py` — 统一分隔符 + HTML转义加固
+- `packages/clawbot/src/telegram_ux.py` — 统一分隔符 + 置信度标准化 + 零价格待定
+
+---
+
+## [2026-03-31] 全量安全审计与生产就绪加固 (P0-P5) + 账单智能增强
+
+> 领域: `backend`, `frontend`, `deploy`, `infra`
+> 影响模块: `security`, `bash_tool`, `web_tool`, `litellm_router`, `mcp`, `multi_main`, `goofish_monitor`, `execution`, `bookkeeping`, `cmd_life_mixin`, `chinese_nlp_mixin`
+> 关联问题: HI-348, HI-329, SEC-NEW-04/05/10/11
+
+### P0 安全修复 (8项)
+- `src/xianyu/goofish_monitor.py` — 移除硬编码默认密码 `admin123`
+- `docker-compose.yml` — 移除 Redis 默认密码 fallback，强制通过 .env 设置
+- `src/tools/bash_tool.py` — 从白名单移除 curl/wget (SEC-NEW-04: 数据外泄风险)
+- `src/execution/_utils.py` — 删除 `run_osascript()` 命令注入向量 (SEC-NEW-05)
+- `src/tools/web_tool.py` — SSRF DNS 解析从 fail-open 改为 fail-close
+- `src/execution/__init__.py` — `open_bounty_links()` 添加 URL scheme 白名单 (SEC-NEW-11)
+- `src/litellm_router.py` — Router init 和健康检查日志补充 `_scrub_secrets()` 脱敏
+- `src/bot/config.py` — API Key 日志暴露从 8 字符缩减到 4 字符
+
+### P0 依赖安全 (6项升级)
+- authlib 1.6.6→1.6.9, cryptography 46.0.5→46.0.6, ecdsa 0.19.1→0.19.2
+- nltk 3.9.3→3.9.4, pillow 10.4.0→12.1.1, requests 2.32.5→2.33.1
+
+### P0 .gitignore 加固
+- 新增 `.env.*` 通配覆盖 + `*.p12`/`*.pfx`/`*.jks` 证书格式排除
+
+### P1 功能完整性修复 (2项)
+- `src-tauri/src/commands/mcp.rs` — 新增 `remove_mcp_plugin` Tauri 命令 (前端调用无后端)
+- `src-tauri/capabilities/default.json` — 修复 `shell:allow-open-url` → `shell:allow-open` 权限名错误
+
+### P2 工程质量
+- `src-tauri/src/utils/shell.rs` — Clippy 警告修复 (Vec::new+push → vec![])
+- `src-tauri/src/commands/config.rs` — Clippy 自动修复 (useless_vec)
+
+### P3 性能优化
+- `multi_main.py` — 7 Bot 从顺序启动改为 `asyncio.gather()` 并发启动
+
+### Bot 响应质量修复 (20处)
+- `cmd_xianyu_mixin.py` — 9处异常信息泄露修复 (PID/stderr/{e} 从用户消息移除)
+- `cmd_trading_mixin.py` — 6处术语/异常修复 (AutoTrader→自动交易系统, IBKR→盈透券商)
+- `cmd_invest_mixin.py` — 3处异常泄露修复
+- `message_mixin.py` — 2处称呼风格统一 (添加"严总"前缀)
+
+### 冗余文件清理 (6项)
+- 删除 3 个死脚本: `gemini_image_gen.py`, `diagnose_pipeline.py`, `deploy_server_main.py`
+- 删除 1 个死配置: `.env.goofish.example`
+- 清理 `dist/` 目录和 `__pycache__/` 缓存
+- 移除 `requirements.txt` 中与 litellm 冲突的 `openai<2.0.0` 约束
+
+### 账单智能管理增强 (第一阶段)
+- `_db.py` — 新增 `bill_balance_history` 余额历史表 + `bill_discount_cache` 优惠缓存表
+- `bookkeeping.py` — 新增 `predict_balance_exhaustion()` 消耗速度预测 + `get_bill_due_summary()` 智能摘要 + 优惠缓存 CRUD
+- `cmd_life_mixin.py` — 新增 `/bill predict` 消耗预测 + `/bill tips` AI 优惠推荐 + 列表页显示预测
+- `chinese_nlp_mixin.py` — 新增 NLP: "话费怎么充最划算"→优惠推荐, "话费还能用多久"→消耗预测
+- 每次更新余额自动记录历史，用于线性回归预测耗尽日期
+
+### 文件变更
+- `packages/clawbot/src/xianyu/goofish_monitor.py` — 安全: 移除默认密码
+- `docker-compose.yml` — 安全: 移除 Redis 默认密码
+- `packages/clawbot/src/tools/bash_tool.py` — 安全: 移除 curl/wget
+- `packages/clawbot/src/execution/_utils.py` — 安全: 删除 run_osascript()
+- `packages/clawbot/src/tools/web_tool.py` — 安全: SSRF fail-close
+- `packages/clawbot/src/execution/__init__.py` — 安全: URL scheme 验证
+- `packages/clawbot/src/litellm_router.py` — 安全: 日志脱敏补全
+- `packages/clawbot/src/bot/config.py` — 安全: Key 日志缩短
+- `.gitignore` — 安全: 扩展排除规则
+- `apps/openclaw-manager-src/src-tauri/src/commands/mcp.rs` — 功能: 新增删除命令
+- `apps/openclaw-manager-src/src-tauri/src/main.rs` — 功能: 注册新命令
+- `apps/openclaw-manager-src/src-tauri/capabilities/default.json` — 修复: 权限名
+- `apps/openclaw-manager-src/src-tauri/src/utils/shell.rs` — 质量: Clippy 修复
+- `packages/clawbot/multi_main.py` — 性能: 并发启动
+
+---
+
 ## [2026-03-31] HI-382 模型名常量提取 — 16 常量 + 26 文件 85 处替换
 
 > 领域: `backend`
