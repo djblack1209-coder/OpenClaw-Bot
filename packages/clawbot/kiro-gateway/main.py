@@ -23,7 +23,7 @@ Kiro Gateway - OpenAI-compatible interface for Kiro API.
 Application entry point. Creates FastAPI app and connects routes.
 
 Usage:
-    # Using default settings (host: 0.0.0.0, port: 8000)
+    # Using default settings (host: 127.0.0.1, port: 8000)
     python main.py
     
     # With CLI arguments (highest priority)
@@ -427,24 +427,40 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Error closing shared HTTP client: {e}")
 
 
-# --- FastAPI Application ---
+# --- FastAPI 应用 ---
+# 生产环境下禁用 Swagger 文档页面（安全加固）
+_is_production = os.getenv("ENV", "").lower() in ("prod", "production")
 app = FastAPI(
     title=APP_TITLE,
     description=APP_DESCRIPTION,
     version=APP_VERSION,
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
 )
 
 
-# --- CORS Middleware ---
-# Allow CORS for all origins to support browser clients
-# and tools that send preflight OPTIONS requests
+# --- CORS 中间件 ---
+# 仅允许本机和已知客户端来源（安全加固：替换原 allow_origins=["*"]）
+_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+] or [
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://localhost",
+    "https://127.0.0.1",
+    "tauri://localhost",
+    "https://tauri.localhost",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],  # Allow all headers
+    # 安全加固: 收窄 HTTP 方法和 Header 白名单
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "x-api-key", "Content-Type", "anthropic-version"],
 )
 
 

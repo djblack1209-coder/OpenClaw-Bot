@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-03-29 | R27 架构清理: 全量补录 85 个缺失模块，清理 4 个过时条目，monitoring 重构为包
+> 最后更新: 2026-04-03 | 全量审计: 补录 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal)
 
 ---
 
@@ -566,6 +566,13 @@
 | strategy_engine.py | `src/strategy_engine.py` | 710 | 交易策略引擎 v3.0 (7策略加权投票) |
 | synergy.py | `src/synergy.py` | 180 | 多 Bot 协同策略 |
 | **核心引擎 (src/core/)** | | | |
+| brain.py | `src/core/brain.py` | ~900 | ✅ OMEGA 核心大脑: 对话入口(process_message) + 复合意图拆解 + DAG编排 + 响应合成 + 追问建议 |
+| intent_parser.py | `src/core/intent_parser.py` | ~350 | ✅ 三级意图解析: 快速正则(60%命中) → LLM+instructor结构化 → legacy JSON解析 |
+| task_graph.py | `src/core/task_graph.py` | ~380 | ✅ DAG任务图: TaskGraphBuilder流式API + 并行调度 + 死锁检测 + 指数退避重试 + 超时 + fallback |
+| executor.py | `src/core/executor.py` | ~530 | ✅ 统一执行器: API→浏览器→语音→Composio→Skyvern→人工 6条路径 |
+| event_bus.py | `src/core/event_bus.py` | ~200 | ✅ 事件总线: 发布/订阅模式 + 跨模块解耦 + 异常隔离 |
+| cost_control.py | `src/core/cost_control.py` | ~250 | ✅ 成本控制: 预算检查 + 阈值告警 + 使用量追踪 |
+| self_heal.py | `src/core/self_heal.py` | ~620 | ✅ 自愈引擎6步: 错误分类→已知方案→记忆检索→Web搜索→替代方案→通知用户 + 熔断器 |
 | synergy_pipelines.py | `src/core/synergy_pipelines.py` | 550 | 跨模块协同管道: 交易→社媒/社交→投资/进化广播/风控过滤/新闻情感→风控(4h定时)/盈利庆祝帖 |
 | security.py | `src/core/security.py` | 349 | ✅ 安全防护层: 输入消毒(sanitize_input) + PIN(PBKDF2+盐+频率限制) + 审计日志(JSONL) + 权限三级分控(auto/confirm/always_human) + XSS/SQL注入/路径遍历/命令注入防护 |
 | **核心工具 (src/ 根级)** | | | |

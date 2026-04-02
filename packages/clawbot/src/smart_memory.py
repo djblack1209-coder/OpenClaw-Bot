@@ -267,14 +267,14 @@ class SmartMemoryPipeline:
         if not self.llm_fn:
             return
         try:
-            # 搜索相关已有记忆
+            # 搜索相关已有记忆（传入 chat_id 确保用户隔离）
             # SharedMemory.search() 返回 {"success": bool, "results": [...], "count": int}
-            search_result = self.memory.search(fact, limit=5)
+            search_result = self.memory.search(fact, limit=5, chat_id=chat_id)
             existing = search_result.get("results", []) if isinstance(search_result, dict) else []
             if not existing:
-                # 无相关记忆，直接 ADD
+                # 无相关记忆，直接 ADD（传入 chat_id 确保用户隔离）
                 key = f"auto_{user_id}_{int(time.time())}"
-                self.memory.remember(key, fact, source_bot=bot_id, importance=3)
+                self.memory.remember(key, fact, source_bot=bot_id, importance=3, chat_id=chat_id)
                 logger.debug(f"[SmartMemory] ADD: {fact[:60]}")
                 emit_flow_event("mem0", "db", "success", "存储新记忆", {"action": "ADD", "fact": fact})
                 return
@@ -294,12 +294,12 @@ class SmartMemoryPipeline:
 
             if action.event == "ADD":
                 key = f"auto_{user_id}_{int(time.time())}"
-                self.memory.remember(key, action.text or fact, source_bot=bot_id, importance=3)
+                self.memory.remember(key, action.text or fact, source_bot=bot_id, importance=3, chat_id=chat_id)
                 logger.debug(f"[SmartMemory] ADD: {(action.text or fact)[:60]}")
                 emit_flow_event("mem0", "db", "success", "追加记忆", {"action": "ADD", "fact": action.text or fact})
 
             elif action.event == "UPDATE" and action.key:
-                self.memory.remember(action.key, action.text, source_bot=bot_id, importance=4)
+                self.memory.remember(action.key, action.text, source_bot=bot_id, importance=4, chat_id=chat_id)
                 logger.debug(f"[SmartMemory] UPDATE {action.key}: {action.text[:60]}")
                 emit_flow_event("mem0", "db", "success", "更新记忆", {"action": "UPDATE", "key": action.key, "text": action.text})
 
@@ -320,8 +320,8 @@ class SmartMemoryPipeline:
         if not self.llm_fn:
             return
         try:
-            # 获取该用户的所有记忆
-            search_result = self.memory.search(f"user_{user_id}", limit=20)
+            # 获取该用户的所有记忆（传入 chat_id 确保用户隔离）
+            search_result = self.memory.search(f"user_{user_id}", limit=20, chat_id=chat_id)
             all_memories = search_result.get("results", []) if isinstance(search_result, dict) else []
             if len(all_memories) < 3:
                 return
@@ -340,6 +340,7 @@ class SmartMemoryPipeline:
                     json.dumps(profile, ensure_ascii=False),
                     source_bot="system",
                     importance=5,
+                    chat_id=chat_id,
                 )
                 logger.info(f"[SmartMemory] 用户画像已更新: user={user_id}")
                 emit_flow_event("mem0", "profile", "success", "用户画像更新", {"profile": profile})

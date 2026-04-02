@@ -514,9 +514,12 @@ class SharedMemory:
                     (f"%{escaped}%", f"%{escaped}%", str(chat_id), limit * 2),
                 ).fetchall()
             else:
+                # 安全修复: chat_id 未提供时，仅搜索全局记忆(chat_id IS NULL)，
+                # 防止跨用户记忆泄漏
                 rows = conn.execute(
                     "SELECT * FROM shared_memories "
-                    "WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' "
+                    "WHERE (key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\') "
+                    "AND chat_id IS NULL "
                     "ORDER BY importance DESC, updated_at DESC LIMIT ?",
                     (f"%{escaped}%", f"%{escaped}%", limit * 2),
                 ).fetchall()
@@ -636,6 +639,12 @@ class SharedMemory:
         sql = ("SELECT id, key, value, category, source_bot, importance, embedding "
                "FROM shared_memories WHERE embedding IS NOT NULL")
         params: list = []
+        # 安全修复: 按 chat_id 隔离语义搜索
+        if chat_id is not None:
+            sql += " AND (chat_id = ? OR chat_id IS NULL)"
+            params.append(str(chat_id))
+        else:
+            sql += " AND chat_id IS NULL"
         if category:
             sql += " AND category = ?"
             params.append(category)
@@ -801,14 +810,30 @@ class SharedMemory:
     #  System Prompt 注入
     # ════════════════════════════════════════════
 
-    def get_context_for_prompt(self, max_tokens: int = 500) -> str:
-        """生成注入到 system_prompt 的共享记忆摘要。"""
+    def get_context_for_prompt(self, max_tokens: int = 500,
+                               chat_id: Optional[int] = None) -> str:
+        """生成注入到 system_prompt 的共享记忆摘要。
+        
+        安全修复: 支持 chat_id 参数，仅返回该用户的记忆 + 全局共享记忆，
+        防止跨用户记忆泄漏到 system prompt 中。
+        """
         conn = self._get_conn()
         self._cleanup_expired(conn)
-        rows = conn.execute(
-            "SELECT key, value, category, source_bot FROM shared_memories "
-            "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
-        ).fetchall()
+        if chat_id is not None:
+            # 返回该用户的记忆 + 全局共享记忆
+            rows = conn.execute(
+                "SELECT key, value, category, source_bot FROM shared_memories "
+                "WHERE chat_id = ? OR chat_id IS NULL "
+                "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
+                (str(chat_id),),
+            ).fetchall()
+        else:
+            # 仅返回全局共享记忆
+            rows = conn.execute(
+                "SELECT key, value, category, source_bot FROM shared_memories "
+                "WHERE chat_id IS NULL "
+                "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
+            ).fetchall()
         if not rows:
             return ""
         parts = []

@@ -123,13 +123,21 @@ class TestSearch:
         assert "python_tip" in keys
 
     def test_search_respects_chat_id_isolation(self, memory):
-        """search() in SQLite keyword mode doesn't filter by chat_id
-        (Mem0 handles tenant isolation), but results should still work."""
+        """安全修复: search(chat_id=None) 仅返回全局记忆(chat_id IS NULL)，
+        不会泄漏其他用户的记忆。"""
         memory.remember(key="secret_a", value="data for user A", chat_id=100)
         memory.remember(key="secret_b", value="data for user B", chat_id=200)
-        # Keyword search finds both (SQLite mode doesn't isolate by chat_id in keyword search)
+        memory.remember(key="global_c", value="global data for all")
+        # 无 chat_id 搜索只返回全局记忆，不返回用户 A/B 的记忆
         result = memory.search("data", mode="keyword")
-        assert result["count"] >= 2
+        keys = [r["key"] for r in result["results"]]
+        assert "global_c" in keys
+        assert "secret_a" not in keys
+        assert "secret_b" not in keys
+        # 用户 A 搜索可以看到自己的记忆 + 全局记忆
+        result_a = memory.search("data", mode="keyword", chat_id=100)
+        keys_a = [r["key"] for r in result_a["results"]]
+        assert "secret_a" in keys_a
 
     def test_search_semantic_in_sqlite_mode(self, memory):
         """Semantic search in SQLite fallback uses local n-gram embeddings."""

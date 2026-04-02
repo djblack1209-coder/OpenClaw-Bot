@@ -9,6 +9,7 @@ import {
 import clsx from 'clsx';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -25,9 +26,12 @@ interface MCPPlugin {
   version: string;
   author: string;
   type: 'stdio' | 'sse';
-  status: 'running' | 'stopped' | 'error';
+  status: 'running' | 'configured' | 'stopped' | 'error';
   icon: LucideIcon;
   tags: string[];
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
 }
 
 const fallbackIcon = Blocks;
@@ -40,42 +44,6 @@ const getIconForPlugin = (id: string) => {
   return fallbackIcon;
 };
 
-const defaultPlugins: MCPPlugin[] = [
-  {
-    id: 'mcp-github',
-    name: 'GitHub MCP Server',
-    description: '提供 GitHub 仓库、Issue 和 PR 的读写访问。',
-    version: '1.0.2',
-    author: 'modelcontextprotocol',
-    type: 'stdio',
-    status: 'stopped',
-    icon: Github,
-    tags: ['git', 'vcs', 'official']
-  },
-  {
-    id: 'mcp-sqlite',
-    name: 'SQLite Database',
-    description: '本地 SQLite 数据库的 SQL 执行与结构检查。',
-    version: '0.9.5',
-    author: 'modelcontextprotocol',
-    type: 'stdio',
-    status: 'stopped',
-    icon: Database,
-    tags: ['db', 'sql', 'official']
-  },
-  {
-    id: 'mcp-browser-use',
-    name: 'Browser-Use Agent',
-    description: '通过 Playwright 控制 Chromium 浏览器实现网页自动化。',
-    version: '2.1.0',
-    author: 'browser-use',
-    type: 'sse',
-    status: 'stopped',
-    icon: Globe,
-    tags: ['web', 'automation', 'agent']
-  }
-];
-
 export function Plugins() {
   const [plugins, setPlugins] = useState<MCPPlugin[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,11 +51,15 @@ export function Plugins() {
   const [loading, setLoading] = useState(true);
   // 卸载确认对话框状态
   const [uninstallTarget, setUninstallTarget] = useState<MCPPlugin | null>(null);
+  // 安装新插件对话框
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
+  // 配置插件对话框
+  const [configTarget, setConfigTarget] = useState<MCPPlugin | null>(null);
 
   const fetchPlugins = useCallback(async () => {
     if (!isTauri()) {
-      // 模拟模式
-      setPlugins(defaultPlugins);
+      // 非 Tauri 环境显示空列表
+      setPlugins([]);
       setLoading(false);
       return;
     }
@@ -102,16 +74,12 @@ export function Plugins() {
         }));
         setPlugins(mapped);
       } else {
-        // 无插件时填充默认列表
-        for (const p of defaultPlugins) {
-          const toSave = { ...p, icon: "default" }; // Rust 结构体不接受 React 元素
-          await invoke('save_mcp_plugin', { plugin: toSave });
-        }
-        setPlugins(defaultPlugins);
+        // 无已安装插件，显示空状态
+        setPlugins([]);
       }
     } catch (e) {
       pluginsLogger.error('获取插件列表失败', e);
-      setPlugins(defaultPlugins);
+      setPlugins([]);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -128,7 +96,8 @@ export function Plugins() {
   };
 
   const togglePlugin = async (id: string, currentStatus: string) => {
-    const targetStatus: MCPPlugin['status'] = currentStatus === 'running' ? 'stopped' : 'running';
+    // 开启时标记为"已配置"而非"运行中"（实际连接由 Gateway 管理）
+    const targetStatus: MCPPlugin['status'] = (currentStatus === 'running' || currentStatus === 'configured') ? 'stopped' : 'configured';
     
     // 乐观更新
     setPlugins(prev => prev.map(p => {
@@ -141,9 +110,61 @@ export function Plugins() {
         await invoke('toggle_mcp_plugin_status', { id, targetStatus });
       } catch (e) {
         pluginsLogger.error('切换插件状态失败', e);
+        toast.error('插件状态切换失败');
         // 失败时回滚
         fetchPlugins();
       }
+    }
+  };
+
+  // 安装新 MCP 插件 — 通过名称和命令创建插件配置
+  const handleInstallPlugin = async (input: string) => {
+    if (!input.trim()) return;
+    const name = input.trim();
+    // 生成插件 ID（npm 包名或自定义名称）
+    const id = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+
+    const newPlugin = {
+      id,
+      name,
+      description: `通过 MCP 协议接入的 ${name} 服务`,
+      version: '1.0.0',
+      author: 'custom',
+      type: 'stdio',
+      status: 'configured',
+      icon: 'blocks',
+      tags: ['custom'],
+      command: 'npx',
+      args: ['-y', name],
+      env: {},
+    };
+
+    try {
+      if (isTauri()) {
+        await invoke('save_mcp_plugin', { plugin: newPlugin });
+      }
+      toast.success(`插件 ${name} 已添加，请在列表中开启`);
+      fetchPlugins();
+    } catch (e) {
+      pluginsLogger.error('安装插件失败', e);
+      toast.error('插件安装失败，请检查名称是否正确');
+    }
+  };
+
+  // 更新插件配置（命令、参数、环境变量）
+  const handleConfigPlugin = async (input: string) => {
+    if (!configTarget || !input.trim()) return;
+    try {
+      const updated = { ...configTarget, command: input.trim(), icon: 'blocks' };
+      if (isTauri()) {
+        await invoke('save_mcp_plugin', { plugin: updated });
+      }
+      toast.success(`插件 ${configTarget.name} 配置已更新`);
+      setConfigTarget(null);
+      fetchPlugins();
+    } catch (e) {
+      pluginsLogger.error('配置插件失败', e);
+      toast.error('配置更新失败');
     }
   };
 
@@ -161,7 +182,7 @@ export function Plugins() {
     p.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const activeCount = plugins.filter(p => p.status === 'running').length;
+  const activeCount = plugins.filter(p => p.status === 'running' || p.status === 'configured').length;
 
   return (
     <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
@@ -189,7 +210,7 @@ export function Plugins() {
                 活跃服务
               </span>
             </div>
-            <button onClick={() => toast.info('MCP 插件安装功能即将上线，敬请期待')} className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
+            <button onClick={() => setShowInstallDialog(true)} className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
               <Plus size={18} /> 安装新插件
             </button>
           </div>
@@ -218,7 +239,14 @@ export function Plugins() {
         </div>
 
         {/* Plugin Grid */}
-        {filteredPlugins.length === 0 ? (
+        {plugins.length === 0 ? (
+          /* 无已安装插件时的空状态提示 */
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-dark-800/30 rounded-2xl border border-dashed border-dark-600">
+            <Blocks className="w-12 h-12 text-dark-500 mb-4" />
+            <p className="text-base font-medium text-gray-300 mb-1">暂无已安装的 MCP 插件</p>
+            <p className="text-sm text-gray-500">点击「安装新插件」添加。</p>
+          </div>
+        ) : filteredPlugins.length === 0 ? (
           /* 搜索无结果时的占位提示 */
           <div className="flex flex-col items-center justify-center h-32 text-dark-500">
             <p className="text-sm">未找到匹配的插件</p>
@@ -231,17 +259,18 @@ export function Plugins() {
               key={plugin.id} 
               className={clsx(
                 "bg-dark-800/60 border-dark-600 shadow-lg hover:border-dark-500 transition-all overflow-hidden group",
-                plugin.status === 'running' && "border-l-2 border-l-green-500"
+                plugin.status === 'running' && "border-l-2 border-l-green-500",
+                plugin.status === 'configured' && "border-l-2 border-l-yellow-500"
               )}
             >
               <CardHeader className="pb-3 pt-5 px-5 flex flex-row items-start justify-between space-y-0 border-b border-dark-700/50">
                 <div className="flex gap-3">
                   <div className={clsx(
                     "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm transition-colors",
-                    plugin.status === 'running' ? "bg-dark-900 border-dark-700" : "bg-dark-900/50 border-dark-800 opacity-60"
+                    (plugin.status === 'running' || plugin.status === 'configured') ? "bg-dark-900 border-dark-700" : "bg-dark-900/50 border-dark-800 opacity-60"
                   )}>
                     {plugin.icon && <plugin.icon size={24} className={clsx(
-                      plugin.status === 'running' ? "text-purple-400" : "text-gray-500"
+                      plugin.status === 'running' ? "text-purple-400" : plugin.status === 'configured' ? "text-yellow-400" : "text-gray-500"
                     )} />}
                   </div>
                   <div className="space-y-1 min-w-0">
@@ -258,7 +287,7 @@ export function Plugins() {
                   </div>
                 </div>
                 <Switch 
-                  checked={plugin.status === 'running'} 
+                  checked={plugin.status === 'running' || plugin.status === 'configured'} 
                   onCheckedChange={() => togglePlugin(plugin.id, plugin.status)}
                   className="data-[state=checked]:bg-green-500"
                 />
@@ -288,19 +317,23 @@ export function Plugins() {
                       <Badge className="bg-green-500/10 text-green-400 hover:bg-green-500/20 border-none px-2 shadow-none gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 已连接
                       </Badge>
+                    ) : plugin.status === 'configured' ? (
+                      <Badge className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border-none px-2 shadow-none gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span> 已配置
+                      </Badge>
                     ) : plugin.status === 'error' ? (
                       <Badge className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border-none px-2 shadow-none gap-1.5">
                         <AlertCircle size={10} /> 已失败
                       </Badge>
                     ) : (
                       <Badge className="bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span> 已停止
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span> 已停用
                       </Badge>
                     )}
                   </div>
                   
                   <div className="flex gap-2">
-                    <button onClick={() => toast.info(`插件 ${plugin.name} 的配置面板即将上线`)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置" aria-label="配置插件">
+                    <button onClick={() => setConfigTarget(plugin)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置" aria-label="配置插件">
                       <Settings2 size={16} />
                     </button>
                     <button onClick={() => setUninstallTarget(plugin)} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载" aria-label="卸载插件">
@@ -313,7 +346,7 @@ export function Plugins() {
           ))}
           
           {/* Add Custom Plugin Card */}
-          <button onClick={() => toast.info('自定义 MCP Server 功能即将上线，敬请期待')} className="flex flex-col items-center justify-center gap-3 bg-dark-900/30 border-2 border-dashed border-dark-600 hover:border-purple-500/50 hover:bg-dark-800/50 transition-all rounded-xl h-[260px] text-gray-500 hover:text-purple-400 group">
+          <button onClick={() => setShowInstallDialog(true)} className="flex flex-col items-center justify-center gap-3 bg-dark-900/30 border-2 border-dashed border-dark-600 hover:border-purple-500/50 hover:bg-dark-800/50 transition-all rounded-xl h-[260px] text-gray-500 hover:text-purple-400 group">
             <div className="w-14 h-14 rounded-full bg-dark-800 border border-dark-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
               <Plus size={24} />
             </div>
@@ -343,6 +376,28 @@ export function Plugins() {
         description={`确定要卸载插件「${uninstallTarget?.name ?? ''}」吗？`}
         confirmText="卸载"
         destructive
+      />
+
+      {/* 安装新插件对话框 */}
+      <PromptDialog
+        open={showInstallDialog}
+        onClose={() => setShowInstallDialog(false)}
+        onConfirm={handleInstallPlugin}
+        title="安装 MCP 插件"
+        description="输入 NPM 包名（如 @modelcontextprotocol/server-filesystem）或自定义服务名称。安装后可在列表中配置启动命令和环境变量。"
+        placeholder="例: @modelcontextprotocol/server-github"
+        confirmText="安装"
+      />
+
+      {/* 配置插件对话框 */}
+      <PromptDialog
+        open={!!configTarget}
+        onClose={() => setConfigTarget(null)}
+        onConfirm={handleConfigPlugin}
+        title={`配置插件: ${configTarget?.name ?? ''}`}
+        description={`当前启动命令: ${configTarget?.command ?? '未设置'} ${(configTarget?.args ?? []).join(' ')}\n请输入新的启动命令（如 npx -y @mcp/server-xxx）`}
+        placeholder={configTarget?.command ?? 'npx -y @mcp/server-xxx'}
+        confirmText="保存配置"
       />
     </div>
   );

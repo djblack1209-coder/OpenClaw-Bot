@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-03-31 (HI-382: 硬编码模型名提取到constants.py — 26文件85处替换 | 1047/1047 passed, 0 TS errors)
+> 最后更新: 2026-04-03 (全量审计: P0安全修复+P1功能验证+P2架构检查 | 1122/1122 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -43,15 +43,15 @@
 
 | 维度 | 状态 | 说明 |
 |------|------|------|
-| 核心服务 | 🟢 运行中 | 7 Bot + FastAPI + Redis (macOS 主节点) |
+| 核心服务 | 🟢 运行中 | 7 Bot + FastAPI + Redis (macOS 主节点), Python 进程后台静默运行(无 Dock 图标) |
 | LLM 路由 | 🟢 加固 | 多级降级链(qwen→deepseek→g4f) + 流式成本追踪 + 15+ provider |
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 |
-| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警 |
+| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
-| 备用节点 | 🟡 待命中 | 腾讯云 2C2G — 代码已同步, systemd 服务已创建, failover timer 运行中, 待心跳恢复后自动切换 |
-| 测试通过率 | 🟢 100% | 1047/1047 Python (含41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 | P4: 确认对话框+aria-labels+中文翻译+Toast挂载+表单验证+空状态+PageErrorBoundary+未保存变更警告 |
+| 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
+| 测试通过率 | 🟢 100% | 1122/1122 Python (含45项E2E全链路测试+41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -80,23 +80,28 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在 | 2026-03-28 |
+| HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在。**建议用 git filter-repo 清理历史** | 2026-03-28 |
+| HI-387 | `security` | `config/.env` | 50+ 真实密钥曾提交到 Git 历史（Alpaca交易Key/Gmail密码/7个Bot Token/闲鱼Cookie等）— 如仓库曾push到远程，需立即轮换所有密钥 | 2026-04-01 |
+| HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
 
 ### 🟡 一般
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有22个文件>800行待拆(其中8个>1000行) | 2026-03-29 |
+| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有22个文件>800行待拆(其中7个>1000行) | 2026-03-29 |
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
-| ~~HI-382~~ | ~~`backend`~~ | ~~多文件~~ | ~~P7: 硬编码 LLM 模型名散落在多个文件中~~ **→ 已移至已解决** | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
+| HI-390 | `backend` | `social_scheduler.py` | APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播 | 2026-04-01 |
+| HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
+| HI-393 | `infra` | `kiro-gateway` | Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`，建议更换为强随机密码 | 2026-04-01 |
+| HI-394 | `frontend` | `config.rs` | Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源，Windows 不可用且密码学强度不足，建议改用 `getrandom` crate | 2026-04-01 |
+| HI-410 | `backend` | `xianyu_apis.py` | XianyuApis 的 httpx.AsyncClient 在 `__init__` 中创建但无自动关闭机制，调用方忘记 `close()` 时 TCP 连接泄漏 | 2026-04-03 |
+| HI-411 | `docs` | `MODULE_REGISTRY.md` | 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal) 未注册 | 2026-04-03 |
 
 ### 🔵 低优先
 
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| HI-386 | `frontend` | `App.tsx` | ~~`useGlobalToasts` hook 和 `Toaster` 组件(sonner)是死代码~~ **P4已解决**: `<Toaster />` 已挂载到 App.tsx, ControlCenter+Settings 已迁移到 toast 通知, `useGlobalToasts.ts` + `sonner.tsx` 等死文件已删除。剩余: WebSocket 实时通知基础设施待建立 | 2026-03-30 |
+(无)
 
 ---
 
@@ -104,7 +109,29 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
-| HI-382 | `backend` | 26文件 | 硬编码 LLM 模型名(Bot ID/Model Family/Image Model)散落在多个文件中，拼写不一致且换模型需逐文件修改 | 提取16个常量到 constants.py (7 Bot ID + 6 Model Family + 3 Image Model)，26个文件~85处字符串替换为常量引用; cost_control.py 保留原有定价字典(已自成注册表无需提取) | 2026-03-31 | HI-382 模型名常量提取 |
+| HI-412 | `security` | `shared_memory.py`+`smart_memory.py` | 记忆存储跨用户隔离漏洞: search(chat_id=None)搜全表+SmartMemory不传chat_id+get_context_for_prompt无用户过滤 | search/remember/get_context_for_prompt 全部增加 chat_id 隔离; 测试更新验证新行为 | 2026-04-03 | 全量审计P0 |
+| HI-413 | `security` | `kiro-gateway/main.py` | CORS allow_methods/allow_headers=[\"*\"] 过于宽松 | 收窄为 GET/POST/OPTIONS + 4个具体Header | 2026-04-03 | 全量审计P0 |
+| HI-414 | `security` | `api/server.py` | 内部 API 文档在生产环境可访问 | 生产环境 docs_url=None | 2026-04-03 | 全量审计P0 |
+| HI-415 | `security` | `jina_reader.py` | 用户传入URL无SSRF检查 | 增加 check_ssrf(url) 前置检查 | 2026-04-03 | 全量审计P0 |
+| HI-416 | `security` | `broker_bridge.py` | IBKR_START_CMD环境变量可执行任意命令 | 增加可执行文件名白名单校验 | 2026-04-03 | 全量审计P0 |
+| HI-382 | `backend` | 多文件 | P7: 硬编码 LLM 模型名散落在多个文件中 | 统一到 config 配置 | 2026-03-29 | R22续审计 |
+| HI-386 | `frontend` | `App.tsx` | Toaster/toast 死代码 | Toaster 挂载+toast 迁移+死文件删除 | 2026-03-30 | P4审计 |
+| HI-389-b | `backend` | `xianyu_apis.py` | 闲鱼 API 同步 requests 阻塞事件循环 | 迁移到 httpx.AsyncClient | 2026-04-01 | 闲鱼审计 |
+| HI-392 | `backend` | 多文件(5个) | 疑似未使用 pip 依赖 | 验证全部在用(延迟导入+graceful degradation) | 2026-04-01 | 闲鱼审计 |
+| HI-395 | `frontend` | `service.rs/installer.rs` | 7处 std::thread::sleep 阻塞 tokio 工作线程 | 替换为 tokio::time::sleep | 2026-04-01 | 闲鱼审计 |
+| HI-396 | `infra` | `launchagents` | macOS BTM 屏蔽 LaunchAgent | Tauri APP bash launcher 降级路径 | 2026-04-01 | 闲鱼审计 |
+| HI-408 | `backend` | `multi_main.py` | Bot 心跳发送依赖 `updater.running` 条件 — 网络波动时所有 Bot 同时丢失心跳触发告警风暴 | 移除 `updater.running` 条件，改为只要 `bot.app` 存在即发心跳；告警消息增加每个 Bot 的距上次心跳秒数和连续错误数 | 2026-04-01 | 心跳机制修复 |
+| HI-409 | `xianyu` | `xianyu_live.py` + `xianyu_login.py` | Cookie 彻底过期后无法自救 — 需手动更新 Cookie | Playwright 浏览器自动登录工具: Cookie 过期时自动弹出浏览器→用户扫码→Cookie 自动提取写入 .env→热更新闲鱼进程。带 30 分钟冷却防重复弹出 | 2026-04-01 | 闲鱼自动登录 |
+| HI-398 | `xianyu` | `xianyu_live.py` | 心跳超时不触发重连 — heartbeat_loop 超时后只 break 自身循环，不关闭 WS，导致连接僵死 | 超时后主动 `ws.close()` + 设置 `restart_flag` 强制重连 | 2026-04-01 | 闲鱼全面审计 |
+| HI-399 | `xianyu` | `xianyu_live.py` | Token 刷新强制断开 WS — 每小时刷新 Token 时主动关闭连接，导致每天 24 次不必要的重连 | 移除 `ws.close()` 调用，仅设置 `restart_flag` 让主循环在消息处理完成后重连 | 2026-04-01 | 闲鱼全面审计 |
+| HI-400 | `xianyu` | `xianyu_live.py` | 重连无上限保护 — `while True` 无熔断器，Cookie 失效后无限重试 | 添加熔断器: 连续失败 50 次后暂停 10 分钟冷却，冷却后自动重试 | 2026-04-01 | 闲鱼全面审计 |
+| HI-401 | `xianyu` | `xianyu_live.py` | 重连告警被稀释 — 每次成功后计数清零，连续 5 次以上才告警一次 | 改为每 5 次连续失败告警一次(可重复)，增加累计总次数监控 | 2026-04-01 | 闲鱼全面审计 |
+| HI-402 | `xianyu` | `xianyu_live.py` | 后台任务 cancel 后未 await — 任务清理代码可能未完成即开始下次连接 | `task.cancel()` 后用 `asyncio.gather(..., return_exceptions=True)` 等待清理完成 | 2026-04-01 | 闲鱼全面审计 |
+| HI-403 | `xianyu` | `order_notifier.py` | 同步 `requests.post` 阻塞事件循环 — 异步场景首次调用仍会阻塞 | 全量迁移到 httpx: 异步场景用 `httpx.AsyncClient`，同步场景用 `httpx.Client` | 2026-04-01 | 闲鱼全面审计 |
+| HI-404 | `xianyu` | `xianyu_apis.py` | `.env` 写入非原子操作 — 崩溃时可能损坏文件 | 改为 tempfile + `os.replace()` 原子写入 | 2026-04-01 | 闲鱼全面审计 |
+| HI-405 | `backend` | `message_mixin.py` | 死引用 `xianyu_live_session` — 模块不存在，每次启动触发 ImportError (被 try/except 静默) | 移除死引用，添加注释说明闲鱼作为独立进程运行 | 2026-04-01 | 闲鱼全面审计 |
+| HI-406 | `xianyu` | `xianyu_live.py` | 底价注入死代码 — `if item_id and not floor` 条件永远与上方查询结果一致，重复查询无意义 | 修正逻辑: 改为 `if item_id and floor is not None` 直接使用已查询的结果 | 2026-04-01 | 闲鱼全面审计 |
+| HI-407 | `backend` | `cmd_xianyu_mixin.py` | 未使用的 `import subprocess` — 所有子进程调用已迁移为 `asyncio.create_subprocess_exec` | 移除未使用的 import | 2026-04-01 | 闲鱼全面审计 |
 | HI-349 | `security` | `code_tool.py` + `bash_tool.py` | Python/Node.js代码沙箱可被CPython内部机制绕过 | code_tool.py 重写: 全部Python执行移至subprocess+resource.setrlimit(CPU 30s/MEM 256MB/NPROC=0/FSIZE 1MB)+进程组隔离+环境变量白名单; bash_tool.py: _make_safe_env()过滤敏感环境变量; RestrictedPython仅做AST预检不执行 | 2026-03-31 | P6安全加固 |
 | HI-388 | `security` | `life_automation.py` | `shortcuts run` 命令仅做正则校验无白名单 — 恶意快捷指令名可能绕过 | 添加 _SHORTCUT_WHITELIST frozenset 白名单，仅允许预定义快捷指令名称执行，未在白名单中的指令被拦截并记录日志 | 2026-03-31 | P6安全加固 |
 | HI-389 | `security` | `omega.py` | `/tools/jina-read` SSRF 防护未处理 DNS 重绑定攻击 | 添加 socket.getaddrinfo DNS 预解析，对所有解析到的 IP 逐一检查 is_private/is_loopback/is_link_local，域名解析失败返回 400 | 2026-03-31 | P6安全加固 |

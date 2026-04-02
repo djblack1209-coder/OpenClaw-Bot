@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Database, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
+import { Database, Loader2, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { api, isTauri, clawbotFetch, type MemorySearchResponse, type MemoryEntryRaw } from '@/lib/tauri';
@@ -24,14 +24,30 @@ export function Memory() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  // 删除/编辑操作中的条目 key
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // 记忆引擎在线状态
+  const [engineOnline, setEngineOnline] = useState<boolean | null>(null);
+  // 记忆统计数据
+  const [memoryStats, setMemoryStats] = useState<{ total: number; extraction_rounds: number; vector_dim: number } | null>(null);
   // 删除确认对话框状态
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // 搜索防抖计时器
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 分页：每次加载的条目上限
+  const [limit, setLimit] = useState(50);
+  // 分页：是否还有更多条目
+  const [hasMore, setHasMore] = useState(true);
+  // "加载更多"按钮的加载状态
+  const [loadMoreLoading, setLoadMoreLoading] = useState(false);
 
   // 执行删除记忆条目（由确认对话框触发）
   const executeDelete = async (key: string) => {
     try {
+      setActionLoading(key);
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         await api.clawbotMemoryDelete(key);
@@ -46,6 +62,8 @@ export function Memory() {
     } catch (e) {
       memoryLogger.error('删除记忆失败', e);
       toast.error('删除失败，请稍后重试');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -64,6 +82,7 @@ export function Memory() {
       return;
     }
     try {
+      setActionLoading(editingKey);
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
         await api.clawbotMemoryUpdate(editingKey, editValue);
@@ -79,27 +98,46 @@ export function Memory() {
     } catch (e) {
       memoryLogger.error('更新记忆失败', e);
       toast.error('更新失败，请稍后重试');
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const fetchMemories = useCallback(async () => {
+  const fetchMemories = useCallback(async (fetchLimit?: number) => {
+    const currentLimit = fetchLimit ?? limit;
     try {
       setLoading(true);
       let results: MemoryEntryRaw[] = [];
 
       if (isTauri()) {
         // Tauri 环境：通过 IPC 调用
-        const data: MemorySearchResponse = await api.clawbotMemorySearch('', 50);
+        const data: MemorySearchResponse = await api.clawbotMemorySearch('', currentLimit);
         results = data?.results || data?.entries || [];
       } else {
         // 降级: 直接HTTP调用
-        const resp = await clawbotFetch('/api/v1/memory/search?q=&limit=50');
+        const resp = await clawbotFetch(`/api/v1/memory/search?q=&limit=${currentLimit}`);
         if (resp.ok) {
           const data = await resp.json();
           results = data.results || data.entries || data || [];
         }
       }
 
+      setEngineOnline(true);
+      // 尝试获取记忆统计数据（提取轮次、向量维度等）
+      try {
+        if (isTauri()) {
+          const stats = await api.clawbotMemoryStats();
+          if (stats) {
+            setMemoryStats({
+              total: (stats as Record<string, number>).total_count ?? 0,
+              extraction_rounds: (stats as Record<string, number>).extraction_rounds ?? 0,
+              vector_dim: (stats as Record<string, number>).vector_dim ?? 0,
+            });
+          }
+        }
+      } catch {
+        // 统计接口不可用不影响核心功能
+      }
       if (Array.isArray(results) && results.length > 0) {
         setEntries(results.map((r: MemoryEntryRaw) => ({
           key: r.key || r.id || 'unknown',
@@ -108,25 +146,77 @@ export function Memory() {
           importance: r.importance || r.score || 3,
           updated_at: r.updated_at || Date.now() / 1000,
         })));
+        // 返回数量等于 limit 说明可能还有更多
+        setHasMore(results.length >= currentLimit);
       } else {
         setEntries([]);
+        setHasMore(false);
       }
     } catch (e) {
       memoryLogger.warn('记忆API不可用，显示空状态', e);
       setEntries([]);
+      setEngineOnline(false);
+      setHasMore(false);
     } finally {
       setLoading(false);
+      setLoadMoreLoading(false);
     }
-  }, []);
+  }, [limit]);
 
   useEffect(() => {
     fetchMemories();
   }, [fetchMemories]);
 
-  const filteredEntries = entries.filter(e => 
-    e.value.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    e.key.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // 搜索关键词变化时，防抖调用 API 搜索
+  useEffect(() => {
+    // 空搜索不需要额外调用，初始加载已处理
+    if (!searchQuery.trim()) {
+      // 清空搜索时重新加载全部
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      fetchMemories();
+      return;
+    }
+
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        let results: MemoryEntryRaw[] = [];
+
+        if (isTauri()) {
+          const data: MemorySearchResponse = await api.clawbotMemorySearch(searchQuery, limit);
+          results = data?.results || data?.entries || [];
+        } else {
+          const resp = await clawbotFetch(`/api/v1/memory/search?q=${encodeURIComponent(searchQuery)}&limit=${limit}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            results = data.results || data.entries || data || [];
+          }
+        }
+
+        if (Array.isArray(results) && results.length > 0) {
+          setEntries(results.map((r: MemoryEntryRaw) => ({
+            key: r.key || r.id || 'unknown',
+            value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
+            source_bot: r.source_bot || r.source || 'system',
+            importance: r.importance || r.score || 3,
+            updated_at: r.updated_at || Date.now() / 1000,
+          })));
+        } else {
+          setEntries([]);
+        }
+      } catch (e) {
+        memoryLogger.warn('搜索记忆失败', e);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   return (
     <div className="h-full flex flex-col gap-6 max-w-6xl mx-auto overflow-y-auto scroll-container pr-2 pb-10">
@@ -141,7 +231,7 @@ export function Memory() {
           </p>
         </div>
         <button 
-            onClick={fetchMemories}
+            onClick={() => fetchMemories()}
             className="flex items-center gap-2 px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-white transition-colors border border-dark-500"
         >
             <RefreshCw size={16} className={clsx(loading && "animate-spin")} />
@@ -153,7 +243,11 @@ export function Memory() {
         {/* 左侧：搜索与记忆列表 */}
         <div className="flex-1 space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+            {searchLoading ? (
+              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 animate-spin" size={18} />
+            ) : (
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+            )}
             <input 
               type="text" 
               placeholder="搜索记忆片段、实体或意图..." 
@@ -165,7 +259,7 @@ export function Memory() {
           </div>
 
           <div className="space-y-3">
-            {filteredEntries.map(entry => {
+            {entries.map(entry => {
                 const isProfile = entry.key.includes('profile');
                 return (
                   <Card key={entry.key} className={clsx(
@@ -199,9 +293,10 @@ export function Memory() {
                                     <div className="flex gap-2">
                                       <button
                                         onClick={handleSaveEdit}
-                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors"
+                                        disabled={!!actionLoading}
+                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
                                       >
-                                        保存
+                                        {actionLoading === editingKey ? <Loader2 size={12} className="animate-spin inline" /> : '保存'}
                                       </button>
                                       <button
                                         onClick={() => setEditingKey(null)}
@@ -229,11 +324,11 @@ export function Memory() {
                             
                             {/* 操作按钮 (仅悬浮显示) */}
                             <div className="absolute right-4 top-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleEdit(entry)} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500" aria-label="编辑记忆">
+                                <button onClick={() => handleEdit(entry)} disabled={actionLoading === entry.key} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500 disabled:opacity-50" aria-label="编辑记忆">
                                     <Edit size={14} />
                                 </button>
-                                <button onClick={() => setDeleteTarget(entry.key)} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30" aria-label="删除记忆">
-                                    <Trash2 size={14} />
+                                <button onClick={() => setDeleteTarget(entry.key)} disabled={actionLoading === entry.key} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30 disabled:opacity-50" aria-label="删除记忆">
+                                    {actionLoading === entry.key ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                                 </button>
                             </div>
                         </div>
@@ -242,10 +337,33 @@ export function Memory() {
                 );
             })}
             
-            {filteredEntries.length === 0 && (
+            {!searchLoading && entries.length === 0 && (
                 <div className="text-center py-12 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
                     {searchQuery ? '没有找到匹配的记忆记录' : '记忆库为空。与 Bot 对话后会自动记录。'}
                 </div>
+            )}
+
+            {/* 加载更多按钮 */}
+            {!searchQuery && entries.length > 0 && hasMore && (
+                <button
+                  onClick={() => {
+                    const newLimit = limit + 50;
+                    setLimit(newLimit);
+                    setLoadMoreLoading(true);
+                    fetchMemories(newLimit);
+                  }}
+                  disabled={loadMoreLoading}
+                  className="w-full py-3 text-sm text-gray-400 hover:text-white bg-dark-800 hover:bg-dark-700 border border-dark-600 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadMoreLoading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      加载中...
+                    </>
+                  ) : (
+                    '加载更多'
+                  )}
+                </button>
             )}
           </div>
         </div>
@@ -266,21 +384,21 @@ export function Memory() {
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">提取轮次</span>
-                        <span className="text-lg font-mono text-white">—</span>
+                        <span className="text-lg font-mono text-white">{memoryStats?.extraction_rounds ?? '—'}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">向量维度</span>
-                        <span className="text-lg font-mono text-white">—</span>
+                        <span className="text-lg font-mono text-white">{memoryStats?.vector_dim ?? '—'}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">引擎状态</span>
                         <span className={clsx(
                             "text-xs px-2 py-0.5 rounded border",
-                            loading ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
-                            entries.length > 0 ? "bg-green-500/20 text-green-400 border-green-500/30" :
-                            "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                            engineOnline === null ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                            engineOnline ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                            "bg-red-500/20 text-red-400 border-red-500/30"
                         )}>
-                            {loading ? '检查中...' : entries.length > 0 ? '在线' : '未连接'}
+                            {engineOnline === null ? '检查中...' : engineOnline ? '在线' : '未连接'}
                         </span>
                     </div>
                 </CardContent>

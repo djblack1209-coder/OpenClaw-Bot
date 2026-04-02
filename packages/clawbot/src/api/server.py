@@ -34,11 +34,13 @@ class APIServer:
         self._thread: Optional[threading.Thread] = None
         self._server: Optional[uvicorn.Server] = None
 
+        # 安全加固: 生产环境关闭 API 文档页面
+        _is_production = os.environ.get("ENV", "").lower() in ("prod", "production")
         self.app = FastAPI(
             title="ClawBot Internal API",
             description="Internal control API for ClawBot — consumed by the Tauri Manager app",
             version="1.0.0",
-            docs_url="/api/docs",
+            docs_url=None if _is_production else "/api/docs",
             redoc_url=None,
             dependencies=[Depends(verify_api_token)],
         )

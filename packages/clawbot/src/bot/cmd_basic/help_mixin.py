@@ -21,9 +21,10 @@ def _build_help_main_keyboard():
          InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
         [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
          InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
+        [InlineKeyboardButton("🏠 生活助手", callback_data="help:life"),
+         InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu")],
         [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
          InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
-        [InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu")],
         [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
     ])
 
@@ -68,10 +69,24 @@ class _HelpMixin:
             await update.message.reply_text(onboard, reply_markup=keyboard)
         else:
             # 老用户：直接展示能力 + NL 示例
+            from src.smart_memory import get_smart_memory
+            
+            recent_task = ""
+            try:
+                sm = get_smart_memory()
+                # 尝试从记忆中获取用户最近关注的内容
+                results = sm.memory.search(query="用户正在做的事或者持仓或者关注的标的", user_id=str(user.id), limit=1)
+                if results:
+                    recent_mem = results[0]["memory"]
+                    recent_task = f"💡 我还记得：{recent_mem[:30]}...\n\n"
+            except Exception as e:
+                logger.debug("[Help] 记忆召回失败: %s", e)
+
             welcome = (
-                f"{self.emoji}  {self.name}\n"
+                f"{self.emoji}  {self.name} 已就绪\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"直接说中文就能操作：\n\n"
+                f"{recent_task}"
+                f"直接说中文就能操作，例如：\n"
                 f"  · \"帮我买100股苹果\"\n"
                 f"  · \"特斯拉多少钱\"\n"
                 f"  · \"帮我找便宜的AirPods\"\n"
@@ -202,6 +217,29 @@ class _HelpMixin:
                 "───────────────────\n"
                 "/xianyu  闲鱼AI客服 start/stop/status\n"
                 "/xianyu_report  闲鱼运营报表"
+            ),
+            "life": (
+                "🏠 生活助手\n"
+                "───────────────────\n"
+                "⏰ 提醒\n"
+                "  · \"30分钟后提醒我开会\"\n"
+                "  · \"每天早上9点提醒我吃药\"\n"
+                "  · \"每周一提醒我交报告\"\n\n"
+                "💰 记账\n"
+                "  · \"花了35块买午饭\"\n"
+                "  · \"收入5000块工资\"\n"
+                "  · \"本月花了多少\"\n"
+                "  · \"设置月预算8000\"\n\n"
+                "📱 话费水电\n"
+                "  · /bill  查看话费余额追踪\n"
+                "  · 低余额时自动提醒充值\n\n"
+                "🛍️ 降价提醒\n"
+                "  · /pricewatch  管理降价监控\n"
+                "  · \"帮我盯着 AirPods 降价\"\n"
+                "  · 6小时自动检查，降价即通知\n\n"
+                "📰 智能简报\n"
+                "  · \"今日简报\" → 每日综合日报\n"
+                "  · /weekly → 本周战报"
             ),
             "system": (
                 "🔧 系统工具\n"

@@ -39,6 +39,11 @@ async def jina_read(url: str, max_length: int = 5000) -> Optional[str]:
         Markdown 格式的页面内容，失败返回 None
     """
     try:
+        # 安全修复: 对用户传入的 URL 做 SSRF 检查，防止访问内网资源
+        from src.core.security import check_ssrf
+        if not check_ssrf(url):
+            logger.warning("[JinaReader] SSRF 检查未通过，拒绝访问: %s", url[:100])
+            return None
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
                 f"{_JINA_READ_BASE}{url}",
