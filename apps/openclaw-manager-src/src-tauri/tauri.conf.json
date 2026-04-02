@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "OpenClaw",
@@ -24,11 +24,11 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-        "devtools": true
+        "devtools": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18790 ws://127.0.0.1:18790; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18790 ws://127.0.0.1:18790; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

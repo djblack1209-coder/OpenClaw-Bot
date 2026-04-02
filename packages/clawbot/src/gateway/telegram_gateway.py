@@ -50,8 +50,20 @@ class OpenClawGateway:
         self._app = (
             Application.builder()
             .token(self._token)
+            .connect_timeout(30)
+            .read_timeout(30)
+            .write_timeout(15)
+            .pool_timeout(10.0)
+            .connection_pool_size(64)
+            .concurrent_updates(True)
             .build()
         )
+
+        # 全局错误处理器 — 防止未捕获异常被 PTB 静默吞掉
+        from src.error_handler import get_error_handler
+        _err_handler = get_error_handler()
+        if _err_handler:
+            self._app.add_error_handler(_err_handler.telegram_error_handler)
 
         # 注册handlers
         self._app.add_handler(CommandHandler("start", self._cmd_start))
@@ -78,7 +90,10 @@ class OpenClawGateway:
         await self._app.initialize()
         await self._app.bot.set_my_commands(commands)
         await self._app.start()
-        await self._app.updater.start_polling(drop_pending_updates=True)
+        await self._app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+        )
 
         logger.info(f"OpenClaw Gateway Bot 已启动 (白名单: {len(self._admin_ids)} 用户)")
 
@@ -182,7 +197,7 @@ class OpenClawGateway:
             await update.message.reply_text("\n".join(lines))
         except Exception as e:
             logger.exception("获取活跃任务失败")
-            await update.message.reply_text(f"查询失败: {e}")
+            await update.message.reply_text("查询出了问题，请稍后重试")
 
     async def _cmd_cost(self, update: Update, context) -> None:
         if not self._check_authorized(update.effective_user.id):
@@ -221,7 +236,7 @@ class OpenClawGateway:
                 await update.message.reply_text(f"扫描失败: {result.error}")
         except Exception as e:
             logger.exception("进化扫描执行失败")
-            await update.message.reply_text(f"扫描异常: {e}")
+            await update.message.reply_text("扫描遇到了问题，请稍后重试")
 
     async def _cmd_cancel(self, update: Update, context) -> None:
         if not self._check_authorized(update.effective_user.id):
@@ -257,8 +272,8 @@ class OpenClawGateway:
                     await message.reply_text("语音识别失败，请重新发送或发送文字消息。")
                     return
             except Exception as e:
-                logger.warning(f"语音转文字失败: {e}")
-                await message.reply_text(f"语音识别暂不可用: {e}")
+                logger.warning("语音转文字失败: %s", e)
+                await message.reply_text("语音识别暂时不可用，请发文字试试")
                 return
         elif message.photo:
             content = message.caption or "[图片]"

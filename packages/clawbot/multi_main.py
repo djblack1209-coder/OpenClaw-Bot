@@ -6,6 +6,18 @@ ClawBot 多机器人版 v5.0 - Mixin 架构版
 """
 import os
 import sys
+
+# ── macOS 隐藏 Dock 图标: 防止 Python 进程在 Dock 栏显示和跳动 ──
+if sys.platform == "darwin":
+    try:
+        import AppKit
+        _NSApplicationActivationPolicyProhibited = 2
+        AppKit.NSApplication.sharedApplication().setActivationPolicy_(
+            _NSApplicationActivationPolicyProhibited
+        )
+    except Exception:
+        pass  # 非 macOS 或 AppKit 不可用时静默跳过
+
 import logging
 import signal
 from pathlib import Path
@@ -300,7 +312,20 @@ async def main():
     def _msg_heartbeat_lost():
         status = health_checker.get_status()
         unhealthy = [bid for bid, s in status.items() if not s["healthy"]]
-        return f"⚠️ [告警] Bot 心跳丢失: {', '.join(unhealthy)}"
+        # 添加诊断信息：每个不健康 Bot 的上次心跳距今多久
+        details = []
+        for bid in unhealthy:
+            s = status.get(bid, {})
+            ago = s.get("last_heartbeat_ago", 0)
+            errs = s.get("consecutive_errors", 0)
+            detail = f"  • {bid}: {ago:.0f}s前"
+            if errs > 0:
+                detail += f" (连续{errs}次错误)"
+            details.append(detail)
+        msg = f"⚠️ [告警] Bot 心跳丢失: {', '.join(unhealthy)}"
+        if details:
+            msg += "\n" + "\n".join(details)
+        return msg
 
     alert_mgr.add_rule(AlertRule(
         name="high_error_rate",
@@ -337,15 +362,14 @@ async def main():
 
     logger.info("=" * 60)
 
-    # 启动所有 bot
-    for config in BOTS:
+    # 并发启动所有 bot — 相比顺序启动速度提升约 N 倍（N = bot 数量）
+    async def _start_single_bot(config):
+        """启动单个 Bot 并注册到全局注册表"""
         try:
             bot = MultiBot(config)
             result = await bot.run_async()
             if result:
-                bots.append(bot)
-                bot_registry[bot.bot_id] = bot
-                # 注册 bot 的 Telegram user_id，用于过滤 bot 互相回复
+                # 获取 bot 的 Telegram user_id，用于过滤 bot 互相回复
                 try:
                     app = bot.app
                     if app:
@@ -354,8 +378,23 @@ async def main():
                         logger.info(f"[{config['id']}] 注册 bot user_id: {bot_info.id}")
                 except Exception as e:
                     logger.warning(f"[{config['id']}] 获取 bot user_id 失败: {e}")
+                return bot
+            return None
         except Exception as e:
             logger.error(f"[{config['id']}] 启动失败: {e}")
+            return None
+
+    # 并发启动全部 Bot
+    start_results = await asyncio.gather(
+        *[_start_single_bot(config) for config in BOTS],
+        return_exceptions=True,
+    )
+    for i, result in enumerate(start_results):
+        if isinstance(result, Exception):
+            logger.error(f"[{BOTS[i]['id']}] 并发启动异常: {result}")
+        elif result is not None:
+            bots.append(result)
+            bot_registry[result.bot_id] = result
 
     if not bots:
         logger.critical("所有 Bot 启动失败! 系统将在无 Bot 模式下运行 — 无法接收或发送消息")
@@ -365,6 +404,7 @@ async def main():
         health_checker,
         max_restarts=int(os.environ.get("MAX_RESTARTS", "3")),
         restart_cooldown=float(os.environ.get("RESTART_COOLDOWN", "60.0")),
+        # notify_func 在后面 _notify_telegram 定义后再设置
     )
     for bot in bots:
         auto_recovery.register_restart_func(bot.bot_id, bot.run_async, bot.stop_async)
@@ -727,6 +767,10 @@ async def main():
             except Exception as e:
                 logger.error("[ExecutionHub] 私聊通知发送失败: %s", e)
 
+    # 给 AutoRecovery 设置通知函数 — 崩溃/恢复时主动推送 Telegram 通知
+    if auto_recovery and bots:
+        auto_recovery._notify_func = _notify_batched
+
     init_trading_system(
         broker=ibkr,
         journal=journal,
@@ -793,7 +837,9 @@ async def main():
             if heartbeat_counter >= _heartbeat_interval:
                 heartbeat_counter = 0
                 for bot in bots:
-                    if bot.app and bot.app.updater and bot.app.updater.running:
+                    # 只要 Bot 实例存在就发心跳，不依赖 updater.running
+                    # 避免网络波动导致所有 Bot 同时丢失心跳
+                    if bot.app:
                         health_checker.heartbeat(bot.bot_id)
             if cleanup_counter >= _cleanup_interval:
                 cleanup_counter = 0
@@ -915,6 +961,21 @@ async def main():
     metrics.shutdown()
     history_store.close()
     shared_memory.close()
+    # 关闭 httpx 长生命周期客户端（防止 TCP 连接泄漏）
+    try:
+        from src.xianyu.goofish_monitor import _monitor as _gm
+        if _gm and hasattr(_gm, 'close'):
+            await _gm.close()
+            logger.info("  GoofishMonitor httpx 客户端已关闭")
+    except Exception as e:
+        logger.debug("GoofishMonitor 关闭跳过: %s", e)
+    try:
+        from src.execution.social.media_crawler_bridge import MediaCrawlerBridge
+        if hasattr(MediaCrawlerBridge, '_instance') and MediaCrawlerBridge._instance:
+            await MediaCrawlerBridge._instance.close()
+            logger.info("  MediaCrawlerBridge httpx 客户端已关闭")
+    except Exception as e:
+        logger.debug("MediaCrawlerBridge 关闭跳过: %s", e)
     for bot in bots:
         # 分开 try/except，确保 close 失败不影响 stop
         try:
@@ -941,3 +1002,11 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        # 捕获所有未处理的异常，记录到日志后让 LaunchAgent 重启进程
+        logger.critical(f"主进程意外崩溃，LaunchAgent 将自动重启: {type(e).__name__}: {e}")
+        import traceback
+        logger.critical(traceback.format_exc())
+        # 退出码 1 让 LaunchAgent 知道是异常退出需要重启
+        import sys
+        sys.exit(1)
