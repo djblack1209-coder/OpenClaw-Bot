@@ -103,8 +103,37 @@ def _notify(message: str, data: Optional[Dict] = None) -> None:
 # ─── Job functions ─────────────────────────────────────────────
 # Each job is self-contained with lazy imports.
 # They run in APScheduler thread pool.  Each job wraps ALL async work
-# inside a single ``async def _run()`` and calls ``asyncio.run(_run())``
-# exactly once — one event loop per job execution.
+# inside a single ``async def _run()`` and uses _run_async() 将协程
+# 调度到主事件循环执行，确保 EventBus 事件能正确传播。
+
+
+def _run_async(coro) -> Any:
+    """在主事件循环中执行协程（线程安全）。
+
+    APScheduler 的 BackgroundScheduler 在线程池中执行 job 函数，
+    如果使用 asyncio.run() 会创建临时事件循环，导致 EventBus 事件
+    无法跨循环传播。本函数优先使用 run_coroutine_threadsafe 将协程
+    调度回主事件循环，保证事件传播的一致性。
+
+    降级策略：如果主事件循环不可用，回退到 asyncio.run()。
+    """
+    import concurrent.futures
+
+    main_loop = SocialAutopilot._main_loop
+    if main_loop is not None and main_loop.is_running():
+        # 将协程调度到主事件循环，阻塞等待结果
+        future = asyncio.run_coroutine_threadsafe(coro, main_loop)
+        try:
+            return future.result(timeout=300)  # 5 分钟超时
+        except concurrent.futures.TimeoutError:
+            # 超时后必须取消协程，否则它会继续在主循环中运行导致资源泄漏
+            future.cancel()
+            logger.error("[Autopilot] 任务执行超时(5分钟)，已取消协程")
+            raise
+    else:
+        # 降级：主事件循环不可用时使用临时循环
+        logger.warning("[Autopilot] 主事件循环不可用，降级使用 asyncio.run()")
+        return asyncio.run(coro)
 
 def job_morning_scan() -> None:
     """09:00 — 热点扫描 + 选题 + 简报"""
@@ -155,7 +184,7 @@ def job_morning_scan() -> None:
 
     logger.info("[Autopilot] === 早间热点扫描 ===")
     try:
-        asyncio.run(_run())
+        _run_async(_run())
     except Exception as e:
         logger.error("[Autopilot] 热点扫描失败: %s", e)
         _notify(f"早扫失败: {e}")
@@ -273,7 +302,7 @@ def job_evening_produce() -> None:
 
     logger.info("[Autopilot] === 晚间内容生产 ===")
     try:
-        asyncio.run(_run())
+        _run_async(_run())
     except Exception as e:
         logger.error("[Autopilot] 内容生产整体失败: %s", e)
         _notify(f"内容生产失败: {e}")
@@ -388,7 +417,7 @@ def job_night_publish() -> None:
 
     logger.info("[Autopilot] === 晚间自动发布 ===")
     try:
-        asyncio.run(_run())
+        _run_async(_run())
     except Exception as e:
         logger.error("[Autopilot] 发布整体失败: %s", e)
         _notify(f"发布失败: {e}")
@@ -498,16 +527,12 @@ def job_late_review() -> None:
                             try:
                                 from src.core.event_bus import get_event_bus, EventType
                                 _bus = get_event_bus()
-                                # job_late_review 在独立线程中用 asyncio.run()
-                                # 此处已在同步上下文，需创建临时事件循环发布
-                                import asyncio as _aio
-                                _loop = _aio.new_event_loop()
-                                _loop.run_until_complete(_bus.publish(
+                                # 使用 _run_async 将事件发布调度到主事件循环
+                                _run_async(_bus.publish(
                                     EventType.FOLLOWER_MILESTONE,
                                     {"platform": _plat, "count": ms},
                                     source="social_scheduler",
                                 ))
-                                _loop.close()
                                 logger.info("[Autopilot] 粉丝里程碑: %s 突破 %d", _plat, ms)
                             except Exception as _me:
                                 logger.debug("[Autopilot] 粉丝里程碑事件发射失败: %s", _me)
@@ -582,12 +607,14 @@ class SocialAutopilot:
     """Social media autopilot — wraps APScheduler BackgroundScheduler.
 
     Uses BackgroundScheduler (threaded) to avoid conflicts with the
-    existing asyncio event loop. Job functions use asyncio.run() internally
-    for async operations — exactly once per job invocation.
+    existing asyncio event loop. Job functions通过 run_coroutine_threadsafe
+    将异步操作调度回主事件循环，确保 EventBus 事件能跨线程正确传播。
     """
 
     _instance: Optional["SocialAutopilot"] = None
     _lock = threading.Lock()
+    # 主事件循环引用，供线程池中的 job 函数调度异步操作
+    _main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     def __new__(cls) -> "SocialAutopilot":
         """Singleton — only one autopilot per process."""
@@ -602,7 +629,17 @@ class SocialAutopilot:
             return
         self._initialized = True
         self._scheduler: Optional[BackgroundScheduler] = None
-        logger.info("[Autopilot] SocialAutopilot 初始化")
+        # 保存主事件循环引用，用于线程安全地调度异步操作
+        try:
+            self._main_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 如果在非异步上下文中初始化，尝试获取或创建事件循环
+            try:
+                self._main_loop = asyncio.get_event_loop()
+            except RuntimeError:
+                self._main_loop = None
+        SocialAutopilot._main_loop = self._main_loop
+        logger.info("[Autopilot] SocialAutopilot 初始化 (主事件循环: %s)", self._main_loop is not None)
 
     # ── Public API ────────────────────────────────────────────
 

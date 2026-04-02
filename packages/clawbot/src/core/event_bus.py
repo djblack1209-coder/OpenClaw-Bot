@@ -327,13 +327,16 @@ class EventBus:
 # ── 全局单例 ──────────────────────────────────────────────
 
 _event_bus: Optional[EventBus] = None
+_bus_lock = __import__("threading").Lock()
 
 
 def get_event_bus() -> EventBus:
-    """获取全局事件总线实例"""
+    """获取全局事件总线实例（线程安全 — APScheduler 线程池可能并发调用）"""
     global _event_bus
     if _event_bus is None:
-        _event_bus = EventBus()
+        with _bus_lock:
+            if _event_bus is None:
+                _event_bus = EventBus()
     return _event_bus
 
 

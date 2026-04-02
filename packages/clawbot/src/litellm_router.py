@@ -263,14 +263,24 @@ class LiteLLMPool:
 
     def _dep(self, name: str, model: str, key: str,
              base: str = "", rpm: int = 0, tier: str = TIER_B,
-             family: str = "", note: str = "") -> Dict:
-        """创建一个 LiteLLM deployment + 注册 FreeAPISource"""
+             family: str = "", note: str = "",
+             timeout: int = 0, stream_timeout: int = 0) -> Dict:
+        """创建一个 LiteLLM deployment + 注册 FreeAPISource。
+        
+        timeout/stream_timeout: per-model 超时配置（秒）。0 表示使用 Router 全局默认值。
+        不同模型应设置差异化超时: Groq(快速推理)→8s, 大模型→30s, Reasoning模型→90s。
+        """
         dep_id = f"{name}/{model}"
         params: Dict[str, Any] = {"model": model, "api_key": key}
         if base:
             params["api_base"] = base
         if rpm:
             params["rpm"] = rpm
+        # per-model 超时覆盖 Router 全局配置
+        if timeout:
+            params["timeout"] = timeout
+        if stream_timeout:
+            params["stream_timeout"] = stream_timeout
         fam = family or name
         self._reg(fam, FreeAPISource(
             provider=name, base_url=base or "", api_key=key,
@@ -295,7 +305,8 @@ class LiteLLMPool:
                 ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),               # 新增最强模型
                 ("Qwen/Qwen3-32B", "qwen", TIER_A),                       # 备用中等模型
             ]:
-                deps.append(self._dep(prov, f"openai/{m}", key, sf_base, tier=t, family=fam, note="SiliconFlow free"))
+                deps.append(self._dep(prov, f"openai/{m}", key, sf_base, tier=t, family=fam, note="SiliconFlow free",
+                                      timeout=45, stream_timeout=60))  # 大模型需要更长超时
 
         # Groq — 极速推理, 1000RPD (基于官方文档 2026.3)
         gk = _env("GROQ_API_KEY")
@@ -308,7 +319,8 @@ class LiteLLMPool:
                 ("meta-llama/llama-4-scout-17b-16e-instruct", "llama", TIER_B, 30),
                 ("llama-3.1-8b-instant", "llama", TIER_C, 30),          # 30RPM, 14400RPD
             ]:
-                deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM"))
+                deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM",
+                                      timeout=8, stream_timeout=15))  # Groq 极速推理，短超时
 
         # Cerebras — 极速推理 ~2000tok/s, 8K context, Key已403禁止暂时跳过
         # ck = _env("CEREBRAS_API_KEY")
@@ -381,7 +393,8 @@ class LiteLLMPool:
         # Sambanova
         sk = _env("SAMBANOVA_API_KEY")
         if sk:
-            deps.append(self._dep("sambanova", "openai/DeepSeek-R1", sk, "https://api.sambanova.ai/v1", rpm=10, tier=TIER_S, family="deepseek"))
+            deps.append(self._dep("sambanova", "openai/DeepSeek-R1", sk, "https://api.sambanova.ai/v1", rpm=10, tier=TIER_S, family="deepseek",
+                                  timeout=90, stream_timeout=120))  # Reasoning 模型需要极长超时
 
         # iflow 无限 API（硅基流分配，14个顶级模型，无限使用）
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
@@ -553,6 +566,10 @@ class LiteLLMPool:
 
         start = time.time()
         try:
+            # 流式请求需要 stream_options 才能获取 final chunk 中的 usage 信息
+            if stream:
+                kwargs.setdefault("stream_options", {"include_usage": True})
+
             response = await self._router.acompletion(
                 model=model, messages=all_msgs,
                 temperature=temperature, max_tokens=max_tokens,

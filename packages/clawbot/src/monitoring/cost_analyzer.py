@@ -86,7 +86,8 @@ class CostAnalyzer:
                 self._recent = self._recent[-self._max_recent:]
         # 异步写入 DB（不阻塞主线程）
         try:
-            with sqlite3.connect(self._db_path) as conn:
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 conn.execute(
                     "INSERT INTO cost_events (ts,bot_id,user_id,feature,model,provider,"
                     "input_tokens,output_tokens,cost_usd,latency_ms,success) "
@@ -103,7 +104,8 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
         try:
-            with sqlite3.connect(self._db_path) as conn:
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 rows = conn.execute(
                     "SELECT bot_id, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
                     "COUNT(*), AVG(latency_ms), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) "
@@ -127,7 +129,8 @@ class CostAnalyzer:
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
         try:
-            with sqlite3.connect(self._db_path) as conn:
+            with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 rows = conn.execute(
                     "SELECT model, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
                     "COUNT(*), AVG(latency_ms) "
@@ -152,6 +155,7 @@ class CostAnalyzer:
         result: Dict[int, Dict[str, Any]] = {}
         try:
             with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 rows = conn.execute(
                     "SELECT user_id, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
                     "FROM cost_events WHERE ts > ? AND user_id > 0 GROUP BY user_id "
@@ -174,6 +178,7 @@ class CostAnalyzer:
         result: Dict[str, Dict[str, Any]] = {}
         try:
             with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 rows = conn.execute(
                     "SELECT feature, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
                     "FROM cost_events WHERE ts > ? AND feature != '' GROUP BY feature "
@@ -215,6 +220,7 @@ class CostAnalyzer:
         cutoff = time.time() - days * 86400
         try:
             with sqlite3.connect(self._db_path, timeout=10) as conn:
+                conn.execute("PRAGMA busy_timeout=5000")
                 conn.execute("DELETE FROM cost_events WHERE ts < ?", (cutoff,))
                 conn.commit()
         except Exception as e:

@@ -11,7 +11,9 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, Depends
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .auth import verify_api_token, log_token_status
 from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega
@@ -46,6 +48,28 @@ class APIServer:
         )
 
         self._configure_app()
+        self._register_exception_handlers()
+
+    def _register_exception_handlers(self):
+        """注册全局异常处理器 — 防止 Pydantic 模型信息泄露和未处理异常暴露堆栈"""
+
+        @self.app.exception_handler(RequestValidationError)
+        async def validation_handler(request, exc):
+            # 只返回通用错误消息，不泄露内部模型字段名
+            logger.debug("请求参数验证失败: %s", exc.errors())
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "请求参数验证失败，请检查参数格式"},
+            )
+
+        @self.app.exception_handler(Exception)
+        async def catch_all_handler(request, exc):
+            # 兜底异常处理器，防止未捕获异常返回含堆栈的默认 500
+            logger.error("未处理的 API 异常: %s", exc, exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "内部服务错误"},
+            )
 
     def _configure_app(self):
         """Mount routers and middleware — pattern from freqtrade webserver.py"""
