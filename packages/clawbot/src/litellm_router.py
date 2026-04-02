@@ -508,8 +508,8 @@ class LiteLLMPool:
                 routing_strategy="simple-shuffle",
                 # 按错误类型区分重试策略（官方推荐）
                 retry_policy=RetryPolicy(
-                    RateLimitErrorRetries=5,          # 429 限速多重试
-                    TimeoutErrorRetries=3,            # 超时适当重试
+                    RateLimitErrorRetries=3,          # 429 限速适当重试（原 5 次太多，配合 fallback 延迟过长）
+                    TimeoutErrorRetries=2,            # 超时少量重试（已有 fallback 兜底）
                     ContentPolicyViolationErrorRetries=0,  # 内容违规不重试
                     AuthenticationErrorRetries=0,     # 认证错误不重试
                     InternalServerErrorRetries=2,     # 服务器错误少量重试
@@ -603,7 +603,19 @@ class LiteLLMPool:
             return response
         except Exception as e:
             self._error_count += 1
-            logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {_scrub_secrets(str(e))}")
+            scrubbed = _scrub_secrets(str(e))
+            logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {scrubbed}")
+            # 全链路降级到 g4f 时通知管理员（意味着所有优质 provider 都挂了）
+            if model == "g4f" or "g4f" in str(e).lower():
+                try:
+                    from src.core.event_bus import get_event_bus, EventType
+                    await get_event_bus().publish(
+                        EventType.SYSTEM_ALERT,
+                        {"level": "warning", "message": f"LLM 全链路降级到 g4f 兜底: {scrubbed[:100]}"},
+                        source="litellm_router",
+                    )
+                except Exception:
+                    pass
             raise
 
     def _pick_strongest_family(self) -> str:

@@ -5,6 +5,38 @@
 
 ---
 
+## [2026-04-03] 第五轮修复 — 降级链总超时 + 错误信息清洗 + 全链路降级告警
+
+> 领域: `backend`
+> 影响模块: `brain.py`, `message_format.py`, `litellm_router.py`, `smart_memory.py`, `multi_main.py`
+> 关联问题: HI-429~434
+
+### 变更内容
+
+**降级链延迟修复 (2项)**:
+- `brain.py` 任务图执行包裹 `asyncio.wait_for(timeout=90)` — 防止降级链累积导致最坏 6-15 分钟等待
+- `litellm_router.py` RateLimitErrorRetries 从 5 降为 3，TimeoutErrorRetries 从 3 降为 2 — 降低降级延迟
+
+**错误信息安全 (2项)**:
+- `brain.py` result.error 存入前经过 `_scrub_secrets()` 清洗 — 防止 API URL/模型名泄露到用户消息
+- `message_format.py` 新增 LiteLLM 特有错误模式匹配 ("no healthy deployment" / "all deployments") — 精准翻译为人话
+
+**可观测性增强 (2项)**:
+- `litellm_router.py` 全链路降级到 g4f 时发布 SYSTEM_ALERT 事件 — 通知管理员所有优质 provider 都挂了
+- `multi_main.py` 关闭序列添加 diskcache.close() — 确保 LLM 缓存数据刷盘
+
+**内存安全 (1项)**:
+- `smart_memory.py:242` 裸 `asyncio.create_task()` 改为保持引用 + done_callback — 防止 CPython GC 提前回收
+
+### 文件变更
+- `src/core/brain.py` — 任务图执行 90s 总超时 + result.error 清洗 + 复合意图 error 清洗
+- `src/message_format.py` — LiteLLM 全链路降级错误模式
+- `src/litellm_router.py` — 降低重试次数 + g4f 降级告警
+- `src/smart_memory.py` — create_task 引用保持
+- `multi_main.py` — diskcache.close()
+
+---
+
 ## [2026-04-03] 第四轮深层审计 — 错误传播链/降级链/信号处理/内存泄漏/浏览器安全
 
 > 领域: `backend`, `infra`
