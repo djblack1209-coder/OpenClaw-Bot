@@ -5,6 +5,73 @@
 
 ---
 
+## [2026-04-03] 第六轮深层审计 — 并发竞态/加密安全/路径遍历/SQLite数据层/序列化安全
+
+> 领域: `backend`, `security`, `xianyu`
+> 影响模块: `cost_analyzer.py`, `license_manager.py`, `structured_llm.py`, `broker_selector.py`, `invest_tools.py`, `security.py`, `xianyu/utils.py`, `xianyu_live.py`, `order_notifier.py`, `bash_tool.py`, `comfyui_client.py`, `code_tool.py`, `file_tool.py`, `llm_cache.py`, `event_bus.py`, `shared_memory.py`, `history_store.py`, `_db.py`, `ocr_processors.py`, `intent_parser.py`
+> 关联问题: HI-435~455
+
+### 变更内容
+
+**CRITICAL — 数据层修复 (2项)**:
+- `cost_analyzer.py` 6个方法的 `with sqlite3.connect() as conn:` 模式全部替换为显式 `try/finally + conn.close()` — Python的sqlite3上下文管理器只管事务不关连接，每次API调用都在泄漏连接
+- `license_manager.py` 密码存储从裸 SHA-256 升级为 PBKDF2+随机盐(10万次迭代) — 旧格式自动检测并透明升级
+
+**HIGH — 并发竞态修复 (5项)**:
+- `structured_llm.py` instructor客户端缓存增加 `threading.Lock` 双重检查锁 — 防止并发创建重复客户端
+- `broker_selector.py` IBKR单例创建增加 `threading.Lock` — APScheduler线程可能并发创建多个IB连接
+- `invest_tools.py` buy/sell 方法的现金读取+交易记录+现金更新合并到同一事务 — 防止 double-spend
+- `llm_cache.py` diskcache 单例创建增加 `threading.Lock` — 防止并发创建多个SQLite缓存
+- `event_bus.py` publish() 迭代handlers改为 `list()` 快照 — 防止subscribe()并发修改列表
+
+**HIGH — 加密安全修复 (3项)**:
+- `security.py` 旧格式SHA-256 PIN验证成功后自动用PBKDF2+盐重新哈希并覆盖文件 — 透明升级
+- `xianyu/utils.py` 全部3个函数从 `random` 模块迁移到 `secrets` — 消息ID/设备ID/UUID不再可预测
+- `wechat_bridge.py` (审计发现, 已记录HEALTH) — `random.randint` 用于认证相关header
+
+**HIGH — 路径遍历修复 (3项)**:
+- `bash_tool.py` workdir 参数增加 `os.path.realpath()` + 项目根目录前缀检查 — 防止执行 `cat /etc/passwd`
+- `comfyui_client.py` 远程服务器返回的 filename 增加 `os.path.basename()` 净化 — 防止 `../../` 遍历
+- `code_tool.py` RestrictedPython缺失时从静默降级改为拒绝执行 + 临时文件名用UUID消除并发竞态
+
+**HIGH — 日志安全修复 (2项)**:
+- `xianyu_live.py` License Key 日志脱敏为 `key[:4]...key[-4:]`
+- `order_notifier.py` 通知消息中密码脱敏为 `password[:2]***`，Key同样脱敏
+
+**MEDIUM — 数据完整性修复 (4项)**:
+- `shared_memory.py` + `history_store.py` 各自移除重复的 `close()` 方法定义，保留最后一个并增加try/except
+- `execution/_db.py` get_conn() 上下文管理器增加异常时 `conn.rollback()`
+- `file_tool.py` 正则表达式编译前增加200字符长度限制 + try/except — 防止 ReDoS
+
+**MEDIUM — 序列化安全修复 (2项)**:
+- `ocr_processors.py` `.format()` 替换为 `.replace()` — 防止 OCR 文本中 `{variable}` 导致模板注入
+- `intent_parser.py` 同上，用户消息文本不再经过 `.format()` 处理
+
+### 文件变更
+- `src/monitoring/cost_analyzer.py` — 6个方法连接泄漏修复
+- `src/deployer/license_manager.py` — PBKDF2密码哈希+自动升级
+- `src/structured_llm.py` — threading.Lock缓存保护
+- `src/broker_selector.py` — threading.Lock单例保护
+- `src/invest_tools.py` — buy/sell原子事务
+- `src/core/security.py` — 旧PIN自动迁移
+- `src/xianyu/utils.py` — secrets模块替换random
+- `src/xianyu/xianyu_live.py` — License Key日志脱敏
+- `src/xianyu/order_notifier.py` — 通知密码脱敏
+- `src/tools/bash_tool.py` — workdir路径限制
+- `src/tools/comfyui_client.py` — filename净化
+- `src/tools/code_tool.py` — 沙箱强制+临时文件UUID
+- `src/tools/file_tool.py` — ReDoS防护
+- `src/llm_cache.py` — 缓存单例锁
+- `src/core/event_bus.py` — 迭代快照
+- `src/shared_memory.py` — 移除重复close()
+- `src/history_store.py` — 移除重复close()
+- `src/execution/_db.py` — 异常回滚
+- `src/ocr_processors.py` — .replace()替代.format()
+- `src/core/intent_parser.py` — .replace()替代.format()
+- `tests/test_bash_tool.py` — 路径限制测试更新+新增越界拒绝测试
+
+---
+
 ## [2026-04-03] 第五轮修复 — 降级链总超时 + 错误信息清洗 + 全链路降级告警
 
 > 领域: `backend`

@@ -97,8 +97,15 @@ class ComfyUIClient:
 
         Returns the local file path where the image was saved.
         """
+        # 防止路径遍历: 只保留文件名部分，剥离任何目录组件(包括 ../)
+        filename = os.path.basename(filename)
+        if not filename:
+            raise ValueError("文件名无效(为空或仅含路径分隔符)")
+
         params: Dict[str, str] = {"filename": filename}
         if subfolder:
+            # 子目录同样做安全净化
+            subfolder = os.path.basename(subfolder)
             params["subfolder"] = subfolder
 
         resp = requests.get(

@@ -1,4 +1,5 @@
 """订单通知模块 — 邮件 + Telegram 推送 + 日报 + 健康告警"""
+import asyncio
 import os
 import smtplib
 import logging
@@ -6,7 +7,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict
 
-import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +58,15 @@ class OrderNotifier:
 
     def notify_license_created(self, user_id: str, license_key: str, username: str, password: str):
         """License 自动创建通知"""
+        # 脱敏处理：License Key 只显示首尾各4字符，密码只显示前2字符
+        redacted_key = f"{license_key[:4]}...{license_key[-4:]}" if len(license_key) > 8 else "***"
+        redacted_pw = f"{password[:2]}***" if len(password) >= 2 else "***"
         text = (
             f"🔑 License 已自动创建\n"
             f"买家: {user_id}\n"
-            f"License: {license_key}\n"
+            f"License: {redacted_key}\n"
             f"用户名: {username}\n"
-            f"密码: {password}\n"
+            f"密码: {redacted_pw}\n"
             f"---\n"
             f"已通过闲鱼消息发送给买家"
         )
@@ -119,28 +123,54 @@ class OrderNotifier:
         if not self.tg_token or not self.tg_chat_id:
             logger.debug("Telegram 通知未配置，跳过")
             return
-        import time as _time
         url = f"https://api.telegram.org/bot{self.tg_token}/sendMessage"
         payload = {
             "chat_id": self.tg_chat_id,
             "text": text,
             "disable_web_page_preview": True,
         }
+        # 检测是否在异步上下文中
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # 异步上下文 — 在后台任务中用 httpx 异步发送，不阻塞事件循环
+            asyncio.ensure_future(self._send_telegram_async(url, payload))
+        else:
+            # 同步上下文 — 用 httpx 同步客户端
+            self._send_telegram_sync(url, payload)
+
+    async def _send_telegram_async(self, url: str, payload: dict):
+        """异步版 Telegram 通知发送（3 次重试 + 指数退避）"""
         for attempt in range(3):
             try:
-                resp = requests.post(url, json=payload, timeout=10)
-                if resp.status_code == 200:
-                    logger.info("Telegram 通知已发送")
-                    return
-                logger.debug("[订单通知] 发送尝试 %d/3 HTTP %d: %s", attempt + 1, resp.status_code, resp.text[:200])
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        logger.info("Telegram 通知已发送")
+                        return
+                    logger.debug("[订单通知] 异步发送尝试 %d/3 HTTP %d: %s", attempt + 1, resp.status_code, resp.text[:200])
             except Exception as e:
-                logger.debug("[订单通知] 发送尝试 %d/3 失败: %s", attempt + 1, e)
+                logger.debug("[订单通知] 异步发送尝试 %d/3 失败: %s", attempt + 1, e)
             if attempt < 2:
-                try:
-                    import asyncio
-                    asyncio.get_running_loop()
-                    # 在异步上下文中，用非阻塞方式等待
-                    return  # 异步场景不做同步重试，避免阻塞事件循环
-                except RuntimeError as e:  # noqa: F841
-                    _time.sleep(2 ** attempt)  # 同步场景可以安全 sleep
-        logger.warning("[订单通知] Telegram 3 次重试均失败")
+                await asyncio.sleep(2 ** attempt)
+        logger.warning("[订单通知] Telegram 异步 3 次重试均失败")
+
+    def _send_telegram_sync(self, url: str, payload: dict):
+        """同步版 Telegram 通知发送（3 次重试 + 指数退避）"""
+        import time as _time
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=10) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        logger.info("Telegram 通知已发送")
+                        return
+                    logger.debug("[订单通知] 同步发送尝试 %d/3 HTTP %d: %s", attempt + 1, resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.debug("[订单通知] 同步发送尝试 %d/3 失败: %s", attempt + 1, e)
+            if attempt < 2:
+                _time.sleep(2 ** attempt)
+        logger.warning("[订单通知] Telegram 同步 3 次重试均失败")

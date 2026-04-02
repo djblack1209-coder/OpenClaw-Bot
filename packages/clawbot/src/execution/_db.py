@@ -18,13 +18,17 @@ def ensure_db_dir():
 
 @contextmanager
 def get_conn(db_path=None):
-    """获取数据库连接的上下文管理器"""
+    """获取数据库连接的上下文管理器，异常时自动回滚"""
     path = str(db_path or DB_PATH)
     conn = sqlite3.connect(path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -164,6 +168,22 @@ def init_db(db_path=None):
             remind_day INTEGER DEFAULT 0,
             status TEXT DEFAULT 'active',
             created_at REAL DEFAULT (strftime('%s','now'))
+        )""")
+        # v2.4.1: 账单余额历史 — 追踪每次余额变动，用于预测消耗速度
+        conn.execute("""CREATE TABLE IF NOT EXISTS bill_balance_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            balance REAL NOT NULL,
+            recorded_at REAL DEFAULT (strftime('%s','now')),
+            FOREIGN KEY (account_id) REFERENCES bill_accounts(id)
+        )""")
+        # v2.4.1: 缴费优惠缓存 — 避免频繁查询 AI
+        conn.execute("""CREATE TABLE IF NOT EXISTS bill_discount_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_type TEXT NOT NULL,
+            discount_info TEXT DEFAULT '',
+            updated_at REAL DEFAULT (strftime('%s','now')),
+            UNIQUE(account_type)
         )""")
 
         # v2.6: 内容日历表 — 持久化社媒内容排期，UNIQUE 防重复

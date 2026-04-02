@@ -87,9 +87,9 @@ def _try_compile_restricted(code: str) -> str:
         # AST 编译通过，返回原始代码供子进程执行
         return code
     except ImportError:
-        # RestrictedPython 未安装，跳过 AST 检查 (子进程 import hook 仍会拦截)
-        logger.warning("[CodeTool] RestrictedPython 未安装，跳过 AST 预检查")
-        return code
+        # 安全沙箱缺失时禁止执行，不再静默降级
+        _RESTRICTEDPYTHON_AVAILABLE = False
+        raise RuntimeError("安全沙箱组件 RestrictedPython 未安装，代码执行已禁用")
 
 
 # ── Python 子进程沙箱前导代码 ──
@@ -229,14 +229,24 @@ class CodeTool:
             }
 
         # Layer 1: RestrictedPython AST 预检查 (在宿主进程中只编译不执行)
-        if self._has_restricted_python:
-            try:
-                _try_compile_restricted(code)
-            except SyntaxError as e:
-                return {"success": False, "error": f"代码安全检查未通过: {e}"}
-            except Exception as e:
-                # AST 检查失败不阻止执行 (子进程 import hook 仍会拦截)
-                logger.debug("[CodeTool] AST 预检查异常 (继续执行): %s", e)
+        if not self._has_restricted_python:
+            # 安全沙箱组件缺失，拒绝执行任何代码
+            return {
+                "success": False,
+                "error": "安全沙箱组件 RestrictedPython 未安装，代码执行已禁用",
+                "stdout": "",
+                "stderr": "",
+            }
+        try:
+            _try_compile_restricted(code)
+        except SyntaxError as e:
+            return {"success": False, "error": f"代码安全检查未通过: {e}"}
+        except RuntimeError as e:
+            # RestrictedPython 运行时缺失，拒绝执行
+            return {"success": False, "error": str(e), "stdout": "", "stderr": ""}
+        except Exception as e:
+            # AST 检查失败不阻止执行 (子进程 import hook 仍会拦截)
+            logger.debug("[CodeTool] AST 预检查异常 (继续执行): %s", e)
 
         # Layer 2-4: 子进程执行 (OS 级隔离)
         return self._execute_in_subprocess(code, "python")
@@ -270,7 +280,10 @@ class CodeTool:
         - 进程组隔离: 超时可杀掉整个进程树
         """
         ext = "py" if lang == "python" else "js"
-        filepath = self.temp_dir / f"script.{ext}"
+        # 使用唯一文件名避免并发写入的竞态条件
+        import uuid as _uuid
+        unique_id = _uuid.uuid4().hex[:12]
+        filepath = self.temp_dir / f"script_{unique_id}.{ext}"
 
         try:
             # 写入带沙箱前导代码的临时文件

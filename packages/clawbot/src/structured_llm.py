@@ -25,6 +25,7 @@ Usage:
 import json
 import logging
 import re
+import threading
 from typing import Any, Dict, List, Type, TypeVar
 
 from pydantic import BaseModel
@@ -51,6 +52,8 @@ T = TypeVar("T", bound=BaseModel)
 # ── 缓存 instructor client（避免每次调用都创建）─────────────
 
 _instructor_client_cache: Dict[int, Any] = {}
+# 保护缓存的 check-then-create 模式，防止并发重复创建 instructor client
+_cache_lock = threading.Lock()
 
 
 def _get_instructor_client(router: Any) -> Any:
@@ -62,14 +65,17 @@ def _get_instructor_client(router: Any) -> Any:
     """
     router_id = id(router)
     if router_id not in _instructor_client_cache:
-        # Mode.MD_JSON: 要求 LLM 在 markdown ```json``` 块中输出 JSON
-        # 兼容性最好 — 不要求 model 支持 function calling 或 response_format
-        # 所有 free tier 模型都能用
-        _instructor_client_cache[router_id] = instructor.from_litellm(
-            router.acompletion,
-            mode=Mode.MD_JSON,
-        )
-        logger.debug("[structured_llm] instructor client 已创建 (MD_JSON mode)")
+        with _cache_lock:
+            # 双重检查：拿锁后再确认一次，避免重复创建
+            if router_id not in _instructor_client_cache:
+                # Mode.MD_JSON: 要求 LLM 在 markdown ```json``` 块中输出 JSON
+                # 兼容性最好 — 不要求 model 支持 function calling 或 response_format
+                # 所有 free tier 模型都能用
+                _instructor_client_cache[router_id] = instructor.from_litellm(
+                    router.acompletion,
+                    mode=Mode.MD_JSON,
+                )
+                logger.debug("[structured_llm] instructor client 已创建 (MD_JSON mode)")
     return _instructor_client_cache[router_id]
 
 
