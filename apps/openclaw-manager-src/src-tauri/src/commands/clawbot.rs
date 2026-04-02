@@ -11,7 +11,9 @@ use std::process::Command;
 use std::time::Duration;
 use tauri::command;
 
-const CLAWBOT_ENV_KEYS: [&str; 10] = [
+// 安全加固: IBKR_START_CMD / IBKR_STOP_CMD 已移除（前端可写的命令直接通过 bash -c 执行=RCE 风险）
+// 这两个值只能通过手动编辑 .env 文件设置
+const CLAWBOT_ENV_KEYS: [&str; 8] = [
     "G4F_BASE_URL",
     "KIRO_BASE_URL",
     "IBKR_HOST",
@@ -19,8 +21,6 @@ const CLAWBOT_ENV_KEYS: [&str; 10] = [
     "IBKR_ACCOUNT",
     "IBKR_BUDGET",
     "IBKR_AUTOSTART",
-    "IBKR_START_CMD",
-    "IBKR_STOP_CMD",
     "NOTIFY_CHAT_ID",
 ];
 
@@ -91,11 +91,20 @@ const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 7] = [
 
 const OPENCLAW_MAIN_AGENT_ID: &str = "main";
 
+/// 服务定义：包含 launchd 标签、显示名、plist 路径、监听端口和启动脚本路径
 #[derive(Debug, Clone)]
 struct ManagedServiceDefinition {
     label: String,
     name: String,
     plist_path: String,
+    /// 服务监听端口，用于在 launchd 不可用时通过端口探活判断服务状态
+    port: Option<u16>,
+    /// 启动脚本路径，当 launchd 被 macOS 后台任务管理屏蔽时，用 bash 直接启动
+    launcher_script: Option<String>,
+    /// 日志输出路径（stdout）
+    stdout_log: Option<String>,
+    /// 日志输出路径（stderr）
+    stderr_log: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -147,37 +156,63 @@ fn get_base_dir() -> Result<String, String> {
 fn get_managed_services() -> Result<Vec<ManagedServiceDefinition>, String> {
     let base_dir = get_base_dir()?;
     let launchagents_dir = format!("{}/tools/launchagents", base_dir);
+    let logs_dir = format!("{}/packages/clawbot/logs", base_dir);
+    let openclaw_logs_dir = format!("{}/.openclaw/logs", base_dir);
 
     Ok(vec![
         ManagedServiceDefinition {
             label: "ai.openclaw.gateway".to_string(),
             name: "OpenClaw Gateway".to_string(),
             plist_path: format!("{}/ai.openclaw.gateway.plist", launchagents_dir),
+            port: Some(18789),
+            launcher_script: Some(format!("{}/gateway-launcher.sh", launchagents_dir)),
+            stdout_log: Some(format!("{}/gateway.log", openclaw_logs_dir)),
+            stderr_log: Some(format!("{}/gateway.err.log", openclaw_logs_dir)),
         },
         ManagedServiceDefinition {
             label: "ai.openclaw.g4f".to_string(),
             name: "ClawBot g4f".to_string(),
             plist_path: format!("{}/ai.openclaw.g4f.plist", launchagents_dir),
+            port: Some(18891),
+            launcher_script: Some(format!("{}/g4f-launcher.sh", launchagents_dir)),
+            stdout_log: Some(format!("{}/com-clawbot-g4f.stdout.log", logs_dir)),
+            stderr_log: Some(format!("{}/com-clawbot-g4f.stderr.log", logs_dir)),
         },
         ManagedServiceDefinition {
             label: "ai.openclaw.kiro-gateway".to_string(),
             name: "ClawBot Kiro Gateway".to_string(),
             plist_path: format!("{}/ai.openclaw.kiro-gateway.plist", launchagents_dir),
+            port: Some(18793),
+            launcher_script: Some(format!("{}/kiro-gateway-launcher.sh", launchagents_dir)),
+            stdout_log: Some(format!("{}/com-clawbot-kiro-gateway.stdout.log", logs_dir)),
+            stderr_log: Some(format!("{}/com-clawbot-kiro-gateway.stderr.log", logs_dir)),
         },
         ManagedServiceDefinition {
             label: IBKR_MANAGED_LABEL.to_string(),
             name: IBKR_MANAGED_NAME.to_string(),
             plist_path: "custom://ibkr".to_string(),
+            port: None, // IBKR 端口从 .env 动态读取
+            launcher_script: None,
+            stdout_log: None,
+            stderr_log: None,
         },
         ManagedServiceDefinition {
             label: "ai.openclaw.clawbot-agent".to_string(),
             name: "ClawBot Agent".to_string(),
             plist_path: format!("{}/ai.openclaw.clawbot-agent.plist", launchagents_dir),
+            port: Some(18790), // 内部 API 端口
+            launcher_script: Some(format!("{}/packages/clawbot/scripts/start_clawbot.sh", base_dir)),
+            stdout_log: Some(format!("{}/com-clawbot-agent.stdout.log", logs_dir)),
+            stderr_log: Some(format!("{}/com-clawbot-agent.stderr.log", logs_dir)),
         },
         ManagedServiceDefinition {
             label: "ai.openclaw.xianyu".to_string(),
             name: "闲鱼 AI 客服".to_string(),
             plist_path: format!("{}/ai.openclaw.xianyu.plist", launchagents_dir),
+            port: None, // 闲鱼客服是 WebSocket 客户端，不监听端口
+            launcher_script: Some(format!("{}/packages/clawbot/scripts/start_xianyu.sh", base_dir)),
+            stdout_log: Some(format!("{}/com-clawbot-xianyu.stdout.log", logs_dir)),
+            stderr_log: Some(format!("{}/com-clawbot-xianyu.stderr.log", logs_dir)),
         },
     ])
 }
@@ -232,6 +267,81 @@ fn parse_pid(launchctl_print_output: &str) -> Option<u32> {
     None
 }
 
+/// 通过 lsof 查找监听指定端口的进程 PID（用于非 launchd 启动的服务）
+fn find_pid_by_port(port: u16) -> Option<u32> {
+    let output = Command::new("lsof")
+        .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            // lsof -t 返回 PID 列表（每行一个），取第一个
+            stdout.lines().next().and_then(|s| s.trim().parse::<u32>().ok())
+        }
+        _ => None,
+    }
+}
+
+/// 通过启动脚本直接启动服务（macOS 后台任务管理屏蔽 launchd 时的 fallback）
+fn start_service_via_script(definition: &ManagedServiceDefinition) -> Result<String, String> {
+    let script = definition.launcher_script.as_ref()
+        .ok_or_else(|| format!("{} 未配置启动脚本，无法通过进程方式启动", definition.name))?;
+
+    // 构建 nohup 命令，将输出重定向到日志文件
+    let stdout_log = definition.stdout_log.as_deref().unwrap_or("/dev/null");
+    let stderr_log = definition.stderr_log.as_deref().unwrap_or("/dev/null");
+
+    let shell_cmd = format!(
+        "nohup bash \"{}\" > \"{}\" 2> \"{}\" &",
+        script, stdout_log, stderr_log
+    );
+
+    let output = Command::new("bash")
+        .args(["-c", &shell_cmd])
+        .output()
+        .map_err(|e| format!("执行启动脚本失败: {}", e))?;
+
+    if output.status.success() {
+        Ok(format!("{} 已通过启动脚本启动", definition.name))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("{} 启动脚本执行失败: {}", definition.name, stderr.trim()))
+    }
+}
+
+/// 停止通过脚本启动的服务（通过端口找到 PID 并 kill）
+fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<String, String> {
+    let port = definition.port
+        .ok_or_else(|| format!("{} 未配置端口，无法通过进程方式停止", definition.name))?;
+
+    let pid = find_pid_by_port(port)
+        .ok_or_else(|| format!("{} 未找到监听端口 {} 的进程", definition.name, port))?;
+
+    // 先发 SIGTERM（优雅关闭），进程不响应再 SIGKILL
+    let output = Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .output()
+        .map_err(|e| format!("发送停止信号失败: {}", e))?;
+
+    if output.status.success() {
+        // 等待进程退出
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        // 检查进程是否还在
+        if find_pid_by_port(port).is_some() {
+            // 强制杀死
+            let _ = Command::new("kill").args(["-KILL", &pid.to_string()]).output();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        Ok(format!("{} 已停止 (PID: {})", definition.name, pid))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("{} 停止失败: {}", definition.name, stderr.trim()))
+    }
+}
+
+/// 查询服务运行状态
+/// 优先用 launchctl print 检测 launchd 状态，如果 launchd 不可用（被 macOS 后台任务管理屏蔽），
+/// 则降级为端口探活 + 进程名匹配方式判断服务是否在运行
 fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> ManagedServiceStatus {
     if definition.label == IBKR_MANAGED_LABEL {
         return query_ibkr_status(definition);
@@ -245,6 +355,25 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
             let stdout = String::from_utf8_lossy(&out.stdout);
             let running = stdout.contains("state = running") || stdout.contains("state = xpcproxy");
             let pid = parse_pid(&stdout);
+            // launchd 报告服务已加载但未运行时，再用端口探活兜底（防止 launchd 状态不准）
+            if !running {
+                if let Some(port) = definition.port {
+                    let addr_str = format!("127.0.0.1:{}", port);
+                    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                        if check_tcp(addr).is_ok() {
+                            // 端口可达说明服务实际在运行（可能通过非 launchd 方式启动）
+                            let fallback_pid = find_pid_by_port(port);
+                            return ManagedServiceStatus {
+                                label: definition.label.clone(),
+                                name: definition.name.clone(),
+                                running: true,
+                                pid: fallback_pid,
+                                plist_path: definition.plist_path.clone(),
+                            };
+                        }
+                    }
+                }
+            }
             ManagedServiceStatus {
                 label: definition.label.clone(),
                 name: definition.name.clone(),
@@ -253,12 +382,30 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
                 plist_path: definition.plist_path.clone(),
             }
         }
-        _ => ManagedServiceStatus {
-            label: definition.label.clone(),
-            name: definition.name.clone(),
-            running: false,
-            pid: None,
-            plist_path: definition.plist_path.clone(),
+        _ => {
+            // launchctl print 失败（服务未加载或被屏蔽），用端口探活作为 fallback
+            if let Some(port) = definition.port {
+                let addr_str = format!("127.0.0.1:{}", port);
+                if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                    if check_tcp(addr).is_ok() {
+                        let fallback_pid = find_pid_by_port(port);
+                        return ManagedServiceStatus {
+                            label: definition.label.clone(),
+                            name: definition.name.clone(),
+                            running: true,
+                            pid: fallback_pid,
+                            plist_path: definition.plist_path.clone(),
+                        };
+                    }
+                }
+            }
+            ManagedServiceStatus {
+                label: definition.label.clone(),
+                name: definition.name.clone(),
+                running: false,
+                pid: None,
+                plist_path: definition.plist_path.clone(),
+            }
         },
     }
 }
@@ -328,9 +475,10 @@ fn parse_env_content(content: &str) -> HashMap<String, String> {
         }
         if let Some((k, v)) = line.split_once('=') {
             let trimmed = v.trim();
-            // 只在值被完整引号包裹时才去除引号（如 "value" 或 'value'）
-            let unquoted = if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-                || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+            // 只在值被完整引号包裹且长度 ≥ 2 时才去除引号
+            let unquoted = if trimmed.len() >= 2
+                && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+                    || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
             {
                 &trimmed[1..trimmed.len() - 1]
             } else {
@@ -663,22 +811,76 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
         "start" => {
             let status = query_service_status(&uid, &definition);
             if status.running {
-                kickstart_service(&uid, &definition)?;
                 return Ok(format!("{} 已在运行", definition.name));
             }
-            bootstrap_service(&uid, &definition)?;
-            kickstart_service(&uid, &definition)?;
-            Ok(format!("{} 已启动", definition.name))
+            // 优先尝试 launchd 方式启动
+            let launchd_ok = bootstrap_service(&uid, &definition)
+                .and_then(|_| kickstart_service(&uid, &definition));
+            match launchd_ok {
+                Ok(_) => {
+                    // 等待 3 秒后检查是否真的启动了（防止 macOS 后台任务管理屏蔽）
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let recheck = query_service_status(&uid, &definition);
+                    if recheck.running {
+                        Ok(format!("{} 已启动", definition.name))
+                    } else if definition.launcher_script.is_some() {
+                        // launchd 声称成功但端口没起来，降级用脚本启动
+                        info!("[总控] launchd 启动 {} 后未响应，降级为脚本启动", definition.label);
+                        start_service_via_script(&definition)
+                    } else {
+                        Err(format!("{} 启动失败：launchd 未能拉起服务", definition.name))
+                    }
+                }
+                Err(_) if definition.launcher_script.is_some() => {
+                    // launchd 操作失败（如被 macOS 屏蔽），降级用脚本启动
+                    info!("[总控] launchd 启动 {} 失败，降级为脚本启动", definition.label);
+                    start_service_via_script(&definition)
+                }
+                Err(e) => Err(format!("{} 启动失败: {}", definition.name, e)),
+            }
         }
         "stop" => {
-            bootout_service(&uid, &definition)?;
+            // 先尝试 launchd 方式停止
+            let _ = bootout_service(&uid, &definition);
+            // 无论 launchd 是否成功，都检查端口并 kill 残留进程
+            if definition.port.is_some() {
+                if let Ok(msg) = stop_service_via_pid(&definition) {
+                    return Ok(msg);
+                }
+            }
             Ok(format!("{} 已停止", definition.name))
         }
         "restart" => {
+            // 停止：先 launchd bootout + kill 进程
             let _ = bootout_service(&uid, &definition);
-            bootstrap_service(&uid, &definition)?;
-            kickstart_service(&uid, &definition)?;
-            Ok(format!("{} 已重启", definition.name))
+            if definition.port.is_some() {
+                let _ = stop_service_via_pid(&definition);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // 启动：先 launchd，失败则降级脚本
+            let launchd_ok = bootstrap_service(&uid, &definition)
+                .and_then(|_| kickstart_service(&uid, &definition));
+            match launchd_ok {
+                Ok(_) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let recheck = query_service_status(&uid, &definition);
+                    if recheck.running {
+                        Ok(format!("{} 已重启", definition.name))
+                    } else if definition.launcher_script.is_some() {
+                        info!("[总控] launchd 重启 {} 后未响应，降级为脚本启动", definition.label);
+                        start_service_via_script(&definition)?;
+                        Ok(format!("{} 已重启（脚本模式）", definition.name))
+                    } else {
+                        Err(format!("{} 重启失败", definition.name))
+                    }
+                }
+                Err(_) if definition.launcher_script.is_some() => {
+                    info!("[总控] launchd 重启 {} 失败，降级为脚本启动", definition.label);
+                    start_service_via_script(&definition)?;
+                    Ok(format!("{} 已重启（脚本模式）", definition.name))
+                }
+                Err(e) => Err(format!("{} 重启失败: {}", definition.name, e)),
+            }
         }
         _ => Err(format!("不支持的操作: {}", action)),
     }

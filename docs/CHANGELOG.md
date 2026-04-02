@@ -5,6 +5,45 @@
 
 ---
 
+## [2026-04-03] 第三轮深层审计 — FastAPI/APScheduler/EventBus/SQLite/Tauri 安全加固
+
+> 领域: `backend`, `frontend`, `infra`
+> 影响模块: `server.py`, `social_scheduler.py`, `event_bus.py`, `litellm_router.py`, `cost_analyzer.py`, `clawbot.rs`
+> 关联问题: HI-390(根因修复), HI-417~423
+
+### 变更内容
+
+**FastAPI 异常处理 (2项)**:
+- `server.py` 注册 `RequestValidationError` 异常处理器 — 防止 422 错误泄露 Pydantic 内部模型字段名
+- 注册全局 `Exception` catch-all 处理器 — 防止未捕获异常返回含堆栈的 500
+
+**APScheduler 协程泄漏修复 (HI-390 根因)**:
+- `_run_async()` 超时后增加 `future.cancel()` 取消协程 — 之前超时后协程仍在主循环中永久运行
+
+**EventBus 线程安全修复**:
+- `get_event_bus()` 单例创建加 `threading.Lock` — APScheduler 线程池并发首次调用可能创建多个实例
+
+**LiteLLM Router 增强 (3项)**:
+- `acompletion()` 流式路径新增 `stream_options={"include_usage": True}` — 修复所有流式调用 token 统计为 0 的问题
+- `_dep()` 支持 per-model `timeout/stream_timeout` — Groq(8s) / SiliconFlow大模型(45s) / Reasoning(90s) 差异化超时
+- 补充 Groq/SiliconFlow/Sambanova 的 per-model 超时配置
+
+**Tauri 命令注入防护**:
+- `CLAWBOT_ENV_KEYS` 白名单移除 `IBKR_START_CMD/IBKR_STOP_CMD` — 前端可写的命令值直接通过 `bash -c` 执行=RCE 风险
+
+**SQLite 并发安全**:
+- `cost_analyzer.py` 三处连接补充 `PRAGMA busy_timeout=5000` — 防止高频场景 `database is locked`
+
+### 文件变更
+- `src/api/server.py` — RequestValidationError + Exception 全局异常处理器
+- `src/social_scheduler.py` — _run_async 超时取消协程
+- `src/core/event_bus.py` — get_event_bus 线程安全单例
+- `src/litellm_router.py` — stream_options + per-model timeout + _dep 签名扩展
+- `src/monitoring/cost_analyzer.py` — 3处 busy_timeout
+- `src-tauri/src/commands/clawbot.rs` — CLAWBOT_ENV_KEYS 移除危险命令键
+
+---
+
 ## [2026-04-03] 深层审计 — 官方文档对标修复 (LiteLLM/PTB/Tauri/httpx)
 
 > 领域: `backend`, `frontend`, `infra`
