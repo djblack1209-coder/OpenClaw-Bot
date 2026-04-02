@@ -470,6 +470,27 @@ app.add_middleware(
 app.add_middleware(DebugLoggerMiddleware)
 
 
+# --- 请求体大小限制中间件 ---
+# 防止恶意客户端发送超大请求体导致 OOM（10MB 上限）
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """限制请求体大小（默认 10MB），超过直接返回 413"""
+    MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
+
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self.MAX_BODY_SIZE:
+            return StarletteJSONResponse(
+                status_code=413,
+                content={"error": "请求体过大，最大允许 10MB"},
+            )
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
+
 # --- Validation Error Handler Registration ---
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 

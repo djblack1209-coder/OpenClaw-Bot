@@ -128,10 +128,25 @@ class SmartMemoryPipeline:
         self._extracting: set = set()  # chat_ids currently running extraction
         self._last_extract_time: float = 0  # 全局限流: 防止多聊天并发触发 LLM 风暴
         self._extract_min_interval: float = 30.0  # 两次提取之间至少间隔 30 秒
+        self._max_tracked_chats: int = 2000  # 跟踪的最大聊天数上限
 
     def set_llm_fn(self, llm_fn: Callable):
         """延迟设置 LLM 函数（启动后注入）"""
         self.llm_fn = llm_fn
+
+    def _lazy_cleanup_chats(self):
+        """惰性清理: 当跟踪的聊天数超过上限时，移除最久无活动的聊天"""
+        if len(self._pending_messages) < self._max_tracked_chats:
+            return
+        # 按最后消息时间排序，保留最近一半
+        cutoff = time.time() - 86400  # 24 小时无活动的清理
+        stale_ids = []
+        for cid, msgs in self._pending_messages.items():
+            if msgs and msgs[-1].get("ts", 0) < cutoff:
+                stale_ids.append(cid)
+        for cid in stale_ids:
+            del self._pending_messages[cid]
+            self._turn_count.pop(cid, None)
 
     async def on_message(self, chat_id: int, user_id: int, role: str, content: str, bot_id: str = ""):
         """每条消息调用 — 累积消息，到达阈值时触发异步提取
@@ -140,6 +155,7 @@ class SmartMemoryPipeline:
         lock 仅保护 _extract_and_store 读取时的一致性。
         """
         # 无锁快速路径 — 累积消息和计数
+        self._lazy_cleanup_chats()  # 防止无界增长
         if chat_id not in self._pending_messages:
             self._pending_messages[chat_id] = []
         self._pending_messages[chat_id].append({
