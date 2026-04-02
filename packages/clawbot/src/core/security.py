@@ -1,17 +1,20 @@
 """
 OpenClaw OMEGA — 安全分级 (Security Gate)
-权限分级、PIN 码验证、审计日志。
+权限分级、PIN 码验证、审计日志、SSRF 防护。
 """
 import hashlib
+import ipaddress
 import json
 import logging
 import os
 import secrets
+import socket
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,61 @@ AUDIT_DIR = _BASE_DIR / "data" / "audit"
 AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 AUDIT_FILE = AUDIT_DIR / "operations.jsonl"
 PIN_FILE = AUDIT_DIR / ".pin_hash"
+
+# ── SSRF 防护 ─────────────────────────────────────────
+
+# SSRF 防护: 禁止访问的主机名黑名单（云厂商元数据服务 + 本地回环地址）
+SSRF_BLOCKED_HOSTS: frozenset = frozenset({
+    "169.254.169.254", "metadata.google.internal",
+    "metadata.internal", "100.100.100.200",
+    "localhost", "127.0.0.1", "0.0.0.0", "::1",
+})
+
+
+class SSRFError(Exception):
+    """SSRF 安全检查未通过时抛出的异常"""
+    pass
+
+
+def check_ssrf(url: str) -> bool:
+    """检查 URL 是否安全（非内网/非元数据服务），防止 SSRF 攻击。
+
+    通过 DNS 解析验证目标 IP，防止 DNS 重绑定攻击。
+    采用 fail-close 策略：任何异常情况都拒绝访问。
+
+    Args:
+        url: 待检查的完整 URL
+
+    Returns:
+        True 表示安全，False 表示存在 SSRF 风险
+    """
+    try:
+        parsed = urlparse(url)
+        # 只允许 http/https 协议，阻止 file:// gopher:// 等危险协议
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # 黑名单检查：拦截已知的内网/元数据服务地址
+        if hostname in SSRF_BLOCKED_HOSTS:
+            return False
+        # DNS 解析后检查 IP（防止 DNS 重绑定攻击）
+        try:
+            resolved_ips = socket.getaddrinfo(hostname, None)
+            for family, _type, proto, canonname, sockaddr in resolved_ips:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    logger.warning("[SSRF] 拦截: %s 解析到内网地址 %s", url, ip)
+                    return False
+        except (socket.gaierror, ValueError):
+            # 安全修复: DNS 解析失败 → 拒绝（fail-close，防止利用 DNS 解析失败绕过检查）
+            logger.warning("[SSRF] 拦截: %s DNS 解析失败，拒绝访问", url)
+            return False
+        return True
+    except Exception:
+        return False
+
 
 # ── 权限分级 ──────────────────────────────────────────
 
@@ -201,8 +259,20 @@ class SecurityGate:
             pin_hash = hashlib.pbkdf2_hmac('sha256', pin.encode(), salt.encode(), 100000).hex()
             result = pin_hash == expected_hash
         else:
-            # 向后兼容旧格式（无盐 SHA-256）
+            # 向后兼容旧格式（无盐 SHA-256），验证后自动升级为 PBKDF2
             result = hashlib.sha256(pin.encode()).hexdigest() == stored
+            if result:
+                # 旧格式验证通过，自动升级为 PBKDF2 + 随机盐
+                new_salt = secrets.token_hex(16)
+                new_hash = hashlib.pbkdf2_hmac('sha256', pin.encode(), new_salt.encode(), 100000).hex()
+                upgraded = f"{new_salt}:{new_hash}"
+                try:
+                    PIN_FILE.write_text(upgraded)
+                    os.chmod(PIN_FILE, 0o600)
+                    self._pin_hash = upgraded
+                    logger.info("旧格式 PIN 已自动升级为 PBKDF2 + 盐")
+                except Exception as e:
+                    logger.warning(f"PIN 自动升级写入失败: {e}")
 
         if not result:
             state["count"] = state.get("count", 0) + 1

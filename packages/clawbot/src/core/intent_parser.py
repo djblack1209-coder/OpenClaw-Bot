@@ -331,7 +331,8 @@ class IntentParser:
 
                     # 提取匹配的参数（使用最后一个捕获组，避免中间组干扰）
                     matched_text = match.group(match.lastindex) if match.lastindex else ""
-                    goal = pattern_group["goal_template"].format(match=matched_text)
+                    # 使用 replace 替代 format，防止匹配文本中的花括号触发模板注入
+                    goal = pattern_group["goal_template"].replace("{match}", matched_text)
 
                     known_params = {}
                     if pattern_group.get("param_key") and matched_text:

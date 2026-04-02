@@ -2,21 +2,22 @@
 import base64
 import hashlib
 import json
-import random
+import secrets
 import struct
 import time
 from typing import Any, Dict, List
 
 
 def generate_mid() -> str:
-    random_part = int(1000 * random.random())
+    # 使用密码学安全随机数生成消息 ID
+    random_part = secrets.randbelow(1000)
     timestamp = int(time.time() * 1000)
     return f"{random_part}{timestamp} 0"
 
 
 def generate_uuid() -> str:
-    timestamp = int(time.time() * 1000)
-    return f"-{timestamp}1"
+    # 使用密码学安全随机数生成 UUID，避免可预测的时间戳格式
+    return secrets.token_hex(16)
 
 
 def generate_device_id(user_id: str) -> str:
@@ -28,10 +29,12 @@ def generate_device_id(user_id: str) -> str:
         elif i == 14:
             result.append("4")
         elif i == 19:
-            rand_val = int(16 * random.random())
+            # 使用密码学安全随机数替代 random.random()
+            rand_val = secrets.randbelow(16)
             result.append(chars[(rand_val & 0x3) | 0x8])
         else:
-            result.append(chars[int(16 * random.random())])
+            # 使用密码学安全随机数替代 random.random()
+            result.append(chars[secrets.randbelow(16)])
     return "".join(result) + "-" + user_id
 
 

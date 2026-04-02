@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-03 (第三轮深层审计: FastAPI异常处理+APScheduler协程泄漏+EventBus线程安全+LiteLLM stream_options+Tauri RCE防护 | 1122/1122 passed)
+> 最后更新: 2026-04-03 (第六轮深层审计: 并发竞态+加密安全+路径遍历+SQLite数据层+序列化安全 — 21文件21项修复 | 1123/1123 passed)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -51,7 +51,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1122/1122 Python (含45项E2E全链路测试+41项AI助手能力测试+1项bash白名单验证), 0 TypeScript错误 |
+| 测试通过率 | 🟢 100% | 1123/1123 Python (含45项E2E全链路测试+41项AI助手能力测试+1项bash白名单验证+1项路径遍历防护), 0 TypeScript错误 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -98,10 +98,23 @@
 | HI-394 | `frontend` | `config.rs` | Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源，Windows 不可用且密码学强度不足，建议改用 `getrandom` crate | 2026-04-01 |
 | HI-410 | `backend` | `xianyu_apis.py` | XianyuApis 的 httpx.AsyncClient 在 `__init__` 中创建但无自动关闭机制，调用方忘记 `close()` 时 TCP 连接泄漏 | 2026-04-03 |
 | HI-411 | `docs` | `MODULE_REGISTRY.md` | 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal) 未注册 | 2026-04-03 |
+| HI-456 | `backend` | `brain.py` | `_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护 — 快速连续消息可能竞态 | 2026-04-03 |
+| HI-457 | `backend` | `social_tools.py` | `PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问无 `threading.Lock` | 2026-04-03 |
+| HI-458 | `backend` | `social_scheduler.py` | `_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护 | 2026-04-03 |
+| HI-459 | `backend` | `wechat_bridge.py` | `random.randint` 用于 `X-WECHAT-UIN` 认证header — 应用 `secrets` 模块 | 2026-04-03 |
+| HI-460 | `backend` | `invest_tools.py` | `Portfolio.buy()/sell()` cash read和update虽已合并到同一事务，但 `_set_config` 仍是独立函数 — 需验证合并效果 | 2026-04-03 |
+| HI-461 | `backend` | `license_manager.py` | `find_by_buyer()` LIKE 模式 `%{buyer_id}%` 未转义 `%`/`_` — buyer_id含通配符可能匹配其他用户 | 2026-04-03 |
+| HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串 | 2026-04-03 |
+| HI-463 | `backend` | 20+文件 | httpx.AsyncClient per-request创建无重试逻辑 — 已有 `ResilientHTTPClient` 但大多数调用点未使用 | 2026-04-03 |
 
 ### 🔵 低优先
 
-(无)
+| ID | 领域 | 模块 | 描述 | 发现日期 |
+|----|------|------|------|----------|
+| HI-464 | `backend` | `proactive_engine.py` | `_sent_log/_recent_notifications` 字典无锁 — 清理与写入可能竞态但影响仅限多发一条通知 | 2026-04-03 |
+| HI-465 | `backend` | `news_fetcher.py` | `_seen_titles` 集合无界增长+无锁 — RSS源不多时影响极小 | 2026-04-03 |
+| HI-466 | `backend` | `error_handler.py` | `ErrorThrottler._seen/_counts` + `ErrorHandler._total_errors` 统计计数器无锁 — 仅影响监控准确度 | 2026-04-03 |
+| HI-467 | `backend` | `multi_bot.py` | `_live_context_cache` TTL检查与写入无锁 — 最多重复构建一次上下文 | 2026-04-03 |
 
 ---
 
@@ -109,6 +122,27 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-435 | `security` | `cost_analyzer.py` | CRITICAL: `with sqlite3.connect() as conn:` 不关闭连接 — 每次API调用泄漏一个SQLite连接 | 6个方法全部改为显式 `try/finally + conn.close()` | 2026-04-03 | 第六轮深层审计 |
+| HI-436 | `security` | `license_manager.py` | CRITICAL: 密码存储使用裸SHA-256无盐 — 彩虹表秒破 | 升级为 PBKDF2+随机盐(10万次迭代); 旧格式自动检测并透明升级 | 2026-04-03 | 第六轮深层审计 |
+| HI-437 | `backend` | `structured_llm.py` | CRITICAL: `_instructor_client_cache` 缓存无锁 — 并发创建重复instructor客户端 | 增加 `threading.Lock` 双重检查锁保护 | 2026-04-03 | 第六轮深层审计 |
+| HI-438 | `backend` | `broker_selector.py` | HIGH: `get_ibkr()` 单例创建无线程安全 — APScheduler线程可能创建多个IB连接 | 增加 `threading.Lock` 双重检查锁 | 2026-04-03 | 第六轮深层审计 |
+| HI-439 | `trading` | `invest_tools.py` | HIGH: `buy()/sell()` 现金读取和更新在不同事务中 — 可能 double-spend | 合并到同一个 `with self._conn()` 事务块 | 2026-04-03 | 第六轮深层审计 |
+| HI-440 | `security` | `security.py` | HIGH: 旧格式SHA-256 PIN验证后不自动升级 — 旧PIN永远停留在弱哈希 | 验证成功后自动用PBKDF2+盐重新哈希并覆盖文件 | 2026-04-03 | 第六轮深层审计 |
+| HI-441 | `security` | `xianyu/utils.py` | HIGH: `random` 模块生成消息ID/设备ID/UUID — Mersenne Twister可预测 | 全部迁移到 `secrets` 模块; UUID改为 `secrets.token_hex(16)` | 2026-04-03 | 第六轮深层审计 |
+| HI-442 | `security` | `xianyu_live.py` | HIGH: License Key 完整明文记录到日志 | 脱敏为 `key[:4]...key[-4:]` | 2026-04-03 | 第六轮深层审计 |
+| HI-443 | `security` | `order_notifier.py` | HIGH: 通知消息包含明文密码和完整License Key | 密码脱敏为 `password[:2]***`; Key脱敏为 `key[:4]...key[-4:]` | 2026-04-03 | 第六轮深层审计 |
+| HI-444 | `security` | `bash_tool.py` | HIGH: `workdir` 参数无限制 — 可执行 `cat /etc/passwd` | `os.path.realpath()` + 项目根目录前缀检查 | 2026-04-03 | 第六轮深层审计 |
+| HI-445 | `security` | `comfyui_client.py` | HIGH: 远程服务器filename无净化 — `../../` 可写任意路径 | `os.path.basename()` 剥离目录组件 | 2026-04-03 | 第六轮深层审计 |
+| HI-446 | `security` | `code_tool.py` | HIGH: RestrictedPython缺失时静默降级 + 固定临时文件名竞态 | 缺失时拒绝执行; 临时文件名用UUID | 2026-04-03 | 第六轮深层审计 |
+| HI-447 | `security` | `file_tool.py` | MEDIUM: 用户/LLM提供的正则无长度限制 — ReDoS风险 | 200字符上限 + try/except编译保护 | 2026-04-03 | 第六轮深层审计 |
+| HI-448 | `backend` | `llm_cache.py` | MEDIUM: diskcache单例创建无锁 — 并发创建多个SQLite缓存 | `threading.Lock` 双重检查锁 | 2026-04-03 | 第六轮深层审计 |
+| HI-449 | `backend` | `event_bus.py` | MEDIUM: `publish()` 迭代handlers时可被 `subscribe()` 并发修改 | 迭代前 `list()` 快照 | 2026-04-03 | 第六轮深层审计 |
+| HI-450 | `backend` | `shared_memory.py` | MEDIUM: 重复 `close()` 方法定义 — 第一个被第二个覆盖 | 删除第一个; 第二个增加try/except | 2026-04-03 | 第六轮深层审计 |
+| HI-451 | `backend` | `history_store.py` | MEDIUM: 重复 `close()` 方法定义 — 同上 | 同上 | 2026-04-03 | 第六轮深层审计 |
+| HI-452 | `backend` | `execution/_db.py` | LOW: `get_conn()` 异常时无显式rollback | 增加 `except: conn.rollback(); raise` | 2026-04-03 | 第六轮深层审计 |
+| HI-453 | `security` | `ocr_processors.py` | MEDIUM: `.format()` 处理OCR文本 — `{variable}` 模板注入 | 改为 `.replace()` | 2026-04-03 | 第六轮深层审计 |
+| HI-454 | `security` | `intent_parser.py` | MEDIUM: `.format()` 处理用户消息 — 同上 | 改为 `.replace()` | 2026-04-03 | 第六轮深层审计 |
+| HI-455 | `backend` | `test_bash_tool.py` | 测试更新: workdir测试使用项目内目录+新增越界拒绝测试 | 更新测试适配新安全限制 | 2026-04-03 | 第六轮深层审计 |
 | HI-412 | `security` | `shared_memory.py`+`smart_memory.py` | 记忆存储跨用户隔离漏洞: search(chat_id=None)搜全表+SmartMemory不传chat_id+get_context_for_prompt无用户过滤 | search/remember/get_context_for_prompt 全部增加 chat_id 隔离; 测试更新验证新行为 | 2026-04-03 | 全量审计P0 |
 | HI-413 | `security` | `kiro-gateway/main.py` | CORS allow_methods/allow_headers=[\"*\"] 过于宽松 | 收窄为 GET/POST/OPTIONS + 4个具体Header | 2026-04-03 | 全量审计P0 |
 | HI-414 | `security` | `api/server.py` | 内部 API 文档在生产环境可访问 | 生产环境 docs_url=None | 2026-04-03 | 全量审计P0 |

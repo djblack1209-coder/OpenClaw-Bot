@@ -10,6 +10,7 @@ Covers:
 
 All subprocess calls are MOCKED — no real dangerous commands are executed.
 """
+import os
 import subprocess
 
 import pytest
@@ -266,18 +267,30 @@ class TestBashToolEdgeCases:
         assert result["success"] is False
         assert "不在允许列表" in result["error"]
 
-    def test_workdir_override(self, tool, tmp_path):
-        """Per-call workdir overrides default."""
+    def test_workdir_override(self, tool):
+        """项目范围内的 workdir 可以正常使用."""
         mock_proc = MagicMock()
         mock_proc.communicate.return_value = (b"ok", b"")
         mock_proc.returncode = 0
 
-        custom_dir = str(tmp_path / "subdir")
+        # 使用项目内目录作为 workdir
+        project_dir = os.path.realpath(
+            os.path.join(os.path.dirname(__file__), '..')
+        )
+        custom_dir = os.path.join(project_dir, "src")
 
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
             tool.execute("ls", workdir=custom_dir)
             call_kwargs = mock_popen.call_args
-            assert call_kwargs.kwargs.get("cwd") or call_kwargs[1].get("cwd") == custom_dir
+            assert call_kwargs is not None
+            actual_cwd = call_kwargs.kwargs.get("cwd") or call_kwargs[1].get("cwd")
+            assert actual_cwd == custom_dir
+
+    def test_workdir_outside_project_rejected(self, tool):
+        """项目范围外的 workdir 被拒绝 — 路径遍历防护."""
+        result = tool.execute("ls", workdir="/tmp")
+        assert result["success"] is False
+        assert "超出项目范围" in result["error"]
 
     def test_cancel_no_running_process(self, tool):
         result = tool.cancel()

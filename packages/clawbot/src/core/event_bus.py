@@ -233,12 +233,12 @@ class EventBus:
         # 收集匹配的订阅者
         handlers: List[Subscription] = []
 
-        # 精确匹配
+        # 精确匹配 — 取快照，防止 subscribe() 并发修改列表
         if event_type in self._subscriptions:
-            handlers.extend(self._subscriptions[event_type])
+            handlers.extend(list(self._subscriptions[event_type]))
 
-        # 通配符匹配 (trade.* 匹配 trade.signal, trade.executed 等)
-        for sub in self._wildcard_subs:
+        # 通配符匹配 (trade.* 匹配 trade.signal, trade.executed 等) — 取快照
+        for sub in list(self._wildcard_subs):
             pattern = sub.event_type.replace("*", "")
             if event_type.startswith(pattern):
                 handlers.append(sub)

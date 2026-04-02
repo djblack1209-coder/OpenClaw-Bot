@@ -10,6 +10,7 @@
 """
 import logging
 import os as _os
+import threading
 
 from src.broker_bridge import IBKRBridge, HAS_IB
 
@@ -20,19 +21,24 @@ logger = logging.getLogger(__name__)
 # P2#33: 避免 import 时创建实例（事件循环/环境变量可能未就绪）
 
 _ibkr_instance = None
+# 保护单例创建，防止并发线程（如 APScheduler）重复实例化
+_ibkr_lock = threading.Lock()
 
 
 def get_ibkr() -> IBKRBridge:
-    """获取 IBKRBridge 单例（首次调用时创建）"""
+    """获取 IBKRBridge 单例（首次调用时创建，线程安全双重检查锁）"""
     global _ibkr_instance
     if _ibkr_instance is None:
-        _ibkr_instance = IBKRBridge(
-            host=_os.environ.get("IBKR_HOST", "127.0.0.1"),
-            port=int(_os.environ.get("IBKR_PORT", "4002")),
-            client_id=int(_os.environ.get("IBKR_CLIENT_ID", "0")),
-            account=_os.environ.get("IBKR_ACCOUNT", ""),
-            budget=float(_os.environ.get("IBKR_BUDGET", "2000.0")),
-        )
+        with _ibkr_lock:
+            # 双重检查：拿锁后再确认一次，避免重复创建
+            if _ibkr_instance is None:
+                _ibkr_instance = IBKRBridge(
+                    host=_os.environ.get("IBKR_HOST", "127.0.0.1"),
+                    port=int(_os.environ.get("IBKR_PORT", "4002")),
+                    client_id=int(_os.environ.get("IBKR_CLIENT_ID", "0")),
+                    account=_os.environ.get("IBKR_ACCOUNT", ""),
+                    budget=float(_os.environ.get("IBKR_BUDGET", "2000.0")),
+                )
     return _ibkr_instance
 
 

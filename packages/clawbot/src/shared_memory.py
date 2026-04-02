@@ -221,15 +221,6 @@ class SharedMemory:
             self._local.conn.row_factory = sqlite3.Row
         return self._local.conn
 
-    def close(self):
-        """关闭当前线程的 SQLite 连接，释放资源"""
-        if hasattr(self._local, "conn") and self._local.conn is not None:
-            try:
-                self._local.conn.close()
-            except Exception:
-                pass
-            self._local.conn = None
-
     def _init_db(self):
         conn = self._get_conn()
         conn.executescript("""
@@ -869,9 +860,13 @@ class SharedMemory:
         conn.commit()
 
     def close(self):
-        if hasattr(self._local, "conn") and self._local.conn:
-            self._local.conn.close()
-            self._local.conn = None
+        """关闭所有数据库连接"""
+        try:
+            if hasattr(self._local, 'conn') and self._local.conn:
+                self._local.conn.close()
+                self._local.conn = None
+        except Exception as e:
+            logger.debug(f"关闭连接时出错: {e}")
 
     # ════════════════════════════════════════════
     #  统计

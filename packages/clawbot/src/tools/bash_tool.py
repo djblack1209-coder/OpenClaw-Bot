@@ -36,8 +36,7 @@ class BashTool:
         "which", "ps", "free",
         # 安全的文件操作 (用户工作目录内)
         "mkdir", "cp", "mv", "touch",
-        # 网络下载 (只读，不可上传)
-        "curl", "wget",
+        # 安全修复: 移除 curl/wget — 可通过 -d/--data/--upload-file 外泄数据，也可用于 SSRF
         # 压缩/解压
         "tar", "zip", "unzip", "gzip",
         # 版本控制 (只读操作)
@@ -77,7 +76,20 @@ class BashTool:
         try:
             cwd = workdir or self.working_dir
             cmd_timeout = timeout or self.timeout
-            
+
+            # 验证工作目录在项目范围内，防止路径遍历攻击
+            if workdir:
+                resolved = os.path.realpath(workdir)
+                project_root = os.path.realpath(
+                    os.path.join(os.path.dirname(__file__), '..', '..')
+                )
+                if not resolved.startswith(project_root):
+                    return {
+                        "success": False,
+                        "error": "错误: 工作目录超出项目范围",
+                        "command": command,
+                    }
+
             # 使用 shlex 拆分命令
             try:
                 args = shlex.split(command)

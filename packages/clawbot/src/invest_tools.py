@@ -308,6 +308,7 @@ class Portfolio:
         conn = sqlite3.connect(self.db_path, timeout=10)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             yield conn
             conn.commit()
         except Exception as e:  # noqa: F841
@@ -393,11 +394,18 @@ class Portfolio:
             decided_by: str = "", reason: str = "") -> dict:
         """买入"""
         total = quantity * price
-        cash = self.get_cash()
-        if total > cash:
-            return {"error": f"资金不足: 需要${total:.2f}, 可用${cash:.2f}"}
 
+        # 在同一个事务中完成：读取现金 → 检查余额 → 更新持仓 → 记录交易 → 扣减现金
+        # 防止并发买入导致 double-spend（读写分离竞态）
         with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM portfolio_config WHERE key='cash'"
+            ).fetchone()
+            cash = float(row[0]) if row else 100000.0
+
+            if total > cash:
+                return {"error": f"资金不足: 需要${total:.2f}, 可用${cash:.2f}"}
+
             existing = conn.execute(
                 "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'",
                 (symbol.upper(),)
@@ -422,19 +430,27 @@ class Portfolio:
                 (symbol.upper(), "BUY", quantity, price, total, decided_by, reason)
             )
 
-        self._set_config('cash', cash - total)
+            # 在同一事务中更新现金，避免读写分离竞态
+            new_cash = cash - total
+            conn.execute(
+                "UPDATE portfolio_config SET value=? WHERE key='cash'",
+                (str(new_cash),)
+            )
+
         return {
             "action": "BUY",
             "symbol": symbol.upper(),
             "quantity": quantity,
             "price": price,
             "total": round(total, 2),
-            "remaining_cash": round(cash - total, 2),
+            "remaining_cash": round(new_cash, 2),
         }
 
     def sell(self, symbol: str, quantity: float, price: float,
              decided_by: str = "", reason: str = "") -> dict:
         """卖出"""
+        # 在同一个事务中完成：查持仓 → 更新持仓 → 记录交易 → 增加现金
+        # 防止并发卖出导致现金读写分离竞态
         with self._conn() as conn:
             existing = conn.execute(
                 "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'",
@@ -461,8 +477,17 @@ class Portfolio:
                 (symbol.upper(), "SELL", quantity, price, total, decided_by, reason)
             )
 
-        cash = self.get_cash()
-        self._set_config('cash', cash + total)
+            # 在同一事务中读取并更新现金，避免读写分离竞态
+            row = conn.execute(
+                "SELECT value FROM portfolio_config WHERE key='cash'"
+            ).fetchone()
+            cash = float(row[0]) if row else 100000.0
+            new_cash = cash + total
+            conn.execute(
+                "UPDATE portfolio_config SET value=? WHERE key='cash'",
+                (str(new_cash),)
+            )
+
         return {
             "action": "SELL",
             "symbol": symbol.upper(),
@@ -470,7 +495,7 @@ class Portfolio:
             "price": price,
             "total": round(total, 2),
             "profit": round(profit, 2),
-            "remaining_cash": round(cash + total, 2),
+            "remaining_cash": round(new_cash, 2),
         }
 
     def get_positions(self) -> list:

@@ -88,7 +88,8 @@ async def _llm_extract(prompt: str, ocr_text: str) -> Optional[Dict]:
     """调用 LLM 做结构化提取 — 走 LiteLLM Router"""
     try:
         from src.litellm_router import free_pool
-        filled_prompt = prompt.format(ocr_text=ocr_text[:2000])
+        # 使用 replace 替代 format，防止用户输入中的花括号触发模板注入
+        filled_prompt = prompt.replace("{ocr_text}", ocr_text[:2000])
         response = await free_pool.acompletion(
             model_family=FAMILY_QWEN,
             messages=[{"role": "user", "content": filled_prompt}],

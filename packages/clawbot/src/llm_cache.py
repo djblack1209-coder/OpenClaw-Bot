@@ -21,6 +21,7 @@ Usage:
 import hashlib
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -43,7 +44,11 @@ _CACHE_DIR = _PROJECT_ROOT / "data" / "llm_cache"
 
 # ---- Singleton cache instance ----
 _cache: Optional["diskcache.Cache"] = None
+# _stats 计数器存在轻微竞态（并发 += 非原子操作），但仅用于监控报告，
+# 偶尔丢失一次计数不影响业务，不加锁以避免热路径开销
 _stats = {"hits": 0, "misses": 0, "errors": 0, "bypassed": 0}
+# 保护 _cache 单例创建，防止并发线程重复初始化 diskcache
+_cache_lock = threading.Lock()
 
 # ---- Default TTLs ----
 TTL_CHAT = 3600       # 闲聊/FAQ: 1 hour
@@ -52,23 +57,26 @@ TTL_STATUS = 30       # 系统状态: 30 seconds
 
 
 def _get_cache() -> Optional["diskcache.Cache"]:
-    """Lazy-init singleton cache. Thread-safe by diskcache design."""
+    """Lazy-init singleton cache. 双重检查锁保证线程安全。"""
     global _cache
     if not HAS_DISKCACHE:
         return None
     if _cache is None:
-        try:
-            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            _cache = diskcache.Cache(
-                str(_CACHE_DIR),
-                size_limit=512 * 1024 * 1024,  # 512 MB max
-                eviction_policy="least-recently-used",
-                statistics=True,
-            )
-            logger.info(f"[LLM Cache] 初始化完成: {_CACHE_DIR} (limit=512MB, LRU)")
-        except Exception as e:
-            logger.error(f"[LLM Cache] 初始化失败: {e}")
-            return None
+        with _cache_lock:
+            # 双重检查：拿锁后再确认一次，避免重复初始化
+            if _cache is None:
+                try:
+                    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    _cache = diskcache.Cache(
+                        str(_CACHE_DIR),
+                        size_limit=512 * 1024 * 1024,  # 512 MB max
+                        eviction_policy="least-recently-used",
+                        statistics=True,
+                    )
+                    logger.info(f"[LLM Cache] 初始化完成: {_CACHE_DIR} (limit=512MB, LRU)")
+                except Exception as e:
+                    logger.error(f"[LLM Cache] 初始化失败: {e}")
+                    return None
     return _cache
 
 

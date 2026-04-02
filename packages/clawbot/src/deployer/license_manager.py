@@ -128,7 +128,9 @@ class LicenseManager:
     def create_license(self, username: str, password: str, xianyu_order_id: str = "",
                        max_devices: int = 1, days: int = 365, notes: str = "") -> str:
         key = generate_offline_key(days=days)
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        # 使用 PBKDF2 + 随机盐存储密码哈希，防止彩虹表攻击
+        salt = secrets.token_hex(16)
+        pw_hash = f"{salt}:{hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()}"
         expires = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + days * 86400))
         with self._conn() as c:
             c.execute(
@@ -155,18 +157,48 @@ class LicenseManager:
     # ---- 客户端验证 ----
     def authenticate(self, username: str, password: str, machine_id: str = "", ip_addr: str = "") -> Dict:
         """客户端登录验证，返回 {ok, license_key, message}"""
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        # 按用户名查询所有 License，在 Python 侧验证密码（因为加盐后无法在 SQL 里比对）
         with self._conn() as c:
-            row = c.execute(
-                "SELECT license_key,status,max_devices,bound_devices,expires_at FROM licenses "
-                "WHERE username=? AND password_hash=?",
-                (username, pw_hash),
-            ).fetchone()
+            rows = c.execute(
+                "SELECT license_key,password_hash,status,max_devices,bound_devices,expires_at FROM licenses "
+                "WHERE username=?",
+                (username,),
+            ).fetchall()
 
-        if not row:
+        if not rows:
             return {"ok": False, "message": "用户名或密码错误"}
 
-        key, status, max_dev, bound_json, expires = row
+        # 遍历该用户名下的所有 License，逐个验证密码
+        matched_row = None
+        needs_upgrade = False
+        for row in rows:
+            stored_hash = row[1]
+            if ':' in stored_hash:
+                # 新格式: salt:hash (PBKDF2)
+                salt, expected_hash = stored_hash.split(':', 1)
+                computed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+                if hmac.compare_digest(computed, expected_hash):
+                    matched_row = row
+                    break
+            else:
+                # 旧格式: 无盐 SHA-256（向后兼容）
+                if hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored_hash):
+                    matched_row = row
+                    needs_upgrade = True
+                    break
+
+        if not matched_row:
+            return {"ok": False, "message": "用户名或密码错误"}
+
+        key, _pw, status, max_dev, bound_json, expires = matched_row
+
+        # 旧格式密码自动升级为 PBKDF2 + 盐
+        if needs_upgrade:
+            new_salt = secrets.token_hex(16)
+            new_hash = f"{new_salt}:{hashlib.pbkdf2_hmac('sha256', password.encode(), new_salt.encode(), 100000).hex()}"
+            with self._conn() as c:
+                c.execute("UPDATE licenses SET password_hash=? WHERE license_key=?", (new_hash, key))
+            logger.info(f"密码哈希已从 SHA-256 自动升级为 PBKDF2: {key[:4]}...{key[-4:]}")
         if status != "active":
             return {"ok": False, "message": f"License 状态异常: {status}"}
         if expires and expires < time.strftime("%Y-%m-%d %H:%M:%S"):

@@ -170,10 +170,17 @@ class FileTool:
                 
                 if content_pattern:
                     try:
+                        # 防止正则表达式拒绝服务攻击 (ReDoS)
+                        if len(content_pattern) > 200:
+                            return {"success": False, "error": "正则表达式过长(最大200字符)"}
+                        try:
+                            regex = re.compile(content_pattern, re.IGNORECASE)
+                        except re.error as regex_err:
+                            return {"success": False, "error": f"正则表达式无效: {regex_err}"}
+
                         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                             content = f.read()
-                        
-                        regex = re.compile(content_pattern)
+
                         found = regex.findall(content)
                         
                         if found:
