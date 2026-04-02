@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-04-03] 第四轮深层审计 — 错误传播链/降级链/信号处理/内存泄漏/浏览器安全
+
+> 领域: `backend`, `infra`
+> 影响模块: `multi_main.py`, `browser_use_bridge.py`, `smart_memory.py`, `kiro-gateway/main.py`
+> 关联问题: HI-424~428
+
+### 变更内容
+
+**优雅关闭修复 (2项)**:
+- Bot 关闭顺序修正: 从"最后停止"改为"最先停止"，避免关闭期间 Bot 访问已清理资源导致异常
+- 关闭流程注释标注步骤编号（第0步→第1步）
+
+**浏览器自动化安全修复 (2项)**:
+- `browser_use_bridge.py` run_task: `browser.close()` 从 try 内移到 `finally` 块，异常时也能关闭浏览器进程
+- 新增 `asyncio.wait_for(timeout=120)` 超时保护，防止浏览器自动化无限挂起
+
+**内存泄漏防护 (1项)**:
+- `smart_memory.py` 新增 `_lazy_cleanup_chats()` — 当跟踪的 chat_id 超过 2000 时，清理 24 小时无活动的聊天会话，防止 `_pending_messages` 无界增长
+
+**Kiro 网关安全加固 (1项)**:
+- 新增 `RequestSizeLimitMiddleware` — 请求体大小限制 10MB，防止 OOM 攻击
+
+### 文件变更
+- `multi_main.py` — Bot 关闭提前到关闭序列第 0 步
+- `src/browser_use_bridge.py` — try/finally + asyncio.wait_for(120s)
+- `src/smart_memory.py` — _lazy_cleanup_chats 惰性清理
+- `kiro-gateway/main.py` — RequestSizeLimitMiddleware 10MB 限制
+
+---
+
 ## [2026-04-03] 第三轮深层审计 — FastAPI/APScheduler/EventBus/SQLite/Tauri 安全加固
 
 > 领域: `backend`, `frontend`, `infra`

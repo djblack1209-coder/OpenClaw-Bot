@@ -880,10 +880,19 @@ async def main():
     except asyncio.CancelledError:
         pass
 
-    # 优雅关闭
+    # 优雅关闭（带超时保护，防止进程卡死）
     logger.info("正在停止...")
 
-    # ── 关机通知: 通知 VPS + Telegram 管理员 ──
+    # ── 第 0 步: 立即停止所有 Bot 接收新消息 ──
+    # 必须最先执行！否则关闭资源期间 Bot 仍在处理新消息，访问已关闭资源导致异常
+    for bot in bots:
+        try:
+            await bot.stop_async()
+            logger.info("  Bot %s 已停止接收消息", getattr(bot, 'bot_id', '?'))
+        except Exception as e:
+            logger.warning("停止 Bot polling 失败 (%s): %s", getattr(bot, 'bot_id', '?'), e)
+
+    # ── 第 1 步: 关机通知 (VPS + Telegram 管理员) ──
     try:
         import subprocess
         vps_host = os.getenv("DEPLOY_VPS_HOST", "101.43.41.96")
@@ -977,15 +986,11 @@ async def main():
     except Exception as e:
         logger.debug("MediaCrawlerBridge 关闭跳过: %s", e)
     for bot in bots:
-        # 分开 try/except，确保 close 失败不影响 stop
+        # Bot 已在关闭序列开头停止 polling，这里只关闭 HTTP 连接
         try:
             await bot.http_client.close()
         except Exception as e:
             logger.warning(f"关闭 http_client 失败 ({getattr(bot, 'bot_id', '?')}): {e}")
-        try:
-            await bot.stop_async()
-        except Exception as e:
-            logger.warning(f"停止 bot 失败 ({getattr(bot, 'bot_id', '?')}): {e}")
     logger.info("已停止")
 
 

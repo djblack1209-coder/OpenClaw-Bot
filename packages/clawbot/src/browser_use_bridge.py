@@ -89,6 +89,7 @@ class BrowserUseBridge:
         if not llm:
             return {"success": False, "error": "无可用 LLM"}
 
+        browser = None
         try:
             config = BrowserConfig(headless=self._headless)
             browser = Browser(config=config)
@@ -103,9 +104,10 @@ class BrowserUseBridge:
             if url:
                 agent.task = f"先导航到 {url}，然后 {task}"
 
-            result = await agent.run(max_steps=max_steps)
-
-            await browser.close()
+            # 超时保护: 浏览器自动化容易 hang，最多等 120 秒
+            result = await asyncio.wait_for(
+                agent.run(max_steps=max_steps), timeout=120
+            )
 
             return {
                 "success": True,
@@ -113,9 +115,19 @@ class BrowserUseBridge:
                 "steps": max_steps,
                 "engine": "browser-use",
             }
+        except asyncio.TimeoutError:
+            logger.warning("[BrowserUseBridge] 任务执行超时(120s)")
+            return {"success": False, "error": "浏览器任务超时(120秒)"}
         except Exception as e:
             logger.warning("[BrowserUseBridge] 任务执行失败: %s", e)
             return {"success": False, "error": str(e)}
+        finally:
+            # 无论成功失败都必须关闭浏览器，防止进程泄漏
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
 
     async def extract_data(
         self, url: str, instruction: str, schema: Optional[Dict] = None,
