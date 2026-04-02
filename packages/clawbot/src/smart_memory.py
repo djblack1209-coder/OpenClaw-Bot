@@ -239,7 +239,9 @@ class SmartMemoryPipeline:
 
                 # 偏好变化 → 触发画像立即更新（不等 profile_interval）
                 if self.llm_fn:
-                    asyncio.create_task(self._update_user_profile(chat_id, user_id))
+                    # 保持 task 引用防止 CPython GC 提前回收（官方文档明确警告的陷阱）
+                    _profile_t = asyncio.create_task(self._update_user_profile(chat_id, user_id))
+                    _profile_t.add_done_callback(lambda t: t.exception() and logger.debug("画像即时更新异常: %s", t.exception()))
 
         except Exception as e:
             logger.debug(f"实时偏好检测异常 (不影响主流程): {e}")

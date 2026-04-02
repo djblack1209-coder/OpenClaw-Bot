@@ -58,6 +58,11 @@ import asyncio  # noqa: E402
 # 按优先级排列，先匹配先返回
 # 注意: s 是 str(error).lower()（保留空格），用于灵活匹配
 _ERROR_PATTERNS: List[Tuple[Any, str]] = [
+    # LiteLLM 全链路降级失败（所有 provider 都挂了）
+    (lambda e, s: "no healthy deployment" in s or "all deployments" in s
+     or "no available deployment" in s,
+     "🔧 AI 服务全线繁忙，正在自动切换备用通道，请稍后重试"),
+
     # ConnectionError 家族
     (lambda e, s: isinstance(e, ConnectionError)
      or "connection refused" in s or "connectionrefused" in s
@@ -132,7 +137,7 @@ def format_error(error: Union[Exception, str], context: str = "") -> str:
 
 # ── 信息卡片 ──────────────────────────────────────────────
 
-_SEPARATOR = "━━━━━━━━━━━━━━━━"
+_SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 
 
 def format_info_card(
@@ -305,7 +310,8 @@ def _format_investment(data: dict) -> str:
     # 优先使用 Pydantic 引擎的 telegram_text
     telegram_text = data.get("telegram_text")
     if telegram_text and isinstance(telegram_text, str):
-        return telegram_text  # 引擎已自带格式
+        # Pydantic 引擎生成的文本可能含 < > 字符，需要转义
+        return escape_html(telegram_text)
 
     # 决策结果
     decision = data.get("decision", "")

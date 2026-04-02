@@ -251,7 +251,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     )
                     combined_results[f"step_{i}_{sub_intent.task_type.value}"] = (
                         sub_result.final_result if sub_result.success
-                        else {"error": sub_result.error}
+                        else {"error": sub_result.error or "未知错误"}  # error 已在子调用中经过 _scrub_secrets 清洗
                     )
                 result.final_result = combined_results
                 result.extra_data["compound_steps"] = len(sub_intents)
@@ -376,9 +376,16 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 result.elapsed_seconds = time.time() - start_time
                 return result
 
-            # 4. 执行任务图
+            # 4. 执行任务图（带总超时保护 — 防止降级链累积导致 6-15 分钟等待）
             logger.info(f"[{task_id}] 执行任务图: {graph.name}, {len(graph.nodes)} 个节点")
-            completed_graph = await self._graph_executor.execute(graph)
+            try:
+                completed_graph = await asyncio.wait_for(
+                    self._graph_executor.execute(graph), timeout=90
+                )
+            except asyncio.TimeoutError:
+                result.error = "任务执行超时(90秒)，请简化请求或稍后重试"
+                result.elapsed_seconds = time.time() - start_time
+                return result
 
             # 5. 汇总结果
             result.graph_progress = completed_graph.get_progress()
@@ -471,7 +478,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
         except Exception as e:
             logger.error(f"[{task_id}] 处理消息失败: {e}", exc_info=True)
-            result.error = str(e)
+            # 清洗技术信息后再存入 result.error，防止 API URL / 模型名等泄露到用户消息
+            from src.litellm_router import _scrub_secrets
+            result.error = _scrub_secrets(str(e))
 
             # 尝试自愈
             try:
