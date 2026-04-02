@@ -5,6 +5,44 @@
 
 ---
 
+## [2026-04-03] 深层审计 — 官方文档对标修复 (LiteLLM/PTB/Tauri/httpx)
+
+> 领域: `backend`, `frontend`, `infra`
+> 影响模块: `litellm_router.py`, `multi_bot.py`, `telegram_gateway.py`, `multi_main.py`, `tauri.conf.json`, `capabilities/default.json`
+> 关联问题: HI-382(根因修复), HI-417~422
+
+### 变更内容
+
+**LiteLLM Router 对标修复 (6项)**:
+- `num_retries` 从 1 提升到 3（官方推荐值），免费 API 池可用性显著提升
+- 新增 `stream_timeout=30`（流式请求独立超时，防无限挂起）
+- 新增 `retry_policy`（按错误类型区分: 429 限速 5 次重试, 内容违规 0 次, 认证错误 0 次）
+- MODEL_RANKING 改为大小写不敏感匹配（HI-382 真正根因: DeepSeek-V3.2 vs deepseek-v3.2 大小写不匹配导致路由到弱模型）
+- `_scrub_secrets()` 补充 gsk_/ghp_/AIza 等 key 前缀 + x-api-key header + Authorization Basic
+
+**PTB v22.5 对标修复 (5项)**:
+- MultiBot: 新增 `connection_pool_size(256)` + `pool_timeout(10)` + `write_timeout(15)` + `concurrent_updates(True)`（官方推荐配合异步 handler 使用）
+- Gateway: 同上 + 注册 `error_handler` + `allowed_updates=Update.ALL_TYPES`
+
+**Tauri v2 安全加固 (4项)**:
+- `fs:allow-read/write` 添加 scope 限制（仅允许项目目录和 .openclaw）
+- `shell:allow-open` 添加 URL scope 限制（仅 https + localhost）
+- CSP 移除 `script-src 'unsafe-inline'`（防 XSS 脚本注入）
+- `withGlobalTauri` 设为 false + `devtools` 设为 false（生产环境安全加固）
+
+**httpx 生命周期修复 (1项)**:
+- `multi_main.py` 关闭路径中添加 GoofishMonitor + MediaCrawlerBridge 的 httpx 客户端清理
+
+### 文件变更
+- `src/litellm_router.py` — Router 配置升级 + MODEL_RANKING 大小写不敏感 + _scrub_secrets 增强
+- `src/bot/multi_bot.py` — PTB ApplicationBuilder 完整参数配置
+- `src/gateway/telegram_gateway.py` — 超时/连接池/错误处理器/allowed_updates
+- `multi_main.py` — 关闭路径添加 httpx 客户端清理
+- `src-tauri/capabilities/default.json` — fs/shell scope 限制
+- `src-tauri/tauri.conf.json` — CSP 加固 + devtools 关闭 + withGlobalTauri 关闭
+
+---
+
 ## [2026-04-03] 全量审计续 — 功能补齐 + 占位清除 + 文档同步
 
 > 领域: `backend`, `frontend`, `docs`

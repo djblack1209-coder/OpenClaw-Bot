@@ -22,12 +22,19 @@ logger = logging.getLogger(__name__)
 
 
 def _scrub_secrets(msg: str) -> str:
-    """Remove API keys and sensitive URLs from error messages."""
-    # Scrub API keys (common patterns: sk-xxx, key-xxx, Bearer xxx)
-    msg = re.sub(r'(sk-|key-|Key:|Bearer\s+)[a-zA-Z0-9_-]{10,}', r'\1***REDACTED***', msg)
-    # Scrub URLs with keys in query params
-    msg = re.sub(r'(api_key=|token=|key=)[a-zA-Z0-9_-]+', r'\1***REDACTED***', msg)
-    # Scrub localhost URLs (internal service topology)
+    """从错误消息中移除 API Key 和敏感 URL — 覆盖项目实际使用的所有 key 前缀"""
+    # 清洗 API keys (sk-/key-/gsk_/ghp_/github_pat_/AIza 等已知前缀)
+    msg = re.sub(
+        r'(sk-|key-|Key:|Bearer\s+|gsk_|ghp_|github_pat_|AIza)[a-zA-Z0-9_-]{10,}',
+        r'\1***REDACTED***', msg
+    )
+    # 清洗 Authorization header (Basic + Bearer)
+    msg = re.sub(r'(Authorization:\s*(?:Basic|Bearer)\s+)\S+', r'\1***REDACTED***', msg)
+    # 清洗 URL 查询参数中的 key/token
+    msg = re.sub(r'(api_key=|token=|key=|api-key=)[a-zA-Z0-9_-]+', r'\1***REDACTED***', msg)
+    # 清洗 x-api-key header 值
+    msg = re.sub(r'(x-api-key:\s*)\S+', r'\1***REDACTED***', msg, flags=re.IGNORECASE)
+    # 清洗内部服务 URL（防止暴露 provider 拓扑）
     msg = re.sub(r'https?://127\.0\.0\.1:\d+[^\s]*', 'http://[internal]', msg)
     msg = re.sub(r'https?://localhost:\d+[^\s]*', 'http://[internal]', msg)
     return msg
@@ -190,15 +197,27 @@ MODEL_RANKING = {
 }
 
 
+# 构建大小写不敏感的查找表，防止因大小写差异导致模型评分失效 (HI-382 根因)
+_MODEL_RANKING_LOWER = {k.lower(): v for k, v in MODEL_RANKING.items()}
+
+
 def get_model_score(model_id: str) -> float:
-    return MODEL_RANKING.get(model_id, 50.0)
+    """获取模型强度评分 — 先精确匹配，再大小写不敏感匹配，最后默认 50 分"""
+    if model_id in MODEL_RANKING:
+        return MODEL_RANKING[model_id]
+    return _MODEL_RANKING_LOWER.get(model_id.lower(), 50.0)
 
 
+# Bot 与 LLM 模型族的映射关系
+# 每个 Bot 优先使用对应族群的模型，避免全部走 g4f 兜底导致质量不可控
 BOT_MODEL_FAMILY = {
-    "qwen235b": "qwen", "gptoss": "gpt-oss",
-    "claude_sonnet": "g4f", "claude_haiku": "g4f",
-    "deepseek_v3": "g4f", "claude_opus": "g4f",
-    "free_llm": None,
+    "qwen235b": "qwen",
+    "gptoss": "gpt-oss",
+    "claude_sonnet": "claude",       # 走 Kiro Gateway 的 Claude 模型
+    "claude_haiku": "claude",        # 走 Kiro Gateway 的 Claude 模型
+    "deepseek_v3": "deepseek",       # 走 DeepSeek 族群模型
+    "claude_opus": "claude",         # 走 Kiro Gateway 的 Claude 模型
+    "free_llm": None,                # 自动选择最强可用模型
 }
 
 
@@ -271,9 +290,10 @@ class LiteLLMPool:
                 continue
             prov = f"siliconflow_{i}"
             for m, fam, t in [
-                ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),
-                ("deepseek-ai/DeepSeek-V3-0324", "deepseek", TIER_S),
-                ("THUDM/GLM-4-32B-0414", "glm", TIER_A),
+                ("Qwen/Qwen3-235B-A22B-Instruct-2507", "qwen", TIER_S),  # 2026-07 更名
+                ("deepseek-ai/DeepSeek-V3.2", "deepseek", TIER_S),         # V3-0324 已下线
+                ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),               # 新增最强模型
+                ("Qwen/Qwen3-32B", "qwen", TIER_A),                       # 备用中等模型
             ]:
                 deps.append(self._dep(prov, f"openai/{m}", key, sf_base, tier=t, family=fam, note="SiliconFlow free"))
 
@@ -290,23 +310,20 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM"))
 
-        # Cerebras — 最快推理 ~2000tok/s, 但 8K context
-        ck = _env("CEREBRAS_API_KEY")
-        if ck:
-            for m, t in [("qwen-3-235b-a22b-instruct-2507", TIER_S), ("llama3.1-8b", TIER_C)]:
-                deps.append(self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family="qwen" if "qwen" in m else "llama", note="Cerebras 30RPM/1000RPD/8K ctx"))
+        # Cerebras — 极速推理 ~2000tok/s, 8K context, Key已403禁止暂时跳过
+        # ck = _env("CEREBRAS_API_KEY")
+        # if ck:
+        #     for m, t in [("qwen-3-235b-a22b-instruct-2507", TIER_S), ("llama3.1-8b", TIER_C)]:
+        #         deps.append(self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family="qwen" if "qwen" in m else "llama", note="Cerebras 30RPM/1000RPD/8K ctx"))
 
-        # Gemini — 2.5/3系 (2.0系已废弃, 1M上下文, RPM/RPD按模型动态)
+        # Gemini — 2.0/2.5 系 (1M上下文, RPM/RPD按模型动态)
         gk2 = _env("GEMINI_API_KEY")
         if gk2:
-            gb = "https://generativelanguage.googleapis.com/v1beta/openai"
             for m, t, r in [
-                ("gemini-2.5-pro", TIER_S, 5),          # 最强, RPM低但质量高, 1M ctx
-                ("gemini-2.5-flash", TIER_S, 10),        # 主力, 10RPM, 1M ctx, 65K output
-                ("gemini-3-flash-preview", TIER_S, 10),   # 最新preview, 1M ctx
-                ("gemini-2.5-flash-lite", TIER_B, 30),    # 轻量, 30RPM, 1M ctx
+                ("gemini-2.0-flash", TIER_A, 15),            # 主力快速, 15RPM
+                ("gemini-2.0-flash-lite", TIER_B, 30),        # 轻量快速, 30RPM
             ]:
-                deps.append(self._dep("google", f"openai/{m}", gk2, gb, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
+                deps.append(self._dep("google", f"gemini/{m}", gk2, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
 
         # OpenRouter — 免费模型, ~20RPM 动态限制
         ork = _env("OPENROUTER_API_KEY")
@@ -325,11 +342,12 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep("openrouter", f"openrouter/{m}", ork, rpm=20, tier=t, family=fam, note="OpenRouter free"))
 
-        # Mistral
+        # Mistral — 免费层 (1RPM mistral-small, 30RPM codestral)
         mk = _env("MISTRAL_API_KEY")
         if mk:
-            deps.append(self._dep("mistral", "openai/mistral-small-latest", mk, "https://api.mistral.ai/v1", rpm=1, tier=TIER_B, family="mistral"))
-            deps.append(self._dep("mistral", "openai/codestral-latest", mk, "https://codestral.mistral.ai/v1", rpm=30, tier=TIER_A, family="mistral"))
+            deps.append(self._dep("mistral", "mistral/mistral-small-latest", mk, rpm=1, tier=TIER_B, family="mistral", note="Mistral free 1RPM"))
+            deps.append(self._dep("mistral", "mistral/mistral-large-latest", mk, rpm=1, tier=TIER_S, family="mistral", note="Mistral free 1RPM"))
+            deps.append(self._dep("mistral", "mistral/codestral-latest", mk, rpm=30, tier=TIER_A, family="mistral", note="Mistral Codestral 30RPM"))
 
         # Cohere
         cok = _env("COHERE_API_KEY")
@@ -350,18 +368,15 @@ class LiteLLMPool:
         if kk:
             deps.append(self._dep("kiro", "openai/claude-sonnet-4", kk, kb, rpm=5, tier=TIER_S, family="claude", note="Kiro Gateway"))
 
-        # NVIDIA NIM (信用额度制, 非真正无限, ~60RPM, 试用额度用完需购买AI Enterprise)
+        # NVIDIA NIM (信用额度制, ~60RPM, 试用额度用完需购买AI Enterprise)
         nk = _env("NVIDIA_NIM_API_KEY")
         if nk:
-            nvidia_base = "https://integrate.api.nvidia.com/v1"
             for m, fam, t in [
                 ("meta/llama-3.3-70b-instruct", "llama", TIER_A),
                 ("deepseek-ai/deepseek-r1", "deepseek", TIER_S),
                 ("qwen/qwen3-235b-a22b-instruct", "qwen", TIER_S),
-                ("mistralai/mixtral-8x22b-instruct-v0.1", "mistral", TIER_A),
-                ("google/gemma-3-27b-it", "gemma", TIER_B),
             ]:
-                deps.append(self._dep("nvidia", f"openai/{m}", nk, nvidia_base, rpm=60, tier=t, family=fam, note="NVIDIA NIM unlimited"))
+                deps.append(self._dep("nvidia", f"nvidia_nim/{m}", nk, rpm=60, tier=t, family=fam, note="NVIDIA NIM"))
 
         # Sambanova
         sk = _env("SAMBANOVA_API_KEY")
@@ -400,9 +415,10 @@ class LiteLLMPool:
                 prov = f"sf_paid_{i}"
                 # 免费模型 (不扣余额) → 保持原 family, 增加免费Key容量
                 for m, fam, t in [
-                    ("Qwen/Qwen3-235B-A22B", "qwen", TIER_S),
-                    ("deepseek-ai/DeepSeek-V3-0324", "deepseek", TIER_S),
-                    ("THUDM/GLM-4-32B-0414", "glm", TIER_A),
+                    ("Qwen/Qwen3-235B-A22B-Instruct-2507", "qwen", TIER_S),  # 2026-07 更名
+                    ("deepseek-ai/DeepSeek-V3.2", "deepseek", TIER_S),
+                    ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),
+                    ("Qwen/Qwen3-32B", "qwen", TIER_A),
                 ]:
                     deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
                                           tier=t, family=fam, note=f"SiliconFlow paid #{i} (free model)"))
@@ -433,9 +449,9 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep("gpt_free", f"openai/{m}", gpk, gpb, rpm=r, tier=t, family=fam, note="GPT_API_Free"))
 
-        # g4f 兜底
+        # g4f 兜底（降级为 TIER_C，仅作最后手段）
         g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
-        deps.append(self._dep("g4f", "openai/auto", "dummy", g4f_base, tier=TIER_A, family="g4f", note="g4f fallback"))
+        deps.append(self._dep("g4f", "openai/auto", "dummy", g4f_base, tier=TIER_C, family="g4f", note="g4f fallback (TIER_C)"))
 
         return deps
 
@@ -465,20 +481,30 @@ class LiteLLMPool:
             fallbacks.append({f: chain})
 
         try:
+            # 按照 LiteLLM 官方推荐配置 Router
+            from litellm.router import RetryPolicy
             self._router = Router(
                 model_list=deps,
                 fallbacks=fallbacks,
-                num_retries=2,
-                timeout=30,
+                num_retries=3,              # 官方推荐 3 次重试（原 1 次太低）
+                timeout=15,                 # 全局超时 15 秒
+                stream_timeout=30,          # 流式请求允许更长时间
                 allowed_fails=3,
                 cooldown_time=30,
                 retry_after=5,
                 routing_strategy="simple-shuffle",
-                set_verbose=False,
+                # 按错误类型区分重试策略（官方推荐）
+                retry_policy=RetryPolicy(
+                    RateLimitErrorRetries=5,          # 429 限速多重试
+                    TimeoutErrorRetries=3,            # 超时适当重试
+                    ContentPolicyViolationErrorRetries=0,  # 内容违规不重试
+                    AuthenticationErrorRetries=0,     # 认证错误不重试
+                    InternalServerErrorRetries=2,     # 服务器错误少量重试
+                ),
             )
             logger.info(f"[LiteLLMPool] Router OK: {len(deps)} deployments, {len(families)} groups")
         except Exception as e:
-            logger.error(f"[LiteLLMPool] Router init failed: {e}")
+            logger.error(f"[LiteLLMPool] Router init failed: {_scrub_secrets(str(e))}")
             self._router = None
 
     # ---- 核心调用 ----
@@ -722,7 +748,7 @@ class LiteLLMPool:
                     providers_seen[src.provider] = True
                     healthy += 1
                 except Exception as e:
-                    logger.warning(f"[健康检查] {src.provider}/{src.model} 不可用: {e}")
+                    logger.warning(f"[健康检查] {src.provider}/{src.model} 不可用: {_scrub_secrets(str(e))}")
                     providers_seen[src.provider] = False
                     src.disabled = True
                     disabled_providers.append(f"{src.provider}/{src.model}")

@@ -1,14 +1,35 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "OpenClaw Bot 默认权限配置",
+  "description": "OpenClaw Bot 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-open-url",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://127.0.0.1:**" },
+        { "url": "http://localhost:**" }
+      ]
+    },
     "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        { "path": "$HOME/Desktop/OpenClaw Bot/**" },
+        { "path": "$HOME/.openclaw/**" },
+        { "path": "$APPCONFIG/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": [
+        { "path": "$HOME/Desktop/OpenClaw Bot/**" },
+        { "path": "$HOME/.openclaw/**" },
+        { "path": "$APPCONFIG/**" }
+      ]
+    },
     "process:default",
     "notification:default"
   ]

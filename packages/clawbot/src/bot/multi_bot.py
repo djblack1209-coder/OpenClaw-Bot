@@ -259,6 +259,10 @@ class MultiBot(
             .token(self.config["token"])
             .connect_timeout(30)
             .read_timeout(30)
+            .write_timeout(15)
+            .pool_timeout(10.0)
+            .connection_pool_size(256)
+            .concurrent_updates(True)
             .build()
         )
 
