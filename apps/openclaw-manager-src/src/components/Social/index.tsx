@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Share2, Flame, FileText, User, CalendarDays, Rocket,
   BarChart3, Newspaper, Play, Loader2, CheckCircle2,
-  XCircle, Globe, Send, Plus
+  XCircle, Globe, Send, Plus, Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { PromptDialog } from '@/components/ui/prompt-dialog';
 import { format } from 'date-fns';
 import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
+import { toast } from 'sonner';
 
 interface ActionStatus {
   running: boolean;
@@ -36,6 +37,91 @@ interface Draft {
   platforms: string[];
   status: string;
   time: Date;
+}
+
+/** 后端返回的草稿原始结构 */
+interface BackendDraft {
+  text?: string;
+  platform?: string;
+  status?: string;
+  created_at?: string;
+  topic?: string;
+  [key: string]: unknown;
+}
+
+/** 将后端草稿数据映射为前端 Draft 结构 */
+function mapBackendDraft(raw: BackendDraft, index: number): Draft {
+  return {
+    id: index,
+    title: raw.text || raw.topic || '无标题',
+    platforms: raw.platform ? [raw.platform] : ['x'],
+    status: raw.status || 'draft',
+    time: raw.created_at ? new Date(raw.created_at) : new Date(),
+  };
+}
+
+/** 后端草稿 API 返回值类型 */
+interface DraftApiResult {
+  success?: boolean;
+  error?: string;
+  drafts?: BackendDraft[];
+}
+
+// ──── 草稿 API 封装（同时支持 Tauri IPC 和 HTTP 降级） ────
+
+/** 从后端获取所有草稿 */
+async function apiFetchDrafts(): Promise<Draft[]> {
+  let data: DraftApiResult;
+  if (isTauri()) {
+    data = await api.clawbotSocialDrafts() as DraftApiResult;
+  } else {
+    const resp = await clawbotFetch('/api/v1/social/drafts');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+  }
+  return (data?.drafts || []).map(mapBackendDraft);
+}
+
+/** 更新指定草稿的文本内容 */
+async function apiUpdateDraft(index: number, text: string): Promise<void> {
+  let result: DraftApiResult;
+  if (isTauri()) {
+    result = await api.clawbotSocialDraftUpdate(index, text) as DraftApiResult;
+  } else {
+    const resp = await clawbotFetch(
+      `/api/v1/social/drafts/${index}?text=${encodeURIComponent(text)}`,
+      { method: 'PATCH' },
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    result = await resp.json();
+  }
+  if (!result?.success) throw new Error(result?.error || '更新失败');
+}
+
+/** 删除指定草稿 */
+async function apiDeleteDraft(index: number): Promise<void> {
+  let result: DraftApiResult;
+  if (isTauri()) {
+    result = await api.clawbotSocialDraftDelete(index) as DraftApiResult;
+  } else {
+    const resp = await clawbotFetch(`/api/v1/social/drafts/${index}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    result = await resp.json();
+  }
+  if (!result?.success) throw new Error(result?.error || '删除失败');
+}
+
+/** 发布指定草稿 */
+async function apiPublishDraft(index: number): Promise<void> {
+  let result: DraftApiResult;
+  if (isTauri()) {
+    result = await api.clawbotSocialDraftPublish(index) as DraftApiResult;
+  } else {
+    const resp = await clawbotFetch(`/api/v1/social/drafts/${index}/publish`, { method: 'POST' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    result = await resp.json();
+  }
+  if (!result?.success) throw new Error(result?.error || '发布失败');
 }
 
 /** 平台互动数据 */
@@ -198,9 +284,30 @@ export function Social() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(true);
   const [newDraftDialogOpen, setNewDraftDialogOpen] = useState(false);
   const [editDraftTarget, setEditDraftTarget] = useState<Draft | null>(null);
+  const [operatingDraftId, setOperatingDraftId] = useState<number | null>(null);
   const [browserStatus, setBrowserStatus] = useState({ x: 'unknown', xhs: 'unknown' });
+
+  // 从后端加载草稿列表
+  const loadDrafts = useCallback(async () => {
+    try {
+      setDraftsLoading(true);
+      const result = await apiFetchDrafts();
+      setDrafts(result);
+    } catch (e) {
+      socialLogger.error('加载草稿列表失败', e);
+      toast.error('草稿列表加载失败');
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  // 组件挂载时从后端拉取草稿
+  useEffect(() => {
+    loadDrafts();
+  }, [loadDrafts]);
 
   // 获取浏览器会话状态
   useEffect(() => {
@@ -236,6 +343,13 @@ export function Social() {
   const handleAction = async (id: string, cmd: string, hasInput?: boolean) => {
     const input = inputs[id];
     if (hasInput && !input) return;
+
+    // 检查是否需要用户确认（如全托管运营模式）
+    const action = actions.find(a => a.id === id);
+    if (action?.confirm) {
+      const confirmed = window.confirm('确认开启全自动运营模式？开启后系统将自动发布内容、回复评论。');
+      if (!confirmed) return;
+    }
 
     setStatuses(prev => ({ ...prev, [id]: { running: true } }));
 
@@ -372,7 +486,12 @@ export function Social() {
                             exit={{ opacity: 0, height: 0 }}
                             className="mt-3 pt-3 border-t border-dark-700"
                           >
-                            <p className="text-xs text-green-400 font-mono break-words bg-green-500/10 p-2 rounded border border-green-500/20">
+                            <p className={clsx(
+                              "text-xs font-mono break-words p-2 rounded border",
+                              status.lastResult.startsWith('执行失败')
+                                ? "text-red-400 bg-red-500/10 border-red-500/20"
+                                : "text-green-400 bg-green-500/10 border-green-500/20"
+                            )}>
                               {status.lastResult}
                             </p>
                           </motion.div>
@@ -402,7 +521,20 @@ export function Social() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-dark-700/50">
-                  {drafts.length === 0 ? (
+                  {draftsLoading ? (
+                    /* 加载中骨架屏 */
+                    <div className="space-y-0 divide-y divide-dark-700/50">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="p-5 flex items-center gap-4 animate-pulse">
+                          <div className="w-10 h-10 rounded-lg bg-dark-700 shrink-0" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 bg-dark-700 rounded w-1/3" />
+                            <div className="h-3 bg-dark-700 rounded w-1/5" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : drafts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-gray-500 gap-3">
                       <FileText size={40} className="text-dark-600" />
                       <p>暂无草稿，点击「新建内容」或通过命令生成</p>
@@ -440,25 +572,42 @@ export function Social() {
                         <button onClick={() => setEditDraftTarget(draft)} className="p-2 hover:bg-dark-700 rounded-md text-gray-400 hover:text-white transition-colors">
                           编辑
                         </button>
+                        {/* 删除按钮 — 防重复点击 */}
+                        <button disabled={operatingDraftId === draft.id} onClick={async () => {
+                          setOperatingDraftId(draft.id);
+                          try {
+                            await apiDeleteDraft(draft.id);
+                            toast.success('草稿已删除');
+                            // 删除后重新加载列表（因后端按索引管理，需刷新全部索引）
+                            await loadDrafts();
+                          } catch (e) {
+                            socialLogger.error('删除草稿失败', e);
+                            toast.error('删除草稿失败');
+                          } finally {
+                            setOperatingDraftId(null);
+                          }
+                        }} className="p-2 hover:bg-red-500/20 rounded-md text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                          <Trash2 size={14} />
+                        </button>
                         {draft.status !== 'published' && (
-                          <button onClick={async () => {
+                          <button disabled={operatingDraftId === draft.id} onClick={async () => {
+                            setOperatingDraftId(draft.id);
+                            // 乐观更新：先把状态改成 published
                             setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'published' } : d));
                             try {
-                              if (isTauri()) {
-                                // Tauri 环境：通过 IPC 调用
-                                await api.omegaProcess(`/post_social ${draft.title}`);
-                              } else {
-                                // 降级: 直接HTTP调用
-                                await clawbotFetch('/api/v1/omega/process', {
-                                  method: 'POST',
-                                  body: JSON.stringify({ text: `/post_social ${draft.title}` }),
-                                });
-                              }
-                            } catch {
+                              await apiPublishDraft(draft.id);
+                              toast.success('草稿已发布');
+                              // 发布成功后刷新列表
+                              await loadDrafts();
+                            } catch (e) {
                               // 发布失败时回滚状态
                               setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'draft' } : d));
+                              socialLogger.error('发布草稿失败', e);
+                              toast.error('发布草稿失败');
+                            } finally {
+                              setOperatingDraftId(null);
                             }
-                          }} className="p-2 hover:bg-blue-500/20 rounded-md text-blue-400 transition-colors">
+                          }} className="p-2 hover:bg-blue-500/20 rounded-md text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             立即发布
                           </button>
                         )}
@@ -481,16 +630,32 @@ export function Social() {
       <PromptDialog
         open={newDraftDialogOpen}
         onClose={() => setNewDraftDialogOpen(false)}
-        onConfirm={(title) => {
-          const newDraft: Draft = {
-            id: Date.now(),
-            title,
-            platforms: ['x', 'xhs'],
-            status: 'draft',
-            time: new Date(),
-          };
-          setDrafts(prev => [...prev, newDraft]);
+        onConfirm={async (title) => {
           setNewDraftDialogOpen(false);
+          try {
+            // 先在后端创建草稿（追加到末尾后用 update 写入文本）
+            // 后端的 drafts 由 social_scheduler state 管理，
+            // 没有专门的"create"接口，先加载列表取得当前数量后
+            // 用 update 把新索引位的内容设为用户输入的标题
+            const currentDrafts = await apiFetchDrafts();
+            const newIndex = currentDrafts.length;
+            await apiUpdateDraft(newIndex, title);
+            toast.success('新草稿已创建');
+            // 刷新草稿列表
+            await loadDrafts();
+          } catch (e) {
+            socialLogger.error('创建草稿失败', e);
+            toast.error('创建草稿失败');
+            // 降级：仅前端添加，下次刷新时会消失
+            const fallback: Draft = {
+              id: Date.now(),
+              title,
+              platforms: ['x', 'xhs'],
+              status: 'draft',
+              time: new Date(),
+            };
+            setDrafts(prev => [...prev, fallback]);
+          }
         }}
         title="新建内容"
         placeholder="输入内容标题"
@@ -500,11 +665,22 @@ export function Social() {
       <PromptDialog
         open={editDraftTarget !== null}
         onClose={() => setEditDraftTarget(null)}
-        onConfirm={(newTitle) => {
-          if (editDraftTarget) {
-            setDrafts(prev => prev.map(d => d.id === editDraftTarget.id ? { ...d, title: newTitle } : d));
-          }
+        onConfirm={async (newTitle) => {
+          if (!editDraftTarget) return;
+          const targetId = editDraftTarget.id;
           setEditDraftTarget(null);
+          try {
+            // 调用后端更新草稿文本
+            await apiUpdateDraft(targetId, newTitle);
+            toast.success('草稿已更新');
+            // 刷新草稿列表以保持与后端同步
+            await loadDrafts();
+          } catch (e) {
+            socialLogger.error('更新草稿失败', e);
+            toast.error('更新草稿失败');
+            // 降级：仅更新前端状态
+            setDrafts(prev => prev.map(d => d.id === targetId ? { ...d, title: newTitle } : d));
+          }
         }}
         title="编辑标题"
         defaultValue={editDraftTarget?.title ?? ''}

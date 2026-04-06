@@ -376,12 +376,16 @@ def compute_signal_score(ind: dict) -> dict:
         signal = "NEUTRAL"
         signal_cn = "中性"
 
+    # 根据一致指标数量和评分绝对值计算置信度
+    confidence = min(1.0, len(reasons) * 0.12 + abs(score) / 150)
+
     return {
         "score": score,
         "signal": signal,
         "signal_cn": signal_cn,
         "reasons": reasons,
         "regime": regime,
+        "confidence": round(confidence, 3),
     }
 
 

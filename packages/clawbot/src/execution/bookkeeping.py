@@ -563,6 +563,11 @@ def update_bill_balance(account_id, balance, user_id=None, db_path=None) -> dict
                 "UPDATE bill_accounts SET balance=?, last_updated=? WHERE id=?",
                 (balance, now_ts, account_id),
             )
+            # 记录余额历史（用于消耗速度预测）
+            conn.execute(
+                "INSERT INTO bill_balance_history (account_id, balance) VALUES (?, ?)",
+                (account_id, balance),
+            )
             # 判断是否低于阈值
             is_low = balance <= threshold
             return {
@@ -700,3 +705,104 @@ def find_bill_by_type(user_id, account_type, db_path=None):
     except Exception as e:
         logger.debug("静默异常: %s", e)
     return None
+
+
+# ── 第一阶段增强: 智能催缴 + 消耗预测 + 到期日 + 优惠推荐 ──
+
+
+def predict_balance_exhaustion(account_id: int, db_path=None) -> dict:
+    """根据余额历史预测耗尽日期 — 线性回归消耗速度"""
+    try:
+        import time as _time
+        with get_conn(db_path) as conn:
+            rows = conn.execute(
+                "SELECT balance, recorded_at FROM bill_balance_history "
+                "WHERE account_id=? ORDER BY recorded_at DESC LIMIT 10",
+                (account_id,),
+            ).fetchall()
+            if len(rows) < 2:
+                return {"has_prediction": False, "reason": "数据不足，至少需要更新两次余额"}
+            # 计算日均消耗（从最新到最旧）
+            newest_bal, newest_ts = rows[0]
+            oldest_bal, oldest_ts = rows[-1]
+            days_elapsed = (newest_ts - oldest_ts) / 86400
+            if days_elapsed < 0.5:
+                return {"has_prediction": False, "reason": "两次更新间隔太短"}
+            if newest_bal >= oldest_bal:
+                return {"has_prediction": False, "reason": "余额在增加，可能刚充值"}
+            daily_consumption = (oldest_bal - newest_bal) / days_elapsed
+            if daily_consumption <= 0:
+                return {"has_prediction": False, "reason": "无法计算消耗速度"}
+            days_remaining = newest_bal / daily_consumption
+            exhaustion_ts = _time.time() + days_remaining * 86400
+            return {
+                "has_prediction": True,
+                "daily_consumption": round(daily_consumption, 2),
+                "days_remaining": round(days_remaining, 1),
+                "exhaustion_date": _time.strftime("%Y-%m-%d", _time.localtime(exhaustion_ts)),
+                "current_balance": newest_bal,
+            }
+    except Exception as e:
+        logger.debug("余额预测异常: %s", e)
+        return {"has_prediction": False, "reason": str(e)}
+
+
+def get_bill_due_summary(user_id, db_path=None) -> str:
+    """生成用户所有账单的智能摘要 — 用于每日简报或主动提醒"""
+    accounts = list_bill_accounts(user_id, db_path)
+    if not accounts:
+        return ""
+    lines = []
+    urgents = []
+    for acct in accounts:
+        emoji = BILL_TYPE_EMOJI.get(acct["account_type"], "📋")
+        label = BILL_TYPE_LABEL.get(acct["account_type"], acct["account_type"])
+        name_part = f" — {acct['account_name']}" if acct.get("account_name") else ""
+        bal = acct.get("balance", 0)
+        threshold = acct.get("low_threshold", 30)
+        # 预测耗尽
+        pred = predict_balance_exhaustion(acct["id"], db_path)
+        pred_text = ""
+        if pred.get("has_prediction"):
+            days = pred["days_remaining"]
+            if days <= 7:
+                pred_text = f" ⏰ 预计{pred['exhaustion_date']}耗尽"
+                urgents.append(f"{label}{name_part}")
+            elif days <= 30:
+                pred_text = f" 📊 约{int(days)}天后耗尽"
+        status = "‼️ 余额不足" if bal <= threshold else ""
+        lines.append(f"{emoji} {label}{name_part}: ¥{bal} {status}{pred_text}")
+    summary = "\n".join(lines)
+    if urgents:
+        summary = f"⚠️ 以下费用即将耗尽: {', '.join(urgents)}\n\n{summary}"
+    return summary
+
+
+def get_discount_suggestions(account_type: str, db_path=None) -> str:
+    """查询缴费优惠建议缓存 — 如缓存过期(>7天)返回空让调用方触发 AI 查询"""
+    import time as _time
+    try:
+        with get_conn(db_path) as conn:
+            row = conn.execute(
+                "SELECT discount_info, updated_at FROM bill_discount_cache "
+                "WHERE account_type=?",
+                (account_type,),
+            ).fetchone()
+            if row and (_time.time() - row[1]) < 7 * 86400:
+                return row[0]
+    except Exception as e:
+        logger.debug("优惠缓存查询异常: %s", e)
+    return ""
+
+
+def save_discount_suggestions(account_type: str, info: str, db_path=None):
+    """保存缴费优惠建议到缓存"""
+    try:
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO bill_discount_cache (account_type, discount_info, updated_at) "
+                "VALUES (?, ?, strftime('%s','now'))",
+                (account_type, info),
+            )
+    except Exception as e:
+        logger.debug("优惠缓存保存异常: %s", e)

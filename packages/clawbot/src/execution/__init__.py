@@ -557,19 +557,27 @@ class ExecutionHub:
         return await run_bounty_hunter(db_path=self.db_path)
 
     def open_bounty_links(self, lead_ids=None, **kwargs):
-        """打开赏金链接"""
+        """打开赏金链接（仅允许 http/https 协议，防止 scheme 注入）"""
         import subprocess
+        from urllib.parse import urlparse
         leads = self.list_bounty_leads(limit=50)
         opened = []
+        skipped = 0
         for lead in leads:
             url = lead.get("url", "")
             if url:
+                # 安全校验: 只允许 http/https 协议，拒绝 file:// / javascript: 等
+                parsed = urlparse(url)
+                if parsed.scheme not in ("http", "https"):
+                    logger.warning("[open_bounty_links] 拒绝非安全协议 URL: scheme=%s", parsed.scheme)
+                    skipped += 1
+                    continue
                 try:
                     subprocess.run(["open", url], check=False, timeout=5)
                     opened.append(url)
                 except Exception as e:
                     logger.debug("静默异常: %s", e)
-        return {"success": True, "opened": len(opened)}
+        return {"success": True, "opened": len(opened), "skipped": skipped}
 
     # ── 场景12: X 平台高级功能 ──────────────────────────────
 

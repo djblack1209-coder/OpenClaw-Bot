@@ -11,7 +11,6 @@ Bot — 闲鱼客服 / 风格 / 报表 / 发货 命令 Mixin
 import asyncio
 import logging
 import os
-import subprocess
 
 from src.constants import TG_SAFE_LENGTH
 from src.bot.globals import send_long_message
@@ -97,7 +96,7 @@ class XianyuCommandsMixin:
             if pids:
                 for pid in pids:
                     os.kill(int(pid), signal.SIGUSR1)
-                await update.message.reply_text(f"🔄 已发送 Cookie 热更新信号 (PID: {', '.join(pids)})")
+                await update.message.reply_text("🔄 已发送配置热更新信号，稍等几秒生效")
             else:
                 await update.message.reply_text("⚠️ 闲鱼客服进程未运行")
 
@@ -110,16 +109,8 @@ class XianyuCommandsMixin:
             output = stdout.decode().strip()
             if output:
                 lines = output.split("\n")
-                log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "com-clawbot-xianyu.stderr.log")
-                last_log = ""
-                try:
-                    with open(log_path) as f:
-                        last_lines = f.readlines()[-3:]
-                        last_log = "\n".join(l.strip() for l in last_lines)
-                except Exception as e:
-                    logger.debug("Silenced exception", exc_info=True)
-                msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个\n\n最近日志:\n{last_log}"
-                await update.message.reply_text(msg[:TG_SAFE_LENGTH])
+                msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个"
+                await update.message.reply_text(msg)
             else:
                 await update.message.reply_text("🔴 闲鱼 AI 客服未运行\n\n发送 /xianyu start 启动")
 
@@ -175,7 +166,7 @@ class XianyuCommandsMixin:
                 await send_long_message(update.effective_chat.id, "\n".join(lines), context)
             except Exception as e:
                 logger.exception("闲鱼回复配置读取失败")
-                await update.message.reply_text(f"❌ 读取配置失败: {e}")
+                await update.message.reply_text("❌ 严总，读取配置失败了，请稍后再试")
             return
 
         # ── /xianyu_style set <风格> — 设置回复风格 ──
@@ -195,7 +186,7 @@ class XianyuCommandsMixin:
                 await update.message.reply_text(f"✅ 回复风格已设置: {tone}")
             except Exception as e:
                 logger.exception("闲鱼回复风格设置失败")
-                await update.message.reply_text(f"❌ 设置失败: {e}")
+                await update.message.reply_text("❌ 严总，风格设置失败了，请稍后再试")
             return
 
         # ── /xianyu_style faq <子命令> — FAQ 管理 ──
@@ -219,7 +210,7 @@ class XianyuCommandsMixin:
                     await send_long_message(update.effective_chat.id, "\n".join(lines), context)
                 except Exception as e:
                     logger.exception("闲鱼 FAQ 列表读取失败")
-                    await update.message.reply_text(f"❌ 读取失败: {e}")
+                    await update.message.reply_text("❌ 严总，FAQ 列表读取失败了，请稍后再试")
                 return
 
             if faq_sub in {"add", "添加", "新增"}:
@@ -245,7 +236,7 @@ class XianyuCommandsMixin:
                         await update.message.reply_text(f"❌ FAQ 已达上限 ({xctx._FAQ_LIMIT} 条)")
                 except Exception as e:
                     logger.exception("闲鱼 FAQ 添加失败")
-                    await update.message.reply_text(f"❌ 添加失败: {e}")
+                    await update.message.reply_text("❌ 严总，FAQ 添加失败了，请稍后再试")
                 return
 
             if faq_sub in {"remove", "删除", "rm", "del"}:
@@ -261,7 +252,7 @@ class XianyuCommandsMixin:
                         await update.message.reply_text(f"❌ 未找到关键词「{keyword}」")
                 except Exception as e:
                     logger.exception("闲鱼 FAQ 删除失败")
-                    await update.message.reply_text(f"❌ 删除失败: {e}")
+                    await update.message.reply_text("❌ 严总，FAQ 删除失败了，请稍后再试")
                 return
 
             await update.message.reply_text("未知 FAQ 子命令，用法: add | list | remove")
@@ -291,7 +282,7 @@ class XianyuCommandsMixin:
                     await update.message.reply_text(f"❌ 商品规则已达上限 ({xctx._ITEM_RULE_LIMIT} 条)")
             except Exception as e:
                 logger.exception("闲鱼商品规则设置失败")
-                await update.message.reply_text(f"❌ 设置失败: {e}")
+                await update.message.reply_text("❌ 严总，商品规则设置失败了，请稍后再试")
             return
 
         # ── /xianyu_style rule_remove <商品ID> — 删除商品规则 ──
@@ -308,7 +299,7 @@ class XianyuCommandsMixin:
                     await update.message.reply_text(f"❌ 未找到商品「{item_id}」的规则")
             except Exception as e:
                 logger.exception("闲鱼商品规则删除失败")
-                await update.message.reply_text(f"❌ 删除失败: {e}")
+                await update.message.reply_text("❌ 严总，商品规则删除失败了，请稍后再试")
             return
 
         # ── 未知子命令 — 显示帮助 ──
@@ -452,8 +443,8 @@ class XianyuCommandsMixin:
             await update.message.reply_text(msg, parse_mode="HTML")
 
         except Exception as e:
-            from src.bot.error_messages import error_service_failed
-            await update.message.reply_text(error_service_failed("闲鱼报表", str(e)))
+            logger.exception("闲鱼报表生成失败")
+            await update.message.reply_text(error_service_failed("闲鱼报表"))
 
     @requires_auth
     @with_typing

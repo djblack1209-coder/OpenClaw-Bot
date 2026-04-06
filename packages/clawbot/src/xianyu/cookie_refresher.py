@@ -27,14 +27,14 @@ def is_cookie_expiring(cookies: dict, margin_seconds: int = 300) -> bool:
     return time.time() + margin_seconds >= expires_at
 
 
-def refresh_cookies_via_session(api) -> bool:
-    """通过 has_login + get_token 刷新 session 中的 cookie。
+async def refresh_cookies_via_session(api) -> bool:
+    """通过 has_login + get_token 刷新 httpx client 中的 cookie。
     
-    has_login 会触发服务端下发新的 Set-Cookie，requests.Session 自动存储。
+    has_login 会触发服务端下发新的 Set-Cookie，httpx.AsyncClient 自动存储。
     返回 True 表示刷新成功。
     """
     try:
-        ok = api.has_login()
+        ok = await api.has_login()
         if ok:
             api._clear_dup_cookies()
             logger.info("Cookie 刷新成功 (via hasLogin)")
@@ -46,9 +46,9 @@ def refresh_cookies_via_session(api) -> bool:
         return False
 
 
-def build_cookie_str(session) -> str:
-    """从 requests.Session 构建 cookie 字符串"""
-    return "; ".join(f"{c.name}={c.value}" for c in session.cookies)
+def build_cookie_str(client) -> str:
+    """从 httpx.AsyncClient 构建 cookie 字符串"""
+    return "; ".join(f"{name}={value}" for name, value in client.cookies.items())
 
 
 def update_env_file(cookie_str: str):

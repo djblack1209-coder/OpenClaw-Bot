@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { ReactFlow, Controls, Background, useNodesState, useEdgesState, addEdge, BackgroundVariant, Node, Edge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Play, Square, Loader2, Workflow, Terminal, Info } from 'lucide-react';
+import { Square, Loader2, Workflow, Terminal, Info } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from '../../lib/tauri';
 import { createLogger } from '@/lib/logger';
@@ -24,11 +24,11 @@ interface FlowEvent {
 
 // 初始默认布局
 const initialNodes: Node[] = [
-  { id: 'hub', position: { x: 250, y: 50 }, data: { label: '执行核心 (Hub)' }, type: 'input', className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
-  { id: 'llm', position: { x: 100, y: 150 }, data: { label: 'AI 决策 (LLM)' }, className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
-  { id: 'browser', position: { x: 400, y: 150 }, data: { label: '浏览器代理 (Browser-Use)' }, className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
-  { id: 'mem0', position: { x: 250, y: 250 }, data: { label: '记忆检索器 (Mem0)' }, className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
-  { id: 'trader', position: { x: 50, y: 250 }, data: { label: '量化交易 (Freqtrade)' }, className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg', style: {} },
+  { id: 'hub', position: { x: 250, y: 50 }, data: { label: '执行核心 (Hub)' }, type: 'input', className: 'rounded-lg shadow-lg', style: { background: '#1e1e22', color: '#fff', border: '1px solid #3a3a3f', fontSize: '13px' } },
+  { id: 'llm', position: { x: 100, y: 150 }, data: { label: 'AI 决策 (LLM)' }, className: 'rounded-lg shadow-lg', style: { background: '#1e1e22', color: '#fff', border: '1px solid #3a3a3f', fontSize: '13px' } },
+  { id: 'browser', position: { x: 400, y: 150 }, data: { label: '浏览器代理 (Browser-Use)' }, className: 'rounded-lg shadow-lg', style: { background: '#1e1e22', color: '#fff', border: '1px solid #3a3a3f', fontSize: '13px' } },
+  { id: 'mem0', position: { x: 250, y: 250 }, data: { label: '记忆检索器 (Mem0)' }, className: 'rounded-lg shadow-lg', style: { background: '#1e1e22', color: '#fff', border: '1px solid #3a3a3f', fontSize: '13px' } },
+  { id: 'trader', position: { x: 50, y: 250 }, data: { label: '量化交易 (Freqtrade)' }, className: 'rounded-lg shadow-lg', style: { background: '#1e1e22', color: '#fff', border: '1px solid #3a3a3f', fontSize: '13px' } },
 ];
 
 const initialEdges: Edge[] = [
@@ -78,8 +78,6 @@ export function ExecutionFlow() {
   const [selectedNodeData, setSelectedNodeData] = useState<{ id: string, event: FlowEvent | null } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const logsContainerRef = useRef<HTMLDivElement>(null);
-  const [useRealLogs, setUseRealLogs] = useState(true);
-  const simulationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // 用于追踪已经被添加过的动态节点，避免重复添加
   const seenNodes = useRef<Set<string>>(new Set(initialNodes.map(n => n.id)));
@@ -197,7 +195,7 @@ export function ExecutionFlow() {
   }, [addLog, edges, setEdges, setNodes]);
 
   useEffect(() => {
-    if (!isTauri() || !useRealLogs) return;
+    if (!isTauri()) return;
     
     // 从 clawbot 后端轮询实时日志
     const pollLogs = async () => {
@@ -226,7 +224,7 @@ export function ExecutionFlow() {
     pollLogs();
     const interval = setInterval(pollLogs, 1500); // 1.5秒刷新一次可观测性状态
     return () => clearInterval(interval);
-  }, [useRealLogs, handleFlowEvent]);
+  }, [handleFlowEvent]);
 
   // 旧的正则兜底 (兼容没有埋点的旧爬虫/LLM代码)
   useEffect(() => {
@@ -243,52 +241,9 @@ export function ExecutionFlow() {
     );
   }, [activeNode, setNodes]);
 
-  const simulateExecution = () => {
-    setUseRealLogs(false);
-    
-    if (isRunning) {
-      setIsRunning(false);
-      setActiveNode(null);
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-        simulationIntervalRef.current = null;
-      }
-      addLog("手动中止执行");
-      return;
-    }
-
-    setIsRunning(true);
-    addLog("接收到新任务: '分析今天的科技新闻并发布推文'");
-    
-    let step = 0;
-    const interval = setInterval(() => {
-      step++;
-      if (step === 1) {
-        handleFlowEvent('__CLAW_FLOW_EVENT__:' + JSON.stringify({source: "hub", target: "llm", status: "running", msg: "分析任务拆解中", data: {prompt: "分析任务..."}}));
-      } else if (step === 2) {
-        handleFlowEvent('__CLAW_FLOW_EVENT__:' + JSON.stringify({source: "llm", target: "mem0", status: "running", msg: "检索风格记忆", data: {query: "风格", results: ["幽默", "短句"]}}));
-      } else if (step === 3) {
-        handleFlowEvent('__CLAW_FLOW_EVENT__:' + JSON.stringify({source: "llm", target: "browser", status: "running", msg: "启动浏览器执行抓取", data: {url: "https://news.ycombinator.com"}}));
-      } else if (step === 4) {
-        handleFlowEvent('__CLAW_FLOW_EVENT__:' + JSON.stringify({source: "browser", target: "llm", status: "success", msg: "内容返回", data: {content_length: 4056}}));
-      } else if (step === 5) {
-        handleFlowEvent('__CLAW_FLOW_EVENT__:' + JSON.stringify({source: "llm", target: "hub", status: "success", msg: "推文生成完毕", data: {tweet: "AI时代，重构比手搓更重要！"}}));
-        setIsRunning(false);
-        setActiveNode(null);
-        clearInterval(interval);
-        simulationIntervalRef.current = null;
-      }
-    }, 2500);
-    simulationIntervalRef.current = interval;
-  };
-
-  // 组件卸载时清理轮询定时器
+  // 组件卸载时清理定时器
   useEffect(() => {
-    return () => {
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-      }
-    };
+    return () => {};
   }, []);
 
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
@@ -312,19 +267,9 @@ export function ExecutionFlow() {
                 全景智能监控流
               </CardTitle>
               <CardDescription className="mt-1 text-gray-400">
-                实时可视化 AI Agent 的思维链(CoT)、API调用及工具执行数据。当前模式: {useRealLogs ? '实时连接' : '模拟演示'}
+                实时可视化 AI Agent 的思维链(CoT)、API调用及工具执行数据
               </CardDescription>
             </div>
-            <button
-              onClick={simulateExecution}
-              className={clsx(
-                "btn-primary flex items-center gap-2 transition-all",
-                isRunning && !useRealLogs ? "bg-red-500 hover:bg-red-600" : "bg-claw-500 hover:bg-claw-600"
-              )}
-            >
-              {isRunning && !useRealLogs ? <Square size={16} /> : <Play size={16} />}
-              {isRunning && !useRealLogs ? '中止测试' : '运行打点测试'}
-            </button>
           </div>
         </CardHeader>
       </Card>
@@ -420,7 +365,7 @@ export function ExecutionFlow() {
                 <Terminal size={14} className="text-gray-400" />
                 <h3 className="text-sm font-semibold text-white">执行事件流</h3>
               </div>
-              {useRealLogs && (
+              {isTauri() && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>

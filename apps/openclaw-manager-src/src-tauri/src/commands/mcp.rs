@@ -11,7 +11,7 @@ pub struct MCPPlugin {
     pub version: String,
     pub author: String,
     pub r#type: String, // "stdio" or "sse"
-    pub status: String, // "running", "stopped", "error"
+    pub status: String, // "running", "configured", "stopped", "error"
     pub icon: String,   // Not actually used in Rust side, but keep for type parity
     pub tags: Vec<String>,
     pub command: Option<String>,
@@ -65,8 +65,16 @@ pub async fn save_mcp_plugin(plugin: MCPPlugin) -> Result<(), String> {
     Ok(())
 }
 
+/// 切换 MCP 插件状态 — 仅在 configured / stopped 之间切换
+/// "running" 状态由 Gateway 实际连接后设置，前端 toggle 不会直接设为 running
 #[tauri::command]
 pub async fn toggle_mcp_plugin_status(id: String, target_status: String) -> Result<(), String> {
+    // 校验目标状态值
+    let valid_statuses = ["configured", "stopped", "running", "error"];
+    if !valid_statuses.contains(&target_status.as_str()) {
+        return Err(format!("Invalid target status: {}", target_status));
+    }
+
     let path = get_mcp_config_path();
     let mut plugins = get_mcp_plugins().await.unwrap_or_default();
     
@@ -83,4 +91,26 @@ pub async fn toggle_mcp_plugin_status(id: String, target_status: String) -> Resu
     } else {
         Err(format!("Plugin {} not found", id))
     }
+}
+
+/// 删除 MCP 插件 — 从配置文件中移除指定 ID 的插件
+#[tauri::command]
+pub async fn remove_mcp_plugin(id: String) -> Result<(), String> {
+    let path = get_mcp_config_path();
+    let mut plugins = get_mcp_plugins().await.unwrap_or_default();
+
+    let original_len = plugins.len();
+    plugins.retain(|p| p.id != id);
+
+    if plugins.len() == original_len {
+        return Err(format!("Plugin {} not found", id));
+    }
+
+    let content = serde_json::to_string_pretty(&plugins)
+        .map_err(|e| format!("Failed to serialize MCP plugins: {}", e))?;
+
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+
+    Ok(())
 }

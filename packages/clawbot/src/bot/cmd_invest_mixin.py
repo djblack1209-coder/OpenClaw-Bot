@@ -13,7 +13,6 @@ from src.bot.globals import (
 from src.invest_tools import get_crypto_quote, get_market_summary, format_quote, portfolio
 from src.trading._lifecycle import get_risk_manager
 from src.broker_selector import ibkr
-from src.message_format import format_error
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
 from src.telegram_ux import with_typing
@@ -302,12 +301,13 @@ class InvestCommandsMixin:
             try:
                 ibkr_text = await ibkr.get_positions_text()
                 if ibkr_text.strip():
-                    ibkr_msg = "━━━ IBKR 实盘持仓 ━━━\n" + ibkr_text
+                    ibkr_msg = "━━━ 实盘持仓 ━━━\n" + ibkr_text
                     ibkr_msg += "\n" + ibkr.get_budget_status()
                     await update.message.reply_text(ibkr_msg,
                                                     reply_to_message_id=update.message.message_id)
             except Exception as e:
-                await update.message.reply_text(format_error(e, "获取IBKR持仓"),
+                logger.warning("获取盈透券商持仓失败: %s", e, exc_info=True)
+                await update.message.reply_text("⚠️ 严总，实盘持仓暂时拉不到，请稍后再试",
                                                 reply_to_message_id=update.message.message_id)
 
     @requires_auth
@@ -827,7 +827,7 @@ class InvestCommandsMixin:
         except Exception as e:
             logger.error("导出失败: %s", e, exc_info=True)
             await update.message.reply_text(
-                f"导出失败: {e}\n\n"
+                "❌ 严总，导出失败了，请稍后再试\n\n"
                 "用法: `/export [trades|watchlist|portfolio|expenses|xianyu] [天数] [csv]`",
                 parse_mode="Markdown",
             )

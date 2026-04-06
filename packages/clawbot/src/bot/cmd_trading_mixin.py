@@ -31,7 +31,7 @@ class TradingCommandsMixin:
         """/autotrader [start|stop|status|auto|manual|cycle]"""
         trader = get_auto_trader()
         if not trader:
-            await update.message.reply_text("AutoTrader 未初始化")
+            await update.message.reply_text("⚠️ 严总，自动交易系统还没准备好，请稍等")
             return
         args = context.args
         sub = args[0].lower() if args else "status"
@@ -72,7 +72,7 @@ class TradingCommandsMixin:
     async def cmd_risk(self, update, context):
         rm = get_risk_manager()
         if not rm:
-            await update.message.reply_text("风控系统未初始化")
+            await update.message.reply_text("⚠️ 严总，交易安全检查还没准备好")
             return
         
         # 先从 IBKR 拉取实时数据 (ibkr 已在文件顶部从 broker_selector 导入)
@@ -83,7 +83,7 @@ class TradingCommandsMixin:
                 # 1. 获取账户信息
                 account_info = await ibkr.get_account_summary()
                 if account_info:
-                    status_lines.append("=== IBKR 实时数据 ===")
+                    status_lines.append("=== 盈透券商实时数据 ===")
                     status_lines.append(f"净资产: ${account_info.get('NetLiquidation', 0):,.2f}")
                     status_lines.append(f"现金: ${account_info.get('TotalCashValue', 0):,.2f}")
                     status_lines.append(f"今日PnL: ${account_info.get('DailyPnL', 0):+.2f}")
@@ -108,10 +108,10 @@ class TradingCommandsMixin:
                     status_lines.append("")
             except Exception as e:
                 logger.exception("IBKR 实时数据拉取失败")
-                status_lines.append(f"⚠️ IBKR数据拉取失败: {e}")
+                status_lines.append("⚠️ 严总，券商数据暂时拉不到，不影响其他功能")
                 status_lines.append("")
         else:
-            status_lines.append("⚠️ IBKR未连接，无法获取实时数据")
+            status_lines.append("⚠️ 盈透券商未连接，暂时无法获取实时数据")
             status_lines.append("")
         
         # 3. 风控系统状态
@@ -158,7 +158,7 @@ class TradingCommandsMixin:
 
             await update.message.reply_text(status_text)
         else:
-            await update.message.reply_text("持仓监控器未初始化")
+            await update.message.reply_text("⚠️ 严总，持仓监控还没准备好")
 
     @requires_auth
     @with_typing

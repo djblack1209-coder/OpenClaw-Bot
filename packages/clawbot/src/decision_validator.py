@@ -32,10 +32,11 @@ class ValidationResult:
     issues: List[str] = field(default_factory=list)     # 硬性问题（导致拒绝）
     warnings: List[str] = field(default_factory=list)   # 软性警告（仅提示）
     adjusted_proposal: Optional[TradeProposal] = None   # 调整后的提案（如有）
+    validation_confidence: float = 1.0                  # 验证结论的置信度 (0-1)，issue越多越低
 
     def __str__(self) -> str:
         status = "VALIDATED" if self.approved else "REJECTED"
-        lines = [f"[DecisionValidator] {status}"]
+        lines = [f"[DecisionValidator] {status} (confidence={self.validation_confidence:.2f})"]
         if self.issues:
             for issue in self.issues:
                 lines.append(f"  Issue: {issue}")
@@ -195,11 +196,15 @@ class DecisionValidator:
         if approved and proposal.action in ("BUY", "SELL"):
             self._recent_decisions[proposal.symbol.upper()] = time.time()
 
+        # 根据问题和警告数量计算验证置信度
+        validation_confidence = max(0.0, 1.0 - len(all_issues) * 0.2 - len(all_warnings) * 0.05)
+
         result = ValidationResult(
             approved=approved,
             issues=all_issues,
             warnings=all_warnings,
             adjusted_proposal=None,
+            validation_confidence=validation_confidence,
         )
 
         log_fn = logger.info if approved else logger.warning

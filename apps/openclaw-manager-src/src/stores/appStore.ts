@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import { PageType, EnvironmentStatus } from '../App';
-
-interface ServiceStatus {
-  running: boolean;
-  pid: number | null;
-  port: number;
-}
+import type { ServiceStatus } from '../lib/tauri';
 
 /**
  * 导航守卫回调：页面切换前调用，返回 true 允许切换，返回 false 阻止切换。

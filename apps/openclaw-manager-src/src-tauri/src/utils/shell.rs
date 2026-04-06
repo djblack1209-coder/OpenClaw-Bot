@@ -15,13 +15,12 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// 获取扩展的 PATH 环境变量
 /// GUI 应用启动时可能没有继承用户 shell 的 PATH，需要手动添加常见路径
 pub fn get_extended_path() -> String {
-    let mut paths = Vec::new();
-
-    // 添加常见的可执行文件路径
-    paths.push("/opt/homebrew/bin".to_string()); // Homebrew on Apple Silicon
-    paths.push("/usr/local/bin".to_string()); // Homebrew on Intel / 常规安装
-    paths.push("/usr/bin".to_string());
-    paths.push("/bin".to_string());
+    let mut paths = vec![
+        "/opt/homebrew/bin".to_string(), // Homebrew on Apple Silicon
+        "/usr/local/bin".to_string(),    // Homebrew on Intel / 常规安装
+        "/usr/bin".to_string(),
+        "/bin".to_string(),
+    ];
 
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();

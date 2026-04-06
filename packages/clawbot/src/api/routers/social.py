@@ -93,7 +93,9 @@ async def get_metrics():
 def list_personas():
     """列出可用的社交人设（data/social_personas/）"""
     try:
-        return ClawBotRPC._rpc_social_personas()
+        # RPC 返回 list，需要包裹为 dict 以匹配 response_model
+        personas = ClawBotRPC._rpc_social_personas()
+        return {"personas": personas if isinstance(personas, list) else []}
     except Exception as e:
         logger.exception("列出社交人设失败")
         return {"error": _safe_error(e)}

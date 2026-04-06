@@ -48,6 +48,7 @@ AGENT_MODELS = {
 class ResearchOutput(BaseModel):
     """研究员输出 — Pydantic 校验保证数据质量"""
     score: float = Field(ge=0, le=10, description="综合评分 0-10")
+    confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     recommendation: Literal["buy", "sell", "hold"] = "hold"
     valuation: Literal["高估", "合理", "低估"] = "合理"
     catalysts: List[str] = Field(default_factory=list, description="近期催化剂")
@@ -58,6 +59,7 @@ class ResearchOutput(BaseModel):
 class TAOutput(BaseModel):
     """技术分析师输出"""
     score: float = Field(ge=0, le=10)
+    confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     recommendation: Literal["buy", "sell", "hold"] = "hold"
     trend: Literal["上涨", "下跌", "震荡", "突破"] = "震荡"
     support: List[float] = Field(default_factory=list, description="支撑位")
@@ -69,6 +71,7 @@ class TAOutput(BaseModel):
 class QuantOutput(BaseModel):
     """量化工程师输出"""
     score: float = Field(ge=0, le=10)
+    confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     recommendation: Literal["buy", "sell", "hold"] = "hold"
     sharpe_estimate: float = Field(default=0, description="预估夏普比率")
     momentum_score: float = Field(ge=0, le=10, default=5)
@@ -79,6 +82,7 @@ class QuantOutput(BaseModel):
 class RiskOutput(BaseModel):
     """风控官输出 — 有一票否决权"""
     approved: bool = True
+    confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     risk_level: Literal["低", "中", "高", "极高"] = "中"
     position_size: float = Field(ge=0, le=1, default=0.1, description="建议仓位比例")
     stop_loss_pct: float = Field(ge=0, le=1, default=0.08, description="止损比例")

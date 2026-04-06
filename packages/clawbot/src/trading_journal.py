@@ -35,6 +35,7 @@ class TradingJournal:
         # P2#27: timeout=10 防止并发 "database is locked"
         conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             yield conn
             conn.commit()

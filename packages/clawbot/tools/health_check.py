@@ -40,7 +40,7 @@ try:
     ]
     for name, token in tokens:
         if token:
-            print(f"✅ {name}: {token[:10]}...")
+            print(f"✅ {name}: {token[:4]}***")
         else:
             print(f"⚠️ {name}: 未配置")
 except Exception as e:
@@ -69,7 +69,7 @@ try:
     code = os.getenv('BAIDU_PAN_CODE')
     if link and code:
         print(f"✅ 网盘链接: {link[:50]}...")
-        print(f"✅ 提取码: {code}")
+        print(f"✅ 提取码: {code[:1]}***")
     else:
         print("⚠️ 网盘配置缺失")
 except Exception as e:

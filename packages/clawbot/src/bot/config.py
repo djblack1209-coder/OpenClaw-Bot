@@ -100,7 +100,7 @@ def update_key_balance(key: str, cost: float):
         if key in sf_key_balances:
             sf_key_balances[key] = max(0, sf_key_balances[key] - cost)
             if sf_key_balances[key] < LOW_BALANCE_THRESHOLD:
-                logger.warning(f"API Key {key[:8]}... 余额不足: {sf_key_balances[key]:.2f}元")
+                logger.warning(f"API Key {key[:4]}... 余额不足: {sf_key_balances[key]:.2f}元")
 
 
 def get_total_balance() -> float:
@@ -114,4 +114,4 @@ def mark_key_exhausted(key: str):
     with _sf_lock:
         if key in sf_key_balances:
             sf_key_balances[key] = 0
-            logger.warning(f"API Key {key[:8]}... 已标记为耗尽（API返回余额不足）")
+            logger.warning(f"API Key {key[:4]}... 已标记为耗尽（API返回余额不足）")

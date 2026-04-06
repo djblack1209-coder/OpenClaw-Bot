@@ -3,24 +3,50 @@
 //! Pattern: thin wrappers that proxy HTTP calls to the Python backend
 
 use serde_json::Value;
+use std::sync::LazyLock;
 use tauri::command;
 
 const CLAWBOT_API_BASE: &str = "http://127.0.0.1:18790/api/v1";
 
-/// Read OPENCLAW_API_TOKEN from environment (set by shell or .env loader)
+/// 全局复用的 HTTP 客户端，避免每次请求都新建 TCP 连接
+static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .pool_max_idle_per_host(5)
+        .build()
+        .expect("无法初始化 HTTP 客户端")
+});
+
+/// 读取 API Token：优先从环境变量 OPENCLAW_API_TOKEN 获取，
+/// 如果未设置则从 ClawBot .env 文件中读取（解决 Tauri 进程未继承环境变量的问题）
 fn get_api_token() -> Option<String> {
-    std::env::var("OPENCLAW_API_TOKEN").ok().filter(|s| !s.is_empty())
+    // 优先检查环境变量
+    if let Ok(token) = std::env::var("OPENCLAW_API_TOKEN") {
+        if !token.is_empty() {
+            return Some(token);
+        }
+    }
+    // 降级：从 .env 文件中读取
+    let home = std::env::var("HOME").ok()?;
+    let env_path = format!("{}/Desktop/OpenClaw Bot/packages/clawbot/config/.env", home);
+    let content = std::fs::read_to_string(&env_path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("OPENCLAW_API_TOKEN=") {
+            let value = trimmed.strip_prefix("OPENCLAW_API_TOKEN=")?.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
-/// Helper: GET request to ClawBot API
+/// 辅助函数：向 ClawBot API 发送 GET 请求
 async fn api_get(path: &str) -> Result<Value, String> {
     let url = format!("{}{}", CLAWBOT_API_BASE, path);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let mut req = client.get(&url);
+    let mut req = CLIENT.get(&url);
     if let Some(token) = get_api_token() {
         req = req.header("X-API-Token", token);
     }
@@ -39,15 +65,11 @@ async fn api_get(path: &str) -> Result<Value, String> {
         .map_err(|e| format!("JSON parse error: {}", e))
 }
 
-/// Helper: POST request to ClawBot API
+/// 辅助函数：向 ClawBot API 发送 POST 请求
 async fn api_post(path: &str, body: Value) -> Result<Value, String> {
     let url = format!("{}{}", CLAWBOT_API_BASE, path);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let mut req = client.post(&url).json(&body);
+    let mut req = CLIENT.post(&url).json(&body);
     if let Some(token) = get_api_token() {
         req = req.header("X-API-Token", token);
     }
@@ -66,15 +88,11 @@ async fn api_post(path: &str, body: Value) -> Result<Value, String> {
         .map_err(|e| format!("JSON parse error: {}", e))
 }
 
-/// Helper: PATCH request to ClawBot API
+/// 辅助函数：向 ClawBot API 发送 PATCH 请求
 async fn api_patch(path: &str, body: Value) -> Result<Value, String> {
     let url = format!("{}{}", CLAWBOT_API_BASE, path);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let mut req = client.patch(&url).json(&body);
+    let mut req = CLIENT.patch(&url).json(&body);
     if let Some(token) = get_api_token() {
         req = req.header("X-API-Token", token);
     }
@@ -107,10 +125,11 @@ pub async fn clawbot_api_status() -> Result<Value, String> {
 
 // ──── Trading ────
 
-/// 获取交易系统实时状态（连接、持仓、图表数据）
+/// 获取交易仪表盘数据（连接状态、图表数据、资产列表）
+/// 使用专用的 /trading/dashboard 接口，返回 chart_data + assets + connected
 #[command]
 pub async fn clawbot_api_trading_status() -> Result<Value, String> {
-    api_get("/trading/status").await
+    api_get("/trading/dashboard").await
 }
 
 /// 当前持仓列表
@@ -264,15 +283,12 @@ pub async fn clawbot_api_social_draft_update(index: u32, text: String) -> Result
     .await
 }
 
+/// 删除指定草稿
 #[command]
 pub async fn clawbot_api_social_draft_delete(index: u32) -> Result<Value, String> {
     let url = format!("{}/social/drafts/{}", CLAWBOT_API_BASE, index);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let mut req = client.delete(&url);
+    let mut req = CLIENT.delete(&url);
     if let Some(token) = get_api_token() {
         req = req.header("X-API-Token", token);
     }

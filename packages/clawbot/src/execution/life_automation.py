@@ -320,9 +320,13 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         # 只保留中英文字符、数字、基本标点，去除所有可能的注入字符
         safe_title = re.sub(r'[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]', '', title)[:100]
         safe_message = re.sub(r'[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]', '', message)[:500]
+        # 安全修复: 使用 osascript argv 传参，避免 f-string 拼接导致 AppleScript 注入
         cp = subprocess.run(
             ["osascript", "-e",
-             f'display notification "{safe_message}" with title "{safe_title}"'],
+             'on run argv\n'
+             '  display notification (item 1 of argv) with title (item 2 of argv)\n'
+             'end run',
+             safe_message, safe_title],
             check=False, capture_output=True, text=True, timeout=8,
         )
         return {
@@ -458,6 +462,8 @@ from src.execution.bookkeeping import (  # noqa: F401
     resolve_bill_type, add_bill_account, update_bill_balance,
     list_bill_accounts, remove_bill_account, check_bill_alerts,
     get_bill_reminders_due, find_bill_by_type,
+    predict_balance_exhaustion, get_bill_due_summary,
+    get_discount_suggestions, save_discount_suggestions,
 )
 from src.execution.tracking import (  # noqa: F401
     MAX_PRICE_WATCHES_PER_USER,

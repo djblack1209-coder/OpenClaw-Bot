@@ -5,6 +5,94 @@
 
 ---
 
+## [2026-04-07] 闲鱼自动登录修复 + AI 生成新 APP 图标 + New-API 集成
+
+> 领域: `xianyu`, `frontend`, `infra`, `backend`
+> 影响模块: `xianyu/xianyu_live`, `scripts/xianyu_main`, `api/routers/newapi`, `src-tauri/icons`
+> 关联问题: HI-409 (闲鱼自动登录), OPTIMIZATION_PLAN Task 1
+
+### 变更内容
+
+**闲鱼自动登录修复 (3 个 Bug)**
+- 修复 `cookie_health_loop` 中 `_cookie_ok` 标志逻辑缺陷 — 之前首次触发自动登录失败后再也不会重试，现在冷却期结束后自动重新弹窗
+- `cookie_health_loop` 提升为独立任务 — 不再依赖 WS 连接成功才启动，Cookie 失效时也能持续弹出登录窗口
+- `xianyu_main.py` 启动时检测空 Cookie 直接弹出浏览器登录 — 不再 sys.exit(1) 退出，登录失败也会进入后台重试循环
+- Cookie 为空/失效时检查间隔从 600 秒缩短到 60 秒
+
+**APP 图标重新生成**
+- 使用 Gemini gemini-3.1-flash-image 模型生成全新 APP 图标
+- 蓝紫渐变的机械爪设计，深色圆角背景，现代极简风格
+- 替换所有 6 个图标文件: icon.png/128x128@2x.png/128x128.png/32x32.png/icon.ico/icon.icns
+
+**New-API 网关集成**
+- 新增 `docker-compose.newapi.yml` — New-API 容器部署配置
+- 新增 `newapi.py` 路由 — 4 个管理代理端点
+- 注册路由到 API Server
+
+### 文件变更
+
+- `packages/clawbot/src/xianyu/xianyu_live.py` — cookie_health_loop 逻辑修复 + run() 主循环重构
+- `packages/clawbot/scripts/xianyu_main.py` — 启动时弹出登录窗口替代退出
+- `apps/openclaw-manager-src/src-tauri/icons/*` — 6 个图标文件全部替换
+- `docker-compose.newapi.yml` — 新建
+- `packages/clawbot/src/api/routers/newapi.py` — 新建
+- `packages/clawbot/src/api/routers/__init__.py` — 新增导出
+- `packages/clawbot/src/api/server.py` — 注册路由
+
+---
+
+## [2026-04-07] 集成 New-API (songquanpeng/new-api) 网关基础设施
+
+> 领域: `infra`, `backend`
+> 影响模块: `api/routers/newapi`, `api/server`, `docker-compose.newapi.yml`
+> 关联问题: OPTIMIZATION_PLAN Task 1 (One-API 网关替换)
+
+### 变更内容
+
+- 新增 `docker-compose.newapi.yml` — New-API 容器部署配置，含资源限制 (512MB/1CPU)、健康检查、数据持久化
+- 新增 `newapi.py` 路由 — 4 个管理代理端点 (状态检查/通道列表/令牌列表/创建通道)，通过 FastAPI 转发 new-api 管理接口
+- 注册 New-API 路由到 API Server
+- 在 `.env` 添加 `NEWAPI_BASE_URL` 和 `NEWAPI_ADMIN_TOKEN` 配置项
+
+### 文件变更
+
+- `docker-compose.newapi.yml` — 新建，New-API 容器编排配置
+- `packages/clawbot/src/api/routers/newapi.py` — 新建，New-API 管理代理路由 (4 个端点)
+- `packages/clawbot/src/api/routers/__init__.py` — 新增 router_newapi 导出
+- `packages/clawbot/src/api/server.py` — 注册 router_newapi
+- `packages/clawbot/config/.env` — 新增 NEWAPI_BASE_URL/NEWAPI_ADMIN_TOKEN
+
+---
+
+## [2026-04-06] 修复服务矩阵 3 个服务无法启动 + 领券 token 有效期测试功能
+
+> 领域: `frontend`, `backend`
+> 影响模块: `clawbot.rs`, `wechat_coupon.py`, `cmd_intel_mixin.py`, `multi_bot.py`
+> 关联问题: HI-396 复发 (macOS 26.4 provenance), 云端领券预研
+
+### 变更内容
+
+**BUG修复: 服务矩阵 Gateway/g4f/Kiro Gateway 启动失败**
+- 根因: macOS 26.4 的 `com.apple.provenance` 安全属性阻止 launchd 和 Tauri 进程执行 launcher 脚本（退出码 126/78）
+- 修复: `start_service_via_script()` 改为 heredoc 管道方式 — 读取脚本文件内容后通过 stdin 传给 bash 执行，绕过 macOS 对文件执行权限的 provenance 检查
+- 手动启动 3 个服务确认全部端口正常监听 (18789/18891/18793)
+- 编译 release 版本并部署到 /Applications/OpenClaw.app
+
+**新功能: 领券 token 有效期测试**
+- 新增 token 持久化存储: 每次 mitmproxy 抓到 token 自动保存到 `~/.openclaw/coupon_token.json`（含时间戳）
+- 新增 `/test_token` 命令: 用缓存 token 调 API 测试有效性，返回 token 年龄和状态
+- 新增 `/set_coupon_token <token值>` 命令: 手动设置 token（手机抓包获取），免 mitmproxy 流程
+- 目的: 测试 token 有效期，为云端纯 API 领券方案提供数据支撑
+
+### 文件变更
+
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — 修复 `start_service_via_script` 函数，改用 heredoc stdin 管道绕过 provenance
+- `packages/clawbot/src/execution/wechat_coupon.py` — 新增 token 持久化/加载/测试/手动设置函数
+- `packages/clawbot/src/bot/cmd_intel_mixin.py` — 新增 cmd_test_token、cmd_set_coupon_token 命令
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /test_token、/set_coupon_token 命令
+
+---
+
 ## [2026-04-03] 第六轮深层审计 — 并发竞态/加密安全/路径遍历/SQLite数据层/序列化安全
 
 > 领域: `backend`, `security`, `xianyu`

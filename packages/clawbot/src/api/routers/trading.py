@@ -38,7 +38,9 @@ async def get_pnl():
 def get_signals():
     """获取交易信号"""
     try:
-        return ClawBotRPC._rpc_trading_signals()
+        # RPC 返回 list，需要包裹为 dict 以匹配 response_model
+        signals = ClawBotRPC._rpc_trading_signals()
+        return {"signals": signals if isinstance(signals, list) else []}
     except Exception as e:
         logger.exception("获取交易信号失败")
         return {"error": _safe_error(e)}
@@ -48,10 +50,25 @@ def get_signals():
 def get_trading_system():
     """获取交易系统状态"""
     try:
-        return ClawBotRPC._rpc_trading_system_status()
+        result = ClawBotRPC._rpc_trading_system_status()
+        # 确保返回 dict 类型，防止序列化失败导致 500
+        return result if isinstance(result, dict) else {"status": "unknown"}
     except Exception as e:
         logger.exception("获取交易系统状态失败")
         return {"error": _safe_error(e)}
+
+
+@router.get("/trading/dashboard")
+async def trading_dashboard():
+    """盈利总控仪表盘：返回图表数据和资产列表"""
+    try:
+        result = await ClawBotRPC._rpc_trading_dashboard()
+        if isinstance(result, dict):
+            return result
+        return {"chart_data": [], "assets": [], "connected": False}
+    except Exception as e:
+        logger.exception("获取交易仪表盘数据失败")
+        return {"chart_data": [], "assets": [], "connected": False}
 
 
 @router.post("/trading/vote", response_model=Dict[str, Any])

@@ -310,6 +310,26 @@ class NewsFetcher:
             sections.append((heading, entries))
             await asyncio.sleep(1)
 
+        # 追加 Worldmonitor 全球情报板块
+        try:
+            from src.tools.worldmonitor_client import fetch_category_news
+            intel_items = await fetch_category_news("geopolitics", max_items=3)
+            if intel_items:
+                intel_entries = []
+                for idx, item in enumerate(intel_items[:3], 1):
+                    title = item.get("title", "")
+                    source = item.get("source", "")
+                    line = f"{idx}. {title}"
+                    if source:
+                        line += f"（{source}）"
+                    intel_entries.append(line)
+                sections.append(("【🌍 全球情报】", intel_entries))
+            else:
+                sections.append(("【🌍 全球情报】", ["- 暂无情报"]))
+        except Exception as e:
+            logger.debug("Worldmonitor 全球情报板块加载失败: %s", e)
+            sections.append(("【🌍 全球情报】", ["- 数据源暂不可用"]))
+
         return format_digest(
             title=f"OpenClaw「科技早报」{now_et().strftime('%Y年%m月%d日')}",
             intro="今日聚焦美股市场、宏观政策、AI科技、加密货币四大主线，按主题整理如下。",

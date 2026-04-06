@@ -21,15 +21,18 @@ class OCRHandlerMixin:
       - handle_document_ocr() — 文档消息 → Docling 结构化 / OCR 降级
     """
 
+    # 用户明确要求 OCR 时的关键词列表
+    _OCR_EXPLICIT_KEYWORDS = ("OCR", "ocr", "识别文字", "提取文字", "文字识别", "识别", "文字", "提取")
+
     async def handle_photo(self, update, context):
-        '''处理图片消息 — OCR → 场景路由 → 业务决策链'''
+        '''处理图片消息 — 私聊默认 Vision / 群聊走 OCR+场景路由'''
         try:
             chat_id = update.effective_chat.id
             user = update.effective_user
             caption = update.message.caption or ""
             is_group = update.effective_chat.type in ("group", "supergroup")
             
-            # 群聊门控：仅在被 @ 或 caption 含触发词时才 OCR
+            # 群聊门控：仅在被 @ 或 caption 含触发词时才处理
             if is_group:
                 bot_username = (await context.bot.get_me()).username or ""
                 mentioned = f"@{bot_username}" in (caption or "")
@@ -37,17 +40,68 @@ class OCRHandlerMixin:
                 if not mentioned and not trigger:
                     return
             
-            # 发送处理中提示
-            hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
-            
-            # 下载图片
+            # 下载图片（Vision 和 OCR 都需要）
             photo = update.message.photo[-1]
             file = await context.bot.get_file(photo.file_id)
             buf = io.BytesIO()
             await file.download_to_memory(buf)
             image_bytes = buf.getvalue()
             
-            logger.info(f"[OCR] 收到图片 from {user.id}, {len(image_bytes)} bytes")
+            logger.info(f"[Photo] 收到图片 from {user.id}, {len(image_bytes)} bytes, "
+                         f"chat_type={'group' if is_group else 'private'}")
+            
+            # ── 私聊默认 Vision 分析 ──────────────────────────────
+            # 除非用户明确说"OCR/识别文字"，否则直接用 Vision 模型理解图片
+            # 这比 OCR→场景路由 更自然，用户可以直接追问图片内容
+            ocr_requested = any(w in caption for w in self._OCR_EXPLICIT_KEYWORDS)
+            if not is_group and not ocr_requested:
+                hint_msg = await update.message.reply_text("🖼️ 正在分析图片...")
+                try:
+                    from src.tools.vision import analyze_image
+                    vision_prompt = caption or "请仔细描述这张图片的内容，包括文字、图表、人物、场景等所有重要信息。"
+                    vision_result = await analyze_image(bytes(image_bytes), vision_prompt)
+                    
+                    # 删除处理中提示
+                    try:
+                        await hint_msg.delete()
+                    except Exception:
+                        pass
+                    
+                    if vision_result:
+                        # 发送分析结果
+                        reply_text = f"🖼️ 图片分析:\n\n{vision_result}"
+                        await send_long_message(
+                            chat_id, reply_text, context,
+                            reply_to_message_id=update.message.message_id,
+                        )
+                        # 注入对话历史 — 用户可以基于图片内容继续追问
+                        try:
+                            # 记录用户发图行为
+                            user_ctx = f"[用户发送了一张图片]"
+                            if caption:
+                                user_ctx += f" 附言: {caption}"
+                            history_store.add_message(
+                                getattr(self, 'bot_id', 'system'), chat_id,
+                                "user", user_ctx)
+                            # 记录 Vision 分析结果
+                            history_store.add_message(
+                                getattr(self, 'bot_id', 'system'), chat_id,
+                                "assistant", f"[图片分析结果] {vision_result[:1500]}")
+                        except Exception as e:
+                            logger.warning(f"[Photo] Vision 上下文注入失败: {e}")
+                        return
+                    # Vision 返回空 → 降级到 OCR 流程
+                    logger.info("[Photo] Vision 返回空，降级到 OCR 流程")
+                except Exception as ve:
+                    logger.warning(f"[Photo] 私聊 Vision 分析失败，降级到 OCR: {ve}")
+                    # 删除处理中提示（Vision 失败场景）
+                    try:
+                        await hint_msg.delete()
+                    except Exception:
+                        pass
+            
+            # ── OCR 流程（群聊默认 / 私聊显式请求 / Vision 降级） ──
+            hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
             
             # 调用 OCR
             result: OcrResult = await ocr_image(
@@ -60,8 +114,8 @@ class OCRHandlerMixin:
             # 删除处理中提示
             try:
                 await hint_msg.delete()
-            except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
+            except Exception:
+                pass
             
             # OCR 失败
             if not result.ok:

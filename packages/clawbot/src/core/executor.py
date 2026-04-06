@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import time
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -129,13 +130,49 @@ class MultiPathExecutor:
 
     def __init__(self):
         self._circuit_breaker = PlatformCircuitBreaker()
-        self._http_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+        # 懒初始化 httpx 客户端，首次使用时创建，避免未关闭导致 TCP 连接泄漏 (HI-159/160)
+        self._http_client: Optional[httpx.AsyncClient] = None
+        self._closed = False
         self._stats = defaultdict(int)
         logger.info("MultiPathExecutor 初始化完成")
 
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """获取 httpx 客户端，首次调用时懒创建"""
+        if self._closed:
+            raise RuntimeError("MultiPathExecutor 已关闭，不能再发送请求")
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                timeout=30.0, follow_redirects=True
+            )
+        return self._http_client
+
     async def close(self):
-        """关闭 HTTP 客户端"""
-        await self._http_client.aclose()
+        """关闭 HTTP 客户端，释放 TCP 连接。幂等操作，可安全多次调用。"""
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            logger.debug("MultiPathExecutor: httpx 客户端已关闭")
+        self._http_client = None
+        self._closed = True
+
+    async def __aenter__(self):
+        """支持 async with 上下文管理器用法"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """退出上下文时自动关闭客户端"""
+        await self.close()
+        return False
+
+    def __del__(self):
+        """析构时检查是否有未关闭的客户端，发出警告"""
+        if self._http_client is not None and not self._http_client.is_closed:
+            warnings.warn(
+                "MultiPathExecutor 被垃圾回收但 httpx 客户端未关闭，"
+                "可能导致 TCP 连接泄漏。请调用 await executor.close() 或使用 "
+                "async with 管理生命周期。(HI-159/160)",
+                ResourceWarning,
+                stacklevel=2,
+            )
 
     async def execute_with_fallback(
         self, strategies: List[Dict], platform: str = "unknown"
@@ -240,13 +277,14 @@ class MultiPathExecutor:
 
         headers = headers or {}
         params = params or {}
+        client = self._get_http_client()
 
         if method.upper() == "GET":
-            resp = await self._http_client.get(endpoint, params=params, headers=headers)
+            resp = await client.get(endpoint, params=params, headers=headers)
         elif method.upper() == "POST":
-            resp = await self._http_client.post(endpoint, json=params, headers=headers)
+            resp = await client.post(endpoint, json=params, headers=headers)
         else:
-            resp = await self._http_client.request(method, endpoint, json=params, headers=headers)
+            resp = await client.request(method, endpoint, json=params, headers=headers)
 
         resp.raise_for_status()
 
@@ -475,6 +513,15 @@ _executor: Optional[MultiPathExecutor] = None
 
 def get_executor() -> MultiPathExecutor:
     global _executor
-    if _executor is None:
+    if _executor is None or _executor._closed:
         _executor = MultiPathExecutor()
     return _executor
+
+
+async def close_executor() -> None:
+    """关闭全局 executor 单例，释放 httpx 连接。应在应用退出时调用。"""
+    global _executor
+    if _executor is not None:
+        await _executor.close()
+        _executor = None
+        logger.info("全局 MultiPathExecutor 已关闭")

@@ -373,6 +373,15 @@ class LifeCommandsMixin:
                 lines.append(f"   📅 上次更新: {time_str}")
                 if acct.get("remind_day", 0) > 0:
                     lines.append(f"   🔔 每月{acct['remind_day']}号提醒查询")
+                # 智能消耗预测
+                from src.execution.life_automation import predict_balance_exhaustion
+                pred = predict_balance_exhaustion(acct["id"], db_path=self.db_path)
+                if pred.get("has_prediction"):
+                    days = pred["days_remaining"]
+                    if days <= 7:
+                        lines.append(f"   ⏰ 预计{pred['exhaustion_date']}耗尽！建议尽快充值")
+                    elif days <= 30:
+                        lines.append(f"   📊 日均消耗¥{pred['daily_consumption']}，约{int(days)}天后耗尽")
             await send_long_message(update.effective_chat.id, "\n".join(lines), context)
             return
 
@@ -510,17 +519,130 @@ class LifeCommandsMixin:
                 await update.message.reply_text("❌ 删除失败")
             return
 
+        # ── /bill tips [类型] — 查询缴费优惠渠道 ──
+        if sub in {"tips", "优惠", "省钱"}:
+            from src.execution.life_automation import (
+                get_discount_suggestions, save_discount_suggestions,
+            )
+            # 确定要查哪种费用
+            target_type = ""
+            if len(args) >= 2:
+                target_type = resolve_bill_type(args[1])
+            if not target_type:
+                # 没指定就查所有已追踪的类型
+                accounts = list_bill_accounts(user.id)
+                if not accounts:
+                    await update.message.reply_text(
+                        "严总，你还没有追踪任何费用\n\n"
+                        "先用 /bill add 话费 添加一个吧"
+                    )
+                    return
+                # 汇总所有追踪类型的优惠
+                all_tips = []
+                for acct in accounts:
+                    atype = acct["account_type"]
+                    cached = get_discount_suggestions(atype, db_path=self.db_path)
+                    label = BILL_TYPE_LABEL.get(atype, atype)
+                    emoji = BILL_TYPE_EMOJI.get(atype, "📋")
+                    if cached:
+                        all_tips.append(f"{emoji} {label}:\n{cached}")
+                    else:
+                        all_tips.append(f"{emoji} {label}: 暂无优惠信息（AI 正在搜索中...）")
+                        # 异步触发 AI 搜索优惠
+                        asyncio.ensure_future(
+                            self._fetch_bill_discounts(atype, user.id, chat_id, context)
+                        )
+                msg = "💡 缴费优惠渠道\n━━━━━━━━━━━━━━━\n\n" + "\n\n".join(all_tips)
+                await update.message.reply_text(msg)
+                return
+            # 查指定类型
+            cached = get_discount_suggestions(target_type, db_path=self.db_path)
+            label = BILL_TYPE_LABEL.get(target_type, target_type)
+            emoji = BILL_TYPE_EMOJI.get(target_type, "📋")
+            if cached:
+                await update.message.reply_text(f"💡 {emoji} {label}缴费优惠\n━━━━━━━━━━━━━━━\n\n{cached}")
+            else:
+                await update.message.reply_text(f"🔍 正在帮你搜索{label}的优惠渠道，稍等...")
+                await self._fetch_bill_discounts(target_type, user.id, chat_id, context)
+            return
+
+        # ── /bill predict [编号] — 消耗预测 ──
+        if sub in {"predict", "预测", "预估"}:
+            from src.execution.life_automation import predict_balance_exhaustion
+            accounts = list_bill_accounts(user.id)
+            if not accounts:
+                await update.message.reply_text("严总，你还没有追踪任何费用")
+                return
+            lines = ["📊 余额消耗预测\n━━━━━━━━━━━━━━━"]
+            for idx, acct in enumerate(accounts, 1):
+                emoji = BILL_TYPE_EMOJI.get(acct["account_type"], "📋")
+                label = BILL_TYPE_LABEL.get(acct["account_type"], acct["account_type"])
+                name_part = f" — {acct['account_name']}" if acct.get("account_name") else ""
+                pred = predict_balance_exhaustion(acct["id"], db_path=self.db_path)
+                if pred.get("has_prediction"):
+                    lines.append(
+                        f"\n{idx}. {emoji} {label}{name_part}\n"
+                        f"   💰 当前: ¥{pred['current_balance']}\n"
+                        f"   📉 日均消耗: ¥{pred['daily_consumption']}\n"
+                        f"   ⏰ 预计耗尽: {pred['exhaustion_date']} (约{int(pred['days_remaining'])}天)"
+                    )
+                else:
+                    lines.append(f"\n{idx}. {emoji} {label}{name_part}: {pred.get('reason', '暂无数据')}")
+            await update.message.reply_text("\n".join(lines))
+            return
+
         # ── 未知子命令 ──
         await update.message.reply_text(
             "📱 账单管理\n\n"
             "/bill list          — 查看追踪列表\n"
             "/bill add 话费 名称 30  — 添加追踪\n"
             "/bill update 1 45.5 — 更新余额\n"
-            "/bill remove 2      — 删除追踪\n\n"
-            "也可以直接说中文:\n"
+            "/bill remove 2      — 删除追踪\n"
+            "/bill predict       — 余额消耗预测\n"
+            "/bill tips          — 缴费优惠渠道\n\n"
+            "也可以直接说中文：\n"
             "「话费还剩30块」→ 自动更新余额\n"
-            "「帮我盯着电费」→ 添加追踪"
+            "「帮我盯着电费」→ 添加追踪\n"
+            "「话费怎么充最划算」→ 优惠推荐"
         )
+
+    async def _fetch_bill_discounts(self, account_type: str, user_id, chat_id, context):
+        """用 AI 搜索缴费优惠渠道并缓存结果"""
+        from src.execution.life_automation import (
+            save_discount_suggestions, BILL_TYPE_LABEL,
+        )
+        label = BILL_TYPE_LABEL.get(account_type, account_type)
+        try:
+            # 调用 LLM 搜索优惠信息
+            pool = getattr(self, "_pool", None) or getattr(self, "pool", None)
+            if not pool:
+                return
+            prompt = (
+                f"我想充{label}，请帮我列出中国大陆目前最划算的充值渠道（2-3个即可）。\n"
+                f"要求：\n"
+                f"1. 只列出 2026 年仍然有效的平台/方式\n"
+                f"2. 每个渠道说明：平台名 + 优惠幅度 + 操作方式\n"
+                f"3. 常见渠道包括：支付宝/微信支付/京东/云闪付/运营商官方APP/第三方充值平台\n"
+                f"4. 用简短的中文回答，不超过 200 字"
+            )
+            resp = await pool.acompletion(
+                model_family="fast",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=300,
+                temperature=0.3,
+            )
+            tips = resp.choices[0].message.content.strip() if resp and resp.choices else ""
+            if tips:
+                save_discount_suggestions(account_type, tips, db_path=self.db_path)
+                # 发送结果
+                emoji = BILL_TYPE_EMOJI.get(account_type, "📋")
+                await context.bot.send_message(
+                    chat_id,
+                    f"💡 {emoji} {label}缴费优惠\n━━━━━━━━━━━━━━━\n\n{tips}\n\n"
+                    f"💾 已缓存，7天内不会重复搜索",
+                )
+        except Exception as e:
+            logger.warning("[Bill Tips] AI 搜索优惠失败: %s", e)
 
     @requires_auth
     @with_typing

@@ -101,6 +101,7 @@ class RiskCheckResult:
     max_position_value: float = 0           # 允许的最大仓位价值
     max_loss: float = 0                     # 该笔交易最大亏损
     risk_score: int = 0                     # 风险评分 0-100
+    confidence: float = 1.0                 # 风控评估的置信度 (0-1)
     market_condition: str = "normal"        # "normal", "elevated", "extreme", "halted"
 
     def __str__(self) -> str:

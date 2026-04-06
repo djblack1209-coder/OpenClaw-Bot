@@ -263,6 +263,8 @@ class TestMultiPathExecutor:
     @pytest.fixture(autouse=True)
     async def _executor(self):
         self.executor = MultiPathExecutor()
+        # 预先创建 httpx 客户端，以便测试中可以直接 mock _http_client 属性
+        self.executor._get_http_client()
         yield
         await self.executor.close()
 

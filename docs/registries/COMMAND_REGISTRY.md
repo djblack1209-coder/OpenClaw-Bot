@@ -1,10 +1,10 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-03-31 | P5审计修正编号冲突+重新编号，总数 94
+> 最后更新: 2026-04-06 | 新增 /test_token、/set_coupon_token 命令，总数 98
 
 ---
 
-## 1. 注册命令一览（94 个）
+## 1. 注册命令一览（96 个）
 
 命令在 `multi_bot.py:171-340` 统一注册。
 
@@ -136,6 +136,10 @@
 | 92 | `/xianyu_style` | `cmd_xianyu_style` | 闲鱼 AI 客服回复配置 — 自定义回复风格/FAQ模板/商品规则 (set/faq/rule/show) | N |
 | 93 | `/bill` | `cmd_bill` | 生活账单追踪 — 话费/水电费余额检测 + 低余额告警 + 定期提醒 (add/update/list/remove + 中文NLP) | N |
 | 94 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
+| 95 | `/intel` | `cmd_intel` | 全球情报速递 — 7大行业+5大地区交互式菜单 + 关键词搜索 (Worldmonitor API) | Y |
+| 96 | `/coupon` | `cmd_coupon` | 微信笔笔省领券 — mitmproxy抓包+API直调自动领取提现免费券 | N |
+| 97 | `/test_token` | `cmd_test_token` | 测试已保存的领券token有效性 — 纯API调用,不走mitmproxy,返回token年龄和有效状态 | N |
+| 98 | `/set_coupon_token` | `cmd_set_coupon_token` | 手动设置领券token — 通过手机抓包获取token后直接设置,免mitmproxy流程 | N |
 
 ---
 
@@ -157,6 +161,7 @@
 | 10 | `^(ta_\|buy_\|watch_)` | `handle_quote_action_callback` | cmd_invest_mixin | 行情卡片操作 (技术分析/买入/加自选) |
 | 11 | `^(trade:\|bt:\|ta:\|...)` | `handle_card_action_callback` | cmd_basic_mixin | OMEGA 响应卡片操作按钮 |
 | 12 | `^noop$` | lambda (answer) | multi_bot | 空操作（已收到反馈占位） |
+| 13 | `^intel_` | `handle_intel_callback` | cmd_intel_mixin | 情报分类/地区/简报按钮 (intel_cat:/intel_reg:/intel_brief) |
 
 ### 非 Command 消息处理器 (multi_bot.py:270-281)
 
@@ -289,3 +294,17 @@
 |----------|-------------|---------|
 | 导出记账 / 导出账单 / 导出支出 / 导出开支 [N天] | `export_expenses` | `/export expenses [N]` |
 | 导出闲鱼 / 闲鱼报表导出 / 闲鱼订单导出 [N天] | `export_xianyu` | `/export xianyu [N]` |
+
+### 3.7 情报命令 — `IntelCommandMixin` (cmd_intel_mixin.py, ~300 行)
+
+| # | 命令 | Handler | 说明 | BotFather |
+|---|------|---------|------|:-:|
+| 95 | `/intel` | `cmd_intel` | 全球情报速递（交互式菜单 + 分类查询 + 搜索） | N |
+
+**Inline 回调按钮:**
+
+| callback_data | Handler | 说明 |
+|---------------|---------|------|
+| `intel_cat:<key>` | `handle_intel_callback` | 行业分类情报查询 |
+| `intel_reg:<key>` | `handle_intel_callback` | 地区情报查询 |
+| `intel_brief` | `handle_intel_callback` | 生成每日综合情报简报 |

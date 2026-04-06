@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -33,6 +33,71 @@ const ACTION_LABEL: Record<ManagedServiceAction, string> = {
   stop: '停止',
   restart: '重启',
 };
+
+/** 配置字段的中文标签、描述和占位符映射 */
+const CONFIG_FIELD_META: Record<string, { label: string; hint?: string; placeholder?: string }> = {
+  G4F_BASE_URL: {
+    label: '🏷️ 免费模型代理地址 (G4F)',
+    hint: '连接 G4F 免费模型的 API 地址',
+    placeholder: '默认: http://localhost:1337/v1',
+  },
+  KIRO_BASE_URL: {
+    label: '🏷️ Kiro 模型代理地址',
+    hint: '连接 Kiro 模型网关的 API 地址',
+    placeholder: '默认: http://localhost:8080/v1',
+  },
+  IBKR_HOST: {
+    label: '🏷️ IBKR 券商交易地址',
+    hint: 'IB Gateway / TWS 的连接地址',
+    placeholder: '默认: 127.0.0.1',
+  },
+  IBKR_PORT: {
+    label: '🏷️ IBKR 交易端口',
+    hint: 'IB Gateway 模拟盘 4002 / 实盘 4001',
+    placeholder: '默认: 4002',
+  },
+  IBKR_ACCOUNT: {
+    label: '🏷️ IBKR 账户名',
+    hint: 'Interactive Brokers 的账户 ID',
+    placeholder: '例如: DU1234567',
+  },
+  IBKR_BUDGET: {
+    label: '🏷️ IBKR 单日预算 (USD)',
+    hint: '每日最大交易金额限制，防止超额下单',
+    placeholder: '例如: 1000',
+  },
+  IBKR_AUTOSTART: {
+    label: '🏷️ IBKR 自动启动',
+    hint: '全部启动/重启时是否自动拉起 IB Gateway',
+  },
+  IBKR_START_CMD: {
+    label: '🏷️ IBKR 启动命令',
+    hint: '自定义启动 IB Gateway 的系统命令',
+    placeholder: '默认: open -a "IB Gateway"',
+  },
+  IBKR_STOP_CMD: {
+    label: '🏷️ IBKR 停止命令',
+    hint: '自定义停止 IB Gateway 的系统命令',
+    placeholder: '默认: pkill -f "IB Gateway" || pkill -f "Trader Workstation" || true',
+  },
+  NOTIFY_CHAT_ID: {
+    label: '🏷️ 通知群/频道 ID',
+    hint: 'Telegram 群组或频道的 Chat ID，用于接收系统通知',
+    placeholder: '例如: -1001234567890',
+  },
+};
+
+/** 根据配置键获取中文标签，找不到则回退为原始键名 */
+const getFieldLabel = (key: string): string =>
+  CONFIG_FIELD_META[key]?.label ?? key;
+
+/** 根据配置键获取描述提示 */
+const getFieldHint = (key: string): string | undefined =>
+  CONFIG_FIELD_META[key]?.hint;
+
+/** 根据配置键获取 placeholder */
+const getFieldPlaceholder = (key: string): string | undefined =>
+  CONFIG_FIELD_META[key]?.placeholder;
 
 const DEFAULT_RUNTIME_CONFIG: ClawbotRuntimeConfig = {
   G4F_BASE_URL: '',
@@ -123,6 +188,9 @@ export function ControlCenter() {
     [usageSnapshot]
   );
 
+  // 日志容器引用，用于自动滚动到底部
+  const logContainerRef = useRef<HTMLDivElement>(null);
+
   const fetchAll = useCallback(async (silent = false) => {
     if (!isTauri()) {
       setLoading(false);
@@ -188,6 +256,11 @@ export function ControlCenter() {
 
   useEffect(() => {
     fetchAll();
+    // 每 10 秒自动刷新服务矩阵状态
+    const refreshTimer = setInterval(() => {
+      fetchAll(true);
+    }, 10000);
+    return () => clearInterval(refreshTimer);
   }, [fetchAll]);
 
   useEffect(() => {
@@ -203,6 +276,13 @@ export function ControlCenter() {
     }, 3000);
     return () => clearInterval(timer);
   }, [autoRefreshLogs, selectedLogLabel, fetchLogs]);
+
+  // 日志更新时自动滚动到底部
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [serviceLogs]);
 
   const handleAllAction = async (action: ManagedServiceAction) => {
     setAllActionLoading(action);
@@ -483,52 +563,64 @@ export function ControlCenter() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-2">G4F_BASE_URL</label>
+                <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('G4F_BASE_URL')}</label>
+                {getFieldHint('G4F_BASE_URL') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('G4F_BASE_URL')}</p>}
                 <input
                   value={runtimeConfig.G4F_BASE_URL}
                   onChange={(e) => updateConfigValue('G4F_BASE_URL', e.target.value)}
                   className="input-base"
+                  placeholder={getFieldPlaceholder('G4F_BASE_URL')}
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">KIRO_BASE_URL</label>
+                <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('KIRO_BASE_URL')}</label>
+                {getFieldHint('KIRO_BASE_URL') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('KIRO_BASE_URL')}</p>}
                 <input
                   value={runtimeConfig.KIRO_BASE_URL}
                   onChange={(e) => updateConfigValue('KIRO_BASE_URL', e.target.value)}
                   className="input-base"
+                  placeholder={getFieldPlaceholder('KIRO_BASE_URL')}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_HOST</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_HOST')}</label>
+                  {getFieldHint('IBKR_HOST') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_HOST')}</p>}
                   <input
                     value={runtimeConfig.IBKR_HOST}
                     onChange={(e) => updateConfigValue('IBKR_HOST', e.target.value)}
                     className="input-base"
+                    placeholder={getFieldPlaceholder('IBKR_HOST')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_PORT</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_PORT')}</label>
+                  {getFieldHint('IBKR_PORT') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_PORT')}</p>}
                   <input
                     value={runtimeConfig.IBKR_PORT}
                     onChange={(e) => updateConfigValue('IBKR_PORT', e.target.value)}
                     className="input-base"
+                    placeholder={getFieldPlaceholder('IBKR_PORT')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_ACCOUNT</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_ACCOUNT')}</label>
+                  {getFieldHint('IBKR_ACCOUNT') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_ACCOUNT')}</p>}
                   <input
                     value={runtimeConfig.IBKR_ACCOUNT}
                     onChange={(e) => updateConfigValue('IBKR_ACCOUNT', e.target.value)}
                     className="input-base"
+                    placeholder={getFieldPlaceholder('IBKR_ACCOUNT')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_BUDGET</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_BUDGET')}</label>
+                  {getFieldHint('IBKR_BUDGET') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_BUDGET')}</p>}
                   <input
                     value={runtimeConfig.IBKR_BUDGET}
                     onChange={(e) => updateConfigValue('IBKR_BUDGET', e.target.value)}
                     className="input-base"
+                    placeholder={getFieldPlaceholder('IBKR_BUDGET')}
                   />
                 </div>
               </div>
@@ -543,30 +635,34 @@ export function ControlCenter() {
                   全部启动/重启时自动拉起 IBKR
                 </label>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_START_CMD</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_START_CMD')}</label>
+                  {getFieldHint('IBKR_START_CMD') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_START_CMD')}</p>}
                   <input
                     value={runtimeConfig.IBKR_START_CMD}
                     onChange={(e) => updateConfigValue('IBKR_START_CMD', e.target.value)}
                     className="input-base"
-                    placeholder='默认: open -a "IB Gateway"'
+                    placeholder={getFieldPlaceholder('IBKR_START_CMD')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">IBKR_STOP_CMD</label>
+                  <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('IBKR_STOP_CMD')}</label>
+                  {getFieldHint('IBKR_STOP_CMD') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('IBKR_STOP_CMD')}</p>}
                   <input
                     value={runtimeConfig.IBKR_STOP_CMD}
                     onChange={(e) => updateConfigValue('IBKR_STOP_CMD', e.target.value)}
                     className="input-base"
-                    placeholder='默认: pkill -f "IB Gateway" || pkill -f "Trader Workstation" || true'
+                    placeholder={getFieldPlaceholder('IBKR_STOP_CMD')}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">NOTIFY_CHAT_ID</label>
+                <label className="block text-sm text-gray-300 mb-1">{getFieldLabel('NOTIFY_CHAT_ID')}</label>
+                {getFieldHint('NOTIFY_CHAT_ID') && <p className="text-xs text-gray-500 mb-2">{getFieldHint('NOTIFY_CHAT_ID')}</p>}
                 <input
                   value={runtimeConfig.NOTIFY_CHAT_ID}
                   onChange={(e) => updateConfigValue('NOTIFY_CHAT_ID', e.target.value)}
                   className="input-base"
+                  placeholder={getFieldPlaceholder('NOTIFY_CHAT_ID')}
                 />
               </div>
 
@@ -722,7 +818,7 @@ export function ControlCenter() {
             </div>
           </div>
 
-          <div className="h-72 overflow-y-auto rounded-xl bg-dark-800 border border-dark-600 p-3 font-mono text-xs">
+          <div ref={logContainerRef} className="h-72 overflow-y-auto rounded-xl bg-dark-800 border border-dark-600 p-3 font-mono text-xs">
             {logsLoading && serviceLogs.length === 0 ? (
               <div className="h-full flex items-center justify-center text-gray-500">
                 <Loader2 className="w-5 h-5 animate-spin" />

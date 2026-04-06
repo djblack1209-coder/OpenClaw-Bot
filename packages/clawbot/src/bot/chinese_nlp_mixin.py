@@ -382,6 +382,14 @@ def _match_chinese_command(text=None):
     m_bill_query = re.search(r'查(话费|电费|水费|燃气费|煤气费|宽带|网费)', cleaned)
     if m_bill_query:
         return ('bill_query', m_bill_query.group(1))
+    # 9.5 优惠查询: "话费怎么充最划算" / "电费优惠" / "充话费省钱"
+    m_bill_tips = re.search(r'(话费|电费|水费|燃气费|煤气费|宽带|网费)(?:怎么充|优惠|省钱|最划算|便宜|怎么交|充值渠道|缴费渠道)', cleaned)
+    if m_bill_tips:
+        return ('bill_tips', m_bill_tips.group(1))
+    # 9.6 消耗预测: "话费还能用多久" / "电费什么时候用完"
+    m_bill_pred = re.search(r'(话费|电费|水费|燃气费|煤气费|宽带|网费)(?:还能用多久|什么时候用完|能用多少天|能撑多久)', cleaned)
+    if m_bill_pred:
+        return ('bill_predict', m_bill_pred.group(1))
     # ── 盈透订单/账户 (放在基础命令之前，避免被"状态"误匹配) ──
     if re.search('我的订单|盈透订单|订单状态', cleaned):
         return ('iorders', '')
@@ -406,6 +414,10 @@ def _match_chinese_command(text=None):
         return ('compact', '')
     if re.search(_PRE + r'(?:新闻|科技早报|早报|今日新闻|最新消息|今天新闻)' + _SUF, cleaned):
         return ('news', '')
+    if re.search(_PRE + r'(?:情报|世界新闻|全球新闻|全球情报|行业新闻|地缘政治|军事动态|网络安全新闻|情报速递|每日情报)' + _SUF, cleaned):
+        return ('intel', '')
+    if re.search(_PRE + r'(?:领券|笔笔省|领优惠券|提现券|领提现券|每日领券)' + _SUF, cleaned):
+        return ('coupon', '')
     if re.search(_PRE + r'(?:指标|运行指标|监控指标|运行数据)' + _SUF, cleaned):
         return ('metrics', '')
     if re.search(_PRE + r'(?:分流|分流规则|路由规则|话题分流|多bot分流|多机器人分流)' + _SUF, cleaned):
@@ -717,6 +729,8 @@ class ChineseNLPMixin:
             "context": self.cmd_context,
             "compact": self.cmd_compact,
             "news": self.cmd_news,
+            "intel": self.cmd_intel,
+            "coupon": self.cmd_coupon,
             "metrics": self.cmd_metrics,
             "lanes": self.cmd_lane,
             "memory": self.cmd_memory,
@@ -765,6 +779,8 @@ class ChineseNLPMixin:
             "pricewatch_list": self.cmd_pricewatch,
             # ── 账单追踪 ──
             "bill_list": self.cmd_bill,
+            "bill_tips": self.cmd_bill,
+            "bill_predict": self.cmd_bill,
             # ── 社媒 ──
             "social_plan": self.cmd_social_plan,
             "social_repost": self.cmd_social_repost,
@@ -1048,6 +1064,21 @@ class ChineseNLPMixin:
                         f"📋 还没有追踪{emoji} {label}\n\n"
                         f"说「帮我盯着{label}」添加追踪"
                     )
+                return
+            elif action_type == "bill_tips":
+                # NLP: "话费怎么充最划算" → 调用 /bill tips 子命令
+                from src.execution.life_automation import resolve_bill_type
+                acct_type = resolve_bill_type(action_arg) if action_arg else ""
+                if acct_type:
+                    context.args = ["tips", action_arg]
+                else:
+                    context.args = ["tips"]
+                await self.cmd_bill(update, context)
+                return
+            elif action_type == "bill_predict":
+                # NLP: "话费还能用多久" → 调用 /bill predict 子命令
+                context.args = ["predict"]
+                await self.cmd_bill(update, context)
                 return
             elif action_type == "ops_email":
                 context.args = ["email"]

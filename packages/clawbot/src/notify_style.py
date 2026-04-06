@@ -20,6 +20,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 全局统一分隔线常量（19 个全角粗划线 U+2501）
+SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
+
 # ── humanize (2.9k⭐) — 自然语言格式化 ──────────────────────
 _HAS_HUMANIZE = False
 try:
@@ -61,15 +64,16 @@ def kv(label: str, value: object, max_len: int = 120) -> str:
 def divider(style: str = "thin") -> str:
     if style == "double":
         return "═══════════════════"
-    return "───────────────────"
+    return SEPARATOR
 
 
 def timestamp_tag() -> str:
     try:
         from src.utils import now_et
         return now_et().strftime("%H:%M ET")
-    except Exception as e:  # noqa: F841
-        return now_et().strftime("%H:%M")
+    except Exception:
+        from datetime import datetime
+        return datetime.now().strftime("%H:%M")
 
 
 def natural_time(dt=None, future: bool = False) -> str:

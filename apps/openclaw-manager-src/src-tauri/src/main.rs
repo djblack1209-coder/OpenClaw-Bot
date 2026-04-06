@@ -92,6 +92,7 @@ fn main() {
             mcp::get_mcp_plugins,
             mcp::save_mcp_plugin,
             mcp::toggle_mcp_plugin_status,
+            mcp::remove_mcp_plugin,
             // ClawBot Internal API (FastAPI :18790)
             clawbot_api::clawbot_api_ping,
             clawbot_api::clawbot_api_status,

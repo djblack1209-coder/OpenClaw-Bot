@@ -283,21 +283,34 @@ fn find_pid_by_port(port: u16) -> Option<u32> {
 }
 
 /// 通过启动脚本直接启动服务（macOS 后台任务管理屏蔽 launchd 时的 fallback）
+///
+/// macOS 26+ 的 com.apple.provenance 安全策略会阻止 launchd/Tauri 进程
+/// 执行带有 provenance 属性的脚本文件（退出码 126: Operation not permitted）。
+///
+/// 解决方案：读取脚本内容 → 通过 stdin 管道传给 bash，绕过文件执行权限检查。
 fn start_service_via_script(definition: &ManagedServiceDefinition) -> Result<String, String> {
     let script = definition.launcher_script.as_ref()
         .ok_or_else(|| format!("{} 未配置启动脚本，无法通过进程方式启动", definition.name))?;
 
-    // 构建 nohup 命令，将输出重定向到日志文件
+    // 读取脚本文件内容（读取不受 provenance 限制，只有执行才被拦截）
+    let script_content = std::fs::read_to_string(script)
+        .map_err(|e| format!("读取启动脚本失败 {}: {}", script, e))?;
+
+    // 将 exec 替换掉：exec 在 stdin 管道模式下行为不同，直接执行即可
+    let adjusted_content = script_content.replace("exec ", "");
+
     let stdout_log = definition.stdout_log.as_deref().unwrap_or("/dev/null");
     let stderr_log = definition.stderr_log.as_deref().unwrap_or("/dev/null");
 
-    let shell_cmd = format!(
-        "nohup bash \"{}\" > \"{}\" 2> \"{}\" &",
-        script, stdout_log, stderr_log
+    // 构造外层命令：nohup bash 从 stdin 读取脚本内容并后台执行
+    // 使用 heredoc 方式避免任何 shell 转义问题
+    let wrapper = format!(
+        "nohup bash <<'__OPENCLAW_SCRIPT_EOF__' > \"{}\" 2> \"{}\" &\n{}\n__OPENCLAW_SCRIPT_EOF__",
+        stdout_log, stderr_log, adjusted_content
     );
 
     let output = Command::new("bash")
-        .args(["-c", &shell_cmd])
+        .args(["-c", &wrapper])
         .output()
         .map_err(|e| format!("执行启动脚本失败: {}", e))?;
 
