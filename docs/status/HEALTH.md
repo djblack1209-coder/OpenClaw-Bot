@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-03 (第六轮深层审计: 并发竞态+加密安全+路径遍历+SQLite数据层+序列化安全 — 21文件21项修复 | 1123/1123 passed)
+> 最后更新: 2026-04-06 (修复服务矩阵 Gateway/g4f/Kiro 启动失败 + 领券 token 有效期测试)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -122,6 +122,9 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-468 | `xianyu` | `xianyu_live.py` | `cookie_health_loop` 的 `_cookie_ok` 标志逻辑缺陷 — 首次自动登录失败后 `_cookie_ok=False` 永远阻止重新触发登录 | 去掉 `and self._cookie_ok` 条件，只要连续失败>=2 且不在冷却期就触发登录; Cookie 失效时检查间隔从 600s 缩短到 60s; 增加空 Cookie 直接检测 | 2026-04-07 | 闲鱼自动登录修复 |
+| HI-469 | `xianyu` | `xianyu_live.py` | `cookie_health_loop` 在 WS 连接内部启动 — WS 连不上时 Cookie 检查永远无法运行 | 提升为独立任务在 `run()` 开头启动，不再随 WS 断开取消 | 2026-04-07 | 闲鱼自动登录修复 |
+| HI-470 | `xianyu` | `xianyu_main.py` | Cookie 为空时 `sys.exit(1)` 退出 — 进程无法自愈 | 改为弹出浏览器登录窗口，失败也不退出，进入后台重试循环 | 2026-04-07 | 闲鱼自动登录修复 |
 | HI-435 | `security` | `cost_analyzer.py` | CRITICAL: `with sqlite3.connect() as conn:` 不关闭连接 — 每次API调用泄漏一个SQLite连接 | 6个方法全部改为显式 `try/finally + conn.close()` | 2026-04-03 | 第六轮深层审计 |
 | HI-436 | `security` | `license_manager.py` | CRITICAL: 密码存储使用裸SHA-256无盐 — 彩虹表秒破 | 升级为 PBKDF2+随机盐(10万次迭代); 旧格式自动检测并透明升级 | 2026-04-03 | 第六轮深层审计 |
 | HI-437 | `backend` | `structured_llm.py` | CRITICAL: `_instructor_client_cache` 缓存无锁 — 并发创建重复instructor客户端 | 增加 `threading.Lock` 双重检查锁保护 | 2026-04-03 | 第六轮深层审计 |
@@ -153,7 +156,7 @@
 | HI-389-b | `backend` | `xianyu_apis.py` | 闲鱼 API 同步 requests 阻塞事件循环 | 迁移到 httpx.AsyncClient | 2026-04-01 | 闲鱼审计 |
 | HI-392 | `backend` | 多文件(5个) | 疑似未使用 pip 依赖 | 验证全部在用(延迟导入+graceful degradation) | 2026-04-01 | 闲鱼审计 |
 | HI-395 | `frontend` | `service.rs/installer.rs` | 7处 std::thread::sleep 阻塞 tokio 工作线程 | 替换为 tokio::time::sleep | 2026-04-01 | 闲鱼审计 |
-| HI-396 | `infra` | `launchagents` | macOS BTM 屏蔽 LaunchAgent | Tauri APP bash launcher 降级路径 | 2026-04-01 | 闲鱼审计 |
+| HI-396 | `infra` | `launchagents` | macOS BTM 屏蔽 LaunchAgent | Tauri APP bash launcher 降级路径; **macOS 26.4 复发**: `com.apple.provenance` 属性导致退出码 126/78, 改用 heredoc stdin 管道绕过 | 2026-04-01 | 闲鱼审计 → 2026-04-06 二次修复 |
 | HI-408 | `backend` | `multi_main.py` | Bot 心跳发送依赖 `updater.running` 条件 — 网络波动时所有 Bot 同时丢失心跳触发告警风暴 | 移除 `updater.running` 条件，改为只要 `bot.app` 存在即发心跳；告警消息增加每个 Bot 的距上次心跳秒数和连续错误数 | 2026-04-01 | 心跳机制修复 |
 | HI-409 | `xianyu` | `xianyu_live.py` + `xianyu_login.py` | Cookie 彻底过期后无法自救 — 需手动更新 Cookie | Playwright 浏览器自动登录工具: Cookie 过期时自动弹出浏览器→用户扫码→Cookie 自动提取写入 .env→热更新闲鱼进程。带 30 分钟冷却防重复弹出 | 2026-04-01 | 闲鱼自动登录 |
 | HI-398 | `xianyu` | `xianyu_live.py` | 心跳超时不触发重连 — heartbeat_loop 超时后只 break 自身循环，不关闭 WS，导致连接僵死 | 超时后主动 `ws.close()` + 设置 `restart_flag` 强制重连 | 2026-04-01 | 闲鱼全面审计 |

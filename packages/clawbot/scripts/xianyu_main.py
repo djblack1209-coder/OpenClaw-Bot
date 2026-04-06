@@ -44,13 +44,55 @@ def _load_env():
         load_dotenv(".env", override=True)
 
 
+def _try_browser_login() -> str:
+    """Cookie 为空时弹出浏览器登录，返回获取到的 Cookie 字符串（失败返回空字符串）"""
+    script_path = os.path.join(ROOT, "scripts", "xianyu_login.py")
+    if not os.path.exists(script_path):
+        logger.error("登录脚本不存在: %s", script_path)
+        return ""
+
+    logger.info("Cookie 为空，自动弹出浏览器登录页面...")
+    logger.info("请用闲鱼/淘宝 APP 扫码登录")
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True, text=True, timeout=660,
+            cwd=ROOT,
+        )
+        if result.returncode == 0:
+            # 登录脚本已写入 .env，重新读取
+            _load_env()
+            new_cookies = os.getenv("XIANYU_COOKIES", "")
+            if new_cookies:
+                logger.info("浏览器登录成功，Cookie 已获取")
+                return new_cookies
+            logger.warning("登录脚本执行成功但 Cookie 未写入 .env")
+        else:
+            logger.warning("浏览器登录未完成 (退出码: %d)", result.returncode)
+            if result.stderr:
+                logger.debug("登录脚本 stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("浏览器登录超时（11 分钟内未完成扫码）")
+    except Exception as e:
+        logger.error("启动登录浏览器失败: %s", e)
+
+    return ""
+
+
 def main():
     _load_env()
 
     cookies = os.getenv("XIANYU_COOKIES", "")
     if not cookies:
-        logger.error("请设置 XIANYU_COOKIES 环境变量（闲鱼网页端 Cookie）")
-        sys.exit(1)
+        # 没有 Cookie → 直接弹出浏览器让用户扫码登录
+        logger.warning("XIANYU_COOKIES 为空，尝试自动弹出浏览器登录...")
+        cookies = _try_browser_login()
+        if not cookies:
+            # 登录失败也不退出，带空 Cookie 启动（cookie_health_loop 会继续尝试弹出登录）
+            logger.warning("首次登录未完成，将在后台继续尝试弹出登录窗口...")
+            cookies = "placeholder=1"  # 占位值，让进程启动，cookie_health_loop 会检测并重新弹窗
 
     api_key = os.getenv("XIANYU_LLM_API_KEY", os.getenv("API_KEY", ""))
     if not api_key:

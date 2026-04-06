@@ -405,3 +405,93 @@ class TestCircuitOpenError:
         err = CircuitOpenError("breaker open")
         assert isinstance(err, Exception)
         assert str(err) == "breaker open"
+
+
+# ============ SSRF 集成测试 (ResilientHTTPClient.request + ssrf_check) ============
+
+
+class TestResilientHTTPClientSsrfCheck:
+    """验证 ResilientHTTPClient.request() 的 ssrf_check 参数。"""
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_disabled_by_default(self):
+        """默认不做 SSRF 检查，内部 API 调用不受影响"""
+        client = ResilientHTTPClient(name="test-no-ssrf")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_httpx_client = AsyncMock()
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
+        mock_httpx_client.aclose = AsyncMock()
+
+        # 即使目标是 localhost，默认不检查也能正常请求
+        with patch.object(client, "_new_client", return_value=mock_httpx_client):
+            resp = await client.request("GET", "http://localhost:8080/api")
+
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_blocks_internal_url(self):
+        """启用 SSRF 检查时，内网 URL 被拦截"""
+        from src.core.security import SSRFError
+
+        client = ResilientHTTPClient(name="test-ssrf-block")
+
+        with pytest.raises(SSRFError, match="SSRF 安全检查未通过"):
+            await client.request(
+                "GET", "http://169.254.169.254/latest/meta-data/",
+                ssrf_check=True,
+            )
+
+        # 不应记录到指标中（请求根本没发出去）
+        assert client.metrics.total_requests == 0
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_allows_public_url(self):
+        """启用 SSRF 检查时，公网 URL 正常放行"""
+        client = ResilientHTTPClient(name="test-ssrf-allow")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_httpx_client = AsyncMock()
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
+        mock_httpx_client.aclose = AsyncMock()
+
+        with patch.object(client, "_new_client", return_value=mock_httpx_client), \
+             patch("src.core.security.socket.getaddrinfo", return_value=[
+                 (2, 1, 6, "", ("93.184.216.34", 0)),
+             ]):
+            resp = await client.request(
+                "GET", "http://example.com",
+                ssrf_check=True,
+            )
+
+        assert resp.status_code == 200
+        assert client.metrics.successful_requests == 1
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_via_get_convenience(self):
+        """便捷方法 get() 也支持传递 ssrf_check 参数"""
+        from src.core.security import SSRFError
+
+        client = ResilientHTTPClient(name="test-ssrf-get")
+
+        with pytest.raises(SSRFError):
+            await client.get(
+                "http://127.0.0.1/admin",
+                ssrf_check=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_via_post_convenience(self):
+        """便捷方法 post() 也支持传递 ssrf_check 参数"""
+        from src.core.security import SSRFError
+
+        client = ResilientHTTPClient(name="test-ssrf-post")
+
+        with pytest.raises(SSRFError):
+            await client.post(
+                "http://localhost/api",
+                json={"data": "test"},
+                ssrf_check=True,
+            )

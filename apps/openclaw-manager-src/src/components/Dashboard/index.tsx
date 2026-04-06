@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 import { StatusCard } from './StatusCard';
 import { QuickActions } from './QuickActions';
 import { SystemInfo } from './SystemInfo';
+import { BusinessSummary } from './BusinessSummary';
 import { Setup } from '../Setup';
-import { api, ServiceStatus, isTauri } from '../../lib/tauri';
+import { api, isTauri } from '../../lib/tauri';
+import { useAppStore } from '@/stores/appStore';
 import { dashboardLogger } from '../../lib/logger';
 import { Terminal, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
@@ -20,7 +22,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
-  const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const serviceStatus = useAppStore((s) => s.serviceStatus);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -28,28 +30,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
-  const statusFailedRef = useRef(false);
   const logsFailedRef = useRef(false);
-
-  const fetchStatus = useCallback(async () => {
-    if (!isTauri()) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const result = await api.getServiceStatus();
-      setStatus(result);
-      statusFailedRef.current = false;
-    } catch (e) {
-      dashboardLogger.warn('获取状态失败', e);
-      if (!statusFailedRef.current) {
-        statusFailedRef.current = true;
-        toast.warning('服务连接异常，状态刷新暂停');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const fetchLogs = useCallback(async () => {
     if (!isTauri()) return;
@@ -67,18 +48,17 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   }, []);
 
   useEffect(() => {
-    fetchStatus();
+    // 状态由 App.tsx 统一轮询并写入 store，不再本地轮询
+    setLoading(false);
     fetchLogs();
     if (!isTauri()) return;
     
-    const statusInterval = setInterval(fetchStatus, 3000);
     const logsInterval = autoRefreshLogs ? setInterval(fetchLogs, 2000) : null;
     
     return () => {
-      clearInterval(statusInterval);
       if (logsInterval) clearInterval(logsInterval);
     };
-  }, [autoRefreshLogs, fetchStatus, fetchLogs]);
+  }, [autoRefreshLogs, fetchLogs]);
 
   // 自动滚动到日志底部（仅在日志容器内部滚动，不影响页面）
   useEffect(() => {
@@ -92,7 +72,6 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     setActionLoading(true);
     try {
       await api.startService();
-      await fetchStatus();
       await fetchLogs();
     } catch (e) {
       dashboardLogger.error('启动失败:', e);
@@ -107,7 +86,6 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     setActionLoading(true);
     try {
       await api.stopService();
-      await fetchStatus();
       await fetchLogs();
     } catch (e) {
       dashboardLogger.error('停止失败:', e);
@@ -122,7 +100,6 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     setActionLoading(true);
     try {
       await api.restartService();
-      await fetchStatus();
       await fetchLogs();
     } catch (e) {
       dashboardLogger.error('重启失败:', e);
@@ -178,11 +155,16 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
           </motion.div>
         )}
 
+        {/* 业务指标概览 */}
+        <motion.div variants={itemVariants}>
+          <BusinessSummary />
+        </motion.div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 space-y-6">
             {/* 服务状态卡片 */}
             <motion.div variants={itemVariants}>
-              <StatusCard status={status} loading={loading} />
+              <StatusCard status={serviceStatus} loading={loading} />
             </motion.div>
 
             {/* 实时日志 */}
@@ -265,7 +247,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
             {/* 快捷操作 */}
             <motion.div variants={itemVariants}>
               <QuickActions
-                status={status}
+                status={serviceStatus}
                 loading={actionLoading}
                 onStart={handleStart}
                 onStop={() => setShowStopConfirm(true)}

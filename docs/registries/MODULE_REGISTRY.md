@@ -1,10 +1,82 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-03 | 全量审计: 补录 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal)
+> 最后更新: 2026-04-07 | 新增: newapi.py (New-API 管理代理路由)
 
 ---
 
-## 0. R22-R24 架构重构新增模块
+## 新增模块 (2026-04-07)
+
+### newapi.py — New-API 管理代理路由
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/api/routers/newapi.py` |
+| 行数 | ~115 |
+| 导入方 | `api/routers/__init__.py` → `api/server.py` |
+| 依赖 | `httpx`, `fastapi`, `pydantic` |
+
+**Public API (HTTP 端点):**
+- `GET /api/v1/newapi/status` — 检查 New-API 服务状态
+- `GET /api/v1/newapi/channels` — 获取通道列表
+- `GET /api/v1/newapi/tokens` — 获取令牌列表
+- `POST /api/v1/newapi/channels` — 创建新通道
+
+---
+
+## 新增模块 (2026-04-06)
+
+### wechat_coupon.py — 微信笔笔省自动领券
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/wechat_coupon.py` |
+| 行数 | ~300 |
+| 导入方 | `cmd_intel_mixin.py`, `scheduler.py` |
+| 依赖 | `httpx`, `subprocess`, `asyncio` |
+
+**Public API:**
+- `auto_claim_coupon()` — 自动领券完整流程（设代理→抓token→POST领券→恢复代理）
+
+### mitm_token_addon.py — mitmproxy token 截取 addon
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/scripts/mitm_token_addon.py` |
+| 行数 | ~80 |
+| 导入方 | 由 mitmdump -s 加载 |
+| 依赖 | `mitmproxy` |
+
+### worldmonitor_client.py — Worldmonitor 全球情报 API 客户端
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/tools/worldmonitor_client.py` |
+| 行数 | ~400 |
+| 导入方 | `cmd_intel_mixin.py` |
+| 依赖 | `httpx`, `src.utils`, `src.notify_style` (可选) |
+
+**Public API:**
+- `fetch_category_news(category, max_items)` — 按行业分类获取情报
+- `fetch_region_news(region, max_items)` — 按地区获取情报
+- `fetch_news_by_query(query, max_items)` — 关键词搜索情报
+- `generate_intel_brief()` — 生成综合每日情报简报
+- `format_intel_items(items, max_items)` — 格式化条目为 Telegram HTML
+- `get_category_list()` — 返回可用分类列表
+- `INDUSTRY_CATEGORIES` / `REGION_CATEGORIES` — 分类常量字典
+
+### cmd_intel_mixin.py — 情报速递命令 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/cmd_intel_mixin.py` |
+| 行数 | ~300 |
+| 导入方 | (已注册到 multi_bot.py) |
+| 依赖 | `telegram`, `src.bot.auth`, `src.telegram_ux`, `worldmonitor_client` |
+
+**Public API:**
+- `cmd_intel(update, context)` — `/intel` 命令处理器
+- `handle_intel_callback(update, context)` — Inline 回调按钮处理
+
 
 以下模块在 R22-R24 代码架构重构中提取/新增而来。
 

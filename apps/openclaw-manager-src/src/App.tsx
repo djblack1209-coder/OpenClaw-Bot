@@ -61,11 +61,7 @@ export interface EnvironmentStatus {
   os: string;
 }
 
-interface ServiceStatus {
-  running: boolean;
-  pid: number | null;
-  port: number;
-}
+import type { ServiceStatus } from './lib/tauri';
 
 function App() {
   const currentPage = useAppStore((s) => s.currentPage);

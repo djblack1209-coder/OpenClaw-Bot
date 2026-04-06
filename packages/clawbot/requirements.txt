@@ -33,7 +33,7 @@ instructor[litellm]>=1.7.0
 
 # 闲鱼模块依赖
 websockets~=13.0
-openai>=1.68.2,<2.0.0
+# openai — 由 litellm 自动拉取正确版本，不再显式指定（避免与 litellm>=1.70 的 openai>=2.8.0 要求冲突）
 
 # 交易系统依赖
 yfinance~=1.1.0

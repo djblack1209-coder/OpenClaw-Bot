@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { 
   Trash2, 
   RefreshCw, 
@@ -36,12 +36,21 @@ const MODULE_COLORS: Record<string, string> = {
   Dashboard: 'text-lime-400',
   Testing: 'text-fuchsia-400',
   API: 'text-amber-400',
+  Evolution: 'text-purple-400',
+  Memory: 'text-cyan-400',
+  Plugins: 'text-amber-400',
+  Settings: 'text-gray-300',
+  Social: 'text-pink-400',
+  Money: 'text-emerald-400',
+  Flow: 'text-sky-400',
+  Channels: 'text-lime-400',
 };
 
 export function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<FilterLevel>('all');
   const [moduleFilter, setModuleFilter] = useState<string>('all');
+  const [searchText, setSearchText] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +75,7 @@ export function Logs() {
   const filteredLogs = logs.filter(log => {
     if (filter !== 'all' && log.level !== filter) return false;
     if (moduleFilter !== 'all' && log.module !== moduleFilter) return false;
+    if (searchText && !log.message.toLowerCase().includes(searchText.toLowerCase())) return false;
     return true;
   });
 
@@ -78,7 +88,7 @@ export function Logs() {
   };
 
   // 导出日志
-  const handleExport = () => {
+  const handleExport = async () => {
     const content = filteredLogs.map(log => {
       const time = log.timestamp.toLocaleTimeString('zh-CN', {
         hour12: false,
@@ -90,13 +100,29 @@ export function Logs() {
       return `[${time}] [${log.level.toUpperCase()}] [${log.module}] ${log.message}${args}`;
     }).join('\n');
 
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `openclaw-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      // Tauri 环境: 使用文件对话框
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const filePath = await save({
+        defaultPath: `openclaw-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`,
+        filters: [{ name: 'Log Files', extensions: ['txt', 'log'] }]
+      });
+      if (filePath) {
+        await writeTextFile(filePath, content);
+        toast.success('日志已导出');
+      }
+    } catch {
+      // 降级: 浏览器方式
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openclaw-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('日志已导出');
+    }
   };
 
   // 格式化时间
@@ -157,6 +183,15 @@ export function Logs() {
             <option key={module} value={module}>{module}</option>
           ))}
         </select>
+
+        {/* 文本搜索 */}
+        <input
+          type="text"
+          placeholder="搜索日志内容..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          className="px-3 py-1.5 rounded-lg bg-dark-700 text-white/80 text-sm border border-dark-500 placeholder-white/30 w-48"
+        />
 
         <div className="flex-1" />
 
@@ -225,10 +260,8 @@ export function Logs() {
           ) : (
             <>
               {filteredLogs.map((log) => (
-                <motion.div
+                <div
                   key={log.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
                   className={clsx(
                     'py-1.5 px-2 rounded mb-1',
                     LEVEL_BG[log.level]
@@ -259,7 +292,7 @@ export function Logs() {
                       {formatArgs(log.args)}
                     </div>
                   )}
-                </motion.div>
+                </div>
               ))}
               <div ref={logsEndRef} />
             </>

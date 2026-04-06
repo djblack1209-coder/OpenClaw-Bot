@@ -180,8 +180,9 @@ class AlpacaBridge:
     ) -> Dict:
         if not self.connected:
             logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
-            return {"status": "⚠️ 模拟数据 - simulated", "symbol": symbol, "side": side,
-                    "quantity": quantity, "source": "alpaca_mock"}
+            return {"status": "⚠️ 模拟数据 — Alpaca未连接，以下数据非真实交易",
+                    "symbol": symbol, "side": side,
+                    "quantity": quantity, "source": "mock_fallback", "is_mock": True}
 
         try:
             def _exec():
@@ -289,7 +290,8 @@ class AlpacaBridge:
     async def cancel_order(self, order_id: str) -> Dict:
         """取消订单"""
         if not self.connected:
-            return {"status": "simulated", "order_id": order_id}
+            return {"status": "simulated", "order_id": order_id,
+                    "source": "mock_fallback", "is_mock": True}
         try:
             def _cancel():
                 self._client.cancel_order_by_id(order_id)  # type: ignore[union-attr]
@@ -301,7 +303,8 @@ class AlpacaBridge:
     async def cancel_all_orders(self) -> Dict:
         """取消所有订单"""
         if not self.connected:
-            return {"status": "simulated", "cancelled": 0}
+            return {"status": "simulated", "cancelled": 0,
+                    "source": "mock_fallback", "is_mock": True}
         try:
             def _cancel_all():
                 self._client.cancel_orders()  # type: ignore[union-attr]
@@ -321,8 +324,9 @@ class AlpacaBridge:
             "portfolio_value": 0.0,
             "day_pnl": 0.0,
             "day_pnl_pct": 0.0,
-            "status": "⚠️ 模拟数据 - simulated",
-            "source": "alpaca_mock",
+            "status": "⚠️ 模拟数据 — Alpaca未连接，以下数据非真实账户",
+            "source": "mock_fallback",
+            "is_mock": True,
         }
 
     # ── trading_system 兼容方法 ─────────────────────────────

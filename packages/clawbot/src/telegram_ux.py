@@ -413,10 +413,19 @@ def format_trade_card(trade: dict) -> str:
     reason = trade.get("reason", "")[:80]
     confidence = trade.get("confidence", 0)
 
+    # 置信度标准化：统一到 0-10 显示
+    if confidence <= 1.0:
+        confidence_display = confidence * 10
+    else:
+        confidence_display = confidence
+
+    # 入场价格：0 时显示"待定"
+    entry_str = f"${entry:.2f}" if entry > 0 else "待定"
+
     lines = [
         f"{emoji} <b>{side_label} {symbol}</b> x{qty}",
-        "━━━━━━━━━━━━━━━",
-        f"📈 价格: ${entry:.2f}",
+        "━━━━━━━━━━━━━━━━━━━",
+        f"📈 价格: {entry_str}",
     ]
 
     # 自动交易信号: 显示目标/止损/R:R
@@ -424,7 +433,7 @@ def format_trade_card(trade: dict) -> str:
         rr = abs(target - entry) / abs(entry - stop) if abs(entry - stop) > 0.01 else 0
         lines.append(f"🎯 目标: ${target:.2f} ({(target/entry - 1)*100:+.1f}%)")
         lines.append(f"🛑 止损: ${stop:.2f} ({(stop/entry - 1)*100:+.1f}%)")
-        lines.append(f"📊 R:R = {rr:.1f} | 信心: {confidence:.0f}/10")
+        lines.append(f"📊 R:R = {rr:.1f} | 信心: {confidence_display:.0f}/10")
 
     # 手动交易结果: 显示总额/盈亏/余额
     total = trade.get("total", 0)
@@ -438,7 +447,7 @@ def format_trade_card(trade: dict) -> str:
     if remaining is not None:
         lines.append(f"💰 余额: ${remaining:,.2f}")
 
-    lines.append("━━━━━━━━━━━━━━━")
+    lines.append("━━━━━━━━━━━━━━━━━━━")
     if reason:
         lines.append(f"💡 {reason}")
 
@@ -462,7 +471,7 @@ def format_portfolio_card(positions: list, cash: float = 0) -> str:
 
         emoji = "🟢" if pnl_pct >= 0 else "🔴"
         pct_of_total = (mkt_val / total_value * 100) if total_value > 0 else 0
-        bar_len = max(1, int(pct_of_total / 10))
+        bar_len = int(pct_of_total / 10)  # 0% 显示全空，100% 显示全满
         bar = "█" * bar_len + "░" * (10 - bar_len)
 
         lines.append(

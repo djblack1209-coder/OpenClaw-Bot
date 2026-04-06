@@ -917,7 +917,8 @@ pub async fn uninstall_openclaw() -> Result<InstallResult, String> {
     // 先停止服务
     info!("[卸载OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // 异步等待服务停止完成，避免阻塞 tokio 线程池
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     let result = match os.as_str() {
         "windows" => {
@@ -949,7 +950,8 @@ async fn uninstall_openclaw_windows() -> Result<InstallResult, String> {
             info!("[卸载OpenClaw] npm 输出: {}", output);
             
             // 验证卸载是否成功
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            // 异步等待卸载完成后再验证，避免阻塞 tokio 线程池
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             if get_openclaw_version().is_none() {
                 Ok(InstallResult {
                     success: true,
@@ -1131,7 +1133,8 @@ pub async fn update_openclaw() -> Result<InstallResult, String> {
     // 先停止服务
     info!("[更新OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // 异步等待服务停止完成，避免阻塞 tokio 线程池
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     let result = match os.as_str() {
         "windows" => {

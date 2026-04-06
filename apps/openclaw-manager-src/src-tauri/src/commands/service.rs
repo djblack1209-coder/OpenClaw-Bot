@@ -2,6 +2,7 @@ use crate::models::ServiceStatus;
 use crate::utils::shell;
 use tauri::command;
 use std::process::Command;
+use std::time::Duration;
 use log::{info, debug};
 
 #[cfg(windows)]
@@ -102,7 +103,8 @@ pub async fn start_service() -> Result<String, String> {
     // 轮询等待端口开始监听（最多 15 秒）
     info!("[服务] 等待端口 {} 开始监听...", SERVICE_PORT);
     for i in 1..=15 {
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // 异步等待，避免阻塞 tokio 线程池
+        tokio::time::sleep(Duration::from_secs(1)).await;
         if let Some(pid) = check_port_listening(SERVICE_PORT) {
             info!("[服务] ✓ 启动成功 ({}秒), PID: {}", i, pid);
             return Ok(format!("服务已启动，PID: {}", pid));
@@ -201,7 +203,8 @@ pub async fn stop_service() -> Result<String, String> {
     for &pid in &pids {
         kill_process(pid, false);
     }
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // 异步等待 SIGTERM 生效，避免阻塞 tokio 线程池
+    tokio::time::sleep(Duration::from_secs(2)).await;
     
     // 检查是否已停止
     let remaining = get_pids_on_port(SERVICE_PORT);
@@ -215,7 +218,8 @@ pub async fn stop_service() -> Result<String, String> {
     for &pid in &remaining {
         kill_process(pid, true);
     }
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    // 异步等待 SIGKILL 生效，避免阻塞 tokio 线程池
+    tokio::time::sleep(Duration::from_secs(1)).await;
     
     let still_running = get_pids_on_port(SERVICE_PORT);
     if still_running.is_empty() {
@@ -233,7 +237,8 @@ pub async fn restart_service() -> Result<String, String> {
     
     // 先停止
     let _ = stop_service().await;
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    // 异步等待服务完全停止后再启动，避免阻塞 tokio 线程池
+    tokio::time::sleep(Duration::from_secs(1)).await;
     
     // 再启动
     start_service().await

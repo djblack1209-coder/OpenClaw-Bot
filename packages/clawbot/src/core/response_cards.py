@@ -40,7 +40,7 @@ class ResponseCard:
         parts = []
         if self.title:
             parts.append(f"<b>{self.title}</b>")
-            parts.append("━━━━━━━━━━━━━━━")
+            parts.append("━━━━━━━━━━━━━━━━━━━")
         if self.body:
             parts.append(self.body)
         if self.footer:
@@ -87,12 +87,31 @@ class InvestmentAnalysisCard(ResponseCard):
         rec_emoji = {"buy": "🟢 买入", "sell": "🔴 卖出", "hold": "⚪ 观望"}
         rec_text = rec_emoji.get(self.recommendation, f"⚪ {self.recommendation.upper()}")
 
+        # 一句话大白话结论 — 让非专业用户秒懂
+        def _plain_summary() -> str:
+            """根据分析数据生成一句话人话总结"""
+            sym = self.symbol
+            if self.veto:
+                return f"❌ {sym} 目前风险太大，不建议操作。原因：{self.veto_reason[:50]}"
+            if self.recommendation == "buy":
+                gain = ""
+                if self.target_price > 0 and self.current_price > 0:
+                    pct = (self.target_price / self.current_price - 1) * 100
+                    gain = f"，预计能涨 {pct:.0f}%"
+                return f"✅ {sym} 现在可以买{gain}，置信度 {self.confidence:.0%}"
+            elif self.recommendation == "sell":
+                return f"⚠️ {sym} 建议卖出或减仓，置信度 {self.confidence:.0%}"
+            else:
+                return f"⏸ {sym} 目前没有明确方向，建议先观望"
+
         # 星级评分
         def stars(score): return "⭐" * max(1, int(score / 2)) + f" {score:.1f}"
 
         lines = [
             f"📊 <b>投资分析: {self.symbol}</b>",
-            "━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━",
+            "",
+            f"💬 <b>{_plain_summary()}</b>",
             "",
             f"📈 研究员: {stars(self.research_score)}",
             f"   {self.research_summary[:60]}" if self.research_summary else "",
@@ -113,7 +132,7 @@ class InvestmentAnalysisCard(ResponseCard):
 
         lines.extend([
             "",
-            "━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━",
             f"💡 <b>建议: {rec_text}</b>",
             f"🎯 置信度: {self.confidence:.0%}",
         ])
@@ -127,7 +146,7 @@ class InvestmentAnalysisCard(ResponseCard):
         if self.position_size_pct > 0:
             lines.append(f"📊 建议仓位: {self.position_size_pct:.1%}")
 
-        return "\n".join(l for l in lines if l is not None)
+        return "\n".join(l for l in lines if l)
 
     def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
         tid = self.task_id or "0"
@@ -173,7 +192,7 @@ class BacktestCard(ResponseCard):
 
         return (
             f"📈 <b>回测: {self.symbol} ({self.strategy})</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"📅 区间: {self.period}\n"
             f"\n"
             f"{ret_emoji} 总收益: <b>{self.total_return:.2%}</b>\n"
@@ -181,7 +200,7 @@ class BacktestCard(ResponseCard):
             f"{sharpe_emoji} 夏普: {self.sharpe_ratio:.2f}\n"
             f"📉 最大回撤: {self.max_drawdown:.2%}\n"
             f"🎯 胜率: {self.win_rate:.2%} ({self.num_trades}笔)\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"{'✅ 策略可用' if self.sharpe_ratio > 1.0 and self.max_drawdown > -0.20 else '⚠️ 需谨慎'}"
         )
 
@@ -250,11 +269,12 @@ class SystemStatusCard(ResponseCard):
 
     def to_telegram(self) -> str:
         cost_pct = self.daily_cost / self.daily_budget * 100 if self.daily_budget > 0 else 0
-        cost_bar = "█" * max(1, int(cost_pct / 10)) + "░" * (10 - max(1, int(cost_pct / 10)))
+        filled = int(cost_pct / 10)  # 0% 显示全空，100% 显示全满
+        cost_bar = "█" * filled + "░" * (10 - filled)
 
         return (
             f"🦞 <b>OpenClaw OMEGA 状态</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"\n"
             f"🤖 Bot: {self.bots_alive}/{self.bots_total} 在线\n"
             f"🧠 Brain: {self.brain_active_tasks} 个活跃任务\n"
@@ -438,7 +458,7 @@ class ShoppingCard(ResponseCard):
     tips: str = ""
 
     def to_telegram(self) -> str:
-        lines = [f"🛒 <b>比价: {self.product}</b>", "━━━━━━━━━━━━━━━"]
+        lines = [f"🛒 <b>比价: {self.product}</b>", "━━━━━━━━━━━━━━━━━━━"]
 
         for i, p in enumerate(self.products[:8], 1):
             name = p.get("name", "")[:40]

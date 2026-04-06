@@ -32,6 +32,20 @@ interface SettingsProps {
 }
 
 export function Settings({ onEnvironmentChange }: SettingsProps) {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('openclaw-theme');
+    return (saved === 'light' ? 'light' : 'dark');
+  });
+
+  // 初始化主题：页面加载时根据 localStorage 设置 DOM class
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+  }, [theme]);
+
   const [identity, setIdentity] = useState({
     botName: 'OpenClaw',
     userName: '严总',
@@ -280,6 +294,32 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           </div>
         </div>
 
+        {/* 外观设置 */}
+        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">外观</h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-white/80">主题模式</p>
+              <p className="text-xs text-white/40 mt-0.5">切换深色/浅色主题</p>
+            </div>
+            <button
+              onClick={() => {
+                const next = theme === 'dark' ? 'light' : 'dark';
+                setTheme(next);
+                localStorage.setItem('openclaw-theme', next);
+                if (next === 'light') {
+                  document.documentElement.classList.add('light');
+                } else {
+                  document.documentElement.classList.remove('light');
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600"
+            >
+              {theme === 'dark' ? '🌙 深色' : '☀️ 浅色'}
+            </button>
+          </div>
+        </div>
+
         {/* 安全设置 */}
         <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
           <div className="flex items-center gap-3 mb-6">
@@ -375,6 +415,54 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
               <p className="text-xs text-gray-500 break-all">配置文件: {projectContext?.config_file ?? '加载中...'}</p>
               <p className="text-xs text-gray-500 break-all">本地设置: {projectContext?.settings_file ?? '加载中...'}</p>
             </div>
+          </div>
+        </div>
+
+        {/* 数据管理 */}
+        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">数据管理</h3>
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  const settings = await api.getAppSettings();
+                  const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `openclaw-settings-${new Date().toISOString().slice(0,10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success('设置已导出');
+                } catch (e) {
+                  toast.error('导出失败');
+                }
+              }}
+              className="px-4 py-2 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600 flex items-center gap-2"
+            >
+              导出设置
+            </button>
+            <label className="px-4 py-2 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600 cursor-pointer flex items-center gap-2">
+              导入设置
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const settings = JSON.parse(text);
+                    await api.saveAppSettings(settings);
+                    toast.success('设置已导入，请刷新页面');
+                    window.location.reload();
+                  } catch (err) {
+                    toast.error('导入失败：文件格式不正确');
+                  }
+                }}
+              />
+            </label>
           </div>
         </div>
 

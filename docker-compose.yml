@@ -6,7 +6,8 @@ services:
       - "6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "${REDIS_PASSWORD:-openclaw_redis_2026}"
+    # 安全: REDIS_PASSWORD 必须通过 .env 文件或环境变量设置，不提供默认值
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "${REDIS_PASSWORD}"
     restart: unless-stopped
     # 安全: 非 root 用户运行 (redis 镜像内置 redis 用户)
     user: "999:999"
@@ -18,7 +19,7 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-openclaw_redis_2026}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -40,7 +41,7 @@ services:
     env_file:
       - ./packages/clawbot/config/.env
     environment:
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-openclaw_redis_2026}@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - OMEGA_DAILY_BUDGET=50.0
     depends_on:
       redis:

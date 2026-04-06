@@ -133,14 +133,6 @@ def run_cmd(cmd, cwd=None, timeout=30):
         return ""
 
 
-def run_osascript(script):
-    """运行 AppleScript 并返回结果"""
-    try:
-        cp = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=15, check=False,
-        )
-        return cp.stdout.strip() if cp.returncode == 0 else ""
-    except Exception as e:
-        logger.debug(f"[run_osascript] failed: {e}")
-        return ""
+# 安全修复: run_osascript() 已删除 — 接受任意 AppleScript 字符串存在命令注入风险
+# 原函数无活跃调用方（life_automation.py 已在 P0 安全审计中移除对它的依赖）
+# 如确需 AppleScript 功能，应使用白名单模式限定可执行的脚本模板

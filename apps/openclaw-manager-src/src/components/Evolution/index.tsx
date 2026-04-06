@@ -193,8 +193,10 @@ export function Evolution() {
       setApiOnline(true);
       // 扫描后刷新数据
       await fetchAll(true);
+      toast.success('扫描完成，已更新进化提案列表');
     } catch {
       setApiOnline(false);
+      toast.error('扫描失败，请检查网络连接');
     } finally {
       setScanning(false);
     }
@@ -227,7 +229,7 @@ export function Evolution() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchAll()}
+            onClick={() => fetchAll(true)}
             className="flex items-center gap-2 px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-white transition-colors border border-dark-500"
           >
             <RefreshCw size={16} className={clsx((loading || refreshing) && 'animate-spin')} />
@@ -390,7 +392,7 @@ export function Evolution() {
                             <span className="flex items-center gap-1 text-xs text-green-400">
                               <TrendingUp size={11} />
                               {p.growth_rate > 0 ? '+' : ''}
-                              {(p.growth_rate * 100).toFixed(1)}%
+                              {(p.growth_rate > 1 ? p.growth_rate : p.growth_rate * 100).toFixed(1)}%
                             </span>
                           )}
                         </div>
@@ -441,11 +443,11 @@ export function Evolution() {
                         <div className="flex-1 h-2 bg-dark-700 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-green-500 rounded-full transition-all"
-                            style={{ width: `${Math.min(p.value_score * 100, 100)}%` }}
+                            style={{ width: `${Math.min(p.value_score > 1 ? p.value_score : p.value_score * 100, 100)}%` }}
                           />
                         </div>
                         <span className="text-xs text-green-400 font-mono w-10 text-right">
-                          {(p.value_score * 100).toFixed(0)}
+                          {(p.value_score > 1 ? p.value_score : p.value_score * 100).toFixed(0)}
                         </span>
                       </div>
                       {/* Difficulty score */}
@@ -512,7 +514,7 @@ export function Evolution() {
     </div>
   );
 
-  // ── Action handlers (placeholder — PATCH not yet wired) ───
+  // ── 提案操作处理 ───
 
   async function handleApprove(id?: string) {
     if (!id) return;
@@ -521,6 +523,7 @@ export function Evolution() {
       setProposals((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: 'approved' } : p))
       );
+      toast.success('提案已批准');
     } catch (err) {
       evolutionLogger.error('审批提案失败:', err);
       toast.error('审批通过失败: ' + (err instanceof Error ? err.message : '未知错误'));

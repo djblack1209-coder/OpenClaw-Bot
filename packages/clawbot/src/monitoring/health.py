@@ -113,15 +113,21 @@ class AutoRecovery:
         max_restarts: int = 3,
         restart_cooldown: float = 60.0,
         reset_window: float = 600.0,  # 持续健康10分钟后重置重启计数
+        exhausted_cooldown: float = 1800.0,  # 重启次数耗尽后的冷却期（默认30分钟），冷却后重置计数再试
+        notify_func: Optional[Callable] = None,  # Telegram 通知函数，崩溃/恢复时主动推送
     ):
         self.health = health_checker
         self.max_restarts = max_restarts
         self.restart_cooldown = restart_cooldown
         self.reset_window = reset_window
+        self.exhausted_cooldown = exhausted_cooldown
+        self._notify_func = notify_func
         self._restart_funcs: Dict[str, Callable] = {}
         self._stop_funcs: Dict[str, Callable] = {}  # 停止函数（重启前先停旧实例）
         self._last_restart: Dict[str, float] = {}
         self._last_healthy_since: Dict[str, float] = {}  # 持续健康起始时间
+        self._exhausted_since: Dict[str, float] = {}  # 记录重启次数耗尽的时间
+        self._notified_exhausted: set = set()  # 已通知过耗尽的 bot_id，防重复推送
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -164,10 +170,52 @@ class AutoRecovery:
         restart_count = status.get("restart_count", 0)
 
         if restart_count >= self.max_restarts:
-            logger.error(
-                f"[{bot_id}] 已达最大重启次数 ({self.max_restarts})，放弃恢复"
-            )
-            return
+            now = time.time()
+            exhausted_at = self._exhausted_since.get(bot_id)
+            if exhausted_at is None:
+                # 首次达到上限，记录时间并通知用户
+                self._exhausted_since[bot_id] = now
+                cooldown_min = self.exhausted_cooldown / 60
+                logger.error(
+                    f"[{bot_id}] 已达最大重启次数 ({self.max_restarts})，"
+                    f"进入 {self.exhausted_cooldown:.0f}s 冷却期后再试"
+                )
+                # 主动推送 Telegram 通知 — 让用户知道 Bot 暂时不可用
+                if self._notify_func and bot_id not in self._notified_exhausted:
+                    self._notified_exhausted.add(bot_id)
+                    try:
+                        await self._notify_func(
+                            f"⚠️ [{bot_id}] 连续崩溃 {self.max_restarts} 次，"
+                            f"已暂停恢复 {cooldown_min:.0f} 分钟。\n"
+                            f"通常是网络波动导致，冷却后系统会自动重试。"
+                        )
+                    except Exception:
+                        pass
+                return
+            elif now - exhausted_at < self.exhausted_cooldown:
+                # 仍在冷却期内，静默跳过（每5分钟打一条日志提醒）
+                elapsed = now - exhausted_at
+                remaining = self.exhausted_cooldown - elapsed
+                if int(elapsed) % 300 < 30:  # 大约每5分钟打一次
+                    logger.info(
+                        f"[{bot_id}] 冷却中，还剩 {remaining:.0f}s 后重置重启计数"
+                    )
+                return
+            else:
+                # 冷却期结束，重置重启计数，再给一轮机会
+                logger.warning(
+                    f"[{bot_id}] 冷却期结束，重置重启计数，重新尝试恢复"
+                )
+                status["restart_count"] = 0
+                restart_count = 0
+                self._exhausted_since.pop(bot_id, None)
+                self._notified_exhausted.discard(bot_id)
+                # 通知用户系统正在重新尝试恢复
+                if self._notify_func:
+                    try:
+                        await self._notify_func(f"🔄 [{bot_id}] 冷却结束，正在自动重连...")
+                    except Exception:
+                        pass
 
         last = self._last_restart.get(bot_id, 0)
         if time.time() - last < self.restart_cooldown:
@@ -199,6 +247,8 @@ class AutoRecovery:
             status["healthy"] = True
             status["consecutive_errors"] = 0
             status["last_heartbeat"] = time.time()
+            # 恢复成功，清除耗尽状态
+            self._exhausted_since.pop(bot_id, None)
             logger.info(f"[{bot_id}] 自动恢复成功")
         except Exception as e:
             status["restart_count"] = restart_count + 1

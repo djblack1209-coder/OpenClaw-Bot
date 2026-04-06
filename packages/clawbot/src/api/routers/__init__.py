@@ -8,9 +8,10 @@ from .ws import router as router_ws
 from .evolution import router as router_evolution
 from .shopping import router as router_shopping
 from .omega import router as router_omega
+from .newapi import router as router_newapi
 
 __all__ = [
     "router_system", "router_trading", "router_social",
     "router_memory", "router_pool", "router_ws", "router_evolution",
-    "router_shopping", "router_omega",
+    "router_shopping", "router_omega", "router_newapi",
 ]

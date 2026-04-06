@@ -1,0 +1,28 @@
+# New-API (songquanpeng/new-api) — OpenAI API 管理/分发网关
+# 用于替换自研 LLM 路由的底层通道管理
+# 启动: docker compose -f docker-compose.newapi.yml up -d
+# 管理界面: http://localhost:3000
+
+services:
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: openclaw-newapi
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data/newapi:/data
+    environment:
+      - SQL_DSN=file:/data/new-api.db
+      - INITIAL_ROOT_TOKEN=$ONEAPI_ADMIN_KEY
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

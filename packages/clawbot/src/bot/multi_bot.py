@@ -25,6 +25,7 @@ from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
 from src.bot.chinese_nlp_mixin import ChineseNLPMixin
 from src.bot.ocr_mixin import OCRHandlerMixin
 from src.bot.message_mixin import MessageHandlerMixin
+from src.bot.cmd_intel_mixin import IntelCommandMixin
 from src.error_handler import get_error_handler
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ class MultiBot(
     TradingCommandsMixin,
     CollabCommandsMixin,
     ExecutionCommandsMixin,
+    IntelCommandMixin,
     ChineseNLPMixin,
     OCRHandlerMixin,
     MessageHandlerMixin,
@@ -366,6 +368,10 @@ class MultiBot(
         self.app.add_handler(CommandHandler("review_history", self.cmd_review_history))
         self.app.add_handler(CommandHandler("bill", self.cmd_bill))
         self.app.add_handler(CommandHandler("pricewatch", self.cmd_pricewatch))
+        self.app.add_handler(CommandHandler("intel", self.cmd_intel))
+        self.app.add_handler(CommandHandler("coupon", self.cmd_coupon))
+        self.app.add_handler(CommandHandler("test_token", self.cmd_test_token))
+        self.app.add_handler(CommandHandler("set_coupon_token", self.cmd_set_coupon_token))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_trade_callback, pattern=r"^itrade"))
         self.app.add_handler(CallbackQueryHandler(
@@ -384,6 +390,8 @@ class MultiBot(
             self.handle_social_confirm_callback, pattern=r"^social_confirm:"))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_ops_menu_callback, pattern=r"^ops_"))
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_intel_callback, pattern=r"^intel_"))
         self.app.add_handler(CallbackQueryHandler(
             self.handle_quote_action_callback, pattern=r"^(ta_|buy_|watch_)"))
         self.app.add_handler(CallbackQueryHandler(

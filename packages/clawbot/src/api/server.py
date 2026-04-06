@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .auth import verify_api_token, log_token_status
-from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega
+from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega, router_newapi
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ class APIServer:
         self.app.include_router(router_evolution, prefix="/api/v1", tags=["Evolution"])
         self.app.include_router(router_shopping, prefix="/api/v1", tags=["Shopping"])
         self.app.include_router(router_omega, prefix="/api/v1", tags=["OMEGA"])
+        self.app.include_router(router_newapi, prefix="/api/v1", tags=["New-API"])
 
     def start(self):
         """Start uvicorn in a daemon thread"""

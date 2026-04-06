@@ -7,15 +7,8 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/browser-agent/.venv/bin/python</string>
-    <string>-m</string>
-    <string>g4f</string>
-    <string>api</string>
-    <string>--port</string>
-    <string>18891</string>
-    <string>--g4f-api-key</string>
-    <string>dummy</string>
-    <string>--no-gui</string>
+    <string>/bin/bash</string>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/tools/launchagents/g4f-launcher.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -25,7 +18,10 @@
   <true/>
 
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
 
   <key>ThrottleInterval</key>
   <integer>15</integer>
@@ -42,6 +38,8 @@
     <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/browser-agent/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>LANG</key>
     <string>en_US.UTF-8</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
   </dict>
 </dict>
 </plist>

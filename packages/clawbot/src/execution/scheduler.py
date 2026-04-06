@@ -30,6 +30,7 @@ class ExecutionScheduler:
         self._last_stock_check_ts = 0.0
         self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
+        self._last_coupon_date = ""  # 每日领券去重
         # 外部依赖（注入）
         self.monitor_manager = None
         self.social_autopilot_func = None
@@ -73,6 +74,8 @@ class ExecutionScheduler:
             ts = time.time()
 
             await self._run_daily_brief(now, brief_time)
+            await self._run_morning_news(now)  # 每早自动推送科技早报
+            await self._run_daily_coupon(now)  # 每日自动领券
             await self._run_monitors(ts, monitor_interval)
             await self._run_social_operator(ts, social_op_interval)
             await self._run_bounty_scan(ts, bounty_interval)
@@ -146,6 +149,51 @@ class ExecutionScheduler:
                 logger.info("[Scheduler] 综合周报已推送")
         except Exception as e:
             logger.error(f"[Scheduler] 综合周报推送失败: {e}")
+
+    async def _run_morning_news(self, now):
+        """每天早上 8:00 自动推送科技早报 — 不需要用户手动发 /news"""
+        news_hour = safe_int(os.getenv("MORNING_NEWS_HOUR"), 8)
+        news_enabled = os.getenv("MORNING_NEWS_ENABLED", "1").lower() in ("1", "true", "yes", "on")
+        if not news_enabled:
+            return
+        today = now.strftime("%Y-%m-%d")
+        # 防重复：每天只推一次
+        if hasattr(self, '_last_news_date') and self._last_news_date == today:
+            return
+        if now.hour != news_hour or now.minute > 1:
+            return
+        self._last_news_date = today
+        try:
+            from src.news_fetcher import news_fetcher
+            report = await news_fetcher.generate_morning_report()
+            if self._private_notify_func and report and len(report.strip()) > 20:
+                await self._private_notify_func(f"📰 今日科技早报\n\n{report}")
+                logger.info("[Scheduler] 科技早报已自动推送")
+        except Exception as e:
+            logger.debug(f"[Scheduler] 科技早报推送失败: {e}")
+
+    async def _run_daily_coupon(self, now):
+        """每天 08:30 自动领取微信笔笔省提现券"""
+        coupon_hour = safe_int(os.getenv("COUPON_HOUR"), 8)
+        coupon_minute = safe_int(os.getenv("COUPON_MINUTE"), 30)
+        coupon_enabled = os.getenv("COUPON_ENABLED", "0").lower() in ("1", "true", "yes", "on")
+        if not coupon_enabled:
+            return
+        today = now.strftime("%Y-%m-%d")
+        # 防重复：每天只领一次
+        if self._last_coupon_date == today:
+            return
+        if now.hour != coupon_hour or abs(now.minute - coupon_minute) > 1:
+            return
+        self._last_coupon_date = today
+        try:
+            from src.execution.wechat_coupon import auto_claim_coupon
+            result = await auto_claim_coupon()
+            if self._private_notify_func and result:
+                await self._private_notify_func(f"🎫 每日领券\n\n{result}")
+                logger.info("[Scheduler] 每日领券已执行: %s", result[:50])
+        except Exception as e:
+            logger.debug(f"[Scheduler] 每日领券失败: {e}")
 
     async def _run_daily_brief(self, now, brief_time):
         if os.getenv("OPS_BRIEF_ENABLED", "").lower() not in ("1", "true", "yes", "on"):

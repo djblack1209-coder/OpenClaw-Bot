@@ -60,11 +60,11 @@ export function Money() {
           data = await api.clawbotTradingStatus();
         } else {
           // 降级: 直接HTTP调用
-          const resp = await clawbotFetch('/api/v1/trading/status');
+          const resp = await clawbotFetch('/api/v1/trading/dashboard');
           if (!resp.ok) return;
           data = await resp.json();
         }
-        setIbkrConnected(data?.connected ?? false);
+        setIbkrConnected(!!(data?.connected ?? (data as Record<string, unknown>)?.ibkr_connected ?? false));
         if (data?.chart_data) setChartData(data.chart_data);
         if (data?.assets) setAssets(data.assets);
       } catch (e) {
@@ -280,7 +280,12 @@ export function Money() {
                         exit={{ opacity: 0, height: 0 }}
                         className="mt-3 pt-3 border-t border-dark-700"
                       >
-                        <p className="text-xs text-green-400 font-mono break-words bg-green-500/10 p-2 rounded border border-green-500/20">
+                        <p className={clsx(
+                          "text-xs font-mono break-words p-2 rounded border",
+                          status.lastResult.startsWith('执行失败')
+                            ? "text-red-400 bg-red-500/10 border-red-500/20"
+                            : "text-green-400 bg-green-500/10 border-green-500/20"
+                        )}>
                           {status.lastResult}
                         </p>
                       </motion.div>

@@ -46,8 +46,11 @@ tell application "System Events"
     set baseX to item 1 of windowPos
     set baseYPos to item 2 of windowPos
 
+    -- 等待登录表单完全渲染：窗口出现后再等几秒让 Java UI 加载完毕
+    delay 5
+
     click at {baseX + 295, baseYPos + 279}
-    delay 0.2
+    delay 0.3
 
     keystroke "a" using {command down}
     keystroke ibUser

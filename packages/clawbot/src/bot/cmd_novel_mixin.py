@@ -151,7 +151,8 @@ class NovelCommandsMixin:
                 with open(path, "rb") as f:
                     await update.message.reply_document(document=f, filename=Path(path).name)
             except Exception as e:
-                await update.message.reply_text(f"⚠️ 文件发送失败: {e}")
+                logger.warning("小说文件发送失败: %s", e)
+                await update.message.reply_text("⚠️ 文件发送出了问题，请稍后重试")
             return
         
         if sub == "tts":

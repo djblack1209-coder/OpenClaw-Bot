@@ -75,8 +75,14 @@ class TelegramAlertNotifier:
                     loop = None
             if loop and loop.is_running():
                 asyncio.ensure_future(self._send(rule_name, message))
-            else:
+            elif loop is not None:
                 loop.run_until_complete(self._send(rule_name, message))
+            else:
+                # 没有可用的事件循环，降级到线程发送
+                import threading
+                threading.Thread(
+                    target=self._send_sync, args=(rule_name, message), daemon=True
+                ).start()
         except RuntimeError as e:  # noqa: F841
             # 没有事件循环，用线程发送
             import threading

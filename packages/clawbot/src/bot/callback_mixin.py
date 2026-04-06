@@ -117,9 +117,16 @@ class CallbackMixin:
         if not data.startswith("suggest:"):
             return
 
-        # 提取建议文本
+        # 提取建议文本并进行安全消毒（与正常消息入口一致）
         suggest_text = data[8:].strip()  # 去掉 "suggest:" 前缀
         if not suggest_text:
+            return
+        try:
+            from src.core.security import get_security_gate
+            suggest_text = get_security_gate().sanitize_input(suggest_text)
+        except Exception:
+            # 消毒失败时拒绝处理，防止恶意输入绕过过滤
+            await query.answer("⚠️ 输入校验失败", show_alert=True)
             return
 
         chat_id = update.effective_chat.id
@@ -287,5 +294,6 @@ class CallbackMixin:
                     await query.message.reply_text(
                         f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}")
             except Exception as e:
-                await query.message.reply_text(f"❌ {t['symbol']} 执行失败: {e}")
+                logger.error("iTrade 执行失败 %s: %s", t['symbol'], e)
+                await query.message.reply_text(f"❌ {t['symbol']} 执行遇到了问题，请稍后重试")
 

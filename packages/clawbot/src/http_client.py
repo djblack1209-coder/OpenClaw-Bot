@@ -172,8 +172,24 @@ class ResilientHTTPClient:
         json: Optional[Dict] = None,
         params: Optional[Dict] = None,
         content: Optional[bytes] = None,
+        ssrf_check: bool = False,
     ) -> httpx.Response:
-        """发送 HTTP 请求，带重试和熔断"""
+        """发送 HTTP 请求，带重试和熔断。
+
+        Args:
+            ssrf_check: 是否对 URL 执行 SSRF 安全检查。
+                默认 False（内部已知安全的 API 调用无需检查）。
+                接受用户输入 URL 的场景应设为 True。
+        """
+        # SSRF 防护: 当调用方明确要求检查时，拦截指向内网/元数据服务的请求
+        if ssrf_check:
+            from src.core.security import check_ssrf, SSRFError
+            if not check_ssrf(url):
+                raise SSRFError(
+                    f"[{self.name}] SSRF 安全检查未通过: {url} "
+                    f"(禁止访问内网/元数据服务地址)"
+                )
+
         if not self.breaker.can_execute():
             raise CircuitOpenError(
                 f"[{self.name}] 熔断器开启，拒绝请求 (将在 "

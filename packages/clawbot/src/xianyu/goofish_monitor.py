@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # ai-goofish-monitor 默认地址
 MONITOR_BASE_URL = os.getenv("GOOFISH_MONITOR_URL", "http://localhost:8000")
 MONITOR_USER = os.getenv("GOOFISH_MONITOR_USER", "admin")
-MONITOR_PASS = os.getenv("GOOFISH_MONITOR_PASS", "admin123")
+# 安全修复: 移除硬编码默认密码，未配置时为空字符串（强制用户通过环境变量设置）
+MONITOR_PASS = os.getenv("GOOFISH_MONITOR_PASS", "")
 
 
 @dataclass

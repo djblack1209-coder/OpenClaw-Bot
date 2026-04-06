@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   CommandDialog,
   CommandInput,
@@ -16,11 +16,12 @@ import { toast } from 'sonner'
 import {
   Bot, Brain, DollarSign, Dna, Globe,
   Layout, MessageSquare, Settings, Shield,
-  Zap, TrendingUp, Newspaper,
+  Zap, TrendingUp, Newspaper, Send,
 } from 'lucide-react'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
+  const [inputValue, setInputValue] = useState('')
   const setCurrentPage = useAppStore((s) => s.setCurrentPage)
 
   // Ctrl+K / Cmd+K 切换命令面板
@@ -34,6 +35,13 @@ export function CommandPalette() {
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
   }, [])
+
+  // 面板关闭时清空输入
+  useEffect(() => {
+    if (!open) {
+      setInputValue('')
+    }
+  }, [open])
 
   const navigate = (page: string) => {
     setCurrentPage(page as PageType)
@@ -49,11 +57,41 @@ export function CommandPalette() {
     })
   }
 
+  // 将用户输入作为自然语言指令发送给 OMEGA Brain
+  const executeCommand = useCallback((command: string) => {
+    if (!command.trim()) return
+    const trimmed = command.trim()
+    setOpen(false)
+    toast.promise(api.omegaProcess(trimmed), {
+      loading: `正在执行指令: "${trimmed}"`,
+      success: `指令已发送: ${trimmed}`,
+      error: (e: unknown) => `指令执行失败: ${e instanceof Error ? e.message : String(e)}`,
+    })
+  }, [])
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="输入命令或搜索... (Ctrl+K)" />
+      <CommandInput
+        placeholder="输入命令或搜索... (Ctrl+K)"
+        value={inputValue}
+        onValueChange={setInputValue}
+      />
       <CommandList>
         <CommandEmpty>没有找到匹配的命令</CommandEmpty>
+
+        {/* 动态执行：用户输入任意文本时，显示"执行指令"选项 */}
+        {inputValue.trim().length > 0 && (
+          <CommandGroup heading="动态执行">
+            <CommandItem
+              onSelect={() => executeCommand(inputValue)}
+              value={`__execute__${inputValue}`}
+              forceMount
+            >
+              <Send className="mr-2 h-4 w-4" />
+              👉 执行指令: &quot;{inputValue.trim()}&quot;
+            </CommandItem>
+          </CommandGroup>
+        )}
 
         <CommandGroup heading="导航">
           <CommandItem onSelect={() => navigate('dashboard')}>

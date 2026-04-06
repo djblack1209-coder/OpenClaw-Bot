@@ -49,6 +49,7 @@ Thumbs.db
 
 # Env
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -103,6 +104,9 @@ R21-*.png
 .openclaw/devices/
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
 credentials.json
 
 # === .openclaw 运行时数据（禁止跟踪） ===
@@ -111,6 +115,7 @@ credentials.json
 .openclaw/delivery-queue/
 .openclaw/cron/runs/
 .openclaw/cron/*.bak
+.openclaw/cron/jobs.json
 .openclaw/subagents/
 .openclaw/telegram/
 .openclaw/update-check.json
@@ -130,6 +135,11 @@ apps/OpenClaw.app/
 
 # === Playwright 调试产物 ===
 .playwright-cli/
+.playwright-mcp/
+
+# === Git 备份（BFG 清理产物）===
+.git.backup/
+*.bfg-report/
 
 # === 浏览器代理密钥池（含真实 API Key）===
 packages/clawbot/browser-agent/keypool.json

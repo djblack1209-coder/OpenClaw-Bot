@@ -1,14 +1,16 @@
 """
-Tests for src/core/security.py — SecurityGate.
+Tests for src/core/security.py — SecurityGate + SSRF 防护。
 
 Covers:
   - check_permission() (user authorization / whitelist)
   - verify_pin() / set_pin() (PIN lifecycle)
   - contains_sensitive_data() / redact_sensitive() (input sanitization)
   - log_operation() / get_recent_operations() (audit logging)
+  - check_ssrf() (SSRF protection — DNS resolution, IP blacklist, protocol whitelist)
   - Boundary: empty string, long input, None-like input
 """
 import json
+import socket
 import pytest
 from pathlib import Path
 
@@ -409,3 +411,151 @@ class TestUnicodeBypass:
     )
     def test_unicode_bypass(self, gate, payload):
         assert gate.contains_sensitive_data(payload) is True
+
+
+# ════════════════════════════════════════════════════════════
+# SSRF 防护测试 — check_ssrf()
+# ════════════════════════════════════════════════════════════
+
+
+from src.core.security import check_ssrf, SSRFError, SSRF_BLOCKED_HOSTS
+from unittest.mock import patch
+
+
+class TestCheckSsrfBlockedHosts:
+    """黑名单中的主机名应被直接拒绝。"""
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "169.254.169.254",
+            "metadata.google.internal",
+            "metadata.internal",
+            "100.100.100.200",
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "::1",
+        ],
+        ids=[
+            "aws-metadata",
+            "gcp-metadata",
+            "generic-metadata",
+            "aliyun-metadata",
+            "localhost-name",
+            "ipv4-loopback",
+            "ipv4-unspecified",
+            "ipv6-loopback",
+        ],
+    )
+    def test_blocked_hosts_rejected(self, host):
+        assert check_ssrf(f"http://{host}/latest/meta-data/") is False
+
+
+class TestCheckSsrfProtocol:
+    """只允许 http/https 协议。"""
+
+    def test_http_allowed(self):
+        # DNS 解析可能失败，但协议本身不应被拦截
+        # 用 mock 跳过 DNS 解析，确认协议检查通过
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]):
+            assert check_ssrf("http://example.com") is True
+
+    def test_https_allowed(self):
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]):
+            assert check_ssrf("https://example.com") is True
+
+    def test_ftp_blocked(self):
+        assert check_ssrf("ftp://example.com/file") is False
+
+    def test_file_blocked(self):
+        assert check_ssrf("file:///etc/passwd") is False
+
+    def test_gopher_blocked(self):
+        assert check_ssrf("gopher://evil.com") is False
+
+    def test_no_scheme_blocked(self):
+        assert check_ssrf("example.com") is False
+
+    def test_empty_url_blocked(self):
+        assert check_ssrf("") is False
+
+
+class TestCheckSsrfDnsResolution:
+    """DNS 解析后的 IP 地址检查。"""
+
+    def test_private_ip_blocked(self):
+        """解析到 10.x.x.x 内网地址应被拦截"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("10.0.0.1", 0)),
+        ]):
+            assert check_ssrf("http://internal-service.example.com") is False
+
+    def test_loopback_ip_blocked(self):
+        """解析到 127.x.x.x 回环地址应被拦截"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("127.0.0.1", 0)),
+        ]):
+            assert check_ssrf("http://sneaky-redirect.com") is False
+
+    def test_link_local_ip_blocked(self):
+        """解析到 169.254.x.x 链路本地地址应被拦截"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("169.254.1.1", 0)),
+        ]):
+            assert check_ssrf("http://link-local.com") is False
+
+    def test_public_ip_allowed(self):
+        """解析到公网 IP 应放行"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]):
+            assert check_ssrf("http://example.com") is True
+
+    def test_dns_failure_blocked(self):
+        """DNS 解析失败应拒绝（fail-close 策略）"""
+        with patch("src.core.security.socket.getaddrinfo",
+                    side_effect=socket.gaierror("DNS resolution failed")):
+            assert check_ssrf("http://nonexistent-domain-xyz.example") is False
+
+    def test_multiple_ips_one_private_blocked(self):
+        """多个解析结果中只要有一个是内网 IP 就拒绝"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("192.168.1.1", 0)),
+        ]):
+            assert check_ssrf("http://dual-homed.com") is False
+
+
+class TestCheckSsrfEdgeCases:
+    """边界情况。"""
+
+    def test_no_hostname(self):
+        assert check_ssrf("http://") is False
+
+    def test_url_with_port(self):
+        """带端口号的 URL 应正常解析主机名"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]):
+            assert check_ssrf("http://example.com:8080/path") is True
+
+    def test_url_with_auth(self):
+        """含认证信息的 URL 应正常提取主机名"""
+        with patch("src.core.security.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]):
+            assert check_ssrf("http://<user>:<password>@example.com/path") is True
+
+
+class TestSsrfError:
+    """SSRFError 异常类。"""
+
+    def test_is_exception(self):
+        err = SSRFError("blocked")
+        assert isinstance(err, Exception)
+        assert str(err) == "blocked"

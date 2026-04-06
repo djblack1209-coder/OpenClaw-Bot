@@ -67,6 +67,7 @@ class FeedbackStore:
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
         atexit.register(self.close)
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

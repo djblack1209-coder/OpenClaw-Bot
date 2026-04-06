@@ -10,18 +10,18 @@
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>Umask</key>
     <integer>63</integer>
     <key>ProgramArguments</key>
     <array>
-      <string>/opt/homebrew/opt/node/bin/node</string>
-      <string>/Users/blackdj/.npm-global/lib/node_modules/openclaw/dist/index.js</string>
-      <string>gateway</string>
-      <string>--port</string>
-      <string>18789</string>
+      <string>/bin/bash</string>
+      <string>/Users/blackdj/Desktop/OpenClaw Bot/tools/launchagents/gateway-launcher.sh</string>
     </array>
     
     <key>StandardOutPath</key>
@@ -50,9 +50,8 @@
     <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json</string>
     <key>OPENCLAW_GATEWAY_PORT</key>
     <string>18789</string>
-    <!-- 警告: 生产环境请通过 launchctl setenv 设置真实 Token -->
     <key>OPENCLAW_GATEWAY_TOKEN</key>
-    <string>${OPENCLAW_GATEWAY_TOKEN}</string>
+    <string>openclaw-manager-local-token</string>
     <key>OPENCLAW_LAUNCHD_LABEL</key>
     <string>ai.openclaw.gateway</string>
     <key>OPENCLAW_SYSTEMD_UNIT</key>

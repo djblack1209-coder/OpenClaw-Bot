@@ -17,7 +17,7 @@ interface StatusCardProps {
 
 export function StatusCard({ status, loading }: StatusCardProps) {
   const formatUptime = (seconds: number | null) => {
-    if (!seconds) return '--';
+    if (seconds == null) return '--';
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     if (hours > 0) return `${hours}h ${minutes}m`;
@@ -57,7 +57,7 @@ export function StatusCard({ status, loading }: StatusCardProps) {
             <span className="text-xs text-gray-400">端口</span>
           </div>
           <p className="text-xl font-semibold text-white">
-            {status?.port || 18789}
+            {status?.port ?? 18789}
           </p>
         </div>
 
@@ -67,7 +67,7 @@ export function StatusCard({ status, loading }: StatusCardProps) {
             <span className="text-xs text-gray-400">进程 ID</span>
           </div>
           <p className="text-xl font-semibold text-white">
-            {status?.pid || '--'}
+            {status?.pid ?? '--'}
           </p>
         </div>
 
