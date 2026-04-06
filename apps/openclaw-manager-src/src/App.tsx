@@ -20,6 +20,7 @@ const ExecutionFlow = lazy(() => import('./components/ExecutionFlow').then(m => 
 const Memory = lazy(() => import('./components/Memory').then(m => ({ default: m.Memory })));
 const Plugins = lazy(() => import('./components/Plugins').then(m => ({ default: m.Plugins })));
 const Evolution = lazy(() => import('./components/Evolution').then(m => ({ default: m.Evolution })));
+const APIGateway = lazy(() => import('./components/APIGateway').then(m => ({ default: m.APIGateway })));
 
 const PageLoader = () => (
   <div className="h-full flex items-center justify-center">
@@ -48,7 +49,7 @@ import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 import { useAppStore } from './stores/appStore';
 
-export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory' | 'evolution';
+export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory' | 'evolution' | 'gateway';
 
 export interface EnvironmentStatus {
   node_installed: boolean;
@@ -154,6 +155,7 @@ function App() {
       logs: <PageErrorBoundary pageName="日志"><Logs /></PageErrorBoundary>,
       settings: <PageErrorBoundary pageName="设置"><Settings onEnvironmentChange={checkEnvironment} /></PageErrorBoundary>,
       evolution: <PageErrorBoundary pageName="进化"><Evolution /></PageErrorBoundary>,
+      gateway: <PageErrorBoundary pageName="API 网关"><APIGateway /></PageErrorBoundary>,
     };
 
     return (

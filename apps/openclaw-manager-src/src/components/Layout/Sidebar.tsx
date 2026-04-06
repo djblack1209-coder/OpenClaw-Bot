@@ -13,7 +13,8 @@ import {
   Workflow,
   BrainCircuit,
   Blocks,
-  Dna
+  Dna,
+  Network
 } from 'lucide-react';
 import { PageType } from '../../App';
 import clsx from 'clsx';
@@ -37,6 +38,7 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'memory', label: '记忆脑图', icon: BrainCircuit },
   { id: 'plugins', label: 'MCP 插件市场', icon: Blocks },
   { id: 'ai', label: 'AI 配置', icon: Bot },
+  { id: 'gateway' as PageType, label: 'API 网关', icon: Network },
   { id: 'channels', label: '消息渠道', icon: MessageSquare },
   { id: 'social', label: '社媒总控', icon: Share2 },
   { id: 'money', label: '盈利总控', icon: DollarSign },

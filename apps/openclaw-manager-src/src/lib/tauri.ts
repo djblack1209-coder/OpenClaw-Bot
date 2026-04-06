@@ -647,6 +647,32 @@ export const api = {
   // OMEGA 可用媒体生成模型列表
   omegaMediaModels: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_omega_media_models'),
+
+  // ──── New-API 网关管理 ────
+
+  // 网关运行状态
+  newApiStatus: () => clawbotFetch('/api/v1/newapi/status'),
+
+  // 渠道列表
+  newApiChannels: () => clawbotFetch('/api/v1/newapi/channels'),
+
+  // 令牌列表
+  newApiTokens: () => clawbotFetch('/api/v1/newapi/tokens'),
+
+  // 创建渠道
+  newApiCreateChannel: (data: {
+    name: string;
+    type?: number;
+    key?: string;
+    base_url?: string;
+    models?: string;
+    group?: string;
+  }) =>
+    clawbotFetch('/api/v1/newapi/channels', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' },
+    }),
 };
 
 // WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost

@@ -27,6 +27,7 @@ const pageTitles: Record<PageType, { title: string; description: string }> = {
   logs: { title: '应用日志', description: '查看 OpenClaw 应用的控制台日志' },
   settings: { title: '设置', description: '身份配置与高级选项' },
   evolution: { title: '进化引擎', description: '追踪 GitHub Trending，自动发现升级机会' },
+  gateway: { title: 'API 网关', description: 'New-API 渠道、令牌与网关状态管理' },
 };
 
 export function Header({ currentPage }: HeaderProps) {
