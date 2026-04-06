@@ -62,7 +62,7 @@ async def newapi_status() -> dict[str, Any]:
 
 @router.get("/newapi/channels")
 async def list_channels() -> dict[str, Any]:
-    """获取所有通道列表 — 代理转发 /api/channel/ 接口"""
+    """获取所有通道列表 — 代理转发 /api/channel/ 接口，解包后直接返回数据数组"""
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
@@ -71,7 +71,10 @@ async def list_channels() -> dict[str, Any]:
                 params={"p": 0},
             )
             resp.raise_for_status()
-            return {"success": True, "data": resp.json()}
+            body = resp.json()
+            # new-api 返回 {"success":true,"data":[...]} — 直接提取内层 data 数组
+            inner_data = body.get("data", body) if isinstance(body, dict) else body
+            return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         return {"success": False, "error": "无法连接到 New-API 服务"}
     except Exception as e:
@@ -81,7 +84,7 @@ async def list_channels() -> dict[str, Any]:
 
 @router.get("/newapi/tokens")
 async def list_tokens() -> dict[str, Any]:
-    """获取所有令牌列表 — 代理转发 /api/token/ 接口"""
+    """获取所有令牌列表 — 代理转发 /api/token/ 接口，解包后直接返回数据数组"""
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
@@ -90,7 +93,10 @@ async def list_tokens() -> dict[str, Any]:
                 params={"p": 0},
             )
             resp.raise_for_status()
-            return {"success": True, "data": resp.json()}
+            body = resp.json()
+            # new-api 返回 {"success":true,"data":[...]} — 直接提取内层 data 数组
+            inner_data = body.get("data", body) if isinstance(body, dict) else body
+            return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         return {"success": False, "error": "无法连接到 New-API 服务"}
     except Exception as e:
@@ -109,7 +115,10 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
                 json=payload.model_dump(),
             )
             resp.raise_for_status()
-            return {"success": True, "data": resp.json()}
+            body = resp.json()
+            # 解包 new-api 返回的 {"success":true,"data":{...}}
+            inner_data = body.get("data", body) if isinstance(body, dict) else body
+            return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         return {"success": False, "error": "无法连接到 New-API 服务"}
     except Exception as e:

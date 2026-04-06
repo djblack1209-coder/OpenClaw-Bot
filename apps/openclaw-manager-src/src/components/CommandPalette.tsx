@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 
 import {
   Bot, Brain, DollarSign, Dna, Globe,
-  Layout, MessageSquare, Settings, Shield,
+  Layout, MessageSquare, Network, Settings, Shield,
   Zap, TrendingUp, Newspaper, Send,
 } from 'lucide-react'
 
@@ -121,6 +121,10 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate('channels')}>
             <MessageSquare className="mr-2 h-4 w-4" />
             消息渠道
+          </CommandItem>
+          <CommandItem onSelect={() => navigate('gateway')}>
+            <Network className="mr-2 h-4 w-4" />
+            API 网关
           </CommandItem>
           <CommandItem onSelect={() => navigate('settings')}>
             <Settings className="mr-2 h-4 w-4" />
