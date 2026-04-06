@@ -117,17 +117,24 @@ def main():
 
     # SIGUSR1 热更新 Cookie：kill -USR1 <pid>
     def _reload_cookies(signum, frame):
+        """SIGUSR1 信号处理 — 热更新 Cookie 并触发 WebSocket 重连"""
         logger.info("收到 SIGUSR1，重新加载 Cookie...")
         _load_env()
         new_cookies = os.getenv("XIANYU_COOKIES", "")
         if new_cookies and new_cookies != live.cookies_str:
+            from src.xianyu.utils import trans_cookies
             live.cookies_str = new_cookies
-            live.cookies = __import__("src.xianyu.utils", fromlist=["trans_cookies"]).trans_cookies(new_cookies)
-            live.api.session.cookies.update(live.cookies)
+            live.cookies = trans_cookies(new_cookies)
+            # 同步更新 API 客户端的 Cookie（XianyuApis 使用 self.client，不是 self.session）
+            live.api.client.cookies.update(live.cookies)
             live.myid = live.cookies.get("unb", "")
             live.restart_flag = True
             if live.ws:
-                asyncio.get_event_loop().call_soon_threadsafe(live.ws.close)
+                try:
+                    asyncio.get_event_loop().call_soon_threadsafe(live.ws.close)
+                except RuntimeError:
+                    # 事件循环不可用时，仅设置 restart_flag 让主循环处理
+                    logger.debug("事件循环不可用，依赖 restart_flag 重连")
             logger.info("Cookie 已热更新，正在重连...")
         else:
             logger.info("Cookie 未变化，跳过")
