@@ -184,7 +184,7 @@ export function APIGateway() {
         return;
       }
       const data: GatewayStatusData = await res.json();
-      const isOnline = data.online ?? data.status === 'ok' ?? false;
+      const isOnline = data.online ?? (data.status === 'ok');
       setOnline(isOnline);
       setStatusMsg(data.message ?? (isOnline ? '运行正常' : '未响应'));
     } catch (err) {
