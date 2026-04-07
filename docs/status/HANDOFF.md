@@ -4,6 +4,51 @@
 
 ---
 
+## [2026-04-07 Session 22] 闲鱼登录弹窗优化 + New-API 对齐修复 + 图标重构
+
+### 本次完成了什么
+
+**任务1: Bot 心跳丢失告警 — 确认正常**
+- 根因: Mac 短暂睡眠导致所有 Bot 心跳暂停，AutoRecovery 自动恢复
+- 无需修复
+
+**任务2: 闲鱼登录弹窗优化**
+- 自动登录冷却期从 30 分钟缩短到 5 分钟
+- 新增 macOS 原生浏览器 fallback — Playwright 不可用时直接 `open` 弹出系统浏览器
+- 原生浏览器模式：弹出后轮询 .env 变化（10s/次，最多10分钟），检测到 Cookie 更新后自动恢复
+- 代码重构拆分：`_auto_browser_login` → Playwright方案 + `_native_browser_login` + `_reload_cookies_from_env`
+
+**任务3: New-API 集成对齐检查 + Bug 修复**
+- 发现并修复 channels/tokens/create 端点响应双层包装 Bug — 后端将 new-api 返回的 `{"data":[...]}` 又包了一层，前端解析拿到对象而非数组，导致列表为空
+- 修复方式: 后端代理层提取 new-api 内层 `data` 后再返回
+- CommandPalette (Ctrl+K) 补全 gateway 导航入口
+- 确认后端路由/前端组件/侧边栏/Header 全部已对齐
+
+**任务4: APP 图标重构**
+- 使用 Gemini gemini-3.1-flash-image 重新生成 — 机械爪+电路纹路+青蓝发光
+- 白色背景已透明化处理
+- 替换全部 6 个图标文件，ICO 包含 6 种尺寸
+
+### 未完成的工作（按优先级排列）
+1. **闲鱼 Cookie 重新获取** — 需重启闲鱼进程触发新的自动登录弹窗
+2. **安装 Docker Desktop** — new-api 需要 Docker: `docker compose -f docker-compose.newapi.yml up -d`
+3. **New-API 通道配置** — 启动后在 http://localhost:3000 配置渠道
+4. **Tauri APP 重新编译** — 图标已替换但需重新编译才能生效
+5. **APIGateway 组件改用 api.* 方法** — 低优先级代码规范优化
+
+### 需要注意的坑
+- 闲鱼进程仍在用旧代码运行，需重启才能使用新的登录弹窗优化
+- new-api 默认管理员 token: `$ONEAPI_ADMIN_KEY`，生产环境建议更换
+- 前端 node_modules 未安装（TypeScript 检查报 lucide-react 找不到），不影响已编译版本
+- 图标 Gemini 生成的是 JPEG 格式，已手动透明化白色背景区域
+
+### 当前系统状态
+- Bot 进程: 7 个 Bot + AutoRecovery 正常运行
+- 闲鱼进程: Cookie 失效持续重连中（需重启用新代码）
+- 改动文件: 3 个代码文件 + 6 个图标文件 + 3 个文档文件
+
+---
+
 ## [2026-04-07 Session 21] 闲鱼自动登录修复 + New-API 集成 + AI 图标生成
 
 ### 本次完成了什么
