@@ -5,6 +5,40 @@
 
 ---
 
+## [2026-04-07] 闲鱼登录弹窗优化 + New-API 响应解包修复 + APP 图标重构 + 前端导航补全
+
+> 领域: `xianyu`, `backend`, `frontend`
+> 影响模块: `xianyu/xianyu_live`, `api/routers/newapi`, `CommandPalette`, `src-tauri/icons`
+> 关联问题: HI-409 (闲鱼自动登录)
+
+### 变更内容
+
+**闲鱼登录弹窗优化**
+- 自动登录冷却期从 30 分钟缩短到 5 分钟 — Cookie 失效后更快获得登录入口
+- 新增 macOS 原生浏览器 fallback — Playwright 不可用时直接用 `open` 命令弹出系统默认浏览器
+- 原生浏览器登录模式：弹出后轮询 .env 文件变化（10秒一次，最多10分钟），检测到 Cookie 更新后自动恢复
+- 代码重构：`_auto_browser_login` 拆分为 Playwright 方案 + 原生浏览器方案 + `_reload_cookies_from_env` 公共方法
+
+**New-API 响应解包修复 (Bug)**
+- 修复 channels/tokens/create 端点的响应双层包装 — 之前 backend 将 new-api 的 `{"success":true,"data":[...]}` 又包了一层 `{"success":true,"data":{"success":true,"data":[...]}}`, 导致前端解析出对象而非数组，列表渲染为空
+- 修复方式：后端代理层提取 new-api 响应的内层 `data` 字段后再返回
+
+**APP 图标重构**
+- 使用 Gemini gemini-3.1-flash-image 重新生成 — 机械爪+电路纹路+青蓝发光设计
+- 白色背景已透明化处理
+- 替换全部 6 个图标文件，ICO 包含 6 种尺寸 (16/32/48/64/128/256)
+
+**前端 CommandPalette 导航补全**
+- Ctrl+K 命令面板新增「API 网关」导航入口 — 之前缺失，无法通过快捷键跳转到 gateway 页面
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 登录弹窗优化 (冷却期+原生浏览器+代码重构)
+- `packages/clawbot/src/api/routers/newapi.py` — 修复 channels/tokens 响应双层包装
+- `apps/openclaw-manager-src/src/components/CommandPalette.tsx` — 添加 gateway 导航 + Network 图标
+- `apps/openclaw-manager-src/src-tauri/icons/*` — 全部 6 个图标文件替换
+
+---
+
 ## [2026-04-07] 闲鱼自动登录修复 + AI 生成新 APP 图标 + New-API 集成
 
 > 领域: `xianyu`, `frontend`, `infra`, `backend`
