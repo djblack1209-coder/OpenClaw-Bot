@@ -31,14 +31,23 @@ async def refresh_cookies_via_session(api) -> bool:
     """通过 has_login + get_token 刷新 httpx client 中的 cookie。
     
     has_login 会触发服务端下发新的 Set-Cookie，httpx.AsyncClient 自动存储。
-    返回 True 表示刷新成功。
+    刷新后立即验证 token 能否获取 — 防止 hasLogin 返回 True 但 cookie 实际无效的"假成功"。
+    返回 True 表示刷新成功且 token 验证通过。
     """
     try:
         ok = await api.has_login()
         if ok:
             api._clear_dup_cookies()
-            logger.info("Cookie 刷新成功 (via hasLogin)")
-            return True
+            # 验证刷新后的 cookie 是否真正有效 — 尝试获取 WS token
+            import secrets
+            test_device_id = secrets.token_hex(16)
+            token_result = await api.get_token(test_device_id)
+            if token_result:
+                logger.info("Cookie 刷新成功 (via hasLogin + token 验证通过)")
+                return True
+            else:
+                logger.warning("Cookie 刷新假成功: hasLogin 返回 True 但 token 获取失败，Cookie 实际无效")
+                return False
         logger.warning("Cookie 刷新失败: hasLogin 返回 False")
         return False
     except Exception as e:
