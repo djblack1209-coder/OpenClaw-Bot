@@ -5,11 +5,41 @@
   <key>Label</key>
   <string>ai.openclaw.heartbeat-sender</string>
 
-  <!-- 使用 wrapper 脚本: 先检查 Bot 进程存活才发心跳 -->
+  <!-- 脚本内容完全内联 — macOS 26 provenance 策略同时拦截文件执行和读取 -->
+  <!-- 不能引用外部 .sh 文件，必须把心跳逻辑直接写在 plist 里 -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/scripts/heartbeat_sender.sh</string>
+    <string>-c</string>
+    <string>
+set -euo pipefail
+VPS_HOST="${DEPLOY_VPS_HOST:-101.43.41.96}"
+VPS_USER="${DEPLOY_VPS_USER:-openclaw}"
+VPS_HEARTBEAT_PATH="/opt/openclaw/data/primary_heartbeat"
+LOG_TAG="clawbot-heartbeat"
+SSH_TIMEOUT=5
+BOT_PROCESS_PATTERN="multi_main.py"
+
+log() { logger -t "$LOG_TAG" "$1" 2>/dev/null || echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+
+if ! pgrep -f "$BOT_PROCESS_PATTERN" > /dev/null 2>&amp;1; then
+    log "Bot 进程未运行 (未找到 $BOT_PROCESS_PATTERN)，跳过心跳发送"
+    exit 0
+fi
+
+TIMESTAMP=$(date +%s)
+HEARTBEAT_CONTENT="bot_alive|${TIMESTAMP}"
+
+if ssh -o "ConnectTimeout=${SSH_TIMEOUT}" \
+       -o "StrictHostKeyChecking=accept-new" \
+       -o "BatchMode=yes" \
+       "${VPS_USER}@${VPS_HOST}" \
+       "echo '${HEARTBEAT_CONTENT}' > ${VPS_HEARTBEAT_PATH}" 2>/dev/null; then
+    log "心跳已发送 (Bot PID: $(pgrep -f "$BOT_PROCESS_PATTERN" | head -1))"
+else
+    log "心跳发送失败 (SSH 连接超时或拒绝)"
+fi
+    </string>
   </array>
 
   <key>RunAtLoad</key>
