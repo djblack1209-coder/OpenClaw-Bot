@@ -124,3 +124,96 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
     except Exception as e:
         logger.exception("创建 New-API 通道失败")
         return {"success": False, "error": _safe_error(e)}
+
+
+@router.put("/newapi/channels/{channel_id}")
+async def update_channel(channel_id: int, payload: ChannelCreate) -> dict[str, Any]:
+    """更新通道 — 代理转发 PUT /api/channel/ 接口"""
+    try:
+        data = payload.model_dump()
+        data["id"] = channel_id
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.put(
+                f"{_NEWAPI_BASE}/api/channel/",
+                headers=_headers(),
+                json=data,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            inner_data = body.get("data", body) if isinstance(body, dict) else body
+            return {"success": True, "data": inner_data}
+    except httpx.ConnectError:
+        return {"success": False, "error": "无法连接到 New-API 服务"}
+    except Exception as e:
+        logger.exception("更新 New-API 通道失败")
+        return {"success": False, "error": _safe_error(e)}
+
+
+@router.delete("/newapi/channels/{channel_id}")
+async def delete_channel(channel_id: int) -> dict[str, Any]:
+    """删除通道 — 代理转发 DELETE /api/channel/{id} 接口"""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.delete(
+                f"{_NEWAPI_BASE}/api/channel/{channel_id}",
+                headers=_headers(),
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            return {"success": body.get("success", True)}
+    except httpx.ConnectError:
+        return {"success": False, "error": "无法连接到 New-API 服务"}
+    except Exception as e:
+        logger.exception("删除 New-API 通道失败")
+        return {"success": False, "error": _safe_error(e)}
+
+
+@router.post("/newapi/channels/{channel_id}/status")
+async def toggle_channel_status(channel_id: int) -> dict[str, Any]:
+    """切换通道启用/禁用状态 — 先获取当前状态再反转"""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            # 获取通道详情
+            resp = await client.get(
+                f"{_NEWAPI_BASE}/api/channel/{channel_id}",
+                headers=_headers(),
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            channel_data = body.get("data", body)
+            current_status = channel_data.get("status", 1)
+            # 切换状态: 1(启用) ↔ 2(禁用)
+            new_status = 2 if current_status == 1 else 1
+            channel_data["status"] = new_status
+            # 更新
+            resp2 = await client.put(
+                f"{_NEWAPI_BASE}/api/channel/",
+                headers=_headers(),
+                json=channel_data,
+            )
+            resp2.raise_for_status()
+            return {"success": True, "status": new_status}
+    except httpx.ConnectError:
+        return {"success": False, "error": "无法连接到 New-API 服务"}
+    except Exception as e:
+        logger.exception("切换 New-API 通道状态失败")
+        return {"success": False, "error": _safe_error(e)}
+
+
+@router.delete("/newapi/tokens/{token_id}")
+async def delete_token(token_id: int) -> dict[str, Any]:
+    """删除令牌 — 代理转发 DELETE /api/token/{id} 接口"""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.delete(
+                f"{_NEWAPI_BASE}/api/token/{token_id}",
+                headers=_headers(),
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            return {"success": body.get("success", True)}
+    except httpx.ConnectError:
+        return {"success": False, "error": "无法连接到 New-API 服务"}
+    except Exception as e:
+        logger.exception("删除 New-API 令牌失败")
+        return {"success": False, "error": _safe_error(e)}
