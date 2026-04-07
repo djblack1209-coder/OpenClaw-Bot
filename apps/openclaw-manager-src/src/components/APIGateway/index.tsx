@@ -10,6 +10,8 @@ import {
   Eye,
   EyeOff,
   ServerOff,
+  Trash2,
+  Power,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { toast } from 'sonner';
@@ -313,6 +315,59 @@ export function APIGateway() {
     });
   };
 
+  // ── 删除渠道 ────────────────────────────────────────────────
+
+  const handleDeleteChannel = async (channelId: number) => {
+    if (!confirm('确定要删除这个渠道吗？')) return;
+    try {
+      const res = await clawbotFetch(`/api/v1/newapi/channels/${channelId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('渠道已删除');
+        await fetchChannels();
+      } else {
+        toast.error('删除失败');
+      }
+    } catch (err) {
+      gatewayLogger.error('删除渠道失败', err);
+      toast.error('删除渠道时发生错误');
+    }
+  };
+
+  // ── 切换渠道启停 ────────────────────────────────────────────
+
+  const handleToggleChannel = async (channelId: number) => {
+    try {
+      const res = await clawbotFetch(`/api/v1/newapi/channels/${channelId}/status`, { method: 'POST' });
+      if (res.ok) {
+        toast.success('渠道状态已切换');
+        await fetchChannels();
+      } else {
+        toast.error('切换状态失败');
+      }
+    } catch (err) {
+      gatewayLogger.error('切换渠道状态失败', err);
+      toast.error('操作失败');
+    }
+  };
+
+  // ── 删除令牌 ────────────────────────────────────────────────
+
+  const handleDeleteToken = async (tokenId: number) => {
+    if (!confirm('确定要删除这个令牌吗？')) return;
+    try {
+      const res = await clawbotFetch(`/api/v1/newapi/tokens/${tokenId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('令牌已删除');
+        await fetchTokens();
+      } else {
+        toast.error('删除失败');
+      }
+    } catch (err) {
+      gatewayLogger.error('删除令牌失败', err);
+      toast.error('删除令牌时发生错误');
+    }
+  };
+
   // ── 加载状态 ────────────────────────────────────────────────
 
   if (loading) {
@@ -459,7 +514,7 @@ export function APIGateway() {
                     <th className="text-left py-2 px-3 font-medium">类型</th>
                     <th className="text-left py-2 px-3 font-medium">模型</th>
                     <th className="text-left py-2 px-3 font-medium">状态</th>
-                  </tr>
+                    <th className="text-left py-2 px-3 font-medium">操作</th>
                 </thead>
                 <tbody>
                   {channels.map((ch, idx) => {
@@ -480,7 +535,29 @@ export function APIGateway() {
                             {statusInfo.label}
                           </span>
                         </td>
-                      </tr>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => ch.id && handleToggleChannel(ch.id)}
+                              className={clsx(
+                                'p-1 rounded transition-colors',
+                                ch.status === 1
+                                  ? 'text-green-400 hover:bg-green-500/10'
+                                  : 'text-gray-500 hover:bg-gray-500/10'
+                              )}
+                              title={ch.status === 1 ? '禁用' : '启用'}
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => ch.id && handleDeleteChannel(ch.id)}
+                              className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                     );
                   })}
                 </tbody>
@@ -516,7 +593,7 @@ export function APIGateway() {
                     <th className="text-left py-2 px-3 font-medium">密钥</th>
                     <th className="text-left py-2 px-3 font-medium">状态</th>
                     <th className="text-left py-2 px-3 font-medium">已用额度</th>
-                  </tr>
+                    <th className="text-left py-2 px-3 font-medium">操作</th>
                 </thead>
                 <tbody>
                   {tokens.map((tk, idx) => {
@@ -551,7 +628,15 @@ export function APIGateway() {
                         <td className="py-2 px-3 text-gray-400">
                           {tk.used_quota !== undefined ? tk.used_quota.toLocaleString() : '—'}
                         </td>
-                      </tr>
+                        <td className="py-2 px-3">
+                          <button
+                            onClick={() => tk.id && handleDeleteToken(tk.id)}
+                            className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                     );
                   })}
                 </tbody>
