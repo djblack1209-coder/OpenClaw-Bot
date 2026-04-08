@@ -5,6 +5,60 @@
 
 ---
 
+## [2026-04-08] 全量生产就绪审计 — P0-P5 跨 17 项安全/功能/架构修复
+
+> 领域: `backend`, `frontend`, `infra`, `xianyu`, `trading`
+> 影响模块: `api/auth`, `core/executor`, `core/brain`, `core/task_graph`, `core/brain_executors`, `core/brain_graph_builders`, `core/security`, `tools/code_tool`, `bot/auth`, `xianyu/xianyu_agent`, `xianyu/xianyu_live`, `social_tools`, `execution/_db`, `kiro-gateway/routes_openai`, `kiro-gateway/main`, `docker-compose.newapi`
+> 关联问题: HI-456, HI-457, HI-410, 新发现
+
+### P0 安全修复 (10项)
+- `docker-compose.newapi.yml` — 硬编码管理员 Token 改为环境变量引用
+- `bot/auth.py` — requires_auth 装饰器增加 context.args 全局 sanitize_input 消毒
+- `core/executor.py` — execute_via_api/browser/skyvern 三方法增加 SSRF 检查
+- `xianyu/xianyu_agent.py` — 买家消息增加 `[买家消息]` 角色前缀防 Prompt Injection
+- `api/auth.py` — 生产环境(ENV=production)强制要求 OPENCLAW_API_TOKEN
+- `xianyu/xianyu_live.py` — Token 刷新失败日志脱敏（不再记录完整 API 响应）
+- `.openclaw/cron/jobs.json` — 从 git 跟踪移除
+- `execution/_db.py` — SQLite 创建后设置 0o600 权限 + WAL/SHM 附属文件同步保护
+- `core/security.py` — sanitize_input 黑名单补全(+8条SQL+7条命令注入模式)
+- `tools/code_tool.py` — 沙箱模块黑名单补全(+11个底层C扩展模块)
+- `kiro-gateway/routes_openai.py` — 生产环境不暴露版本号
+- `kiro-gateway/main.py` — CORS 拒绝通配符 `*`
+
+### P1 功能完整性修复 (5项)
+- `src-tauri/commands/config.rs` — 恢复被误删的文件(22个Tauri命令，桌面端编译必需)
+- `core/brain.py` — 添加 TaskType.COMMUNICATION 到图构建器映射
+- `core/brain_graph_builders.py` — 新增 _build_communication_graph 方法
+- `core/task_graph.py` — 实现 fallback 节点状态重置(原只有日志没有代码)
+- `core/brain_executors.py` — DAG 风控检查改用真实交易参数(原硬编码 quantity=100)
+- `ExecutionFlow/index.tsx` — 删除空 useEffect 死代码
+
+### P2 架构质量修复 (2项)
+- `core/brain.py` — 共享字典增加 asyncio.Lock 保护 (HI-456)
+- `social_tools.py` — PostTimeOptimizer 增加 threading.Lock 保护 (HI-457)
+
+### 文件变更
+- `docker-compose.newapi.yml` — Token 外部化
+- `packages/clawbot/src/api/auth.py` — 生产环境强制 Token
+- `packages/clawbot/src/bot/auth.py` — args sanitize
+- `packages/clawbot/src/core/executor.py` — SSRF 检查
+- `packages/clawbot/src/core/brain.py` — COMMUNICATION + asyncio.Lock
+- `packages/clawbot/src/core/brain_graph_builders.py` — 新方法
+- `packages/clawbot/src/core/brain_executors.py` — 风控参数修复
+- `packages/clawbot/src/core/task_graph.py` — fallback 实现
+- `packages/clawbot/src/core/security.py` — 黑名单扩充
+- `packages/clawbot/src/tools/code_tool.py` — 模块黑名单扩充
+- `packages/clawbot/src/social_tools.py` — threading.Lock
+- `packages/clawbot/src/execution/_db.py` — 文件权限
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — 角色前缀
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 日志脱敏
+- `packages/clawbot/kiro-gateway/kiro/routes_openai.py` — 版本隐藏
+- `packages/clawbot/kiro-gateway/main.py` — CORS 安全
+- `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` — 恢复
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 死代码清理
+
+---
+
 ## [2026-04-08] 闲鱼模块改造 — 去掉 Mac 通知 + 滑块自动处理 + Stealth 反检测
 
 > 领域: `xianyu`, `backend`
