@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Blocks, Search, Plus, Settings2, Trash2,
-  Github, Database, Globe, HardDrive,
+  GitBranch, Database, Globe, HardDrive,
   RefreshCw, AlertCircle, User, Loader2,
   type LucideIcon,
 } from 'lucide-react';
@@ -37,7 +37,7 @@ interface MCPPlugin {
 const fallbackIcon = Blocks;
 
 const getIconForPlugin = (id: string) => {
-  if (id.includes('github')) return Github;
+  if (id.includes('github')) return GitBranch;
   if (id.includes('sqlite') || id.includes('db')) return Database;
   if (id.includes('browser')) return Globe;
   if (id.includes('file') || id.includes('fs')) return HardDrive;

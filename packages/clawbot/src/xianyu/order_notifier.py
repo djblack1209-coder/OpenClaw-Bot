@@ -158,6 +158,34 @@ class OrderNotifier:
                 await asyncio.sleep(2 ** attempt)
         logger.warning("[订单通知] Telegram 异步 3 次重试均失败")
 
+    async def send_qr_login(self, qr_png: bytes):
+        """发送闲鱼登录二维码图片到 Telegram"""
+        if not self.tg_token or not self.tg_chat_id:
+            logger.debug("Telegram 未配置，无法发送二维码")
+            return
+        url = f"https://api.telegram.org/bot{self.tg_token}/sendPhoto"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    url,
+                    data={
+                        "chat_id": self.tg_chat_id,
+                        "caption": (
+                            "🔐 闲鱼 Cookie 已过期，需要重新登录\n\n"
+                            "请用 闲鱼 或 淘宝 APP 扫描上方二维码\n"
+                            "扫码后在手机上确认登录\n\n"
+                            "⏱️ 二维码有效期 5 分钟"
+                        ),
+                    },
+                    files={"photo": ("xianyu_qr.png", qr_png, "image/png")},
+                )
+                if resp.status_code == 200:
+                    logger.info("闲鱼登录二维码已发送到 Telegram")
+                else:
+                    logger.warning(f"发送二维码失败: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.error(f"发送二维码到 Telegram 失败: {e}")
+
     def _send_telegram_sync(self, url: str, payload: dict):
         """同步版 Telegram 通知发送（3 次重试 + 指数退避）"""
         import time as _time
