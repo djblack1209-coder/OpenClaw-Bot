@@ -134,6 +134,8 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         self._active_tasks: Dict[str, TaskResult] = {}
         self._pending_callbacks: Dict[str, Dict] = {}  # callback_id → context
         self._pending_clarifications: Dict[int, str] = {}  # chat_id → task_id
+        # 保护共享字典的异步锁 — 防止快速连续消息导致竞态（HI-456）
+        self._lock = asyncio.Lock()
         self._config = self._load_config()
 
         # 任务图执行器（带进度回调）
