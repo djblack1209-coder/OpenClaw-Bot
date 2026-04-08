@@ -1,6 +1,47 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-07
+> 最后更新: 2026-04-08
+
+---
+
+## [2026-04-08 Session 23] 通用登录弹窗机制 + New-API 前端对齐 + 图标重构v3 + Playwright 修复
+
+### 本次完成了什么
+
+**任务1: Bot 心跳丢失 + 闲鱼重连诊断**
+- 根因: Mac 短暂睡眠导致 Bot 心跳暂停（AutoRecovery 自动恢复）; 闲鱼 `_m_h5_tk` 于 4月2日过期（6天前），Playwright 未安装导致自动登录失败
+- 修复: 安装 Playwright + Chromium 到系统 Python; 闲鱼登录弹窗改进（LoginHelper 集成 + 15分钟超时 + 3分钟重提醒）
+
+**任务2: 通用登录弹窗机制**
+- 新增 `src/tools/login_helper.py` — macOS 通知+对话框+提示音+浏览器置前
+- 闲鱼: `_native_browser_login` 重写，集成 LoginHelper 全套弹窗
+- 社交平台: `social_browser_worker.py` 新增 `interactive_login()` — headless→可见浏览器切换 + macOS 弹窗，5个发布/回复/删除函数全部集成
+- 新增 `login` 命令入口供手动调用
+
+**任务3: New-API 前端对齐**
+- `tauri.ts` 补全 5 个方法: updateChannel/deleteChannel/toggleChannel/deleteToken
+- MODULE_REGISTRY 更新为 8 端点
+
+**任务4: APP 图标重构 (第三版)**
+- Gemini gemini-3.1-flash-image 生成，银蓝机械爪+数字光球
+- 白色背景透明化 (RGBA)，替换全部 6 个文件
+
+### 未完成的工作（按优先级排列）
+1. **重启闲鱼进程** — 当前进程 (PID 48713) 仍用旧代码，需 `kill 48713` 让 LaunchAgent 拉起新进程使用改进的登录弹窗
+2. **安装 Docker Desktop** — new-api 需要 Docker: `docker compose -f docker-compose.newapi.yml up -d`
+3. **Tauri APP 重新编译** — 图标已替换但需重新编译: `cd apps/openclaw-manager-src && npm run tauri:build`
+4. **测试环境依赖** — 系统 Python 缺少 litellm 等测试依赖，完整测试需安装 requirements.txt
+
+### 需要注意的坑
+- 闲鱼进程需重启才能用新的登录弹窗代码 — `kill 48713` 后 LaunchAgent 自动拉起
+- Playwright Chromium 安装在 `~/Library/Caches/ms-playwright/` — 约 91MB
+- 社交平台交互式登录会临时停止 headless Chrome — 登录完成后自动恢复
+- 图标是 JPEG 转 PNG 并透明化白色背景，深色区域不受影响
+
+### 当前系统状态
+- Bot 进程: 7 个 Bot + AutoRecovery 正常运行 (PID 1983)
+- 闲鱼进程: Cookie 过期持续重连中 (PID 48713，需重启用新代码)
+- 改动文件: 3 个代码文件 + 1 个新建文件 + 6 个图标文件 + 1 个前端文件 + 3 个文档文件
 
 ---
 

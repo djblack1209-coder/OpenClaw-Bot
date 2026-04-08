@@ -5,6 +5,49 @@
 
 ---
 
+## [2026-04-08] 通用登录弹窗机制 + New-API 前端对齐 + APP 图标重构 + Playwright 环境修复
+
+> 领域: `backend`, `frontend`, `xianyu`, `social`, `infra`
+> 影响模块: `tools/login_helper`, `xianyu/xianyu_live`, `scripts/social_browser_worker`, `tauri.ts`, `src-tauri/icons`
+> 关联问题: HI-409 (闲鱼自动登录), HI-411 (MODULE_REGISTRY)
+
+### 变更内容
+
+**通用登录弹窗工具 (login_helper.py)**
+- 新增 `LoginHelper` 类 — macOS 通知中心通知 + 模态对话框 + 系统提示音 + 浏览器自动置前
+- 所有需要人工登录的服务统一使用此工具，确保用户一定能看到登录提示
+- 支持异步轮询检测登录完成，自动恢复服务
+
+**闲鱼登录弹窗改进**
+- 集成 LoginHelper：Cookie 过期时弹出 macOS 桌面通知 + 提示音 + 对话框 + Telegram 通知
+- 等待超时从 10 分钟延长到 15 分钟
+- 每 3 分钟重新提醒一次，避免用户忽略
+- 登录成功后发送 macOS 通知确认
+- 安装 Playwright 到系统 Python — 之前 Playwright 未安装导致自动登录脚本始终失败降级
+
+**社交平台 (X/小红书) 交互式登录**
+- 新增 `interactive_login()` 函数 — 检测到需要登录时自动停止 headless 浏览器 → 弹出可见浏览器 → macOS 通知提醒 → 检测登录完成 → 恢复 headless
+- `publish_x`/`reply_x`/`reply_xhs`/`publish_xhs`/`delete_x` 五个函数全部集成交互式登录
+- 新增 `login` 命令入口，可通过 `social_browser_worker.py login '{"platforms":["x"]}'` 手动触发
+
+**New-API 前端对齐**
+- `tauri.ts` 补全 5 个缺失的 API 方法: `newApiUpdateChannel`/`newApiDeleteChannel`/`newApiToggleChannel`/`newApiDeleteToken`
+- MODULE_REGISTRY 更新为 8 个端点 (之前只记录了 4 个)
+
+**APP 图标重构 (第三版)**
+- 使用 Gemini gemini-3.1-flash-image 重新生成 — 机械爪+数字光球+电路纹路+银蓝金属质感
+- 白色背景已透明化处理 (RGBA)
+- 替换全部 6 个图标文件，ICO 包含 6 种尺寸 (16/32/48/64/128/256)
+
+### 文件变更
+- `packages/clawbot/src/tools/login_helper.py` — 新建，通用登录弹窗工具 (~220行)
+- `packages/clawbot/src/xianyu/xianyu_live.py` — `_native_browser_login` 重写，集成 LoginHelper
+- `packages/clawbot/scripts/social_browser_worker.py` — 新增 `interactive_login` + 5 处 `login_page_detected` 改为自动弹窗
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 补全 5 个 New-API 方法
+- `apps/openclaw-manager-src/src-tauri/icons/*` — 全部 6 个图标文件替换
+
+---
+
 ## [2026-04-07] 闲鱼登录弹窗优化 + New-API 响应解包修复 + APP 图标重构 + 前端导航补全
 
 > 领域: `xianyu`, `backend`, `frontend`
