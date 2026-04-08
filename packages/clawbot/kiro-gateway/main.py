@@ -442,11 +442,16 @@ app = FastAPI(
 
 # --- CORS 中间件 ---
 # 仅允许本机和已知客户端来源（安全加固：替换原 allow_origins=["*"]）
-_CORS_ORIGINS = [
+_raw_cors = [
     origin.strip()
     for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
-] or [
+]
+# 安全: 拒绝通配符 "*" — 防止环境变量误配导致 CORS 全放行
+if "*" in _raw_cors:
+    logger.critical("[CORS] ⚠️ CORS_ALLOWED_ORIGINS 包含通配符 '*'，已忽略! 使用默认白名单。")
+    _raw_cors = []
+_CORS_ORIGINS = _raw_cors or [
     "http://localhost",
     "http://127.0.0.1",
     "https://localhost",

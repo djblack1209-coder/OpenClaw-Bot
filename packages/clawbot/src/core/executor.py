@@ -275,6 +275,11 @@ class MultiPathExecutor:
         if not endpoint:
             raise ValueError("API endpoint 为空")
 
+        # SSRF 防护：对外部 URL 做安全检查（阻止访问内网/元数据服务）
+        from src.core.security import check_ssrf
+        if not check_ssrf(endpoint):
+            raise ValueError(f"API endpoint SSRF 检查未通过: {endpoint[:100]}")
+
         headers = headers or {}
         params = params or {}
         client = self._get_http_client()
@@ -299,6 +304,11 @@ class MultiPathExecutor:
         """浏览器自动化 — API不可用时的备选"""
         if not url:
             raise ValueError("URL 为空")
+
+        # SSRF 防护：阻止浏览器访问内网地址
+        from src.core.security import check_ssrf
+        if not check_ssrf(url):
+            raise ValueError(f"浏览器目标 URL SSRF 检查未通过: {url[:100]}")
 
         # 尝试 Playwright
         try:
@@ -457,6 +467,11 @@ class MultiPathExecutor:
             raise ValueError("URL 为空")
         if not goal:
             raise ValueError("goal 为空")
+
+        # SSRF 防护：阻止 Skyvern 访问内网地址
+        from src.core.security import check_ssrf
+        if not check_ssrf(url):
+            raise ValueError(f"Skyvern 目标 URL SSRF 检查未通过: {url[:100]}")
 
         try:
             from src.integrations.skyvern_bridge import get_skyvern_bridge
