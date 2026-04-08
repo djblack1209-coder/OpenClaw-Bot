@@ -35,92 +35,26 @@ class LoginHelper:
         self._is_macos = sys.platform == "darwin"
 
     def mac_notify(self, title: str, message: str, sound: str = "Ping") -> bool:
-        """发送 macOS 通知中心通知。
-
-        Args:
-            title: 通知标题
-            message: 通知内容
-            sound: 通知声音名称 (Ping/Basso/Blow/Bottle/Frog/Funk/Glass/Hero/Morse/Pop/Purr/Sosumi/Submarine/Tink)
-
-        Returns:
-            是否发送成功
+        """macOS 通知 — 已禁用，仅记日志。
+        
+        用户明确要求不弹任何 macOS 原生通知/弹窗/声音。
+        所有登录提醒改为通过 Telegram 或纯日志输出。
         """
-        if not self._is_macos:
-            logger.info(f"[{self.service_name}] {title}: {message}")
-            return False
-        try:
-            script = (
-                f'display notification "{message}" '
-                f'with title "OpenClaw — {title}" '
-                f'sound name "{sound}"'
-            )
-            subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, timeout=5,
-            )
-            return True
-        except Exception as e:
-            logger.debug(f"macOS 通知发送失败: {e}")
-            return False
+        logger.info(f"[{self.service_name}] {title}: {message}")
+        return False
 
     def mac_alert(self, title: str, message: str, button: str = "知道了") -> bool:
-        """弹出 macOS 模态对话框（非阻塞，在后台线程运行）。
-
-        对话框会悬浮在所有窗口之上，确保用户一定能看到。
-
-        Args:
-            title: 对话框标题
-            message: 对话框内容
-            button: 按钮文字
-
-        Returns:
-            是否弹出成功
+        """macOS 模态对话框 — 已禁用，仅记日志。
+        
+        用户明确要求不弹任何 macOS 原生通知/弹窗/声音。
         """
-        if not self._is_macos:
-            logger.info(f"[{self.service_name}] 弹窗: {title} - {message}")
-            return False
-        try:
-            # 使用 System Events 弹出应用级对话框，会出现在最前面
-            script = (
-                f'tell application "System Events" to display dialog '
-                f'"{message}" '
-                f'with title "OpenClaw — {title}" '
-                f'buttons {{"{button}"}} '
-                f'default button "{button}" '
-                f'with icon caution '
-                f'giving up after 30'
-            )
-            # 非阻塞启动，不等待用户点击
-            subprocess.Popen(
-                ["osascript", "-e", script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return True
-        except Exception as e:
-            logger.debug(f"macOS 对话框弹出失败: {e}")
-            return False
+        logger.info(f"[{self.service_name}] 弹窗: {title} - {message}")
+        return False
 
     def play_sound(self, sound_name: str = "Ping", repeat: int = 3) -> None:
-        """播放 macOS 系统提示音，重复多次引起注意。
-
-        Args:
-            sound_name: 声音名称
-            repeat: 重复次数
-        """
-        if not self._is_macos:
-            return
-        try:
-            for i in range(repeat):
-                subprocess.Popen(
-                    ["afplay", f"/System/Library/Sounds/{sound_name}.aiff"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                if i < repeat - 1:
-                    time.sleep(0.5)
-        except Exception as e:
-            logger.debug(f"播放提示音失败: {e}")
+        """播放 macOS 系统提示音 — 已禁用。"""
+        # 用户明确要求不弹任何通知/声音
+        pass
 
     def open_url(self, url: str, bring_to_front: bool = True) -> bool:
         """在系统默认浏览器中打开 URL。
