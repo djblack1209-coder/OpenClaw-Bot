@@ -673,6 +673,32 @@ export const api = {
       body: JSON.stringify(data),
       headers: { 'Content-Type': 'application/json' },
     }),
+
+  // 更新渠道
+  newApiUpdateChannel: (channelId: number, data: Record<string, unknown>) =>
+    clawbotFetch(`/api/v1/newapi/channels/${channelId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+
+  // 删除渠道
+  newApiDeleteChannel: (channelId: number) =>
+    clawbotFetch(`/api/v1/newapi/channels/${channelId}`, {
+      method: 'DELETE',
+    }),
+
+  // 切换渠道启用/禁用状态
+  newApiToggleChannel: (channelId: number) =>
+    clawbotFetch(`/api/v1/newapi/channels/${channelId}/status`, {
+      method: 'POST',
+    }),
+
+  // 删除令牌
+  newApiDeleteToken: (tokenId: number) =>
+    clawbotFetch(`/api/v1/newapi/tokens/${tokenId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost

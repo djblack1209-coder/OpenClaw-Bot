@@ -428,6 +428,175 @@ def login_page_detected(page) -> bool:
     return any(token in hay for token in ["登录", "login", "sign in", "sign up"]) or "/i/flow/login" in page.url
 
 
+def _stop_headless_browser() -> None:
+    """停止 headless 浏览器进程"""
+    try:
+        subprocess.run(
+            ["pkill", "-f", f"--remote-debugging-port={SOCIAL_BROWSER_PORT}"],
+            timeout=5, capture_output=True,
+        )
+        time.sleep(2)
+    except Exception:
+        pass
+
+
+def _start_visible_browser(urls: List[str]) -> subprocess.Popen:
+    """启动可见（非 headless）浏览器供用户登录"""
+    cmd = [
+        chrome_bin(),
+        f"--user-data-dir={SOCIAL_BROWSER_DIR}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-features=DialMediaRouteProvider",
+    ]
+    cmd.extend(urls)
+    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _mac_login_alert(platform_name: str) -> None:
+    """弹出 macOS 桌面通知 + 对话框，提醒用户登录"""
+    if sys.platform != "darwin":
+        return
+    try:
+        # 系统通知
+        subprocess.Popen([
+            "osascript", "-e",
+            f'display notification "{platform_name} 需要登录，请在弹出的浏览器中登录" '
+            f'with title "OpenClaw — {platform_name} 登录" sound name "Basso"'
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 提示音
+        subprocess.Popen(
+            ["afplay", "/System/Library/Sounds/Basso.aiff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.5)
+        subprocess.Popen(
+            ["afplay", "/System/Library/Sounds/Basso.aiff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        # 模态对话框
+        subprocess.Popen([
+            "osascript", "-e",
+            f'tell application "System Events" to display dialog '
+            f'"{platform_name} 需要登录！\\n\\n浏览器已打开登录页面，请完成登录。\\n'
+            f'登录后关闭此对话框，系统会自动恢复。" '
+            f'with title "OpenClaw — {platform_name}" '
+            f'buttons {{"知道了"}} default button "知道了" '
+            f'with icon caution giving up after 30'
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def interactive_login(platforms: List[str], timeout: int = 300) -> Dict[str, Any]:
+    """交互式登录：停止 headless 浏览器 → 弹出可见浏览器 → 用户登录 → 恢复 headless。
+
+    当 X/小红书/Upwork 等平台 Cookie 过期时，自动弹出可见浏览器窗口并通知用户。
+    检测到登录完成后自动关闭可见浏览器并恢复 headless 模式。
+
+    Args:
+        platforms: 需要登录的平台列表 ["x", "xiaohongshu", "upwork"]
+        timeout: 最长等待时间（秒）
+
+    Returns:
+        {"success": bool, "platforms_logged_in": list}
+    """
+    # 准备登录 URL
+    login_urls: List[str] = []
+    platform_names: List[str] = []
+    for p in platforms:
+        p_lower = p.strip().lower()
+        if p_lower == "x":
+            login_urls.append("https://x.com/i/flow/login")
+            platform_names.append("X (Twitter)")
+        elif p_lower == "xiaohongshu":
+            login_urls.append("https://www.xiaohongshu.com/explore")
+            platform_names.append("小红书")
+        elif p_lower == "upwork":
+            login_urls.append("https://www.upwork.com/ab/account-security/login")
+            platform_names.append("Upwork")
+        else:
+            login_urls.append(f"https://{p_lower}.com")
+            platform_names.append(p_lower)
+
+    name_str = " + ".join(platform_names)
+
+    # 1. 停止 headless 浏览器（释放 profile 锁）
+    _stop_headless_browser()
+
+    # 2. 启动可见浏览器
+    proc = _start_visible_browser(login_urls)
+
+    # 3. macOS 桌面弹窗通知
+    _mac_login_alert(name_str)
+    print(f"[社交登录] 已弹出浏览器，等待 {name_str} 登录 (最多 {timeout}s)...")
+
+    # 4. 等待用户登录完成
+    # 通过定期检查浏览器 Cookie 文件的修改时间来检测登录
+    cookie_file = SOCIAL_BROWSER_DIR / "Default" / "Cookies"
+    initial_mtime = cookie_file.stat().st_mtime if cookie_file.exists() else 0
+    logged_in = False
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        time.sleep(5)
+        # 检测 Cookie 文件是否被修改（表明有新的登录状态写入）
+        if cookie_file.exists():
+            current_mtime = cookie_file.stat().st_mtime
+            if current_mtime > initial_mtime + 2:  # 至少变化 2 秒才算有效
+                # 等待几秒确保所有 Cookie 写入完成
+                time.sleep(5)
+                logged_in = True
+                break
+
+        # 每 60 秒提醒一次
+        elapsed = int(time.time() - start_time)
+        if elapsed > 0 and elapsed % 60 == 0:
+            if sys.platform == "darwin":
+                try:
+                    subprocess.Popen([
+                        "osascript", "-e",
+                        f'display notification "已等待 {elapsed // 60} 分钟，请尽快登录" '
+                        f'with title "OpenClaw — {name_str}" sound name "Ping"'
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+
+    # 5. 关闭可见浏览器
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+    # 6. 恢复 headless 浏览器
+    time.sleep(2)
+    try:
+        start_social_browser()
+    except Exception as e:
+        print(f"[社交登录] 恢复 headless 浏览器失败: {e}")
+
+    if logged_in:
+        # 成功通知
+        if sys.platform == "darwin":
+            try:
+                subprocess.Popen([
+                    "osascript", "-e",
+                    f'display notification "{name_str} 登录成功，服务已恢复" '
+                    f'with title "OpenClaw" sound name "Glass"'
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+        print(f"[社交登录] {name_str} 登录完成，headless 浏览器已恢复")
+        return {"success": True, "platforms_logged_in": platform_names}
+    else:
+        print(f"[社交登录] 登录等待超时 ({timeout}s)")
+        return {"success": False, "platforms_logged_in": []}
+
+
 def search_bing_html(query: str) -> str:
     url = "https://www.bing.com/search?q=" + urllib.parse.quote(query)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -1177,6 +1346,11 @@ def publish_x(text: str, images: List[str]) -> Dict[str, Any]:
             page.goto(X_COMPOSE_URL, wait_until="domcontentloaded", timeout=120000)
             page.wait_for_timeout(5000)
             if login_page_detected(page):
+                # 自动弹出可见浏览器供用户登录
+                login_result = interactive_login(["x"], timeout=300)
+                if login_result.get("success"):
+                    # 登录成功，重新尝试
+                    return {"success": False, "status": "login_completed_retry", "url": page.url}
                 return {"success": False, "status": "login_required", "url": page.url}
             box = page.locator('div[data-testid="tweetTextarea_0"]').first
             if box.count() == 0:
@@ -1241,6 +1415,9 @@ def reply_x(url: str, text: str) -> Dict[str, Any]:
         page.goto(str(url or X_HOME_URL).strip(), wait_until="domcontentloaded", timeout=120000)
         page.wait_for_timeout(5000)
         if login_page_detected(page):
+            login_result = interactive_login(["x"], timeout=300)
+            if login_result.get("success"):
+                return {"success": False, "status": "login_completed_retry", "url": page.url}
             return {"success": False, "status": "login_required", "url": page.url}
         reply_btn = page.locator('[data-testid="reply"]').first
         if reply_btn.count() == 0:
@@ -1299,6 +1476,9 @@ def reply_xhs(url: str, text: str, target_comment_id: str = "") -> Dict[str, Any
         page.goto(note_url, wait_until="domcontentloaded", timeout=120000)
         page.wait_for_timeout(5000)
         if login_page_detected(page):
+            login_result = interactive_login(["xiaohongshu"], timeout=300)
+            if login_result.get("success"):
+                return {"success": False, "status": "login_completed_retry", "url": page.url}
             return {"success": False, "status": "login_required", "url": page.url}
         handle = xhs_bundle_api(page)
         try:
@@ -1347,6 +1527,9 @@ def publish_xhs(title: str, body: str, images: List[str]) -> Dict[str, Any]:
         page.goto(XHS_PUBLISH_URL, wait_until="domcontentloaded", timeout=120000)
         page.wait_for_timeout(5000)
         if login_page_detected(page):
+            login_result = interactive_login(["xiaohongshu"], timeout=300)
+            if login_result.get("success"):
+                return {"success": False, "status": "login_completed_retry", "url": page.url}
             return {"success": False, "status": "login_required", "url": page.url}
         page.evaluate(
             """() => {
@@ -1405,6 +1588,9 @@ def delete_x(tweet_url: str) -> Dict[str, Any]:
         page.goto(tweet_url, wait_until="domcontentloaded", timeout=120000)
         page.wait_for_timeout(3000)
         if login_page_detected(page):
+            login_result = interactive_login(["x"], timeout=300)
+            if login_result.get("success"):
+                return {"success": False, "status": "login_completed_retry", "url": page.url}
             return {"success": False, "status": "login_required", "url": page.url}
         # Click the "..." more button on the tweet
         more_btn = page.locator('button[data-testid="caret"]').first
@@ -1456,6 +1642,11 @@ def main() -> int:
         result = xhs_update_profile(payload)
     elif action == "delete_x":
         result = delete_x(str(payload.get("url", "")))
+    elif action == "login":
+        # 交互式登录：弹出可见浏览器供用户登录
+        platforms = list(payload.get("platforms", ["x", "xiaohongshu"]))
+        timeout = int(payload.get("timeout", 300) or 300)
+        result = interactive_login(platforms, timeout=timeout)
     else:
         raise SystemExit(f"unknown action: {action}")
     print(json.dumps(result, ensure_ascii=False))
