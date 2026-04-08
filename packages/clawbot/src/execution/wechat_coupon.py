@@ -73,7 +73,31 @@ _TOKEN_PATTERNS = [
     re.compile(r"session[-_]token[:\t=]\s*([A-Za-z0-9_\-+/=]{40,})"),
 ]
 
-# 持久化 token 存储路径（~/.openclaw/coupon_token.json）
+# macOS 系统命令完整路径（LaunchAgent 启动时 PATH 不含 /usr/sbin）
+_NETWORKSETUP = "/usr/sbin/networksetup"
+# mitmdump 完整路径（优先使用 which 查找，降级到常见位置）
+_MITMDUMP = None  # 延迟初始化
+
+def _find_mitmdump() -> str:
+    """查找 mitmdump 可执行文件的完整路径"""
+    global _MITMDUMP
+    if _MITMDUMP:
+        return _MITMDUMP
+    import shutil
+    path = shutil.which("mitmdump")
+    if path:
+        _MITMDUMP = path
+        return path
+    # 常见 Homebrew / pip 安装路径
+    for candidate in [
+        "/opt/homebrew/bin/mitmdump",
+        "/usr/local/bin/mitmdump",
+        os.path.expanduser("~/.local/bin/mitmdump"),
+    ]:
+        if os.path.isfile(candidate):
+            _MITMDUMP = candidate
+            return candidate
+    return "mitmdump"  # 降级，让后续报错更明确
 _PERSISTENT_TOKEN_DIR = Path.home() / ".openclaw"
 _PERSISTENT_TOKEN_PATH = _PERSISTENT_TOKEN_DIR / "coupon_token.json"
 
@@ -274,13 +298,13 @@ def _set_macos_proxy(enable: bool) -> bool:
         if enable:
             # 设置 HTTP 代理
             subprocess.run(
-                ["networksetup", "-setwebproxy", _NETWORK_SERVICE,
+                [_NETWORKSETUP, "-setwebproxy", _NETWORK_SERVICE,
                  "127.0.0.1", str(_PROXY_PORT)],
                 check=True, capture_output=True, timeout=10,
             )
             # 设置 HTTPS 代理
             subprocess.run(
-                ["networksetup", "-setsecurewebproxy", _NETWORK_SERVICE,
+                [_NETWORKSETUP, "-setsecurewebproxy", _NETWORK_SERVICE,
                  "127.0.0.1", str(_PROXY_PORT)],
                 check=True, capture_output=True, timeout=10,
             )
@@ -288,12 +312,12 @@ def _set_macos_proxy(enable: bool) -> bool:
         else:
             # 关闭 HTTP 代理
             subprocess.run(
-                ["networksetup", "-setwebproxystate", _NETWORK_SERVICE, "off"],
+                [_NETWORKSETUP, "-setwebproxystate", _NETWORK_SERVICE, "off"],
                 check=True, capture_output=True, timeout=10,
             )
             # 关闭 HTTPS 代理
             subprocess.run(
-                ["networksetup", "-setsecurewebproxystate", _NETWORK_SERVICE, "off"],
+                [_NETWORKSETUP, "-setsecurewebproxystate", _NETWORK_SERVICE, "off"],
                 check=True, capture_output=True, timeout=10,
             )
             logger.info("macOS 系统代理已恢复直连")
@@ -325,7 +349,7 @@ def _start_mitmdump() -> Optional[subprocess.Popen]:
 
         proc = subprocess.Popen(
             [
-                "mitmdump",
+                _find_mitmdump(),
                 "-s", str(_MITM_ADDON),
                 "-p", str(_PROXY_PORT),
                 "--set", "block_global=false",
