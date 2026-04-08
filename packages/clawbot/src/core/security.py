@@ -379,6 +379,14 @@ class SecurityGate:
             r"(?i)('\s*OR\s+.*)",
             r"(?i)('--\s*$)",
             r"(?i)(;\s*--\s*$)",
+            r'(?i)(\bINSERT\s+INTO\b)',
+            r'(?i)(\bDELETE\s+FROM\b)',
+            r'(?i)(\bEXEC\s+)',
+            r'(?i)(\bWAITFOR\s+DELAY\b)',
+            r'(?i)(\bALTER\s+TABLE\b)',
+            r'(?i)(\bCREATE\s+TABLE\b)',
+            r'(?i)(\bTRUNCATE\s+)',
+            r'(?i)(\bUPDATE\s+\w+\s+SET\b)',
         ]
         for pattern in sql_patterns:
             sanitized = re.sub(pattern, '[BLOCKED_SQL]', sanitized)
@@ -390,6 +398,13 @@ class SecurityGate:
             r'(`[^`]+`)',
             r'(\$\([^)]+\))',
             r'(?i)(\bcurl\b.*\|\s*bash\b)',
+            r'(\|\|)',              # 逻辑 OR 链式命令
+            r'(&&)',               # 逻辑 AND 链式命令
+            r'(>>\s*\S)',          # 追加重定向
+            r'(<\(\s*\S)',         # 进程替换
+            r'(?i)(;\s*wget\b)',   # 分号后跟 wget
+            r'(?i)(;\s*curl\b)',   # 分号后跟 curl
+            r'(?i)(;\s*chmod\b)',  # 分号后跟 chmod
         ]
         for pattern in cmd_patterns:
             sanitized = re.sub(pattern, '[BLOCKED_CMD]', sanitized)

@@ -14,7 +14,7 @@ services:
       - ./data/newapi:/data
     environment:
       - SQL_DSN=file:/data/new-api.db
-      - INITIAL_ROOT_TOKEN=$ONEAPI_ADMIN_KEY
+      - INITIAL_ROOT_TOKEN=${NEWAPI_INITIAL_TOKEN:?请在 .env 中设置 NEWAPI_INITIAL_TOKEN}
     deploy:
       resources:
         limits:

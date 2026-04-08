@@ -27,6 +27,7 @@ Contains all API endpoints:
 """
 
 import json
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
@@ -104,13 +105,17 @@ async def root():
     Health check endpoint.
     
     Returns:
-        Status and application version
+        Status (生产环境不暴露版本号)
     """
-    return {
+    env = os.environ.get("ENV", "development").lower()
+    result = {
         "status": "ok",
         "message": "Kiro Gateway is running",
-        "version": APP_VERSION
     }
+    # 仅开发环境返回版本号，防止生产环境信息泄露
+    if env != "production":
+        result["version"] = APP_VERSION
+    return result
 
 
 @router.get("/health")
@@ -119,13 +124,16 @@ async def health():
     Detailed health check.
     
     Returns:
-        Status, timestamp and version
+        Status, timestamp (生产环境不暴露版本号)
     """
-    return {
+    env = os.environ.get("ENV", "development").lower()
+    result = {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": APP_VERSION
     }
+    if env != "production":
+        result["version"] = APP_VERSION
+    return result
 
 @router.get("/v1/models", response_model=ModelList, dependencies=[Depends(verify_api_key)])
 async def get_models(request: Request):

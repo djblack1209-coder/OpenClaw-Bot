@@ -106,6 +106,10 @@ _BLOCKED_MODULES = frozenset({
     "threading", "concurrent", "asyncio",
     "gc", "inspect", "dis", "code", "codeop", "compileall",
     "py_compile", "zipimport", "pkgutil", "runpy",
+    # 底层 C 扩展模块 — 防止绕过上层模块封锁
+    "_io", "_posixsubprocess", "_socket", "_thread",
+    "_multiprocessing", "_signal", "posix", "nt",
+    "msvcrt", "winreg", "_winapi",
 })
 _orig_import = __import__
 def _safe_import(name, *args, **kwargs):

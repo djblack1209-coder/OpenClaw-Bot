@@ -36,7 +36,13 @@ def log_token_status() -> None:
         # 检查是否绑定到非 localhost (可能是生产环境)
         # 注意: 0.0.0.0 绑定全部网络接口，应视为外网暴露 (HI-387)
         bind_host = os.getenv("API_HOST", "127.0.0.1")
-        if bind_host not in ("127.0.0.1", "localhost"):
+        env_mode = os.getenv("ENV", "development").lower()
+        if env_mode == "production":
+            logger.critical(
+                "[API Auth] ⚠️ 生产环境未配置 OPENCLAW_API_TOKEN! "
+                "所有 API 请求将被拒绝。请设置 OPENCLAW_API_TOKEN 环境变量。"
+            )
+        elif bind_host not in ("127.0.0.1", "localhost"):
             logger.critical(
                 "[API Auth] ⚠️ 危险: API 绑定到外网地址 %s 但未配置认证 Token! "
                 "设置 OPENCLAW_API_TOKEN 环境变量或改为绑定 127.0.0.1", bind_host
@@ -61,7 +67,14 @@ async def verify_api_token(
 
     # 未配置 Token 时：仅允许 localhost 请求通过（开发模式安全降级）
     if not _API_TOKEN:
+        env_mode = os.getenv("ENV", "development").lower()
         bind_host = os.getenv("API_HOST", "127.0.0.1")
+        # 生产环境无 Token → 强制拒绝所有请求
+        if env_mode == "production":
+            raise HTTPException(
+                status_code=503,
+                detail="生产环境未配置 OPENCLAW_API_TOKEN，拒绝所有请求。"
+            )
         if bind_host not in ("127.0.0.1", "localhost"):
             # 绑定到非 localhost 地址但未配置 Token → 强制拒绝所有请求
             raise HTTPException(
