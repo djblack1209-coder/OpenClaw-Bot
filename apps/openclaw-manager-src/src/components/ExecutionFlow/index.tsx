@@ -241,11 +241,6 @@ export function ExecutionFlow() {
     );
   }, [activeNode, setNodes]);
 
-  // 组件卸载时清理定时器
-  useEffect(() => {
-    return () => {};
-  }, []);
-
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
   
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {

@@ -518,6 +518,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             TaskType.SYSTEM: self._build_system_graph,
             TaskType.EVOLUTION: self._build_evolution_graph,
             TaskType.CODE: self._build_code_graph,
+            TaskType.COMMUNICATION: self._build_communication_graph,
         }
         builder = builders.get(intent.task_type)
         if builder is None:

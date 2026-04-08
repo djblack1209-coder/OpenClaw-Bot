@@ -181,3 +181,13 @@ class BrainGraphBuilderMixin:
               params={"task": intent.goal, **intent.known_params},
               timeout=120)
         return b.build()
+
+    async def _build_communication_graph(self, intent: ParsedIntent) -> TaskGraph:
+        """通信任务（发邮件、发消息等）— 通过 LLM 生成内容后执行"""
+        b = TaskGraphBuilder(f"通信任务: {intent.goal}")
+        b.add("compose", "生成通信内容", ExecutorType.LLM,
+              self._exec_llm_query,
+              params={"question": f"请帮我完成以下通信任务: {intent.goal}",
+                      **intent.known_params},
+              timeout=60)
+        return b.build()

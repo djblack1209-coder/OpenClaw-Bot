@@ -302,7 +302,13 @@ class TaskGraphExecutor:
         # 尝试备选节点
         if node.fallback_node_id:
             logger.info(f"节点 {node.name} 失败，尝试备选: {node.fallback_node_id}")
-            # 备选节点的状态重置为 PENDING，下一轮会被调度
+            # 将备选节点的状态重置为 PENDING，下一轮调度时会被执行
+            fallback = self.nodes.get(node.fallback_node_id)
+            if fallback:
+                fallback.status = NodeStatus.PENDING
+                logger.info(f"备选节点 {fallback.name} 已重置为 PENDING")
+            else:
+                logger.warning(f"备选节点 {node.fallback_node_id} 不存在于任务图中")
 
 
 # ── 任务图构建器（常用模式）──────────────────────────────

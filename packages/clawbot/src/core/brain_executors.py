@@ -87,11 +87,16 @@ class BrainExecutorMixin:
             from src.trading_system import get_risk_manager
             rm = get_risk_manager()
             if rm:
+                # 从上下文提取真实交易参数（来自 DAG 上游节点的 AI 分析结果）
+                symbol = params.get("symbol", "")
+                side = params.get("side", "BUY")
+                quantity = params.get("quantity", 0)
+                entry_price = params.get("entry_price", 0)
                 check = rm.check_trade(
-                    symbol=params.get("symbol", ""),
-                    side="BUY",
-                    quantity=100,
-                    entry_price=0,
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    entry_price=entry_price,
                 )
                 approved = check.approved if hasattr(check, 'approved') else True
                 return {"source": "risk_manager", "approved": approved, "details": str(check)}
@@ -101,7 +106,8 @@ class BrainExecutorMixin:
         try:
             from src.risk_manager import risk_manager
             check = risk_manager.check_trade(
-                symbol=params.get("symbol", ""), side="BUY", quantity=100, entry_price=0,
+                symbol=params.get("symbol", ""), side=params.get("side", "BUY"),
+                quantity=params.get("quantity", 0), entry_price=params.get("entry_price", 0),
             )
             approved = check.approved if hasattr(check, 'approved') else True
             return {"source": "risk_manager_singleton", "approved": approved}
