@@ -1,17 +1,40 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-07 | 新增: newapi.py (New-API 管理代理路由)
+> 最后更新: 2026-04-08 | 新增: login_helper.py (通用登录弹窗工具); 更新: newapi.py (8个端点)
 
 ---
 
-## 新增模块 (2026-04-07)
+## 新增模块 (2026-04-08)
+
+### login_helper.py — 通用登录弹窗工具
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/tools/login_helper.py` |
+| 行数 | ~220 |
+| 导入方 | `xianyu/xianyu_live.py`, `scripts/social_browser_worker.py` |
+| 依赖 | `subprocess`, `asyncio` (无第三方依赖) |
+
+**Public API:**
+- `LoginHelper(service_name)` — 初始化登录助手
+- `.mac_notify(title, message, sound)` — macOS 通知中心通知
+- `.mac_alert(title, message)` — macOS 模态对话框
+- `.play_sound(sound_name, repeat)` — 播放系统提示音
+- `.open_url(url, bring_to_front)` — 打开浏览器并置前
+- `.alert_and_open(url, reason)` — 完整弹窗流程（通知+声音+浏览器+对话框）
+- `.wait_for_condition(check_fn, timeout)` — 异步轮询等待登录完成
+- `.open_browser_profile(profile_dir, urls)` — 打开 Chrome Profile 登录
+
+---
+
+## 更新模块 (2026-04-08)
 
 ### newapi.py — New-API 管理代理路由
 
 | 属性 | 值 |
 |------|-----|
 | 路径 | `packages/clawbot/src/api/routers/newapi.py` |
-| 行数 | ~115 |
+| 行数 | ~219 |
 | 导入方 | `api/routers/__init__.py` → `api/server.py` |
 | 依赖 | `httpx`, `fastapi`, `pydantic` |
 
@@ -20,6 +43,10 @@
 - `GET /api/v1/newapi/channels` — 获取通道列表
 - `GET /api/v1/newapi/tokens` — 获取令牌列表
 - `POST /api/v1/newapi/channels` — 创建新通道
+- `PUT /api/v1/newapi/channels/{id}` — 更新通道
+- `DELETE /api/v1/newapi/channels/{id}` — 删除通道
+- `POST /api/v1/newapi/channels/{id}/status` — 切换通道启用/禁用
+- `DELETE /api/v1/newapi/tokens/{id}` — 删除令牌
 
 ---
 
