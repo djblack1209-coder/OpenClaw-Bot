@@ -20,10 +20,16 @@ def parse_h5_tk_timestamp(cookies: dict) -> float:
 
 
 def is_cookie_expiring(cookies: dict, margin_seconds: int = 300) -> bool:
-    """判断 cookie 是否即将过期（默认 5 分钟内）"""
+    """判断 cookie 是否即将过期（默认 5 分钟内）
+    
+    修复: 无法解析 _m_h5_tk 时返回 False（假定有效），
+    因为 httpx CookieJar 的 domain 匹配问题经常导致读不到 _m_h5_tk，
+    不代表真正过期。真实过期判断应依赖 has_login() API 验证。
+    """
     expires_at = parse_h5_tk_timestamp(cookies)
     if expires_at <= 0:
-        return True  # 无法解析，视为需要刷新
+        # 无法解析 _m_h5_tk — 不作为过期依据，返回 False 让 has_login() 做最终裁决
+        return False
     return time.time() + margin_seconds >= expires_at
 
 
