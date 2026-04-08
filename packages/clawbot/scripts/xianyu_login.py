@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""闲鱼 Cookie 自动登录工具 — Playwright 浏览器登录 + Cookie 自动提取
+"""闲鱼 Cookie 自动登录工具 — Playwright 浏览器登录 + Stealth 反检测 + 滑块自动处理
 
 流程：
-1. 打开浏览器访问闲鱼登录页
-2. 用户用手机扫码登录
+1. 打开浏览器（注入 stealth 反检测脚本）访问闲鱼登录页
+2. 用户用手机扫码登录（或自动处理滑块验证码）
 3. 检测到登录成功后自动提取所有 Cookie
 4. 写入 config/.env 文件
 5. 通知 xianyu_main 进程热更新（SIGUSR1）
 
 使用方式：
-  python3 scripts/xianyu_login.py          # 正常登录
-  python3 scripts/xianyu_login.py --quiet   # 静默模式（被其他脚本调用时）
+  python3 scripts/xianyu_login.py              # 有界面模式（扫码）
+  python3 scripts/xianyu_login.py --headless    # 无界面模式（后台静默）
+  python3 scripts/xianyu_login.py --quiet       # 静默模式（被其他脚本调用时）
 """
 import os
 import signal
@@ -39,9 +40,12 @@ def _log(msg: str, quiet: bool = False):
         print(f"[闲鱼登录] {msg}")
 
 
-def extract_cookies_from_browser(quiet: bool = False) -> str:
+def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) -> str:
     """打开浏览器让用户登录闲鱼，登录成功后提取 Cookie。
-    
+
+    集成 stealth 反检测 + 滑块自动处理。
+    headless=True 时完全后台运行，不弹出任何窗口。
+
     返回 Cookie 字符串，失败返回空字符串。
     """
     try:
@@ -50,15 +54,31 @@ def extract_cookies_from_browser(quiet: bool = False) -> str:
         _log("Playwright 未安装，请执行: pip install playwright && playwright install chromium", quiet)
         return ""
 
-    _log("正在打开浏览器，请用闲鱼/淘宝 APP 扫码登录...", quiet)
+    # 加载滑块求解器
+    try:
+        from src.xianyu.slider_solver import SliderSolverSync, STEALTH_JS
+        slider_solver = SliderSolverSync()
+        has_slider_solver = True
+        _log("滑块求解器已加载", quiet)
+    except ImportError:
+        has_slider_solver = False
+        STEALTH_JS = ""
+        _log("滑块求解器不可用，跳过自动处理", quiet)
+
+    mode_str = "headless 静默" if headless else "有界面"
+    _log(f"正在以 {mode_str} 模式打开浏览器...", quiet)
 
     cookie_str = ""
 
     with sync_playwright() as p:
-        # 用有界面的浏览器（用户需要看到二维码扫码）
         browser = p.chromium.launch(
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"],
+            headless=headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process",
+            ],
         )
         context = browser.new_context(
             viewport={"width": 1280, "height": 800},
@@ -67,32 +87,61 @@ def extract_cookies_from_browser(quiet: bool = False) -> str:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
+            locale="zh-CN",
         )
         page = context.new_page()
+
+        # 注入 stealth 反检测脚本（在任何页面加载前生效）
+        if STEALTH_JS:
+            try:
+                context.add_init_script(STEALTH_JS)
+                _log("Stealth 反检测脚本已注入", quiet)
+            except Exception as e:
+                _log(f"Stealth 脚本注入失败（非致命）: {e}", quiet)
 
         # 访问登录页
         page.goto(LOGIN_URL, wait_until="domcontentloaded")
         _log("浏览器已打开登录页面，请用手机扫码登录", quiet)
 
-        # 等待登录成功（检测 URL 跳转到闲鱼域名 — 注意排除登录页自身 URL 中的 redirectURL 参数）
+        # 等待登录成功
         start = time.time()
         logged_in = False
+        slider_checked = False
 
         while time.time() - start < LOGIN_TIMEOUT:
             try:
                 current_url = page.url
-                # 登录成功判定：URL 主域名是 goofish.com（不是 login.taobao.com 的 redirect 参数）
+
+                # 每 5 秒检查一次是否出现滑块（登录过程中可能弹出）
+                if has_slider_solver and not slider_checked:
+                    if slider_solver.detect_slider(page):
+                        _log("检测到滑块验证码，正在自动处理...", quiet)
+                        solved = slider_solver.solve(page, max_retries=5)
+                        if solved:
+                            _log("滑块验证码已自动通过!", quiet)
+                        else:
+                            _log("滑块自动处理失败，可能需要手动处理", quiet)
+                        slider_checked = True
+                        # 处理完滑块后重置计时器，给用户更多时间扫码
+                        start = time.time()
+
+                # 登录成功判定
                 if SUCCESS_DOMAIN in current_url and "login.taobao.com" not in current_url:
-                    # 多等几秒让所有 Cookie 都设置好
                     _log("检测到登录成功，等待 Cookie 同步...", quiet)
                     time.sleep(5)
 
-                    # 访问闲鱼消息页面触发 WebSocket session 初始化（这会生成 _m_h5_tk）
+                    # 登录后也可能出现滑块验证（风控二次验证）
+                    if has_slider_solver and slider_solver.detect_slider(page):
+                        _log("登录后检测到二次滑块验证，正在处理...", quiet)
+                        slider_solver.solve(page, max_retries=5)
+                        time.sleep(2)
+
+                    # 访问闲鱼消息页面触发 session 初始化
                     if "/im" not in current_url:
                         page.goto("https://www.goofish.com/im", wait_until="domcontentloaded")
                         time.sleep(5)
 
-                    # 访问淘宝域名获取 unb 等 Cookie（unb 设在 .taobao.com 域名下）
+                    # 访问淘宝域名获取 unb 等 Cookie
                     page.goto("https://2.taobao.com/", wait_until="domcontentloaded")
                     time.sleep(2)
 
@@ -100,10 +149,14 @@ def extract_cookies_from_browser(quiet: bool = False) -> str:
                     break
             except Exception:
                 pass
+
             time.sleep(1)
+            # 每 10 秒重新检查滑块（可能动态加载）
+            if int(time.time() - start) % 10 == 0:
+                slider_checked = False
 
         if not logged_in:
-            _log("登录超时（5分钟内未完成扫码），请重试", quiet)
+            _log("登录超时（10分钟内未完成），请重试", quiet)
             browser.close()
             return ""
 
@@ -291,12 +344,12 @@ def notify_xianyu_process(quiet: bool = False) -> bool:
         return False
 
 
-def run_login(quiet: bool = False) -> bool:
+def run_login(quiet: bool = False, headless: bool = False) -> bool:
     """完整登录流程：浏览器登录 → 提取Cookie → 写入.env → 热更新"""
     _log("=== 闲鱼 Cookie 自动登录工具 ===", quiet)
 
     # 1. 浏览器登录 + Cookie 提取
-    cookie_str = extract_cookies_from_browser(quiet=quiet)
+    cookie_str = extract_cookies_from_browser(quiet=quiet, headless=headless)
     if not cookie_str:
         _log("Cookie 获取失败", quiet)
         return False
@@ -314,5 +367,6 @@ def run_login(quiet: bool = False) -> bool:
 
 if __name__ == "__main__":
     quiet = "--quiet" in sys.argv
-    success = run_login(quiet=quiet)
+    headless = "--headless" in sys.argv
+    success = run_login(quiet=quiet, headless=headless)
     sys.exit(0 if success else 1)

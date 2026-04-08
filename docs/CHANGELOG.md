@@ -5,6 +5,46 @@
 
 ---
 
+## [2026-04-08] 闲鱼模块改造 — 去掉 Mac 通知 + 滑块自动处理 + Stealth 反检测
+
+> 领域: `xianyu`, `backend`
+> 影响模块: `xianyu/xianyu_live`, `xianyu/slider_solver`, `xianyu/qr_login`, `scripts/xianyu_login`
+> 关联问题: HI-409 (闲鱼自动登录)
+
+### 变更内容
+
+**去掉所有 macOS 桌面通知/弹窗/声音**
+- `xianyu_live.py` — 移除全部 4 处 LoginHelper 调用（通知/弹窗/声音/对话框）
+- `_native_browser_login()` 重写 — 不再弹浏览器和 Mac 弹窗，仅通过 Telegram 静默通知
+- `qr_login.py` — 移除 `_show_qr_on_mac()` 方法（不再用 Preview 打开二维码图片）
+- 保留 Telegram 通知（静默推送到手机，不打扰桌面工作）
+
+**新增滑块验证码自动求解器 (slider_solver.py)**
+- 搬运自 GuDong2003/xianyu-auto-reply-fix 核心算法
+- Perlin 噪声生成人类化轨迹（连续平滑、非周期性）
+- 三阶段拖动：加速 → 匀速 → 减速超调 → 修正回退
+- Stealth JS 注入：隐藏 webdriver 属性、伪造 plugins/languages/chrome 对象
+- 提供同步版 (`SliderSolverSync`) 和异步版 (`SliderSolver`)
+
+**升级 xianyu_login.py**
+- 集成 Stealth 反检测脚本（`context.add_init_script` 注入）
+- 新增 `--headless` 参数 — 支持完全无界面后台静默登录
+- 登录过程中自动检测滑块并求解（每 10 秒轮检，最多 5 次重试）
+- 登录后二次滑块验证（风控验证）自动处理
+
+**Cookie 管理优化**
+- 方案2（Playwright 登录）改为 `--quiet --headless` 模式，完全后台静默
+- 降级链路：API 扫码 → Playwright headless + 滑块自动处理 → Telegram 通知等待手动登录
+- 全流程无 Mac 弹窗，无声音，无对话框
+
+### 文件变更
+- `packages/clawbot/src/xianyu/slider_solver.py` — 新建，滑块自动求解器 (~480行)
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 移除 LoginHelper，重写降级链路
+- `packages/clawbot/src/xianyu/qr_login.py` — 移除 `_show_qr_on_mac()`
+- `packages/clawbot/scripts/xianyu_login.py` — 加入 stealth + 滑块处理 + headless 模式
+
+---
+
 ## [2026-04-08] 通用登录弹窗机制 + New-API 前端对齐 + APP 图标重构 + Playwright 环境修复
 
 > 领域: `backend`, `frontend`, `xianyu`, `social`, `infra`
