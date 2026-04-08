@@ -35,7 +35,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/.venv312/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/.venv312/bin:/opt/homebrew/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/sbin</string>
     <key>LANG</key>
     <string>en_US.UTF-8</string>
     <key>PYTHONUNBUFFERED</key>
