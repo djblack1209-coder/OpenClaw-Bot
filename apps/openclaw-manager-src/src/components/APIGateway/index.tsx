@@ -515,6 +515,7 @@ export function APIGateway() {
                     <th className="text-left py-2 px-3 font-medium">模型</th>
                     <th className="text-left py-2 px-3 font-medium">状态</th>
                     <th className="text-left py-2 px-3 font-medium">操作</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {channels.map((ch, idx) => {
@@ -558,6 +559,7 @@ export function APIGateway() {
                             </button>
                           </div>
                         </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -594,6 +596,7 @@ export function APIGateway() {
                     <th className="text-left py-2 px-3 font-medium">状态</th>
                     <th className="text-left py-2 px-3 font-medium">已用额度</th>
                     <th className="text-left py-2 px-3 font-medium">操作</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {tokens.map((tk, idx) => {
@@ -637,6 +640,7 @@ export function APIGateway() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </td>
+                      </tr>
                     );
                   })}
                 </tbody>
