@@ -83,28 +83,9 @@ class LoginHelper:
             return False
 
     def _activate_browser(self) -> None:
-        """将浏览器窗口激活到最前台 (macOS)"""
-        if not self._is_macos:
-            return
-        try:
-            # 依次尝试激活常用浏览器
-            for browser_app in ["Safari", "Google Chrome", "Microsoft Edge", "Firefox"]:
-                script = (
-                    f'tell application "System Events"\n'
-                    f'  if exists process "{browser_app}" then\n'
-                    f'    tell application "{browser_app}" to activate\n'
-                    f'    return true\n'
-                    f'  end if\n'
-                    f'end tell'
-                )
-                result = subprocess.run(
-                    ["osascript", "-e", script],
-                    capture_output=True, text=True, timeout=3,
-                )
-                if result.returncode == 0 and "true" in result.stdout.lower():
-                    break
-        except Exception as e:
-            logger.debug(f"激活浏览器失败: {e}")
+        """将浏览器窗口激活到最前台 — 已禁用 osascript 调用"""
+        # 用户明确要求不弹任何 macOS 交互，仅记日志
+        logger.debug("浏览器激活已禁用（静默模式）")
 
     def alert_and_open(
         self,
