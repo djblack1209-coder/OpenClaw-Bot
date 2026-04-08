@@ -1,10 +1,31 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-08 | 新增: login_helper.py (通用登录弹窗工具); 更新: newapi.py (8个端点)
+> 最后更新: 2026-04-08 | 新增: slider_solver.py (滑块自动求解器); 更新: xianyu_live.py (去掉Mac通知), xianyu_login.py (stealth+滑块+headless)
 
 ---
 
 ## 新增模块 (2026-04-08)
+
+### slider_solver.py — 闲鱼滑块验证码自动求解器
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/xianyu/slider_solver.py` |
+| 行数 | ~480 |
+| 导入方 | `scripts/xianyu_login.py` |
+| 依赖 | `playwright` (已安装), 无新增第三方依赖 |
+
+**Public API:**
+- `SliderSolver` — 异步版滑块求解器 (用于 asyncio 上下文)
+  - `.inject_stealth(page)` — 注入反检测 JS
+  - `.detect_slider(page)` — 检测页面是否有滑块
+  - `.solve(page, max_retries)` — 自动求解滑块
+- `SliderSolverSync` — 同步版滑块求解器 (用于 Playwright sync_api)
+  - `.detect_slider(page)` / `.solve(page, max_retries)`
+- `STEALTH_JS` — 反检测 JavaScript 脚本常量
+- `perlin_noise_1d(x, seed_offset)` — 1D Perlin 噪声函数
+
+---
 
 ### login_helper.py — 通用登录弹窗工具
 

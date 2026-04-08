@@ -363,8 +363,7 @@ class QRLoginManager:
             )
         except Exception as e:
             logger.error(f"发送二维码到 Telegram 失败: {e}")
-            # 降级: 弹 macOS 窗口显示
-            self._show_qr_on_mac(qr_png)
+            # 仅记录日志，不弹 Mac 窗口
 
         # 发送"等待中"消息
         wait_msg = await bot.send_message(
@@ -416,16 +415,4 @@ class QRLoginManager:
             )
             return False
 
-    def _show_qr_on_mac(self, qr_png: bytes) -> None:
-        """降级方案: 在 macOS 上用 Preview 显示二维码"""
-        if sys.platform != "darwin":
-            return
-        try:
-            import tempfile
-            fd, tmp_path = tempfile.mkstemp(suffix=".png")
-            with os.fdopen(fd, "wb") as f:
-                f.write(qr_png)
-            subprocess.Popen(["open", tmp_path])
-            logger.info(f"闲鱼 QR 登录: 二维码已用 Preview 打开: {tmp_path}")
-        except Exception as e:
-            logger.debug(f"macOS 显示二维码失败: {e}")
+    # _show_qr_on_mac 已移除 — 不再弹 Mac 桌面窗口
