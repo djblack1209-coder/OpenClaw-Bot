@@ -821,6 +821,11 @@ async def main():
     _evolution_interval = int(os.environ.get("EVOLUTION_SCAN_INTERVAL", "86400"))  # 24h
     _proactive_interval = int(os.environ.get("PROACTIVE_CHECK_INTERVAL", "1800"))  # 30分钟
 
+    # 笔笔省自动领券 — 每日 08:30 执行（使用时间点比较，不漂移）
+    _coupon_hour = int(os.environ.get("COUPON_CLAIM_HOUR", "8"))
+    _coupon_minute = int(os.environ.get("COUPON_CLAIM_MINUTE", "30"))
+    _coupon_last_date = ""  # 记录上次执行日期，避免同一天重复执行
+
     try:
         cleanup_counter = 0
         heartbeat_counter = 0
@@ -877,6 +882,41 @@ async def main():
                     )
                 except Exception as e:
                     logger.debug(f"[Proactive] 定时检查启动失败: {e}")
+
+            # 笔笔省每日自动领券（每天 08:30，优先用已保存 token，省略 mitmproxy 流程）
+            try:
+                from src.utils import now_et
+                _now = now_et()
+                _today_str = _now.strftime("%Y-%m-%d")
+                if (_now.hour == _coupon_hour and _now.minute == _coupon_minute
+                        and _today_str != _coupon_last_date):
+                    _coupon_last_date = _today_str
+
+                    async def _run_coupon_claim():
+                        try:
+                            from src.execution.wechat_coupon import claim_with_saved_token, auto_claim_coupon
+                            # 优先用已保存的 token（轻量路径，不需要 mitmproxy）
+                            result = await claim_with_saved_token()
+                            if "过期" in result or "没有" in result:
+                                # token 不可用，走完整 mitmproxy 流程
+                                logger.info("[笔笔省] 保存的 token 不可用，尝试完整领券流程")
+                                result = await auto_claim_coupon()
+                            logger.info("[笔笔省] 自动领券结果: %s", result)
+                            # 通过 Telegram 通知用户结果
+                            try:
+                                await _notify_private_telegram(f"🎫 笔笔省每日领券\n{result}")
+                            except Exception:
+                                pass
+                        except ImportError:
+                            logger.debug("[笔笔省] 领券模块未就绪")
+                        except Exception as e:
+                            logger.warning("[笔笔省] 自动领券异常: %s", e)
+
+                    asyncio.create_task(_run_coupon_claim()).add_done_callback(
+                        _task_done_cb("CouponClaim")
+                    )
+            except Exception:
+                pass
     except asyncio.CancelledError:
         pass
 
