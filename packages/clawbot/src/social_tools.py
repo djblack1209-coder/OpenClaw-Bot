@@ -463,6 +463,7 @@ class PostTimeOptimizer:
     """基于历史互动数据推荐最佳发布时间（带 JSON 持久化）"""
 
     def __init__(self, data_dir: Optional[str] = None):
+        import threading
         # 默认最佳时段（基于通用社交媒体研究）
         self._default_hours = {
             "telegram": [9, 12, 18, 21],
@@ -470,6 +471,8 @@ class PostTimeOptimizer:
             "weibo": [8, 12, 18, 22],
         }
         self._engagement_by_hour: Dict[int, List[float]] = {}
+        # 线程锁：保护跨线程访问（APScheduler 线程写入 + asyncio 主线程读取）(HI-457)
+        self._data_lock = threading.Lock()
         # 持久化路径：优先使用传入目录，否则用包级 data/ 目录
         if data_dir:
             self._data_path = Path(data_dir) / "post_time_optimizer.json"
@@ -481,23 +484,25 @@ class PostTimeOptimizer:
 
     def record_engagement(self, hour: int, engagement_rate: float):
         """记录某小时的互动率"""
-        if hour not in self._engagement_by_hour:
-            self._engagement_by_hour[hour] = []
-        self._engagement_by_hour[hour].append(engagement_rate)
-        # 只保留最近 100 条
-        if len(self._engagement_by_hour[hour]) > 100:
-            self._engagement_by_hour[hour] = self._engagement_by_hour[hour][-50:]
+        with self._data_lock:
+            if hour not in self._engagement_by_hour:
+                self._engagement_by_hour[hour] = []
+            self._engagement_by_hour[hour].append(engagement_rate)
+            # 只保留最近 100 条
+            if len(self._engagement_by_hour[hour]) > 100:
+                self._engagement_by_hour[hour] = self._engagement_by_hour[hour][-50:]
         # 每次记录后持久化到磁盘
         self._save()
 
     def best_hours(self, platform: str = "telegram", top_n: int = 3) -> List[int]:
         """推荐最佳发布时间"""
-        if not self._engagement_by_hour:
-            return self._default_hours.get(platform, [9, 12, 18])[:top_n]
+        with self._data_lock:
+            if not self._engagement_by_hour:
+                return self._default_hours.get(platform, [9, 12, 18])[:top_n]
 
-        avg_by_hour = {}
-        for hour, rates in self._engagement_by_hour.items():
-            avg_by_hour[hour] = sum(rates) / len(rates)
+            avg_by_hour = {}
+            for hour, rates in self._engagement_by_hour.items():
+                avg_by_hour[hour] = sum(rates) / len(rates)
 
         sorted_hours = sorted(avg_by_hour.items(), key=lambda x: -x[1])
         return [h for h, _ in sorted_hours[:top_n]]
