@@ -454,38 +454,9 @@ def _start_visible_browser(urls: List[str]) -> subprocess.Popen:
 
 
 def _mac_login_alert(platform_name: str) -> None:
-    """弹出 macOS 桌面通知 + 对话框，提醒用户登录"""
-    if sys.platform != "darwin":
-        return
-    try:
-        # 系统通知
-        subprocess.Popen([
-            "osascript", "-e",
-            f'display notification "{platform_name} 需要登录，请在弹出的浏览器中登录" '
-            f'with title "OpenClaw — {platform_name} 登录" sound name "Basso"'
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # 提示音
-        subprocess.Popen(
-            ["afplay", "/System/Library/Sounds/Basso.aiff"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        time.sleep(0.5)
-        subprocess.Popen(
-            ["afplay", "/System/Library/Sounds/Basso.aiff"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        # 模态对话框
-        subprocess.Popen([
-            "osascript", "-e",
-            f'tell application "System Events" to display dialog '
-            f'"{platform_name} 需要登录！\\n\\n浏览器已打开登录页面，请完成登录。\\n'
-            f'登录后关闭此对话框，系统会自动恢复。" '
-            f'with title "OpenClaw — {platform_name}" '
-            f'buttons {{"知道了"}} default button "知道了" '
-            f'with icon caution giving up after 30'
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+    """登录提醒 — 仅记日志，不弹任何 macOS 原生通知/对话框/声音"""
+    # 所有 osascript 通知/弹窗/声音已移除 — 用户明确要求完全静默
+    logger.info(f"[登录提醒] {platform_name} 需要登录，请在弹出的浏览器中完成登录")
 
 
 def interactive_login(platforms: List[str], timeout: int = 300) -> Dict[str, Any]:
@@ -549,18 +520,10 @@ def interactive_login(platforms: List[str], timeout: int = 300) -> Dict[str, Any
                 logged_in = True
                 break
 
-        # 每 60 秒提醒一次
+        # 每 60 秒记录一次日志（不弹通知）
         elapsed = int(time.time() - start_time)
         if elapsed > 0 and elapsed % 60 == 0:
-            if sys.platform == "darwin":
-                try:
-                    subprocess.Popen([
-                        "osascript", "-e",
-                        f'display notification "已等待 {elapsed // 60} 分钟，请尽快登录" '
-                        f'with title "OpenClaw — {name_str}" sound name "Ping"'
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
+            logger.info(f"[社交登录] 已等待 {elapsed // 60} 分钟，请尽快登录")
 
     # 5. 关闭可见浏览器
     try:
@@ -580,16 +543,7 @@ def interactive_login(platforms: List[str], timeout: int = 300) -> Dict[str, Any
         print(f"[社交登录] 恢复 headless 浏览器失败: {e}")
 
     if logged_in:
-        # 成功通知
-        if sys.platform == "darwin":
-            try:
-                subprocess.Popen([
-                    "osascript", "-e",
-                    f'display notification "{name_str} 登录成功，服务已恢复" '
-                    f'with title "OpenClaw" sound name "Glass"'
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+        # 成功 — 仅记日志（不弹 macOS 通知）
         print(f"[社交登录] {name_str} 登录完成，headless 浏览器已恢复")
         return {"success": True, "platforms_logged_in": platform_names}
     else:
