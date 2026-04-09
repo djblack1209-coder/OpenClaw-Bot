@@ -1,8 +1,297 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { api, ChannelConfig } from '@/lib/tauri';
+import { createLogger } from '@/lib/logger';
+import { toast } from 'sonner';
+import {
+  MessageCircle, Save, Loader2, Link as LinkIcon, Edit2, AlertCircle, RefreshCw, Play
+} from 'lucide-react';
+
+const channelsLogger = createLogger('Channels');
+
+// 提取需要的类型
+type ChannelTestResult = any;
+
+const CHANNEL_INFO: Record<string, { name: string; icon: string; color: string; fields: { key: string; label: string; desc?: string; type?: string }[] }> = {
+  telegram: {
+    name: 'Telegram', icon: 'tg', color: 'text-blue-400',
+    fields: [
+      { key: 'userId', label: 'Admin User ID', desc: '管理员Telegram ID（多用户逗号分隔）' },
+      { key: 'dmPolicy', label: '私聊策略', type: 'select' },
+      { key: 'groupPolicy', label: '群组策略', type: 'select' }
+    ]
+  },
+  discord: {
+    name: 'Discord', icon: 'dc', color: 'text-indigo-400',
+    fields: [
+      { key: 'testChannelId', label: '测试频道 ID', desc: '用于发送测试消息的Discord频道ID' }
+    ]
+  },
+  slack: {
+    name: 'Slack', icon: 'sl', color: 'text-rose-400',
+    fields: [
+      { key: 'testChannelId', label: '测试频道 ID', desc: '用于发送测试消息的Slack频道ID' }
+    ]
+  },
+  feishu: {
+    name: '飞书', icon: 'fs', color: 'text-cyan-500',
+    fields: [
+      { key: 'testChatId', label: '测试会话 ID', desc: '用于发送测试消息的飞书会话ID' }
+    ]
+  },
+  whatsapp: {
+    name: 'WhatsApp', icon: 'wa', color: 'text-green-500',
+    fields: []
+  },
+  wechat: {
+    name: '微信', icon: 'wc', color: 'text-emerald-500',
+    fields: []
+  }
+};
+
 export function Channels() {
+  const [channels, setChannels] = useState<ChannelConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [saving, setSaving] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string; error?: string } | null>(null);
+
+
+  const loadChannels = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getChannelsConfig();
+      setChannels(data);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('加载渠道配置失败', { description: msg });
+      channelsLogger.error('Failed to load channels:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadChannels();
+  }, []);
+
+  const handleEdit = (channel: ChannelConfig) => {
+    setEditingId(channel.id);
+    setEditForm({ ...channel.config });
+    setTestResult(null);
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const handleSave = async (channelId: string, channelType: string) => {
+    try {
+      setSaving(true);
+      const newConfig: ChannelConfig = {
+        id: channelId,
+        channel_type: channelType,
+        enabled: true,
+        config: editForm
+      };
+      await api.saveChannelConfig(newConfig);
+      toast.success('配置已保存');
+      setEditingId(null);
+      await loadChannels();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('保存失败', { description: msg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async (channelType: string, channelId: string) => {
+    try {
+      setTestingId(channelId);
+      setTestResult(null);
+      const result = await api.testChannel(channelType) as ChannelTestResult;
+      
+      setTestResult({
+        id: channelId,
+        success: result.success,
+        message: result.message,
+        error: result.error
+      });
+
+      if (result.success) {
+        toast.success(`[${channelType}] 测试通过`, { description: result.message });
+      } else {
+        toast.error(`[${channelType}] 测试失败`, { description: result.error || result.message });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('测试执行失败', { description: msg });
+      setTestResult({
+        id: channelId,
+        success: false,
+        message: '执行错误',
+        error: msg
+      });
+    } finally {
+      setTestingId(null);
+    }
+  };
+
   return (
-    <div className="p-6 text-gray-400">
-      <h2 className="text-xl font-semibold text-white mb-4">消息渠道</h2>
-      <p>渠道管理功能开发中</p>
+    <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <div className="bg-dark-700 rounded-2xl border border-dark-500 p-6 flex justify-between items-center">
+          <div>
+            <div className="flex items-center gap-2 text-claw-400 mb-2">
+              <MessageCircle size={18} />
+              <span className="text-sm font-medium">渠道管理</span>
+            </div>
+            <h2 className="text-xl font-semibold text-white">消息平台接入</h2>
+            <p className="text-sm text-gray-400 mt-1">配置 OpenClaw Bot 连接的各个通讯渠道</p>
+          </div>
+          <button
+            onClick={loadChannels}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            刷新
+          </button>
+        </div>
+
+        {loading && channels.length === 0 ? (
+          <div className="flex items-center justify-center p-12 text-gray-400">
+            <Loader2 className="animate-spin w-8 h-8" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {channels.map((channel) => {
+              const info = CHANNEL_INFO[channel.channel_type] || { name: channel.channel_type, color: 'text-gray-400', fields: [] };
+              const isEditing = editingId === channel.id;
+              
+              return (
+                <div key={channel.id} className={`bg-dark-700 rounded-xl border p-5 transition-all ${isEditing ? 'border-claw-500 shadow-[0_0_15px_rgba(249,77,58,0.1)]' : 'border-dark-500 hover:border-dark-400'}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-lg bg-dark-600 flex items-center justify-center border border-dark-500 ${info.color}`}>
+                        <MessageCircle size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-white">{info.name}</h3>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`w-2 h-2 rounded-full ${channel.enabled ? 'bg-green-500' : 'bg-gray-600'}`}></span>
+                          <span className="text-xs text-gray-400">{channel.enabled ? '已配置' : '未配置'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {!isEditing && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleTest(channel.channel_type, channel.id)}
+                          disabled={testingId === channel.id}
+                          className="p-2 text-gray-400 hover:text-cyan-400 hover:bg-dark-600 rounded-lg transition-colors disabled:opacity-50"
+                          title="测试连接"
+                        >
+                          {testingId === channel.id ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                        </button>
+                        <button
+                          onClick={() => handleEdit(channel)}
+                          className="p-2 text-gray-400 hover:text-claw-400 hover:bg-dark-600 rounded-lg transition-colors"
+                          title="编辑配置"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {testResult && testResult.id === channel.id && !isEditing && (
+                    <div className={`mb-4 p-3 rounded-lg text-sm ${testResult.success ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        {testResult.success ? <LinkIcon size={14} /> : <AlertCircle size={14} />}
+                        <span className="font-medium">{testResult.message}</span>
+                      </div>
+                      {testResult.error && (
+                        <p className="text-xs opacity-80 whitespace-pre-wrap mt-1">{testResult.error}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {isEditing ? (
+                    <div className="space-y-4 bg-dark-800 p-4 rounded-xl border border-dark-600">
+                      {info.fields.length > 0 ? info.fields.map(field => (
+                        <div key={field.key} className="space-y-1.5">
+                          <label className="text-xs font-medium text-gray-300 flex justify-between">
+                            {field.label}
+                            {field.key.includes('Token') && <span className="text-amber-400 text-[10px]">敏感</span>}
+                          </label>
+                          {field.type === 'select' ? (
+                            <select
+                              value={editForm[field.key] || 'allowlist'}
+                              onChange={e => setEditForm({ ...editForm, [field.key]: e.target.value })}
+                              className="input-base py-2 text-sm"
+                            >
+                              <option value="allowlist">仅白名单 (Allowlist)</option>
+                              <option value="everyone">所有人 (Everyone)</option>
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={editForm[field.key] || ''}
+                              onChange={e => setEditForm({ ...editForm, [field.key]: e.target.value })}
+                              className="input-base py-2 text-sm"
+                              placeholder={`输入 ${field.label}`}
+                            />
+                          )}
+                          {field.desc && <p className="text-[10px] text-gray-500">{field.desc}</p>}
+                        </div>
+                      )) : (
+                        <p className="text-sm text-gray-400 text-center py-4">此渠道主要通过命令行或手机扫码配置</p>
+                      )}
+                      
+                      <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-dark-600">
+                        <button
+                          onClick={handleCancel}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={() => handleSave(channel.id, channel.channel_type)}
+                          disabled={saving}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-claw-500 text-white hover:bg-claw-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {Object.entries(channel.config).filter(([k]) => k !== 'enabled').map(([key, value]) => (
+                        <div key={key} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">{key}</span>
+                          <span className="text-gray-200 truncate max-w-[200px]" title={String(value)}>
+                            {String(value)}
+                          </span>
+                        </div>
+                      ))}
+                      {Object.keys(channel.config).filter(k => k !== 'enabled').length === 0 && (
+                        <p className="text-sm text-gray-500 italic">默认配置</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
