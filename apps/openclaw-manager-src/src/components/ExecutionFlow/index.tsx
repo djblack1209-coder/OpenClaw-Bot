@@ -38,16 +38,20 @@ const initialEdges: Edge[] = [
   { id: 'e-llm-trader', source: 'llm', target: 'trader', animated: true, style: { stroke: '#4ade80' } },
 ];
 
+// 节点固定尺寸（与 Dagre 布局保持同步）
+const NODE_WIDTH = 200;
+const NODE_HEIGHT = 50;
+
 // 自动排版引擎 (Dagre)
 const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-  
-  
-  dagreGraph.setGraph({ rankdir: direction });
+
+  // 增大间距，防止长文本节点重叠或被裁剪
+  dagreGraph.setGraph({ rankdir: direction, nodesep: 60, ranksep: 80 });
 
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: 150, height: 50 });
+    dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   });
 
   edges.forEach((edge) => {
@@ -61,8 +65,8 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
     return {
       ...node,
       position: {
-        x: nodeWithPosition.x - 75,
-        y: nodeWithPosition.y - 25,
+        x: nodeWithPosition.x - NODE_WIDTH / 2,
+        y: nodeWithPosition.y - NODE_HEIGHT / 2,
       },
     };
   });
@@ -70,8 +74,11 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
   return { nodes: newNodes, edges };
 };
 
+// 用 Dagre 自动计算初始节点位置，避免手动坐标导致节点裁剪
+const { nodes: layoutedInitialNodes } = getLayoutedElements(initialNodes, initialEdges);
+
 export function ExecutionFlow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedInitialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [isRunning, setIsRunning] = useState(false);
   const [activeNode, setActiveNode] = useState<string | null>(null);
@@ -289,6 +296,8 @@ export function ExecutionFlow() {
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             fitView
+            fitViewOptions={{ padding: 0.3 }}
+            proOptions={{ hideAttribution: true }}
             className="bg-dark-900"
           >
             <Background color="#2e2e33" variant={BackgroundVariant.Dots} gap={16} size={1} />
