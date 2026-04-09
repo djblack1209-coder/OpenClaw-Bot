@@ -5,6 +5,41 @@
 
 ---
 
+## [2026-04-09] 桌面端+后端深度审计 — 8 项安全/功能/架构修复
+
+> 领域: `frontend`, `backend`, `xianyu`, `infra`
+> 影响模块: `Dev/index.tsx`, `diagnostics.rs`, `main.rs`, `Channels/index.tsx`, `xianyu_admin.py`, `server.py`, `CommandPalette.tsx`, `APIGateway/index.tsx`, `postcss.config.js`
+> 关联问题: HI-471~HI-478
+
+### 安全修复 (1项)
+- `api/server.py` — 新增 10MB `RequestSizeLimitMiddleware`，防止大载荷 DoS 攻击
+
+### 功能修复 (5项)
+- `Dev/index.tsx` — 操作按钮从缺失的 Rust IPC 命令 `send_telegram_command` 替换为 `api.omegaProcess`，修复 Dev 页面 action 按钮不工作
+- `diagnostics.rs` + `main.rs` — 实现 `get_system_resources` Tauri 命令，修复 Dev 页面系统资源仪表盘显示空白
+- `Channels/index.tsx` — 从空壳组件替换为完整的 CRUD 管理界面，支持消息渠道的增删改查
+- `CommandPalette.tsx` — 4 个快捷操作按钮改为展示 API 实际响应数据，而非通用"完成"文本
+
+### 稳定性修复 (1项)
+- `xianyu_admin.py` — 全部 9 个 SQLite/SQL 端点增加 `try/except Exception as e` 异常捕获，防止未格式化的 500 错误
+
+### 前端修复 (2项)
+- `APIGateway/index.tsx` — `window.confirm` 替换为自定义 `ConfirmDialog` 组件，统一 UI 交互风格
+- `postcss.config.js` — 新增 `tailwindcss/nesting` 插件，修复 Vite 构建因 `@apply` 嵌套失败的问题
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — IPC 命令替换
+- `apps/openclaw-manager-src/src-tauri/src/commands/diagnostics.rs` — 新增 get_system_resources 命令
+- `apps/openclaw-manager-src/src-tauri/src/main.rs` — 注册 get_system_resources 命令
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 完整 CRUD 实现
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 9 端点异常捕获
+- `packages/clawbot/src/api/server.py` — RequestSizeLimitMiddleware
+- `apps/openclaw-manager-src/src/components/CommandPalette.tsx` — 快捷操作显示真实响应
+- `apps/openclaw-manager-src/src/components/APIGateway/index.tsx` — ConfirmDialog 替换
+- `apps/openclaw-manager-src/postcss.config.js` — tailwindcss/nesting 插件
+
+---
+
 ## [2026-04-08] 全量生产就绪审计 — P0-P5 跨 17 项安全/功能/架构修复
 
 > 领域: `backend`, `frontend`, `infra`, `xianyu`, `trading`
