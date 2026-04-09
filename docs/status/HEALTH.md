@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-08 (全量生产就绪审计 P0-P5: 17项修复)
+> 最后更新: 2026-04-09 (桌面端+后端深度审计: 8项修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -59,9 +59,9 @@
 | 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发 |
 | 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 + R24: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 + R25: 6脚本修复+7处Rust安全加固+14个前端any替换 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
-| API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False |
+| API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False + RequestSizeLimitMiddleware(10MB) |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
@@ -119,6 +119,17 @@
 ---
 
 ## 已解决 (RESOLVED)
+
+| ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
+|----|------|------|------|----------|----------|-----------|
+| HI-471 | `frontend` | `Dev/index.tsx` | Dev页面action按钮绑定的 `send_telegram_command` 命令不存在 | 替换为实际可用的 `api.omegaProcess` | 2026-04-09 | 桌面端深度审计 |
+| HI-472 | `infra` | `diagnostics.rs` | 资源仪表盘数据缺失，`get_system_resources` Tauri命令未实现 | 完整实现系统资源拉取命令并在 main.rs 中注册 | 2026-04-09 | 桌面端深度审计 |
+| HI-473 | `frontend` | `Channels/index.tsx` | 渠道管理页面为空壳占位符 | 实现完整的消息渠道增删改查 CRUD 界面 | 2026-04-09 | 桌面端深度审计 |
+| HI-474 | `xianyu` | `xianyu_admin.py` | 9 个后端数据库管理端点可能抛出未格式化的内部500异常 | 添加全面的 `try/except Exception as e` 并返回标准错误格式 | 2026-04-09 | 桌面端深度审计 |
+| HI-475 | `security` | `server.py` | 全局缺乏请求体大小限制，存在大载荷 DoS 风险 | 注册 `RequestSizeLimitMiddleware`，限制 10MB 请求 | 2026-04-09 | 桌面端深度审计 |
+| HI-476 | `frontend` | `CommandPalette.tsx` | 4个快捷操作返回数据不显示，统一直出"完成"导致无法区分状态 | 将执行结果文本绑定到 toast 展现真实 API 响应数据 | 2026-04-09 | 桌面端深度审计 |
+| HI-477 | `frontend` | `APIGateway/index.tsx` | 使用了阻断式的 `window.confirm` 原生对话框破坏 UI 一致性 | 替换为系统自定义的 `ConfirmDialog` 组件 | 2026-04-09 | 桌面端深度审计 |
+| HI-478 | `frontend` | `postcss.config.js` | Vite构建因为Tailwind的 `@apply` 在嵌套CSS中失败 | 补全 `tailwindcss/nesting` 插件支持 | 2026-04-09 | 桌面端深度审计 |
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
@@ -569,10 +580,10 @@
 | 严重度 | 活跃 | 已解决 | 合计 |
 |--------|------|--------|------|
 | 🔴 阻塞 | 0 | 16 | 16 |
-| 🟠 重要 | 4 | 88 | 92 |
-| 🟡 一般 | 6 | 102 | 108 |
-| 🔵 低优先 | 1 | 31 | 32 |
-| **合计** | **11** | **237** | **248** |
+| 🟠 重要 | 4 | 90 | 94 |
+| 🟡 一般 | 6 | 107 | 113 |
+| 🔵 低优先 | 1 | 32 | 33 |
+| **合计** | **11** | **245** | **256** |
 
 ---
 
