@@ -57,18 +57,24 @@ def _get_ctx():
 
 @app.get("/api/dashboard")
 def dashboard(date: str = ""):
-    ctx = _get_ctx()
-    if not date:
-        date = now_et().strftime("%Y-%m-%d")
-    stats = ctx.daily_stats(date)
+    try:
+        ctx = _get_ctx()
+        if not date:
+            date = now_et().strftime("%Y-%m-%d")
+        stats = ctx.daily_stats(date)
 
-    # 最近 7 天趋势
-    trend = []
-    for i in range(6, -1, -1):
-        d = (now_et() - timedelta(days=i)).strftime("%Y-%m-%d")
-        trend.append(ctx.daily_stats(d))
+        # 最近 7 天趋势
+        trend = []
+        for i in range(6, -1, -1):
+            d = (now_et() - timedelta(days=i)).strftime("%Y-%m-%d")
+            trend.append(ctx.daily_stats(d))
 
-    return {"today": stats, "trend": trend}
+        return {"today": stats, "trend": trend}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/dashboard 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -78,38 +84,50 @@ def dashboard(date: str = ""):
 @app.get("/api/chats")
 def list_chats(limit: int = Query(50, le=200)):
     """列出最近活跃的对话"""
-    ctx = _get_ctx()
-    with ctx._conn() as c:
-        rows = c.execute("""
-            SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
-                   (SELECT content FROM messages m2 WHERE m2.chat_id=m.chat_id ORDER BY id DESC LIMIT 1) as last_msg
-            FROM messages m
-            GROUP BY chat_id
-            ORDER BY last_ts DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
-    return [
-        {"chat_id": r[0], "last_ts": r[1], "msg_count": r[2], "last_msg": r[3][:100] if r[3] else ""}
-        for r in rows
-    ]
+    try:
+        ctx = _get_ctx()
+        with ctx._conn() as c:
+            rows = c.execute("""
+                SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
+                       (SELECT content FROM messages m2 WHERE m2.chat_id=m.chat_id ORDER BY id DESC LIMIT 1) as last_msg
+                FROM messages m
+                GROUP BY chat_id
+                ORDER BY last_ts DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        return [
+            {"chat_id": r[0], "last_ts": r[1], "msg_count": r[2], "last_msg": r[3][:100] if r[3] else ""}
+            for r in rows
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/chats 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/chats/{chat_id}")
 def get_chat(chat_id: str, limit: int = Query(100, le=500)):
     """获取某个对话的消息历史"""
-    ctx = _get_ctx()
-    with ctx._conn() as c:
-        rows = c.execute(
-            "SELECT role, content, ts FROM messages WHERE chat_id=? ORDER BY id DESC LIMIT ?",
-            (chat_id, limit),
-        ).fetchall()
-    rows.reverse()
-    bargain = ctx.get_bargain_count(chat_id)
-    return {
-        "chat_id": chat_id,
-        "bargain_count": bargain,
-        "messages": [{"role": r[0], "content": r[1], "ts": r[2]} for r in rows],
-    }
+    try:
+        ctx = _get_ctx()
+        with ctx._conn() as c:
+            rows = c.execute(
+                "SELECT role, content, ts FROM messages WHERE chat_id=? ORDER BY id DESC LIMIT ?",
+                (chat_id, limit),
+            ).fetchall()
+        rows.reverse()
+        bargain = ctx.get_bargain_count(chat_id)
+        return {
+            "chat_id": chat_id,
+            "bargain_count": bargain,
+            "messages": [{"role": r[0], "content": r[1], "ts": r[2]} for r in rows],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/chats/{chat_id} 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -118,17 +136,23 @@ def get_chat(chat_id: str, limit: int = Query(100, le=500)):
 
 @app.get("/api/items")
 def list_items():
-    ctx = _get_ctx()
-    with ctx._conn() as c:
-        rows = c.execute("SELECT item_id, data, updated FROM items ORDER BY updated DESC").fetchall()
-    items = []
-    for r in rows:
-        try:
-            data = json.loads(r[1])
-        except Exception as e:  # noqa: F841
-            data = {}
-        items.append({"item_id": r[0], "title": data.get("title", ""), "price": data.get("price", ""), "updated": r[2]})
-    return items
+    try:
+        ctx = _get_ctx()
+        with ctx._conn() as c:
+            rows = c.execute("SELECT item_id, data, updated FROM items ORDER BY updated DESC").fetchall()
+        items = []
+        for r in rows:
+            try:
+                data = json.loads(r[1])
+            except Exception as e:  # noqa: F841
+                data = {}
+            items.append({"item_id": r[0], "title": data.get("title", ""), "price": data.get("price", ""), "updated": r[2]})
+        return items
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/items 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -137,23 +161,29 @@ def list_items():
 
 @app.get("/api/orders")
 def list_orders(date: str = "", limit: int = Query(50, le=200)):
-    ctx = _get_ctx()
-    with ctx._conn() as c:
-        if date:
-            rows = c.execute(
-                "SELECT id, chat_id, user_id, item_id, status, ts, notified FROM orders WHERE ts LIKE ? ORDER BY id DESC LIMIT ?",
-                (f"{date}%", limit),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                "SELECT id, chat_id, user_id, item_id, status, ts, notified FROM orders ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-    return [
-        {"id": r[0], "chat_id": r[1], "user_id": r[2], "item_id": r[3],
-         "status": r[4], "ts": r[5], "notified": bool(r[6])}
-        for r in rows
-    ]
+    try:
+        ctx = _get_ctx()
+        with ctx._conn() as c:
+            if date:
+                rows = c.execute(
+                    "SELECT id, chat_id, user_id, item_id, status, ts, notified FROM orders WHERE ts LIKE ? ORDER BY id DESC LIMIT ?",
+                    (f"{date}%", limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT id, chat_id, user_id, item_id, status, ts, notified FROM orders ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return [
+            {"id": r[0], "chat_id": r[1], "user_id": r[2], "item_id": r[3],
+             "status": r[4], "ts": r[5], "notified": bool(r[6])}
+            for r in rows
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/orders 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -162,26 +192,32 @@ def list_orders(date: str = "", limit: int = Query(50, le=200)):
 
 @app.get("/api/consultations")
 def list_consultations(date: str = "", limit: int = Query(50, le=200)):
-    ctx = _get_ctx()
-    with ctx._conn() as c:
-        if date:
-            rows = c.execute(
-                "SELECT chat_id, user_id, user_name, item_id, first_msg, first_ts, last_ts, msg_count, converted "
-                "FROM consultations WHERE first_ts LIKE ? ORDER BY last_ts DESC LIMIT ?",
-                (f"{date}%", limit),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                "SELECT chat_id, user_id, user_name, item_id, first_msg, first_ts, last_ts, msg_count, converted "
-                "FROM consultations ORDER BY last_ts DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-    return [
-        {"chat_id": r[0], "user_id": r[1], "user_name": r[2], "item_id": r[3],
-         "first_msg": r[4], "first_ts": r[5], "last_ts": r[6],
-         "msg_count": r[7], "converted": bool(r[8])}
-        for r in rows
-    ]
+    try:
+        ctx = _get_ctx()
+        with ctx._conn() as c:
+            if date:
+                rows = c.execute(
+                    "SELECT chat_id, user_id, user_name, item_id, first_msg, first_ts, last_ts, msg_count, converted "
+                    "FROM consultations WHERE first_ts LIKE ? ORDER BY last_ts DESC LIMIT ?",
+                    (f"{date}%", limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT chat_id, user_id, user_name, item_id, first_msg, first_ts, last_ts, msg_count, converted "
+                    "FROM consultations ORDER BY last_ts DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return [
+            {"chat_id": r[0], "user_id": r[1], "user_name": r[2], "item_id": r[3],
+             "first_msg": r[4], "first_ts": r[5], "last_ts": r[6],
+             "msg_count": r[7], "converted": bool(r[8])}
+            for r in rows
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/consultations 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -224,17 +260,23 @@ class PromptUpdate(BaseModel):
 
 @app.post("/api/prompts")
 def update_prompt(req: PromptUpdate):
-    # Validate name: only alphanumeric, underscore, hyphen (prevent directory traversal)
-    if not re.match(r'^[a-zA-Z0-9_-]+$', req.name):
-        raise HTTPException(status_code=400, detail="Invalid prompt name")
-    path = PROMPT_DIR / f"{req.name}.txt"
-    if not path.exists():
-        raise HTTPException(404, f"Prompt {req.name} not found")
-    path.write_text(req.content, encoding="utf-8")
-    # 热更新 bot prompts
-    if _bot:
-        _bot.reload_prompts()
-    return {"ok": True, "name": req.name}
+    try:
+        # 校验名称: 仅允许字母数字下划线短横线 (防止目录穿越)
+        if not re.match(r'^[a-zA-Z0-9_-]+$', req.name):
+            raise HTTPException(status_code=400, detail="Invalid prompt name")
+        path = PROMPT_DIR / f"{req.name}.txt"
+        if not path.exists():
+            raise HTTPException(404, f"Prompt {req.name} not found")
+        path.write_text(req.content, encoding="utf-8")
+        # 热更新 bot prompts
+        if _bot:
+            _bot.reload_prompts()
+        return {"ok": True, "name": req.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/prompts POST 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
