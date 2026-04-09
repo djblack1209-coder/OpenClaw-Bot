@@ -14,6 +14,8 @@ from fastapi import FastAPI, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from .auth import verify_api_token, log_token_status
 from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega, router_newapi
@@ -22,6 +24,20 @@ logger = logging.getLogger(__name__)
 
 # Singleton
 _api_server: Optional["APIServer"] = None
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """限制请求体大小（默认 10MB），超过直接返回 413"""
+    MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
+
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self.MAX_BODY_SIZE:
+            return StarletteJSONResponse(
+                status_code=413,
+                content={"error": "请求体过大，最大允许 10MB"},
+            )
+        return await call_next(request)
 
 
 class APIServer:
@@ -73,6 +89,9 @@ class APIServer:
 
     def _configure_app(self):
         """Mount routers and middleware — pattern from freqtrade webserver.py"""
+        # 请求体大小限制 — 防止超大请求消耗资源
+        self.app.add_middleware(RequestSizeLimitMiddleware)
+
         # CORS — only localhost (Tauri Manager)
         self.app.add_middleware(
             CORSMiddleware,
