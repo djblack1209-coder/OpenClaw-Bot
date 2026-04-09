@@ -57,7 +57,7 @@ export function StatusCard({ status, loading }: StatusCardProps) {
             <span className="text-xs text-gray-400">端口</span>
           </div>
           <p className="text-xl font-semibold text-white">
-            {status?.port ?? 18789}
+            {status?.port ?? 18790}
           </p>
         </div>
 
