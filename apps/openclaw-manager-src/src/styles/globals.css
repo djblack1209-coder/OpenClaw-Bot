@@ -236,6 +236,18 @@ button:disabled {
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+
+    /* 浅色模式下的 dark-* 色阶（反转映射，保持视觉层级） */
+    --dark-950: #f8fafc;
+    --dark-900: #f1f5f9;
+    --dark-800: #e2e8f0;
+    --dark-700: #cbd5e1;
+    --dark-600: #94a3b8;
+    --dark-500: #64748b;
+    --dark-400: #475569;
+    --dark-300: #334155;
+    --dark-200: #1e293b;
+    --dark-100: #0f172a;
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -269,5 +281,17 @@ button:disabled {
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+
+    /* 深色模式下的 dark-* 色阶（保留原有深色值） */
+    --dark-950: #050506;
+    --dark-900: #0a0a0b;
+    --dark-800: #111113;
+    --dark-700: #1a1a1d;
+    --dark-600: #242428;
+    --dark-500: #2e2e33;
+    --dark-400: #3d3d44;
+    --dark-300: #52525b;
+    --dark-200: #71717a;
+    --dark-100: #a1a1aa;
   }
 }
