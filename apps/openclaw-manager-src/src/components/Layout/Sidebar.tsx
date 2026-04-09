@@ -121,7 +121,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
               {isRunning ? '服务运行中' : '服务未启动'}
             </span>
           </div>
-          <p className="hidden lg:block text-xs text-gray-500">端口: {serviceStatus?.port ?? 18789}</p>
+          <p className="hidden lg:block text-xs text-gray-500">端口: {serviceStatus?.port ?? 18790}</p>
         </div>
       </div>
     </aside>

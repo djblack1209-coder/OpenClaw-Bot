@@ -43,7 +43,7 @@ export function Header({ currentPage }: HeaderProps) {
     } catch (e) {
       headerLogger.error('打开 Dashboard 失败:', e);
       // 降级方案：使用 window.open（不带 token），端口从环境变量读取
-      const fallbackPort = import.meta.env.VITE_DASHBOARD_PORT || '18789';
+      const fallbackPort = import.meta.env.VITE_DASHBOARD_PORT || '18790';
       window.open(`http://localhost:${fallbackPort}`, '_blank');
     } finally {
       setOpening(false);
