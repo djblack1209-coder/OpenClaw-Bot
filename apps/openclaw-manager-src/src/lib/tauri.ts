@@ -246,9 +246,12 @@ export interface EvolutionStatsRaw {
   gaps_count?: number;
   last_scan?: string;
   last_scan_at?: string;
+  last_scan_time?: string;  // 后端实际字段名
   approved?: number;
   rejected?: number;
   pending?: number;
+  by_status?: Record<string, number>;  // 后端返回的状态分组
+  by_module?: Record<string, number>;  // 后端返回的模块分组
 }
 
 // 自进化系统 — 能力缺口条目
