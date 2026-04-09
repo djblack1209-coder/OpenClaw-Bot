@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { api } from '@/lib/tauri';
 import {
   Code2, ListTodo, Settings, FileCode, Play, Loader2,
   Terminal, Cpu, HardDrive, MemoryStick, RefreshCw
@@ -53,8 +54,9 @@ export function Dev() {
 
     setStatuses(prev => ({ ...prev, [actionId]: { running: true } }));
     try {
-      const result = await invoke<string>('send_telegram_command', { command: fullCmd });
-      setStatuses(prev => ({ ...prev, [actionId]: { running: false, lastResult: result || '已发送' } }));
+      const data = await api.omegaProcess(fullCmd);
+      const result = data?.result || data?.response || '执行完成';
+      setStatuses(prev => ({ ...prev, [actionId]: { running: false, lastResult: String(result) } }));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatuses(prev => ({ ...prev, [actionId]: { running: false, error: msg } }));
@@ -149,7 +151,7 @@ export function Dev() {
                 </button>
 
                 {status?.lastResult && !status.running && (
-                  <p className="text-xs text-green-400 mt-1.5 truncate">已发送</p>
+                  <p className="text-xs text-green-400 mt-1.5 line-clamp-3 whitespace-pre-wrap">{status.lastResult}</p>
                 )}
                 {status?.error && !status.running && (
                   <p className="text-xs text-red-400 mt-1.5 truncate">{status.error}</p>

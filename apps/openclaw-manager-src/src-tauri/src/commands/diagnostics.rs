@@ -484,6 +484,55 @@ pub async fn test_channel(channel_type: String) -> Result<ChannelTestResult, Str
     }
 }
 
+/// 获取系统资源使用情况（CPU/内存/磁盘）
+#[command]
+pub async fn get_system_resources() -> Result<serde_json::Value, String> {
+    // 通过跨平台方式获取系统资源
+    if platform::is_macos() {
+        let cpu = shell::run_bash_output("sysctl -n vm.loadavg | awk '{print $2}'")
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok());
+
+        let mem = shell::run_bash_output(
+            "vm_stat | awk '/Pages active/ {a=$3} /Pages wired/ {w=$3} /Pages free/ {f=$3} /Pages speculative/ {s=$3} END {gsub(/\\./,\"\",a); gsub(/\\./,\"\",w); gsub(/\\./,\"\",f); gsub(/\\./,\"\",s); total=a+w+f+s; if(total>0) printf \"%.1f\", (a+w)*100/total}'"
+        ).ok().and_then(|s| s.trim().parse::<f64>().ok());
+
+        let disk = shell::run_bash_output(
+            "df -h / | awk 'NR==2 {gsub(/%/,\"\",$5); print $5}'"
+        ).ok().and_then(|s| s.trim().parse::<f64>().ok());
+
+        Ok(serde_json::json!({
+            "cpu_load_1m": cpu,
+            "memory_percent": mem,
+            "disk_used_percent": disk
+        }))
+    } else if platform::is_linux() {
+        let cpu = shell::run_bash_output("cat /proc/loadavg | awk '{print $1}'")
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok());
+
+        let mem = shell::run_bash_output(
+            "free | awk '/Mem:/ {printf \"%.1f\", $3/$2*100}'"
+        ).ok().and_then(|s| s.trim().parse::<f64>().ok());
+
+        let disk = shell::run_bash_output(
+            "df -h / | awk 'NR==2 {gsub(/%/,\"\",$5); print $5}'"
+        ).ok().and_then(|s| s.trim().parse::<f64>().ok());
+
+        Ok(serde_json::json!({
+            "cpu_load_1m": cpu,
+            "memory_percent": mem,
+            "disk_used_percent": disk
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "cpu_load_1m": null,
+            "memory_percent": null,
+            "disk_used_percent": null
+        }))
+    }
+}
+
 /// 获取系统信息
 #[command]
 pub async fn get_system_info() -> Result<SystemInfo, String> {

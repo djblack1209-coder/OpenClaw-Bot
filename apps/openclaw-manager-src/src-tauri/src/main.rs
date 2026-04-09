@@ -77,6 +77,7 @@ fn main() {
             diagnostics::test_ai_connection,
             diagnostics::test_channel,
             diagnostics::get_system_info,
+            diagnostics::get_system_resources,
             diagnostics::start_channel_login,
             // 安装器
             installer::check_environment,
