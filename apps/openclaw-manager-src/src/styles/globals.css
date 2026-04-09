@@ -171,7 +171,7 @@ button:disabled {
 .input-base {
   @apply w-full px-4 py-3 rounded-lg;
   @apply bg-dark-700 border border-dark-500;
-  @apply text-white placeholder-gray-500;
+  @apply text-foreground placeholder-gray-500;
   @apply focus:border-claw-500 focus:ring-1 focus:ring-claw-500/50;
   @apply transition-all duration-200;
 }
@@ -187,15 +187,59 @@ button:disabled {
 
 .btn-secondary {
   @apply px-6 py-3 rounded-lg font-medium;
-  @apply bg-dark-600 text-white border border-dark-400;
+  @apply bg-dark-600 text-foreground border border-dark-400;
   @apply hover:bg-dark-500 active:bg-dark-400;
   @apply transition-all duration-200;
 }
 
 .btn-ghost {
   @apply px-4 py-2 rounded-lg font-medium;
-  @apply text-gray-400 hover:text-white hover:bg-dark-600;
+  @apply text-muted-foreground hover:text-foreground hover:bg-dark-600;
   @apply transition-all duration-200;
+}
+
+/*
+ * 浅色模式全局文字颜色覆盖
+ * 组件中大量使用 text-white / text-gray-* 硬编码，在浅色模式下不可见。
+ * 通过 :root (非 .dark) 下全局覆盖这些颜色类的效果，避免改 148+ 个文件。
+ */
+:root:not(.dark) {
+  /* text-white 在浅色模式下变为深色文字 */
+  .text-white { color: #0f172a !important; }
+  .text-white\/80 { color: rgba(15, 23, 42, 0.8) !important; }
+  .text-white\/90 { color: rgba(15, 23, 42, 0.9) !important; }
+  .text-white\/40 { color: rgba(15, 23, 42, 0.4) !important; }
+
+  /* text-gray-* 在浅色模式下反转：浅灰→深灰 */
+  .text-gray-100 { color: #1e293b !important; }
+  .text-gray-200 { color: #334155 !important; }
+  .text-gray-300 { color: #475569 !important; }
+  .text-gray-400 { color: #64748b !important; }
+  .text-gray-500 { color: #475569 !important; }
+  .text-gray-600 { color: #334155 !important; }
+
+  /* placeholder 颜色适配 */
+  .placeholder-gray-500::placeholder { color: #94a3b8 !important; }
+  .placeholder\:text-dark-400::placeholder { color: #94a3b8 !important; }
+
+  /* hover 状态的 text-white 也需要适配 */
+  .hover\:text-white:hover { color: #0f172a !important; }
+
+  /* 卡片悬浮阴影在浅色模式下减弱 */
+  .card-hover:hover {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  }
+
+  /* 选择样式在浅色模式下调整 */
+  ::selection {
+    background-color: rgba(249, 77, 58, 0.2);
+    color: #0f172a;
+  }
+
+  /* 滚动条在浅色模式下适配 */
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #94a3b8; }
+  ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 @layer base {
