@@ -38,11 +38,12 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   });
 
   // 初始化主题：页面加载时根据 localStorage 设置 DOM class
+  // Tailwind darkMode: "class" 需要在 <html> 上切换 dark 类
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('light');
+      document.documentElement.classList.remove('dark');
     }
   }, [theme]);
 
@@ -307,10 +308,10 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                 const next = theme === 'dark' ? 'light' : 'dark';
                 setTheme(next);
                 localStorage.setItem('openclaw-theme', next);
-                if (next === 'light') {
-                  document.documentElement.classList.add('light');
+                if (next === 'dark') {
+                  document.documentElement.classList.add('dark');
                 } else {
-                  document.documentElement.classList.remove('light');
+                  document.documentElement.classList.remove('dark');
                 }
               }}
               className="px-3 py-1.5 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600"
