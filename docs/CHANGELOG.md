@@ -5,6 +5,30 @@
 
 ---
 
+## [2026-04-09] 进化引擎数据修复 + 微信渠道补全 + API网关引导优化
+
+> 领域: `frontend`
+> 影响模块: `Evolution/index.tsx`, `tauri.ts`, `Channels/index.tsx`, `APIGateway/index.tsx`
+> 关联问题: HI-479~HI-481
+
+### 关键修复 (1项)
+- `Evolution/index.tsx` — 进化引擎前端数据映射严重BUG：后端返回扁平数组 `[{...}]`，前端却按 `{proposals: [...]}` 解构，导致 51 个真实提案和 11 个能力缺口全部丢失显示为空列表。同时修复 `last_scan_time` vs `last_scan` 字段名不匹配、`by_status` 嵌套结构未映射等问题
+
+### 功能补全 (1项)
+- `Channels/index.tsx` — 微信渠道从空配置升级为完整配置面板：新增桥接方式选择（Wechaty/itchat/wechat-bot）、Puppet 类型选择、自动通过好友请求开关、管理员微信ID输入；同时为微信和 WhatsApp 添加接入说明引导卡片
+
+### 体验优化 (1项)
+- `APIGateway/index.tsx` — API 网关离线提示从笼统的"可能的原因"升级为精确的分步排查指南，包含 Docker Desktop 下载链接和启动命令示例
+
+### 类型定义更新
+- `tauri.ts` — `EvolutionStatsRaw` 接口新增 `last_scan_time`、`by_status`、`by_module` 字段以匹配后端实际响应
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — 修复数据映射（扁平数组兼容 + 字段名对齐）
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — EvolutionStatsRaw 类型扩展
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 微信配置字段 + 引导说明
+- `apps/openclaw-manager-src/src/components/APIGateway/index.tsx` — 离线诊断指南
+
 ## [2026-04-09] 桌面端+后端深度审计 — 8 项安全/功能/架构修复
 
 > 领域: `frontend`, `backend`, `xianyu`, `infra`

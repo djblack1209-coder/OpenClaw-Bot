@@ -427,24 +427,50 @@ export function APIGateway() {
         </div>
       </div>
 
-      {/* 网关离线提示 */}
+      {/* 网关离线提示 — 精确诊断 */}
       {online === false && (
         <Card className="border-yellow-500/20 bg-yellow-500/5">
           <CardContent className="flex items-start gap-4 py-2">
             <ServerOff className="w-10 h-10 text-yellow-400 shrink-0 mt-1" />
-            <div>
+            <div className="flex-1">
               <h3 className="text-base font-medium text-yellow-300 mb-1">API 网关未启动</h3>
               <p className="text-sm text-gray-400 leading-relaxed">
-                New-API 网关服务当前不可用。可能的原因：
+                New-API 网关服务当前不可用。请按以下步骤排查：
               </p>
-              <ul className="text-sm text-gray-400 mt-2 space-y-1 list-disc list-inside">
-                <li>Docker 容器未运行（请检查 Docker Desktop）</li>
-                <li>后端 ClawBot 服务未启动</li>
-                <li>网关端口被占用或配置错误</li>
-              </ul>
-              <p className="text-sm text-gray-500 mt-3">
-                {statusMsg && `详细信息：${statusMsg}`}
-              </p>
+              <ol className="text-sm text-gray-400 mt-2 space-y-2 list-decimal list-inside">
+                <li>
+                  <span className="font-medium text-gray-300">安装 Docker Desktop</span>
+                  <span className="text-gray-500 ml-1">— New-API 需要 Docker 容器运行</span>
+                  <div className="mt-1 ml-5">
+                    <a
+                      href="https://www.docker.com/products/docker-desktop/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-blue-400 hover:text-blue-300 underline transition-colors"
+                    >
+                      点击下载 Docker Desktop
+                    </a>
+                  </div>
+                </li>
+                <li>
+                  <span className="font-medium text-gray-300">启动 Docker Desktop</span>
+                  <span className="text-gray-500 ml-1">— 打开应用等待出现鲸鱼图标</span>
+                </li>
+                <li>
+                  <span className="font-medium text-gray-300">启动 New-API 容器</span>
+                  <span className="text-gray-500 ml-1">— 在项目目录终端执行：</span>
+                  <div className="mt-1 ml-5">
+                    <code className="text-xs text-green-400 bg-dark-700 px-2 py-1 rounded block w-fit">
+                      docker compose -f docker-compose.newapi.yml up -d
+                    </code>
+                  </div>
+                </li>
+              </ol>
+              {statusMsg && (
+                <p className="text-xs text-gray-500 mt-3 pt-2 border-t border-dark-600">
+                  错误详情：{statusMsg}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

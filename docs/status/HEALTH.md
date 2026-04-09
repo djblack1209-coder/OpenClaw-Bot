@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-09 (桌面端+后端深度审计: 8项修复)
+> 最后更新: 2026-04-09 (进化引擎数据映射修复 + 微信渠道补全 + API网关引导)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -61,7 +61,7 @@
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False + RequestSizeLimitMiddleware(10MB) |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
@@ -130,6 +130,9 @@
 | HI-476 | `frontend` | `CommandPalette.tsx` | 4个快捷操作返回数据不显示，统一直出"完成"导致无法区分状态 | 将执行结果文本绑定到 toast 展现真实 API 响应数据 | 2026-04-09 | 桌面端深度审计 |
 | HI-477 | `frontend` | `APIGateway/index.tsx` | 使用了阻断式的 `window.confirm` 原生对话框破坏 UI 一致性 | 替换为系统自定义的 `ConfirmDialog` 组件 | 2026-04-09 | 桌面端深度审计 |
 | HI-478 | `frontend` | `postcss.config.js` | Vite构建因为Tailwind的 `@apply` 在嵌套CSS中失败 | 补全 `tailwindcss/nesting` 插件支持 | 2026-04-09 | 桌面端深度审计 |
+| HI-479 | `frontend` | `Evolution/index.tsx` | **进化引擎数据全部不显示** — 后端返回扁平JSON数组，前端按 `{proposals:[]}` 解构导致51个真实提案和11个能力缺口映射为空；`last_scan_time` vs `last_scan` 字段名不匹配导致扫描时间不显示；`by_status` 嵌套结构未映射导致审批统计丢失 | 增加 `Array.isArray()` 兼容检测，扁平数组和包装对象两种格式均正确解构；`last_scan_time` 纳入映射链；`by_status` 嵌套字段透传 | 2026-04-09 | 进化引擎数据修复 |
+| HI-480 | `frontend` | `Channels/index.tsx` | 微信渠道配置面板为空 — `fields: []` 导致编辑时只显示"此渠道主要通过命令行配置"，无实际配置入口 | 添加桥接方式/Puppet类型/自动通过好友/管理员微信ID 4个配置字段；新增微信和WhatsApp接入说明引导卡片 | 2026-04-09 | 进化引擎数据修复 |
+| HI-481 | `frontend` | `APIGateway/index.tsx` | API网关离线提示过于笼统 — 只列出"可能的原因"但不指导如何解决，用户无法自行排查 | 改为分步排查指南（含Docker Desktop下载链接+终端启动命令），精确定位Docker未安装/未启动/容器未运行等具体原因 | 2026-04-09 | 进化引擎数据修复 |
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|

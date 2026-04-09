@@ -127,21 +127,28 @@ export function Evolution() {
       // 统计数据
       if (rawStats.status === 'fulfilled' && rawStats.value) {
         const s: EvolutionStatsRaw = rawStats.value;
+        // 兼容 by_status 嵌套结构和顶层字段
+        const byStatus = (s as Record<string, unknown>).by_status as Record<string, number> | undefined;
         setStats({
           total_proposals: (s.total_proposals ?? s.proposals_count ?? 0),
           total_scans: (s.total_scans ?? s.scans_count ?? 0),
           capability_gaps: (s.capability_gaps ?? s.gaps_count ?? 0),
-          last_scan: s.last_scan ?? s.last_scan_at ?? undefined,
-          approved: s.approved ?? undefined,
-          rejected: s.rejected ?? undefined,
-          pending: s.pending ?? undefined,
+          // 后端字段名为 last_scan_time，前端兼容多种命名
+          last_scan: s.last_scan ?? s.last_scan_at
+            ?? (s as Record<string, unknown>).last_scan_time as string | undefined
+            ?? undefined,
+          approved: s.approved ?? byStatus?.approved ?? undefined,
+          rejected: s.rejected ?? byStatus?.rejected ?? undefined,
+          pending: s.pending ?? byStatus?.pending ?? byStatus?.proposed ?? undefined,
         });
       }
 
-      // 差距分析
+      // 差距分析 — 兼容扁平数组和 {gaps:[]} / {data:[]} 包装对象
       if (rawGaps.status === 'fulfilled' && rawGaps.value) {
-        const raw: EvolutionGapsRaw = rawGaps.value;
-        const gapList: CapabilityGapRaw[] = (raw?.gaps ?? raw?.data ?? []);
+        const rawVal = rawGaps.value;
+        const gapList: CapabilityGapRaw[] = Array.isArray(rawVal)
+          ? rawVal
+          : ((rawVal as EvolutionGapsRaw)?.gaps ?? (rawVal as EvolutionGapsRaw)?.data ?? []);
         setGaps(
           gapList.map((g) => ({
             module: (g.module ?? g.category ?? 'unknown'),
@@ -152,10 +159,12 @@ export function Evolution() {
         );
       }
 
-      // 提案列表
+      // 提案列表 — 兼容扁平数组和 {proposals:[]} / {data:[]} 包装对象
       if (rawProposals.status === 'fulfilled' && rawProposals.value) {
-        const rawP: EvolutionProposalsRaw = rawProposals.value;
-        const propList: EvolutionProposalRaw[] = (rawP?.proposals ?? rawP?.data ?? []);
+        const rawVal = rawProposals.value;
+        const propList: EvolutionProposalRaw[] = Array.isArray(rawVal)
+          ? rawVal
+          : ((rawVal as EvolutionProposalsRaw)?.proposals ?? (rawVal as EvolutionProposalsRaw)?.data ?? []);
         setProposals(
           propList.map((p) => ({
             id: p.id ?? p.proposal_id,

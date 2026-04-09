@@ -45,7 +45,12 @@ const CHANNEL_INFO: Record<string, { name: string; icon: string; color: string; 
   },
   wechat: {
     name: '微信', icon: 'wc', color: 'text-emerald-500',
-    fields: []
+    fields: [
+      { key: 'bridge', label: '桥接方式', desc: '选择微信接入方式（推荐 wechaty）', type: 'select' },
+      { key: 'puppet', label: 'Puppet 类型', desc: '微信协议层实现（推荐 puppet-wechat4u）', type: 'select' },
+      { key: 'autoAccept', label: '自动通过好友请求', type: 'select' },
+      { key: 'adminWxId', label: '管理员微信ID', desc: '你的微信号（用于管理指令）' },
+    ]
   }
 };
 
@@ -232,12 +237,38 @@ export function Channels() {
                           </label>
                           {field.type === 'select' ? (
                             <select
-                              value={editForm[field.key] || 'allowlist'}
+                              value={editForm[field.key] || (
+                                field.key === 'bridge' ? 'wechaty' :
+                                field.key === 'puppet' ? 'wechat4u' :
+                                field.key === 'autoAccept' ? 'false' :
+                                'allowlist'
+                              )}
                               onChange={e => setEditForm({ ...editForm, [field.key]: e.target.value })}
                               className="input-base py-2 text-sm"
                             >
-                              <option value="allowlist">仅白名单 (Allowlist)</option>
-                              <option value="everyone">所有人 (Everyone)</option>
+                              {field.key === 'bridge' ? (
+                                <>
+                                  <option value="wechaty">Wechaty（推荐）</option>
+                                  <option value="itchat">itchat（Python 原生）</option>
+                                  <option value="wechat-bot">wechat-bot（Node.js）</option>
+                                </>
+                              ) : field.key === 'puppet' ? (
+                                <>
+                                  <option value="wechat4u">puppet-wechat4u（免费/网页协议）</option>
+                                  <option value="padlocal">puppet-padlocal（付费/iPad协议）</option>
+                                  <option value="xp">puppet-xp（Windows桌面协议）</option>
+                                </>
+                              ) : field.key === 'autoAccept' ? (
+                                <>
+                                  <option value="false">关闭</option>
+                                  <option value="true">开启</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="allowlist">仅白名单 (Allowlist)</option>
+                                  <option value="everyone">所有人 (Everyone)</option>
+                                </>
+                              )}
                             </select>
                           ) : (
                             <input
@@ -252,6 +283,24 @@ export function Channels() {
                         </div>
                       )) : (
                         <p className="text-sm text-gray-400 text-center py-4">此渠道主要通过命令行或手机扫码配置</p>
+                      )}
+
+                      {/* 微信渠道特殊引导提示 */}
+                      {channel.channel_type === 'wechat' && (
+                        <div className="mt-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-gray-400 space-y-1.5">
+                          <p className="text-emerald-400 font-medium">微信接入说明</p>
+                          <p>微信机器人需要通过桥接服务接入，推荐使用 Wechaty + puppet-wechat4u 方案。</p>
+                          <p>配置保存后，在终端执行 <code className="text-emerald-400 bg-dark-700 px-1 rounded">openclaw plugins enable wechat</code> 启用微信插件，然后用手机扫码完成登录。</p>
+                          <p className="text-gray-500">提示：微信网页版登录需要已验证的微信号，新号可能无法使用网页协议。</p>
+                        </div>
+                      )}
+                      
+                      {/* WhatsApp 渠道特殊引导提示 */}
+                      {channel.channel_type === 'whatsapp' && info.fields.length === 0 && (
+                        <div className="mt-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20 text-xs text-gray-400 space-y-1.5">
+                          <p className="text-green-400 font-medium">WhatsApp 接入说明</p>
+                          <p>WhatsApp 通过扫码登录接入，保存配置后在终端执行 <code className="text-green-400 bg-dark-700 px-1 rounded">openclaw channel login whatsapp</code>。</p>
+                        </div>
                       )}
                       
                       <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-dark-600">
