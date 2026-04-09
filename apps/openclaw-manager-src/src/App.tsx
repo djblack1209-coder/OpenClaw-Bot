@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { Toaster } from 'sonner';
@@ -65,6 +65,20 @@ export interface EnvironmentStatus {
 import type { ServiceStatus } from './lib/tauri';
 
 function App() {
+  // 监听 <html> 上的 dark class 变化，让 Toaster 主题跟随系统切换
+  const [toasterTheme, setToasterTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  );
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setToasterTheme(html.classList.contains('dark') ? 'dark' : 'light');
+    });
+    observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   const currentPage = useAppStore((s) => s.currentPage);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const isReady = useAppStore((s) => s.isReady);
@@ -198,7 +212,7 @@ function App() {
       <CommandPalette />
       {/* 全局通知提示 */}
       <Toaster 
-        theme="dark"
+        theme={toasterTheme}
         position="top-right"
         toastOptions={{
           className: 'bg-dark-800 border-dark-700 text-dark-100',
