@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { clawbotFetch } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 // API 网关管理模块日志实例
 const gatewayLogger = createLogger('APIGateway');
@@ -175,6 +176,10 @@ export function APIGateway() {
   // 刷新中
   const [refreshing, setRefreshing] = useState(false);
 
+  // 确认删除对话框
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ type: 'channel' | 'token'; id: number } | null>(null);
+
   // ── 获取网关状态 ────────────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
@@ -318,18 +323,41 @@ export function APIGateway() {
   // ── 删除渠道 ────────────────────────────────────────────────
 
   const handleDeleteChannel = async (channelId: number) => {
-    if (!confirm('确定要删除这个渠道吗？')) return;
+    setPendingDelete({ type: 'channel', id: channelId });
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleDeleteToken = async (tokenId: number) => {
+    setPendingDelete({ type: 'token', id: tokenId });
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!pendingDelete) return;
+    const { type, id } = pendingDelete;
     try {
-      const res = await clawbotFetch(`/api/v1/newapi/channels/${channelId}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success('渠道已删除');
-        await fetchChannels();
+      if (type === 'channel') {
+        const res = await clawbotFetch(`/api/v1/newapi/channels/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          toast.success('渠道已删除');
+          await fetchChannels();
+        } else {
+          toast.error('删除失败');
+        }
       } else {
-        toast.error('删除失败');
+        const res = await clawbotFetch(`/api/v1/newapi/tokens/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          toast.success('令牌已删除');
+          await fetchTokens();
+        } else {
+          toast.error('删除失败');
+        }
       }
     } catch (err) {
-      gatewayLogger.error('删除渠道失败', err);
-      toast.error('删除渠道时发生错误');
+      gatewayLogger.error(`删除${type === 'channel' ? '渠道' : '令牌'}失败`, err);
+      toast.error(`删除${type === 'channel' ? '渠道' : '令牌'}时发生错误`);
+    } finally {
+      setPendingDelete(null);
     }
   };
 
@@ -347,24 +375,6 @@ export function APIGateway() {
     } catch (err) {
       gatewayLogger.error('切换渠道状态失败', err);
       toast.error('操作失败');
-    }
-  };
-
-  // ── 删除令牌 ────────────────────────────────────────────────
-
-  const handleDeleteToken = async (tokenId: number) => {
-    if (!confirm('确定要删除这个令牌吗？')) return;
-    try {
-      const res = await clawbotFetch(`/api/v1/newapi/tokens/${tokenId}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success('令牌已删除');
-        await fetchTokens();
-      } else {
-        toast.error('删除失败');
-      }
-    } catch (err) {
-      gatewayLogger.error('删除令牌失败', err);
-      toast.error('删除令牌时发生错误');
     }
   };
 
@@ -740,6 +750,19 @@ export function APIGateway() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        title={pendingDelete?.type === 'channel' ? '删除渠道' : '删除令牌'}
+        description={`确定要删除这个${pendingDelete?.type === 'channel' ? '渠道' : '令牌'}吗？此操作不可撤销。`}
+        onConfirm={() => {
+          executeDelete();
+          setConfirmDeleteOpen(false);
+        }}
+        confirmText="删除"
+        destructive={true}
+      />
     </div>
   );
 }
