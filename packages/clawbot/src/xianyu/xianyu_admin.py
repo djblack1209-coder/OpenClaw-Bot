@@ -226,16 +226,20 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
 
 @app.get("/api/status")
 def system_status():
-    status = {"service": "running", "ws_connected": False, "cookie_ok": False}
-    if _live:
-        status["ws_connected"] = _live.ws is not None and _live.ws.open if hasattr(_live, 'ws') and _live.ws else False
-        status["cookie_ok"] = getattr(_live, '_cookie_ok', False)
-        status["last_heartbeat"] = getattr(_live, 'last_hb_resp', 0)
-        status["token_age_s"] = int(
-            (now_et().timestamp() - getattr(_live, 'token_ts', 0))
-        ) if getattr(_live, 'token_ts', 0) > 0 else -1
-        status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
-    return status
+    try:
+        status = {"service": "running", "ws_connected": False, "cookie_ok": False}
+        if _live:
+            status["ws_connected"] = _live.ws is not None and _live.ws.open if hasattr(_live, 'ws') and _live.ws else False
+            status["cookie_ok"] = getattr(_live, '_cookie_ok', False)
+            status["last_heartbeat"] = getattr(_live, 'last_hb_resp', 0)
+            status["token_age_s"] = int(
+                (now_et().timestamp() - getattr(_live, 'token_ts', 0))
+            ) if getattr(_live, 'token_ts', 0) > 0 else -1
+            status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
+        return status
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/status 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
@@ -247,10 +251,14 @@ PROMPT_DIR = Path(__file__).parent / "prompts"
 
 @app.get("/api/prompts")
 def list_prompts():
-    prompts = {}
-    for f in PROMPT_DIR.glob("*.txt"):
-        prompts[f.stem] = f.read_text(encoding="utf-8")
-    return prompts
+    try:
+        prompts = {}
+        for f in PROMPT_DIR.glob("*.txt"):
+            prompts[f.stem] = f.read_text(encoding="utf-8")
+        return prompts
+    except Exception as e:
+        logger.error(f"[XianyuAdmin] /api/prompts GET 出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class PromptUpdate(BaseModel):
