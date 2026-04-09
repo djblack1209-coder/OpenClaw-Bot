@@ -280,11 +280,13 @@ class TestMultiPathExecutor:
 
         self.executor._http_client.get = AsyncMock(return_value=mock_resp)
 
-        result = await self.executor.execute_with_fallback(
-            [{"type": "api", "endpoint": "https://api.example.com/quote",
-              "method": "GET", "params": {"symbol": "AAPL"}}],
-            platform="test",
-        )
+        # 测试环境跳过 SSRF 检查（api.example.com 无法通过真实 DNS 解析）
+        with patch("src.core.security.check_ssrf", return_value=True):
+            result = await self.executor.execute_with_fallback(
+                [{"type": "api", "endpoint": "https://api.example.com/quote",
+                  "method": "GET", "params": {"symbol": "AAPL"}}],
+                platform="test",
+            )
 
         assert result.success is True
         assert result.execution_path == "api"
