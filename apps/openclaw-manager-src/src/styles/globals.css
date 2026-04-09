@@ -121,7 +121,7 @@ button:disabled {
 
 /* 玻璃效果 */
 .glass {
-  background: rgba(26, 26, 29, 0.8);
+  background: rgba(var(--glass-rgb, 26, 26, 29), 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -248,6 +248,9 @@ button:disabled {
     --dark-300: #334155;
     --dark-200: #1e293b;
     --dark-100: #0f172a;
+
+    /* 玻璃效果 RGB 值 */
+    --glass-rgb: 241, 245, 249;
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -293,5 +296,8 @@ button:disabled {
     --dark-300: #52525b;
     --dark-200: #71717a;
     --dark-100: #a1a1aa;
+
+    /* 玻璃效果 RGB 值 */
+    --glass-rgb: 26, 26, 29;
   }
 }
