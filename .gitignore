@@ -15,7 +15,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# 通用 Python/Rust 构建目录，避免误伤前端 src/lib 源码目录
+/lib/
 lib64/
 parts/
 sdist/
@@ -140,6 +141,9 @@ apps/OpenClaw.app/
 # === Git 备份（BFG 清理产物）===
 .git.backup/
 *.bfg-report/
+
+# === 本地 Git worktrees ===
+.worktrees/
 
 # === 浏览器代理密钥池（含真实 API Key）===
 packages/clawbot/browser-agent/keypool.json
