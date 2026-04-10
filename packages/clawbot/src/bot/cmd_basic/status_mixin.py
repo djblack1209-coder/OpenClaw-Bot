@@ -141,12 +141,16 @@ class _StatusMixin:
     @requires_auth
     @with_typing
     async def cmd_pool(self, update, context):
-        """查看免费 API 池 + 智能路由状态"""
+        """查看统一 LLM 号池 + 智能路由状态"""
         pool_stats = free_pool.get_stats()
-        text = "🆓 **免费 API 池状态**\n\n"
+        text = "🤖 **统一 LLM 号池状态**\n\n"
         text += f"总源数: {pool_stats['total_sources']}\n"
         text += f"活跃源: {pool_stats['active_sources']}\n"
         text += f"模型族: {pool_stats['model_families']}\n\n"
+        text += "主链: SiliconFlow / iflow / Groq / Gemini\n"
+        text += "补位: Cerebras / OpenRouter / NVIDIA / Volcengine\n"
+        text += "兜底: Mistral / Cohere / GPT_API_Free / g4f\n"
+        text += "付费 Claude: 仅 /claude 显式调用\n\n"
 
         for family, info in pool_stats.get("families", {}).items():
             icon = "✅" if info["active"] > 0 else "❌"
