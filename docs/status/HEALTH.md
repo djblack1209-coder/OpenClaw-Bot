@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-10 (LLM号池对齐 + Claude/XAPI兜底切断 + Gemini/Cerebras路由更新)
+> 最后更新: 2026-04-10 (全量审计启动 + worktree 基线核对 + 前端源码误忽略修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -80,11 +80,18 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
+| HI-484 | `infra` | `apps/openclaw-manager-src/src/lib` | 根目录 `.gitignore` 使用过宽规则 `lib/`，误伤前端 `src/lib/` 源码目录，导致 `utils.ts` / `tauri.ts` / `logger.ts` 未被 Git 跟踪；worktree 与新环境下前端基线直接失真 | 2026-04-10 |
 | HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在。**建议用 git filter-repo 清理历史** | 2026-03-28 |
 | HI-387 | `security` | `config/.env` | 50+ 真实密钥曾提交到 Git 历史（Alpaca交易Key/Gmail密码/7个Bot Token/闲鱼Cookie等）— 如仓库曾push到远程，需立即轮换所有密钥 | 2026-04-01 |
 | HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
 | HI-482 | `ai-pool` | `tests/test_litellm_router.py` | 本机 Python 3.12 测试环境缺少 `litellm` 依赖，LiteLLM 路由单测无法在当前环境直接运行 — 本次仅完成代码与配置对齐，需在完整 venv 中复验 | 2026-04-10 |
 | HI-483 | `infra` | `config/.env` | 历史配置中存在重复 `MEM0_API_KEY` 和未接入主流程的 `CLOUDCONVERT_API_KEY` 运行时导出 — 已清理重复项并将未接入项降为仅文档登记 | 2026-04-10 |
+
+### 审计进行中
+
+| ID | 领域 | 模块 | 描述 | 发现日期 |
+|----|------|------|------|----------|
+| HI-485 | `audit` | 全项目 | 已启动 2026-04-10 全量全方位审计。当前基线结论：后端需依赖项目 `packages/clawbot/.venv312` 才能复现真实测试状态；前端 worktree 需单独安装依赖后再验证，Node 当前为 18.20.8，npm 为 11.6.2，存在 engine 警告但不阻塞 `tsc` 与 `vite build` | 2026-04-10 |
 
 ### 🟡 一般
 
