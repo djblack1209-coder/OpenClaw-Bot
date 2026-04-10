@@ -241,6 +241,9 @@ class APIMixin:
 
     async def _call_claude_api(self, messages: list, use_tools: bool = True) -> str:
         """付费 Claude API，支持工具调用循环 (保留原实现，LiteLLM 不直接支持多轮工具循环)"""
+        if not CLAUDE_KEY or not CLAUDE_BASE or "9w7.cn" in CLAUDE_BASE:
+            raise RuntimeError("付费 Claude 渠道未配置完成，请先切换到有效官方/中转 Anthropic 接口")
+
         tools = tool_executor.get_tools_schema() if use_tools else None
         max_tool_iterations = 8
         working_messages = list(messages)

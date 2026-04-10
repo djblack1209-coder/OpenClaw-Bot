@@ -304,3 +304,34 @@ class TestValidateKeys:
 
         assert src.disabled is True
         assert result["unhealthy"] >= 1
+
+
+# ============ _build_all_deployments ==========
+
+class TestBuildAllDeployments:
+
+    def test_uses_current_gemini_models_and_enables_cerebras(self):
+        """Gemini 应切到 2.5 系，Cerebras key 存在时应真正注册 deployment。"""
+        with patch.dict("os.environ", {
+            "GEMINI_API_KEY": "AIza-test-key",
+            "CEREBRAS_API_KEY": "csk-test-key",
+        }, clear=True):
+            pool = LiteLLMPool()
+            deps = pool._build_all_deployments()
+
+        models = [dep["litellm_params"]["model"] for dep in deps]
+
+        assert "gemini/gemini-2.5-flash" in models
+        assert "gemini/gemini-2.5-flash-lite" in models
+        assert "gemini/gemini-2.0-flash" not in models
+        assert any(model.startswith("cerebras/") for model in models)
+
+
+class TestClaudeDirectApiGuard:
+
+    def test_scrub_secrets_masks_gemini_key_prefix(self):
+        """Google AI Studio key 也应被脱敏，避免日志直接打出真实 key。"""
+        msg = "Gemini failed with key AIzaSyABCDEFGHIJKLMN1234567890"
+        cleaned = _scrub_secrets(msg)
+        assert "ABCDEFGHIJKLMN1234567890" not in cleaned
+        assert "REDACTED" in cleaned

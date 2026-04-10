@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-09 (进化引擎数据映射修复 + 微信渠道补全 + API网关引导)
+> 最后更新: 2026-04-10 (LLM号池对齐 + Claude/XAPI兜底切断 + Gemini/Cerebras路由更新)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -44,7 +44,7 @@
 | 维度 | 状态 | 说明 |
 |------|------|------|
 | 核心服务 | 🟢 运行中 | 7 Bot + FastAPI + Redis (macOS 主节点), Python 进程后台静默运行(无 Dock 图标) |
-| LLM 路由 | 🟢 加固 | 多级降级链(qwen→deepseek→g4f) + 流式成本追踪 + 15+ provider |
+| LLM 路由 | 🟢 加固 | 主链调整为 SiliconFlow/iflow/Groq/Gemini → Cerebras/OpenRouter/NVIDIA/Volcengine → Mistral/Cohere/GPT_API_Free/g4f，切断 XAPI Claude 空余额兜底 |
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 |
@@ -83,6 +83,7 @@
 | HI-348 | `security` | `.openclaw/agents/` | API密钥(Anthropic/OpenAI)曾提交到Git历史 — 已从索引移除但历史仍存在。**建议用 git filter-repo 清理历史** | 2026-03-28 |
 | HI-387 | `security` | `config/.env` | 50+ 真实密钥曾提交到 Git 历史（Alpaca交易Key/Gmail密码/7个Bot Token/闲鱼Cookie等）— 如仓库曾push到远程，需立即轮换所有密钥 | 2026-04-01 |
 | HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
+| HI-482 | `ai-pool` | `tests/test_litellm_router.py` | 本机 Python 3.12 测试环境缺少 `litellm` 依赖，LiteLLM 路由单测无法在当前环境直接运行 — 本次仅完成代码与配置对齐，需在完整 venv 中复验 | 2026-04-10 |
 
 ### 🟡 一般
 

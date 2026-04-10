@@ -5,6 +5,30 @@
 
 ---
 
+## [2026-04-10] LLM号池对齐 + Claude/XAPI兜底切断 + 路由降级链重排
+
+> 领域: `ai-pool`, `docs`
+> 影响模块: `litellm_router.py`, `api_mixin.py`, `.env.example`, `API_POOL_REGISTRY.md`, `HEALTH.md`
+> 关联问题: HI-009, HI-012, HI-482
+
+### 变更内容
+- `litellm_router.py` — 重新启用 `Cerebras` 免费 deployment，接入 `gpt-oss-120b` 和 `llama3.1-8b`
+- `litellm_router.py` — `Gemini` 从已废弃 `2.0` 系切换到 `gemini-2.5-flash` / `gemini-2.5-flash-lite` / `gemini-3-flash-preview`
+- `litellm_router.py` — 下调 `Mistral`、`Cohere` 在项目内的默认优先级，明确它们只承担中后位兜底角色
+- `litellm_router.py` — 扩展敏感信息脱敏规则，新增 `csk-`、`nvapi-`、`hf_`、`m0-` 等 key 前缀清洗
+- `api_mixin.py` — `Claude` 付费直连增加保护：若仍指向 `XAPI/9w7` 或未配置有效接口，则直接拒绝调用，避免继续走无余额线路
+- `.env.example` — 更新渠道说明，明确 `Gemini 2.0` 已废弃、`Cerebras` 已重启接入、`GPT_API_Free/Mistral/Cohere` 仅作后位兜底
+- `API_POOL_REGISTRY.md` — 同步官方限制、项目主链/兜底链口径，并记录 `Claude API` 不再走 `XAPI`
+- 删除误写入项目的 OpenCode/CC Switch 外部工具文档，避免与本项目配置治理混淆
+
+### 文件变更
+- `packages/clawbot/src/litellm_router.py` — 路由 provider 调整 + 日志脱敏增强
+- `packages/clawbot/src/bot/api_mixin.py` — Claude 直连保护
+- `packages/clawbot/tests/test_litellm_router.py` — 新增 Gemini/Cerebras 与 key 脱敏断言
+- `packages/clawbot/config/.env.example` — 号池说明更新
+- `docs/registries/API_POOL_REGISTRY.md` — 号池注册表更新
+- `docs/status/HEALTH.md` — 新增测试环境说明 + LLM 路由状态更新
+
 ## [2026-04-09] 进化引擎数据修复 + 微信渠道补全 + API网关引导优化
 
 > 领域: `frontend`
