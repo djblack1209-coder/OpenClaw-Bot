@@ -274,6 +274,7 @@ class ClawBotRPC:
     async def _rpc_trading_dashboard() -> dict:
         """盈利仪表盘数据：图表+资产+连接状态"""
         from src.broker_selector import ibkr
+        from src.trading_journal import journal
 
         try:
             # 获取最近 30 天的每日净值数据
@@ -299,6 +300,16 @@ class ClawBotRPC:
                         })
             except Exception as e:
                 logger.debug("[RPC] IBKR 持仓查询失败: %s", e)
+
+            # 用真实交易日志生成净值曲线，避免前端长期看到空图
+            try:
+                equity_values, date_labels = journal.get_equity_curve(days=30)
+                chart_data = [
+                    {"name": label, "value": value}
+                    for label, value in zip(date_labels, equity_values)
+                ]
+            except Exception as e:
+                logger.debug("[RPC] 交易净值曲线生成失败: %s", e)
 
             return {"chart_data": chart_data, "assets": assets, "connected": connected}
         except Exception as e:
