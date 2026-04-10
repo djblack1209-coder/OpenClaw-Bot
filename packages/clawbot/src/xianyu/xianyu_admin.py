@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from src.utils import now_et
 from src.api.auth import verify_api_token, log_token_status
+from src.api.error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def dashboard(date: str = ""):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/dashboard 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -103,7 +104,7 @@ def list_chats(limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/chats 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @app.get("/api/chats/{chat_id}")
@@ -127,7 +128,7 @@ def get_chat(chat_id: str, limit: int = Query(100, le=500)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/chats/{chat_id} 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -152,7 +153,7 @@ def list_items():
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/items 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -183,7 +184,7 @@ def list_orders(date: str = "", limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/orders 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -217,7 +218,7 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/consultations 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -239,7 +240,7 @@ def system_status():
         return status
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/status 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
@@ -258,7 +259,7 @@ def list_prompts():
         return prompts
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/prompts GET 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 class PromptUpdate(BaseModel):
@@ -284,7 +285,7 @@ def update_prompt(req: PromptUpdate):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/prompts POST 出错: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============================================================
