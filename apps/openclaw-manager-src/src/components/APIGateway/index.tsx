@@ -193,7 +193,7 @@ export function APIGateway() {
       const data: GatewayStatusData = await res.json();
       const isOnline = data.online ?? (data.status === 'ok');
       setOnline(isOnline);
-      setStatusMsg(data.message ?? (isOnline ? '运行正常' : '未响应'));
+      setStatusMsg(data.message ?? (isOnline ? '运行正常（建议托管主链与补位渠道）' : '未响应'));
     } catch (err) {
       gatewayLogger.error('获取网关状态失败', err);
       setOnline(false);
@@ -475,6 +475,18 @@ export function APIGateway() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="bg-dark-800 border-dark-600">
+        <CardHeader>
+          <CardTitle className="text-white text-sm font-medium">当前渠道治理口径</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-gray-400 space-y-1.5">
+          <p>主链：SiliconFlow / iflow / Groq / Gemini</p>
+          <p>补位：Cerebras / OpenRouter / NVIDIA / Volcengine</p>
+          <p>兜底：Mistral / Cohere / GPT_API_Free / g4f</p>
+          <p>付费 Claude 不再自动兜底，只保留给显式 <code className="text-claw-400">/claude</code>。</p>
+        </CardContent>
+      </Card>
 
       {/* 状态概览卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -289,9 +289,10 @@ export function Channels() {
                       {channel.channel_type === 'wechat' && (
                         <div className="mt-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-gray-400 space-y-1.5">
                           <p className="text-emerald-400 font-medium">微信接入说明</p>
+                          <p>微信渠道当前主要承担通知桥接和后续管理入口，不参与主 LLM 号池路由。</p>
                           <p>微信机器人需要通过桥接服务接入，推荐使用 Wechaty + puppet-wechat4u 方案。</p>
                           <p>配置保存后，在终端执行 <code className="text-emerald-400 bg-dark-700 px-1 rounded">openclaw plugins enable wechat</code> 启用微信插件，然后用手机扫码完成登录。</p>
-                          <p className="text-gray-500">提示：微信网页版登录需要已验证的微信号，新号可能无法使用网页协议。</p>
+                          <p className="text-gray-500">提示：微信网页版登录需要已验证的微信号，新号可能无法使用网页协议。启用通知需同时设置 <code className="text-emerald-400 bg-dark-700 px-1 rounded">WECHAT_NOTIFY_ENABLED=true</code>。</p>
                         </div>
                       )}
                       

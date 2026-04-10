@@ -172,7 +172,7 @@ export function AIConfig() {
                 AI 模型配置
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                管理 OpenClaw 使用的 AI Provider 和模型
+                管理 OpenClaw 使用的 AI 服务商、主模型和统一号池接入
               </p>
             </div>
             <button
@@ -199,7 +199,7 @@ export function AIConfig() {
             </div>
             <div className="text-right mr-4">
               <p className="text-sm text-gray-500">
-                {aiConfig?.configured_providers.length || 0} 个 Provider
+                {aiConfig?.configured_providers.length || 0} 个服务商配置
               </p>
               <p className="text-sm text-gray-500">
                 {aiConfig?.available_models.length || 0} 个可用模型
@@ -217,6 +217,14 @@ export function AIConfig() {
               )}
               测试连接
             </button>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-dark-500 bg-dark-800/40 p-4 text-sm text-gray-400 space-y-1.5">
+            <p className="text-white font-medium">当前项目号池口径</p>
+            <p>主链：SiliconFlow / iflow / Groq / Gemini</p>
+            <p>补位：Cerebras / OpenRouter / NVIDIA / Volcengine</p>
+            <p>兜底：Mistral / Cohere / GPT_API_Free / g4f</p>
+            <p>付费 Claude 不再自动兜底，只有显式 <code className="text-claw-400">/claude</code> 才会走。</p>
           </div>
 
           {/* AI 测试结果 */}
@@ -268,11 +276,11 @@ export function AIConfig() {
           )}
         </div>
 
-        {/* 已配置的 Provider 列表 */}
+        {/* 已配置的服务商列表 */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white flex items-center gap-2">
             <Server size={18} className="text-gray-500" />
-            已配置的 Provider
+            已配置的服务商
           </h3>
 
           {aiConfig?.configured_providers.length === 0 ? (
@@ -280,12 +288,12 @@ export function AIConfig() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-dark-600 flex items-center justify-center">
                 <Plus size={24} className="text-gray-500" />
               </div>
-              <p className="text-gray-400 mb-4">还没有配置任何 AI Provider</p>
+              <p className="text-gray-400 mb-4">还没有配置任何 AI 服务商</p>
               <button
                 onClick={() => setShowAddDialog(true)}
                 className="btn-primary"
               >
-                添加第一个 Provider
+                添加第一个服务商
               </button>
             </div>
           ) : (
@@ -339,10 +347,10 @@ export function AIConfig() {
         <div className="bg-dark-700/50 rounded-xl p-4 border border-dark-500">
           <h4 className="text-sm font-medium text-gray-400 mb-2">配置说明</h4>
           <ul className="text-sm text-gray-500 space-y-1">
-            <li>• Provider 配置保存在 <code className="text-claw-400">~/.openclaw/openclaw.json</code></li>
+            <li>• 服务商配置保存在 <code className="text-claw-400">~/.openclaw/openclaw.json</code></li>
             <li>• 当前项目: <code className="text-claw-400">{projectContext?.project_base_dir ?? '加载中...'}</code></li>
             <li>• 当前工作区: <code className="text-claw-400">{projectContext?.workspace_dir ?? '加载中...'}</code></li>
-            <li>• 支持官方 Provider（Anthropic、OpenAI、Kimi 等）和自定义 OpenAI/Anthropic 兼容 API</li>
+            <li>• 支持官方服务商（Anthropic、OpenAI、Kimi 等）和自定义 OpenAI/Anthropic 兼容接口</li>
             <li>• 主模型用于 Agent 的默认推理，可随时切换</li>
             <li>• 修改配置后需要重启服务生效</li>
           </ul>

@@ -735,12 +735,12 @@ export function ControlCenter() {
               <div className="mt-5 pt-5 border-t border-dark-600">
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <p className="text-sm font-medium text-gray-300">成本与配额快照</p>
-                  <span className="text-xs text-gray-500">服务商 {usageProviderCount}</span>
+                  <span className="text-xs text-gray-500">可读配额服务商 {usageProviderCount}</span>
                 </div>
 
                 {usageProviderCount === 0 ? (
                   <div className="bg-dark-800 rounded-lg border border-dark-600 px-3 py-3 text-xs text-gray-500">
-                    当前没有可用的 provider usage 数据（需对应 provider 支持 usage endpoint 且凭据可读）。
+                    当前没有可用的服务商配额快照（需要对应服务商支持 usage 接口，且本地凭据可读取）。
                   </div>
                 ) : (
                   <div className="space-y-2">

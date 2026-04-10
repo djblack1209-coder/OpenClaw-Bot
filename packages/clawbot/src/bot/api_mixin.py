@@ -71,9 +71,9 @@ class APIMixin:
         """调用 API — 统一走 LiteLLM Router
 
         路由策略:
-        - 群聊: 所有 bot 走免费模型 (LiteLLM 自动路由)
-        - 私聊 claude_opus: 优先免费 Claude，兜底付费 Claude API
-        - 其他: 免费模型
+        - 群聊: 所有 bot 走统一号池主链
+        - 私聊 claude_opus: 默认仍走免费/开放号池，不再自动回落到付费 Claude
+        - `/claude`: 仅在显式调用且已配置有效 Anthropic 接口时才走付费 Claude API
         """
         start = _time.time()
 
