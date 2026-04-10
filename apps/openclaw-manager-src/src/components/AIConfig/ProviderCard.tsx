@@ -166,7 +166,7 @@ export default function ProviderCard({ provider, officialProviders, onSetPrimary
                   className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg space-y-3"
                 >
                   <p className="text-red-400 text-sm">
-                    ⚠️ 确定要删除 Provider "{provider.name}" 吗？这将同时删除其下所有模型配置。
+                    ⚠️ 确定要删除服务商 "{provider.name}" 吗？这将同时删除其下所有模型配置。
                   </p>
                   {deleteError && (
                     <p className="text-red-300 text-sm bg-red-500/20 p-2 rounded">
@@ -204,7 +204,7 @@ export default function ProviderCard({ provider, officialProviders, onSetPrimary
                     className="flex items-center gap-1 text-sm text-claw-400 hover:text-claw-300 transition-colors"
                   >
                     <Pencil size={14} />
-                    编辑 Provider
+                    编辑服务商
                   </button>
                   <button
                     onClick={handleDeleteClick}
@@ -212,7 +212,7 @@ export default function ProviderCard({ provider, officialProviders, onSetPrimary
                     className="flex items-center gap-1 text-sm text-red-400 hover:text-red-300 transition-colors"
                   >
                     {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    删除 Provider
+                    删除服务商
                   </button>
                 </div>
               )}

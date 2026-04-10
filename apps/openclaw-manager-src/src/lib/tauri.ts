@@ -43,7 +43,7 @@ export interface SystemInfo {
   config_dir: string;
 }
 
-// AI Provider 选项（旧版兼容）
+// AI 服务商选项（旧版兼容，底层字段仍沿用 provider 命名）
 export interface AIProviderOption {
   id: string;
   name: string;
@@ -60,7 +60,7 @@ export interface AIModelOption {
   recommended: boolean;
 }
 
-// 官方 Provider 预设
+// 官方服务商预设
 export interface OfficialProvider {
   id: string;
   name: string;
@@ -81,7 +81,7 @@ export interface SuggestedModel {
   recommended: boolean;
 }
 
-// 已配置的 Provider
+// 已配置的服务商
 export interface ConfiguredProvider {
   name: string;
   base_url: string;
@@ -138,7 +138,7 @@ export interface DiagnosticResult {
 // AI 测试结果
 export interface AITestResult {
   success: boolean;
-  provider: string;
+  provider: string; // 底层兼容字段，界面统一展示为“服务商”
   model: string;
   response: string | null;
   error: string | null;

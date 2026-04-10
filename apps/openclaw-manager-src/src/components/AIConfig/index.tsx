@@ -114,7 +114,7 @@ export function AIConfig() {
       } catch (e) {
         aiLogger.debug('[AIConfig] 获取项目上下文失败:', e);
       }
-      aiLogger.info(`加载完成: ${officials.length} 个官方 Provider, ${config.configured_providers.length} 个已配置`);
+      aiLogger.info(`加载完成: ${officials.length} 个官方服务商, ${config.configured_providers.length} 个已配置`);
     } catch (e) {
       aiLogger.error('加载 AI 配置失败', e);
       setError(String(e));
@@ -180,7 +180,7 @@ export function AIConfig() {
               className="btn-primary flex items-center gap-2"
             >
               <Plus size={16} />
-              添加 Provider
+              添加服务商
             </button>
           </div>
 
@@ -357,7 +357,7 @@ export function AIConfig() {
         </div>
       </div>
 
-      {/* 添加/编辑 Provider 对话框 */}
+      {/* 添加/编辑服务商对话框 */}
       <AnimatePresence>
         {showAddDialog && (
           <ProviderDialog
