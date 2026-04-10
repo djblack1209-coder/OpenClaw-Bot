@@ -2,7 +2,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import SocialStatus, SocialPublishRequest
@@ -18,7 +18,27 @@ def get_social_status():
         return ClawBotRPC._rpc_social_status()
     except Exception as e:
         logger.exception("获取社交媒体状态失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/browser-status", response_model=Dict[str, Any])
+def get_social_browser_status():
+    """获取 X / 小红书浏览器会话状态"""
+    try:
+        return ClawBotRPC._rpc_social_browser_status()
+    except Exception as e:
+        logger.exception("获取社媒浏览器状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/analytics", response_model=Dict[str, Any])
+def get_social_analytics(days: int = Query(default=7, ge=1, le=30)):
+    """获取社媒分析面板数据"""
+    try:
+        return ClawBotRPC._rpc_social_analytics(days=days)
+    except Exception as e:
+        logger.exception("获取社媒分析数据失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/topics", response_model=Dict[str, Any])

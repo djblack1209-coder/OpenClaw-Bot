@@ -473,6 +473,92 @@ class ClawBotRPC:
             return _placeholder
 
     @staticmethod
+    def _rpc_social_browser_status() -> dict:
+        """Get browser session readiness for X / 小红书."""
+        try:
+            from src.execution import execution_hub
+
+            status = execution_hub.get_social_browser_status() or {}
+            x_ready = status.get("x_ready")
+            xhs_ready = status.get("xiaohongshu_ready")
+
+            def _map_ready(value):
+                if value is True:
+                    return "ready"
+                if value is False:
+                    return "login_needed"
+                return "unknown"
+
+            return {
+                "browser_running": bool(status.get("browser_running", False)),
+                "x": _map_ready(x_ready),
+                "xhs": _map_ready(xhs_ready),
+            }
+        except Exception as e:
+            logger.warning("Social browser status failed: %s", e)
+            return {
+                "browser_running": False,
+                "x": "unknown",
+                "xhs": "unknown",
+                "error": _safe_error(e),
+            }
+
+    @staticmethod
+    def _rpc_social_analytics(days: int = 7) -> dict:
+        """Get analytics data used by the desktop social dashboard."""
+        try:
+            from src.execution import execution_hub
+
+            report = execution_hub.get_post_performance_report(days=days) or {}
+            by_platform = report.get("by_platform", {}) or {}
+            top_posts = report.get("top_posts", []) or []
+
+            engagement = {
+                platform: {
+                    "total_likes": int(stats.get("likes", 0) or 0),
+                    "total_comments": int(stats.get("comments", 0) or 0),
+                    "total_shares": int(stats.get("shares", 0) or 0),
+                }
+                for platform, stats in by_platform.items()
+            }
+            follower_growth = {
+                platform: {
+                    "current": int(stats.get("posts", 0) or 0),
+                    "net_change": 0,
+                }
+                for platform, stats in by_platform.items()
+            }
+
+            normalized_top_posts = [
+                {
+                    "preview": post.get("topic") or post.get("url") or "无标题",
+                    "title": post.get("topic") or "",
+                    "likes": int(post.get("likes", 0) or 0),
+                    "comments": int(post.get("comments", 0) or 0),
+                    "shares": int(post.get("shares", 0) or 0),
+                }
+                for post in top_posts
+            ]
+
+            return {
+                "days": days,
+                "engagement": engagement,
+                "follower_growth": follower_growth,
+                "top_posts": normalized_top_posts,
+                "success": bool(report.get("success", True)),
+            }
+        except Exception as e:
+            logger.warning("Social analytics failed: %s", e)
+            return {
+                "days": days,
+                "engagement": {},
+                "follower_growth": {},
+                "top_posts": [],
+                "success": False,
+                "error": _safe_error(e),
+            }
+
+    @staticmethod
     async def _rpc_social_discover_topics(count: int = 5) -> dict:
         """Discover hot topics for content creation."""
         try:
@@ -898,6 +984,50 @@ class ClawBotRPC:
         except Exception as e:
             logger.warning("Failed to get memory stats: %s", e)
             return _empty
+
+    @staticmethod
+    def _rpc_memory_delete(key: str) -> dict:
+        """Delete a memory entry by key."""
+        from src.bot.globals import shared_memory
+
+        try:
+            result = shared_memory.forget(key)
+            if result.get("success"):
+                return {"success": True, "deleted": result.get("deleted", 1), "key": key}
+            return {"success": False, "error": result.get("error", f"未找到: {key}")}
+        except Exception as e:
+            logger.warning("Memory delete failed: %s", e)
+            return {"success": False, "error": _safe_error(e)}
+
+    @staticmethod
+    def _rpc_memory_update(key: str, value: str) -> dict:
+        """Update a memory entry value by re-writing the same key."""
+        from src.bot.globals import shared_memory
+
+        try:
+            search_result = shared_memory.search(key, limit=20)
+            existing = next(
+                (item for item in (search_result or {}).get("results", []) if item.get("key") == key),
+                None,
+            )
+            if not existing:
+                return {"success": False, "error": f"未找到: {key}"}
+
+            remember_result = shared_memory.remember(
+                key=key,
+                value=value,
+                category=existing.get("category") or "general",
+                source_bot=existing.get("source_bot") or "manager",
+                importance=int(existing.get("importance", 1) or 1),
+            )
+            return {
+                "success": bool(remember_result.get("success", False)),
+                "key": key,
+                "value": value,
+            }
+        except Exception as e:
+            logger.warning("Memory update failed: %s", e)
+            return {"success": False, "error": _safe_error(e)}
 
     # ──────────────────────────────────────────────
     #  API Pool
