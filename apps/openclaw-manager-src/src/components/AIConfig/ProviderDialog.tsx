@@ -20,7 +20,7 @@ import type {
   ModelConfig,
 } from './types';
 
-// ============ 添加/编辑 Provider 对话框 ============
+// ============ 添加/编辑服务商对话框 ============
 
 interface ProviderDialogProps {
   officialProviders: OfficialProvider[];
@@ -133,7 +133,7 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
     setFormError(null);
     
     if (!providerName.trim()) {
-      setFormError('请填写 Provider 名称');
+      setFormError('请填写服务商名称');
       return;
     }
 
@@ -142,7 +142,7 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
       return;
     }
 
-    // 验证需要 API Key 的 Provider 在新建时必须填写
+    // 验证需要 API Key 的服务商在新建时必须填写
     if (selectedOfficial?.requires_api_key && !apiKey.trim() && !isEditing) {
       setFormError('请填写 API Key');
       return;
@@ -187,11 +187,11 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
         models,
       });
 
-      aiLogger.info(`✓ Provider ${providerName} 已${isEditing ? '更新' : '保存'}`);
+      aiLogger.info(`✓ 服务商 ${providerName} 已${isEditing ? '更新' : '保存'}`);
       onSave();
       onClose();
     } catch (e) {
-      aiLogger.error('保存 Provider 失败', e);
+      aiLogger.error('保存服务商失败', e);
       setFormError('保存失败: ' + String(e));
     } finally {
       setSaving(false);
@@ -218,8 +218,8 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             {isEditing ? <Settings2 size={20} className="text-claw-400" /> : <Plus size={20} className="text-claw-400" />}
             {isEditing 
-              ? `编辑 Provider: ${editingProvider?.name}` 
-              : (step === 'select' ? '添加 AI Provider' : `配置 ${selectedOfficial?.name || '自定义 Provider'}`)}
+              ? `编辑服务商: ${editingProvider?.name}` 
+              : (step === 'select' ? '添加 AI 服务商' : `配置 ${selectedOfficial?.name || '自定义服务商'}`)}
           </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-white" aria-label="关闭对话框">
             ✕
@@ -237,9 +237,9 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                {/* 官方 Provider */}
+                {/* 官方服务商 */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-400">官方 Provider</h3>
+                  <h3 className="text-sm font-medium text-gray-400">官方服务商</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {officialProviders.map(provider => (
                 <button
@@ -260,14 +260,14 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
           </div>
         </div>
 
-                {/* 自定义 Provider */}
+                {/* 自定义服务商 */}
                 <div className="pt-4 border-t border-dark-600">
                   <button
                     onClick={handleSelectCustom}
                     className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-dark-500 hover:border-claw-500/50 text-gray-400 hover:text-white transition-all"
                   >
                     <Settings2 size={18} />
-                    <span>自定义 Provider (兼容 OpenAI/Anthropic API)</span>
+                    <span>自定义服务商 (兼容 OpenAI/Anthropic API)</span>
                   </button>
                 </div>
               </motion.div>
@@ -279,10 +279,10 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                 exit={{ opacity: 0, x: 20 }}
                 className="space-y-5"
               >
-                {/* Provider 名称 */}
+                {/* 服务商名称 */}
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">
-                    Provider 名称
+                    服务商名称
                     <span className="text-gray-600 text-xs ml-2">(用于配置标识，如 anthropic-custom)</span>
                   </label>
                   <input
@@ -298,13 +298,13 @@ export default function ProviderDialog({ officialProviders, onClose, onSave, edi
                   />
                   {isEditing && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Provider 名称不可修改，如需更改请删除后重新创建
+                      服务商名称不可修改，如需更改请删除后重新创建
                     </p>
                   )}
                   {isCustomUrlWithOfficialName && !isEditing && (
                     <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                       <p className="text-xs text-yellow-400">
-                        ⚠️ 您使用的是官方 Provider 名称，但修改了 API 地址。建议使用不同的名称以避免配置冲突。
+                        ⚠️ 您使用的是官方服务商名称，但修改了 API 地址。建议使用不同的名称以避免配置冲突。
                       </p>
                       <button
                         type="button"
