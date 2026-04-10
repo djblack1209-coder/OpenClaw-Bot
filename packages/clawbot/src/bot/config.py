@@ -58,7 +58,6 @@ KIRO_KEY = os.getenv('KIRO_API_KEY', '')
 # 搜索/工具 API
 SERPAPI_KEY = os.getenv('SERPAPI_KEY', '')
 BRAVE_SEARCH_API_KEY = os.getenv('BRAVE_SEARCH_API_KEY', '')
-CLOUDCONVERT_API_KEY = os.getenv('CLOUDCONVERT_API_KEY', '')
 
 # Composio 外部服务集成 (250+ 应用: Gmail/Calendar/Slack/GitHub 等)
 COMPOSIO_API_KEY = os.getenv('COMPOSIO_API_KEY', '')

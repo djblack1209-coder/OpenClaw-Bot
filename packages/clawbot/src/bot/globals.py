@@ -18,7 +18,7 @@ from src.bot.config import (  # noqa: F401 — 向后兼容 re-export
     SILICONFLOW_KEYS, SILICONFLOW_BASE, SILICONFLOW_PAID_KEYS,
     DATA_DIR, CLAUDE_KEY, CLAUDE_BASE,
     G4F_BASE, G4F_KEY, KIRO_BASE, KIRO_KEY,
-    SERPAPI_KEY, BRAVE_SEARCH_API_KEY, CLOUDCONVERT_API_KEY,
+    SERPAPI_KEY, BRAVE_SEARCH_API_KEY,
     COMPOSIO_API_KEY, SKYVERN_API_KEY,
     current_sf_key_idx, sf_key_balances, LOW_BALANCE_THRESHOLD,
     get_siliconflow_key, update_key_balance, get_total_balance, mark_key_exhausted,

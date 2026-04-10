@@ -17,6 +17,8 @@
 - `litellm_router.py` — 下调 `Mistral`、`Cohere` 在项目内的默认优先级，明确它们只承担中后位兜底角色
 - `litellm_router.py` — 扩展敏感信息脱敏规则，新增 `csk-`、`nvapi-`、`hf_`、`m0-` 等 key 前缀清洗
 - `api_mixin.py` — `Claude` 付费直连增加保护：若仍指向 `XAPI/9w7` 或未配置有效接口，则直接拒绝调用，避免继续走无余额线路
+- `config.py` + `globals.py` — 移除未接入主流程的 `CLOUDCONVERT_API_KEY` 运行时导出，避免误以为文件转换能力已可用
+- `.env` — 删除重复的 `MEM0_API_KEY` 定义，减少本地配置漂移
 - `.env.example` — 更新渠道说明，明确 `Gemini 2.0` 已废弃、`Cerebras` 已重启接入、`GPT_API_Free/Mistral/Cohere` 仅作后位兜底
 - `API_POOL_REGISTRY.md` — 同步官方限制、项目主链/兜底链口径，并记录 `Claude API` 不再走 `XAPI`
 - 删除误写入项目的 OpenCode/CC Switch 外部工具文档，避免与本项目配置治理混淆
@@ -24,8 +26,11 @@
 ### 文件变更
 - `packages/clawbot/src/litellm_router.py` — 路由 provider 调整 + 日志脱敏增强
 - `packages/clawbot/src/bot/api_mixin.py` — Claude 直连保护
+- `packages/clawbot/src/bot/config.py` — 移除未接入的 CloudConvert 运行时导出
+- `packages/clawbot/src/bot/globals.py` — 清理 CloudConvert re-export
 - `packages/clawbot/tests/test_litellm_router.py` — 新增 Gemini/Cerebras 与 key 脱敏断言
 - `packages/clawbot/config/.env.example` — 号池说明更新
+- `packages/clawbot/config/.env` — 清理重复 MEM0 配置 + 清空 XAPI Claude 配置
 - `docs/registries/API_POOL_REGISTRY.md` — 号池注册表更新
 - `docs/status/HEALTH.md` — 新增测试环境说明 + LLM 路由状态更新
 
