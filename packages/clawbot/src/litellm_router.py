@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 def _scrub_secrets(msg: str) -> str:
     """从错误消息中移除 API Key 和敏感 URL — 覆盖项目实际使用的所有 key 前缀"""
-    # 清洗 API keys (sk-/key-/gsk_/ghp_/github_pat_/AIza 等已知前缀)
+    # 清洗 API keys (覆盖项目当前实际使用的主流前缀)
     msg = re.sub(
-        r'(sk-|key-|Key:|Bearer\s+|gsk_|ghp_|github_pat_|AIza)[a-zA-Z0-9_-]{10,}',
+        r'(sk-|key-|Key:|Bearer\s+|gsk_|ghp_|github_pat_|AIza|csk-|nvapi-|hf_|m0-)[a-zA-Z0-9_-]{10,}',
         r'\1***REDACTED***', msg
     )
     # 清洗 Authorization header (Basic + Bearer)
@@ -322,18 +322,26 @@ class LiteLLMPool:
                 deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM",
                                       timeout=8, stream_timeout=15))  # Groq 极速推理，短超时
 
-        # Cerebras — 极速推理 ~2000tok/s, 8K context, Key已403禁止暂时跳过
-        # ck = _env("CEREBRAS_API_KEY")
-        # if ck:
-        #     for m, t in [("qwen-3-235b-a22b-instruct-2507", TIER_S), ("llama3.1-8b", TIER_C)]:
-        #         deps.append(self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family="qwen" if "qwen" in m else "llama", note="Cerebras 30RPM/1000RPD/8K ctx"))
+        # Cerebras — 免费高速推理，优先接入官方当前公开模型
+        ck = _env("CEREBRAS_API_KEY")
+        if ck:
+            for m, fam, t in [
+                ("gpt-oss-120b", "gpt-oss", TIER_A),
+                ("llama3.1-8b", "llama", TIER_C),
+            ]:
+                deps.append(self._dep(
+                    "cerebras", f"cerebras/{m}", ck,
+                    rpm=30, tier=t, family=fam,
+                    note="Cerebras free 30RPM"
+                ))
 
-        # Gemini — 2.0/2.5 系 (1M上下文, RPM/RPD按模型动态)
+        # Gemini — 2.5/3.x 系，移除已废弃的 2.0 系
         gk2 = _env("GEMINI_API_KEY")
         if gk2:
             for m, t, r in [
-                ("gemini-2.0-flash", TIER_A, 15),            # 主力快速, 15RPM
-                ("gemini-2.0-flash-lite", TIER_B, 30),        # 轻量快速, 30RPM
+                ("gemini-2.5-flash", TIER_S, 5),
+                ("gemini-2.5-flash-lite", TIER_A, 10),
+                ("gemini-3-flash-preview", TIER_A, 5),
             ]:
                 deps.append(self._dep("google", f"gemini/{m}", gk2, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
 
@@ -354,17 +362,17 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep("openrouter", f"openrouter/{m}", ork, rpm=20, tier=t, family=fam, note="OpenRouter free"))
 
-        # Mistral — 免费层 (1RPM mistral-small, 30RPM codestral)
+        # Mistral — 免费层限制严格，仅作中后位兜底
         mk = _env("MISTRAL_API_KEY")
         if mk:
             deps.append(self._dep("mistral", "mistral/mistral-small-latest", mk, rpm=1, tier=TIER_B, family="mistral", note="Mistral free 1RPM"))
-            deps.append(self._dep("mistral", "mistral/mistral-large-latest", mk, rpm=1, tier=TIER_S, family="mistral", note="Mistral free 1RPM"))
+            deps.append(self._dep("mistral", "mistral/mistral-large-latest", mk, rpm=1, tier=TIER_A, family="mistral", note="Mistral free 1RPM"))
             deps.append(self._dep("mistral", "mistral/codestral-latest", mk, rpm=30, tier=TIER_A, family="mistral", note="Mistral Codestral 30RPM"))
 
-        # Cohere
+        # Cohere — 20RPM / 1000次月额度，不做主链最前排
         cok = _env("COHERE_API_KEY")
         if cok:
-            for m, t in [("command-a-reasoning-08-2025", TIER_S), ("command-a-vision-07-2025", TIER_A)]:
+            for m, t in [("command-a-reasoning-08-2025", TIER_A), ("command-a-vision-07-2025", TIER_B)]:
                 deps.append(self._dep("cohere", f"cohere/{m}", cok, rpm=20, tier=t, family="cohere", note="Cohere"))
 
         # GitHub Models

@@ -1,6 +1,6 @@
 # API_POOL_REGISTRY — LLM API 号池注册表
 
-> 最后更新: 2026-03-31
+> 最后更新: 2026-04-10
 > 本文件记录所有 API 提供商、Key 状态、官方限制、模型可用性。修改 API Key 或新增提供商时必须同步更新。
 
 ---
@@ -13,14 +13,14 @@
 | 2 | SiliconFlow 付费 | 付费 (14元/条) | 10 | 未实名,禁Pro | `SILICONFLOW_PAID_KEYS` |
 | 3 | iflow | 免费无限 | 1 | 无 (14个顶级模型) | `SILICONFLOW_UNLIMITED_KEY` |
 | 4 | Groq | 免费 | 1 | 按模型不同 30-60RPM, 1000-14400RPD | `GROQ_API_KEY` |
-| 5 | Cerebras | 免费 | 1 | 30RPM, 8K上下文 | `CEREBRAS_API_KEY` |
-| 6 | Gemini (Google AI Studio) | 免费 | 1 | 按模型动态RPM/RPD, 1M上下文 | `GEMINI_API_KEY` |
+| 5 | Cerebras | 免费 | 1 | 30RPM, 当前接入 `gpt-oss-120b` / `llama3.1-8b` | `CEREBRAS_API_KEY` |
+| 6 | Gemini (Google AI Studio) | 免费 | 1 | 2.5/3.x 系动态 RPM/RPD, 1M上下文 | `GEMINI_API_KEY` |
 | 7 | OpenRouter | 免费 | 1 | :free模型 20RPM, 50-1000RPD | `OPENROUTER_API_KEY` |
 | 8 | Mistral | 免费 | 1 | 低RPM, 数据用于训练 | `MISTRAL_API_KEY` |
 | 9 | Cohere | 免费 | 1 | 1000次/月, 20RPM | `COHERE_API_KEY` |
 | 10 | NVIDIA NIM | 信用额度 | 1 | ~60RPM, 额度用完停用 | `NVIDIA_NIM_API_KEY` |
 | 11 | GPT_API_Free | 免费 | 1 | 5-200次/天 (按模型) | `GPT_API_FREE_KEY` |
-| 12 | Claude 代理 | 付费 | 1 | 0.01元/次 | `CLAUDE_API_KEY` |
+| 12 | Claude 代理 | 付费 | 1 | 仅 `/claude` 显式调用，不再走 XAPI | `CLAUDE_API_KEY` |
 | 13 | g4f 本地 | 免费 | 1 | 无 (本地代理) | `G4F_API_KEY` |
 | 14 | Kiro Gateway | 免费 | 1 | ~5RPM (本地代理) | `KIRO_API_KEY` |
 | 15 | Volcengine 火山 | 付费 | 1 | ~10RPM | `VOLCENGINE_API_KEY` |
@@ -67,15 +67,22 @@
 |------|------|--------|------|------|
 | `gemini-2.5-pro` | 稳定 | 1M | 65K | 最强, RPM低 |
 | `gemini-2.5-flash` | 稳定 | 1M | 65K | 主力 |
-| `gemini-3-flash-preview` | 预览 | 1M | 65K | 最新 |
 | `gemini-2.5-flash-lite` | 稳定 | 1M | 65K | 轻量 |
-| `gemini-2.0-flash` | **已废弃** | 1M | 8K | 仅兜底 |
+| `gemini-3-flash-preview` | 预览 | 1M | 65K | 最新, 速率更严 |
+| `gemini-2.0-flash` | **已从项目主链移除** | 1M | 8K | 官方已废弃 |
+
+### Cerebras — 免费高速推理
+
+- 当前项目重新启用 `gpt-oss-120b` 与 `llama3.1-8b`
+- 官方免费层按模型 30RPM，适合作为高速开放模型补位
+- 不参与 Claude 专用兜底链
 
 ### OpenRouter — 免费模型
 
 - 无充值: 20RPM, **50RPD**
 - 有充值 (≥$1): 20RPM, **1000RPD**
 - 免费模型以 `:free` 后缀标识
+- 项目中定位为后位免费兜底，不承担主链流量
 
 ### SiliconFlow 付费Key — 特别注意
 
@@ -91,6 +98,13 @@
 | gpt-5/4o/4.1 系 | 5次/天 |
 | deepseek-r1/v3 系 | 30次/天|
 | gpt-4o-mini/3.5/nano 系 | 200次/天 |
+
+### 当前项目主链与降级口径
+
+- 主链优先: `SiliconFlow` → `iflow` → `Groq` → `Gemini 2.5/3.x`
+- 中位补位: `Cerebras` → `OpenRouter free` → `NVIDIA NIM` → `Volcengine`
+- 后位兜底: `Mistral` → `Cohere` → `GPT_API_Free` → `g4f`
+- `Claude API` 仅保留给 `/claude` 显式调用，不再允许走 `XAPI/9w7` 空余额线路
 
 ---
 
