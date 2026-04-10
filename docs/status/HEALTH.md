@@ -84,6 +84,7 @@
 | HI-387 | `security` | `config/.env` | 50+ 真实密钥曾提交到 Git 历史（Alpaca交易Key/Gmail密码/7个Bot Token/闲鱼Cookie等）— 如仓库曾push到远程，需立即轮换所有密钥 | 2026-04-01 |
 | HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
 | HI-482 | `ai-pool` | `tests/test_litellm_router.py` | 本机 Python 3.12 测试环境缺少 `litellm` 依赖，LiteLLM 路由单测无法在当前环境直接运行 — 本次仅完成代码与配置对齐，需在完整 venv 中复验 | 2026-04-10 |
+| HI-483 | `infra` | `config/.env` | 历史配置中存在重复 `MEM0_API_KEY` 和未接入主流程的 `CLOUDCONVERT_API_KEY` 运行时导出 — 已清理重复项并将未接入项降为仅文档登记 | 2026-04-10 |
 
 ### 🟡 一般
 

@@ -41,7 +41,7 @@
 | 25 | HuggingFace | 模型部署 | 免费额度 | `HUGGINGFACE_TOKEN` |
 | 26 | SerpApi | 搜索引擎 | 250次/月, 50次/小时 | `SERPAPI_KEY` |
 | 27 | Brave Search | 网页搜索 | 50QPS | `BRAVE_SEARCH_API_KEY` |
-| 28 | CloudConvert | 文件格式转换 | 按额度 | `CLOUDCONVERT_API_KEY` |
+| 28 | CloudConvert | 文件格式转换 | 按额度 | `CLOUDCONVERT_API_KEY`（当前仅登记，主代码尚未接入） |
 | 29 | Tavily | AI搜索 | 免费1000次/月 | `TAVILY_API_KEY` |
 | 30 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
 | 31 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
