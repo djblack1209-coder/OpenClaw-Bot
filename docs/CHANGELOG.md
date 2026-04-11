@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-04-11] OpenCode 模型配置修复 — 对齐中转API模型广场
+
+> 领域: `infra`
+> 影响模块: `opencode.json`
+> 关联问题: 无
+
+### 变更内容
+- 移除 `zhongzhuanapi-max-copy`（官转MAX）中的 `claude-opus-4-6-thinking` 模型定义 — 该模型不在「官转MAX」分组，只在「反重MAX」分组可用，配置在此处会导致调用报错
+- 将 `small_model` / `compaction` / `summary` 从 `claude-opus-4-6-c` 切换到 `claude-sonnet-4-6-c` — Sonnet 更适合做压缩摘要等轻量任务，响应更快
+- 在 `zhongzhuanapi-c`（按次分组）新增 `claude-sonnet-4-6-c` 模型定义，对齐模型广场新上架的满血按次模型
+
+### 文件变更
+- `~/.config/opencode/opencode.json` — 移除不可用的 thinking 模型、切换小模型、添加 sonnet-4-6-c
+
+---
+
 ## [2026-04-10] LLM号池对齐 + Claude/XAPI兜底切断 + 路由降级链重排
 
 > 领域: `ai-pool`, `docs`
