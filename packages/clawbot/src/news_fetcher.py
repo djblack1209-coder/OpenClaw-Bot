@@ -24,7 +24,12 @@ except ImportError:
 
 import logging
 from src.utils import now_et
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=30.0, name="news_fetcher")
 
 # ── 内置 RSS 源（无需 API Key）──
 RSS_FEEDS: Dict[str, List[str]] = {

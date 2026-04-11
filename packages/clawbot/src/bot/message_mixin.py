@@ -11,7 +11,13 @@ from src.bot.error_messages import error_ai_busy, error_rate_limit, error_networ
 from src.telegram_markdown import md_to_html
 from src.bot.chinese_nlp_mixin import _match_chinese_command
 from src.constants import TG_MSG_LIMIT
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（语音转写 + 本地状态查询）
+_http_voice = ResilientHTTPClient(timeout=30.0, name="voice_stt")
+_http_status = ResilientHTTPClient(timeout=5.0, name="local_status")
 
 # ── v3.0: 智能行动建议 — LLM回复后自动附加下一步按钮 ─────────
 # 让 AI 不只给文字，还给"下一步能做什么"

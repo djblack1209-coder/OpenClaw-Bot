@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from src.http_client import ResilientHTTPClient
 from ..error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,8 @@ router = APIRouter()
 _NEWAPI_BASE: str = os.getenv("NEWAPI_BASE_URL", "http://localhost:3000")
 _NEWAPI_TOKEN: str = os.getenv("NEWAPI_ADMIN_TOKEN", "")
 
-# HTTP 客户端超时（秒）
-_TIMEOUT: float = 10.0
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=10.0, name="newapi_proxy")
 
 
 class ChannelCreate(BaseModel):

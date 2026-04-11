@@ -19,7 +19,12 @@ import os
 import hashlib
 from typing import Dict, List
 
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=20.0, name="x_platform")
 
 # ── tweepy (10.6k⭐) — X/Twitter 官方 SDK ──────────────────
 _HAS_TWEEPY = False
@@ -129,19 +134,17 @@ async def _fetch_via_tweepy(handle: str, count: int) -> List[Dict]:
 
 async def _fetch_via_jina(handle: str, count: int) -> List[Dict]:
     """通过 Jina reader 抓取 X 动态"""
-    import httpx
     url = f"https://r.jina.ai/https://x.com/{handle}"
     headers = {"Accept": "text/plain"}
     jina_key = os.getenv("JINA_API_KEY", "")
     if jina_key:
         headers["Authorization"] = f"Bearer {jina_key}"
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code != 200:
-                return []
-            text = resp.text
-            return _parse_jina_x_output(text, handle, count)
+        resp = await _http.get(url, headers=headers)
+        if resp.status_code != 200:
+            return []
+        text = resp.text
+        return _parse_jina_x_output(text, handle, count)
     except Exception as e:
         logger.debug(f"[X.jina] {handle} failed: {e}")
         return []

@@ -29,9 +29,14 @@ from typing import Optional
 
 import httpx
 
+from src.http_client import ResilientHTTPClient
+
 import logging
 
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon")
 
 # ── 常量 ──────────────────────────────────────────────
 
@@ -511,11 +516,10 @@ async def _claim_coupon(token: str) -> dict:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, verify=True) as client:
-            resp = await client.post(_COUPON_API, json={}, headers=headers)
-            data = resp.json()
-            logger.info("领券 API 响应: errcode=%s", data.get("errcode", "unknown"))
-            return data
+        resp = await _http.post(_COUPON_API, json={}, headers=headers)
+        data = resp.json()
+        logger.info("领券 API 响应: errcode=%s", data.get("errcode", "unknown"))
+        return data
     except httpx.TimeoutException:
         logger.error("领券 API 请求超时")
         return {"error": "请求超时"}

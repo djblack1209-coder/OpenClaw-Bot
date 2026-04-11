@@ -213,21 +213,21 @@ async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> List[Di
         if resp.status_code != 200:
             return []
         items: List[Dict] = []
-            raw_items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
-            for raw in raw_items[:max_items]:
-                title_m = re.search(r"<title>(.*?)</title>", raw)
-                link_m = re.search(r"<link>(.*?)</link>", raw)
-                source_m = re.search(r"<source[^>]*>(.*?)</source>", raw)
-                pub_m = re.search(r"<pubDate>(.*?)</pubDate>", raw)
-                if title_m and link_m:
-                    items.append({
-                        "title": title_m.group(1).strip(),
-                        "summary": "",
-                        "source": source_m.group(1).strip() if source_m else "Google News",
-                        "url": link_m.group(1).strip(),
-                        "published_at": pub_m.group(1).strip() if pub_m else "",
-                    })
-            return items
+        raw_items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+        for raw in raw_items[:max_items]:
+            title_m = re.search(r"<title>(.*?)</title>", raw)
+            link_m = re.search(r"<link>(.*?)</link>", raw)
+            source_m = re.search(r"<source[^>]*>(.*?)</source>", raw)
+            pub_m = re.search(r"<pubDate>(.*?)</pubDate>", raw)
+            if title_m and link_m:
+                items.append({
+                    "title": title_m.group(1).strip(),
+                    "summary": "",
+                    "source": source_m.group(1).strip() if source_m else "Google News",
+                    "url": link_m.group(1).strip(),
+                    "published_at": pub_m.group(1).strip() if pub_m else "",
+                })
+        return items
     except Exception as e:
         logger.debug("Google News RSS 降级也失败: %s", e)
         return []
