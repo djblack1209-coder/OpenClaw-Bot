@@ -264,9 +264,11 @@ class LicenseManager:
 
     def find_by_buyer(self, buyer_id: str) -> Optional[str]:
         """通过买家ID查找活跃的 License Key"""
+        # 转义 SQL LIKE 通配符，防止注入 % 或 _ 匹配到其他用户记录
+        escaped = buyer_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with self._conn() as c:
             row = c.execute(
-                "SELECT license_key FROM licenses WHERE xianyu_order_id LIKE ? AND status='active' ORDER BY id DESC LIMIT 1",
-                (f"%{buyer_id}%",),
+                "SELECT license_key FROM licenses WHERE xianyu_order_id LIKE ? ESCAPE '\\' AND status='active' ORDER BY id DESC LIMIT 1",
+                (f"%{escaped}%",),
             ).fetchone()
         return row[0] if row else None
