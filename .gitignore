@@ -148,3 +148,12 @@ apps/OpenClaw.app/
 # === 浏览器代理密钥池（含真实 API Key）===
 packages/clawbot/browser-agent/keypool.json
 packages/clawbot/browser-agent/*.json
+
+# === apps/openclaw 运行时数据（禁止跟踪）===
+apps/openclaw/memory/
+apps/openclaw/.manager/*.json
+apps/openclaw/.openclaw/*.json
+apps/openclaw/.clawhub/*.json
+
+# === 数据目录 ===
+data/
