@@ -5,6 +5,28 @@
 
 ---
 
+## [2026-04-11] MCP 插件进程生命周期管理 (Tier 1)
+
+> 领域: `frontend`, `backend`
+> 影响模块: `mcp.rs`, `main.rs`, `Plugins/index.tsx`, `tauri.ts`, `mcp_servers.json`
+> 关联问题: HI-391
+
+### 变更内容
+- Rust 后端新增 `start_mcp_plugin` / `stop_mcp_plugin` / `get_mcp_plugin_status` 三个 Tauri 命令
+- 使用 `OnceLock<Mutex<HashMap<String, Child>>>` 全局进程表管理子进程生命周期
+- 前端 toggle 开关从仅切换状态字段改为实际拉起/终止子进程
+- 卸载插件时自动先停止运行中的进程再删除配置
+- 清理 `mcp_servers.json` 中 3 条 `command: null` 且 `status: running` 的假数据
+
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/src/commands/mcp.rs` — 新增进程管理命令 + 全局进程表
+- `apps/openclaw-manager-src/src-tauri/src/main.rs` — 注册 3 个新命令到 invoke_handler
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — toggle 改为调用 start/stop，卸载先停后删
+- `apps/openclaw-manager-src/src/lib/tauri.ts` — 新增 startMcpPlugin / stopMcpPlugin / getMcpPluginStatus API 封装
+- `.openclaw/mcp_servers.json` — 清空假数据，重置为空数组
+
+---
+
 ## [2026-04-11] 拆分 risk_manager.py 为 Mixin 模块架构
 
 > 领域: `trading`
