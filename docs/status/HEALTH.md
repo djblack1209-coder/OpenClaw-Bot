@@ -97,9 +97,9 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; trading_journal.py(1087→464行,4 Mixin); daily_brief.py(1158→498行,3子模块); 仍有20个文件>800行待拆 | 2026-03-29 |
+| ~~HI-358~~ | ~~`backend`~~ | ~~多文件~~ | ~~7个>1000行大文件待拆~~ → **已修复 2026-04-11**: 全部7个文件拆分完成 — daily_brief(1158→498), proactive_engine(1016→328), trading_journal(1087→464), risk_manager(1191→854), broker_bridge(1091→762), auto_trader(1055→843), chinese_nlp_mixin(1248→705)。共新建 17 个子模块 | 2026-03-29 |
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
-| HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
+| ~~HI-383~~ | ~~`backend`~~ | ~~多文件~~ | ~~HTTP客户端碎片化~~ → **大部分解决 2026-04-11**: HI-463 迁移 20 个文件 35 处调用点到 ResilientHTTPClient（带自动重试+熔断）；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现合理 | 2026-03-29 |
 | ~~HI-384~~ | ~~`backend`~~ | ~~`test_omega_core.py`~~ | ~~Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态~~ → **已修复 2026-04-11**: mock 隔离 get_context_collector + get_response_synthesizer，消除 LiteLLM Cooldown 依赖 | 2026-03-30 |
 | ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
 | HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
