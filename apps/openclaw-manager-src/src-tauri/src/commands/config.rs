@@ -438,27 +438,12 @@ pub async fn save_env_value(key: String, value: String) -> Result<String, String
 
 // ============ Gateway Token 命令 ============
 
-/// 生成随机 token（从 /dev/urandom 读取 48 字节，安全性远高于时间戳方案）
+/// 生成随机 token（使用 getrandom crate 获取密码学安全随机数，跨平台兼容 HI-394）
 fn generate_token() -> String {
-    use std::io::Read;
-
     let mut buf = [0u8; 48];
-    // 尝试从操作系统随机源获取真随机数
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        if f.read_exact(&mut buf).is_ok() {
-            return buf.iter().map(|b| format!("{:02x}", b)).collect();
-        }
-    }
-    // 兜底方案：用多个时间戳采样 + 地址空间随机化构造伪随机
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let t1 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    std::thread::yield_now();
-    let t2 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    let stack_addr = &buf as *const _ as u64;
-    let a = (t1 as u64) ^ stack_addr;
-    let b = (t2 as u64).wrapping_mul(0x5DEECE66Du64) ^ stack_addr.rotate_right(17);
-    let c = a.wrapping_add(b).wrapping_mul(0x9E3779B97F4A7C15u64);
-    format!("{:016x}{:016x}{:016x}", a, b, c)
+    // getrandom 自动选择最佳系统随机源（macOS: SecRandomCopyBytes, Linux: /dev/urandom, Windows: BCryptGenRandom）
+    getrandom::getrandom(&mut buf).expect("系统随机数源不可用，无法生成安全 token");
+    buf.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// 获取或生成 Gateway Token
