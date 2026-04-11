@@ -5,6 +5,45 @@
 
 ---
 
+## [2026-04-11] 全量全方位审计 — 后端/前端/VPS/APP/依赖/文件治理
+
+> 领域: `backend`, `frontend`, `infra`, `deploy`, `docs`
+> 影响模块: 全项目
+> 关联问题: HI-485 (审计进行中)
+
+### 后端修复 (4项)
+- 修复 3 个失败测试 (test_trading_dashboard/test_resets_drafts/test_not_initialized) — monkeypatch 路径未对齐实际源模块
+- 清理 15 个 ruff F401/F811 警告 — 未使用导入和重复导入 (11 文件)
+- 升级 `cryptography` 46.0.6 → 46.0.7 — 修复 CVE 漏洞
+- 依赖安全审计发现 28 个 CVE，其中 aiohttp/flask/tornado 因 browser-use 严格版本锁定暂缓升级
+
+### 文件治理 (3项)
+- 删除根目录 5 张截图 + .DS_Store + .playwright-cli/
+- 修复 `.clinerules` / `.cursorrules` 断链符号链接 → 指向 AGENTS.md
+- 35 个运行时文件从 git 追踪移除 (apps/openclaw/memory/*.jsonl 等) + .gitignore 补充 5 条规则
+
+### VPS 修复 (2项)
+- 停止并禁用重复的 `openclaw-bot.service` — 之前 clawbot.service 和 openclaw-bot.service 同时运行
+- rsync 同步最新代码到 VPS (21MB, 代码从 4/2 更新到 4/11)
+
+### 桌面端 (1项)
+- Tauri release 构建并部署到 /Applications/OpenClaw.app — 包含本次及之前的全部修复
+
+### UI/UX 截图审计 (全覆盖)
+- 15 个页面逐一截图比对，深色主题下无布局漂移/错位/遮挡/按钮失效
+- 空态/加载态/错误态均有中文友好提示
+- 依赖 Tauri IPC 的功能在 Web 模式下正确降级
+
+### 文件变更
+- `packages/clawbot/tests/test_api_routes_regression.py` — monkeypatch 路径修正
+- `packages/clawbot/tests/test_social_scheduler.py` — mock 目标修正
+- `packages/clawbot/tests/test_trading_system.py` — patch 模块修正
+- `packages/clawbot/src/` (11 文件) — 未使用导入清理
+- `.gitignore` — 新增 5 条运行时文件忽略规则
+- `.clinerules` / `.cursorrules` — 符号链接修复
+
+---
+
 ## [2026-04-11] OpenCode 模型配置修复 — 对齐中转API模型广场
 
 > 领域: `infra`

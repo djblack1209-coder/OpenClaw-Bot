@@ -1,8 +1,67 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-10
+> 最后更新: 2026-04-11
 
 ---
+
+## [2026-04-11 17:10] 全量全方位审计 — 7阶段完成
+
+### 本次完成了什么
+
+**Phase 1: 基线建立**
+- 后端测试: 1133/1133 passed (修复 3 个失败测试)
+- 前端 TypeScript: 零错误
+- 前端 Vite 构建: 成功
+- Rust/Tauri: cargo check 通过
+
+**Phase 2: 后端深度审计**
+- Python 语法检查: 全部通过
+- 清理 15 个未使用/重复 import (11 文件)
+- cryptography 46.0.6 → 46.0.7 安全升级
+
+**Phase 3: 前端 UI/UX 全覆盖截图审计**
+- 15 个页面逐一 Playwright 截图
+- 深色主题无漂移/错位/遮挡
+- 空态/加载态/错误态中文友好提示完善
+
+**Phase 4: 依赖安全审计**
+- pip-audit 发现 28 个 CVE (13 个包)
+- 已升级 cryptography; 其余因 browser-use 严格版本锁定暂缓
+- npm audit 因镜像不支持未执行
+
+**Phase 5: VPS 修复**
+- 停止并禁用重复的 openclaw-bot.service
+- rsync 同步最新代码 (21MB, 4/2→4/11)
+- .env 缺失 — 需用户手动配置
+
+**Phase 6: macOS APP 重构建**
+- Tauri release 构建成功
+- 已部署到 /Applications/OpenClaw.app
+- 进程正常启动
+
+**Phase 7: 文件治理**
+- 删除根目录 5 张截图 + .DS_Store + .playwright-cli/
+- 修复 .clinerules/.cursorrules 断链符号链接
+- 35 个运行时文件从 git 追踪移除 + .gitignore 补充 5 条规则
+
+### 未完成的工作
+1. **VPS .env 配置** — 需手动将 config/.env 复制到 VPS /home/clawbot/clawbot/config/.env
+2. **Git 推送远程** — 所有变更待推送到 GitHub
+3. **Git 历史清理** — .git/ 1.3GB (历史大文件残留)，需 git filter-repo 清理
+4. **browser-use 版本冲突** — browser-use 0.12.2 锁定了多个依赖的精确版本，待其升级后再批量升级 CVE
+5. **npm audit** — 需临时切回官方 npm 源执行
+
+### 需要注意的坑
+- VPS 心跳超时 144024 秒 (约 40 小时) — Mac 主节点心跳未正确发送，需检查 Bot 进程是否在运行
+- browser-use 的 == 版本锁定是最大的依赖升级阻碍
+- Node 18.20.8 与 npm 11.6.2 存在 engine 警告但不阻塞构建
+
+### 当前系统状态
+- 后端测试: 1133/1133 passed, 0 failed
+- 前端: 0 TS 错误, Vite 构建成功
+- Rust: cargo check 零警告
+- APP: 已部署 /Applications/OpenClaw.app, 进程运行中
+- VPS: 代码已同步, 服务已停止(待 .env 配置后由 failover timer 自动管理)
 
 ## [2026-04-10 19:43] 会话交接摘要
 
