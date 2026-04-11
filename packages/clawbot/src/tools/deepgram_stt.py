@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +87,7 @@ async def transcribe_audio(
                     logger.info(f"Deepgram HTTP STT: {len(transcript)} chars")
                     return transcript
             else:
-                logger.warning(f"Deepgram HTTP {resp.status_code}: {resp.text[:200]}")
+                logger.warning(f"Deepgram HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
     except Exception as e:
         logger.warning(f"Deepgram HTTP 失败: {e}")
 

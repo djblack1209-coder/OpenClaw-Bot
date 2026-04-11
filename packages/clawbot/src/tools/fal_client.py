@@ -13,6 +13,8 @@ import logging
 import os
 from typing import Dict, Optional
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +72,7 @@ async def generate_image(
     except ImportError:
         pass
     except Exception as e:
-        logger.warning(f"fal_client 失败: {e}")
+        logger.warning(f"fal_client 失败: {scrub_secrets(str(e))}")
 
     # 降级: HTTP 直调
     try:
@@ -87,9 +89,9 @@ async def generate_image(
                 if images:
                     return images[0].get("url", "")
             else:
-                logger.warning(f"fal.ai HTTP {resp.status_code}: {resp.text[:200]}")
+                logger.warning(f"fal.ai HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
     except Exception as e:
-        logger.warning(f"fal.ai HTTP 失败: {e}")
+        logger.warning(f"fal.ai HTTP 失败: {scrub_secrets(str(e))}")
     return None
 
 
@@ -129,7 +131,7 @@ async def generate_video(
     except ImportError:
         pass
     except Exception as e:
-        logger.warning(f"fal.ai 视频生成失败: {e}")
+        logger.warning(f"fal.ai 视频生成失败: {scrub_secrets(str(e))}")
 
     # HTTP fallback
     try:
@@ -145,7 +147,7 @@ async def generate_video(
                 video = data.get("video", {})
                 return video.get("url", "") if isinstance(video, dict) else None
     except Exception as e:
-        logger.warning(f"fal.ai 视频 HTTP 失败: {e}")
+        logger.warning(f"fal.ai 视频 HTTP 失败: {scrub_secrets(str(e))}")
     return None
 
 
@@ -173,7 +175,7 @@ async def image_to_image(
         images = result.get("images", [])
         return images[0].get("url") if images else None
     except Exception as e:
-        logger.warning(f"fal.ai img2img 失败: {e}")
+        logger.warning(f"fal.ai img2img 失败: {scrub_secrets(str(e))}")
     return None
 
 
