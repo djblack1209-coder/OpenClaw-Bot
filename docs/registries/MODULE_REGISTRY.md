@@ -1,10 +1,40 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-11 | 更新: daily_brief.py 拆分为 4 模块 (HI-358)
+> 最后更新: 2026-04-11 | 更新: auto_trader.py 拆分为 Mixin 模块 (HI-358)
 
 ---
 
 ## 新增模块 (2026-04-11)
+
+### auto_trader_filters.py — 候选筛选与提案生成 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/auto_trader_filters.py` |
+| 行数 | 157 |
+| 导入方 | `auto_trader.py` (Mixin 继承) |
+| 依赖 | `src.models.TradeProposal`, `src.utils.env_bool`, `src.utils.env_int` |
+
+**Public API (通过 AutoTrader 暴露):**
+- `_filter_candidates(signals)` — 自适应阈值多层候选筛选
+- `_generate_proposal(candidate)` — 机械策略提案生成（含 ATR 止损）
+- `_enrich_candidates_with_broker_quotes(candidates)` — IBKR 实时快照刷新候选报价
+
+---
+
+### auto_trader_review.py — 收盘复盘 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/auto_trader_review.py` |
+| 行数 | 86 |
+| 导入方 | `auto_trader.py` (Mixin 继承) |
+| 依赖 | `src.trading_pipeline.TraderState`, `src.trading_journal`, `src.utils.today_et_str` |
+
+**Public API (通过 AutoTrader 暴露):**
+- `_run_review()` — 收盘自动复盘（交易总结 + 教训持久化 + Telegram 通知）
+
+---
 
 ### daily_brief_llm.py — 日报 LLM 辅助分析
 
