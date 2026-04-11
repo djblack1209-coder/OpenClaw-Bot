@@ -10,7 +10,6 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 """
 import logging
 import os
-import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple

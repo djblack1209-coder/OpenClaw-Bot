@@ -609,7 +609,7 @@ class LifeCommandsMixin:
     async def _fetch_bill_discounts(self, account_type: str, user_id, chat_id, context):
         """用 AI 搜索缴费优惠渠道并缓存结果"""
         from src.execution.life_automation import (
-            save_discount_suggestions, BILL_TYPE_LABEL,
+            save_discount_suggestions, BILL_TYPE_LABEL, BILL_TYPE_EMOJI,
         )
         label = BILL_TYPE_LABEL.get(account_type, account_type)
         try:
@@ -678,7 +678,7 @@ class LifeCommandsMixin:
                 "也可以直接说:\n"
                 "  「帮我盯着AirPods，降到800告诉我」\n"
                 "  「AirPods降价提醒 800」\n\n"
-                f"📌 每人最多 10 个监控，每 6 小时检查一次"
+                "📌 每人最多 10 个监控，每 6 小时检查一次"
             )
             await update.message.reply_text(help_text)
             return

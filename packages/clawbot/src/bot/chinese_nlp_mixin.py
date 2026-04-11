@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 # 从子模块导入常量和工具函数（HI-358 拆分）
 from src.bot.nlp_ticker_map import (
-    _FILLER_PATTERNS, _clean_capture,
-    _CN_TICKER_MAP, _resolve_chinese_ticker,
-    _COMMAND_KEYWORDS, _suggest_command,
+    _clean_capture,
+    _resolve_chinese_ticker,
+    _suggest_command,
 )
 
 

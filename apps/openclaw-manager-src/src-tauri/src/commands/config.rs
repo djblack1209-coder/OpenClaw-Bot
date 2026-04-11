@@ -1346,7 +1346,7 @@ pub async fn save_channel_config(channel: ChannelConfig) -> Result<String, Strin
     }
     
     // 这些字段只用于测试，不保存到 openclaw.json，而是保存到 env 文件
-    let test_only_fields = vec!["userId", "testChatId", "testChannelId"];
+    let test_only_fields = ["userId", "testChatId", "testChannelId"];
     let mut telegram_user_id: Option<String> = None;
     
     // 构建渠道配置
@@ -1533,7 +1533,7 @@ pub async fn check_feishu_plugin() -> Result<FeishuPluginStatus, String> {
                 
                 // 尝试解析版本号（通常格式为 "name@version" 或 "name version"）
                 let version = if line.contains('@') {
-                    line.split('@').last().map(|s| s.trim().to_string())
+                    line.rsplit('@').next().map(|s| s.trim().to_string())
                 } else {
                     // 尝试匹配版本号模式 (如 0.1.2)
                     let parts: Vec<&str> = line.split_whitespace().collect();
