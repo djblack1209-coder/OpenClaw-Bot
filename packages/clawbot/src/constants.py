@@ -53,3 +53,11 @@ FAMILY_GPT_OSS = "gpt-oss"    # GPT 开源替代链
 IMG_MODEL_FLUX = "flux"        # FLUX.1-schnell (默认)
 IMG_MODEL_SD3 = "sd3"          # Stable Diffusion 3
 IMG_MODEL_SDXL = "sdxl"        # Stable Diffusion XL
+
+# ── 交易相关用户提示消息（消除跨文件重复）──────────────────────
+# HI-381: 统一频繁使用的错误/警告消息，避免拼写不一致
+ERR_RISK_NOT_INIT = "⚠️ 风控系统未初始化，无法执行交易。"
+ERR_QTY_POSITIVE = "⚠️ 数量必须为正数。"
+ERR_ORDER_PENDING = "⚠️ 订单已提交但尚未成交，请稍后查看 /portfolio。"
+ERR_LIVE_UNAVAILABLE = "⚠️ 实盘暂不可用，已为您在模拟组合中执行"
+ERR_LIMIT_PRICE_INVALID = "⚠️ 限价格式无效 '{price}'，将使用市价单"

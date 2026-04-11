@@ -14,6 +14,7 @@ from src.invest_tools import get_crypto_quote, get_market_summary, format_quote,
 from src.trading._lifecycle import get_risk_manager
 from src.broker_selector import ibkr
 from src.bot.error_messages import error_service_failed
+from src.constants import ERR_RISK_NOT_INIT, ERR_QTY_POSITIVE, ERR_ORDER_PENDING, ERR_LIVE_UNAVAILABLE
 from src.bot.auth import requires_auth
 from src.telegram_ux import with_typing
 
@@ -331,7 +332,7 @@ class InvestCommandsMixin:
             return
         # FIX 2: 校验正数
         if quantity <= 0:
-            await update.message.reply_text("⚠️ 数量必须为正数。")
+            await update.message.reply_text(ERR_QTY_POSITIVE)
             return
         if len(args) >= 3:
             try:
@@ -360,7 +361,7 @@ class InvestCommandsMixin:
         # FIX 6: 风控系统必须初始化（实盘场景）
         rm = get_risk_manager()
         if rm is None and ibkr.is_connected():
-            await update.message.reply_text("⚠️ 风控系统未初始化，无法执行交易。")
+            await update.message.reply_text(ERR_RISK_NOT_INIT)
             return
         # 风控检查
         if rm and price > 0:
@@ -395,7 +396,7 @@ class InvestCommandsMixin:
                 fill_qty = ibkr_result.get("filled_qty", 0) or quantity
                 # FIX 5: 零成交不入持仓
                 if fill_qty <= 0:
-                    await update.message.reply_text("⚠️ 订单已提交但尚未成交，请稍后查看 /portfolio。")
+                    await update.message.reply_text(ERR_ORDER_PENDING)
                     _trade_cooldown[dedup_key] = now_ts
                     return
                 # 同步更新模拟组合
@@ -411,7 +412,7 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text("⚠️ 实盘暂不可用，已为您在模拟组合中执行")
+                await update.message.reply_text(ERR_LIVE_UNAVAILABLE)
         if not ibkr_ok:
             result = portfolio.buy(symbol, quantity, price, decided_by=self.name, reason="手动买入")
             if "error" in result:
@@ -486,7 +487,7 @@ class InvestCommandsMixin:
             return
         # FIX 2: 校验正数
         if quantity <= 0:
-            await update.message.reply_text("⚠️ 数量必须为正数。")
+            await update.message.reply_text(ERR_QTY_POSITIVE)
             return
         if len(args) >= 3:
             try:
@@ -515,7 +516,7 @@ class InvestCommandsMixin:
         # FIX 1 + FIX 6: 风控检查（sell 路径原本完全跳过了风控）
         rm = get_risk_manager()
         if rm is None and ibkr.is_connected():
-            await update.message.reply_text("⚠️ 风控系统未初始化，无法执行交易。")
+            await update.message.reply_text(ERR_RISK_NOT_INIT)
             return
         if rm and price > 0:
             # 检查熔断冷却
@@ -544,7 +545,7 @@ class InvestCommandsMixin:
                 fill_qty = ibkr_result.get("filled_qty", 0) or quantity
                 # FIX 5: 零成交不入持仓
                 if fill_qty <= 0:
-                    await update.message.reply_text("⚠️ 订单已提交但尚未成交，请稍后查看 /portfolio。")
+                    await update.message.reply_text(ERR_ORDER_PENDING)
                     _trade_cooldown[dedup_key] = now_ts
                     return
                 # 同步更新模拟组合
@@ -562,7 +563,7 @@ class InvestCommandsMixin:
                 })
                 await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             else:
-                await update.message.reply_text("⚠️ 实盘暂不可用，已为您在模拟组合中执行")
+                await update.message.reply_text(ERR_LIVE_UNAVAILABLE)
         if not ibkr_ok:
             result = portfolio.sell(symbol, quantity, price, decided_by=self.name, reason="手动卖出")
             if "error" in result:
