@@ -5,6 +5,8 @@ import re
 import tempfile
 import time
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +59,7 @@ async def refresh_cookies_via_session(api) -> bool:
         logger.warning("Cookie 刷新失败: hasLogin 返回 False")
         return False
     except Exception as e:
-        logger.error(f"Cookie 刷新异常: {e}")
+        logger.error(f"Cookie 刷新异常: {scrub_secrets(str(e))}")
         return False
 
 
@@ -99,4 +101,4 @@ def update_env_file(cookie_str: str):
                 raise
             logger.info("Cookie 已写回 .env")
     except Exception as e:
-        logger.error(f"写回 .env 失败: {e}")
+        logger.error(f"写回 .env 失败: {scrub_secrets(str(e))}")

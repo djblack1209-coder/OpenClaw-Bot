@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.constants import TG_SAFE_LENGTH
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 

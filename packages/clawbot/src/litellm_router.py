@@ -22,22 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 def _scrub_secrets(msg: str) -> str:
-    """从错误消息中移除 API Key 和敏感 URL — 覆盖项目实际使用的所有 key 前缀"""
-    # 清洗 API keys (覆盖项目当前实际使用的主流前缀)
-    msg = re.sub(
-        r'(sk-|key-|Key:|Bearer\s+|gsk_|ghp_|github_pat_|AIza|csk-|nvapi-|hf_|m0-)[a-zA-Z0-9_-]{10,}',
-        r'\1***REDACTED***', msg
-    )
-    # 清洗 Authorization header (Basic + Bearer)
-    msg = re.sub(r'(Authorization:\s*(?:Basic|Bearer)\s+)\S+', r'\1***REDACTED***', msg)
-    # 清洗 URL 查询参数中的 key/token
-    msg = re.sub(r'(api_key=|token=|key=|api-key=)[a-zA-Z0-9_-]+', r'\1***REDACTED***', msg)
-    # 清洗 x-api-key header 值
-    msg = re.sub(r'(x-api-key:\s*)\S+', r'\1***REDACTED***', msg, flags=re.IGNORECASE)
-    # 清洗内部服务 URL（防止暴露 provider 拓扑）
-    msg = re.sub(r'https?://127\.0\.0\.1:\d+[^\s]*', 'http://[internal]', msg)
-    msg = re.sub(r'https?://localhost:\d+[^\s]*', 'http://[internal]', msg)
-    return msg
+    """从错误消息中移除 API Key 和敏感 URL — 代理到 utils.scrub_secrets"""
+    from src.utils import scrub_secrets
+    return scrub_secrets(msg)
 
 # ---- LLM 缓存层 (diskcache, graceful degradation) ----
 try:

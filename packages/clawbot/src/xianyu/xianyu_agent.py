@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 
 from src.bot.error_messages import error_ai_busy
 from src.constants import FAMILY_QWEN
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +307,7 @@ class BaseAgent:
             )
             return response.choices[0].message.content or ""
         except Exception as e:
-            logger.error(f"[XianyuAgent] LLM 调用失败: {e}")
+            logger.error(f"[XianyuAgent] LLM 调用失败: {scrub_secrets(str(e))}")
             return error_ai_busy()
 
     async def agenerate(self, user_msg: str, item_desc: str, context: str,
@@ -453,7 +454,7 @@ class XianyuReplyBot:
             except RuntimeError as e:  # noqa: F841
                 return asyncio.run(self.agenerate_reply(user_msg, item_desc, context, item_id, user_id))
         except Exception as e:
-            logger.error(f"[XianyuReplyBot] sync generate failed: {e}")
+            logger.error(f"[XianyuReplyBot] sync generate failed: {scrub_secrets(str(e))}")
             return error_ai_busy()
 
     async def agenerate_reply(self, user_msg: str, item_desc: str, context: List[Dict],

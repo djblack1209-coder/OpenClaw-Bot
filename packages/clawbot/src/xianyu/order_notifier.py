@@ -9,6 +9,8 @@ from typing import Dict
 
 import httpx
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +119,7 @@ class OrderNotifier:
                     s.send_message(msg)
             logger.info(f"邮件已发送: {subject}")
         except Exception as e:
-            logger.error(f"邮件发送失败: {e}")
+            logger.error(f"邮件发送失败: {scrub_secrets(str(e))}")
 
     def _send_telegram(self, text: str):
         if not self.tg_token or not self.tg_chat_id:
