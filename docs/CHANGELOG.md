@@ -5,6 +5,25 @@
 
 ---
 
+## [2026-04-11] HI-462 Logger 敏感信息泄漏修复 (批次1: 5文件9处)
+
+> 领域: `backend`, `xianyu`
+> 影响模块: `xianyu_agent.py`, `xianyu_apis.py`, `cookie_refresher.py`, `order_notifier.py`, `wechat_bridge.py`
+> 关联问题: HI-462
+
+### 变更内容
+- 5 个文件的 9 处 `logger.error/warning` 调用中，将裸露的 `{e}` 和 `{resp.text[:200]}` 用 `scrub_secrets()` 包装，防止异常消息中的 API Key、连接字符串等敏感信息泄漏到日志
+- 每个文件新增 `from src.utils import scrub_secrets` 导入
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — 2 处 logger.error 加 scrub_secrets 包装 + 新增 import
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — 2 处 logger.warning/error 加 scrub_secrets 包装 + 新增 import
+- `packages/clawbot/src/xianyu/cookie_refresher.py` — 2 处 logger.error 加 scrub_secrets 包装 + 新增 import
+- `packages/clawbot/src/xianyu/order_notifier.py` — 2 处 logger.error 加 scrub_secrets 包装 + 新增 import
+- `packages/clawbot/src/wechat_bridge.py` — 1 处 logger.warning 加 scrub_secrets 包装 + 新增 import
+
+---
+
 ## [2026-04-11] 价值位阶审计 Tier 2-3 — 竞态修复 + 安全加固 + 连接泄漏
 
 > 领域: `backend`, `frontend`, `xianyu`, `infra`
