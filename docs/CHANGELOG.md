@@ -5,6 +5,27 @@
 
 ---
 
+## [2026-04-11] 拆分 risk_manager.py 为 Mixin 模块架构
+
+> 领域: `trading`
+> 影响模块: `risk_manager.py`, `risk_extreme_market.py`, `risk_kelly.py`, `risk_sector.py`
+> 关联问题: HI-358
+
+### 变更内容
+- 将 1191 行的 `risk_manager.py` 拆分为主类 + 3 个 Mixin，主文件降至 854 行
+- 提取极端行情检测到 `ExtremeMarketMixin` (check_extreme_market / record_extreme_event / is_in_extreme_cooldown)
+- 提取凯利公式仓位计算到 `KellyMixin` (calc_kelly_quantity / _get_trade_stats)
+- 提取板块集中度与风险敞口到 `SectorMixin` (_check_sector_concentration / lookup_sectors / get_risk_exposure_summary)
+- `RiskManager` 通过多继承组合三个 Mixin，外部 import 无需修改
+
+### 文件变更
+- `src/risk_extreme_market.py` — 新增: 极端行情检测 Mixin (132行)
+- `src/risk_kelly.py` — 新增: 凯利公式仓位计算 Mixin (132行)
+- `src/risk_sector.py` — 新增: 板块集中度与风险敞口 Mixin (156行)
+- `src/risk_manager.py` — 缩减至 854 行，继承三个 Mixin，保留核心风控逻辑
+
+---
+
 ## [2026-04-11] 拆分 auto_trader.py 为 Mixin 模块架构
 
 > 领域: `trading`

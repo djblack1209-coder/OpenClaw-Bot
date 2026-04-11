@@ -1,10 +1,57 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-11 | 更新: auto_trader.py 拆分为 Mixin 模块 (HI-358)
+> 最后更新: 2026-04-11 | 更新: risk_manager.py 拆分为 Mixin 模块 (HI-358)
 
 ---
 
 ## 新增模块 (2026-04-11)
+
+### risk_extreme_market.py — 极端行情检测 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/risk_extreme_market.py` |
+| 行数 | 132 |
+| 导入方 | `risk_manager.py` (Mixin 继承) |
+| 依赖 | `src.utils.now_et` |
+
+**Public API (通过 RiskManager 暴露):**
+- `check_extreme_market(symbol, current_atr, avg_atr, price_change_pct, vix, spread_pct)` — ATR飙升/闪崩/VIX恐慌/价差检测
+- `record_extreme_event(event_type, details)` — 记录极端行情事件并启动冷却
+- `is_in_extreme_cooldown()` — 检查是否在极端行情冷却期
+
+---
+
+### risk_kelly.py — 凯利公式仓位计算 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/risk_kelly.py` |
+| 行数 | 132 |
+| 导入方 | `risk_manager.py` (Mixin 继承) |
+| 依赖 | 无外部依赖 |
+
+**Public API (通过 RiskManager 暴露):**
+- `calc_kelly_quantity(entry_price, stop_loss, take_profit, capital)` — 基于凯利公式计算最优仓位
+- `_get_trade_stats()` — 从交易历史计算胜率和盈亏比
+
+---
+
+### risk_sector.py — 板块集中度与风险敞口 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/risk_sector.py` |
+| 行数 | 156 |
+| 导入方 | `risk_manager.py` (Mixin 继承) |
+| 依赖 | `yfinance` (可选，缺失时降级为"未知") |
+
+**Public API (通过 RiskManager 暴露):**
+- `_check_sector_concentration(symbol, new_value, current_positions)` — 板块集中度检查
+- `lookup_sectors(symbols)` — 查询标的所属行业（带缓存）
+- `get_risk_exposure_summary(positions, cash)` — 风险敞口摘要（供 /portfolio 展示）
+
+---
 
 ### auto_trader_filters.py — 候选筛选与提案生成 Mixin
 
