@@ -22,6 +22,7 @@ from src.bot.error_messages import error_generic, error_circuit_open, error_tool
 from src.http_client import CircuitOpenError
 from src.litellm_router import free_pool, BOT_MODEL_FAMILY
 from src.constants import BOT_CLAUDE_OPUS, FAMILY_CLAUDE, FAMILY_G4F
+from src.utils import scrub_secrets
 
 try:
     from src.langfuse_obs import log_generation
@@ -178,7 +179,7 @@ class APIMixin:
             latency = (_time.time() - start) * 1000
             metrics.log_api_call(self.bot_id, self.model, latency, success=False, error=str(e))
             health_checker.record_error(self.bot_id, str(e))
-            logger.error(f"[{self.name}] API错误: {e}")
+            logger.error(f"[{self.name}] API错误: {scrub_secrets(str(e))}")
             return error_generic(str(e))
 
     # ---- 核心调用: LiteLLM Router ----
@@ -215,7 +216,7 @@ class APIMixin:
             logger.info(f"[{bot_name}] 免费 Claude 成功")
             return response.choices[0].message.content or "(无响应)"
         except Exception as e:
-            logger.warning(f"[{bot_name}] 免费 Claude 失败: {e}")
+            logger.warning(f"[{bot_name}] 免费 Claude 失败: {scrub_secrets(str(e))}")
 
         # 2. g4f
         try:
@@ -226,7 +227,7 @@ class APIMixin:
             logger.info(f"[{bot_name}] g4f 成功")
             return response.choices[0].message.content or "(无响应)"
         except Exception as e:
-            logger.warning(f"[{bot_name}] g4f 也失败: {e}")
+            logger.warning(f"[{bot_name}] g4f 也失败: {scrub_secrets(str(e))}")
 
         # 3. 任意可用免费模型 (不再自动回落到付费 Claude)
         # v3.0: 付费 Claude API 需用户发 /claude 显式调用
@@ -428,7 +429,7 @@ class APIMixin:
             latency = (_time.time() - start) * 1000
             metrics.log_api_call(self.bot_id, self.model, latency, success=False, error=str(e))
             health_checker.record_error(self.bot_id, str(e))
-            logger.warning(f"[{getattr(self, 'name', bot_id)}] 流式失败: {e}, 降级非流式")
+            logger.warning(f"[{getattr(self, 'name', bot_id)}] 流式失败: {scrub_secrets(str(e))}, 降级非流式")
             try:
                 reply = await self._call_api(chat_id, user_message, save_history, chat_type)
                 yield (reply, "finished")
