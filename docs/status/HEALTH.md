@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-11 (全量全方位审计完成: 后端1133/1133通过 + 前端零TS错误 + Rust零警告 + 15页面截图审计 + VPS同步 + APP重构建)
+> 最后更新: 2026-04-11 (价值位阶审计 Tier 2-3: 7个竞态修复 + 2个安全加固 + 1个连接泄漏修复 | 后端1133/1133通过 + Rust零警告)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -103,12 +103,12 @@
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
 | ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
 | HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
-| HI-393 | `infra` | `kiro-gateway` | Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`，建议更换为强随机密码 | 2026-04-01 |
-| HI-394 | `frontend` | `config.rs` | Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源，Windows 不可用且密码学强度不足，建议改用 `getrandom` crate | 2026-04-01 |
-| HI-410 | `backend` | `xianyu_apis.py` | XianyuApis 的 httpx.AsyncClient 在 `__init__` 中创建但无自动关闭机制，调用方忘记 `close()` 时 TCP 连接泄漏 | 2026-04-03 |
+| HI-393 | `infra` | `kiro-gateway` | ~~Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`~~ → **已修复**: .env 中已替换为 64 位强随机 token | 2026-04-01 |
+| ~~HI-394~~ | ~~`frontend`~~ | ~~`config.rs`~~ | ~~Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源~~ → **已修复 2026-04-11**: 改用 `getrandom` crate 跨平台密码学安全随机源 | 2026-04-01 |
+| ~~HI-410~~ | ~~`backend`~~ | ~~`xianyu_apis.py`~~ | ~~XianyuApis httpx.AsyncClient 无自动关闭机制~~ → **已修复 2026-04-11**: XianyuLive 新增 `close()` 方法 + xianyu_main.py finally 块调用 | 2026-04-03 |
 | HI-411 | `docs` | `MODULE_REGISTRY.md` | 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal) 未注册 | 2026-04-03 |
-| HI-456 | `backend` | `brain.py` | `_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护 — 快速连续消息可能竞态 | 2026-04-03 |
-| HI-457 | `backend` | `social_tools.py` | `PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问无 `threading.Lock` | 2026-04-03 |
+| ~~HI-456~~ | ~~`backend`~~ | ~~`brain.py`~~ | ~~`_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护~~ → **已修复 2026-04-11**: 已有 `self._lock` 现已在所有读写入口加 `async with self._lock` 保护 | 2026-04-03 |
+| ~~HI-457~~ | ~~`backend`~~ | ~~`social_tools.py`~~ | ~~`PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问~~ → **已修复 2026-04-11**: `_save()` 改用锁内快照写盘 + 单例工厂加双重检查锁 | 2026-04-03 |
 | ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
 | ~~HI-459~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~`random.randint` 用于 `X-WECHAT-UIN` 认证header~~ → **已修复 2026-04-11**: 全部替换为 `secrets.randbelow()` | 2026-04-03 |
 | HI-460 | `backend` | `invest_tools.py` | `Portfolio.buy()/sell()` cash read和update虽已合并到同一事务，但 `_set_config` 仍是独立函数 — 需验证合并效果 | 2026-04-03 |
@@ -120,10 +120,10 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-464 | `backend` | `proactive_engine.py` | `_sent_log/_recent_notifications` 字典无锁 — 清理与写入可能竞态但影响仅限多发一条通知 | 2026-04-03 |
-| HI-465 | `backend` | `news_fetcher.py` | `_seen_titles` 集合无界增长+无锁 — RSS源不多时影响极小 | 2026-04-03 |
-| HI-466 | `backend` | `error_handler.py` | `ErrorThrottler._seen/_counts` + `ErrorHandler._total_errors` 统计计数器无锁 — 仅影响监控准确度 | 2026-04-03 |
-| HI-467 | `backend` | `multi_bot.py` | `_live_context_cache` TTL检查与写入无锁 — 最多重复构建一次上下文 | 2026-04-03 |
+| ~~HI-464~~ | ~~`backend`~~ | ~~`proactive_engine.py`~~ | ~~`_sent_log/_recent_notifications` 字典无锁~~ → **已修复 2026-04-11**: 新增 `asyncio.Lock`，evaluate/record_sent 加锁保护 | 2026-04-03 |
+| ~~HI-465~~ | ~~`backend`~~ | ~~`news_fetcher.py`~~ | ~~`_seen_titles` 集合无界增长+无锁~~ → **已修复 2026-04-11**: 新增 `asyncio.Lock`；500 上限截取已有注释说明 | 2026-04-03 |
+| ~~HI-466~~ | ~~`backend`~~ | ~~`error_handler.py`~~ | ~~`ErrorThrottler._seen/_counts` + `ErrorHandler._total_errors` 统计计数器无锁~~ → **已修复 2026-04-11**: ErrorThrottler + ErrorHandler 分别新增 `asyncio.Lock`，report() 锁保护计数和去重 | 2026-04-03 |
+| ~~HI-467~~ | ~~`backend`~~ | ~~`multi_bot.py`~~ | ~~`_live_context_cache` TTL检查与写入无锁~~ → **已修复 2026-04-11**: 新增 `threading.Lock`，TTL 检查/缓存写入原子化 | 2026-04-03 |
 
 ---
 
@@ -131,6 +131,15 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-456 | `backend` | `brain.py` | 共享字典 `_active_tasks/_pending_callbacks/_pending_clarifications` 无锁保护 | 已有 `self._lock` 现在全部读写入口加 `async with self._lock` 保护；`get_active_tasks` 改用 `list()` 快照迭代；延迟清理改用 async task + lock | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-457 | `backend` | `social_tools.py` | PostTimeOptimizer `_save()` 在锁外读取共享数据 + 单例工厂无锁 | `record_engagement` 在锁内拍快照传给 `_save()`；`_save()` 支持传入快照或自行加锁；`get_post_time_optimizer()` 加双重检查锁 | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-464 | `backend` | `proactive_engine.py` | `_sent_log/_recent_notifications` 无 asyncio.Lock | 新增 `self._lock = asyncio.Lock()`，evaluate 频率检查和 record_sent 均加锁保护 | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-465 | `backend` | `news_fetcher.py` | `_seen_titles` 无锁 + 无界增长 | 新增 `asyncio.Lock`；500 上限截取保留最近 200 条并添加注释说明 | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-466 | `backend` | `error_handler.py` | ErrorThrottler/ErrorHandler 计数器无锁 | ErrorThrottler + ErrorHandler 分别新增 `asyncio.Lock`；`report()` 用 `async with self._lock` 保护计数和去重；`cleanup()` 用 `list()` 快照迭代 | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-467 | `backend` | `multi_bot.py` | `_live_context_cache` TTL 检查与写入无锁 | 新增 `threading.Lock`（PTB concurrent_updates=True 下为多线程），TTL 读取和缓存写入均在锁内执行 | 2026-04-11 | 价值位阶审计 Tier 2 |
+| HI-393 | `infra` | `kiro-gateway/.env` | 默认弱密码 `kiro-clawbot-2026` | .env 中已替换为 64 位强随机 hex token；config.py 默认值为空字符串（未设置时拒绝所有请求） | 2026-04-11 | 价值位阶审计 Tier 3 |
+| HI-394 | `frontend` | `config.rs` | Token 生成使用 `/dev/urandom` + 栈地址，Windows 不可用 | 改用 `getrandom::getrandom()` 密码学安全跨平台随机源，删除手动读文件+时间戳兜底 | 2026-04-11 | 价值位阶审计 Tier 3 |
+| HI-410 | `xianyu` | `xianyu_apis.py`+`xianyu_live.py` | httpx.AsyncClient 无自动关闭，TCP 连接泄漏 | XianyuLive 新增 `close()` 方法调用 `api.close()`；xianyu_main.py 在 finally 块中调用 | 2026-04-11 | 价值位阶审计 Tier 3 |
 | HI-390 | `backend` | `social_scheduler.py` | APScheduler job 创建临时事件循环，EventBus 事件无法跨循环传播 | `start()` 中捕获主事件循环引用并更新类变量；`_run_async()` 使用 `run_coroutine_threadsafe()` 调度到主循环，降级回退 `asyncio.run()` | 2026-04-11 | social_scheduler 稳定性修复 |
 | HI-458 | `backend` | `social_scheduler.py` | `_current_publish_hour` 在APScheduler线程和主线程间无锁保护 | 新增 `_publish_hour_lock = threading.Lock()` 类变量，所有读写 `_current_publish_hour` 的位置加锁保护 | 2026-04-11 | social_scheduler 稳定性修复 |
 | HI-471 | `frontend` | `Dev/index.tsx` | Dev页面action按钮绑定的 `send_telegram_command` 命令不存在 | 替换为实际可用的 `api.omegaProcess` | 2026-04-09 | 桌面端深度审计 |

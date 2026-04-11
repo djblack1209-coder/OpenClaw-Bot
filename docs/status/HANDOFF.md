@@ -4,64 +4,46 @@
 
 ---
 
-## [2026-04-11 17:10] 全量全方位审计 — 7阶段完成
+## [2026-04-11 19:30] 价值位阶审计 Tier 2-3 — 竞态修复 + 安全加固 + 连接泄漏
 
 ### 本次完成了什么
 
-**Phase 1: 基线建立**
-- 后端测试: 1133/1133 passed (修复 3 个失败测试)
-- 前端 TypeScript: 零错误
-- 前端 Vite 构建: 成功
-- Rust/Tauri: cargo check 通过
+**Tier 2 — 稳定性/竞态修复 (7项)**
+- HI-456: `brain.py` 已定义但未使用的 `self._lock` 现在在所有共享字典读写入口加锁保护
+- HI-457: `social_tools.py` `_save()` 改为锁内拍快照再写盘 + 单例工厂加双重检查锁
+- HI-464: `proactive_engine.py` 新增 asyncio.Lock 保护频率限制和发送记录
+- HI-465: `news_fetcher.py` 新增 asyncio.Lock 保护去重缓存
+- HI-466: `error_handler.py` ErrorThrottler + ErrorHandler 分别新增 asyncio.Lock
+- HI-467: `multi_bot.py` 新增 threading.Lock 保护 _live_context_cache
 
-**Phase 2: 后端深度审计**
-- Python 语法检查: 全部通过
-- 清理 15 个未使用/重复 import (11 文件)
-- cryptography 46.0.6 → 46.0.7 安全升级
+**Tier 3 — 安全加固 + 连接泄漏 (3项)**
+- HI-394: `config.rs` generate_token() 改用 getrandom crate 跨平台密码学安全随机源
+- HI-393: kiro-gateway 弱密码已确认此前已替换为强随机 token
+- HI-410: XianyuLive 新增 close() + xianyu_main.py finally 块调用，修复 TCP 连接泄漏
 
-**Phase 3: 前端 UI/UX 全覆盖截图审计**
-- 15 个页面逐一 Playwright 截图
-- 深色主题无漂移/错位/遮挡
-- 空态/加载态/错误态中文友好提示完善
-
-**Phase 4: 依赖安全审计**
-- pip-audit 发现 28 个 CVE (13 个包)
-- 已升级 cryptography; 其余因 browser-use 严格版本锁定暂缓
-- npm audit 因镜像不支持未执行
-
-**Phase 5: VPS 修复**
-- 停止并禁用重复的 openclaw-bot.service
-- rsync 同步最新代码 (21MB, 4/2→4/11)
-- .env 缺失 — 需用户手动配置
-
-**Phase 6: macOS APP 重构建**
-- Tauri release 构建成功
-- 已部署到 /Applications/OpenClaw.app
-- 进程正常启动
-
-**Phase 7: 文件治理**
-- 删除根目录 5 张截图 + .DS_Store + .playwright-cli/
-- 修复 .clinerules/.cursorrules 断链符号链接
-- 35 个运行时文件从 git 追踪移除 + .gitignore 补充 5 条规则
+### 验证结果
+- 后端测试: 1133/1133 passed, 2 skipped, 0 failed
+- Rust cargo check: 零错误零警告
+- Python 语法检查: 全部文件通过
 
 ### 未完成的工作
-1. **VPS .env 配置** — 需手动将 config/.env 复制到 VPS /home/clawbot/clawbot/config/.env
-2. **Git 推送远程** — 所有变更待推送到 GitHub
-3. **Git 历史清理** — .git/ 1.3GB (历史大文件残留)，需 git filter-repo 清理
-4. **browser-use 版本冲突** — browser-use 0.12.2 锁定了多个依赖的精确版本，待其升级后再批量升级 CVE
-5. **npm audit** — 需临时切回官方 npm 源执行
+1. **HI-411** — MODULE_REGISTRY 补全 7 个核心模块 (docs)
+2. **HI-462** — 385+ 处 logger.error 可能泄露敏感信息 (大批量, 低优先)
+3. **HI-463** — 20+ 文件未使用 ResilientHTTPClient (中等成本)
+4. **HI-358** — 7 个 >1000 行大文件待拆
+5. **VPS .env 配置** — 需手动配置
+6. **密钥轮换** — Git 历史虽已清理，曾暴露的密钥建议轮换
+7. **Git 推送** — 本轮变更待推送到 GitHub
 
 ### 需要注意的坑
-- VPS 心跳超时 144024 秒 (约 40 小时) — Mac 主节点心跳未正确发送，需检查 Bot 进程是否在运行
-- browser-use 的 == 版本锁定是最大的依赖升级阻碍
-- Node 18.20.8 与 npm 11.6.2 存在 engine 警告但不阻塞构建
+- brain.py 的 asyncio.Lock 会序列化同一 Brain 实例的并发消息处理（设计如此，防竞态）
+- multi_bot.py 用 threading.Lock 而非 asyncio.Lock 是因为 PTB concurrent_updates=True 下是真多线程
+- proactive_engine.py 的锁包裹了整个频率检查 + 记录，不包 LLM 调用部分（避免死锁）
 
 ### 当前系统状态
-- 后端测试: 1133/1133 passed, 0 failed
-- 前端: 0 TS 错误, Vite 构建成功
+- 后端测试: 1133/1133 passed
 - Rust: cargo check 零警告
-- APP: 已部署 /Applications/OpenClaw.app, 进程运行中
-- VPS: 代码已同步, 服务已停止(待 .env 配置后由 failover timer 自动管理)
+- 活跃问题: HEALTH.md 中剩余 HI-358/381/383/384/391/411/460/462/463 等中低优先
 
 ## [2026-04-10 19:43] 会话交接摘要
 

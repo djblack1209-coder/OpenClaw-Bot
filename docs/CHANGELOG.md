@@ -5,6 +5,38 @@
 
 ---
 
+## [2026-04-11] 价值位阶审计 Tier 2-3 — 竞态修复 + 安全加固 + 连接泄漏
+
+> 领域: `backend`, `frontend`, `xianyu`, `infra`
+> 影响模块: `brain.py`, `social_tools.py`, `proactive_engine.py`, `news_fetcher.py`, `error_handler.py`, `multi_bot.py`, `xianyu_live.py`, `xianyu_main.py`, `config.rs`
+> 关联问题: HI-456, HI-457, HI-464, HI-465, HI-466, HI-467, HI-393, HI-394, HI-410
+
+### Tier 2 — 稳定性/竞态修复 (7项)
+- `brain.py` — 已定义但未使用的 `self._lock` 现在在所有共享字典读写入口加 `async with self._lock` 保护；延迟清理改用 async task + lock (HI-456)
+- `social_tools.py` — `_save()` 改为锁内拍快照再写盘；`get_post_time_optimizer()` 单例工厂加双重检查锁 (HI-457)
+- `proactive_engine.py` — 新增 `asyncio.Lock`，evaluate 频率检查和 _record_sent 均加锁保护 (HI-464)
+- `news_fetcher.py` — 新增 `asyncio.Lock` + 缓存上限注释说明 (HI-465)
+- `error_handler.py` — ErrorThrottler + ErrorHandler 分别新增 `asyncio.Lock`；cleanup 用 `list()` 快照迭代 (HI-466)
+- `multi_bot.py` — 新增 `threading.Lock` 保护 `_live_context_cache` 的 TTL 检查和缓存写入 (HI-467)
+
+### Tier 3 — 安全加固 + 连接泄漏 (3项)
+- `config.rs` — `generate_token()` 从手动读 `/dev/urandom` + 栈地址兜底改为 `getrandom::getrandom()` 密码学安全跨平台随机源 (HI-394)
+- `kiro-gateway/.env` — 确认弱密码 `kiro-clawbot-2026` 已替换为 64 位强随机 token (HI-393)
+- `xianyu_live.py` — 新增 `close()` 方法调用 `api.close()`；`xianyu_main.py` 在 `finally` 块中调用，防止 TCP 连接泄漏 (HI-410)
+
+### 文件变更
+- `packages/clawbot/src/core/brain.py` — asyncio.Lock 保护共享字典
+- `packages/clawbot/src/social_tools.py` — _save() 快照 + 单例双重检查锁
+- `packages/clawbot/src/core/proactive_engine.py` — asyncio.Lock 保护发送记录
+- `packages/clawbot/src/news_fetcher.py` — asyncio.Lock 保护去重缓存
+- `packages/clawbot/src/error_handler.py` — asyncio.Lock 保护计数器
+- `packages/clawbot/src/bot/multi_bot.py` — threading.Lock 保护上下文缓存
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增 close() 方法
+- `packages/clawbot/scripts/xianyu_main.py` — finally 块关闭连接
+- `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` — getrandom 替代手动 /dev/urandom
+
+---
+
 ## [2026-04-11] 价值位阶审计 Tier 1-2 — 安全/稳定性/CVE 修复
 
 > 领域: `backend`, `security`, `infra`
