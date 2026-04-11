@@ -823,7 +823,11 @@
 | models.py | `src/models.py` | 23 | 数据模型 — 共享 Pydantic/dataclass 定义 | — |
 | browser_use_bridge.py | `src/browser_use_bridge.py` | ~220 | AI 浏览器代理桥接 — DOM 解析/LLM 决策/反检测 | browser-use (81k⭐) |
 | crewai_bridge.py | `src/crewai_bridge.py` | ~180 | CrewAI 多 Agent 协作桥接 | crewai (27k⭐) |
-| trading_journal.py | `src/trading_journal.py` | ~350 | 交易日志 — 开仓/平仓/盈亏记录 | 自研 |
+| trading_journal.py | `src/trading_journal.py` | 464 | 交易日志主类 — DB初始化/配置/交易CRUD/cleanup + Mixin组合 | 自研 |
+| journal_performance.py | `src/journal_performance.py` | 202 | 交易日志 Mixin — 绩效统计/权益曲线/格式化报告 | 自研 |
+| journal_predictions.py | `src/journal_predictions.py` | 145 | 交易日志 Mixin — 研判预期记录/收盘验证/准确率统计 | 自研 |
+| journal_targets.py | `src/journal_targets.py` | 115 | 交易日志 Mixin — 盈利目标设定/进度更新/格式化展示 | 自研 |
+| journal_review.py | `src/journal_review.py` | 221 | 交易日志 Mixin — 复盘会议/复盘数据/迭代改进报告 | 自研 |
 | novel_writer.py | `src/novel_writer.py` | ~450 | AI 小说工坊 — 大纲/续写/TTS | inkos + MuMuAINovel |
 | position_monitor.py | `src/position_monitor.py` | ~700 | 持仓实时监控 — 止损/止盈/异动告警 | 自研 |
 | data_providers.py | `src/data_providers.py` | ~400 | 多市场数据源聚合 (yfinance/Alpha Vantage) | yfinance (16k⭐) |
