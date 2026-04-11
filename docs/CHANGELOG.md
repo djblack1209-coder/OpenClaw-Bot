@@ -5,6 +5,25 @@
 
 ---
 
+## [2026-04-11] 拆分 auto_trader.py 为 Mixin 模块架构
+
+> 领域: `trading`
+> 影响模块: `auto_trader.py`, `auto_trader_filters.py`, `auto_trader_review.py`
+> 关联问题: HI-358
+
+### 变更内容
+- 将 1055 行的 `auto_trader.py` 拆分为主类 + 2 个 Mixin，主文件降至 843 行
+- 提取候选筛选、提案生成、IBKR 报价刷新到 `AutoTraderFiltersMixin`
+- 提取收盘复盘逻辑到 `AutoTraderReviewMixin`
+- `AutoTrader` 通过多继承组合两个 Mixin，外部 import 无需修改
+
+### 文件变更
+- `src/auto_trader_filters.py` — 新增: 候选筛选 Mixin (157行)，含 `_filter_candidates` / `_generate_proposal` / `_enrich_candidates_with_broker_quotes`
+- `src/auto_trader_review.py` — 新增: 收盘复盘 Mixin (86行)，含 `_run_review`
+- `src/auto_trader.py` — 缩减至 843 行，继承两个 Mixin，保留核心调度逻辑
+
+---
+
 ## [2026-04-11] 拆分 daily_brief.py 为 4 个子模块
 
 > 领域: `backend`
