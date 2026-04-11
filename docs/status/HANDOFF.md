@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-04-11 22:00] 全部遗留任务清理完成
+
+### 本次完成了什么
+
+**HI-463: ResilientHTTPClient 统一迁移**
+- 扩展 API: 新增 `follow_redirects`/`files`/`data` 参数支持
+- 20 个文件 35 处 EASY httpx.AsyncClient 调用点迁移完成
+- 剩余 28 处 COMPLEX（cookies/persistent session/sync）保留原实现
+
+**HI-358: 7 个大文件全部拆分（共新建 17 个子模块）**
+- daily_brief.py: 1158→498 行（+weekly_report/daily_brief_llm/daily_brief_data）
+- proactive_engine.py: 1016→328 行（+proactive_models/listeners/periodic/notify）
+- trading_journal.py: 1087→464 行（+journal_performance/review/predictions/targets）
+- risk_manager.py: 1191→854 行（+risk_extreme_market/risk_kelly/risk_sector）
+- broker_bridge.py: 1091→762 行（+broker_scanner/broker_slippage）
+- auto_trader.py: 1055→843 行（+auto_trader_filters/auto_trader_review）
+- chinese_nlp_mixin.py: 1248→705 行（+nlp_ticker_map/nlp_dispatch_handlers）
+
+**HI-383: HTTP 客户端碎片化 — 被 HI-463 解决**
+
+**HI-384: Flaky test 根治**
+- mock 隔离 get_context_collector + get_response_synthesizer
+
+**HI-462: 日志脱敏（20处高风险）**
+- 新增 utils.scrub_secrets() 共享函数（8种脱敏规则）
+- 8 个文件 20 处高危 logger 调用脱敏
+
+**HI-391: 插件管理按钮实现**
+- Rust 新增 3 个 Tauri 命令（start/stop/get_status）实现真实进程管理
+- 前端 toggle 连接真实启停 + 清理假数据
+
+**HI-381: 内联错误字符串统一**
+- 重新评估: 实际 ~50 处（非 120+），5 条重复消息提取到 constants.py
+- 10 处使用点迁移到常量引用
+
+**验证关闭: HI-460（死代码）+ HI-484（.gitignore）**
+
+### 验证结果
+- 后端测试: 1133/1133 passed, 0 failed
+- Rust cargo check: 零错误零警告
+- 全部推送到 GitHub
+
+### 当前活跃问题
+HEALTH.md 中 🟡 一般和 🟠 重要的未解决项仅剩:
+- HI-388: diskcache CVE 待上游修复（不可操作）
+- HI-482: LiteLLM 路由测试需完整 venv 复验（环境限制）
+- HI-483: 已清理重复 MEM0_API_KEY（已部分解决）
+- HI-484: 已修复（.gitignore lib/ 规则）
+- HI-462: 剩余 ~360 处低风险 logger 模式（非 API/认证相关）
+
+### 需要注意的坑
+- chinese_nlp_mixin.py 的正则模式顺序不能改（决定匹配优先级）
+- ResilientHTTPClient 是"核弹模式"——每次请求新建 TCP 连接，不适合需要 cookie 持久化的场景
+- MCP 插件进程管理目前是 Tier 1（仅启停），MCP 协议集成（工具发现/调用）是 Tier 2 待做
+
 ## [2026-04-11 20:30] 遗留任务清理 — Flaky test + 日志脱敏 + 死代码验证
 
 ### 本次完成了什么

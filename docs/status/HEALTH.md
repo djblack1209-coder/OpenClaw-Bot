@@ -98,11 +98,11 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | ~~HI-358~~ | ~~`backend`~~ | ~~多文件~~ | ~~7个>1000行大文件待拆~~ → **已修复 2026-04-11**: 全部7个文件拆分完成 — daily_brief(1158→498), proactive_engine(1016→328), trading_journal(1087→464), risk_manager(1191→854), broker_bridge(1091→762), auto_trader(1055→843), chinese_nlp_mixin(1248→705)。共新建 17 个子模块 | 2026-03-29 |
-| HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
+| ~~HI-381~~ | ~~`backend`~~ | ~~120+文件~~ | ~~内联错误字符串分散~~ → **已解决 2026-04-11**: 重新评估实际为 ~50 处（非 120+），其中 5 条重复消息提取到 `constants.py`（ERR_RISK_NOT_INIT 等 5 个常量），10 处使用点已迁移；其余为上下文相关的唯一消息，保留内联合理 | 2026-03-29 |
 | ~~HI-383~~ | ~~`backend`~~ | ~~多文件~~ | ~~HTTP客户端碎片化~~ → **大部分解决 2026-04-11**: HI-463 迁移 20 个文件 35 处调用点到 ResilientHTTPClient（带自动重试+熔断）；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现合理 | 2026-03-29 |
 | ~~HI-384~~ | ~~`backend`~~ | ~~`test_omega_core.py`~~ | ~~Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态~~ → **已修复 2026-04-11**: mock 隔离 get_context_collector + get_response_synthesizer，消除 LiteLLM Cooldown 依赖 | 2026-03-30 |
 | ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
-| HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
+| ~~HI-391~~ | ~~`frontend`~~ | ~~`Plugins`~~ | ~~"安装新插件"和"配置插件"按钮为占位实现~~ → **已修复 2026-04-11**: Rust 层新增 `start/stop/get_status_mcp_plugin` 3 个 Tauri 命令实现真实进程管理（spawn/kill/健康检查）；前端 toggle 连接真实启停；清理 3 条假数据 | 2026-04-01 |
 | HI-393 | `infra` | `kiro-gateway` | ~~Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`~~ → **已修复**: .env 中已替换为 64 位强随机 token | 2026-04-01 |
 | ~~HI-394~~ | ~~`frontend`~~ | ~~`config.rs`~~ | ~~Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源~~ → **已修复 2026-04-11**: 改用 `getrandom` crate 跨平台密码学安全随机源 | 2026-04-01 |
 | ~~HI-410~~ | ~~`backend`~~ | ~~`xianyu_apis.py`~~ | ~~XianyuApis httpx.AsyncClient 无自动关闭机制~~ → **已修复 2026-04-11**: XianyuLive 新增 `close()` 方法 + xianyu_main.py finally 块调用 | 2026-04-03 |
