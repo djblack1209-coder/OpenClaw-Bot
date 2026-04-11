@@ -33,6 +33,11 @@ from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
+from src.http_client import ResilientHTTPClient
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=15.0, name="wechat_bridge")
+
 # ── 配置 ────────────────────────────────────────────────
 _WECHAT_ENABLED = os.getenv("WECHAT_NOTIFY_ENABLED", "").lower() in ("true", "1", "yes")
 _ILINK_BASE = "https://ilinkai.weixin.qq.com"

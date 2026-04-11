@@ -24,7 +24,12 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http_iflow = ResilientHTTPClient(timeout=60.0, name="pydantic_agents")
 
 # ── iflow API 配置 ──────────────────────────────────
 
@@ -290,28 +295,26 @@ class PydanticInvestmentEngine:
             f"只输出 JSON，不要其他内容。"
         )
 
-        import httpx
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{self._base}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": full_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 800,
-                },
-            )
-            if resp.status_code != 200:
-                raise RuntimeError(f"iflow {resp.status_code}: {resp.text[:100]}")
+        resp = await _http_iflow.post(
+            f"{self._base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": full_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 800,
+            },
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"iflow {resp.status_code}: {resp.text[:100]}")
 
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
+        raw = resp.json()["choices"][0]["message"]["content"].strip()
 
             # 去除 thinking 标签
             import re

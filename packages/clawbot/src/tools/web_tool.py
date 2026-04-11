@@ -61,18 +61,18 @@ class WebTool:
             url = f"https://html.duckduckgo.com/html/?q={query}"
             response = await _http.get(url, headers=self.headers)
             soup = BeautifulSoup(response.text, 'html.parser')
-                
-                results = []
-                for result in soup.find_all('div', class_='result')[:num_results]:
-                    title_tag = result.find('a', class_='result__a')
-                    snippet_tag = result.find('a', class_='result__snippet')
-                    if title_tag:
-                        results.append({
-                            "title": title_tag.get_text(strip=True),
-                            "url": title_tag.get('href', ''),
-                            "snippet": snippet_tag.get_text(strip=True) if snippet_tag else ""
-                        })
-                
-                return {"success": True, "query": query, "results": results, "count": len(results)}
+            
+            results = []
+            for result in soup.find_all('div', class_='result')[:num_results]:
+                title_tag = result.find('a', class_='result__a')
+                snippet_tag = result.find('a', class_='result__snippet')
+                if title_tag:
+                    results.append({
+                        "title": title_tag.get_text(strip=True),
+                        "url": title_tag.get('href', ''),
+                        "snippet": snippet_tag.get_text(strip=True) if snippet_tag else ""
+                    })
+            
+            return {"success": True, "query": query, "results": results, "count": len(results)}
         except Exception as e:
             return {"success": False, "error": str(e)}

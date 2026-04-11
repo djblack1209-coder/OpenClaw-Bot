@@ -9,9 +9,13 @@ from typing import Dict
 
 import httpx
 
+from src.http_client import ResilientHTTPClient
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
+
+# 模块级别 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=10.0, name="order_notifier")
 
 
 class OrderNotifier:
