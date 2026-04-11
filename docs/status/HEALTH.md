@@ -101,7 +101,7 @@
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
-| HI-390 | `backend` | `social_scheduler.py` | APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播 | 2026-04-01 |
+| ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
 | HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
 | HI-393 | `infra` | `kiro-gateway` | Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`，建议更换为强随机密码 | 2026-04-01 |
 | HI-394 | `frontend` | `config.rs` | Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源，Windows 不可用且密码学强度不足，建议改用 `getrandom` crate | 2026-04-01 |
