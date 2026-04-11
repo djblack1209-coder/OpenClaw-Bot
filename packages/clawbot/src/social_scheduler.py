@@ -574,7 +574,8 @@ def job_late_review() -> None:
                     # 通过单例获取 SocialAutopilot 实例的调度器
                     autopilot = SocialAutopilot._instance
                     if autopilot and autopilot._scheduler and autopilot._scheduler.running:
-                        current_publish_hour = getattr(autopilot, "_current_publish_hour", 20)
+                        with SocialAutopilot._publish_hour_lock:
+                            current_publish_hour = getattr(autopilot, "_current_publish_hour", 20)
                         if new_hour != current_publish_hour:
                             autopilot._scheduler.reschedule_job(
                                 "night_publish",
@@ -584,7 +585,8 @@ def job_late_review() -> None:
                                 "[社媒] 明日发布时间调整: %d:30 → %d:30",
                                 current_publish_hour, new_hour,
                             )
-                            autopilot._current_publish_hour = new_hour
+                            with SocialAutopilot._publish_hour_lock:
+                                autopilot._current_publish_hour = new_hour
             except Exception as e:
                 logger.debug("[社媒] 更新发布时间失败: %s", e)
 
@@ -650,6 +652,16 @@ class SocialAutopilot:
         if self._scheduler and self._scheduler.running:
             return {"status": "already_running"}
 
+        # 在启动时捕获/更新主事件循环引用，确保 job 线程能把协程调度回来
+        try:
+            loop = asyncio.get_running_loop()
+            SocialAutopilot._main_loop = loop
+            logger.info("[Autopilot] start() 捕获到运行中的主事件循环")
+        except RuntimeError:
+            # 非异步上下文调用 start()，保留 __init__ 中已捕获的循环
+            if SocialAutopilot._main_loop is None:
+                logger.warning("[Autopilot] start() 未找到主事件循环，job 将降级使用 asyncio.run()")
+
         self._scheduler = BackgroundScheduler(timezone=_TIMEZONE)
 
         # 09:00 — 热点扫描
@@ -684,8 +696,9 @@ class SocialAutopilot:
             publish_hour = 20
             logger.warning("[社媒] 查询最佳发布时间失败, 使用默认 20:30: %s", e)
 
-        # 记录当前发布小时，供 job_late_review 比对和更新
-        self._current_publish_hour = publish_hour
+        # 记录当前发布小时，供 job_late_review 比对和更新（线程安全）
+        with SocialAutopilot._publish_hour_lock:
+            self._current_publish_hour = publish_hour
 
         self._scheduler.add_job(
             job_night_publish, CronTrigger(hour=publish_hour, minute=30, timezone=_TIMEZONE),
