@@ -25,7 +25,6 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 

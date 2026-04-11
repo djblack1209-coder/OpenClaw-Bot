@@ -18,7 +18,6 @@ import logging
 import math
 import random
 import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

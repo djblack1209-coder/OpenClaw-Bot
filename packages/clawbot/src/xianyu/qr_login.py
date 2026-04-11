@@ -19,19 +19,16 @@
 """
 
 import asyncio
-import base64
 import hashlib
 import json
 import os
 import re
 import signal
 import subprocess
-import sys
 import time
-import uuid
 from io import BytesIO
 from random import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 from loguru import logger

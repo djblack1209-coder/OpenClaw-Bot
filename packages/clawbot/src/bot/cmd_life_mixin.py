@@ -522,7 +522,7 @@ class LifeCommandsMixin:
         # ── /bill tips [类型] — 查询缴费优惠渠道 ──
         if sub in {"tips", "优惠", "省钱"}:
             from src.execution.life_automation import (
-                get_discount_suggestions, save_discount_suggestions,
+                get_discount_suggestions,
             )
             # 确定要查哪种费用
             target_type = ""

@@ -12,7 +12,6 @@ import asyncio
 import logging
 import os
 
-from src.constants import TG_SAFE_LENGTH
 from src.bot.globals import send_long_message
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth

@@ -9,7 +9,6 @@ ClawBot 回测引擎 — 数据模型与数据加载
 - load_historical_data: 从 yfinance 加载历史数据
 - bars_to_dataframe: K线转 pandas DataFrame
 """
-import math
 import logging
 from datetime import datetime
 from typing import List, Optional
