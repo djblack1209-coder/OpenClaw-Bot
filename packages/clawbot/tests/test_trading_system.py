@@ -221,8 +221,8 @@ class TestGetters:
 
 class TestGetSystemStatus:
     def test_not_initialized(self):
-        # Patch broker_bridge so the import inside get_system_status raises
-        with patch.dict("sys.modules", {"src.broker_bridge": None}):
+        # Patch broker_selector 使导入 ibkr 时抛出 ImportError
+        with patch.dict("sys.modules", {"src.broker_selector": None}):
             result = ts.get_system_status()
         assert result == "交易系统未初始化"
 

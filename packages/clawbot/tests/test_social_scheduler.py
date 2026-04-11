@@ -145,18 +145,16 @@ class TestJobMorningScan:
         state["stats"]["posts_today"] = 5
         ss_module._save_state(state)
 
-        with patch("src.social_scheduler.asyncio.run") as mock_run:
-            # Simulate what _run() does inside job_morning_scan
-            async def fake_run():
-                st = ss_module._load_state()
-                st["last_scan_topics"] = [{"title": "Test Topic", "score": 8}]
-                st["drafts"] = []
-                st["today_published"] = []
-                st["stats"] = {"posts_today": 0, "engagement_today": 0}
-                ss_module._save_state(st)
+        def fake_run_async(coro):
+            """模拟 _run_async：执行状态重置逻辑"""
+            st = ss_module._load_state()
+            st["last_scan_topics"] = [{"title": "Test Topic", "score": 8}]
+            st["drafts"] = []
+            st["today_published"] = []
+            st["stats"] = {"posts_today": 0, "engagement_today": 0}
+            ss_module._save_state(st)
 
-            import asyncio
-            mock_run.side_effect = lambda coro: asyncio.get_event_loop().run_until_complete(fake_run())
+        with patch("src.social_scheduler._run_async", side_effect=fake_run_async):
             ss_module.job_morning_scan()
 
         loaded = ss_module._load_state()
