@@ -124,6 +124,8 @@ class ProactiveEngine:
         self._sent_log: Dict[str, List[float]] = {}  # user_id → [timestamps]
         self._recent_notifications: Dict[str, List[str]] = {}  # user_id → [texts]
         self._last_cleanup = 0.0
+        # asyncio 锁：保护 _sent_log/_recent_notifications 跨 await 的并发访问（HI-464）
+        self._lock = asyncio.Lock()
 
     def _cleanup_old_entries(self):
         """清理 24 小时前的发送记录，防止内存无限增长"""
@@ -136,10 +138,10 @@ class ProactiveEngine:
         for uid in list(self._sent_log):
             self._sent_log[uid] = [t for t in self._sent_log[uid] if t > cutoff]
             if not self._sent_log[uid]:
-                del self._sent_log[uid]
+                self._sent_log.pop(uid, None)
         for uid in list(self._recent_notifications):
             if uid not in self._sent_log:
-                del self._recent_notifications[uid]
+                self._recent_notifications.pop(uid, None)
 
     async def evaluate(
         self,
@@ -160,11 +162,12 @@ class ProactiveEngine:
             通知文本 (str) 或 None (表示不推送)
         """
         # 0. 频率限制
-        if self._is_rate_limited(user_id):
-            logger.debug(f"主动通知频率限制: user={user_id}")
-            return None
+        async with self._lock:
+            if self._is_rate_limited(user_id):
+                logger.debug(f"主动通知频率限制: user={user_id}")
+                return None
 
-        recent = self._get_recent_notifications(user_id)
+            recent = self._get_recent_notifications(user_id)
 
         # Step 1: Gate — 最便宜模型快速判断
         gate_result = await self._step_gate(
@@ -198,8 +201,9 @@ class ProactiveEngine:
             logger.debug(f"Critic 拒绝: {critic.reasoning if critic else 'failed'}")
             return None
 
-        # 记录已发送
-        self._record_sent(user_id, draft.notification_text)
+        # 记录已发送（锁保护，防止并发写入竞态）
+        async with self._lock:
+            self._record_sent(user_id, draft.notification_text)
         return draft.notification_text
 
     # ━━━━━━━━━━━━ Step 1: Gate ━━━━━━━━━━━━

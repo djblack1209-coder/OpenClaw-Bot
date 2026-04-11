@@ -491,8 +491,10 @@ class PostTimeOptimizer:
             # 只保留最近 100 条
             if len(self._engagement_by_hour[hour]) > 100:
                 self._engagement_by_hour[hour] = self._engagement_by_hour[hour][-50:]
-        # 每次记录后持久化到磁盘
-        self._save()
+            # 在锁内拍快照，确保序列化数据一致（HI-457 修复）
+            snapshot = {str(h): list(rates) for h, rates in self._engagement_by_hour.items()}
+        # 用快照写磁盘（无需持锁，避免 I/O 阻塞其他线程）
+        self._save(snapshot)
 
     def best_hours(self, platform: str = "telegram", top_n: int = 3) -> List[int]:
         """推荐最佳发布时间"""
@@ -507,13 +509,14 @@ class PostTimeOptimizer:
         sorted_hours = sorted(avg_by_hour.items(), key=lambda x: -x[1])
         return [h for h, _ in sorted_hours[:top_n]]
 
-    def _save(self):
-        """将互动数据写入 JSON 文件"""
+    def _save(self, snapshot: Optional[Dict[str, list]] = None):
+        """将互动数据写入 JSON 文件。优先使用传入的快照，否则在锁内拍新快照"""
         try:
-            # key 转为字符串（JSON 不支持整数 key）
-            data = {str(h): rates for h, rates in self._engagement_by_hour.items()}
+            if snapshot is None:
+                with self._data_lock:
+                    snapshot = {str(h): list(rates) for h, rates in self._engagement_by_hour.items()}
             with open(self._data_path, "w") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                json.dump(snapshot, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.debug("[PostTimeOptimizer] 保存失败: %s", e)
 
@@ -532,11 +535,15 @@ class PostTimeOptimizer:
 
 # ── PostTimeOptimizer 全局单例 ──
 _post_time_optimizer_instance: Optional[PostTimeOptimizer] = None
+_post_time_optimizer_lock = __import__("threading").Lock()
 
 
 def get_post_time_optimizer(data_dir: Optional[str] = None) -> PostTimeOptimizer:
     """获取 PostTimeOptimizer 全局单例，避免每次调用新建实例导致数据丢失"""
     global _post_time_optimizer_instance
     if _post_time_optimizer_instance is None:
-        _post_time_optimizer_instance = PostTimeOptimizer(data_dir=data_dir)
+        with _post_time_optimizer_lock:
+            # 双重检查锁防止重复创建
+            if _post_time_optimizer_instance is None:
+                _post_time_optimizer_instance = PostTimeOptimizer(data_dir=data_dir)
     return _post_time_optimizer_instance
