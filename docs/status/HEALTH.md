@@ -100,7 +100,7 @@
 | HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; 仍有22个文件>800行待拆(其中7个>1000行) | 2026-03-29 |
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
-| HI-384 | `backend` | `test_omega_core.py` | Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态，完整套件中偶发失败(单独运行通过) — LiteLLM Cooldown导致 | 2026-03-30 |
+| ~~HI-384~~ | ~~`backend`~~ | ~~`test_omega_core.py`~~ | ~~Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态~~ → **已修复 2026-04-11**: mock 隔离 get_context_collector + get_response_synthesizer，消除 LiteLLM Cooldown 依赖 | 2026-03-30 |
 | ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
 | HI-391 | `frontend` | `Plugins` | "安装新插件"和"配置插件"按钮为占位实现（`toast.info('即将上线')`），功能未完成 | 2026-04-01 |
 | HI-393 | `infra` | `kiro-gateway` | ~~Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`~~ → **已修复**: .env 中已替换为 64 位强随机 token | 2026-04-01 |
@@ -111,7 +111,7 @@
 | ~~HI-457~~ | ~~`backend`~~ | ~~`social_tools.py`~~ | ~~`PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问~~ → **已修复 2026-04-11**: `_save()` 改用锁内快照写盘 + 单例工厂加双重检查锁 | 2026-04-03 |
 | ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
 | ~~HI-459~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~`random.randint` 用于 `X-WECHAT-UIN` 认证header~~ → **已修复 2026-04-11**: 全部替换为 `secrets.randbelow()` | 2026-04-03 |
-| HI-460 | `backend` | `invest_tools.py` | `Portfolio.buy()/sell()` cash read和update虽已合并到同一事务，但 `_set_config` 仍是独立函数 — 需验证合并效果 | 2026-04-03 |
+| ~~HI-460~~ | ~~`backend`~~ | ~~`invest_tools.py`~~ | ~~`_set_config` 事务独立~~ → **已验证 2026-04-11**: `_set_config` 是死代码（无任何调用方），buy/sell 现金事务已在同一 `with self._conn()` 中完成，无风险 | 2026-04-03 |
 | ~~HI-461~~ | ~~`backend`~~ | ~~`license_manager.py`~~ | ~~`find_by_buyer()` LIKE 模式未转义通配符~~ → **已修复 2026-04-11**: 增加 `\%`/`\_` 转义 + `ESCAPE '\'` | 2026-04-03 |
 | HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串。**部分修复 2026-04-11**: 5 个文件 9 处高危调用已用 `scrub_secrets()` 包装 (xianyu_agent/xianyu_apis/cookie_refresher/order_notifier/wechat_bridge)，剩余待后续批次处理 | 2026-04-03 |
 | HI-463 | `backend` | 20+文件 | httpx.AsyncClient per-request创建无重试逻辑 — 已有 `ResilientHTTPClient` 但大多数调用点未使用 | 2026-04-03 |

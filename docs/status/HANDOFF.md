@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-04-11 20:30] 遗留任务清理 — Flaky test + 日志脱敏 + 死代码验证
+
+### 本次完成了什么
+
+**HI-384 Flaky Test 修复**
+- `test_investment_full_pipeline` 新增 mock 隔离 `get_context_collector` + `get_response_synthesizer`
+- 根因：测试未 mock 响应合成器，导致真实 LiteLLM 调用受 Cooldown 状态影响
+
+**HI-462 日志脱敏（20处高风险）**
+- 新增 `utils.scrub_secrets()` 共享工具函数（8 种脱敏规则）
+- 修复 8 个文件 20 处高危 logger 调用（API Key / Bot Token / Cookie / SMTP 密码）
+- `litellm_router._scrub_secrets()` 改为代理到共享函数
+
+**死代码验证 (2项关闭)**
+- HI-460: `invest_tools._set_config` 确认是死代码，无需修复
+- HI-484: `.gitignore` 的 `lib/` 规则修复已生效
+
+### 验证结果
+- 后端测试: 1133/1133 passed, 0 failed
+- Python 语法: 全部通过
+
+### 未完成的工作
+1. **HI-462 剩余** — 还有 ~360 处低风险 logger.error 模式待处理（非 API/认证相关，优先级低）
+2. **HI-463** — 20+ 文件未使用 ResilientHTTPClient（中等成本）
+3. **HI-358** — 7 个 >1000 行大文件待拆（高成本）
+4. **HI-391** — 插件管理按钮占位实现
+
+### 当前系统状态
+- 后端: 1133/1133 passed
+- 活跃问题降至: HI-358/381/383/391/462(部分)/463
+
 ## [2026-04-11 19:30] 价值位阶审计 Tier 2-3 — 竞态修复 + 安全加固 + 连接泄漏
 
 ### 本次完成了什么
