@@ -210,7 +210,8 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         context = context or {}
 
         result = TaskResult(task_id=task_id, source=source)
-        self._active_tasks[task_id] = result
+        async with self._lock:
+            self._active_tasks[task_id] = result
 
         try:
             # 0. 收集上下文 (用户画像 + 对话历史)
@@ -353,17 +354,18 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     )
 
                 # 始终存储 pending callback（无论是否有可先执行的节点）
-                self._pending_callbacks[task_id] = {
-                    "intent": intent,
-                    "partial_task": partial_task,
-                    "graph": graph,
-                    "context": context,
-                    "created_at": time.time(),
-                }
-                # chat_id → task_id 映射，让下一条文本消息能路由回来
-                _clarify_chat_id = int(context.get("chat_id", 0))
-                if _clarify_chat_id:
-                    self._pending_clarifications[_clarify_chat_id] = task_id
+                async with self._lock:
+                    self._pending_callbacks[task_id] = {
+                        "intent": intent,
+                        "partial_task": partial_task,
+                        "graph": graph,
+                        "context": context,
+                        "created_at": time.time(),
+                    }
+                    # chat_id → task_id 映射，让下一条文本消息能路由回来
+                    _clarify_chat_id = int(context.get("chat_id", 0))
+                    if _clarify_chat_id:
+                        self._pending_clarifications[_clarify_chat_id] = task_id
 
                 result.needs_clarification = True
                 result.clarification_params = intent.missing_critical
@@ -498,10 +500,18 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             # 清理活跃任务（延迟清理，保留一段时间供查询）
             try:
                 loop = asyncio.get_running_loop()
-                loop.call_later(
-                    300, lambda tid=task_id: self._active_tasks.pop(tid, None)
+                async def _deferred_pop(tid: str) -> None:
+                    await asyncio.sleep(300)
+                    async with self._lock:
+                        self._active_tasks.pop(tid, None)
+                _cleanup = loop.create_task(_deferred_pop(task_id))
+                _cleanup.add_done_callback(
+                    lambda t: t.exception() and logger.debug(
+                        "[Brain] 延迟清理任务失败: %s", t.exception()
+                    )
                 )
             except RuntimeError as e:  # noqa: F841
+                # 无运行中的事件循环时直接同步清理
                 self._active_tasks.pop(task_id, None)
 
         return result
@@ -560,9 +570,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         """
         # 清除 chat_id 映射
         chat_id = int(context.get("chat_id", 0))
-        self._pending_clarifications.pop(chat_id, None)
-
-        pending = self._pending_callbacks.pop(task_id, None)
+        async with self._lock:
+            self._pending_clarifications.pop(chat_id, None)
+            pending = self._pending_callbacks.pop(task_id, None)
         result = TaskResult(task_id=task_id, source="clarification_reply")
 
         if pending is None:
@@ -649,7 +659,8 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         当用户点击按钮时，从 pending_callbacks 中恢复上下文并继续执行。
         """
         task_id = callback_id.split(":")[0] if ":" in callback_id else callback_id
-        pending = self._pending_callbacks.pop(task_id, None)
+        async with self._lock:
+            pending = self._pending_callbacks.pop(task_id, None)
 
         result = TaskResult(task_id=task_id, source="callback")
 
@@ -685,8 +696,8 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     # ── 任务管理 ──────────────────────────────────────
 
     def get_active_tasks(self) -> List[Dict]:
-        """获取所有活跃任务状态"""
-        return [r.to_dict() for r in self._active_tasks.values()]
+        """获取所有活跃任务状态（用快照迭代防止字典大小变化）"""
+        return [r.to_dict() for r in list(self._active_tasks.values())]
 
     def cancel_task(self, task_id: str) -> bool:
         """取消一个任务"""
