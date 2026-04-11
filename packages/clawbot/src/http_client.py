@@ -137,7 +137,7 @@ class ResilientHTTPClient:
         self.metrics = RequestMetrics()
         self.name = name
 
-    def _new_client(self) -> httpx.AsyncClient:
+    def _new_client(self, follow_redirects: bool = False) -> httpx.AsyncClient:
         """每次请求创建全新的 AsyncClient（模拟 curl 行为）
         
         核弹方案：g4f/Kiro 网关会主动关闭空闲连接，httpx 连接池
@@ -148,6 +148,7 @@ class ResilientHTTPClient:
         return httpx.AsyncClient(
             timeout=self.timeout,
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
+            follow_redirects=follow_redirects,
         )
 
     async def close(self):
@@ -172,11 +173,17 @@ class ResilientHTTPClient:
         json: Optional[Dict] = None,
         params: Optional[Dict] = None,
         content: Optional[bytes] = None,
+        data: Optional[Dict] = None,
+        files: Optional[Any] = None,
+        follow_redirects: bool = False,
         ssrf_check: bool = False,
     ) -> httpx.Response:
         """发送 HTTP 请求，带重试和熔断。
 
         Args:
+            data: 表单数据（multipart/form-data 或 application/x-www-form-urlencoded）。
+            files: 文件上传（multipart/form-data），格式同 httpx。
+            follow_redirects: 是否自动跟随重定向（默认 False）。
             ssrf_check: 是否对 URL 执行 SSRF 安全检查。
                 默认 False（内部已知安全的 API 调用无需检查）。
                 接受用户输入 URL 的场景应设为 True。
@@ -201,7 +208,7 @@ class ResilientHTTPClient:
         start_time = time.time()
 
         for attempt in range(self.retry.max_retries + 1):
-            client = self._new_client()
+            client = self._new_client(follow_redirects=follow_redirects)
             try:
                 response = await client.request(
                     method,
@@ -210,6 +217,8 @@ class ResilientHTTPClient:
                     json=json,
                     params=params,
                     content=content,
+                    data=data,
+                    files=files,
                 )
 
                 # 检查是否需要重试

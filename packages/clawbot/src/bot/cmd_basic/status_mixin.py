@@ -13,8 +13,12 @@ from src.bot.globals import (
 from src.litellm_router import free_pool
 from src.telegram_ux import with_typing
 from src.bot.auth import requires_auth
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=10.0, name="status_mixin")
 
 
 class _StatusMixin:
@@ -45,10 +49,8 @@ class _StatusMixin:
 
         # Gateway 连通性检测（超时延长到10秒，避免网络抖动误报）
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}/health")
-                gateway_status = "在线" if resp.status_code == 200 else "异常"
+            resp = await _http.get(f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}/health")
+            gateway_status = "在线" if resp.status_code == 200 else "异常"
         except Exception as e:  # noqa: F841
             gateway_status = "离线"
 

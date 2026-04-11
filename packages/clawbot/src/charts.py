@@ -19,7 +19,12 @@ import io
 import logging
 from typing import Any, Dict, List, Optional
 
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（自动重试 + 熔断，用于 mermaid.ink 渲染）
+_http_mermaid = ResilientHTTPClient(timeout=15.0, name="charts")
 
 # ── plotly 可用性探测 ────────────────────────────────────
 _PLOTLY_AVAILABLE = False
@@ -582,24 +587,17 @@ async def render_task_dag(
     # ── 渲染: mermaid.ink API ──
     import base64
 
-    try:
-        import httpx
-    except ImportError:
-        logger.warning("[charts] httpx 不可用，无法渲染 DAG")
-        return b""
-
     encoded = base64.urlsafe_b64encode(diagram.encode("utf-8")).decode("ascii")
     url = f"https://mermaid.ink/img/{encoded}"
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url)
-            if resp.status_code == 200:
-                return resp.content
-            logger.warning(
-                "[charts] mermaid.ink 返回 %s, diagram=%s",
-                resp.status_code, diagram[:200],
-            )
+        resp = await _http_mermaid.get(url)
+        if resp.status_code == 200:
+            return resp.content
+        logger.warning(
+            "[charts] mermaid.ink 返回 %s, diagram=%s",
+            resp.status_code, diagram[:200],
+        )
     except Exception as exc:
         logger.warning("[charts] mermaid.ink 请求失败: %s", exc)
 

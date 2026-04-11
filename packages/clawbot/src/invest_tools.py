@@ -20,8 +20,12 @@ from contextlib import contextmanager
 from typing import Optional, Dict, Tuple
 
 from src.utils import now_et, env_bool
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（自动重试 + 熔断，用于 Fear & Greed 指数查询）
+_http = ResilientHTTPClient(timeout=10, name="invest_tools")
 
 # ============ 行情缓存（统一代理到 QuoteCache） ============
 
@@ -678,14 +682,12 @@ async def get_fear_greed_index() -> Dict:
         return cached[0]
 
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://api.alternative.me/fng/?limit=1",
-                headers={"User-Agent": "OpenClaw-Bot/2.0"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await _http.get(
+            "https://api.alternative.me/fng/?limit=1",
+            headers={"User-Agent": "OpenClaw-Bot/2.0"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         entry = data.get("data", [{}])[0]
         value = int(entry.get("value", 50))

@@ -14,8 +14,13 @@ import os
 from typing import Dict, Optional
 
 from src.utils import scrub_secrets
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（带重试 + 熔断）— 图像和视频超时不同
+_http_img = ResilientHTTPClient(timeout=120.0, name="fal_image")
+_http_vid = ResilientHTTPClient(timeout=300.0, name="fal_video")
 
 
 def _get_fal_key() -> str:
@@ -76,20 +81,18 @@ async def generate_image(
 
     # 降级: HTTP 直调
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"https://queue.fal.run/{model}",
-                headers={"Authorization": f"Key {key}", "Content-Type": "application/json"},
-                json={"prompt": prompt, "image_size": size, "num_images": num_images},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                images = data.get("images", [])
-                if images:
-                    return images[0].get("url", "")
-            else:
-                logger.warning(f"fal.ai HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
+        resp = await _http_img.post(
+            f"https://queue.fal.run/{model}",
+            headers={"Authorization": f"Key {key}", "Content-Type": "application/json"},
+            json={"prompt": prompt, "image_size": size, "num_images": num_images},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            images = data.get("images", [])
+            if images:
+                return images[0].get("url", "")
+        else:
+            logger.warning(f"fal.ai HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
     except Exception as e:
         logger.warning(f"fal.ai HTTP 失败: {scrub_secrets(str(e))}")
     return None
@@ -135,17 +138,15 @@ async def generate_video(
 
     # HTTP fallback
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            resp = await client.post(
-                f"https://queue.fal.run/{model}",
-                headers={"Authorization": f"Key {key}", "Content-Type": "application/json"},
-                json={"prompt": prompt, "duration": duration},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                video = data.get("video", {})
-                return video.get("url", "") if isinstance(video, dict) else None
+        resp = await _http_vid.post(
+            f"https://queue.fal.run/{model}",
+            headers={"Authorization": f"Key {key}", "Content-Type": "application/json"},
+            json={"prompt": prompt, "duration": duration},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            video = data.get("video", {})
+            return video.get("url", "") if isinstance(video, dict) else None
     except Exception as e:
         logger.warning(f"fal.ai 视频 HTTP 失败: {scrub_secrets(str(e))}")
     return None

@@ -19,8 +19,12 @@ import logging
 from typing import Dict, List
 
 import httpx
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（带重试 + 熔断）
+_http = ResilientHTTPClient(timeout=10.0, name="free_apis")
 
 _BASE = "https://api.pearktrue.cn/api"  # free-api.com 主域名备用
 _TIMEOUT = 10.0
@@ -51,9 +55,8 @@ def _translate_weather(desc: str) -> str:
 async def get_weather(city: str) -> Dict:
     """获取城市天气预报（3日）— 使用 wttr.in（完全免费无 key）"""
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
-            r = await c.get(f"https://wttr.in/{city}?format=j1", headers=_HEADERS)
-            if r.status_code == 200:
+        r = await _http.get(f"https://wttr.in/{city}?format=j1", headers=_HEADERS)
+        if r.status_code == 200:
                 d = r.json()
                 cur = d.get("current_condition", [{}])[0]
                 forecasts = d.get("weather", [])
@@ -156,13 +159,12 @@ async def _fetch_bilibili_trending(c: httpx.AsyncClient) -> List[Dict]:
 async def get_exchange_rate(from_currency: str = "USD", to_currency: str = "CNY") -> Dict:
     """实时汇率查询"""
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
-            r = await c.get(f"https://open.er-api.com/v6/latest/{from_currency}")
-            if r.status_code == 200:
-                d = r.json()
-                rate = d.get("rates", {}).get(to_currency, 0)
-                return {"from": from_currency, "to": to_currency, "rate": rate,
-                        "time": d.get("time_last_update_utc", "")}
+        r = await _http.get(f"https://open.er-api.com/v6/latest/{from_currency}")
+        if r.status_code == 200:
+            d = r.json()
+            rate = d.get("rates", {}).get(to_currency, 0)
+            return {"from": from_currency, "to": to_currency, "rate": rate,
+                    "time": d.get("time_last_update_utc", "")}
     except Exception as e:
         logger.debug(f"汇率查询失败: {e}")
     return {"from": from_currency, "to": to_currency, "rate": 0, "error": "查询失败"}
@@ -181,13 +183,13 @@ async def query_express(tracking_number: str) -> str:
         return "请提供快递单号"
     tracking_number = tracking_number.strip()
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as c:
-            # 使用 kuaidi100 免费查询接口（自动识别快递公司）
-            r = await c.get(
-                "https://api.pearktrue.cn/api/express/",
-                params={"number": tracking_number},
-            )
-            if r.status_code == 200:
+        # 使用 kuaidi100 免费查询接口（自动识别快递公司）
+        r = await _http.get(
+            "https://api.pearktrue.cn/api/express/",
+            params={"number": tracking_number},
+            headers=_HEADERS,
+        )
+        if r.status_code == 200:
                 d = r.json()
                 if d.get("code") == 200 or d.get("status") == 200:
                     company = d.get("company", d.get("com", "未知快递"))
@@ -215,11 +217,10 @@ async def query_express(tracking_number: str) -> str:
 async def get_ip_info(ip: str = "") -> Dict:
     """IP 归属地查询"""
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
-            url = f"https://ipinfo.io/{ip}/json" if ip else "https://ipinfo.io/json"
-            r = await c.get(url)
-            if r.status_code == 200:
-                return r.json()
+        url = f"https://ipinfo.io/{ip}/json" if ip else "https://ipinfo.io/json"
+        r = await _http.get(url)
+        if r.status_code == 200:
+            return r.json()
     except Exception as e:
         logger.debug(f"IP查询失败: {e}")
     return {"error": "查询失败"}

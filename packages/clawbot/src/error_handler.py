@@ -16,7 +16,12 @@ import asyncio
 from collections import defaultdict
 from typing import Optional, Dict, Any
 
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（自动重试 + 熔断）
+_http = ResilientHTTPClient(timeout=10, name="error_handler")
 
 
 class ErrorCategory:
@@ -159,8 +164,6 @@ class ErrorHandler:
     ):
         """发送错误通知到管理员 Telegram"""
         try:
-            import httpx
-
             tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
             tb_short = "".join(tb_lines[-3:])[:500]
 
@@ -177,11 +180,10 @@ class ErrorHandler:
                 f"{tb_short}{suppressed_note}"
             )
 
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
-                    json={"chat_id": self.admin_chat_id, "text": text},
-                )
+            await _http.post(
+                f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
+                json={"chat_id": self.admin_chat_id, "text": text},
+            )
         except Exception as e:
             logger.debug(f"[ErrorHandler] 通知管理员失败: {e}")
 
