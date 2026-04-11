@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-08 | 新增: slider_solver.py (滑块自动求解器); 更新: xianyu_live.py (去掉Mac通知), xianyu_login.py (stealth+滑块+headless)
+> 最后更新: 2026-04-11 | 更新: 7个核心模块行数精确化(HI-411); brain.py 新增 asyncio.Lock 竞态保护描述
 
 ---
 
@@ -686,13 +686,13 @@
 | strategy_engine.py | `src/strategy_engine.py` | 710 | 交易策略引擎 v3.0 (7策略加权投票) |
 | synergy.py | `src/synergy.py` | 180 | 多 Bot 协同策略 |
 | **核心引擎 (src/core/)** | | | |
-| brain.py | `src/core/brain.py` | ~900 | ✅ OMEGA 核心大脑: 对话入口(process_message) + 复合意图拆解 + DAG编排 + 响应合成 + 追问建议 |
-| intent_parser.py | `src/core/intent_parser.py` | ~350 | ✅ 三级意图解析: 快速正则(60%命中) → LLM+instructor结构化 → legacy JSON解析 |
-| task_graph.py | `src/core/task_graph.py` | ~380 | ✅ DAG任务图: TaskGraphBuilder流式API + 并行调度 + 死锁检测 + 指数退避重试 + 超时 + fallback |
-| executor.py | `src/core/executor.py` | ~530 | ✅ 统一执行器: API→浏览器→语音→Composio→Skyvern→人工 6条路径 |
-| event_bus.py | `src/core/event_bus.py` | ~200 | ✅ 事件总线: 发布/订阅模式 + 跨模块解耦 + 异常隔离 |
-| cost_control.py | `src/core/cost_control.py` | ~250 | ✅ 成本控制: 预算检查 + 阈值告警 + 使用量追踪 |
-| self_heal.py | `src/core/self_heal.py` | ~620 | ✅ 自愈引擎6步: 错误分类→已知方案→记忆检索→Web搜索→替代方案→通知用户 + 熔断器 |
+| brain.py | `src/core/brain.py` | 848 | ✅ OMEGA 核心大脑: 对话入口(process_message) + 复合意图拆解 + DAG编排 + 响应合成 + 追问建议 + asyncio.Lock竞态保护 |
+| intent_parser.py | `src/core/intent_parser.py` | 611 | ✅ 三级意图解析: 快速正则(60%命中) → LLM+instructor结构化 → legacy JSON解析 |
+| task_graph.py | `src/core/task_graph.py` | 374 | ✅ DAG任务图: TaskGraphBuilder流式API + 并行调度 + 死锁检测 + 指数退避重试 + 超时 + fallback |
+| executor.py | `src/core/executor.py` | 542 | ✅ 统一执行器: API→浏览器→语音→Composio→Skyvern→人工 6条路径 + 平台熔断器 |
+| event_bus.py | `src/core/event_bus.py` | 346 | ✅ 事件总线: 发布/订阅 + 通配符匹配 + 优先级排序 + 异常隔离 + JSONL审计日志 + 线程安全单例 |
+| cost_control.py | `src/core/cost_control.py` | 247 | ✅ 成本控制: 模型定价表(8模型) + 日预算检查 + 80%阈值告警 + 成本感知模型路由 + 周报 |
+| self_heal.py | `src/core/self_heal.py` | 656 | ✅ 自愈引擎6步: 错误分类→已知方案(含tenacity重试)→记忆检索→Web搜索(Jina/Tavily)→替代方案→通知用户 + 熔断器(同一错误3次5分钟冷却) |
 | synergy_pipelines.py | `src/core/synergy_pipelines.py` | 550 | 跨模块协同管道: 交易→社媒/社交→投资/进化广播/风控过滤/新闻情感→风控(4h定时)/盈利庆祝帖 |
 | security.py | `src/core/security.py` | 349 | ✅ 安全防护层: 输入消毒(sanitize_input) + PIN(PBKDF2+盐+频率限制) + 审计日志(JSONL) + 权限三级分控(auto/confirm/always_human) + XSS/SQL注入/路径遍历/命令注入防护 |
 | **核心工具 (src/ 根级)** | | | |
