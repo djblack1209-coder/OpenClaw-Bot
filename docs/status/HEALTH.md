@@ -97,7 +97,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; trading_journal.py(1087→464行,4 Mixin); 仍有21个文件>800行待拆 | 2026-03-29 |
+| HI-358 | `backend` | 多文件 | R22已拆分: cmd_basic_mixin(子包7文件)+risk_config+trading_memory_bridge+broker_selector; trading_journal.py(1087→464行,4 Mixin); daily_brief.py(1158→498行,3子模块); 仍有20个文件>800行待拆 | 2026-03-29 |
 | HI-381 | `backend` | 120+文件 | P6: 120+处内联错误字符串分散在各模块 — 应统一到 error_messages.py (高成本, R27评估后推迟) | 2026-03-29 |
 | HI-383 | `backend` | 多文件 | P8: HTTP客户端/缓存/消息格式化碎片化 — 多个模块各自实现 httpx 客户端和缓存逻辑 (高成本, R27评估后推迟) | 2026-03-29 |
 | ~~HI-384~~ | ~~`backend`~~ | ~~`test_omega_core.py`~~ | ~~Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态~~ → **已修复 2026-04-11**: mock 隔离 get_context_collector + get_response_synthesizer，消除 LiteLLM Cooldown 依赖 | 2026-03-30 |

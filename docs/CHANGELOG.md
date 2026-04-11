@@ -5,6 +5,27 @@
 
 ---
 
+## [2026-04-11] 拆分 daily_brief.py 为 4 个子模块
+
+> 领域: `backend`
+> 影响模块: `daily_brief.py`, `daily_brief_llm.py`, `daily_brief_data.py`, `weekly_report.py`
+> 关联问题: HI-358
+
+### 变更内容
+- 将 1158 行的 `daily_brief.py` 拆分为编排器 + 3 个子模块，主文件降至 498 行
+- 修复 `weekly_report` 函数未定义的问题（之前代码意外嵌入 `generate_daily_brief()` 内部）
+- 修复 `generate_daily_brief()` 缺少正确返回值的问题（之前错误返回周报格式）
+- 新增执行摘要(LLM) + 智能建议(LLM) + 昨日对比(delta) 的正确调用链
+- 所有外部 import 无需修改，`daily_brief.py` re-export 保持向后兼容
+
+### 文件变更
+- `src/execution/daily_brief_llm.py` — 新增: LLM 辅助分析 (263行)，含 _analyze_news_with_llm / _generate_executive_summary / _generate_daily_recommendations
+- `src/execution/daily_brief_data.py` — 新增: 数据采集 (257行)，含 _get_yesterday_comparison / _calc_deltas / _format_delta / _build_today_agenda / _fetch_trending_projects / _get_timestamp_tag / _section
+- `src/execution/weekly_report.py` — 新增: 综合周报 (211行)，含 weekly_report() 独立函数
+- `src/execution/daily_brief.py` — 缩减至 498 行，保留 generate_daily_brief() 编排器 + 子模块 re-export
+
+---
+
 ## [2026-04-11] 拆分 trading_journal.py 为 Mixin 模块架构
 
 > 领域: `backend`

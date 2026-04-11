@@ -1,6 +1,58 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-11 | 更新: 7个核心模块行数精确化(HI-411); brain.py 新增 asyncio.Lock 竞态保护描述
+> 最后更新: 2026-04-11 | 更新: daily_brief.py 拆分为 4 模块 (HI-358)
+
+---
+
+## 新增模块 (2026-04-11)
+
+### daily_brief_llm.py — 日报 LLM 辅助分析
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/daily_brief_llm.py` |
+| 行数 | 263 |
+| 导入方 | `daily_brief.py` (re-export) |
+| 依赖 | `src.constants.FAMILY_QWEN`, `src.litellm_router.free_pool` |
+
+**Public API:**
+- `_analyze_news_with_llm(headlines, holdings)` — LLM 新闻分析 + 持仓关联
+- `_generate_executive_summary(sections_data)` — 2句话执行摘要 (LLM/模板降级)
+- `_generate_daily_recommendations(sections_data)` — 3条可操作建议 (LLM)
+
+---
+
+### daily_brief_data.py — 日报数据采集
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/daily_brief_data.py` |
+| 行数 | 257 |
+| 导入方 | `daily_brief.py`, `weekly_report.py` |
+| 依赖 | `src.execution._db.get_conn` |
+
+**Public API:**
+- `_section(title, items)` — 构建 format_digest section tuple
+- `_get_timestamp_tag()` — 时间戳标签
+- `_get_yesterday_comparison(db_path)` — 昨日指标对比数据
+- `_calc_deltas(today_data, yesterday_data)` — 今日 vs 昨日 delta
+- `_format_delta(value, unit)` — delta 格式化 (↑/↓)
+- `_build_today_agenda(db_path)` — 今日日程聚合 (5个数据源)
+- `_fetch_trending_projects()` — GitHub Trending 项目发现
+
+---
+
+### weekly_report.py — 综合周报
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/weekly_report.py` |
+| 行数 | 211 |
+| 导入方 | `daily_brief.py` (re-export), `scheduler.py`, `cmd_analysis_mixin.py` |
+| 依赖 | `src.notify_style`, `src.execution.daily_brief_data` |
+
+**Public API:**
+- `weekly_report()` — 生成综合周报 (社媒+闲鱼+成本+目标，4个section)
 
 ---
 
