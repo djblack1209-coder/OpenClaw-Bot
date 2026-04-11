@@ -409,10 +409,21 @@ class TestBrainPipeline:
         brain._exec_risk_check = mock_risk
         brain._exec_director_decision = mock_decision
 
-        result = await brain.process_message(
-            source="telegram",
-            message="帮我分析AAPL",
-        )
+        # mock 掉上下文收集器和响应合成器，隔离 LiteLLM 调用（HI-384 修复）
+        mock_ctx = MagicMock()
+        mock_ctx.collect = AsyncMock(return_value={
+            "user_profile": "", "conversation_summary": "",
+            "recent_messages": "", "cross_domain_signals": "",
+        })
+        mock_synth = MagicMock()
+        mock_synth.synthesize = AsyncMock(return_value=None)
+
+        with patch("src.core.brain.get_context_collector", return_value=mock_ctx), \
+             patch("src.core.brain.get_response_synthesizer", return_value=mock_synth):
+            result = await brain.process_message(
+                source="telegram",
+                message="帮我分析AAPL",
+            )
 
         # 验证流水线完整走通
         assert result.success is True, f"expected success, got error: {result.error}"
@@ -430,13 +441,8 @@ class TestBrainPipeline:
         # 验证结果中包含各节点的数据
         assert result.final_result is not None
         assert isinstance(result.final_result, dict)
-        # 合成层可能包装结果: synthesized_reply + _raw_data，或直接返回原始节点数据
-        if "synthesized_reply" in result.final_result:
-            # 合成层已生效 — 原始数据在 _raw_data 中
-            assert "_raw_data" in result.final_result
-            assert "decision" in result.final_result["_raw_data"]
-        else:
-            assert "decision" in result.final_result
+        # 合成器已 mock 为返回 None，结果应为原始节点数据
+        assert "decision" in result.final_result
 
         # 验证进度
         assert result.graph_progress is not None
