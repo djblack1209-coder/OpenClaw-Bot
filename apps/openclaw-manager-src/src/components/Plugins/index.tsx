@@ -96,10 +96,10 @@ export function Plugins() {
   };
 
   const togglePlugin = async (id: string, currentStatus: string) => {
-    // 开启时标记为"已配置"而非"运行中"（实际连接由 Gateway 管理）
-    const targetStatus: MCPPlugin['status'] = (currentStatus === 'running' || currentStatus === 'configured') ? 'stopped' : 'configured';
-    
-    // 乐观更新
+    const isActive = currentStatus === 'running' || currentStatus === 'configured';
+    // 乐观更新：开启时预设为 running，关闭时预设为 stopped
+    const targetStatus: MCPPlugin['status'] = isActive ? 'stopped' : 'running';
+
     setPlugins(prev => prev.map(p => {
       if (p.id === id) return { ...p, status: targetStatus };
       return p;
@@ -107,11 +107,20 @@ export function Plugins() {
 
     if (isTauri()) {
       try {
-        await invoke('toggle_mcp_plugin_status', { id, targetStatus });
+        if (isActive) {
+          // 停止插件进程
+          await invoke('stop_mcp_plugin', { id });
+          toast.success('插件已停止');
+        } else {
+          // 启动插件进程
+          await invoke('start_mcp_plugin', { id });
+          toast.success('插件已启动');
+        }
       } catch (e) {
+        const errMsg = typeof e === 'string' ? e : (e instanceof Error ? e.message : '未知错误');
         pluginsLogger.error('切换插件状态失败', e);
-        toast.error('插件状态切换失败');
-        // 失败时回滚
+        toast.error(`操作失败: ${errMsg}`);
+        // 失败时回滚到服务端真实状态
         fetchPlugins();
       }
     }
@@ -368,7 +377,13 @@ export function Plugins() {
           setPlugins(prev => prev.filter(p => p.id !== uninstallTarget.id));
           toast.success(`已卸载 ${uninstallTarget.name}`);
           if (isTauri()) {
-            invoke('remove_mcp_plugin', { id: uninstallTarget.id }).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
+            // 如果插件正在运行，先停止进程再删除配置
+            const stopFirst = uninstallTarget.status === 'running'
+              ? invoke('stop_mcp_plugin', { id: uninstallTarget.id }).catch(() => {})
+              : Promise.resolve();
+            stopFirst.then(() =>
+              invoke('remove_mcp_plugin', { id: uninstallTarget.id })
+            ).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
           }
           setUninstallTarget(null);
         }}

@@ -651,6 +651,20 @@ export const api = {
   omegaMediaModels: () =>
     invokeWithLog<Record<string, unknown>>('clawbot_api_omega_media_models'),
 
+  // ──── MCP 插件进程管理 ────
+
+  // 启动 MCP 插件进程（拉起子进程并标记为 running）
+  startMcpPlugin: (id: string) =>
+    invokeWithLog<void>('start_mcp_plugin', { id }),
+
+  // 停止 MCP 插件进程（终止子进程并标记为 stopped）
+  stopMcpPlugin: (id: string) =>
+    invokeWithLog<void>('stop_mcp_plugin', { id }),
+
+  // 查询 MCP 插件进程是否存活（返回 "running" 或 "stopped"）
+  getMcpPluginStatus: (id: string) =>
+    invokeWithLog<string>('get_mcp_plugin_status', { id }),
+
   // ──── New-API 网关管理 ────
 
   // 网关运行状态
