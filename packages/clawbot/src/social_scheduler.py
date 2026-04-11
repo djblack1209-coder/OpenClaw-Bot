@@ -615,6 +615,8 @@ class SocialAutopilot:
     _lock = threading.Lock()
     # 主事件循环引用，供线程池中的 job 函数调度异步操作
     _main_loop: Optional[asyncio.AbstractEventLoop] = None
+    # 保护 _current_publish_hour 的读写，防止线程竞争
+    _publish_hour_lock = threading.Lock()
 
     def __new__(cls) -> "SocialAutopilot":
         """Singleton — only one autopilot per process."""

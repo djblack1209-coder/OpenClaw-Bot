@@ -24,7 +24,7 @@ import base64
 import json
 import logging
 import os
-import random
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -95,8 +95,8 @@ def _load_credentials() -> tuple[Optional[str], Optional[str]]:
 
 
 def _random_wechat_uin() -> str:
-    """生成 X-WECHAT-UIN header（与 TypeScript 插件保持一致）。"""
-    uint32 = random.randint(0, 2**32 - 1)
+    """生成 X-WECHAT-UIN header（使用密码学安全随机数）。"""
+    uint32 = secrets.randbelow(2**32)
     return base64.b64encode(str(uint32).encode()).decode()
 
 
@@ -194,7 +194,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
         return False
 
     # 构建 sendmessage 请求体（与 TypeScript 插件格式一致）
-    client_id = f"openclaw-weixin-py-{random.randint(10000, 99999)}"
+    client_id = f"openclaw-weixin-py-{secrets.randbelow(90000) + 10000}"
     body = json.dumps({
         "msg": {
             "from_user_id": "",
