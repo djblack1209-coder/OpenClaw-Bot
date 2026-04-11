@@ -1,7 +1,18 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use crate::utils::platform::get_config_dir;
+
+/// 全局进程表：存储正在运行的 MCP 插件子进程
+static RUNNING_PROCESSES: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
+
+/// 获取全局进程表的引用
+fn get_process_map() -> &'static Mutex<HashMap<String, Child>> {
+    RUNNING_PROCESSES.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MCPPlugin {
@@ -113,4 +124,117 @@ pub async fn remove_mcp_plugin(id: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to write MCP config: {}", e))?;
 
     Ok(())
+}
+
+/// 启动 MCP 插件进程 — 读取配置、拉起子进程、记录到全局进程表
+#[tauri::command]
+pub async fn start_mcp_plugin(id: String) -> Result<(), String> {
+    // 读取插件配置
+    let plugins = get_mcp_plugins().await?;
+    let plugin = plugins.iter().find(|p| p.id == id)
+        .ok_or_else(|| format!("插件 {} 不存在", id))?;
+
+    // 校验启动命令是否已配置
+    let cmd = plugin.command.as_ref()
+        .ok_or_else(|| format!("插件 {} 未配置启动命令，请先在「配置」中设置", id))?;
+    if cmd.is_empty() {
+        return Err(format!("插件 {} 的启动命令为空，请先配置", id));
+    }
+
+    // 如果已有旧进程在运行，先终止它
+    {
+        let mut map = get_process_map().lock()
+            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+        if let Some(mut old_child) = map.remove(&id) {
+            let _ = old_child.kill();
+            let _ = old_child.wait();
+        }
+    }
+
+    // 构建子进程命令
+    let mut command = Command::new(cmd);
+    if let Some(args) = &plugin.args {
+        command.args(args);
+    }
+    if let Some(env) = &plugin.env {
+        command.envs(env);
+    }
+
+    // 子进程 IO 策略：stdin 关闭，stdout/stderr 丢弃（Tier 1 不做日志收集）
+    command.stdin(Stdio::null())
+           .stdout(Stdio::null())
+           .stderr(Stdio::null());
+
+    // 启动子进程
+    let child = command.spawn()
+        .map_err(|e| format!("启动插件 {} 失败: {}（命令: {} {}）",
+            id, e, cmd, plugin.args.as_ref().map_or(String::new(), |a| a.join(" "))))?;
+
+    log::info!("MCP 插件 {} 已启动，PID: {}", id, child.id());
+
+    // 存入全局进程表
+    {
+        let mut map = get_process_map().lock()
+            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+        map.insert(id.clone(), child);
+    }
+
+    // 更新配置文件中的状态为 running
+    toggle_mcp_plugin_status(id, "running".to_string()).await?;
+
+    Ok(())
+}
+
+/// 停止 MCP 插件进程 — 终止子进程并更新状态
+#[tauri::command]
+pub async fn stop_mcp_plugin(id: String) -> Result<(), String> {
+    // 尝试从进程表中取出子进程
+    let child = {
+        let mut map = get_process_map().lock()
+            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+        map.remove(&id)
+    };
+
+    // 如果有进程在运行，终止它
+    if let Some(mut child) = child {
+        let pid = child.id();
+        child.kill().map_err(|e| format!("终止插件 {} 进程(PID {})失败: {}", id, pid, e))?;
+        // 等待进程退出，回收系统资源
+        let _ = child.wait();
+        log::info!("MCP 插件 {} 已停止，PID: {}", id, pid);
+    }
+
+    // 无论是否有进程，都更新配置状态为 stopped
+    toggle_mcp_plugin_status(id, "stopped".to_string()).await?;
+
+    Ok(())
+}
+
+/// 查询 MCP 插件进程是否存活
+#[tauri::command]
+pub async fn get_mcp_plugin_status(id: String) -> Result<String, String> {
+    let mut map = get_process_map().lock()
+        .map_err(|e| format!("锁定进程表失败: {}", e))?;
+
+    if let Some(child) = map.get_mut(&id) {
+        match child.try_wait() {
+            Ok(Some(_exit_status)) => {
+                // 进程已自行退出，从表中移除
+                map.remove(&id);
+                Ok("stopped".to_string())
+            }
+            Ok(None) => {
+                // 进程仍在运行
+                Ok("running".to_string())
+            }
+            Err(e) => {
+                // 无法检查进程状态，视为已停止
+                map.remove(&id);
+                Err(format!("检查插件 {} 进程状态失败: {}", id, e))
+            }
+        }
+    } else {
+        // 进程表中无记录，视为未运行
+        Ok("stopped".to_string())
+    }
 }
