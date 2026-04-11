@@ -110,9 +110,9 @@
 | HI-456 | `backend` | `brain.py` | `_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护 — 快速连续消息可能竞态 | 2026-04-03 |
 | HI-457 | `backend` | `social_tools.py` | `PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问无 `threading.Lock` | 2026-04-03 |
 | ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
-| HI-459 | `backend` | `wechat_bridge.py` | `random.randint` 用于 `X-WECHAT-UIN` 认证header — 应用 `secrets` 模块 | 2026-04-03 |
+| ~~HI-459~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~`random.randint` 用于 `X-WECHAT-UIN` 认证header~~ → **已修复 2026-04-11**: 全部替换为 `secrets.randbelow()` | 2026-04-03 |
 | HI-460 | `backend` | `invest_tools.py` | `Portfolio.buy()/sell()` cash read和update虽已合并到同一事务，但 `_set_config` 仍是独立函数 — 需验证合并效果 | 2026-04-03 |
-| HI-461 | `backend` | `license_manager.py` | `find_by_buyer()` LIKE 模式 `%{buyer_id}%` 未转义 `%`/`_` — buyer_id含通配符可能匹配其他用户 | 2026-04-03 |
+| ~~HI-461~~ | ~~`backend`~~ | ~~`license_manager.py`~~ | ~~`find_by_buyer()` LIKE 模式未转义通配符~~ → **已修复 2026-04-11**: 增加 `\%`/`\_` 转义 + `ESCAPE '\'` | 2026-04-03 |
 | HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串 | 2026-04-03 |
 | HI-463 | `backend` | 20+文件 | httpx.AsyncClient per-request创建无重试逻辑 — 已有 `ResilientHTTPClient` 但大多数调用点未使用 | 2026-04-03 |
 

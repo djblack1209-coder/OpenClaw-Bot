@@ -5,6 +5,33 @@
 
 ---
 
+## [2026-04-11] 价值位阶审计 Tier 1-2 — 安全/稳定性/CVE 修复
+
+> 领域: `backend`, `security`, `infra`
+> 影响模块: `wechat_bridge.py`, `license_manager.py`, `social_scheduler.py`, `browser-use`, `aiohttp`, `litellm`, `cryptography`
+> 关联问题: HI-459, HI-461, HI-390, HI-458
+
+### 安全修复 (2项)
+- `wechat_bridge.py` — `random.randint` 替换为 `secrets.randbelow`，认证 header 不再可预测 (HI-459)
+- `license_manager.py` — `find_by_buyer()` LIKE 查询增加 `\%`/`\_` 转义 + `ESCAPE '\'` 子句，防止 SQL 通配符注入 (HI-461)
+
+### 稳定性修复 (2项)
+- `social_scheduler.py` — `_run_async()` 改用 `run_coroutine_threadsafe()` 调度到主事件循环，EventBus 事件不再跨循环丢失 (HI-390)
+- `social_scheduler.py` — `_current_publish_hour` 读写增加 `threading.Lock` 保护 (HI-458)
+
+### 依赖升级 (4项)
+- `browser-use` 0.12.2 → 0.12.6 — 解除对多个包的严格版本锁定
+- `aiohttp` 3.13.3 → 3.13.4 — 修复 10 个 CVE (HTTP 解析漏洞)
+- `litellm` 1.82.6 → 1.83.0 — 修复 3 个 CVE/GHSA
+- `cryptography` 46.0.6 → 46.0.7 — 修复 1 个 CVE (加密库漏洞)
+
+### 文件变更
+- `packages/clawbot/src/wechat_bridge.py` — random→secrets
+- `packages/clawbot/src/deployer/license_manager.py` — LIKE 转义
+- `packages/clawbot/src/social_scheduler.py` — 事件循环 + 线程锁
+
+---
+
 ## [2026-04-11] social_scheduler 稳定性修复 — 事件循环传播 + 线程安全
 
 > 领域: `backend`
