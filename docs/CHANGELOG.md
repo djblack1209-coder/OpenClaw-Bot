@@ -5,6 +5,26 @@
 
 ---
 
+## [2026-04-11] 拆分 trading_journal.py 为 Mixin 模块架构
+
+> 领域: `backend`
+> 影响模块: `trading_journal.py`, `journal_performance.py`, `journal_predictions.py`, `journal_targets.py`, `journal_review.py`
+> 关联问题: HI-358
+
+### 变更内容
+- 将 1087 行的 `trading_journal.py` 按 DB 表域名拆分为 4 个 Mixin 模块
+- 主类 `TradingJournal` 通过多继承组合所有 Mixin，保持完全向后兼容
+- 所有外部 import（`from src.trading_journal import journal/TradingJournal`）无需修改
+
+### 文件变更
+- `src/journal_performance.py` — 新增：绩效统计 Mixin (202行)，含 get_performance/get_today_pnl/get_equity_curve/format_performance
+- `src/journal_predictions.py` — 新增：研判预期 Mixin (145行)，含 record_prediction/validate_predictions/get_prediction_accuracy
+- `src/journal_targets.py` — 新增：盈利目标 Mixin (115行)，含 set_profit_target/update_profit_target_progress/get_active_targets/format_target_progress
+- `src/journal_review.py` — 新增：复盘迭代 Mixin (221行)，含 save_review_session/get_latest_review/get_review_history/generate_review_data/format_review_prompt/generate_iteration_report
+- `src/trading_journal.py` — 缩减至 464 行，保留 DB 初始化/配置/交易 CRUD/cleanup/全局 singleton
+
+---
+
 ## [2026-04-11] 遗留任务清理 — Flaky test + 日志脱敏 + 死代码验证
 
 > 领域: `backend`, `xianyu`, `security`
