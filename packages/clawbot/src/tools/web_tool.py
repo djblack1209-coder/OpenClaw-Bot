@@ -4,7 +4,6 @@ ClawBot - 网页抓取工具（含 SSRF 防护）
 import httpx
 import re
 from typing import Dict, Any
-from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import logging
 

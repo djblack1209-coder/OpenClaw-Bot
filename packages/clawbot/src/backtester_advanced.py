@@ -14,7 +14,6 @@ import itertools
 from typing import Dict, List, Any
 
 from src.backtester_models import (
-    Bar,
     BacktestConfig,
     PerformanceReport,
     load_historical_data,

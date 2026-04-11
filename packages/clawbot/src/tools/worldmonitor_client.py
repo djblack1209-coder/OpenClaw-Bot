@@ -9,7 +9,7 @@
 import asyncio
 import os
 import time
-from typing import Dict, List, Optional, Any, Tuple, Sequence
+from typing import Dict, List, Optional, Any, Tuple
 
 import httpx
 

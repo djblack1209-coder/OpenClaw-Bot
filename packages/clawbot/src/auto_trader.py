@@ -1052,5 +1052,4 @@ class AutoTrader:
         return count
 
 # ── 向后兼容导出 (v6.0 拆分) ──
-from src.trading.market_calendar import is_market_holiday  # noqa: F401
-from src.trading_pipeline import TradingPipeline, TraderState  # noqa: F401
+from src.trading_pipeline import TradingPipeline  # noqa: F401
