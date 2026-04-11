@@ -5,6 +5,46 @@
 
 ---
 
+## [2026-04-11] 遗留任务清理 — Flaky test + 日志脱敏 + 死代码验证
+
+> 领域: `backend`, `xianyu`, `security`
+> 影响模块: `test_omega_core.py`, `utils.py`, `litellm_router.py`, `api_mixin.py`, `fal_client.py`, `deepgram_stt.py`, `xianyu_agent.py`, `xianyu_apis.py`, `cookie_refresher.py`, `order_notifier.py`, `wechat_bridge.py`
+> 关联问题: HI-384, HI-460, HI-462, HI-484
+
+### Flaky Test 修复 (1项)
+- `test_omega_core.py::test_investment_full_pipeline` — 新增 mock 隔离 `get_context_collector` 和 `get_response_synthesizer`，消除对 LiteLLM Cooldown 状态的依赖 (HI-384)
+
+### 日志脱敏基础设施 + 20处高风险修复 (HI-462)
+- `utils.py` — 新增 `scrub_secrets()` 共享工具函数，覆盖 API Key/Bearer Token/Cookie/Telegram Bot Token/SMTP 密码/内部 URL 等 8 种脱敏规则
+- `litellm_router.py` — `_scrub_secrets()` 改为代理到 `utils.scrub_secrets()`，消除代码重复
+- `api_mixin.py` — 4 处 LLM 异常日志脱敏
+- `fal_client.py` — 6 处 fal.ai API 异常日志脱敏
+- `deepgram_stt.py` — 1 处 Deepgram API 响应脱敏
+- `xianyu_agent.py` — 2 处 LLM 调用异常脱敏
+- `xianyu_apis.py` — 2 处 Cookie/Token 异常脱敏
+- `cookie_refresher.py` — 2 处 Cookie 刷新异常脱敏
+- `order_notifier.py` — 2 处邮件/Telegram 发送异常脱敏（含 Bot Token URL 保护）
+- `wechat_bridge.py` — 1 处 HTTP 响应体脱敏
+
+### 死代码验证 (2项)
+- HI-460 关闭：`invest_tools.py` 的 `_set_config` 确认是死代码，buy/sell 现金事务已完整合并
+- HI-484 关闭：`.gitignore` 的 `lib/` 规则修复已生效，`src/lib/` 3个文件已正常被 Git 跟踪
+
+### 文件变更
+- `packages/clawbot/src/utils.py` — 新增 scrub_secrets()
+- `packages/clawbot/src/litellm_router.py` — _scrub_secrets 代理
+- `packages/clawbot/tests/test_omega_core.py` — Flaky test mock 隔离
+- `packages/clawbot/src/bot/api_mixin.py` — 4处脱敏
+- `packages/clawbot/src/tools/fal_client.py` — 6处脱敏
+- `packages/clawbot/src/tools/deepgram_stt.py` — 1处脱敏
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — 2处脱敏
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — 2处脱敏
+- `packages/clawbot/src/xianyu/cookie_refresher.py` — 2处脱敏
+- `packages/clawbot/src/xianyu/order_notifier.py` — 2处脱敏
+- `packages/clawbot/src/wechat_bridge.py` — 1处脱敏
+
+---
+
 ## [2026-04-11] HI-462 Logger 敏感信息泄漏修复 (批次1: 5文件9处)
 
 > 领域: `backend`, `xianyu`
