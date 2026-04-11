@@ -106,7 +106,7 @@
 | HI-393 | `infra` | `kiro-gateway` | ~~Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`~~ → **已修复**: .env 中已替换为 64 位强随机 token | 2026-04-01 |
 | ~~HI-394~~ | ~~`frontend`~~ | ~~`config.rs`~~ | ~~Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源~~ → **已修复 2026-04-11**: 改用 `getrandom` crate 跨平台密码学安全随机源 | 2026-04-01 |
 | ~~HI-410~~ | ~~`backend`~~ | ~~`xianyu_apis.py`~~ | ~~XianyuApis httpx.AsyncClient 无自动关闭机制~~ → **已修复 2026-04-11**: XianyuLive 新增 `close()` 方法 + xianyu_main.py finally 块调用 | 2026-04-03 |
-| HI-411 | `docs` | `MODULE_REGISTRY.md` | 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal) 未注册 | 2026-04-03 |
+| ~~HI-411~~ | ~~`docs`~~ | ~~`MODULE_REGISTRY.md`~~ | ~~7 个核心模块未注册~~ → **已修复 2026-04-11**: 行数从近似值更新为精确值，描述补全 | 2026-04-03 |
 | ~~HI-456~~ | ~~`backend`~~ | ~~`brain.py`~~ | ~~`_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护~~ → **已修复 2026-04-11**: 已有 `self._lock` 现已在所有读写入口加 `async with self._lock` 保护 | 2026-04-03 |
 | ~~HI-457~~ | ~~`backend`~~ | ~~`social_tools.py`~~ | ~~`PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问~~ → **已修复 2026-04-11**: `_save()` 改用锁内快照写盘 + 单例工厂加双重检查锁 | 2026-04-03 |
 | ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
