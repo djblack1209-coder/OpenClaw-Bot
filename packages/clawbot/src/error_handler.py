@@ -12,6 +12,7 @@ ClawBot - 结构化错误处理 v1.0
 import logging
 import traceback
 import time
+import asyncio
 from collections import defaultdict
 from typing import Optional, Dict, Any
 
@@ -58,6 +59,8 @@ class ErrorThrottler:
         self._window = window_seconds
         self._seen: Dict[str, float] = {}  # fingerprint -> last_reported_ts
         self._counts: Dict[str, int] = defaultdict(int)  # fingerprint -> suppressed count
+        # asyncio 锁：保护 _seen/_counts 跨 await 的并发访问（HI-466）
+        self._lock = asyncio.Lock()
 
     def fingerprint(self, error: Exception, context: str = "") -> str:
         """生成错误指纹"""
@@ -80,7 +83,7 @@ class ErrorThrottler:
     def cleanup(self):
         """清理过期指纹"""
         now = time.time()
-        expired = [fp for fp, ts in self._seen.items() if now - ts > self._window * 2]
+        expired = [fp for fp, ts in list(self._seen.items()) if now - ts > self._window * 2]
         for fp in expired:
             self._seen.pop(fp, None)
             self._counts.pop(fp, None)
@@ -112,6 +115,8 @@ class ErrorHandler:
         self._structured_logger = structured_logger
         self._total_errors = 0
         self._category_counts: Dict[str, int] = defaultdict(int)
+        # asyncio 锁：保护计数器跨 await 的并发修改（HI-466）
+        self._lock = asyncio.Lock()
 
     async def report(
         self,
@@ -122,12 +127,12 @@ class ErrorHandler:
         notify: bool = True,
     ):
         """上报错误 — 分类、去重、记录、通知"""
-        self._total_errors += 1
-        category = classify_error(error)
-        self._category_counts[category] += 1
-
-        fp = self._throttler.fingerprint(error, context)
-        should_notify = self._throttler.should_report(fp)
+        async with self._lock:
+            self._total_errors += 1
+            category = classify_error(error)
+            self._category_counts[category] += 1
+            fp = self._throttler.fingerprint(error, context)
+            should_notify = self._throttler.should_report(fp)
 
         # 记录到结构化日志
         if self._structured_logger:

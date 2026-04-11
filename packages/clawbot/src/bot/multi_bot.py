@@ -36,9 +36,11 @@ logger = logging.getLogger(__name__)
 # 使得 "最近交易做得怎么样" 能得到基于真实 P&L 的回答
 
 import time as _time
+import threading as _threading
 
 _live_context_cache = {"text": "", "ts": 0}
 _LIVE_CONTEXT_TTL = 60  # 缓存60秒，避免每条消息都拉取
+_live_context_lock = _threading.Lock()  # 线程锁：PTB concurrent_updates=True 下多线程访问保护（HI-467）
 
 
 def _build_live_context() -> str:
@@ -48,8 +50,9 @@ def _build_live_context() -> str:
     全部从内存/本地数据获取，不做网络请求 (< 10ms)
     """
     now = _time.monotonic()
-    if now - _live_context_cache["ts"] < _LIVE_CONTEXT_TTL:
-        return _live_context_cache["text"]
+    with _live_context_lock:
+        if now - _live_context_cache["ts"] < _LIVE_CONTEXT_TTL:
+            return _live_context_cache["text"]
 
     sections = []
 
@@ -113,13 +116,15 @@ def _build_live_context() -> str:
     )
 
     if not sections:
-        _live_context_cache["text"] = ""
-        _live_context_cache["ts"] = now
+        with _live_context_lock:
+            _live_context_cache["text"] = ""
+            _live_context_cache["ts"] = now
         return ""
 
     text = "\n\n【实时状态】\n" + "\n".join(f"• {s}" for s in sections) + "\n"
-    _live_context_cache["text"] = text
-    _live_context_cache["ts"] = now
+    with _live_context_lock:
+        _live_context_cache["text"] = text
+        _live_context_cache["ts"] = now
     return text
 
 

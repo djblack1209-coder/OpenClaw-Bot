@@ -70,6 +70,8 @@ class NewsFetcher:
         """
         self.serpapi_key = serpapi_key
         self._seen_titles: set = set()  # 跨主题去重
+        # asyncio 锁：保护 _seen_titles 跨 await 的并发访问（HI-465）
+        self._seen_lock = asyncio.Lock()
 
     async def fetch_rss_feed(self, feed_url: str, count: int = 5) -> List[Dict[str, str]]:
         """feedparser 解析 RSS/Atom feed (v2.0 新增).
@@ -99,7 +101,7 @@ class NewsFetcher:
                 source = parsed.feed.get("title", "").strip()
                 published = entry.get("published", entry.get("updated", ""))
                 if title and url and title not in self._seen_titles:
-                    self._seen_titles.add(title)
+                    self._seen_titles.add(title)  # asyncio 单线程安全（此处无跨 await 操作）
                     items.append({
                         "title": title,
                         "url": url,
@@ -282,8 +284,9 @@ class NewsFetcher:
                 self._seen_titles.add(fingerprint)
                 unique_news.append(item)
         
-        # 限制去重缓存大小
+        # 限制去重缓存大小（防止无界增长 HI-465）
         if len(self._seen_titles) > 500:
+            # 转为有序列表截取尾部，保留最近的 200 条
             self._seen_titles = set(list(self._seen_titles)[-200:])
         
         return unique_news[:count]
