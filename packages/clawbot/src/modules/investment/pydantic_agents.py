@@ -316,24 +316,24 @@ class PydanticInvestmentEngine:
 
         raw = resp.json()["choices"][0]["message"]["content"].strip()
 
-            # 去除 thinking 标签
-            import re
-            raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        # 去除 thinking 标签
+        import re
+        raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
 
-            # 提取 JSON
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw, re.DOTALL)
-            if json_match:
-                raw = json_match.group()
+        # 提取 JSON
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw, re.DOTALL)
+        if json_match:
+            raw = json_match.group()
 
-            # Pydantic 校验
-            try:
-                parsed = output_type.model_validate_json(raw)
-            except Exception as e:  # noqa: F841
-                import json_repair
-                data_dict = json_repair.loads(raw)
-                parsed = output_type.model_validate(data_dict)
+        # Pydantic 校验
+        try:
+            parsed = output_type.model_validate_json(raw)
+        except Exception as e:  # noqa: F841
+            import json_repair
+            data_dict = json_repair.loads(raw)
+            parsed = output_type.model_validate(data_dict)
 
-            return (agent_name, parsed, model)
+        return (agent_name, parsed, model)
 
     async def _fetch_data(self, symbol: str) -> Dict:
         """获取市场数据"""

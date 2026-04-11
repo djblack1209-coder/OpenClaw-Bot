@@ -149,20 +149,15 @@ class OrderNotifier:
             self._send_telegram_sync(url, payload)
 
     async def _send_telegram_async(self, url: str, payload: dict):
-        """异步版 Telegram 通知发送（3 次重试 + 指数退避）"""
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        logger.info("Telegram 通知已发送")
-                        return
-                    logger.debug("[订单通知] 异步发送尝试 %d/3 HTTP %d: %s", attempt + 1, resp.status_code, resp.text[:200])
-            except Exception as e:
-                logger.debug("[订单通知] 异步发送尝试 %d/3 失败: %s", attempt + 1, e)
-            if attempt < 2:
-                await asyncio.sleep(2 ** attempt)
-        logger.warning("[订单通知] Telegram 异步 3 次重试均失败")
+        """异步版 Telegram 通知发送（由 ResilientHTTPClient 自动重试）"""
+        try:
+            resp = await _http.post(url, json=payload)
+            if resp.status_code == 200:
+                logger.info("Telegram 通知已发送")
+                return
+            logger.debug("[订单通知] 异步发送 HTTP %d: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("[订单通知] Telegram 异步发送失败: %s", e)
 
     async def send_qr_login(self, qr_png: bytes):
         """发送闲鱼登录二维码图片到 Telegram"""
@@ -170,25 +165,26 @@ class OrderNotifier:
             logger.debug("Telegram 未配置，无法发送二维码")
             return
         url = f"https://api.telegram.org/bot{self.tg_token}/sendPhoto"
+        # 使用 timeout=30 的独立客户端（文件上传需要更长超时）
+        _http_upload = ResilientHTTPClient(timeout=30.0, name="order_notifier_upload")
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(
-                    url,
-                    data={
-                        "chat_id": self.tg_chat_id,
-                        "caption": (
-                            "🔐 闲鱼 Cookie 已过期，需要重新登录\n\n"
-                            "请用 闲鱼 或 淘宝 APP 扫描上方二维码\n"
-                            "扫码后在手机上确认登录\n\n"
-                            "⏱️ 二维码有效期 5 分钟"
-                        ),
-                    },
-                    files={"photo": ("xianyu_qr.png", qr_png, "image/png")},
-                )
-                if resp.status_code == 200:
-                    logger.info("闲鱼登录二维码已发送到 Telegram")
-                else:
-                    logger.warning(f"发送二维码失败: HTTP {resp.status_code}")
+            resp = await _http_upload.post(
+                url,
+                data={
+                    "chat_id": self.tg_chat_id,
+                    "caption": (
+                        "🔐 闲鱼 Cookie 已过期，需要重新登录\n\n"
+                        "请用 闲鱼 或 淘宝 APP 扫描上方二维码\n"
+                        "扫码后在手机上确认登录\n\n"
+                        "⏱️ 二维码有效期 5 分钟"
+                    ),
+                },
+                files={"photo": ("xianyu_qr.png", qr_png, "image/png")},
+            )
+            if resp.status_code == 200:
+                logger.info("闲鱼登录二维码已发送到 Telegram")
+            else:
+                logger.warning(f"发送二维码失败: HTTP {resp.status_code}")
         except Exception as e:
             logger.error(f"发送二维码到 Telegram 失败: {scrub_secrets(str(e))}")
 

@@ -135,7 +135,6 @@ async def _get_context_token(token: str, user_id: str) -> Optional[str]:
         return _cached_context_token
 
     try:
-        import httpx
         body = json.dumps({
             "ilink_user_id": user_id,
             "base_info": {"channel_version": "1.0.2"},
@@ -143,13 +142,12 @@ async def _get_context_token(token: str, user_id: str) -> Optional[str]:
         body_bytes = body.encode("utf-8")
         headers = _build_headers(token, body_bytes)
 
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{_ILINK_BASE}/ilink/bot/getconfig",
-                content=body_bytes,
-                headers=headers,
-            )
-            if resp.status_code == 200:
+        resp = await _http.post(
+            f"{_ILINK_BASE}/ilink/bot/getconfig",
+            content=body_bytes,
+            headers=headers,
+        )
+        if resp.status_code == 200:
                 data = resp.json()
                 ct = data.get("context_token", "")
                 if ct:
@@ -194,7 +192,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     context_token = await _get_context_token(token, target)
 
     try:
-        import httpx
+        import httpx  # noqa: F811 — 保留用于 ImportError 检查
     except ImportError:
         logger.debug("[WeChatBridge] httpx 未安装，跳过微信通知")
         return False
@@ -218,30 +216,28 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     body_bytes = body.encode("utf-8")
     headers = _build_headers(token, body_bytes)
 
-    for attempt in range(3):
+    # 最多重试 1 次（仅用于 401/403 token 刷新，网络级重试由 ResilientHTTPClient 处理）
+    for attempt in range(2):
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(
-                    f"{_ILINK_BASE}/ilink/bot/sendmessage",
-                    content=body_bytes,
-                    headers=headers,
-                )
-                if resp.status_code == 200:
-                    logger.debug(f"[WeChatBridge] 消息已发送到微信 {target[:20]}...")
-                    return True
-                # token 过期，清缓存重试
-                if resp.status_code in (401, 403):
-                    _cached_context_token = None
-                    _context_token_ts = 0
-                    context_token = await _get_context_token(token, target)
-                    continue
-                logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
+            resp = await _http.post(
+                f"{_ILINK_BASE}/ilink/bot/sendmessage",
+                content=body_bytes,
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                logger.debug(f"[WeChatBridge] 消息已发送到微信 {target[:20]}...")
+                return True
+            # token 过期，清缓存重试
+            if resp.status_code in (401, 403):
                 _cached_context_token = None
                 _context_token_ts = 0
+                context_token = await _get_context_token(token, target)
+                continue
+            logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
+            _cached_context_token = None
+            _context_token_ts = 0
         except Exception as e:
-            logger.debug("[微信桥接] 发送尝试 %d/3 失败: %s", attempt + 1, e)
-            if attempt < 2:
-                await asyncio.sleep(2 ** attempt)
+            logger.debug("[微信桥接] 发送失败: %s", e)
     return False
 
 
