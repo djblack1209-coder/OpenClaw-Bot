@@ -13,7 +13,13 @@ import os
 import time
 from typing import Optional, Dict, Any
 
+from src.http_client import ResilientHTTPClient
+
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（自动重试 + 熔断）
+_http_g4f = ResilientHTTPClient(timeout=5.0, name="monitoring_g4f")
+_http_tg = ResilientHTTPClient(timeout=10, name="monitoring_telegram")
 
 
 # ============ g4f 健康检查 ============
@@ -28,15 +34,13 @@ async def check_g4f_health(
     返回: {"alive": bool, "latency_ms": float, "error": str|None}
     """
     try:
-        import httpx
         start = time.time()
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(f"http://{host}:{port}/v1/models")
-            latency = (time.time() - start) * 1000
-            if resp.status_code == 200:
-                return {"alive": True, "latency_ms": round(latency, 1), "error": None}
-            return {"alive": False, "latency_ms": round(latency, 1),
-                    "error": f"HTTP {resp.status_code}"}
+        resp = await _http_g4f.get(f"http://{host}:{port}/v1/models")
+        latency = (time.time() - start) * 1000
+        if resp.status_code == 200:
+            return {"alive": True, "latency_ms": round(latency, 1), "error": None}
+        return {"alive": False, "latency_ms": round(latency, 1),
+                "error": f"HTTP {resp.status_code}"}
     except Exception as e:
         return {"alive": False, "latency_ms": -1, "error": str(e)}
 
@@ -92,13 +96,11 @@ class TelegramAlertNotifier:
 
     async def _send(self, rule_name: str, message: str):
         try:
-            import httpx
             text = f"⚠️ 告警: {rule_name}\n───────────────────\n{message}"
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
-                    json={"chat_id": self.chat_id, "text": text},
-                )
+            await _http_tg.post(
+                f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
+                json={"chat_id": self.chat_id, "text": text},
+            )
         except Exception as e:
             logger.debug(f"[TelegramAlert] 发送失败: {e}")
 

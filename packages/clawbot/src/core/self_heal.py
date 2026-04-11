@@ -25,7 +25,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Coroutine, Dict, List, Optional
 
-import httpx
+from src.http_client import ResilientHTTPClient
+
+# 模块级 HTTP 客户端（自动重试 + 熔断，用于 Tavily 搜索）
+_http = ResilientHTTPClient(timeout=15.0, name="self_heal")
 
 try:
     from tenacity import (
@@ -452,25 +455,24 @@ class SelfHealEngine:
             return None
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    "https://api.tavily.com/search",
-                    json={
-                        "api_key": tavily_key,
-                        "query": f"python error solution: {error_msg[:150]}",
-                        "search_depth": "basic",
-                        "max_results": 3,
-                        "include_answer": True,
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    answer = data.get("answer", "")
-                    if answer:
-                        return answer
-                    results = data.get("results", [])
-                    if results:
-                        return results[0].get("content", "")[:500]
+            resp = await _http.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": tavily_key,
+                    "query": f"python error solution: {error_msg[:150]}",
+                    "search_depth": "basic",
+                    "max_results": 3,
+                    "include_answer": True,
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                answer = data.get("answer", "")
+                if answer:
+                    return answer
+                results = data.get("results", [])
+                if results:
+                    return results[0].get("content", "")[:500]
         except Exception as e:
             logger.debug(f"Tavily搜索失败: {e}")
         return None

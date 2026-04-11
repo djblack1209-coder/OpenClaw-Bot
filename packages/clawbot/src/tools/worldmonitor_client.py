@@ -12,6 +12,7 @@ import time
 from typing import Dict, List, Optional, Any, Tuple
 
 import httpx
+from src.http_client import ResilientHTTPClient
 
 import logging
 
@@ -26,6 +27,9 @@ _HEADERS = {
     "User-Agent": "OpenClaw-Bot/1.0",
     "Accept": "application/json",
 }
+
+# 模块级 HTTP 客户端（带重试 + 熔断）— 仅用于 RSS 降级
+_http_rss = ResilientHTTPClient(timeout=15.0, name="worldmonitor_rss")
 
 # --- 行业分类 → API 端点映射 ---
 INDUSTRY_CATEGORIES: Dict[str, dict] = {
@@ -203,13 +207,12 @@ async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> List[Di
     encoded = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded}&hl=en&gl=US&ceid=US:en"
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(url, headers={
-                "User-Agent": "OpenClaw-Bot/1.0",
-            })
-            if resp.status_code != 200:
-                return []
-            items: List[Dict] = []
+        resp = await _http_rss.get(url, headers={
+            "User-Agent": "OpenClaw-Bot/1.0",
+        })
+        if resp.status_code != 200:
+            return []
+        items: List[Dict] = []
             raw_items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
             for raw in raw_items[:max_items]:
                 title_m = re.search(r"<title>(.*?)</title>", raw)

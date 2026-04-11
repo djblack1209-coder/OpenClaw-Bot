@@ -9,8 +9,12 @@ import logging
 
 # 从统一的安全模块导入 SSRF 检查函数
 from src.core.security import check_ssrf
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（带重试 + 熔断）— 仅用于搜索
+_http = ResilientHTTPClient(timeout=30, name="web_search")
 
 
 class WebTool:
@@ -55,9 +59,8 @@ class WebTool:
         """搜索"""
         try:
             url = f"https://html.duckduckgo.com/html/?q={query}"
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url, headers=self.headers)
-                soup = BeautifulSoup(response.text, 'html.parser')
+            response = await _http.get(url, headers=self.headers)
+            soup = BeautifulSoup(response.text, 'html.parser')
                 
                 results = []
                 for result in soup.find_all('div', class_='result')[:num_results]:

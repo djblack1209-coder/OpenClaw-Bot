@@ -15,8 +15,12 @@ from pathlib import Path
 from typing import Optional
 
 from src.utils import scrub_secrets
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（带重试 + 熔断）
+_http = ResilientHTTPClient(timeout=30.0, name="deepgram_stt")
 
 
 async def transcribe_audio(
@@ -65,29 +69,27 @@ async def transcribe_audio(
 
     # 降级: 直接 HTTP 调用
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"https://api.deepgram.com/v1/listen?model={model}&language={language}&smart_format=true",
-                headers={
-                    "Authorization": f"Token {api_key}",
-                    "Content-Type": "audio/ogg",
-                },
-                content=audio_data,
+        resp = await _http.post(
+            f"https://api.deepgram.com/v1/listen?model={model}&language={language}&smart_format=true",
+            headers={
+                "Authorization": f"Token {api_key}",
+                "Content-Type": "audio/ogg",
+            },
+            content=audio_data,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            transcript = (
+                data.get("results", {})
+                .get("channels", [{}])[0]
+                .get("alternatives", [{}])[0]
+                .get("transcript", "")
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                transcript = (
-                    data.get("results", {})
-                    .get("channels", [{}])[0]
-                    .get("alternatives", [{}])[0]
-                    .get("transcript", "")
-                )
-                if transcript:
-                    logger.info(f"Deepgram HTTP STT: {len(transcript)} chars")
-                    return transcript
-            else:
-                logger.warning(f"Deepgram HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
+            if transcript:
+                logger.info(f"Deepgram HTTP STT: {len(transcript)} chars")
+                return transcript
+        else:
+            logger.warning(f"Deepgram HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
     except Exception as e:
         logger.warning(f"Deepgram HTTP 失败: {e}")
 

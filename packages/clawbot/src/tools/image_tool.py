@@ -9,8 +9,12 @@ from pathlib import Path
 import logging
 from src.utils import now_et
 from src.constants import IMG_MODEL_FLUX
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
+
+# 模块级 HTTP 客户端（带重试 + 熔断）
+_http = ResilientHTTPClient(timeout=120, name="image_tool")
 
 
 class ImageTool:
@@ -81,14 +85,13 @@ class ImageTool:
                 "batch_size": 1
             }
 
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(
-                    "https://api.siliconflow.cn/v1/images/generations",
-                    headers=headers,
-                    json=payload
-                )
-                response.raise_for_status()
-                result = response.json()
+            response = await _http.post(
+                "https://api.siliconflow.cn/v1/images/generations",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
 
             images = result.get("images", [])
             if not images:
@@ -99,9 +102,8 @@ class ImageTool:
             for i, img_data in enumerate(images):
                 img_url = img_data.get("url", "")
                 if img_url:
-                    async with httpx.AsyncClient(timeout=30) as client:
-                        img_response = await client.get(img_url)
-                        img_bytes = img_response.content
+                    img_response = await _http.get(img_url)
+                    img_bytes = img_response.content
                 else:
                     img_b64 = img_data.get("b64_json", "")
                     img_bytes = base64.b64decode(img_b64)
