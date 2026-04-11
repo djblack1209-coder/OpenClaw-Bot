@@ -31,8 +31,10 @@ logger = logging.getLogger(__name__)
 # 从拆分后的模块导入
 from src.trading.market_calendar import is_market_holiday
 from src.trading_pipeline import TradingPipeline, TraderState
+from src.auto_trader_filters import AutoTraderFiltersMixin
+from src.auto_trader_review import AutoTraderReviewMixin
 
-class AutoTrader:
+class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
     """
     自主交易调度器
     定时运行完整的 扫描->分析->决策->执行->监控 闭环
@@ -265,41 +267,6 @@ class AutoTrader:
             logger.debug("Silenced exception", exc_info=True)  # journal 不可用不影响投票
 
         return "\n".join(lines)
-
-    async def _enrich_candidates_with_broker_quotes(self, candidates: List[Dict]) -> None:
-        """用 IBKR 实时快照刷新候选现价，减少数据滞后"""
-        if not candidates:
-            return
-        if not env_bool("ENRICH_CANDIDATES_WITH_IBKR_QUOTES", True):
-            return
-        if not self.pipeline or not self.pipeline.broker:
-            return
-        broker = self.pipeline.broker
-        if not hasattr(broker, "get_realtime_snapshot"):
-            return
-
-        limit = min(len(candidates), env_int("IBKR_QUOTE_ENRICH_TOP", 12, minimum=1))
-        sem = asyncio.Semaphore(4)
-
-        async def _fetch_and_apply(item: Dict):
-            symbol = item.get("symbol", "")
-            if not symbol:
-                return
-            async with sem:
-                try:
-                    snap = await broker.get_realtime_snapshot(symbol)
-                    if not isinstance(snap, dict) or "error" in snap:
-                        return
-                    price = float(snap.get("price", 0) or 0)
-                    if price <= 0:
-                        return
-                    item["price"] = round(price, 2)
-                    if "change_pct" in snap:
-                        item["change_pct"] = round(float(snap.get("change_pct", 0) or 0), 2)
-                except Exception as e:
-                    logger.debug("[AutoTrader] 实时报价刷新失败 %s: %s", symbol, e)
-
-        await asyncio.gather(*[_fetch_and_apply(c) for c in candidates[:limit]], return_exceptions=True)
 
     async def _main_loop(self) -> None:
         while self._running:
@@ -811,185 +778,6 @@ class AutoTrader:
             cycle_result["submitted"], cycle_result["executed"], cycle_result["rejected"],
         )
         return cycle_result
-
-    def _filter_candidates(self, signals: List[Dict]) -> List[Dict]:
-        """从扫描结果中筛选候选标的（自适应阈值）
-
-        过滤条件（根据市场环境动态调整）:
-        - score >= 15（市场冷清时）或 >= 25（市场火热时）
-        - trend 非 strong_down
-        - RSI6 <= 85（极端超买才过滤）
-        - 价格 > $2（允许更多标的）
-        - 20日均量 > 5万（降低流动性门槛）
-        - ADX > 12（震荡市也可能有机会）
-        """
-        candidates = []
-        _rejected = {"score": 0, "trend": 0, "rsi": 0, "price": 0, "volume": 0, "adx": 0}
-        
-        # 自适应评分阈值：根据信号数量动态调整
-        high_score_count = sum(1 for s in signals if s.get("score", 0) >= 40)
-        score_threshold = 25 if high_score_count >= 3 else 15
-        
-        for s in signals:
-            score = s.get("score", 0)
-            if score < score_threshold:
-                _rejected["score"] += 1
-                continue
-            trend = s.get("trend", "sideways")
-            if trend == "strong_down":
-                _rejected["trend"] += 1
-                continue
-            rsi6 = s.get("rsi_6", 50)
-            if rsi6 > 85:
-                _rejected["rsi"] += 1
-                continue
-            price = s.get("price", 0)
-            if price > 0 and price < 2:
-                logger.debug("[Filter] %s 价格$%.2f < $2，跳过", s.get("symbol"), price)
-                _rejected["price"] += 1
-                continue
-            vol_avg = s.get("vol_avg_20", 0)
-            if vol_avg > 0 and vol_avg < 50_000:
-                logger.debug("[Filter] %s 20日均量%d < 5万，跳过", s.get("symbol"), vol_avg)
-                _rejected["volume"] += 1
-                continue
-            adx = s.get("adx", 0)
-            if adx > 0 and adx < 12:
-                logger.debug("[Filter] %s ADX=%.1f < 12 震荡市，跳过", s.get("symbol"), adx)
-                _rejected["adx"] += 1
-                continue
-            candidates.append(s)
-
-        # 统计日志：帮助诊断过滤是否过严
-        total = len(signals)
-        passed = len(candidates)
-        logger.info(
-            "[Filter] %d/%d 通过筛选 (阈值score>=%d) | 淘汰: score=%d trend=%d rsi=%d price=%d vol=%d adx=%d",
-            passed, total, score_threshold, _rejected["score"], _rejected["trend"],
-            _rejected["rsi"], _rejected["price"], _rejected["volume"], _rejected["adx"],
-        )
-
-        candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return candidates
-
-    async def _generate_proposal(self, candidate: Dict) -> Optional[TradeProposal]:
-        """为候选标的生成交易提案"""
-        symbol = candidate.get("symbol", "")
-        score = candidate.get("score", 0)
-        price = candidate.get("price", 0)
-        atr_pct = candidate.get("atr_pct", 2.0)
-
-        if price <= 0:
-            return None
-
-        atr_mult = max(atr_pct / 100, 0.02)
-        stop_loss = round(price * (1 - atr_mult * 1.5), 2)
-        take_profit = round(price * (1 + atr_mult * 3), 2)
-
-        quantity = 0
-        if self.risk_manager:
-            sizing = self.risk_manager.calc_safe_quantity(
-                entry_price=price,
-                stop_loss=stop_loss,
-            )
-            if "error" not in sizing:
-                quantity = sizing["shares"]
-
-        if quantity <= 0:
-            # 根据总资金的20%计算单笔最大成本
-            capital = self._get_capital()
-            max_cost = capital * 0.20  # 单笔不超过总资金20%
-            quantity = max(1, int(max_cost / price))
-
-        reasons = candidate.get("reasons", [])
-        reason_text = " | ".join(reasons) if reasons else ("信号评分%d" % score)
-
-        return TradeProposal(
-            symbol=symbol,
-            action="BUY",
-            quantity=quantity,
-            entry_price=price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            signal_score=score,
-            confidence=min(abs(score) / 100, 1.0),
-            reason=reason_text,
-            decided_by="AutoTrader",
-            atr=atr_mult * price,
-        )
-
-    async def _run_review(self) -> None:
-        """收盘自动复盘 — 生成当日交易总结、持久化教训、通知"""
-        self.state = TraderState.REVIEWING
-        logger.info("[AutoTrader] 开始收盘复盘")
-        try:
-            from src.trading_journal import journal as tj
-            today_pnl = tj.get_today_pnl()
-            open_trades = tj.get_open_trades()
-            closed = tj.get_closed_trades(days=1, limit=20)
-
-            lines = ["-- AutoTrader 收盘复盘 --\n"]
-            lines.append("今日盈亏: $%.2f (%d笔交易)" % (
-                today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
-            lines.append("扫描循环: %d次" % self._cycle_count)
-
-            wins = 0
-            losses = 0
-            if closed:
-                wins = sum(1 for t in closed if t.get("pnl", 0) >= 0)
-                losses = len(closed) - wins
-                lines.append("\n已平仓: %d笔 (盈%d 亏%d)" % (len(closed), wins, losses))
-                for t in closed:
-                    sign = "+" if t.get("pnl", 0) >= 0 else ""
-                    lines.append("  %s %s %s$%.2f" % (
-                        t.get("side", "?"), t.get("symbol", "?"),
-                        sign, t.get("pnl", 0)))
-
-            if open_trades:
-                lines.append("\n持仓中: %d笔" % len(open_trades))
-                for t in open_trades:
-                    lines.append("  %s x%s @ $%s 止损$%s" % (
-                        t.get("symbol", "?"), t.get("quantity", "?"),
-                        t.get("entry_price", "?"), t.get("stop_loss", "无")))
-
-            # 闭环学习：持久化复盘教训到 trading_journal
-            lessons = ""
-            try:
-                trade_count = today_pnl.get("trades", 0)
-                win_rate = round(wins / max(trade_count, 1) * 100, 1)
-
-                # 生成迭代报告提取失败模式
-                iteration = {}
-                if hasattr(tj, 'generate_iteration_report'):
-                    iteration = tj.generate_iteration_report(days=7)
-                suggestions = iteration.get("improvement_suggestions", []) if isinstance(iteration, dict) else []
-                lessons = "; ".join(str(s) for s in suggestions[:3])
-
-                if hasattr(tj, 'save_review_session'):
-                    from src.utils import today_et_str
-                    tj.save_review_session(
-                        date=today_et_str(),
-                        session_type='daily',
-                        trades_reviewed=trade_count,
-                        total_pnl=today_pnl.get("pnl", 0),
-                        win_rate=win_rate,
-                        lessons_learned=lessons,
-                        improvements="",
-                    )
-                    logger.info("[AutoTrader] 复盘教训已持久化")
-
-                if lessons:
-                    lines.append("\n📝 教训: " + lessons)
-            except Exception as e:
-                logger.warning("[AutoTrader] 复盘持久化失败(非致命): %s", e)
-
-            lines.append("\n明日将自动继续交易。")
-
-            await self._safe_notify("\n".join(lines))
-        except Exception as e:
-            logger.error("[AutoTrader] 复盘失败: %s", e)
-            await self._safe_notify("收盘复盘生成失败: %s" % e)
-        self.state = TraderState.IDLE
 
     # ============ 状态 ============
 
