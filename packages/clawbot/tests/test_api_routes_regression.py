@@ -124,8 +124,8 @@ def test_trading_dashboard_builds_chart_from_journal(monkeypatch):
         def get_equity_curve(self, days=30):
             return ([10000.0, 10125.5], ["04-09", "04-10"])
 
-    monkeypatch.setattr("src.api.rpc.ibkr", _FakeIbkr(), raising=False)
-    monkeypatch.setattr("src.api.rpc.journal", _FakeJournal(), raising=False)
+    monkeypatch.setattr("src.broker_selector.ibkr", _FakeIbkr(), raising=False)
+    monkeypatch.setattr("src.trading_journal.journal", _FakeJournal(), raising=False)
 
     # 直接调用 RPC，验证它不再返回永久空图
     import asyncio
