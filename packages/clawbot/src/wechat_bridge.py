@@ -230,7 +230,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
                     _context_token_ts = 0
                     context_token = await _get_context_token(token, target)
                     continue
-                logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {resp.text[:200]}")
+                logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
                 _cached_context_token = None
                 _context_token_ts = 0
         except Exception as e:

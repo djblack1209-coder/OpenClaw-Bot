@@ -186,7 +186,7 @@ class OrderNotifier:
                 else:
                     logger.warning(f"发送二维码失败: HTTP {resp.status_code}")
         except Exception as e:
-            logger.error(f"发送二维码到 Telegram 失败: {e}")
+            logger.error(f"发送二维码到 Telegram 失败: {scrub_secrets(str(e))}")
 
     def _send_telegram_sync(self, url: str, payload: dict):
         """同步版 Telegram 通知发送（3 次重试 + 指数退避）"""
