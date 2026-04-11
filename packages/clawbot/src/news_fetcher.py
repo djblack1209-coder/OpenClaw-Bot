@@ -88,11 +88,10 @@ class NewsFetcher:
             # 降级: 直接 regex 解析
             return await self._fetch_rss_regex(feed_url, count)
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                resp = await client.get(feed_url, headers={
-                    "User-Agent": "OpenClaw-NewsBot/2.0 (feedparser)"
-                })
-                resp.raise_for_status()
+            resp = await _http.get(feed_url, headers={
+                "User-Agent": "OpenClaw-NewsBot/2.0 (feedparser)"
+            })
+            resp.raise_for_status()
 
             loop = asyncio.get_running_loop()
             parsed = await loop.run_in_executor(
@@ -145,8 +144,7 @@ class NewsFetcher:
     async def _fetch_rss_regex(self, url: str, count: int = 5) -> List[Dict[str, str]]:
         """feedparser 不可用时的 regex 降级"""
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await _http.get(url, headers={"User-Agent": "Mozilla/5.0"})
             items_raw = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
             news = []
             for item in items_raw[:count]:
@@ -194,31 +192,30 @@ class NewsFetcher:
                 "form": "PTFTNR"
             }
             
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url, params=params, headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-                })
+            response = await _http.get(url, params=params, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            })
                 
-                if response.status_code != 200:
-                    return []
+            if response.status_code != 200:
+                return []
                 
-                html = response.text
+            html = response.text
                 
-                # 简单解析新闻标题和链接
-                news = []
-                # 匹配新闻卡片
-                pattern = r'<a[^>]*class="title"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
-                matches = re.findall(pattern, html)
+            # 简单解析新闻标题和链接
+            news = []
+            # 匹配新闻卡片
+            pattern = r'<a[^>]*class="title"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
+            matches = re.findall(pattern, html)
                 
-                for url, title in matches[:count]:
-                    if title.strip():
-                        news.append({
-                            "title": title.strip(),
-                            "url": url,
-                            "source": "Bing"
-                        })
+            for url, title in matches[:count]:
+                if title.strip():
+                    news.append({
+                        "title": title.strip(),
+                        "url": url,
+                        "source": "Bing"
+                    })
                 
-                return news
+            return news
                 
         except Exception as e:
             logger.debug("Bing新闻抓取失败: %s", e)
@@ -231,31 +228,30 @@ class NewsFetcher:
             encoded_query = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
             
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-                })
+            response = await _http.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+            })
                 
-                if response.status_code != 200:
-                    return []
+            if response.status_code != 200:
+                return []
                 
-                # 解析 RSS
-                news = []
-                items = re.findall(r'<item>(.*?)</item>', response.text, re.DOTALL)
+            # 解析 RSS
+            news = []
+            items = re.findall(r'<item>(.*?)</item>', response.text, re.DOTALL)
                 
-                for item in items[:count]:
-                    title_match = re.search(r'<title>(.*?)</title>', item)
-                    link_match = re.search(r'<link>(.*?)</link>', item)
-                    source_match = re.search(r'<source[^>]*>(.*?)</source>', item)
+            for item in items[:count]:
+                title_match = re.search(r'<title>(.*?)</title>', item)
+                link_match = re.search(r'<link>(.*?)</link>', item)
+                source_match = re.search(r'<source[^>]*>(.*?)</source>', item)
                     
-                    if title_match and link_match:
-                        news.append({
-                            "title": title_match.group(1).strip(),
-                            "url": link_match.group(1).strip(),
-                            "source": source_match.group(1) if source_match else "Google News"
-                        })
+                if title_match and link_match:
+                    news.append({
+                        "title": title_match.group(1).strip(),
+                        "url": link_match.group(1).strip(),
+                        "source": source_match.group(1) if source_match else "Google News"
+                    })
                 
-                return news
+            return news
                 
         except Exception as e:
             logger.debug("Google News RSS抓取失败: %s", e)

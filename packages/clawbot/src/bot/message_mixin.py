@@ -827,30 +827,28 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             groq_key = os.environ.get("GROQ_API_KEY", "")
             if groq_key and not transcribed:
                 try:
-                    import httpx
                     # 每次请求需要独立的 BytesIO 游标位置
                     buf.seek(0)
-                    async with httpx.AsyncClient(timeout=30) as client:
-                        resp = await client.post(
-                            "https://api.groq.com/openai/v1/audio/transcriptions",
-                            headers={"Authorization": f"Bearer {groq_key}"},
-                            files={"file": ("voice.ogg", buf, "audio/ogg")},
-                            data={
-                                "model": "whisper-large-v3-turbo",
-                                "language": "zh",  # 优先中文识别
-                            },
-                        )
-                        if resp.status_code == 200:
-                            transcribed = resp.json().get("text", "")
-                            if transcribed:
-                                stt_source = "Groq"
-                                logger.info("[Voice] Groq Whisper 转写成功 (%d 字符)", len(transcribed))
-                        elif resp.status_code == 429:
-                            # Groq 免费版 20 RPM 限速，降级到 OpenAI
-                            logger.info("[Voice] Groq Whisper 触发限速 (429)，降级到 OpenAI")
-                        else:
-                            logger.debug("[Voice] Groq Whisper 返回 %d: %s",
-                                         resp.status_code, resp.text[:200])
+                    resp = await _http_voice.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {groq_key}"},
+                        files={"file": ("voice.ogg", buf, "audio/ogg")},
+                        data={
+                            "model": "whisper-large-v3-turbo",
+                            "language": "zh",  # 优先中文识别
+                        },
+                    )
+                    if resp.status_code == 200:
+                        transcribed = resp.json().get("text", "")
+                        if transcribed:
+                            stt_source = "Groq"
+                            logger.info("[Voice] Groq Whisper 转写成功 (%d 字符)", len(transcribed))
+                    elif resp.status_code == 429:
+                        # Groq 免费版 20 RPM 限速，降级到 OpenAI
+                        logger.info("[Voice] Groq Whisper 触发限速 (429)，降级到 OpenAI")
+                    else:
+                        logger.debug("[Voice] Groq Whisper 返回 %d: %s",
+                                     resp.status_code, resp.text[:200])
                 except Exception as groq_err:
                     logger.debug("[Voice] Groq Whisper 失败，降级到 OpenAI: %s", groq_err)
 
@@ -859,20 +857,18 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 openai_key = os.environ.get("OPENAI_API_KEY", "")
                 if openai_key:
                     try:
-                        import httpx
                         buf.seek(0)
-                        async with httpx.AsyncClient(timeout=30) as client:
-                            resp = await client.post(
-                                "https://api.openai.com/v1/audio/transcriptions",
-                                headers={"Authorization": f"Bearer {openai_key}"},
-                                files={"file": ("voice.ogg", buf, "audio/ogg")},
-                                data={"model": "whisper-1"},
-                            )
-                            if resp.status_code == 200:
-                                transcribed = resp.json().get("text", "")
-                                if transcribed:
-                                    stt_source = "OpenAI"
-                                    logger.info("[Voice] OpenAI Whisper 转写成功 (%d 字符)", len(transcribed))
+                        resp = await _http_voice.post(
+                            "https://api.openai.com/v1/audio/transcriptions",
+                            headers={"Authorization": f"Bearer {openai_key}"},
+                            files={"file": ("voice.ogg", buf, "audio/ogg")},
+                            data={"model": "whisper-1"},
+                        )
+                        if resp.status_code == 200:
+                            transcribed = resp.json().get("text", "")
+                            if transcribed:
+                                stt_source = "OpenAI"
+                                logger.info("[Voice] OpenAI Whisper 转写成功 (%d 字符)", len(transcribed))
                     except Exception as whisper_err:
                         logger.debug("[Voice] OpenAI Whisper 失败: %s", whisper_err)
 
@@ -1033,20 +1029,18 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         try:
             # 2. 闲鱼未读消息 — 通过 FastAPI 内部 API 查询闲鱼进程状态
             import os as _os
-            import httpx as _httpx
             api_token = _os.environ.get("OPENCLAW_API_TOKEN", "")
-            async with _httpx.AsyncClient(timeout=5.0) as _client:
-                resp = await _client.get(
-                    "http://127.0.0.1:18790/api/v1/system/status",
-                    headers={"X-API-Token": api_token} if api_token else {},
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    # 从系统状态中提取闲鱼相关信息
-                    xianyu_status = data.get("components", {}).get("xianyu", {})
-                    unread = xianyu_status.get("unread_count", 0)
-                    if unread > 0:
-                        summary_parts.append(f"🐟 闲鱼: {unread} 条未读消息")
+            resp = await _http_status.get(
+                "http://127.0.0.1:18790/api/v1/system/status",
+                headers={"X-API-Token": api_token} if api_token else {},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                # 从系统状态中提取闲鱼相关信息
+                xianyu_status = data.get("components", {}).get("xianyu", {})
+                unread = xianyu_status.get("unread_count", 0)
+                if unread > 0:
+                    summary_parts.append(f"🐟 闲鱼: {unread} 条未读消息")
         except Exception as e:
             logger.debug("闲鱼状态查询跳过: %s", e)
 
