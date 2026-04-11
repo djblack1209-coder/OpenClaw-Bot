@@ -142,7 +142,15 @@ def main():
     signal.signal(signal.SIGUSR1, _reload_cookies)
 
     logger.info("闲鱼 AI 客服启动中... (发送 SIGUSR1 可热更新 Cookie)")
-    asyncio.run(live.run())
+    try:
+        asyncio.run(live.run())
+    finally:
+        # 确保关闭底层 HTTP 连接，防止 TCP 泄漏（HI-410）
+        try:
+            asyncio.run(live.close())
+        except RuntimeError:
+            # 事件循环已关闭时忽略
+            pass
 
 
 if __name__ == "__main__":
