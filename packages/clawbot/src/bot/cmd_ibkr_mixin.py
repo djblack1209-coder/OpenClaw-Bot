@@ -6,6 +6,7 @@ import logging
 
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
+from src.constants import ERR_LIMIT_PRICE_INVALID
 from src.telegram_ux import with_typing
 from src.bot.globals import (
     get_stock_quote,
@@ -48,7 +49,7 @@ class IBKRCommandsMixin:
                 limit_price = float(args[2])
                 order_type = 'LMT'
             except ValueError as e:
-                await update.message.reply_text("⚠️ 限价格式无效 '%s'，将使用市价单" % args[2])
+                await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] BUY限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
             "%s IBKR下单中: BUY %s x%.0f %s..." % (
@@ -109,7 +110,7 @@ class IBKRCommandsMixin:
                 limit_price = float(args[2])
                 order_type = 'LMT'
             except ValueError as e:
-                await update.message.reply_text("⚠️ 限价格式无效 '%s'，将使用市价单" % args[2])
+                await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] SELL限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
             "%s IBKR下单中: SELL %s x%.0f..." % (self.emoji, symbol, qty))
