@@ -9,7 +9,7 @@ import asyncio
 import re
 import logging
 import time as _time
-from typing import Optional, List, Dict, TYPE_CHECKING
+from typing import List, Dict, TYPE_CHECKING
 
 from src.utils import now_et
 

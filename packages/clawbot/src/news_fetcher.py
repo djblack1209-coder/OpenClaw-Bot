@@ -8,7 +8,6 @@ v2.0 变更 (2026-03-23):
   - 三级降级: feedparser RSS → Google News RSS (regex) → Bing 搜索
 """
 import asyncio
-import httpx
 from typing import List, Dict, Optional
 import re
 

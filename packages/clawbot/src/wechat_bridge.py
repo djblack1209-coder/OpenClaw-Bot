@@ -192,7 +192,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     context_token = await _get_context_token(token, target)
 
     try:
-        import httpx  # noqa: F811 — 保留用于 ImportError 检查
+        import httpx  # noqa: F401 — 保留用于 ImportError 可用性检查
     except ImportError:
         logger.debug("[WeChatBridge] httpx 未安装，跳过微信通知")
         return False

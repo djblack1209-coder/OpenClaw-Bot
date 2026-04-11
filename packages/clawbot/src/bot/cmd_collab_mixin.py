@@ -753,10 +753,10 @@ class CollabCommandsMixin:
             if not task.review_passed and task.retry_count < task.max_retries:
                 await safe_edit(status_msg,
                     "**🤝 协作模式**\n\n"
-                    f"**阶段 1/4** ✅ 规划完成\n"
-                    f"**阶段 2/4** 🔄 修订执行中 (Claude Opus 4.6)\n"
-                    f"**阶段 3/4** - 待重新审查\n"
-                    f"**阶段 4/4** - 待汇总"
+                    "**阶段 1/4** ✅ 规划完成\n"
+                    "**阶段 2/4** 🔄 修订执行中 (Claude Opus 4.6)\n"
+                    "**阶段 3/4** - 待重新审查\n"
+                    "**阶段 4/4** - 待汇总"
                 )
 
                 exec_result = await collab_orchestrator.run_revised_execution(task)

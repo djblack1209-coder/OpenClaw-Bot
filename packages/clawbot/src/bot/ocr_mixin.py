@@ -77,7 +77,7 @@ class OCRHandlerMixin:
                         # 注入对话历史 — 用户可以基于图片内容继续追问
                         try:
                             # 记录用户发图行为
-                            user_ctx = f"[用户发送了一张图片]"
+                            user_ctx = "[用户发送了一张图片]"
                             if caption:
                                 user_ctx += f" 附言: {caption}"
                             history_store.add_message(
