@@ -5,6 +5,21 @@
 
 ---
 
+## [2026-04-11] social_scheduler 稳定性修复 — 事件循环传播 + 线程安全
+
+> 领域: `backend`
+> 影响模块: `social_scheduler`
+> 关联问题: HI-390, HI-458
+
+### 变更内容
+- **HI-390 修复**: `start()` 方法启动时捕获并更新主事件循环引用到类变量 `_main_loop`，确保 APScheduler 线程池中的 job 通过 `_run_async()` → `run_coroutine_threadsafe()` 将协程调度回主循环执行，EventBus 事件能正确传播；主循环不可用时降级使用 `asyncio.run()`
+- **HI-458 修复**: 新增 `_publish_hour_lock = threading.Lock()` 类变量，`start()` 写入和 `job_late_review` 读写 `_current_publish_hour` 时均加锁保护，消除线程竞争
+
+### 文件变更
+- `packages/clawbot/src/social_scheduler.py` — 新增 `_publish_hour_lock` 类变量；`start()` 中捕获主事件循环 + 锁保护 `_current_publish_hour` 写入；`job_late_review` 中锁保护 `_current_publish_hour` 读写
+
+---
+
 ## [2026-04-11] 全量全方位审计 — 后端/前端/VPS/APP/依赖/文件治理
 
 > 领域: `backend`, `frontend`, `infra`, `deploy`, `docs`

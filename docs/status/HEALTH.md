@@ -109,7 +109,7 @@
 | HI-411 | `docs` | `MODULE_REGISTRY.md` | 7 个核心模块 (brain/intent_parser/task_graph/executor/event_bus/cost_control/self_heal) 未注册 | 2026-04-03 |
 | HI-456 | `backend` | `brain.py` | `_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护 — 快速连续消息可能竞态 | 2026-04-03 |
 | HI-457 | `backend` | `social_tools.py` | `PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问无 `threading.Lock` | 2026-04-03 |
-| HI-458 | `backend` | `social_scheduler.py` | `_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护 | 2026-04-03 |
+| ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
 | HI-459 | `backend` | `wechat_bridge.py` | `random.randint` 用于 `X-WECHAT-UIN` 认证header — 应用 `secrets` 模块 | 2026-04-03 |
 | HI-460 | `backend` | `invest_tools.py` | `Portfolio.buy()/sell()` cash read和update虽已合并到同一事务，但 `_set_config` 仍是独立函数 — 需验证合并效果 | 2026-04-03 |
 | HI-461 | `backend` | `license_manager.py` | `find_by_buyer()` LIKE 模式 `%{buyer_id}%` 未转义 `%`/`_` — buyer_id含通配符可能匹配其他用户 | 2026-04-03 |
@@ -131,6 +131,8 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-390 | `backend` | `social_scheduler.py` | APScheduler job 创建临时事件循环，EventBus 事件无法跨循环传播 | `start()` 中捕获主事件循环引用并更新类变量；`_run_async()` 使用 `run_coroutine_threadsafe()` 调度到主循环，降级回退 `asyncio.run()` | 2026-04-11 | social_scheduler 稳定性修复 |
+| HI-458 | `backend` | `social_scheduler.py` | `_current_publish_hour` 在APScheduler线程和主线程间无锁保护 | 新增 `_publish_hour_lock = threading.Lock()` 类变量，所有读写 `_current_publish_hour` 的位置加锁保护 | 2026-04-11 | social_scheduler 稳定性修复 |
 | HI-471 | `frontend` | `Dev/index.tsx` | Dev页面action按钮绑定的 `send_telegram_command` 命令不存在 | 替换为实际可用的 `api.omegaProcess` | 2026-04-09 | 桌面端深度审计 |
 | HI-472 | `infra` | `diagnostics.rs` | 资源仪表盘数据缺失，`get_system_resources` Tauri命令未实现 | 完整实现系统资源拉取命令并在 main.rs 中注册 | 2026-04-09 | 桌面端深度审计 |
 | HI-473 | `frontend` | `Channels/index.tsx` | 渠道管理页面为空壳占位符 | 实现完整的消息渠道增删改查 CRUD 界面 | 2026-04-09 | 桌面端深度审计 |
