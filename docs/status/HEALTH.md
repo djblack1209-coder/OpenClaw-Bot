@@ -113,8 +113,8 @@
 | ~~HI-459~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~`random.randint` 用于 `X-WECHAT-UIN` 认证header~~ → **已修复 2026-04-11**: 全部替换为 `secrets.randbelow()` | 2026-04-03 |
 | ~~HI-460~~ | ~~`backend`~~ | ~~`invest_tools.py`~~ | ~~`_set_config` 事务独立~~ → **已验证 2026-04-11**: `_set_config` 是死代码（无任何调用方），buy/sell 现金事务已在同一 `with self._conn()` 中完成，无风险 | 2026-04-03 |
 | ~~HI-461~~ | ~~`backend`~~ | ~~`license_manager.py`~~ | ~~`find_by_buyer()` LIKE 模式未转义通配符~~ → **已修复 2026-04-11**: 增加 `\%`/`\_` 转义 + `ESCAPE '\'` | 2026-04-03 |
-| HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串。**部分修复 2026-04-11**: 5 个文件 9 处高危调用已用 `scrub_secrets()` 包装 (xianyu_agent/xianyu_apis/cookie_refresher/order_notifier/wechat_bridge)，剩余待后续批次处理 | 2026-04-03 |
-| HI-463 | `backend` | 20+文件 | httpx.AsyncClient per-request创建无重试逻辑 — 已有 `ResilientHTTPClient` 但大多数调用点未使用 | 2026-04-03 |
+| HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串。**部分修复 2026-04-11**: 8 个文件 20 处高危调用已用 `scrub_secrets()` 包装 + `utils.scrub_secrets()` 共享函数建立，剩余 ~360 处为低风险（非 API/认证相关） | 2026-04-03 |
+| ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
 
 ### 🔵 低优先
 
