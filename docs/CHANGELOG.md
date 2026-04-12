@@ -5,6 +5,42 @@
 
 ---
 
+## [2026-04-12] Telegram FSM 引导向导重构 — 新用户体验质变
+
+> 领域: `backend`
+> 影响模块: `bot/cmd_basic/onboarding_mixin.py`, `bot/cmd_basic/help_mixin.py`, `bot/cmd_basic/__init__.py`, `bot/multi_bot.py`
+> 关联问题: OPTIMIZATION_PLAN Task 5
+
+### 变更内容
+
+**新功能: ConversationHandler 引导向导**
+- 新用户 `/start` 不再看到一堆命令，而是进入 3 步交互式向导：
+  1. 选择感兴趣的功能领域（投资/社媒/购物/生活/全部）
+  2. 选择沟通风格偏好（简洁/详细/轻松）
+  3. 根据选择展示个性化推荐命令 + 快速上手提示
+- 向导完成后偏好自动写入 SharedMemory（user_preference 分类，重要度 5）
+- 支持"跳过引导"按钮和 `/cancel` 命令随时退出
+- 向导中途发文字会收到友好提示（不会被静默吞掉）
+
+**重构: /start 和 /help 分离**
+- `/start` 由 ConversationHandler 接管：新用户走向导，老用户展示智能欢迎（含记忆召回）
+- `/help` 独立为 `cmd_help` 方法：始终展示 9 分类帮助菜单，不触发向导
+- 旧的 `onboard:chat/news/draw/invest/social` 死胡同按钮全部移除
+- `_handle_onboard_action` 方法删除（原来 4/5 的按钮只显示文字说明不做任何事）
+
+**架构改进**
+- 新增 `_OnboardingMixin` 加入 `BasicCommandsMixin` MRO
+- ConversationHandler 第一个注册，优先于所有 CommandHandler
+- `allow_reentry=True` 确保老用户 `/start` 不会卡在向导状态
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_basic/onboarding_mixin.py` — 新建，引导向导实现 (258行)
+- `packages/clawbot/src/bot/cmd_basic/help_mixin.py` — 重写：移除旧引导逻辑，新增 cmd_help 和 _show_returning_user_start
+- `packages/clawbot/src/bot/cmd_basic/__init__.py` — 新增 _OnboardingMixin 到 MRO
+- `packages/clawbot/src/bot/multi_bot.py` — ConversationHandler 注册 + /help 独立 + 移除 onboard: 回调
+
+---
+
 ## [2026-04-12] 全量审计完结: 全部遗留任务清零
 
 > 领域: `backend`, `deploy`, `infra`, `docs`

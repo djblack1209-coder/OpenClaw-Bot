@@ -327,12 +327,13 @@
 | 属性 | 值 |
 |------|-----|
 | 路径 | `packages/clawbot/src/bot/cmd_basic/` |
-| 文件数 | 8 (含 __init__.py) |
-| 总行数 | ~1358 (原 cmd_basic_mixin.py 拆分) |
+| 文件数 | 9 (含 __init__.py) |
+| 总行数 | ~1616 (原 cmd_basic_mixin.py 拆分 + onboarding_mixin 新增) |
 | 导入方 | multi_bot (通过 cmd_basic_mixin.py 转发) |
 
 **子模块:**
-- `help_mixin.py` — 帮助菜单和新用户引导 (cmd_start, handle_help_callback)
+- `onboarding_mixin.py` — 新用户引导向导 (ConversationHandler 3步交互式引导)
+- `help_mixin.py` — 帮助菜单和老用户欢迎 (cmd_help, _show_returning_user_start, handle_help_callback)
 - `status_mixin.py` — 系统状态查询 (cmd_status/metrics/model/pool/keyhealth)
 - `settings_mixin.py` — 用户设置 (cmd_settings, handle_settings_callback)
 - `memory_mixin.py` — 记忆管理 (cmd_memory, handle_memory/feedback_callback)
@@ -1107,7 +1108,8 @@
 
 | 模块 | 路径 | 行数 | 说明 |
 |------|------|------|------|
-| help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 354 | 帮助与引导 — /start 命令 + help 回调 + onboarding 新用户引导 |
+| help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 248 | 帮助菜单 — /help 命令 + help 回调 + 老用户 /start 欢迎（向导逻辑已移至 onboarding_mixin） |
+| onboarding_mixin.py | `src/bot/cmd_basic/onboarding_mixin.py` | 258 | 新用户引导向导 — ConversationHandler 3步交互式引导（选兴趣→选风格→个性化推荐） |
 | status_mixin.py | `src/bot/cmd_basic/status_mixin.py` | 237 | 状态查询 — /status, /metrics, /model, /pool, /keyhealth 系统信息 |
 | tools_mixin.py | `src/bot/cmd_basic/tools_mixin.py` | 306 | 工具命令 — /draw, /news, /qr, /tts, /agent + inline query 处理 |
 | memory_mixin.py | `src/bot/cmd_basic/memory_mixin.py` | 178 | 记忆管理 — /memory 命令 + 记忆分页/清除回调 + 反馈回调 |
@@ -1115,7 +1117,7 @@
 | settings_mixin.py | `src/bot/cmd_basic/settings_mixin.py` | 144 | 用户设置 — /settings 命令及其 Inline 回调 |
 | context_mixin.py | `src/bot/cmd_basic/context_mixin.py` | 107 | 上下文管理 — /context, /compact, /clear, /voice, /lanes 命令 |
 
-**依赖关系:** `cmd_basic_mixin.py` (转发入口) → 以上 7 个子模块; 各子模块依赖 `bot.globals` + `bot.auth` + `telegram_ux`
+**依赖关系:** `cmd_basic_mixin.py` (转发入口) → 以上 8 个子模块; 各子模块依赖 `bot.globals` + `bot.auth` + `telegram_ux`; `onboarding_mixin` 额外依赖 `ConversationHandler`
 
 #### monitoring 子模块展开 (src/monitoring/)
 

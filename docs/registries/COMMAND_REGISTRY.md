@@ -12,8 +12,8 @@
 
 | # | 命令 | Handler | 说明 | BotFather 菜单 |
 |---|------|---------|------|:-:|
-| 1 | `/start` | `cmd_start` | 首次 onboarding + 老用户分类菜单 | Y |
-| 2 | `/help` | `cmd_start` | 同 /start（别名） | Y |
+| 1 | `/start` | `onboard_entry` | ConversationHandler 引导向导：新用户3步向导，老用户智能欢迎 | Y |
+| 2 | `/help` | `cmd_help` | 帮助菜单（始终展示9分类菜单，不触发向导） | Y |
 | 3 | `/clear` | `cmd_clear` | 清空当前对话历史 | Y |
 | 4 | `/status` | `cmd_status` | Bot 运行状态 + 网关 + 浏览器 | Y |
 | 5 | `/draw` | `cmd_draw` | AI 生图 (flux/sd3/sdxl) | Y |
@@ -151,7 +151,8 @@
 |---|---------|---------|--------|------|
 | 1 | `^itrade` | `handle_trade_callback` | message_mixin | 投资分析后一键下单 |
 | 2 | `^help:` | `handle_help_callback` | cmd_basic_mixin | /start 分类菜单导航 |
-| 3 | `^onboard:` | `handle_help_callback` | cmd_basic_mixin | 首次用户 onboarding 按钮 |
+| 3 | `^ob_i:` | `onboard_interests` | onboarding_mixin | 引导向导 Step 1: 兴趣领域选择 (ConversationHandler 内部) |
+| 4 | `^ob_s:` | `onboard_style` | onboarding_mixin | 引导向导 Step 2: 沟通风格选择 (ConversationHandler 内部) |
 | 4 | `^fb\|` | `handle_feedback_callback` | cmd_basic_mixin | 👍/👎/🔄 反馈按钮 |
 | 5 | `^mem_` | `handle_memory_callback` | cmd_basic_mixin | 记忆分页/清除 |
 | 6 | `^settings\|` | `handle_settings_callback` | cmd_basic_mixin | 设置切换按钮 |
