@@ -33,16 +33,25 @@ DATE=$(date +%Y-%m-%d)
 PROGRESS_FILE="${LOG_DIR}/${DATE}.progress"
 SUMMARY_FILE="${LOG_DIR}/${DATE}.summary"
 TOTAL_SPENT=0
-LOCK_DIR="/tmp/openclaw-nightly-audit.lock"
+# === 多项目隔离: 用项目目录的哈希值区分不同项目的锁 ===
+PROJECT_HASH=$(echo "${PROJECT_DIR:-$(pwd)}" | md5sum 2>/dev/null | cut -c1-8 || echo "${PROJECT_DIR:-$(pwd)}" | md5 -q 2>/dev/null | cut -c1-8 || echo "default")
+LOCK_DIR="/tmp/openclaw-nightly-audit-${PROJECT_HASH}.lock"
 
-# === 进程锁（防止多实例同时运行）===
+# === 进程锁（防止同一项目多实例运行，不同项目互不干扰）===
 acquire_lock() {
     if ! mkdir "$LOCK_DIR" 2>/dev/null; then
         local existing_pid
         existing_pid=$(cat "${LOCK_DIR}/pid" 2>/dev/null || echo "未知")
-        echo "❌ 另一个审计实例正在运行 (PID: ${existing_pid})"
-        echo "   如果确认没有其他实例，请手动删除锁: rm -rf ${LOCK_DIR}"
-        exit 1
+        # 检查旧进程是否还活着，如果已经死了则清理旧锁
+        if [[ "$existing_pid" != "未知" ]] && ! kill -0 "$existing_pid" 2>/dev/null; then
+            log WARN "旧审计进程 (PID: ${existing_pid}) 已不存在，清理残留锁..."
+            rm -rf "$LOCK_DIR"
+            mkdir "$LOCK_DIR" 2>/dev/null || { echo "❌ 无法创建锁"; exit 1; }
+        else
+            echo "❌ 另一个审计实例正在运行 (PID: ${existing_pid})"
+            echo "   如果确认没有其他实例，请手动删除锁: rm -rf ${LOCK_DIR}"
+            exit 1
+        fi
     fi
     echo $$ > "${LOCK_DIR}/pid"
 }
@@ -69,10 +78,140 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
+# === 健康预检（正式审计前确认环境可用）===
+preflight_check() {
+    local ok=true
+
+    # 检查 Claude Code 可用
+    if ! command -v "${CLAUDE_BIN:-claude}" &>/dev/null; then
+        log ERROR "Claude Code 不可用: ${CLAUDE_BIN:-claude}"
+        ok=false
+    fi
+
+    # 检查 API Key 不为空
+    if [[ -z "${ANTHROPIC_API_KEY:-}" || "${ANTHROPIC_API_KEY}" == "sk-your-api-key-here" ]]; then
+        log ERROR "ANTHROPIC_API_KEY 未配置或仍为模板值"
+        ok=false
+    fi
+
+    # 检查项目目录存在
+    if [[ ! -d "${PROJECT_DIR}" ]]; then
+        log ERROR "项目目录不存在: ${PROJECT_DIR}"
+        ok=false
+    fi
+
+    # 检查磁盘空间（至少 500MB）
+    local free_mb
+    if [[ "$(uname)" == "Darwin" ]]; then
+        free_mb=$(df -m "${PROJECT_DIR}" | tail -1 | awk '{print $4}')
+    else
+        free_mb=$(df -m "${PROJECT_DIR}" | tail -1 | awk '{print $4}')
+    fi
+    if [[ -n "$free_mb" ]] && [[ "$free_mb" -lt 500 ]]; then
+        log ERROR "磁盘空间不足: 仅剩 ${free_mb}MB（需要至少 500MB）"
+        ok=false
+    fi
+
+    # 检查 git 仓库状态
+    if [[ ! -d "${PROJECT_DIR}/.git" ]]; then
+        log ERROR "项目目录不是 git 仓库: ${PROJECT_DIR}"
+        ok=false
+    fi
+
+    if [[ "$ok" == "false" ]]; then
+        log ERROR "健康预检失败，终止审计"
+        send_notification "🚨 *夜间审计预检失败*\n\n环境有问题，审计无法启动。请检查日志: ${LOG_DIR}/${DATE}.log"
+        return 1
+    fi
+
+    log INFO "✅ 健康预检通过"
+    return 0
+}
+
+# === 日志自动清理（保留最近 N 天）===
+cleanup_old_logs() {
+    local keep_days="${LOG_RETENTION_DAYS:-30}"
+    local count=0
+    if [[ -d "$LOG_DIR" ]]; then
+        while IFS= read -r old_file; do
+            rm -f "$old_file"
+            count=$((count + 1))
+        done < <(find "$LOG_DIR" -name "*.log" -mtime "+${keep_days}" -type f 2>/dev/null)
+        while IFS= read -r old_file; do
+            rm -f "$old_file"
+            count=$((count + 1))
+        done < <(find "$LOG_DIR" -name "*.progress" -mtime "+${keep_days}" -type f 2>/dev/null)
+        while IFS= read -r old_file; do
+            rm -f "$old_file"
+            count=$((count + 1))
+        done < <(find "$LOG_DIR" -name "*.summary" -mtime "+${keep_days}" -type f 2>/dev/null)
+        while IFS= read -r old_file; do
+            rm -f "$old_file"
+            count=$((count + 1))
+        done < <(find "$LOG_DIR" -name "*.scorecard" -mtime "+${keep_days}" -type f 2>/dev/null)
+        if [[ $count -gt 0 ]]; then
+            log INFO "已清理 ${count} 个超过 ${keep_days} 天的旧日志文件"
+        fi
+    fi
+}
+
+# === 断点续跑: 检测上次未完成的审计 ===
+detect_resume_point() {
+    # 如果用户手动指定了阶段范围，优先用用户的
+    if [[ "${USER_SPECIFIED_RANGE:-false}" == "true" ]]; then
+        return
+    fi
+
+    # 查找最近 3 天内未完成的 progress 文件
+    local recent_progress=""
+    for days_ago in 0 1 2; do
+        local check_date
+        if [[ "$(uname)" == "Darwin" ]]; then
+            check_date=$(date -v-${days_ago}d +%Y-%m-%d)
+        else
+            check_date=$(date -d "${days_ago} days ago" +%Y-%m-%d)
+        fi
+        local check_file="${LOG_DIR}/${check_date}.progress"
+        if [[ -f "$check_file" ]]; then
+            recent_progress="$check_file"
+            break
+        fi
+    done
+
+    if [[ -z "$recent_progress" ]]; then
+        return
+    fi
+
+    # 找到最后完成的阶段
+    local last_done=0
+    local total_phases="${TOTAL_PHASES:-8}"
+    for p in $(seq 1 "$total_phases"); do
+        if grep -q "phase${p}_done=" "$recent_progress" 2>/dev/null; then
+            last_done=$p
+        fi
+    done
+
+    # 如果有阶段完成了但没全部完成，从下一个阶段继续
+    if [[ $last_done -gt 0 && $last_done -lt $total_phases ]]; then
+        local resume_from=$((last_done + 1))
+        # 检查是否是今天的文件（避免从好几天前的进度续跑）
+        local progress_date
+        progress_date=$(basename "$recent_progress" .progress)
+        if [[ "$progress_date" == "$DATE" ]]; then
+            log INFO "检测到今天的审计在阶段 ${last_done} 后中断，从阶段 ${resume_from} 续跑"
+            START_PHASE=$resume_from
+        else
+            log INFO "检测到 ${progress_date} 的审计在阶段 ${last_done} 后中断"
+            log INFO "时间超过今天，执行完整审计（如需续跑请手动: ./run-audit.sh ${resume_from}）"
+        fi
+    fi
+}
+
 # === 参数解析 ===
 DRY_RUN=false
 START_PHASE=1
-END_PHASE=6
+END_PHASE=${TOTAL_PHASES:-8}
+USER_SPECIFIED_RANGE=false
 
 for arg in "$@"; do
     if [[ "$arg" == "--dry-run" ]]; then
@@ -90,9 +229,11 @@ done
 
 if [[ ${#POSITIONAL_ARGS[@]} -eq 1 ]]; then
     START_PHASE="${POSITIONAL_ARGS[0]}"
+    USER_SPECIFIED_RANGE=true
 elif [[ ${#POSITIONAL_ARGS[@]} -eq 2 ]]; then
     START_PHASE="${POSITIONAL_ARGS[0]}"
     END_PHASE="${POSITIONAL_ARGS[1]}"
+    USER_SPECIFIED_RANGE=true
 fi
 
 # ============================================================
