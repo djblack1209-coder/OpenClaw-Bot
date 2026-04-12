@@ -5,6 +5,24 @@
 
 ---
 
+## [2026-04-12] 新闻早报增强: RSS 摘要提取 + 展示
+
+> 领域: `backend`
+> 影响模块: `news_fetcher.py`
+> 关联问题: MRU_OPENSEARCH_REPORT 新闻解析优化
+
+### 变更内容
+- 从 RSS `<description>` 字段提取文章摘要（feedparser 原生支持，零新依赖）
+- 自动清理摘要中的 HTML 标签，截断到 200 字符
+- `format_news_items` 新增摘要行（📝 前缀，限 120 字符）
+- 摘要与标题相同时自动跳过（部分 RSS 源 summary=title）
+- 评估并放弃 newspaper3k：已有 jina_reader 做全文提取，RSS 摘要已覆盖日常需求
+
+### 文件变更
+- `packages/clawbot/src/news_fetcher.py` — 新增 summary 提取+展示
+
+---
+
 ## [2026-04-12] IBKR 库迁移: ib_insync → ib_async (社区维护接力)
 
 > 领域: `trading`
