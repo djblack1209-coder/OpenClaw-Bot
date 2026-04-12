@@ -70,7 +70,7 @@ H. 许可证合规
 - 发现未校验输入 → 添加 Pydantic 校验或手动检查
 - 发现缺失鉴权 → 添加 auth 依赖
 - 发现日志泄露 → 使用 scrub_secrets() 或直接移除敏感内容
-- 无法修复的问题 → 记录到 docs/status/HEALTH.md（分类: SECURITY）
+- 无法在代码层面修复的问题（如上游 CVE 未出补丁）→ 记录到 docs/status/HEALTH.md（分类: SECURITY），并注明临时缓解措施
 
 【质量门】
 - 每个修复后运行: cd packages/clawbot && python -m pytest tests/ -x --tb=short -q

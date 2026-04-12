@@ -250,15 +250,19 @@ run_phase() {
             export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
         fi
 
-        # 执行 Claude Code（使用官方推荐的 --bare 模式加速启动）
+        # 执行 Claude Code（--bare 加速启动 + 注入自主决策指令和项目规范）
         local session_id
         session_id=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
+        local directive_file="${SCRIPT_DIR}/autonomous-directive.txt"
+        local agents_file="${PROJECT_DIR}/AGENTS.md"
 
         "${CLAUDE_BIN:-claude}" \
             -p "$prompt" \
             --bare \
             --dangerously-skip-permissions \
-            --max-budget-usd "${BUDGET_PER_PHASE:-3}" \
+            --append-system-prompt-file "$directive_file" \
+            --append-system-prompt-file "$agents_file" \
+            --max-budget-usd "${BUDGET_PER_PHASE:-5}" \
             --max-turns "${MAX_TURNS_PER_PHASE:-200}" \
             ${MODEL:+--model "$MODEL"} \
             ${FALLBACK_MODEL:+--fallback-model "$FALLBACK_MODEL"} \
@@ -305,7 +309,9 @@ run_phase() {
                 -p "$cont_prompt" \
                 --bare \
                 --dangerously-skip-permissions \
-                --max-budget-usd "${BUDGET_PER_PHASE:-3}" \
+                --append-system-prompt-file "$directive_file" \
+                --append-system-prompt-file "$agents_file" \
+                --max-budget-usd "${BUDGET_PER_PHASE:-5}" \
                 --max-turns "${MAX_TURNS_PER_PHASE:-200}" \
                 ${MODEL:+--model "$MODEL"} \
                 ${FALLBACK_MODEL:+--fallback-model "$FALLBACK_MODEL"} \
