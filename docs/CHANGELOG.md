@@ -5,6 +5,30 @@
 
 ---
 
+## [2026-04-12] 夜间审计系统全自主决策模式升级
+
+> 领域: `infra`
+> 影响模块: `scripts/nightly-audit/*`
+> 关联问题: 无（功能增强）
+
+### 变更内容
+- 新增 `autonomous-directive.txt` 自主决策指令文件，通过 `--append-system-prompt-file` 注入每次 Claude 调用
+- 审计过程中发现的问题直接修复、需要决策直接决策，不再标记"留给人工确认"
+- 仅 UI 审美类判断写入 HANDOFF.md 供用户白天查看
+- 各阶段提示词移除人工确认语言，改为"直接补全/直接修复/直接决策"
+- Phase 2 功能完整性检查升级：TODO/半成品代码直接完成，搬运优先
+- 补全 8 个原始缺失审计维度（隐私保护、许可证合规、代码重复度、并发安全、构建验证、版本管理、定时任务审计、环境变量完整性）
+
+### 文件变更
+- `scripts/nightly-audit/autonomous-directive.txt` — 新建，自主决策指令
+- `scripts/nightly-audit/run-audit.sh` — 注入 autonomous-directive.txt + AGENTS.md
+- `scripts/nightly-audit/config.env.example` — 预算默认值更新
+- `scripts/nightly-audit/phases/01-security.txt` — 补充隐私保护、许可证合规维度
+- `scripts/nightly-audit/phases/02-backend.txt` — 功能完整性升级为直接补全
+- `scripts/nightly-audit/phases/06-governance-docs.txt` — 移除人工确认语言
+
+---
+
 ## [2026-04-12] 夜间自动审计系统
 
 > 领域: `infra`, `docs`
