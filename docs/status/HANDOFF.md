@@ -4,6 +4,55 @@
 
 ---
 
+## [2026-04-12 22:00] 开源积木化优化 — 7 个功能点完成
+
+### 本次完成了什么
+
+**1. Telegram FSM 引导向导 (Task 5)**
+- 新用户 3 步交互式引导，ConversationHandler 实现
+- /start 和 /help 分离
+
+**2. mem0 集成收尾 (Task 2)**
+- 删除 SQLite 向量搜索回退死代码
+
+**3. 积木化解构 + 开源情报**
+- 15 个 MRU 拆解 + 13 个直接集成候选
+- 完整报告在 `docs/architecture/MRU_OPENSEARCH_REPORT.md`
+
+**4. Hermes Agent (62k⭐) 架构分析**
+- 重点参考 ContextCompressor 和 MemoryManager
+
+**5. 记忆系统重构**
+- 递归索引（地图分层模型）：每次只带 ~80 token 索引
+- LRU 淘汰：MAX_MEMORIES=2000
+- 修复 _user_profile 双重注入 bug（省 ~300 token/次）
+
+**6. jieba 中文意图匹配 v2.0**
+- 三层匹配：包含→jieba分词→difflib
+- 20 个新关键词，长句识别 8/8 命中
+
+**7. 自愈引擎 v3.0**
+- pybreaker 工业级熔断器替代手写状态机
+- 评估并放弃 blinker（event_bus 定制太深）
+
+### 未完成的工作
+- TA-Lib 替代 ta_engine.py（下一价值位阶）
+- vectorbt 替代策略+回测引擎（需 2-3 周）
+- semantic-router 安装+集成（需要模型下载）
+- RouteLLM 成本优化（需要评估）
+
+### 需要注意的坑
+- pybreaker 的 `_record_circuit_failure` 通过 `call(fail_fn)` 触发，不是直接计数
+- jieba 首次分词会有 ~1 秒初始化延迟（后续调用毫秒级）
+- 记忆 L0 索引格式变了（`<memory-index>` 标签），旧测试需要 assert "记忆索引"
+
+### 当前系统状态
+- 后端测试: 1133/1135 (1 项 curl_cffi, 2 项 skip)
+- Git: 9 次 commit 待推送
+- 新增依赖: pybreaker>=1.4.0 (BSD)
+
+---
+
 ## [2026-04-12 18:00] 优化计划全部完结 — Task 5 (FSM) + Task 2 (mem0) + Task 6 评估
 
 ### 本次完成了什么
