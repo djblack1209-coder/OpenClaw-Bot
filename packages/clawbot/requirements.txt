@@ -162,7 +162,7 @@ mistletoe~=1.4.0
 # stamina — 声明式重试 (1.4k⭐, MIT)
 # 搬运: 替换分散的 tenacity 配置，更干净的 API + structlog 集成
 # 降级链: stamina → tenacity → 手写指数退避
-stamina~=2.0.0
+stamina>=24.1.0,<26
 
 # PyrateLimiter — 令牌桶限流 (485⭐, MIT)
 # 搬运: 统一 API 限流，替换手写滑动窗口
