@@ -7,15 +7,20 @@ API 调用 Mixin — 重构版: 统一走 LiteLLM Router
 - 保留 _call_claude_api (付费 Claude 工具调用循环，LiteLLM 不直接支持)
 - 流式调用也走 LiteLLM stream=True
 """
+
 import json
 import logging
 import time as _time
 from typing import AsyncIterator
 
 from src.bot.globals import (
-    history_store, context_manager, metrics, health_checker,
+    history_store,
+    context_manager,
+    metrics,
+    health_checker,
     tool_executor,
-    CLAUDE_BASE, CLAUDE_KEY,
+    CLAUDE_BASE,
+    CLAUDE_KEY,
 )
 from src.bot.rate_limiter import rate_limiter, token_budget, quality_gate
 from src.bot.error_messages import error_generic, error_circuit_open, error_tool_abuse
@@ -39,6 +44,7 @@ def _detect_message_tone(text: str) -> str:
     零 LLM 成本，纯特征检测。
     """
     import re
+
     if not text or len(text) < 2:
         return "normal"
 
@@ -67,8 +73,9 @@ def _detect_message_tone(text: str) -> str:
 class APIMixin:
     """LLM API 调用能力 — LiteLLM Router 版"""
 
-    async def _call_api(self, chat_id: int, user_message: str, save_history: bool = True,
-                        chat_type: str = "group") -> str:
+    async def _call_api(
+        self, chat_id: int, user_message: str, save_history: bool = True, chat_type: str = "group"
+    ) -> str:
         """调用 API — 统一走 LiteLLM Router
 
         路由策略:
@@ -98,11 +105,12 @@ class APIMixin:
 
         # 上下文压缩
         from src.bot.globals import tiered_context_manager
+
         if tiered_context_manager:
             try:
                 messages, meta = tiered_context_manager.build_context(
                     messages=messages,
-                    system_prompt=getattr(self, 'system_prompt', ''),
+                    system_prompt=getattr(self, "system_prompt", ""),
                     query_hint=user_message,
                     chat_id=chat_id,
                 )
@@ -159,11 +167,16 @@ class APIMixin:
             if log_generation:
                 try:
                     log_generation(
-                        name=f"chat/{self.bot_id}", model=self.model,
-                        input_text=user_message[:2000], output_text=reply[:2000],
-                        bot_id=self.bot_id, chat_id=str(chat_id),
-                        latency_ms=latency, input_tokens=input_tokens,
-                        output_tokens=output_tokens, metadata={"chat_type": chat_type},
+                        name=f"chat/{self.bot_id}",
+                        model=self.model,
+                        input_text=user_message[:2000],
+                        output_text=reply[:2000],
+                        bot_id=self.bot_id,
+                        chat_id=str(chat_id),
+                        latency_ms=latency,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        metadata={"chat_type": chat_type},
                     )
                 except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
@@ -192,7 +205,7 @@ class APIMixin:
         response = await free_pool.acompletion(
             model_family=family,
             messages=messages,
-            system_prompt=getattr(self, 'system_prompt', ''),
+            system_prompt=getattr(self, "system_prompt", ""),
         )
         return response.choices[0].message.content or "(无响应)"
 
@@ -210,8 +223,9 @@ class APIMixin:
         # 1. 免费 Claude (Kiro)
         try:
             response = await free_pool.acompletion(
-                model_family=FAMILY_CLAUDE, messages=messages,
-                system_prompt=getattr(self, 'system_prompt', ''),
+                model_family=FAMILY_CLAUDE,
+                messages=messages,
+                system_prompt=getattr(self, "system_prompt", ""),
             )
             logger.info(f"[{bot_name}] 免费 Claude 成功")
             return response.choices[0].message.content or "(无响应)"
@@ -221,8 +235,9 @@ class APIMixin:
         # 2. g4f
         try:
             response = await free_pool.acompletion(
-                model_family=FAMILY_G4F, messages=messages,
-                system_prompt=getattr(self, 'system_prompt', ''),
+                model_family=FAMILY_G4F,
+                messages=messages,
+                system_prompt=getattr(self, "system_prompt", ""),
             )
             logger.info(f"[{bot_name}] g4f 成功")
             return response.choices[0].message.content or "(无响应)"
@@ -233,8 +248,9 @@ class APIMixin:
         # v3.0: 付费 Claude API 需用户发 /claude 显式调用
         try:
             response = await free_pool.acompletion(
-                model_family=None, messages=messages,
-                system_prompt=getattr(self, 'system_prompt', ''),
+                model_family=None,
+                messages=messages,
+                system_prompt=getattr(self, "system_prompt", ""),
             )
             return response.choices[0].message.content or "(无响应)"
         except Exception as e:  # noqa: F841
@@ -299,11 +315,13 @@ class APIMixin:
             for tu in tool_uses:
                 logger.info(f"[{self.name}] 工具: {tu['name']}({json.dumps(tu['input'], ensure_ascii=False)[:100]})")
                 result = await tool_executor.execute(tu["name"], tu["input"])
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tu["id"],
+                        "content": json.dumps(result, ensure_ascii=False),
+                    }
+                )
             working_messages.append({"role": "user", "content": tool_results})
 
         if text_parts:
@@ -312,9 +330,9 @@ class APIMixin:
 
     # ---- 流式调用 ----
 
-    async def _call_api_stream(self, chat_id: int, user_message: str,
-                                save_history: bool = True,
-                                chat_type: str = "group") -> AsyncIterator[tuple]:
+    async def _call_api_stream(
+        self, chat_id: int, user_message: str, save_history: bool = True, chat_type: str = "group"
+    ) -> AsyncIterator[tuple]:
         """流式调用 — 走 LiteLLM stream=True"""
         start = _time.time()
 
@@ -332,11 +350,12 @@ class APIMixin:
         messages.append({"role": "user", "content": user_message})
 
         from src.bot.globals import tiered_context_manager as _tcm
+
         if _tcm:
             try:
                 messages, meta = _tcm.build_context(
                     messages=messages,
-                    system_prompt=getattr(self, 'system_prompt', ''),
+                    system_prompt=getattr(self, "system_prompt", ""),
                     query_hint=user_message,
                     chat_id=chat_id,
                 )
@@ -351,17 +370,9 @@ class APIMixin:
         bot_id = getattr(self, "bot_id", "")
         family = BOT_MODEL_FAMILY.get(bot_id)
 
-        # 画像驱动回复: 从 core memory 读取用户偏好，注入 system prompt
-        # 搬运灵感: omi personality-driven responses
-        _sys_prompt = getattr(self, 'system_prompt', '')
-        try:
-            if _tcm:
-                _user_profile = _tcm.core_get("user_profile", chat_id=chat_id) or ""
-                if _user_profile:
-                    _sys_prompt += f"\n\n[用户偏好] {_user_profile[:300]}"
-        except Exception as e:
-            pass  # 画像获取失败不影响主流程
-            logger.debug("静默异常: %s", e)
+        # 画像已通过 TieredContextManager.build_context() 的 Core Memory 层注入，
+        # 此处不再重复注入，避免双重注入浪费 ~300 token 上下文
+        _sys_prompt = getattr(self, "system_prompt", "")
 
         # 消息温度感知: 检测用户紧急/悠闲语气，调整回复风格
         # 搬运灵感: Google Gemini contextual response adaptation
@@ -384,7 +395,7 @@ class APIMixin:
 
             full_text = ""
             _last_yield = _time.monotonic()
-            _MIN_YIELD_INTERVAL = 0.3   # HI-011: 生产端最少 300ms 才 yield 一次
+            _MIN_YIELD_INTERVAL = 0.3  # HI-011: 生产端最少 300ms 才 yield 一次
             async for chunk in response:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
@@ -413,10 +424,14 @@ class APIMixin:
             if log_generation:
                 try:
                     log_generation(
-                        name=f"stream/{self.bot_id}", model=self.model,
-                        input_text=user_message[:2000], output_text=full_text[:2000],
-                        bot_id=self.bot_id, chat_id=str(chat_id),
-                        latency_ms=latency, input_tokens=input_tokens,
+                        name=f"stream/{self.bot_id}",
+                        model=self.model,
+                        input_text=user_message[:2000],
+                        output_text=full_text[:2000],
+                        bot_id=self.bot_id,
+                        chat_id=str(chat_id),
+                        latency_ms=latency,
+                        input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         metadata={"chat_type": chat_type, "stream": True},
                     )
