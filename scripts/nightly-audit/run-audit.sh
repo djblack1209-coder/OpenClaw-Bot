@@ -606,7 +606,18 @@ main() {
 
     # 获取进程锁（防止多实例冲突）
     acquire_lock
-    log INFO "进程锁已获取"
+    log INFO "进程锁已获取 (项目标识: ${PROJECT_HASH})"
+
+    # 健康预检（确认环境可用后再继续）
+    if ! preflight_check; then
+        exit 1
+    fi
+
+    # 清理旧日志
+    cleanup_old_logs
+
+    # 断点续跑检测（如果上次审计中断，自动从断点继续）
+    detect_resume_point
 
     # 开始
     log INFO "========================================="
@@ -655,9 +666,9 @@ main() {
     log INFO "起始 commit: ${git_hash}"
 
     # === 阶段定义（兼容 bash 3.x / macOS 原生 bash）===
-    # 索引 0 占位，1-6 对应阶段编号
-    local phase_names_list="_ 安全审计 后端稳定性 API与集成 前端与UI 架构与运维 文件治理与文档"
-    local phase_files_list="_ 01-security.txt 02-backend.txt 03-api-integration.txt 04-frontend-ui.txt 05-architecture-ops.txt 06-governance-docs.txt"
+    # 索引 0 占位，1-8 对应阶段编号
+    local phase_names_list="_ 安全审计 后端稳定性 API与集成 前端与UI 架构与运维 文件治理与文档 数据库与交易 端到端与可观测"
+    local phase_files_list="_ 01-security.txt 02-backend.txt 03-api-integration.txt 04-frontend-ui.txt 05-architecture-ops.txt 06-governance-docs.txt 07-data-trading.txt 08-e2e-observability.txt"
 
     # 按阶段号获取名称的函数
     get_phase_name() { echo "$phase_names_list" | cut -d' ' -f$(($1 + 1)); }
@@ -694,12 +705,17 @@ main() {
 
     # === 最终 Git 推送 ===
     if [[ "${AUTO_PUSH:-true}" == "true" && "$DRY_RUN" != "true" ]]; then
+        # 打审计完成标记（用于增量审计的基准点）
+        git tag "nightly-audit-${DATE}" 2>/dev/null || true
+
         log INFO "推送代码到远程仓库..."
         git push "${GIT_REMOTE:-origin}" "${GIT_BRANCH:-main}" 2>&1 | while read -r line; do
             log INFO "  git: $line"
         done || {
             log WARN "git push 失败，可能需要手动推送"
         }
+        # 推送标签
+        git push "${GIT_REMOTE:-origin}" "nightly-audit-${DATE}" 2>/dev/null || true
     fi
 
     # === 记录最终状态 ===
@@ -740,6 +756,9 @@ main() {
         done
     } > "$SUMMARY_FILE"
 
+    # 追加审计评分到摘要
+    generate_final_scorecard
+
     cat "$SUMMARY_FILE"
 
     log INFO "========================================="
@@ -753,7 +772,7 @@ main() {
     send_notification "🤖 *OpenClaw Bot 夜间审计完成*
 
 📅 日期: ${DATE}
-✅ 完成: ${phases_completed}/6 阶段
+✅ 完成: ${phases_completed}/${TOTAL_PHASES:-8} 阶段
 📝 产生: ${total_commits} 个 commit
 💰 预估花费: \$${TOTAL_SPENT}
 
