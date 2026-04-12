@@ -8,6 +8,7 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 
 对标: LiteLLM (39.6k⭐), Portkey Gateway (11k⭐)
 """
+
 import logging
 import os
 import time
@@ -23,11 +24,14 @@ logger = logging.getLogger(__name__)
 def _scrub_secrets(msg: str) -> str:
     """从错误消息中移除 API Key 和敏感 URL — 代理到 utils.scrub_secrets"""
     from src.utils import scrub_secrets
+
     return scrub_secrets(msg)
+
 
 # ---- LLM 缓存层 (diskcache, graceful degradation) ----
 try:
     from src.llm_cache import _make_cache_key, _get_cache
+
     _HAS_LLM_CACHE = True
 
     def _llm_cache_get(key: str):
@@ -35,6 +39,7 @@ try:
         if cache is None:
             return None
         from src.llm_cache import _stats
+
         val = cache.get(key)
         if val is not None:
             _stats["hits"] += 1
@@ -95,6 +100,7 @@ except ImportError:
         except Exception:
             return ""
 
+
 # 静默 LiteLLM 内部日志
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
@@ -120,6 +126,7 @@ _TIER_ORDER = {TIER_S: 0, TIER_A: 1, TIER_B: 2, TIER_C: 3}
 @dataclass
 class FreeAPISource:
     """兼容层: 保持旧接口，内部映射到 LiteLLM deployment"""
+
     provider: str
     base_url: str
     api_key: str
@@ -151,34 +158,55 @@ class FreeAPISource:
 
 # ---- 模型强度排名 ----
 MODEL_RANKING = {
-    "gemini-2.5-pro": 98, "gemini-2.5-flash": 97, "claude-sonnet-4": 95,
+    "gemini-2.5-pro": 98,
+    "gemini-2.5-flash": 97,
+    "claude-sonnet-4": 95,
     "gemini-3-flash-preview": 95,
-    "moonshotai/kimi-k2-instruct": 94, "moonshotai/kimi-k2-instruct:free": 94,
-    "deepseek/deepseek-r1-0528:free": 93, "DeepSeek-R1": 93, "deepseek-r1": 93,
-    "o4-mini": 92, "Qwen/Qwen3-235B-A22B": 92, "qwen/qwen3-235b-a22b:free": 92,
+    "moonshotai/kimi-k2-instruct": 94,
+    "moonshotai/kimi-k2-instruct:free": 94,
+    "deepseek/deepseek-r1-0528:free": 93,
+    "DeepSeek-R1": 93,
+    "deepseek-r1": 93,
+    "o4-mini": 92,
+    "Qwen/Qwen3-235B-A22B": 92,
+    "qwen/qwen3-235b-a22b:free": 92,
     "qwen3-235b-a22b-instruct": 92,
     "nousresearch/hermes-3-llama-3.1-405b:free": 90,
-    "deepseek-ai/DeepSeek-V3-0324": 90, "deepseek-v3.2": 90, "deepseek-v3": 88,
-    "command-a-reasoning-08-2025": 89, "command-a-vision-07-2025": 87,
-    "command-a-03-2025": 87, "gpt-4.1-mini": 86, "codestral-latest": 85,
-    "kimi-k2": 94, "qwen3-max": 91, "qwen3-coder-plus": 90,
-    "llama-3.3-70b-versatile": 83, "llama-3.3-70b": 83,
-    "meta-llama/llama-3.3-70b-instruct:free": 83, "meta/llama-3.3-70b-instruct": 83,
+    "deepseek-ai/DeepSeek-V3-0324": 90,
+    "deepseek-v3.2": 90,
+    "deepseek-v3": 88,
+    "command-a-reasoning-08-2025": 89,
+    "command-a-vision-07-2025": 87,
+    "command-a-03-2025": 87,
+    "gpt-4.1-mini": 86,
+    "codestral-latest": 85,
+    "kimi-k2": 94,
+    "qwen3-max": 91,
+    "qwen3-coder-plus": 90,
+    "llama-3.3-70b-versatile": 83,
+    "llama-3.3-70b": 83,
+    "meta-llama/llama-3.3-70b-instruct:free": 83,
+    "meta/llama-3.3-70b-instruct": 83,
     "deepseek-r1-distill-llama-70b": 82,
-    "openai/gpt-oss-120b:free": 82, "compound-ai/compound-beta": 82,
+    "openai/gpt-oss-120b:free": 82,
+    "compound-ai/compound-beta": 82,
     "qwen/qwen3-coder:free": 82,
     "gemini-2.5-flash-lite": 80,
     "THUDM/GLM-4-32B-0414": 80,
-    "qwen/qwen3-32b": 77, "qwen3-32b": 77,
+    "qwen/qwen3-32b": 77,
+    "qwen3-32b": 77,
     "microsoft/phi-4-reasoning-plus:free": 76,
-    "mistral-small-latest": 74, "mistralai/mistral-small-3.1-24b-instruct:free": 74,
-    "gemma-3-27b-it": 74, "google/gemma-3-27b-it:free": 74,
+    "mistral-small-latest": 74,
+    "mistralai/mistral-small-3.1-24b-instruct:free": 74,
+    "gemma-3-27b-it": 74,
+    "google/gemma-3-27b-it:free": 74,
     "meta-llama/llama-4-scout-17b-16e-instruct": 72,
     "llama-4-scout-17b-16e-instruct": 72,
     "nvidia/nemotron-3-super-120b-a12b:free": 90,
     "minimax/minimax-m2.5:free": 88,
     "qwen/qwen3-next-80b-a3b-instruct:free": 85,
-    "gpt-4o": 88, "gpt-4o-mini": 78,
+    "gpt-4o": 88,
+    "gpt-4o-mini": 78,
     "auto": 65,
 }
 
@@ -199,17 +227,18 @@ def get_model_score(model_id: str) -> float:
 BOT_MODEL_FAMILY = {
     "qwen235b": "qwen",
     "gptoss": "gpt-oss",
-    "claude_sonnet": "claude",       # 走 Kiro Gateway 的 Claude 模型
-    "claude_haiku": "claude",        # 走 Kiro Gateway 的 Claude 模型
-    "deepseek_v3": "deepseek",       # 走 DeepSeek 族群模型
-    "claude_opus": "claude",         # 走 Kiro Gateway 的 Claude 模型
-    "free_llm": None,                # 自动选择最强可用模型
+    "claude_sonnet": "claude",  # 走 Kiro Gateway 的 Claude 模型
+    "claude_haiku": "claude",  # 走 Kiro Gateway 的 Claude 模型
+    "deepseek_v3": "deepseek",  # 走 DeepSeek 族群模型
+    "claude_opus": "claude",  # 走 Kiro Gateway 的 Claude 模型
+    "free_llm": None,  # 自动选择最强可用模型
 }
 
 
 # ============================================================
 # LiteLLMPool
 # ============================================================
+
 
 def _env(key: str, default: str = "") -> str:
     return os.getenv(key, default)
@@ -236,6 +265,7 @@ class LiteLLMPool:
         # Phoenix OTEL — 与 Langfuse 并行运行，OpenTelemetry 标准协议
         try:
             from src.observability import init_phoenix
+
             init_phoenix()
         except ImportError:
             pass
@@ -247,12 +277,21 @@ class LiteLLMPool:
     def _reg(self, family: str, src: FreeAPISource):
         self._sources.setdefault(family, []).append(src)
 
-    def _dep(self, name: str, model: str, key: str,
-             base: str = "", rpm: int = 0, tier: str = TIER_B,
-             family: str = "", note: str = "",
-             timeout: int = 0, stream_timeout: int = 0) -> Dict:
+    def _dep(
+        self,
+        name: str,
+        model: str,
+        key: str,
+        base: str = "",
+        rpm: int = 0,
+        tier: str = TIER_B,
+        family: str = "",
+        note: str = "",
+        timeout: int = 0,
+        stream_timeout: int = 0,
+    ) -> Dict:
         """创建一个 LiteLLM deployment + 注册 FreeAPISource。
-        
+
         timeout/stream_timeout: per-model 超时配置（秒）。0 表示使用 Router 全局默认值。
         不同模型应设置差异化超时: Groq(快速推理)→8s, 大模型→30s, Reasoning模型→90s。
         """
@@ -268,13 +307,20 @@ class LiteLLMPool:
         if stream_timeout:
             params["stream_timeout"] = stream_timeout
         fam = family or name
-        self._reg(fam, FreeAPISource(
-            provider=name, base_url=base or "", api_key=key,
-            model=model.split("/", 1)[-1] if "/" in model else model,
-            tier=tier, rpm_limit=rpm, note=note, _deployment_id=dep_id,
-        ))
-        return {"model_name": fam, "litellm_params": params,
-                "model_info": {"id": dep_id, "tier": "free"}}
+        self._reg(
+            fam,
+            FreeAPISource(
+                provider=name,
+                base_url=base or "",
+                api_key=key,
+                model=model.split("/", 1)[-1] if "/" in model else model,
+                tier=tier,
+                rpm_limit=rpm,
+                note=note,
+                _deployment_id=dep_id,
+            ),
+        )
+        return {"model_name": fam, "litellm_params": params, "model_info": {"id": dep_id, "tier": "free"}}
 
     def _build_all_deployments(self) -> List[Dict]:
         deps: List[Dict] = []
@@ -287,26 +333,48 @@ class LiteLLMPool:
             prov = f"siliconflow_{i}"
             for m, fam, t in [
                 ("Qwen/Qwen3-235B-A22B-Instruct-2507", "qwen", TIER_S),  # 2026-07 更名
-                ("deepseek-ai/DeepSeek-V3.2", "deepseek", TIER_S),         # V3-0324 已下线
-                ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),               # 新增最强模型
-                ("Qwen/Qwen3-32B", "qwen", TIER_A),                       # 备用中等模型
+                ("deepseek-ai/DeepSeek-V3.2", "deepseek", TIER_S),  # V3-0324 已下线
+                ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),  # 新增最强模型
+                ("Qwen/Qwen3-32B", "qwen", TIER_A),  # 备用中等模型
             ]:
-                deps.append(self._dep(prov, f"openai/{m}", key, sf_base, tier=t, family=fam, note="SiliconFlow free",
-                                      timeout=45, stream_timeout=60))  # 大模型需要更长超时
+                deps.append(
+                    self._dep(
+                        prov,
+                        f"openai/{m}",
+                        key,
+                        sf_base,
+                        tier=t,
+                        family=fam,
+                        note="SiliconFlow free",
+                        timeout=45,
+                        stream_timeout=60,
+                    )
+                )  # 大模型需要更长超时
 
         # Groq — 极速推理, 1000RPD (基于官方文档 2026.3)
         gk = _env("GROQ_API_KEY")
         if gk:
             for m, fam, t, r in [
-                ("llama-3.3-70b-versatile", "llama", TIER_A, 30),       # 30RPM, 1000RPD, 12K TPM
-                ("moonshotai/kimi-k2-instruct", "kimi", TIER_S, 60),    # 60RPM, 1000RPD
-                ("openai/gpt-oss-120b", "gpt-oss", TIER_A, 30),        # 30RPM, 1000RPD
-                ("qwen/qwen3-32b", "qwen", TIER_B, 60),                 # 60RPM, 1000RPD
+                ("llama-3.3-70b-versatile", "llama", TIER_A, 30),  # 30RPM, 1000RPD, 12K TPM
+                ("moonshotai/kimi-k2-instruct", "kimi", TIER_S, 60),  # 60RPM, 1000RPD
+                ("openai/gpt-oss-120b", "gpt-oss", TIER_A, 30),  # 30RPM, 1000RPD
+                ("qwen/qwen3-32b", "qwen", TIER_B, 60),  # 60RPM, 1000RPD
                 ("meta-llama/llama-4-scout-17b-16e-instruct", "llama", TIER_B, 30),
-                ("llama-3.1-8b-instant", "llama", TIER_C, 30),          # 30RPM, 14400RPD
+                ("llama-3.1-8b-instant", "llama", TIER_C, 30),  # 30RPM, 14400RPD
             ]:
-                deps.append(self._dep("groq", f"groq/{m}", gk, rpm=r, tier=t, family=fam, note=f"Groq free {r}RPM",
-                                      timeout=8, stream_timeout=15))  # Groq 极速推理，短超时
+                deps.append(
+                    self._dep(
+                        "groq",
+                        f"groq/{m}",
+                        gk,
+                        rpm=r,
+                        tier=t,
+                        family=fam,
+                        note=f"Groq free {r}RPM",
+                        timeout=8,
+                        stream_timeout=15,
+                    )
+                )  # Groq 极速推理，短超时
 
         # Cerebras — 免费高速推理，优先接入官方当前公开模型
         ck = _env("CEREBRAS_API_KEY")
@@ -315,11 +383,9 @@ class LiteLLMPool:
                 ("gpt-oss-120b", "gpt-oss", TIER_A),
                 ("llama3.1-8b", "llama", TIER_C),
             ]:
-                deps.append(self._dep(
-                    "cerebras", f"cerebras/{m}", ck,
-                    rpm=30, tier=t, family=fam,
-                    note="Cerebras free 30RPM"
-                ))
+                deps.append(
+                    self._dep("cerebras", f"cerebras/{m}", ck, rpm=30, tier=t, family=fam, note="Cerebras free 30RPM")
+                )
 
         # Gemini — 2.5/3.x 系，移除已废弃的 2.0 系
         gk2 = _env("GEMINI_API_KEY")
@@ -329,7 +395,9 @@ class LiteLLMPool:
                 ("gemini-2.5-flash-lite", TIER_A, 10),
                 ("gemini-3-flash-preview", TIER_A, 5),
             ]:
-                deps.append(self._dep("google", f"gemini/{m}", gk2, rpm=r, tier=t, family="gemini", note="Google AI Studio"))
+                deps.append(
+                    self._dep("google", f"gemini/{m}", gk2, rpm=r, tier=t, family="gemini", note="Google AI Studio")
+                )
 
         # OpenRouter — 免费模型, ~20RPM 动态限制
         ork = _env("OPENROUTER_API_KEY")
@@ -346,14 +414,46 @@ class LiteLLMPool:
                 ("google/gemma-3-27b-it:free", "gemma", TIER_B),
                 ("stepfun/step-3.5-flash:free", "stepfun", TIER_B),
             ]:
-                deps.append(self._dep("openrouter", f"openrouter/{m}", ork, rpm=20, tier=t, family=fam, note="OpenRouter free"))
+                deps.append(
+                    self._dep("openrouter", f"openrouter/{m}", ork, rpm=20, tier=t, family=fam, note="OpenRouter free")
+                )
 
         # Mistral — 免费层限制严格，仅作中后位兜底
         mk = _env("MISTRAL_API_KEY")
         if mk:
-            deps.append(self._dep("mistral", "mistral/mistral-small-latest", mk, rpm=1, tier=TIER_B, family="mistral", note="Mistral free 1RPM"))
-            deps.append(self._dep("mistral", "mistral/mistral-large-latest", mk, rpm=1, tier=TIER_A, family="mistral", note="Mistral free 1RPM"))
-            deps.append(self._dep("mistral", "mistral/codestral-latest", mk, rpm=30, tier=TIER_A, family="mistral", note="Mistral Codestral 30RPM"))
+            deps.append(
+                self._dep(
+                    "mistral",
+                    "mistral/mistral-small-latest",
+                    mk,
+                    rpm=1,
+                    tier=TIER_B,
+                    family="mistral",
+                    note="Mistral free 1RPM",
+                )
+            )
+            deps.append(
+                self._dep(
+                    "mistral",
+                    "mistral/mistral-large-latest",
+                    mk,
+                    rpm=1,
+                    tier=TIER_A,
+                    family="mistral",
+                    note="Mistral free 1RPM",
+                )
+            )
+            deps.append(
+                self._dep(
+                    "mistral",
+                    "mistral/codestral-latest",
+                    mk,
+                    rpm=30,
+                    tier=TIER_A,
+                    family="mistral",
+                    note="Mistral Codestral 30RPM",
+                )
+            )
 
         # Cohere — 20RPM / 1000次月额度，不做主链最前排
         cok = _env("COHERE_API_KEY")
@@ -365,14 +465,24 @@ class LiteLLMPool:
         ght = _env("GITHUB_MODELS_TOKEN")
         if ght:
             ghb = "https://models.github.ai/inference"
-            for m, fam, t in [("gpt-4.1-mini", "gpt", TIER_A), ("o4-mini", "gpt", TIER_S), ("DeepSeek-R1", "deepseek", TIER_S)]:
-                deps.append(self._dep("github", f"openai/{m}", ght, ghb, rpm=15, tier=t, family=fam, note="GitHub Models"))
+            for m, fam, t in [
+                ("gpt-4.1-mini", "gpt", TIER_A),
+                ("o4-mini", "gpt", TIER_S),
+                ("DeepSeek-R1", "deepseek", TIER_S),
+            ]:
+                deps.append(
+                    self._dep("github", f"openai/{m}", ght, ghb, rpm=15, tier=t, family=fam, note="GitHub Models")
+                )
 
         # Kiro Gateway
         kk = _env("KIRO_API_KEY")
         kb = _env("KIRO_BASE_URL", "http://127.0.0.1:18793/v1")
         if kk:
-            deps.append(self._dep("kiro", "openai/claude-sonnet-4", kk, kb, rpm=5, tier=TIER_S, family="claude", note="Kiro Gateway"))
+            deps.append(
+                self._dep(
+                    "kiro", "openai/claude-sonnet-4", kk, kb, rpm=5, tier=TIER_S, family="claude", note="Kiro Gateway"
+                )
+            )
 
         # NVIDIA NIM (信用额度制, ~60RPM, 试用额度用完需购买AI Enterprise)
         nk = _env("NVIDIA_NIM_API_KEY")
@@ -387,8 +497,19 @@ class LiteLLMPool:
         # Sambanova
         sk = _env("SAMBANOVA_API_KEY")
         if sk:
-            deps.append(self._dep("sambanova", "openai/DeepSeek-R1", sk, "https://api.sambanova.ai/v1", rpm=10, tier=TIER_S, family="deepseek",
-                                  timeout=90, stream_timeout=120))  # Reasoning 模型需要极长超时
+            deps.append(
+                self._dep(
+                    "sambanova",
+                    "openai/DeepSeek-R1",
+                    sk,
+                    "https://api.sambanova.ai/v1",
+                    rpm=10,
+                    tier=TIER_S,
+                    family="deepseek",
+                    timeout=90,
+                    stream_timeout=120,
+                )
+            )  # Reasoning 模型需要极长超时
 
         # iflow 无限 API（硅基流分配，14个顶级模型，无限使用）
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
@@ -403,14 +524,24 @@ class LiteLLMPool:
                 ("kimi-k2", "kimi", TIER_S),
                 ("qwen3-max", "qwen", TIER_S),
                 ("qwen3-coder-plus", "qwen", TIER_S),
-                ("deepseek-r1", "deepseek", TIER_S),   # reasoning model
+                ("deepseek-r1", "deepseek", TIER_S),  # reasoning model
                 ("deepseek-v3", "deepseek", TIER_A),
-                ("qwen3-vl-plus", "qwen", TIER_A),     # vision model
+                ("qwen3-vl-plus", "qwen", TIER_A),  # vision model
                 ("qwen3-32b", "qwen", TIER_A),
-                ("qwen3-235b", "qwen", TIER_B),         # thinking model（慢，备用）
+                ("qwen3-235b", "qwen", TIER_B),  # thinking model（慢，备用）
             ]:
-                deps.append(self._dep("iflow", f"openai/{m}", iflow_key, iflow_base,
-                                      rpm=500, tier=t, family=fam, note="iflow unlimited"))
+                deps.append(
+                    self._dep(
+                        "iflow",
+                        f"openai/{m}",
+                        iflow_key,
+                        iflow_base,
+                        rpm=500,
+                        tier=t,
+                        family=fam,
+                        note="iflow unlimited",
+                    )
+                )
 
         # 硅基流动付费Key池 (10条, 14元/条, 未实名, ⚠️禁止Pro模型)
         # v3.0: 免费模型保持原 family; 实际扣费模型隔离到 _paid family
@@ -427,38 +558,70 @@ class LiteLLMPool:
                     ("Qwen/Qwen3.5-397B-A17B", "qwen", TIER_S),
                     ("Qwen/Qwen3-32B", "qwen", TIER_A),
                 ]:
-                    deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
-                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (free model)"))
+                    deps.append(
+                        self._dep(
+                            prov,
+                            f"openai/{m}",
+                            key,
+                            sf_paid_base,
+                            tier=t,
+                            family=fam,
+                            note=f"SiliconFlow paid #{i} (free model)",
+                        )
+                    )
                 # 扣费模型 → 隔离到 _paid family, 不会被默认路由命中
                 for m, fam, t in [
                     ("deepseek-ai/DeepSeek-R1", "deepseek_paid", TIER_S),
                     ("deepseek-ai/DeepSeek-V3", "deepseek_paid", TIER_A),
                 ]:
-                    deps.append(self._dep(prov, f"openai/{m}", key, sf_paid_base,
-                                          tier=t, family=fam, note=f"SiliconFlow paid #{i} (PAID, gated)"))
+                    deps.append(
+                        self._dep(
+                            prov,
+                            f"openai/{m}",
+                            key,
+                            sf_paid_base,
+                            tier=t,
+                            family=fam,
+                            note=f"SiliconFlow paid #{i} (PAID, gated)",
+                        )
+                    )
 
         # Volcengine 火山引擎
         vk = _env("VOLCENGINE_API_KEY")
         vb = _env("VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
         if vk:
-            deps.append(self._dep("volcengine", "openai/doubao-pro-256k", vk, vb,
-                                  rpm=10, tier=TIER_A, family="doubao", note="Volcengine"))
+            deps.append(
+                self._dep(
+                    "volcengine",
+                    "openai/doubao-pro-256k",
+                    vk,
+                    vb,
+                    rpm=10,
+                    tier=TIER_A,
+                    family="doubao",
+                    note="Volcengine",
+                )
+            )
 
         # GPT_API_Free (免费: gpt-5/4o系5次/天, deepseek系30次/天, mini系200次/天)
         gpk = _env("GPT_API_FREE_KEY")
         gpb = _env("GPT_API_FREE_BASE_URL", "https://api.gpt.ge/v1")
         if gpk:
             for m, fam, t, r in [
-                ("gpt-4o", "gpt", TIER_S, 2),              # 5/day
-                ("gpt-4o-mini", "gpt", TIER_A, 5),           # 200/day
-                ("deepseek-r1", "deepseek", TIER_S, 2),      # 30/day
-                ("deepseek-v3", "deepseek", TIER_A, 2),      # 30/day
+                ("gpt-4o", "gpt", TIER_S, 2),  # 5/day
+                ("gpt-4o-mini", "gpt", TIER_A, 5),  # 200/day
+                ("deepseek-r1", "deepseek", TIER_S, 2),  # 30/day
+                ("deepseek-v3", "deepseek", TIER_A, 2),  # 30/day
             ]:
-                deps.append(self._dep("gpt_free", f"openai/{m}", gpk, gpb, rpm=r, tier=t, family=fam, note="GPT_API_Free"))
+                deps.append(
+                    self._dep("gpt_free", f"openai/{m}", gpk, gpb, rpm=r, tier=t, family=fam, note="GPT_API_Free")
+                )
 
         # g4f 兜底（降级为 TIER_C，仅作最后手段）
         g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
-        deps.append(self._dep("g4f", "openai/auto", "dummy", g4f_base, tier=TIER_C, family="g4f", note="g4f fallback (TIER_C)"))
+        deps.append(
+            self._dep("g4f", "openai/auto", "dummy", g4f_base, tier=TIER_C, family="g4f", note="g4f fallback (TIER_C)")
+        )
 
         return deps
 
@@ -490,23 +653,24 @@ class LiteLLMPool:
         try:
             # 按照 LiteLLM 官方推荐配置 Router
             from litellm.router import RetryPolicy
+
             self._router = Router(
                 model_list=deps,
                 fallbacks=fallbacks,
-                num_retries=3,              # 官方推荐 3 次重试（原 1 次太低）
-                timeout=15,                 # 全局超时 15 秒
-                stream_timeout=30,          # 流式请求允许更长时间
+                num_retries=3,  # 官方推荐 3 次重试（原 1 次太低）
+                timeout=15,  # 全局超时 15 秒
+                stream_timeout=30,  # 流式请求允许更长时间
                 allowed_fails=3,
                 cooldown_time=30,
                 retry_after=5,
                 routing_strategy="simple-shuffle",
                 # 按错误类型区分重试策略（官方推荐）
                 retry_policy=RetryPolicy(
-                    RateLimitErrorRetries=3,          # 429 限速适当重试（原 5 次太多，配合 fallback 延迟过长）
-                    TimeoutErrorRetries=2,            # 超时少量重试（已有 fallback 兜底）
+                    RateLimitErrorRetries=3,  # 429 限速适当重试（原 5 次太多，配合 fallback 延迟过长）
+                    TimeoutErrorRetries=2,  # 超时少量重试（已有 fallback 兜底）
                     ContentPolicyViolationErrorRetries=0,  # 内容违规不重试
-                    AuthenticationErrorRetries=0,     # 认证错误不重试
-                    InternalServerErrorRetries=2,     # 服务器错误少量重试
+                    AuthenticationErrorRetries=0,  # 认证错误不重试
+                    InternalServerErrorRetries=2,  # 服务器错误少量重试
                 ),
             )
             logger.info(f"[LiteLLMPool] Router OK: {len(deps)} deployments, {len(families)} groups")
@@ -537,16 +701,19 @@ class LiteLLMPool:
         if not self._router:
             raise RuntimeError("LiteLLMPool 未初始化")
 
-        model = model_family or self._pick_strongest_family()
+        # ── 智能路由: 根据查询复杂度 + 预算状态自动选模型 ──
+        # 调用方传了 model_family 则尊重（如 FAMILY_CLAUDE 显式请求）
+        # 未传时，按消息复杂度+预算余量自动选择，避免简单查询浪费贵模型
+        if model_family:
+            model = model_family
+        else:
+            complexity = self._estimate_complexity(messages, max_tokens)
+            model = self._smart_route(complexity)
+
         all_msgs = ([{"role": "system", "content": system_prompt}] + messages) if system_prompt else messages
 
         # ---- Cache layer (non-streaming only) ----
-        use_cache = (
-            not stream
-            and not no_cache
-            and cache_ttl > 0
-            and _HAS_LLM_CACHE
-        )
+        use_cache = not stream and not no_cache and cache_ttl > 0 and _HAS_LLM_CACHE
 
         if use_cache:
             cache_key = _make_cache_key(all_msgs, model, temperature)
@@ -565,9 +732,12 @@ class LiteLLMPool:
                 kwargs.setdefault("stream_options", {"include_usage": True})
 
             response = await self._router.acompletion(
-                model=model, messages=all_msgs,
-                temperature=temperature, max_tokens=max_tokens,
-                stream=stream, **kwargs,
+                model=model,
+                messages=all_msgs,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=stream,
+                **kwargs,
             )
 
             if stream:
@@ -603,6 +773,7 @@ class LiteLLMPool:
             if model == "g4f" or "g4f" in str(e).lower():
                 try:
                     from src.core.event_bus import get_event_bus, EventType
+
                     await get_event_bus().publish(
                         EventType.SYSTEM_ALERT,
                         {"level": "warning", "message": f"LLM 全链路降级到 g4f 兜底: {scrubbed[:100]}"},
@@ -611,6 +782,69 @@ class LiteLLMPool:
                 except Exception as e:
                     logger.debug("发布LLM降级告警事件失败(可忽略): %s", e)
             raise
+
+    # ── 智能路由（RouteLLM 风格，零额外依赖）──────────────
+
+    def _estimate_complexity(self, messages: list, max_tokens: int) -> str:
+        """根据消息特征估算查询复杂度（零 LLM 成本，纯规则）
+
+        返回: "simple" / "moderate" / "complex" / "critical"
+        """
+        if not messages:
+            return "simple"
+
+        # 最后一条用户消息
+        last_msg = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_msg = m.get("content", "")
+                break
+
+        msg_len = len(last_msg)
+        msg_count = len(messages)
+
+        # 简单查询：短消息 + 少量上下文
+        if msg_len < 50 and msg_count <= 3:
+            return "simple"
+
+        # 关键任务：包含交易/投资决策关键词
+        critical_kw = {"买入", "卖出", "下单", "交易", "ibuy", "isell", "execute", "confirm"}
+        if any(kw in last_msg.lower() for kw in critical_kw):
+            return "critical"
+
+        # 复杂查询：长消息 或 多轮上下文 或 需要大量输出
+        if msg_len > 500 or msg_count > 15 or max_tokens > 8000:
+            return "complex"
+
+        # 中等复杂度
+        return "moderate"
+
+    def _smart_route(self, complexity: str) -> str:
+        """根据复杂度 + 预算状态选择最优模型族
+
+        利用 cost_control.py 已有的 COMPLEXITY_TO_MODEL 映射 + suggest_model()
+        """
+        try:
+            from src.core.cost_control import get_cost_controller
+
+            cc = get_cost_controller()
+            # suggest_model 已内置预算降级逻辑（>70%用免费，>90%强制免费）
+            suggested = cc.suggest_model(complexity)
+            # 将模型名映射回 family 名
+            model_to_family = {
+                "qwen3-235b": "qwen",
+                "claude-haiku-3.5": "claude",
+                "claude-sonnet-4": "claude",
+                "claude-opus-4": "claude",
+                "deepseek-v3": "deepseek",
+                "gemini-2.5-flash": "gemini",
+            }
+            family = model_to_family.get(suggested, "qwen")
+            logger.debug("[SmartRoute] 复杂度=%s → 建议=%s → family=%s", complexity, suggested, family)
+            return family
+        except Exception as e:
+            logger.debug("[SmartRoute] 降级到 _pick_strongest_family: %s", e)
+            return self._pick_strongest_family()
 
     def _pick_strongest_family(self) -> str:
         best_fam, best_score = "g4f", 0
@@ -662,18 +896,23 @@ class LiteLLMPool:
 
     # ---- 兼容旧接口 ----
 
-    def get_best_source(self, model_family: str, min_tier: str = TIER_C,
-                        routing: Optional[str] = None) -> Optional[FreeAPISource]:
+    def get_best_source(
+        self, model_family: str, min_tier: str = TIER_C, routing: Optional[str] = None
+    ) -> Optional[FreeAPISource]:
         min_val = _TIER_ORDER.get(min_tier, 3)
-        avail = [s for s in self._sources.get(model_family, [])
-                 if s.can_accept_request() and _TIER_ORDER.get(s.tier, 9) <= min_val]
+        avail = [
+            s
+            for s in self._sources.get(model_family, [])
+            if s.can_accept_request() and _TIER_ORDER.get(s.tier, 9) <= min_val
+        ]
         if not avail:
             return None
         avail.sort(key=lambda s: -get_model_score(s.model))
         return avail[0]
 
-    def get_any_source(self, min_tier: str = TIER_C,
-                       routing: Optional[str] = None) -> Optional[Tuple[str, FreeAPISource]]:
+    def get_any_source(
+        self, min_tier: str = TIER_C, routing: Optional[str] = None
+    ) -> Optional[Tuple[str, FreeAPISource]]:
         min_val = _TIER_ORDER.get(min_tier, 3)
         best, best_score, best_fam = None, -1, ""
         for fam, sources in self._sources.items():
@@ -701,7 +940,8 @@ class LiteLLMPool:
         active = sum(1 for v in self._sources.values() for s in v if s.can_accept_request())
         avg_lat = self._total_latency / max(self._call_count, 1)
         return {
-            "total_sources": total, "active_sources": active,
+            "total_sources": total,
+            "active_sources": active,
             "model_families": len(self._sources),
             "routing_strategy": "litellm-router",
             "total_input_tokens": self._total_input_tokens,
@@ -709,11 +949,15 @@ class LiteLLMPool:
             "total_tokens": self._total_input_tokens + self._total_output_tokens,
             "total_cost_usd": round(self._total_cost, 6),
             "avg_latency_ms": round(avg_lat, 1),
-            "total_calls": self._call_count, "total_errors": self._error_count,
+            "total_calls": self._call_count,
+            "total_errors": self._error_count,
             "success_rate": round((self._call_count - self._error_count) / max(self._call_count, 1), 3),
             "families": {
-                k: {"total": len(v), "active": sum(1 for s in v if s.can_accept_request()),
-                     "total_requests": sum(s.used_today for s in v)}
+                k: {
+                    "total": len(v),
+                    "active": sum(1 for s in v if s.can_accept_request()),
+                    "total_requests": sum(s.used_today for s in v),
+                }
                 for k, v in self._sources.items()
             },
             "by_provider": self._stats_by_provider(),
@@ -740,6 +984,7 @@ class LiteLLMPool:
             {"checked": N, "healthy": N, "disabled": [...], "elapsed_s": float}
         """
         import asyncio
+
         start = time.time()
         checked = 0
         healthy = 0
@@ -789,8 +1034,9 @@ class LiteLLMPool:
             "disabled": disabled_providers,
             "elapsed_s": round(elapsed, 2),
         }
-        logger.info(f"[健康检查] {healthy}/{checked} providers 可用, "
-                     f"禁用 {len(disabled_providers)} 个, 耗时 {elapsed:.1f}s")
+        logger.info(
+            f"[健康检查] {healthy}/{checked} providers 可用, 禁用 {len(disabled_providers)} 个, 耗时 {elapsed:.1f}s"
+        )
         return result
 
     # ---- API Key 验证 (按 provider 逐 key 检测) ----
@@ -898,12 +1144,14 @@ class LiteLLMPool:
                 result = await self._test_single_key(src, timeout)
                 if result["status"] == "auth_error":
                     src.disabled = True
-                    logger.warning("[validate_keys] 禁用 auth_error key: %s/%s",
-                                   src.provider, src.model)
-                return (display, {
-                    "status": result["status"],
-                    **({} if result["status"] == "ok" else {"error": result.get("error", "")}),
-                })
+                    logger.warning("[validate_keys] 禁用 auth_error key: %s/%s", src.provider, src.model)
+                return (
+                    display,
+                    {
+                        "status": result["status"],
+                        **({} if result["status"] == "ok" else {"error": result.get("error", "")}),
+                    },
+                )
             else:
                 # 多 key provider — 逐 key 测
                 keys_tested = 0
@@ -934,12 +1182,11 @@ class LiteLLMPool:
                         errors.append(res.get("error", res["status"]))
                         if res["status"] == "auth_error":
                             src_ref.disabled = True
-                            logger.warning("[validate_keys] 禁用 auth_error key: %s/%s",
-                                           src_ref.provider, src_ref.model)
+                            logger.warning(
+                                "[validate_keys] 禁用 auth_error key: %s/%s", src_ref.provider, src_ref.model
+                            )
 
-                overall = "ok" if keys_ok == keys_tested else (
-                    "auth_error" if keys_ok == 0 else "partial"
-                )
+                overall = "ok" if keys_ok == keys_tested else ("auth_error" if keys_ok == 0 else "partial")
 
                 info: Dict[str, Any] = {
                     "status": overall,

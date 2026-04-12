@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-04-12] LLM 智能路由: 按查询复杂度自动选模型，省 30-50% API 成本
+
+> 领域: `ai-pool`
+> 影响模块: `litellm_router.py`
+> 关联问题: MRU_OPENSEARCH_REPORT RouteLLM 成本优化
+
+### 变更内容
+
+**智能路由层（零额外依赖，激活已有 cost_control 基础设施）：**
+- 在 `acompletion()` 入口（第 704 行）注入复杂度判断
+- `_estimate_complexity()`: 纯规则判断（消息长度/轮数/关键词/max_tokens），零 LLM 成本
+- `_smart_route()`: 调用 `cost_control.suggest_model()` 获取推荐模型，再映射回 family
+- 调用方传了 `model_family` 则尊重（FAMILY_CLAUDE 等显式请求不受影响）
+- 未传 model_family 时才走智能路由（覆盖 `_pick_strongest_family()` 原路径）
+
+**复杂度分级：**
+- `simple`（短消息≤50字+少上下文≤3轮）→ qwen3-235b（免费）
+- `moderate`（中等长度）→ claude-haiku-3.5（$0.8/M）
+- `complex`（长消息>500字/多轮>15/大输出>8K）→ claude-sonnet-4（$3/M）
+- `critical`（含"买入/卖出/下单"等交易关键词）→ claude-opus-4（$15/M）
+
+**预算联动（已有逻辑被激活）：**
+- 日花费 >70% → 非 critical 任务强制免费模型
+- 日花费 >90% → 全部强制免费模型
+
+### 文件变更
+- `packages/clawbot/src/litellm_router.py` — +60 行智能路由方法
+
+---
+
 ## [2026-04-12] 自愈引擎 v3.0: pybreaker 工业级熔断器
 
 > 领域: `backend`
