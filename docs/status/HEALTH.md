@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-12 (全量审计 Phase 7-9: 安全加固+运维修复+依赖校正+文档治理 | 后端1132/1135通过 + tsc零错误 + Rust零警告)
+> 最后更新: 2026-04-12 (全量审计完结: 全部遗留任务清零 | 速率限制+chunked修复+Docker网络隔离+非root failover+多阶段构建+CI矩阵统一)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -84,14 +84,18 @@
 | ~~HI-348~~ | ~~`security`~~ | ~~`.openclaw/agents/`~~ | ~~API密钥曾提交到Git历史~~ → **已修复 2026-04-11**: `git filter-repo` 清理敏感文件历史，.git 从 1.3GB 瘦身到 318MB | 2026-03-28 |
 | ~~HI-387~~ | ~~`security`~~ | ~~`config/.env`~~ | ~~50+ 真实密钥曾提交到 Git 历史~~ → **已修复 2026-04-11**: 同上，config/.env 等敏感路径全部从历史中移除。**仍建议轮换密钥** | 2026-04-01 |
 | HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
-| HI-482 | `ai-pool` | `tests/test_litellm_router.py` | 本机 Python 3.12 测试环境缺少 `litellm` 依赖，LiteLLM 路由单测无法在当前环境直接运行 — 本次仅完成代码与配置对齐，需在完整 venv 中复验 | 2026-04-10 |
-| HI-483 | `infra` | `config/.env` | 历史配置中存在重复 `MEM0_API_KEY` 和未接入主流程的 `CLOUDCONVERT_API_KEY` 运行时导出 — 已清理重复项并将未接入项降为仅文档登记 | 2026-04-10 |
+| ~~HI-482~~ | ~~`ai-pool`~~ | ~~`tests/test_litellm_router.py`~~ | ~~本机 Python 3.12 测试环境缺少 `litellm` 依赖~~ → **已解决 2026-04-12**: 创建 `packages/clawbot/.venv` 虚拟环境并安装全部依赖，LiteLLM 路由单测正常运行 | 2026-04-10 |
+| ~~HI-483~~ | ~~`infra`~~ | ~~`config/.env`~~ | ~~历史配置中存在重复 `MEM0_API_KEY` 和未接入主流程的 `CLOUDCONVERT_API_KEY`~~ → **已解决 2026-04-10**: 重复项已清理，未接入项降为仅文档登记 | 2026-04-10 |
 
 ### 审计进行中
 
+(无)
+
+### 已完成审计
+
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-485 | `audit` | 全项目 | 已启动 2026-04-10 全量全方位审计。当前基线结论：后端需依赖项目 `packages/clawbot/.venv312` 才能复现真实测试状态；前端 worktree 需单独安装依赖后再验证，Node 当前为 18.20.8，npm 为 11.6.2，存在 engine 警告但不阻塞 `tsc` 与 `vite build` | 2026-04-10 |
+| ~~HI-485~~ | ~~`audit`~~ | ~~全项目~~ | ~~全量全方位审计~~ → **已完成 2026-04-12**: Phase 1-10 全部完成。后端 1132/1135 通过，前端 tsc 零错误，Rust 零警告。修复 18 处静默吞错 + 安全加固(PIN/SSRF/速率限制/chunked) + 运维加固(Docker网络隔离/非root failover/多阶段构建) + 文档治理(MODULE_REGISTRY 243模块全覆盖/COMMAND_REGISTRY 98命令校准) | 2026-04-10 |
 
 ### 🟡 一般
 
@@ -118,8 +122,8 @@
 | HI-487 | `security` | `core/security.py` | PIN 验证使用 `==` 比较存在理论时序攻击风险 → **已修复**: 改为 `hmac.compare_digest()` | 2026-04-12 |
 | HI-488 | `deploy` | `heartbeat plist` | 心跳 LaunchAgent plist 硬编码 VPS IP `101.43.41.96` 已入 Git → **已修复**: 改为必填环境变量，无默认值 | 2026-04-12 |
 | HI-489 | `deploy` | `kiro-gateway/.env.example` | 示例密码 `my-super-secret-password-123` 可能被用户直接复制使用 → **已修复**: 改为空值 + 强制修改提示 | 2026-04-12 |
-| HI-490 | `security` | `api/server.py` | FastAPI 无速率限制中间件，Token 泄露后攻击者可无限调用 — 风险低(默认127.0.0.1) | 2026-04-12 |
-| HI-491 | `security` | `api/server.py` | RequestSizeLimitMiddleware 仅检查 Content-Length header，chunked 传输可绕过 — 风险低 | 2026-04-12 |
+| ~~HI-490~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~FastAPI 无速率限制中间件~~ → **已修复 2026-04-12**: 新增 `RateLimitMiddleware`，基于 IP 滑动窗口限制 60次/分钟，超限返回 429 + Retry-After | 2026-04-12 |
+| ~~HI-491~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~RequestSizeLimitMiddleware chunked 传输可绕过~~ → **已修复 2026-04-12**: 新增流式读取计数，chunked 传输超 10MB 立即返回 413 | 2026-04-12 |
 | ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
 
 ### 🔵 低优先
