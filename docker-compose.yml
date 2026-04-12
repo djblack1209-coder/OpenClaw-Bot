@@ -23,6 +23,9 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      # Redis 只在内部网络，不暴露给外部
+      - clawbot-internal
 
   # ── OpenClaw 主服务 ──────────────────────────────
   # NOTE: 需要先创建 packages/clawbot/Dockerfile 才能使用 docker compose build
@@ -65,6 +68,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks:
+      # 应用服务在内部网络（访问 Redis）+ 端口映射对外暴露 API
+      - clawbot-internal
 
 volumes:
   redis_data:
+
+networks:
+  # 内部网络: 容器间通信隔离，不使用默认 bridge
+  clawbot-internal:
+    driver: bridge
+    internal: true

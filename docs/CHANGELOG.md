@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-04-12] 确认 HI-484 .gitignore lib/ 误伤问题已修复
+
+> 领域: `infra`
+> 影响模块: `.gitignore`, `apps/openclaw-manager-src/src/lib`
+> 关联问题: HI-484
+
+### 变更内容
+- 验证 `.gitignore` 第 19 行已从 `lib/` 改为 `/lib/`（仅匹配根目录），前端 `src/lib/` 不再被误忽略
+- 确认 `utils.ts` / `tauri.ts` / `logger.ts` 三个文件已被 Git 正常跟踪
+- HEALTH.md 中 HI-484 标记为已修复
+
+### 文件变更
+- `docs/status/HEALTH.md` — HI-484 标记已修复
+
+---
+
 ## [2026-04-12] 全量审计 Phase 7-9: 安全加固 + 运维修复 + 依赖校正 + 文档治理
 
 > 领域: `backend`, `deploy`, `docs`, `frontend`

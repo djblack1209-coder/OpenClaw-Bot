@@ -212,7 +212,9 @@ class APIServer:
 
     def _configure_app(self):
         """Mount routers and middleware — pattern from freqtrade webserver.py"""
-        # 请求体大小限制 — 防止超大请求消耗资源
+        # 速率限制 — 防止 Token 泄露后被暴力调用（HI-490）
+        self.app.add_middleware(RateLimitMiddleware)
+        # 请求体大小限制 — 防止超大请求消耗资源（含 chunked 传输防绕过 HI-491）
         self.app.add_middleware(RequestSizeLimitMiddleware)
 
         # CORS — only localhost (Tauri Manager)
