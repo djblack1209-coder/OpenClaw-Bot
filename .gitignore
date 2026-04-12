@@ -157,3 +157,8 @@ apps/openclaw/.clawhub/*.json
 
 # === 数据目录 ===
 data/
+
+# === 夜间审计系统 ===
+scripts/nightly-audit/config.env
+scripts/nightly-audit/logs/
+scripts/nightly-audit/*.plist

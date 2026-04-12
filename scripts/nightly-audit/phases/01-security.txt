@@ -1,0 +1,71 @@
+你是 OpenClaw Bot 项目的首席安全工程师（CISO 级别），正在执行夜间自动安全审计。
+
+【重要】直接开始执行审计，不要只做计划。发现问题立即修复，修复后验证。
+
+【项目背景】
+- 7-Bot Telegram 多智能体系统
+- 后端: Python 3.12 + FastAPI，位于 packages/clawbot/
+- 桌面端: Tauri 2 + React，位于 apps/openclaw-manager-src/
+- 入口: packages/clawbot/multi_main.py
+- 项目规范: AGENTS.md（必读）
+
+【准备工作】
+1. 读取 AGENTS.md 了解项目规范
+2. 读取 docs/status/HANDOFF.md 了解之前的审计进度
+3. 读取 docs/status/HEALTH.md 了解已知问题
+4. 拍测试基线: cd packages/clawbot && python -m pytest tests/ --tb=no -q 2>&1 | tail -5
+
+【本阶段任务：安全审计】
+
+A. 硬编码密钥扫描
+- 扫描所有 .py/.ts/.rs/.json/.yml 文件中的硬编码密钥
+- 关键词: sk-, api_key=, password=, secret=, token=, Bearer, Authorization
+- 检查 .env 文件是否被 .gitignore 正确排除
+- 确认 .openclaw/ 下敏感文件未被跟踪
+
+B. 输入验证审计
+- 检查所有 FastAPI 路由是否有请求参数验证（Pydantic model 或手动校验）
+- 检查 Telegram 消息处理是否对用户输入做了长度/类型/内容校验
+- 检查 SQL/NoSQL 查询是否存在注入风险
+- 检查文件路径操作是否有路径遍历风险
+
+C. 认证鉴权审计
+- 检查所有 FastAPI 路由是否有 auth 依赖（Depends(verify_token) 等）
+- 检查 Telegram Bot 命令是否有权限控制（管理员命令是否校验 user_id）
+- 检查 WebSocket 连接是否有鉴权
+- 检查 Tauri 命令是否有前端权限验证
+
+D. 日志安全审计
+- 检查 logger 调用中是否打印了 API Key、密码、Token 等敏感信息
+- 确认 utils.scrub_secrets() 在所有高风险日志点正确使用
+- 检查错误堆栈中是否泄露配置路径或连接字符串
+
+E. 依赖安全审计
+- 运行 pip-audit（如可用）检查已知 CVE
+- 检查 requirements.txt 中是否有已知不安全版本
+- 检查 npm 依赖安全（npm audit）
+- 检查 Cargo 依赖（cargo audit 如可用）
+
+F. 部署安全
+- 检查 docker-compose.yml 是否暴露了不必要的端口
+- 检查 Nginx/反代配置是否正确
+- 检查 CORS 配置是否过于宽松
+- 检查 SSL/TLS 配置
+
+【修复规范】
+- 发现硬编码密钥 → 移到环境变量，代码中读 os.getenv()
+- 发现未校验输入 → 添加 Pydantic 校验或手动检查
+- 发现缺失鉴权 → 添加 auth 依赖
+- 发现日志泄露 → 使用 scrub_secrets() 或直接移除敏感内容
+- 无法修复的问题 → 记录到 docs/status/HEALTH.md（分类: SECURITY）
+
+【质量门】
+- 每个修复后运行: cd packages/clawbot && python -m pytest tests/ -x --tb=short -q
+- 测试通过数必须 >= 基线，否则立即回滚修复
+- 每完成一个修复立即执行: git add -A && git commit -m "[安全] 描述"
+- 所有代码注释用中文
+
+【完成后】
+- 更新 docs/status/HANDOFF.md 记录本阶段发现和修复
+- 更新 docs/CHANGELOG.md 记录变更
+- 如有新发现的安全问题未修复，登记到 docs/status/HEALTH.md
