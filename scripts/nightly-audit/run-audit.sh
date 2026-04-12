@@ -662,22 +662,96 @@ generate_rich_summary() {
     log INFO "富格式摘要已生成: ${rich_summary}"
 }
 
-# 读取 AI Bridge 审计结果（如果有）
-read_ai_bridge_score() {
-    local bridge_base="${AI_BRIDGE_AUDIT_DIR:-/Users/blackdj/Desktop/AI Bridge/ai-bridge/logs/nightly-audit}"
-    local bridge_score_file="${bridge_base}/${DATE}/health-score.json"
+# 读取单个兄弟项目的审计评分
+# 参数: 项目名称 日志目录
+# 支持两种评分文件格式:
+#   - health-score.json (AI Bridge 格式)
+#   - YYYY-MM-DD.health-score.json (OpenClaw 格式)
+read_project_score() {
+    local project_name="$1"
+    local audit_dir="$2"
 
-    if [[ -f "$bridge_score_file" ]]; then
-        local b_score b_grade
-        b_score=$(grep -oP '"score":\s*\K[0-9]+' "$bridge_score_file" 2>/dev/null || echo "")
-        b_grade=$(grep -oP '"grade":\s*"\K[^"]+' "$bridge_score_file" 2>/dev/null || echo "")
-        if [[ -n "$b_score" ]]; then
-            echo "${b_score}|${b_grade}"
-            return 0
+    # 尝试多种评分文件路径
+    local score_file=""
+    local candidates=(
+        "${audit_dir}/${DATE}/health-score.json"
+        "${audit_dir}/${DATE}.health-score.json"
+        "${audit_dir}/health-score.json"
+    )
+    for f in "${candidates[@]}"; do
+        if [[ -f "$f" ]]; then
+            score_file="$f"
+            break
         fi
+    done
+
+    if [[ -z "$score_file" ]]; then
+        # 没有评分 JSON，尝试从 summary.md 推断完成状态
+        local summary_candidates=(
+            "${audit_dir}/${DATE}/summary.md"
+            "${audit_dir}/${DATE}.summary"
+            "${audit_dir}/${DATE}.summary.md"
+        )
+        for s in "${summary_candidates[@]}"; do
+            if [[ -f "$s" ]]; then
+                echo "${project_name}|有报告|--"
+                return 0
+            fi
+        done
+        return 1
     fi
-    echo ""
+
+    # macOS grep 不支持 -P, 用 sed 替代
+    local b_score b_grade
+    b_score=$(sed -n 's/.*"score"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$score_file" 2>/dev/null | head -1)
+    b_grade=$(sed -n 's/.*"grade"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$score_file" 2>/dev/null | head -1)
+
+    if [[ -n "$b_score" ]]; then
+        echo "${project_name}|${b_score}|${b_grade}"
+        return 0
+    fi
     return 1
+}
+
+# 收集所有兄弟项目的审计结果
+# 返回格式: 每行一个 "项目名|分数|评级"
+collect_all_project_scores() {
+    local results=""
+
+    # 从配置的项目列表中读取
+    # SIBLING_PROJECTS 格式: "项目名:日志目录;项目名:日志目录;..."
+    local projects="${SIBLING_PROJECTS:-}"
+
+    # 兼容旧配置: 如果只配了 AI_BRIDGE_AUDIT_DIR，自动加入
+    if [[ -z "$projects" && -n "${AI_BRIDGE_AUDIT_DIR:-}" ]]; then
+        projects="AI Bridge:${AI_BRIDGE_AUDIT_DIR}"
+    fi
+
+    if [[ -z "$projects" ]]; then
+        return
+    fi
+
+    # 解析项目列表（分号分隔）
+    local IFS_BAK="$IFS"
+    IFS=";"
+    for entry in $projects; do
+        IFS="$IFS_BAK"
+        local name dir
+        name=$(echo "$entry" | cut -d':' -f1 | xargs)
+        dir=$(echo "$entry" | cut -d':' -f2- | xargs)
+
+        if [[ -z "$name" || -z "$dir" ]]; then continue; fi
+        if [[ ! -d "$dir" ]]; then continue; fi
+
+        local result
+        result=$(read_project_score "$name" "$dir" 2>/dev/null || echo "")
+        if [[ -n "$result" ]]; then
+            results="${results}${result}\n"
+        fi
+    done
+    IFS="$IFS_BAK"
+
+    echo -e "$results"
 }
 
 # ============================================================
@@ -1030,16 +1104,27 @@ main() {
 📝 产生: ${total_commits} 个 commit
 💰 预估花费: \$${TOTAL_SPENT}"
 
-    # 附加 AI Bridge 审计结果（如果有）
-    local bridge_result
-    bridge_result=$(read_ai_bridge_score 2>/dev/null || echo "")
-    if [[ -n "$bridge_result" ]]; then
-        local b_score b_grade
-        b_score=$(echo "$bridge_result" | cut -d'|' -f1)
-        b_grade=$(echo "$bridge_result" | cut -d'|' -f2)
+    # 附加所有兄弟项目的审计结果
+    local sibling_scores
+    sibling_scores=$(collect_all_project_scores 2>/dev/null || echo "")
+    if [[ -n "$sibling_scores" ]]; then
         notify_body="${notify_body}
 
-🌉 AI Bridge: ${b_score}/100（${b_grade}）"
+📊 *其他项目体检结果:*"
+        while IFS= read -r line; do
+            if [[ -z "$line" ]]; then continue; fi
+            local p_name p_score p_grade
+            p_name=$(echo "$line" | cut -d'|' -f1)
+            p_score=$(echo "$line" | cut -d'|' -f2)
+            p_grade=$(echo "$line" | cut -d'|' -f3)
+            if [[ "$p_score" == "有报告" ]]; then
+                notify_body="${notify_body}
+  ${p_name}: 有审计报告（无评分）"
+            elif [[ -n "$p_score" && "$p_score" != "--" ]]; then
+                notify_body="${notify_body}
+  ${p_name}: ${p_score}/100（${p_grade}）"
+            fi
+        done <<< "$sibling_scores"
     fi
 
     notify_body="${notify_body}

@@ -5,25 +5,28 @@
 
 ---
 
-## [2026-04-12] AI Bridge 通知方案对接
+## [2026-04-12] 多项目审计通知统一对接
 
 > 领域: `infra`
-> 影响模块: `scripts/nightly-audit/run-audit.sh`, `scripts/nightly-audit/config.env`
-> 关联问题: AI Bridge 夜间审计通知对接需求
+> 影响模块: `scripts/nightly-audit/run-audit.sh`, `scripts/nightly-audit/config.env`, `scripts/nightly-audit/config.env.example`
+> 关联问题: 4个项目夜间审计通知统一管理需求
 
 ### 变更内容
 - 审计结束后自动生成 `health-score.json`（机器可读健康评分，兼容 AI Bridge 格式）
 - 审计结束后自动生成 `summary.md`（富格式审计报告，老板打开就能看懂）
 - 审计结束后自动生成 `regression.md`（与上次审计的评分对比 + 趋势）
 - Telegram 通知升级：包含健康评分(0-100分)、趋势(变好/变差/持平)
-- 支持联动 AI Bridge 项目：通知中附带 AI Bridge 的评分（需配置 `AI_BRIDGE_AUDIT_DIR`）
+- 新增 `SIBLING_PROJECTS` 配置项（替代旧的 `AI_BRIDGE_AUDIT_DIR`），支持任意数量兄弟项目
+- 已配置全部 4 个项目联动：OpenClaw Bot + AI Bridge + EXAM-MASTER + 像素回环
+- 两种评分格式兼容：有 health-score.json 的项目显示分数，只有 summary.md 的项目显示"有审计报告"
 - 评分规则：满分100，扣分项包括未完成阶段(-5/个)、测试失败(-30)、未提交改动(-10)
 - 每次审计后自动保存评分为 `last-health-score.json`，供下次回归对比使用
+- 兼容旧配置：如果只配了 `AI_BRIDGE_AUDIT_DIR`，自动升级为 `SIBLING_PROJECTS` 格式
 
 ### 文件变更
-- `scripts/nightly-audit/run-audit.sh` — 新增4个报告生成函数 + 通知格式升级
-- `scripts/nightly-audit/config.env.example` — 新增 `AI_BRIDGE_AUDIT_DIR` 配置项
-- `scripts/nightly-audit/config.env` — 配置 AI Bridge 日志目录
+- `scripts/nightly-audit/run-audit.sh` — `read_ai_bridge_score()` 替换为通用的 `read_project_score()` + `collect_all_project_scores()`，通知构建改为多项目扫描
+- `scripts/nightly-audit/config.env` — `AI_BRIDGE_AUDIT_DIR` 替换为 `SIBLING_PROJECTS`（含3个兄弟项目路径）
+- `scripts/nightly-audit/config.env.example` — 新增 `SIBLING_PROJECTS` 详细说明和示例
 
 ---
 
