@@ -127,8 +127,8 @@ class BrowserUseBridge:
             if browser:
                 try:
                     await browser.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("关闭浏览器实例时异常(可忽略): %s", e)
 
     async def extract_data(
         self, url: str, instruction: str, schema: Optional[Dict] = None,

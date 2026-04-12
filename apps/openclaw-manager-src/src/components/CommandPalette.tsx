@@ -137,28 +137,32 @@ export function CommandPalette() {
         <CommandSeparator />
 
         <CommandGroup heading="快捷操作">
-          <CommandItem onSelect={() => runAction('热点扫描', () => api.clawbotSocialTopics(10), (d: any) => {
-            const topics = d?.topics || d?.data;
+          <CommandItem onSelect={() => runAction('热点扫描', () => api.clawbotSocialTopics(10), (d: unknown) => {
+            const data = d as Record<string, unknown> | undefined;
+            const topics = (data?.topics ?? data?.data) as unknown[] | undefined;
             return topics?.length ? `发现 ${topics.length} 条热点` : '扫描完成';
           })}>
             <Newspaper className="mr-2 h-4 w-4" />
             热点扫描
           </CommandItem>
-          <CommandItem onSelect={() => runAction('进化扫描', () => api.clawbotEvolutionScan(), (d: any) => {
-            return d?.message || d?.status || '扫描已提交';
+          <CommandItem onSelect={() => runAction('进化扫描', () => api.clawbotEvolutionScan(), (d: unknown) => {
+            const data = d as Record<string, unknown> | undefined;
+            return String(data?.message ?? data?.status ?? '扫描已提交');
           })}>
             <Dna className="mr-2 h-4 w-4" />
             进化扫描 (GitHub Trending)
           </CommandItem>
-          <CommandItem onSelect={() => runAction('系统状态', () => api.clawbotStatus(), (d: any) => {
-            const s = d?.status || d?.state;
+          <CommandItem onSelect={() => runAction('系统状态', () => api.clawbotStatus(), (d: unknown) => {
+            const data = d as Record<string, unknown> | undefined;
+            const s = data?.status ?? data?.state;
             return s ? `状态: ${s}` : '系统运行中';
           })}>
             <Shield className="mr-2 h-4 w-4" />
             检查系统状态
           </CommandItem>
-          <CommandItem onSelect={() => runAction('交易系统', () => api.clawbotTradingSystem(), (d: any) => {
-            const s = d?.status || d?.state;
+          <CommandItem onSelect={() => runAction('交易系统', () => api.clawbotTradingSystem(), (d: unknown) => {
+            const data = d as Record<string, unknown> | undefined;
+            const s = data?.status ?? data?.state;
             return s ? `交易系统: ${s}` : '查询完成';
           })}>
             <TrendingUp className="mr-2 h-4 w-4" />

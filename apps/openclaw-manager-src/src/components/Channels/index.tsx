@@ -9,14 +9,19 @@ import {
 
 const channelsLogger = createLogger('Channels');
 
-// 提取需要的类型
-type ChannelTestResult = any;
+// 渠道测试返回结果
+interface ChannelTestResult {
+  success: boolean;
+  message: string;
+  error?: string;
+  latency?: number;
+}
 
 const CHANNEL_INFO: Record<string, { name: string; icon: string; color: string; fields: { key: string; label: string; desc?: string; type?: string }[] }> = {
   telegram: {
     name: 'Telegram', icon: 'tg', color: 'text-blue-400',
     fields: [
-      { key: 'userId', label: 'Admin User ID', desc: '管理员Telegram ID（多用户逗号分隔）' },
+      { key: 'userId', label: '管理员用户 ID', desc: '管理员Telegram ID（多用户逗号分隔）' },
       { key: 'dmPolicy', label: '私聊策略', type: 'select' },
       { key: 'groupPolicy', label: '群组策略', type: 'select' }
     ]
@@ -58,7 +63,7 @@ export function Channels() {
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string; error?: string } | null>(null);
@@ -84,7 +89,12 @@ export function Channels() {
 
   const handleEdit = (channel: ChannelConfig) => {
     setEditingId(channel.id);
-    setEditForm({ ...channel.config });
+    // 渠道配置值在表单中均为字符串
+    const stringConfig: Record<string, string> = {};
+    for (const [k, v] of Object.entries(channel.config)) {
+      stringConfig[k] = String(v ?? '');
+    }
+    setEditForm(stringConfig);
     setTestResult(null);
   };
 
