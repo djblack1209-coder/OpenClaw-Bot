@@ -5,6 +5,24 @@
 
 ---
 
+## [2026-04-12] 运维配置修复: CI版本矩阵 + Docker网络隔离 + 镜像版本固定
+
+> 领域: `infra`, `deploy`
+> 影响模块: `CI`, `docker-compose`, `new-api`
+> 关联问题: 无
+
+### 变更内容
+- CI Python 版本矩阵从 `[3.9, 3.11, 3.12]` 统一为 `[3.11, 3.12]`，与 Dockerfile 保持一致
+- Docker Compose 新增 `clawbot-internal` 内部网络，Redis 仅在内部网络可达，不再暴露给默认 bridge
+- New-API 镜像从 `latest` 固定为 `v0.12.6`，避免不可控的自动升级
+
+### 文件变更
+- `packages/clawbot/.github/workflows/ci.yml` — 移除 Python 3.9，统一为 3.11+3.12
+- `docker-compose.yml` — 新增 clawbot-internal 网络定义，Redis 和应用服务加入该网络
+- `docker-compose.newapi.yml` — 镜像标签从 latest 改为 v0.12.6
+
+---
+
 ## [2026-04-12] 确认 HI-484 .gitignore lib/ 误伤问题已修复
 
 > 领域: `infra`
