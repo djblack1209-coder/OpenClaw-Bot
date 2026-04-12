@@ -7,6 +7,8 @@ ClawBot Internal API Server
 import logging
 import os
 import threading
+import time
+from collections import defaultdict
 from typing import Optional
 
 import uvicorn
@@ -26,17 +28,138 @@ logger = logging.getLogger(__name__)
 _api_server: Optional["APIServer"] = None
 
 
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """
+    基于客户端 IP 的滑动窗口速率限制中间件（HI-490）
+
+    实现原理：
+    - 为每个 IP 维护一个请求时间戳列表
+    - 每次请求时清除窗口外的旧时间戳，再判断窗口内请求数是否超限
+    - 使用线程锁保证并发安全（uvicorn 可能多线程）
+    - 不依赖任何第三方库，纯标准库实现
+    """
+
+    # 默认限制：每个 IP 每分钟 60 次请求
+    MAX_REQUESTS: int = 60
+    WINDOW_SECONDS: int = 60
+
+    def __init__(self, app, max_requests: int = 60, window_seconds: int = 60):
+        super().__init__(app)
+        self.MAX_REQUESTS = max_requests
+        self.WINDOW_SECONDS = window_seconds
+        # 每个 IP 对应一个请求时间戳列表
+        self._request_log: dict[str, list[float]] = defaultdict(list)
+        # 线程锁，防止并发写入时数据竞争
+        self._lock = threading.Lock()
+
+    def _get_client_ip(self, request) -> str:
+        """提取客户端真实 IP，优先取反代转发头"""
+        # X-Forwarded-For 可能包含多个 IP，取第一个（最接近客户端的）
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        # X-Real-IP 是 Nginx 常用的单 IP 头
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
+        # 兜底：直连客户端 IP
+        return request.client.host if request.client else "unknown"
+
+    async def dispatch(self, request, call_next):
+        client_ip = self._get_client_ip(request)
+        now = time.monotonic()
+
+        with self._lock:
+            # 取出该 IP 的请求时间戳列表
+            timestamps = self._request_log[client_ip]
+            # 滑动窗口：只保留窗口内的时间戳
+            window_start = now - self.WINDOW_SECONDS
+            self._request_log[client_ip] = [
+                ts for ts in timestamps if ts > window_start
+            ]
+            timestamps = self._request_log[client_ip]
+
+            if len(timestamps) >= self.MAX_REQUESTS:
+                # 超限：计算最早时间戳对应的重试时间
+                retry_after = int(timestamps[0] - window_start) + 1
+                logger.warning(
+                    "速率限制触发: IP=%s, 窗口内请求数=%d, 限制=%d",
+                    client_ip, len(timestamps), self.MAX_REQUESTS,
+                )
+                return StarletteJSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "请求过于频繁，请稍后再试",
+                        "detail": f"每 {self.WINDOW_SECONDS} 秒最多 {self.MAX_REQUESTS} 次请求",
+                        "retry_after_seconds": retry_after,
+                    },
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+            # 未超限：记录本次请求时间戳
+            timestamps.append(now)
+
+        # 定期清理不活跃 IP 的记录，防止内存泄漏（每 1000 次请求清理一次）
+        self._maybe_cleanup(now)
+
+        return await call_next(request)
+
+    def _maybe_cleanup(self, now: float):
+        """清理长时间无请求的 IP 记录，防止字典无限增长"""
+        # 简单策略：总 IP 数超过 10000 时清理
+        if len(self._request_log) > 10000:
+            with self._lock:
+                window_start = now - self.WINDOW_SECONDS
+                stale_ips = [
+                    ip for ip, ts_list in self._request_log.items()
+                    if not ts_list or ts_list[-1] <= window_start
+                ]
+                for ip in stale_ips:
+                    del self._request_log[ip]
+                if stale_ips:
+                    logger.info("速率限制清理: 移除 %d 个不活跃 IP 记录", len(stale_ips))
+
+
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """限制请求体大小（默认 10MB），超过直接返回 413"""
+    """
+    限制请求体大小（默认 10MB），超过直接返回 413
+
+    防护两种场景（HI-491 修复）：
+    1. 有 Content-Length 头：直接比较数值，快速拒绝
+    2. chunked 传输编码（无 Content-Length）：流式读取时累计字节数，超限立即中断
+    """
     MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
 
     async def dispatch(self, request, call_next):
         content_length = request.headers.get("content-length")
+        transfer_encoding = request.headers.get("transfer-encoding", "").lower()
+
+        # 场景 1：有 Content-Length 头，直接判断
         if content_length and int(content_length) > self.MAX_BODY_SIZE:
             return StarletteJSONResponse(
                 status_code=413,
                 content={"error": "请求体过大，最大允许 10MB"},
             )
+
+        # 场景 2：chunked 传输编码（无 Content-Length），需要流式读取并累计字节数
+        if "chunked" in transfer_encoding and not content_length:
+            # 读取请求体并检查大小
+            body = b""
+            async for chunk in request.stream():
+                body += chunk
+                if len(body) > self.MAX_BODY_SIZE:
+                    logger.warning(
+                        "chunked 请求体超限: 已读取 %d 字节, 限制 %d 字节",
+                        len(body), self.MAX_BODY_SIZE,
+                    )
+                    return StarletteJSONResponse(
+                        status_code=413,
+                        content={"error": "请求体过大，最大允许 10MB"},
+                    )
+            # 将已读取的 body 重新注入 request，让后续处理器能正常读取
+            # Starlette 的 Request 对象在 stream 被消费后，需要通过 _body 属性恢复
+            request._body = body
+
         return await call_next(request)
 
 
