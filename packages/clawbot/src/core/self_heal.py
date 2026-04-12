@@ -16,6 +16,7 @@ v2.0 — 2026-03-22
   - 添加 circuit breaker（同一错误 3 次失败后短路跳过）
   - retry 回调接收 callable，实际重新执行失败操作
 """
+
 import asyncio
 import logging
 import os
@@ -38,9 +39,18 @@ try:
         retry_if_exception_type,
         RetryError,
     )
+
     HAS_TENACITY = True
 except ImportError:
     HAS_TENACITY = False
+
+# pybreaker — 工业级熔断器（替代手写状态机）
+try:
+    import pybreaker
+
+    _HAS_PYBREAKER = True
+except ImportError:
+    _HAS_PYBREAKER = False
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +164,7 @@ class SelfHealEngine:
       - _try_alternatives 实际切换备选路径
     """
 
-    # Circuit breaker: error_sig → (failure_count, last_failure_time)
+    # 熔断器参数
     CIRCUIT_BREAK_THRESHOLD = 3
     CIRCUIT_BREAK_COOLDOWN = 300  # 5 分钟冷却
 
@@ -163,36 +173,61 @@ class SelfHealEngine:
         self._max_solution_cache = 500  # 防止无限增长
         self._heal_history: List[Dict] = []
         self._max_history = 200
-        self._circuit_breaker: Dict[str, tuple] = {}
-        logger.info("SelfHealEngine 初始化完成（v2.0 — tenacity 集成）")
+
+        # pybreaker 熔断器池：每种错误签名一个独立的 CircuitBreaker
+        self._breakers: Dict[str, "pybreaker.CircuitBreaker"] = {}
+
+        logger.info("SelfHealEngine 初始化完成（v3.0 — pybreaker + tenacity）")
 
     def _get_error_signature(self, error_type: str, error_msg: str) -> str:
-        """生成错误签名用于 circuit breaker"""
+        """生成错误签名（用于熔断器池的 key）"""
         return f"{error_type}:{error_msg[:80]}"
 
+    def _get_breaker(self, error_sig: str) -> "pybreaker.CircuitBreaker":
+        """获取或创建指定错误签名的熔断器"""
+        if error_sig not in self._breakers:
+            if _HAS_PYBREAKER:
+                self._breakers[error_sig] = pybreaker.CircuitBreaker(
+                    fail_max=self.CIRCUIT_BREAK_THRESHOLD,
+                    reset_timeout=self.CIRCUIT_BREAK_COOLDOWN,
+                    name=f"heal:{error_sig[:40]}",
+                )
+            else:
+                # pybreaker 不可用时用简易 dict 回退
+                self._breakers[error_sig] = None
+        return self._breakers[error_sig]
+
     def _is_circuit_open(self, error_sig: str) -> bool:
-        """检查 circuit breaker 是否触发（同一错误连续失败 N 次后冷却）"""
-        if error_sig not in self._circuit_breaker:
-            return False
-        count, last_time = self._circuit_breaker[error_sig]
-        if count >= self.CIRCUIT_BREAK_THRESHOLD:
-            if time.time() - last_time < self.CIRCUIT_BREAK_COOLDOWN:
-                return True
-            # 冷却期过了，重置
-            del self._circuit_breaker[error_sig]
-        return False
+        """检查熔断器是否处于 OPEN 状态"""
+        breaker = self._get_breaker(error_sig)
+        if breaker is None:
+            return False  # 无 pybreaker 时不熔断
+        return breaker.current_state == pybreaker.STATE_OPEN
 
     def _record_circuit_failure(self, error_sig: str):
-        """记录一次失败到 circuit breaker"""
-        if error_sig in self._circuit_breaker:
-            count, _ = self._circuit_breaker[error_sig]
-            self._circuit_breaker[error_sig] = (count + 1, time.time())
-        else:
-            self._circuit_breaker[error_sig] = (1, time.time())
+        """记录一次失败到熔断器"""
+        breaker = self._get_breaker(error_sig)
+        if breaker is None:
+            return
+        # pybreaker 通过 call() 包装函数，函数抛异常则计一次失败
+        try:
+
+            def _fail():
+                raise Exception("heal_failed")
+
+            breaker.call(_fail)
+        except (Exception, pybreaker.CircuitBreakerError):
+            pass  # 预期行为：函数失败，breaker 计数 +1
 
     def _reset_circuit(self, error_sig: str):
-        """自愈成功后重置 circuit breaker"""
-        self._circuit_breaker.pop(error_sig, None)
+        """自愈成功后重置熔断器"""
+        breaker = self._get_breaker(error_sig)
+        if breaker is None:
+            return
+        try:
+            breaker.close()
+        except Exception:
+            pass
 
     async def heal(
         self,
@@ -287,12 +322,14 @@ class SelfHealEngine:
         result.attempts.append({"step": 6, "action": "notify_human"})
         result.elapsed_seconds = time.time() - start
 
-        self._heal_history.append({
-            "error": error_msg[:200],
-            "category": category.value,
-            "healed": result.healed,
-            "timestamp": time.time(),
-        })
+        self._heal_history.append(
+            {
+                "error": error_msg[:200],
+                "category": category.value,
+                "healed": result.healed,
+                "timestamp": time.time(),
+            }
+        )
         if len(self._heal_history) > self._max_history:
             self._heal_history = self._heal_history[-100:]
 
@@ -311,14 +348,17 @@ class SelfHealEngine:
                 return solution["category"], solution
 
         # HTTP状态码匹配
-        code_match = re.search(r'\b(4\d{2}|5\d{2})\b', error_msg)
+        code_match = re.search(r"\b(4\d{2}|5\d{2})\b", error_msg)
         if code_match:
             code = code_match.group()
             if code in KNOWN_SOLUTIONS:
                 return KNOWN_SOLUTIONS[code]["category"], KNOWN_SOLUTIONS[code]
             if code.startswith("5"):
-                return ErrorCategory.NETWORK, {"action": "retry_with_delay", "delay": 15,
-                                                "solution": f"服务端错误 {code}"}
+                return ErrorCategory.NETWORK, {
+                    "action": "retry_with_delay",
+                    "delay": 15,
+                    "solution": f"服务端错误 {code}",
+                }
 
         return ErrorCategory.UNKNOWN, None
 
@@ -421,6 +461,7 @@ class SelfHealEngine:
 
         try:
             from src.shared_memory import shared_memory
+
             if shared_memory:
                 results = shared_memory.search(f"error solution: {error_msg[:100]}", limit=3)
                 if results:
@@ -431,7 +472,7 @@ class SelfHealEngine:
                         if len(self._solution_cache) > self._max_solution_cache:
                             # 删除最早的一半条目
                             keys = list(self._solution_cache.keys())
-                            for k in keys[:len(keys) // 2]:
+                            for k in keys[: len(keys) // 2]:
                                 del self._solution_cache[k]
                         return solution
         except Exception as e:
@@ -443,6 +484,7 @@ class SelfHealEngine:
         # 优先用 Jina Search（零成本）
         try:
             from src.tools.jina_reader import jina_search
+
             result = await jina_search(f"python error fix: {error_msg[:100]}")
             if result and len(result) > 50:
                 return result[:500]
@@ -574,6 +616,7 @@ class SelfHealEngine:
         """Step 5: 记录解决方案到记忆"""
         try:
             from src.shared_memory import shared_memory
+
             if shared_memory:
                 shared_memory.add(
                     f"[自愈方案] 错误: {error_msg[:200]}\n解决: {solution[:300]}",
@@ -587,13 +630,14 @@ class SelfHealEngine:
         if len(self._solution_cache) > self._max_solution_cache:
             # 删除最早的一半条目
             keys = list(self._solution_cache.keys())
-            for k in keys[:len(keys) // 2]:
+            for k in keys[: len(keys) // 2]:
                 del self._solution_cache[k]
 
     async def _notify_human(self, error: Exception, attempts: List[Dict]) -> None:
         """Step 6: 通知用户"""
         try:
             from src.core.event_bus import get_event_bus, EventType
+
             bus = get_event_bus()
             await bus.publish(
                 EventType.SELF_HEAL_FAILED,
@@ -611,25 +655,34 @@ class SelfHealEngine:
 
     def _record_heal(self, error_msg: str, solution: str) -> None:
         """记录成功的自愈"""
-        self._heal_history.append({
-            "error": error_msg[:200],
-            "solution": solution,
-            "healed": True,
-            "timestamp": time.time(),
-        })
+        self._heal_history.append(
+            {
+                "error": error_msg[:200],
+                "solution": solution,
+                "healed": True,
+                "timestamp": time.time(),
+            }
+        )
         # EventBus: 通知自愈成功（与 SELF_HEAL_FAILED 对称）
         try:
             from src.core.event_bus import get_event_bus
+
             bus = get_event_bus()
             if bus:
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
-                    _t = loop.create_task(bus.publish("system.self_heal", {
-                        "error": error_msg[:200],
-                        "solution": solution,
-                        "healed": True,
-                    }))
+                    _t = loop.create_task(
+                        bus.publish(
+                            "system.self_heal",
+                            {
+                                "error": error_msg[:200],
+                                "solution": solution,
+                                "healed": True,
+                            },
+                        )
+                    )
                     _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 except RuntimeError as e:  # noqa: F841
                     pass
@@ -643,13 +696,14 @@ class SelfHealEngine:
         return {
             "total_attempts": total,
             "healed": healed,
-            "heal_rate": f"{healed/total:.1%}" if total > 0 else "N/A",
+            "heal_rate": f"{healed / total:.1%}" if total > 0 else "N/A",
             "cache_size": len(self._solution_cache),
             "recent": self._heal_history[-5:],
         }
 
 
 _engine: Optional[SelfHealEngine] = None
+
 
 def get_self_heal_engine() -> SelfHealEngine:
     global _engine
