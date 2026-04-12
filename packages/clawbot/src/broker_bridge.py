@@ -1,12 +1,13 @@
 """
 ClawBot IBKR 券商桥接层 v1.0
-通过 ib_insync 对接盈透证券 Paper Trading
+通过 ib_async 对接盈透证券 Paper Trading（ib_insync 社区接力 fork）
 - 异步下单（买入/卖出）
 - 实时持仓查询
 - 订单状态跟踪
 - 账户资金查询
 - 自动重连机制
 """
+
 import asyncio
 import json
 import logging
@@ -27,10 +28,11 @@ BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ib_insync import IB, MarketOrder, LimitOrder
+    from ib_async import IB, MarketOrder, LimitOrder
 
 try:
-    from ib_insync import IB, MarketOrder, LimitOrder
+    from ib_async import IB, MarketOrder, LimitOrder
+
     HAS_IB = True
 except ImportError:
     HAS_IB = False
@@ -38,15 +40,15 @@ except ImportError:
     IB = None  # type: ignore[assignment,misc]
     MarketOrder = None  # type: ignore[assignment,misc]
     LimitOrder = None  # type: ignore[assignment,misc]
-    logger.warning("[IBKRBridge] ib_insync 未安装，IBKR功能不可用")
+    logger.warning("[IBKRBridge] ib_async 未安装，IBKR功能不可用")
 
 
 class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
     """IBKR Paper Trading 桥接层（带预算控制 + 全自动重连 + 健康监控）"""
 
-    def __init__(self, host: str = '127.0.0.1', port: int = 4002,
-                 client_id: int = 0, account: str = '',
-                 budget: float = 2000.0):
+    def __init__(
+        self, host: str = "127.0.0.1", port: int = 4002, client_id: int = 0, account: str = "", budget: float = 2000.0
+    ):
         self.host = host
         self.port = port
         self.client_id = client_id
@@ -64,9 +66,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self._auto_reconnect_task = None  # 断连自动重连任务
         # 健康度指标
         self._consecutive_pings = 0  # 连续成功心跳次数
-        self._last_ping_time = 0.0   # 上次心跳时间戳
+        self._last_ping_time = 0.0  # 上次心跳时间戳
         self._last_ping_latency_ms = 0.0  # 上次心跳延迟(ms)
-        self._total_reconnects = 0   # 累计重连次数
+        self._total_reconnects = 0  # 累计重连次数
         self._connected_since = 0.0  # 本次连接建立时间
         self._autostart_attempted = False  # 防止重复启动 Gateway
         self._last_notify_state = ""  # 去重：上次通知的连接状态
@@ -136,7 +138,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
     async def connect(self) -> bool:
         """连接到 IB Gateway（带指数退避重连）"""
         if not HAS_IB:
-            logger.error("[IBKR] ib_insync 未安装")
+            logger.error("[IBKR] ib_async 未安装")
             return False
 
         async with self._reconnect_lock:
@@ -167,10 +169,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     # 注册断连事件回调
                     self.ib.disconnectedEvent += self._on_disconnect
                     await self.ib.connectAsync(
-                        self.host, self.port,
+                        self.host,
+                        self.port,
                         clientId=self.client_id,
-                        readonly=False,   # 确保有下单权限
-                        timeout=20,       # 连接超时 20s（默认4s太短）
+                        readonly=False,  # 确保有下单权限
+                        timeout=20,  # 连接超时 20s（默认4s太短）
                     )
                     self._connected = True
                     self._disconnect_count = 0
@@ -187,7 +190,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 except Exception as e:
                     logger.warning("[IBKR] 连接尝试 %d/%d 失败: %s", attempt, max_retries, e)
                     if attempt < max_retries:
-                        backoff = 2 ** attempt  # 2s, 4s
+                        backoff = 2**attempt  # 2s, 4s
                         logger.info("[IBKR] %ds 后重试...", backoff)
                         await asyncio.sleep(backoff)
 
@@ -196,10 +199,16 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 start_cmd = _os.getenv("IBKR_START_CMD", "")
                 if start_cmd and not self._autostart_attempted:
                     # 安全修复: 校验 IBKR_START_CMD 中的可执行文件是否在白名单内
-                    _ALLOWED_GATEWAY_CMDS = frozenset({
-                        "ibc", "ibgateway", "IBController", "ibcontroller",
-                        "IBGateway", "start_ibkr_gateway.sh",
-                    })
+                    _ALLOWED_GATEWAY_CMDS = frozenset(
+                        {
+                            "ibc",
+                            "ibgateway",
+                            "IBController",
+                            "ibcontroller",
+                            "IBGateway",
+                            "start_ibkr_gateway.sh",
+                        }
+                    )
                     cmd_parts = shlex.split(start_cmd)
                     cmd_basename = _os.path.basename(cmd_parts[0]) if cmd_parts else ""
                     if not cmd_basename or cmd_basename not in _ALLOWED_GATEWAY_CMDS:
@@ -218,7 +227,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                                 # 递归重试一次连接
                                 return await self.connect()
                             else:
-                                logger.warning("[IBKR] Gateway 启动失败: rc=%d, %s", proc.returncode, stderr.decode()[:200])
+                                logger.warning(
+                                    "[IBKR] Gateway 启动失败: rc=%d, %s", proc.returncode, stderr.decode()[:200]
+                                )
                         except Exception as e:
                             logger.warning("[IBKR] Gateway 自动启动异常: %s", e)
 
@@ -256,11 +267,14 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         # 每 10 次心跳输出一次 INFO（约 5 分钟一次）
                         if self._consecutive_pings % 10 == 1:
                             uptime_min = (_time.time() - self._connected_since) / 60
-                            logger.info("[IBKR] 心跳 #%d OK (%.0fms) | 连续运行 %.0f分钟",
-                                        self._consecutive_pings, latency, uptime_min)
+                            logger.info(
+                                "[IBKR] 心跳 #%d OK (%.0fms) | 连续运行 %.0f分钟",
+                                self._consecutive_pings,
+                                latency,
+                                uptime_min,
+                            )
                         else:
-                            logger.debug("[IBKR] keepalive #%d OK (%.0fms)",
-                                         self._consecutive_pings, latency)
+                            logger.debug("[IBKR] keepalive #%d OK (%.0fms)", self._consecutive_pings, latency)
                     else:
                         logger.warning("[IBKR] 心跳检测到连接断开，触发自动重连")
                         self._connected = False
@@ -293,9 +307,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             if success:
                 logger.info("[IBKR] 自动重连成功 (累计重连 %d 次)", self._total_reconnects)
                 await self._notify_connectivity(
-                    "reconnected",
-                    "IBKR 自动重连成功",
-                    f"累计重连 {self._total_reconnects} 次"
+                    "reconnected", "IBKR 自动重连成功", f"累计重连 {self._total_reconnects} 次"
                 )
             else:
                 logger.error("[IBKR] 自动重连失败，将在下次操作时重试")
@@ -317,9 +329,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         logger.warning("[IBKR] 连接断开 (第%d次)，将自动重连", self._disconnect_count)
         # 通知 + 自动重连
         self._notify_connectivity_sync(
-            "disconnected",
-            "IBKR 连接断开",
-            f"第{self._disconnect_count}次断开，3 秒后自动重连"
+            "disconnected", "IBKR 连接断开", f"第{self._disconnect_count}次断开，3 秒后自动重连"
         )
         # 触发自动重连
         self._schedule_auto_reconnect()
@@ -350,13 +360,16 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             summary = self.ib.accountSummary(account=self.account)
             result = {}
             for item in summary:
-                if item.tag in ('NetLiquidation', 'TotalCashValue', 'BuyingPower',
-                                'GrossPositionValue', 'AvailableFunds',
-                                'UnrealizedPnL', 'RealizedPnL'):
-                    result[item.tag] = {
-                        'value': float(item.value) if item.value else 0,
-                        'currency': item.currency
-                    }
+                if item.tag in (
+                    "NetLiquidation",
+                    "TotalCashValue",
+                    "BuyingPower",
+                    "GrossPositionValue",
+                    "AvailableFunds",
+                    "UnrealizedPnL",
+                    "RealizedPnL",
+                ):
+                    result[item.tag] = {"value": float(item.value) if item.value else 0, "currency": item.currency}
             return result
         except Exception as e:
             logger.exception("获取账户摘要失败")
@@ -370,18 +383,18 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         lines = ["IBKR 模拟账户 (%s)\n" % self.account]
         tag_names = {
-            'NetLiquidation': '净清算价值',
-            'TotalCashValue': '现金余额',
-            'BuyingPower': '购买力',
-            'GrossPositionValue': '持仓市值',
-            'AvailableFunds': '可用资金',
-            'UnrealizedPnL': '未实现盈亏',
-            'RealizedPnL': '已实现盈亏',
+            "NetLiquidation": "净清算价值",
+            "TotalCashValue": "现金余额",
+            "BuyingPower": "购买力",
+            "GrossPositionValue": "持仓市值",
+            "AvailableFunds": "可用资金",
+            "UnrealizedPnL": "未实现盈亏",
+            "RealizedPnL": "已实现盈亏",
         }
         for tag, info in summary.items():
             name = tag_names.get(tag, tag)
-            val = info['value']
-            cur = info['currency']
+            val = info["value"]
+            cur = info["currency"]
             if abs(val) > 1000:
                 lines.append(f"{name}: {val:,.2f} {cur}")
             else:
@@ -399,16 +412,18 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             positions = self.ib.positions(account=self.account)
             result = []
             for pos in positions:
-                result.append({
-                    'symbol': pos.contract.symbol,
-                    'sec_type': pos.contract.secType,
-                    'exchange': pos.contract.exchange,
-                    'currency': pos.contract.currency,
-                    'quantity': float(pos.position),
-                    'avg_cost': float(pos.avgCost),
-                    'market_value': float(pos.position) * float(pos.avgCost),  # 成本基础（IBKR 不直接提供实时市值）
-                    'cost_basis': float(pos.position) * float(pos.avgCost),
-                })
+                result.append(
+                    {
+                        "symbol": pos.contract.symbol,
+                        "sec_type": pos.contract.secType,
+                        "exchange": pos.contract.exchange,
+                        "currency": pos.contract.currency,
+                        "quantity": float(pos.position),
+                        "avg_cost": float(pos.avgCost),
+                        "market_value": float(pos.position) * float(pos.avgCost),  # 成本基础（IBKR 不直接提供实时市值）
+                        "cost_basis": float(pos.position) * float(pos.avgCost),
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"[IBKR] 获取持仓失败: {e}")
@@ -422,18 +437,22 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         lines = [f"IBKR 持仓 ({len(positions)}个)\n"]
         for pos in positions:
-            sign = "+" if pos['quantity'] > 0 else ""
-            lines.append(
-                f"{pos['symbol']}: {sign}{pos['quantity']:.0f}股 "
-                f"@ {pos['avg_cost']:.2f} {pos['currency']}"
-            )
+            sign = "+" if pos["quantity"] > 0 else ""
+            lines.append(f"{pos['symbol']}: {sign}{pos['quantity']:.0f}股 @ {pos['avg_cost']:.2f} {pos['currency']}")
         return "\n".join(lines)
 
     # ============ 下单 ============
 
-    async def _place_order(self, side: str, symbol: str, quantity: float,
-                           order_type: str = 'MKT', limit_price: float = 0,
-                           decided_by: str = '', reason: str = '') -> Dict:
+    async def _place_order(
+        self,
+        side: str,
+        symbol: str,
+        quantity: float,
+        order_type: str = "MKT",
+        limit_price: float = 0,
+        decided_by: str = "",
+        reason: str = "",
+    ) -> Dict:
         """统一下单逻辑（BUY/SELL 共用）"""
         if quantity <= 0:
             return {"error": f"数量必须大于零 (got {quantity})"}
@@ -441,7 +460,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             return {"error": "未连接到IBKR"}
 
         # 买入时检查预算
-        if side == 'BUY':
+        if side == "BUY":
             remaining = self.budget - self.total_spent
             if remaining <= 0:
                 return {"error": "预算已用完 ($%.2f/$%.2f)" % (self.total_spent, self.budget)}
@@ -452,7 +471,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             if not qualified:
                 return {"error": f"无法识别合约: {symbol}"}
 
-            if order_type == 'LMT' and limit_price > 0:
+            if order_type == "LMT" and limit_price > 0:
                 order = LimitOrder(side, quantity, limit_price)
             else:
                 order = MarketOrder(side, quantity)
@@ -461,13 +480,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             trade = self.ib.placeOrder(contract, order)
 
             # P0#7: 市价单等待更长时间(30s)，限价单等确认提交后再多等5s捕获快速成交
-            max_wait = 60 if order_type != 'LMT' else 40
+            max_wait = 60 if order_type != "LMT" else 40
             lmt_submitted = False
             for _ in range(max_wait):
                 await asyncio.sleep(0.5)
-                if trade.orderStatus.status == 'Filled':
+                if trade.orderStatus.status == "Filled":
                     break
-                if trade.orderStatus.status in ('Submitted', 'PreSubmitted') and order_type == 'LMT':
+                if trade.orderStatus.status in ("Submitted", "PreSubmitted") and order_type == "LMT":
                     if not lmt_submitted:
                         lmt_submitted = True
                         # 限价单已提交，再等10秒看是否快速成交
@@ -480,20 +499,25 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             avg_price = trade.orderStatus.avgFillPrice
             order_id = trade.order.orderId
 
-            logger.info("[IBKR] %s %s x%s -> %s (filled=%s @ %s)",
-                        side, symbol, quantity, status, filled_qty, avg_price)
+            logger.info(
+                "[IBKR] %s %s x%s -> %s (filled=%s @ %s)", side, symbol, quantity, status, filled_qty, avg_price
+            )
 
             # 预算追踪
             if filled_qty > 0 and avg_price > 0:
-                if side == 'BUY':
+                if side == "BUY":
                     self.total_spent += filled_qty * avg_price
                     self._save_budget_state()
                     # 滑点估算日志（仅买入）
                     try:
                         slippage_est = await self.estimate_slippage(symbol, quantity, side="BUY")
-                        logger.info("[IBKR] %s 滑点估算: slippage=%.2f%%, liquidity=%s, est_fill=$%.2f",
-                                    symbol, slippage_est.estimated_slippage_pct,
-                                    slippage_est.liquidity_score, slippage_est.estimated_fill_price)
+                        logger.info(
+                            "[IBKR] %s 滑点估算: slippage=%.2f%%, liquidity=%s, est_fill=$%.2f",
+                            symbol,
+                            slippage_est.estimated_slippage_pct,
+                            slippage_est.liquidity_score,
+                            slippage_est.estimated_fill_price,
+                        )
                     except Exception as e:
                         logger.debug("[IBKR] 滑点估算跳过: %s", e)
                 else:
@@ -511,9 +535,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         logger.debug("Silenced exception", exc_info=True)
                     self.total_spent = max(0, self.total_spent - entry_cost)
                     self._save_budget_state()
-                    logger.info("[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f",
-                                entry_cost, self.budget - self.total_spent)
-            elif side == 'BUY' and order_type != 'LMT':
+                    logger.info(
+                        "[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f", entry_cost, self.budget - self.total_spent
+                    )
+            elif side == "BUY" and order_type != "LMT":
                 logger.warning("[IBKR] BUY %s 市价单未成交 (status=%s)，预算未扣除", symbol, status)
 
             return {
@@ -521,7 +546,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 "symbol": symbol.upper(),
                 "quantity": quantity,
                 "order_type": order_type,
-                "limit_price": limit_price if order_type == 'LMT' else None,
+                "limit_price": limit_price if order_type == "LMT" else None,
                 "status": status,
                 "filled_qty": filled_qty,
                 "avg_price": avg_price,
@@ -534,19 +559,29 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error("[IBKR] %s失败: %s", action_cn, e)
             return {"error": f"{action_cn}失败: {e}"}
 
-    async def buy(self, symbol: str, quantity: float,
-                  order_type: str = 'MKT', limit_price: float = 0,
-                  decided_by: str = '', reason: str = '') -> Dict:
+    async def buy(
+        self,
+        symbol: str,
+        quantity: float,
+        order_type: str = "MKT",
+        limit_price: float = 0,
+        decided_by: str = "",
+        reason: str = "",
+    ) -> Dict:
         """买入下单（带预算控制）"""
-        return await self._place_order('BUY', symbol, quantity, order_type,
-                                       limit_price, decided_by, reason)
+        return await self._place_order("BUY", symbol, quantity, order_type, limit_price, decided_by, reason)
 
-    async def sell(self, symbol: str, quantity: float,
-                   order_type: str = 'MKT', limit_price: float = 0,
-                   decided_by: str = '', reason: str = '') -> Dict:
+    async def sell(
+        self,
+        symbol: str,
+        quantity: float,
+        order_type: str = "MKT",
+        limit_price: float = 0,
+        decided_by: str = "",
+        reason: str = "",
+    ) -> Dict:
         """卖出下单"""
-        return await self._place_order('SELL', symbol, quantity, order_type,
-                                       limit_price, decided_by, reason)
+        return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
 
     # ============ 订单管理 ============
 
@@ -559,17 +594,19 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             trades = self.ib.openTrades()
             result = []
             for trade in trades:
-                result.append({
-                    'order_id': trade.order.orderId,
-                    'symbol': trade.contract.symbol,
-                    'action': trade.order.action,
-                    'quantity': trade.order.totalQuantity,
-                    'order_type': trade.order.orderType,
-                    'limit_price': trade.order.lmtPrice,
-                    'status': trade.orderStatus.status,
-                    'filled': trade.orderStatus.filled,
-                    'avg_price': trade.orderStatus.avgFillPrice,
-                })
+                result.append(
+                    {
+                        "order_id": trade.order.orderId,
+                        "symbol": trade.contract.symbol,
+                        "action": trade.order.action,
+                        "quantity": trade.order.totalQuantity,
+                        "order_type": trade.order.orderType,
+                        "limit_price": trade.order.lmtPrice,
+                        "status": trade.orderStatus.status,
+                        "filled": trade.orderStatus.filled,
+                        "avg_price": trade.orderStatus.avgFillPrice,
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"[IBKR] 获取订单失败: {e}")
@@ -583,17 +620,19 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         try:
             result = []
             for trade in self.ib.trades():
-                result.append({
-                    "order_id": int(getattr(trade.order, "orderId", 0) or 0),
-                    "symbol": str(getattr(trade.contract, "symbol", "") or "").upper(),
-                    "action": str(getattr(trade.order, "action", "") or ""),
-                    "quantity": float(getattr(trade.order, "totalQuantity", 0) or 0),
-                    "status": str(getattr(trade.orderStatus, "status", "") or ""),
-                    "filled": float(getattr(trade.orderStatus, "filled", 0) or 0),
-                    "remaining": float(getattr(trade.orderStatus, "remaining", 0) or 0),
-                    "avg_price": float(getattr(trade.orderStatus, "avgFillPrice", 0) or 0),
-                    "last_fill_price": float(getattr(trade.orderStatus, "lastFillPrice", 0) or 0),
-                })
+                result.append(
+                    {
+                        "order_id": int(getattr(trade.order, "orderId", 0) or 0),
+                        "symbol": str(getattr(trade.contract, "symbol", "") or "").upper(),
+                        "action": str(getattr(trade.order, "action", "") or ""),
+                        "quantity": float(getattr(trade.order, "totalQuantity", 0) or 0),
+                        "status": str(getattr(trade.orderStatus, "status", "") or ""),
+                        "filled": float(getattr(trade.orderStatus, "filled", 0) or 0),
+                        "remaining": float(getattr(trade.orderStatus, "remaining", 0) or 0),
+                        "avg_price": float(getattr(trade.orderStatus, "avgFillPrice", 0) or 0),
+                        "last_fill_price": float(getattr(trade.orderStatus, "lastFillPrice", 0) or 0),
+                    }
+                )
             return result
         except Exception as e:
             logger.error("[IBKR] 获取订单快照失败: %s", e)
@@ -632,16 +671,18 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 if exec_ts > 0 and exec_ts < since_ts:
                     continue
 
-                fills.append({
-                    "exec_id": str(getattr(execution, "execId", "") or ""),
-                    "order_id": int(getattr(execution, "orderId", 0) or 0),
-                    "symbol": str(getattr(contract, "symbol", "") or "").upper(),
-                    "side": str(getattr(execution, "side", "") or "").upper(),
-                    "shares": float(getattr(execution, "shares", 0) or 0),
-                    "price": float(getattr(execution, "price", 0) or 0),
-                    "time": str(exec_time or ""),
-                    "time_ts": exec_ts,
-                })
+                fills.append(
+                    {
+                        "exec_id": str(getattr(execution, "execId", "") or ""),
+                        "order_id": int(getattr(execution, "orderId", 0) or 0),
+                        "symbol": str(getattr(contract, "symbol", "") or "").upper(),
+                        "side": str(getattr(execution, "side", "") or "").upper(),
+                        "shares": float(getattr(execution, "shares", 0) or 0),
+                        "price": float(getattr(execution, "price", 0) or 0),
+                        "time": str(exec_time or ""),
+                        "time_ts": exec_ts,
+                    }
+                )
 
             return fills
         except Exception as e:
@@ -656,10 +697,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         lines = [f"IBKR 未完成订单 ({len(orders)}个)\n"]
         for o in orders:
-            price_info = f"限价${o['limit_price']}" if o['order_type'] == 'LMT' else "市价"
+            price_info = f"限价${o['limit_price']}" if o["order_type"] == "LMT" else "市价"
             lines.append(
-                f"#{o['order_id']} {o['action']} {o['symbol']} "
-                f"x{o['quantity']} ({price_info}) [{o['status']}]"
+                f"#{o['order_id']} {o['action']} {o['symbol']} x{o['quantity']} ({price_info}) [{o['status']}]"
             )
         return "\n".join(lines)
 
@@ -699,12 +739,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """获取预算使用情况"""
         remaining = self.budget - self.total_spent
         pct = (self.total_spent / self.budget * 100) if self.budget > 0 else 0
-        return (
-            "IBKR 预算状态\n\n"
-            "预算上限: $%.2f\n"
-            "已使用: $%.2f (%.1f%%)\n"
-            "剩余: $%.2f"
-        ) % (self.budget, self.total_spent, pct, remaining)
+        return ("IBKR 预算状态\n\n预算上限: $%.2f\n已使用: $%.2f (%.1f%%)\n剩余: $%.2f") % (
+            self.budget,
+            self.total_spent,
+            pct,
+            remaining,
+        )
 
     def reset_budget(self, new_budget: float = 2000.0):
         """重置预算"""
@@ -724,8 +764,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             self.budget = min(available, net_liq) if net_liq > 0 else available
             self.total_spent = 0.0
             self._save_budget_state()
-            logger.info("[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 预算设为=$%.2f",
-                        available, net_liq, self.budget)
+            logger.info("[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 预算设为=$%.2f", available, net_liq, self.budget)
         return self.budget
 
     def is_connected(self) -> bool:
@@ -735,7 +774,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
     def get_connection_status(self) -> str:
         """获取连接状态摘要（含健康度指标）"""
         if not HAS_IB:
-            return "IBKR: ib_insync 未安装"
+            return "IBKR: ib_async 未安装"
         if self.is_connected():
             uptime_min = (_time.time() - self._connected_since) / 60 if self._connected_since else 0
             parts = [
@@ -757,6 +796,7 @@ def __getattr__(name):
     """向后兼容：从 broker_selector 延迟导入 get_ibkr/ibkr/get_broker"""
     if name in ("get_ibkr", "ibkr", "get_broker"):
         from src.broker_selector import get_ibkr, ibkr, get_broker  # noqa: F811
+
         _exports = {"get_ibkr": get_ibkr, "ibkr": ibkr, "get_broker": get_broker}
         return _exports[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

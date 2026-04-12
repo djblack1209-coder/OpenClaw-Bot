@@ -5,6 +5,31 @@
 
 ---
 
+## [2026-04-12] IBKR 库迁移: ib_insync → ib_async (社区维护接力)
+
+> 领域: `trading`
+> 影响模块: `broker_bridge.py`, `broker_scanner.py`, `broker_slippage.py`, `log_config.py`
+> 关联问题: MRU_OPENSEARCH_REPORT ib_async 替代
+
+### 变更内容
+- ib_insync 原作者已去世，项目 archived，迁移到社区 fork ib_async(1.4k⭐, BSD-2)
+- API 完全兼容，仅改 import 路径和日志/注释中的库名
+- 4 个文件、13 处引用全部替换
+- 同步更新 1 个测试断言
+
+### 文件变更
+- `packages/clawbot/src/broker_bridge.py` — import + 注释
+- `packages/clawbot/src/broker_scanner.py` — import + 注释
+- `packages/clawbot/src/broker_slippage.py` — 注释
+- `packages/clawbot/src/log_config.py` — logger 名
+- `packages/clawbot/tests/test_broker_bridge.py` — 断言适配
+
+### 新增依赖
+- `ib_async>=2.1.0` (BSD-2, ib_insync 社区维护接力)
+- 可移除 `ib-insync` (已 archived)
+
+---
+
 ## [2026-04-12] LLM 智能路由: 按查询复杂度自动选模型，省 30-50% API 成本
 
 > 领域: `ai-pool`
