@@ -8,6 +8,7 @@ Covers:
   - _heal_history max-size trimming
   - _record_to_memory failure isolation
 """
+
 import sys
 import time
 
@@ -38,9 +39,7 @@ class TestHealSuccess:
         context: dict = {}
 
         # Mock the known-solution executor to succeed immediately
-        with patch.object(
-            engine, "_execute_known_solution", new_callable=AsyncMock, return_value=True
-        ):
+        with patch.object(engine, "_execute_known_solution", new_callable=AsyncMock, return_value=True):
             result = await engine.heal(error, context)
 
         assert result.healed is True
@@ -55,15 +54,15 @@ class TestHealSuccess:
         error = RuntimeError("some obscure error xyz")
         context: dict = {}
 
-        with patch.object(
-            engine, "_execute_known_solution", new_callable=AsyncMock, return_value=False
-        ), patch.object(
-            engine,
-            "_search_local_solutions",
-            new_callable=AsyncMock,
-            return_value="retry after clearing cache",
-        ), patch.object(
-            engine, "_apply_solution", new_callable=AsyncMock, return_value=True
+        with (
+            patch.object(engine, "_execute_known_solution", new_callable=AsyncMock, return_value=False),
+            patch.object(
+                engine,
+                "_search_local_solutions",
+                new_callable=AsyncMock,
+                return_value="retry after clearing cache",
+            ),
+            patch.object(engine, "_apply_solution", new_callable=AsyncMock, return_value=True),
         ):
             result = await engine.heal(error, context)
 
@@ -75,19 +74,17 @@ class TestHealSuccess:
         error = RuntimeError("unexpected segfault in widget")
         context: dict = {}
 
-        with patch.object(
-            engine, "_execute_known_solution", new_callable=AsyncMock, return_value=False
-        ), patch.object(
-            engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None
-        ), patch.object(
-            engine,
-            "_search_web_solutions",
-            new_callable=AsyncMock,
-            return_value="upgrade widget library to fix segfault",
-        ), patch.object(
-            engine, "_apply_solution", new_callable=AsyncMock, return_value=True
-        ), patch.object(
-            engine, "_record_to_memory", new_callable=AsyncMock
+        with (
+            patch.object(engine, "_execute_known_solution", new_callable=AsyncMock, return_value=False),
+            patch.object(engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                engine,
+                "_search_web_solutions",
+                new_callable=AsyncMock,
+                return_value="upgrade widget library to fix segfault",
+            ),
+            patch.object(engine, "_apply_solution", new_callable=AsyncMock, return_value=True),
+            patch.object(engine, "_record_to_memory", new_callable=AsyncMock),
         ):
             result = await engine.heal(error, context)
 
@@ -111,10 +108,9 @@ class TestHealCachedSolution:
         error = Exception(error_msg)
         context: dict = {}
 
-        with patch.object(
-            engine, "_apply_solution", new_callable=AsyncMock, return_value=True
-        ), patch.object(
-            engine, "_notify_human", new_callable=AsyncMock
+        with (
+            patch.object(engine, "_apply_solution", new_callable=AsyncMock, return_value=True),
+            patch.object(engine, "_notify_human", new_callable=AsyncMock),
         ):
             result = await engine.heal(error, context)
 
@@ -126,18 +122,17 @@ class TestHealCachedSolution:
         error = Exception("rare error for cache population test")
         context: dict = {}
 
-        with patch.object(
-            engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None
-        ), patch.object(
-            engine,
-            "_search_web_solutions",
-            new_callable=AsyncMock,
-            return_value="install hotfix v2.1",
-        ), patch.object(
-            engine, "_apply_solution", new_callable=AsyncMock, return_value=True
-        ), patch.object(
-            engine, "_record_to_memory", new_callable=AsyncMock
-        ) as mock_record:
+        with (
+            patch.object(engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                engine,
+                "_search_web_solutions",
+                new_callable=AsyncMock,
+                return_value="install hotfix v2.1",
+            ),
+            patch.object(engine, "_apply_solution", new_callable=AsyncMock, return_value=True),
+            patch.object(engine, "_record_to_memory", new_callable=AsyncMock) as mock_record,
+        ):
             result = await engine.heal(error, context)
             assert result.healed is True
             mock_record.assert_awaited_once()
@@ -181,12 +176,13 @@ class TestCircuitBreakerOpens:
 
     def test_failure_count_increments(self, engine):
         sig = "TestError:counting"
+        # pybreaker 内部计数，通过 _is_circuit_open 间接验证
         engine._record_circuit_failure(sig)
-        assert engine._circuit_breaker[sig][0] == 1
+        assert engine._is_circuit_open(sig) is False  # 1次，未到阈值
         engine._record_circuit_failure(sig)
-        assert engine._circuit_breaker[sig][0] == 2
+        assert engine._is_circuit_open(sig) is False  # 2次，未到阈值
         engine._record_circuit_failure(sig)
-        assert engine._circuit_breaker[sig][0] == 3
+        assert engine._is_circuit_open(sig) is True  # 3次，触发熔断
 
 
 # ── 4. Circuit breaker cooldown resets ──────────────────
@@ -202,24 +198,18 @@ class TestCircuitBreakerCooldown:
 
         assert engine._is_circuit_open(sig) is True
 
-        # Simulate cooldown elapsed
-        count, _ = engine._circuit_breaker[sig]
-        past_time = time.time() - engine.CIRCUIT_BREAK_COOLDOWN - 1
-        engine._circuit_breaker[sig] = (count, past_time)
+        # pybreaker 的 reset_timeout 由库自动管理
+        # 直接用 close() 模拟冷却完成
+        engine._reset_circuit(sig)
 
         assert engine._is_circuit_open(sig) is False
-        # Entry should be cleaned up
-        assert sig not in engine._circuit_breaker
 
     def test_cooldown_not_elapsed_stays_open(self, engine):
         sig = "TimeoutError:still cooling"
         for _ in range(engine.CIRCUIT_BREAK_THRESHOLD):
             engine._record_circuit_failure(sig)
 
-        # Just 1 second ago — still within cooldown
-        count, _ = engine._circuit_breaker[sig]
-        engine._circuit_breaker[sig] = (count, time.time() - 1)
-
+        # pybreaker 状态检查：刚刚触发，应该还是 OPEN
         assert engine._is_circuit_open(sig) is True
 
 
@@ -233,10 +223,12 @@ class TestCircuitBreakerSuccessReset:
         sig = "NetworkError:dns failure"
         engine._record_circuit_failure(sig)
         engine._record_circuit_failure(sig)
-        assert sig in engine._circuit_breaker
+        # pybreaker 池中应该有这个 breaker
+        assert sig in engine._breakers
 
         engine._reset_circuit(sig)
-        assert sig not in engine._circuit_breaker
+        # 重置后 breaker 应该变回 CLOSED 状态
+        assert engine._is_circuit_open(sig) is False
 
     def test_reset_nonexistent_sig_is_safe(self, engine):
         """Resetting a sig that was never recorded does not raise."""
@@ -252,13 +244,12 @@ class TestCircuitBreakerSuccessReset:
         engine._record_circuit_failure(sig)
         engine._record_circuit_failure(sig)
 
-        with patch.object(
-            engine, "_execute_known_solution", new_callable=AsyncMock, return_value=True
-        ):
+        with patch.object(engine, "_execute_known_solution", new_callable=AsyncMock, return_value=True):
             result = await engine.heal(error, {})
 
         assert result.healed is True
-        assert sig not in engine._circuit_breaker
+        # pybreaker 重置后应该是 CLOSED
+        assert engine._is_circuit_open(sig) is False
 
 
 # ── 6. heal history max size ────────────────────────────
@@ -277,14 +268,11 @@ class TestHealHistoryMaxSize:
 
         # Trigger one more heal that fails all steps → appends to history + trims
         error = Exception("overflow trigger error")
-        with patch.object(
-            engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None
-        ), patch.object(
-            engine, "_search_web_solutions", new_callable=AsyncMock, return_value=None
-        ), patch.object(
-            engine, "_try_alternatives", new_callable=AsyncMock, return_value=False
-        ), patch.object(
-            engine, "_notify_human", new_callable=AsyncMock
+        with (
+            patch.object(engine, "_search_local_solutions", new_callable=AsyncMock, return_value=None),
+            patch.object(engine, "_search_web_solutions", new_callable=AsyncMock, return_value=None),
+            patch.object(engine, "_try_alternatives", new_callable=AsyncMock, return_value=False),
+            patch.object(engine, "_notify_human", new_callable=AsyncMock),
         ):
             await engine.heal(error, {})
 

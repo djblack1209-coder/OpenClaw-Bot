@@ -5,6 +5,30 @@
 
 ---
 
+## [2026-04-12] 自愈引擎 v3.0: pybreaker 工业级熔断器
+
+> 领域: `backend`
+> 影响模块: `core/self_heal.py`, `tests/test_self_heal.py`
+> 关联问题: MRU_OPENSEARCH_REPORT 基础设施加固
+
+### 变更内容
+- 手写熔断器状态机（`_circuit_breaker` 字典 + 3 个方法）替换为 pybreaker(700⭐, BSD) 工业级实现
+- 熔断器池：每种错误签名一个独立的 CircuitBreaker 实例（`_breakers` 字典）
+- pybreaker 不可用时自动降级（`_HAS_PYBREAKER` 条件导入）
+- 版本号 v2.0 → v3.0
+- 同步更新 3 个测试方法适配新接口
+
+**评估并放弃 blinker 替换 event_bus：** event_bus 有通配符匹配、异步调度、审计日志、30个事件类型、23个订阅点、35个发布点——全是定制功能，blinker 无法覆盖，替换 ROI 为负。
+
+### 文件变更
+- `packages/clawbot/src/core/self_heal.py` — pybreaker 集成
+- `packages/clawbot/tests/test_self_heal.py` — 适配 pybreaker 接口
+
+### 新增依赖
+- `pybreaker>=1.4.0` (BSD, 700⭐)
+
+---
+
 ## [2026-04-12] 中文意图匹配升级: jieba 分词增强模糊匹配 v2.0
 
 > 领域: `backend`
