@@ -27,16 +27,18 @@
 - blinker：event_bus通配符+异步+审计全定制，替换ROI负
 - slowapi：自研RateLimitMiddleware已足够，API仅绑localhost
 - newspaper3k：RSS摘要+jina_reader已覆盖需求
+- Chroma：Mem0 Cloud已是最优向量搜索，改备用路径零感知
 
 ### 未完成/长期
 - vectorbt替代策略+回测引擎（2-3周大工程）
-- Chroma嵌入式向量DB（中等收益）
 - semantic-router安装+集成（需模型下载）
+- HI-462 ~360处低风险logger脱敏（低优先）
+- HI-388 diskcache CVE待上游修复（无法操作）
 
 ### 当前系统状态
 - 后端测试: 1133/1135 (1项curl_cffi, 2项skip)
-- 新增依赖: pybreaker>=1.4.0, ib_async>=2.1.0
-- Git: 15次commit待推送
+- 新增依赖: pybreaker>=1.4.0, ib_async>=2.1.0（均已记录到requirements.txt和DEPENDENCY_MAP）
+- Git: 16次commit待推送
 
 ---
 

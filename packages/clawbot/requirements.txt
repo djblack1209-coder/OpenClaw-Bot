@@ -121,6 +121,10 @@ ccxt>=4.4.0
 # 替换 self_heal.py 的假重试: 真正的指数退避、stop_after_attempt、retry_if_exception_type
 tenacity~=9.0.0
 
+# pybreaker — 工业级熔断器 (700⭐, BSD)
+# 替代 self_heal.py 中的手写 circuit breaker 状态机
+pybreaker>=1.4.0
+
 # pandas-ta — 标准技术分析指标库 (5k⭐, MIT)
 # 替换 strategy_engine.py 手写 RSI/MA: 200+ 标准指标，与交易平台数值一致
 pandas-ta>=0.3.14b1
