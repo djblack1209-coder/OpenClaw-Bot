@@ -1,13 +1,17 @@
 """
 MultiBot 核心类 — 组合所有 Mixin，提供 __init__ / run / stop
 """
+
 import logging
 from typing import Tuple, Optional
 
 from src.bot.globals import (
-    chat_router, health_checker, shared_memory,
+    chat_router,
+    health_checker,
+    shared_memory,
     ALLOWED_USER_IDS,
 )
+
 # 幻影导入修复: BotCapability/get_bot_config 从实际定义模块导入
 from src.routing.models import BotCapability
 from config.bot_profiles import get_bot_config
@@ -59,12 +63,12 @@ def _build_live_context() -> str:
     # 1. 持仓概览 (from position_monitor — 内存数据)
     try:
         from src.position_monitor import position_monitor
+
         if position_monitor and position_monitor.positions:
             status = position_monitor.get_status()
             lines = []
             total_pnl = status.get("total_unrealized_pnl", 0)
-            lines.append(f"持仓{status.get('monitored_count', 0)}个, "
-                         f"总浮盈亏${total_pnl:+,.2f}")
+            lines.append(f"持仓{status.get('monitored_count', 0)}个, 总浮盈亏${total_pnl:+,.2f}")
             for p in status.get("positions", [])[:5]:
                 sym = p["symbol"]
                 pnl_pct = p.get("unrealized_pnl_pct", 0)
@@ -81,6 +85,7 @@ def _build_live_context() -> str:
     # 2. 交易绩效 (from trading_journal — SQLite本地数据)
     try:
         from src.trading_journal import journal
+
         if journal:
             today = journal.get_today_pnl()
             if today and today.get("trades", 0) > 0:
@@ -102,6 +107,7 @@ def _build_live_context() -> str:
     # 3. 待办事项 (from task_mgmt — SQLite本地数据)
     try:
         from src.execution.task_mgmt import top_tasks
+
         tasks = top_tasks(limit=3)
         if tasks:
             task_str = ", ".join(t.get("title", "")[:20] for t in tasks)
@@ -110,10 +116,7 @@ def _build_live_context() -> str:
         logger.debug("静默异常: %s", e)
 
     # 4. 可用操作提示 (让 LLM 知道可以建议用户说什么)
-    sections.append(
-        "用户可以说中文指令: \"帮我买X股Y\" \"Y能买吗\" \"Y多少钱\" "
-        "\"帮我找便宜的Z\" \"分析Y\" 来触发实际操作"
-    )
+    sections.append('用户可以说中文指令: "帮我买X股Y" "Y能买吗" "Y多少钱" "帮我找便宜的Z" "分析Y" 来触发实际操作')
 
     if not sections:
         with _live_context_lock:
@@ -157,9 +160,7 @@ class MultiBot(
         self.name = profile.get("name", config["id"])
         self.emoji = profile.get("emoji", "\U0001f916")
         self.role = profile.get("personality", "AI助手")
-        self._base_system_prompt = profile.get(
-            "system_prompt", SOUL_CORE
-        )
+        self._base_system_prompt = profile.get("system_prompt", SOUL_CORE)
 
         self.max_messages = 30
         self.app = None
@@ -178,13 +179,15 @@ class MultiBot(
         )
 
         # 注册到路由器
-        chat_router.register_bot(BotCapability(
-            bot_id=self.bot_id,
-            name=self.name,
-            username=self.username,
-            keywords=config.get("keywords", []),
-            domains=profile.get("domains", []),
-        ))
+        chat_router.register_bot(
+            BotCapability(
+                bot_id=self.bot_id,
+                name=self.name,
+                username=self.username,
+                keywords=config.get("keywords", []),
+                domains=profile.get("domains", []),
+            )
+        )
 
         # 注册到健康检查
         health_checker.register_bot(self.bot_id)
@@ -199,6 +202,7 @@ class MultiBot(
     def _get_chat_mode_prompt(self, user_id: int) -> str:
         """根据用户 chat_mode 偏好返回额外的系统提示 — 搬运自 father-bot 的 chat_modes"""
         from src.bot.globals import user_prefs
+
         mode = user_prefs.get(user_id, "chat_mode", "assistant")
         if mode == "assistant":
             return ""  # 默认模式，不加额外提示
@@ -232,21 +236,18 @@ class MultiBot(
     async def delegate_tool_to_claude(self, tool_name: str, tool_input: dict) -> dict:
         """委托工具调用给 Claude（供其他 Bot 使用）"""
         from src.bot.globals import tool_executor
+
         return await tool_executor.execute(tool_name, tool_input)
 
-    async def _should_respond_async(self, text: str, chat_type: str,
-                                     message_id: Optional[int] = None,
-                                     from_user_id: Optional[int] = None) -> Tuple[bool, str]:
-        return await chat_router.should_respond_async(
-            self.bot_id, text, chat_type, message_id, from_user_id
-        )
+    async def _should_respond_async(
+        self, text: str, chat_type: str, message_id: Optional[int] = None, from_user_id: Optional[int] = None
+    ) -> Tuple[bool, str]:
+        return await chat_router.should_respond_async(self.bot_id, text, chat_type, message_id, from_user_id)
 
-    def _should_respond(self, text: str, chat_type: str,
-                        message_id: Optional[int] = None,
-                        from_user_id: Optional[int] = None) -> Tuple[bool, str]:
-        return chat_router.should_respond(
-            self.bot_id, text, chat_type, message_id, from_user_id
-        )
+    def _should_respond(
+        self, text: str, chat_type: str, message_id: Optional[int] = None, from_user_id: Optional[int] = None
+    ) -> Tuple[bool, str]:
+        return chat_router.should_respond(self.bot_id, text, chat_type, message_id, from_user_id)
 
     # ============ 启动 / 停止 ============
 
@@ -257,8 +258,11 @@ class MultiBot(
 
         from telegram import Update
         from telegram.ext import (
-            ApplicationBuilder, CommandHandler,
-            MessageHandler, CallbackQueryHandler, filters,
+            ApplicationBuilder,
+            CommandHandler,
+            MessageHandler,
+            CallbackQueryHandler,
+            filters,
         )
 
         self.app = (
@@ -278,13 +282,16 @@ class MultiBot(
         if error_handler:
             self.app.add_error_handler(error_handler.telegram_error_handler)
 
+        # 注册引导向导 ConversationHandler（必须第一个注册，优先于其他 CommandHandler）
+        onboarding_conv = self.build_onboarding_handler()
+        self.app.add_handler(onboarding_conv)
+
         # 注册命令
-        self.app.add_handler(CommandHandler("start", self.cmd_start))
         self.app.add_handler(CommandHandler("clear", self.cmd_clear))
         self.app.add_handler(CommandHandler("status", self.cmd_status))
         self.app.add_handler(CommandHandler("draw", self.cmd_draw))
         self.app.add_handler(CommandHandler("news", self.cmd_news))
-        self.app.add_handler(CommandHandler("help", self.cmd_start))
+        self.app.add_handler(CommandHandler("help", self.cmd_help))
         self.app.add_handler(CommandHandler("metrics", self.cmd_metrics))
         self.app.add_handler(CommandHandler("lanes", self.cmd_lanes))
         self.app.add_handler(CommandHandler("collab", self.cmd_collab))
@@ -377,55 +384,52 @@ class MultiBot(
         self.app.add_handler(CommandHandler("coupon", self.cmd_coupon))
         self.app.add_handler(CommandHandler("test_token", self.cmd_test_token))
         self.app.add_handler(CommandHandler("set_coupon_token", self.cmd_set_coupon_token))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_trade_callback, pattern=r"^itrade"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_help_callback, pattern=r"^help:"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_help_callback, pattern=r"^onboard:"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_feedback_callback, pattern=r"^fb\|"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_memory_callback, pattern=r"^mem_"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_settings_callback, pattern=r"^settings\|"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_notify_action_callback, pattern=r"^cmd:"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_social_confirm_callback, pattern=r"^social_confirm:"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_ops_menu_callback, pattern=r"^ops_"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_intel_callback, pattern=r"^intel_"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_quote_action_callback, pattern=r"^(ta_|buy_|watch_)"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_card_action_callback, pattern=r"^(trade:|bt:|ta:|analyze:|news:|evo:|retry:|shop:|post:)"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_clarification_callback, pattern=r"^\d+:.+:.+$"))
-        self.app.add_handler(CallbackQueryHandler(
-            self.handle_suggest_callback, pattern=r"^suggest:"))
-        self.app.add_handler(CallbackQueryHandler(
-            lambda u, c: u.callback_query.answer(), pattern=r"^noop$"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_trade_callback, pattern=r"^itrade"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_help_callback, pattern=r"^help:"))
+        # onboard: 回调已由 ConversationHandler 内部处理，无需单独注册
+        self.app.add_handler(CallbackQueryHandler(self.handle_feedback_callback, pattern=r"^fb\|"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_memory_callback, pattern=r"^mem_"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_settings_callback, pattern=r"^settings\|"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_notify_action_callback, pattern=r"^cmd:"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_social_confirm_callback, pattern=r"^social_confirm:"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_ops_menu_callback, pattern=r"^ops_"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_intel_callback, pattern=r"^intel_"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_quote_action_callback, pattern=r"^(ta_|buy_|watch_)"))
+        self.app.add_handler(
+            CallbackQueryHandler(
+                self.handle_card_action_callback, pattern=r"^(trade:|bt:|ta:|analyze:|news:|evo:|retry:|shop:|post:)"
+            )
+        )
+        self.app.add_handler(CallbackQueryHandler(self.handle_clarification_callback, pattern=r"^\d+:.+:.+$"))
+        self.app.add_handler(CallbackQueryHandler(self.handle_suggest_callback, pattern=r"^suggest:"))
+        self.app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer(), pattern=r"^noop$"))
 
-        self.app.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND, self.handle_message))
-        self.app.add_handler(MessageHandler(
-            filters.PHOTO, self.handle_photo))
-        self.app.add_handler(MessageHandler(
-            filters.VOICE | filters.AUDIO, self.handle_voice))
-        self.app.add_handler(MessageHandler(
-            filters.Document.PDF | filters.Document.IMAGE
-            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")      # .docx
-            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.presentationml.presentation")    # .pptx
-            | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")            # .xlsx
-            | filters.Document.MimeType("application/msword")              # .doc
-            | filters.Document.MimeType("application/vnd.ms-excel")        # .xls
-            | filters.Document.MimeType("application/vnd.ms-powerpoint"),  # .ppt
-            self.handle_document_ocr))
+        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        self.app.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
+        self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.handle_voice))
+        self.app.add_handler(
+            MessageHandler(
+                filters.Document.PDF
+                | filters.Document.IMAGE
+                | filters.Document.MimeType(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )  # .docx
+                | filters.Document.MimeType(
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )  # .pptx
+                | filters.Document.MimeType(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )  # .xlsx
+                | filters.Document.MimeType("application/msword")  # .doc
+                | filters.Document.MimeType("application/vnd.ms-excel")  # .xls
+                | filters.Document.MimeType("application/vnd.ms-powerpoint"),  # .ppt
+                self.handle_document_ocr,
+            )
+        )
 
         # Inline Query — @bot 搜股票/记忆（搬运自 freqtrade + yym68686 模式）
         from telegram.ext import InlineQueryHandler
+
         self.app.add_handler(InlineQueryHandler(self.handle_inline_query))
 
         await self.app.initialize()
@@ -440,9 +444,7 @@ class MultiBot(
             drop_pending_updates=True,
         )
 
-        logger.info(
-            f"[{self.name}] 启动成功 - {self.role} ({self.model.split('/')[-1]})"
-        )
+        logger.info(f"[{self.name}] 启动成功 - {self.role} ({self.model.split('/')[-1]})")
         return self
 
     async def stop_async(self):

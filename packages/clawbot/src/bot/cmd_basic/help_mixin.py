@@ -1,12 +1,16 @@
 """
-帮助与引导 Mixin — /start, help 回调, onboarding 引导
+帮助菜单 Mixin — /help, help 回调, 老用户 /start 欢迎
+
+新用户引导向导在 onboarding_mixin.py 中实现 (ConversationHandler)。
+本 Mixin 只处理:
+  - 老用户 /start 欢迎（_show_returning_user_start）
+  - /help 命令（cmd_help）
+  - help:* 按钮回调（handle_help_callback）
 """
+
 import logging
 
-from src.bot.globals import (
-    history_store, news_fetcher,
-)
-from src.bot.error_messages import error_service_failed
+from src.bot.globals import history_store
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -15,99 +19,92 @@ logger = logging.getLogger(__name__)
 def _build_help_main_keyboard():
     """构建帮助主菜单键盘 (去重: /start 老用户 + help:back 共用)"""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🤖 AI 助手能力", callback_data="help:ai_assistant")],
-        [InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
-         InlineKeyboardButton("📱 社媒发文", callback_data="help:social")],
-        [InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
-         InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr")],
-        [InlineKeyboardButton("🏠 生活助手", callback_data="help:life"),
-         InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu")],
-        [InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
-         InlineKeyboardButton("🔧 系统工具", callback_data="help:system")],
-        [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
-    ])
+
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🤖 AI 助手能力", callback_data="help:ai_assistant")],
+            [
+                InlineKeyboardButton("💬 日常对话", callback_data="help:daily"),
+                InlineKeyboardButton("📱 社媒发文", callback_data="help:social"),
+            ],
+            [
+                InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
+                InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr"),
+            ],
+            [
+                InlineKeyboardButton("🏠 生活助手", callback_data="help:life"),
+                InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu"),
+            ],
+            [
+                InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
+                InlineKeyboardButton("🔧 系统工具", callback_data="help:system"),
+            ],
+            [InlineKeyboardButton("📋 全部命令", callback_data="help:all")],
+        ]
+    )
 
 
 class _HelpMixin:
-    """帮助菜单与新用户引导"""
+    """帮助菜单与老用户欢迎"""
 
-    @with_typing
-    async def cmd_start(self, update, context):
-        if not self._is_authorized(update.effective_user.id):
-            await update.message.reply_text(
-                "👋 你好！这是一个私有 Bot，暂未对你开放。\n"
-                "如需使用请联系管理员获取授权。"
-            )
-            return
+    async def _show_returning_user_start(self, update, user):
+        """老用户 /start — 智能记忆召回 + 帮助菜单
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        由 OnboardingMixin.onboard_entry() 在检测到老用户时调用。
+        """
+        from src.smart_memory import get_smart_memory
 
-        user = update.effective_user
-        chat_id = update.effective_chat.id
-
-        # 首次使用检测 — 搬运自 father-bot/chatgpt_telegram_bot 的 register_user_if_not_exists
-        is_first_time = not history_store.get_messages(self.bot_id, chat_id, limit=1)
-
-        if is_first_time:
-            # 首次用户：引导式 onboarding
-            onboard = (
-                f"👋 你好 {user.first_name}！我是 {self.name}\n"
-                f"───────────────────\n"
-                f"{self.role}\n\n"
-                f"我能帮你做很多事，先试一个？\n"
-                f"点下面的按钮，或者直接发消息给我聊天 👇"
-            )
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💬 直接聊天试试", callback_data="onboard:chat")],
-                [InlineKeyboardButton("📰 看今日科技早报", callback_data="onboard:news"),
-                 InlineKeyboardButton("🎨 AI 画一张图", callback_data="onboard:draw")],
-                [InlineKeyboardButton("📈 分析一只股票", callback_data="onboard:invest"),
-                 InlineKeyboardButton("📱 发一条社媒", callback_data="onboard:social")],
-                [InlineKeyboardButton("📋 查看全部功能", callback_data="help:all")],
-            ])
-            await update.message.reply_text(onboard, reply_markup=keyboard)
-        else:
-            # 老用户：直接展示能力 + NL 示例
-            from src.smart_memory import get_smart_memory
-            
-            recent_task = ""
-            try:
-                sm = get_smart_memory()
-                # 尝试从记忆中获取用户最近关注的内容
-                results = sm.memory.search(query="用户正在做的事或者持仓或者关注的标的", user_id=str(user.id), limit=1)
+        recent_task = ""
+        try:
+            sm = get_smart_memory()
+            if sm:
+                # 从记忆中召回用户最近关注的内容
+                results = sm.memory.search(
+                    query="用户正在做的事或者持仓或者关注的标的",
+                    user_id=str(user.id),
+                    limit=1,
+                )
                 if results:
                     recent_mem = results[0]["memory"]
                     recent_task = f"💡 我还记得：{recent_mem[:30]}...\n\n"
-            except Exception as e:
-                logger.debug("[Help] 记忆召回失败: %s", e)
+        except Exception as e:
+            logger.debug("[Help] 记忆召回失败: %s", e)
 
-            welcome = (
-                f"{self.emoji}  {self.name} 已就绪\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
-                f"{recent_task}"
-                f"直接说中文就能操作，例如：\n"
-                f"  · \"帮我买100股苹果\"\n"
-                f"  · \"特斯拉多少钱\"\n"
-                f"  · \"帮我找便宜的AirPods\"\n"
-                f"  · \"今日简报\"\n\n"
-                f"或者展开下方菜单查看更多 👇"
-            )
-            await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
+        welcome = (
+            f"{self.emoji}  {self.name} 已就绪\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{recent_task}"
+            f"直接说中文就能操作，例如：\n"
+            f'  · "帮我买100股苹果"\n'
+            f'  · "特斯拉多少钱"\n'
+            f'  · "帮我找便宜的AirPods"\n'
+            f'  · "今日简报"\n\n'
+            f"或者展开下方菜单查看更多 👇"
+        )
+        await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
+
+    @with_typing
+    async def cmd_help(self, update, context):
+        """/help 命令 — 始终展示帮助菜单（不触发向导）"""
+        if not self._is_authorized(update.effective_user.id):
+            await update.message.reply_text("👋 你好！这是一个私有 Bot，暂未对你开放。\n如需使用请联系管理员获取授权。")
+            return
+
+        welcome = (
+            f"{self.emoji}  {self.name}\n"
+            f"───────────────────\n"
+            f"{self.role} · {self.model.split('/')[-1]}\n\n"
+            f"直接发消息就能对话，群聊 @我 即可。\n"
+            f"下面按场景展开更多功能 👇"
+        )
+        await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
 
     async def handle_help_callback(self, update, context):
-        """处理 /start 引导按钮和 onboarding 按钮的回调"""
+        """处理 help:* 按钮回调（帮助分类菜单）"""
         query = update.callback_query
         await query.answer()
 
         data = query.data
-
-        # Onboarding 按钮处理
-        if data.startswith("onboard:"):
-            action = data.replace("onboard:", "")
-            await self._handle_onboard_action(query, context, action)
-            return
-
         section = data.replace("help:", "")
 
         HELP_SECTIONS = {
@@ -120,13 +117,13 @@ class _HelpMixin:
                 "💡 摘要先行 — 长回复我先说结论\n"
                 "🎭 懂你风格 — 你喜欢简短我就简短\n"
                 "📡 异动推送 — 自选股>3%波动主动通知\n"
-                "🧠 记住偏好 — 说一次\"简短点\"我就记住\n"
+                '🧠 记住偏好 — 说一次"简短点"我就记住\n'
                 "🔗 跨域联想 — 分析股票时关联社交热点\n"
-                "✏️ 知错就改 — 说\"不对\"我自动纠正\n"
+                '✏️ 知错就改 — 说"不对"我自动纠正\n'
                 "⏰ 任务跟踪 — 买完股票2h后告诉你涨跌\n"
                 "👋 离线摘要 — 你回来时告诉你发生了什么\n"
                 "🌡️ 语气感知 — 你急我就直给结论\n"
-                "🔗 多步编排 — \"分析然后发小红书\"一步搞定\n"
+                '🔗 多步编排 — "分析然后发小红书"一步搞定\n'
                 "📊 行为洞察 — 发现你频繁查的标的\n"
                 "📶 进度反馈 — 多步任务实时通知进度\n\n"
                 "试试直接说：\n"
@@ -213,32 +210,29 @@ class _HelpMixin:
                 "/config  运行配置"
             ),
             "xianyu": (
-                "🛒 闲鱼运营\n"
-                "───────────────────\n"
-                "/xianyu  闲鱼AI客服 start/stop/status\n"
-                "/xianyu_report  闲鱼运营报表"
+                "🛒 闲鱼运营\n───────────────────\n/xianyu  闲鱼AI客服 start/stop/status\n/xianyu_report  闲鱼运营报表"
             ),
             "life": (
                 "🏠 生活助手\n"
                 "───────────────────\n"
                 "⏰ 提醒\n"
-                "  · \"30分钟后提醒我开会\"\n"
-                "  · \"每天早上9点提醒我吃药\"\n"
-                "  · \"每周一提醒我交报告\"\n\n"
+                '  · "30分钟后提醒我开会"\n'
+                '  · "每天早上9点提醒我吃药"\n'
+                '  · "每周一提醒我交报告"\n\n'
                 "💰 记账\n"
-                "  · \"花了35块买午饭\"\n"
-                "  · \"收入5000块工资\"\n"
-                "  · \"本月花了多少\"\n"
-                "  · \"设置月预算8000\"\n\n"
+                '  · "花了35块买午饭"\n'
+                '  · "收入5000块工资"\n'
+                '  · "本月花了多少"\n'
+                '  · "设置月预算8000"\n\n'
                 "📱 话费水电\n"
                 "  · /bill  查看话费余额追踪\n"
                 "  · 低余额时自动提醒充值\n\n"
                 "🛍️ 降价提醒\n"
                 "  · /pricewatch  管理降价监控\n"
-                "  · \"帮我盯着 AirPods 降价\"\n"
+                '  · "帮我盯着 AirPods 降价"\n'
                 "  · 6小时自动检查，降价即通知\n\n"
                 "📰 智能简报\n"
-                "  · \"今日简报\" → 每日综合日报\n"
+                '  · "今日简报" → 每日综合日报\n'
                 "  · /weekly → 本周战报"
             ),
             "system": (
@@ -259,24 +253,24 @@ class _HelpMixin:
                 "━━━━━━━━━━━━━━━━━━━\n\n"
                 "💡 不需要记命令，直接说中文：\n\n"
                 "📈 投资交易\n"
-                "  · \"帮我买100股苹果\"\n"
-                "  · \"特斯拉能买吗\" → 技术分析\n"
-                "  · \"英伟达多少钱\" → 实时报价\n"
-                "  · \"帮我炒股\" → 6个AI开会分析\n"
-                "  · \"我的持仓\" → 组合概览\n"
-                "  · \"复盘\" → AI交易复盘\n\n"
+                '  · "帮我买100股苹果"\n'
+                '  · "特斯拉能买吗" → 技术分析\n'
+                '  · "英伟达多少钱" → 实时报价\n'
+                '  · "帮我炒股" → 6个AI开会分析\n'
+                '  · "我的持仓" → 组合概览\n'
+                '  · "复盘" → AI交易复盘\n\n'
                 "🛒 购物比价\n"
-                "  · \"帮我找便宜的AirPods\"\n"
-                "  · \"降噪耳机哪里买最便宜\"\n\n"
+                '  · "帮我找便宜的AirPods"\n'
+                '  · "降噪耳机哪里买最便宜"\n\n'
                 "📱 社媒运营\n"
-                "  · \"热点发文\" → 自动写+发布\n"
-                "  · \"发AI趋势到小红书\"\n"
-                "  · \"社媒计划\" → 今日发文计划\n\n"
+                '  · "热点发文" → 自动写+发布\n'
+                '  · "发AI趋势到小红书"\n'
+                '  · "社媒计划" → 今日发文计划\n\n'
                 "📋 日常效率\n"
-                "  · \"今日简报\" → 智能日报\n"
-                "  · \"整理邮箱\" → AI分类\n"
-                "  · \"30分钟后提醒我开会\"\n"
-                "  · \"新闻\" → 科技早报\n\n"
+                '  · "今日简报" → 智能日报\n'
+                '  · "整理邮箱" → AI分类\n'
+                '  · "30分钟后提醒我开会"\n'
+                '  · "新闻" → 科技早报\n\n'
                 "🤖 也支持命令 (高级)\n"
                 "  /invest /quote /ta /buy /sell\n"
                 "  /hot /post /social_plan\n"
@@ -289,9 +283,12 @@ class _HelpMixin:
         text = HELP_SECTIONS.get(section, "未知分类")
 
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        back_btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("← 返回", callback_data="help:back")]
-        ]) if section != "all" else None
+
+        back_btn = (
+            InlineKeyboardMarkup([[InlineKeyboardButton("← 返回", callback_data="help:back")]])
+            if section != "all"
+            else None
+        )
 
         if section == "back":
             # 返回主菜单
@@ -306,49 +303,3 @@ class _HelpMixin:
             return
 
         await query.edit_message_text(text, reply_markup=back_btn)
-
-    async def _handle_onboard_action(self, query, context, action):
-        """处理 onboarding 引导按钮 — 引导用户完成第一个操作"""
-        chat_id = query.message.chat_id
-
-        if action == "chat":
-            await query.edit_message_text(
-                "💬 直接在这里打字就行！\n\n"
-                "试试发一句：「帮我写一段自我介绍」\n"
-                "或者问我任何问题，我会用流式输出实时回复你 ✨"
-            )
-
-        elif action == "news":
-            await query.edit_message_text("📰 正在获取今日科技早报...")
-            try:
-                report = await news_fetcher.generate_morning_report()
-                await context.bot.send_message(chat_id=chat_id, text=report)
-            except Exception as e:
-                logger.error("新闻获取失败: %s", e)
-                await context.bot.send_message(chat_id=chat_id, text=error_service_failed("新闻获取"))
-
-        elif action == "draw":
-            await query.edit_message_text(
-                "🎨 AI 画图\n\n"
-                "发送 /draw 加上描述就行，比如：\n"
-                "/draw 一只穿西装的龙虾在写代码\n\n"
-                "支持 flux / sd3 / sdxl 模型"
-            )
-
-        elif action == "invest":
-            await query.edit_message_text(
-                "📈 投资分析\n\n"
-                "发送 /quote AAPL 查看苹果实时行情\n"
-                "发送 /invest 比特币 启动 5 位 AI 协作分析\n"
-                "发送 /ta TSLA 查看特斯拉技术分析\n\n"
-                "试试看？"
-            )
-
-        elif action == "social":
-            await query.edit_message_text(
-                "📱 社媒一键发\n\n"
-                "发送 /hot 自动抓热点 + 发文\n"
-                "发送 /post AI趋势 双平台发文\n"
-                "发送 /social_persona 查看你的社媒人设\n\n"
-                "需要先配置浏览器登录态才能发布"
-            )
