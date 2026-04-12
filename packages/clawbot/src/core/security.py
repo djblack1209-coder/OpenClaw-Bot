@@ -3,6 +3,7 @@ OpenClaw OMEGA — 安全分级 (Security Gate)
 权限分级、PIN 码验证、审计日志、SSRF 防护。
 """
 import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -257,7 +258,7 @@ class SecurityGate:
             # 新格式: salt:hash (PBKDF2)
             salt, expected_hash = stored.split(':', 1)
             pin_hash = hashlib.pbkdf2_hmac('sha256', pin.encode(), salt.encode(), 100000).hex()
-            result = pin_hash == expected_hash
+            result = hmac.compare_digest(pin_hash, expected_hash)
         else:
             # 向后兼容旧格式（无盐 SHA-256），验证后自动升级为 PBKDF2
             result = hashlib.sha256(pin.encode()).hexdigest() == stored
