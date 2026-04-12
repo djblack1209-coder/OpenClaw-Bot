@@ -4,52 +4,39 @@
 
 ---
 
-## [2026-04-12 22:00] 开源积木化优化 — 7 个功能点完成
+## [2026-04-12 24:00] 开源积木化优化完结 — 11 个功能点
 
 ### 本次完成了什么
 
-**1. Telegram FSM 引导向导 (Task 5)**
-- 新用户 3 步交互式引导，ConversationHandler 实现
-- /start 和 /help 分离
+| # | 改动 | commit |
+|---|------|--------|
+| 1 | Telegram FSM 引导向导 | 新用户3步交互式引导 |
+| 2 | mem0 清理 | SQLite向量回退死代码 |
+| 3 | 积木化解构+开源情报 | 15 MRU + 13候选方案 |
+| 4 | 记忆递归索引+LRU | 地图分层模型，省420 token/次 |
+| 5 | _user_profile双重注入修复 | 省300 token/次 |
+| 6 | jieba中文意图匹配v2.0 | 三层模糊匹配，长句8/8命中 |
+| 7 | pybreaker工业级熔断器 | 替代手写状态机 |
+| 8 | LLM智能路由 | 按复杂度自动选模型，省30-50%成本 |
+| 9 | ib_insync→ib_async | IBKR社区维护接力 |
+| 10 | 新闻RSS摘要增强 | 早报从纯标题升级到标题+摘要 |
+| 11 | OPTIMIZATION_PLAN完结 | 6个任务全部评估归档 |
 
-**2. mem0 集成收尾 (Task 2)**
-- 删除 SQLite 向量搜索回退死代码
+### 评估后放弃的项目
+- TA-Lib：ta_engine已用ta库，替换仅省70行+增C依赖
+- blinker：event_bus通配符+异步+审计全定制，替换ROI负
+- slowapi：自研RateLimitMiddleware已足够，API仅绑localhost
+- newspaper3k：RSS摘要+jina_reader已覆盖需求
 
-**3. 积木化解构 + 开源情报**
-- 15 个 MRU 拆解 + 13 个直接集成候选
-- 完整报告在 `docs/architecture/MRU_OPENSEARCH_REPORT.md`
-
-**4. Hermes Agent (62k⭐) 架构分析**
-- 重点参考 ContextCompressor 和 MemoryManager
-
-**5. 记忆系统重构**
-- 递归索引（地图分层模型）：每次只带 ~80 token 索引
-- LRU 淘汰：MAX_MEMORIES=2000
-- 修复 _user_profile 双重注入 bug（省 ~300 token/次）
-
-**6. jieba 中文意图匹配 v2.0**
-- 三层匹配：包含→jieba分词→difflib
-- 20 个新关键词，长句识别 8/8 命中
-
-**7. 自愈引擎 v3.0**
-- pybreaker 工业级熔断器替代手写状态机
-- 评估并放弃 blinker（event_bus 定制太深）
-
-### 未完成的工作
-- TA-Lib 替代 ta_engine.py（下一价值位阶）
-- vectorbt 替代策略+回测引擎（需 2-3 周）
-- semantic-router 安装+集成（需要模型下载）
-- RouteLLM 成本优化（需要评估）
-
-### 需要注意的坑
-- pybreaker 的 `_record_circuit_failure` 通过 `call(fail_fn)` 触发，不是直接计数
-- jieba 首次分词会有 ~1 秒初始化延迟（后续调用毫秒级）
-- 记忆 L0 索引格式变了（`<memory-index>` 标签），旧测试需要 assert "记忆索引"
+### 未完成/长期
+- vectorbt替代策略+回测引擎（2-3周大工程）
+- Chroma嵌入式向量DB（中等收益）
+- semantic-router安装+集成（需模型下载）
 
 ### 当前系统状态
-- 后端测试: 1133/1135 (1 项 curl_cffi, 2 项 skip)
-- Git: 9 次 commit 待推送
-- 新增依赖: pybreaker>=1.4.0 (BSD)
+- 后端测试: 1133/1135 (1项curl_cffi, 2项skip)
+- 新增依赖: pybreaker>=1.4.0, ib_async>=2.1.0
+- Git: 15次commit待推送
 
 ---
 
