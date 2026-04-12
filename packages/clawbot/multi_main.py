@@ -853,8 +853,8 @@ async def main():
                 try:
                     from src.core.brain import get_brain
                     get_brain().cleanup_pending_callbacks(max_age_seconds=600)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("清理过期回调时异常(可忽略): %s", e)
             if alert_counter >= _alert_check_interval:
                 alert_counter = 0
                 alert_mgr.check_all()
@@ -905,8 +905,8 @@ async def main():
                             # 通过 Telegram 通知用户结果
                             try:
                                 await _notify_private_telegram(f"🎫 笔笔省每日领券\n{result}")
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("笔笔省领券通知发送失败(可忽略): %s", e)
                         except ImportError:
                             logger.debug("[笔笔省] 领券模块未就绪")
                         except Exception as e:
@@ -915,8 +915,8 @@ async def main():
                     asyncio.create_task(_run_coupon_claim()).add_done_callback(
                         _task_done_cb("CouponClaim")
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("定时任务调度异常(可忽略): %s", e)
     except asyncio.CancelledError:
         pass
 
@@ -935,8 +935,11 @@ async def main():
     # ── 第 1 步: 关机通知 (VPS + Telegram 管理员) ──
     try:
         import subprocess
-        vps_host = os.getenv("DEPLOY_VPS_HOST", "101.43.41.96")
+        vps_host = os.getenv("DEPLOY_VPS_HOST", "")
         vps_user = os.getenv("DEPLOY_VPS_USER", "openclaw")
+        if not vps_host:
+            logger.debug("  DEPLOY_VPS_HOST 未设置，跳过 VPS 关机通知")
+            raise ValueError("DEPLOY_VPS_HOST 未配置")
         # 1. 通知 VPS: 写入 shutdown 标记文件，VPS failover 可秒级切换
         await asyncio.to_thread(
             subprocess.run,
@@ -966,8 +969,8 @@ async def main():
     try:
         from src.watchlist_monitor import get_watchlist_monitor
         await get_watchlist_monitor().stop()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("关闭自选股监控时异常(可忽略): %s", e)
     # 刷新通知批量合并器 — 防止待发通知丢失
     try:
         await _notify_batcher.flush()
@@ -985,16 +988,16 @@ async def main():
     try:
         from src.core.executor import get_executor
         await get_executor().close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("关闭OMEGA执行引擎时异常(可忽略): %s", e)
     await execution_hub.stop_scheduler()
     await stop_trading_system()
     # 停止内控 API 服务器
     try:
         stop_api_server()
         logger.info("  内控 API 服务器已停止")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("关闭内控API服务器时异常(可忽略): %s", e)
     if auto_recovery:
         auto_recovery.stop()
     if metrics_server:
@@ -1005,8 +1008,8 @@ async def main():
         from src.langfuse_obs import shutdown as langfuse_shutdown
         langfuse_shutdown()
         logger.info("  Langfuse 观测层已关闭")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("关闭Langfuse观测层时异常(可忽略): %s", e)
     metrics.shutdown()
     history_store.close()
     shared_memory.close()
@@ -1016,8 +1019,8 @@ async def main():
         if _fallback_cache:
             _fallback_cache.close()
             logger.info("  LLM diskcache 已关闭")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("关闭LLM diskcache时异常(可忽略): %s", e)
     # 关闭 httpx 长生命周期客户端（防止 TCP 连接泄漏）
     try:
         from src.xianyu.goofish_monitor import _monitor as _gm

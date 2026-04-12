@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # ── 配置 ──
-VPS_HOST="${DEPLOY_VPS_HOST:-101.43.41.96}"
+VPS_HOST="${DEPLOY_VPS_HOST:?请设置 DEPLOY_VPS_HOST 环境变量}"
 VPS_USER="${DEPLOY_VPS_USER:-openclaw}"
 VPS_HEARTBEAT_PATH="/opt/openclaw/data/primary_heartbeat"
 LOG_TAG="clawbot-heartbeat"
