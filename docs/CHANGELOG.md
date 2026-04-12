@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-04-12] 夜间审计系统 v2.0 全面升级
+
+> 领域: `infra`
+> 影响模块: `scripts/nightly-audit/*`, `docs/guides/NIGHTLY_AUDIT_SETUP.md`
+> 关联问题: 审计系统全面检查发现的多项缺陷
+
+### 变更内容
+- 审计范围从 6 阶段扩展至 8 阶段：新增「数据库与交易系统专项审计」和「端到端业务流程与可观测性审计」
+- 新增多项目隔离：进程锁和 launchd 配置按项目目录哈希自动隔离，多个项目互不干扰
+- 新增健康预检：审计前自动检查 Claude 可用性、API Key、磁盘空间(≥500MB)、Git 仓库
+- 新增断点续跑：上次审计中断后自动从断点继续，不重复已完成的阶段
+- 新增开机补跑：Mac 开机后检测昨晚审计是否执行，未执行则自动补跑
+- 新增增量审计模式：通过 git tag 标记基准点，只审计变更文件（可配置开关）
+- 新增审计评分卡：每次审计生成量化评分（修复数/问题数/测试状态）
+- 新增严重问题实时告警：审计中发现严重问题立即 Telegram 通知
+- 新增变更量控制：单阶段修改超过30文件自动告警
+- 新增日志自动清理：超过30天的旧日志自动删除
+- 新增死锁自动清理：旧审计进程已死但锁未释放时自动清理
+- 总预算从 $25 调至 $35（匹配8阶段）
+
+### 文件变更
+- `scripts/nightly-audit/phases/07-data-trading.txt` — 新建，数据库/交易专项审计提示词
+- `scripts/nightly-audit/phases/08-e2e-observability.txt` — 新建，端到端/可观测性审计提示词
+- `scripts/nightly-audit/run-audit.sh` — 全面升级（预检/断点/增量/评分/告警/清理/8阶段）
+- `scripts/nightly-audit/setup-mac.sh` — 新增开机补跑机制
+- `scripts/nightly-audit/config.env.example` — 新增增量审计/日志保留/变更限制/阶段数配置
+- `docs/guides/NIGHTLY_AUDIT_SETUP.md` — 全面更新至 v2.0
+
+---
+
 ## [2026-04-12] 夜间审计系统全自主决策模式升级
 
 > 领域: `infra`
