@@ -3,8 +3,9 @@ IBKR 扫描器与合约搜索 Mixin
 
 从 broker_bridge.py 提取，包含：
 - BrokerScannerMixin：合约构建、Scanner 扫描、合约搜索、实时快照
-- 依赖 ib_insync（通过 self.ib 访问 IB 连接）
+- 依赖 ib_async（ib_insync 社区接力 fork，API 完全兼容）
 """
+
 import asyncio
 import re
 import logging
@@ -16,10 +17,11 @@ from src.utils import now_et
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ib_insync import Stock, Forex, Crypto, Contract, ScannerSubscription
+    from ib_async import Stock, Forex, Crypto, Contract, ScannerSubscription
 
 try:
-    from ib_insync import Stock, Forex, Crypto, Contract, ScannerSubscription
+    from ib_async import Stock, Forex, Crypto, Contract, ScannerSubscription
+
     _HAS_IB_SCANNER = True
 except ImportError:
     _HAS_IB_SCANNER = False
@@ -34,26 +36,27 @@ except ImportError:
 class BrokerScannerMixin:
     """IBKR 扫描器与合约搜索功能 Mixin — 通过 self.ib 访问 IB 连接"""
 
-    def _make_contract(self, symbol: str, sec_type: str = 'STK',
-                       exchange: str = 'SMART', currency: str = 'USD') -> "Contract":
+    def _make_contract(
+        self, symbol: str, sec_type: str = "STK", exchange: str = "SMART", currency: str = "USD"
+    ) -> "Contract":
         """创建合约对象"""
         symbol = symbol.upper()
 
         # 加密货币特殊处理
         crypto_map = {
-            'BTC': ('BTC', 'PAXOS', 'USD'),
-            'ETH': ('ETH', 'PAXOS', 'USD'),
-            'BTC-USD': ('BTC', 'PAXOS', 'USD'),
-            'ETH-USD': ('ETH', 'PAXOS', 'USD'),
+            "BTC": ("BTC", "PAXOS", "USD"),
+            "ETH": ("ETH", "PAXOS", "USD"),
+            "BTC-USD": ("BTC", "PAXOS", "USD"),
+            "ETH-USD": ("ETH", "PAXOS", "USD"),
         }
         if symbol in crypto_map:
             sym, exch, cur = crypto_map[symbol]
             return Crypto(sym, exch, cur)
 
         # 港股特殊处理
-        if symbol.isdigit() or symbol.endswith('.HK'):
-            sym = symbol.replace('.HK', '')
-            return Stock(sym, 'SEHK', 'HKD')
+        if symbol.isdigit() or symbol.endswith(".HK"):
+            sym = symbol.replace(".HK", "")
+            return Stock(sym, "SEHK", "HKD")
 
         # 默认美股
         return Stock(symbol, exchange, currency)
@@ -84,23 +87,27 @@ class BrokerScannerMixin:
         if not await self.ensure_connected():
             return []
         if not _HAS_IB_SCANNER or ScannerSubscription is None:
-            logger.warning("[IBKR] Scanner 不可用：ib_insync 缺失")
+            logger.warning("[IBKR] Scanner 不可用：ib_async 缺失")
             return []
 
         max_symbols = max(50, int(max_symbols or 800))
         profiles = []
         if include_us:
-            profiles.extend([
-                {"location": "STK.US.MAJOR", "scan": "MOST_ACTIVE", "rows": 200},
-                {"location": "STK.US.MAJOR", "scan": "HOT_BY_VOLUME", "rows": 200},
-                {"location": "STK.US.MAJOR", "scan": "TOP_PERC_GAIN", "rows": 200},
-                {"location": "STK.US.MAJOR", "scan": "TOP_PERC_LOSE", "rows": 200},
-            ])
+            profiles.extend(
+                [
+                    {"location": "STK.US.MAJOR", "scan": "MOST_ACTIVE", "rows": 200},
+                    {"location": "STK.US.MAJOR", "scan": "HOT_BY_VOLUME", "rows": 200},
+                    {"location": "STK.US.MAJOR", "scan": "TOP_PERC_GAIN", "rows": 200},
+                    {"location": "STK.US.MAJOR", "scan": "TOP_PERC_LOSE", "rows": 200},
+                ]
+            )
         if include_hk:
-            profiles.extend([
-                {"location": "STK.HK.SEHK", "scan": "MOST_ACTIVE", "rows": 120},
-                {"location": "STK.HK.SEHK", "scan": "TOP_PERC_GAIN", "rows": 120},
-            ])
+            profiles.extend(
+                [
+                    {"location": "STK.HK.SEHK", "scan": "MOST_ACTIVE", "rows": 120},
+                    {"location": "STK.HK.SEHK", "scan": "TOP_PERC_GAIN", "rows": 120},
+                ]
+            )
 
         seen = set()
         symbols = []
@@ -163,16 +170,18 @@ class BrokerScannerMixin:
             contract = getattr(m, "contract", None)
             if contract is None:
                 continue
-            items.append({
-                "symbol": self._normalize_scanner_symbol(contract),
-                "raw_symbol": getattr(contract, "symbol", ""),
-                "sec_type": getattr(contract, "secType", ""),
-                "exchange": getattr(contract, "exchange", ""),
-                "primary_exchange": getattr(contract, "primaryExchange", ""),
-                "currency": getattr(contract, "currency", ""),
-                "description": getattr(m, "description", ""),
-                "derivative_sec_types": list(getattr(m, "derivativeSecTypes", []) or []),
-            })
+            items.append(
+                {
+                    "symbol": self._normalize_scanner_symbol(contract),
+                    "raw_symbol": getattr(contract, "symbol", ""),
+                    "sec_type": getattr(contract, "secType", ""),
+                    "exchange": getattr(contract, "exchange", ""),
+                    "primary_exchange": getattr(contract, "primaryExchange", ""),
+                    "currency": getattr(contract, "currency", ""),
+                    "description": getattr(m, "description", ""),
+                    "derivative_sec_types": list(getattr(m, "derivativeSecTypes", []) or []),
+                }
+            )
         return items
 
     async def get_realtime_snapshot(
@@ -240,7 +249,7 @@ class BrokerScannerMixin:
             return {"error": f"获取快照失败: {e}"}
         finally:
             try:
-                if 'q_contract' in locals():
+                if "q_contract" in locals():
                     self.ib.cancelMktData(q_contract)
             except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)

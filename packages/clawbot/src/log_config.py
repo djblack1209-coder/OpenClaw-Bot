@@ -25,6 +25,7 @@ from pathlib import Path
 # ── Graceful degradation: 没装 loguru 时回退到 stdlib ──────────
 try:
     from loguru import logger as _loguru_logger
+
     _HAS_LOGURU = True
 except ImportError:
     _HAS_LOGURU = False
@@ -42,8 +43,8 @@ _NOISY_LIBS: dict[str, str] = {
     "apscheduler": "WARNING",
     "urllib3": "WARNING",
     "yfinance": "WARNING",
-    "ib_insync.wrapper": "WARNING",
-    "ib_insync.client": "WARNING",
+    "ib_async.wrapper": "WARNING",
+    "ib_async.client": "WARNING",
     "hpack": "WARNING",
     "httpcore": "WARNING",
     "openai": "WARNING",
@@ -51,6 +52,7 @@ _NOISY_LIBS: dict[str, str] = {
 }
 
 # ── stdlib logging → loguru 桥接 ──────────────────────────────
+
 
 class InterceptHandler(logging.Handler):
     """
@@ -77,9 +79,7 @@ class InterceptHandler(logging.Handler):
             else:
                 break
 
-        _loguru_logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
-        )
+        _loguru_logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 def _make_module_filter(min_levels: dict[str, str]):
@@ -101,6 +101,7 @@ def _make_module_filter(min_levels: dict[str, str]):
 
 
 # ── Public API ────────────────────────────────────────────────
+
 
 def setup_logging(
     level: str = "INFO",
@@ -129,8 +130,7 @@ def setup_logging(
             handlers=[logging.StreamHandler()],
         )
         logging.getLogger(__name__).warning(
-            "loguru 未安装, 回退到 stdlib logging。"
-            "运行 `pip install loguru>=0.7.0` 启用增强日志。"
+            "loguru 未安装, 回退到 stdlib logging。运行 `pip install loguru>=0.7.0` 启用增强日志。"
         )
         _SETUP_DONE = True
         return
@@ -181,10 +181,7 @@ def setup_logging(
     _loguru_logger.add(
         str(log_dir / "errors_{time}.log"),
         level="ERROR",
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | "
-            "{name}:{function}:{line} | {message}"
-        ),
+        format=("{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {name}:{function}:{line} | {message}"),
         rotation="10 MB",
         retention="7 days",
         compression="gz",
@@ -204,9 +201,7 @@ def setup_logging(
 
     # 对噪声库在 stdlib 层面也设置过滤 (双保险)
     for lib_name, lib_level in _NOISY_LIBS.items():
-        logging.getLogger(lib_name).setLevel(
-            getattr(logging, lib_level, logging.WARNING)
-        )
+        logging.getLogger(lib_name).setLevel(getattr(logging, lib_level, logging.WARNING))
 
     _SETUP_DONE = True
     _loguru_logger.info("loguru 日志系统已初始化 (level={}, dir={})", level, log_dir)

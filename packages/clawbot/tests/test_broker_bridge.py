@@ -1,4 +1,5 @@
 """Tests for src/broker_bridge.py — pure logic & mock-based (no real IBKR connection)."""
+
 import sys
 import os
 import time
@@ -12,6 +13,7 @@ from src.broker_bridge import IBKRBridge, SlippageEstimate
 
 
 # ============ IBKRBridge.__init__ ============
+
 
 def test_init_default_attributes():
     bridge = IBKRBridge()
@@ -27,8 +29,7 @@ def test_init_default_attributes():
 
 
 def test_init_custom_attributes():
-    bridge = IBKRBridge(host="10.0.0.1", port=7497, client_id=5,
-                        account="TEST123", budget=5000.0)
+    bridge = IBKRBridge(host="10.0.0.1", port=7497, client_id=5, account="TEST123", budget=5000.0)
     assert bridge.host == "10.0.0.1"
     assert bridge.port == 7497
     assert bridge.client_id == 5
@@ -38,6 +39,7 @@ def test_init_custom_attributes():
 
 # ============ set_notify ============
 
+
 def test_set_notify():
     bridge = IBKRBridge()
     cb = MagicMock()
@@ -46,6 +48,7 @@ def test_set_notify():
 
 
 # ============ is_connected ============
+
 
 def test_is_connected_ib_none():
     bridge = IBKRBridge()
@@ -68,6 +71,7 @@ def test_is_connected_false():
 
 # ============ get_budget_status ============
 
+
 def test_budget_status_fresh():
     bridge = IBKRBridge(budget=2000.0)
     status = bridge.get_budget_status()
@@ -85,6 +89,7 @@ def test_budget_status_partial_spend():
 
 
 # ============ reset_budget ============
+
 
 def test_reset_budget_default():
     bridge = IBKRBridge(budget=5000.0)
@@ -104,11 +109,12 @@ def test_reset_budget_custom():
 
 # ============ get_connection_status ============
 
+
 def test_connection_status_no_ib_installed():
     bridge = IBKRBridge()
     with patch("src.broker_bridge.HAS_IB", False):
         status = bridge.get_connection_status()
-    assert "ib_insync 未安装" in status
+    assert "ib_async 未安装" in status
 
 
 def test_connection_status_connected():
@@ -137,6 +143,7 @@ def test_connection_status_disconnected():
 
 # ============ SlippageEstimate dataclass ============
 
+
 def test_slippage_estimate_defaults():
     est = SlippageEstimate()
     assert est.estimated_slippage_pct == 0.0
@@ -148,6 +155,7 @@ def test_slippage_estimate_defaults():
 
 
 # ============ format_slippage ============
+
 
 def test_format_slippage_basic():
     bridge = IBKRBridge()
@@ -174,6 +182,7 @@ def test_format_slippage_with_warnings():
 
 # ============ connect when HAS_IB=False ============
 
+
 async def test_connect_returns_false_without_ib():
     bridge = IBKRBridge()
     with patch("src.broker_bridge.HAS_IB", False):
@@ -182,6 +191,7 @@ async def test_connect_returns_false_without_ib():
 
 
 # ============ buy budget check ============
+
 
 async def test_buy_rejects_when_budget_exhausted():
     bridge = IBKRBridge(budget=1000.0)
@@ -194,6 +204,7 @@ async def test_buy_rejects_when_budget_exhausted():
 
 
 # ============ sell budget recovery ============
+
 
 async def test_sell_recovers_budget():
     bridge = IBKRBridge(budget=2000.0)
@@ -212,8 +223,7 @@ async def test_sell_recovers_budget():
     mock_trade.order.orderId = 42
     bridge.ib.placeOrder.return_value = mock_trade
 
-    with patch("src.broker_bridge.MarketOrder", MagicMock()), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with patch("src.broker_bridge.MarketOrder", MagicMock()), patch("asyncio.sleep", new_callable=AsyncMock):
         result = await bridge.sell("AAPL", 10)
 
     assert result["action"] == "SELL"
@@ -223,6 +233,7 @@ async def test_sell_recovers_budget():
 
 
 # ============ get_positions with mock ib ============
+
 
 async def test_get_positions_returns_formatted():
     bridge = IBKRBridge()
