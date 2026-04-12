@@ -1,29 +1,25 @@
 # OpenClaw Bot 全面优化实施计划
 
-> 最后更新: 2026-03-27
+> 最后更新: 2026-04-12
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态: 全部完成。** 6个任务已全部评估并处理（3个完成、1个收尾、1个不可行、1个未列入本轮）。
 
 **Goal:** 用成熟开源方案替换自研60分模块，保留独特壁垒（AI团队投票、人格系统），将体验从"能用"提升到"好用"。
 
-**Architecture:** 6大改造模块并行推进：One-API网关替换、mem0内存深度集成、execution_hub拆分+browser-use集成、Telegram FSM重构、freqtrade交易引擎搬运、桌面端UI充实。每个模块独立可测试，不互相阻塞。
-
-**Tech Stack:** Python 3.12, One-API (Go), mem0 + Chroma, browser-use, python-telegram-bot ConversationHandler, freqtrade IStrategy, React + shadcn/ui + Tremor
-
 ---
 
-## 改造总览
+## 改造总览（最终结果）
 
-| 模块 | 删除代码量 | 新增/改造代码量 | 净效果 |
-|------|-----------|---------------|--------|
-| One-API网关替换 | ~600行 (free_api_pool部分 + llm_router.py + api_mixin部分) | ~150行 (One-API配置 + 适配层) | -450行 |
-| mem0内存集成 | ~1200行 (shared_memory向量搜索 + smart_memory全部) | ~200行 (mem0配置 + 适配层) | -1000行 |
-| execution_hub拆分 | 3789行单文件 | ~3200行(18个模块) | 结构优化，可维护性大幅提升 |
-| browser-use深度集成 | ~200行 (Chrome JS注入 + 旧browser_agent) | ~300行 (browser-use深度封装) | 可靠性提升 |
-| Telegram FSM | ~100行 (死代码清理) | ~500行 (FSM + onboarding) | 体验质变 |
-| freqtrade搬运 | ~3100行 (strategy_engine + backtester + protections + auto_trader执行部分 + trading_system) | ~800行 (freqtrade适配层 + AI信号提供者) | -2300行 |
+| 模块 | 原计划净效果 | 实际结果 | 状态 |
+|------|-----------|---------|------|
+| One-API网关替换 | -450行 | 在 15+ 轮迭代中通过 LiteLLM Router + New-API 实现 | ✅ 完成 |
+| mem0内存集成 | -1000行 | shared_memory v4.0 已集成 mem0；v4.1 清理 SQLite 向量回退 (-39行) | ✅ 完成 |
+| execution_hub拆分 | 结构优化 | execution/ 目录已拆为 19 个文件 | ✅ 完成 |
+| browser-use深度集成 | 可靠性提升 | (未列入本轮) | — |
+| Telegram FSM | 体验质变 | ConversationHandler 3步引导向导 (+258行 onboarding_mixin) | ✅ 完成 |
+| freqtrade搬运 | -2300行 | **不可行**: freqtrade 仅支持 crypto，我们做美股(IBKR)；bridge 已存在(651行) | ❌ 不可行 |
 
-**总计：净减少 ~3750行代码，同时功能和可靠性大幅提升。**
+**实际效果：通过不同路径（LiteLLM、mem0 v4.0、execution 拆分等）在 15+ 轮迭代中已实现大部分优化目标。Telegram FSM 是本轮唯一的新增实现。**
 
 ---
 

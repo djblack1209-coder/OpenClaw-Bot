@@ -4,6 +4,53 @@
 
 ---
 
+## [2026-04-12 18:00] 优化计划全部完结 — Task 5 (FSM) + Task 2 (mem0) + Task 6 评估
+
+### 本次完成了什么
+
+**1. Task 5: Telegram FSM 引导向导（新功能）**
+- 新用户 `/start` 进入 3 步交互式向导（选兴趣→选风格→个性化推荐）
+- ConversationHandler 第一个注册，优先于所有 CommandHandler
+- `/start` 和 `/help` 分离：/start 走向导，/help 始终展示帮助菜单
+- 旧的 4 个死胡同 onboarding 按钮全部移除
+- 新建 `onboarding_mixin.py` (258行)，重写 `help_mixin.py`
+
+**2. Task 2 收尾: mem0 集成清理**
+- 删除 `_cosine_similarity` 和 `_simple_text_embedding` 两个自研向量函数
+- 删除 `search()` 中的 SQLite 全表向量扫描路径
+- `semantic_search()` SQLite 回退从向量搜索改为关键词匹配
+- `shared_memory.py` 从 903 行减到 864 行，版本升至 v4.1
+
+**3. Task 6 (freqtrade) 评估: 不可行**
+- freqtrade 仅支持加密货币交易所，不支持 IBKR 美股
+- `freqtrade_bridge.py` (651行) 已存在，仅用于回测降级
+- auto_trader 的 4 阶段扫描循环和 AI 团队投票无法被 freqtrade 替代
+
+**4. 优化计划全部评估完成**
+- OPTIMIZATION_PLAN.md 已更新为最终状态
+- 6 个任务: 3 个完成、1 个收尾、1 个不可行、1 个未列入
+
+### 未完成的工作
+
+**无重大遗留。** 仅剩：
+- HI-388: diskcache CVE-2025-69872 待上游发布修复版本
+- HI-462: ~360 处低风险 logger 脱敏（已评估为低风险）
+
+### 需要注意的坑
+- ConversationHandler 的 `per_message=False` 会有 PTB 警告，可忽略（我们每步只有一个键盘）
+- `semantic_search()` 的 SQLite 回退现在是关键词匹配（不再做向量搜索），效果在 mem0 不可用时略有下降，但 mem0 是必装依赖所以实际不影响
+- 新用户引导向导中途发文字会收到提示（不会被静默吞掉）
+
+### 当前系统状态
+- 后端测试: 1133/1135 (1 项 curl_cffi 版本, 2 项 skip)
+- 前端 tsc: 零错误
+- Rust cargo check: 零警告
+- HEALTH.md 活跃 🟠 重要: 仅 HI-388 (diskcache CVE 待上游)
+- HEALTH.md 活跃 🟡 一般: HI-462 (低风险 logger 脱敏)
+- Git: 2 次 commit 待推送
+
+---
+
 ## [2026-04-12 16:30] 全量审计完结 — 全部遗留任务清零
 
 ### 本次完成了什么
