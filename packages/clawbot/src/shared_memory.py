@@ -9,14 +9,13 @@ ClawBot - 共享记忆层 v4.0 (Mem0 驱动)
 
 所有调用方零改动：remember/recall/search/forget/get_context_for_prompt 签名不变。
 """
+
 import sqlite3
 import threading
 import logging
 import time
 import json
 import os
-import hashlib
-import math
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import timedelta
@@ -29,6 +28,7 @@ logger = logging.getLogger(__name__)
 _mem0_available = False
 try:
     from mem0 import Memory as Mem0Memory
+
     _mem0_available = True
 except ImportError:
     Mem0Memory = None  # type: ignore[assignment,misc]
@@ -113,49 +113,13 @@ def _build_mem0_config() -> dict:
     return config
 
 
-# ── SQLite 回退用的轻量嵌入（从 v3 保留） ──
-
-def _cosine_similarity(a: List[float], b: List[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def _simple_text_embedding(text: str, dim: int = 128) -> List[float]:
-    """n-gram hash 嵌入（仅 SQLite 回退模式使用）"""
-    if not text:
-        return [0.0] * dim
-    text = text.lower().strip()
-    vec = [0.0] * dim
-    for i in range(len(text) - 2):
-        ngram = text[i:i+3]
-        h = int(hashlib.md5(ngram.encode()).hexdigest(), 16)
-        vec[h % dim] += 1.0
-    for word in text.split():
-        h = int(hashlib.md5(word.encode()).hexdigest(), 16)
-        vec[h % dim] += 2.0
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm > 0:
-        vec = [x / norm for x in vec]
-    return vec
-
-
 class SharedMemory:
     """
-    跨 Agent 共享记忆 v4.0（Mem0 驱动，接口兼容 v3.0）
+    跨 Agent 共享记忆 v4.1（Mem0 驱动，接口兼容 v3.0）
 
     Mem0 模式：向量索引 + LLM 事实提取 + 自动冲突解决
-    SQLite 回退：当 Mem0 不可用时，使用 v3.0 原有逻辑
-    SQLite 始终用于：workflow_feedback、collab_result 等结构化数据
+    SQLite 始终用于：workflow_feedback、collab_result 等结构化数据 + 元数据索引
     """
-
-    EMBEDDING_DIM = 128
-    SIMILARITY_THRESHOLD = 0.15
 
     def __init__(self, db_path: Optional[str] = None, embedding_fn=None):
         # SQLite 路径（始终需要，用于 workflow_feedback 等）
@@ -164,6 +128,7 @@ class SharedMemory:
         else:
             # 从 config 导入避免循环依赖 (globals.py 导入了 SharedMemory, 但 config.py 无此依赖)
             from src.bot.config import DATA_DIR
+
             self.db_path = Path(DATA_DIR) / "shared_memory.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
@@ -181,6 +146,7 @@ class SharedMemory:
                 if mem0_api_key:
                     try:
                         from mem0 import MemoryClient
+
                         self._mem0 = MemoryClient(api_key=mem0_api_key)
                         self._using_mem0 = True
                         logger.info("[SharedMemory] v4.1 Mem0 Cloud API 模式启动成功")
@@ -203,9 +169,6 @@ class SharedMemory:
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 初始化失败，回退 SQLite: %s", e)
 
-        # SQLite 回退用嵌入函数
-        self._embedding_fn = embedding_fn or (lambda t: _simple_text_embedding(t, self.EMBEDDING_DIM))
-
         # 初始化 SQLite 表（始终需要）
         self._init_db()
 
@@ -213,9 +176,7 @@ class SharedMemory:
 
     def _get_conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(
-                str(self.db_path), timeout=10, check_same_thread=False
-            )
+            self._local.conn = sqlite3.connect(str(self.db_path), timeout=10, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn.row_factory = sqlite3.Row
@@ -316,6 +277,7 @@ class SharedMemory:
                 # 检查是否是 Cloud 模式 (MemoryClient)
                 try:
                     from mem0 import MemoryClient
+
                     is_cloud = isinstance(self._mem0, MemoryClient)
                 except ImportError:
                     is_cloud = False
@@ -354,16 +316,6 @@ class SharedMemory:
         if ttl_hours:
             expires_at = (now_et() + timedelta(hours=ttl_hours)).isoformat()
 
-        # 仅在 SQLite 回退模式下计算本地嵌入
-        embedding = None
-        if not self._using_mem0:
-            try:
-                vec = self._embedding_fn(f"{key} {value}")
-                if vec:
-                    embedding = json.dumps(vec).encode("utf-8")
-            except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
-
         with self._lock:
             existing = conn.execute(
                 "SELECT id FROM shared_memories WHERE key = ? AND category = ?",
@@ -373,20 +325,30 @@ class SharedMemory:
             if existing:
                 conn.execute(
                     "UPDATE shared_memories SET value = ?, source_bot = ?, chat_id = ?, "
-                    "importance = ?, updated_at = ?, expires_at = ?, embedding = ?, "
+                    "importance = ?, updated_at = ?, expires_at = ?, "
                     "last_decay_at = ?, mem0_id = ? WHERE id = ?",
-                    (value, source_bot, chat_id, importance, now, expires_at,
-                     embedding, now, mem0_id, existing["id"]),
+                    (value, source_bot, chat_id, importance, now, expires_at, now, mem0_id, existing["id"]),
                 )
                 mem_id = existing["id"]
             else:
                 cursor = conn.execute(
                     "INSERT INTO shared_memories "
                     "(key, value, category, source_bot, chat_id, importance, "
-                    "created_at, updated_at, expires_at, embedding, last_decay_at, mem0_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (key, value, category, source_bot, chat_id, importance,
-                     now, now, expires_at, embedding, now, mem0_id),
+                    "created_at, updated_at, expires_at, last_decay_at, mem0_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        key,
+                        value,
+                        category,
+                        source_bot,
+                        chat_id,
+                        importance,
+                        now,
+                        now,
+                        expires_at,
+                        now,
+                        mem0_id,
+                    ),
                 )
                 mem_id = cursor.lastrowid
             conn.commit()
@@ -395,8 +357,7 @@ class SharedMemory:
                 self._link_memories(conn, mem_id, related_keys)
 
         logger.debug("[SharedMemory] %s 写入: [%s] %s (mem0=%s)", source_bot, category, key, bool(mem0_id))
-        return {"success": True, "key": key, "category": category,
-                "source": source_bot, "id": mem_id}
+        return {"success": True, "key": key, "category": category, "source": source_bot, "id": mem_id}
 
     def _link_memories(self, conn, from_id: int, related_keys: List[str]):
         """建立记忆间的关联"""
@@ -456,8 +417,9 @@ class SharedMemory:
             }
         return {"success": False, "error": f"未找到: {key}"}
 
-    def search(self, query: str, limit: int = 10, mode: str = "hybrid",
-               chat_id: Optional[int] = None) -> Dict[str, Any]:
+    def search(
+        self, query: str, limit: int = 10, mode: str = "hybrid", chat_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """混合搜索记忆。Mem0 模式下使用向量索引，SQLite 模式下使用关键词+本地嵌入。"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
@@ -468,26 +430,30 @@ class SharedMemory:
             try:
                 user_id = str(chat_id) if chat_id else "global"
                 raw = self._mem0.search(
-                    query, limit=limit * 2, agent_id="clawbot",
+                    query,
+                    limit=limit * 2,
+                    agent_id="clawbot",
                     user_id=user_id,
                 )
                 items = raw.get("results", raw) if isinstance(raw, dict) else raw
-                for r in (items or []):
+                for r in items or []:
                     if not isinstance(r, dict):
                         continue
                     content = r.get("memory", r.get("text", ""))
                     meta = r.get("metadata", {}) or {}
-                    mem0_results.append({
-                        "id": r.get("id", ""),
-                        "key": meta.get("key", content[:50]),
-                        "value": content[:200],
-                        "category": meta.get("category", "general"),
-                        "source_bot": meta.get("source_bot", "unknown"),
-                        "importance": int(meta.get("importance", 1)),
-                        "score": float(r.get("score", 0)),
-                        "similarity": round(float(r.get("score", 0)), 3),
-                        "match_type": "mem0_semantic",
-                    })
+                    mem0_results.append(
+                        {
+                            "id": r.get("id", ""),
+                            "key": meta.get("key", content[:50]),
+                            "value": content[:200],
+                            "category": meta.get("category", "general"),
+                            "source_bot": meta.get("source_bot", "unknown"),
+                            "importance": int(meta.get("importance", 1)),
+                            "score": float(r.get("score", 0)),
+                            "similarity": round(float(r.get("score", 0)), 3),
+                            "match_type": "mem0_semantic",
+                        }
+                    )
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 搜索失败: %s", e)
 
@@ -515,53 +481,21 @@ class SharedMemory:
                     (f"%{escaped}%", f"%{escaped}%", limit * 2),
                 ).fetchall()
             for r in rows:
-                keyword_results.append({
-                    "id": r["id"],
-                    "key": r["key"],
-                    "value": r["value"][:200],
-                    "category": r["category"],
-                    "source_bot": r["source_bot"],
-                    "importance": r["importance"],
-                    "score": r["importance"] * 0.2,
-                    "match_type": "keyword",
-                })
-
-        # ── SQLite 本地语义搜索（仅回退模式）──
-        sqlite_semantic = []
-        if not self._using_mem0 and mode in ("semantic", "hybrid"):
-            query_emb = self._embedding_fn(query)
-            if query_emb:
-                rows = conn.execute(
-                    "SELECT id, key, value, category, source_bot, importance, embedding "
-                    "FROM shared_memories WHERE embedding IS NOT NULL "
-                    "ORDER BY importance DESC LIMIT ?",
-                    (min(500, limit * 50),),
-                ).fetchall()
-                for r in rows:
-                    blob = r["embedding"]
-                    if not blob:
-                        continue
-                    try:
-                        mem_emb = json.loads(blob.decode("utf-8"))
-                    except Exception as e:  # noqa: F841
-                        continue
-                    sim = _cosine_similarity(query_emb, mem_emb)
-                    if sim >= self.SIMILARITY_THRESHOLD:
-                        sqlite_semantic.append({
-                            "id": r["id"],
-                            "key": r["key"],
-                            "value": r["value"][:200],
-                            "category": r["category"],
-                            "source_bot": r["source_bot"],
-                            "importance": r["importance"],
-                            "score": sim,
-                            "similarity": round(sim, 3),
-                            "match_type": "semantic",
-                        })
-                sqlite_semantic.sort(key=lambda x: -x["score"])
+                keyword_results.append(
+                    {
+                        "id": r["id"],
+                        "key": r["key"],
+                        "value": r["value"][:200],
+                        "category": r["category"],
+                        "source_bot": r["source_bot"],
+                        "importance": r["importance"],
+                        "score": r["importance"] * 0.2,
+                        "match_type": "keyword",
+                    }
+                )
 
         # ── 合并排序 ──
-        semantic_pool = mem0_results or sqlite_semantic
+        semantic_pool = mem0_results
         if mode == "hybrid":
             seen_keys = set()
             merged = []
@@ -584,12 +518,11 @@ class SharedMemory:
         else:
             results = keyword_results[:limit]
 
-        return {"success": True, "query": query, "mode": mode,
-                "results": results, "count": len(results)}
+        return {"success": True, "query": query, "mode": mode, "results": results, "count": len(results)}
 
-    def semantic_search(self, query: str, limit: int = 5,
-                        category: Optional[str] = None,
-                        chat_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    def semantic_search(
+        self, query: str, limit: int = 5, category: Optional[str] = None, chat_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """纯语义搜索。Mem0 模式下直接用向量索引。"""
         # ── Mem0 路径 ──
         if self._using_mem0 and self._mem0:
@@ -598,39 +531,41 @@ class SharedMemory:
                 if category:
                     filters["category"] = category
                 raw = self._mem0.search(
-                    query, limit=limit, filters=filters if filters else None,
+                    query,
+                    limit=limit,
+                    filters=filters if filters else None,
                     user_id=str(chat_id) if chat_id else "global",
                 )
                 items = raw.get("results", raw) if isinstance(raw, dict) else raw
                 results = []
-                for r in (items or []):
+                for r in items or []:
                     if not isinstance(r, dict):
                         continue
                     content = r.get("memory", r.get("text", ""))
                     meta = r.get("metadata", {}) or {}
-                    results.append({
-                        "key": meta.get("key", content[:50]),
-                        "value": content,
-                        "category": meta.get("category", "general"),
-                        "source_bot": meta.get("source_bot", "unknown"),
-                        "importance": int(meta.get("importance", 1)),
-                        "similarity": round(float(r.get("score", 0)), 3),
-                    })
+                    results.append(
+                        {
+                            "key": meta.get("key", content[:50]),
+                            "value": content,
+                            "category": meta.get("category", "general"),
+                            "source_bot": meta.get("source_bot", "unknown"),
+                            "importance": int(meta.get("importance", 1)),
+                            "similarity": round(float(r.get("score", 0)), 3),
+                        }
+                    )
                 return results
             except Exception as e:
                 logger.warning("[SharedMemory] Mem0 semantic_search 失败: %s", e)
 
-        # ── SQLite 回退 ──
+        # ── SQLite 关键词回退（Mem0 不可用时）──
         conn = self._get_conn()
         self._cleanup_expired(conn)
-        query_emb = self._embedding_fn(query)
-        if not query_emb:
-            return []
-
-        sql = ("SELECT id, key, value, category, source_bot, importance, embedding "
-               "FROM shared_memories WHERE embedding IS NOT NULL")
-        params: list = []
-        # 安全修复: 按 chat_id 隔离语义搜索
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        sql = (
+            "SELECT key, value, category, source_bot, importance "
+            "FROM shared_memories WHERE (key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\')"
+        )
+        params: list = [f"%{escaped}%", f"%{escaped}%"]
         if chat_id is not None:
             sql += " AND (chat_id = ? OR chat_id IS NULL)"
             params.append(str(chat_id))
@@ -640,30 +575,20 @@ class SharedMemory:
             sql += " AND category = ?"
             params.append(category)
         sql += " ORDER BY importance DESC LIMIT ?"
-        params.append(min(500, limit * 50))
+        params.append(limit)
 
         rows = conn.execute(sql, params).fetchall()
-        scored = []
-        for r in rows:
-            blob = r["embedding"]
-            if not blob:
-                continue
-            try:
-                mem_emb = json.loads(blob.decode("utf-8"))
-            except Exception as e:  # noqa: F841
-                continue
-            sim = _cosine_similarity(query_emb, mem_emb)
-            if sim >= self.SIMILARITY_THRESHOLD:
-                scored.append({
-                    "key": r["key"],
-                    "value": r["value"],
-                    "category": r["category"],
-                    "source_bot": r["source_bot"],
-                    "importance": r["importance"],
-                    "similarity": round(sim, 3),
-                })
-        scored.sort(key=lambda x: -x["similarity"])
-        return scored[:limit]
+        return [
+            {
+                "key": r["key"],
+                "value": r["value"],
+                "category": r["category"],
+                "source_bot": r["source_bot"],
+                "importance": r["importance"],
+                "similarity": 0.5,  # 关键词匹配给固定分数
+            }
+            for r in rows
+        ]
 
     # ════════════════════════════════════════════
     #  删除
@@ -697,9 +622,7 @@ class SharedMemory:
                 (key, category),
             )
         else:
-            result = conn.execute(
-                "DELETE FROM shared_memories WHERE key = ?", (key,)
-            )
+            result = conn.execute("DELETE FROM shared_memories WHERE key = ?", (key,))
         conn.commit()
 
         if result.rowcount > 0:
@@ -711,28 +634,45 @@ class SharedMemory:
     # ════════════════════════════════════════════
 
     def save_collab_result(
-        self, task_text: str, plan_result: str, exec_result: str,
-        summary_result: str, planner_id: str, chat_id: Optional[int] = None,
+        self,
+        task_text: str,
+        plan_result: str,
+        exec_result: str,
+        summary_result: str,
+        planner_id: str,
+        chat_id: Optional[int] = None,
     ):
         short_task = task_text[:80]
         timestamp = now_et().strftime("%m/%d %H:%M")
         self.remember(
             key=f"collab_{timestamp}_{short_task}",
             value=summary_result[:2000],
-            category="collab", source_bot="collab_system",
-            chat_id=chat_id, importance=3, ttl_hours=72,
+            category="collab",
+            source_bot="collab_system",
+            chat_id=chat_id,
+            importance=3,
+            ttl_hours=72,
         )
         self.remember(
             key=f"collab_brief_{timestamp}",
             value=f"任务: {short_task} | 规划: {planner_id} | 结论: {summary_result[:300]}",
-            category="collab_brief", source_bot="collab_system",
-            chat_id=chat_id, importance=2, ttl_hours=48,
+            category="collab_brief",
+            source_bot="collab_system",
+            chat_id=chat_id,
+            importance=2,
+            ttl_hours=48,
         )
 
     def save_service_workflow_feedback(
-        self, workflow_id: str, original_text: str, selected_option: str,
-        stage1_score: int, stage2_score: int, stage3_score: int,
-        summary: str = "", improvement_focus: str = "",
+        self,
+        workflow_id: str,
+        original_text: str,
+        selected_option: str,
+        stage1_score: int,
+        stage2_score: int,
+        stage3_score: int,
+        summary: str = "",
+        improvement_focus: str = "",
         chat_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
@@ -741,29 +681,44 @@ class SharedMemory:
             "INSERT INTO workflow_feedback (workflow_id, chat_id, original_text, "
             "selected_option, stage1_score, stage2_score, stage3_score, summary, "
             "improvement_focus, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (workflow_id, chat_id, original_text, selected_option,
-             max(1, min(3, int(stage1_score))), max(1, min(3, int(stage2_score))),
-             max(1, min(3, int(stage3_score))), summary, improvement_focus, now),
+            (
+                workflow_id,
+                chat_id,
+                original_text,
+                selected_option,
+                max(1, min(3, int(stage1_score))),
+                max(1, min(3, int(stage2_score))),
+                max(1, min(3, int(stage3_score))),
+                summary,
+                improvement_focus,
+                now,
+            ),
         )
         conn.commit()
         payload = {
-            "workflow_id": workflow_id, "selected_option": selected_option,
+            "workflow_id": workflow_id,
+            "selected_option": selected_option,
             "scores": [int(stage1_score), int(stage2_score), int(stage3_score)],
             "improvement_focus": improvement_focus,
         }
         self.remember(
             key=f"workflow_feedback_{workflow_id}",
             value=json.dumps(payload, ensure_ascii=False),
-            category="workflow_feedback", source_bot="workflow_system",
-            chat_id=chat_id, importance=2, ttl_hours=24 * 30,
+            category="workflow_feedback",
+            source_bot="workflow_system",
+            chat_id=chat_id,
+            importance=2,
+            ttl_hours=24 * 30,
         )
         return {"success": True, "workflow_id": workflow_id}
 
     def get_service_workflow_feedback_stats(self, limit: int = 20, chat_id: Optional[int] = None) -> Dict[str, Any]:
         conn = self._get_conn()
         params: list = []
-        query = ("SELECT workflow_id, selected_option, stage1_score, stage2_score, "
-                 "stage3_score, improvement_focus, created_at FROM workflow_feedback")
+        query = (
+            "SELECT workflow_id, selected_option, stage1_score, stage2_score, "
+            "stage3_score, improvement_focus, created_at FROM workflow_feedback"
+        )
         if chat_id is not None:
             query += " WHERE chat_id = ?"
             params.append(chat_id)
@@ -771,18 +726,29 @@ class SharedMemory:
         params.append(max(1, int(limit)))
         rows = conn.execute(query, params).fetchall()
         if not rows:
-            return {"count": 0, "avg_stage1": 0.0, "avg_stage2": 0.0,
-                    "avg_stage3": 0.0, "weakest_stage": "", "recent_focus": []}
+            return {
+                "count": 0,
+                "avg_stage1": 0.0,
+                "avg_stage2": 0.0,
+                "avg_stage3": 0.0,
+                "weakest_stage": "",
+                "recent_focus": [],
+            }
         count = len(rows)
         avg1 = round(sum(int(r["stage1_score"]) for r in rows) / count, 2)
         avg2 = round(sum(int(r["stage2_score"]) for r in rows) / count, 2)
         avg3 = round(sum(int(r["stage3_score"]) for r in rows) / count, 2)
         stage_map = {"客服接待": avg1, "方案评审": avg2, "任务交付": avg3}
         weakest = min(stage_map.items(), key=lambda item: item[1])[0]
-        focus = [str(r["improvement_focus"] or "").strip() for r in rows
-                 if str(r["improvement_focus"] or "").strip()]
-        return {"count": count, "avg_stage1": avg1, "avg_stage2": avg2,
-                "avg_stage3": avg3, "weakest_stage": weakest, "recent_focus": focus[:3]}
+        focus = [str(r["improvement_focus"] or "").strip() for r in rows if str(r["improvement_focus"] or "").strip()]
+        return {
+            "count": count,
+            "avg_stage1": avg1,
+            "avg_stage2": avg2,
+            "avg_stage3": avg3,
+            "weakest_stage": weakest,
+            "recent_focus": focus[:3],
+        }
 
     def get_service_workflow_feedback_summary(self, limit: int = 20, chat_id: Optional[int] = None) -> str:
         stats = self.get_service_workflow_feedback_stats(limit=limit, chat_id=chat_id)
@@ -801,10 +767,9 @@ class SharedMemory:
     #  System Prompt 注入
     # ════════════════════════════════════════════
 
-    def get_context_for_prompt(self, max_tokens: int = 500,
-                               chat_id: Optional[int] = None) -> str:
+    def get_context_for_prompt(self, max_tokens: int = 500, chat_id: Optional[int] = None) -> str:
         """生成注入到 system_prompt 的共享记忆摘要。
-        
+
         安全修复: 支持 chat_id 参数，仅返回该用户的记忆 + 全局共享记忆，
         防止跨用户记忆泄漏到 system prompt 中。
         """
@@ -862,7 +827,7 @@ class SharedMemory:
     def close(self):
         """关闭所有数据库连接"""
         try:
-            if hasattr(self._local, 'conn') and self._local.conn:
+            if hasattr(self._local, "conn") and self._local.conn:
                 self._local.conn.close()
                 self._local.conn = None
         except Exception as e:
@@ -875,16 +840,12 @@ class SharedMemory:
     def get_stats(self) -> Dict[str, Any]:
         conn = self._get_conn()
         total = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories").fetchone()["cnt"]
-        embedded = conn.execute(
-            "SELECT COUNT(*) as cnt FROM shared_memories WHERE embedding IS NOT NULL"
-        ).fetchone()["cnt"]
+        embedded = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories WHERE embedding IS NOT NULL").fetchone()[
+            "cnt"
+        ]
         relations = conn.execute("SELECT COUNT(*) as cnt FROM memory_relations").fetchone()["cnt"]
-        categories = conn.execute(
-            "SELECT category, COUNT(*) as cnt FROM shared_memories GROUP BY category"
-        ).fetchall()
-        sources = conn.execute(
-            "SELECT source_bot, COUNT(*) as cnt FROM shared_memories GROUP BY source_bot"
-        ).fetchall()
+        categories = conn.execute("SELECT category, COUNT(*) as cnt FROM shared_memories GROUP BY category").fetchall()
+        sources = conn.execute("SELECT source_bot, COUNT(*) as cnt FROM shared_memories GROUP BY source_bot").fetchall()
         mem0_count = 0
         if self._using_mem0:
             mem0_count = conn.execute(

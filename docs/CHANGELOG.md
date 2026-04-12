@@ -5,6 +5,26 @@
 
 ---
 
+## [2026-04-12] mem0 集成收尾: 删除 SQLite 向量搜索回退代码
+
+> 领域: `backend`
+> 影响模块: `shared_memory.py`
+> 关联问题: OPTIMIZATION_PLAN Task 2
+
+### 变更内容
+- 删除 `_cosine_similarity()` 和 `_simple_text_embedding()` 两个自研向量函数（n-gram MD5 哈希，128维，质量很低）
+- 删除 `search()` 中的 SQLite 全表向量扫描路径（mem0 可用时从不执行）
+- 将 `semantic_search()` 的 SQLite 回退从向量搜索改为关键词匹配（更简单、更快、效果等价）
+- 删除 `remember()` 中的嵌入生成逻辑（不再写入 embedding BLOB 列）
+- 移除 `hashlib` 和 `math` 两个不再需要的 import
+- 移除 `EMBEDDING_DIM` 和 `SIMILARITY_THRESHOLD` 两个废弃常量
+- 版本号从 v4.0 升级到 v4.1
+
+### 文件变更
+- `packages/clawbot/src/shared_memory.py` — 903行 → 864行 (净减39行)
+
+---
+
 ## [2026-04-12] Telegram FSM 引导向导重构 — 新用户体验质变
 
 > 领域: `backend`
