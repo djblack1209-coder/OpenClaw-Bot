@@ -5,6 +5,33 @@
 
 ---
 
+## [2026-04-12] 统一夜间审计通知服务（跨项目 Qwen AI 日报）
+
+> 领域: `infra`
+> 影响模块: `scripts/nightly-audit/unified-notifier.sh`, `scripts/nightly-audit/unified-prompt.md`, `scripts/nightly-audit/projects.conf`, `scripts/nightly-audit/setup-mac.sh`, `scripts/nightly-audit/run-audit.sh`
+> 关联问题: 4个项目审计通知散漫、格式不统一
+
+### 变更内容
+- 新建独立的统一通知服务 `unified-notifier.sh`，与各项目审计系统完全解耦
+- 新建通用 AI 提示词 `unified-prompt.md`，Qwen AI 根据提示词生成统一排版的全项目审计日报
+- 新建项目注册表 `projects.conf`，配置各项目的日志目录和评分文件路径
+- 通过 Qwen 3 235B（SiliconFlow 免费额度）生成人话版通知，老板打开即读
+- 支持降级：Qwen 不可用时自动切换到纯模板通知（不依赖 AI）
+- 每天 08:15 CST 通过 launchd 自动触发（等所有项目审计跑完后）
+- 审计脚本 `run-audit.sh` 结束时也会后台触发统一通知（双保险）
+- 4个项目统一排版：OpenClaw Bot + AI Bridge + EXAM-MASTER + 像素回环
+- 支持两种评分格式（health-score.json / 纯 summary.md）+ 无数据时显示"今晚未运行"
+
+### 文件变更
+- `scripts/nightly-audit/unified-notifier.sh` — 新建：统一通知主脚本
+- `scripts/nightly-audit/unified-prompt.md` — 新建：Qwen AI 通知生成提示词
+- `scripts/nightly-audit/projects.conf` — 新建：项目注册表（4个项目的路径配置）
+- `scripts/nightly-audit/run-audit.sh` — 审计完成后触发统一通知服务
+- `scripts/nightly-audit/setup-mac.sh` — 新增 08:15 CST 统一通知的 launchd 定时任务
+- `scripts/nightly-audit/config.env.example` — 新增 Qwen API 配置项说明
+
+---
+
 ## [2026-04-12] 多项目审计通知统一对接
 
 > 领域: `infra`

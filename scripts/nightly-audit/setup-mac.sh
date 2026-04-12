@@ -273,3 +273,81 @@ echo "✅ 开机补跑检测已配置"
 echo "   Mac 开机/登录时会自动检查昨晚审计是否执行"
 echo "   补跑脚本: ${CATCHUP_SCRIPT}"
 echo "   plist: ${CATCHUP_PLIST_FILE}"
+
+# ============================================================
+# 第四部分: 统一通知服务（每天 08:15 CST 发送全项目日报）
+# ============================================================
+echo ""
+echo "=== 配置统一通知服务 ==="
+
+UNIFIED_PLIST_NAME="com.openclaw.unified-notifier"
+UNIFIED_PLIST_FILE="${HOME}/Library/LaunchAgents/${UNIFIED_PLIST_NAME}.plist"
+UNIFIED_SCRIPT="${SCRIPT_DIR}/unified-notifier.sh"
+
+if [[ -f "$UNIFIED_SCRIPT" ]]; then
+    # 中国时间 08:15 转本地时间
+    UNIFIED_TRIGGER_HOUR=$(( (24 + LOCAL_OFFSET_NUM - 8 + 8) % 24 ))
+    UNIFIED_TRIGGER_MINUTE=15
+    echo "ℹ️  中国时间 08:15 = 本地时间 ${UNIFIED_TRIGGER_HOUR}:${UNIFIED_TRIGGER_MINUTE}"
+
+    # 卸载旧的
+    if launchctl list 2>/dev/null | grep -q "$UNIFIED_PLIST_NAME"; then
+        launchctl unload "$UNIFIED_PLIST_FILE" 2>/dev/null || true
+    fi
+
+    cat > "$UNIFIED_PLIST_FILE" << UNIFIED_PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${UNIFIED_PLIST_NAME}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${UNIFIED_SCRIPT}</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>$(grep 'PROJECT_DIR=' "$CONFIG_FILE" | cut -d'"' -f2)</string>
+
+    <!-- 每天本地时间 ${UNIFIED_TRIGGER_HOUR}:${UNIFIED_TRIGGER_MINUTE} 触发 = 中国时间 08:15 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>${UNIFIED_TRIGGER_HOUR}</integer>
+        <key>Minute</key>
+        <integer>${UNIFIED_TRIGGER_MINUTE}</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>${HOME}</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>${LOG_DIR}/unified-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>${LOG_DIR}/unified-stderr.log</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>15</integer>
+</dict>
+</plist>
+UNIFIED_PLIST
+
+    launchctl load "$UNIFIED_PLIST_FILE"
+    echo "✅ 统一通知服务已配置"
+    echo "   每天 08:15 CST 自动发送全项目审计日报到 Telegram"
+    echo "   脚本: ${UNIFIED_SCRIPT}"
+    echo "   plist: ${UNIFIED_PLIST_FILE}"
+    echo "   手动触发: launchctl start ${UNIFIED_PLIST_NAME}"
+else
+    echo "⚠️  统一通知脚本不存在，跳过配置"
+fi

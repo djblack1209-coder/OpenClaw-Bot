@@ -1131,8 +1131,16 @@ main() {
 
 详情: ${LOG_DIR}/${DATE}.summary.md"
 
-    # === 发送通知 ===
+    # === 发送通知（旧版单项目通知，保留兼容）===
     send_notification "$notify_body"
+
+    # === 触发统一通知服务（Qwen AI 全项目日报）===
+    local unified_script="${SCRIPT_DIR}/unified-notifier.sh"
+    if [[ -f "$unified_script" && -n "${QWEN_API_KEY:-}" ]]; then
+        log INFO "触发统一通知服务..."
+        bash "$unified_script" "$DATE" &>/dev/null &
+        log INFO "统一通知服务已在后台启动"
+    fi
 
     # === 清理由 trap cleanup EXIT 统一处理 ===
 
