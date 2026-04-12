@@ -3,6 +3,7 @@ Tests for SharedMemory — ALL user memory CRUD operations.
 
 Uses SQLite fallback mode only (no mem0/Qdrant required).
 """
+
 import json
 import time
 
@@ -34,13 +35,15 @@ def memory(tmp_path):
 
 # ============ remember / recall ============
 
-class TestRememberRecall:
 
+class TestRememberRecall:
     def test_remember_stores_fact(self, memory):
         """remember() should store a fact and return success."""
         result = memory.remember(
-            key="user_name", value="Alice",
-            category="profile", source_bot="bot1",
+            key="user_name",
+            value="Alice",
+            category="profile",
+            source_bot="bot1",
         )
         assert result["success"] is True
         assert result["key"] == "user_name"
@@ -75,8 +78,10 @@ class TestRememberRecall:
     def test_remember_with_chat_id(self, memory):
         """remember() should store chat_id metadata."""
         result = memory.remember(
-            key="user_pref", value="dark mode",
-            chat_id=12345, source_bot="bot1",
+            key="user_pref",
+            value="dark mode",
+            chat_id=12345,
+            source_bot="bot1",
         )
         assert result["success"] is True
         # Verify chat_id was stored
@@ -90,8 +95,8 @@ class TestRememberRecall:
 
 # ============ forget ============
 
-class TestForget:
 
+class TestForget:
     def test_forget_removes_stored_fact(self, memory):
         """forget() should remove a stored memory."""
         memory.remember(key="temp_data", value="delete_me")
@@ -110,8 +115,8 @@ class TestForget:
 
 # ============ search ============
 
-class TestSearch:
 
+class TestSearch:
     def test_keyword_search_finds_matching(self, memory):
         """search() should find memories matching keyword."""
         memory.remember(key="python_tip", value="use list comprehensions")
@@ -159,40 +164,40 @@ class TestSearch:
 
 # ============ get_or_default / get_context ============
 
-class TestGetContext:
 
+class TestGetContext:
     def test_get_context_returns_empty_for_no_memories(self, memory):
         """get_context_for_prompt() should return '' when no memories exist."""
         ctx = memory.get_context_for_prompt()
         assert ctx == ""
 
     def test_get_context_builds_string(self, memory):
-        """get_context_for_prompt() should build a formatted context string."""
+        """get_context_for_prompt() should build a L0 memory index string."""
         memory.remember(key="project", value="OpenClaw Bot", category="info", importance=5)
         memory.remember(key="stack", value="Python + FastAPI", category="tech", importance=3)
         ctx = memory.get_context_for_prompt()
-        assert "共享记忆" in ctx
+        assert "记忆索引" in ctx
         assert "project" in ctx
         assert "OpenClaw Bot" in ctx
 
 
 # ============ _cleanup_expired ============
 
-class TestCleanupExpired:
 
+class TestCleanupExpired:
     def test_cleanup_expired_removes_expired_entries(self, memory):
         """_cleanup_expired should remove entries past their expires_at."""
         conn = memory._get_conn()
         # Insert an already-expired entry directly
         from src.utils import now_et
         from datetime import timedelta
+
         expired_time = (now_et() - timedelta(hours=1)).isoformat()
         conn.execute(
             "INSERT INTO shared_memories (key, value, category, source_bot, "
             "importance, created_at, updated_at, expires_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("expired_key", "old_data", "general", "system", 1,
-             expired_time, expired_time, expired_time),
+            ("expired_key", "old_data", "general", "system", 1, expired_time, expired_time, expired_time),
         )
         conn.commit()
 
@@ -200,9 +205,7 @@ class TestCleanupExpired:
         memory._last_cleanup_time = 0
         memory._cleanup_expired(conn)
 
-        row = conn.execute(
-            "SELECT * FROM shared_memories WHERE key = ?", ("expired_key",)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM shared_memories WHERE key = ?", ("expired_key",)).fetchone()
         assert row is None
 
     def test_cleanup_respects_interval(self, memory):
@@ -216,8 +219,8 @@ class TestCleanupExpired:
 
 # ============ get_stats ============
 
-class TestStats:
 
+class TestStats:
     def test_get_stats_returns_structure(self, memory):
         """get_stats() should return correct structure."""
         memory.remember(key="s1", value="v1", category="cat_a", source_bot="bot1")

@@ -121,6 +121,9 @@ class SharedMemory:
     SQLite 始终用于：workflow_feedback、collab_result 等结构化数据 + 元数据索引
     """
 
+    # 记忆总量上限 — 超过时按 LRU 淘汰低价值记忆
+    MAX_MEMORIES = 2000
+
     def __init__(self, db_path: Optional[str] = None, embedding_fn=None):
         # SQLite 路径（始终需要，用于 workflow_feedback 等）
         if db_path:
@@ -768,60 +771,89 @@ class SharedMemory:
     # ════════════════════════════════════════════
 
     def get_context_for_prompt(self, max_tokens: int = 500, chat_id: Optional[int] = None) -> str:
-        """生成注入到 system_prompt 的共享记忆摘要。
+        """生成注入到 system_prompt 的记忆索引（L0 地图模型）。
 
-        安全修复: 支持 chat_id 参数，仅返回该用户的记忆 + 全局共享记忆，
-        防止跨用户记忆泄漏到 system prompt 中。
+        采用递归索引架构，只注入最浅层的"世界地图"（分类统计+高亮条目），
+        不平铺所有记忆。需要细节时通过 search()/semantic_search() 按需加载。
+
+        L0 世界地图 (~80 token): 分类名+条数 + 最重要的3条高亮
+        L1 区域地图 (按需): search(category=xxx) 加载某个分类
+        L2 具体记忆 (按需): recall(key) 或 semantic_search() 加载单条
         """
         conn = self._get_conn()
         self._cleanup_expired(conn)
-        if chat_id is not None:
-            # 返回该用户的记忆 + 全局共享记忆
-            rows = conn.execute(
-                "SELECT key, value, category, source_bot FROM shared_memories "
-                "WHERE chat_id = ? OR chat_id IS NULL "
-                "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
-                (str(chat_id),),
-            ).fetchall()
-        else:
-            # 仅返回全局共享记忆
-            rows = conn.execute(
-                "SELECT key, value, category, source_bot FROM shared_memories "
-                "WHERE chat_id IS NULL "
-                "ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 20",
-            ).fetchall()
-        if not rows:
+
+        # ── L0: 分类统计（世界地图）──
+        chat_filter = "chat_id = ? OR chat_id IS NULL" if chat_id else "chat_id IS NULL"
+        params: list = [str(chat_id)] if chat_id else []
+
+        category_rows = conn.execute(
+            f"SELECT category, COUNT(*) as cnt, MAX(importance) as max_imp "
+            f"FROM shared_memories WHERE {chat_filter} "
+            f"GROUP BY category ORDER BY cnt DESC",
+            params,
+        ).fetchall()
+
+        if not category_rows:
             return ""
-        parts = []
-        current_len = 0
-        seen_categories: Dict[str, int] = {}
-        for r in rows:
-            cat = r["category"]
-            entry = f"- [{cat}] {r['key']}: {r['value'][:100]}"
-            if current_len + len(entry) > max_tokens * 2:
-                break
-            seen_categories[cat] = seen_categories.get(cat, 0) + 1
-            if seen_categories[cat] <= 3:
-                parts.append(entry)
-                current_len += len(entry)
-        if parts:
-            return "\n\n【共享记忆（团队共享知识）】\n" + "\n".join(parts)
-        return ""
+
+        total_count = sum(r["cnt"] for r in category_rows)
+        cat_summary = ", ".join(f"{r['category']}({r['cnt']}条)" for r in category_rows[:8])
+
+        # ── L0: 高亮条目（最重要的3条，每条≤60字）──
+        highlight_rows = conn.execute(
+            f"SELECT key, value, category FROM shared_memories "
+            f"WHERE {chat_filter} "
+            f"ORDER BY importance DESC, access_count DESC, updated_at DESC LIMIT 3",
+            params,
+        ).fetchall()
+
+        highlights = ""
+        if highlight_rows:
+            hl_parts = [f"· {r['key']}: {r['value'][:60]}" for r in highlight_rows]
+            highlights = "\n" + "\n".join(hl_parts)
+
+        return (
+            f"\n\n<memory-index>\n"
+            f"[记忆索引] 共{total_count}条: {cat_summary}{highlights}\n"
+            f"需要细节时用 search()/recall() 按需查找，不要猜测记忆内容。\n"
+            f"</memory-index>"
+        )
 
     # ════════════════════════════════════════════
     #  内部方法
     # ════════════════════════════════════════════
 
     def _cleanup_expired(self, conn: sqlite3.Connection):
+        """清理过期记忆 + LRU 淘汰超量记忆"""
         now_ts = time.time()
         if now_ts - self._last_cleanup_time < self._cleanup_interval:
             return
         self._last_cleanup_time = now_ts
         now = now_et().isoformat()
+
+        # 阶段1: TTL 过期清理
         conn.execute(
             "DELETE FROM shared_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
             (now,),
         )
+
+        # 阶段2: LRU 淘汰 — 超过总量上限时，按低重要性+低访问+旧时间淘汰
+        total = conn.execute("SELECT COUNT(*) FROM shared_memories").fetchone()[0]
+        if total > self.MAX_MEMORIES:
+            overflow = total - self.MAX_MEMORIES
+            # 保留 importance >= 4 的高价值记忆，淘汰低价值的
+            conn.execute(
+                "DELETE FROM shared_memories WHERE id IN ("
+                "  SELECT id FROM shared_memories"
+                "  WHERE importance < 4"
+                "  ORDER BY importance ASC, access_count ASC, updated_at ASC"
+                "  LIMIT ?"
+                ")",
+                (overflow,),
+            )
+            logger.info("[SharedMemory] LRU 淘汰 %d 条低价值记忆 (总量 %d → %d)", overflow, total, self.MAX_MEMORIES)
+
         conn.commit()
 
     def close(self):

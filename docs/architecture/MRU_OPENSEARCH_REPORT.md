@@ -171,6 +171,94 @@
 | 耦合等级 | 🟢 低 |
 | 可替换性 | **高** — blinker(1.8k⭐, Pallets 团队) 直接替代 |
 
+### 16. Hermes Agent 参考架构 (NousResearch, 62k⭐, MIT)
+
+> 2026-04-12 补充。Hermes Agent 是当前最热的 AI Agent 框架之一。
+
+| 字段 | 内容 |
+|------|------|
+| 项目 | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
+| Stars | 62,165 |
+| License | MIT |
+| 核心架构 | Python, 插件式 Agent 框架，支持 Claude/GPT/本地模型 |
+
+**可借鉴的关键模块：**
+
+| Hermes 模块 | 我们对标的模块 | 借鉴点 |
+|------------|-------------|--------|
+| `ContextCompressor` | `context_manager.compress_local` | LLM 驱动摘要（我们只有截断）、迭代式摘要更新、结构化 Resolved/Pending 跟踪 |
+| `ContextEngine` ABC | 无 | 可插拔压缩引擎抽象（compressor/LCM/自定义） |
+| `MemoryManager` | `shared_memory + smart_memory` | `<memory-context>` 围栏防止模型混淆、pre-turn prefetch / post-turn sync 生命周期 |
+| `smart_model_routing` | `litellm_router` | 按复杂度自动选强/弱模型（类似 RouteLLM） |
+| `prompt_caching` | 无 | 提示缓存减少重复计算 |
+| `credential_pool` | `bot.config` | 凭据池轮换 |
+
+---
+
+## 记忆系统专项审计（2026-04-12）
+
+### 当前记忆架构概览
+
+```
+用户消息 → SmartMemory.on_message()
+               ├─ 每5轮 → LLM事实提取 → SharedMemory.remember()
+               ├─ 实时正则偏好 → SharedMemory.remember()
+               └─ 每50轮 → 用户画像 → Core Memory
+
+SharedMemory (864行)
+  ├─ Mem0 向量索引 (语义搜索)
+  └─ SQLite (元数据 + workflow_feedback)
+
+TieredContextManager (3层)
+  ├─ L1 Core (15%, 9K token) — 画像/人设/事实
+  ├─ L2 Recall (60%, 36K token) — 对话历史
+  └─ L3 Archival (15%, 9K token) — 按需语义检索
+```
+
+### ✅ 已实现 vs ❌ 缺失
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| TTL 过期 | ⚠️ 部分 | 仅对手动设了 ttl_hours 的记忆生效，大部分记忆永不过期 |
+| 访问计数 | ✅ | access_count 字段存在且自增，但未用于淘汰 |
+| 三层架构 | ✅ | Core/Recall/Archival，预算分配已实现 |
+| 本地压缩 | ⚠️ 低质 | 只有截断+关键词保留，无 AI 摘要 |
+| LLM 事实提取 | ✅ | SmartMemory 两阶段管道 |
+| 用户画像 | ✅ | 50轮触发，LLM 生成 JSON |
+| Chat_id 隔离 | ✅ | 防止跨用户泄漏 |
+| **记忆总量上限/LRU** | ❌ | 数据库可无限增长 |
+| **重要性衰减** | ❌ | last_decay_at 字段存在但**无衰减代码** |
+| **Recall→Archival 流水线** | ❌ | 压缩后摘要不流入长期记忆 |
+| **AI 摘要压缩** | ❌ | compress_local 是截断，不是语义摘要 |
+| **Core Memory 大小上限** | ❌ | core_append 可无限追加 |
+| **递归索引** | ❌ | 无 index-of-indexes |
+| **memory-context 围栏** | ❌ | 记忆和用户输入混在一起，模型可能混淆 |
+| **_user_profile 双重注入** | 🐛 BUG | build_context 和 api_mixin 各注入一次 |
+
+### 递归索引记忆架构设计（地图分层模型）
+
+**用户要求的"地图"模型：**
+
+```
+每次对话只带"世界地图"(L0)，需要时再打开"区域地图"(L1)，
+最终在"街道地图"(L2)找到具体记忆。不要每次带整个图书馆。
+
+L0: 主题索引 (~100 token)
+  "用户有以下记忆领域：投资(23条)、社媒(8条)、偏好(5条)、闲鱼(12条)"
+
+L1: 领域摘要 (~200 token/领域，按需加载)
+  "投资领域：关注AAPL/TSLA，偏好超短线1-5天，风险偏好中等..."
+
+L2: 具体记忆 (按需加载单条)
+  "2026-04-10 买入AAPL 100股@$185，止损$180"
+```
+
+**实现计划：**
+1. 每次 `get_context_for_prompt()` 只注入 L0 主题索引
+2. Brain 判断需要哪个领域 → 搜索加载 L1
+3. 需要具体记忆 → semantic_search 加载 L2
+4. 定期重建 L0/L1 索引（写入时或定时）
+
 ---
 
 ## 阶段二：开源情报搜索（Top 发现汇总）

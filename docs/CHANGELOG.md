@@ -5,6 +5,41 @@
 
 ---
 
+## [2026-04-12] 记忆系统重构: 递归索引 + LRU 淘汰 + 双重注入修复
+
+> 领域: `backend`
+> 影响模块: `shared_memory.py`, `api_mixin.py`, `MRU_OPENSEARCH_REPORT.md`
+> 关联问题: Hermes Agent 架构参考, 记忆系统审计
+
+### 变更内容
+
+**1. 递归索引记忆架构（地图分层模型）**
+- `get_context_for_prompt()` 从平铺 20 条记忆改为 L0 主题索引
+- L0 只注入分类统计+最重要 3 条高亮，约 80 token（原来 ~200 token）
+- 采用 `<memory-index>` 围栏标签（参考 Hermes Agent 的 `<memory-context>` 模式）
+- 需要具体记忆时通过 search()/recall() 按需加载，不再"带着整个图书馆对话"
+
+**2. LRU 淘汰机制**
+- 新增 `MAX_MEMORIES = 2000` 上限
+- `_cleanup_expired()` 增加 LRU 阶段：超量时按 importance+access_count+updated_at 淘汰
+- 保护 importance >= 4 的高价值记忆不被淘汰
+
+**3. 修复 _user_profile 双重注入 bug**
+- `api_mixin.py` 第 354 行单独注入 user_profile（~300 token）与 build_context() Core Memory 重复
+- 删除冗余注入，每次对话节省 ~300 token
+
+**4. Hermes Agent (62k⭐) 架构分析**
+- 补充到 MRU_OPENSEARCH_REPORT.md
+- 重点参考：ContextCompressor（LLM 摘要）、MemoryManager（围栏注入）、ContextEngine ABC
+
+### 文件变更
+- `packages/clawbot/src/shared_memory.py` — 递归索引 + LRU 淘汰 (v4.1→v4.2)
+- `packages/clawbot/src/bot/api_mixin.py` — 删除 _user_profile 双重注入
+- `packages/clawbot/tests/test_shared_memory_core.py` — 适配新输出格式
+- `docs/architecture/MRU_OPENSEARCH_REPORT.md` — Hermes Agent + 记忆审计补充
+
+---
+
 ## [2026-04-12] mem0 集成收尾: 删除 SQLite 向量搜索回退代码
 
 > 领域: `backend`
