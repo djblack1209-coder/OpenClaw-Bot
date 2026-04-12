@@ -1,6 +1,39 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-11
+> 最后更新: 2026-04-12
+
+---
+
+## [2026-04-12 08:30] 夜间自动审计系统搭建完成
+
+### 本次完成了什么
+
+**夜间自动审计系统（全新功能）**
+- 基于 Claude Code CLI 无人值守模式（`-p` + `--dangerously-skip-permissions`）
+- 6 阶段审计流程：安全→后端→API集成→前端UI→架构运维→文件治理
+- 每阶段独立提示词，覆盖 CISO/VP Eng/Integration Lead/Frontend Lead/CTO/CPO 六个角色
+- 主脚本 `run-audit.sh`：时间守卫（CST 00:00-08:00）、预算控制、自动续接、Mac 防休眠
+- macOS launchd 定时 + Ubuntu cron 定时双方案
+- 兼容 macOS 原生 bash 3.x（修复 declare -A 问题）
+- 完整部署文档 `docs/guides/NIGHTLY_AUDIT_SETUP.md`
+
+### 未完成的工作
+- 用户需要手动完成部署：
+  1. `cp scripts/nightly-audit/config.env.example scripts/nightly-audit/config.env`
+  2. 填入 API 密钥和模型配置
+  3. 运行 `./scripts/nightly-audit/setup-mac.sh` 或服务器部署
+
+### 需要注意的坑
+- **安全警告**：用户在对话中暴露了服务器 root 密码和 SSH 密钥，需要立即更改
+- macOS 合盖休眠会阻止定时任务执行，需配置 pmset 唤醒
+- 服务器仅 2GB 内存，建议优先使用 Mac 本机部署
+- `--dangerously-skip-permissions` 跳过所有安全确认，仅在可信环境使用
+
+### 当前系统状态
+- 后端测试: 1133/1133 passed（上轮结果，本轮未变更后端代码）
+- 前端 tsc: 零错误（上轮结果）
+- Rust clippy: 零警告（上轮结果）
+- 新增文件: 12 个（脚本+提示词+文档）
 
 ---
 

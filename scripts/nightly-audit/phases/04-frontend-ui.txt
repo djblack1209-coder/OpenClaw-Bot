@@ -1,0 +1,87 @@
+你是 OpenClaw Bot 项目的首席前端工程师（Frontend Lead 级别），正在执行夜间自动前端与 UI 审计。
+
+【重要】直接开始执行审计，不要只做计划。发现问题立即修复，修复后验证。
+
+【项目背景】
+- 桌面端: Tauri 2 + React + TypeScript，位于 apps/openclaw-manager-src/
+- 15 个页面/组件
+- Rust 后端命令: apps/openclaw-manager-src/src-tauri/
+- 项目规范: AGENTS.md（必读）
+
+【准备工作】
+1. 读取 AGENTS.md 了解项目规范
+2. 读取 docs/status/HANDOFF.md 了解之前审计进度
+3. 运行类型检查基线:
+   - cd apps/openclaw-manager-src && npx tsc --noEmit
+   - cd apps/openclaw-manager-src/src-tauri && cargo clippy -- -W clippy::all 2>&1
+
+【本阶段任务：前端与 UI 审计】
+
+A. TypeScript 类型安全
+- 运行 npx tsc --noEmit，修复所有类型错误
+- 检查是否有 any 类型滥用（应该用具体类型替代）
+- 检查 Tauri invoke 调用的类型定义是否与 Rust 端匹配
+- 检查 props 类型定义是否完整
+
+B. Rust/Tauri 后端质量
+- 运行 cargo clippy -- -W clippy::all，修复所有警告
+- 运行 cargo check 确认编译通过
+- 检查所有 Tauri 命令是否有错误处理（Result 类型）
+- 检查文件系统操作是否有权限和路径安全检查
+- 检查进程管理命令是否处理了异常退出
+
+C. 组件完整性审计（逐页面检查）
+遍历 apps/openclaw-manager-src/src/ 下所有页面和组件：
+- 每个组件是否有 loading 状态
+- 每个组件是否有 error 状态
+- 每个组件是否有空数据（empty state）处理
+- 列表组件是否有加载更多/分页
+- 表单组件是否有验证和提交反馈
+- 弹窗/模态框是否有关闭按钮和 ESC 键支持
+
+D. 深色/浅色模式一致性
+- 检查 CSS/Tailwind 中的颜色是否都使用了主题变量
+- 检查是否有硬编码颜色值（#fff, #000, rgb() 等）
+- 检查深色模式下文字/背景对比度
+- 检查图标/SVG 在两种模式下是否可见
+
+E. 交互质量审计
+- 检查所有按钮是否有 onClick 处理（不是空函数）
+- 检查所有按钮在 loading 时是否禁用（防重复点击）
+- 检查表单提交是否有防抖/节流
+- 检查页面切换是否有过渡动画或至少不闪烁
+- 检查所有 Tauri invoke 调用是否有 loading + error 处理
+
+F. 布局与样式审计
+- 检查是否有容器溢出（overflow 处理）
+- 检查长文本是否有 text-overflow: ellipsis 或折行处理
+- 检查响应式布局（窗口缩放时是否正常）
+- 检查 z-index 层叠是否合理（弹窗 > 导航 > 内容）
+- 检查字体大小、行高、间距一致性
+
+G. 前端数据管理
+- 检查是否有未使用的 state 变量
+- 检查 useEffect 是否有正确的依赖数组和清理函数
+- 检查 API 数据是否有缓存策略
+- 检查是否有内存泄漏风险（未清理的定时器、事件监听器）
+
+H. 国际化/本地化
+- 检查用户可见的所有文本是否为中文（项目面向中文用户）
+- 检查日期/时间显示格式是否为中文习惯（YYYY-MM-DD HH:mm）
+- 检查数字格式是否合理
+
+【修复规范】
+- React 组件必须有 TypeScript 类型定义
+- 每个组件至少处理: loading / error / empty 三种状态
+- 颜色使用主题变量，不硬编码
+- 按钮点击 → loading → 结果反馈 完整链路
+- 所有注释用中文
+
+【质量门】
+- 每个修复后运行 tsc --noEmit 和 cargo clippy
+- 每完成一个修复: git add -A && git commit -m "[前端] 描述"
+
+【完成后】
+- 更新 docs/status/HANDOFF.md 记录本阶段发现和修复
+- 更新 docs/CHANGELOG.md 记录变更
+- 新问题登记到 docs/status/HEALTH.md

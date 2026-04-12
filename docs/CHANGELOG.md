@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-04-12] 夜间自动审计系统
+
+> 领域: `infra`, `docs`
+> 影响模块: `scripts/nightly-audit/*`, `docs/guides/NIGHTLY_AUDIT_SETUP.md`
+> 关联问题: 无（新功能）
+
+### 变更内容
+- 新建夜间自动审计系统，利用 Claude Code CLI 无人值守模式在 CST 00:00-08:00 自动执行全面代码审计
+- 审计分 6 个阶段按价值位阶执行：安全→后端→API集成→前端UI→架构运维→文件治理
+- 每阶段独立上下文窗口，通过 HANDOFF.md 传递状态，支持自动续接
+- 内置时间守卫（CST 08:00 前自动停止）、预算控制（per-phase + 总额）、Mac 防休眠
+- 支持 macOS launchd 和 Ubuntu cron 两种定时方式
+- 兼容 macOS 原生 bash 3.x（修复 declare -A 不兼容问题）
+
+### 文件变更
+- `scripts/nightly-audit/run-audit.sh` — 主执行脚本（阶段调度、时间控制、Git 操作）
+- `scripts/nightly-audit/config.env.example` — 配置模板（API密钥、预算、通知）
+- `scripts/nightly-audit/phases/01-security.txt` — 安全审计提示词
+- `scripts/nightly-audit/phases/02-backend.txt` — 后端稳定性提示词
+- `scripts/nightly-audit/phases/03-api-integration.txt` — API与集成审计提示词
+- `scripts/nightly-audit/phases/04-frontend-ui.txt` — 前端与UI审计提示词
+- `scripts/nightly-audit/phases/05-architecture-ops.txt` — 架构与运维审计提示词
+- `scripts/nightly-audit/phases/06-governance-docs.txt` — 文件治理与文档审计提示词
+- `scripts/nightly-audit/setup-mac.sh` — macOS launchd 定时配置脚本
+- `scripts/nightly-audit/install-server.sh` — Ubuntu 服务器安装脚本
+- `docs/guides/NIGHTLY_AUDIT_SETUP.md` — 部署指南
+- `.gitignore` — 新增审计配置和日志排除规则
+
+---
+
 ## [2026-04-11] MCP 插件进程生命周期管理 (Tier 1)
 
 > 领域: `frontend`, `backend`
