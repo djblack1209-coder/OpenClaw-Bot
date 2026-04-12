@@ -389,8 +389,8 @@ class QRLoginManager:
                     for pid in result.stdout.strip().split("\n"):
                         if pid.strip():
                             os.kill(int(pid.strip()), signal.SIGUSR1)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("通知闲鱼进程刷新Cookie失败: %s", e)
 
             await bot.edit_message_text(
                 "✅ 闲鱼登录成功！Cookie 已更新，客服正在自动恢复。",

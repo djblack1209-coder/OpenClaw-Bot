@@ -64,10 +64,8 @@ class OCRHandlerMixin:
                     # 删除处理中提示
                     try:
                         await hint_msg.delete()
-                    except Exception:
-                        pass
-                    
-                    if vision_result:
+                    except Exception as e:
+                        logger.debug("删除处理提示消息失败(可忽略): %s", e)
                         # 发送分析结果
                         reply_text = f"🖼️ 图片分析:\n\n{vision_result}"
                         await send_long_message(
@@ -97,8 +95,8 @@ class OCRHandlerMixin:
                     # 删除处理中提示（Vision 失败场景）
                     try:
                         await hint_msg.delete()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("删除处理提示消息失败(可忽略): %s", e)
             
             # ── OCR 流程（群聊默认 / 私聊显式请求 / Vision 降级） ──
             hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
@@ -114,8 +112,8 @@ class OCRHandlerMixin:
             # 删除处理中提示
             try:
                 await hint_msg.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("删除OCR处理提示消息失败(可忽略): %s", e)
             
             # OCR 失败
             if not result.ok:

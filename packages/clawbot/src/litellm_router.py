@@ -608,8 +608,8 @@ class LiteLLMPool:
                         {"level": "warning", "message": f"LLM 全链路降级到 g4f 兜底: {scrubbed[:100]}"},
                         source="litellm_router",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("发布LLM降级告警事件失败(可忽略): %s", e)
             raise
 
     def _pick_strongest_family(self) -> str:

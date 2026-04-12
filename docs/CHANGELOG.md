@@ -5,6 +5,26 @@
 
 ---
 
+## [2026-04-12] 安全加固 + 依赖补全 + 空目录清理
+
+> 领域: `backend`, `deploy`
+> 影响模块: `multi_main.py`, `scripts/heartbeat_sender.sh`, `requirements.txt`, `src/models/`
+> 关联问题: 硬编码 VPS IP 泄露风险 + requirements.txt 缺失 12 个可选依赖
+
+### 变更内容
+- 移除 multi_main.py 和 heartbeat_sender.sh 中硬编码的 VPS IP `101.43.41.96`，改为纯环境变量（未配置时跳过/报错）
+- requirements.txt 补全 12 个 try/except 可选依赖：alpaca-py, dateparser, exchange-calendars, feedparser, humanize, price-parser, PyPortfolioOpt, quantstats, snownlp, textblob, tweepy, vectorbt
+- 删除空目录 src/models/drl/ 和 src/models/factor/
+
+### 文件变更
+- `packages/clawbot/multi_main.py` — 移除硬编码 IP，空值时跳过 VPS 关机通知
+- `packages/clawbot/scripts/heartbeat_sender.sh` — 移除硬编码 IP，改为必须设置环境变量
+- `packages/clawbot/requirements.txt` — 新增 12 个可选依赖（均标注 `# 可选`）
+- `packages/clawbot/src/models/drl/` — 已删除（空目录）
+- `packages/clawbot/src/models/factor/` — 已删除（空目录）
+
+---
+
 ## [2026-04-12] 统一夜间审计通知服务（跨项目 Qwen AI 日报）
 
 > 领域: `infra`

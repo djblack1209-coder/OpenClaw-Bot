@@ -487,8 +487,8 @@ class SliderSolver:
                         await elem.click()
                         await _async_sleep(1.5)
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("滑块刷新按钮点击失败(可忽略): %s", e)
 
         logger.warning(f"滑块求解失败，已尝试 {max_retries} 次")
         return False
@@ -690,8 +690,8 @@ class SliderSolverSync:
                         elem.click()
                         time.sleep(1.5)
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("同步滑块刷新按钮点击失败(可忽略): %s", e)
 
         logger.warning(f"滑块求解失败，已尝试 {max_retries} 次")
         return False

@@ -189,8 +189,8 @@ class AutoRecovery:
                             f"已暂停恢复 {cooldown_min:.0f} 分钟。\n"
                             f"通常是网络波动导致，冷却后系统会自动重试。"
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("发送崩溃冷却通知失败: %s", e)
                 return
             elif now - exhausted_at < self.exhausted_cooldown:
                 # 仍在冷却期内，静默跳过（每5分钟打一条日志提醒）
@@ -214,8 +214,8 @@ class AutoRecovery:
                 if self._notify_func:
                     try:
                         await self._notify_func(f"🔄 [{bot_id}] 冷却结束，正在自动重连...")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("发送冷却结束通知失败: %s", e)
 
         last = self._last_restart.get(bot_id, 0)
         if time.time() - last < self.restart_cooldown:
