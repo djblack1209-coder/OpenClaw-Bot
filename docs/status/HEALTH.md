@@ -80,7 +80,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-484 | `infra` | `apps/openclaw-manager-src/src/lib` | 根目录 `.gitignore` 使用过宽规则 `lib/`，误伤前端 `src/lib/` 源码目录，导致 `utils.ts` / `tauri.ts` / `logger.ts` 未被 Git 跟踪；worktree 与新环境下前端基线直接失真 | 2026-04-10 |
+| ~~HI-484~~ | ~~`infra`~~ | ~~`apps/openclaw-manager-src/src/lib`~~ | ~~根目录 `.gitignore` 使用过宽规则 `lib/`，误伤前端 `src/lib/` 源码目录~~ → **已修复 2026-04-12**: `.gitignore` 中 `lib/` 已改为 `/lib/`（仅匹配根目录），`utils.ts` / `tauri.ts` / `logger.ts` 已正常被 Git 跟踪 | 2026-04-10 |
 | ~~HI-348~~ | ~~`security`~~ | ~~`.openclaw/agents/`~~ | ~~API密钥曾提交到Git历史~~ → **已修复 2026-04-11**: `git filter-repo` 清理敏感文件历史，.git 从 1.3GB 瘦身到 318MB | 2026-03-28 |
 | ~~HI-387~~ | ~~`security`~~ | ~~`config/.env`~~ | ~~50+ 真实密钥曾提交到 Git 历史~~ → **已修复 2026-04-11**: 同上，config/.env 等敏感路径全部从历史中移除。**仍建议轮换密钥** | 2026-04-01 |
 | HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
