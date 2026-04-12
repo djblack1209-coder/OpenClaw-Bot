@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-11 (价值位阶审计 Tier 2-3: 7个竞态修复 + 2个安全加固 + 1个连接泄漏修复 | 后端1133/1133通过 + Rust零警告)
+> 最后更新: 2026-04-12 (全量审计 Phase 7-9: 安全加固+运维修复+依赖校正+文档治理 | 后端1132/1135通过 + tsc零错误 + Rust零警告)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -51,7 +51,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1133/1133 Python (含45项E2E全链路测试+41项AI助手能力测试+1项bash白名单验证+1项路径遍历防护+3项修复的回归测试), 0 TypeScript错误, Rust cargo check 零警告 |
+| 测试通过率 | 🟢 99.9% | 1132/1135 Python (1项环境依赖失败: curl_cffi版本, 2项跳过), 0 TypeScript错误, Rust cargo check 零警告 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -114,6 +114,12 @@
 | ~~HI-460~~ | ~~`backend`~~ | ~~`invest_tools.py`~~ | ~~`_set_config` 事务独立~~ → **已验证 2026-04-11**: `_set_config` 是死代码（无任何调用方），buy/sell 现金事务已在同一 `with self._conn()` 中完成，无风险 | 2026-04-03 |
 | ~~HI-461~~ | ~~`backend`~~ | ~~`license_manager.py`~~ | ~~`find_by_buyer()` LIKE 模式未转义通配符~~ → **已修复 2026-04-11**: 增加 `\%`/`\_` 转义 + `ESCAPE '\'` | 2026-04-03 |
 | HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串。**部分修复 2026-04-11**: 8 个文件 20 处高危调用已用 `scrub_secrets()` 包装 + `utils.scrub_secrets()` 共享函数建立，剩余 ~360 处为低风险（非 API/认证相关） | 2026-04-03 |
+| HI-486 | `backend` | `requirements.txt` | stamina 版本约束错误 `~=2.0.0`(PyPI 不存在 2.x 版本, stamina 用 CalVer 从 22.1.0 起) → **已修复**: 改为 `>=24.1.0,<26` | 2026-04-12 |
+| HI-487 | `security` | `core/security.py` | PIN 验证使用 `==` 比较存在理论时序攻击风险 → **已修复**: 改为 `hmac.compare_digest()` | 2026-04-12 |
+| HI-488 | `deploy` | `heartbeat plist` | 心跳 LaunchAgent plist 硬编码 VPS IP `101.43.41.96` 已入 Git → **已修复**: 改为必填环境变量，无默认值 | 2026-04-12 |
+| HI-489 | `deploy` | `kiro-gateway/.env.example` | 示例密码 `my-super-secret-password-123` 可能被用户直接复制使用 → **已修复**: 改为空值 + 强制修改提示 | 2026-04-12 |
+| HI-490 | `security` | `api/server.py` | FastAPI 无速率限制中间件，Token 泄露后攻击者可无限调用 — 风险低(默认127.0.0.1) | 2026-04-12 |
+| HI-491 | `security` | `api/server.py` | RequestSizeLimitMiddleware 仅检查 Content-Length header，chunked 传输可绕过 — 风险低 | 2026-04-12 |
 | ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
 
 ### 🔵 低优先

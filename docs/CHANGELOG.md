@@ -5,6 +5,42 @@
 
 ---
 
+## [2026-04-12] 全量审计 Phase 7-9: 安全加固 + 运维修复 + 依赖校正 + 文档治理
+
+> 领域: `backend`, `deploy`, `docs`, `frontend`
+> 影响模块: `core/security.py`, `requirements.txt`, `heartbeat plist`, `kiro-gateway`, `MODULE_REGISTRY`, `COMMAND_REGISTRY`
+> 关联问题: HI-485 全量审计
+
+### 变更内容
+
+**安全加固**
+- PIN 验证从 `==` 改为 `hmac.compare_digest()` 防止理论时序攻击 (`core/security.py:260`)
+- kiro-gateway `.env.example` 示例密码清空，避免用户误用弱密码
+
+**运维修复**
+- 心跳 plist 硬编码 VPS IP `101.43.41.96` → 改为必填环境变量 `DEPLOY_VPS_HOST`（无默认值）
+- `requirements.txt` 修复 stamina 版本约束: `~=2.0.0`(不存在) → `>=24.1.0,<26`(CalVer)
+
+**文档治理**
+- MODULE_REGISTRY: 补全 26 个 HI-358 拆分子模块，总数 217 → 243
+- COMMAND_REGISTRY: 标题数量 96 → 98，与头部统一
+
+**审计结论**
+- 安全审计: 无 Critical 问题，3个 Medium（已修复1个 PIN 时序攻击）
+- 运维审计: Docker/CI/CD/systemd 配置良好，2个严重问题已修复
+- macOS APP: OpenClaw.app v0.0.7 存在于 /Applications/，功能正常
+- 回归验证: pytest 1132 passed / 1 env-dep / 2 skipped，tsc 零错误，Rust 零警告
+
+### 文件变更
+- `packages/clawbot/src/core/security.py` — 添加 import hmac，PIN 验证改用 hmac.compare_digest
+- `packages/clawbot/requirements.txt` — stamina 版本约束修正
+- `tools/launchagents/ai.openclaw.heartbeat-sender.plist` — VPS IP 改为必填环境变量
+- `packages/clawbot/kiro-gateway/.env.example` — 示例密码清空
+- `docs/registries/MODULE_REGISTRY.md` — 补全 26 个子模块
+- `docs/registries/COMMAND_REGISTRY.md` — 数量校准 96→98
+
+---
+
 ## [2026-04-12] MODULE_REGISTRY 补全 26 个 HI-358 拆分子模块
 
 > 领域: `docs`
