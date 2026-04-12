@@ -80,7 +80,7 @@ if [ "$FAIL" -eq 1 ]; then
     if [ "$CURRENT_COUNT" -ge "$MAX_FAIL_COUNT" ]; then
         log "连续 $CURRENT_COUNT 次心跳失败，触发 failover 切换"
         rm -f "$FAIL_COUNT_FILE"
-        systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
+        sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
     else
         log "心跳失败 $CURRENT_COUNT/$MAX_FAIL_COUNT"
     fi
