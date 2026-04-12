@@ -5,7 +5,8 @@
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    # 固定版本号，避免 latest 导致不可预期的升级
+    image: calciumion/new-api:v0.12.6
     container_name: openclaw-newapi
     restart: unless-stopped
     ports:

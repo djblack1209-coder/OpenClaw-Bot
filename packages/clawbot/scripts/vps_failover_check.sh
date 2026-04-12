@@ -32,7 +32,7 @@ if [ -f "$SHUTDOWN_FILE" ]; then
     log "检测到主节点主动关机标记，立即切换"
     rm -f "$SHUTDOWN_FILE"
     rm -f "$FAIL_COUNT_FILE"
-    systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
+    sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
     exit 0
 fi
 
@@ -57,9 +57,9 @@ else
             rm -f "$FAIL_COUNT_FILE"
 
             # 退让机制: Mac Bot 确认存活后，VPS 应让位
-            if systemctl is-active --quiet "$CLAWBOT_SERVICE" 2>/dev/null; then
+            if sudo systemctl is-active --quiet "$CLAWBOT_SERVICE" 2>/dev/null; then
                 log "主节点 Bot 确认存活 (心跳内容: $HEARTBEAT_CONTENT)，VPS 退让: 停止 $CLAWBOT_SERVICE"
-                systemctl stop "$CLAWBOT_SERVICE" 2>/dev/null
+                sudo systemctl stop "$CLAWBOT_SERVICE" 2>/dev/null
             fi
             exit 0
         else

@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        # 与 Dockerfile 保持一致，3.9 已不在支持范围
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
