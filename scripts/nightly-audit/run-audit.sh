@@ -458,6 +458,229 @@ build_claude_cmd() {
 }
 
 # ============================================================
+# 审计报告生成（兼容 AI Bridge 格式）
+# ============================================================
+
+# 生成 health-score.json（机器可读的健康评分）
+generate_health_score() {
+    local phases_completed="$1"
+    local phases_total="$2"
+    local total_commits="$3"
+
+    local score=100
+    local deductions=""
+
+    # 扣分项1: 未完成的阶段（每个 -5 分）
+    local incomplete=$((phases_total - phases_completed))
+    if [[ $incomplete -gt 0 ]]; then
+        local deduct=$((incomplete * 5))
+        score=$((score - deduct))
+        deductions="${deductions}\n    {\"reason\": \"${incomplete} 个审计阶段未完成\", \"points\": -${deduct}},"
+    fi
+
+    # 扣分项2: 测试结果（检查最近的测试输出）
+    local test_failures=0
+    local latest_phase_log=""
+    for p in $(seq 1 "$phases_total"); do
+        local plog="${LOG_DIR}/${DATE}_phase${p}_run1.log"
+        if [[ -f "$plog" ]]; then
+            latest_phase_log="$plog"
+            local fails
+            fails=$(grep -oP '\d+(?= failed)' "$plog" 2>/dev/null | tail -1 || echo "0")
+            if [[ -n "$fails" && "$fails" -gt 0 ]]; then
+                test_failures=$((test_failures + fails))
+            fi
+        fi
+    done
+    if [[ $test_failures -gt 0 ]]; then
+        score=$((score - 30))
+        deductions="${deductions}\n    {\"reason\": \"测试有 ${test_failures} 个失败\", \"points\": -30},"
+    fi
+
+    # 扣分项3: 未提交的改动
+    local uncommitted=0
+    uncommitted=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$uncommitted" -gt 0 ]]; then
+        score=$((score - 10))
+        deductions="${deductions}\n    {\"reason\": \"有 ${uncommitted} 个未提交的改动\", \"points\": -10},"
+    fi
+
+    # 确保分数不低于 0
+    if [[ $score -lt 0 ]]; then score=0; fi
+
+    # 评级
+    local grade="需要关注"
+    if [[ $score -ge 90 ]]; then grade="优秀"
+    elif [[ $score -ge 75 ]]; then grade="良好"
+    elif [[ $score -ge 60 ]]; then grade="及格"
+    fi
+
+    # 去掉最后一个逗号
+    deductions=$(echo -e "$deductions" | sed '$ s/,$//')
+
+    # 写入 JSON
+    local score_file="${LOG_DIR}/${DATE}.health-score.json"
+    cat > "$score_file" << SCORE_JSON
+{
+    "date": "${DATE}",
+    "score": ${score},
+    "grade": "${grade}",
+    "max_score": 100,
+    "project": "OpenClaw Bot",
+    "phases_completed": ${phases_completed},
+    "phases_total": ${phases_total},
+    "commits": ${total_commits},
+    "deductions": [${deductions}
+    ]
+}
+SCORE_JSON
+
+    log INFO "健康评分: ${score}/100 (${grade})" >&2
+
+    # 返回评分供后续使用（通过 stdout）
+    echo "${score}|${grade}"
+}
+
+# 生成回归对比报告（与上次审计对比）
+generate_regression_report() {
+    local current_score="$1"
+    local current_grade="$2"
+    local regression_file="${LOG_DIR}/${DATE}.regression.md"
+
+    # 查找上次的评分
+    local last_score_file="${LOG_DIR}/last-health-score.json"
+    local last_score=""
+    local last_grade=""
+    local last_date=""
+
+    if [[ -f "$last_score_file" ]]; then
+        last_score=$(grep -oP '"score":\s*\K[0-9]+' "$last_score_file" 2>/dev/null || echo "")
+        last_grade=$(grep -oP '"grade":\s*"\K[^"]+' "$last_score_file" 2>/dev/null || echo "")
+        last_date=$(grep -oP '"date":\s*"\K[^"]+' "$last_score_file" 2>/dev/null || echo "")
+    fi
+
+    {
+        echo "# 与上次审计对比"
+        echo ""
+        if [[ -n "$last_score" ]]; then
+            local diff=$((current_score - last_score))
+            local trend=""
+            if [[ $diff -gt 0 ]]; then
+                trend="项目在变好 (+${diff}分)"
+            elif [[ $diff -lt 0 ]]; then
+                trend="项目出现退步，请关注 (${diff}分)"
+            else
+                trend="保持稳定"
+            fi
+            echo "- 上次评分（${last_date}）：${last_score} 分（${last_grade}）"
+            echo "- 本次评分：${current_score} 分（${current_grade}）"
+            echo "- 变化：$(if [[ $diff -ge 0 ]]; then echo "+${diff}"; else echo "${diff}"; fi) 分"
+            echo "- 趋势：${trend}"
+        else
+            echo "- 本次评分：${current_score} 分（${current_grade}）"
+            echo "- 趋势：首次审计，无历史数据对比"
+        fi
+    } > "$regression_file"
+
+    # 保存本次评分供下次对比
+    cp "${LOG_DIR}/${DATE}.health-score.json" "$last_score_file" 2>/dev/null || true
+
+    log INFO "回归对比报告已生成: ${regression_file}"
+}
+
+# 生成富格式审计摘要（AI Bridge 风格）
+generate_rich_summary() {
+    local phases_completed="$1"
+    local phases_total="$2"
+    local total_commits="$3"
+    local score="$4"
+    local grade="$5"
+    local git_hash="$6"
+    local git_hash_end="$7"
+
+    local rich_summary="${LOG_DIR}/${DATE}.summary.md"
+
+    {
+        echo "# OpenClaw Bot 夜间审计报告"
+        echo ""
+        echo "> 这是 AI 工程师昨晚值班的工作汇报，打开即可了解项目状态。"
+        echo ""
+        echo "- **日期**: ${DATE}"
+        echo "- **结束时间**: $(TZ=Asia/Shanghai date '+%H:%M:%S')"
+        echo "- **预估花费**: \$${TOTAL_SPENT}（上限 \$${MAX_TOTAL_BUDGET:-35}）"
+        echo "- **项目健康评分**: ${score}/100（${grade}）"
+        echo ""
+
+        # 各阶段完成情况
+        echo "## 昨晚干了什么"
+        for phase_num in $(seq "$START_PHASE" "$END_PHASE"); do
+            local p_name
+            p_name=$(get_phase_name "$phase_num")
+            if grep -q "phase${phase_num}_done=" "$PROGRESS_FILE" 2>/dev/null; then
+                local done_time
+                done_time=$(grep "phase${phase_num}_done=" "$PROGRESS_FILE" | cut -d= -f2)
+                echo "- [x] **${p_name}** — 搞定了（${done_time}）"
+            elif grep -q "phase${phase_num}_start=" "$PROGRESS_FILE" 2>/dev/null; then
+                echo "- [ ] **${p_name}** — 做了一半没做完"
+            else
+                echo "- [ ] **${p_name}** — 没来得及做"
+            fi
+        done
+        echo ""
+
+        # 回归对比
+        local regression_file="${LOG_DIR}/${DATE}.regression.md"
+        if [[ -f "$regression_file" ]]; then
+            cat "$regression_file"
+            echo ""
+        fi
+
+        # Git 改动
+        echo "## 改了哪些东西"
+        echo ""
+        echo "> 下面是昨晚每次修改的一句话摘要（最新的在最上面）："
+        echo ""
+        if [[ "$total_commits" -gt 0 ]]; then
+            git log --oneline "${git_hash}..${git_hash_end}" 2>/dev/null | head -20 || echo "（无法获取 git log）"
+        else
+            echo "（没有代码变更）"
+        fi
+        echo ""
+
+        # 需要老板看的
+        echo "## 需要你看一眼的事"
+        echo ""
+        echo "> 以下是 AI 搞不定、需要你（老板）拍板的事："
+        echo ""
+        echo "- 界面好不好看 → 只有你能判断"
+        echo "- 其他技术问题 → AI 已经全部处理了"
+        echo ""
+        echo "---"
+        echo "*本报告由 OpenClaw Bot 夜间审计系统 v2.0 自动生成*"
+    } > "$rich_summary"
+
+    log INFO "富格式摘要已生成: ${rich_summary}"
+}
+
+# 读取 AI Bridge 审计结果（如果有）
+read_ai_bridge_score() {
+    local bridge_base="${AI_BRIDGE_AUDIT_DIR:-/Users/blackdj/Desktop/AI Bridge/ai-bridge/logs/nightly-audit}"
+    local bridge_score_file="${bridge_base}/${DATE}/health-score.json"
+
+    if [[ -f "$bridge_score_file" ]]; then
+        local b_score b_grade
+        b_score=$(grep -oP '"score":\s*\K[0-9]+' "$bridge_score_file" 2>/dev/null || echo "")
+        b_grade=$(grep -oP '"grade":\s*"\K[^"]+' "$bridge_score_file" 2>/dev/null || echo "")
+        if [[ -n "$b_score" ]]; then
+            echo "${b_score}|${b_grade}"
+            return 0
+        fi
+    fi
+    echo ""
+    return 1
+}
+
+# ============================================================
 # 阶段执行引擎
 # ============================================================
 
@@ -759,24 +982,72 @@ main() {
     # 追加审计评分到摘要
     generate_final_scorecard
 
+    # === 生成健康评分 JSON ===
+    local score_result
+    score_result=$(generate_health_score "$phases_completed" "$END_PHASE" "$total_commits")
+    local health_score health_grade
+    health_score=$(echo "$score_result" | cut -d'|' -f1)
+    health_grade=$(echo "$score_result" | cut -d'|' -f2)
+
+    # === 生成回归对比报告 ===
+    generate_regression_report "$health_score" "$health_grade"
+
+    # === 生成富格式摘要 ===
+    generate_rich_summary "$phases_completed" "$END_PHASE" "$total_commits" "$health_score" "$health_grade" "$git_hash" "$git_hash_end"
+
     cat "$SUMMARY_FILE"
 
     log INFO "========================================="
     log INFO " 夜间审计结束"
     log INFO " 完成: ${phases_completed}  跳过: ${phases_skipped}  失败: ${phases_failed}"
     log INFO " 产生 ${total_commits} 个 commit"
+    log INFO " 健康评分: ${health_score}/100 (${health_grade})"
     log INFO " 日志目录: ${LOG_DIR}/"
     log INFO "========================================="
 
-    # === 发送通知 ===
-    send_notification "🤖 *OpenClaw Bot 夜间审计完成*
+    # === 构建通知内容 ===
+    local notify_body="🤖 *OpenClaw Bot 夜间审计完成*
 
 📅 日期: ${DATE}
+🏥 健康评分: ${health_score}/100（${health_grade}）"
+
+    # 附加回归趋势
+    local last_score_file="${LOG_DIR}/last-health-score.json"
+    # 注意: last-health-score.json 此时已被覆盖为本次分数
+    # 从 regression.md 中提取趋势
+    local regression_file="${LOG_DIR}/${DATE}.regression.md"
+    if [[ -f "$regression_file" ]]; then
+        local trend_line
+        trend_line=$(grep "趋势：" "$regression_file" 2>/dev/null | head -1 | sed 's/.*趋势：//' || echo "")
+        if [[ -n "$trend_line" ]]; then
+            notify_body="${notify_body}
+📈 趋势: ${trend_line}"
+        fi
+    fi
+
+    notify_body="${notify_body}
 ✅ 完成: ${phases_completed}/${TOTAL_PHASES:-8} 阶段
 📝 产生: ${total_commits} 个 commit
-💰 预估花费: \$${TOTAL_SPENT}
+💰 预估花费: \$${TOTAL_SPENT}"
 
-详细日志: ${LOG_DIR}/${DATE}.log"
+    # 附加 AI Bridge 审计结果（如果有）
+    local bridge_result
+    bridge_result=$(read_ai_bridge_score 2>/dev/null || echo "")
+    if [[ -n "$bridge_result" ]]; then
+        local b_score b_grade
+        b_score=$(echo "$bridge_result" | cut -d'|' -f1)
+        b_grade=$(echo "$bridge_result" | cut -d'|' -f2)
+        notify_body="${notify_body}
+
+🌉 AI Bridge: ${b_score}/100（${b_grade}）"
+    fi
+
+    notify_body="${notify_body}
+
+详情: ${LOG_DIR}/${DATE}.summary.md"
+
+    # === 发送通知 ===
+    send_notification "$notify_body"
 
     # === 清理由 trap cleanup EXIT 统一处理 ===
 
