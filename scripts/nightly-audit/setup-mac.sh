@@ -105,10 +105,6 @@ cat > "$PLIST_FILE" << PLIST
     <key>StandardErrorPath</key>
     <string>${LOG_DIR}/launchd-stderr.log</string>
 
-    <!-- 如果 Mac 在预定时间休眠，唤醒后补执行 -->
-    <key>StartInterval</key>
-    <integer>0</integer>
-
     <!-- 低优先级，不影响日常使用 -->
     <key>LowPriorityIO</key>
     <true/>

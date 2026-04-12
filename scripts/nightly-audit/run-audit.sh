@@ -33,6 +33,34 @@ DATE=$(date +%Y-%m-%d)
 PROGRESS_FILE="${LOG_DIR}/${DATE}.progress"
 SUMMARY_FILE="${LOG_DIR}/${DATE}.summary"
 TOTAL_SPENT=0
+LOCK_DIR="/tmp/openclaw-nightly-audit.lock"
+
+# === 进程锁（防止多实例同时运行）===
+acquire_lock() {
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        local existing_pid
+        existing_pid=$(cat "${LOCK_DIR}/pid" 2>/dev/null || echo "未知")
+        echo "❌ 另一个审计实例正在运行 (PID: ${existing_pid})"
+        echo "   如果确认没有其他实例，请手动删除锁: rm -rf ${LOCK_DIR}"
+        exit 1
+    fi
+    echo $$ > "${LOCK_DIR}/pid"
+}
+
+# === 全局清理函数 ===
+cleanup() {
+    # 释放进程锁
+    rm -rf "$LOCK_DIR" 2>/dev/null || true
+    # 终止防休眠进程
+    if [[ -n "${CAFFEINATE_PID:-}" ]]; then
+        kill "$CAFFEINATE_PID" 2>/dev/null || true
+    fi
+    # 如果配置了审计后休眠，让 Mac 进入休眠
+    if [[ "$(uname)" == "Darwin" && "${SLEEP_AFTER_AUDIT:-false}" == "true" ]]; then
+        pmset sleepnow 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
 
 # === 颜色输出 ===
 RED='\033[0;31m'
@@ -222,19 +250,22 @@ run_phase() {
             export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
         fi
 
-        # 执行 Claude Code
+        # 执行 Claude Code（使用官方推荐的 --bare 模式加速启动）
         local session_id
         session_id=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
 
         "${CLAUDE_BIN:-claude}" \
             -p "$prompt" \
+            --bare \
             --dangerously-skip-permissions \
             --max-budget-usd "${BUDGET_PER_PHASE:-3}" \
+            --max-turns "${MAX_TURNS_PER_PHASE:-200}" \
             ${MODEL:+--model "$MODEL"} \
+            ${FALLBACK_MODEL:+--fallback-model "$FALLBACK_MODEL"} \
             --session-id "$session_id" \
             --output-format text \
             > "$run_log" 2>&1 || {
-                log WARN "阶段 ${phase_num} 首次运行异常退出（可能是预算耗尽或上下文已满）"
+                log WARN "阶段 ${phase_num} 首次运行异常退出（可能是预算耗尽/上下文已满/达到最大轮次）"
             }
 
         # 保存 session ID 用于续接
@@ -272,9 +303,12 @@ run_phase() {
 
             "${CLAUDE_BIN:-claude}" \
                 -p "$cont_prompt" \
+                --bare \
                 --dangerously-skip-permissions \
                 --max-budget-usd "${BUDGET_PER_PHASE:-3}" \
+                --max-turns "${MAX_TURNS_PER_PHASE:-200}" \
                 ${MODEL:+--model "$MODEL"} \
+                ${FALLBACK_MODEL:+--fallback-model "$FALLBACK_MODEL"} \
                 --resume "$session_id" \
                 --output-format text \
                 > "$cont_log" 2>&1 || {
@@ -303,6 +337,10 @@ run_phase() {
 main() {
     # 创建日志目录
     mkdir -p "$LOG_DIR"
+
+    # 获取进程锁（防止多实例冲突）
+    acquire_lock
+    log INFO "进程锁已获取"
 
     # 开始
     log INFO "========================================="
@@ -455,10 +493,7 @@ main() {
 
 详细日志: ${LOG_DIR}/${DATE}.log"
 
-    # === 清理 ===
-    if [[ -n "${CAFFEINATE_PID:-}" ]]; then
-        kill "$CAFFEINATE_PID" 2>/dev/null || true
-    fi
+    # === 清理由 trap cleanup EXIT 统一处理 ===
 
     # === 多轮审计（可选）===
     if [[ "${AUTO_NEXT_ROUND:-false}" == "true" ]]; then

@@ -43,7 +43,11 @@ echo "  ✅ Python $(python3.12 --version) 已安装"
 # === Claude Code ===
 echo "[4/6] 安装 Claude Code..."
 if ! command -v claude &> /dev/null; then
-    npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+    # 使用官方推荐的安装方式（npm 方式已废弃）
+    curl -fsSL https://claude.ai/install.sh | bash > /dev/null 2>&1 || {
+        echo "  ⚠️  官方安装脚本失败，回退到 npm 方式..."
+        npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+    }
 fi
 echo "  ✅ Claude Code $(claude --version 2>/dev/null || echo '已安装') "
 
