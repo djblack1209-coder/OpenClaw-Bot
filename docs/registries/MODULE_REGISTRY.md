@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-11 | 更新: risk_manager.py 拆分为 Mixin 模块 (HI-358)
+> 最后更新: 2026-04-12 | 补全 26 个 HI-358 拆分子模块注册 (总模块数 217→243)
 
 ---
 
@@ -1039,6 +1039,98 @@
 | telegram_gateway.py | `src/gateway/telegram_gateway.py` | 528 | OMEGA 网关 Bot — 统一入口/路由分发到 7 Bot |
 | license_manager.py | `src/deployer/license_manager.py` | 240 | 授权管理 — License 生成/验证/过期检查 |
 | deploy_server.py | `src/deployer/deploy_server.py` | 157 | 部署服务器 — 远程部署/更新/回滚 |
+
+---
+
+### 2.3 HI-358 大文件拆分补录 (2026-04-12)
+
+> 以下 26 个模块在 HI-358 大文件拆分中新建，此前未注册。按拆分来源分组。
+
+#### 回测引擎拆分 (从 backtester.py 拆分)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| backtester_models.py | `src/backtester_models.py` | 181 | 回测数据模型 — Bar/BacktestTrade/BacktestConfig/PerformanceReport 数据类 + load_historical_data 数据加载 |
+| backtester_advanced.py | `src/backtester_advanced.py` | 533 | 回测高级分析 — 蒙特卡洛模拟/网格参数优化/Walk-Forward 过拟合检测/增强绩效指标 (Sortino/Calmar/SQN) |
+
+**依赖关系:** `backtester.py` → `backtester_models.py`; `backtester_advanced.py` → `backtester_models.py` + `risk_config.py`
+
+#### 中文 NLP 拆分 (从 chinese_nlp_mixin.py 拆分)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| nlp_dispatch_handlers.py | `src/bot/nlp_dispatch_handlers.py` | 549 | NLP 分发处理器 — 独立 async handler 函数 (快递/记账/提醒/待办/查询/购物/翻译/天气等) |
+| nlp_ticker_map.py | `src/bot/nlp_ticker_map.py` | 126 | Ticker 映射 + 对话噪音清洗 — 中文股票名→ticker 映射 + 对话粒子剥离 + 模糊命令建议 |
+
+**依赖关系:** `chinese_nlp_mixin.py` → `nlp_dispatch_handlers.py` + `nlp_ticker_map.py`
+
+#### 券商桥接拆分 (从 broker_bridge.py 拆分)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| broker_scanner.py | `src/broker_scanner.py` | 246 | IBKR 扫描器 Mixin — 合约构建/Scanner 扫描/合约搜索/实时快照 (依赖 ib_insync) |
+| broker_slippage.py | `src/broker_slippage.py` | 109 | 滑点估算 Mixin — SlippageEstimate 数据类 + 基于 yfinance 的滑点/流动性评估 (不依赖 ib_insync) |
+
+**依赖关系:** `broker_bridge.py` (Mixin 继承) → `broker_scanner.py` + `broker_slippage.py`
+
+#### 主动引擎拆分 (从 proactive_engine.py 拆分)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| proactive_models.py | `src/core/proactive_models.py` | 52 | 主动引擎数据模型 — GateResult/NotificationDraft/CriticResult Pydantic 模型 (三步管道结构化输出) |
+| proactive_notify.py | `src/core/proactive_notify.py` | 72 | 主动引擎通知发送 — _send_proactive (文本) + _send_proactive_photo (图片+降级) |
+| proactive_listeners.py | `src/core/proactive_listeners.py` | 430 | 主动引擎事件监听 — 9 个 EventBus 处理器 (交易成交/风控预警/自选股异动/订单支付/预算超支等) |
+| proactive_periodic.py | `src/core/proactive_periodic.py` | 208 | 主动引擎定时检查 — 每 30 分钟收集系统上下文 (持仓/闲鱼/交易/提醒/风控) 评估是否推送 |
+
+**依赖关系:** `proactive_engine.py` → `proactive_models.py` + `proactive_notify.py` + `proactive_listeners.py` + `proactive_periodic.py`
+
+#### 进化引擎 (src/evolution/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| engine.py | `src/evolution/engine.py` | 761 | 自主进化核心 — GitHub Trending 扫描 + LLM 价值评估 + 集成提案生成 + 低风险自动/高风险审批 + 历史记录 |
+| github_trending.py | `src/evolution/github_trending.py` | 322 | GitHub Trending 采集器 — 爬取 trending 页面 (无 Token) + Search API 快速增长仓库查询 + README 获取 |
+
+**依赖关系:** `evolution/engine.py` → `evolution/github_trending.py` + `litellm_router.py` + `utils.py`
+
+#### 闲鱼新增 (src/xianyu/)
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| qr_login.py | `src/xianyu/qr_login.py` | 415 | 闲鱼扫码登录 — 纯 API 实现 (不弹浏览器)，Telegram 发送二维码 + 轮询扫码 + Cookie 写入 .env + 热更新 |
+
+**依赖关系:** `cmd_xianyu_mixin.py` → `qr_login.py`; 搬运自 GuDong2003/xianyu-auto-reply-fix
+
+#### cmd_basic 子模块展开 (从 cmd_basic_mixin.py 拆分)
+
+> 原有包级条目 (Section 0.4) 仅列名称，以下为各子模块的独立路径注册。
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 354 | 帮助与引导 — /start 命令 + help 回调 + onboarding 新用户引导 |
+| status_mixin.py | `src/bot/cmd_basic/status_mixin.py` | 237 | 状态查询 — /status, /metrics, /model, /pool, /keyhealth 系统信息 |
+| tools_mixin.py | `src/bot/cmd_basic/tools_mixin.py` | 306 | 工具命令 — /draw, /news, /qr, /tts, /agent + inline query 处理 |
+| memory_mixin.py | `src/bot/cmd_basic/memory_mixin.py` | 178 | 记忆管理 — /memory 命令 + 记忆分页/清除回调 + 反馈回调 |
+| callback_mixin.py | `src/bot/cmd_basic/callback_mixin.py` | 161 | 回调处理 — 通知操作按钮 + 卡片操作按钮 + 追问建议按钮 |
+| settings_mixin.py | `src/bot/cmd_basic/settings_mixin.py` | 144 | 用户设置 — /settings 命令及其 Inline 回调 |
+| context_mixin.py | `src/bot/cmd_basic/context_mixin.py` | 107 | 上下文管理 — /context, /compact, /clear, /voice, /lanes 命令 |
+
+**依赖关系:** `cmd_basic_mixin.py` (转发入口) → 以上 7 个子模块; 各子模块依赖 `bot.globals` + `bot.auth` + `telegram_ux`
+
+#### monitoring 子模块展开 (src/monitoring/)
+
+> 原有包级条目 (Section 2, 第806行) 仅列名称，以下为各子模块的独立路径注册。
+
+| 模块 | 路径 | 行数 | 说明 |
+|------|------|------|------|
+| metrics.py | `src/monitoring/metrics.py` | 182 | Prometheus 指标收集器 — Counter/Gauge/Histogram 三种指标 + HTTP 导出服务器 (无外部依赖) |
+| health.py | `src/monitoring/health.py` | 274 | 健康检查 + 自动恢复 — Bot 心跳 + 错误计数 + AutoRecovery 不健康自动重启 (带冷却+计数上限) |
+| alerts.py | `src/monitoring/alerts.py` | 60 | 告警规则引擎 — 可编程告警规则 + 回调通知 (对标 LiteLLM) |
+| anomaly_detector.py | `src/monitoring/anomaly_detector.py` | 200 | 异常检测器 — 延迟尖峰/错误率突增/成本异常/流量异常 (对标 Datadog APM) |
+| cost_analyzer.py | `src/monitoring/cost_analyzer.py` | 246 | 成本归因分析 — 按 bot/用户/功能/模型 维度成本归因 + 月度预测 + 预算告警 (对标 LiteLLM Budget Manager) |
+| logger.py | `src/monitoring/logger.py` | 433 | 结构化日志 — StructuredLogger JSON 日志 + TaskObserver 任务级质量/成本/检索评估 |
+
+**依赖关系:** `monitoring/__init__.py` 统一导出; `multi_main.py` + `bot.globals` 导入使用
 
 ---
 
