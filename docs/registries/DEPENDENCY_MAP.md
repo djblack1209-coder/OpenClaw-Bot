@@ -69,10 +69,11 @@
 | pydantic-settings | 配置管理 (类型校验+env) | ~=2.7.0 |
 | websockets | 闲鱼 WebSocket 实时聊天 | ~=13.0 |
 | openai | OpenAI SDK (闲鱼/Agent) | >=1.68.2 |
-| ib_insync | IBKR 券商对接 (可选) | ~=0.9.86 |
+| ib_async | IBKR 券商对接 (ib_insync 社区接力 fork) | >=2.1.0 |
 | tavily-python | AI 搜索引擎 SDK | >=0.5.0 |
 | smolagents | 轻量 Agent 框架 (HuggingFace) | >=1.0.0 |
 | docling | 文档理解引擎 (PDF/DOCX→MD) | >=2.0.0 |
+| pybreaker | 工业级熔断器 (self_heal.py) | >=1.4.0 |
 
 ## Python 版本约束
 - 当前: **Python 3.12** (venv: `.venv312`)
