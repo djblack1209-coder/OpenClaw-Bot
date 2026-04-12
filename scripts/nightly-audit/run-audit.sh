@@ -328,6 +328,116 @@ send_notification() {
     fi
 }
 
+# 严重问题实时告警（审计过程中发现严重问题立即通知）
+send_urgent_alert() {
+    local phase_num="$1"
+    local phase_name="$2"
+    local alert_msg="$3"
+    send_notification "🚨 *夜间审计严重告警*
+
+⚠️ 阶段 ${phase_num} (${phase_name})
+${alert_msg}
+
+请尽快查看日志: ${LOG_DIR}/${DATE}.log"
+}
+
+# 生成增量审计补丁提示词（只审计最近变更的文件）
+build_incremental_prompt() {
+    local phase_prompt="$1"
+    local changed_files=""
+
+    # 获取自上次审计以来变更的文件列表
+    local last_audit_tag=""
+    last_audit_tag=$(git tag -l "nightly-audit-*" --sort=-version:refname 2>/dev/null | head -1)
+
+    if [[ -n "$last_audit_tag" ]]; then
+        changed_files=$(git diff --name-only "$last_audit_tag"..HEAD 2>/dev/null | head -100)
+    fi
+
+    if [[ -z "$changed_files" ]]; then
+        # 没有上次标记或没有变更，回退到最近 3 天的变更
+        changed_files=$(git diff --name-only HEAD~50..HEAD 2>/dev/null | head -100 || echo "")
+    fi
+
+    if [[ -n "$changed_files" && "${INCREMENTAL_AUDIT:-false}" == "true" ]]; then
+        echo "${phase_prompt}
+
+【增量审计模式】
+以下是自上次审计以来变更的文件，请优先审计这些文件：
+${changed_files}
+
+注意：增量审计仍需检查变更文件对其他模块的影响，但不需要全量扫描所有文件。"
+    else
+        echo "$phase_prompt"
+    fi
+}
+
+# 检查阶段运行后的变更量（防止 AI 一次改太多文件）
+check_change_volume() {
+    local phase_num="$1"
+    local phase_name="$2"
+    local max_files="${MAX_CHANGED_FILES_PER_PHASE:-30}"
+
+    local changed_count
+    changed_count=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ -n "$changed_count" && "$changed_count" -gt "$max_files" ]]; then
+        log WARN "阶段 ${phase_num} (${phase_name}) 修改了 ${changed_count} 个文件，超过上限 ${max_files}"
+        send_urgent_alert "$phase_num" "$phase_name" "单阶段修改了 ${changed_count} 个文件（上限 ${max_files}），建议人工审查"
+    fi
+}
+
+# 生成单阶段评分卡（分析阶段输出日志评估质量）
+generate_phase_scorecard() {
+    local phase_num="$1"
+    local phase_name="$2"
+    local run_log="$3"
+
+    if [[ ! -f "$run_log" ]]; then return; fi
+
+    local fixes=0 issues_found=0 tests_ok=0
+
+    # 统计修复次数（通过 git commit 消息计数）
+    fixes=$(git log --oneline --since="1 hour ago" --grep="\\[" 2>/dev/null | wc -l | tr -d ' ')
+
+    # 统计发现问题数（在日志中搜索关键词）
+    issues_found=$(grep -ciE '(发现|问题|bug|漏洞|缺失|错误|风险)' "$run_log" 2>/dev/null || echo "0")
+
+    # 统计测试结果
+    if grep -q "passed" "$run_log" 2>/dev/null; then
+        tests_ok=1
+    fi
+
+    echo "phase${phase_num}: name=${phase_name} fixes=${fixes} issues=${issues_found} tests_ok=${tests_ok}" >> "${LOG_DIR}/${DATE}.scorecard"
+}
+
+# 生成最终审计评分报告
+generate_final_scorecard() {
+    local scorecard_file="${LOG_DIR}/${DATE}.scorecard"
+    if [[ ! -f "$scorecard_file" ]]; then return; fi
+
+    local total_fixes=0 total_issues=0 phases_tested=0
+    while IFS= read -r line; do
+        local f i t
+        f=$(echo "$line" | grep -oP 'fixes=\K[0-9]+' 2>/dev/null || echo "0")
+        i=$(echo "$line" | grep -oP 'issues=\K[0-9]+' 2>/dev/null || echo "0")
+        t=$(echo "$line" | grep -oP 'tests_ok=\K[0-9]+' 2>/dev/null || echo "0")
+        total_fixes=$((total_fixes + f))
+        total_issues=$((total_issues + i))
+        phases_tested=$((phases_tested + t))
+    done < "$scorecard_file"
+
+    {
+        echo ""
+        echo "## 审计评分"
+        echo "- 总修复数: ${total_fixes}"
+        echo "- 发现问题数: ${total_issues}"
+        echo "- 测试通过阶段: ${phases_tested}"
+    } >> "${SUMMARY_FILE}"
+
+    log INFO "审计评分: 修复 ${total_fixes} 项, 发现 ${total_issues} 项问题"
+}
+
 # 构建 Claude Code 命令行
 build_claude_cmd() {
     local prompt="$1"
@@ -356,7 +466,7 @@ run_phase() {
     local phase_file="$2"
     local phase_name="$3"
 
-    log PHASE "========== 阶段 ${phase_num}/6: ${phase_name} =========="
+    log PHASE "========== 阶段 ${phase_num}/${TOTAL_PHASES:-8}: ${phase_name} =========="
 
     # 检查提示词文件是否存在
     if [[ ! -f "$phase_file" ]]; then
@@ -371,6 +481,9 @@ run_phase() {
     # 读取提示词
     local prompt
     prompt=$(cat "$phase_file")
+
+    # 增量审计模式: 注入变更文件列表
+    prompt=$(build_incremental_prompt "$prompt")
 
     # 记录开始时间
     local start_ts
@@ -470,6 +583,12 @@ run_phase() {
     local duration=$(( (end_ts - start_ts) / 60 ))
     echo "phase${phase_num}_done=$(TZ=Asia/Shanghai date '+%H:%M') (${duration}分钟)" >> "$PROGRESS_FILE"
     log PHASE "阶段 ${phase_num} 完成，耗时 ${duration} 分钟"
+
+    # 评分卡: 记录本阶段的修复/问题/测试状态
+    generate_phase_scorecard "$phase_num" "$phase_name" "$run_log"
+
+    # 变更量检查: 单阶段改太多文件则告警
+    check_change_volume "$phase_num" "$phase_name"
 
     # 估算花费（粗略，用阶段预算作为上限）
     TOTAL_SPENT=$(awk "BEGIN {print $TOTAL_SPENT + ${BUDGET_PER_PHASE:-3}}")
