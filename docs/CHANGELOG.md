@@ -5,6 +5,44 @@
 
 ---
 
+## [2026-04-12] 全量审计完结: 全部遗留任务清零
+
+> 领域: `backend`, `deploy`, `infra`, `docs`
+> 影响模块: `api/server.py`, `kiro-gateway/Dockerfile`, `docker-compose`, `systemd`, `CI`, `HEALTH.md`
+> 关联问题: HI-484, HI-485, HI-490, HI-491
+
+### 变更内容
+
+**安全加固**
+- HI-490: FastAPI 新增 `RateLimitMiddleware` — 基于 IP 滑动窗口，60次/分钟，超限返回 429 + Retry-After
+- HI-491: `RequestSizeLimitMiddleware` 修复 chunked 传输绕过 — 流式读取计数，超 10MB 立即返回 413
+
+**运维加固**
+- kiro-gateway Dockerfile 改为多阶段构建 — builder 安装依赖 → runtime 只复制产物，非 root 用户 + HEALTHCHECK
+- Docker Compose 新增 `clawbot-internal` 内部网络，Redis 仅内部可达
+- New-API 镜像从 `latest` 固定为 `v0.12.6`
+- CI Python 版本矩阵 `[3.9, 3.11, 3.12]` → `[3.11, 3.12]`
+- failover service `User=root` → `User=clawbot`，systemctl 操作改用 sudoers 精准授权
+
+**文档治理**
+- HI-484 确认已修复（`.gitignore` 已从 `lib/` 改为 `/lib/`）
+- HI-482/483 标记关闭（venv 已建立 / 配置已清理）
+- HI-485 全量审计标记完成（Phase 1-10 全部完结）
+- HI-490/491 标记已修复
+- HEALTH.md 活跃问题归零（🟠 重要仅剩 HI-388 待上游修复的 diskcache CVE）
+
+### 文件变更
+- `packages/clawbot/src/api/server.py` — 新增 RateLimitMiddleware + 修复 RequestSizeLimitMiddleware chunked 绕过
+- `packages/clawbot/kiro-gateway/Dockerfile` — 多阶段构建重写
+- `docker-compose.yml` — 新增 clawbot-internal 网络
+- `docker-compose.newapi.yml` — 镜像版本固定 v0.12.6
+- `packages/clawbot/.github/workflows/ci.yml` — Python 矩阵统一
+- `packages/clawbot/scripts/systemd/clawbot-failover.service` — 降权为 clawbot 用户
+- `packages/clawbot/scripts/systemd/vps_failover_check.sh` — systemctl 操作加 sudo
+- `docs/status/HEALTH.md` — 6 条 HI 状态更新
+
+---
+
 ## [2026-04-12] 运维配置修复: CI版本矩阵 + Docker网络隔离 + 镜像版本固定
 
 > 领域: `infra`, `deploy`
