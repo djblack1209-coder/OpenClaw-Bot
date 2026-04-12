@@ -4,6 +4,62 @@
 
 ---
 
+## [2026-04-12 15:00] 全量审计 Phase 7-9 完成 — 安全加固 + 运维修复 + 文档治理
+
+### 本次完成了什么
+
+**回归验证**
+- pytest: 1132 passed / 1 env-dep (curl_cffi版本) / 2 skipped
+- TypeScript: 零错误
+- Rust cargo check: 零警告
+- 创建了 `packages/clawbot/.venv` Python 3.12 虚拟环境用于测试
+
+**安全审计 (Phase 7)**
+- 全量扫描 263 个 Python 文件，无 Critical 问题
+- 修复: PIN 验证 `==` → `hmac.compare_digest()` 防时序攻击
+- 修复: kiro-gateway `.env.example` 示例密码清空
+- 确认: 无硬编码密钥、无 eval/exec、无 shell=True、SQL 参数化、CORS 限制正确
+
+**运维审计 (Phase 8)**
+- Docker/CI/CD/systemd 配置良好
+- 修复: 心跳 plist 硬编码 VPS IP → 必填环境变量
+- 修复: stamina 版本约束 `~=2.0.0`(不存在) → `>=24.1.0,<26`(CalVer)
+- 记录: failover 以 root 运行、Redis 密码在进程参数中等低优先级改进
+
+**macOS APP 验证 (Phase 9)**
+- OpenClaw.app v0.0.7 存在于 /Applications/，arm64 原生编译
+- 有 Release DMG (7.8MB) 和 Universal DMG (4.7MB)
+- 代码签名有警告但不影响本地使用
+
+**文档治理**
+- MODULE_REGISTRY: 补全 26 个子模块，217 → 243
+- COMMAND_REGISTRY: 数量 96 → 98 统一
+- HEALTH.md: 新增 HI-486 ~ HI-491 共 6 条
+- CHANGELOG.md: 新增审计条目
+
+### 未完成的工作
+- 🟡 FastAPI 速率限制中间件（HI-490，低风险，默认 localhost）
+- 🟡 RequestSizeLimitMiddleware chunked 传输绕过（HI-491，低风险）
+- 🔵 kiro-gateway Dockerfile 多阶段构建优化
+- 🔵 CI Python 版本矩阵统一（去掉 3.9）
+- 🔵 Docker Compose 网络隔离
+- 🔵 New-API docker 镜像固定版本 tag
+
+### 需要注意的坑
+- `packages/clawbot/.venv` 是本次新建的虚拟环境，已在 .gitignore 中排除
+- stamina 用 CalVer（22.x/23.x/24.x），不是 SemVer（2.x）——requirements.txt 中之前版本约束完全错误
+- 心跳 plist 已改为必填 `DEPLOY_VPS_HOST`，未设置会报错并退出
+
+### 当前系统状态
+- 后端测试: 1132/1135 (1项 curl_cffi 环境依赖, 2项 skip)
+- 前端 tsc: 零错误
+- Rust cargo check: 零警告
+- 安全状态: 无 Critical/High 问题
+- macOS APP: v0.0.7 可用
+- Git: 待提交推送
+
+---
+
 ## [2026-04-12 09:00] 夜间审计系统全自主决策模式 — 已全部提交推送
 
 ### 本次完成了什么
