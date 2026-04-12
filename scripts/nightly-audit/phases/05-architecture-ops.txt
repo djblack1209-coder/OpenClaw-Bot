@@ -75,6 +75,24 @@ H. macOS 桌面入口
 - 检查 Makefile 中是否有桌面端构建目标
 - 如有构建脚本，验证其可用性
 
+I. 实际构建验证
+- 运行 cd apps/openclaw-manager-src && npm run build（验证前端构建产物）
+- 运行 cd apps/openclaw-manager-src/src-tauri && cargo build（验证 Rust 编译）
+- 检查构建产物目录是否正确配置在 .gitignore 中
+- 如构建失败，分析原因并修复
+
+J. 版本号管理
+- 检查 package.json / Cargo.toml / pyproject.toml 中的版本号是否一致
+- 检查 tauri.conf.json 中的应用版本号
+- 检查是否遵循语义化版本规范（SemVer）
+- 检查 Git tag 是否与版本号对应
+
+K. 定时任务专项审计
+- 枚举所有 APScheduler/cron 定时任务
+- 检查执行频率是否合理（不会同时触发大量任务）
+- 检查是否有重叠防护（上一次未完成时下一次不启动）
+- 检查失败时是否有通知/重试机制
+
 【修复规范】
 - 架构变更需要谨慎，大改之前先评估影响范围
 - CI/CD 改动需验证 workflow 语法正确

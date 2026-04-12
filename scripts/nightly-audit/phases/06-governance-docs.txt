@@ -78,7 +78,19 @@ F. 项目全景文档 (PROJECT_MAP.md) 校准
 - 补充新增的模块/功能
 - 确保技术栈描述准确
 
-G. HANDOFF.md — 写入今晚审计总结
+G. 环境变量完整性审计
+- 扫描所有 os.getenv() / os.environ 调用，收集完整的环境变量列表
+- 检查是否存在 .env.example 或环境变量文档
+- 如不存在，创建 .env.example 列出所有必需的环境变量及说明
+- 检查每个环境变量是否有默认值或缺失时的报错提示
+
+H. Git Hooks / Pre-commit 配置审计
+- 检查 .pre-commit-config.yaml 是否存在且配置合理
+- 检查 hooks 是否覆盖: lint / format / type-check / security-scan
+- 检查 hooks 是否与 CI 配置一致（避免本地通过但CI失败）
+- 如配置过时或不完整，更新配置
+
+I. HANDOFF.md — 写入今晚审计总结
 这是最后一个阶段，需要写入完整的今晚审计总结:
 ```markdown
 ## [YYYY-MM-DD HH:MM] 夜间自动审计总结
