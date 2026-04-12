@@ -243,3 +243,41 @@ docling>=2.0.0,<3.0.0
 # 搬运: 16 Alpha 因子库 + LightGBM ML 信号
 # 通过 strategy_engine v3.0 FactorStrategy 调用
 # lightgbm>=4.0.0  # 可选: pip install lightgbm (因子 ML 信号)
+
+# ── 可选依赖: try/except 导入，未安装时自动降级 ──────────────────
+
+# alpaca-py — Alpaca Markets 券商 SDK (src/alpaca_bridge.py)
+alpaca-py>=0.30.0,<1.0.0  # 可选
+
+# dateparser — 自然语言时间解析 (src/execution/life_automation.py)
+dateparser>=1.2.0,<2.0.0  # 可选
+
+# exchange-calendars — 交易日历 (src/trading/market_calendar.py)
+exchange-calendars>=4.5.0,<5.0.0  # 可选
+
+# feedparser — RSS/Atom 订阅解析 (src/news_fetcher.py)
+feedparser>=6.0.0,<7.0.0  # 可选
+
+# humanize — 自然语言格式化 (src/notify_style.py)
+humanize>=4.0.0,<5.0.0  # 可选
+
+# price-parser — 文本价格提取 (src/shopping/price_engine.py)
+price-parser>=0.3.0,<1.0.0  # 可选
+
+# PyPortfolioOpt — 有效前沿投资组合优化 (src/rebalancer.py)
+PyPortfolioOpt>=1.5.0,<2.0.0  # 可选
+
+# quantstats — 投资组合绩效报告 (src/modules/investment/backtester_vbt.py)
+quantstats>=0.0.62,<1.0.0  # 可选
+
+# snownlp — 中文情感分析 (src/social_tools.py)
+snownlp>=0.12.3,<1.0.0  # 可选
+
+# textblob — 英文情感分析 (src/social_tools.py)
+textblob>=0.18.0,<1.0.0  # 可选
+
+# tweepy — Twitter/X API SDK (src/execution/social/x_platform.py)
+tweepy>=4.14.0,<5.0.0  # 可选
+
+# vectorbt — 向量化回测引擎 (src/modules/investment/backtester_vbt.py)
+vectorbt>=0.26.0,<1.0.0  # 可选
