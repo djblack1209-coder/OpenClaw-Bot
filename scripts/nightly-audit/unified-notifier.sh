@@ -246,6 +246,10 @@ try:
     # 去掉思考过程（如果有 <think> 标签）
     import re
     content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+    # 去掉 markdown 代码块标记（AI 有时会包裹在 \`\`\` 里）
+    content = re.sub(r'^\`\`\`[a-z]*\n?', '', content)
+    content = re.sub(r'\n?\`\`\`\s*$', '', content)
+    content = content.strip()
     print(content)
 except Exception as e:
     print(f'ERROR: {e}', file=sys.stderr)
