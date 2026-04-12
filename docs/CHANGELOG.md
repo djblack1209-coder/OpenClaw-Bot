@@ -5,6 +5,23 @@
 
 ---
 
+## [2026-04-12] MODULE_REGISTRY 补全 26 个 HI-358 拆分子模块
+
+> 领域: `docs`
+> 影响模块: `docs/registries/MODULE_REGISTRY.md`
+> 关联问题: HI-358 大文件拆分后 26 个新子模块未注册
+
+### 变更内容
+- MODULE_REGISTRY.md 新增 Section 2.3，按拆分来源分 8 组补录 26 个缺失模块
+- 涵盖: 回测引擎拆分(2) + NLP拆分(2) + 券商拆分(2) + 主动引擎拆分(4) + 进化引擎(2) + 闲鱼(1) + cmd_basic子模块(7) + monitoring子模块(6)
+- 模块总数从 217 → 243，实现 src/ 下所有 .py 文件零遗漏全覆盖
+- 更新文件头部最后更新时间和模块总数
+
+### 文件变更
+- `docs/registries/MODULE_REGISTRY.md` — 新增 92 行注册条目 (Section 2.3)
+
+---
+
 ## [2026-04-12] 安全加固 + 依赖补全 + 空目录清理
 
 > 领域: `backend`, `deploy`
