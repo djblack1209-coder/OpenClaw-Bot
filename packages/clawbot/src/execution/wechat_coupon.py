@@ -17,6 +17,7 @@
 """
 
 import asyncio
+import fcntl
 import json
 import os
 import re
@@ -41,10 +42,7 @@ _http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon")
 # ── 常量 ──────────────────────────────────────────────
 
 # 领券 API 地址
-_COUPON_API = (
-    "https://discount.wxpapp.wechatpay.cn"
-    "/txbbs-mall/coupon/deliveryfreewithdrawalcoupon"
-)
+_COUPON_API = "https://discount.wxpapp.wechatpay.cn/txbbs-mall/coupon/deliveryfreewithdrawalcoupon"
 # 小程序 App ID
 _APP_ID = "wxdb3c0e388702f785"
 # 微信 URL Scheme（打开小程序）
@@ -82,12 +80,14 @@ _NETWORKSETUP = "/usr/sbin/networksetup"
 # mitmdump 完整路径（优先使用 which 查找，降级到常见位置）
 _MITMDUMP = None  # 延迟初始化
 
+
 def _find_mitmdump() -> str:
     """查找 mitmdump 可执行文件的完整路径"""
     global _MITMDUMP
     if _MITMDUMP:
         return _MITMDUMP
     import shutil
+
     path = shutil.which("mitmdump")
     if path:
         _MITMDUMP = path
@@ -102,11 +102,14 @@ def _find_mitmdump() -> str:
             _MITMDUMP = candidate
             return candidate
     return "mitmdump"  # 降级，让后续报错更明确
+
+
 _PERSISTENT_TOKEN_DIR = Path.home() / ".openclaw"
 _PERSISTENT_TOKEN_PATH = _PERSISTENT_TOKEN_DIR / "coupon_token.json"
 
 
 # ── Token 持久化存储 ───────────────────────────────────
+
 
 def save_token_persistent(token: str) -> None:
     """将 token 持久化保存到本地文件（带捕获时间戳）
@@ -276,15 +279,14 @@ async def claim_with_saved_token() -> str:
     # 如果鉴权失败，提示用户刷新 token
     if "鉴权" in result_msg or "登录" in result_msg:
         return (
-            f"{result_msg}\n\n"
-            f"⏰ 当前 token 是 {age_text} 获取的，已过期。\n"
-            f"请用 /coupon 重新获取，或手动提供新 token。"
+            f"{result_msg}\n\n⏰ 当前 token 是 {age_text} 获取的，已过期。\n请用 /coupon 重新获取，或手动提供新 token。"
         )
 
     return f"{result_msg}\n（使用缓存 token，获取于 {age_text}）"
 
 
 # ── 系统代理管理 ──────────────────────────────────────
+
 
 def _set_macos_proxy(enable: bool) -> bool:
     """设置或恢复 macOS 系统 HTTP/HTTPS 代理
@@ -302,27 +304,33 @@ def _set_macos_proxy(enable: bool) -> bool:
         if enable:
             # 设置 HTTP 代理
             subprocess.run(
-                [_NETWORKSETUP, "-setwebproxy", _NETWORK_SERVICE,
-                 "127.0.0.1", str(_PROXY_PORT)],
-                check=True, capture_output=True, timeout=10,
+                [_NETWORKSETUP, "-setwebproxy", _NETWORK_SERVICE, "127.0.0.1", str(_PROXY_PORT)],
+                check=True,
+                capture_output=True,
+                timeout=10,
             )
             # 设置 HTTPS 代理
             subprocess.run(
-                [_NETWORKSETUP, "-setsecurewebproxy", _NETWORK_SERVICE,
-                 "127.0.0.1", str(_PROXY_PORT)],
-                check=True, capture_output=True, timeout=10,
+                [_NETWORKSETUP, "-setsecurewebproxy", _NETWORK_SERVICE, "127.0.0.1", str(_PROXY_PORT)],
+                check=True,
+                capture_output=True,
+                timeout=10,
             )
             logger.info("macOS 系统代理已开启 → 127.0.0.1:%d", _PROXY_PORT)
         else:
             # 关闭 HTTP 代理
             subprocess.run(
                 [_NETWORKSETUP, "-setwebproxystate", _NETWORK_SERVICE, "off"],
-                check=True, capture_output=True, timeout=10,
+                check=True,
+                capture_output=True,
+                timeout=10,
             )
             # 关闭 HTTPS 代理
             subprocess.run(
                 [_NETWORKSETUP, "-setsecurewebproxystate", _NETWORK_SERVICE, "off"],
-                check=True, capture_output=True, timeout=10,
+                check=True,
+                capture_output=True,
+                timeout=10,
             )
             logger.info("macOS 系统代理已恢复直连")
         return True
@@ -332,6 +340,7 @@ def _set_macos_proxy(enable: bool) -> bool:
 
 
 # ── mitmproxy 进程管理 ─────────────────────────────────
+
 
 def _start_mitmdump() -> Optional[subprocess.Popen]:
     """启动 mitmdump 代理进程
@@ -354,9 +363,12 @@ def _start_mitmdump() -> Optional[subprocess.Popen]:
         proc = subprocess.Popen(
             [
                 _find_mitmdump(),
-                "-s", str(_MITM_ADDON),
-                "-p", str(_PROXY_PORT),
-                "--set", "block_global=false",
+                "-s",
+                str(_MITM_ADDON),
+                "-p",
+                str(_PROXY_PORT),
+                "--set",
+                "block_global=false",
                 "--quiet",
             ],
             stdout=subprocess.DEVNULL,
@@ -396,6 +408,7 @@ def _kill_mitmdump(proc: Optional[subprocess.Popen]) -> None:
 
 # ── 小程序窗口管理 ─────────────────────────────────────
 
+
 def _open_mini_program() -> bool:
     """通过 weixin:// URL Scheme 打开笔笔省小程序
 
@@ -405,7 +418,9 @@ def _open_mini_program() -> bool:
     try:
         subprocess.run(
             ["open", _MINI_PROGRAM_URL],
-            check=True, capture_output=True, timeout=10,
+            check=True,
+            capture_output=True,
+            timeout=10,
         )
         logger.info("已通过 URL Scheme 打开笔笔省小程序")
         return True
@@ -419,7 +434,7 @@ def _close_mini_program() -> None:
 
     搜索微信中包含"笔笔省"或"提现"的窗口并关闭。
     """
-    apple_script = '''
+    apple_script = """
     tell application "System Events"
         tell process "WeChat"
             set windowList to every window
@@ -431,11 +446,12 @@ def _close_mini_program() -> None:
             end repeat
         end tell
     end tell
-    '''
+    """
     try:
         subprocess.run(
             ["osascript", "-e", apple_script],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
         logger.debug("已尝试关闭笔笔省小程序窗口")
     except Exception as e:
@@ -443,6 +459,7 @@ def _close_mini_program() -> None:
 
 
 # ── Token 提取 ─────────────────────────────────────────
+
 
 def _extract_token() -> Optional[str]:
     """从 mitm addon 写入的临时文件中提取 session-token
@@ -488,6 +505,7 @@ def _extract_token() -> Optional[str]:
 
 # ── 领券 API 调用 ──────────────────────────────────────
 
+
 async def _claim_coupon(token: str) -> dict:
     """调用微信领券 API
 
@@ -530,6 +548,7 @@ async def _claim_coupon(token: str) -> dict:
 
 # ── 结果解析 ──────────────────────────────────────────
 
+
 def _parse_claim_result(response: dict) -> str:
     """解析领券 API 响应，返回中文结果消息
 
@@ -570,15 +589,32 @@ def _parse_claim_result(response: dict) -> str:
 
 # ── 主编排函数 ─────────────────────────────────────────
 
+
 async def auto_claim_coupon() -> str:
     """自动领券完整流程
 
     编排代理设置、mitmproxy 启动、小程序打开、token 提取、API 调用、
     清理恢复的完整生命周期。支持失败自动重试。
 
+    使用文件锁防止并发执行（历史上出现过 7 个 mitmdump 同时启动的问题）。
+
     Returns:
         中文结果消息，适合直接发送给用户
     """
+    # ── 并发锁：防止多个领券流程同时运行 ──
+    _LOCK_FILE = "/tmp/openclaw_coupon.lock"
+    lock_fd = None
+    try:
+        lock_fd = open(_LOCK_FILE, "w")
+        # 非阻塞方式获取排他锁，拿不到说明已有进程在执行
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        # 获取锁失败 → 另一个领券流程正在运行
+        logger.warning("领券文件锁获取失败，已有领券流程正在进行")
+        if lock_fd:
+            lock_fd.close()
+        return "ℹ️ 领券正在进行中，请稍后"
+
     mitm_proc: Optional[subprocess.Popen] = None
     proxy_was_set = False
 
@@ -655,4 +691,11 @@ async def auto_claim_coupon() -> str:
             await asyncio.to_thread(_set_macos_proxy, False)
         _kill_mitmdump(mitm_proc)
         await asyncio.to_thread(_close_mini_program)
+        # 释放文件锁
+        if lock_fd:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except Exception:
+                pass
         logger.info("领券流程清理完毕")

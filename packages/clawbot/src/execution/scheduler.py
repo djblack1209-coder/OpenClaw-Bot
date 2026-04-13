@@ -2,6 +2,7 @@
 Execution Hub — 调度器
 统一的定时任务调度，替代原 execution_hub 中的 _scheduler_loop
 """
+
 import os
 import time
 import asyncio
@@ -41,9 +42,11 @@ class ExecutionScheduler:
         self._private_notify_func = private_notify_func
         self._running = True
         self._task = asyncio.ensure_future(self._loop())
+
         def _scheduler_done(t):
             if not t.cancelled() and t.exception():
                 logger.warning("[ExecutionScheduler] 循环崩溃: %s", t.exception())
+
         self._task.add_done_callback(_scheduler_done)
         logger.info("[ExecutionScheduler] started")
 
@@ -112,17 +115,18 @@ class ExecutionScheduler:
         if now.tm_wday != 6 or now.tm_hour != 20 or now.tm_min > 0:
             return
         # 防止重复执行
-        if hasattr(self, '_last_strategy_review') and self._last_strategy_review == now.tm_yday:
+        if hasattr(self, "_last_strategy_review") and self._last_strategy_review == now.tm_yday:
             return
         self._last_strategy_review = now.tm_yday
         try:
             from src.execution.life_automation import evaluate_strategy_performance
+
             result = evaluate_strategy_performance()
             if result.get("success") and self._private_notify_func:
                 msg = (
                     f"📊 周度策略评估\n"
                     f"近30天: {result['total_trades']}笔交易\n"
-                    f"胜率: {result['win_rate']*100:.1f}% ({result['wins']}胜/{result['losses']}负)\n"
+                    f"胜率: {result['win_rate'] * 100:.1f}% ({result['wins']}胜/{result['losses']}负)\n"
                     f"累计盈亏: ${result['total_pnl']}\n"
                     f"夏普比率: {result['sharpe']} | 最大回撤: ${result['max_drawdown']}\n"
                     f"💡 {result['suggestion']}"
@@ -138,11 +142,12 @@ class ExecutionScheduler:
         if now.tm_wday != 6 or now.tm_hour != 20 or now.tm_min != 30:
             return
         # 防止重复执行
-        if hasattr(self, '_last_weekly_report') and self._last_weekly_report == now.tm_yday:
+        if hasattr(self, "_last_weekly_report") and self._last_weekly_report == now.tm_yday:
             return
         self._last_weekly_report = now.tm_yday
         try:
             from src.execution.daily_brief import weekly_report
+
             result = await weekly_report()
             if self._private_notify_func and result and len(str(result).strip()) > 20:
                 await self._private_notify_func(result)
@@ -158,13 +163,14 @@ class ExecutionScheduler:
             return
         today = now.strftime("%Y-%m-%d")
         # 防重复：每天只推一次
-        if hasattr(self, '_last_news_date') and self._last_news_date == today:
+        if hasattr(self, "_last_news_date") and self._last_news_date == today:
             return
         if now.hour != news_hour or now.minute > 1:
             return
         self._last_news_date = today
         try:
             from src.news_fetcher import news_fetcher
+
             report = await news_fetcher.generate_morning_report()
             if self._private_notify_func and report and len(report.strip()) > 20:
                 await self._private_notify_func(f"📰 今日科技早报\n\n{report}")
@@ -172,22 +178,34 @@ class ExecutionScheduler:
         except Exception as e:
             logger.debug(f"[Scheduler] 科技早报推送失败: {e}")
 
-    async def _run_daily_coupon(self, now):
-        """每天 08:30 自动领取微信笔笔省提现券"""
-        coupon_hour = safe_int(os.getenv("COUPON_HOUR"), 8)
-        coupon_minute = safe_int(os.getenv("COUPON_MINUTE"), 30)
+    async def _run_daily_coupon(self, _now):
+        """每天自动领取微信笔笔省提现券
+
+        注意：此函数使用北京时间(Asia/Shanghai)判断触发时机，
+        而非调度器主循环的美东时间。因为领券场景在国内，
+        中午需要用外卖优惠券，必须在北京时间早上就完成领取。
+        """
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        # 用北京时间判断，而不是主循环传入的美东时间
+        now_cn = datetime.now(ZoneInfo("Asia/Shanghai"))
+
+        coupon_hour = safe_int(os.getenv("COUPON_HOUR"), 7)  # 默认北京时间 07:00 领券
+        coupon_minute = safe_int(os.getenv("COUPON_MINUTE"), 0)
         coupon_enabled = os.getenv("COUPON_ENABLED", "0").lower() in ("1", "true", "yes", "on")
         if not coupon_enabled:
             return
-        today = now.strftime("%Y-%m-%d")
+        today = now_cn.strftime("%Y-%m-%d")
         # 防重复：每天只领一次
         if self._last_coupon_date == today:
             return
-        if now.hour != coupon_hour or abs(now.minute - coupon_minute) > 1:
+        if now_cn.hour != coupon_hour or abs(now_cn.minute - coupon_minute) > 1:
             return
         self._last_coupon_date = today
         try:
             from src.execution.wechat_coupon import auto_claim_coupon
+
             result = await auto_claim_coupon()
             if self._private_notify_func and result:
                 await self._private_notify_func(f"🎫 每日领券\n\n{result}")
@@ -207,6 +225,7 @@ class ExecutionScheduler:
         # 尊重用户偏好 — 如果用户关闭了每日报告则跳过
         try:
             from src.bot.globals import user_prefs
+
             notify_chat_id = int(os.environ.get("NOTIFY_CHAT_ID", "0"))
             if notify_chat_id and not user_prefs.get(notify_chat_id, "daily_report", True):
                 logger.info("[Scheduler] 用户已关闭每日报告，跳过")
@@ -217,6 +236,7 @@ class ExecutionScheduler:
 
         try:
             from src.execution.daily_brief import generate_daily_brief
+
             monitors = self.monitor_manager._monitors if self.monitor_manager else None
             result = await generate_daily_brief(monitors=monitors)
             self._last_brief_date = today
@@ -237,9 +257,8 @@ class ExecutionScheduler:
             self._last_monitor_ts = ts
             if self._notify_func and result and isinstance(result, list) and len(result) > 0:
                 from src.execution.monitoring import MonitorManager
-                formatted = "\n\n".join(
-                    MonitorManager.format_alert(al) for al in result if al
-                )
+
+                formatted = "\n\n".join(MonitorManager.format_alert(al) for al in result if al)
                 if formatted.strip():
                     await self._notify_func(formatted)
         except Exception as e:
@@ -279,6 +298,7 @@ class ExecutionScheduler:
         """检查并触发到期的提醒 — 每60秒执行一次"""
         try:
             from src.execution.life_automation import fire_due_reminders
+
             fired = fire_due_reminders()
             for reminder in fired:
                 msg = reminder["message"]
@@ -302,7 +322,7 @@ class ExecutionScheduler:
                     except Exception as e:
                         logger.warning(f"[Reminders] 通知发送失败: {e}")
 
-                logger.info(f"[Reminders] 已触发: #{reminder['id']} \"{msg}\"")
+                logger.info(f'[Reminders] 已触发: #{reminder["id"]} "{msg}"')
 
         except Exception as e:
             logger.warning(f"[Reminders] 检查异常: {e}")
@@ -323,14 +343,16 @@ class ExecutionScheduler:
 
         # 防止同一小时重复执行
         check_key = f"{now.strftime('%Y-%m-%d')}_{now.hour}"
-        if hasattr(self, '_last_bill_check') and self._last_bill_check == check_key:
+        if hasattr(self, "_last_bill_check") and self._last_bill_check == check_key:
             return
         self._last_bill_check = check_key
 
         try:
             from src.execution.life_automation import (
-                check_bill_alerts, get_bill_reminders_due,
-                BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+                check_bill_alerts,
+                get_bill_reminders_due,
+                BILL_TYPE_EMOJI,
+                BILL_TYPE_LABEL,
             )
 
             # 低余额告警 (09:00 和 18:00)
@@ -358,6 +380,7 @@ class ExecutionScheduler:
                 # 发布 BILL_DUE 事件
                 try:
                     from src.core.event_bus import get_event_bus, EventType
+
                     bus = get_event_bus()
                     await bus.publish(
                         EventType.BILL_DUE,
@@ -398,8 +421,11 @@ class ExecutionScheduler:
                             logger.warning("[Bill] 查询提醒通知失败: %s", e)
 
             if alerts or (is_morning and reminders):
-                logger.info("[Scheduler] 账单检查: %d个低余额告警, %d个查询提醒",
-                            len(alerts), len(reminders) if is_morning else 0)
+                logger.info(
+                    "[Scheduler] 账单检查: %d个低余额告警, %d个查询提醒",
+                    len(alerts),
+                    len(reminders) if is_morning else 0,
+                )
         except Exception as e:
             logger.debug("[Scheduler] 账单检查异常: %s", e)
 
@@ -407,6 +433,7 @@ class ExecutionScheduler:
         """检查超时未发货的闲鱼订单并提醒"""
         try:
             from src.xianyu.xianyu_context import XianyuContextManager
+
             ctx = XianyuContextManager()
             pending = ctx.get_pending_shipments(hours_threshold=4)
             if not pending:
@@ -415,6 +442,7 @@ class ExecutionScheduler:
                 # 计算等待小时数（ts 是 SQLite datetime 文本格式）
                 try:
                     from datetime import datetime as _dt
+
                     order_time = _dt.strptime(order["ts"], "%Y-%m-%d %H:%M:%S")
                     hours_ago = int((time.time() - order_time.timestamp()) / 3600)
                 except Exception as e:  # noqa: F841
@@ -438,6 +466,7 @@ class ExecutionScheduler:
         self._last_stock_check_ts = ts
         try:
             from src.xianyu.auto_shipper import AutoShipper
+
             low_items = AutoShipper().check_low_stock(threshold=3)
             for item in low_items:
                 iid = item["item_id"]
@@ -465,6 +494,7 @@ class ExecutionScheduler:
         self._last_price_watch_ts = ts
         try:
             from src.execution.life_automation import check_price_watches
+
             triggered = await check_price_watches(
                 notify_func=self._notify_func,
             )
@@ -483,7 +513,7 @@ class ExecutionScheduler:
             return
         # 防止同一天重复执行
         today = now.strftime("%Y-%m-%d")
-        if hasattr(self, '_last_budget_alert_date') and self._last_budget_alert_date == today:
+        if hasattr(self, "_last_budget_alert_date") and self._last_budget_alert_date == today:
             return
         self._last_budget_alert_date = today
 
@@ -493,9 +523,7 @@ class ExecutionScheduler:
 
             # 查询所有设有预算的用户
             with get_conn() as conn:
-                rows = conn.execute(
-                    "SELECT user_id, monthly_budget FROM budgets WHERE monthly_budget > 0"
-                ).fetchall()
+                rows = conn.execute("SELECT user_id, monthly_budget FROM budgets WHERE monthly_budget > 0").fetchall()
 
             if not rows:
                 return
@@ -526,6 +554,7 @@ class ExecutionScheduler:
             return
         try:
             from src.bot.globals import _cleanup_pending_trades
+
             _cleanup_pending_trades()
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
@@ -544,6 +573,7 @@ def _run_daily_db_cleanup():
     # Trading journal: keep 1 year of closed trades
     try:
         from src.trading_journal import journal
+
         deleted = journal.cleanup(days=365)
         if deleted:
             logger.info("[Scheduler] trading journal cleanup: %d rows", deleted)
@@ -553,6 +583,7 @@ def _run_daily_db_cleanup():
     # Feedback store: keep 90 days
     try:
         from src.feedback import get_feedback_store
+
         store = get_feedback_store()
         deleted = store.cleanup(days=90)
         if deleted:
@@ -563,6 +594,7 @@ def _run_daily_db_cleanup():
     # Cost analyzer: keep 30 days (method already exists, just never auto-called)
     try:
         from src.monitoring import cost_analyzer
+
         cost_analyzer.cleanup(days=30)
     except Exception as e:
         logger.debug("[Scheduler] cost analyzer cleanup failed", exc_info=True)
@@ -570,6 +602,7 @@ def _run_daily_db_cleanup():
     # 降价监控 + 账单追踪: 清理过期/已删除数据
     try:
         from src.execution.life_automation import cleanup_stale_watches
+
         result = cleanup_stale_watches(days_triggered=30, days_expired=90)
         total = sum(result.values())
         if total:
@@ -582,6 +615,7 @@ def _run_daily_db_backup():
     """Back up all SQLite databases using the online backup API."""
     try:
         from scripts.backup_databases import backup_all
+
         results = backup_all()
         ok_count = sum(1 for v in results.values() if isinstance(v, str) and v.startswith("OK"))
         skip_count = sum(1 for v in results.values() if isinstance(v, str) and "skipped" in v)
