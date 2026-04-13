@@ -33,6 +33,12 @@ DATE=$(date +%Y-%m-%d)
 PROGRESS_FILE="${LOG_DIR}/${DATE}.progress"
 SUMMARY_FILE="${LOG_DIR}/${DATE}.summary"
 TOTAL_SPENT=0
+# === 补跑模式标记（审计被系统延迟触发时自动启用）===
+FORCE_RUN=false
+# 补跑模式最大允许运行时长（分钟）
+FORCE_RUN_MAX_MINUTES=120
+# 补跑模式开始时间戳（用于计算已用时间）
+FORCE_RUN_START_TS=""
 # === 多项目隔离: 用项目目录的哈希值区分不同项目的锁 ===
 PROJECT_HASH=$(echo "${PROJECT_DIR:-$(pwd)}" | md5sum 2>/dev/null | cut -c1-8 || echo "${PROJECT_DIR:-$(pwd)}" | md5 -q 2>/dev/null | cut -c1-8 || echo "default")
 LOCK_DIR="/tmp/openclaw-nightly-audit-${PROJECT_HASH}.lock"
@@ -270,7 +276,21 @@ get_cst_minute() {
 }
 
 # 计算距离 END_HOUR_CST 还剩多少分钟
+# 补跑模式下：返回补跑剩余时间（最多 FORCE_RUN_MAX_MINUTES 分钟）
 get_remaining_minutes() {
+    # 补跑模式：按启动时间计算剩余时长，不看时钟
+    if [[ "$FORCE_RUN" == "true" && -n "$FORCE_RUN_START_TS" ]]; then
+        local now_ts
+        now_ts=$(date +%s)
+        local elapsed_minutes=$(( (now_ts - FORCE_RUN_START_TS) / 60 ))
+        local remaining=$(( FORCE_RUN_MAX_MINUTES - elapsed_minutes ))
+        if [[ $remaining -lt 0 ]]; then
+            remaining=0
+        fi
+        echo "$remaining"
+        return
+    fi
+
     local hour
     hour=$(get_cst_hour)
     local minute
@@ -291,9 +311,21 @@ get_remaining_minutes() {
 }
 
 # 检查是否还有足够时间运行下一个阶段
+# 补跑模式下：只要补跑时间没用完就放行
 check_time_ok() {
     local remaining
     remaining=$(get_remaining_minutes)
+
+    # 补跑模式下，剩余时间由补跑计时器决定
+    if [[ "$FORCE_RUN" == "true" ]]; then
+        if [[ $remaining -le 0 ]]; then
+            log WARN "补跑模式：${FORCE_RUN_MAX_MINUTES} 分钟补跑时间已用完，停止调度"
+            return 1
+        fi
+        log INFO "补跑模式：剩余补跑时间 ${remaining} 分钟"
+        return 0
+    fi
+
     if [[ $remaining -lt ${MIN_REMAINING_MINUTES:-30} ]]; then
         log WARN "剩余时间不足 ${MIN_REMAINING_MINUTES:-30} 分钟（剩余 ${remaining} 分钟），停止调度"
         return 1
@@ -941,6 +973,38 @@ main() {
     echo "# 夜间审计进度 — ${DATE}" > "$PROGRESS_FILE"
     echo "start=$(TZ=Asia/Shanghai date '+%H:%M')" >> "$PROGRESS_FILE"
     echo "mode=$(if $DRY_RUN; then echo 'dry-run'; else echo 'live'; fi)" >> "$PROGRESS_FILE"
+
+    # === 补跑模式检测 ===
+    # 如果当前时间已超过 END_HOUR_CST（正常审计窗口已过），
+    # 但今天还没有完成任何审计阶段，说明审计被系统延迟了（如 macOS provenance 拦截）
+    # 此时启用补跑模式，允许最多运行 FORCE_RUN_MAX_MINUTES 分钟
+    local normal_remaining
+    normal_remaining=$(get_remaining_minutes)
+    if [[ $normal_remaining -eq 0 ]]; then
+        # 检查今天是否已经有完成的阶段
+        local has_completed_phase=false
+        if [[ -f "$PROGRESS_FILE" ]]; then
+            for _p in $(seq 1 "${TOTAL_PHASES:-8}"); do
+                if grep -q "phase${_p}_done=" "$PROGRESS_FILE" 2>/dev/null; then
+                    has_completed_phase=true
+                    break
+                fi
+            done
+        fi
+
+        if [[ "$has_completed_phase" == "false" ]]; then
+            FORCE_RUN=true
+            FORCE_RUN_START_TS=$(date +%s)
+            echo "force_run=true" >> "$PROGRESS_FILE"
+            echo "force_run_reason=审计被延迟触发，当前已超过正常窗口(CST ${END_HOUR_CST}:00)" >> "$PROGRESS_FILE"
+            log WARN "========================================="
+            log WARN " ⚠️ 补跑模式启用"
+            log WARN " 原因: 审计被延迟触发，当前中国时间已超过 ${END_HOUR_CST}:00"
+            log WARN " 今日尚无任何审计阶段完成，自动进入补跑模式"
+            log WARN " 补跑时间上限: ${FORCE_RUN_MAX_MINUTES} 分钟"
+            log WARN "========================================="
+        fi
+    fi
 
     # 切换到项目目录
     cd "$PROJECT_DIR"
