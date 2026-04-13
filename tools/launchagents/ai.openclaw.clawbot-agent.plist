@@ -28,11 +28,12 @@
   <key>ThrottleInterval</key>
   <integer>10</integer>
 
+  <!-- 日志路径必须在 ~/Library/Logs/ 下：macOS 26+ Sandbox 策略禁止 xpcproxy 读取带 provenance 属性的项目目录下的文件 -->
   <key>StandardOutPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/com-clawbot-agent.stdout.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/clawbot-agent.stdout.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/com-clawbot-agent.stderr.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/clawbot-agent.stderr.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

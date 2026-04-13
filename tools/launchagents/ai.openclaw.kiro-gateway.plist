@@ -5,12 +5,12 @@
   <key>Label</key>
   <string>ai.openclaw.kiro-gateway</string>
 
-  <!-- 用 /bin/bash -c exec 间接调用：绕过 macOS provenance 安全检查（com.apple.provenance 扩展属性导致 launchd 直接执行带标记文件时返回 exit 78） -->
+  <!-- 内联启动命令：macOS 26+ Sandbox 策略禁止 bash 读取带 provenance 属性的脚本文件，必须把命令内联到 -c 参数中 -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>exec /bin/bash "/Users/blackdj/Desktop/OpenClaw Bot/tools/launchagents/kiro-gateway-launcher.sh"</string>
+    <string>cd "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway" &amp;&amp; exec "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway/.venv/bin/python" "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway/main.py" --host 127.0.0.1 --port 18793</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -25,11 +25,12 @@
   <key>ThrottleInterval</key>
   <integer>15</integer>
 
+  <!-- 日志路径必须在 ~/Library/Logs/ 下：macOS 26+ Sandbox 策略禁止 xpcproxy 读取带 provenance 属性的项目目录下的文件 -->
   <key>StandardOutPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/com-clawbot-kiro-gateway.stdout.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/kiro-gateway.stdout.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/com-clawbot-kiro-gateway.stderr.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/kiro-gateway.stderr.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>
