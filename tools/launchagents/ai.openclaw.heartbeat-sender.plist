@@ -15,14 +15,15 @@
 set -euo pipefail
 VPS_HOST="${DEPLOY_VPS_HOST:?请设置 DEPLOY_VPS_HOST 环境变量}"
 VPS_USER="${DEPLOY_VPS_USER:-openclaw}"
+VPS_PORT="${DEPLOY_VPS_PORT:-29222}"
 VPS_HEARTBEAT_PATH="/opt/openclaw/data/primary_heartbeat"
 LOG_TAG="clawbot-heartbeat"
 SSH_TIMEOUT=5
 BOT_PROCESS_PATTERN="multi_main.py"
 
-log() { logger -t "$LOG_TAG" "$1" 2>/dev/null || echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; logger -t "$LOG_TAG" "$1" 2&gt;/dev/null || true; }
 
-if ! pgrep -f "$BOT_PROCESS_PATTERN" > /dev/null 2>&amp;1; then
+if ! pgrep -f "$BOT_PROCESS_PATTERN" &gt; /dev/null 2&gt;&amp;1; then
     log "Bot 进程未运行 (未找到 $BOT_PROCESS_PATTERN)，跳过心跳发送"
     exit 0
 fi
@@ -33,8 +34,9 @@ HEARTBEAT_CONTENT="bot_alive|${TIMESTAMP}"
 if ssh -o "ConnectTimeout=${SSH_TIMEOUT}" \
        -o "StrictHostKeyChecking=accept-new" \
        -o "BatchMode=yes" \
+       -p "${VPS_PORT}" \
        "${VPS_USER}@${VPS_HOST}" \
-       "echo '${HEARTBEAT_CONTENT}' > ${VPS_HEARTBEAT_PATH}" 2>/dev/null; then
+       "echo '${HEARTBEAT_CONTENT}' &gt; ${VPS_HEARTBEAT_PATH}" 2&gt;/dev/null; then
     log "心跳已发送 (Bot PID: $(pgrep -f "$BOT_PROCESS_PATTERN" | head -1))"
 else
     log "心跳发送失败 (SSH 连接超时或拒绝)"
@@ -42,16 +44,32 @@ fi
     </string>
   </array>
 
+  <!-- 环境变量 — launchd 不继承 shell 环境，必须在此显式配置 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/blackdj</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>DEPLOY_VPS_HOST</key>
+    <string>101.43.41.96</string>
+    <key>DEPLOY_VPS_USER</key>
+    <string>openclaw</string>
+    <key>DEPLOY_VPS_PORT</key>
+    <string>29222</string>
+  </dict>
+
   <key>RunAtLoad</key>
   <true/>
 
   <key>StartInterval</key>
   <integer>60</integer>
 
+  <!-- 日志路径必须在 ~/Library/Logs/ 下：macOS 26+ Sandbox 策略禁止 xpcproxy 读写带 provenance 属性的项目目录文件 -->
   <key>StandardOutPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/heartbeat-sender.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/heartbeat-sender.stdout.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/logs/heartbeat-sender.log</string>
+  <string>/Users/blackdj/Library/Logs/OpenClaw/heartbeat-sender.stderr.log</string>
 </dict>
 </plist>
