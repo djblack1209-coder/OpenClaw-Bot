@@ -5,6 +5,41 @@
 
 ---
 
+---
+
+## [2026-04-13] HI-495/496/497 三系统修复 — LLM路由+心跳+IBKR日志降频
+
+> 领域: `ai-pool`, `infra`, `trading`
+> 影响模块: `litellm_router.py`, `_scheduler_daily.py`, `heartbeat-sender`
+> 关联问题: HI-495, HI-496, HI-497
+
+### 变更内容
+
+**HI-495 LLM 路由诊断与修复**
+- 对全部 16 个 provider 进行真实 API 调用测试（curl），实际可用 6 个（Groq/Cerebras/Mistral/Cohere/NVIDIA/SF付费），而非之前审计的 3 个
+- g4f 兜底修复：从硬编码 `"dummy"` 改为读取 `G4F_API_KEY` 环境变量。g4f 服务端已配置 `--g4f-api-key dummy`，代码需对齐
+- 确认 SF 免费 key 余额耗尽(403)、OpenRouter 上游限速(429)、Gemini 服务不可用(503)、iflow token 过期(439)、Volcengine 模型未激活(404)、GPT_API_Free key 失效(401)、Kiro key 无效(401) 均为平台侧问题，代码逻辑正确
+- LiteLLM Router 的 AuthenticationErrorRetries=0 + consecutive_errors>=5 自动禁用机制已能正确处理失效 provider
+
+**HI-496 心跳系统恢复**
+- 确认 HI-492 LaunchAgent 修复后心跳进程已自动恢复（PID 41288），日志显示 16:44 起成功发送
+- SSH 间歇性超时为本地网络问题，非代码缺陷
+
+**HI-497 IBKR 健康检查日志降频**
+- `_ibkr_health_check` 新增 `_ibkr_health_fail_count` 计数器
+- 日志降频：第1次 + 每10次(≈30分钟) 打 WARNING，其余 DEBUG（原来每3分钟无差别 WARNING+ERROR）
+- 重连成功后打 INFO 汇报「断连共N轮」，计数器归零
+- 连接恢复后打 INFO 汇报「曾断连N轮」
+- 健康检查间隔从硬编码 3 分钟改为 `IBKR_HEALTH_CHECK_INTERVAL_MIN` 环境变量可配置
+
+### 文件变更
+- `packages/clawbot/src/litellm_router.py` — g4f API Key 从环境变量读取
+- `packages/clawbot/src/trading/_scheduler_daily.py` — IBKR 健康检查日志降频 + 间隔可配置
+- `docs/status/HEALTH.md` — HI-495/496/497 标记已修复
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-04-13] 深度功能审计 + 6项修复 — LaunchAgent/领券/审计/多项问题发现
 
 > 领域: `infra`, `backend`, `ai-pool`, `trading`
