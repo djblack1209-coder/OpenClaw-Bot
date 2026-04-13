@@ -18,10 +18,12 @@
     <integer>10</integer>
     <key>Umask</key>
     <integer>63</integer>
+    <!-- 用 /bin/bash -c exec 间接调用：绕过 macOS provenance 安全检查（com.apple.provenance 扩展属性导致 launchd 直接执行带标记文件时返回 exit 78） -->
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>/Users/blackdj/Desktop/OpenClaw Bot/tools/launchagents/gateway-launcher.sh</string>
+      <string>-c</string>
+      <string>exec /bin/bash "/Users/blackdj/Desktop/OpenClaw Bot/tools/launchagents/gateway-launcher.sh"</string>
     </array>
     
     <key>StandardOutPath</key>

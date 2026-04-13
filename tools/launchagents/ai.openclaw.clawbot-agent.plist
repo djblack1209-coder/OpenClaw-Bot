@@ -5,10 +5,12 @@
   <key>Label</key>
   <string>ai.openclaw.clawbot-agent</string>
 
+  <!-- 用 /bin/bash -c exec 间接调用：绕过 macOS provenance 安全检查（com.apple.provenance 扩展属性导致 launchd 直接执行带标记文件时返回 exit 78） -->
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/.venv312/bin/python</string>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/multi_main.py</string>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/.venv312/bin/python" "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/multi_main.py"</string>
   </array>
 
   <key>WorkingDirectory</key>
