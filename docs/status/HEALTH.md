@@ -129,9 +129,9 @@
 | HI-492 | `infra` | `launchagents/*` | macOS 26.4 Sandbox System Policy 阻止 launchd 读取 ~/Desktop/ 路径下的文件，导致所有 6 个 LaunchAgent 启动失败(exit 78/126) → **已修复 2026-04-13**: ProgramArguments 改为 `/bin/bash -c exec` 间接调用 + 日志路径迁移到 `~/Library/Logs/OpenClaw/` + plist 改为真实文件(非符号链接) | 2026-04-13 |
 | HI-493 | `backend` | `scheduler.py` | 笔笔省领券定时任务使用美东时间 08:30(=北京20:30)，导致中午外卖无券可用；且 auto_claim_coupon 无并发锁，曾出现 7 个 mitmdump 同时启动 → **已修复 2026-04-13**: 改为北京时间 07:00 + fcntl.flock 文件锁 | 2026-04-13 |
 | HI-494 | `infra` | `run-audit.sh` | 夜间审计被 macOS 延迟触发后，get_remaining_minutes() 算出剩余0分钟直接跳过全部8阶段，产生空报告 → **已修复 2026-04-13**: 新增补跑模式，检测到错过窗口时允许执行120分钟 | 2026-04-13 |
-| HI-495 | `ai-pool` | `litellm_router.py` | LLM 路由 122 部署中仅 3/14 provider 可用(Groq/Cerebras/Mistral)，SiliconFlow全军覆没(auth_error)、OpenRouter额度耗尽(429)、Gemini/NVIDIA模型名过时、Cohere/iflow/gpt_free/kiro/volcengine 认证或服务异常 | 2026-04-13 |
-| HI-496 | `infra` | `heartbeat-sender` | 心跳发送进程停摆 6 天(自4月7日)，launchd agent 已注册但未活跃，VPS failover 无法检测主节点存活 | 2026-04-13 |
-| HI-497 | `trading` | `broker_bridge.py` | IBKR Gateway 未运行(127.0.0.1:4002 连接拒绝)，IBKR_START_CMD 被白名单拦截无法自动启动，交易调度器每3分钟重连失败造成日志洪泛 | 2026-04-13 |
+| ~~HI-495~~ | ~~`ai-pool`~~ | ~~`litellm_router.py`~~ | ~~LLM 路由 122 部署中仅 3/14 provider 可用(Groq/Cerebras/Mistral)，SiliconFlow全军覆没(auth_error)、OpenRouter额度耗尽(429)、Gemini/NVIDIA模型名过时、Cohere/iflow/gpt_free/kiro/volcengine 认证或服务异常~~ → **已诊断并修复 2026-04-13**: 重新测试后确认 6/16 正常(含 SF 付费/NVIDIA/Cohere)。g4f 改为读取 G4F_API_KEY。SF 免费/Gemini/iflow/Volc/GPT_API_Free/Kiro 等均为平台侧余额耗尽、模型下线或 token 过期，代码本身逻辑正确。 | 2026-04-13 |
+| ~~HI-496~~ | ~~`infra`~~ | ~~`heartbeat-sender`~~ | ~~心跳发送进程停摆 6 天(自4月7日)，launchd agent 已注册但未活跃，VPS failover 无法检测主节点存活~~ → **已修复 2026-04-13**: HI-492 解决后心跳进程已自动恢复运行（PID 存活），日志显示成功发送心跳；因本地网络问题导致间歇性 SSH 失败，进程机制正常。 | 2026-04-13 |
+| ~~HI-497~~ | ~~`trading`~~ | ~~`_scheduler_daily.py`~~ | ~~IBKR Gateway 未运行(127.0.0.1:4002 连接拒绝)，IBKR_START_CMD 被白名单拦截无法自动启动，交易调度器每3分钟重连失败造成日志洪泛~~ → **已修复 2026-04-13**: 为 `_ibkr_health_check` 引入 `_ibkr_health_fail_count`，将无脑 3 分钟一刷的错误日志降频为第 1 次及每 10 次(约30分钟)提示，并将检测间隔通过 `IBKR_HEALTH_CHECK_INTERVAL_MIN` 暴露为可配置。 | 2026-04-13 |
 
 ### 🔵 低优先
 

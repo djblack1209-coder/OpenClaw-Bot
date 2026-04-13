@@ -634,12 +634,14 @@ class LiteLLMPool:
 
         # g4f 兜底（降级为 TIER_C，仅作最后手段）
         # 2026-04: g4f 响应较慢(30-90s)，超时设为 90s 防止误判不可用
+        # 2026-04-13: g4f 服务端现在要求 API Key 认证，从环境变量读取
         g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
+        g4f_key = _env("G4F_API_KEY", "dummy")
         deps.append(
             self._dep(
                 "g4f",
                 "openai/auto",
-                "dummy",
+                g4f_key,
                 g4f_base,
                 tier=TIER_C,
                 family="g4f",

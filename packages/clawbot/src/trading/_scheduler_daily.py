@@ -2,6 +2,7 @@
 Trading — 每日/周度定时任务 + Scheduler 配置
 风控重置、收盘复盘、行情刷新、再平衡检查、资金同步、周利润守卫、IBKR 健康检查、调度器启动
 """
+
 import json
 import logging
 from datetime import time, timedelta
@@ -26,6 +27,7 @@ async def _daily_risk_reset():
     # 同时重置 IBKR 预算追踪
     try:
         from src.broker_selector import ibkr as _ibkr
+
         _ibkr.reset_budget()
         logger.info("[Scheduler] IBKR预算已重置")
     except Exception as e:
@@ -44,6 +46,7 @@ async def _eod_auto_review():
     if _ts._auto_trader and _ts._auto_trader.notify:
         try:
             from src.trading_journal import journal as tj
+
             # 生成每日盈亏报告
             today_pnl = tj.get_today_pnl()
             perf = tj.format_performance(days=1)
@@ -64,24 +67,22 @@ async def _eod_auto_review():
                 logger.debug("[Scheduler] 预测验证失败: %s", e)
 
             lines = ["-- 每日自动复盘 --\n"]
-            lines.append("今日盈亏: $%.2f (%d笔交易)" % (
-                today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
+            lines.append("今日盈亏: $%.2f (%d笔交易)" % (today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
 
             if closed:
                 lines.append("\n已平仓:")
                 for t in closed:
                     sign = "+" if t.get("pnl", 0) >= 0 else ""
-                    lines.append("  %s %s %s$%.2f" % (
-                        t.get("side", "?"), t.get("symbol", "?"),
-                        sign, abs(t.get("pnl", 0))))
+                    lines.append(
+                        "  %s %s %s$%.2f" % (t.get("side", "?"), t.get("symbol", "?"), sign, abs(t.get("pnl", 0)))
+                    )
 
             if open_trades:
                 lines.append("\n持仓中: %d笔" % len(open_trades))
                 for t in open_trades:
-                    lines.append("  %s x%s 入场$%s" % (
-                        t.get("symbol", "?"),
-                        t.get("quantity", "?"),
-                        t.get("entry_price", "?")))
+                    lines.append(
+                        "  %s x%s 入场$%s" % (t.get("symbol", "?"), t.get("quantity", "?"), t.get("entry_price", "?"))
+                    )
 
             lines.append("\n" + perf)
             lines.append("\n系统将在明日开盘自动继续交易。")
@@ -90,11 +91,15 @@ async def _eod_auto_review():
             # EventBus: 广播每日复盘数据
             try:
                 from src.core.event_bus import get_event_bus
+
                 bus = get_event_bus()
                 if bus:
-                    await bus.publish("trade.daily_review", {
-                        "summary": "\n".join(lines),
-                    })
+                    await bus.publish(
+                        "trade.daily_review",
+                        {
+                            "summary": "\n".join(lines),
+                        },
+                    )
             except Exception as e:
                 logger.debug("静默异常: %s", e)
         except Exception as e:
@@ -123,14 +128,13 @@ async def _daily_rebalance_check():
     if _ts._rebalancer and _ts._rebalancer.get_targets() and _ts._auto_trader and _ts._auto_trader.notify:
         try:
             from src.invest_tools import portfolio
+
             positions = portfolio.get_positions()
             cash = portfolio.get_cash()
             quotes = _ts._quote_cache.get_all() if _ts._quote_cache else {}
             plan = _ts._rebalancer.analyze(positions, quotes, cash)
             if not plan.is_balanced and plan.trades_needed:
-                await _ts._auto_trader._safe_notify(
-                    "每日再平衡检查\n\n" + plan.format()
-                )
+                await _ts._auto_trader._safe_notify("每日再平衡检查\n\n" + plan.format())
         except Exception as e:
             logger.warning("[Scheduler] 再平衡检查失败: %s", e)
 
@@ -142,6 +146,7 @@ async def _daily_capital_sync():
     if _ts._risk_manager:
         try:
             from src.broker_selector import ibkr as _ibkr
+
             if _ibkr.is_connected():
                 actual = await _ibkr.sync_capital()
                 if actual > 0:
@@ -166,10 +171,12 @@ async def _weekly_profit_guard():
         return
 
     from src.utils import now_et
+
     now = now_et()
 
     # 从持久化存储恢复 kill switch 状态
     from src.trading_journal import journal as tj
+
     _saved_ks = tj.get_config("weekly_kill_switch_state")
     if _saved_ks:
         try:
@@ -184,6 +191,7 @@ async def _weekly_profit_guard():
                             await _ts._auto_trader.stop()
                             try:
                                 from src.auto_trader import TraderState
+
                                 _ts._auto_trader.state = TraderState.PAUSED
                             except Exception as e:
                                 logger.debug("[TradingSystem] 异常: %s", e)
@@ -239,17 +247,23 @@ async def _weekly_profit_guard():
 
     _ts._weekly_kill_switch_triggered = True
     # 持久化 kill switch 状态
-    tj.set_config("weekly_kill_switch_state", json.dumps({
-        "triggered": True,
-        "week_key": current_week_start.isoformat(),
-        "week_pnl": week_pnl,
-        "target": target,
-    }))
+    tj.set_config(
+        "weekly_kill_switch_state",
+        json.dumps(
+            {
+                "triggered": True,
+                "week_key": current_week_start.isoformat(),
+                "week_pnl": week_pnl,
+                "target": target,
+            }
+        ),
+    )
 
     if _ts._auto_trader:
         await _ts._auto_trader.stop()
         try:
             from src.auto_trader import TraderState
+
             _ts._auto_trader.state = TraderState.PAUSED
         except Exception as e:
             logger.error("[Scheduler] 设置 AutoTrader PAUSED 状态失败: %s", e)
@@ -286,23 +300,42 @@ async def _weekly_profit_guard():
 
 # ============ IBKR 健康检查 ============
 
+# 连续断连计数器 — 用于日志降频和智能退避
+_ibkr_health_fail_count = 0
+
 
 async def _ibkr_health_check():
-    """定期检查 IBKR 连接状态，断连时自动重连"""
+    """定期检查 IBKR 连接状态，断连时自动重连。
+
+    日志降频策略: 第1次打 WARNING，之后每10次(≈30分钟)打一次 WARNING，其余 DEBUG。
+    避免 Gateway 未运行时每3分钟一条 WARNING/ERROR 造成日志洪泛。
+    """
+    global _ibkr_health_fail_count
     try:
         from src.broker_selector import ibkr as _ibkr
+
         if not _ibkr.is_connected():
-            logger.warning("[Scheduler] IBKR断连，尝试重连...")
+            _ibkr_health_fail_count += 1
+            # 降频: 第1次 + 每10次(≈30分钟)打 WARNING，其余 DEBUG
+            if _ibkr_health_fail_count == 1 or _ibkr_health_fail_count % 10 == 0:
+                logger.warning("[Scheduler] IBKR断连，尝试重连（第%d次）...", _ibkr_health_fail_count)
+            else:
+                logger.debug("[Scheduler] IBKR断连，尝试重连（第%d次）...", _ibkr_health_fail_count)
             reconnected = await _ibkr.ensure_connected()
             if reconnected:
-                logger.info("[Scheduler] IBKR重连成功")
-            else:
-                logger.error("[Scheduler] IBKR重连失败")
+                logger.info("[Scheduler] IBKR重连成功（断连共%d轮）", _ibkr_health_fail_count)
+                _ibkr_health_fail_count = 0
+            # 失败不再额外打 ERROR — connect() 方法内部已有降频日志
+        else:
+            if _ibkr_health_fail_count > 0:
+                logger.info("[Scheduler] IBKR连接已恢复（曾断连%d轮）", _ibkr_health_fail_count)
+            _ibkr_health_fail_count = 0
     except Exception as e:
         logger.warning("[Scheduler] IBKR健康检查失败: %s", e)
     # 清理过期的待确认交易
     try:
         from src.bot.globals import _cleanup_pending_trades
+
         _cleanup_pending_trades()
     except Exception as e:
         logger.debug("[Scheduler] 清理待确认交易失败: %s", e)
@@ -322,18 +355,14 @@ async def _setup_scheduler():
 
     try:
         from src.scheduler import Scheduler
+
         _ts._scheduler = Scheduler()
 
-        _ts._scheduler.add_task("daily_risk_reset", _daily_risk_reset,
-                                schedule_time=time(9, 0))
-        _ts._scheduler.add_task("eod_auto_review", _eod_auto_review,
-                                schedule_time=time(16, 5))
-        _ts._scheduler.add_task("quote_refresh", _refresh_quotes,
-                                interval_minutes=5)
-        _ts._scheduler.add_task("daily_rebalance", _daily_rebalance_check,
-                                schedule_time=time(9, 35))
-        _ts._scheduler.add_task("daily_capital_sync", _daily_capital_sync,
-                                schedule_time=time(9, 25))
+        _ts._scheduler.add_task("daily_risk_reset", _daily_risk_reset, schedule_time=time(9, 0))
+        _ts._scheduler.add_task("eod_auto_review", _eod_auto_review, schedule_time=time(16, 5))
+        _ts._scheduler.add_task("quote_refresh", _refresh_quotes, interval_minutes=5)
+        _ts._scheduler.add_task("daily_rebalance", _daily_rebalance_check, schedule_time=time(9, 35))
+        _ts._scheduler.add_task("daily_capital_sync", _daily_capital_sync, schedule_time=time(9, 25))
         _ts._scheduler.add_task(
             "weekly_profit_guard",
             _weekly_profit_guard,
@@ -354,27 +383,33 @@ async def _setup_scheduler():
             _submit_pending_reentry_queue,
             interval_minutes=env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
         )
-        _ts._scheduler.add_task("ibkr_health_check", _ibkr_health_check,
-                                interval_minutes=3)
+        _ts._scheduler.add_task(
+            "ibkr_health_check",
+            _ibkr_health_check,
+            interval_minutes=env_int("IBKR_HEALTH_CHECK_INTERVAL_MIN", 3, minimum=1),
+        )
 
         # 每日成本报告 — 23:00 ET 发送当日 LLM 花费汇总
         async def _cost_daily_report():
             try:
                 from src.core.cost_control import get_cost_controller
                 from src.core.event_bus import get_event_bus
+
                 cc = get_cost_controller()
                 if cc:
                     bus = get_event_bus()
                     if bus:
-                        await bus.publish("system.cost_daily_report", {
-                            "daily_spend": cc.get_daily_spend(),
-                            "report": cc.get_weekly_report() if hasattr(cc, 'get_weekly_report') else {},
-                        })
+                        await bus.publish(
+                            "system.cost_daily_report",
+                            {
+                                "daily_spend": cc.get_daily_spend(),
+                                "report": cc.get_weekly_report() if hasattr(cc, "get_weekly_report") else {},
+                            },
+                        )
             except Exception as e:
                 logger.debug("[Scheduler] 每日成本报告失败: %s", e)
 
-        _ts._scheduler.add_task("cost_daily_report", _cost_daily_report,
-                                schedule_time=time(23, 0))
+        _ts._scheduler.add_task("cost_daily_report", _cost_daily_report, schedule_time=time(23, 0))
 
         _ts._scheduler.start()
         logger.info(
