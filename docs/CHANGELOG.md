@@ -5,6 +5,40 @@
 
 ---
 
+## [2026-04-13] 深度功能审计 + 6项修复 — LaunchAgent/领券/审计/多项问题发现
+
+> 领域: `infra`, `backend`, `ai-pool`, `trading`
+> 影响模块: `launchagents/*`, `scheduler.py`, `wechat_coupon.py`, `run-audit.sh`, `litellm_router.py`, `heartbeat-sender`
+> 关联问题: HI-492~HI-497
+
+### 已修复 (3项)
+
+1. **HI-492 LaunchAgent provenance 拦截**: macOS 26.4 Sandbox Policy 阻止 launchd 读取 ~/Desktop/ 路径。全部 6 个 plist 的 ProgramArguments 改为 `/bin/bash -c exec` 间接调用；日志迁移到 `~/Library/Logs/OpenClaw/`；符号链接替换为真实文件。修复后全部服务恢复运行。
+2. **HI-493 笔笔省领券时区+并发 Bug**: 领券时间从美东 08:30(=北京20:30) 改为北京 07:00；`auto_claim_coupon()` 入口加 `fcntl.flock` 文件锁，防止 7 个 mitmdump 同时启动。
+3. **HI-494 审计补跑模式**: 审计脚本被 macOS 延迟触发后不再生成空报告。新增 `FORCE_RUN` 机制——检测到今日窗口已过但无任何完成阶段时，自动进入补跑模式，允许执行 120 分钟。
+
+### 新发现问题 (3项)
+
+4. **HI-495 LLM 路由大面积失效**: 122 个 deployment 中仅 Groq(6模型)/Cerebras(2模型)/Mistral(3模型) 可用，占 9%。SiliconFlow 免费+付费 Key 全部 auth_error；OpenRouter 额度耗尽；Gemini/NVIDIA 模型名过时。
+5. **HI-496 心跳系统停摆 6 天**: heartbeat-sender 进程自 4/7 起未活跃，VPS failover 无法检测主节点。
+6. **HI-497 IBKR 交易系统断连**: IB Gateway 未运行，Bot 无法与券商通信，现有 $16,040 敞口无法监控。
+
+### 文件变更
+
+- `tools/launchagents/ai.openclaw.clawbot-agent.plist` — bash -c exec 间接调用
+- `tools/launchagents/ai.openclaw.xianyu.plist` — 同上
+- `tools/launchagents/ai.openclaw.gateway.plist` — 同上
+- `tools/launchagents/ai.openclaw.g4f.plist` — 同上
+- `tools/launchagents/ai.openclaw.kiro-gateway.plist` — 同上
+- `~/Library/LaunchAgents/com.openclaw.nightly-audit.plist` — 审计脚本路径修复
+- `packages/clawbot/src/execution/scheduler.py` — 领券时区改为北京时间
+- `packages/clawbot/src/execution/wechat_coupon.py` — 新增 fcntl.flock 并发锁
+- `scripts/nightly-audit/run-audit.sh` — 新增补跑模式
+- `docs/status/HEALTH.md` — 新增 HI-492~HI-497
+- `docs/CHANGELOG.md` — 本条目
+
+---
+
 ## [2026-04-13] 修复 macOS 26.4 LaunchAgent Sandbox 启动失败
 
 > 领域: `infra`
