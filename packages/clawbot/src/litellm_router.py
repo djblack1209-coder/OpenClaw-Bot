@@ -205,6 +205,11 @@ MODEL_RANKING = {
     "nvidia/nemotron-3-super-120b-a12b:free": 90,
     "minimax/minimax-m2.5:free": 88,
     "qwen/qwen3-next-80b-a3b-instruct:free": 85,
+    "qwen/qwen3.5-397b-a17b": 93,  # NVIDIA NIM 最强 Qwen 模型
+    "qwen/qwen3-coder-480b-a35b-instruct": 91,  # NVIDIA NIM Qwen Coder
+    "deepseek-ai/deepseek-v3.2": 91,  # NVIDIA NIM DeepSeek V3.2
+    "doubao-seed-2-0-pro-260215": 91,  # 火山引擎最新旗舰
+    "doubao-seed-1-6-flash-250828": 85,  # 火山引擎快速版
     "gpt-4o": 88,
     "gpt-4o-mini": 78,
     "auto": 65,
@@ -485,12 +490,14 @@ class LiteLLMPool:
             )
 
         # NVIDIA NIM (信用额度制, ~60RPM, 试用额度用完需购买AI Enterprise)
+        # 2026-04 更新: deepseek-r1 已下线→deepseek-v3.2, qwen3-235b 不存在→qwen3.5-397b
         nk = _env("NVIDIA_NIM_API_KEY")
         if nk:
             for m, fam, t in [
                 ("meta/llama-3.3-70b-instruct", "llama", TIER_A),
-                ("deepseek-ai/deepseek-r1", "deepseek", TIER_S),
-                ("qwen/qwen3-235b-a22b-instruct", "qwen", TIER_S),
+                ("deepseek-ai/deepseek-v3.2", "deepseek", TIER_S),  # deepseek-r1 已下线
+                ("qwen/qwen3.5-397b-a17b", "qwen", TIER_S),  # qwen3-235b-a22b-instruct 不存在
+                ("qwen/qwen3-coder-480b-a35b-instruct", "qwen", TIER_S),  # 新增 coder 模型
             ]:
                 deps.append(self._dep("nvidia", f"nvidia_nim/{m}", nk, rpm=60, tier=t, family=fam, note="NVIDIA NIM"))
 
@@ -512,6 +519,7 @@ class LiteLLMPool:
             )  # Reasoning 模型需要极长超时
 
         # iflow 无限 API（硅基流分配，14个顶级模型，无限使用）
+        # ⚠️ iflow Token 有效期仅 7 天，过期需去 https://platform.iflow.cn/docs/api-key-management 重置
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
         iflow_base = _env("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
         if iflow_key:
@@ -587,21 +595,28 @@ class LiteLLMPool:
                     )
 
         # Volcengine 火山引擎
+        # 2026-04: doubao-pro-256k 已下线(Shutdown)，需在 Ark Console 激活新模型后再启用
+        # 可用候选: doubao-seed-2-0-pro-260215, doubao-seed-1-6-251015, deepseek-v3-2-251201
+        # ⚠️ 当前账号未激活任何新模型，暂时配置最新可用版本，用户需去 Ark Console 激活
         vk = _env("VOLCENGINE_API_KEY")
         vb = _env("VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
         if vk:
-            deps.append(
-                self._dep(
-                    "volcengine",
-                    "openai/doubao-pro-256k",
-                    vk,
-                    vb,
-                    rpm=10,
-                    tier=TIER_A,
-                    family="doubao",
-                    note="Volcengine",
+            for m, fam, t in [
+                ("doubao-seed-2-0-pro-260215", "doubao", TIER_S),  # 最新旗舰
+                ("doubao-seed-1-6-flash-250828", "doubao", TIER_A),  # 快速版
+            ]:
+                deps.append(
+                    self._dep(
+                        "volcengine",
+                        f"openai/{m}",
+                        vk,
+                        vb,
+                        rpm=10,
+                        tier=t,
+                        family=fam,
+                        note="Volcengine (需 Ark Console 激活)",
+                    )
                 )
-            )
 
         # GPT_API_Free (免费: gpt-5/4o系5次/天, deepseek系30次/天, mini系200次/天)
         gpk = _env("GPT_API_FREE_KEY")
@@ -618,9 +633,20 @@ class LiteLLMPool:
                 )
 
         # g4f 兜底（降级为 TIER_C，仅作最后手段）
+        # 2026-04: g4f 响应较慢(30-90s)，超时设为 90s 防止误判不可用
         g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
         deps.append(
-            self._dep("g4f", "openai/auto", "dummy", g4f_base, tier=TIER_C, family="g4f", note="g4f fallback (TIER_C)")
+            self._dep(
+                "g4f",
+                "openai/auto",
+                "dummy",
+                g4f_base,
+                tier=TIER_C,
+                family="g4f",
+                note="g4f fallback (TIER_C)",
+                timeout=90,
+                stream_timeout=120,
+            )
         )
 
         return deps
