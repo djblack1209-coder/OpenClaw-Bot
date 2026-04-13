@@ -228,6 +228,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 start_cmd = _os.getenv("IBKR_START_CMD", "")
                 if start_cmd and not self._autostart_attempted:
                     # 安全修复: 校验 IBKR_START_CMD 中的可执行文件是否在白名单内
+                    # 支持两种格式:
+                    #   1. 直接调用: "ibgateway" / "start_ibkr_gateway.sh"
+                    #   2. Shell 包装: "bash start_ibkr_gateway.sh" / "sh /path/to/script.sh"
                     _ALLOWED_GATEWAY_CMDS = frozenset(
                         {
                             "ibc",
@@ -238,8 +241,17 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                             "start_ibkr_gateway.sh",
                         }
                     )
+                    _ALLOWED_SHELLS = frozenset({"bash", "sh", "zsh"})
                     cmd_parts = shlex.split(start_cmd)
-                    cmd_basename = _os.path.basename(cmd_parts[0]) if cmd_parts else ""
+                    if not cmd_parts:
+                        cmd_basename = ""
+                    else:
+                        first_basename = _os.path.basename(cmd_parts[0])
+                        # 如果第一个 token 是 shell 解释器，检查第二个 token（实际脚本）
+                        if first_basename in _ALLOWED_SHELLS and len(cmd_parts) > 1:
+                            cmd_basename = _os.path.basename(cmd_parts[1])
+                        else:
+                            cmd_basename = first_basename
                     if not cmd_basename or cmd_basename not in _ALLOWED_GATEWAY_CMDS:
                         # 白名单拦截日志降频：首次和每 10 次打 WARNING，其余 DEBUG
                         self._whitelist_block_count += 1
