@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-13 (修复 macOS 26.4 LaunchAgent Sandbox 启动失败)
+> 最后更新: 2026-04-13 (深度功能审计 + 6项修复 — LaunchAgent/领券/审计/多项问题发现)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -126,6 +126,12 @@
 | ~~HI-490~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~FastAPI 无速率限制中间件~~ → **已修复 2026-04-12**: 新增 `RateLimitMiddleware`，基于 IP 滑动窗口限制 60次/分钟，超限返回 429 + Retry-After | 2026-04-12 |
 | ~~HI-491~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~RequestSizeLimitMiddleware chunked 传输可绕过~~ → **已修复 2026-04-12**: 新增流式读取计数，chunked 传输超 10MB 立即返回 413 | 2026-04-12 |
 | ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
+| HI-492 | `infra` | `launchagents/*` | macOS 26.4 Sandbox System Policy 阻止 launchd 读取 ~/Desktop/ 路径下的文件，导致所有 6 个 LaunchAgent 启动失败(exit 78/126) → **已修复 2026-04-13**: ProgramArguments 改为 `/bin/bash -c exec` 间接调用 + 日志路径迁移到 `~/Library/Logs/OpenClaw/` + plist 改为真实文件(非符号链接) | 2026-04-13 |
+| HI-493 | `backend` | `scheduler.py` | 笔笔省领券定时任务使用美东时间 08:30(=北京20:30)，导致中午外卖无券可用；且 auto_claim_coupon 无并发锁，曾出现 7 个 mitmdump 同时启动 → **已修复 2026-04-13**: 改为北京时间 07:00 + fcntl.flock 文件锁 | 2026-04-13 |
+| HI-494 | `infra` | `run-audit.sh` | 夜间审计被 macOS 延迟触发后，get_remaining_minutes() 算出剩余0分钟直接跳过全部8阶段，产生空报告 → **已修复 2026-04-13**: 新增补跑模式，检测到错过窗口时允许执行120分钟 | 2026-04-13 |
+| HI-495 | `ai-pool` | `litellm_router.py` | LLM 路由 122 部署中仅 3/14 provider 可用(Groq/Cerebras/Mistral)，SiliconFlow全军覆没(auth_error)、OpenRouter额度耗尽(429)、Gemini/NVIDIA模型名过时、Cohere/iflow/gpt_free/kiro/volcengine 认证或服务异常 | 2026-04-13 |
+| HI-496 | `infra` | `heartbeat-sender` | 心跳发送进程停摆 6 天(自4月7日)，launchd agent 已注册但未活跃，VPS failover 无法检测主节点存活 | 2026-04-13 |
+| HI-497 | `trading` | `broker_bridge.py` | IBKR Gateway 未运行(127.0.0.1:4002 连接拒绝)，IBKR_START_CMD 被白名单拦截无法自动启动，交易调度器每3分钟重连失败造成日志洪泛 | 2026-04-13 |
 
 ### 🔵 低优先
 
