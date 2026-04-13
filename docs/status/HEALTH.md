@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-12 (全量审计完结: 全部遗留任务清零 | 速率限制+chunked修复+Docker网络隔离+非root failover+多阶段构建+CI矩阵统一)
+> 最后更新: 2026-04-13 (修复 macOS 26.4 LaunchAgent Sandbox 启动失败)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -80,6 +80,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
+| ~~HI-486~~ | ~~`infra`~~ | ~~`tools/launchagents/*.plist`~~ | ~~macOS 26.4 Sandbox 策略阻止 launchd 子进程读取 ~/Desktop 路径下的文件，6 个 LaunchAgent 全部启动失败 (exit 78/126, 累计失败 1157+ 次)~~ → **已修复 2026-04-13**: ProgramArguments 改为 bash -c exec 间接调用 + 日志路径迁移到 ~/Library/Logs/OpenClaw/ + launcher 脚本命令内联 + 符号链接替换为真实文件。全部 5 个常驻服务恢复正常运行 | 2026-04-13 |
 | ~~HI-484~~ | ~~`infra`~~ | ~~`apps/openclaw-manager-src/src/lib`~~ | ~~根目录 `.gitignore` 使用过宽规则 `lib/`，误伤前端 `src/lib/` 源码目录~~ → **已修复 2026-04-12**: `.gitignore` 中 `lib/` 已改为 `/lib/`（仅匹配根目录），`utils.ts` / `tauri.ts` / `logger.ts` 已正常被 Git 跟踪 | 2026-04-10 |
 | ~~HI-348~~ | ~~`security`~~ | ~~`.openclaw/agents/`~~ | ~~API密钥曾提交到Git历史~~ → **已修复 2026-04-11**: `git filter-repo` 清理敏感文件历史，.git 从 1.3GB 瘦身到 318MB | 2026-03-28 |
 | ~~HI-387~~ | ~~`security`~~ | ~~`config/.env`~~ | ~~50+ 真实密钥曾提交到 Git 历史~~ → **已修复 2026-04-11**: 同上，config/.env 等敏感路径全部从历史中移除。**仍建议轮换密钥** | 2026-04-01 |

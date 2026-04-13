@@ -5,6 +5,30 @@
 
 ---
 
+## [2026-04-13] 修复 macOS 26.4 LaunchAgent Sandbox 启动失败
+
+> 领域: `infra`
+> 影响模块: `tools/launchagents/*.plist`, `com.openclaw.nightly-audit.plist`
+> 关联问题: macOS 26.4 Sandbox System Policy + com.apple.provenance
+
+### 变更内容
+- **根因定位**: macOS 26+ Sandbox 策略禁止 launchd 子进程 (xpcproxy) 读取 `~/Desktop/` 路径下的文件，与 `com.apple.provenance` 属性无直接关系——是路径级别的 Sandbox 保护
+- **ProgramArguments**: 改为 `/bin/bash -c exec` 间接调用，gateway/g4f/kiro-gateway 的 launcher 脚本命令直接内联到 `-c` 参数中
+- **日志路径**: 所有服务的 StandardOutPath/StandardErrorPath 从项目目录迁移到 `~/Library/Logs/OpenClaw/`
+- **符号链接替换**: `~/Library/LaunchAgents/` 下的符号链接替换为真实文件副本（符号链接的目标文件在 Desktop 下也被 Sandbox 拦截）
+- **审计脚本**: `run-audit.sh` 复制到 `~/Library/Scripts/OpenClaw/` 下执行（脚本太长无法内联）
+- **验证结果**: 全部 5 个常驻服务成功启动（PID 存活 + 端口监听），定时任务正常注册
+
+### 文件变更
+- `tools/launchagents/ai.openclaw.clawbot-agent.plist` — bash -c exec + 日志路径迁移
+- `tools/launchagents/ai.openclaw.xianyu.plist` — bash -c exec + 日志路径迁移
+- `tools/launchagents/ai.openclaw.gateway.plist` — 命令内联 + 日志路径迁移
+- `tools/launchagents/ai.openclaw.g4f.plist` — 命令内联 + 移除 WorkingDirectory + 日志路径迁移
+- `tools/launchagents/ai.openclaw.kiro-gateway.plist` — 命令内联 + 日志路径迁移
+- `~/Library/LaunchAgents/com.openclaw.nightly-audit.plist` — 脚本路径改为 ~/Library/Scripts/ + 日志路径迁移
+
+---
+
 ## [2026-04-12] 新闻早报增强: RSS 摘要提取 + 展示
 
 > 领域: `backend`
