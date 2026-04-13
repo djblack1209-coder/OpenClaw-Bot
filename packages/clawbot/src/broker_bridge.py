@@ -72,6 +72,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self._connected_since = 0.0  # 本次连接建立时间
         self._autostart_attempted = False  # 防止重复启动 Gateway
         self._last_notify_state = ""  # 去重：上次通知的连接状态
+        # 连接失败日志降频：避免 IBKR 未运行时 stderr 被重复错误填满
+        self._consecutive_connect_failures: int = 0  # 连续连接失败计数
+        self._whitelist_block_count: int = 0  # 白名单拦截次数计数
 
         # 启动时恢复预算状态
         self._load_budget_state()
@@ -180,6 +183,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     self._reconnect_backoff = 5.0  # 重置退避
                     self._consecutive_pings = 0
                     self._connected_since = _time.time()
+                    # 连接成功，重置失败计数器
+                    if self._consecutive_connect_failures > 0:
+                        logger.info(
+                            "[IBKR] 连接恢复（此前连续失败 %d 次）",
+                            self._consecutive_connect_failures,
+                        )
+                    self._consecutive_connect_failures = 0
                     accounts = self.ib.managedAccounts()
                     logger.info("[IBKR] 连接成功，账户: %s (clientId=%d)", accounts, self.client_id)
 
@@ -188,7 +198,26 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
                     return True
                 except Exception as e:
-                    logger.warning("[IBKR] 连接尝试 %d/%d 失败: %s", attempt, max_retries, e)
+                    # 日志降频：根据连续失败次数决定日志级别
+                    # 第 1 次失败：WARNING 完整信息
+                    # 第 2-5 次：DEBUG 简短信息
+                    # 第 5 次以后：每 5 次打一次 WARNING，其余 DEBUG
+                    fail_count = self._consecutive_connect_failures + attempt
+                    if fail_count <= 1:
+                        logger.warning("[IBKR] 连接尝试 %d/%d 失败: %s", attempt, max_retries, e)
+                    elif fail_count <= 5:
+                        logger.debug("[IBKR] 连接尝试 %d/%d 失败: %s", attempt, max_retries, e)
+                    else:
+                        if fail_count % 5 == 0:
+                            logger.warning(
+                                "[IBKR] 连接尝试 %d/%d 失败（已连续失败 %d 次）: %s",
+                                attempt,
+                                max_retries,
+                                fail_count,
+                                e,
+                            )
+                        else:
+                            logger.debug("[IBKR] 连接尝试 %d/%d 失败: %s", attempt, max_retries, e)
                     if attempt < max_retries:
                         backoff = 2**attempt  # 2s, 4s
                         logger.info("[IBKR] %ds 后重试...", backoff)
@@ -212,7 +241,19 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     cmd_parts = shlex.split(start_cmd)
                     cmd_basename = _os.path.basename(cmd_parts[0]) if cmd_parts else ""
                     if not cmd_basename or cmd_basename not in _ALLOWED_GATEWAY_CMDS:
-                        logger.warning("[IBKR] IBKR_START_CMD 不在白名单中，拒绝执行: %s", start_cmd[:80])
+                        # 白名单拦截日志降频：首次和每 10 次打 WARNING，其余 DEBUG
+                        self._whitelist_block_count += 1
+                        if self._whitelist_block_count == 1 or self._whitelist_block_count % 10 == 0:
+                            logger.warning(
+                                "[IBKR] IBKR_START_CMD 不在白名单中，拒绝执行（第 %d 次拦截）: %s",
+                                self._whitelist_block_count,
+                                start_cmd[:80],
+                            )
+                        else:
+                            logger.debug(
+                                "[IBKR] IBKR_START_CMD 不在白名单中，拒绝执行（第 %d 次拦截）",
+                                self._whitelist_block_count,
+                            )
                     else:
                         self._autostart_attempted = True
                         logger.info("[IBKR] 连接失败，尝试自动启动 Gateway: %s", start_cmd)
@@ -235,7 +276,27 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
             # 增加退避时间（最大 120s）
             self._reconnect_backoff = min(self._reconnect_backoff * 2, 120.0)
-            logger.error("[IBKR] 连接失败（已重试%d次），下次退避%.0fs", max_retries, self._reconnect_backoff)
+            self._consecutive_connect_failures += max_retries
+            # 日志降频：首次失败打 ERROR，后续降为 WARNING/DEBUG
+            if self._consecutive_connect_failures <= max_retries:
+                logger.error(
+                    "[IBKR] 连接失败（已重试%d次），下次退避%.0fs",
+                    max_retries,
+                    self._reconnect_backoff,
+                )
+            elif self._consecutive_connect_failures % 15 == 0:
+                # 每 15 次累计失败打一次 WARNING，提醒用户 Gateway 仍未启动
+                logger.warning(
+                    "[IBKR] 连接持续失败（累计 %d 次），Gateway 可能未运行，退避%.0fs",
+                    self._consecutive_connect_failures,
+                    self._reconnect_backoff,
+                )
+            else:
+                logger.debug(
+                    "[IBKR] 连接失败（累计 %d 次），退避%.0fs",
+                    self._consecutive_connect_failures,
+                    self._reconnect_backoff,
+                )
             self._connected = False
             return False
 
@@ -243,7 +304,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """确保连接，断开则自动重连"""
         if self.ib and self.ib.isConnected():
             return True
-        logger.info("[IBKR] 连接已断开，尝试重连...")
+        # 日志降频：首次断连打 INFO，后续打 DEBUG
+        if self._consecutive_connect_failures == 0:
+            logger.info("[IBKR] 连接已断开，尝试重连...")
+        else:
+            logger.debug("[IBKR] 连接已断开，尝试重连（累计失败 %d 次）...", self._consecutive_connect_failures)
         return await self.connect()
 
     def _start_keepalive(self):
@@ -301,7 +366,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         async def _auto_reconnect():
             await asyncio.sleep(3)  # 等 3s 再重连，避免瞬间抖动
-            logger.info("[IBKR] 自动重连开始...")
+            # 自动重连日志降频：首次打 INFO，后续打 DEBUG
+            if self._consecutive_connect_failures <= 3:
+                logger.info("[IBKR] 自动重连开始...")
+            else:
+                logger.debug("[IBKR] 自动重连开始（累计失败 %d 次）...", self._consecutive_connect_failures)
             success = await self.connect()
             self._total_reconnects += 1
             if success:
@@ -310,7 +379,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     "reconnected", "IBKR 自动重连成功", f"累计重连 {self._total_reconnects} 次"
                 )
             else:
-                logger.error("[IBKR] 自动重连失败，将在下次操作时重试")
+                # 自动重连失败日志降频：首次打 ERROR，后续由 connect() 方法控制
+                if self._consecutive_connect_failures <= 3:
+                    logger.error("[IBKR] 自动重连失败，将在下次操作时重试")
+                else:
+                    logger.debug(
+                        "[IBKR] 自动重连失败（累计 %d 次），将在下次操作时重试", self._consecutive_connect_failures
+                    )
 
         try:
             loop = asyncio.get_running_loop()
