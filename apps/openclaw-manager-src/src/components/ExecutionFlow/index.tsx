@@ -122,21 +122,22 @@ export function ExecutionFlow() {
         let updatedNodes = [...nds];
         let changed = false;
 
-        // 如果出现了新节点，将其加入画布
+        // 如果出现了新节点，将其加入画布（初始放到画布外+透明，等 Dagre 排版后再显示）
         [event.source, event.target].forEach(nodeId => {
           if (nodeId && !seenNodes.current.has(nodeId)) {
             seenNodes.current.add(nodeId);
             changed = true;
             updatedNodes.push({
               id: nodeId,
-              position: { x: 0, y: 0 }, // 先给个假坐标，后面会让 Dagre 自动排版
+              position: { x: -9999, y: -9999 }, // 放到画布外不可见区域，避免排版前闪烁
               data: { label: nodeId.toUpperCase(), lastEvent: null },
               className: 'bg-dark-800 text-white border-dark-500 rounded-lg shadow-lg',
+              style: { opacity: 0 }, // 初始透明，Dagre 排版后会被覆盖为可见
             });
           }
         });
 
-        // 更新节点发光状态与附带数据
+        // 更新节点发光状态与附带数据（同时确保新节点排版后可见）
         updatedNodes = updatedNodes.map(node => {
           const isActive = node.id === event.target || node.id === event.source;
           return {
@@ -147,6 +148,7 @@ export function ExecutionFlow() {
             },
             style: {
               ...node.style,
+              opacity: 1, // 排版后显示节点
               boxShadow: isActive ? '0 0 15px rgba(249, 77, 58, 0.6)' : 'none',
               border: isActive ? '1px solid #f94d3a' : '1px solid #2e2e33'
             }

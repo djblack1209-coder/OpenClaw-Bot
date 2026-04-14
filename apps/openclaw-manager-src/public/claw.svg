@@ -1,63 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="clawGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff6b5a"/>
-      <stop offset="40%" style="stop-color:#f43f2e"/>
-      <stop offset="100%" style="stop-color:#b91c14"/>
+    <linearGradient id="lobster-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4d4d"/>
+      <stop offset="100%" stop-color="#991b1b"/>
     </linearGradient>
-    <linearGradient id="shellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff8a7a"/>
-      <stop offset="100%" style="stop-color:#e8352a"/>
-    </linearGradient>
-    <linearGradient id="armGrad" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff6b5a"/>
-      <stop offset="100%" style="stop-color:#d42a1e"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="1.5" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
   </defs>
-
-  <!-- 左钳臂 -->
-  <path d="M22 30 C18 28, 10 22, 6 18 C4 16, 3 14, 5 12 C7 10, 10 11, 12 13 C16 17, 20 24, 24 28 Z"
-        fill="url(#armGrad)" opacity="0.95"/>
-  <!-- 左钳尖 -->
-  <path d="M6 18 C3 15, 1 10, 4 8 C7 6, 10 9, 12 13 C10 11, 7 10, 5 12 C3 14, 4 16, 6 18 Z"
-        fill="url(#clawGrad)"/>
-
-  <!-- 右钳臂 -->
-  <path d="M42 30 C46 28, 54 22, 58 18 C60 16, 61 14, 59 12 C57 10, 54 11, 52 13 C48 17, 44 24, 40 28 Z"
-        fill="url(#armGrad)" opacity="0.95"/>
-  <!-- 右钳尖 -->
-  <path d="M58 18 C61 15, 63 10, 60 8 C57 6, 54 9, 52 13 C54 11, 57 10, 59 12 C61 14, 60 16, 58 18 Z"
-        fill="url(#clawGrad)"/>
-
-  <!-- 头甲 -->
-  <ellipse cx="32" cy="34" rx="14" ry="10" fill="url(#shellGrad)" filter="url(#glow)"/>
-  <!-- 头甲高光 -->
-  <ellipse cx="30" cy="31" rx="8" ry="4" fill="#ff9e90" opacity="0.3"/>
-
-  <!-- 身体 -->
-  <ellipse cx="32" cy="46" rx="10" ry="7" fill="url(#clawGrad)"/>
-  <!-- 尾节 -->
-  <ellipse cx="32" cy="54" rx="7" ry="4" fill="#c1241a"/>
-  <ellipse cx="32" cy="59" rx="5" ry="3" fill="#a01d15" opacity="0.9"/>
-
-  <!-- 触须 -->
-  <path d="M26 26 C22 18, 16 12, 10 8" stroke="#ff6b5a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
-  <path d="M38 26 C42 18, 48 12, 54 8" stroke="#ff6b5a" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
-
-  <!-- 眼柄 -->
-  <ellipse cx="25" cy="30" rx="3.5" ry="3.5" fill="#1a1a1d"/>
-  <ellipse cx="39" cy="30" rx="3.5" ry="3.5" fill="#1a1a1d"/>
-  <!-- 眼睛 -->
-  <circle cx="25" cy="30" r="2.2" fill="#fff"/>
-  <circle cx="39" cy="30" r="2.2" fill="#fff"/>
-  <!-- 瞳孔 -->
-  <circle cx="25.8" cy="29.5" r="1.2" fill="#0a0a0b"/>
-  <circle cx="39.8" cy="29.5" r="1.2" fill="#0a0a0b"/>
-  <!-- 眼睛高光 -->
-  <circle cx="24.5" cy="29" r="0.6" fill="#fff" opacity="0.9"/>
-  <circle cx="38.5" cy="29" r="0.6" fill="#fff" opacity="0.9"/>
+  <!-- Body -->
+  <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#lobster-gradient)"/>
+  <!-- Left Claw -->
+  <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#lobster-gradient)"/>
+  <!-- Right Claw -->
+  <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#lobster-gradient)"/>
+  <!-- Antenna -->
+  <path d="M45 15 Q35 5 30 8" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round"/>
+  <path d="M75 15 Q85 5 90 8" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round"/>
+  <!-- Eyes -->
+  <circle cx="45" cy="35" r="6" fill="#050810"/>
+  <circle cx="75" cy="35" r="6" fill="#050810"/>
+  <circle cx="46" cy="34" r="2.5" fill="#00e5cc"/>
+  <circle cx="76" cy="34" r="2.5" fill="#00e5cc"/>
 </svg>
