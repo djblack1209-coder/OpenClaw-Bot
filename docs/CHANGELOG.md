@@ -7,6 +7,41 @@
 
 ---
 
+## [2026-04-15] 14项系统全景审计修复 — 后端API缺失+前端UI+图标+开发页
+
+> 领域: `backend`, `frontend`, `infra`
+> 影响模块: `rpc.py`, `clawbot.rs`, `SystemInfo.tsx`, `ExecutionFlow/index.tsx`, `Dev/index.tsx`, `src-tauri/icons/`
+> 关联问题: Q1-Q14 系统全景审计
+
+### 变更内容
+
+**🔴 P0 后端 API 缺失修复 (3项)**
+1. **闲鱼客服状态**：`/api/v1/status` 新增 `xianyu` 字段（检测 xianyu_main 进程存活），Dashboard 不再永远显示"离线"
+2. **社媒运营字段对齐**：`/social/status` 和 `/social/metrics` 同时返回 `running` 和 `autopilot_running`，前端可正确读取
+3. **微信渠道状态**：`/api/v1/status` 新增 `wechat` 字段（检测 coupon_token.json 是否有效）
+
+**🟠 P0 前端 Bot 矩阵修复 (1项)**
+4. **Bot 路由地址**：Rust `get_route_base_url` 新增 `free_pool/free_first/free_llm` 分支，显示 SiliconFlow 付费渠道地址或"LiteLLM 智能路由"
+
+**🟡 P1 前端 UI 修复 (3项)**
+5. **系统信息截断**：5 处 `truncate` 替换为 `break-all` + `title` tooltip
+6. **监控流色块**：新节点初始坐标改为 (-9999,-9999) + opacity:0，Dagre 排版后再显示
+7. **APP 图标**：替换为 OpenClaw 官方龙虾 logo（全套 PNG/ICNS/ICO）
+
+**🔵 P1 功能优化 (2项)**
+8. **开发总控精简**：常用 3 卡片保留 + 高级功能折叠 + 使用指引提示 + 通俗中文说明
+9. **mitmproxy 安装**：`brew install mitmproxy` 完成，领券功能链路打通
+
+### 文件变更
+- `packages/clawbot/src/api/rpc.py` — 新增 xianyu/wechat 状态检测 + 社媒字段对齐
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — Bot 路由地址映射
+- `apps/openclaw-manager-src/src/components/Dashboard/SystemInfo.tsx` — 移除 truncate
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 节点初始位置优化
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — 页面精简重构
+- `apps/openclaw-manager-src/src-tauri/icons/*` — 全套图标替换
+
+---
+
 ## [2026-04-15] APP 图标更换 + 开发总控页面精简
 
 > 领域: `frontend`
