@@ -7,6 +7,35 @@
 
 ---
 
+## [2026-04-15] 笔笔省全平台领券 — 从只领提现券扩展到美团/京东/滴滴等
+
+> 领域: `backend`
+> 影响模块: `wechat_coupon.py`
+> 关联问题: 笔笔省小程序有多种优惠券但之前只领取了提现券
+
+### 变更内容
+
+1. **新增 3 个 API 端点常量**：`_LIST_GIFTS_API`（获取全平台优惠券列表）、`_REDEEM_GIFT_API`（领取指定优惠券）、`_BALANCE_API`（查询提现免费额度），全部基于同一个 `_API_BASE` 构造
+2. **新增 `_build_headers()` 公共函数**：所有笔笔省 API 共用同一套认证头，抽取为公共函数避免重复
+3. **新增 `_get_gifts_list()` 函数**：调用 `listgifts` API 获取所有可领取的优惠券列表（含美团外卖红包、京东购物券、滴滴出行券等），通过 `gift_type=GT_COUPON` + `gift_status=GS_AVAILABLE` 筛选可领券
+4. **新增 `_redeem_gift()` 函数**：通过 `gift_id` 逐个领取平台优惠券
+5. **新增 `_get_balance()` 函数**：查询当前提现免费额度
+6. **新增 `_claim_all_coupons()` 核心编排函数**：先领提现券 → 获取优惠券列表 → 逐个领取 → 查余额 → 汇总返回
+7. **修改 `claim_with_saved_token()` 和 `auto_claim_coupon()`**：从原来只调 `_claim_coupon` 改为调 `_claim_all_coupons`，一次性领取所有平台券
+8. **重命名 `_parse_claim_result` → `_parse_single_claim_result`**：原函数重命名以区分，旧名保留为兼容包装
+
+### 文件变更
+- `packages/clawbot/src/execution/wechat_coupon.py` — 全平台领券功能实现（+226行）
+
+### 技术参考
+- API 来源: [LinYuanovo/AutoTaskScripts](https://github.com/LinYuanovo/AutoTaskScripts)
+- 核心 API:
+  - `GET /txbbs-mall/gift/listgifts?longitude=0&latitude=0` — 获取优惠券列表
+  - `POST /txbbs-mall/gift/redeemgift` body=`{"gift_id":"xxx"}` — 领取优惠券
+  - `GET /txbbs-mall/cashoutfree/getbalance` — 查询余额
+
+---
+
 ## [2026-04-15] LaunchAgent KeepAlive 修复 + Tauri APP 重新编译
 
 > 领域: `infra`, `frontend`
