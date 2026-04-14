@@ -94,6 +94,26 @@ STYLE_OPTIONS = {
 }
 
 
+# ── 兴趣 → 即时体验按钮映射 ────────────────────────
+# 引导完成后，根据用户选择的兴趣方向给一个"立即试试"的操作按钮
+_INSTANT_TRY_BUTTONS = {
+    "invest": ("📊 查看市场概览", "cmd:market"),
+    "life": ("📋 看今日简报", "cmd:brief"),
+    "shopping": ("🛒 试试比价", "cmd:compare"),
+    "social": ("📰 看科技早报", "cmd:news"),
+    "all": ("📋 看今日简报", "cmd:brief"),
+}
+
+
+def _build_instant_try_button(interest: str) -> "InlineKeyboardButton | None":
+    """根据用户选择的兴趣方向，返回即时体验按钮（无匹配时返回 None）"""
+    btn_info = _INSTANT_TRY_BUTTONS.get(interest)
+    if not btn_info:
+        return None
+    label, callback = btn_info
+    return InlineKeyboardButton(label, callback_data=callback)
+
+
 class _OnboardingMixin:
     """新用户 ConversationHandler 引导向导"""
 
@@ -113,8 +133,10 @@ class _OnboardingMixin:
         user = update.effective_user
         chat_id = update.effective_chat.id
 
-        # 检测是否首次使用（历史消息为空 = 新用户）
-        is_first_time = not history_store.get_messages(self.bot_id, chat_id, limit=1)
+        # 检测是否首次使用
+        # 优先检查 shared_memory 中的 onboarded 标记（DB 重建后不会误判老用户）
+        # 如果 shared_memory 不可用，降级到历史消息检查
+        is_first_time = self._check_is_first_time(user.id, chat_id)
 
         if not is_first_time:
             # 老用户走正常 /start 路径（在 _HelpMixin 中定义）
@@ -207,6 +229,12 @@ class _OnboardingMixin:
             value=f"用户偏好的沟通风格: {style_label}",
         )
 
+        # 标记用户已完成引导（防止 DB 重建后误判）
+        self._mark_user_onboarded(
+            update.effective_user.id,
+            update.effective_chat.id,
+        )
+
         # 构建个性化欢迎消息
         info = INTEREST_OPTIONS.get(interest, INTEREST_OPTIONS["all"])
         commands_text = "\n".join(info["commands"])
@@ -222,11 +250,14 @@ class _OnboardingMixin:
             f"不用记命令，直接说中文就行！\n"
             f"随时输入 /help 查看全部功能。"
         )
-        keyboard = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("📋 查看全部功能", callback_data="help:all")],
-            ]
-        )
+
+        # 根据用户选择的兴趣方向，生成"立即试试"按钮
+        try_btn = _build_instant_try_button(interest)
+        keyboard_rows = []
+        if try_btn:
+            keyboard_rows.append([try_btn])
+        keyboard_rows.append([InlineKeyboardButton("📋 查看全部功能", callback_data="help:all")])
+        keyboard = InlineKeyboardMarkup(keyboard_rows)
         await query.edit_message_text(complete_text, reply_markup=keyboard)
 
         logger.info(
@@ -238,6 +269,44 @@ class _OnboardingMixin:
         return ConversationHandler.END
 
     # ── 辅助方法 ──────────────────────────────────────
+
+    def _check_is_first_time(self, user_id: int, chat_id: int) -> bool:
+        """检测用户是否首次使用
+
+        优先查 shared_memory 的 onboarded 标记（持久化、不受 DB 重建影响）。
+        shared_memory 不可用时，降级到历史消息为空判断。
+        """
+        try:
+            from src.bot.globals import shared_memory
+
+            result = shared_memory.recall(
+                key=f"onboarded_{user_id}",
+                category="user_preference",
+            )
+            if result.get("success"):
+                # shared_memory 中有标记 → 老用户
+                return False
+        except Exception as e:
+            logger.debug("shared_memory 查询 onboarded 标记失败，降级到历史消息判断: %s", e)
+
+        # 降级方案：历史消息为空 = 新用户
+        return not history_store.get_messages(self.bot_id, chat_id, limit=1)
+
+    def _mark_user_onboarded(self, user_id: int, chat_id: int) -> None:
+        """在 shared_memory 中标记用户已完成引导（失败不阻塞）"""
+        try:
+            from src.bot.globals import shared_memory
+
+            shared_memory.remember(
+                key=f"onboarded_{user_id}",
+                value="true",
+                category="user_preference",
+                source_bot=self.bot_id,
+                chat_id=chat_id,
+                importance=5,
+            )
+        except Exception as e:
+            logger.debug("写入 onboarded 标记失败: %s", e)
 
     async def onboard_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """用户发送 /cancel → 跳过向导"""
