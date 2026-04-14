@@ -4,12 +4,14 @@
 子模块: daily_brief_llm / daily_brief_data / weekly_report
 每个 section 独立获取，一个失败不影响其他。
 """
+
 import logging
 from datetime import datetime, timezone
 from typing import List, Tuple
 
 from src.execution._db import get_conn
 from src.notify_style import format_digest
+
 # ── 从子模块导入 ──────────────────────────────────────────────
 from src.execution.daily_brief_data import (  # noqa: F401
     _section,
@@ -25,6 +27,7 @@ from src.execution.daily_brief_llm import (  # noqa: F401
     _generate_executive_summary,
     _generate_daily_recommendations,
 )
+
 # 向后兼容: scheduler.py / cmd_analysis_mixin.py 从本模块导入 weekly_report
 from src.execution.weekly_report import weekly_report  # noqa: F401
 
@@ -45,6 +48,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 1. 持仓概览 ──────────────────────────────────────────
     try:
         from src.position_monitor import position_monitor
+
         if position_monitor and position_monitor.positions:
             status = position_monitor.get_status()
             items = []
@@ -71,16 +75,15 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 2. 交易绩效 ──────────────────────────────────────────
     try:
         from src.trading_journal import journal
+
         if journal:
             perf = journal.get_performance(days=7)
             if perf and perf.get("total_trades", 0) > 0:
                 items = []
-                items.append(f"7日战绩: {perf.get('total_trades', 0)} 笔 | "
-                             f"胜率 {perf.get('win_rate', 0):.0f}%")
+                items.append(f"7日战绩: {perf.get('total_trades', 0)} 笔 | 胜率 {perf.get('win_rate', 0):.0f}%")
                 items.append(f"累计盈亏: ${perf.get('total_pnl', 0):+,.2f}")
                 if perf.get("sharpe"):
-                    items.append(f"夏普比率: {perf['sharpe']:.2f} | "
-                                 f"最大回撤: {perf.get('max_drawdown', 0):.1f}%")
+                    items.append(f"夏普比率: {perf['sharpe']:.2f} | 最大回撤: {perf.get('max_drawdown', 0):.1f}%")
                 if perf.get("expectancy"):
                     items.append(f"期望值: ${perf['expectancy']:+.2f}/笔")
                 sections.append(_section("📊 7日交易绩效", items))
@@ -101,6 +104,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 3. 目标进度 ──────────────────────────────────────────
     try:
         from src.trading_journal import journal
+
         if journal:
             targets = journal.get_active_targets()
             if targets:
@@ -118,13 +122,12 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 4. 待办事项 ──────────────────────────────────────────
     try:
         from src.execution.task_mgmt import top_tasks
+
         tasks = top_tasks(limit=5, db_path=db_path)
         if tasks:
             items = []
             for t in tasks:
-                status_icon = {"done": "✅", "in_progress": "🔄"}.get(
-                    t.get("status", ""), "⬜"
-                )
+                status_icon = {"done": "✅", "in_progress": "🔄"}.get(t.get("status", ""), "⬜")
                 items.append(f"{status_icon} {t.get('title', '')}")
             sections.append(_section("📋 待办事项", items))
     except Exception as e:
@@ -133,6 +136,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     try:
         from src.execution.life_automation import list_reminders
         from src.utils import now_et
+
         pending = list_reminders(status="pending", db_path=db_path)
         if pending:
             now = now_et()
@@ -173,7 +177,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 pm = monitors.get("position_monitor")
                 if pm:
                     positions = pm.get_positions() if hasattr(pm, "get_positions") else []
-                    for pos in (positions or []):
+                    for pos in positions or []:
                         sym = pos.get("symbol", "")
                         if sym:
                             watchlist_symbols.append(sym)
@@ -183,8 +187,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # 补充 watchlist 中的股票
         try:
             from src.watchlist import get_watchlist_symbols
+
             wl = get_watchlist_symbols()
-            for sym in (wl or []):
+            for sym in wl or []:
                 if sym not in watchlist_symbols:
                     watchlist_symbols.append(sym)
         except Exception as e:
@@ -211,12 +216,18 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 5. 市场行情 (9 大指数) ────────────────────────────────
     try:
         from src.invest_tools import get_quick_quotes
+
         symbols = ["^GSPC", "^IXIC", "^DJI", "^HSI", "000001.SS", "BTC-USD", "ETH-USD", "GC=F", "CL=F"]
         names = {
-            "^GSPC": "S&P 500", "^IXIC": "纳斯达克", "^DJI": "道琼斯",
-            "^HSI": "恒生", "000001.SS": "上证",
-            "BTC-USD": "BTC", "ETH-USD": "ETH",
-            "GC=F": "黄金", "CL=F": "原油",
+            "^GSPC": "S&P 500",
+            "^IXIC": "纳斯达克",
+            "^DJI": "道琼斯",
+            "^HSI": "恒生",
+            "000001.SS": "上证",
+            "BTC-USD": "BTC",
+            "ETH-USD": "ETH",
+            "GC=F": "黄金",
+            "CL=F": "原油",
         }
         quotes = await get_quick_quotes(symbols)
         if quotes:
@@ -240,29 +251,30 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 6. 恐惧贪婪指数 ──────────────────────────────────────
     try:
         from src.invest_tools import get_fear_greed_index
+
         fng = await get_fear_greed_index()
         if fng and fng.get("source") != "fallback":
             value = fng.get("value", 0)
             label = fng.get("label", "")
             gauge = "🟢" if value > 60 else "🟡" if value > 40 else "🔴"
-            sections.append(_section("🧭 市场情绪", [
-                f"{gauge} 恐惧贪婪指数: {value} ({label})"
-            ]))
+            sections.append(_section("🧭 市场情绪", [f"{gauge} 恐惧贪婪指数: {value} ({label})"]))
     except Exception as e:
         logger.debug(f"[DailyBrief] fng: {e}")
     # ── 7. 科技/AI 新闻 (LLM 深度分析 + 持仓关联) ──────────
     try:
         from src.news_fetcher import NewsFetcher
+
         nf = NewsFetcher()
         ai_news = await nf.fetch_by_category("ai", count=3)
         tech_news = await nf.fetch_by_category("tech_cn", count=3)
         news_items = (ai_news or []) + (tech_news or [])
         if news_items:
-            headlines = [item['title'] for item in news_items[:5]]
+            headlines = [item["title"] for item in news_items[:5]]
             # 收集用户持仓 symbols，用于关联分析
             holdings = []
             try:
                 from src.position_monitor import position_monitor as _pm
+
                 if _pm and _pm.positions:
                     holdings = list(_pm.positions.keys())
             except Exception as e:
@@ -280,6 +292,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 8. 社媒运营状态 ──────────────────────────────────────
     try:
         from src.social_scheduler import social_autopilot
+
         if social_autopilot:
             status = social_autopilot.status()
             if status:
@@ -306,9 +319,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         logger.debug("日报段落生成异常: %s", e)
     try:
         with get_conn(db_path) as conn:
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM social_drafts WHERE status='draft'"
-            )
+            cursor = conn.execute("SELECT COUNT(*) FROM social_drafts WHERE status='draft'")
             count = cursor.fetchone()[0]
             if count:
                 aux_items.append(f"✏️ 待发布草稿: {count} 条")
@@ -319,22 +330,29 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 10. API 成本 ─────────────────────────────────────────
     try:
         from src.monitoring import cost_analyzer
+
         if cost_analyzer:
             prediction = cost_analyzer.predict_monthly_cost()
             if prediction:
                 daily_avg = prediction.get("daily_average", 0)
                 monthly = prediction.get("monthly_prediction", 0)
                 if daily_avg > 0:
-                    sections.append(_section("💰 API 成本", [
-                        f"日均: ${daily_avg:.2f} | 月预估: ${monthly:.2f}",
-                    ]))
+                    sections.append(
+                        _section(
+                            "💰 API 成本",
+                            [
+                                f"日均: ${daily_avg:.2f} | 月预估: ${monthly:.2f}",
+                            ],
+                        )
+                    )
     except Exception as e:
         logger.debug(f"[DailyBrief] cost: {e}")
     # ── 11. 闲鱼运营 ─────────────────────────────────────────
     try:
         from src.xianyu.xianyu_context import XianyuContextManager
+
         xctx = XianyuContextManager()
-        xstats = xctx.daily_stats() if hasattr(xctx, 'daily_stats') else {}
+        xstats = xctx.daily_stats() if hasattr(xctx, "daily_stats") else {}
         if xstats:
             xlines = []
             if xstats.get("messages", 0) > 0:
@@ -347,7 +365,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 xlines.append(f"📈 转化率 {xstats['conversion_rate']}")
             # 营收+利润数据（搬运 Shopify Analytics 的日报模式）
             try:
-                profit = xctx.get_profit_summary(days=1) if hasattr(xctx, 'get_profit_summary') else {}
+                profit = xctx.get_profit_summary(days=1) if hasattr(xctx, "get_profit_summary") else {}
                 if profit and profit.get("revenue", 0) > 0:
                     xlines.append(f"💵 营收 ¥{profit['revenue']:.0f} | 利润 ¥{profit['profit']:.0f}")
                     if profit.get("orders", 0) > 0:
@@ -367,7 +385,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                         consult = item.get("consultations", 0)
                         convert = item.get("conversions", 0)
                         top_lines.append(f"  {i}. {title} ({consult}咨询/{convert}成交)")
-                    sections.append(_section("", top_lines))
+                    sections.append(_section("🏆 闲鱼热销", top_lines))
             except Exception as e:
                 logger.debug("静默异常: %s", e)
     except Exception as e:
@@ -375,6 +393,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 12. 社媒互动 ─────────────────────────────────────────
     try:
         from src.execution.life_automation import get_engagement_summary
+
         eng = get_engagement_summary(days=7)
         if eng.get("success") and eng.get("total_posts", 0) > 0:
             elines = [f"📊 近7天 {eng['total_posts']} 篇帖子"]
@@ -386,6 +405,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     # ── 12.5 粉丝增长 ─────────────────────────────────────────
     try:
         from src.execution.life_automation import get_follower_growth
+
         growth = get_follower_growth(days=1)
         if growth:
             _plat_names = {"x": "X", "xhs": "小红书"}
@@ -413,6 +433,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # 持仓盈亏
         try:
             from src.position_monitor import position_monitor as _pm_ref
+
             if _pm_ref and _pm_ref.positions:
                 _st = _pm_ref.get_status()
                 sections_data["portfolio_pnl"] = _st.get("total_unrealized_pnl", 0)
@@ -423,8 +444,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # 闲鱼数据
         try:
             from src.xianyu.xianyu_context import XianyuContextManager
+
             _xctx = XianyuContextManager()
-            _xst = _xctx.daily_stats() if hasattr(_xctx, 'daily_stats') else {}
+            _xst = _xctx.daily_stats() if hasattr(_xctx, "daily_stats") else {}
             if _xst:
                 sections_data["xianyu_consultations"] = _xst.get("consultations", 0)
                 sections_data["xianyu_orders"] = _xst.get("orders", 0)
@@ -434,6 +456,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # 社媒发帖
         try:
             from src.execution.life_automation import get_engagement_summary
+
             _eng = get_engagement_summary(days=1, db_path=db_path)
             if _eng.get("success"):
                 sections_data["social_posts"] = _eng.get("total_posts", 0)
@@ -443,6 +466,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # API 成本
         try:
             from src.monitoring import cost_analyzer as _ca_ref
+
             if _ca_ref:
                 _pred = _ca_ref.predict_monthly_cost()
                 if _pred:
@@ -453,11 +477,10 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         # 市场情绪
         try:
             from src.invest_tools import get_fear_greed_index
+
             _fng = await get_fear_greed_index()
             if _fng and _fng.get("source") != "fallback":
-                sections_data["market_sentiment"] = (
-                    f"{_fng.get('value', 0)} ({_fng.get('label', '')})"
-                )
+                sections_data["market_sentiment"] = f"{_fng.get('value', 0)} ({_fng.get('label', '')})"
         except Exception as e:
             logger.debug("静默异常: %s", e)
     except Exception as e:

@@ -13,7 +13,14 @@
 set -euo pipefail
 
 # === 定位脚本目录 ===
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 当通过 ~/Library/Scripts/OpenClaw/ 下的副本执行时，
+# BASH_SOURCE 指向副本位置而非项目目录，导致找不到 config.env 和 phases/。
+# 硬编码项目审计目录作为 SCRIPT_DIR，确保 launchd 和手动执行都能正常工作。
+SCRIPT_DIR="/Users/blackdj/Desktop/OpenClaw Bot/scripts/nightly-audit"
+if [[ ! -d "$SCRIPT_DIR" ]]; then
+    # 降级：尝试用 BASH_SOURCE 定位（手动执行场景）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 CONFIG_FILE="${SCRIPT_DIR}/config.env"
 
 # === 加载配置 ===

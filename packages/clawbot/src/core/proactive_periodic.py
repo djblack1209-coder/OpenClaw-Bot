@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Dict, TYPE_CHECKING
 
 from src.core.proactive_notify import _send_proactive, _safe_parse_time
@@ -22,11 +23,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_quiet_hours() -> bool:
+    """北京时间 0-7 点为安静时段，不推送主动通知"""
+    try:
+        import pytz
+
+        cst = pytz.timezone("Asia/Shanghai")
+        now = datetime.now(cst)
+        return 0 <= now.hour < 7
+    except Exception:
+        return False
+
+
 async def periodic_proactive_check(engine: ProactiveEngine):
     """定时主动检查 — 收集系统上下文，评估是否值得主动推送。
 
     由 multi_main.py 主循环每 30 分钟调用一次。
     """
+    # 安静时段检查：北京时间 0-7 点不打扰用户
+    if _is_quiet_hours():
+        logger.debug("[Proactive] 安静时段(0-7点)，跳过定时检查")
+        return
+
     try:
         from src.bot.globals import bot_registry, ALLOWED_USER_IDS
 
@@ -39,6 +57,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 1. 持仓状态
         try:
             from src.invest_tools import get_portfolio_summary
+
             portfolio = get_portfolio_summary()
             if portfolio:
                 context_parts.append(f"当前持仓: {portfolio}")
@@ -48,6 +67,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 2. 未读闲鱼消息
         try:
             from src.xianyu.xianyu_live import get_unread_count
+
             unread = get_unread_count()
             if unread and unread > 0:
                 context_parts.append(f"闲鱼未读消息: {unread} 条")
@@ -57,6 +77,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 3. 今日交易汇总
         try:
             from src.trading_journal import TradingJournal
+
             journal = TradingJournal()
             today_trades = journal.get_today_trades()
             if today_trades:
@@ -68,15 +89,18 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 4. 今日待触发提醒
         try:
             from src.execution.life_automation import list_reminders
+
             pending = list_reminders(status="pending")
             if pending:
                 from datetime import datetime as _dt
+
                 _now = _dt.now()
                 _today_end = _now.replace(hour=23, minute=59, second=59)
                 today_count = sum(
-                    1 for r in pending
-                    if _safe_parse_time(r.get("remind_at", "")) and
-                    _safe_parse_time(r.get("remind_at", "")) <= _today_end
+                    1
+                    for r in pending
+                    if _safe_parse_time(r.get("remind_at", ""))
+                    and _safe_parse_time(r.get("remind_at", "")) <= _today_end
                 )
                 if today_count > 0:
                     context_parts.append(f"今日待提醒: {today_count} 条")
@@ -89,8 +113,9 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 5. 持仓盈亏警报 (接近止盈/止损)
         try:
             from src.risk_manager import RiskManager
+
             rm = RiskManager()
-            alerts = rm.check_position_alerts() if hasattr(rm, 'check_position_alerts') else []
+            alerts = rm.check_position_alerts() if hasattr(rm, "check_position_alerts") else []
             for alert in (alerts or [])[:2]:
                 context_parts.append(f"持仓警报: {alert}")
         except Exception as e:
@@ -99,8 +124,10 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 6. 关注股票大幅变动 (>3%)
         try:
             from src.invest_tools import get_quick_quotes
+
             try:
                 from src.watchlist import get_watchlist_symbols
+
                 wl = get_watchlist_symbols()
             except Exception as e:  # noqa: F841
                 wl = []
@@ -119,6 +146,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 7. 重复提醒统计
         try:
             from src.execution.life_automation import list_reminders
+
             all_pending = list_reminders(status="pending")
             recurring = [r for r in (all_pending or []) if r.get("recurrence_rule")]
             if len(recurring) > 0:
@@ -129,7 +157,8 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 8. 闲鱼最近成交 (跨域关联: 成交→有闲钱→投资机会)
         try:
             from src.xianyu.xianyu_live import get_recent_sales
-            sales = get_recent_sales(hours=24) if callable(getattr(get_recent_sales, '__call__', None)) else []
+
+            sales = get_recent_sales(hours=24) if callable(getattr(get_recent_sales, "__call__", None)) else []
             if sales:
                 total = sum(s.get("price", 0) for s in sales)
                 if total > 0:
@@ -141,6 +170,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         # 从历史消息中检测行为模式，生成主动建议
         try:
             from src.bot.globals import history_store as _history_store_ref
+
             _hs = _history_store_ref
             if _hs:
                 # 获取最近 100 条用户消息，提取频繁操作模式
@@ -152,21 +182,22 @@ async def periodic_proactive_check(engine: ProactiveEngine):
                     if user_msgs:
                         # 统计频繁提及的标的
                         import re as _re
+
                         _ticker_counts: Dict[str, int] = {}
                         for msg in user_msgs:
-                            tickers = _re.findall(r'\b([A-Z]{2,5})\b', msg)
-                            _skip = {'AI', 'ETF', 'RSI', 'MACD', 'OK', 'VS', 'API', 'BOT', 'LLM'}
+                            tickers = _re.findall(r"\b([A-Z]{2,5})\b", msg)
+                            _skip = {"AI", "ETF", "RSI", "MACD", "OK", "VS", "API", "BOT", "LLM"}
                             for t in tickers:
                                 if t not in _skip:
                                     _ticker_counts[t] = _ticker_counts.get(t, 0) + 1
                         # 找频繁提及但不在 watchlist 的标的
                         if _ticker_counts:
                             from src.watchlist import get_watchlist_symbols
+
                             wl_syms = set(get_watchlist_symbols())
                             frequent_not_in_wl = [
-                                (sym, cnt) for sym, cnt in sorted(
-                                    _ticker_counts.items(), key=lambda x: -x[1]
-                                )
+                                (sym, cnt)
+                                for sym, cnt in sorted(_ticker_counts.items(), key=lambda x: -x[1])
                                 if cnt >= 3 and sym not in wl_syms
                             ]
                             if frequent_not_in_wl:
@@ -187,6 +218,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         user_profile = ""
         try:
             from src.bot.globals import tiered_context_manager as _tcm
+
             if _tcm:
                 user_profile = _tcm.core_get("user_profile")
         except Exception as e:
