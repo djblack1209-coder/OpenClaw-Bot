@@ -9,6 +9,7 @@ Design principles:
   3. Every external call wrapped in try/except — one broken subsystem never crashes the API
   4. Sync methods for fast reads, async methods only when calling async subsystems
 """
+
 import time
 import logging
 from typing import Optional, List
@@ -21,11 +22,12 @@ def _safe_error(e: Exception) -> str:
     msg = str(e)
     # 移除文件路径
     import re
-    msg = re.sub(r'[/\\][\w/\\.-]+\.py', '[内部模块]', msg)
-    msg = re.sub(r'line \d+', '', msg)
+
+    msg = re.sub(r"[/\\][\w/\\.-]+\.py", "[内部模块]", msg)
+    msg = re.sub(r"line \d+", "", msg)
     # 截断过长信息
     if len(msg) > 200:
-        msg = msg[:200] + '...'
+        msg = msg[:200] + "..."
     return msg
 
 
@@ -55,7 +57,8 @@ class ClawBotRPC:
     def _rpc_system_status() -> dict:
         """Aggregate full system status for dashboard display."""
         from src.bot.globals import (
-            bot_registry, shared_memory,
+            bot_registry,
+            shared_memory,
         )
         from src.broker_selector import ibkr
         from src.litellm_router import free_pool
@@ -66,22 +69,20 @@ class ClawBotRPC:
         bot_statuses = []
         for bot_id, bot in bot_registry.items():
             try:
-                alive = bool(
-                    bot.app
-                    and bot.app.updater
-                    and bot.app.updater.running
-                )
+                alive = bool(bot.app and bot.app.updater and bot.app.updater.running)
             except Exception as e:  # noqa: F841
                 alive = False
-            bot_statuses.append({
-                "bot_id": bot_id,
-                "username": getattr(bot, "username", ""),
-                "model": getattr(bot, "model", ""),
-                "alive": alive,
-                "api_type": getattr(bot, "api_type", ""),
-                "message_count": getattr(bot, "_message_count", 0),
-                "error_count": getattr(bot, "_error_count", 0),
-            })
+            bot_statuses.append(
+                {
+                    "bot_id": bot_id,
+                    "username": getattr(bot, "username", ""),
+                    "model": getattr(bot, "model", ""),
+                    "alive": alive,
+                    "api_type": getattr(bot, "api_type", ""),
+                    "message_count": getattr(bot, "_message_count", 0),
+                    "error_count": getattr(bot, "_error_count", 0),
+                }
+            )
 
         # ── Free API pool stats ──
         pool_stats: dict = {}
@@ -107,6 +108,30 @@ class ClawBotRPC:
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
+        # ── 闲鱼客服状态检测 ──
+        xianyu_online = False
+        try:
+            import subprocess
+
+            result = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True, timeout=3)
+            xianyu_online = result.returncode == 0 and bool(result.stdout.strip())
+        except Exception as e:
+            logger.debug("闲鱼状态检测失败: %s", e)
+
+        # ── 微信领券功能状态检测 ──
+        wechat_connected = False
+        try:
+            import os
+            import json
+
+            token_file = os.path.expanduser("~/.openclaw/coupon_token.json")
+            if os.path.exists(token_file):
+                with open(token_file, encoding="utf-8") as f:
+                    data = json.load(f)
+                wechat_connected = bool(data.get("session_token"))
+        except Exception as e:
+            logger.debug("微信状态检测失败: %s", e)
+
         return {
             "uptime_seconds": uptime,
             "bots": bot_statuses,
@@ -119,6 +144,8 @@ class ClawBotRPC:
             "total_cost_usd": pool_stats.get("total_cost_usd", 0.0),
             "avg_latency_ms": pool_stats.get("avg_latency_ms", 0.0),
             "memory_entries": mem_entries,
+            "xianyu": {"online": xianyu_online, "service": "xianyu_live"},
+            "wechat": {"connected": wechat_connected, "service": "coupon_auto"},
         }
 
     # ──────────────────────────────────────────────
@@ -148,22 +175,20 @@ class ClawBotRPC:
             # ── Live IBKR positions ──
             try:
                 raw_positions = await ibkr.get_positions()
-                for p in (raw_positions or []):
+                for p in raw_positions or []:
                     qty = float(p.get("quantity", 0) or 0)
-                    positions.append({
-                        "symbol": p.get("symbol", ""),
-                        "quantity": qty,
-                        "avg_price": float(
-                            p.get("avg_price", 0) or p.get("avg_cost", 0) or 0
-                        ),
-                        "current_price": float(p.get("market_price", 0) or 0),
-                        "unrealized_pnl": float(p.get("unrealized_pnl", 0) or 0),
-                        "unrealized_pnl_pct": float(
-                            p.get("unrealized_pnl_pct", 0) or 0
-                        ),
-                        "market_value": float(p.get("market_value", 0) or 0),
-                        "side": "short" if qty < 0 else "long",
-                    })
+                    positions.append(
+                        {
+                            "symbol": p.get("symbol", ""),
+                            "quantity": qty,
+                            "avg_price": float(p.get("avg_price", 0) or p.get("avg_cost", 0) or 0),
+                            "current_price": float(p.get("market_price", 0) or 0),
+                            "unrealized_pnl": float(p.get("unrealized_pnl", 0) or 0),
+                            "unrealized_pnl_pct": float(p.get("unrealized_pnl_pct", 0) or 0),
+                            "market_value": float(p.get("market_value", 0) or 0),
+                            "side": "short" if qty < 0 else "long",
+                        }
+                    )
             except Exception as e:
                 logger.warning("Failed to get IBKR positions: %s", e)
 
@@ -175,33 +200,27 @@ class ClawBotRPC:
             # ── Fallback: local Portfolio (sync) ──
             try:
                 local_positions = portfolio.get_positions() if portfolio else []
-                for p in (local_positions or []):
+                for p in local_positions or []:
                     qty = float(p.get("quantity", 0) or 0)
-                    positions.append({
-                        "symbol": p.get("symbol", ""),
-                        "quantity": qty,
-                        "avg_price": float(
-                            p.get("avg_price", 0)
-                            or p.get("avg_cost", 0)
-                            or 0
-                        ),
-                        "current_price": 0.0,
-                        "unrealized_pnl": float(
-                            p.get("unrealized_pnl", 0) or 0
-                        ),
-                        "unrealized_pnl_pct": 0.0,
-                        "market_value": 0.0,
-                        "side": "short" if qty < 0 else "long",
-                    })
+                    positions.append(
+                        {
+                            "symbol": p.get("symbol", ""),
+                            "quantity": qty,
+                            "avg_price": float(p.get("avg_price", 0) or p.get("avg_cost", 0) or 0),
+                            "current_price": 0.0,
+                            "unrealized_pnl": float(p.get("unrealized_pnl", 0) or 0),
+                            "unrealized_pnl_pct": 0.0,
+                            "market_value": 0.0,
+                            "side": "short" if qty < 0 else "long",
+                        }
+                    )
             except Exception as e:
                 logger.warning("Failed to get local positions: %s", e)
 
         return {
             "connected": connected,
             "positions": positions,
-            "account_summary": (
-                account_summary if isinstance(account_summary, dict) else {}
-            ),
+            "account_summary": (account_summary if isinstance(account_summary, dict) else {}),
         }
 
     # ──────────────────────────────────────────────
@@ -247,20 +266,10 @@ class ClawBotRPC:
         try:
             if ibkr and ibkr.connected:
                 summary = await ibkr.get_account_summary() or {}
-                result["account_value"] = float(
-                    summary.get("NetLiquidation", 0) or 0
-                )
-                result["cash"] = float(
-                    summary.get("TotalCashValue", 0) or 0
-                )
-                result["buying_power"] = float(
-                    summary.get("BuyingPower", 0) or 0
-                )
-                result["daily_pnl"] = float(
-                    summary.get("RealizedPnL", 0)
-                    or summary.get("DailyPnL", 0)
-                    or 0
-                )
+                result["account_value"] = float(summary.get("NetLiquidation", 0) or 0)
+                result["cash"] = float(summary.get("TotalCashValue", 0) or 0)
+                result["buying_power"] = float(summary.get("BuyingPower", 0) or 0)
+                result["daily_pnl"] = float(summary.get("RealizedPnL", 0) or summary.get("DailyPnL", 0) or 0)
         except Exception as e:
             logger.warning("Failed to get IBKR account summary: %s", e)
 
@@ -292,22 +301,21 @@ class ClawBotRPC:
             try:
                 if connected and ibkr:
                     positions = await ibkr.get_positions()
-                    for pos in (positions or []):
-                        assets.append({
-                            "name": pos.get("symbol", "Unknown"),
-                            "value": float(pos.get("market_value", 0)),
-                            "pnl": float(pos.get("unrealized_pnl", 0))
-                        })
+                    for pos in positions or []:
+                        assets.append(
+                            {
+                                "name": pos.get("symbol", "Unknown"),
+                                "value": float(pos.get("market_value", 0)),
+                                "pnl": float(pos.get("unrealized_pnl", 0)),
+                            }
+                        )
             except Exception as e:
                 logger.debug("[RPC] IBKR 持仓查询失败: %s", e)
 
             # 用真实交易日志生成净值曲线，避免前端长期看到空图
             try:
                 equity_values, date_labels = journal.get_equity_curve(days=30)
-                chart_data = [
-                    {"name": label, "value": value}
-                    for label, value in zip(date_labels, equity_values)
-                ]
+                chart_data = [{"name": label, "value": value} for label, value in zip(date_labels, equity_values)]
             except Exception as e:
                 logger.debug("[RPC] 交易净值曲线生成失败: %s", e)
 
@@ -332,16 +340,18 @@ class ClawBotRPC:
 
         try:
             history = engine.get_history(limit=20)
-            for entry in (history or []):
-                signals.append({
-                    "symbol": entry.get("symbol", ""),
-                    "signal": entry.get("signal", "HOLD"),
-                    "score": entry.get("score", 0),
-                    "confidence": entry.get("confidence", 0.0),
-                    "strategy_name": entry.get("strategy_name", ""),
-                    "reason": entry.get("reason", ""),
-                    "timestamp": entry.get("ts", ""),
-                })
+            for entry in history or []:
+                signals.append(
+                    {
+                        "symbol": entry.get("symbol", ""),
+                        "signal": entry.get("signal", "HOLD"),
+                        "score": entry.get("score", 0),
+                        "confidence": entry.get("confidence", 0.0),
+                        "strategy_name": entry.get("strategy_name", ""),
+                        "reason": entry.get("reason", ""),
+                        "timestamp": entry.get("ts", ""),
+                    }
+                )
         except Exception as e:
             logger.warning("Failed to get strategy signals: %s", e)
 
@@ -355,6 +365,7 @@ class ClawBotRPC:
     def _rpc_trading_system_status() -> dict:
         """Get auto-trading system status (risk manager, pipeline, etc.)."""
         from src.trading_system import get_system_status
+
         try:
             return get_system_status() or {}
         except Exception as e:
@@ -424,6 +435,7 @@ class ClawBotRPC:
         """
         _placeholder = {
             "autopilot_running": False,
+            "running": False,
             "platforms": [
                 {
                     "platform": "x",
@@ -457,8 +469,11 @@ class ClawBotRPC:
             # Map worker response to API schema
             x_status = result.get("x", {})
             xhs_status = result.get("xhs", {})
+            # 同时提供 running 字段，兼容前端读取 r.running ?? r.active
+            _autopilot_running = result.get("autopilot_running", False)
             return {
-                "autopilot_running": result.get("autopilot_running", False),
+                "autopilot_running": _autopilot_running,
+                "running": _autopilot_running,
                 "platforms": [
                     {
                         "platform": "x",
@@ -594,7 +609,9 @@ class ClawBotRPC:
         """
         try:
             from src.execution.social.content_strategy import (
-                compose_post, derive_content_strategy, load_persona,
+                compose_post,
+                derive_content_strategy,
+                load_persona,
             )
 
             # Load persona
@@ -602,7 +619,9 @@ class ClawBotRPC:
 
             # Derive strategy
             strategy_result = await derive_content_strategy(
-                topic=topic, platform=platform, persona=persona,
+                topic=topic,
+                platform=platform,
+                persona=persona,
             )
             strategy = strategy_result.get("strategy") if strategy_result.get("success") else None
 
@@ -697,11 +716,15 @@ class ClawBotRPC:
 
         Returns follower counts, engagement stats, and growth data
         from the social_browser_worker "metrics" action.
+        同时注入 running 字段，兼容前端读取 r.running ?? r.active。
         """
         from src.execution.social.worker_bridge import run_social_worker_async
 
         try:
             result = await run_social_worker_async("metrics", {})
+            # 兼容前端：如果 worker 返回了 autopilot_running，同步到 running 字段
+            if isinstance(result, dict) and "autopilot_running" in result:
+                result.setdefault("running", result["autopilot_running"])
             return result
         except Exception as e:
             logger.error("Social metrics failed: %s", e)
@@ -715,6 +738,7 @@ class ClawBotRPC:
     def _rpc_social_drafts() -> dict:
         """List all drafts from autopilot state."""
         from src.social_scheduler import _load_state
+
         state = _load_state()
         return {"drafts": state.get("drafts", []), "count": len(state.get("drafts", []))}
 
@@ -722,6 +746,7 @@ class ClawBotRPC:
     def _rpc_social_draft_update(index: int, text: str) -> dict:
         """Update a draft's text content."""
         from src.social_scheduler import _load_state, _save_state
+
         state = _load_state()
         drafts = state.get("drafts", [])
         if 0 <= index < len(drafts):
@@ -736,6 +761,7 @@ class ClawBotRPC:
     def _rpc_social_draft_delete(index: int) -> dict:
         """Delete a draft by index."""
         from src.social_scheduler import _load_state, _save_state
+
         state = _load_state()
         drafts = state.get("drafts", [])
         if 0 <= index < len(drafts):
@@ -765,7 +791,7 @@ class ClawBotRPC:
             result = await asyncio.to_thread(run_social_worker, "publish_x", {"text": content})
         elif platform in ("xhs", "xiaohongshu"):
             title = content.split("\n")[0][:50] if "\n" in content else content[:50]
-            body = content[len(title):].strip() if "\n" in content else content
+            body = content[len(title) :].strip() if "\n" in content else content
             result = await asyncio.to_thread(run_social_worker, "publish_xhs", {"title": title, "body": body})
         else:
             result = {"success": False, "error": f"Unknown platform: {platform}"}
@@ -786,6 +812,7 @@ class ClawBotRPC:
         """Get social autopilot scheduler status."""
         try:
             from src.social_scheduler import SocialAutopilot
+
             return SocialAutopilot().status()
         except Exception as e:
             logger.warning("Autopilot status failed: %s", e)
@@ -796,6 +823,7 @@ class ClawBotRPC:
         """Start the social autopilot scheduler."""
         try:
             from src.social_scheduler import SocialAutopilot
+
             return SocialAutopilot().start()
         except Exception as e:
             logger.error("Autopilot start failed: %s", e)
@@ -806,6 +834,7 @@ class ClawBotRPC:
         """Stop the social autopilot scheduler."""
         try:
             from src.social_scheduler import SocialAutopilot
+
             return SocialAutopilot().stop()
         except Exception as e:
             logger.error("Autopilot stop failed: %s", e)
@@ -816,6 +845,7 @@ class ClawBotRPC:
         """Manually trigger a specific autopilot job."""
         try:
             from src.social_scheduler import SocialAutopilot
+
             return SocialAutopilot().trigger_job(job_id)
         except Exception as e:
             logger.error("Autopilot trigger failed: %s", e)
@@ -832,10 +862,7 @@ class ClawBotRPC:
         from pathlib import Path
 
         personas: list = []
-        persona_dir = (
-            Path(__file__).resolve().parent.parent.parent
-            / "data" / "social_personas"
-        )
+        persona_dir = Path(__file__).resolve().parent.parent.parent / "data" / "social_personas"
         if not persona_dir.is_dir():
             return personas
 
@@ -843,12 +870,14 @@ class ClawBotRPC:
             for f in sorted(persona_dir.glob("*.json")):
                 try:
                     data = json.loads(f.read_text(encoding="utf-8"))
-                    personas.append({
-                        "id": f.stem,
-                        "name": data.get("name", f.stem),
-                        "active": data.get("active", True),
-                        "platform_style": data.get("platform_style", {}),
-                    })
+                    personas.append(
+                        {
+                            "id": f.stem,
+                            "name": data.get("name", f.stem),
+                            "active": data.get("active", True),
+                            "platform_style": data.get("platform_style", {}),
+                        }
+                    )
                 except Exception as e:  # noqa: F841
                     continue
         except Exception as e:
@@ -870,11 +899,13 @@ class ClawBotRPC:
             calendar: list = []
             for i in range(days):
                 day_topics = topics[i * 2 : i * 2 + 2] if topics else []
-                calendar.append({
-                    "day": i + 1,
-                    "topics": day_topics,
-                    "slots": ["morning", "evening"],
-                })
+                calendar.append(
+                    {
+                        "day": i + 1,
+                        "topics": day_topics,
+                        "slots": ["morning", "evening"],
+                    }
+                )
             return {"success": True, "days": days, "calendar": calendar}
         except Exception as e:
             logger.error("Social calendar generation failed: %s", e)
@@ -901,9 +932,7 @@ class ClawBotRPC:
             return {"success": False, "error": _safe_error(e)}
 
     @staticmethod
-    async def _rpc_generate_persona_photo(
-        persona: str, scenario: str, mood: str = "natural"
-    ) -> dict:
+    async def _rpc_generate_persona_photo(persona: str, scenario: str, mood: str = "natural") -> dict:
         """Generate persona-consistent photo for social media.
 
         Uses persona visual identity for prompt construction.
@@ -940,27 +969,33 @@ class ClawBotRPC:
             if mode == "semantic":
                 # semantic_search returns List[Dict]
                 raw_list = shared_memory.semantic_search(
-                    query=query, limit=limit, category=category,
+                    query=query,
+                    limit=limit,
+                    category=category,
                 )
                 raw_results = raw_list or []
             else:
                 # search() returns Dict with "results" key
                 raw_dict = shared_memory.search(
-                    query=query, limit=limit, mode=mode,
+                    query=query,
+                    limit=limit,
+                    mode=mode,
                 )
                 raw_results = (raw_dict or {}).get("results", [])
 
             for r in raw_results:
-                results.append({
-                    "key": r.get("key", ""),
-                    "value": r.get("value", ""),
-                    "category": r.get("category", ""),
-                    "importance": r.get("importance", 1),
-                    "access_count": r.get("access_count", 0),
-                    "similarity": r.get("similarity", r.get("score", 0.0)),
-                    "match_type": r.get("match_type", ""),
-                    "source_bot": r.get("source_bot", ""),
-                })
+                results.append(
+                    {
+                        "key": r.get("key", ""),
+                        "value": r.get("value", ""),
+                        "category": r.get("category", ""),
+                        "importance": r.get("importance", 1),
+                        "access_count": r.get("access_count", 0),
+                        "similarity": r.get("similarity", r.get("score", 0.0)),
+                        "match_type": r.get("match_type", ""),
+                        "source_bot": r.get("source_bot", ""),
+                    }
+                )
         except Exception as e:
             logger.warning("Memory search failed: %s", e)
 
