@@ -7,6 +7,48 @@
 
 ---
 
+## [2026-04-14] 用户体验深度审计 — 11项体验硬伤修复
+
+> 领域: `backend`, `ai-pool`, `infra`
+> 影响模块: `life_automation.py`, `chinese_nlp_mixin.py`, `nlp_ticker_map.py`, `notify_style.py`, `daily_brief.py`, `proactive_periodic.py`, `onboarding_mixin.py`, `litellm_router.py`, `crawl4ai_engine.py`, `callback_mixin.py`, `workflow_mixin.py`, `run-audit.sh`, `test_notify_style.py`
+> 关联问题: HI-498~HI-508
+
+### 变更内容
+
+**🔴 阻塞体验修复 (3项)**
+1. **HI-498 提醒系统时区错位**: dateparser TIMEZONE 从硬编码 `America/New_York` 改为 `os.environ.get("USER_TIMEZONE", "Asia/Shanghai")`。用户说"明天下午3点"终于是北京时间了
+2. **HI-499 提醒触发词盲区**: 新增"帮我记住/别忘了/记得提醒/设个提醒/定个提醒/设个闹钟/定个闹钟"7个同义词正则 + `_COMMAND_KEYWORDS` 补充"闹钟"关键词
+3. **HI-500 记账误触发**: 记账极简模式添加 ticker 过滤——note 为 1-6 位纯大写字母时跳过（`100 AAPL` 不再被记成花费）
+
+**🟠 体验欺骗修复 (5项)**
+4. **HI-501 夜间审计权限失败**: `run-audit.sh` SCRIPT_DIR 硬编码项目审计目录路径，不再依赖 launchd WorkingDirectory
+5. **HI-502 日报双emoji**: `format_digest` 传 `icon=""` 不再叠加默认 📢 前缀
+6. **HI-503 日报空heading**: `_section("")` 改为 `_section("🏆 闲鱼热销")`
+7. **HI-505 新用户误判**: 检测改为 shared_memory 持久化标记 `onboarded_{user_id}`，DB 重建不影响
+8. **HI-507 淘宝比价空跑**: 淘宝配置 `enabled=False` + 比价结果标注"淘宝/天猫需登录暂不可用"
+
+**🟡 体验粗糙修复 (3项)**
+9. **HI-504 深夜推送**: ProactiveEngine 新增 `_is_quiet_hours()` 安静时段过滤（北京时间 0-7 点）
+10. **HI-506 iflow 静默失效**: 新增 Key 有效期监控（6天告警+自动跳过过期 deployment）
+11. **HI-508 引导无即时操作**: 引导完成后根据兴趣方向添加"立即试试"按钮
+
+### 文件变更
+- `packages/clawbot/src/execution/life_automation.py` — TIMEZONE 环境变量化
+- `packages/clawbot/src/bot/chinese_nlp_mixin.py` — 提醒同义词 + 记账 ticker 过滤
+- `packages/clawbot/src/bot/nlp_ticker_map.py` — 闹钟关键词
+- `packages/clawbot/src/notify_style.py` — format_digest icon=""
+- `packages/clawbot/src/execution/daily_brief.py` — 空 heading 修复
+- `packages/clawbot/src/core/proactive_periodic.py` — 安静时段过滤
+- `packages/clawbot/src/bot/cmd_basic/onboarding_mixin.py` — 持久化标记 + 即时按钮
+- `packages/clawbot/src/litellm_router.py` — iflow Key 有效期监控
+- `packages/clawbot/src/shopping/crawl4ai_engine.py` — 淘宝禁用 + 比价平台标注
+- `packages/clawbot/src/bot/callback_mixin.py` — 比价结果平台标注
+- `packages/clawbot/src/bot/workflow_mixin.py` — 比价结果平台标注
+- `scripts/nightly-audit/run-audit.sh` — SCRIPT_DIR 硬编码修复
+- `packages/clawbot/tests/test_notify_style.py` — 适配 format_digest 无 icon 行为
+
+---
+
 ## [2026-04-14] 三项体验修复 — 新用户检测防误判 + iflow Key过期监控 + 引导即时体验按钮
 
 > 领域: `backend`
