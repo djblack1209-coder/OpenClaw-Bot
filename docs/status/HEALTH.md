@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-14 (用户体验深度审计 — 9项修复: 提醒时区/记账误触发/审计权限/日报格式/引导体验/比价标注/iflow监控/安静时段)
+> 最后更新: 2026-04-14 (OpenCode性能优化 — 项目瘦身16GB→6.6GB + watcher忽略规则30+条，扫描文件数32.8万→5千)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -44,6 +44,7 @@
 | 维度 | 状态 | 说明 |
 |------|------|------|
 | 核心服务 | 🟢 运行中 | 7 Bot + FastAPI + Redis (macOS 主节点), Python 进程后台静默运行(无 Dock 图标) |
+| 开发工具性能 | 🟢 优化 | OpenCode watcher 扫描文件数从 32.8万 降至 ~5千 (项目瘦身 16GB→6.6GB + 30+条 ignore 规则) |
 | LLM 路由 | 🟢 加固 | 主链调整为 SiliconFlow/iflow/Groq/Gemini → Cerebras/OpenRouter/NVIDIA/Volcengine → Mistral/Cohere/GPT_API_Free/g4f，切断 XAPI Claude 空余额兜底 + iflow Key 7天有效期自动检测+告警 |
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 + 安静时段过滤(0-7点不推送) |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 |

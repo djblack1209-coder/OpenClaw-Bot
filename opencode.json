@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "**/node_modules/**",
+      "dist/**",
+      ".git/**",
+      "__pycache__/**",
+      "*.pyc",
+      ".venv*/**",
+      "packages/clawbot/.venv*/**",
+      "venv/**",
+      ".env*",
+      "*.egg-info/**",
+      ".mypy_cache/**",
+      ".pytest_cache/**",
+      ".ruff_cache/**",
+      "build/**",
+      "target/**",
+      "**/target/**",
+      "apps/openclaw-manager-src/src-tauri/target/**",
+      "*.log",
+      "coverage/**",
+      ".openclaw/**",
+      ".worktrees/**",
+      ".playwright-cli/**",
+      ".playwright-mcp/**",
+      "backups/**",
+      "tools/**/*.tar.gz",
+      "output/**",
+      "data/**",
+      "*.db",
+      "*.sqlite",
+      "*.sqlite3",
+      "*.dmg",
+      "*.tar.gz"
+    ]
+  }
+}
