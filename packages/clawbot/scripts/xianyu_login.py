@@ -13,6 +13,7 @@
   python3 scripts/xianyu_login.py --headless    # 无界面模式（后台静默）
   python3 scripts/xianyu_login.py --quiet       # 静默模式（被其他脚本调用时）
 """
+
 import os
 import signal
 import subprocess
@@ -57,6 +58,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
     # 加载滑块求解器
     try:
         from src.xianyu.slider_solver import SliderSolverSync, STEALTH_JS
+
         slider_solver = SliderSolverSync()
         has_slider_solver = True
         _log("滑块求解器已加载", quiet)
@@ -162,7 +164,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
 
         # 提取 Cookie（区分域名，优先使用 goofish 域名的值）
         all_cookies = context.cookies()
-        
+
         # 按域名分组，goofish 域名优先
         goofish_cookies = {}
         taobao_cookies = {}
@@ -175,32 +177,50 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                 taobao_cookies[c["name"]] = c["value"]
             else:
                 other_cookies[c["name"]] = c["value"]
-        
+
         # 合并：其他 → 淘宝 → 闲鱼（闲鱼优先级最高，覆盖同名的）
         cookie_dict = {}
         cookie_dict.update(other_cookies)
         cookie_dict.update(taobao_cookies)
         cookie_dict.update(goofish_cookies)
-        
-        _log(f"Cookie 来源: goofish={len(goofish_cookies)}, taobao={len(taobao_cookies)}, other={len(other_cookies)}", quiet)
-        
+
+        _log(
+            f"Cookie 来源: goofish={len(goofish_cookies)}, taobao={len(taobao_cookies)}, other={len(other_cookies)}",
+            quiet,
+        )
+
         # 在浏览器中调用一次 Token API，让服务端设置正确的 _m_h5_tk
         try:
             page.goto("https://www.goofish.com/", wait_until="domcontentloaded")
-            time.sleep(1)
-            # 触发一次 API 调用来获取正确域名的 _m_h5_tk
+            time.sleep(2)
+            # 触发一次 API 调用来获取正确域名的 _m_h5_tk（使用 gaia API 更可靠）
             page.evaluate("""() => {
-                return fetch('https://h5api.m.goofish.com/h5/mtop.taobao.idlemessage.pc.login.token/1.0/?jsv=2.7.4&appKey=34839810&type=originaljson', {
+                const data = JSON.stringify({bizScene: 'home'});
+                const t = Date.now();
+                const params = new URLSearchParams({
+                    jsv: '2.7.2',
+                    appKey: '34839810',
+                    t: t,
+                    sign: 'placeholder',
+                    v: '1.0',
+                    type: 'originaljson',
+                    dataType: 'json',
+                    timeout: '20000',
+                    api: 'mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get',
+                    data: data
+                });
+                return fetch('https://h5api.m.goofish.com/h5/mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get/1.0/?' + params, {
                     method: 'POST', credentials: 'include',
                 }).then(r => r.text()).catch(() => '');
             }""")
-            time.sleep(2)
+            time.sleep(3)
             # 重新获取 Cookie（可能更新了 _m_h5_tk）
             all_cookies = context.cookies()
             for c in all_cookies:
                 domain = c.get("domain", "")
-                if "goofish" in domain:
+                if "goofish" in domain or "taobao" in domain:
                     cookie_dict[c["name"]] = c["value"]
+            _log(f"触发 API 后获取到 {len(cookie_dict)} 个 Cookie 字段", quiet)
         except Exception as e:
             _log(f"触发 API 获取 h5_tk 失败（非致命）: {e}", quiet)
 
@@ -282,12 +302,11 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
             if "unb" not in cookie_dict:
                 try:
                     import sqlite3
+
                     db_path = os.path.join(ROOT, "data", "xianyu_chat.db")
                     if os.path.exists(db_path):
                         conn = sqlite3.connect(db_path)
-                        row = conn.execute(
-                            "SELECT DISTINCT user_id FROM consultations LIMIT 1"
-                        ).fetchone()
+                        row = conn.execute("SELECT DISTINCT user_id FROM consultations LIMIT 1").fetchone()
                         if row and row[0]:
                             cookie_dict["unb"] = str(row[0])
                             _log(f"从本地数据库获取到卖家 ID: {row[0]}", quiet)
@@ -324,10 +343,7 @@ def save_cookies_to_env(cookie_str: str, quiet: bool = False) -> bool:
 def notify_xianyu_process(quiet: bool = False) -> bool:
     """向 xianyu_main 进程发送 SIGUSR1 信号触发 Cookie 热更新"""
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", "xianyu_main"],
-            capture_output=True, text=True
-        )
+        result = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True)
         if result.returncode == 0 and result.stdout.strip():
             pids = result.stdout.strip().split("\n")
             for pid in pids:
@@ -358,7 +374,44 @@ def run_login(quiet: bool = False, headless: bool = False) -> bool:
     if not save_cookies_to_env(cookie_str, quiet=quiet):
         return False
 
-    # 3. 通知闲鱼进程热更新
+    # 3. 验证 Cookie 是否真的有效
+    _log("正在验证 Cookie 有效性...", quiet)
+    try:
+        import httpx as _httpx
+
+        _cookies = {}
+        for pair in cookie_str.split(";"):
+            pair = pair.strip()
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                _cookies[k.strip()] = v.strip()
+        with _httpx.Client(timeout=15, follow_redirects=True) as _client:
+            _resp = _client.post(
+                "https://passport.goofish.com/newlogin/hasLogin.do",
+                params={"appName": "xianyu", "fromSite": "77"},
+                data={
+                    "hid": _cookies.get("unb", ""),
+                    "ltl": "true",
+                    "appName": "xianyu",
+                    "appEntrance": "web",
+                    "_csrf_token": _cookies.get("XSRF-TOKEN", ""),
+                    "fromSite": "77",
+                    "documentReferer": "https://www.goofish.com/",
+                    "defaultView": "hasLogin",
+                    "deviceId": _cookies.get("cna", ""),
+                },
+                cookies=_cookies,
+            )
+            _rj = _resp.json()
+            _rc = _rj.get("content", {}).get("data", {}).get("resultCode")
+            if _rc == 100:
+                _log("⚠️  Cookie 已写入但服务端报告登录态失效(resultCode=100)，可能需要重新扫码", quiet)
+            else:
+                _log("✅ Cookie 验证通过，登录态有效", quiet)
+    except Exception as _e:
+        _log(f"验证请求失败（非致命）: {_e}", quiet)
+
+    # 4. 通知闲鱼进程热更新
     notify_xianyu_process(quiet=quiet)
 
     _log("=== 登录完成，闲鱼客服即将恢复 ===", quiet)
