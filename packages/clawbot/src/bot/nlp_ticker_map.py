@@ -83,6 +83,7 @@ _COMMAND_KEYWORDS: list[tuple[str, str, str]] = [
     ("日报", "ops_brief", "今日简报"),
     ("周报", "weekly", "综合周报"),
     ("提醒", "ops_life_remind", "设置提醒"),
+    ("闹钟", "ops_life_remind", "设置提醒"),
     ("记账", "expense_add", "记账"),
     ("账单", "bill_list", "账单追踪"),
     ("话费", "bill_list", "话费追踪"),

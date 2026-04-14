@@ -27,6 +27,7 @@ SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 _HAS_HUMANIZE = False
 try:
     import humanize
+
     # 激活中文支持
     try:
         humanize.activate("zh_CN")
@@ -39,6 +40,7 @@ except ImportError:
 
 
 # ── 基础工具 ──────────────────────────────────────
+
 
 def clean_text(value: object) -> str:
     return " ".join(str(value or "").strip().split())
@@ -70,9 +72,11 @@ def divider(style: str = "thin") -> str:
 def timestamp_tag() -> str:
     try:
         from src.utils import now_et
+
         return now_et().strftime("%H:%M ET")
     except Exception:
         from datetime import datetime
+
         return datetime.now().strftime("%H:%M")
 
 
@@ -89,6 +93,7 @@ def natural_time(dt=None, future: bool = False) -> str:
                 return humanize.naturaltime(0)
             if isinstance(dt, (int, float)):
                 from datetime import datetime as _dt
+
                 dt = _dt.fromtimestamp(dt)
             return humanize.naturaltime(dt, future=future)
         except Exception as e:
@@ -98,6 +103,7 @@ def natural_time(dt=None, future: bool = False) -> str:
         return "刚刚"
     if isinstance(dt, (int, float)):
         from datetime import datetime as _dt
+
         dt = _dt.fromtimestamp(dt)
     try:
         return dt.strftime("%m-%d %H:%M")
@@ -116,7 +122,7 @@ def natural_size(num_bytes: int) -> str:
         except Exception as e:
             logger.debug("静默异常: %s", e)
     # 降级
-    for unit in ['B', 'KB', 'MB', 'GB']:
+    for unit in ["B", "KB", "MB", "GB"]:
         if num_bytes < 1024:
             return f"{num_bytes:.1f} {unit}"
         num_bytes /= 1024
@@ -140,6 +146,7 @@ def natural_number(n) -> str:
 
 
 # ── 通知卡片 ──────────────────────────────────────
+
 
 def format_notice(
     title: str,
@@ -172,7 +179,8 @@ def format_digest(
     sections: Optional[Sequence[Tuple[str, Sequence[str]]]] = None,
     footer: str = "",
 ) -> str:
-    return format_announcement(title=title, intro=intro, sections=sections, footer=footer)
+    # icon="" 避免 format_announcement 默认加 📢 前缀，调用方标题已自带 emoji
+    return format_announcement(title=title, intro=intro, sections=sections, footer=footer, icon="")
 
 
 def format_announcement(
@@ -219,6 +227,7 @@ def format_announcement(
 
 
 # ── 交易通知（高频，必须一眼看懂）──────────────────
+
 
 def format_trade_submitted(action: str, symbol: str, quantity: int, order_id: object, status: str = "Submitted") -> str:
     act = clean_text(action).upper()
@@ -297,6 +306,7 @@ def format_ibkr_connectivity(title: str, detail: str) -> str:
 
 # ── 社媒通知 ──────────────────────────────────────
 
+
 def format_social_published(platform: str, topic: str, url: str = "", title: str = "", memory_path: str = "") -> str:
     """社媒发布成功通知"""
     plat_icon = {"x": "𝕏", "xiaohongshu": "📕"}.get(platform, "📱")
@@ -358,6 +368,7 @@ def format_hotpost_result(topic: str, trend_label: str, results: dict, login_hin
 
 # ── 系统状态通知 ──────────────────────────────────
 
+
 def format_status_card(
     name: str,
     emoji: str,
@@ -399,6 +410,7 @@ def format_status_card(
 
 
 # ── 成本/配额通知 ──────────────────────────────────
+
 
 def format_cost_card(
     throttle_flags: dict,
@@ -446,6 +458,7 @@ def format_cost_card(
 
 
 # ── 任务/赏金通知 ──────────────────────────────────
+
 
 def format_bounty_result(
     evaluated: int,

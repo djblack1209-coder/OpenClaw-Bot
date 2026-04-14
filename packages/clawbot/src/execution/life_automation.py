@@ -8,8 +8,10 @@ v2.0 变更 (2026-03-23):
   - 支持中英文: "10分钟后" / "下周一" / "in 2 hours" / "next Friday 3pm"
   - dateparser 不可用时降级到 delay_minutes 模式
 """
+
 import asyncio
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 _HAS_DATEPARSER = False
 try:
     import dateparser as _dp
+
     _HAS_DATEPARSER = True
     logger.debug("[life_automation] dateparser 已加载")
 except ImportError:
@@ -52,7 +55,7 @@ def _parse_remind_time(time_text: str = None, delay_minutes: int = None) -> tupl
                 settings={
                     "PREFER_DATES_FROM": "future",
                     "RETURN_AS_TIMEZONE_AWARE": True,
-                    "TIMEZONE": "America/New_York",
+                    "TIMEZONE": os.environ.get("USER_TIMEZONE", "Asia/Shanghai"),
                 },
             )
             if parsed and parsed > now:
@@ -125,9 +128,15 @@ def list_reminders(status="pending", db_path=None) -> list:
                 (status,),
             )
             return [
-                {"id": r[0], "message": r[1], "remind_at": r[2],
-                 "status": r[3], "created_at": r[4],
-                 "recurrence_rule": r[5], "user_chat_id": r[6]}
+                {
+                    "id": r[0],
+                    "message": r[1],
+                    "remind_at": r[2],
+                    "status": r[3],
+                    "created_at": r[4],
+                    "recurrence_rule": r[5],
+                    "user_chat_id": r[6],
+                }
                 for r in cursor.fetchall()
             ]
     except Exception as e:  # noqa: F841
@@ -179,13 +188,15 @@ def fire_due_reminders(db_path=None) -> list:
             rows = cursor.fetchall()
             for row in rows:
                 rid, msg, remind_at, recurrence, chat_id = row
-                fired.append({
-                    "id": rid,
-                    "message": msg,
-                    "remind_at": remind_at,
-                    "recurrence_rule": recurrence or "",
-                    "user_chat_id": chat_id or 0,
-                })
+                fired.append(
+                    {
+                        "id": rid,
+                        "message": msg,
+                        "remind_at": remind_at,
+                        "recurrence_rule": recurrence or "",
+                        "user_chat_id": chat_id or 0,
+                    }
+                )
                 if recurrence:
                     # 重复提醒: 计算下一次触发时间并更新
                     next_time = _calc_next_occurrence(recurrence, now)
@@ -247,6 +258,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
                 target_day = int(rule.split(":")[1])
             else:
                 import re
+
                 m = re.search(r"(\d+)", rule)
                 target_day = int(m.group(1)) if m else 1
             # 下个月的 target_day 号
@@ -257,6 +269,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
                     month = 1
                     year += 1
             import calendar
+
             max_day = calendar.monthrange(year, month)[1]
             target_day = min(target_day, max_day)
             return from_time.replace(year=year, month=month, day=target_day)
@@ -296,6 +309,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
 # 原因: 接受任意 AppleScript 字符串执行是严重的命令注入风险 (P0 安全审计)
 # 如需 HomeKit 控制，请使用下方 _run_local_home_action() 的白名单路由
 
+
 def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
     """执行本地 macOS 智能家居动作
 
@@ -308,8 +322,11 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
 
     if not act or act in frozenset({"noop", "ping", "health"}):
         return {
-            "success": True, "mode": "local", "action": "ping",
-            "status_code": 200, "response": "pong",
+            "success": True,
+            "mode": "local",
+            "action": "ping",
+            "status_code": 200,
+            "response": "pong",
         }
 
     if act in frozenset({"提醒", "notify", "notification", "通知"}):
@@ -318,19 +335,26 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         if not message:
             return {"success": False, "mode": "local", "error": "notify 需要 message 字段"}
         # 只保留中英文字符、数字、基本标点，去除所有可能的注入字符
-        safe_title = re.sub(r'[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]', '', title)[:100]
-        safe_message = re.sub(r'[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]', '', message)[:500]
+        safe_title = re.sub(r"[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]", "", title)[:100]
+        safe_message = re.sub(r"[^\w\s\u4e00-\u9fff.,!?;:，。！？；：\-]", "", message)[:500]
         # 安全修复: 使用 osascript argv 传参，避免 f-string 拼接导致 AppleScript 注入
         cp = subprocess.run(
-            ["osascript", "-e",
-             'on run argv\n'
-             '  display notification (item 1 of argv) with title (item 2 of argv)\n'
-             'end run',
-             safe_message, safe_title],
-            check=False, capture_output=True, text=True, timeout=8,
+            [
+                "osascript",
+                "-e",
+                "on run argv\n  display notification (item 1 of argv) with title (item 2 of argv)\nend run",
+                safe_message,
+                safe_title,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
         )
         return {
-            "success": cp.returncode == 0, "mode": "local", "action": "notify",
+            "success": cp.returncode == 0,
+            "mode": "local",
+            "action": "notify",
             "status_code": 200 if cp.returncode == 0 else 500,
             "response": str(cp.stdout or "").strip()[:300],
         }
@@ -344,10 +368,16 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         if parsed.scheme not in ("http", "https"):
             return {"success": False, "mode": "local", "error": "仅支持 http/https 链接"}
         cp = subprocess.run(
-            ["open", url], check=False, capture_output=True, text=True, timeout=8,
+            ["open", url],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
         )
         return {
-            "success": cp.returncode == 0, "mode": "local", "action": "open_url",
+            "success": cp.returncode == 0,
+            "mode": "local",
+            "action": "open_url",
             "status_code": 200 if cp.returncode == 0 else 500,
             "response": str(cp.stdout or "").strip()[:300],
         }
@@ -357,21 +387,42 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         if not app_name:
             return {"success": False, "mode": "local", "error": "open_app 需要 app/name 字段"}
         # 安全白名单：只允许打开这些应用
-        _ALLOWED_APPS = frozenset({
-            "safari", "chrome", "firefox", "finder", "terminal",
-            "notes", "calendar", "reminders", "messages", "mail",
-            "music", "photos", "preview", "textedit", "calculator",
-            "system preferences", "system settings", "activity monitor",
-        })
+        _ALLOWED_APPS = frozenset(
+            {
+                "safari",
+                "chrome",
+                "firefox",
+                "finder",
+                "terminal",
+                "notes",
+                "calendar",
+                "reminders",
+                "messages",
+                "mail",
+                "music",
+                "photos",
+                "preview",
+                "textedit",
+                "calculator",
+                "system preferences",
+                "system settings",
+                "activity monitor",
+            }
+        )
         app_lower = app_name.lower().strip()
         if app_lower not in _ALLOWED_APPS:
             return {"success": False, "error": f"应用 '{app_name}' 不在安全白名单中"}
         cp = subprocess.run(
             ["open", "-a", app_name],
-            check=False, capture_output=True, text=True, timeout=12,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=12,
         )
         return {
-            "success": cp.returncode == 0, "mode": "local", "action": "open_app",
+            "success": cp.returncode == 0,
+            "mode": "local",
+            "action": "open_app",
             "status_code": 200 if cp.returncode == 0 else 500,
             "response": str(cp.stdout or "").strip()[:300],
         }
@@ -391,13 +442,15 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         if voice:
             # 安全限制: voice 必须是合法的名称字符，防止参数注入
             voice = str(voice).strip()
-            if not re.match(r'^[A-Za-z\u4e00-\u9fff\s\-]+$', voice) or len(voice) > 50:
+            if not re.match(r"^[A-Za-z\u4e00-\u9fff\s\-]+$", voice) or len(voice) > 50:
                 return {"success": False, "mode": "local", "error": "voice 名称包含非法字符"}
             cmd.extend(["-v", voice])
         cmd.append(text)
         cp = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=20)
         return {
-            "success": cp.returncode == 0, "mode": "local", "action": "say",
+            "success": cp.returncode == 0,
+            "mode": "local",
+            "action": "say",
             "status_code": 200 if cp.returncode == 0 else 500,
             "response": str(cp.stdout or "").strip()[:300],
         }
@@ -407,32 +460,53 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
         if not name:
             return {"success": False, "mode": "local", "error": "shortcut 需要 name/shortcut 字段"}
         # 安全限制：快捷指令名称长度和字符检查
-        if len(name) > 100 or not re.match(r'^[\w\s\u4e00-\u9fff\-]+$', name):
+        if len(name) > 100 or not re.match(r"^[\w\s\u4e00-\u9fff\-]+$", name):
             return {"success": False, "error": "快捷指令名称包含非法字符"}
         # 安全限制：白名单校验 — 仅允许预定义的快捷指令名称执行
-        _SHORTCUT_WHITELIST = frozenset({
-            "开灯", "关灯", "回家模式", "离家模式", "晚安", "早安",
-            "睡眠模式", "工作模式", "勿扰模式", "省电模式",
-            "Turn On Lights", "Turn Off Lights", "Good Morning", "Good Night",
-        })
+        _SHORTCUT_WHITELIST = frozenset(
+            {
+                "开灯",
+                "关灯",
+                "回家模式",
+                "离家模式",
+                "晚安",
+                "早安",
+                "睡眠模式",
+                "工作模式",
+                "勿扰模式",
+                "省电模式",
+                "Turn On Lights",
+                "Turn Off Lights",
+                "Good Morning",
+                "Good Night",
+            }
+        )
         if name not in _SHORTCUT_WHITELIST:
             logger.warning("[生活自动化] 快捷指令 '%s' 不在白名单中，已拦截", name)
             return {
-                "success": False, "mode": "local",
+                "success": False,
+                "mode": "local",
                 "error": f"快捷指令 '{name}' 不在允许列表中，请联系管理员添加",
             }
         cp = subprocess.run(
             ["shortcuts", "run", name],
-            check=False, capture_output=True, text=True, timeout=30,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return {
-            "success": cp.returncode == 0, "mode": "local", "action": "shortcut",
+            "success": cp.returncode == 0,
+            "mode": "local",
+            "action": "shortcut",
             "status_code": 200 if cp.returncode == 0 else 500,
             "response": str(cp.stdout or "").strip()[:300],
         }
 
     return {
-        "success": False, "mode": "local", "status_code": 400,
+        "success": False,
+        "mode": "local",
+        "status_code": 400,
         "error": "不支持的本地动作，支持: ping/notify/open_url/open_app/say/shortcut",
     }
 
@@ -454,22 +528,45 @@ async def trigger_home_action(action: str = "", payload: dict = None) -> dict:
 
 # ── 向后兼容导出 (v6.0 拆分, 消费者逐步迁移后移除) ──
 from src.execution.bookkeeping import (  # noqa: F401
-    _CATEGORY_KEYWORDS, _CATEGORY_EMOJI, _auto_categorize,
-    add_expense, add_income, set_monthly_budget, get_monthly_summary,
-    check_budget_alert, get_expense_summary, get_all_expenses,
-    delete_last_expense, format_monthly_report,
-    BILL_TYPE_EMOJI, BILL_TYPE_ALIAS, BILL_TYPE_LABEL, MAX_BILL_ACCOUNTS_PER_USER,
-    resolve_bill_type, add_bill_account, update_bill_balance,
-    list_bill_accounts, remove_bill_account, check_bill_alerts,
-    get_bill_reminders_due, find_bill_by_type,
-    predict_balance_exhaustion, get_bill_due_summary,
-    get_discount_suggestions, save_discount_suggestions,
+    _CATEGORY_KEYWORDS,
+    _CATEGORY_EMOJI,
+    _auto_categorize,
+    add_expense,
+    add_income,
+    set_monthly_budget,
+    get_monthly_summary,
+    check_budget_alert,
+    get_expense_summary,
+    get_all_expenses,
+    delete_last_expense,
+    format_monthly_report,
+    BILL_TYPE_EMOJI,
+    BILL_TYPE_ALIAS,
+    BILL_TYPE_LABEL,
+    MAX_BILL_ACCOUNTS_PER_USER,
+    resolve_bill_type,
+    add_bill_account,
+    update_bill_balance,
+    list_bill_accounts,
+    remove_bill_account,
+    check_bill_alerts,
+    get_bill_reminders_due,
+    find_bill_by_type,
+    predict_balance_exhaustion,
+    get_bill_due_summary,
+    get_discount_suggestions,
+    save_discount_suggestions,
 )
 from src.execution.tracking import (  # noqa: F401
     MAX_PRICE_WATCHES_PER_USER,
-    record_post_engagement, get_engagement_summary,
-    record_follower_snapshot, get_follower_growth,
+    record_post_engagement,
+    get_engagement_summary,
+    record_follower_snapshot,
+    get_follower_growth,
     evaluate_strategy_performance,
-    add_price_watch, list_price_watches, remove_price_watch,
-    check_price_watches, cleanup_stale_watches,
+    add_price_watch,
+    list_price_watches,
+    remove_price_watch,
+    check_price_watches,
+    cleanup_stale_watches,
 )
