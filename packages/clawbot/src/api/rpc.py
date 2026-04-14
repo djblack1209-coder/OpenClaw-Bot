@@ -128,7 +128,8 @@ class ClawBotRPC:
             if os.path.exists(token_file):
                 with open(token_file, encoding="utf-8") as f:
                     data = json.load(f)
-                wechat_connected = bool(data.get("session_token"))
+                # 修复：字段名是 "token" 而不是 "session_token"
+                wechat_connected = bool(data.get("token"))
         except Exception as e:
             logger.debug("微信状态检测失败: %s", e)
 

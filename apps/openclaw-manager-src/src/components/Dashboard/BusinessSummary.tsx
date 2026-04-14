@@ -49,11 +49,12 @@ interface BusinessData {
 }
 
 // ── 默认值（API 未返回时显示占位） ──
+// 注意：这些是 fallback 占位值，实际数据从后端 API 获取
 
 const defaultData: BusinessData = {
   trading: { todayPnl: null, connected: false },
   xianyu: { online: false, messageCount: null },
-  llmCost: { todayCost: null, dailyBudget: 50 },
+  llmCost: { todayCost: null, dailyBudget: 50 },  // dailyBudget 从后端 API 读取，此处仅作 fallback
   social: { todayPosts: null, running: false },
 };
 
