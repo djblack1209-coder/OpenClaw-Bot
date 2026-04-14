@@ -160,6 +160,8 @@ class ResilientHTTPClient:
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
             follow_redirects=follow_redirects,
             verify=verify,
+            # 显式禁用代理：防止领券等场景被 mitmproxy 系统代理干扰
+            proxy=None,
         )
 
     async def close(self):
