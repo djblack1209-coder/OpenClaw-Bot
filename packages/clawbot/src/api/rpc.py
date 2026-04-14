@@ -95,11 +95,21 @@ class ClawBotRPC:
         ibkr_connected = False
         ibkr_account = ""
         try:
-            # IBKRBridge 用的是 _connected 私有属性，不是 connected
+            # 优先通过 IBKRBridge 实例检测（运行时有效）
             ibkr_connected = getattr(ibkr, "_connected", False) if ibkr else False
             ibkr_account = getattr(ibkr, "account", "") or ""
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
+        # 兜底：如果 IBKRBridge 实例不可用，直接检测 4002 端口
+        if not ibkr_connected:
+            try:
+                import socket as _socket
+
+                _ibkr_port = int(os.environ.get("IBKR_PORT", "4002"))
+                with _socket.create_connection(("127.0.0.1", _ibkr_port), timeout=1):
+                    ibkr_connected = True
+            except Exception:
+                pass
 
         # ── Shared memory stats ──
         mem_entries = 0
