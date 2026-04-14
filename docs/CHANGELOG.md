@@ -7,6 +7,24 @@
 
 ---
 
+## [2026-04-15] LaunchAgent KeepAlive 修复 + Tauri APP 重新编译
+
+> 领域: `infra`, `frontend`
+> 影响模块: `ai.openclaw.clawbot-agent.plist`, `openclaw-manager-src`
+> 关联问题: LaunchAgent 不自动重启 + 图标需重新编译
+
+### 变更内容
+
+1. **LaunchAgent KeepAlive 修复**：将 `KeepAlive` 从条件式 `SuccessfulExit=false`（仅非正常退出时重启）改为无条件 `<true/>`（任何退出都重启）。原配置导致进程以 exit 0 正常退出后不会被 launchd 重启。
+2. **Tauri APP 重新编译**：执行 `npm run tauri build`，编译生成新的 OpenClaw.app（含龙虾 logo 图标）和 DMG 安装包。
+
+### 文件变更
+- `~/Library/LaunchAgents/ai.openclaw.clawbot-agent.plist` — KeepAlive 改为 `<true/>`
+- `apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app` — 重新编译
+- `apps/openclaw-manager-src/src-tauri/target/release/bundle/dmg/OpenClaw_0.0.7_aarch64.dmg` — 重新编译
+
+---
+
 ## [2026-04-15] 14项系统全景审计修复 — 后端API缺失+前端UI+图标+开发页
 
 > 领域: `backend`, `frontend`, `infra`

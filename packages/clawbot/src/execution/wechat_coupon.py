@@ -1,19 +1,23 @@
-"""微信「提现笔笔省」自动领券模块
+"""微信「提现笔笔省」全平台自动领券模块
 
 通过 mitmproxy 中间人代理截获微信小程序流量中的 session-token，
-然后直接调用微信后端 API 领取每日免费提现券（365天有效期）。
+然后直接调用微信后端 API 领取所有可用优惠券，包括：
+  - 免费提现券（365天有效期）
+  - 美团外卖红包、京东购物券、滴滴出行券等平台优惠券
 
 工作流:
   1. 设置 macOS 系统代理 → 127.0.0.1:8080
   2. 启动 mitmdump 监听，addon 截获 session-token
   3. 通过 weixin:// URL scheme 打开小程序触发流量
   4. 从截获的 token 文件中提取凭证
-  5. POST 领券 API
+  5. 先领取免费提现券，再获取优惠券列表并逐个领取
   6. 恢复代理、清理进程
 
 支持 token 持久化存储和有效期测试，为后续云端部署做准备。
 
-参考: https://github.com/whether1/txbbs-WxMiniProgramScript
+参考:
+  - https://github.com/whether1/txbbs-WxMiniProgramScript
+  - https://github.com/LinYuanovo/AutoTaskScripts
 """
 
 import asyncio
@@ -42,8 +46,20 @@ _http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon", verify_ssl=False
 
 # ── 常量 ──────────────────────────────────────────────
 
-# 领券 API 地址
-_COUPON_API = "https://discount.wxpapp.wechatpay.cn/txbbs-mall/coupon/deliveryfreewithdrawalcoupon"
+# API 基地址
+_API_BASE = "https://discount.wxpapp.wechatpay.cn/txbbs-mall"
+
+# 免费提现券 API（原有功能）
+_COUPON_API = f"{_API_BASE}/coupon/deliveryfreewithdrawalcoupon"
+
+# 全平台优惠券列表 API（美团/京东/滴滴等）
+_LIST_GIFTS_API = f"{_API_BASE}/gift/listgifts"
+
+# 领取指定优惠券 API
+_REDEEM_GIFT_API = f"{_API_BASE}/gift/redeemgift"
+
+# 查询提现免费额度 API
+_BALANCE_API = f"{_API_BASE}/cashoutfree/getbalance"
 # 小程序 App ID
 _APP_ID = "wxdb3c0e388702f785"
 # 微信 URL Scheme（打开小程序）
@@ -255,9 +271,10 @@ async def test_saved_token() -> str:
 
 
 async def claim_with_saved_token() -> str:
-    """使用已保存的 token 直接领券（跳过 mitmproxy 流程）
+    """使用已保存的 token 领取全平台优惠券（跳过 mitmproxy 流程）
 
     适用于 token 仍在有效期内的场景，可在任意平台运行（不依赖 macOS）。
+    会依次领取提现券和所有平台优惠券（美团/京东/滴滴等）。
     如果 token 过期会提示用户刷新。
 
     Returns:
@@ -274,8 +291,8 @@ async def claim_with_saved_token() -> str:
     token = saved["token"]
     age_text = saved["age_text"]
 
-    result = await _claim_coupon(token)
-    result_msg = _parse_claim_result(result)
+    # 调用全平台领券
+    result_msg = await _claim_all_coupons(token)
 
     # 如果鉴权失败，提示用户刷新 token
     if "鉴权" in result_msg or "登录" in result_msg:
@@ -507,18 +524,18 @@ def _extract_token() -> Optional[str]:
 # ── 领券 API 调用 ──────────────────────────────────────
 
 
-async def _claim_coupon(token: str) -> dict:
-    """调用微信领券 API
+def _build_headers(token: str) -> dict:
+    """构建笔笔省 API 通用请求头
 
-    发送 POST 请求到笔笔省后端，领取免费提现券。
+    所有笔笔省 API 共用同一套认证头，只是 URL 不同。
 
     Args:
         token: 从微信流量中截获的 session-token
 
     Returns:
-        API 响应的 JSON 字典，失败时包含 error 键
+        请求头字典
     """
-    headers = {
+    return {
         "session-token": token,
         "X-Track-Id": f"T{uuid.uuid4().hex.upper()}",
         "X-Appid": _APP_ID,
@@ -534,24 +551,220 @@ async def _claim_coupon(token: str) -> dict:
         "Sec-Fetch-Dest": "empty",
     }
 
+
+async def _claim_coupon(token: str) -> dict:
+    """调用微信领券 API — 领取免费提现券
+
+    发送 POST 请求到笔笔省后端，领取免费提现券。
+
+    Args:
+        token: 从微信流量中截获的 session-token
+
+    Returns:
+        API 响应的 JSON 字典，失败时包含 error 键
+    """
+    headers = _build_headers(token)
+
     try:
         resp = await _http.post(_COUPON_API, json={}, headers=headers)
         data = resp.json()
-        logger.info("领券 API 响应: errcode=%s", data.get("errcode", "unknown"))
+        logger.info("提现券 API 响应: errcode=%s", data.get("errcode", "unknown"))
         return data
     except httpx.TimeoutException:
-        logger.error("领券 API 请求超时")
+        logger.error("提现券 API 请求超时")
         return {"error": "请求超时"}
     except Exception as e:
-        logger.error("领券 API 请求异常: %s", e)
+        logger.error("提现券 API 请求异常: %s", e)
         return {"error": str(e)}
+
+
+async def _get_gifts_list(token: str) -> list[dict]:
+    """获取笔笔省全平台优惠券列表
+
+    调用 listgifts API 获取所有可领取的优惠券，包括美团外卖红包、
+    京东购物券、滴滴出行券等。
+
+    Args:
+        token: session-token
+
+    Returns:
+        优惠券信息列表，每项包含 gift_id / gift_type / gift_status / coupon_info 等字段。
+        请求失败返回空列表。
+    """
+    headers = _build_headers(token)
+    # listgifts 是 GET 请求，带经纬度参数（传 0 表示不限地区）
+    params = {"longitude": "0", "latitude": "0"}
+
+    try:
+        resp = await _http.get(_LIST_GIFTS_API, params=params, headers=headers)
+        data = resp.json()
+        errcode = data.get("errcode", -1)
+        if errcode == 0:
+            gifts = data.get("data", {}).get("gift_info_list", [])
+            logger.info("获取到 %d 个优惠券条目", len(gifts))
+            return gifts
+        logger.warning("获取优惠券列表失败: errcode=%s, msg=%s", errcode, data.get("msg", ""))
+        return []
+    except httpx.TimeoutException:
+        logger.error("获取优惠券列表超时")
+        return []
+    except Exception as e:
+        logger.error("获取优惠券列表异常: %s", e)
+        return []
+
+
+async def _redeem_gift(token: str, gift_id: str) -> dict:
+    """领取指定的平台优惠券
+
+    通过 gift_id 调用 redeemgift API 领取单张优惠券。
+
+    Args:
+        token: session-token
+        gift_id: 优惠券唯一标识（从 listgifts 返回）
+
+    Returns:
+        API 响应的 JSON 字典，失败时包含 error 键
+    """
+    headers = _build_headers(token)
+    payload = {"gift_id": gift_id}
+
+    try:
+        resp = await _http.post(_REDEEM_GIFT_API, json=payload, headers=headers)
+        data = resp.json()
+        logger.info("领取优惠券 gift_id=%s 响应: errcode=%s", gift_id, data.get("errcode", "unknown"))
+        return data
+    except httpx.TimeoutException:
+        logger.error("领取优惠券 gift_id=%s 超时", gift_id)
+        return {"error": "请求超时"}
+    except Exception as e:
+        logger.error("领取优惠券 gift_id=%s 异常: %s", gift_id, e)
+        return {"error": str(e)}
+
+
+async def _get_balance(token: str) -> Optional[int]:
+    """查询提现免费额度（单位：分）
+
+    Args:
+        token: session-token
+
+    Returns:
+        余额（分），失败返回 None
+    """
+    headers = _build_headers(token)
+
+    try:
+        resp = await _http.get(_BALANCE_API, headers=headers)
+        data = resp.json()
+        if data.get("errcode") == 0:
+            balance = int(data.get("data", {}).get("balance", 0))
+            logger.info("当前提现免费额度: %d 分 (%.2f 元)", balance, balance / 100)
+            return balance
+        logger.warning("查询余额失败: %s", data.get("msg", ""))
+        return None
+    except Exception as e:
+        logger.error("查询余额异常: %s", e)
+        return None
+
+
+async def _claim_all_coupons(token: str) -> str:
+    """全平台一键领券 — 提现券 + 美团/京东/滴滴等所有可领优惠券
+
+    执行流程:
+      1. 领取免费提现券
+      2. 获取优惠券列表，筛选可领取的券
+      3. 逐个领取平台优惠券
+      4. 查询最终余额
+      5. 汇总所有结果返回
+
+    Args:
+        token: session-token
+
+    Returns:
+        中文汇总消息，适合直接发送给用户
+    """
+    results: list[str] = []
+    success_count = 0
+    skip_count = 0
+    fail_count = 0
+
+    # ── 第一步：领取免费提现券 ──
+    withdrawal_resp = await _claim_coupon(token)
+    withdrawal_msg = _parse_single_claim_result(withdrawal_resp)
+    results.append(f"📦 提现券: {withdrawal_msg}")
+    if withdrawal_msg.startswith("✅"):
+        success_count += 1
+    elif withdrawal_msg.startswith("ℹ️"):
+        skip_count += 1
+    else:
+        fail_count += 1
+
+    # 如果提现券鉴权失败，说明 token 无效，直接返回不再继续
+    if "鉴权" in withdrawal_msg or "登录" in withdrawal_msg:
+        return withdrawal_msg
+
+    # ── 第二步：获取全平台优惠券列表 ──
+    gifts = await _get_gifts_list(token)
+
+    # 筛选可领取的优惠券（类型为券 + 状态为可领取）
+    available_gifts = [g for g in gifts if g.get("gift_type") == "GT_COUPON" and g.get("gift_status") == "GS_AVAILABLE"]
+
+    if not available_gifts:
+        results.append("🎁 平台优惠券: 暂无可领取的券")
+    else:
+        results.append(f"🎁 发现 {len(available_gifts)} 张可领平台优惠券:")
+
+        for gift in available_gifts:
+            gift_id = gift.get("gift_id", "")
+            # 从 gift 中提取券名称（可能在 coupon_info 或 gift_name 字段）
+            coupon_info = gift.get("coupon_info", {})
+            gift_name = coupon_info.get("name", "") or gift.get("gift_name", "") or gift.get("name", "未知券")
+
+            # 领取这张券
+            redeem_resp = await _redeem_gift(token, gift_id)
+            redeem_errcode = redeem_resp.get("errcode", -1)
+            redeem_msg = redeem_resp.get("msg", "")
+
+            if "error" in redeem_resp:
+                # 网络/超时错误
+                results.append(f"   ❌ {gift_name}: {redeem_resp['error']}")
+                fail_count += 1
+            elif redeem_errcode == 0:
+                # 领取成功，尝试从响应中获取更详细的券名
+                resp_gift_info = redeem_resp.get("data", {}).get("gift_info", {})
+                resp_coupon_info = resp_gift_info.get("coupon_info", {})
+                final_name = resp_coupon_info.get("name", gift_name)
+                results.append(f"   ✅ {final_name}: 领取成功")
+                success_count += 1
+            elif "已" in redeem_msg and ("领" in redeem_msg or "兑" in redeem_msg):
+                # 已经领过
+                results.append(f"   ℹ️ {gift_name}: 已领取过")
+                skip_count += 1
+            else:
+                results.append(f"   ❌ {gift_name}: {redeem_msg or f'errcode={redeem_errcode}'}")
+                fail_count += 1
+
+            # 每次领取间隔 1-2 秒，避免触发频率限制
+            await asyncio.sleep(1 + (uuid.uuid4().int % 1000) / 1000)
+
+    # ── 第三步：查询最终余额 ──
+    balance = await _get_balance(token)
+    if balance is not None:
+        results.append(f"💰 当前提现免费额度: {balance / 100:.0f} 元")
+
+    # ── 汇总 ──
+    summary = f"📊 汇总: 成功 {success_count} | 已领 {skip_count} | 失败 {fail_count}"
+    results.append(summary)
+
+    return "\n".join(results)
 
 
 # ── 结果解析 ──────────────────────────────────────────
 
 
-def _parse_claim_result(response: dict) -> str:
-    """解析领券 API 响应，返回中文结果消息
+def _parse_single_claim_result(response: dict) -> str:
+    """解析单个领券 API 响应，返回中文结果消息
+
+    仅用于解析提现券 API 的响应（deliveryfreewithdrawalcoupon）。
 
     Args:
         response: API 响应字典
@@ -573,8 +786,8 @@ def _parse_claim_result(response: dict) -> str:
         # face_value 单位是分，转换为元
         value_yuan = face_value / 100 if face_value else 0
         if value_yuan:
-            return f"✅ 领券成功！获得「{name}」，面额 {value_yuan:.0f} 元，有效期365天"
-        return f"✅ 领券成功！获得「{name}」，有效期365天"
+            return f"✅ 领取成功！获得「{name}」，面额 {value_yuan:.0f} 元，有效期365天"
+        return f"✅ 领取成功！获得「{name}」，有效期365天"
 
     # 已经领过
     if "已在其它微信领取" in msg or "已经领取" in msg or "已领取" in msg:
@@ -586,6 +799,20 @@ def _parse_claim_result(response: dict) -> str:
 
     # 其他错误
     return f"❌ 领券失败: {msg or f'errcode={errcode}'}"
+
+
+def _parse_claim_result(response: dict) -> str:
+    """解析领券 API 响应（兼容旧调用方）
+
+    保留此函数以兼容 test_saved_token 等使用旧接口的地方。
+
+    Args:
+        response: API 响应字典
+
+    Returns:
+        用户友好的结果消息
+    """
+    return _parse_single_claim_result(response)
 
 
 # ── 主编排函数 ─────────────────────────────────────────
@@ -667,17 +894,16 @@ async def auto_claim_coupon() -> str:
             # 步骤5.5: 持久化保存 token（供后续有效期测试和云端使用）
             save_token_persistent(token)
 
-            # 步骤6: 调用领券 API
-            result = await _claim_coupon(token)
-            result_msg = _parse_claim_result(result)
+            # 步骤6: 全平台一键领券（提现券 + 美团/京东/滴滴等）
+            result_msg = await _claim_all_coupons(token)
 
-            # 判断是否需要重试
-            if result_msg.startswith("✅") or result_msg.startswith("ℹ️"):
-                # 成功或已领过，无需重试
+            # 判断是否需要重试（只有 token 鉴权失败才重试）
+            if "鉴权" not in result_msg and "登录" not in result_msg:
+                # token 有效，领券流程完成（不管券是否已领过）
                 return result_msg
 
             # 登录失败等错误，可能 token 过期，重试获取新 token
-            logger.warning("第 %d 次领券失败: %s", attempt, result_msg)
+            logger.warning("第 %d 次领券失败（token 无效）: %s", attempt, result_msg)
 
         # 所有重试都失败
         return "❌ 领券失败，已尝试 3 次。可能需要手动更新 mitmproxy 证书或重新登录微信"
