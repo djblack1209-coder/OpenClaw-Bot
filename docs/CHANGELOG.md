@@ -7,6 +7,36 @@
 
 ---
 
+## [2026-04-14] 三项体验修复 — 新用户检测防误判 + iflow Key过期监控 + 引导即时体验按钮
+
+> 领域: `backend`
+> 影响模块: `onboarding_mixin.py`, `litellm_router.py`
+> 关联问题: 无
+
+### 变更内容
+
+**问题1: 新用户检测改用持久化标记**
+- 原逻辑用 `history_store.get_messages()` 判断新用户，DB 重建后所有老用户被迫重走引导
+- 新逻辑优先检查 `shared_memory` 中的 `onboarded_{user_id}` 标记，有标记即为老用户
+- 引导完成时写入 onboarded 标记到 shared_memory（importance=5，不会过期）
+- shared_memory 不可用时自动降级回原来的历史消息判断
+
+**问题2: iflow Key 7天有效期监控**
+- 新增 `~/.openclaw/iflow_key_timestamp.json` 记录 iflow key 首次使用时间
+- 每次初始化时检查距首次使用是否超过 6 天（7天有效期 - 1天缓冲）
+- 超期则打 WARNING 告警并跳过 iflow deployments，避免无效请求
+- 检测到 key 变更（指纹不同）时自动重置计时器
+
+**问题3: 引导完成后增加即时体验按钮**
+- 根据用户选择的兴趣方向，在引导完成按钮列表第一行增加"立即试试"按钮
+- 投资→📊查看市场概览, 生活→📋看今日简报, 购物→🛒试试比价, 社媒→📰看科技早报, 全部→📋看今日简报
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_basic/onboarding_mixin.py` — 新增 `_check_is_first_time` / `_mark_user_onboarded` / `_build_instant_try_button`，改造 `onboard_entry` 和 `onboard_style`
+- `packages/clawbot/src/litellm_router.py` — 新增 `_check_iflow_key_expiry` / `_record_iflow_key_usage`，iflow deployment 注册前增加过期检查
+
+---
+
 ## [2026-04-13] HI-495/496/497 三系统修复 — LLM路由+心跳+IBKR日志降频
 
 > 领域: `ai-pool`, `infra`, `trading`
