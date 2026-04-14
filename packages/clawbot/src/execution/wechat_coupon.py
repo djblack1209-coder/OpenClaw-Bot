@@ -37,7 +37,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 模块级别 HTTP 客户端（自动重试 + 熔断）
-_http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon")
+# verify_ssl=False: macOS Python 3.12 的 certifi 证书链不完整，调用微信 API 时会报 SSL 错误
+_http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon", verify_ssl=False)
 
 # ── 常量 ──────────────────────────────────────────────
 
