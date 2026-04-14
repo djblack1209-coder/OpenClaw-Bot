@@ -75,7 +75,7 @@ export function SystemInfo() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500 font-medium">操作系统</p>
-              <p className="text-sm text-white font-medium truncate">
+              <p className="text-sm text-white font-medium break-all" title={info ? `${getOSLabel(info.os)} ${info.os_version} (${info?.arch})` : '--'}>
                 {info ? `${getOSLabel(info.os)} ${info.os_version}` : '--'}{' '}
                 <span className="text-gray-500 text-xs font-normal">({info?.arch})</span>
               </p>
@@ -93,7 +93,7 @@ export function SystemInfo() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500 font-medium">OpenClaw</p>
-              <p className="text-sm text-white font-medium truncate">
+              <p className="text-sm text-white font-medium break-all" title={info?.openclaw_installed ? (info.openclaw_version || '已安装') : '未安装'}>
                 {info?.openclaw_installed
                   ? info.openclaw_version || '已安装'
                   : '未安装'}
@@ -108,7 +108,7 @@ export function SystemInfo() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500 font-medium">技能模块</p>
-              <p className="text-sm text-white font-medium truncate">
+              <p className="text-sm text-white font-medium break-all" title={skillsStatus ? `${skillsStatus.enabled}/${skillsStatus.total} 已启用` : '--'}>
                 {skillsStatus
                   ? `${skillsStatus.enabled}/${skillsStatus.total} 已启用`
                   : '--'}
@@ -123,7 +123,7 @@ export function SystemInfo() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500 font-medium">Node.js</p>
-              <p className="text-sm text-white font-medium truncate">{info?.node_version || '--'}</p>
+              <p className="text-sm text-white font-medium break-all" title={info?.node_version || '--'}>{info?.node_version || '--'}</p>
             </div>
           </div>
 
@@ -134,7 +134,7 @@ export function SystemInfo() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500 font-medium">配置目录</p>
-              <p className="text-xs text-white font-mono truncate">
+              <p className="text-xs text-white font-mono break-all" title={info?.config_dir || '--'}>
                 {info?.config_dir || '--'}
               </p>
             </div>

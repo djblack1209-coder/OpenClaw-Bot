@@ -791,6 +791,13 @@ fn get_route_base_url(provider: &str, env_map: &HashMap<String, String>) -> Stri
             .cloned()
             .unwrap_or_default(),
         "claude-proxy" => env_map.get("CLAUDE_BASE_URL").cloned().unwrap_or_default(),
+        // 这些 Bot 走 LiteLLM 统一路由，优先显示 SiliconFlow 付费渠道地址
+        "free_pool" | "free_first" | "free_llm" => {
+            env_map.get("SILICONFLOW_PAID_BASE_URL")
+                .or_else(|| env_map.get("SILICONFLOW_BASE_URL"))
+                .cloned()
+                .unwrap_or_else(|| "LiteLLM 智能路由".to_string())
+        }
         _ => String::new(),
     }
 }
