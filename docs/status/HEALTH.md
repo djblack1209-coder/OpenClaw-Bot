@@ -126,6 +126,17 @@
 | ~~HI-490~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~FastAPI 无速率限制中间件~~ → **已修复 2026-04-12**: 新增 `RateLimitMiddleware`，基于 IP 滑动窗口限制 60次/分钟，超限返回 429 + Retry-After | 2026-04-12 |
 | ~~HI-491~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~RequestSizeLimitMiddleware chunked 传输可绕过~~ → **已修复 2026-04-12**: 新增流式读取计数，chunked 传输超 10MB 立即返回 413 | 2026-04-12 |
 | ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
+| HI-498 | `backend` | `life_automation.py` | 提醒系统 dateparser 时区硬编码为 `America/New_York`，中国用户说"明天下午3点"实际存储为美东时间 → **已修复 2026-04-14**: 改为 `os.environ.get("USER_TIMEZONE", "Asia/Shanghai")`，默认北京时间 | 2026-04-14 |
+| HI-499 | `backend` | `chinese_nlp_mixin.py` | "帮我记住/别忘了/设个提醒/定个闹钟"等中文同义表达完全无法触发提醒，只有"提醒我"可用 → **已修复 2026-04-14**: 新增 8 个同义词正则匹配 + nlp_ticker_map 关键词扩展 | 2026-04-14 |
+| HI-500 | `backend` | `chinese_nlp_mixin.py` | 记账极简模式 `100 AAPL` 被误识别为"花了100块在AAPL上"（纯大写字母 ticker 无过滤） → **已修复 2026-04-14**: 匹配后检查 note 是否为 1-6 位纯大写字母，是则跳过 | 2026-04-14 |
+| HI-501 | `infra` | `run-audit.sh` | 夜间审计 launchd 执行时 `getcwd: Operation not permitted`，0/8 阶段完成 → **已修复 2026-04-14**: SCRIPT_DIR 硬编码项目审计目录，不依赖 launchd 的 WorkingDirectory | 2026-04-14 |
+| HI-502 | `backend` | `notify_style.py` | 日报标题双 emoji 叠加 `📢 📊 每日智能日报` → **已修复 2026-04-14**: format_digest 传 icon="" 不再叠加默认 📢 | 2026-04-14 |
+| HI-503 | `backend` | `daily_brief.py` | 日报空 heading 节显示 `▸ ` 格式错误 → **已修复 2026-04-14**: 改为 `🏆 闲鱼热销` 有意义的标题 | 2026-04-14 |
+| HI-504 | `backend` | `proactive_periodic.py` | ProactiveEngine 凌晨 0-7 点仍推送通知打扰用户 → **已修复 2026-04-14**: 新增 `_is_quiet_hours()` 安静时段过滤 | 2026-04-14 |
+| HI-505 | `backend` | `onboarding_mixin.py` | 新用户检测依赖 `get_messages()` 历史消息，DB 重建后所有老用户被误判 → **已修复 2026-04-14**: 改为 shared_memory 持久化标记 `onboarded_{user_id}` | 2026-04-14 |
+| HI-506 | `ai-pool` | `litellm_router.py` | iflow Key 7天有效期无任何监控/告警，10 个 TIER_S 模型可能静默失效 → **已修复 2026-04-14**: 新增 `~/.openclaw/iflow_key_timestamp.json` 记录首次使用时间，超 6 天告警并跳过 | 2026-04-14 |
+| HI-507 | `backend` | `crawl4ai_engine.py` | 淘宝比价实际不可用（需登录）但没有告知用户 → **已修复 2026-04-14**: 淘宝标记 enabled=False + 比价结果末尾标注实际可用平台 | 2026-04-14 |
+| HI-508 | `backend` | `onboarding_mixin.py` | 引导完成后只有"查看全部功能"按钮，无即时体验引导 → **已修复 2026-04-14**: 根据用户选择的兴趣方向添加"立即试试"操作按钮 | 2026-04-14 |
 | HI-492 | `infra` | `launchagents/*` | macOS 26.4 Sandbox System Policy 阻止 launchd 读取 ~/Desktop/ 路径下的文件，导致所有 6 个 LaunchAgent 启动失败(exit 78/126) → **已修复 2026-04-13**: ProgramArguments 改为 `/bin/bash -c exec` 间接调用 + 日志路径迁移到 `~/Library/Logs/OpenClaw/` + plist 改为真实文件(非符号链接) | 2026-04-13 |
 | HI-493 | `backend` | `scheduler.py` | 笔笔省领券定时任务使用美东时间 08:30(=北京20:30)，导致中午外卖无券可用；且 auto_claim_coupon 无并发锁，曾出现 7 个 mitmdump 同时启动 → **已修复 2026-04-13**: 改为北京时间 07:00 + fcntl.flock 文件锁 | 2026-04-13 |
 | HI-494 | `infra` | `run-audit.sh` | 夜间审计被 macOS 延迟触发后，get_remaining_minutes() 算出剩余0分钟直接跳过全部8阶段，产生空报告 → **已修复 2026-04-13**: 新增补跑模式，检测到错过窗口时允许执行120分钟 | 2026-04-13 |
