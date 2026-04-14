@@ -543,7 +543,12 @@ async def smart_compare(
     source_method = "crawl4ai_css"
 
     # ── 第一级: CSS 结构化抽取（并发所有平台）──
-    css_tasks = {p: _crawl_platform_css(p, product, limit_per_platform) for p in platforms if p in PLATFORM_SCHEMAS}
+    # 跳过 enabled=False 的平台（如淘宝需要登录态，暂不可用）
+    css_tasks = {
+        p: _crawl_platform_css(p, product, limit_per_platform)
+        for p in platforms
+        if p in PLATFORM_SCHEMAS and PLATFORM_SCHEMAS[p].get("enabled", True)
+    }
     if css_tasks:
         css_results = await asyncio.gather(*css_tasks.values(), return_exceptions=True)
         for platform_key, result in zip(css_tasks.keys(), css_results):
