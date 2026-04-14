@@ -7,6 +7,34 @@
 
 ---
 
+## [2026-04-14] OpenCode 性能优化 — 项目瘦身 + watcher 忽略规则
+
+> 领域: `infra`, `docs`
+> 影响模块: `opencode.json`, `全局配置`
+> 关联问题: PERF-001
+
+### 变更内容
+
+**问题诊断**: OpenCode 越用越慢，根因是项目内积累了 32.8 万文件 / 16 GB 的构建缓存和依赖产物，OpenCode 的 watcher 全量扫描导致卡顿。
+
+**清理操作 (释放 9.4 GB)**:
+1. 清理 Rust target 编译缓存 (8.5 GB) — 下次编译桌面端时自动重建
+2. 清理 .worktrees 残留 (388 MB)
+3. 清理 node_modules 两处 (847 MB) — 下次 npm install 时自动重建
+4. 清理 .openclaw/browser 浏览器缓存 (139 MB)
+
+**持久化防护**:
+5. 创建项目级 `opencode.json`，添加 30+ 条 watcher ignore 规则
+6. 优化全局 `~/.config/opencode/opencode.json` 的 watcher ignore 规则，补全 `.venv*/**`、`**/target/**`、`.openclaw/**` 等关键通配符
+
+**效果**: 文件数 328,721 → 196,606，watcher 实际扫描文件数降至 ~5,100
+
+### 文件变更
+- `opencode.json` (新建) — 项目级 OpenCode 配置，含完整 watcher ignore 规则
+- `~/.config/opencode/opencode.json` — 全局 watcher ignore 规则从 14 条扩充到 26 条
+
+---
+
 ## [2026-04-14] 用户体验深度审计 — 11项体验硬伤修复
 
 > 领域: `backend`, `ai-pool`, `infra`
