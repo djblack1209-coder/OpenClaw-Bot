@@ -7,6 +7,32 @@
 
 ---
 
+## [2026-04-15] APP 图标更换 + 开发总控页面精简
+
+> 领域: `frontend`
+> 影响模块: `apps/openclaw-manager-src/src-tauri/icons/`, `apps/openclaw-manager-src/src/components/Dev/index.tsx`, `apps/openclaw-manager-src/public/claw.svg`
+> 关联问题: 无
+
+### 变更内容
+
+**APP 图标更换**:
+- 从 OpenClaw 官方仓库下载龙虾 SVG logo，替换 Tauri 默认图标
+- 生成全套图标: icon.png(1024x1024) / 32x32.png / 128x128.png / 128x128@2x.png(256x256) / icon.icns(macOS) / icon.ico(Windows)
+- 同步更新 public/claw.svg
+
+**开发总控页面精简**:
+- 保留常用 3 个卡片（运行配置/成本配额/运行指标）默认展示
+- 将不常用 3 个（开发流程/高级入口/压缩上下文）折叠到「高级功能」可展开区域
+- 页面顶部新增使用指引提示框，告诉用户这个页面是做什么的
+- 每个卡片新增通俗中文说明（hint），让非技术用户也能理解功能用途
+
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/icons/*` — 全部替换为 OpenClaw 龙虾 logo
+- `apps/openclaw-manager-src/public/claw.svg` — 替换为官方 SVG
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — 页面重构: 卡片分组+折叠+指引+说明
+
+---
+
 ## [2026-04-14] OpenCode 性能优化 — 项目瘦身 + watcher 忽略规则
 
 > 领域: `infra`, `docs`
