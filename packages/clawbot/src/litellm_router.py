@@ -9,10 +9,12 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 对标: LiteLLM (39.6k⭐), Portkey Gateway (11k⭐)
 """
 
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import litellm
@@ -238,6 +240,76 @@ BOT_MODEL_FAMILY = {
     "claude_opus": "claude",  # 走 Kiro Gateway 的 Claude 模型
     "free_llm": None,  # 自动选择最强可用模型
 }
+
+
+# ---- iflow Key 有效期监控 ----
+# iflow Key 仅有 7 天有效期，这里用本地文件记录首次使用时间，
+# 每次初始化时检查是否超过 6 天（给 1 天缓冲），超过则告警并跳过
+
+_IFLOW_TIMESTAMP_FILE = Path.home() / ".openclaw" / "iflow_key_timestamp.json"
+_IFLOW_WARN_DAYS = 6  # 超过 6 天发出告警（7天有效期 - 1天缓冲）
+
+
+def _check_iflow_key_expiry() -> bool:
+    """检查 iflow key 是否可能已过期
+
+    读取 ~/.openclaw/iflow_key_timestamp.json 中记录的首次使用时间，
+    如果距今超过 6 天则返回 True（表示可能过期）。
+    文件不存在或读取失败返回 False（首次使用，视为有效）。
+    """
+    try:
+        if not _IFLOW_TIMESTAMP_FILE.exists():
+            return False
+        data = json.loads(_IFLOW_TIMESTAMP_FILE.read_text(encoding="utf-8"))
+        first_used = data.get("first_used_ts", 0)
+        if not first_used:
+            return False
+        elapsed_days = (time.time() - first_used) / 86400
+        if elapsed_days > _IFLOW_WARN_DAYS:
+            logger.warning(
+                "[iflow] Key 已使用 %.1f 天（阈值 %d 天），可能即将过期",
+                elapsed_days,
+                _IFLOW_WARN_DAYS,
+            )
+            return True
+        logger.info("[iflow] Key 已使用 %.1f 天，剩余约 %.1f 天", elapsed_days, 7 - elapsed_days)
+        return False
+    except Exception as e:
+        logger.debug("[iflow] 读取 key 时间戳文件失败（视为有效）: %s", e)
+        return False
+
+
+def _record_iflow_key_usage() -> None:
+    """记录 iflow key 首次使用时间到本地文件
+
+    仅在文件不存在或 key 值变化时写入。后续调用不会覆盖已有记录。
+    """
+    try:
+        _IFLOW_TIMESTAMP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        current_key = os.getenv("SILICONFLOW_UNLIMITED_KEY", "")
+        # 用 key 的前8位做指纹（不存完整 key，安全考虑）
+        key_fingerprint = current_key[:8] if current_key else ""
+
+        if _IFLOW_TIMESTAMP_FILE.exists():
+            data = json.loads(_IFLOW_TIMESTAMP_FILE.read_text(encoding="utf-8"))
+            # key 没变就不更新时间戳
+            if data.get("key_fingerprint") == key_fingerprint:
+                return
+            # key 变了 → 用户换了新 key，重置时间戳
+            logger.info("[iflow] 检测到 key 变更，重置有效期计时")
+
+        data = {
+            "first_used_ts": time.time(),
+            "key_fingerprint": key_fingerprint,
+            "note": "iflow key 7天有效期，超过6天自动告警",
+        }
+        _IFLOW_TIMESTAMP_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info("[iflow] 已记录 key 首次使用时间")
+    except Exception as e:
+        logger.debug("[iflow] 记录 key 时间戳失败（不影响功能）: %s", e)
 
 
 # ============================================================
@@ -523,33 +595,45 @@ class LiteLLMPool:
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
         iflow_base = _env("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
         if iflow_key:
-            # 去掉 /chat/completions 后缀（LiteLLM 会自动加）
-            iflow_base = iflow_base.replace("/chat/completions", "")
-            for m, fam, t in [
-                # instruct/非thinking版优先（速度快、有内容输出）
-                ("qwen3-235b-a22b-instruct", "qwen", TIER_S),
-                ("deepseek-v3.2", "deepseek", TIER_S),
-                ("kimi-k2", "kimi", TIER_S),
-                ("qwen3-max", "qwen", TIER_S),
-                ("qwen3-coder-plus", "qwen", TIER_S),
-                ("deepseek-r1", "deepseek", TIER_S),  # reasoning model
-                ("deepseek-v3", "deepseek", TIER_A),
-                ("qwen3-vl-plus", "qwen", TIER_A),  # vision model
-                ("qwen3-32b", "qwen", TIER_A),
-                ("qwen3-235b", "qwen", TIER_B),  # thinking model（慢，备用）
-            ]:
-                deps.append(
-                    self._dep(
-                        "iflow",
-                        f"openai/{m}",
-                        iflow_key,
-                        iflow_base,
-                        rpm=500,
-                        tier=t,
-                        family=fam,
-                        note="iflow unlimited",
-                    )
+            # 检查 iflow key 是否可能已过期（7天有效期，给1天缓冲，超6天告警）
+            iflow_expired = _check_iflow_key_expiry()
+            if iflow_expired:
+                logger.warning(
+                    "⚠️⚠️⚠️ [iflow] Key 已使用超过 6 天，可能即将或已经过期！"
+                    "请尽快去 https://platform.iflow.cn/docs/api-key-management 重置。"
+                    "本次启动将跳过 iflow deployments。"
                 )
+            else:
+                # Key 未过期，正常注册 iflow deployments
+                # 记录本次使用时间（首次使用时创建记录）
+                _record_iflow_key_usage()
+                # 去掉 /chat/completions 后缀（LiteLLM 会自动加）
+                iflow_base = iflow_base.replace("/chat/completions", "")
+                for m, fam, t in [
+                    # instruct/非thinking版优先（速度快、有内容输出）
+                    ("qwen3-235b-a22b-instruct", "qwen", TIER_S),
+                    ("deepseek-v3.2", "deepseek", TIER_S),
+                    ("kimi-k2", "kimi", TIER_S),
+                    ("qwen3-max", "qwen", TIER_S),
+                    ("qwen3-coder-plus", "qwen", TIER_S),
+                    ("deepseek-r1", "deepseek", TIER_S),  # reasoning model
+                    ("deepseek-v3", "deepseek", TIER_A),
+                    ("qwen3-vl-plus", "qwen", TIER_A),  # vision model
+                    ("qwen3-32b", "qwen", TIER_A),
+                    ("qwen3-235b", "qwen", TIER_B),  # thinking model（慢，备用）
+                ]:
+                    deps.append(
+                        self._dep(
+                            "iflow",
+                            f"openai/{m}",
+                            iflow_key,
+                            iflow_base,
+                            rpm=500,
+                            tier=t,
+                            family=fam,
+                            note="iflow unlimited",
+                        )
+                    )
 
         # 硅基流动付费Key池 (10条, 14元/条, 未实名, ⚠️禁止Pro模型)
         # v3.0: 免费模型保持原 family; 实际扣费模型隔离到 _paid family

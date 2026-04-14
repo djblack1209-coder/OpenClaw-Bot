@@ -32,7 +32,8 @@ def test_format_digest_uses_announcement_style_sections():
         footer="更多详情请查看原文链接。",
     )
 
-    assert text.splitlines()[0] == "📢  OpenClaw「科技早报」2026年03月08日"
+    # format_digest 不再叠加默认的 📢 图标（日报标题自带 emoji 时避免双图标）
+    assert text.splitlines()[0] == "OpenClaw「科技早报」2026年03月08日"
     assert "今日聚焦 AI 与自动化两条主线。" in text
     assert "【AI】" in text
     assert "详情：https://example.com/ai" in text
