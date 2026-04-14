@@ -141,7 +141,8 @@ PLATFORM_SCHEMAS: Dict[str, Dict[str, Any]] = {
     },
     "taobao": {
         "name": "淘宝/天猫商品列表",
-        # 淘宝搜索需要登录态，用 s.taobao.com 公开搜索
+        # 淘宝搜索需要登录态，公开搜索已无法正常抓取，暂时禁用
+        "enabled": False,
         "search_url": "https://s.taobao.com/search?q={query}",
         "base_selector": "[data-item-id], .Card--doubleCard--, .Content--content--",
         "fields": [
