@@ -60,18 +60,20 @@ except Exception as e:
 
 # ── 数据模型 ──────────────────────────────────────────────
 
+
 @dataclass
 class ProductPrice:
     """单个商品价格条目"""
+
     name: str
     price: float
-    platform: str       # "京东" / "淘宝" / "拼多多" / "什么值得买"
+    platform: str  # "京东" / "淘宝" / "拼多多" / "什么值得买"
     url: str = ""
     shop: str = ""
     original_price: float = 0.0
     coupon: str = ""
     sales: str = ""
-    source: str = ""     # 抽取来源标记: "css" / "llm" / "jina"
+    source: str = ""  # 抽取来源标记: "css" / "llm" / "jina"
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -80,10 +82,11 @@ class ProductPrice:
 @dataclass
 class PriceCompareResult:
     """比价结果汇总"""
+
     products: List[ProductPrice] = field(default_factory=list)
     best_deal: str = ""
     recommendation: str = ""
-    source: str = ""           # "crawl4ai_css" / "crawl4ai_llm" / "jina_llm"
+    source: str = ""  # "crawl4ai_css" / "crawl4ai_llm" / "jina_llm"
     query: str = ""
     platforms_searched: List[str] = field(default_factory=list)
     error: str = ""
@@ -270,6 +273,7 @@ def _normalize_url(href: str, platform: str) -> str:
 
 # ── crawl4ai CSS 结构化抽取 ──────────────────────────────
 
+
 async def _crawl_platform_css(
     platform_key: str,
     query: str,
@@ -322,6 +326,7 @@ async def _crawl_platform_css(
 
             # 解析抽取出的 JSON
             import json
+
             extracted = crawl_result.extracted_content
             if isinstance(extracted, str):
                 try:
@@ -343,15 +348,17 @@ async def _crawl_platform_css(
                 price = _extract_price(str(item.get("price", "")))
                 raw_url = (item.get("url") or "").strip()
 
-                results.append(ProductPrice(
-                    name=name[:120],
-                    price=price,
-                    platform=schema["platform_label"],
-                    url=_normalize_url(raw_url, platform_key),
-                    shop=(item.get("shop") or "").strip(),
-                    sales=(item.get("sales") or "").strip(),
-                    source="css",
-                ))
+                results.append(
+                    ProductPrice(
+                        name=name[:120],
+                        price=price,
+                        platform=schema["platform_label"],
+                        url=_normalize_url(raw_url, platform_key),
+                        shop=(item.get("shop") or "").strip(),
+                        sales=(item.get("sales") or "").strip(),
+                        source="css",
+                    )
+                )
 
     except asyncio.TimeoutError as e:
         logger.warning(f"[crawl4ai] {platform_key} 超时")
@@ -362,6 +369,7 @@ async def _crawl_platform_css(
 
 
 # ── crawl4ai LLM 抽取（CSS 失败时的降级）───────────────────
+
 
 async def _crawl_platform_llm(
     platform_key: str,
@@ -385,6 +393,7 @@ async def _crawl_platform_llm(
     llm_provider = None
     try:
         import os
+
         # 优先用 deepseek（便宜）
         api_key = os.environ.get("DEEPSEEK_API_KEY", "")
         if api_key:
@@ -444,6 +453,7 @@ async def _crawl_platform_llm(
                 return []
 
             import json
+
             extracted = crawl_result.extracted_content
             if isinstance(extracted, str):
                 try:
@@ -469,14 +479,16 @@ async def _crawl_platform_llm(
                 except (ValueError, TypeError) as e:  # noqa: F841
                     price = _extract_price(str(item.get("price", "")))
 
-                results.append(ProductPrice(
-                    name=name[:120],
-                    price=price,
-                    platform=schema["platform_label"],
-                    url="",  # LLM 抽取通常不含 URL
-                    shop=(item.get("shop") or "").strip(),
-                    source="llm",
-                ))
+                results.append(
+                    ProductPrice(
+                        name=name[:120],
+                        price=price,
+                        platform=schema["platform_label"],
+                        url="",  # LLM 抽取通常不含 URL
+                        shop=(item.get("shop") or "").strip(),
+                        source="llm",
+                    )
+                )
 
     except asyncio.TimeoutError as e:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
@@ -487,6 +499,7 @@ async def _crawl_platform_llm(
 
 
 # ── 主入口: smart_compare() ────────────────────────────────
+
 
 async def smart_compare(
     product: str,
@@ -529,15 +542,9 @@ async def smart_compare(
     source_method = "crawl4ai_css"
 
     # ── 第一级: CSS 结构化抽取（并发所有平台）──
-    css_tasks = {
-        p: _crawl_platform_css(p, product, limit_per_platform)
-        for p in platforms
-        if p in PLATFORM_SCHEMAS
-    }
+    css_tasks = {p: _crawl_platform_css(p, product, limit_per_platform) for p in platforms if p in PLATFORM_SCHEMAS}
     if css_tasks:
-        css_results = await asyncio.gather(
-            *css_tasks.values(), return_exceptions=True
-        )
+        css_results = await asyncio.gather(*css_tasks.values(), return_exceptions=True)
         for platform_key, result in zip(css_tasks.keys(), css_results):
             label = PLATFORM_SCHEMAS[platform_key]["platform_label"]
             if isinstance(result, list) and result:
@@ -555,30 +562,23 @@ async def smart_compare(
 
         # 只对 CSS 失败的平台尝试 LLM
         failed_platforms = [
-            p for p in platforms
-            if p in PLATFORM_SCHEMAS
-            and PLATFORM_SCHEMAS[p]["platform_label"] not in platforms_searched
+            p
+            for p in platforms
+            if p in PLATFORM_SCHEMAS and PLATFORM_SCHEMAS[p]["platform_label"] not in platforms_searched
         ]
         # 也对有结果但无价格的平台重试
         no_price_platforms = [
-            p for p in platforms
+            p
+            for p in platforms
             if p in PLATFORM_SCHEMAS
             and PLATFORM_SCHEMAS[p]["platform_label"] in platforms_searched
-            and not any(
-                pp.platform == PLATFORM_SCHEMAS[p]["platform_label"] and pp.price > 0
-                for pp in all_products
-            )
+            and not any(pp.platform == PLATFORM_SCHEMAS[p]["platform_label"] and pp.price > 0 for pp in all_products)
         ]
         retry_platforms = list(set(failed_platforms + no_price_platforms))
 
         if retry_platforms:
-            llm_tasks = {
-                p: _crawl_platform_llm(p, product, limit_per_platform)
-                for p in retry_platforms
-            }
-            llm_results = await asyncio.gather(
-                *llm_tasks.values(), return_exceptions=True
-            )
+            llm_tasks = {p: _crawl_platform_llm(p, product, limit_per_platform) for p in retry_platforms}
+            llm_results = await asyncio.gather(*llm_tasks.values(), return_exceptions=True)
             for platform_key, result in zip(llm_tasks.keys(), llm_results):
                 label = PLATFORM_SCHEMAS[platform_key]["platform_label"]
                 if isinstance(result, list) and result:
@@ -646,5 +646,8 @@ def _build_recommendation(product: str, priced: List[ProductPrice]) -> str:
             lines.append(f"\n💰 价差: ¥{diff:.0f} ({pct:.0f}%)")
 
     lines.append(f"\n✅ 最低价: {priced[0].name[:40]} — ¥{priced[0].price} ({priced[0].platform})")
+
+    # 标注实际可用的搜索平台
+    lines.append("\n📌 已搜索平台：京东、什么值得买 | 淘宝/天猫需登录暂不可用")
 
     return "\n".join(lines)
