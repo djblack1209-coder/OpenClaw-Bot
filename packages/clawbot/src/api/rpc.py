@@ -95,7 +95,8 @@ class ClawBotRPC:
         ibkr_connected = False
         ibkr_account = ""
         try:
-            ibkr_connected = ibkr.connected if ibkr else False
+            # IBKRBridge 用的是 _connected 私有属性，不是 connected
+            ibkr_connected = getattr(ibkr, "_connected", False) if ibkr else False
             ibkr_account = getattr(ibkr, "account", "") or ""
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
