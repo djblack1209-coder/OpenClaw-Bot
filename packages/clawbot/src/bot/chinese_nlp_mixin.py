@@ -160,9 +160,11 @@ def _match_chinese_command(text=None):
     # "35 午饭" / "120 停车"（极简模式: 数字开头+备注）
     m_expense2 = re.search(r"^(\d+(?:\.\d+)?)\s*(?:块|元|￥)?\s+(.{1,20})$", cleaned)
     if m_expense2 and not re.search(r"(?:股|买入|卖出|提醒|闹钟)", cleaned):
-        amount = m_expense2.group(1)
         note = m_expense2.group(2).strip()
-        return ("expense_add", f"{amount}|||{note}")
+        # 过滤纯大写字母序列（可能是股票代码如 AAPL、TSLA），避免误触发记账
+        if not re.fullmatch(r"[A-Z]{1,6}", note):
+            amount = m_expense2.group(1)
+            return ("expense_add", f"{amount}|||{note}")
     # "记账" / "我的账单" / "本月支出" / "支出汇总"
     if re.search(r"(?:我的)?(?:账单|支出|开支|花销|消费)(?:汇总|统计|报告)?$", cleaned):
         return ("expense_summary", "")

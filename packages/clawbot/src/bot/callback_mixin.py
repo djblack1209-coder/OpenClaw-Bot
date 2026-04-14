@@ -5,6 +5,7 @@ Bot — 回调处理 Mixin
 
 > 最后更新: 2026-03-29
 """
+
 import logging
 
 from src.bot.globals import (
@@ -35,6 +36,7 @@ class CallbackMixin:
         try:
             # 尝试 Brain 的智能购物 (三级降级链)
             from src.core.brain import OmegaBrain
+
             brain = OmegaBrain()
             result = await brain._exec_smart_shopping({"product": product})
             if result and result.get("success") and result.get("data"):
@@ -67,17 +69,22 @@ class CallbackMixin:
                     for tip in tips[:3]:
                         lines.append(f"  • {tip}")
 
+                # 标注实际可用的搜索平台
+                lines.append("\n📌 已搜索平台：京东、什么值得买 | 淘宝/天猫需登录暂不可用")
+
                 msg = "\n".join(lines)
-                await send_long_message(update.effective_chat.id, msg, parse_mode="HTML",
-                                       context=context)
+                await send_long_message(update.effective_chat.id, msg, parse_mode="HTML", context=context)
                 return
 
             # 降级到纯文本
             summary = result.get("data", {}).get("raw", "") if result else ""
             if summary:
-                await send_long_message(update.effective_chat.id,
-                                       f"🛒 <b>{product} 比价</b>\n\n{summary}",
-                                       parse_mode="HTML", context=context)
+                await send_long_message(
+                    update.effective_chat.id,
+                    f"🛒 <b>{product} 比价</b>\n\n{summary}",
+                    parse_mode="HTML",
+                    context=context,
+                )
                 return
 
         except Exception as e:
@@ -91,9 +98,7 @@ class CallbackMixin:
         )
         context.args = []
         # 走标准 LLM 流式响应
-        async for content, status in self._call_api_stream(
-            update.effective_chat.id, prompt, save_history=False
-        ):
+        async for content, status in self._call_api_stream(update.effective_chat.id, prompt, save_history=False):
             if status == "done" and content:
                 await send_long_message(update.effective_chat.id, content, context=context)
                 return
@@ -123,6 +128,7 @@ class CallbackMixin:
             return
         try:
             from src.core.security import get_security_gate
+
             suggest_text = get_security_gate().sanitize_input(suggest_text)
         except Exception:
             # 消毒失败时拒绝处理，防止恶意输入绕过过滤
@@ -137,6 +143,7 @@ class CallbackMixin:
 
             # 将建议文本路由到 Brain 处理（与正常消息相同路径）
             from src.core.brain import get_brain
+
             brain = get_brain()
             result = await brain.process_message(
                 source="telegram",
@@ -156,8 +163,10 @@ class CallbackMixin:
                     reply_markup = None
                     try:
                         reply_markup = _build_smart_reply_keyboard(
-                            user_msg, self.bot_id,
-                            getattr(self, 'model', ''), chat_id,
+                            user_msg,
+                            self.bot_id,
+                            getattr(self, "model", ""),
+                            chat_id,
                             ai_suggestions=_suggestions,
                         )
                     except Exception as e:
@@ -165,14 +174,17 @@ class CallbackMixin:
 
                     try:
                         from src.telegram_markdown import md_to_html
+
                         safe = md_to_html(user_msg)
                         await query.message.reply_text(
-                            safe, parse_mode="HTML",
+                            safe,
+                            parse_mode="HTML",
                             reply_markup=reply_markup,
                         )
                     except Exception as e:  # noqa: F841
                         await query.message.reply_text(
-                            user_msg, reply_markup=reply_markup,
+                            user_msg,
+                            reply_markup=reply_markup,
                         )
                     return
 
@@ -191,12 +203,12 @@ class CallbackMixin:
                 logger.debug("静默异常: %s", e)
 
     async def handle_trade_callback(self, update, context):
-        '''处理投资分析会议后的一键下单按钮回调
+        """处理投资分析会议后的一键下单按钮回调
         callback_data 格式:
           itrade:{trade_key}:{idx}     — 执行单笔交易
           itrade_all:{trade_key}       — 执行全部交易
           itrade_cancel:{trade_key}    — 取消全部
-        '''
+        """
         from src.bot.globals import _pending_trades
         from src.broker_selector import ibkr
 
@@ -229,7 +241,9 @@ class CallbackMixin:
                 try:
                     if pipeline:
                         res = await execute_trade_via_pipeline(
-                            t, pipeline=pipeline, get_quote_func=get_stock_quote,
+                            t,
+                            pipeline=pipeline,
+                            get_quote_func=get_stock_quote,
                         )
                         if res.startswith("[OK]"):
                             emoji = "✅"
@@ -244,11 +258,17 @@ class CallbackMixin:
                         # Fallback: pipeline not initialized, use direct broker
                         # FIX 4: ibkr has no place_order(); use buy()/sell()
                         if t["action"].upper() == "BUY":
-                            ret = await ibkr.buy(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                            ret = await ibkr.buy(
+                                t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认"
+                            )
                         else:
-                            ret = await ibkr.sell(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                            ret = await ibkr.sell(
+                                t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认"
+                            )
                         emoji = "✅" if "error" not in ret else "❌"
-                        results.append(f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}")
+                        results.append(
+                            f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}"
+                        )
                 except Exception as e:
                     results.append(f"❌ {t['symbol']}: {e}")
             await query.edit_message_text("📋 执行结果:\n\n" + "\n".join(results))
@@ -272,7 +292,9 @@ class CallbackMixin:
                 pipeline = get_trading_pipeline()
                 if pipeline:
                     res = await execute_trade_via_pipeline(
-                        t, pipeline=pipeline, get_quote_func=get_stock_quote,
+                        t,
+                        pipeline=pipeline,
+                        get_quote_func=get_stock_quote,
                     )
                     if res.startswith("[OK]"):
                         emoji = "✅"
@@ -292,8 +314,8 @@ class CallbackMixin:
                         ret = await ibkr.sell(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
                     emoji = "✅" if "error" not in ret else "❌"
                     await query.message.reply_text(
-                        f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}")
+                        f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}"
+                    )
             except Exception as e:
-                logger.error("iTrade 执行失败 %s: %s", t['symbol'], e)
+                logger.error("iTrade 执行失败 %s: %s", t["symbol"], e)
                 await query.message.reply_text(f"❌ {t['symbol']} 执行遇到了问题，请稍后重试")
-
