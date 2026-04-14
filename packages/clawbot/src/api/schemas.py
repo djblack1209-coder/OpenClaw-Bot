@@ -3,6 +3,7 @@ ClawBot Internal API Schemas
 搬运自 freqtrade/rpc/api_server/api_schemas.py 模式
 所有请求/响应模型集中定义，供各 router 引用
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 from enum import Enum
@@ -12,6 +13,7 @@ from src.utils import now_et
 # ============================================================
 # System
 # ============================================================
+
 
 class Ping(BaseModel):
     status: str = "pong"
@@ -41,11 +43,16 @@ class SystemStatus(BaseModel):
     total_cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
     memory_entries: int = 0
+    # 闲鱼客服运行状态
+    xianyu: dict = {}
+    # 微信领券功能状态
+    wechat: dict = {}
 
 
 # ============================================================
 # Trading
 # ============================================================
+
 
 class Position(BaseModel):
     symbol: str
@@ -114,6 +121,7 @@ class TradingSystemStatus(BaseModel):
 # Social
 # ============================================================
 
+
 class SocialPlatformStatus(BaseModel):
     platform: str  # "x" or "xhs"
     connected: bool = False
@@ -153,6 +161,7 @@ class SocialAnalytics(BaseModel):
 # Memory
 # ============================================================
 
+
 class MemoryEntry(BaseModel):
     key: str
     value: str
@@ -185,6 +194,7 @@ class MemoryStats(BaseModel):
 # API Pool
 # ============================================================
 
+
 class PoolStats(BaseModel):
     total_sources: int = 0
     active_sources: int = 0
@@ -199,6 +209,7 @@ class PoolStats(BaseModel):
 # ============================================================
 # Events (WebSocket)
 # ============================================================
+
 
 class WSMessageType(str, Enum):
     STATUS = "status"
@@ -222,6 +233,7 @@ class WSMessage(BaseModel):
 # ============================================================
 # Requests
 # ============================================================
+
 
 class TeamVoteRequest(BaseModel):
     symbol: str
@@ -249,6 +261,7 @@ class StatusMsg(BaseModel):
 # ============================================================
 # Shopping (比价)
 # ============================================================
+
 
 class PriceResultSchema(BaseModel):
     title: str
