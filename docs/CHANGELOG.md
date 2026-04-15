@@ -3,6 +3,32 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 继续推进 — K线行情页 + LLM分层记忆工具 + K线API
+> 领域: `frontend`, `backend`, `trading`
+> 影响模块: `Money`(前端), `KlineChart`(新), `trading router`, `tool_executor`
+> 关联问题: MRU分析 P1-2 + P2-3第二期H3
+### 变更内容
+- **P1-2 K线行情页** (TradingView lightweight-charts 10k⭐):
+  - 新增 `KlineChart.tsx`: 专业K线图+成交量柱状图+8只快捷标的
+  - Money页面新增 Tabs 切换（总控台 / K线行情）
+  - 支持日K/1小时/周K + 1-12个月时间范围切换
+- **K线API端点**:
+  - `GET /api/v1/trading/kline?symbol=AAPL&interval=1d&period=3mo`
+  - 基于 yfinance 数据，格式与 lightweight-charts 直接兼容
+- **P2-3第二期H3: LLM分层记忆工具** (4个MemGPT/Letta风格工具):
+  - `core_memory_append` — LLM自主追加核心记忆（用户画像/偏好/事实）
+  - `core_memory_replace` — LLM自主替换过时信息
+  - `archival_memory_insert` — 存入长期归档记忆
+  - `archival_memory_search` — 语义搜索归档记忆
+  - LLM工具总数: 22→26个
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Money/KlineChart.tsx` — 新建: K线图组件
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 新增Tabs切换
+- `packages/clawbot/src/api/routers/trading.py` — 新增 /trading/kline 端点
+- `packages/clawbot/src/tool_executor.py` — 新增4个分层记忆工具 schema + dispatch + 实现
+
+---
+
 ## [2026-04-16] P2 架构优化三连 — LLM路由Config化 + Validator链风控 + 分层记忆
 > 领域: `backend`, `ai-pool`, `infra`
 > 影响模块: `litellm_router`, `llm_routing_config`(新), `risk_manager`, `risk_validators`(新), `context_manager`, `shared_memory`
