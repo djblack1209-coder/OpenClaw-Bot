@@ -7,6 +7,7 @@ OpenClaw Bot — 全链路 E2E 功能测试
 - 所有审计/分析结果必须包含置信度证明
 - 所有返回内容必须通过排版校验
 """
+
 import os
 import re
 import sys
@@ -24,6 +25,7 @@ from src.models import TradeProposal
 # ============================================================================
 # 辅助工具
 # ============================================================================
+
 
 def _html_tags_balanced(html: str) -> bool:
     """检查 HTML 标签是否成对匹配（简易检查）"""
@@ -44,6 +46,7 @@ SEPARATOR_19 = "━━━━━━━━━━━━━━━━━━━"  # 19
 # 1. 中文自然语言解析全链路
 # ============================================================================
 
+
 class TestChineseNLPFullChain:
     """模拟用户用中文自然语言发消息 → NLP 解析 → 路由到正确功能"""
 
@@ -51,6 +54,7 @@ class TestChineseNLPFullChain:
     def setup(self):
         """导入 NLP 匹配函数（模块级函数，非类方法）"""
         from src.bot.chinese_nlp_mixin import _match_chinese_command
+
         self._match = _match_chinese_command
 
     def test_分析股票_解析为ta(self):
@@ -155,12 +159,14 @@ class TestChineseNLPFullChain:
 # 2. 真实市场数据链路
 # ============================================================================
 
+
 class TestRealMarketData:
     """使用真实 API 验证数据链路全通 — 不允许 Mock"""
 
     def test_技术分析引擎_返回真实指标(self):
         """_sync_full_analysis('AAPL') 返回真实数据，所有指标不为 None"""
         from src.ta_engine import _sync_full_analysis
+
         result = _sync_full_analysis("AAPL")
         assert result is not None, "技术分析应返回结果"
         assert "indicators" in result, "应包含 indicators 字段"
@@ -176,6 +182,7 @@ class TestRealMarketData:
     def test_信号评分_在有效范围内(self):
         """compute_signal_score 返回 -100 到 +100 之间"""
         from src.ta_engine import compute_signal_score, compute_indicators
+
         # 用 AAPL 的真实指标计算信号
         ind = compute_indicators("AAPL")
         if ind is None:
@@ -189,6 +196,7 @@ class TestRealMarketData:
     def test_信号评分_包含置信度(self):
         """compute_signal_score 必须返回 confidence 字段"""
         from src.ta_engine import compute_signal_score, compute_indicators
+
         ind = compute_indicators("AAPL")
         if ind is None:
             pytest.skip("无法获取指标数据")
@@ -199,6 +207,7 @@ class TestRealMarketData:
     def test_行情缓存_二次请求更快(self):
         """验证 quote_cache 缓存生效"""
         import time
+
         try:
             from src.quote_cache import get_cached_quote
         except ImportError:
@@ -219,6 +228,7 @@ class TestRealMarketData:
     def test_市场状态检测_真实数据(self):
         """_detect_regime 应返回 trending/ranging/volatile"""
         from src.ta_engine import compute_indicators, _detect_regime
+
         ind = compute_indicators("AAPL")
         if ind is None:
             pytest.skip("无法获取指标数据")
@@ -230,12 +240,14 @@ class TestRealMarketData:
 # 3. 投资管道置信度验证
 # ============================================================================
 
+
 class TestInvestmentPipelineConfidence:
     """验证所有审计/分析结果必须包含置信度证明"""
 
     def test_意图解析_包含置信度(self):
         """IntentParser 结果必须包含 confidence >= 0.8"""
         from src.core.intent_parser import IntentParser
+
         parser = IntentParser()
         result = parser._try_fast_parse("帮我分析AAPL")
         assert result is not None, "应解析出投资意图"
@@ -246,6 +258,7 @@ class TestInvestmentPipelineConfidence:
         """StrategyEngine.analyze() 结果必须包含 confidence 字段"""
         try:
             from src.strategy_engine import StrategyEngine
+
             engine = StrategyEngine()
             result = engine.analyze("AAPL")
         except Exception:
@@ -258,16 +271,24 @@ class TestInvestmentPipelineConfidence:
     def test_技术分析信号_包含置信度(self):
         """compute_signal_score 结果必须包含 confidence"""
         from src.ta_engine import compute_signal_score
+
         # 用模拟指标测试
         mock_ind = {
-            "rsi_14": 35, "rsi_6": 30,
-            "macd_hist": 0.5, "macd_trend": "up",
-            "ema_8": 150, "ema_21": 148,
+            "rsi_14": 35,
+            "rsi_6": 30,
+            "macd_hist": 0.5,
+            "macd_trend": "up",
+            "ema_8": 150,
+            "ema_21": 148,
             "vwap_ratio": 1.01,
-            "bb_pct": 0.3, "bb_width": 0.05,
+            "bb_pct": 0.3,
+            "bb_width": 0.05,
             "obv_trend": "up",
-            "adx": 28, "plus_di": 30, "minus_di": 20,
-            "stoch_k": 25, "stoch_d": 30,
+            "adx": 28,
+            "plus_di": 30,
+            "minus_di": 20,
+            "stoch_k": 25,
+            "stoch_d": 30,
             "atr_pct": 2.0,
             "volume_ratio": 1.5,
         }
@@ -279,6 +300,7 @@ class TestInvestmentPipelineConfidence:
     def test_验证结果_包含置信度(self):
         """ValidationResult 必须有 validation_confidence"""
         from src.decision_validator import ValidationResult
+
         vr = ValidationResult(approved=True)
         assert hasattr(vr, "validation_confidence"), "ValidationResult 必须有 validation_confidence"
         assert vr.validation_confidence == 1.0, "无问题时置信度应为 1.0"
@@ -302,8 +324,13 @@ class TestInvestmentPipelineConfidence:
     def test_Pydantic代理输出_全部包含置信度(self):
         """所有 Pydantic 投资代理输出模型必须有 confidence 字段"""
         from src.modules.investment.pydantic_agents import (
-            ResearchOutput, TAOutput, QuantOutput, RiskOutput, DirectorOutput,
+            ResearchOutput,
+            TAOutput,
+            QuantOutput,
+            RiskOutput,
+            DirectorOutput,
         )
+
         # ResearchOutput 和 TAOutput 需要 score 参数
         for cls, kwargs in [
             (ResearchOutput, {"score": 5.0}),
@@ -321,12 +348,14 @@ class TestInvestmentPipelineConfidence:
 # 4. 返回内容排版验证
 # ============================================================================
 
+
 class TestResponseFormatting:
     """验证 Telegram 消息排版正确：HTML 合法、分隔符统一、无多余空行"""
 
     def test_投资分析卡片_HTML合法(self):
         """InvestmentAnalysisCard.to_telegram() 生成合法 HTML"""
         from src.core.response_cards import InvestmentAnalysisCard
+
         card = InvestmentAnalysisCard(
             symbol="AAPL",
             recommendation="buy",
@@ -351,6 +380,7 @@ class TestResponseFormatting:
     def test_空摘要_无多余空行(self):
         """摘要字段为空时不应产生多余空行"""
         from src.core.response_cards import InvestmentAnalysisCard
+
         card = InvestmentAnalysisCard(
             symbol="MSFT",
             recommendation="hold",
@@ -366,6 +396,7 @@ class TestResponseFormatting:
     def test_成本进度条_0pct_全空(self):
         """0% 成本应显示全空进度条，不是 1 格"""
         from src.core.response_cards import SystemStatusCard
+
         card = SystemStatusCard(
             daily_cost=0.0,
             daily_budget=50.0,
@@ -379,6 +410,7 @@ class TestResponseFormatting:
     def test_分隔符_全局统一(self):
         """所有卡片使用统一的 19 字符分隔符"""
         from src.core.response_cards import ResponseCard
+
         card = ResponseCard(title="测试标题", body="测试内容")
         html = card.to_telegram()
         assert SEPARATOR_19 in html
@@ -386,6 +418,7 @@ class TestResponseFormatting:
     def test_escape_html_基础(self):
         """escape_html 正确转义 < > &"""
         from src.message_format import escape_html
+
         assert escape_html("a < b") == "a &lt; b"
         assert escape_html("a > b") == "a &gt; b"
         assert escape_html("a & b") == "a &amp; b"
@@ -394,6 +427,7 @@ class TestResponseFormatting:
     def test_format_error_不暴露堆栈(self):
         """format_error 对用户友好，不暴露 Traceback"""
         from src.message_format import format_error
+
         result = format_error(Exception("Internal server error"), "test_context")
         assert "Traceback" not in result
         assert "Internal server error" not in result or "⚠️" in result
@@ -401,6 +435,7 @@ class TestResponseFormatting:
     def test_markdown转HTML_基础(self):
         """markdown_to_telegram_html 正确转换格式"""
         from src.message_format import markdown_to_telegram_html
+
         result = markdown_to_telegram_html("**bold** and *italic*")
         assert "<b>" in result, "** 应转换为 <b>"
         assert "<i>" in result or "</i>" in result, "* 应转换为 <i>"
@@ -408,27 +443,33 @@ class TestResponseFormatting:
     def test_交易卡片_零价格显示待定(self):
         """价格为 0 时显示'待定'而非'$0.00'"""
         from src.telegram_ux import format_trade_card
-        card = format_trade_card({
-            "symbol": "AAPL",
-            "action": "BUY",
-            "quantity": 10,
-            "entry_price": 0,
-        })
+
+        card = format_trade_card(
+            {
+                "symbol": "AAPL",
+                "action": "BUY",
+                "quantity": 10,
+                "entry_price": 0,
+            }
+        )
         assert "待定" in card, "零价格应显示'待定'"
         assert "$0.00" not in card
 
     def test_交易卡片_置信度标准化(self):
         """置信度 0-1 范围应正确显示为 0-10"""
         from src.telegram_ux import format_trade_card
-        card = format_trade_card({
-            "symbol": "TSLA",
-            "action": "BUY",
-            "quantity": 5,
-            "entry_price": 200.0,
-            "stop_loss": 190.0,
-            "take_profit": 220.0,
-            "confidence": 0.8,  # 0-1 范围
-        })
+
+        card = format_trade_card(
+            {
+                "symbol": "TSLA",
+                "action": "BUY",
+                "quantity": 5,
+                "entry_price": 200.0,
+                "stop_loss": 190.0,
+                "take_profit": 220.0,
+                "confidence": 0.8,  # 0-1 范围
+            }
+        )
         # 应显示 8.0/10 而非 0.8/10 或 1/10
         assert "8" in card, "0.8 的置信度应显示为 8/10 区间"
 
@@ -437,23 +478,27 @@ class TestResponseFormatting:
 # 5. 通知链路验证
 # ============================================================================
 
+
 class TestNotificationChain:
     """验证多渠道通知链路"""
 
     def test_微信桥接_启用检查_返回布尔(self):
         """is_wechat_notify_enabled 应返回 bool"""
         from src.wechat_bridge import is_wechat_notify_enabled
+
         result = is_wechat_notify_enabled()
         assert isinstance(result, bool)
 
     def test_通知级别_映射正确(self):
         """EventBus 事件类型到通知级别映射"""
         from src.notifications import NotifyLevel
+
         assert NotifyLevel.CRITICAL < NotifyLevel.HIGH < NotifyLevel.NORMAL < NotifyLevel.LOW
 
     def test_notify_style_时间戳_不崩溃(self):
         """timestamp_tag() 修复后不应崩溃"""
         from src.notify_style import timestamp_tag
+
         result = timestamp_tag()
         assert isinstance(result, str)
         assert len(result) > 0
@@ -463,6 +508,7 @@ class TestNotificationChain:
     def test_notify_style_分隔符常量(self):
         """SEPARATOR 应为 19 个全角粗划线"""
         from src.notify_style import SEPARATOR
+
         assert SEPARATOR == SEPARATOR_19
         assert len(SEPARATOR) == 19
 
@@ -471,6 +517,7 @@ class TestNotificationChain:
 # 6. 交易系统完整性验证
 # ============================================================================
 
+
 class TestTradingSystemIntegrity:
     """验证交易管道的数据完整性"""
 
@@ -478,6 +525,7 @@ class TestTradingSystemIntegrity:
     def risk_mgr(self):
         from src.risk_manager import RiskManager
         from unittest.mock import MagicMock
+
         config = RiskConfig(
             total_capital=10000.0,
             max_risk_per_trade_pct=0.02,
@@ -490,16 +538,21 @@ class TestTradingSystemIntegrity:
         journal.get_today_pnl.return_value = {"pnl": 0.0, "trades": 0}
         journal.get_open_trades.return_value = []
         from src.utils import now_et
+
         rm = RiskManager(config=config, journal=journal)
-        rm._last_pnl_update = now_et().strftime('%Y-%m-%d')
+        rm._last_pnl_update = now_et().strftime("%Y-%m-%d")
         rm._last_refresh_ts = now_et()
         return rm
 
     def test_风控检查_结构完整(self, risk_mgr):
         """check_trade 返回 RiskCheckResult，字段齐全"""
         result = risk_mgr.check_trade(
-            symbol="AAPL", side="BUY", quantity=5,
-            entry_price=150.0, stop_loss=145.0, take_profit=162.0,
+            symbol="AAPL",
+            side="BUY",
+            quantity=5,
+            entry_price=150.0,
+            stop_loss=145.0,
+            take_profit=162.0,
             signal_score=60,
         )
         assert isinstance(result, RiskCheckResult)
@@ -510,8 +563,12 @@ class TestTradingSystemIntegrity:
     def test_风控评分_有效范围(self, risk_mgr):
         """risk_score 始终在 0-100 之间"""
         result = risk_mgr.check_trade(
-            symbol="TSLA", side="BUY", quantity=2,
-            entry_price=200.0, stop_loss=190.0, take_profit=220.0,
+            symbol="TSLA",
+            side="BUY",
+            quantity=2,
+            entry_price=200.0,
+            stop_loss=190.0,
+            take_profit=220.0,
             signal_score=40,
         )
         assert 0 <= result.risk_score <= 100
@@ -525,6 +582,7 @@ class TestTradingSystemIntegrity:
     def test_决策验证结果_置信度计算(self):
         """ValidationResult 的置信度随问题数正确衰减"""
         from src.decision_validator import ValidationResult
+
         # 无问题 → 满置信度
         r1 = ValidationResult(approved=True, validation_confidence=1.0)
         assert r1.validation_confidence == 1.0
@@ -551,12 +609,14 @@ class TestTradingSystemIntegrity:
 # 7. Mock 数据标注审计
 # ============================================================================
 
+
 class TestMockDataLabeling:
     """验证所有 Mock/降级数据有明确标注"""
 
     def test_alpaca_mock账户_有标注(self):
         """Alpaca mock 数据必须有 is_mock 和 source 标记"""
         from src.alpaca_bridge import AlpacaBridge
+
         bridge = AlpacaBridge()
         mock_data = bridge._mock_account()
         assert mock_data.get("is_mock") is True, "Mock 数据必须有 is_mock=True"
@@ -569,16 +629,23 @@ class TestMockDataLabeling:
         # 通过检查源码验证占位符结构
         import inspect
         from src.api import rpc
+
         source = inspect.getsource(rpc)
         # 搜索 _placeholder 字典中应包含 source 和 placeholder 标记
-        assert "\"source\": \"placeholder\"" in source or "'source': 'placeholder'" in source, \
+        assert '"source": "placeholder"' in source or "'source': 'placeholder'" in source, (
             "占位符应包含 source: placeholder 字段"
+        )
 
     def test_brain_executor_降级_有标注(self):
         """brain_executors 降级数据有 source 标记"""
-        from src.core import brain_executors
         import inspect
-        source = inspect.getsource(brain_executors)
+
+        # brain_executors 已拆分为4个子模块，检查所有子模块的源码
+        from src.core import brain_exec_invest, brain_exec_social, brain_exec_life, brain_exec_tools
+
+        source = ""
+        for mod in [brain_exec_invest, brain_exec_social, brain_exec_life, brain_exec_tools]:
+            source += inspect.getsource(mod)
         # 所有降级返回都应有 source: xxx_fallback
         assert source.count("_fallback") >= 3, "降级数据应标注 source: xxx_fallback"
 
@@ -587,12 +654,14 @@ class TestMockDataLabeling:
 # 8. 微信通知链路
 # ============================================================================
 
+
 class TestWeChatNotificationChain:
     """验证微信通知的完整发送链路"""
 
     def test_微信桥接模块_可导入(self):
         """wechat_bridge 模块可正常导入"""
         from src.wechat_bridge import send_to_wechat, send_to_wechat_sync, is_wechat_notify_enabled
+
         assert callable(send_to_wechat)
         assert callable(send_to_wechat_sync)
         assert callable(is_wechat_notify_enabled)
@@ -601,5 +670,6 @@ class TestWeChatNotificationChain:
         """NotificationManager.send() 内部调用微信桥接"""
         import inspect
         from src.notifications import NotificationManager
+
         source = inspect.getsource(NotificationManager.send)
         assert "wechat" in source.lower(), "send() 应包含微信推送逻辑"
