@@ -786,6 +786,8 @@ class LiteLLMPool:
                 ),
             )
             logger.info(f"[LiteLLMPool] Router OK: {len(deps)} deployments, {len(families)} groups")
+            # 标记待发送启动健康摘要（等第一次 async 调用时发送）
+            self._startup_summary_pending = True
         except Exception as e:
             logger.error(f"[LiteLLMPool] Router init failed: {_scrub_secrets(str(e))}")
             self._router = None
