@@ -356,6 +356,169 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           </div>
         </div>
 
+        {/* 运营控制 */}
+        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-claw-500/20 flex items-center justify-center">
+              <Cpu size={20} className="text-claw-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">运营控制</h3>
+              <p className="text-xs text-gray-500">AI 预算、模型选择、自动化开关</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {/* 每日 LLM 预算 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">每日 AI 预算上限</p>
+                <p className="text-xs text-gray-500">超过此金额后暂停付费 API 调用</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">$</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={opsSettings.daily_budget_usd}
+                  onChange={(e) =>
+                    setOpsSettings((prev) => ({
+                      ...prev,
+                      daily_budget_usd: parseFloat(e.target.value) || 50,
+                    }))
+                  }
+                  className="w-20 bg-dark-800 border border-dark-500 rounded px-2 py-1.5 text-sm text-white text-center"
+                />
+              </div>
+            </div>
+
+            {/* 默认模型 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">默认 LLM 模型</p>
+                <p className="text-xs text-gray-500">所有 Bot 的默认推理模型</p>
+              </div>
+              <select
+                value={opsSettings.default_llm_model}
+                onChange={(e) =>
+                  setOpsSettings((prev) => ({
+                    ...prev,
+                    default_llm_model: e.target.value,
+                  }))
+                }
+                className="bg-dark-800 border border-dark-500 rounded px-3 py-1.5 text-sm text-white"
+              >
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="deepseek-chat">DeepSeek V3</option>
+                <option value="qwen-max">Qwen Max</option>
+              </select>
+            </div>
+
+            {/* 本地轻量模型开关 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">本地轻量模型</p>
+                <p className="text-xs text-gray-500">
+                  用 Ollama/LM Studio 处理意图分类等轻量任务，节省 API 成本
+                </p>
+              </div>
+              <Switch
+                checked={opsSettings.local_hf_model_enabled}
+                onCheckedChange={(v) =>
+                  setOpsSettings((prev) => ({ ...prev, local_hf_model_enabled: v }))
+                }
+              />
+            </div>
+
+            {/* 本地模型端点（仅在启用时显示） */}
+            {opsSettings.local_hf_model_enabled && (
+              <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg ml-4">
+                <div>
+                  <p className="text-sm text-white">本地模型地址</p>
+                  <p className="text-xs text-gray-500">
+                    Ollama 默认 11434，LM Studio 默认 1234
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  value={opsSettings.local_hf_model_endpoint}
+                  onChange={(e) =>
+                    setOpsSettings((prev) => ({
+                      ...prev,
+                      local_hf_model_endpoint: e.target.value,
+                    }))
+                  }
+                  className="w-56 bg-dark-800 border border-dark-500 rounded px-3 py-1.5 text-sm text-white"
+                  placeholder="http://localhost:11434"
+                />
+              </div>
+            )}
+
+            {/* 自愈引擎 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">自愈引擎</p>
+                <p className="text-xs text-gray-500">自动检测并修复常见运行异常</p>
+              </div>
+              <Switch
+                checked={opsSettings.auto_heal_enabled}
+                onCheckedChange={(v) =>
+                  setOpsSettings((prev) => ({ ...prev, auto_heal_enabled: v }))
+                }
+              />
+            </div>
+
+            {/* 定时任务总开关 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">定时任务</p>
+                <p className="text-xs text-gray-500">
+                  每日简报、监控巡检、社媒发布等自动任务
+                </p>
+              </div>
+              <Switch
+                checked={opsSettings.scheduler_enabled}
+                onCheckedChange={(v) =>
+                  setOpsSettings((prev) => ({ ...prev, scheduler_enabled: v }))
+                }
+              />
+            </div>
+
+            {/* 维护模式 */}
+            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
+              <div>
+                <p className="text-sm text-white">维护模式</p>
+                <p className="text-xs text-gray-500">
+                  暂停所有 Bot 消息处理，不影响 API 服务
+                </p>
+              </div>
+              <Switch
+                checked={opsSettings.maintenance_mode}
+                onCheckedChange={(v) =>
+                  setOpsSettings((prev) => ({ ...prev, maintenance_mode: v }))
+                }
+              />
+            </div>
+
+            {/* 保存运营设置按钮 */}
+            <button
+              onClick={saveOpsSettings}
+              disabled={savingOps}
+              className="w-full flex items-center justify-center gap-2 bg-claw-500 hover:bg-claw-600 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+            >
+              {savingOps ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
+              保存运营设置
+            </button>
+          </div>
+        </div>
+
         {/* 外观设置 */}
         <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
           <h3 className="text-sm font-semibold text-white/90 mb-3">外观</h3>
