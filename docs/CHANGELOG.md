@@ -3,6 +3,38 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] P0+P1 价值位阶推进 — VaR/CVaR风控 + PyBroker回测 + 执行器拆分
+> 领域: `backend`, `trading`
+> 影响模块: `risk_manager`, `risk_config`, `risk_var`(新), `backtester_pybroker`(新), `brain_executors`(重构), `cmd_trading_mixin`
+> 关联问题: MRU分析报告 P0-1/P0-2/P1-1
+### 变更内容
+- **P0-2 VaR/CVaR 风控度量** (搬运自 QuantStats 7k⭐):
+  - 新增 `risk_var.py` (VaRMixin): VaR/CVaR/Sortino/Tail Ratio/Calmar 五大指标
+  - 集成到 RiskManager 第18项检查，CVaR超资金5%时拒绝交易
+  - `/risk` 状态展示新增 VaR 风险度量板块
+  - RiskConfig 新增4个 VaR 配置字段
+- **P0-1 PyBroker 回测引擎** (3.3k⭐, Numba加速):
+  - 新增 `backtester_pybroker.py`: 3策略(均线/RSI/动量) + Bootstrap统计验证
+  - `/backtest AAPL --pb` 切换 PyBroker 引擎
+  - 依赖: `lib-pybroker>=1.2.12`
+- **P1-1 brain_executors 领域拆分**:
+  - 原653行/扇出20+模块 → 4子模块+聚合入口
+  - brain_exec_invest(6方法)/social(5方法)/life(10方法)/tools(4方法)
+  - 单文件扇出从20+降至<8，对外接口完全不变
+### 文件变更
+- `packages/clawbot/src/risk_var.py` — 新建: VaR/CVaR Mixin (271行)
+- `packages/clawbot/src/risk_config.py` — 新增4个VaR配置字段
+- `packages/clawbot/src/risk_manager.py` — 集成VaRMixin+第18项检查+状态展示
+- `packages/clawbot/src/modules/investment/backtester_pybroker.py` — 新建: PyBroker桥接 (350行)
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — /backtest新增--pb标志
+- `packages/clawbot/src/core/brain_executors.py` — 重构为聚合入口 (30行)
+- `packages/clawbot/src/core/brain_exec_invest.py` — 新建: 投资执行器
+- `packages/clawbot/src/core/brain_exec_social.py` — 新建: 社媒执行器
+- `packages/clawbot/src/core/brain_exec_life.py` — 新建: 生活服务执行器
+- `packages/clawbot/src/core/brain_exec_tools.py` — 新建: 工具+系统执行器
+
+---
+
 ## [2026-04-16] 积木化解构 & 开源情报分析报告
 > 领域: `docs`
 > 影响模块: 全项目 245 模块分析

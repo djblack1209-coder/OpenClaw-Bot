@@ -1,6 +1,79 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-15 | 新增 local_llm.py + controls.py (总模块数 243→245)
+> 最后更新: 2026-04-16 | 新增 risk_var + backtester_pybroker + 4个brain_exec子模块 (总模块数 245→251)
+
+---
+
+## 新增模块 (2026-04-16)
+
+### risk_var.py — VaR/CVaR 风险度量 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/risk_var.py` |
+| 行数 | 271 |
+| 导入方 | `risk_manager.py` (Mixin 继承) |
+| 依赖 | `numpy`, `quantstats` (可选，缺失时用内置计算) |
+
+**Public API (通过 RiskManager 暴露):**
+- `calc_var(confidence)` — 历史模拟法 VaR
+- `calc_cvar(confidence)` — 条件风险价值 / Expected Shortfall
+- `calc_sortino()` — Sortino Ratio (下行风险调整收益)
+- `calc_tail_ratio()` — 尾部比率 (右尾/左尾)
+- `calc_calmar()` — Calmar Ratio (收益/最大回撤)
+- `get_var_metrics()` — 完整风险指标集
+- `check_var_limit(proposed_loss)` — check_trade() 第18项检查
+
+---
+
+### backtester_pybroker.py — PyBroker 回测引擎桥接
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/modules/investment/backtester_pybroker.py` |
+| 行数 | 350 |
+| 导入方 | `bot/cmd_trading_mixin.py` (/backtest --pb) |
+| 依赖 | `lib-pybroker>=1.2.12` (可选，缺失时降级) |
+
+**Public API:**
+- `PyBrokerBacktester.run_backtest(symbol, strategy_name, period)` — 单策略回测
+- `PyBrokerBacktester.run_compare(symbol, period)` — 多策略对比
+- `get_pybroker_backtester()` — 全局单例
+- 策略: `pb_ma_cross` / `pb_rsi` / `pb_momentum`
+
+---
+
+### brain_exec_invest.py — 投资执行器 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/core/brain_exec_invest.py` |
+| 行数 | ~160 |
+| 导入方 | `brain_executors.py` (Mixin 继承) |
+
+### brain_exec_social.py — 社媒执行器 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/core/brain_exec_social.py` |
+| 行数 | ~120 |
+| 导入方 | `brain_executors.py` (Mixin 继承) |
+
+### brain_exec_life.py — 生活服务执行器 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/core/brain_exec_life.py` |
+| 行数 | ~250 |
+| 导入方 | `brain_executors.py` (Mixin 继承) |
+
+### brain_exec_tools.py — 工具+系统执行器 Mixin
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/core/brain_exec_tools.py` |
+| 行数 | ~110 |
+| 导入方 | `brain_executors.py` (Mixin 继承) |
 
 ---
 

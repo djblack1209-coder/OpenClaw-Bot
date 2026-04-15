@@ -1,8 +1,8 @@
 # OpenClaw Bot — 依赖清单
 
-> 最后更新: 2026-03-31 | 共 80+ 个 Python 包 (全量审计 R8 同步, P5审计修正)
+> 最后更新: 2026-04-16 | 新增 lib-pybroker (共 80+ 个 Python 包)
 
-## 搬运的高星项目 (37 个, 累计 ~470k Stars)
+## 搬运的高星项目 (38 个, 累计 ~473k Stars)
 
 | 包 | Stars | 用途 | 文件 | 版本 |
 |----|-------|------|------|------|
@@ -19,8 +19,9 @@
 | vectorbt | 6.9k | 向量化策略回测 | modules/investment/backtester_vbt.py | >=0.26.0 |
 | tenacity | 6k | 指数退避真重试 | core/self_heal.py | >=9.0.0 |
 | pandas-ta | 5k | 标准技术指标 | strategy_engine.py | >=0.3.14b1 |
-| quantstats | 4.8k | 回测 HTML 报告 | modules/investment/backtester_vbt.py | >=0.0.62 |
+| quantstats | 4.8k | 回测报告+VaR/CVaR风控 | backtester_vbt.py, risk_var.py | >=0.0.62 |
 | qrcode | 4.9k | 二维码生成 | tools/qr_service.py | >=7.0 |
+| **PyBroker** | **3.3k** | **Numba加速回测+Bootstrap验证** | **modules/investment/backtester_pybroker.py** | **>=1.2.12** |
 | diskcache | 2.8k | LLM 响应缓存 | llm_cache.py | >=5.6.0 |
 | fpdf2 | 1.5k | PDF 报告 | tools/pdf_report.py | ==2.7.9 | ⚠️ 已注释 (HI-366) |
 | stamina | 1.4k | 声明式重试 | resilience.py | >=2.0.0 |
