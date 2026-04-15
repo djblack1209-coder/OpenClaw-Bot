@@ -46,6 +46,7 @@ from src.risk_extreme_market import ExtremeMarketMixin  # noqa: F401
 from src.risk_kelly import KellyMixin  # noqa: F401
 from src.risk_sector import SectorMixin  # noqa: F401
 from src.risk_var import VaRMixin  # noqa: F401 — VaR/CVaR 风险度量 (搬运自 QuantStats)
+from src.risk_validators import ValidatorChain, ValidatorContext, build_default_chain  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +101,32 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         # 盈利回吐追踪
         self._position_peak_pnl: Dict[str, float] = {}  # symbol -> 最高浮盈
 
+        # v2.2: Validator 链式架构（借鉴 rqalpha Frontend Validator 模式）
+        self._validator_chain: ValidatorChain = build_default_chain(self)
+
         logger.info(
-            f"[RiskManager] v2.0 初始化完成 | 资金=${self.config.total_capital} "
+            f"[RiskManager] v2.2 初始化完成 | 资金=${self.config.total_capital} "
             f"| 单笔风险{self.config.max_risk_per_trade_pct * 100}% "
             f"| 日亏损限额${self.config.daily_loss_limit} "
             f"| 凯利公式={'开' if self.config.kelly_enabled else '关'} "
-            f"| 阶梯熔断={'开' if self.config.tiered_cooldown_enabled else '关'}"
+            f"| 阶梯熔断={'开' if self.config.tiered_cooldown_enabled else '关'} "
+            f"| Validator链={len(self._validator_chain)}个"
         )
+
+    # ============ Validator 链管理 (v2.2) ============
+
+    def add_validator(self, validator):
+        """运行时注册新的风控 Validator（借鉴 rqalpha add_frontend_validator）"""
+        self._validator_chain.add_validator(validator)
+
+    def remove_validator(self, name: str):
+        """运行时移除指定 Validator"""
+        self._validator_chain.remove_validator(name)
+
+    @property
+    def validator_names(self) -> List[str]:
+        """当前注册的所有 Validator 名称"""
+        return self._validator_chain.validator_names
 
     # ============ 核心：交易审核 ============
 
@@ -124,225 +144,45 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         """
         交易前风控审核 - 所有交易必须通过此检查
 
+        v2.2: 硬检查走 Validator 链（可插拔），软检查保留在此方法中。
         返回 RiskCheckResult，approved=False 则禁止执行
         """
-        result = RiskCheckResult(approved=True)
         warnings = []
-
         symbol = symbol.upper()
         side = side.upper()
 
-        # === 检查-1: 参数合法性 ===
-        if entry_price <= 0:
-            return RiskCheckResult(approved=False, reason=f"入场价必须大于零 (got {entry_price})")
-        if quantity <= 0:
-            return RiskCheckResult(approved=False, reason=f"交易数量必须大于零 (got {quantity})")
-
-        # === 检查0: 黑名单 ===
-        if symbol in self.config.blacklist:
-            return RiskCheckResult(approved=False, reason=f"{symbol} 在黑名单中，禁止交易")
-
-        # === 检查1: 熔断状态 ===
-        if self._is_in_cooldown():
-            remaining = int((self._cooldown_until - now_et()).total_seconds()) // 60
-            return RiskCheckResult(
-                approved=False, reason=f"熔断冷却中，还需等待{remaining}分钟 (连续{self._consecutive_losses}笔亏损触发)"
-            )
-
-        # === 检查1.5: 极端行情冷却期 ===
-        if self.is_in_extreme_cooldown():
-            remaining = int(
-                (
-                    self._last_extreme_time + timedelta(minutes=self.config.extreme_market_cooldown_minutes) - now_et()
-                ).total_seconds()
-                // 60
-            )
-            return RiskCheckResult(approved=False, reason=f"极端行情冷却期，暂停交易 (剩余{remaining}min)")
-
-        # === 检查2: 日亏损限额 ===
+        # === 阶段一: Validator 链硬检查（reject 即终止）===
         self._refresh_today_pnl()
-        if self._today_pnl <= -self.config.daily_loss_limit:
-            return RiskCheckResult(
-                approved=False,
-                reason=f"已触及日亏损限额: 今日PnL=${self._today_pnl:.2f}, "
-                f"限额=-${self.config.daily_loss_limit:.2f}，今日禁止新开仓",
-            )
+        ctx = ValidatorContext(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            signal_score=signal_score,
+            current_positions=current_positions or [],
+            config=self.config,
+            today_pnl=self._today_pnl,
+            consecutive_losses=self._consecutive_losses,
+            position_scale=self._position_scale,
+            current_tier=self._current_tier,
+            rolling_pnl=list(self._rolling_pnl),
+            trade_history=list(self._trade_history),
+            peak_capital=self._peak_capital,
+        )
+        chain_result = self._validator_chain.run(ctx)
+        if not chain_result.approved:
+            return chain_result
 
-        # === 检查3: 交易时段 ===
-        if self.config.trading_hours_enabled and not self._is_trading_hours():
-            return RiskCheckResult(approved=False, reason="当前非交易时段，禁止下单")
+        # 从 Validator 链中提取中间结果
+        result = RiskCheckResult(approved=True)
+        if ctx.adjusted_quantity is not None:
+            result.adjusted_quantity = ctx.adjusted_quantity
+            quantity = ctx.adjusted_quantity
+        warnings.extend(ctx.warnings)
 
-        # === 检查4: 止损必须设定（买入时） ===
-        if side == "BUY" and stop_loss <= 0:
-            return RiskCheckResult(approved=False, reason="买入必须设定止损价（stop_loss > 0）")
-
-        # === 检查5: 止损方向合理性 ===
-        if side == "BUY" and stop_loss > 0:
-            if stop_loss >= entry_price:
-                return RiskCheckResult(approved=False, reason=f"止损价({stop_loss})必须低于入场价({entry_price})")
-            # 止损幅度不能超过10%
-            sl_pct = (entry_price - stop_loss) / entry_price
-            if sl_pct > 0.10:
-                warnings.append(f"止损幅度{sl_pct * 100:.1f}%偏大(>10%)，超短线建议2-5%")
-
-        # === 检查6: 风险收益比 ===
-        if side == "BUY" and stop_loss > 0 and take_profit > 0:
-            risk = entry_price - stop_loss
-            reward = take_profit - entry_price
-            if risk > 0:
-                rr_ratio = reward / risk
-                if rr_ratio < self.config.min_risk_reward_ratio:
-                    return RiskCheckResult(
-                        approved=False,
-                        reason=f"风险收益比{rr_ratio:.2f}:1 低于最低要求"
-                        f"{self.config.min_risk_reward_ratio}:1 "
-                        f"(风险${risk:.2f} vs 收益${reward:.2f})",
-                    )
-        elif side == "BUY" and take_profit <= 0:
-            warnings.append("未设定止盈价，建议设定以锁定利润")
-
-        # === 检查7: 单笔风险金额 ===
-        max_risk_amount = self.config.total_capital * self.config.max_risk_per_trade_pct
-        if side == "BUY" and stop_loss > 0:
-            risk_per_share = entry_price - stop_loss
-            actual_risk = quantity * risk_per_share
-            if actual_risk > max_risk_amount:
-                # 计算建议数量
-                suggested_qty = int(max_risk_amount / risk_per_share)
-                if suggested_qty <= 0:
-                    return RiskCheckResult(
-                        approved=False,
-                        reason=f"单笔风险${actual_risk:.2f}超过上限"
-                        f"${max_risk_amount:.2f}(资金的"
-                        f"{self.config.max_risk_per_trade_pct * 100}%)，"
-                        f"且无法调整到合理数量",
-                    )
-                result.adjusted_quantity = suggested_qty
-                warnings.append(f"数量从{quantity}调整为{suggested_qty}，以控制风险在${max_risk_amount:.2f}以内")
-                quantity = suggested_qty
-
-        # === 检查8: 仓位集中度 ===
-        position_value = quantity * entry_price
-        max_position_value = self.config.total_capital * self.config.max_position_pct
-        if position_value > max_position_value:
-            suggested_qty = int(max_position_value / entry_price)
-            if suggested_qty <= 0:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"仓位价值${position_value:.2f}超过单只上限"
-                    f"${max_position_value:.2f}(资金的"
-                    f"{self.config.max_position_pct * 100}%)",
-                )
-            if result.adjusted_quantity is None or suggested_qty < result.adjusted_quantity:
-                result.adjusted_quantity = suggested_qty
-            warnings.append(f"仓位价值${position_value:.2f}超过上限${max_position_value:.2f}，建议减少数量")
-
-        # === 检查9: 总敞口 ===
-        if current_positions:
-            total_exposure = sum(
-                p.get("quantity", 0) * (p.get("avg_price", 0) or p.get("avg_cost", 0))
-                for p in current_positions
-                if p.get("status", "open") == "open" or "status" not in p
-            )
-            new_total = total_exposure + position_value
-            max_exposure = self.config.total_capital * self.config.max_total_exposure_pct
-            if new_total > max_exposure:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"总敞口${new_total:.2f}将超过上限"
-                    f"${max_exposure:.2f}(资金的"
-                    f"{self.config.max_total_exposure_pct * 100}%)",
-                )
-
-        # === 检查10: 最大持仓数 ===
-        if current_positions and side == "BUY":
-            open_count = len([p for p in current_positions if p.get("status", "open") == "open" or "status" not in p])
-            # 检查是否是加仓（已有该标的持仓）
-            has_existing = any(
-                p.get("symbol", "").upper() == symbol
-                for p in current_positions
-                if p.get("status", "open") == "open" or "status" not in p
-            )
-            if not has_existing and open_count >= self.config.max_open_positions:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"已有{open_count}个持仓，达到上限{self.config.max_open_positions}个，禁止新开仓",
-                )
-
-        # === 检查11: 信号强度 ===
-        if abs(signal_score) < self.config.min_signal_score and signal_score != 0:
-            warnings.append(f"信号评分{signal_score}偏弱(阈值±{self.config.min_signal_score})，建议谨慎")
-
-        # === 检查12: 剩余日亏损额度 ===
-        remaining_daily = self.config.daily_loss_limit + self._today_pnl
-        if side == "BUY" and stop_loss > 0:
-            potential_loss = quantity * (entry_price - stop_loss)
-            if potential_loss > remaining_daily:
-                warnings.append(f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额(剩余额度${remaining_daily:.2f})")
-
-        # === v2.0 检查13: 阶梯式熔断仓位缩放 ===
-        if self.config.tiered_cooldown_enabled and self._position_scale < 1.0:
-            original_qty = result.adjusted_quantity or quantity
-            scaled_qty = max(1, int(original_qty * self._position_scale))
-            if scaled_qty < original_qty:
-                result.adjusted_quantity = scaled_qty
-                warnings.append(
-                    f"阶梯熔断Tier{self._current_tier}: 仓位缩放至"
-                    f"{self._position_scale * 100:.0f}%，"
-                    f"数量{original_qty}->{scaled_qty}"
-                )
-                quantity = scaled_qty
-
-        # === v2.0 检查14: 动态回撤保护 ===
-        drawdown_level = self._get_drawdown_level()
-        if drawdown_level == "halt":
-            return RiskCheckResult(
-                approved=False,
-                reason=f"滚动{self.config.drawdown_window_days}天回撤超过"
-                f"{self.config.drawdown_halt_pct * 100}%，暂停交易",
-            )
-        elif drawdown_level == "warn":
-            original_qty = result.adjusted_quantity or quantity
-            scaled_qty = max(1, int(original_qty * 0.5))
-            if scaled_qty < original_qty:
-                result.adjusted_quantity = scaled_qty
-                warnings.append(
-                    f"回撤保护: 近{self.config.drawdown_window_days}天回撤超"
-                    f"{self.config.drawdown_warn_pct * 100}%，仓位减半"
-                )
-                quantity = scaled_qty
-
-        # === v2.0 检查15: 滚动窗口亏损 ===
-        if len(self._rolling_pnl) >= 5:
-            rolling_total = sum(self._rolling_pnl)
-            rolling_max_loss = self.config.total_capital * self.config.rolling_loss_max_pct
-            if rolling_total < -rolling_max_loss:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"最近{len(self._rolling_pnl)}笔交易累计亏损"
-                    f"${abs(rolling_total):.2f}，超过滚动窗口限额"
-                    f"${rolling_max_loss:.2f}",
-                )
-
-        # === v2.0 检查16: 交易频率限制 ===
-        freq_check = self._check_trade_frequency()
-        if freq_check:
-            return RiskCheckResult(approved=False, reason=freq_check)
-
-        # === v2.0 检查17: 相关性/板块集中度 ===
-        if current_positions and side == "BUY":
-            sector_warning = self._check_sector_concentration(symbol, quantity * entry_price, current_positions)
-            if sector_warning:
-                warnings.append(sector_warning)
-
-        # === v2.1 检查18: VaR/CVaR 风险度量 ===
-        if side == "BUY" and stop_loss > 0:
-            proposed_loss = quantity * (entry_price - stop_loss)
-            var_check = self.check_var_limit(proposed_loss)
-            if var_check:
-                warnings.append(var_check)
-
-        # 计算最终风险指标
+        # === 阶段二: 软检查（warning-only，不 reject）===
         final_qty = result.adjusted_quantity or quantity
         if side == "BUY" and stop_loss > 0:
             result.max_loss = final_qty * (entry_price - stop_loss)
