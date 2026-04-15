@@ -740,27 +740,54 @@ class LiteLLMPool:
     # ---- 初始化 ----
 
     def initialize(self):
-        """构建 deployments 并初始化 LiteLLM Router"""
-        deps = self._build_all_deployments()
+        """构建 deployments 并初始化 LiteLLM Router
+
+        优先从 config/llm_routing.json 加载配置（P2-1 JSON Config 驱动），
+        JSON 不存在或为空时回退到硬编码的 _build_all_deployments()。
+        """
+        # 尝试从 JSON 配置加载（借鉴 Portkey AI Gateway 的 Config 驱动模式）
+        deps = []
+        fallbacks = []
+        try:
+            from src.llm_routing_config import (
+                load_routing_config,
+                build_deployments_from_config,
+                build_fallbacks_from_config,
+                get_router_config,
+            )
+
+            self._routing_config = load_routing_config()
+            if self._routing_config and self._routing_config.get("providers"):
+                deps = build_deployments_from_config(self._routing_config, self._dep)
+                if deps:
+                    families = set(d["model_name"] for d in deps)
+                    fallbacks = build_fallbacks_from_config(self._routing_config, families)
+                    logger.info(f"[LiteLLMPool] JSON Config 加载成功: {len(deps)} deployments")
+        except Exception as e:
+            logger.warning(f"[LiteLLMPool] JSON Config 加载失败，回退到硬编码: {e}")
+            deps = []
+
+        # 回退: 硬编码的 _build_all_deployments()
         if not deps:
-            logger.warning("[LiteLLMPool] 无可用 deployment")
-            return
+            deps = self._build_all_deployments()
+            if not deps:
+                logger.warning("[LiteLLMPool] 无可用 deployment")
+                return
+            families = set(d["model_name"] for d in deps)
+            # 硬编码 fallback 链
+            fallbacks = []
+            for f in families:
+                if f == "g4f":
+                    continue
+                chain = []
+                if f != "qwen" and "qwen" in families:
+                    chain.append("qwen")
+                if f != "deepseek" and "deepseek" in families:
+                    chain.append("deepseek")
+                chain.append("g4f")
+                fallbacks.append({f: chain})
 
         families = set(d["model_name"] for d in deps)
-
-        # Multi-level fallback chain — avoid single-point-of-failure on g4f
-        # Priority: qwen/deepseek (many free providers) → g4f (localhost)
-        fallbacks = []
-        for f in families:
-            if f == "g4f":
-                continue  # g4f is the ultimate fallback, no further chain
-            chain = []
-            if f != "qwen" and "qwen" in families:
-                chain.append("qwen")
-            if f != "deepseek" and "deepseek" in families:
-                chain.append("deepseek")
-            chain.append("g4f")
-            fallbacks.append({f: chain})
 
         try:
             # 按照 LiteLLM 官方推荐配置 Router
