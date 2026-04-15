@@ -3,6 +3,29 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 修复+M2+M3+P3 — 测试100%+记忆整合+图谱检索+Bulkhead
+> 领域: `backend`, `infra`
+> 影响模块: `self_heal`, `smart_memory`, `shared_memory`, `resilience`
+> 关联问题: MRU分析 M2/M3/P3-1 + self_heal技术债
+### 变更内容
+- **修复: pybreaker 安装** — 5个self_heal熔断器测试恢复通过，测试通过率 99.6%→100%
+- **M2: 周期性记忆整合** (借鉴 Letta memory consolidation):
+  - SmartMemoryPipeline.consolidate(): LLM驱动碎片记忆合并
+  - 同类记忆超阈值时自动触发，合并重复/相似记忆为精炼摘要
+- **M3: 记忆图谱1-hop检索** (借鉴 Zep 知识图谱):
+  - SharedMemory.search() 新增 _expand_with_relations()
+  - 利用 memory_relations 表做双向1-hop关联扩展
+- **P3-1: Bulkhead 并发隔离舱** (借鉴 Hyx):
+  - 5类下游独立并发池: LLM(10)/浏览器(3)/API(20)/爬虫(5)/交易(5)
+  - `async with bulkhead("llm")` 防级联故障
+  - 支持动态调整 + 统计面板
+### 文件变更
+- `packages/clawbot/src/smart_memory.py` — 新增 consolidate() 方法
+- `packages/clawbot/src/shared_memory.py` — 新增 _expand_with_relations() 1-hop图谱扩展
+- `packages/clawbot/src/resilience.py` — 新增 Bulkhead 隔离舱 (125行)
+
+---
+
 ## [2026-04-16] 继续推进 — K线行情页 + LLM分层记忆工具 + K线API
 > 领域: `frontend`, `backend`, `trading`
 > 影响模块: `Money`(前端), `KlineChart`(新), `trading router`, `tool_executor`
