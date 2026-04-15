@@ -9,6 +9,7 @@ OpenClaw OMEGA — 意图解析器 (Intent Parser)
   4. 复用现有 litellm_router.py 的多模型路由
   5. 结构化输出: instructor (10k⭐) 保证 LLM 返回类型安全的 Pydantic 对象
 """
+
 import json
 import logging
 import re
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 try:
     import jieba
     import jieba.analyse
+
     HAS_JIEBA = True
 except ImportError:
     HAS_JIEBA = False
@@ -34,38 +36,42 @@ logger = logging.getLogger(__name__)
 
 # ── 任务类型枚举 ──────────────────────────────────────────
 
+
 class TaskType(str, Enum):
     """任务分类"""
-    INVESTMENT = "investment"       # 投资分析/交易
-    SOCIAL = "social"               # 社媒运营
-    SHOPPING = "shopping"           # 购物比价
-    BOOKING = "booking"             # 预订（餐厅/酒店/机票）
-    LIFE = "life"                   # 生活服务（快递/日历/账单）
-    CODE = "code"                   # 代码/开发任务
-    INFO = "info"                   # 信息查询
-    COMMUNICATION = "communication" # 通信代理（微信/邮件）
-    SYSTEM = "system"               # 系统管理
-    EVOLUTION = "evolution"         # 自进化指令
+
+    INVESTMENT = "investment"  # 投资分析/交易
+    SOCIAL = "social"  # 社媒运营
+    SHOPPING = "shopping"  # 购物比价
+    BOOKING = "booking"  # 预订（餐厅/酒店/机票）
+    LIFE = "life"  # 生活服务（快递/日历/账单）
+    CODE = "code"  # 代码/开发任务
+    INFO = "info"  # 信息查询
+    COMMUNICATION = "communication"  # 通信代理（微信/邮件）
+    SYSTEM = "system"  # 系统管理
+    EVOLUTION = "evolution"  # 自进化指令
     UNKNOWN = "unknown"
 
 
 # ── 解析结果 ──────────────────────────────────────────────
 
+
 @dataclass
 class ParsedIntent:
     """结构化意图"""
-    goal: str                                   # 核心目标（一句话）
-    task_type: TaskType                         # 任务分类
+
+    goal: str  # 核心目标（一句话）
+    task_type: TaskType  # 任务分类
     known_params: Dict[str, Any] = field(default_factory=dict)
     missing_critical: List[str] = field(default_factory=list)
     missing_optional: List[str] = field(default_factory=list)
     constraints: List[str] = field(default_factory=list)
-    urgency: str = "normal"                     # urgent / normal / background
-    reversible: bool = True                     # 操作是否可逆
-    estimated_cost_usd: float = 0.0             # 预估LLM费用
-    requires_confirmation: bool = False         # 是否需要用户确认
-    confidence: float = 0.0                     # 解析置信度 0-1
-    raw_message: str = ""                       # 原始消息
+    urgency: str = "normal"  # urgent / normal / background
+    reversible: bool = True  # 操作是否可逆
+    estimated_cost_usd: float = 0.0  # 预估LLM费用
+    requires_confirmation: bool = False  # 是否需要用户确认
+    confidence: float = 0.0  # 解析置信度 0-1
+    raw_message: str = ""  # 原始消息
 
     @property
     def is_actionable(self) -> bool:
@@ -80,6 +86,7 @@ class ParsedIntent:
 
 # ── Pydantic 模型 — instructor 结构化输出 ─────────────────
 
+
 class IntentLLMOutput(BaseModel):
     """
     LLM 意图解析的 Pydantic 输出模型。
@@ -92,34 +99,21 @@ class IntentLLMOutput(BaseModel):
       - confidence 限制在 0-1
       - urgency 限制为三个合法值
     """
+
     goal: str = Field(default="", description="一句话核心目标")
     task_type: str = Field(
         default="unknown",
         description="任务分类: investment/social/shopping/booking/life/"
-                    "code/info/communication/system/evolution/unknown",
+        "code/info/communication/system/evolution/unknown",
     )
-    known_params: Dict[str, Any] = Field(
-        default_factory=dict, description="已知参数 key-value"
-    )
-    missing_critical: List[str] = Field(
-        default_factory=list, description="缺失的关键参数名"
-    )
-    missing_optional: List[str] = Field(
-        default_factory=list, description="缺失的可选参数名"
-    )
-    constraints: List[str] = Field(
-        default_factory=list, description="约束条件"
-    )
-    urgency: Literal["urgent", "normal", "background"] = Field(
-        default="normal", description="紧急度"
-    )
+    known_params: Dict[str, Any] = Field(default_factory=dict, description="已知参数 key-value")
+    missing_critical: List[str] = Field(default_factory=list, description="缺失的关键参数名")
+    missing_optional: List[str] = Field(default_factory=list, description="缺失的可选参数名")
+    constraints: List[str] = Field(default_factory=list, description="约束条件")
+    urgency: Literal["urgent", "normal", "background"] = Field(default="normal", description="紧急度")
     reversible: bool = Field(default=True, description="操作是否可逆")
-    requires_confirmation: bool = Field(
-        default=False, description="是否需要用户确认"
-    )
-    confidence: float = Field(
-        default=0.7, ge=0.0, le=1.0, description="解析置信度 0-1"
-    )
+    requires_confirmation: bool = Field(default=False, description="是否需要用户确认")
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0, description="解析置信度 0-1")
 
     def to_parsed_intent(self, raw_message: str = "") -> "ParsedIntent":
         """转换为 ParsedIntent dataclass（供下游 TaskGraph 消费）"""
@@ -127,9 +121,7 @@ class IntentLLMOutput(BaseModel):
         try:
             task_type = TaskType(self.task_type)
         except ValueError as e:
-            logger.warning(
-                f"LLM 返回未知 task_type: {self.task_type!r}，降级为 UNKNOWN"
-            )
+            logger.warning(f"LLM 返回未知 task_type: {self.task_type!r}，降级为 UNKNOWN")
             task_type = TaskType.UNKNOWN
 
         return ParsedIntent(
@@ -177,8 +169,7 @@ class IntentParser:
         return [
             # 投资类
             {
-                "patterns": [r"分析(.+)", r"(.+)能买吗",
-                             r"看看(.+)", r"(.+)的?行情"],
+                "patterns": [r"分析(.+)", r"(.+)能买吗", r"看看(.+)", r"(.+)的?行情"],
                 "task_type": TaskType.INVESTMENT,
                 "goal_template": "投资分析: {match}",
                 "param_key": "symbol_hint",
@@ -212,10 +203,16 @@ class IntentParser:
             },
             # 购物类 (v2.0: 排除股票/投资上下文)
             {
-                "patterns": [r"买(.+)", r"比价(.+)", r"搜(.+)价格",
-                             r"(.+)多少钱", r"帮我找(.+)",
-                             r"查.+(.+)价格", r"(.+)哪里便宜",
-                             r"比较(.+)价格"],
+                "patterns": [
+                    r"买(.+)",
+                    r"比价(.+)",
+                    r"搜(.+)价格",
+                    r"(.+)多少钱",
+                    r"帮我找(.+)",
+                    r"查.+(.+)价格",
+                    r"(.+)哪里便宜",
+                    r"比较(.+)价格",
+                ],
                 "task_type": TaskType.SHOPPING,
                 "goal_template": "购物比价: {match}",
                 "param_key": "product_hint",
@@ -224,10 +221,17 @@ class IntentParser:
             },
             # 预订类
             {
-                "patterns": [r"订(.*)餐厅", r"订(.*)酒店", r"订(.*)机票",
-                             r"预[订定](.+)", r"帮我订(.+)",
-                             r"(.+)预约", r"挂号(.+)",
-                             r"订个(.+)", r"定个(.+)"],
+                "patterns": [
+                    r"订(.*)餐厅",
+                    r"订(.*)酒店",
+                    r"订(.*)机票",
+                    r"预[订定](.+)",
+                    r"帮我订(.+)",
+                    r"(.+)预约",
+                    r"挂号(.+)",
+                    r"订个(.+)",
+                    r"定个(.+)",
+                ],
                 "task_type": TaskType.BOOKING,
                 "goal_template": "预订: {match}",
                 "param_key": "booking_hint",
@@ -296,6 +300,18 @@ class IntentParser:
             logger.info(f"快速解析成功: {fast_result.task_type} — {fast_result.goal}")
             return fast_result
 
+        # 1.5 本地轻量模型预筛（零成本，节省付费 API 调用）
+        try:
+            from src.tools.local_llm import classify_intent as _local_classify
+
+            local_type = await _local_classify(message)
+            if local_type:
+                # 本地模型给出了明确分类，构建中等置信度的结果
+                # 仍需要 LLM 提取参数，但可以跳过分类环节
+                logger.debug(f"[IntentParser] 本地模型分类: {local_type}（节省一次分类 API 调用）")
+        except Exception:
+            pass  # 本地模型不可用，静默跳过
+
         # 2. LLM 解析（花钱但准确）
         try:
             llm_result = await self._llm_parse(message, message_type, context)
@@ -343,9 +359,7 @@ class IntentParser:
                         try:
                             keywords = jieba.analyse.extract_tags(message, topK=5, withWeight=True)
                             if keywords:
-                                known_params["_keywords"] = [
-                                    {"word": w, "weight": round(s, 3)} for w, s in keywords
-                                ]
+                                known_params["_keywords"] = [{"word": w, "weight": round(s, 3)} for w, s in keywords]
                         except Exception as e:
                             logger.debug("Silenced exception", exc_info=True)
 
@@ -381,6 +395,7 @@ class IntentParser:
         """
         try:
             from src.litellm_router import free_pool
+
             if not free_pool:
                 return None
 
@@ -395,6 +410,7 @@ class IntentParser:
             )
 
             import asyncio
+
             resp = await asyncio.wait_for(
                 free_pool.acompletion(
                     model_family=FAMILY_QWEN,
@@ -409,6 +425,7 @@ class IntentParser:
 
             # 用 json_repair 容错解析
             from json_repair import loads as jloads
+
             data = jloads(text)
             if not isinstance(data, dict):
                 return None
@@ -426,10 +443,7 @@ class IntentParser:
             except ValueError as e:  # noqa: F841
                 return None
 
-            logger.info(
-                f"[IntentParser] LLM 分类成功: {task_type_str} "
-                f"(conf={confidence:.2f}) — \"{message[:40]}\""
-            )
+            logger.info(f'[IntentParser] LLM 分类成功: {task_type_str} (conf={confidence:.2f}) — "{message[:40]}"')
 
             return ParsedIntent(
                 goal=goal,
@@ -450,33 +464,55 @@ class IntentParser:
         """中文股票名/简称 → ticker 代码"""
         _TICKER_MAP = {
             # A股
-            "茅台": "600519.SS", "贵州茅台": "600519.SS",
-            "宁德时代": "300750.SZ", "宁德": "300750.SZ",
+            "茅台": "600519.SS",
+            "贵州茅台": "600519.SS",
+            "宁德时代": "300750.SZ",
+            "宁德": "300750.SZ",
             "比亚迪": "002594.SZ",
             "腾讯": "0700.HK",
-            "阿里": "BABA", "阿里巴巴": "BABA",
-            "中国平安": "601318.SS", "平安": "601318.SS",
-            "招商银行": "600036.SS", "招行": "600036.SS",
+            "阿里": "BABA",
+            "阿里巴巴": "BABA",
+            "中国平安": "601318.SS",
+            "平安": "601318.SS",
+            "招商银行": "600036.SS",
+            "招行": "600036.SS",
             "中信证券": "600030.SS",
-            "隆基绿能": "601012.SS", "隆基": "601012.SS",
+            "隆基绿能": "601012.SS",
+            "隆基": "601012.SS",
             "药明康德": "603259.SS",
             "五粮液": "000858.SZ",
-            "美的": "000333.SZ", "美的集团": "000333.SZ",
-            "格力": "000651.SZ", "格力电器": "000651.SZ",
-            "中芯国际": "688981.SS", "中芯": "688981.SS",
+            "美的": "000333.SZ",
+            "美的集团": "000333.SZ",
+            "格力": "000651.SZ",
+            "格力电器": "000651.SZ",
+            "中芯国际": "688981.SS",
+            "中芯": "688981.SS",
             # 美股
-            "苹果": "AAPL", "apple": "AAPL",
-            "特斯拉": "TSLA", "tesla": "TSLA",
-            "英伟达": "NVDA", "nvidia": "NVDA",
-            "微软": "MSFT", "microsoft": "MSFT",
-            "谷歌": "GOOGL", "google": "GOOGL",
-            "亚马逊": "AMZN", "amazon": "AMZN",
-            "meta": "META", "脸书": "META",
-            "台积电": "TSM", "tsmc": "TSM",
-            "奈飞": "NFLX", "netflix": "NFLX",
+            "苹果": "AAPL",
+            "apple": "AAPL",
+            "特斯拉": "TSLA",
+            "tesla": "TSLA",
+            "英伟达": "NVDA",
+            "nvidia": "NVDA",
+            "微软": "MSFT",
+            "microsoft": "MSFT",
+            "谷歌": "GOOGL",
+            "google": "GOOGL",
+            "亚马逊": "AMZN",
+            "amazon": "AMZN",
+            "meta": "META",
+            "脸书": "META",
+            "台积电": "TSM",
+            "tsmc": "TSM",
+            "奈飞": "NFLX",
+            "netflix": "NFLX",
             # 加密
-            "比特币": "BTC-USD", "btc": "BTC-USD", "bitcoin": "BTC-USD",
-            "以太坊": "ETH-USD", "eth": "ETH-USD", "ethereum": "ETH-USD",
+            "比特币": "BTC-USD",
+            "btc": "BTC-USD",
+            "bitcoin": "BTC-USD",
+            "以太坊": "ETH-USD",
+            "eth": "ETH-USD",
+            "ethereum": "ETH-USD",
         }
         text_lower = text.lower().strip()
         # 精确匹配
@@ -487,9 +523,9 @@ class IntentParser:
             if name in text_lower:
                 return ticker
         # 已经是 ticker 格式
-        if re.match(r'^[A-Za-z]{1,5}$', text.strip()):
+        if re.match(r"^[A-Za-z]{1,5}$", text.strip()):
             return text.strip().upper()
-        if re.match(r'^\d{6}\.(SS|SZ|HK)$', text.strip()):
+        if re.match(r"^\d{6}\.(SS|SZ|HK)$", text.strip()):
             return text.strip()
         return None
 
@@ -508,8 +544,7 @@ class IntentParser:
         prompt = _PARSE_USER_TEMPLATE.format(
             message=message,
             message_type=message_type,
-            context=json.dumps(context, ensure_ascii=False, default=str)
-                    if context else "无",
+            context=json.dumps(context, ensure_ascii=False, default=str) if context else "无",
         )
 
         # ── 路径 1: structured_completion (instructor + Pydantic) ──
@@ -530,10 +565,7 @@ class IntentParser:
         except ImportError:
             logger.debug("structured_llm 模块不可用，使用 legacy 解析")
         except Exception as e:
-            logger.warning(
-                f"structured_completion 失败 ({type(e).__name__}: {e})，"
-                f"降级到 legacy JSON 解析"
-            )
+            logger.warning(f"structured_completion 失败 ({type(e).__name__}: {e})，降级到 legacy JSON 解析")
 
         # ── 路径 2: legacy 降级 (free_pool + json_repair) ──────────
         return await self._llm_parse_legacy(message, message_type, context)
@@ -561,8 +593,7 @@ class IntentParser:
         prompt = _PARSE_USER_TEMPLATE.format(
             message=message,
             message_type=message_type,
-            context=json.dumps(context, ensure_ascii=False, default=str)
-                    if context else "无",
+            context=json.dumps(context, ensure_ascii=False, default=str) if context else "无",
         )
 
         async with api_limiter("llm"):
@@ -581,11 +612,12 @@ class IntentParser:
         # 解析 JSON（容错）
         try:
             import json_repair
+
             parsed = json_repair.loads(raw_text)
             if not isinstance(parsed, dict):
                 raise ValueError("json_repair did not return a dict")
         except Exception as e:  # noqa: F841
-            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
             if json_match:
                 parsed = json.loads(json_match.group())
             else:
