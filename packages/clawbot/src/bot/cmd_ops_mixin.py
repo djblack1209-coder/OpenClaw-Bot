@@ -31,17 +31,28 @@ class OpsCommandsMixin:
         args = context.args or []
         if not args:
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
             keyboard = [
-                [InlineKeyboardButton("📝 任务管理", callback_data="ops_task"),
-                 InlineKeyboardButton("📊 项目报告", callback_data="ops_project")],
-                [InlineKeyboardButton("🔥 热点扫描", callback_data="ops_hot"),
-                 InlineKeyboardButton("✍️ 发帖", callback_data="ops_post")],
-                [InlineKeyboardButton("📧 邮件", callback_data="ops_email"),
-                 InlineKeyboardButton("📝 会议纪要", callback_data="ops_meeting")],
-                [InlineKeyboardButton("🏠 生活提醒", callback_data="ops_life"),
-                 InlineKeyboardButton("💰 赏金猎人", callback_data="ops_bounty")],
-                [InlineKeyboardButton("📺 监控", callback_data="ops_monitor"),
-                 InlineKeyboardButton("🔧 开发", callback_data="ops_dev")],
+                [
+                    InlineKeyboardButton("📝 任务管理", callback_data="ops_task"),
+                    InlineKeyboardButton("📊 项目报告", callback_data="ops_project"),
+                ],
+                [
+                    InlineKeyboardButton("🔥 热点扫描", callback_data="ops_hot"),
+                    InlineKeyboardButton("✍️ 发帖", callback_data="ops_post"),
+                ],
+                [
+                    InlineKeyboardButton("📧 邮件", callback_data="ops_email"),
+                    InlineKeyboardButton("📝 会议纪要", callback_data="ops_meeting"),
+                ],
+                [
+                    InlineKeyboardButton("🏠 生活提醒", callback_data="ops_life"),
+                    InlineKeyboardButton("💰 赏金猎人", callback_data="ops_bounty"),
+                ],
+                [
+                    InlineKeyboardButton("📺 监控", callback_data="ops_monitor"),
+                    InlineKeyboardButton("🔧 开发", callback_data="ops_dev"),
+                ],
             ]
             await update.message.reply_text(
                 "<b>🎯 自动化工作台</b>\n选择要执行的操作：",
@@ -125,7 +136,7 @@ class OpsCommandsMixin:
             if not result.get("success"):
                 await send_long_message(
                     update.effective_chat.id,
-                    error_service_failed("开发流程", result.get('error', '')),
+                    error_service_failed("开发流程", result.get("error", "")),
                     context,
                 )
                 return
@@ -145,6 +156,7 @@ class OpsCommandsMixin:
             return
 
         await update.message.reply_text("❓ 未知子命令，请使用 /ops help 查看可用操作")
+
     @requires_auth
     async def cmd_dev(self, update, context):
         args = ["dev", *(context.args or [])]
@@ -166,10 +178,11 @@ class OpsCommandsMixin:
     @with_typing
     async def cmd_cost(self, update, context):
         throttle_flags = {
-            "group_llm": os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false').lower() in {'1','true','yes','on'},
-            "group_intent": os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false').lower() in {'1','true','yes','on'},
-            "group_fallback": os.getenv('CHAT_ROUTER_ENABLE_GROUP_FALLBACK', 'false').lower() in {'1','true','yes','on'},
-            "fill_only": os.getenv('AUTO_TRADE_NOTIFY_ONLY_FILLS', 'false').lower() in {'1','true','yes','on'},
+            "group_llm": os.getenv("CHAT_ROUTER_ENABLE_GROUP_LLM", "false").lower() in {"1", "true", "yes", "on"},
+            "group_intent": os.getenv("CHAT_ROUTER_ENABLE_GROUP_INTENT", "false").lower() in {"1", "true", "yes", "on"},
+            "group_fallback": os.getenv("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", "false").lower()
+            in {"1", "true", "yes", "on"},
+            "fill_only": os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"},
         }
         text = format_cost_card(
             throttle_flags=throttle_flags,
@@ -268,7 +281,7 @@ class OpsCommandsMixin:
             result = await asyncio.to_thread(execution_hub.summarize_meeting, payload, "")
 
         if not result.get("success"):
-            await update.message.reply_text(error_service_failed("会议纪要", result.get('error', '')))
+            await update.message.reply_text(error_service_failed("会议纪要", result.get("error", "")))
             return
         lines = ["自动会议纪要", ""]
         lines.append(f"文本行数: {result.get('line_count', 0)}")
@@ -299,7 +312,7 @@ class OpsCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"任务已创建: #{ret.get('task_id')} {title}")
             else:
-                await update.message.reply_text(error_service_failed("创建", ret.get('error', '')))
+                await update.message.reply_text(error_service_failed("创建", ret.get("error", "")))
             return
 
         if sub == "done":
@@ -315,7 +328,7 @@ class OpsCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"任务已完成: #{task_id}")
             else:
-                await update.message.reply_text(error_service_failed("更新", ret.get('error', '')))
+                await update.message.reply_text(error_service_failed("更新", ret.get("error", "")))
             return
 
         if sub == "top":
@@ -336,9 +349,7 @@ class OpsCommandsMixin:
                 return
             lines = ["任务列表", ""]
             for t in rows[:20]:
-                lines.append(
-                    f"#{t.get('id')} [{t.get('status')}] P{t.get('priority', 3)} {t.get('title', '')}"
-                )
+                lines.append(f"#{t.get('id')} [{t.get('status')}] P{t.get('priority', 3)} {t.get('title', '')}")
             await send_long_message(update.effective_chat.id, "\n".join(lines), context)
             return
 
@@ -360,7 +371,7 @@ class OpsCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"监控已添加: {keyword}")
             else:
-                await update.message.reply_text(error_service_failed("添加", ret.get('error', '')))
+                await update.message.reply_text(error_service_failed("添加", ret.get("error", "")))
             return
 
         if sub == "addx":
@@ -376,7 +387,7 @@ class OpsCommandsMixin:
             if ret.get("success"):
                 await update.message.reply_text(f"X博主监控已添加: @{normalized}")
             else:
-                await update.message.reply_text(error_service_failed("添加", ret.get('error', '')))
+                await update.message.reply_text(error_service_failed("添加", ret.get("error", "")))
             return
 
         if sub == "list":
@@ -467,16 +478,16 @@ class OpsCommandsMixin:
 
         # 映射按钮 callback_data → cmd_ops 子命令
         _OPS_MENU_MAP = {
-            "ops_task":    (["task", "top"],    "📝 加载任务 Top3..."),
-            "ops_project": (["project"],        "📊 生成项目报告..."),
-            "ops_hot":     (None,               None),  # 直接走 cmd_hotpost
-            "ops_post":    (None,               None),  # 直接走 cmd_post
-            "ops_email":   (["email"],           "📧 整理邮箱..."),
-            "ops_meeting": (None,               "📝 请发送: /ops meeting <会议文本>"),
-            "ops_life":    (["life", "remind"],  "🏠 请发送: /ops life remind <分钟> <内容>"),
-            "ops_bounty":  (["bounty", "run"],   "💰 启动赏金猎人..."),
+            "ops_task": (["task", "top"], "📝 加载任务 Top3..."),
+            "ops_project": (["project"], "📊 生成项目报告..."),
+            "ops_hot": (None, None),  # 直接走 cmd_hotpost
+            "ops_post": (None, None),  # 直接走 cmd_post
+            "ops_email": (["email"], "📧 整理邮箱..."),
+            "ops_meeting": (None, "📝 请发送: /ops meeting <会议文本>"),
+            "ops_life": (["life", "remind"], "🏠 请发送: /ops life remind <分钟> <内容>"),
+            "ops_bounty": (["bounty", "run"], "💰 启动赏金猎人..."),
             "ops_monitor": (["monitor", "list"], "📺 加载监控列表..."),
-            "ops_dev":     (["dev"],             "🔧 启动开发流程..."),
+            "ops_dev": (["dev"], "🔧 启动开发流程..."),
         }
 
         entry = _OPS_MENU_MAP.get(data)
@@ -510,5 +521,43 @@ class OpsCommandsMixin:
         except Exception as e:
             logger.warning("[OpsMenu] 执行 %s 失败: %s", data, e)
 
-    # ---- 闲鱼卡券自动发货管理 ----
+    # ---- 进化引擎 Telegram 命令入口 ----
 
+    @requires_auth
+    @with_typing
+    async def cmd_evolution(self, update, context):
+        """触发进化引擎扫描 — 搜索 GitHub 高星开源项目，评估集成价值"""
+        from src.bot.globals import send_long_message
+
+        processing_msg = await update.message.reply_text("⏳ 进化引擎扫描中，预计 30-60 秒...")
+        try:
+            from src.evolution.engine import EvolutionEngine
+
+            engine = EvolutionEngine()
+            result = await engine.daily_scan()
+
+            # 格式化扫描结果
+            if not result or not result.get("proposals"):
+                text = "🧬 <b>进化扫描完成</b>\n\n本次未发现新的高价值开源项目。"
+            else:
+                proposals = result["proposals"]
+                lines = [f"🧬 <b>进化扫描完成</b> — 发现 {len(proposals)} 个候选项目\n"]
+                for p in proposals[:5]:
+                    name = p.get("repo_name", "未知")
+                    stars = p.get("stars", 0)
+                    value = p.get("value_score", 0)
+                    desc = p.get("description", "")[:60]
+                    lines.append(f"  ⭐ <b>{name}</b> ({stars:,}⭐)\n    价值: {value:.0f}/100 | {desc}")
+                if len(proposals) > 5:
+                    lines.append(f"\n  ... 还有 {len(proposals) - 5} 个，详见桌面端进化引擎页面")
+                text = "\n".join(lines)
+
+            await processing_msg.delete()
+            await send_long_message(update.effective_chat.id, text, context, parse_mode="HTML")
+
+        except Exception as e:
+            logger.error("[Evolution] 扫描失败: %s", e, exc_info=True)
+            await processing_msg.delete()
+            await update.message.reply_text(f"❌ 进化扫描失败: {error_service_failed()}")
+
+    # ---- 闲鱼卡券自动发货管理 ----
