@@ -14,7 +14,8 @@ import {
   BrainCircuit,
   Blocks,
   Dna,
-  Network
+  Network,
+  Clock
 } from 'lucide-react';
 import { PageType } from '../../App';
 import clsx from 'clsx';
