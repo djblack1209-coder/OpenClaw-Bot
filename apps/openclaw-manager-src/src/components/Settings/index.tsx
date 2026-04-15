@@ -164,6 +164,39 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
     loadSettings();
   }, []);
 
+  // 获取运营控制设置
+  useEffect(() => {
+    const fetchOpsSettings = async () => {
+      try {
+        const resp = await clawbotFetch('/api/v1/controls/settings');
+        if (resp.ok) {
+          const data = await resp.json();
+          setOpsSettings(data);
+        }
+      } catch {
+        // 接口不可用时使用默认值，不弹错误提示
+      }
+    };
+    fetchOpsSettings();
+  }, []);
+
+  /** 保存运营控制设置 */
+  const saveOpsSettings = async () => {
+    setSavingOps(true);
+    try {
+      const resp = await clawbotFetch('/api/v1/controls/settings', {
+        method: 'POST',
+        body: JSON.stringify(opsSettings),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      toast.success('运营设置已保存');
+    } catch {
+      toast.error('保存运营设置失败');
+    } finally {
+      setSavingOps(false);
+    }
+  };
+
   const handleSave = async () => {
     // 验证 Bot 名称不能为空
     if (!identity.botName.trim()) {

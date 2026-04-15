@@ -206,6 +206,73 @@ export function Money() {
           </div>
         </div>
 
+        {/* 交易控制面板 */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* 自动交易 */}
+          <div className="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bot size={16} className="text-claw-400" />
+              <span className="text-sm text-gray-300">自动交易</span>
+            </div>
+            <Switch
+              checked={tradingControls.auto_trader_enabled}
+              onCheckedChange={(v: boolean) => handleControlToggle('auto_trader_enabled', v)}
+            />
+          </div>
+
+          {/* IBKR 模式 */}
+          <div className="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Briefcase size={16} className={tradingControls.ibkr_live_mode ? "text-red-400" : "text-blue-400"} />
+              <span className="text-sm text-gray-300">{tradingControls.ibkr_live_mode ? '实盘' : '模拟盘'}</span>
+            </div>
+            <Switch
+              checked={tradingControls.ibkr_live_mode}
+              onCheckedChange={(v: boolean) => handleControlToggle('ibkr_live_mode', v)}
+            />
+          </div>
+
+          {/* 风控熔断 - 只读 */}
+          <div className="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={16} className="text-green-400" />
+              <span className="text-sm text-gray-300">风控保护</span>
+            </div>
+            <Switch
+              checked={tradingControls.risk_protection_enabled}
+              disabled
+            />
+          </div>
+
+          {/* 允许做空 */}
+          <div className="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ArrowDownRight size={16} className="text-orange-400" />
+              <span className="text-sm text-gray-300">允许做空</span>
+            </div>
+            <Switch
+              checked={tradingControls.allow_short_selling}
+              onCheckedChange={(v: boolean) => handleControlToggle('allow_short_selling', v)}
+            />
+          </div>
+
+          {/* 每日交易上限 */}
+          <div className="bg-dark-800/60 rounded-xl border border-dark-600/50 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity size={16} className="text-purple-400" />
+              <span className="text-sm text-gray-300">日限 {tradingControls.max_daily_trades} 笔</span>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={tradingControls.max_daily_trades}
+              onChange={(e) => handleControlToggle('max_daily_trades', parseInt(e.target.value) || 50)}
+              className="w-16 bg-dark-900 border border-dark-700 rounded px-2 py-1 text-xs text-white text-center"
+            />
+          </div>
+        </div>
+
         {/* Dashboard Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 bg-dark-900 border-dark-600 shadow-xl overflow-hidden">
