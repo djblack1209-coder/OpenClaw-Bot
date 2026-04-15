@@ -3,6 +3,35 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] P2 架构优化三连 — LLM路由Config化 + Validator链风控 + 分层记忆
+> 领域: `backend`, `ai-pool`, `infra`
+> 影响模块: `litellm_router`, `llm_routing_config`(新), `risk_manager`, `risk_validators`(新), `context_manager`, `shared_memory`
+> 关联问题: MRU分析报告 P2-1/P2-2/P2-3
+### 变更内容
+- **P2-1 JSON Config 驱动 LLM 路由** (借鉴 Portkey Gateway 11.3k⭐):
+  - 新增 `config/llm_routing.json`: 16个provider/60个模型/降级链集中管理
+  - 新增 `llm_routing_config.py`: 配置加载器+deployment构建+fallback链生成
+  - 修改JSON即可调整路由，无需改代码；不存在时自动回退硬编码
+- **P2-2 风控 Validator 链式架构** (借鉴 rqalpha 5.2k⭐):
+  - 新增 `risk_validators.py`: ValidatorChain + 11个内置可插拔校验器
+  - check_trade() 硬检查走Validator链，软检查保留；支持运行时add/remove
+  - 新增检查只需新建Validator类+注册
+- **P2-3 分层记忆架构第一期** (借鉴 Letta/MemGPT 22k⭐):
+  - H1: TieredContextManager 动态Block注册 `register_block(name, limit, default)`
+  - H2: Block token限额自动截断，防core无限膨胀
+  - M1: MemoryType枚举(fact/preference/episodic/procedural/meta)，不同衰减率
+  - H4: 记忆衰减机制，情景记忆自动降级importance
+### 文件变更
+- `packages/clawbot/config/llm_routing.json` — 新建: LLM路由配置 (250行JSON)
+- `packages/clawbot/src/llm_routing_config.py` — 新建: 配置加载器 (180行)
+- `packages/clawbot/src/risk_validators.py` — 新建: Validator链 (320行)
+- `packages/clawbot/src/litellm_router.py` — initialize()支持JSON Config加载
+- `packages/clawbot/src/risk_manager.py` — 集成ValidatorChain+add/remove_validator
+- `packages/clawbot/src/context_manager.py` — 动态Block注册+token限额截断
+- `packages/clawbot/src/shared_memory.py` — MemoryType枚举+记忆衰减机制
+
+---
+
 ## [2026-04-16] P0+P1 价值位阶推进 — VaR/CVaR风控 + PyBroker回测 + 执行器拆分
 > 领域: `backend`, `trading`
 > 影响模块: `risk_manager`, `risk_config`, `risk_var`(新), `backtester_pybroker`(新), `brain_executors`(重构), `cmd_trading_mixin`

@@ -1,6 +1,6 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-16 | 新增 risk_var + backtester_pybroker + 4个brain_exec子模块 (总模块数 245→251)
+> 最后更新: 2026-04-16 | 新增 risk_var/backtester_pybroker/brain_exec_*/llm_routing_config/risk_validators (总模块数 245→253)
 
 ---
 
