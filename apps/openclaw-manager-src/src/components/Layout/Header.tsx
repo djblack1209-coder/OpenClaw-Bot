@@ -28,6 +28,7 @@ const pageTitles: Record<PageType, { title: string; description: string }> = {
   settings: { title: '设置', description: '身份配置与高级选项' },
   evolution: { title: '进化引擎', description: '追踪 GitHub Trending，自动发现升级机会' },
   gateway: { title: 'API 网关', description: 'New-API 渠道、令牌与网关状态管理' },
+  scheduler: { title: '任务调度中心', description: '管理每日自动任务的启停与执行状态' },
 };
 
 export function Header({ currentPage }: HeaderProps) {
