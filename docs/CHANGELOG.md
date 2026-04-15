@@ -7,6 +7,50 @@
 
 ---
 
+## [2026-04-15] 本地 LLM 适配器 + 控制面板 API + 桌面端三页面控件 + 任务调度中心 + 命令审计修复
+
+> 领域: `backend`, `frontend`, `infra`
+> 影响模块: `local_llm.py`, `controls.py`, `intent_parser.py`, `notify_style.py`, `cmd_ops_mixin.py`, `multi_bot.py`, `Money/index.tsx`, `Social/index.tsx`, `Settings/index.tsx`, `Scheduler/index.tsx`
+> 关联问题: HI-509
+
+### 变更内容
+
+**🔴 P0 Bug 修复 (1项)**
+1. **HI-509 notify_style.py 缺失 List 导入**: `from typing import ...` 中缺少 `List`，导致所有测试在 import 阶段即失败。修复后测试恢复正常。
+
+**🟠 P1 后端新功能 (3项)**
+2. **本地 LLM 适配器**: 新增 `src/tools/local_llm.py`（253行），支持 Ollama/LM Studio/HF Inference Server 三种本地推理后端自动探测，提供 5 个轻量任务函数（意图分类/上下文摘要/情感提取/闲鱼快速回复/关键词提取）。已集成到 `intent_parser.py` 作为 LLM 调用前的本地预筛查步骤。
+3. **控制面板 API 路由**: 新增 `src/api/routers/controls.py`（225行），9 个 REST 端点覆盖交易控件、社媒控件、调度器状态和全局设置。状态持久化到 `data/controls_state.json`。已注册到 `__init__.py` 和 `server.py`。
+4. **/evolution 命令注册**: `cmd_ops_mixin.py` 新增 `cmd_evolution()` 处理函数，`multi_bot.py` 注册 CommandHandler，补全死链审计中发现的唯一缺失命令入口。
+
+**🟡 P1 前端控件面板 (4项)**
+5. **赚钱页交易控件**: Money 页新增 5 个 Toggle（自动交易/IBKR 实盘模式/风控保护/做空/日交易限额），通过 controls API 双向同步。
+6. **社媒页平台控件**: Social 页新增 5 个 Toggle（小红书/X 启用/自动热点/内容审查/调度器暂停），通过 controls API 双向同步。
+7. **设置页运维控件**: Settings 页新增 7 个设置项（日预算/默认模型/本地 HF 模型开关+端点/自动自愈/调度器/维护模式），页面从 630 行扩展到 854 行。
+8. **任务调度中心**: 新增 Scheduler 页面组件，展示全部 16 个定时任务的名称/cron/开关/状态/上次执行时间，支持全局调度器开关、维护模式横幅、30 秒自动刷新。已注册到 App.tsx 路由和侧边栏导航。
+
+**🔵 P2 审计 (2项)**
+9. **LaunchAgent 审计**: 8 个 plist 文件验证正确，7 个 agent 当前已加载运行。发现源文件与安装版本的微量差异（clawbot-agent KeepAlive 策略、heartbeat-sender 重试逻辑）。
+10. **死链审计**: 97 个注册命令全部有 handler 实现，0 个 stub/TODO/NotImplementedError。唯一缺失的 /evolution Telegram 入口已补全。
+
+### 文件变更
+- `packages/clawbot/src/notify_style.py` — 修复 List 导入缺失
+- `packages/clawbot/src/tools/local_llm.py` — 新增：本地 LLM 适配器（253行）
+- `packages/clawbot/src/core/intent_parser.py` — 集成本地 LLM 预筛查
+- `packages/clawbot/src/api/routers/controls.py` — 新增：控制面板 API（225行，9端点）
+- `packages/clawbot/src/api/routers/__init__.py` — 注册 controls 路由
+- `packages/clawbot/src/api/server.py` — 注册 controls 路由
+- `packages/clawbot/src/bot/cmd_ops_mixin.py` — 新增 cmd_evolution() 处理函数
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /evolution CommandHandler
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 交易控件面板
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 社媒控件面板
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 运维控件（630→854行）
+- `apps/openclaw-manager-src/src/components/Scheduler/index.tsx` — 新增：任务调度中心页面
+- `apps/openclaw-manager-src/src/App.tsx` — Scheduler 路由注册
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — Scheduler 菜单项
+
+---
+
 ## [2026-04-15] 新增「任务调度中心」桌面端页面
 
 > 领域: `frontend`
