@@ -612,6 +612,11 @@ class SharedMemory:
         else:
             results = keyword_results[:limit]
 
+        # ── M3: 记忆图谱 1-hop 扩展（借鉴 Zep 知识图谱检索）──
+        # 利用 memory_relations 表，对搜索结果做 1-hop 关系扩展，提高召回率
+        if results and len(results) < limit:
+            results = self._expand_with_relations(conn, results, limit)
+
         return {"success": True, "query": query, "mode": mode, "results": results, "count": len(results)}
 
     def semantic_search(
@@ -920,6 +925,66 @@ class SharedMemory:
     # ════════════════════════════════════════════
     #  内部方法
     # ════════════════════════════════════════════
+
+    def _expand_with_relations(self, conn: sqlite3.Connection, results: list, limit: int) -> list:
+        """M3: 记忆图谱 1-hop 扩展 — 借鉴 Zep 知识图谱检索
+
+        对搜索结果中的每条记忆，查找其关联记忆（memory_relations 表），
+        将高强度关联的记忆追加到结果中，提高召回率。
+        """
+        if not results:
+            return results
+
+        try:
+            # 收集已有结果的 ID
+            existing_ids = set()
+            for r in results:
+                rid = r.get("id")
+                if rid:
+                    existing_ids.add(int(rid))
+
+            if not existing_ids:
+                return results
+
+            # 查询 1-hop 关联记忆（双向）
+            placeholders = ",".join("?" * len(existing_ids))
+            id_list = list(existing_ids)
+            related_rows = conn.execute(
+                f"SELECT DISTINCT m.*, mr.relation_type, mr.strength "
+                f"FROM memory_relations mr "
+                f"JOIN shared_memories m ON "
+                f"  (mr.to_id = m.id AND mr.from_id IN ({placeholders})) OR "
+                f"  (mr.from_id = m.id AND mr.to_id IN ({placeholders})) "
+                f"WHERE m.id NOT IN ({placeholders}) "
+                f"AND mr.strength >= 0.5 "
+                f"ORDER BY mr.strength DESC "
+                f"LIMIT ?",
+                id_list + id_list + id_list + [limit - len(results)],
+            ).fetchall()
+
+            # 追加关联记忆到结果
+            for r in related_rows:
+                results.append(
+                    {
+                        "id": r["id"],
+                        "key": r["key"],
+                        "value": r["value"][:200],
+                        "category": r["category"],
+                        "source_bot": r["source_bot"],
+                        "importance": r["importance"],
+                        "score": float(r["strength"]) * 0.3,  # 关联记忆得分较低
+                        "match_type": f"graph_1hop:{r['relation_type']}",
+                        "search_mode": "graph",
+                    }
+                )
+
+            if related_rows:
+                logger.debug(f"[SharedMemory] 图谱扩展: +{len(related_rows)} 条关联记忆")
+
+        except Exception as e:
+            logger.debug(f"[SharedMemory] 图谱扩展失败: {e}")
+
+        return results[:limit]
 
     def _cleanup_expired(self, conn: sqlite3.Connection):
         """清理过期记忆 + LRU 淘汰超量记忆 + v4.1 记忆衰减"""
