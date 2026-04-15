@@ -12,8 +12,10 @@ import {
   AlertTriangle,
   X,
   HardDrive,
+  Cpu,
 } from 'lucide-react';
-import { api, type ProjectContext } from '../../lib/tauri';
+import { api, clawbotFetch, type ProjectContext } from '../../lib/tauri';
+import { Switch } from '@/components/ui/switch';
 import { createLogger } from '@/lib/logger';
 import { useAppStore } from '@/stores/appStore';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -26,6 +28,28 @@ interface InstallResult {
   message: string;
   error?: string;
 }
+
+/** 运营控制设置 */
+interface OperationsSettings {
+  daily_budget_usd: number;          // 每日 LLM 预算上限
+  default_llm_model: string;         // 默认模型
+  local_hf_model_enabled: boolean;   // 本地 HF 模型开关
+  local_hf_model_endpoint: string;   // 本地模型 API 地址
+  auto_heal_enabled: boolean;        // 自愈引擎开关
+  scheduler_enabled: boolean;        // 每日定时任务总开关
+  maintenance_mode: boolean;         // 维护模式
+}
+
+/** 运营设置默认值 */
+const DEFAULT_OPS_SETTINGS: OperationsSettings = {
+  daily_budget_usd: 50,
+  default_llm_model: 'claude-sonnet-4-20250514',
+  local_hf_model_enabled: false,
+  local_hf_model_endpoint: 'http://localhost:11434',
+  auto_heal_enabled: true,
+  scheduler_enabled: true,
+  maintenance_mode: false,
+};
 
 interface SettingsProps {
   onEnvironmentChange?: () => void;

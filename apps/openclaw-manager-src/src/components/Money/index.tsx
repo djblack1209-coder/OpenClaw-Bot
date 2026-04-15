@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign, TrendingUp, Search, ShieldAlert, FileBarChart,
   RotateCcw, LineChart, Target, Activity, PieChart,
-  Play, Loader2, ArrowUpRight, ArrowDownRight, Briefcase
+  Play, Loader2, ArrowUpRight, ArrowDownRight, Briefcase, Bot
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Switch } from '@/components/ui/switch';
 import { api, isTauri, clawbotFetch, type TradingStatusResponse } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
 
@@ -44,12 +45,29 @@ interface ChartDataPoint {
   value: number;
 }
 
+// 交易控制面板状态
+interface TradingControlsState {
+  auto_trader_enabled: boolean;      // 自动交易主开关
+  ibkr_live_mode: boolean;           // IBKR 实盘/模拟盘切换
+  risk_protection_enabled: boolean;  // 风控熔断（只读，不可关闭）
+  allow_short_selling: boolean;      // 允许做空
+  max_daily_trades: number;          // 每日最大交易次数
+}
+
 export function Money() {
   const [statuses, setStatuses] = useState<Record<string, ActionStatus>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [ibkrConnected, setIbkrConnected] = useState(false);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  // 交易控制面板状态
+  const [tradingControls, setTradingControls] = useState<TradingControlsState>({
+    auto_trader_enabled: false,
+    ibkr_live_mode: false,
+    risk_protection_enabled: true,
+    allow_short_selling: false,
+    max_daily_trades: 50,
+  });
   // 尝试从后端获取交易数据
   useEffect(() => {
     const fetchTradingData = async () => {

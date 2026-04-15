@@ -4,6 +4,7 @@ ClawBot Internal API Server
 
 启动方式: 在 multi_main.py 中调用 start_api_server(port=18790)
 """
+
 import logging
 import os
 import threading
@@ -20,7 +21,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from .auth import verify_api_token, log_token_status
-from .routers import router_system, router_trading, router_social, router_memory, router_pool, router_ws, router_evolution, router_shopping, router_omega, router_newapi
+from .routers import (
+    router_system,
+    router_trading,
+    router_social,
+    router_memory,
+    router_pool,
+    router_ws,
+    router_evolution,
+    router_shopping,
+    router_omega,
+    router_newapi,
+    router_controls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +87,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             timestamps = self._request_log[client_ip]
             # 滑动窗口：只保留窗口内的时间戳
             window_start = now - self.WINDOW_SECONDS
-            self._request_log[client_ip] = [
-                ts for ts in timestamps if ts > window_start
-            ]
+            self._request_log[client_ip] = [ts for ts in timestamps if ts > window_start]
             timestamps = self._request_log[client_ip]
 
             if len(timestamps) >= self.MAX_REQUESTS:
@@ -84,7 +95,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 retry_after = int(timestamps[0] - window_start) + 1
                 logger.warning(
                     "速率限制触发: IP=%s, 窗口内请求数=%d, 限制=%d",
-                    client_ip, len(timestamps), self.MAX_REQUESTS,
+                    client_ip,
+                    len(timestamps),
+                    self.MAX_REQUESTS,
                 )
                 return StarletteJSONResponse(
                     status_code=429,
@@ -111,8 +124,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             with self._lock:
                 window_start = now - self.WINDOW_SECONDS
                 stale_ips = [
-                    ip for ip, ts_list in self._request_log.items()
-                    if not ts_list or ts_list[-1] <= window_start
+                    ip for ip, ts_list in self._request_log.items() if not ts_list or ts_list[-1] <= window_start
                 ]
                 for ip in stale_ips:
                     del self._request_log[ip]
@@ -128,6 +140,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     1. 有 Content-Length 头：直接比较数值，快速拒绝
     2. chunked 传输编码（无 Content-Length）：流式读取时累计字节数，超限立即中断
     """
+
     MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
 
     async def dispatch(self, request, call_next):
@@ -150,7 +163,8 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 if len(body) > self.MAX_BODY_SIZE:
                     logger.warning(
                         "chunked 请求体超限: 已读取 %d 字节, 限制 %d 字节",
-                        len(body), self.MAX_BODY_SIZE,
+                        len(body),
+                        self.MAX_BODY_SIZE,
                     )
                     return StarletteJSONResponse(
                         status_code=413,
@@ -221,10 +235,10 @@ class APIServer:
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=[
-                "http://localhost:1420",     # Tauri dev
-                f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}",    # OpenClaw gateway
-                "tauri://localhost",         # Tauri production
-                "https://tauri.localhost",   # Tauri production (Windows)
+                "http://localhost:1420",  # Tauri dev
+                f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}",  # OpenClaw gateway
+                "tauri://localhost",  # Tauri production
+                "https://tauri.localhost",  # Tauri production (Windows)
             ],
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -242,6 +256,7 @@ class APIServer:
         self.app.include_router(router_shopping, prefix="/api/v1", tags=["Shopping"])
         self.app.include_router(router_omega, prefix="/api/v1", tags=["OMEGA"])
         self.app.include_router(router_newapi, prefix="/api/v1", tags=["New-API"])
+        self.app.include_router(router_controls, prefix="/api/v1", tags=["Controls"])
 
     def start(self):
         """Start uvicorn in a daemon thread"""
@@ -279,7 +294,7 @@ def start_api_server(port: int = 18790, host: str = "127.0.0.1") -> APIServer:
     if _api_server is not None:
         logger.warning("API server already running")
         return _api_server
-    
+
     _api_server = APIServer(port=port, host=host)
     _api_server.start()
     return _api_server
