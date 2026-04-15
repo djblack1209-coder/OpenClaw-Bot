@@ -1,12 +1,14 @@
-"""Trading endpoints — positions, PnL, signals, team vote, system status"""
-import logging
-from typing import Any, Dict
+"""Trading endpoints — positions, PnL, signals, team vote, system status, K线数据"""
 
-from fastapi import APIRouter
+import logging
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import (
-    TradingPositions, PnLSummary,
+    TradingPositions,
+    PnLSummary,
     TeamVoteRequest,
 )
 
@@ -81,8 +83,10 @@ async def trigger_vote(req: TeamVoteRequest):
     # 第一步：获取技术分析数据（团队投票必须依赖分析结果）
     try:
         from src.ta_engine import get_full_analysis
+
         analysis = await get_full_analysis(
-            symbol=req.symbol, period=req.period,
+            symbol=req.symbol,
+            period=req.period,
         )
     except Exception as e:
         logger.exception("获取 %s 技术分析失败", req.symbol)
@@ -101,3 +105,47 @@ async def trigger_vote(req: TeamVoteRequest):
     except Exception as e:
         logger.exception("AI 团队投票失败 (symbol=%s)", req.symbol)
         return {"error": _safe_error(e)}
+
+
+@router.get("/trading/kline")
+async def get_kline_data(
+    symbol: str = Query(..., description="标的代码，如 AAPL"),
+    interval: str = Query("1d", description="K线周期: 1m/5m/15m/1h/4h/1d/1w"),
+    period: str = Query("3mo", description="回看周期: 1mo/3mo/6mo/1y/2y"),
+):
+    """获取 OHLCV K线数据 — 供前端 lightweight-charts 渲染
+
+    返回格式与 TradingView lightweight-charts 兼容:
+    {"symbol": "AAPL", "data": [{"time": unix_ts, "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...}]}
+    """
+    try:
+        import yfinance as yf
+        import asyncio
+
+        def _fetch():
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=interval)
+            if df.empty:
+                return []
+            records = []
+            for idx, row in df.iterrows():
+                # lightweight-charts 需要 Unix 时间戳（秒）
+                ts = int(idx.timestamp())
+                records.append(
+                    {
+                        "time": ts,
+                        "open": round(float(row["Open"]), 2),
+                        "high": round(float(row["High"]), 2),
+                        "low": round(float(row["Low"]), 2),
+                        "close": round(float(row["Close"]), 2),
+                        "volume": int(row.get("Volume", 0)),
+                    }
+                )
+            return records
+
+        data = await asyncio.to_thread(_fetch)
+        return {"symbol": symbol.upper(), "interval": interval, "period": period, "data": data}
+
+    except Exception as e:
+        logger.exception("获取K线数据失败 (symbol=%s)", symbol)
+        return {"symbol": symbol, "data": [], "error": _safe_error(e)}

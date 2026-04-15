@@ -3,14 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign, TrendingUp, Search, ShieldAlert, FileBarChart,
   RotateCcw, LineChart, Target, Activity, PieChart,
-  Play, Loader2, ArrowUpRight, ArrowDownRight, Briefcase, Bot
+  Play, Loader2, ArrowUpRight, ArrowDownRight, Briefcase, Bot,
+  CandlestickChart
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Switch } from '@/components/ui/switch';
 import { api, isTauri, clawbotFetch, type TradingStatusResponse } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
+import KlineChart from './KlineChart';
 
 const moneyLogger = createLogger('Money');
 
@@ -205,6 +208,25 @@ export function Money() {
             </span>
           </div>
         </div>
+
+        {/* 双视图 Tabs: 总控台 / K线行情 */}
+        <Tabs defaultValue="dashboard" className="w-full">
+          <TabsList className="bg-dark-800/60 border border-dark-600/50">
+            <TabsTrigger value="dashboard" className="data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400">
+              <DollarSign className="h-4 w-4 mr-1.5" />
+              总控台
+            </TabsTrigger>
+            <TabsTrigger value="kline" className="data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400">
+              <CandlestickChart className="h-4 w-4 mr-1.5" />
+              K线行情
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="kline" className="mt-4">
+            <KlineChart />
+          </TabsContent>
+
+          <TabsContent value="dashboard" className="mt-4 space-y-6">
 
         {/* 交易控制面板 */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -432,6 +454,10 @@ export function Money() {
             );
           })}
         </div>
+
+          </TabsContent>
+        </Tabs>
+
       </div>
     </div>
   );
