@@ -22,6 +22,7 @@ Usage:
     async with api_limiter("yfinance"):
         data = await fetch_stock_data()
 """
+
 import asyncio
 import functools
 import importlib.util
@@ -83,6 +84,7 @@ except ImportError:
 
 
 # ── 预定义错误组合 ────────────────────────────────────
+
 
 def _api_errors() -> Tuple[Type[Exception], ...]:
     """API 调用常见可重试错误"""
@@ -149,6 +151,7 @@ _NON_RETRYABLE: Tuple[Type[Exception], ...] = (
 # 统一重试装饰器工厂
 # ══════════════════════════════════════════════════════
 
+
 def _make_retry_decorator(
     *,
     attempts: int = 3,
@@ -213,6 +216,7 @@ def _make_retry_decorator(
             if asyncio.iscoroutinefunction(func):
                 # 如果有排除列表，需要额外包装
                 if no_retry_on:
+
                     @functools.wraps(func)
                     async def filtered_async(*args, **kwargs):
                         try:
@@ -221,10 +225,12 @@ def _make_retry_decorator(
                             if isinstance(e, no_retry_on):
                                 raise
                             raise
+
                     return filtered_async  # type: ignore[return-value]
                 return async_wrapper  # type: ignore[return-value]
             else:
                 if no_retry_on:
+
                     @functools.wraps(func)
                     def filtered_sync(*args, **kwargs):
                         try:
@@ -233,6 +239,7 @@ def _make_retry_decorator(
                             if isinstance(e, no_retry_on):
                                 raise
                             raise
+
                     return filtered_sync  # type: ignore[return-value]
                 return sync_wrapper  # type: ignore[return-value]
 
@@ -280,7 +287,7 @@ def _make_retry_decorator(
                             last_exc = e
                             if attempt < attempts - 1:
                                 delay = min(
-                                    wait_initial * (wait_exp_base ** attempt),
+                                    wait_initial * (wait_exp_base**attempt),
                                     wait_max,
                                 )
                                 logger.warning(
@@ -311,7 +318,7 @@ def _make_retry_decorator(
                             last_exc = e
                             if attempt < attempts - 1:
                                 delay = min(
-                                    wait_initial * (wait_exp_base ** attempt),
+                                    wait_initial * (wait_exp_base**attempt),
                                     wait_max,
                                 )
                                 logger.warning(
@@ -413,8 +420,7 @@ try:
     logger.debug("[resilience] 使用 pyrate_limiter 作为限流后端")
 except ImportError:
     logger.info(
-        "[resilience] pyrate_limiter 未安装，使用手写令牌桶限流。"
-        "pip install pyrate-limiter>=3.0.0 以启用精确限流。"
+        "[resilience] pyrate_limiter 未安装，使用手写令牌桶限流。pip install pyrate-limiter>=3.0.0 以启用精确限流。"
     )
 
 
@@ -442,7 +448,6 @@ _SERVICE_LIMITS: Dict[str, Sequence[Tuple[int, float]]] = {
 # ── PyrateLimiter 后端 ────────────────────────────────
 
 if _LIMITER_BACKEND == "pyrate":
-
     _pyrate_limiters: Dict[str, Limiter] = {}
     _pyrate_lock = threading.Lock()
 
@@ -481,14 +486,11 @@ if _LIMITER_BACKEND == "pyrate":
                     remaining = meta.remaining_time
                     if remaining and remaining > 0:
                         wait_time = remaining
-                logger.debug(
-                    f"[rate_limit] {service} 触发限流，等待 {wait_time:.2f}s"
-                )
+                logger.debug(f"[rate_limit] {service} 触发限流，等待 {wait_time:.2f}s")
                 await asyncio.sleep(wait_time)
         yield
 
 else:
-
     # ── 手写令牌桶后端 ────────────────────────────
 
     class _TokenBucket:
@@ -509,9 +511,7 @@ else:
         def _refill(self):
             now = time.monotonic()
             elapsed = now - self._last_refill
-            self._tokens = min(
-                self._capacity, self._tokens + elapsed * self._rate
-            )
+            self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
             self._last_refill = now
 
         def try_acquire(self) -> float:
@@ -539,9 +539,7 @@ else:
         if service not in _manual_buckets:
             with _manual_lock:
                 if service not in _manual_buckets:
-                    limits = _SERVICE_LIMITS.get(
-                        service, _SERVICE_LIMITS["generic"]
-                    )
+                    limits = _SERVICE_LIMITS.get(service, _SERVICE_LIMITS["generic"])
                     buckets = []
                     for count, window_secs in limits:
                         rate = count / window_secs  # 每秒令牌补充速率
@@ -566,9 +564,7 @@ else:
                 max_wait = max(max_wait, wait)
             if max_wait <= 0:
                 break
-            logger.debug(
-                f"[rate_limit] {service} 触发限流，等待 {max_wait:.2f}s"
-            )
+            logger.debug(f"[rate_limit] {service} 触发限流，等待 {max_wait:.2f}s")
             await asyncio.sleep(max_wait)
             # 重新尝试所有桶（等待后令牌已补充）
         yield
@@ -577,6 +573,7 @@ else:
 # ══════════════════════════════════════════════════════
 # 限流工具函数
 # ══════════════════════════════════════════════════════
+
 
 def configure_service_limit(
     service: str,
@@ -616,3 +613,113 @@ def get_limiter_backend() -> str:
 def get_service_limits() -> Dict[str, Sequence[Tuple[int, float]]]:
     """返回所有已配置的服务限流规则"""
     return dict(_SERVICE_LIMITS)
+
+
+# ══════════════════════════════════════════════════════
+# Bulkhead 并发隔离舱 — 借鉴 Hyx (Apache-2.0)
+# ══════════════════════════════════════════════════════
+#
+# 原理: 为不同类型的下游服务分配独立的并发池（Semaphore）,
+# 防止某个下游故障（如 LLM 超时）耗尽全局连接数，拖垮其他服务。
+#
+# 类比: 船舱隔板（Bulkhead）— 一个舱进水不会沉没整艘船。
+
+# 默认并发限制
+_BULKHEAD_LIMITS: Dict[str, int] = {
+    "llm": 10,  # LLM 调用最多 10 个并发
+    "browser": 3,  # 浏览器自动化最多 3 个并发
+    "api": 20,  # 外部 API 最多 20 个并发
+    "crawler": 5,  # 爬虫最多 5 个并发
+    "trading": 5,  # 交易操作最多 5 个并发
+    "generic": 15,  # 通用默认 15 个并发
+}
+
+_bulkhead_semaphores: Dict[str, asyncio.Semaphore] = {}
+_bulkhead_lock = threading.Lock()
+_bulkhead_stats: Dict[str, Dict[str, int]] = {}  # 统计: {service: {acquired: N, rejected: N, peak: N}}
+
+
+def _get_bulkhead(service: str) -> asyncio.Semaphore:
+    """获取或创建指定服务的 Bulkhead Semaphore"""
+    if service not in _bulkhead_semaphores:
+        with _bulkhead_lock:
+            if service not in _bulkhead_semaphores:
+                limit = _BULKHEAD_LIMITS.get(service, _BULKHEAD_LIMITS["generic"])
+                _bulkhead_semaphores[service] = asyncio.Semaphore(limit)
+                _bulkhead_stats[service] = {"acquired": 0, "rejected": 0, "peak": 0, "limit": limit}
+                logger.debug(f"[Bulkhead] 创建隔离舱: {service} (最大并发={limit})")
+    return _bulkhead_semaphores[service]
+
+
+@asynccontextmanager
+async def bulkhead(service: str = "generic", timeout: float = 30.0):
+    """Bulkhead 并发隔离舱 — 借鉴 Hyx 的 Bulkhead 模式
+
+    为不同类型的下游服务分配独立并发池，防止级联故障。
+
+    用法:
+        async with bulkhead("llm"):
+            result = await call_llm(...)
+
+        async with bulkhead("browser"):
+            await browser.navigate(...)
+
+    参数:
+        service: 服务类型 ("llm" / "browser" / "api" / "crawler" / "trading")
+        timeout: 等待进入隔离舱的超时秒数（默认30s，超时抛 asyncio.TimeoutError）
+    """
+    sem = _get_bulkhead(service)
+    stats = _bulkhead_stats.get(service, {})
+
+    try:
+        # 带超时的 acquire — 防止无限等待
+        await asyncio.wait_for(sem.acquire(), timeout=timeout)
+        stats["acquired"] = stats.get("acquired", 0) + 1
+
+        # 更新峰值并发数
+        current = stats.get("limit", 15) - sem._value
+        if current > stats.get("peak", 0):
+            stats["peak"] = current
+
+        yield
+
+    except asyncio.TimeoutError:
+        stats["rejected"] = stats.get("rejected", 0) + 1
+        logger.warning(
+            f"[Bulkhead] {service} 隔离舱已满，等待{timeout}s后超时 (限制={_BULKHEAD_LIMITS.get(service, 15)})"
+        )
+        raise
+    finally:
+        # 确保释放 semaphore（即使 yield 内部抛异常）
+        try:
+            sem.release()
+        except ValueError:
+            pass  # 防止重复 release
+
+
+def configure_bulkhead(service: str, max_concurrent: int):
+    """动态配置 Bulkhead 并发限制
+
+    用法:
+        configure_bulkhead("llm", 20)  # 将 LLM 并发限制提高到 20
+    """
+    _BULKHEAD_LIMITS[service] = max_concurrent
+    # 清除缓存，下次使用时重新创建
+    with _bulkhead_lock:
+        _bulkhead_semaphores.pop(service, None)
+        _bulkhead_stats.pop(service, None)
+    logger.info(f"[Bulkhead] 更新 {service} 并发限制: {max_concurrent}")
+
+
+def get_bulkhead_stats() -> Dict[str, Dict[str, int]]:
+    """获取所有 Bulkhead 隔离舱的统计信息"""
+    result = {}
+    for service, stats in _bulkhead_stats.items():
+        sem = _bulkhead_semaphores.get(service)
+        available = sem._value if sem else _BULKHEAD_LIMITS.get(service, 15)
+        result[service] = {
+            **stats,
+            "available": available,
+            "in_use": stats.get("limit", 15) - available,
+        }
+    return result
