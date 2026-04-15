@@ -183,6 +183,45 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         warnings.extend(ctx.warnings)
 
         # === 阶段二: 软检查（warning-only，不 reject）===
+
+        # 信号强度警告
+        if abs(signal_score) < self.config.min_signal_score and signal_score != 0:
+            warnings.append(f"信号评分{signal_score}偏弱(阈值±{self.config.min_signal_score})，建议谨慎")
+
+        # 剩余日亏损额度预估
+        remaining_daily = self.config.daily_loss_limit + self._today_pnl
+        if side == "BUY" and stop_loss > 0:
+            potential_loss = quantity * (entry_price - stop_loss)
+            if potential_loss > remaining_daily:
+                warnings.append(f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额(剩余额度${remaining_daily:.2f})")
+
+        # 阶梯式熔断仓位缩放
+        if self.config.tiered_cooldown_enabled and self._position_scale < 1.0:
+            original_qty = result.adjusted_quantity or quantity
+            scaled_qty = max(1, int(original_qty * self._position_scale))
+            if scaled_qty < original_qty:
+                result.adjusted_quantity = scaled_qty
+                warnings.append(
+                    f"阶梯熔断Tier{self._current_tier}: 仓位缩放至"
+                    f"{self._position_scale * 100:.0f}%，"
+                    f"数量{original_qty}->{scaled_qty}"
+                )
+                quantity = scaled_qty
+
+        # 板块集中度警告
+        if current_positions and side == "BUY":
+            sector_warning = self._check_sector_concentration(symbol, quantity * entry_price, current_positions)
+            if sector_warning:
+                warnings.append(sector_warning)
+
+        # VaR/CVaR 风险度量警告
+        if side == "BUY" and stop_loss > 0:
+            proposed_loss = quantity * (entry_price - stop_loss)
+            var_check = self.check_var_limit(proposed_loss)
+            if var_check:
+                warnings.append(var_check)
+
+        # 计算最终风险指标
         final_qty = result.adjusted_quantity or quantity
         if side == "BUY" and stop_loss > 0:
             result.max_loss = final_qty * (entry_price - stop_loss)
