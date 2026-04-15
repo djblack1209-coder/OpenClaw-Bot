@@ -70,8 +70,13 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             if status.get("recent_exits", 0) > 0:
                 items.append(f"最近自动平仓: {status['recent_exits']} 笔")
             sections.append(_section("💼 持仓概览", items))
+        else:
+            # 持仓数据为空，显示引导占位
+            sections.append(_section("💼 持仓概览", ["暂无持仓数据", "💡 说「帮我投资 AAPL」开始你的第一笔交易"]))
     except Exception as e:
         logger.debug(f"[DailyBrief] positions: {e}")
+        # 获取持仓数据异常，显示引导占位
+        sections.append(_section("💼 持仓概览", ["暂无持仓数据", "💡 说「帮我投资 AAPL」开始你的第一笔交易"]))
     # ── 2. 交易绩效 ──────────────────────────────────────────
     try:
         from src.trading_journal import journal
@@ -87,6 +92,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 if perf.get("expectancy"):
                     items.append(f"期望值: ${perf['expectancy']:+.2f}/笔")
                 sections.append(_section("📊 7日交易绩效", items))
+            else:
+                # 无交易记录，显示引导占位
+                sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
 
             # 昨日 P&L
             today_pnl = journal.get_today_pnl()
@@ -99,8 +107,13 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 if today_pnl.get("hit_limit"):
                     items.append("⚠️ 已触及日亏损限额")
                 sections.append(_section("📅 今日交易", items))
+        else:
+            # journal 模块未初始化，显示引导占位
+            sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
     except Exception as e:
         logger.debug(f"[DailyBrief] journal: {e}")
+        # 获取交易数据异常，显示引导占位
+        sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
     # ── 3. 目标进度 ──────────────────────────────────────────
     try:
         from src.trading_journal import journal
@@ -211,8 +224,13 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                     items.append(f"{emoji} {sym}: ${price:,.2f} ({change:+.2f}%)")
                 if items:
                     sections.append(_section("👀 关注股票隔夜变动", items))
+        else:
+            # 无自选股，显示引导占位
+            sections.append(_section("👀 关注股票", ["暂无自选股", "💡 说「关注 TSLA」添加你感兴趣的股票"]))
     except Exception as e:
         logger.debug(f"[DailyBrief] watchlist: {e}")
+        # 获取关注股票数据异常，显示引导占位
+        sections.append(_section("👀 关注股票", ["暂无自选股", "💡 说「关注 TSLA」添加你感兴趣的股票"]))
     # ── 5. 市场行情 (9 大指数) ────────────────────────────────
     try:
         from src.invest_tools import get_quick_quotes
@@ -308,8 +326,16 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                     next_time = status.get("next_time", "")
                     items.append(f"下一动作: {next_action} ({next_time})")
                 sections.append(_section("📱 社媒运营", items))
+            else:
+                # status 为空，显示引导占位
+                sections.append(_section("📱 社媒运营", ["自动驾驶未启动", "💡 说「社媒计划」开始自动发文"]))
+        else:
+            # social_autopilot 未初始化，显示引导占位
+            sections.append(_section("📱 社媒运营", ["自动驾驶未启动", "💡 说「社媒计划」开始自动发文"]))
     except Exception as e:
         logger.debug(f"[DailyBrief] social: {e}")
+        # 获取社媒数据异常，显示引导占位
+        sections.append(_section("📱 社媒运营", ["自动驾驶未启动", "💡 说「社媒计划」开始自动发文"]))
     # ── 9. 监控 + 草稿 ──────────────────────────────────────
     aux_items = []
     try:
@@ -375,6 +401,9 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                 logger.debug("静默异常: %s", e)
             if xlines:
                 sections.append(_section("🐟 闲鱼运营", xlines))
+            else:
+                # xstats 存在但所有指标都为0，显示引导占位
+                sections.append(_section("🐟 闲鱼运营", ["暂无闲鱼数据", "💡 说「闲鱼」查看闲鱼客服状态"]))
             # 今日热销 Top3 — 调用 BI 商品排行接口
             try:
                 top3 = xctx.get_item_rankings(days=1, limit=3)
@@ -388,8 +417,13 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
                     sections.append(_section("🏆 闲鱼热销", top_lines))
             except Exception as e:
                 logger.debug("静默异常: %s", e)
+        else:
+            # 无闲鱼数据，显示引导占位
+            sections.append(_section("🐟 闲鱼运营", ["暂无闲鱼数据", "💡 说「闲鱼」查看闲鱼客服状态"]))
     except Exception as e:
         logger.debug("日报段落生成异常: %s", e)
+        # 获取闲鱼数据异常，显示引导占位
+        sections.append(_section("🐟 闲鱼运营", ["暂无闲鱼数据", "💡 说「闲鱼」查看闲鱼客服状态"]))
     # ── 12. 社媒互动 ─────────────────────────────────────────
     try:
         from src.execution.life_automation import get_engagement_summary

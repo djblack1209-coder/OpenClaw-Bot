@@ -31,8 +31,10 @@ OpenClaw 主动智能引擎 — 不再等用户开口
 """
 
 import asyncio
+import hashlib
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -62,6 +64,7 @@ logger = logging.getLogger(__name__)
 
 MAX_NOTIFICATIONS_PER_HOUR = 3
 GATE_THRESHOLD = 0.70  # relevance_score 必须超过此阈值
+CONTENT_COOLDOWN_HOURS = 4  # 同类内容冷却时间（小时），防止重复推送
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -86,13 +89,16 @@ class ProactiveEngine:
     def __init__(self):
         self._sent_log: Dict[str, List[float]] = {}  # user_id → [timestamps]
         self._recent_notifications: Dict[str, List[str]] = {}  # user_id → [texts]
+        # 内容去重冷却: "user_id::签名" → 最后发送时间戳
+        self._content_cooldown: Dict[str, float] = {}
         self._last_cleanup = 0.0
-        # asyncio 锁：保护 _sent_log/_recent_notifications 跨 await 的并发访问（HI-464）
+        # asyncio 锁：保护 _sent_log/_recent_notifications/_content_cooldown 跨 await 的并发访问（HI-464）
         self._lock = asyncio.Lock()
 
     def _cleanup_old_entries(self):
         """清理 24 小时前的发送记录，防止内存无限增长"""
         import time as _time
+
         now = _time.time()
         if now - self._last_cleanup < 3600:  # 每小时最多清理一次
             return
@@ -105,6 +111,11 @@ class ProactiveEngine:
         for uid in list(self._recent_notifications):
             if uid not in self._sent_log:
                 self._recent_notifications.pop(uid, None)
+        # 清理过期的内容去重冷却条目
+        cooldown_cutoff = now - CONTENT_COOLDOWN_HOURS * 3600
+        for key in list(self._content_cooldown):
+            if self._content_cooldown[key] < cooldown_cutoff:
+                self._content_cooldown.pop(key, None)
 
     async def evaluate(
         self,
@@ -129,6 +140,20 @@ class ProactiveEngine:
             if self._is_rate_limited(user_id):
                 logger.debug(f"主动通知频率限制: user={user_id}")
                 return None
+
+            # 0.5 内容去重冷却 — 同类内容 N 小时内不重复推送
+            content_sig = self._make_content_signature(current_context)
+            cooldown_key = f"{user_id}::{content_sig}"
+            now = time.time()
+            last_sent_at = self._content_cooldown.get(cooldown_key)
+            if last_sent_at is not None:
+                elapsed_hours = (now - last_sent_at) / 3600
+                if elapsed_hours < CONTENT_COOLDOWN_HOURS:
+                    logger.debug(
+                        f"内容去重冷却: user={user_id}, sig={content_sig}, "
+                        f"距上次 {elapsed_hours:.1f}h < {CONTENT_COOLDOWN_HOURS}h"
+                    )
+                    return None
 
             recent = self._get_recent_notifications(user_id)
 
@@ -167,6 +192,8 @@ class ProactiveEngine:
         # 记录已发送（锁保护，防止并发写入竞态）
         async with self._lock:
             self._record_sent(user_id, draft.notification_text)
+            # 记录内容签名的发送时间，用于后续去重冷却
+            self._content_cooldown[cooldown_key] = time.time()
         return draft.notification_text
 
     # ━━━━━━━━━━━━ Step 1: Gate ━━━━━━━━━━━━
@@ -235,16 +262,17 @@ class ProactiveEngine:
 
     async def _llm_structured(self, prompt: str, model_class: type, cheap: bool = False) -> Any:
         """调用 LLM 并解析为 Pydantic 模型。
-        
+
         Args:
             cheap: True 时使用最便宜模型 (g4f)，适用于 Gate 步骤节省 token
         """
         # 根据用途选择模型: Gate 步骤用最便宜模型，Generate/Critic 用 qwen
         model = os.environ.get("PROACTIVE_MODEL", FAMILY_G4F if cheap else FAMILY_QWEN)
         max_tok = 100 if cheap else 300
-        
+
         try:
             from src.structured_llm import structured_completion
+
             result = await structured_completion(
                 model_class=model_class,
                 system_prompt=SOUL_CORE,
@@ -311,6 +339,95 @@ class ProactiveEngine:
         if not recent:
             return ""
         return "\n".join(f"- {text}" for text in recent[-5:])
+
+    # ━━━━━━━━━━━━ 内容去重 ━━━━━━━━━━━━
+
+    @staticmethod
+    def _make_content_signature(context: str) -> str:
+        """从上下文中提取关键特征生成去重签名。
+
+        提取规则:
+          1. 股票代码 — 大写 2~5 字母（如 TSLA, AAPL）
+          2. 数字变化方向 — 正数记为 "up"，负数记为 "down"
+          3. 关键行为词 — 大跌/大涨/止损/成交/提醒/突破/回调/清仓/加仓/建仓
+
+        将提取到的特征排序拼接后取 MD5 前 12 位作为签名，
+        保证相同含义的上下文产生相同签名。
+        """
+        parts: List[str] = []
+
+        # 1. 提取股票代码（大写 2~5 字母，前后为边界）
+        tickers = re.findall(r"\b([A-Z]{2,5})\b", context)
+        # 过滤常见非股票代码的大写词
+        _noise_words = {
+            "THE",
+            "AND",
+            "FOR",
+            "NOT",
+            "BUT",
+            "ALL",
+            "ARE",
+            "WAS",
+            "HAS",
+            "HAD",
+            "LLM",
+            "API",
+            "URL",
+            "USD",
+            "CNY",
+            "ETF",
+            "CEO",
+            "CTO",
+            "CFO",
+            "COO",
+            "NONE",
+            "NULL",
+            "TRUE",
+            "FALSE",
+        }
+        tickers = sorted(set(t for t in tickers if t not in _noise_words))
+        parts.extend(tickers)
+
+        # 2. 提取数字变化方向
+        # 匹配形如 +5%、-3.2%、涨了5%、跌了3% 等模式
+        pos_patterns = re.findall(r"(?:\+\s*\d|\b涨了?\s*\d|\b上涨\s*\d|\b升\s*\d)", context)
+        neg_patterns = re.findall(r"(?:-\s*\d|\b跌了?\s*\d|\b下跌\s*\d|\b降\s*\d)", context)
+        if pos_patterns:
+            parts.append("up")
+        if neg_patterns:
+            parts.append("down")
+
+        # 3. 提取关键行为词
+        keywords = [
+            "大跌",
+            "大涨",
+            "暴跌",
+            "暴涨",
+            "止损",
+            "止盈",
+            "成交",
+            "提醒",
+            "突破",
+            "回调",
+            "清仓",
+            "加仓",
+            "建仓",
+            "爆仓",
+            "预警",
+            "到期",
+            "触发",
+        ]
+        for kw in keywords:
+            if kw in context:
+                parts.append(kw)
+
+        # 如果什么特征都没提取到，用整段文本的哈希兜底
+        if not parts:
+            raw = context.strip()
+        else:
+            raw = "|".join(parts)
+
+        return hashlib.md5(raw.encode("utf-8")).hexdigest()[:12]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
