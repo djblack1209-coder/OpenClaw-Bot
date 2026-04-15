@@ -3,6 +3,39 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-15] 全链路修复与整合 — GUI 功能开关 + 调度器页面 + 本地模型 + 死链修复
+> 领域: `backend`, `frontend`, `ai-pool`, `infra`
+> 影响模块: `controls API`, `Money`, `Social`, `Settings`, `Scheduler`, `local_llm`, `intent_parser`, `cmd_ops_mixin`, `multi_bot`, `notify_style`
+> 关联问题: 无（全链路整合任务）
+### 变更内容
+- **后端新增控制面板 API**（`src/api/routers/controls.py`，225行，9个端点）：交易控制、社媒控制、调度器状态、全局设置的读写，状态持久化到 `data/controls_state.json`
+- **Money 页面增加交易控制面板**：5 个开关（自动交易/实盘模式/风控保护-只读/做空/日限）
+- **Social 页面增加平台控制条**：5 个开关（小红书/X平台/自动蹭热点/发前审核/定时暂停）
+- **Settings 页面增加运营控制板块**：7 项设置（AI预算/默认模型/本地模型开关+端点/自愈引擎/调度器/维护模式）
+- **新增任务调度中心页面**（Scheduler）：展示 16 个定时任务，每个有独立开关，全局暂停按钮，30秒自动刷新
+- **新增本地 LLM 适配器**（`src/tools/local_llm.py`，253行）：支持 Ollama/LM Studio/HF Server 三种后端自动检测，5个任务函数（意图分类/摘要/情感/闲鱼回复/关键词），已集成到意图解析器做零成本预筛
+- **修复 /evolution 命令缺失**：进化引擎代码完整但无 Telegram 入口，新增 `cmd_evolution()` + CommandHandler 注册
+- **修复 notify_style.py 导入错误**：`List` 类型未导入导致全部测试无法运行
+- **LaunchAgent 配置审查**：8个 plist 全部路径正确，7个已加载运行
+- **死链审计**：97 个命令全部有完整实现，0 个存根/TODO/NotImplementedError
+### 文件变更
+- `packages/clawbot/src/api/routers/controls.py` — 新建：控制面板 API 端点
+- `packages/clawbot/src/api/routers/__init__.py` — 注册 router_controls
+- `packages/clawbot/src/api/server.py` — 挂载 Controls 路由
+- `packages/clawbot/src/tools/local_llm.py` — 新建：本地轻量模型适配器
+- `packages/clawbot/src/core/intent_parser.py` — 插入本地模型预筛步骤
+- `packages/clawbot/src/bot/cmd_ops_mixin.py` — 新增 cmd_evolution() 处理函数
+- `packages/clawbot/src/bot/multi_bot.py` — 注册 /evolution 命令
+- `packages/clawbot/src/notify_style.py` — 修复 List 类型导入
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 新增交易控制面板
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 新增社媒控制条
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 新增运营控制板块
+- `apps/openclaw-manager-src/src/components/Scheduler/index.tsx` — 新建：任务调度中心页面
+- `apps/openclaw-manager-src/src/App.tsx` — 注册 scheduler 页面
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — 新增任务调度菜单
+
+---
+
 ## [2026-04-15] OpenCode Workflow 全面升级 v2
 > 领域: `infra`, `docs`
 > 影响模块: `AGENTS.md`, `Skills`, `Plugins`
