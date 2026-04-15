@@ -2,6 +2,7 @@
 自动交易系统命令 Mixin — 从 multi_main.py L1652-L1909 提取
 /autotrader, /risk, /monitor, /tradingsystem, /backtest, /rebalance
 """
+
 import asyncio
 import logging
 
@@ -11,9 +12,13 @@ from src.telegram_ux import with_typing
 from src.bot.globals import (
     get_stock_quote,
 )
+
 # 幻影导入修复: 5 个符号从实际定义模块导入
 from src.trading._lifecycle import (
-    get_auto_trader, get_risk_manager, get_position_monitor, get_system_status,
+    get_auto_trader,
+    get_risk_manager,
+    get_position_monitor,
+    get_system_status,
 )
 from src.invest_tools import portfolio
 from src.broker_selector import ibkr
@@ -52,8 +57,7 @@ class TradingCommandsMixin:
             result = await trader.run_cycle_once()
             await update.message.reply_text(
                 "交易循环完成\n\n扫描信号: %d\n候选标的: %d\n交易提案: %d\n已执行: %d\n被拒绝: %d"
-                % (result["scanned"], result["candidates"], result["proposals"],
-                   result["executed"], result["rejected"])
+                % (result["scanned"], result["candidates"], result["proposals"], result["executed"], result["rejected"])
             )
         elif sub == "confirm":
             result = await trader.confirm_proposal()
@@ -74,10 +78,10 @@ class TradingCommandsMixin:
         if not rm:
             await update.message.reply_text("⚠️ 严总，交易安全检查还没准备好")
             return
-        
+
         # 先从 IBKR 拉取实时数据 (ibkr 已在文件顶部从 broker_selector 导入)
         status_lines = []
-        
+
         if ibkr and ibkr.is_connected():
             try:
                 # 1. 获取账户信息
@@ -88,14 +92,14 @@ class TradingCommandsMixin:
                     status_lines.append(f"现金: ${account_info.get('TotalCashValue', 0):,.2f}")
                     status_lines.append(f"今日PnL: ${account_info.get('DailyPnL', 0):+.2f}")
                     status_lines.append("")
-                
+
                 # 2. 获取持仓
                 positions = await ibkr.get_positions()
                 if positions:
                     status_lines.append(f"当前持仓: {len(positions)}个")
                     total_exposure = 0
                     for pos in positions:
-                        market_val = pos.get('market_value', 0)
+                        market_val = pos.get("market_value", 0)
                         total_exposure += abs(market_val)
                         status_lines.append(
                             f"  {pos['symbol']}: {pos['quantity']:+.0f}股 "
@@ -113,10 +117,10 @@ class TradingCommandsMixin:
         else:
             status_lines.append("⚠️ 盈透券商未连接，暂时无法获取实时数据")
             status_lines.append("")
-        
+
         # 3. 风控系统状态
         status_lines.append(rm.format_status())
-        
+
         await update.message.reply_text("\n".join(status_lines))
 
     @requires_auth
@@ -131,24 +135,28 @@ class TradingCommandsMixin:
             try:
                 from src.telegram_ux import format_portfolio_card
                 from telegram.constants import ParseMode
-                positions = getattr(mon, 'positions', {})
+
+                positions = getattr(mon, "positions", {})
                 if positions:
                     pos_list = []
                     for sym, pos in positions.items():
-                        pos_list.append({
-                            "symbol": sym,
-                            "quantity": pos.get("quantity", 0),
-                            "avg_cost": pos.get("avg_cost", 0),
-                            "market_value": pos.get("market_value", 0),
-                            "pnl_pct": pos.get("pnl_pct", 0),
-                        })
-                    cash = getattr(mon, 'cash', 0) or 0
+                        pos_list.append(
+                            {
+                                "symbol": sym,
+                                "quantity": pos.get("quantity", 0),
+                                "avg_cost": pos.get("avg_cost", 0),
+                                "market_value": pos.get("market_value", 0),
+                                "pnl_pct": pos.get("pnl_pct", 0),
+                            }
+                        )
+                    cash = getattr(mon, "cash", 0) or 0
                     card = format_portfolio_card(pos_list, cash)
                     await update.message.reply_text(card, parse_mode=ParseMode.HTML)
 
                     # 持仓分布饼图
                     if len(pos_list) >= 2:
                         from src.telegram_ux import generate_portfolio_pie, send_chart
+
                         pie_data = [{"symbol": p["symbol"], "market_value": p["market_value"]} for p in pos_list]
                         chart = generate_portfolio_pie(pie_data)
                         await send_chart(update, context, chart, caption="📊 持仓分布")
@@ -189,13 +197,14 @@ class TradingCommandsMixin:
                 "  /backtest optimize AAPL    - 参数优化(网格搜索)\n"
                 "  /backtest walkforward AAPL - 前进分析(过拟合检测)\n\n"
                 "支持的周期: 3mo, 6mo, 1y, 2y, 5y\n"
-                "引擎选项: --ft / --freqtrade (默认自研引擎)"
+                "引擎选项: --ft (Freqtrade) / --pb (PyBroker+Bootstrap验证)"
             )
             return
 
-        # 解析 --ft / --freqtrade 标志
+        # 解析引擎标志: --ft (Freqtrade) / --pb (PyBroker)
         use_freqtrade = any(a in ("--ft", "--freqtrade") for a in args)
-        clean_args = [a for a in args if a not in ("--ft", "--freqtrade")]
+        use_pybroker = any(a in ("--pb", "--pybroker") for a in args)
+        clean_args = [a for a in args if a not in ("--ft", "--freqtrade", "--pb", "--pybroker")]
 
         subcmd = clean_args[0].upper() if clean_args else "LIST"
 
@@ -208,11 +217,9 @@ class TradingCommandsMixin:
             if adv_period not in ("1mo", "3mo", "6mo", "1y", "2y", "5y"):
                 adv_period = "1y"
             if not adv_symbol:
-                await update.message.reply_text(
-                    "请指定标的代码\n\n用法: /backtest %s AAPL" % subcmd.lower())
+                await update.message.reply_text("请指定标的代码\n\n用法: /backtest %s AAPL" % subcmd.lower())
                 return
-            await self._run_advanced_backtest(
-                update, context, subcmd, adv_symbol, adv_period)
+            await self._run_advanced_backtest(update, context, subcmd, adv_symbol, adv_period)
             return
 
         period = clean_args[1] if len(clean_args) > 1 else "1y"
@@ -222,16 +229,17 @@ class TradingCommandsMixin:
 
         if subcmd == "LIST":
             symbols = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD"]
-            progress_msg = await update.message.reply_text(
-                "开始回测 %d 个标的 (%s)..." % (len(symbols), period))
+            progress_msg = await update.message.reply_text("开始回测 %d 个标的 (%s)..." % (len(symbols), period))
             try:
                 from src.backtester import run_backtest, format_multi_report
                 from src.backtest_reporter import BacktestReporter
                 from src.telegram_ux import TelegramProgressBar
 
                 bar = TelegramProgressBar(
-                    total=len(symbols), label="📊 回测",
-                    message=progress_msg, context=context,
+                    total=len(symbols),
+                    label="📊 回测",
+                    message=progress_msg,
+                    context=context,
                 )
                 reports = {}
                 for sym in symbols:
@@ -263,20 +271,50 @@ class TradingCommandsMixin:
             except Exception as e:
                 logger.exception("批量回测执行失败")
                 from src.telegram_ux import send_error_with_retry
+
                 await send_error_with_retry(update, context, e, retry_command="/backtest list")
         else:
             symbol = subcmd
-            engine_label = "Freqtrade" if use_freqtrade else "自研"
-            await update.message.reply_text(
-                "开始回测 %s (%s) [%s引擎]..." % (symbol, period, engine_label))
+            engine_label = "Freqtrade" if use_freqtrade else ("PyBroker" if use_pybroker else "自研")
+            await update.message.reply_text("开始回测 %s (%s) [%s引擎]..." % (symbol, period, engine_label))
 
-            if use_freqtrade:
+            if use_pybroker:
+                # ── PyBroker 引擎路径 (Numba加速+Bootstrap验证) ──
+                try:
+                    from src.modules.investment.backtester_pybroker import (
+                        get_pybroker_backtester,
+                        HAS_PYBROKER,
+                    )
+
+                    if not HAS_PYBROKER:
+                        await update.message.reply_text("PyBroker 未安装。请运行: pip install lib-pybroker")
+                        return
+                    bt = get_pybroker_backtester()
+                    result = await bt.run_backtest(symbol, "pb_ma_cross", period)
+                    result_text = result.to_telegram_text()
+                    if len(result_text) > TG_SAFE_LENGTH:
+                        for part in result_text.split("\n\n"):
+                            if part.strip():
+                                await update.message.reply_text(part)
+                    else:
+                        await update.message.reply_text(result_text)
+                except Exception as e:
+                    logger.exception("PyBroker 回测执行失败")
+                    from src.telegram_ux import send_error_with_retry
+
+                    await send_error_with_retry(update, context, e, retry_command=f"/backtest {symbol} {period} --pb")
+
+            elif use_freqtrade:
                 # ── Freqtrade 引擎路径 ──
                 try:
                     from src.freqtrade_bridge import run_backtest_async
+
                     chat_id = update.effective_chat.id if update.effective_chat else None
                     result, llm_text = await run_backtest_async(
-                        symbol, period=period, chat_id=chat_id, with_llm=True,
+                        symbol,
+                        period=period,
+                        chat_id=chat_id,
+                        with_llm=True,
                     )
                     result_text = result.format_telegram()
                     if llm_text:
@@ -295,14 +333,14 @@ class TradingCommandsMixin:
                 except Exception as e:
                     logger.exception("Freqtrade 回测执行失败")
                     from src.telegram_ux import send_error_with_retry
-                    await send_error_with_retry(
-                        update, context, e,
-                        retry_command=f"/backtest {symbol} {period} --ft")
+
+                    await send_error_with_retry(update, context, e, retry_command=f"/backtest {symbol} {period} --ft")
             else:
                 # ── 自研引擎路径（原有逻辑） ──
                 try:
                     from src.backtester import run_backtest
                     from src.backtest_reporter import BacktestReporter
+
                     report = await asyncio.to_thread(run_backtest, symbol, period=period)
                     result_text = report.format()
                     if report.total_trades > 0:
@@ -315,13 +353,21 @@ class TradingCommandsMixin:
                             logger.debug("Silenced exception", exc_info=True)
                         try:
                             from src.telegram_ux import generate_equity_chart, generate_pnl_chart, send_chart
-                            equity = getattr(report, 'equity_curve', None)
+
+                            equity = getattr(report, "equity_curve", None)
                             if equity and len(equity) > 2:
                                 chart = generate_equity_chart(equity, title=f"{symbol} 回测权益曲线 ({period})")
-                                await send_chart(update, context, chart, caption=f"📈 {symbol} 权益曲线 | {report.total_trades}笔交易")
-                            trade_list = getattr(report, 'trades', None)
+                                await send_chart(
+                                    update,
+                                    context,
+                                    chart,
+                                    caption=f"📈 {symbol} 权益曲线 | {report.total_trades}笔交易",
+                                )
+                            trade_list = getattr(report, "trades", None)
                             if trade_list and len(trade_list) > 0:
-                                pnl_data = [{"symbol": t.get("symbol", symbol), "pnl": t.get("pnl", 0)} for t in trade_list[:20]]
+                                pnl_data = [
+                                    {"symbol": t.get("symbol", symbol), "pnl": t.get("pnl", 0)} for t in trade_list[:20]
+                                ]
                                 if any(d["pnl"] != 0 for d in pnl_data):
                                     pnl_chart = generate_pnl_chart(pnl_data, title=f"{symbol} 交易盈亏明细")
                                     await send_chart(update, context, pnl_chart, caption=f"📊 {symbol} 交易盈亏")
@@ -338,6 +384,7 @@ class TradingCommandsMixin:
                 except Exception as e:
                     logger.exception("自研引擎回测执行失败")
                     from src.telegram_ux import send_error_with_retry
+
                     await send_error_with_retry(update, context, e, retry_command=f"/backtest {symbol} {period}")
 
     async def _run_advanced_backtest(self, update, context, mode, symbol, period):
@@ -349,25 +396,26 @@ class TradingCommandsMixin:
         }
         label = mode_labels.get(mode, mode)
         await update.message.reply_text(
-            "开始 %s — %s (%s)...\n⏳ 高级分析可能需要较长时间，请耐心等待"
-            % (label, symbol, period))
+            "开始 %s — %s (%s)...\n⏳ 高级分析可能需要较长时间，请耐心等待" % (label, symbol, period)
+        )
 
         try:
             from src.backtester import (
                 run_backtest,
-                run_monte_carlo, format_monte_carlo,
-                run_parameter_optimization, format_optimization_result,
-                run_walk_forward, format_walk_forward,
+                run_monte_carlo,
+                format_monte_carlo,
+                run_parameter_optimization,
+                format_optimization_result,
+                run_walk_forward,
+                format_walk_forward,
                 calc_enhanced_metrics,
             )
             from src.message_sender import send_long_message
 
             if mode == "MONTE":
                 # 蒙特卡洛：先跑标准回测拿到 report，再模拟
-                report = await asyncio.to_thread(
-                    run_backtest, symbol, period=period)
-                mc_result = await asyncio.to_thread(
-                    run_monte_carlo, report, simulations=1000)
+                report = await asyncio.to_thread(run_backtest, symbol, period=period)
+                mc_result = await asyncio.to_thread(run_monte_carlo, report, simulations=1000)
                 result_text = format_monte_carlo(mc_result)
 
                 # 附带增强指标
@@ -400,15 +448,12 @@ class TradingCommandsMixin:
                     "atr_sl_mult": [1.0, 1.5, 2.0],
                     "atr_tp_mult": [2.0, 3.0, 4.0],
                 }
-                opt_result = await asyncio.to_thread(
-                    run_parameter_optimization,
-                    symbol, default_grid, period=period)
+                opt_result = await asyncio.to_thread(run_parameter_optimization, symbol, default_grid, period=period)
                 result_text = format_optimization_result(opt_result)
 
             elif mode == "WALKFORWARD":
                 # 前进分析
-                wf_result = await asyncio.to_thread(
-                    run_walk_forward, symbol, period=period)
+                wf_result = await asyncio.to_thread(run_walk_forward, symbol, period=period)
                 result_text = format_walk_forward(wf_result)
 
             else:
@@ -420,35 +465,35 @@ class TradingCommandsMixin:
         except Exception as e:
             logger.exception("高级回测分析执行失败")
             from src.telegram_ux import send_error_with_retry
+
             await send_error_with_retry(
-                update, context, e,
-                retry_command="/backtest %s %s %s" % (mode.lower(), symbol, period))
+                update, context, e, retry_command="/backtest %s %s %s" % (mode.lower(), symbol, period)
+            )
 
     async def _send_bokeh_chart(self, update, context, symbol: str, period: str):
         """发送 backtesting.py Bokeh 可视化图表（非致命，失败静默）"""
         try:
             from src.backtest_reporter import BokehVisualizer, _bokeh_available
+
             if not _bokeh_available:
                 return
             from src.telegram_ux import send_chart
 
-            viz = await asyncio.to_thread(
-                BokehVisualizer.run_and_plot, symbol, period)
+            viz = await asyncio.to_thread(BokehVisualizer.run_and_plot, symbol, period)
             if not viz.get("success"):
                 return
 
             # 发送 PNG 图表
             chart_png = viz.get("chart_png")
             if chart_png:
-                await send_chart(update, context, chart_png,
-                                 caption=f"📊 {symbol} 回测图表 ({period}) [backtesting.py]")
+                await send_chart(
+                    update, context, chart_png, caption=f"📊 {symbol} 回测图表 ({period}) [backtesting.py]"
+                )
             else:
                 # PNG 不可用，发送 stats 文本增强版
-                stats_text = BokehVisualizer.stats_to_text(
-                    viz.get("stats"), symbol, period)
+                stats_text = BokehVisualizer.stats_to_text(viz.get("stats"), symbol, period)
                 if stats_text:
-                    await update.message.reply_text(
-                        f"📈 backtesting.py 增强分析:\n\n{stats_text}")
+                    await update.message.reply_text(f"📈 backtesting.py 增强分析:\n\n{stats_text}")
         except Exception as e:
             logger.debug("[Backtest] Bokeh 图表生成失败(非致命): %s", e)
 
@@ -469,8 +514,7 @@ class TradingCommandsMixin:
                 return
             label, targets = PRESET_ALLOCATIONS[preset_name]
             rebalancer.set_targets(targets)
-            await update.message.reply_text(
-                "已设置目标配置: %s\n\n%s" % (label, rebalancer.format_targets()))
+            await update.message.reply_text("已设置目标配置: %s\n\n%s" % (label, rebalancer.format_targets()))
             return
 
         if subcmd == "targets":
