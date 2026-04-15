@@ -92,6 +92,57 @@ export function Money() {
     fetchTradingData();
   }, []);
 
+  // 获取交易控制面板状态
+  useEffect(() => {
+    const fetchControls = async () => {
+      try {
+        if (isTauri()) {
+          // Tauri: 尝试通过 IPC 调用（接口尚未实现，降级到 HTTP）
+          try {
+            const data = await (api as Record<string, (...args: unknown[]) => Promise<unknown>>).clawbotControlsTrading();
+            if (data) setTradingControls(data as TradingControlsState);
+            return;
+          } catch {
+            // IPC 接口尚未实现，降级到 HTTP
+          }
+        }
+        // HTTP 降级
+        const resp = await clawbotFetch('/api/v1/controls/trading');
+        if (resp.ok) {
+          const data = await resp.json();
+          setTradingControls(data);
+        }
+      } catch (e) {
+        moneyLogger.warn('获取交易控制状态失败', e);
+      }
+    };
+    fetchControls();
+  }, []);
+
+  // 切换交易控制开关
+  const handleControlToggle = async (key: keyof TradingControlsState, value: boolean | number) => {
+    // 风控不允许关闭
+    if (key === 'risk_protection_enabled' && !value) return;
+    const updated = { ...tradingControls, [key]: value };
+    setTradingControls(updated);
+    try {
+      if (isTauri()) {
+        try {
+          await (api as Record<string, (...args: unknown[]) => Promise<unknown>>).clawbotControlsTradingUpdate(updated);
+          return;
+        } catch {
+          // IPC 接口尚未实现，降级到 HTTP
+        }
+      }
+      await clawbotFetch('/api/v1/controls/trading', {
+        method: 'POST',
+        body: JSON.stringify(updated),
+      });
+    } catch (e) {
+      moneyLogger.warn('更新交易控制失败', e);
+    }
+  };
+
   const handleAction = async (id: string, cmd: string, hasInput?: boolean) => {
     const input = inputs[id];
     if (hasInput && !input) return;
