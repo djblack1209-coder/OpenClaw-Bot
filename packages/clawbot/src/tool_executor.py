@@ -3,6 +3,7 @@ ClawBot - 共享工具执行器
 供 multi_main.py 中的 MultiBot 使用，让 Claude bot 在多 bot 模式下也能调用工具。
 支持工具熔断、结果截断、危险命令检测。
 """
+
 import time
 import logging
 from typing import Dict, Any, Optional, List
@@ -47,9 +48,8 @@ class ToolCircuitBreaker:
 
     def get_status(self) -> Dict[str, Any]:
         return {
-            name: {"failures": count, "available": self.is_available(name)}
-            for name, count in self._failures.items()
-      }
+            name: {"failures": count, "available": self.is_available(name)} for name, count in self._failures.items()
+        }
 
 
 # Claude tool-use 格式的工具定义
@@ -208,6 +208,63 @@ MULTI_BOT_TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "搜索关键词"},
+            },
+            "required": ["query"],
+        },
+    },
+    # ========== MemGPT/Letta 风格分层记忆工具 (P2-3第二期) ==========
+    {
+        "name": "core_memory_append",
+        "description": "向核心记忆追加信息。核心记忆始终在上下文中，用于存储用户画像、偏好、关键事实等需要随时参考的信息。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "记忆块名称: user_profile / preferences / key_facts / current_task",
+                },
+                "value": {"type": "string", "description": "要追加的内容"},
+            },
+            "required": ["key", "value"],
+        },
+    },
+    {
+        "name": "core_memory_replace",
+        "description": "替换核心记忆中的指定内容。用于更新过时信息（如用户改名、偏好变化）。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "记忆块名称: user_profile / preferences / key_facts / current_task",
+                },
+                "old_value": {"type": "string", "description": "要被替换的旧内容"},
+                "new_value": {"type": "string", "description": "替换后的新内容"},
+            },
+            "required": ["key", "old_value", "new_value"],
+        },
+    },
+    {
+        "name": "archival_memory_insert",
+        "description": "将信息存入归档记忆（长期存储）。归档记忆不在上下文中，需搜索才能检索。适合存储详细对话记录、分析结果等。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "要存储的内容"},
+                "category": {"type": "string", "description": "分类标签（默认 archival）"},
+                "importance": {"type": "integer", "description": "重要度 1-5（默认 2）"},
+            },
+            "required": ["content"],
+        },
+    },
+    {
+        "name": "archival_memory_search",
+        "description": "语义搜索归档记忆。根据查询语义匹配最相关的历史记忆。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "搜索查询（支持自然语言语义匹配）"},
+                "count": {"type": "integer", "description": "返回结果数量（默认 5）"},
             },
             "required": ["query"],
         },
@@ -382,9 +439,7 @@ class ToolExecutor:
                     "success": False,
                     "error": "检测到危险命令，已拒绝执行。请使用更安全的替代方案。",
                 }
-            return self.bash_tool.execute(
-                tool_input["command"], tool_input.get("workdir")
-            )
+            return self.bash_tool.execute(tool_input["command"], tool_input.get("workdir"))
 
         elif tool_name == "read_file":
             return self.file_tool.read(
@@ -405,9 +460,7 @@ class ToolExecutor:
             )
 
         elif tool_name == "list_dir":
-            return self.file_tool.list_dir(
-                tool_input["path"], tool_input.get("pattern", "*")
-            )
+            return self.file_tool.list_dir(tool_input["path"], tool_input.get("pattern", "*"))
 
         elif tool_name == "search_files":
             return self.file_tool.search(
@@ -417,14 +470,10 @@ class ToolExecutor:
             )
 
         elif tool_name == "fetch_url":
-            return await self.web_tool.fetch(
-                tool_input["url"], tool_input.get("format", "text")
-            )
+            return await self.web_tool.fetch(tool_input["url"], tool_input.get("format", "text"))
 
         elif tool_name == "web_search":
-            return await self.web_tool.search(
-                tool_input["query"], tool_input.get("num_results", 5)
-            )
+            return await self.web_tool.search(tool_input["query"], tool_input.get("num_results", 5))
 
         elif tool_name == "run_python":
             return self.code_tool.execute_python(tool_input["code"])
@@ -450,18 +499,24 @@ class ToolExecutor:
         elif tool_name == "recall":
             # 优先从共享记忆读取
             if self.shared_memory:
-                return self.shared_memory.recall(
-                    tool_input["key"], tool_input.get("category")
-                )
-            return self.memory_tool.recall(
-                tool_input["key"], tool_input.get("category")
-            )
+                return self.shared_memory.recall(tool_input["key"], tool_input.get("category"))
+            return self.memory_tool.recall(tool_input["key"], tool_input.get("category"))
 
         elif tool_name == "search_memory":
             # 优先搜索共享记忆
             if self.shared_memory:
                 return self.shared_memory.search(tool_input["query"])
             return self.memory_tool.search(tool_input["query"])
+
+        # ========== MemGPT/Letta 风格分层记忆工具 ==========
+        elif tool_name == "core_memory_append":
+            return await self._tool_core_memory_append(tool_input)
+        elif tool_name == "core_memory_replace":
+            return await self._tool_core_memory_replace(tool_input)
+        elif tool_name == "archival_memory_insert":
+            return await self._tool_archival_memory_insert(tool_input)
+        elif tool_name == "archival_memory_search":
+            return await self._tool_archival_memory_search(tool_input)
 
         # ========== 交易与市场分析工具 ==========
         elif tool_name == "get_quote":
@@ -500,8 +555,7 @@ class ToolExecutor:
             if key in result and isinstance(result[key], str):
                 if len(result[key]) > self.max_result_length:
                     result[key] = (
-                        result[key][: self.max_result_length]
-                        + f"\n\n... [截断，原始长度 {len(result[key])} 字符]"
+                        result[key][: self.max_result_length] + f"\n\n... [截断，原始长度 {len(result[key])} 字符]"
                     )
         return result
 
@@ -522,6 +576,7 @@ class ToolExecutor:
     async def _tool_get_quote(self, tool_input: Dict) -> Dict:
         try:
             from .invest_tools import get_stock_quote, get_crypto_quote, format_quote
+
             symbol = tool_input["symbol"].upper().strip()
             crypto = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "DOT", "AVAX"}
             if symbol in crypto:
@@ -538,6 +593,7 @@ class ToolExecutor:
     async def _tool_technical_analysis(self, tool_input: Dict) -> Dict:
         try:
             from .ta_engine import get_full_analysis, format_analysis
+
             symbol = tool_input["symbol"].upper().strip()
             crypto = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "DOT", "AVAX"}
             real_sym = f"{symbol}-USD" if symbol in crypto else symbol
@@ -566,6 +622,7 @@ class ToolExecutor:
     async def _tool_scan_market(self, tool_input: Dict) -> Dict:
         try:
             from .ta_engine import scan_market
+
             symbols = tool_input.get("symbols") or None
             results = await scan_market(symbols) if symbols else await scan_market()
             if not results:
@@ -577,10 +634,10 @@ class ToolExecutor:
                 score = sig.get("score", 0)
                 icon = "🟢" if score >= 30 else "🟡" if score >= 0 else "🔴"
                 lines.append(
-                    f"{i+1}. {icon} {r.get('symbol','?')} ${r.get('price',0):.2f} "
-                    f"({r.get('change_pct',0):+.1f}%) "
-                    f"信号={score:+d} 趋势={ind.get('trend','?')} "
-                    f"RSI={ind.get('rsi_14',0):.0f} 量比={ind.get('vol_ratio',0):.1f}x"
+                    f"{i + 1}. {icon} {r.get('symbol', '?')} ${r.get('price', 0):.2f} "
+                    f"({r.get('change_pct', 0):+.1f}%) "
+                    f"信号={score:+d} 趋势={ind.get('trend', '?')} "
+                    f"RSI={ind.get('rsi_14', 0):.0f} 量比={ind.get('vol_ratio', 0):.1f}x"
                 )
             return {"success": True, "content": "\n".join(lines)}
         except Exception as e:
@@ -590,6 +647,7 @@ class ToolExecutor:
     async def _tool_market_overview(self, _: Dict) -> Dict:
         try:
             from .invest_tools import get_market_summary
+
             text = await get_market_summary()
             return {"success": True, "content": text}
         except Exception as e:
@@ -600,6 +658,7 @@ class ToolExecutor:
         try:
             from .broker_bridge import ibkr
             from .invest_tools import portfolio
+
             lines = []
             # IBKR 实盘持仓
             if ibkr.is_connected():
@@ -607,7 +666,9 @@ class ToolExecutor:
                 if positions:
                     lines.append("-- IBKR 实盘持仓 --")
                     for p in positions:
-                        lines.append(f"  {p['symbol']}: {p['quantity']}股 成本${p['avg_cost']:.2f} 现价${p.get('market_price',0):.2f} 盈亏${p.get('unrealized_pnl',0):.2f}")
+                        lines.append(
+                            f"  {p['symbol']}: {p['quantity']}股 成本${p['avg_cost']:.2f} 现价${p.get('market_price', 0):.2f} 盈亏${p.get('unrealized_pnl', 0):.2f}"
+                        )
                 else:
                     lines.append("IBKR: 无持仓")
                 lines.append(f"IBKR 预算: ${ibkr.budget - ibkr.total_spent:.0f} / ${ibkr.budget:.0f}")
@@ -625,14 +686,18 @@ class ToolExecutor:
     async def _tool_portfolio_summary(self, _: Dict) -> Dict:
         try:
             from .broker_bridge import ibkr
+
             lines = []
             if ibkr.is_connected():
                 status = ibkr.get_connection_status()
                 lines.append(status)
-                lines.append(f"预算: ${ibkr.budget:.0f} | 已用: ${ibkr.total_spent:.0f} | 剩余: ${ibkr.budget - ibkr.total_spent:.0f}")
+                lines.append(
+                    f"预算: ${ibkr.budget:.0f} | 已用: ${ibkr.total_spent:.0f} | 剩余: ${ibkr.budget - ibkr.total_spent:.0f}"
+                )
             # 交易系统状态
             try:
                 from .trading_system import get_system_status
+
                 sys_status = get_system_status()
                 lines.append(f"\n{sys_status}")
             except Exception as e:
@@ -645,6 +710,7 @@ class ToolExecutor:
     async def _tool_risk_status(self, _: Dict) -> Dict:
         try:
             from .trading_system import _risk_manager
+
             if not _risk_manager:
                 return {"success": True, "content": "风控系统未初始化"}
             status = _risk_manager.get_status()
@@ -668,6 +734,7 @@ class ToolExecutor:
         try:
             from .news_fetcher import NewsFetcher
             from .notify_style import format_announcement
+
             fetcher = NewsFetcher()
             query = tool_input["query"]
             count = tool_input.get("count", 5)
@@ -702,26 +769,133 @@ class ToolExecutor:
         try:
             from .ta_engine import calc_position_size
             from .broker_bridge import ibkr
+
             symbol = tool_input["symbol"].upper()
             entry = float(tool_input["entry_price"])
             stop = float(tool_input["stop_loss"])
             capital = ibkr.budget - ibkr.total_spent if ibkr.is_connected() else 2000.0
             result = calc_position_size(
-                capital=capital, risk_pct=0.02,
-                entry=entry, stop_loss=stop,
+                capital=capital,
+                risk_pct=0.02,
+                entry=entry,
+                stop_loss=stop,
             )
             risk_per_share = abs(entry - stop)
             lines = [
                 f"-- {symbol} 仓位计算 --",
                 f"入场价: ${entry:.2f} | 止损价: ${stop:.2f}",
-                f"每股风险: ${risk_per_share:.2f} ({risk_per_share/entry*100:.1f}%)",
+                f"每股风险: ${risk_per_share:.2f} ({risk_per_share / entry * 100:.1f}%)",
                 f"可用资金: ${capital:.0f}",
                 f"建议股数: {result.get('quantity', 0)}",
                 f"总投入: ${result.get('total_cost', 0):.0f} ({result.get('capital_pct', 0):.0f}%资金)",
                 f"最大亏损: ${result.get('max_loss', 0):.2f} ({result.get('risk_pct_actual', 0):.1f}%资金)",
-                f"风险收益比: 1:{result.get('rr_ratio', 0):.1f}" if result.get('rr_ratio') else "",
+                f"风险收益比: 1:{result.get('rr_ratio', 0):.1f}" if result.get("rr_ratio") else "",
             ]
             return {"success": True, "content": "\n".join(l for l in lines if l)}
         except Exception as e:
             logger.exception("[ToolExecutor] calc_position_size 失败 (symbol=%s)", tool_input.get("symbol"))
+            return {"success": False, "error": str(e)}
+
+    # ========== MemGPT/Letta 风格分层记忆工具实现 (P2-3第二期) ==========
+
+    async def _tool_core_memory_append(self, tool_input: Dict) -> Dict:
+        """向核心记忆追加内容 — 委托给 TieredContextManager.core_append"""
+        try:
+            from src.bot.globals import tiered_ctx
+
+            if not tiered_ctx:
+                return {"success": False, "error": "分层记忆管理器未初始化"}
+            key = tool_input["key"]
+            value = tool_input["value"]
+            chat_id = tool_input.get("chat_id", 0)
+            tiered_ctx.core_append(key, value, chat_id)
+            current = tiered_ctx.core_get(key, chat_id)
+            return {
+                "success": True,
+                "content": f"已追加到 [{key}]。当前内容:\n{current[:500]}",
+            }
+        except Exception as e:
+            logger.exception("[ToolExecutor] core_memory_append 失败")
+            return {"success": False, "error": str(e)}
+
+    async def _tool_core_memory_replace(self, tool_input: Dict) -> Dict:
+        """替换核心记忆中的指定内容"""
+        try:
+            from src.bot.globals import tiered_ctx
+
+            if not tiered_ctx:
+                return {"success": False, "error": "分层记忆管理器未初始化"}
+            key = tool_input["key"]
+            old_value = tool_input["old_value"]
+            new_value = tool_input["new_value"]
+            chat_id = tool_input.get("chat_id", 0)
+            current = tiered_ctx.core_get(key, chat_id)
+            if old_value not in current:
+                return {
+                    "success": False,
+                    "error": f"在 [{key}] 中未找到要替换的内容。当前内容:\n{current[:300]}",
+                }
+            updated = current.replace(old_value, new_value, 1)
+            tiered_ctx.core_set(key, updated, chat_id)
+            return {
+                "success": True,
+                "content": f"已更新 [{key}]。当前内容:\n{updated[:500]}",
+            }
+        except Exception as e:
+            logger.exception("[ToolExecutor] core_memory_replace 失败")
+            return {"success": False, "error": str(e)}
+
+    async def _tool_archival_memory_insert(self, tool_input: Dict) -> Dict:
+        """存入归档记忆"""
+        try:
+            from src.bot.globals import tiered_ctx
+
+            if not tiered_ctx:
+                if self.shared_memory:
+                    content = tool_input["content"]
+                    category = tool_input.get("category", "archival")
+                    importance = tool_input.get("importance", 2)
+                    self.shared_memory.remember(
+                        key=content[:30], value=content, category=category, importance=importance
+                    )
+                    return {"success": True, "content": "已存入归档记忆 (SharedMemory降级)"}
+                return {"success": False, "error": "记忆系统未初始化"}
+            content = tool_input["content"]
+            category = tool_input.get("category", "archival")
+            importance = tool_input.get("importance", 2)
+            key_text = content[:30].replace(" ", "_").replace("\n", "_")
+            tiered_ctx.archival_store(key=f"tool_{key_text}", value=content, category=category, importance=importance)
+            return {
+                "success": True,
+                "content": f"已存入归档记忆 (分类={category}, 重要度={importance})",
+            }
+        except Exception as e:
+            logger.exception("[ToolExecutor] archival_memory_insert 失败")
+            return {"success": False, "error": str(e)}
+
+    async def _tool_archival_memory_search(self, tool_input: Dict) -> Dict:
+        """语义搜索归档记忆"""
+        try:
+            from src.bot.globals import tiered_ctx
+
+            query = tool_input["query"]
+            count = tool_input.get("count", 5)
+            if tiered_ctx:
+                result_text = tiered_ctx.archival_search(query, limit=count)
+                if result_text:
+                    return {"success": True, "content": result_text}
+            if self.shared_memory:
+                results = self.shared_memory.search(query, limit=count)
+                if isinstance(results, list) and results:
+                    lines = []
+                    for r in results[:count]:
+                        if isinstance(r, dict):
+                            lines.append(
+                                f"- [{r.get('category', '')}] {r.get('key', '')}: {str(r.get('value', ''))[:150]}"
+                            )
+                    if lines:
+                        return {"success": True, "content": "\n".join(lines)}
+            return {"success": True, "content": f"未找到与 '{query}' 相关的归档记忆"}
+        except Exception as e:
+            logger.exception("[ToolExecutor] archival_memory_search 失败")
             return {"success": False, "error": str(e)}
