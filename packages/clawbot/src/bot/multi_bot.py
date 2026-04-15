@@ -375,6 +375,7 @@ class MultiBot(
         self.app.add_handler(CommandHandler("agent", self.cmd_agent))
         self.app.add_handler(CommandHandler("tts", self.cmd_tts))
         self.app.add_handler(CommandHandler("novel", self.cmd_novel))
+        self.app.add_handler(CommandHandler("evolution", self.cmd_evolution))
         self.app.add_handler(CommandHandler("ship", self.cmd_ship))
         self.app.add_handler(CommandHandler("weekly", self.cmd_weekly))
         self.app.add_handler(CommandHandler("review_history", self.cmd_review_history))
