@@ -142,6 +142,8 @@ class SharedMemory:
         # Mem0 初始化
         self._mem0 = None
         self._using_mem0 = False
+        # 记忆系统运行模式标记，初始为 SQLite 降级
+        self._memory_mode: str = "sqlite_basic"
         if _mem0_available and Mem0Memory is not None:
             try:
                 # 优先使用 Mem0 Cloud API（无需本地 qdrant + embedding）
@@ -152,6 +154,7 @@ class SharedMemory:
 
                         self._mem0 = MemoryClient(api_key=mem0_api_key)
                         self._using_mem0 = True
+                        self._memory_mode = "mem0_cloud"
                         logger.info("[SharedMemory] v4.1 Mem0 Cloud API 模式启动成功")
                     except (ImportError, Exception) as e:
                         logger.debug(f"[SharedMemory] Mem0 Cloud 初始化失败，尝试本地模式: {e}")
@@ -165,6 +168,7 @@ class SharedMemory:
                     try:
                         self._mem0 = Mem0Memory.from_config(config)
                         self._using_mem0 = True
+                        self._memory_mode = "mem0_local"
                         logger.info("[SharedMemory] v4.0 Mem0 本地模式启动成功")
                     finally:
                         if _or_key is not None:
@@ -174,6 +178,23 @@ class SharedMemory:
 
         # 初始化 SQLite 表（始终需要）
         self._init_db()
+
+        # 输出当前记忆系统运行模式
+        _mode_desc = {
+            "mem0_cloud": "☁️ Mem0 Cloud 语义搜索（最佳）",
+            "mem0_local": "💾 Mem0 本地向量搜索（良好）",
+            "sqlite_basic": "⚠️ SQLite 关键词匹配（基础模式，语义搜索不可用）",
+        }
+        logger.info(f"[记忆系统] 运行模式: {_mode_desc.get(self._memory_mode, '未知')}")
+
+    def get_memory_mode_description(self) -> str:
+        """返回当前记忆系统运行模式的中文描述，供日报或状态查询使用。"""
+        _mode_desc = {
+            "mem0_cloud": "☁️ Mem0 Cloud 语义搜索（最佳） — 支持跨语言语义匹配，自动事实提取",
+            "mem0_local": "💾 Mem0 本地向量搜索（良好） — 本地向量索引，无需外部 API",
+            "sqlite_basic": "⚠️ SQLite 关键词匹配（基础模式） — 仅支持精确关键词搜索，语义搜索不可用",
+        }
+        return _mode_desc.get(self._memory_mode, f"未知模式: {self._memory_mode}")
 
     # ── SQLite 连接管理 ──
 
@@ -455,6 +476,7 @@ class SharedMemory:
                             "score": float(r.get("score", 0)),
                             "similarity": round(float(r.get("score", 0)), 3),
                             "match_type": "mem0_semantic",
+                            "search_mode": "semantic",  # 标记为语义搜索
                         }
                     )
             except Exception as e:
@@ -494,6 +516,7 @@ class SharedMemory:
                         "importance": r["importance"],
                         "score": r["importance"] * 0.2,
                         "match_type": "keyword",
+                        "search_mode": "basic",  # 标记为基础关键词搜索
                     }
                 )
 
@@ -554,6 +577,7 @@ class SharedMemory:
                             "source_bot": meta.get("source_bot", "unknown"),
                             "importance": int(meta.get("importance", 1)),
                             "similarity": round(float(r.get("score", 0)), 3),
+                            "search_mode": "semantic",  # 标记为语义搜索
                         }
                     )
                 return results
@@ -561,6 +585,10 @@ class SharedMemory:
                 logger.warning("[SharedMemory] Mem0 semantic_search 失败: %s", e)
 
         # ── SQLite 关键词回退（Mem0 不可用时）──
+        # 首次降级搜索时发出警告，提醒用户当前搜索质量有限
+        if not hasattr(self, "_sqlite_search_warned"):
+            self._sqlite_search_warned = True
+            logger.warning("[记忆系统] 当前使用 SQLite 基础搜索，语义匹配不可用。配置 MEM0_API_KEY 可启用完整语义搜索")
         conn = self._get_conn()
         self._cleanup_expired(conn)
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -589,6 +617,7 @@ class SharedMemory:
                 "source_bot": r["source_bot"],
                 "importance": r["importance"],
                 "similarity": 0.5,  # 关键词匹配给固定分数
+                "search_mode": "basic",  # 标记为基础搜索，调用方可据此判断搜索质量
             }
             for r in rows
         ]

@@ -35,6 +35,42 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _STATE_FILE = _PACKAGE_ROOT / "data" / "social_autopilot_state.json"
 _TIMEZONE = "Asia/Shanghai"
 
+
+def _alert_admin(message: str) -> None:
+    """发布/互动失败时通过 Telegram 通知管理员。
+
+    在 APScheduler 线程池中执行，通过 run_coroutine_threadsafe
+    将异步通知调度到主事件循环。如果主循环不可用则静默跳过。
+    """
+    try:
+        from src.core.proactive_notify import _send_proactive
+        from src.bot.globals import ALLOWED_USER_IDS
+
+        if not ALLOWED_USER_IDS:
+            return
+
+        async def _do_alert() -> None:
+            for uid in ALLOWED_USER_IDS:
+                try:
+                    await _send_proactive(str(uid), message)
+                except Exception:
+                    pass  # 单用户发送失败不影响其他用户
+
+        # 尝试调度到主事件循环
+        main_loop = SocialAutopilot._main_loop
+        if main_loop is not None and main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(_do_alert(), main_loop)
+        else:
+            # 主循环不可用时尝试 asyncio.run（临时循环）
+            try:
+                asyncio.run(_do_alert())
+            except RuntimeError:
+                pass  # 无法创建事件循环时静默跳过
+    except Exception:
+        # 通知发送失败不影响主流程
+        logger.debug("[Autopilot] 管理员告警发送失败", exc_info=True)
+
+
 # Thread-safety lock for state file reads/writes.
 # APScheduler's BackgroundScheduler runs jobs in a thread pool, so concurrent
 # access to the state file is possible.
@@ -42,6 +78,7 @@ _state_lock = threading.Lock()
 
 
 # ─── State persistence ────────────────────────────────────────
+
 
 def _load_state() -> Dict[str, Any]:
     """Load autopilot state from disk. Returns defaults if missing.
@@ -85,16 +122,21 @@ def _save_state(state: Dict[str, Any]) -> None:
 
 # ─── WebSocket notification helper ────────────────────────────
 
+
 def _notify(message: str, data: Optional[Dict] = None) -> None:
     """Push event to connected dashboard clients (best-effort)."""
     try:
         from src.api.routers.ws import push_event
         from src.api.schemas import WSMessageType
-        push_event(WSMessageType.AUTOPILOT_EVENT, {
-            "message": message,
-            **(data or {}),
-            "ts": now_et().isoformat(),
-        })
+
+        push_event(
+            WSMessageType.AUTOPILOT_EVENT,
+            {
+                "message": message,
+                **(data or {}),
+                "ts": now_et().isoformat(),
+            },
+        )
     except Exception as e:
         logger.debug("[SocialScheduler] 异常: %s", e)
     logger.info("[Autopilot] %s", message)
@@ -135,6 +177,7 @@ def _run_async(coro) -> Any:
         logger.warning("[Autopilot] 主事件循环不可用，降级使用 asyncio.run()")
         return asyncio.run(coro)
 
+
 def job_morning_scan() -> None:
     """09:00 — 热点扫描 + 选题 + 简报"""
 
@@ -148,7 +191,9 @@ def job_morning_scan() -> None:
         if not selected:
             # Fallback: take top 3 by score
             selected = sorted(
-                topics, key=lambda t: t.get("score", 0), reverse=True,
+                topics,
+                key=lambda t: t.get("score", 0),
+                reverse=True,
             )[:3]
 
         state = _load_state()
@@ -161,6 +206,7 @@ def job_morning_scan() -> None:
         # Synergy: 社交热点 → 交易标的扫描（通过 EventBus）
         try:
             from src.core.event_bus import get_event_bus, EventType
+
             bus = get_event_bus()
             await bus.publish(
                 EventType.SOCIAL_TRENDING,
@@ -172,6 +218,7 @@ def job_morning_scan() -> None:
             # 降级: 旧 synergy
             try:
                 from src.synergy import get_synergy
+
                 await get_synergy().on_social_hotspot(selected)
             except Exception as e:
                 logger.debug("[SocialScheduler] 异常: %s", e)
@@ -213,10 +260,13 @@ def job_noon_engage() -> None:
             logger.error("[Autopilot] 蹭评失败: %s", e)
             scout_result = {"success": False, "error": str(e)}
 
-        _notify("午间互动完成", {
-            "auto_reply": reply_result.get("success", False),
-            "scout_comment": scout_result.get("success", False),
-        })
+        _notify(
+            "午间互动完成",
+            {
+                "auto_reply": reply_result.get("success", False),
+                "scout_comment": scout_result.get("success", False),
+            },
+        )
     except Exception as e:
         logger.error("[Autopilot] 午间互动失败: %s", e)
         _notify(f"午间互动失败: {e}")
@@ -251,12 +301,11 @@ def job_evening_produce() -> None:
                 try:
                     # Derive strategy
                     strategy_result = await derive_content_strategy(
-                        topic=title, platform=platform, persona=persona,
+                        topic=title,
+                        platform=platform,
+                        persona=persona,
                     )
-                    strategy = (
-                        strategy_result.get("strategy")
-                        if strategy_result.get("success") else None
-                    )
+                    strategy = strategy_result.get("strategy") if strategy_result.get("success") else None
 
                     # Compose post
                     max_len = 280 if platform == "x" else 800
@@ -281,16 +330,23 @@ def job_evening_produce() -> None:
                         drafts.append(draft)
                         logger.info(
                             "[Autopilot] 生成草稿: %s/%s (%d字)",
-                            platform, title, len(result["text"]),
+                            platform,
+                            title,
+                            len(result["text"]),
                         )
                     else:
                         logger.warning(
                             "[Autopilot] 生成失败 %s/%s: %s",
-                            platform, title, result.get("error"),
+                            platform,
+                            title,
+                            result.get("error"),
                         )
                 except Exception as e:
                     logger.error(
-                        "[Autopilot] 单篇生成异常 %s/%s: %s", platform, title, e,
+                        "[Autopilot] 单篇生成异常 %s/%s: %s",
+                        platform,
+                        title,
+                        e,
                     )
 
         state["drafts"] = drafts
@@ -342,7 +398,8 @@ def job_night_publish() -> None:
                     title = lines[0].strip() if lines else "无标题"
                     body = "\n".join(lines[1:]).strip() if len(lines) > 1 else text
                     result = await run_social_worker_async(
-                        "publish_xhs", {"title": title, "body": body},
+                        "publish_xhs",
+                        {"title": title, "body": body},
                     )
                 else:
                     result = {"success": False, "error": f"未知平台: {platform}"}
@@ -358,13 +415,25 @@ def job_night_publish() -> None:
                     failed.append(draft)
                     logger.warning(
                         "[Autopilot] 发布失败: %s/%s - %s",
-                        platform, draft_id, result.get("error"),
+                        platform,
+                        draft_id,
+                        result.get("error"),
+                    )
+                    # 发布返回失败，通知管理员
+                    _alert_admin(
+                        f"⚠️ 社媒自动发布失败: {platform}\n"
+                        f"错误: {str(result.get('error', 'unknown'))[:100]}\n\n"
+                        f"手动发布: 说「发文到{platform}」"
                     )
             except Exception as e:
                 draft["status"] = "failed"
                 draft["error"] = str(e)
                 failed.append(draft)
                 logger.error("[Autopilot] 发布异常: %s/%s - %s", platform, draft_id, e)
+                # 单篇发布失败，通知管理员
+                _alert_admin(
+                    f"⚠️ 社媒自动发布失败: {platform}\n错误: {str(e)[:100]}\n\n手动发布: 说「发文到{platform}」"
+                )
 
             _save_state(state)
 
@@ -376,6 +445,7 @@ def job_night_publish() -> None:
         # sau_bridge: 将已发布内容同步到抖音/B站等平台（如果 sau 可用）
         try:
             from src.sau_bridge import publish_multi_platform
+
             # 把已成功发布的内容通过 sau 同步到更多平台
             for draft in published:
                 text = draft.get("text", "")
@@ -397,6 +467,7 @@ def job_night_publish() -> None:
         if published:
             try:
                 from src.core.event_bus import get_event_bus, EventType
+
                 bus = get_event_bus()
                 for draft in published:
                     _platform = draft.get("platform", "")
@@ -510,6 +581,7 @@ def job_late_review() -> None:
             _MILESTONES = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
             try:
                 from src.execution.life_automation import get_follower_growth
+
                 for _plat in ("x", "xhs"):
                     _growth = get_follower_growth(platform=_plat, days=2)
                     if not _growth or not _growth.get("success"):
@@ -526,13 +598,16 @@ def job_late_review() -> None:
                         if _prev < ms <= _curr:
                             try:
                                 from src.core.event_bus import get_event_bus, EventType
+
                                 _bus = get_event_bus()
                                 # 使用 _run_async 将事件发布调度到主事件循环
-                                _run_async(_bus.publish(
-                                    EventType.FOLLOWER_MILESTONE,
-                                    {"platform": _plat, "count": ms},
-                                    source="social_scheduler",
-                                ))
+                                _run_async(
+                                    _bus.publish(
+                                        EventType.FOLLOWER_MILESTONE,
+                                        {"platform": _plat, "count": ms},
+                                        source="social_scheduler",
+                                    )
+                                )
                                 logger.info("[Autopilot] 粉丝里程碑: %s 突破 %d", _plat, ms)
                             except Exception as _me:
                                 logger.debug("[Autopilot] 粉丝里程碑事件发射失败: %s", _me)
@@ -567,6 +642,7 @@ def job_late_review() -> None:
             # ── 根据今日互动数据更新明日发布时间 ──
             try:
                 from src.social_tools import get_post_time_optimizer as _get_optimizer
+
                 _opt = _get_optimizer()
                 new_best = _opt.best_hours("twitter", top_n=1)
                 if new_best:
@@ -583,7 +659,8 @@ def job_late_review() -> None:
                             )
                             logger.info(
                                 "[社媒] 明日发布时间调整: %d:30 → %d:30",
-                                current_publish_hour, new_hour,
+                                current_publish_hour,
+                                new_hour,
                             )
                             with SocialAutopilot._publish_hour_lock:
                                 autopilot._current_publish_hour = new_hour
@@ -604,6 +681,7 @@ def job_late_review() -> None:
 
 
 # ─── Scheduler class ──────────────────────────────────────────
+
 
 class SocialAutopilot:
     """Social media autopilot — wraps APScheduler BackgroundScheduler.
@@ -666,25 +744,35 @@ class SocialAutopilot:
 
         # 09:00 — 热点扫描
         self._scheduler.add_job(
-            job_morning_scan, CronTrigger(hour=9, minute=0, timezone=_TIMEZONE),
-            id="morning_scan", name="社媒早扫",
-            replace_existing=True, misfire_grace_time=3600,
+            job_morning_scan,
+            CronTrigger(hour=9, minute=0, timezone=_TIMEZONE),
+            id="morning_scan",
+            name="社媒早扫",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
         # 12:30 — 评论互动
         self._scheduler.add_job(
-            job_noon_engage, CronTrigger(hour=12, minute=30, timezone=_TIMEZONE),
-            id="noon_engage", name="社媒午动",
-            replace_existing=True, misfire_grace_time=3600,
+            job_noon_engage,
+            CronTrigger(hour=12, minute=30, timezone=_TIMEZONE),
+            id="noon_engage",
+            name="社媒午动",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
         # 19:00 — 内容生产
         self._scheduler.add_job(
-            job_evening_produce, CronTrigger(hour=19, minute=0, timezone=_TIMEZONE),
-            id="evening_produce", name="社媒晚产",
-            replace_existing=True, misfire_grace_time=3600,
+            job_evening_produce,
+            CronTrigger(hour=19, minute=0, timezone=_TIMEZONE),
+            id="evening_produce",
+            name="社媒晚产",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
         # 20:30 — 自动发布（数据驱动：根据历史互动数据选择最佳发布时间）
         try:
             from src.social_tools import get_post_time_optimizer
+
             optimizer = get_post_time_optimizer()
             best = optimizer.best_hours("twitter", top_n=1)
             publish_hour = best[0] if best else 20  # 默认 20 点（没有数据时）
@@ -701,15 +789,21 @@ class SocialAutopilot:
             self._current_publish_hour = publish_hour
 
         self._scheduler.add_job(
-            job_night_publish, CronTrigger(hour=publish_hour, minute=30, timezone=_TIMEZONE),
-            id="night_publish", name="社媒晚发",
-            replace_existing=True, misfire_grace_time=3600,
+            job_night_publish,
+            CronTrigger(hour=publish_hour, minute=30, timezone=_TIMEZONE),
+            id="night_publish",
+            name="社媒晚发",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
         # 22:00 — 数据复盘
         self._scheduler.add_job(
-            job_late_review, CronTrigger(hour=22, minute=0, timezone=_TIMEZONE),
-            id="late_review", name="社媒复盘",
-            replace_existing=True, misfire_grace_time=3600,
+            job_late_review,
+            CronTrigger(hour=22, minute=0, timezone=_TIMEZONE),
+            id="late_review",
+            name="社媒复盘",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
 
         self._scheduler.start()
@@ -750,14 +844,14 @@ class SocialAutopilot:
 
         if self._scheduler and running:
             for job in self._scheduler.get_jobs():
-                next_run = (
-                    job.next_run_time.isoformat() if job.next_run_time else ""
+                next_run = job.next_run_time.isoformat() if job.next_run_time else ""
+                jobs.append(
+                    {
+                        "id": job.id,
+                        "name": job.name or job.id,
+                        "next_run": next_run,
+                    }
                 )
-                jobs.append({
-                    "id": job.id,
-                    "name": job.name or job.id,
-                    "next_run": next_run,
-                })
             # Find soonest job
             upcoming = [j for j in jobs if j["next_run"]]
             if upcoming:
