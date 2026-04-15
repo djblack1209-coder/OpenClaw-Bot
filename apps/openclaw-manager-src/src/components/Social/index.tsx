@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
@@ -145,6 +146,15 @@ interface AnalyticsData {
   engagement?: Record<string, PlatformEngagement>;
   follower_growth?: Record<string, { current?: number; net_change?: number }>;
   top_posts?: TopPost[];
+}
+
+/** 社媒控制面板状态 */
+interface SocialControlsState {
+  xhs_enabled: boolean;          // 小红书发布开关
+  x_twitter_enabled: boolean;    // X/Twitter 发布开关
+  auto_hotspot_post: boolean;    // 自动热点跟帖
+  content_review_mode: boolean;  // 发布前人工审核
+  scheduler_paused: boolean;     // 暂停定时任务
 }
 
 const socialLogger = createLogger('Social');
@@ -290,6 +300,43 @@ export function Social() {
   const [operatingDraftId, setOperatingDraftId] = useState<number | null>(null);
   const [browserStatus, setBrowserStatus] = useState({ x: 'unknown', xhs: 'unknown' });
 
+  // ──── 社媒控制面板状态 ────
+  const [socialControls, setSocialControls] = useState<SocialControlsState>({
+    xhs_enabled: true,
+    x_twitter_enabled: true,
+    auto_hotspot_post: false,
+    content_review_mode: true,
+    scheduler_paused: false,
+  });
+
+  // 组件挂载时从后端拉取社媒控制状态
+  useEffect(() => {
+    const fetchControls = async () => {
+      try {
+        const resp = await clawbotFetch('/api/v1/controls/social');
+        if (resp.ok) {
+          const data = await resp.json();
+          setSocialControls(data);
+        }
+      } catch { /* 静默失败，使用默认值 */ }
+    };
+    fetchControls();
+  }, []);
+
+  // 切换社媒控制开关并同步到后端
+  const handleSocialToggle = async (key: keyof SocialControlsState, value: boolean) => {
+    const updated = { ...socialControls, [key]: value };
+    setSocialControls(updated);
+    try {
+      await clawbotFetch('/api/v1/controls/social', {
+        method: 'POST',
+        body: JSON.stringify(updated),
+      });
+    } catch (e) {
+      socialLogger.warn('更新社媒控制失败', e);
+    }
+  };
+
   // 从后端加载草稿列表
   const loadDrafts = useCallback(async () => {
     try {
@@ -422,6 +469,55 @@ export function Social() {
               <span className="text-xs uppercase tracking-wider">{getStatusText(browserStatus.xhs)}</span>
             </div>
           </div>
+        </div>
+
+        {/* 社媒控制面板 */}
+        <div className="flex flex-wrap items-center gap-4 bg-dark-800/40 px-4 py-3 rounded-xl border border-dark-600/50">
+          <span className="text-xs text-gray-500 font-medium mr-1">平台开关</span>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              checked={socialControls.xhs_enabled}
+              onCheckedChange={(v) => handleSocialToggle('xhs_enabled', v)}
+            />
+            <span className="text-sm text-gray-300">小红书</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              checked={socialControls.x_twitter_enabled}
+              onCheckedChange={(v) => handleSocialToggle('x_twitter_enabled', v)}
+            />
+            <span className="text-sm text-gray-300">X / Twitter</span>
+          </label>
+
+          <div className="w-px h-5 bg-dark-600 mx-1" />
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              checked={socialControls.auto_hotspot_post}
+              onCheckedChange={(v) => handleSocialToggle('auto_hotspot_post', v)}
+            />
+            <span className="text-sm text-gray-300">自动蹭热点</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              checked={socialControls.content_review_mode}
+              onCheckedChange={(v) => handleSocialToggle('content_review_mode', v)}
+            />
+            <span className="text-sm text-gray-300">发前审核</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              checked={socialControls.scheduler_paused}
+              onCheckedChange={(v) => handleSocialToggle('scheduler_paused', v)}
+            />
+            <span className={clsx("text-sm", socialControls.scheduler_paused ? "text-yellow-400" : "text-gray-300")}>
+              {socialControls.scheduler_paused ? '定时已暂停' : '定时运行中'}
+            </span>
+          </label>
         </div>
 
         <Tabs defaultValue="actions" className="w-full">
