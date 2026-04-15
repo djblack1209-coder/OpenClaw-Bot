@@ -7,6 +7,28 @@
 
 ---
 
+## [2026-04-15] 新增「任务调度中心」桌面端页面
+
+> 领域: `frontend`
+> 影响模块: `Scheduler`, `App.tsx`, `Sidebar.tsx`, `Header.tsx`
+> 关联问题: 用户无法在桌面端查看/控制每日定时任务
+
+### 变更内容
+
+1. **新增 Scheduler 页面组件**：展示调度器全局开关、维护模式横幅、任务卡片网格（名称/cron/开关/状态/上次执行），30 秒自动刷新
+2. **PageType 扩展**：`App.tsx` 新增 `scheduler` 类型 + lazy import + ErrorBoundary 包裹
+3. **侧边栏菜单**：在「智能流监控」下方新增「任务调度」入口，使用 Clock 图标
+4. **Header 标题映射**：补充 scheduler 页的标题和描述
+
+### 文件变更
+
+- `apps/openclaw-manager-src/src/components/Scheduler/index.tsx` — 新增，任务调度中心页面
+- `apps/openclaw-manager-src/src/App.tsx` — PageType 增加 scheduler、lazy import、pages 映射
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — 新增 Clock 图标导入和菜单项
+- `apps/openclaw-manager-src/src/components/Layout/Header.tsx` — 补充 scheduler 页标题
+
+---
+
 ## [2026-04-15] 社媒自动发布/互动失败时 Telegram 告警通知
 
 > 领域: `backend`
