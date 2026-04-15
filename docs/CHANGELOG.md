@@ -3,6 +3,21 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 积木化解构 & 开源情报分析报告
+> 领域: `docs`
+> 影响模块: 全项目 245 模块分析
+> 关联问题: 无（架构分析任务）
+### 变更内容
+- **积木化解构**: 将全项目拆解为 42 个最小可替换单元(MRU)，评估每个模块的耦合度和可替换性
+- **开源情报搜索**: 对核心引擎、交易系统、闲鱼/购物/社媒、基础设施四大模块群执行四维搜索（组件/算法/UI/架构），产出 15+ 条有效候选
+- **整合决策矩阵**: 14 项 A/B/C 决策，其中 4 项「直接集成」、8 项「借鉴重写」、2 项「列入观察」
+- **迭代 LOOP**: 定义 6 个核心度量指标 + 三轮迭代计划 + 季度评估触发条件
+- **关键发现**: brain_executors.py 扇出失控(20+模块)、社媒模块 72 处被引用最高、购物比价耦合最低(仅 1 个外部依赖)
+### 文件变更
+- `docs/reports/MRU_ANALYSIS_2026_04_16.md` — 新建：完整分析报告
+
+---
+
 ## [2026-04-15] 全链路修复与整合 — GUI 功能开关 + 调度器页面 + 本地模型 + 死链修复
 > 领域: `backend`, `frontend`, `ai-pool`, `infra`
 > 影响模块: `controls API`, `Money`, `Social`, `Settings`, `Scheduler`, `local_llm`, `intent_parser`, `cmd_ops_mixin`, `multi_bot`, `notify_style`
