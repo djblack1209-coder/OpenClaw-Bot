@@ -88,6 +88,10 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
 
+  // 运营控制设置
+  const [opsSettings, setOpsSettings] = useState<OperationsSettings>({ ...DEFAULT_OPS_SETTINGS });
+  const [savingOps, setSavingOps] = useState(false);
+
   // 未保存变更警告相关状态
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const pendingNavigationRef = useRef<string | null>(null);
