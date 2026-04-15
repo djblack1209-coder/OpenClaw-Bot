@@ -1,10 +1,10 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-06 | 新增 /test_token、/set_coupon_token 命令，总数 98
+> 最后更新: 2026-04-15 | 新增 /evolution 命令，总数 99
 
 ---
 
-## 1. 注册命令一览（98 个）
+## 1. 注册命令一览（99 个）
 
 命令在 `multi_bot.py:171-340` 统一注册。
 
@@ -140,6 +140,7 @@
 | 96 | `/coupon` | `cmd_coupon` | 微信笔笔省领券 — mitmproxy抓包+API直调自动领取提现免费券 | N |
 | 97 | `/test_token` | `cmd_test_token` | 测试已保存的领券token有效性 — 纯API调用,不走mitmproxy,返回token年龄和有效状态 | N |
 | 98 | `/set_coupon_token` | `cmd_set_coupon_token` | 手动设置领券token — 通过手机抓包获取token后直接设置,免mitmproxy流程 | N |
+| 99 | `/evolution` | `cmd_evolution` | 进化引擎状态 — 查看自动进化提案/能力缺口/审批统计 (cmd_ops_mixin.py) | N |
 
 ---
 
