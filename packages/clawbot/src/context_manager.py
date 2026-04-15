@@ -20,6 +20,7 @@ v2.0:
   - 支持 SQLite HistoryStore 集成
   - 分层上下文管理（core/recall/archival 三层架构）
 """
+
 import json
 import tempfile
 import os
@@ -38,6 +39,7 @@ _HAS_TIKTOKEN = False
 
 try:
     import tiktoken
+
     _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
     _HAS_TIKTOKEN = True
     logger.debug("[context_manager] tiktoken 已加载 (cl100k_base)")
@@ -81,9 +83,25 @@ class ContextManager:
     KEEP_RECENT_TOKENS = 20000
 
     # 关键信息标记关键词
-    KEY_MARKERS = ["记住", "注意", "重要", "设置为", "偏好", "密码", "地址",
-                   "名字叫", "我是", "请记住", "别忘了", "关键", "remember",
-                   "important", "password", "config", "设定"]
+    KEY_MARKERS = [
+        "记住",
+        "注意",
+        "重要",
+        "设置为",
+        "偏好",
+        "密码",
+        "地址",
+        "名字叫",
+        "我是",
+        "请记住",
+        "别忘了",
+        "关键",
+        "remember",
+        "important",
+        "password",
+        "config",
+        "设定",
+    ]
 
     def __init__(self, storage_dir: Optional[str] = None):
         if storage_dir:
@@ -91,6 +109,7 @@ class ContextManager:
         else:
             # 从 config 导入避免循环依赖 (globals.py 导入了 ContextManager, 但 config.py 无此依赖)
             from src.bot.config import DATA_DIR
+
             self.storage_dir = Path(DATA_DIR)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.compressed_summary: Optional[str] = None
@@ -136,7 +155,7 @@ class ContextManager:
             except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         # 降级: CJK 感知估算
-        chinese = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         return chinese * 2 + (len(text) - chinese) // 4
 
     def should_compress(self, messages: List[Dict]) -> bool:
@@ -260,7 +279,7 @@ class ContextManager:
             text = self._get_message_text(msg, max_len=100)
             if msg["role"] == "user" and len(text) > 5:
                 # 取第一句作为主题
-                first_line = text.split('\n')[0][:60]
+                first_line = text.split("\n")[0][:60]
                 if first_line:
                     topics.add(first_line)
 
@@ -295,14 +314,8 @@ class ContextManager:
         new_messages = []
 
         # 1. 摘要作为上下文开头
-        new_messages.append({
-            "role": "user",
-            "content": summary_text
-        })
-        new_messages.append({
-            "role": "assistant",
-            "content": "好的，我已了解之前的对话内容，请继续。"
-        })
+        new_messages.append({"role": "user", "content": summary_text})
+        new_messages.append({"role": "assistant", "content": "好的，我已了解之前的对话内容，请继续。"})
 
         # 2. 关键消息保留（截断长内容，最多5条）
         for msg in key_messages[-5:]:
@@ -318,10 +331,7 @@ class ContextManager:
             new_messages = self._aggressive_compress(new_messages, target_tokens)
             compressed_tokens = self.estimate_tokens(new_messages)
 
-        logger.info(
-            f"本地压缩: {tokens} -> {compressed_tokens} tokens "
-            f"({total} -> {len(new_messages)} 条消息)"
-        )
+        logger.info(f"本地压缩: {tokens} -> {compressed_tokens} tokens ({total} -> {len(new_messages)} 条消息)")
 
         self.compressed_summary = summary_text
         self._save_summary(summary_text, older)
@@ -364,10 +374,7 @@ class ContextManager:
         if tokens <= self.COMPRESS_THRESHOLD:
             return messages, False
 
-        logger.info(
-            f"上下文 {tokens} tokens 超过阈值 {self.COMPRESS_THRESHOLD}，"
-            f"自动本地压缩..."
-        )
+        logger.info(f"上下文 {tokens} tokens 超过阈值 {self.COMPRESS_THRESHOLD}，自动本地压缩...")
 
         target = min(self.COMPRESS_THRESHOLD, model_max_tokens // 2)
         compressed, summary = self.compress_local(messages, target_tokens=target)
@@ -396,10 +403,7 @@ class ContextManager:
                 content = msg.get("content", "")
                 history_store.add_message(bot_id, chat_id, msg["role"], content)
 
-            logger.info(
-                f"已更新 HistoryStore: bot={bot_id}, chat={chat_id}, "
-                f"messages={len(compressed_messages)}"
-            )
+            logger.info(f"已更新 HistoryStore: bot={bot_id}, chat={chat_id}, messages={len(compressed_messages)}")
         except Exception as e:
             logger.error(f"更新 HistoryStore 失败: {e}")
 
@@ -437,29 +441,30 @@ class ContextManager:
 
 # ============ 对标 Letta (MemGPT 16k⭐): 分层上下文管理 v3.0 ============
 
+
 class TieredContextManager:
-    """分层上下文管理器 v3.0（搬运自 letta-ai/letta 16k⭐ 架构模式）
+    """分层上下文管理器 v3.1（搬运自 letta-ai/letta 22k⭐ 架构模式）
 
     三层架构：
     - Core Memory: 始终在上下文中的关键信息（用户画像、系统指令、当前任务）
     - Recall Memory: 最近对话历史（滑动窗口，自动压缩）
     - Archival Memory: 长期存储（通过 SharedMemory 向量搜索按需检索）
 
-    v3.0 升级（搬运自 Letta 架构模式）：
+    v3.1 升级（借鉴 Letta memory_blocks 架构）：
+    - 动态 Block 注册: register_block(name, limit, default) 运行时注册新 block
+    - Block token 限额: 每个 block 有独立 token 限额，写入时自动截断
     - Core memory per-chat 持久化（重启不丢失，JSON 文件）
     - 打通 SmartMemoryPipeline（LLM 事实提取自动流入 archival）
-    - 记忆重要性衰减 + 定期整合
     - per-chat_id 隔离（不同聊天各自记忆空间）
     """
 
     # 上下文预算分配（占总 token 预算的比例）
-    CORE_BUDGET_PCT = 0.15      # 15% 给 core memory
-    RECALL_BUDGET_PCT = 0.60    # 60% 给 recall (最近对话)
+    CORE_BUDGET_PCT = 0.15  # 15% 给 core memory
+    RECALL_BUDGET_PCT = 0.60  # 60% 给 recall (最近对话)
     ARCHIVAL_BUDGET_PCT = 0.15  # 15% 给 archival (按需检索)
-    SYSTEM_BUDGET_PCT = 0.10    # 10% 给 system prompt + 工具
+    SYSTEM_BUDGET_PCT = 0.10  # 10% 给 system prompt + 工具
 
-    def __init__(self, context_manager: ContextManager, shared_memory=None,
-                 total_budget: int = 60000):
+    def __init__(self, context_manager: ContextManager, shared_memory=None, total_budget: int = 60000):
         """
         Args:
             context_manager: 现有的 ContextManager 实例
@@ -478,18 +483,75 @@ class TieredContextManager:
         self._memory_dir = Path(self.ctx.storage_dir) / "core_memory"
         self._memory_dir.mkdir(parents=True, exist_ok=True)
 
-        # 默认 core memory 模板
-        self._default_core = {
-            "user_profile": "",      # 用户画像
-            "bot_personality": "",   # Bot 人设
-            "current_task": "",      # 当前任务
-            "preferences": "",       # 用户偏好
-            "key_facts": "",         # 关键事实 (v3.0)
-        }
+        # v3.1: Block 注册表 — 定义每个 block 的 token 限额和默认值
+        # 借鉴 Letta memory_blocks 架构: 每个 block 有独立 name/limit/default
+        self._block_registry: Dict[str, Dict] = {}
+
+        # 注册默认 block（等效于原 _default_core 硬编码）
+        self.register_block("user_profile", limit=2000, default="")
+        self.register_block("bot_personality", limit=1000, default="")
+        self.register_block("current_task", limit=1500, default="")
+        self.register_block("preferences", limit=1000, default="")
+        self.register_block("key_facts", limit=3000, default="")
+
+        # 默认 core memory 模板（从 block 注册表动态生成）
+        self._default_core = {name: info["default"] for name, info in self._block_registry.items()}
 
         # 向后兼容: 保留全局 _core_memory 用于无 chat_id 场景
         self._core_memory: Dict[str, str] = dict(self._default_core)
         self._core_dirty_global = False
+
+    # ---- v3.1: 动态 Block 注册（借鉴 Letta memory_blocks）----
+
+    def register_block(self, name: str, limit: int = 2000, default: str = ""):
+        """注册新的 core memory block
+
+        参数:
+            name: block 名称（如 "trading_context"）
+            limit: token 限额（超限自动截断）
+            default: 默认值
+        """
+        self._block_registry[name] = {
+            "limit": limit,
+            "default": default,
+        }
+        # 同步到 _default_core（新注册的 block 也出现在默认模板中）
+        if hasattr(self, "_default_core"):
+            self._default_core[name] = default
+
+    def get_block_info(self) -> Dict[str, Dict]:
+        """获取所有注册的 block 信息（名称 → {limit, usage}）"""
+        result = {}
+        for name, info in self._block_registry.items():
+            usage = len(self._core_memory.get(name, ""))
+            result[name] = {
+                "limit": info["limit"],
+                "usage_chars": usage,
+                "usage_pct": round(usage / info["limit"] * 100, 1) if info["limit"] > 0 else 0,
+            }
+        return result
+
+    def _truncate_to_limit(self, key: str, value: str) -> str:
+        """根据 block 注册的 token 限额截断内容"""
+        if key not in self._block_registry:
+            return value  # 未注册的 block 不做限制
+        limit = self._block_registry[key]["limit"]
+        if limit <= 0:
+            return value
+        # 简化的 token 估算: 1 个中文字≈2 token, 1 个英文词≈1 token
+        # 保守估算: 按字符数 * 0.7 估算 token
+        estimated_tokens = len(value) * 0.7
+        if estimated_tokens > limit:
+            # 截断到限额，保留尾部（最新信息更重要）
+            char_limit = int(limit / 0.7)
+            truncated = value[-char_limit:]
+            # 找到第一个完整行的开头
+            newline_pos = truncated.find("\n")
+            if newline_pos > 0 and newline_pos < len(truncated) // 4:
+                truncated = truncated[newline_pos + 1 :]
+            logger.debug(f"[TieredCtx] Block '{key}' 超限截断: {len(value)}→{len(truncated)} chars")
+            return truncated
+        return value
 
     # ---- v3.0: Per-chat Core Memory 管理 ----
 
@@ -540,7 +602,13 @@ class TieredContextManager:
                 self._save_core(chat_id)
 
     def core_set(self, key: str, value: str, chat_id: int = 0):
-        """写入 core memory（始终在上下文中）"""
+        """写入 core memory（始终在上下文中）
+
+        v3.1: 自动截断到 block 注册的 token 限额
+        """
+        # v3.1: 截断到限额
+        value = self._truncate_to_limit(key, value)
+
         core = self._get_core(chat_id)
         core[key] = value
         if chat_id == 0:
@@ -592,14 +660,16 @@ class TieredContextManager:
             logger.debug(f"[TieredCtx] Archival search failed: {e}")
             return ""
 
-    def archival_store(self, key: str, value: str, category: str = "archival",
-                       importance: int = 2):
+    def archival_store(self, key: str, value: str, category: str = "archival", importance: int = 2):
         """存入 archival memory"""
         if not self.shared_memory:
             return
         self.shared_memory.remember(
-            key=key, value=value, category=category,
-            source_bot="tiered_ctx", importance=importance,
+            key=key,
+            value=value,
+            category=category,
+            source_bot="tiered_ctx",
+            importance=importance,
         )
 
     # ---- v3.0: SmartMemory 集成 ----
@@ -612,15 +682,14 @@ class TieredContextManager:
         """
         try:
             from src.smart_memory import get_smart_memory
+
             smart_mem = get_smart_memory()
             if smart_mem is None or not self.shared_memory:
                 return
 
             # 从 SharedMemory 检索最近提取的事实
             try:
-                results = self.shared_memory.semantic_search(
-                    "user preference fact", limit=5
-                )
+                results = self.shared_memory.semantic_search("user preference fact", limit=5)
             except Exception as e:  # noqa: F841
                 results = []
 
@@ -634,10 +703,8 @@ class TieredContextManager:
 
             # 同步用户画像到 core memory
             try:
-                profile_results = self.shared_memory.semantic_search(
-                    "user_profile", limit=1
-                )
-                for r in (profile_results or []):
+                profile_results = self.shared_memory.semantic_search("user_profile", limit=1)
+                for r in profile_results or []:
                     val = r.get("value", "")
                     if not val or "user_profile" not in r.get("key", ""):
                         continue
@@ -742,8 +809,13 @@ class TieredContextManager:
         archival_budget = int(budget * self.ARCHIVAL_BUDGET_PCT)
 
         assembled = []
-        metadata = {"core_tokens": 0, "recall_tokens": 0, "archival_tokens": 0,
-                     "compressed": False, "archival_results": 0}
+        metadata = {
+            "core_tokens": 0,
+            "recall_tokens": 0,
+            "archival_tokens": 0,
+            "compressed": False,
+            "archival_results": 0,
+        }
 
         # v3.0: 同步 SmartMemory 事实到 core memory
         self._sync_smart_memory_facts(chat_id)
