@@ -138,6 +138,7 @@
 | HI-506 | `ai-pool` | `litellm_router.py` | iflow Key 7天有效期无任何监控/告警，10 个 TIER_S 模型可能静默失效 → **已修复 2026-04-14**: 新增 `~/.openclaw/iflow_key_timestamp.json` 记录首次使用时间，超 6 天告警并跳过 | 2026-04-14 |
 | HI-507 | `backend` | `crawl4ai_engine.py` | 淘宝比价实际不可用（需登录）但没有告知用户 → **已修复 2026-04-14**: 淘宝标记 enabled=False + 比价结果末尾标注实际可用平台 | 2026-04-14 |
 | HI-508 | `backend` | `onboarding_mixin.py` | 引导完成后只有"查看全部功能"按钮，无即时体验引导 → **已修复 2026-04-14**: 根据用户选择的兴趣方向添加"立即试试"操作按钮 | 2026-04-14 |
+| HI-509 | `backend` | `notify_style.py` | `from typing import ...` 缺少 `List` 导入，导致所有测试在 import 阶段失败 → **已修复 2026-04-15**: 添加 `List` 到 typing imports | 2026-04-15 |
 | HI-492 | `infra` | `launchagents/*` | macOS 26.4 Sandbox System Policy 阻止 launchd 读取 ~/Desktop/ 路径下的文件，导致所有 6 个 LaunchAgent 启动失败(exit 78/126) → **已修复 2026-04-13**: ProgramArguments 改为 `/bin/bash -c exec` 间接调用 + 日志路径迁移到 `~/Library/Logs/OpenClaw/` + plist 改为真实文件(非符号链接) | 2026-04-13 |
 | HI-493 | `backend` | `scheduler.py` | 笔笔省领券定时任务使用美东时间 08:30(=北京20:30)，导致中午外卖无券可用；且 auto_claim_coupon 无并发锁，曾出现 7 个 mitmdump 同时启动 → **已修复 2026-04-13**: 改为北京时间 07:00 + fcntl.flock 文件锁 | 2026-04-13 |
 | HI-494 | `infra` | `run-audit.sh` | 夜间审计被 macOS 延迟触发后，get_remaining_minutes() 算出剩余0分钟直接跳过全部8阶段，产生空报告 → **已修复 2026-04-13**: 新增补跑模式，检测到错过窗口时允许执行120分钟 | 2026-04-13 |

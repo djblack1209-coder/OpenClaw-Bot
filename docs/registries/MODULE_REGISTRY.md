@@ -1,6 +1,53 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-12 | 补全 26 个 HI-358 拆分子模块注册 (总模块数 217→243)
+> 最后更新: 2026-04-15 | 新增 local_llm.py + controls.py (总模块数 243→245)
+
+---
+
+## 新增模块 (2026-04-15)
+
+### local_llm.py — 本地 LLM 适配器
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/tools/local_llm.py` |
+| 行数 | 253 |
+| 导入方 | `core/intent_parser.py` (本地预筛查) |
+| 依赖 | `httpx` (已安装), 无新增第三方依赖 |
+
+**Public API:**
+- `LocalLLMAdapter(backend, base_url)` — 初始化本地 LLM 适配器
+  - `classify_intent(text)` — 意图分类（返回意图标签）
+  - `summarize_context(messages)` — 上下文摘要
+  - `extract_sentiment(text)` — 情感提取
+  - `xianyu_quick_reply(buyer_msg, item_info)` — 闲鱼快速回复
+  - `extract_keywords(text)` — 关键词提取
+- `detect_local_llm()` — 自动探测 Ollama/LM Studio/HF Inference Server
+- 支持后端: `ollama` (默认 11434), `lmstudio` (默认 1234), `huggingface` (默认 8080)
+
+---
+
+### controls.py — 控制面板 API 端点
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/api/routers/controls.py` |
+| 行数 | 225 |
+| 导入方 | `api/routers/__init__.py` → `api/server.py` |
+| 依赖 | `fastapi`, `pydantic` |
+
+**Public API (HTTP 端点):**
+- `GET /api/v1/controls/trading` — 获取交易控件状态
+- `PUT /api/v1/controls/trading` — 更新交易控件
+- `GET /api/v1/controls/social` — 获取社媒控件状态
+- `PUT /api/v1/controls/social` — 更新社媒控件
+- `GET /api/v1/controls/scheduler` — 获取调度器状态
+- `PUT /api/v1/controls/scheduler` — 更新调度器设置
+- `GET /api/v1/controls/settings` — 获取全局设置
+- `PUT /api/v1/controls/settings` — 更新全局设置
+- `GET /api/v1/controls/all` — 获取所有控件状态（聚合）
+
+**状态持久化:** `data/controls_state.json`
 
 ---
 
