@@ -251,6 +251,8 @@ def job_noon_engage() -> None:
         except Exception as e:
             logger.error("[Autopilot] 自动回复失败: %s", e)
             reply_result = {"success": False, "error": str(e)}
+            # 互动失败通知（措辞较柔和）
+            _alert_admin(f"⚠️ 社媒自动互动任务失败: 自动回复\n错误: {str(e)[:100]}")
 
         # 蹭评热门帖子
         try:
@@ -259,6 +261,8 @@ def job_noon_engage() -> None:
         except Exception as e:
             logger.error("[Autopilot] 蹭评失败: %s", e)
             scout_result = {"success": False, "error": str(e)}
+            # 互动失败通知（措辞较柔和）
+            _alert_admin(f"⚠️ 社媒自动互动任务失败: 蹭评\n错误: {str(e)[:100]}")
 
         _notify(
             "午间互动完成",
@@ -270,6 +274,8 @@ def job_noon_engage() -> None:
     except Exception as e:
         logger.error("[Autopilot] 午间互动失败: %s", e)
         _notify(f"午间互动失败: {e}")
+        # 互动整体失败通知
+        _alert_admin(f"⚠️ 社媒自动互动任务整体失败\n错误: {str(e)[:100]}")
 
 
 def job_evening_produce() -> None:
@@ -492,6 +498,8 @@ def job_night_publish() -> None:
     except Exception as e:
         logger.error("[Autopilot] 发布整体失败: %s", e)
         _notify(f"发布失败: {e}")
+        # 整体发布流程崩溃，通知管理员
+        _alert_admin(f"⚠️ 社媒自动发布整体失败\n错误: {str(e)[:100]}\n\n所有草稿均未发出，请手动检查")
 
 
 def job_late_review() -> None:
