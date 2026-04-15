@@ -23,6 +23,65 @@ from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
+
+# ── v4.1: 记忆类型枚举（借鉴 Letta memory_blocks 分类体系）──
+
+
+class MemoryType:
+    """记忆类型枚举 — 不同类型有不同的衰减速率和检索权重
+
+    借鉴 Letta 的分层设计:
+    - fact: 客观事实（衰减慢，如"用户叫小王"）
+    - preference: 用户偏好（衰减中，如"喜欢简洁回复"）
+    - episodic: 情景记忆（衰减快，如"昨天讨论了AAPL"）
+    - procedural: 程序性知识（不衰减，如"用/risk查风控"）
+    - meta: 系统元数据（不衰减，如"上次对话时间"）
+    """
+
+    FACT = "fact"  # 客观事实 — 衰减率 0.01/天
+    PREFERENCE = "preference"  # 用户偏好 — 衰减率 0.02/天
+    EPISODIC = "episodic"  # 情景记忆 — 衰减率 0.05/天
+    PROCEDURAL = "procedural"  # 程序性知识 — 不衰减
+    META = "meta"  # 系统元数据 — 不衰减
+    GENERAL = "general"  # 通用（向后兼容）— 衰减率 0.03/天
+
+    # 每种类型的日衰减率
+    DECAY_RATES = {
+        FACT: 0.01,
+        PREFERENCE: 0.02,
+        EPISODIC: 0.05,
+        PROCEDURAL: 0.0,
+        META: 0.0,
+        GENERAL: 0.03,
+    }
+
+    # 检索时的权重加成（乘以 importance）
+    SEARCH_WEIGHTS = {
+        FACT: 1.2,
+        PREFERENCE: 1.1,
+        EPISODIC: 0.8,
+        PROCEDURAL: 1.0,
+        META: 0.5,
+        GENERAL: 1.0,
+    }
+
+    ALL_TYPES = {FACT, PREFERENCE, EPISODIC, PROCEDURAL, META, GENERAL}
+
+    @classmethod
+    def from_category(cls, category: str) -> str:
+        """从旧版 category 推断 memory_type（向后兼容）"""
+        _MAPPING = {
+            "user_preference": cls.PREFERENCE,
+            "user_profile": cls.FACT,
+            "key_fact": cls.FACT,
+            "collab": cls.EPISODIC,
+            "tool_usage": cls.PROCEDURAL,
+            "system": cls.META,
+            "archival": cls.GENERAL,
+        }
+        return _MAPPING.get(category, cls.GENERAL)
+
+
 # ── Mem0 可用性检测 ──
 
 _mem0_available = False
@@ -282,8 +341,17 @@ class SharedMemory:
         importance: int = 1,
         ttl_hours: Optional[int] = None,
         related_keys: Optional[List[str]] = None,
+        memory_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """存入共享记忆。接口与 v3.0 完全兼容。"""
+        """存入共享记忆。接口与 v3.0 完全兼容。
+
+        v4.1 新增: memory_type 参数（fact/preference/episodic/procedural/meta）
+        不传则从 category 自动推断。
+        """
+        # v4.1: 推断 memory_type
+        if memory_type is None:
+            memory_type = MemoryType.from_category(category)
+
         mem0_id = None
 
         # ── Mem0 写入（自动事实提取 + 向量索引）──
@@ -854,7 +922,7 @@ class SharedMemory:
     # ════════════════════════════════════════════
 
     def _cleanup_expired(self, conn: sqlite3.Connection):
-        """清理过期记忆 + LRU 淘汰超量记忆"""
+        """清理过期记忆 + LRU 淘汰超量记忆 + v4.1 记忆衰减"""
         now_ts = time.time()
         if now_ts - self._last_cleanup_time < self._cleanup_interval:
             return
@@ -866,6 +934,54 @@ class SharedMemory:
             "DELETE FROM shared_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
             (now,),
         )
+
+        # 阶段1.5 (v4.1): 记忆重要性衰减 — 每次清理时降低旧记忆的 importance
+        # 借鉴 Letta 的记忆衰减机制，不同类型衰减速率不同
+        try:
+            # 获取超过1天未衰减的记忆
+            yesterday = (now_et() - timedelta(days=1)).isoformat()
+            old_memories = conn.execute(
+                "SELECT id, category, importance FROM shared_memories "
+                "WHERE (last_decay_at IS NULL OR last_decay_at < ?) "
+                "AND importance > 0",
+                (yesterday,),
+            ).fetchall()
+
+            decayed_count = 0
+            for row in old_memories:
+                mem_id = row["id"]
+                category = row["category"]
+                importance = row["importance"]
+                # 根据记忆类型确定衰减率
+                mem_type = MemoryType.from_category(category)
+                decay_rate = MemoryType.DECAY_RATES.get(mem_type, 0.03)
+                if decay_rate <= 0:
+                    continue  # 不衰减的类型（procedural/meta）
+                # 计算新 importance（最低为0）
+                new_importance = max(0, importance - 1) if decay_rate >= 0.05 else importance
+                # 低衰减率只在 importance > 2 时衰减
+                if decay_rate < 0.05 and importance > 2:
+                    new_importance = importance  # 低衰减率暂不降级
+                elif decay_rate >= 0.05 and importance > 0:
+                    new_importance = max(0, importance - 1)
+                    decayed_count += 1
+
+                if new_importance != importance:
+                    conn.execute(
+                        "UPDATE shared_memories SET importance = ?, last_decay_at = ? WHERE id = ?",
+                        (new_importance, now, mem_id),
+                    )
+                else:
+                    # 只更新 last_decay_at 避免重复处理
+                    conn.execute(
+                        "UPDATE shared_memories SET last_decay_at = ? WHERE id = ?",
+                        (now, mem_id),
+                    )
+
+            if decayed_count > 0:
+                logger.info(f"[SharedMemory] 记忆衰减: {decayed_count} 条情景记忆 importance 降级")
+        except Exception as e:
+            logger.debug(f"[SharedMemory] 记忆衰减失败: {e}")
 
         # 阶段2: LRU 淘汰 — 超过总量上限时，按低重要性+低访问+旧时间淘汰
         total = conn.execute("SELECT COUNT(*) FROM shared_memories").fetchone()[0]
