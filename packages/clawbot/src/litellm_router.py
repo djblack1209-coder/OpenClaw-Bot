@@ -815,6 +815,13 @@ class LiteLLMPool:
         if not self._router:
             raise RuntimeError("LiteLLMPool 未初始化")
 
+        # 首次被调用时，在后台发送启动健康摘要（不阻塞当前请求）
+        if getattr(self, "_startup_summary_pending", False):
+            self._startup_summary_pending = False
+            import asyncio
+
+            asyncio.create_task(self.send_startup_health_summary())
+
         # ── 智能路由: 根据查询复杂度 + 预算状态自动选模型 ──
         # 调用方传了 model_family 则尊重（如 FAMILY_CLAUDE 显式请求）
         # 未传时，按消息复杂度+预算余量自动选择，避免简单查询浪费贵模型
@@ -1090,6 +1097,55 @@ class LiteLLMPool:
                 provs[p]["requests_today"] += s.used_today
                 provs[p]["errors"] += s.consecutive_errors
         return provs
+
+    async def send_startup_health_summary(self) -> None:
+        """启动完成后向管理员推送 AI 引擎健康摘要"""
+        try:
+            stats = self.get_stats()
+            total = stats["total_sources"]
+            active = stats["active_sources"]
+            families_count = stats["model_families"]
+            families = stats.get("families", {})
+
+            # 按在线/离线分组
+            online_parts = []
+            offline_parts = []
+            for fam_name, fam_info in families.items():
+                fam_active = fam_info.get("active", 0)
+                if fam_active > 0:
+                    online_parts.append(f"{fam_name}({fam_active})")
+                else:
+                    offline_parts.append(f"{fam_name}(0)")
+
+            # 拼接摘要消息
+            lines = [
+                "🤖 AI 引擎启动完成",
+                "",
+                f"📊 {active}/{total} 个模型在线，覆盖 {families_count} 个模型族",
+                "",
+            ]
+            if online_parts:
+                lines.append(f"✅ 在线: {' '.join(online_parts)}")
+            if offline_parts:
+                lines.append(f"❌ 离线: {' '.join(offline_parts)}")
+            lines.append("")
+            lines.append("💡 说「模型」查看详细状态")
+            summary = "\n".join(lines)
+
+            # 通过 Telegram Bot 发送给所有管理员
+            from src.bot.globals import bot_registry, ALLOWED_USER_IDS
+
+            bot = next(iter(bot_registry.values()), None)
+            if bot and hasattr(bot, "application"):
+                for uid in ALLOWED_USER_IDS:
+                    try:
+                        await bot.application.bot.send_message(chat_id=int(uid), text=summary)
+                    except Exception as e:
+                        logger.debug("向管理员 %s 发送启动摘要失败: %s", uid, e)
+            else:
+                logger.debug("Bot 尚未就绪，跳过启动健康摘要推送")
+        except Exception as e:
+            logger.debug("发送启动健康摘要失败(不影响正常运行): %s", e)
 
     async def health_check(self, timeout: float = 10.0) -> Dict:
         """启动时健康检查 — 快速 ping 每个 provider，禁用不可用的。
