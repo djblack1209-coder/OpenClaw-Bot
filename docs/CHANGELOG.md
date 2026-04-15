@@ -7,6 +7,23 @@
 
 ---
 
+## [2026-04-15] 社媒自动发布/互动失败时 Telegram 告警通知
+
+> 领域: `backend`
+> 影响模块: `social_scheduler.py`
+> 关联问题: 发布失败只打日志，用户完全不知道
+
+### 变更内容
+
+1. **新增 `_alert_admin()` 辅助函数**：通过 `run_coroutine_threadsafe` 将 Telegram 通知从 APScheduler 线程池调度到主事件循环，发送失败时静默跳过不影响主流程
+2. **`job_night_publish` 发布失败告警**：单篇发布异常、worker 返回失败、整体流程崩溃三种情况均通知管理员，消息包含平台名和手动发布提示
+3. **`job_noon_engage` 互动失败告警**：自动回复失败、蹭评失败、整体互动失败均通知管理员，措辞较柔和
+
+### 文件变更
+- `packages/clawbot/src/social_scheduler.py` — 新增 `_alert_admin` 函数 + 6 处告警调用
+
+---
+
 ## [2026-04-15] 笔笔省全平台领券 — 从只领提现券扩展到美团/京东/滴滴等
 
 > 领域: `backend`
