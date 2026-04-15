@@ -93,6 +93,27 @@
 7. **文档同步** — 更新注册表 + HEALTH.md + CHANGELOG（**不可跳过**）
 8. **交付汇报** — 大白话总结 + 截图对比 + 告知验证方式
 
+### 2.1 Skill 路由表（根据任务类型自动选择工作流）
+
+> 借鉴 gstack Sprint 流程 + claude-code Plugin 系统
+
+| 用户意图 | 推荐 Skill 链 | 说明 |
+|----------|---------------|------|
+| "加个功能 / 做个 XX" | `brainstorming` → `writing-plans` → `metagpt-sop` | 先想清楚再动手 |
+| "出 Bug 了 / 报错了" | `investigate` | 根因调试，假设→验证循环 |
+| "审查代码 / 检查一下" | `review` | 四维度审查 + LGTM/LBTM 迭代 |
+| "发版 / 提 PR / 推代码" | `ship` | 全自动：测试→安全→文档→提交→PR |
+| "系统怎么样 / 健康检查" | `health-check` | 一键状态汇报 |
+| "继续 / 接着上次" | `handoff`(读取模式) | 恢复上下文 + 拍新基线 |
+| "先这样 / 今天到这" | `handoff`(写入模式) | 自动交接 + 裁剪旧记录 |
+| "测试 / 跑测试" | `test-driven-development` | 红绿重构循环 |
+| "调试 / Debug" | `systematic-debugging` | 系统化调试流程 |
+| "重构 / 整理代码" | `requesting-code-review` → `review` | 先审查再重构 |
+| "写设计文档 / 规格" | `metagpt-prd` | 产品需求文档生成 |
+| "看架构 / 架构设计" | `metagpt-architect` | 系统架构分析 |
+
+**没有匹配的意图 → 走标准 SOP 8 阶段。**
+
 ---
 
 ## 3. 质量门 (每次代码变更)

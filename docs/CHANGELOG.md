@@ -3,6 +3,27 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-15] OpenCode Workflow 全面升级 v2
+> 领域: `infra`, `docs`
+> 影响模块: `AGENTS.md`, `Skills`, `Plugins`
+> 关联问题: 无（主动优化）
+### 变更内容
+- 借鉴 anthropics/claude-code（Hook 系统）+ garrytan/gstack（Skill 拆分 + Sprint 流程），三层全面升级
+- **第 1 层 — 新建 5 个 Skill**：`/ship`（发布流程）、`/review`（代码审查）、`/investigate`（根因调试）、`/health-check`（健康检查）、`/handoff`（会话交接）
+- **第 2 层 — 插件强化**：改造 `auto-commit.js`（语义化提交 + 安全扫描 + 恢复 pre-commit hooks）、新建 `regression-guard.js`（自动回归测试）、新建 `doc-sync-guard.js`（文档同步提醒）
+- **第 3 层 — AGENTS.md 升级**：新增 §1.4 验证铁律、§1.5 决策分类（机械/品味/架构/业务四级）、§2.1 Skill 路由表（12 种用户意图→Skill 映射）
+### 文件变更
+- `AGENTS.md` — 新增验证铁律、决策分类、Skill 路由表三个章节
+- `~/.config/opencode/skills/ship/SKILL.md` — 新建：8 步发布流程
+- `~/.config/opencode/skills/review/SKILL.md` — 新建：四维度审查 + LGTM/LBTM 迭代
+- `~/.config/opencode/skills/investigate/SKILL.md` — 新建：假设→验证循环 + 项目特定坑速查
+- `~/.config/opencode/skills/health-check/SKILL.md` — 新建：一键系统状态汇报
+- `~/.config/opencode/skills/handoff/SKILL.md` — 新建：读写双模式会话交接
+- `~/.config/opencode/plugins/auto-commit.js` — 改造：语义化提交 + 安全扫描 + 去掉 --no-verify
+- `~/.config/opencode/plugins/regression-guard.js` — 新建：自动回归测试 + 基线对比
+- `~/.config/opencode/plugins/doc-sync-guard.js` — 新建：文档同步提醒
+- `docs/specs/2026-04-15-workflow-upgrade-design.md` — 新建：设计文档
+
 ---
 
 ---
