@@ -29,6 +29,7 @@ v2.0 新增（对标 freqtrade）：
 - risk_sector.py         — 板块集中度与风险敞口 (SectorMixin)
 - risk_config.py         — 配置与检查结果类型 (RiskConfig, RiskCheckResult)
 """
+
 import logging
 import threading
 from datetime import datetime, timedelta
@@ -44,11 +45,12 @@ from src.risk_config import RiskConfig, RiskCheckResult  # noqa: F401 — 向后
 from src.risk_extreme_market import ExtremeMarketMixin  # noqa: F401
 from src.risk_kelly import KellyMixin  # noqa: F401
 from src.risk_sector import SectorMixin  # noqa: F401
+from src.risk_var import VaRMixin  # noqa: F401 — VaR/CVaR 风险度量 (搬运自 QuantStats)
 
 logger = logging.getLogger(__name__)
 
 
-class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
+class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
     """
     硬性风控引擎
 
@@ -98,18 +100,20 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         # 盈利回吐追踪
         self._position_peak_pnl: Dict[str, float] = {}  # symbol -> 最高浮盈
 
-        logger.info(f"[RiskManager] v2.0 初始化完成 | 资金=${self.config.total_capital} "
-                     f"| 单笔风险{self.config.max_risk_per_trade_pct*100}% "
-                     f"| 日亏损限额${self.config.daily_loss_limit} "
-                     f"| 凯利公式={'开' if self.config.kelly_enabled else '关'} "
-                     f"| 阶梯熔断={'开' if self.config.tiered_cooldown_enabled else '关'}")
+        logger.info(
+            f"[RiskManager] v2.0 初始化完成 | 资金=${self.config.total_capital} "
+            f"| 单笔风险{self.config.max_risk_per_trade_pct * 100}% "
+            f"| 日亏损限额${self.config.daily_loss_limit} "
+            f"| 凯利公式={'开' if self.config.kelly_enabled else '关'} "
+            f"| 阶梯熔断={'开' if self.config.tiered_cooldown_enabled else '关'}"
+        )
 
     # ============ 核心：交易审核 ============
 
     def check_trade(
         self,
         symbol: str,
-        side: str,           # BUY / SELL
+        side: str,  # BUY / SELL
         quantity: float,
         entry_price: float,
         stop_loss: float = 0,
@@ -130,41 +134,30 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
 
         # === 检查-1: 参数合法性 ===
         if entry_price <= 0:
-            return RiskCheckResult(
-                approved=False,
-                reason=f"入场价必须大于零 (got {entry_price})"
-            )
+            return RiskCheckResult(approved=False, reason=f"入场价必须大于零 (got {entry_price})")
         if quantity <= 0:
-            return RiskCheckResult(
-                approved=False,
-                reason=f"交易数量必须大于零 (got {quantity})"
-            )
+            return RiskCheckResult(approved=False, reason=f"交易数量必须大于零 (got {quantity})")
 
         # === 检查0: 黑名单 ===
         if symbol in self.config.blacklist:
-            return RiskCheckResult(
-                approved=False,
-                reason=f"{symbol} 在黑名单中，禁止交易"
-            )
+            return RiskCheckResult(approved=False, reason=f"{symbol} 在黑名单中，禁止交易")
 
         # === 检查1: 熔断状态 ===
         if self._is_in_cooldown():
             remaining = int((self._cooldown_until - now_et()).total_seconds()) // 60
             return RiskCheckResult(
-                approved=False,
-                reason=f"熔断冷却中，还需等待{remaining}分钟 "
-                       f"(连续{self._consecutive_losses}笔亏损触发)"
+                approved=False, reason=f"熔断冷却中，还需等待{remaining}分钟 (连续{self._consecutive_losses}笔亏损触发)"
             )
 
         # === 检查1.5: 极端行情冷却期 ===
         if self.is_in_extreme_cooldown():
-            remaining = int((self._last_extreme_time + timedelta(
-                minutes=self.config.extreme_market_cooldown_minutes
-            ) - now_et()).total_seconds() // 60)
-            return RiskCheckResult(
-                approved=False,
-                reason=f"极端行情冷却期，暂停交易 (剩余{remaining}min)"
+            remaining = int(
+                (
+                    self._last_extreme_time + timedelta(minutes=self.config.extreme_market_cooldown_minutes) - now_et()
+                ).total_seconds()
+                // 60
             )
+            return RiskCheckResult(approved=False, reason=f"极端行情冷却期，暂停交易 (剩余{remaining}min)")
 
         # === 检查2: 日亏损限额 ===
         self._refresh_today_pnl()
@@ -172,37 +165,28 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             return RiskCheckResult(
                 approved=False,
                 reason=f"已触及日亏损限额: 今日PnL=${self._today_pnl:.2f}, "
-                       f"限额=-${self.config.daily_loss_limit:.2f}，今日禁止新开仓"
+                f"限额=-${self.config.daily_loss_limit:.2f}，今日禁止新开仓",
             )
 
         # === 检查3: 交易时段 ===
         if self.config.trading_hours_enabled and not self._is_trading_hours():
-            return RiskCheckResult(
-                approved=False,
-                reason="当前非交易时段，禁止下单"
-            )
+            return RiskCheckResult(approved=False, reason="当前非交易时段，禁止下单")
 
         # === 检查4: 止损必须设定（买入时） ===
-        if side == 'BUY' and stop_loss <= 0:
-            return RiskCheckResult(
-                approved=False,
-                reason="买入必须设定止损价（stop_loss > 0）"
-            )
+        if side == "BUY" and stop_loss <= 0:
+            return RiskCheckResult(approved=False, reason="买入必须设定止损价（stop_loss > 0）")
 
         # === 检查5: 止损方向合理性 ===
-        if side == 'BUY' and stop_loss > 0:
+        if side == "BUY" and stop_loss > 0:
             if stop_loss >= entry_price:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"止损价({stop_loss})必须低于入场价({entry_price})"
-                )
+                return RiskCheckResult(approved=False, reason=f"止损价({stop_loss})必须低于入场价({entry_price})")
             # 止损幅度不能超过10%
             sl_pct = (entry_price - stop_loss) / entry_price
             if sl_pct > 0.10:
-                warnings.append(f"止损幅度{sl_pct*100:.1f}%偏大(>10%)，超短线建议2-5%")
+                warnings.append(f"止损幅度{sl_pct * 100:.1f}%偏大(>10%)，超短线建议2-5%")
 
         # === 检查6: 风险收益比 ===
-        if side == 'BUY' and stop_loss > 0 and take_profit > 0:
+        if side == "BUY" and stop_loss > 0 and take_profit > 0:
             risk = entry_price - stop_loss
             reward = take_profit - entry_price
             if risk > 0:
@@ -211,15 +195,15 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                     return RiskCheckResult(
                         approved=False,
                         reason=f"风险收益比{rr_ratio:.2f}:1 低于最低要求"
-                               f"{self.config.min_risk_reward_ratio}:1 "
-                               f"(风险${risk:.2f} vs 收益${reward:.2f})"
+                        f"{self.config.min_risk_reward_ratio}:1 "
+                        f"(风险${risk:.2f} vs 收益${reward:.2f})",
                     )
-        elif side == 'BUY' and take_profit <= 0:
+        elif side == "BUY" and take_profit <= 0:
             warnings.append("未设定止盈价，建议设定以锁定利润")
 
         # === 检查7: 单笔风险金额 ===
         max_risk_amount = self.config.total_capital * self.config.max_risk_per_trade_pct
-        if side == 'BUY' and stop_loss > 0:
+        if side == "BUY" and stop_loss > 0:
             risk_per_share = entry_price - stop_loss
             actual_risk = quantity * risk_per_share
             if actual_risk > max_risk_amount:
@@ -229,15 +213,12 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                     return RiskCheckResult(
                         approved=False,
                         reason=f"单笔风险${actual_risk:.2f}超过上限"
-                               f"${max_risk_amount:.2f}(资金的"
-                               f"{self.config.max_risk_per_trade_pct*100}%)，"
-                               f"且无法调整到合理数量"
+                        f"${max_risk_amount:.2f}(资金的"
+                        f"{self.config.max_risk_per_trade_pct * 100}%)，"
+                        f"且无法调整到合理数量",
                     )
                 result.adjusted_quantity = suggested_qty
-                warnings.append(
-                    f"数量从{quantity}调整为{suggested_qty}，"
-                    f"以控制风险在${max_risk_amount:.2f}以内"
-                )
+                warnings.append(f"数量从{quantity}调整为{suggested_qty}，以控制风险在${max_risk_amount:.2f}以内")
                 quantity = suggested_qty
 
         # === 检查8: 仓位集中度 ===
@@ -249,22 +230,19 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 return RiskCheckResult(
                     approved=False,
                     reason=f"仓位价值${position_value:.2f}超过单只上限"
-                           f"${max_position_value:.2f}(资金的"
-                           f"{self.config.max_position_pct*100}%)"
+                    f"${max_position_value:.2f}(资金的"
+                    f"{self.config.max_position_pct * 100}%)",
                 )
             if result.adjusted_quantity is None or suggested_qty < result.adjusted_quantity:
                 result.adjusted_quantity = suggested_qty
-            warnings.append(
-                f"仓位价值${position_value:.2f}超过上限"
-                f"${max_position_value:.2f}，建议减少数量"
-            )
+            warnings.append(f"仓位价值${position_value:.2f}超过上限${max_position_value:.2f}，建议减少数量")
 
         # === 检查9: 总敞口 ===
         if current_positions:
             total_exposure = sum(
-                p.get('quantity', 0) * (p.get('avg_price', 0) or p.get('avg_cost', 0))
+                p.get("quantity", 0) * (p.get("avg_price", 0) or p.get("avg_cost", 0))
                 for p in current_positions
-                if p.get('status', 'open') == 'open' or 'status' not in p
+                if p.get("status", "open") == "open" or "status" not in p
             )
             new_total = total_exposure + position_value
             max_exposure = self.config.total_capital * self.config.max_total_exposure_pct
@@ -272,45 +250,35 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 return RiskCheckResult(
                     approved=False,
                     reason=f"总敞口${new_total:.2f}将超过上限"
-                           f"${max_exposure:.2f}(资金的"
-                           f"{self.config.max_total_exposure_pct*100}%)"
+                    f"${max_exposure:.2f}(资金的"
+                    f"{self.config.max_total_exposure_pct * 100}%)",
                 )
 
         # === 检查10: 最大持仓数 ===
-        if current_positions and side == 'BUY':
-            open_count = len([
-                p for p in current_positions
-                if p.get('status', 'open') == 'open' or 'status' not in p
-            ])
+        if current_positions and side == "BUY":
+            open_count = len([p for p in current_positions if p.get("status", "open") == "open" or "status" not in p])
             # 检查是否是加仓（已有该标的持仓）
             has_existing = any(
-                p.get('symbol', '').upper() == symbol
+                p.get("symbol", "").upper() == symbol
                 for p in current_positions
-                if p.get('status', 'open') == 'open' or 'status' not in p
+                if p.get("status", "open") == "open" or "status" not in p
             )
             if not has_existing and open_count >= self.config.max_open_positions:
                 return RiskCheckResult(
                     approved=False,
-                    reason=f"已有{open_count}个持仓，达到上限"
-                           f"{self.config.max_open_positions}个，禁止新开仓"
+                    reason=f"已有{open_count}个持仓，达到上限{self.config.max_open_positions}个，禁止新开仓",
                 )
 
         # === 检查11: 信号强度 ===
         if abs(signal_score) < self.config.min_signal_score and signal_score != 0:
-            warnings.append(
-                f"信号评分{signal_score}偏弱(阈值±{self.config.min_signal_score})，"
-                f"建议谨慎"
-            )
+            warnings.append(f"信号评分{signal_score}偏弱(阈值±{self.config.min_signal_score})，建议谨慎")
 
         # === 检查12: 剩余日亏损额度 ===
         remaining_daily = self.config.daily_loss_limit + self._today_pnl
-        if side == 'BUY' and stop_loss > 0:
+        if side == "BUY" and stop_loss > 0:
             potential_loss = quantity * (entry_price - stop_loss)
             if potential_loss > remaining_daily:
-                warnings.append(
-                    f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额"
-                    f"(剩余额度${remaining_daily:.2f})"
-                )
+                warnings.append(f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额(剩余额度${remaining_daily:.2f})")
 
         # === v2.0 检查13: 阶梯式熔断仓位缩放 ===
         if self.config.tiered_cooldown_enabled and self._position_scale < 1.0:
@@ -320,7 +288,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 result.adjusted_quantity = scaled_qty
                 warnings.append(
                     f"阶梯熔断Tier{self._current_tier}: 仓位缩放至"
-                    f"{self._position_scale*100:.0f}%，"
+                    f"{self._position_scale * 100:.0f}%，"
                     f"数量{original_qty}->{scaled_qty}"
                 )
                 quantity = scaled_qty
@@ -331,7 +299,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             return RiskCheckResult(
                 approved=False,
                 reason=f"滚动{self.config.drawdown_window_days}天回撤超过"
-                       f"{self.config.drawdown_halt_pct*100}%，暂停交易"
+                f"{self.config.drawdown_halt_pct * 100}%，暂停交易",
             )
         elif drawdown_level == "warn":
             original_qty = result.adjusted_quantity or quantity
@@ -340,7 +308,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 result.adjusted_quantity = scaled_qty
                 warnings.append(
                     f"回撤保护: 近{self.config.drawdown_window_days}天回撤超"
-                    f"{self.config.drawdown_warn_pct*100}%，仓位减半"
+                    f"{self.config.drawdown_warn_pct * 100}%，仓位减半"
                 )
                 quantity = scaled_qty
 
@@ -352,8 +320,8 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 return RiskCheckResult(
                     approved=False,
                     reason=f"最近{len(self._rolling_pnl)}笔交易累计亏损"
-                           f"${abs(rolling_total):.2f}，超过滚动窗口限额"
-                           f"${rolling_max_loss:.2f}"
+                    f"${abs(rolling_total):.2f}，超过滚动窗口限额"
+                    f"${rolling_max_loss:.2f}",
                 )
 
         # === v2.0 检查16: 交易频率限制 ===
@@ -362,21 +330,25 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             return RiskCheckResult(approved=False, reason=freq_check)
 
         # === v2.0 检查17: 相关性/板块集中度 ===
-        if current_positions and side == 'BUY':
-            sector_warning = self._check_sector_concentration(
-                symbol, quantity * entry_price, current_positions
-            )
+        if current_positions and side == "BUY":
+            sector_warning = self._check_sector_concentration(symbol, quantity * entry_price, current_positions)
             if sector_warning:
                 warnings.append(sector_warning)
 
+        # === v2.1 检查18: VaR/CVaR 风险度量 ===
+        if side == "BUY" and stop_loss > 0:
+            proposed_loss = quantity * (entry_price - stop_loss)
+            var_check = self.check_var_limit(proposed_loss)
+            if var_check:
+                warnings.append(var_check)
+
         # 计算最终风险指标
         final_qty = result.adjusted_quantity or quantity
-        if side == 'BUY' and stop_loss > 0:
+        if side == "BUY" and stop_loss > 0:
             result.max_loss = final_qty * (entry_price - stop_loss)
         result.max_position_value = final_qty * entry_price
         result.risk_score = self._calc_risk_score(
-            symbol, side, final_qty, entry_price, stop_loss,
-            take_profit, signal_score, current_positions
+            symbol, side, final_qty, entry_price, stop_loss, take_profit, signal_score, current_positions
         )
         result.warnings = warnings
 
@@ -384,9 +356,11 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         if result.risk_score >= 70:
             warnings.append(f"综合风险评分{result.risk_score}/100，风险较高")
 
-        logger.info(f"[RiskManager] {symbol} {side} x{quantity} @ {entry_price} -> "
-                     f"{'APPROVED' if result.approved else 'REJECTED'} "
-                     f"(risk_score={result.risk_score})")
+        logger.info(
+            f"[RiskManager] {symbol} {side} x{quantity} @ {entry_price} -> "
+            f"{'APPROVED' if result.approved else 'REJECTED'} "
+            f"(risk_score={result.risk_score})"
+        )
 
         return result
 
@@ -427,9 +401,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             else:
                 # 原有逻辑：一刀切熔断
                 if self._consecutive_losses >= self.config.max_consecutive_losses:
-                    self._cooldown_until = now_et() + timedelta(
-                        minutes=self.config.cooldown_minutes
-                    )
+                    self._cooldown_until = now_et() + timedelta(minutes=self.config.cooldown_minutes)
                     logger.warning(
                         f"[RiskManager] 熔断触发！连续{self._consecutive_losses}笔亏损，"
                         f"冷却{self.config.cooldown_minutes}分钟"
@@ -458,7 +430,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         # FIX 9: 同步重置分层状态，确保每日干净启动
         self._current_tier = 0
         self._position_scale = 1.0
-        self._last_pnl_update = now_et().strftime('%Y-%m-%d')
+        self._last_pnl_update = now_et().strftime("%Y-%m-%d")
         self._last_refresh_ts = None
         logger.info("[RiskManager] 日重置完成（含连续亏损、熔断、分层状态清零）")
 
@@ -526,12 +498,9 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             f"今日剩余额度: ${s['remaining_daily_loss_budget']:.2f}",
             f"今日交易: {s['today_trades']}笔",
             "",
-            f"单笔最大风险: ${s['max_risk_per_trade']:.2f} "
-            f"({self.config.max_risk_per_trade_pct*100}%)",
-            f"单只最大仓位: ${s['max_position_value']:.2f} "
-            f"({self.config.max_position_pct*100}%)",
-            f"总敞口上限: ${s['max_total_exposure']:.2f} "
-            f"({self.config.max_total_exposure_pct*100}%)",
+            f"单笔最大风险: ${s['max_risk_per_trade']:.2f} ({self.config.max_risk_per_trade_pct * 100}%)",
+            f"单只最大仓位: ${s['max_position_value']:.2f} ({self.config.max_position_pct * 100}%)",
+            f"总敞口上限: ${s['max_total_exposure']:.2f} ({self.config.max_total_exposure_pct * 100}%)",
             f"最大持仓数: {self.config.max_open_positions}",
             f"最低风险收益比: 1:{self.config.min_risk_reward_ratio}",
             "",
@@ -542,11 +511,11 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         ]
 
         # 阶梯熔断状态
-        tier = s['tiered_cooldown_tier']
+        tier = s["tiered_cooldown_tier"]
         if tier > 0:
-            lines.append(f"阶梯熔断: Tier{tier} (仓位缩放{s['position_scale']*100:.0f}%)")
+            lines.append(f"阶梯熔断: Tier{tier} (仓位缩放{s['position_scale'] * 100:.0f}%)")
 
-        if s['in_cooldown']:
+        if s["in_cooldown"]:
             lines.append(f"!! 熔断中，解除时间: {s['cooldown_until']} !!")
         else:
             lines.append("熔断状态: 正常")
@@ -554,9 +523,12 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         # 极端行情状态
         lines.append("")
         if self.is_in_extreme_cooldown():
-            remaining = int((self._last_extreme_time + timedelta(
-                minutes=self.config.extreme_market_cooldown_minutes
-            ) - now_et()).total_seconds() // 60)
+            remaining = int(
+                (
+                    self._last_extreme_time + timedelta(minutes=self.config.extreme_market_cooldown_minutes) - now_et()
+                ).total_seconds()
+                // 60
+            )
             lines.append(f"!! 极端行情冷却中，剩余{remaining}分钟 !!")
         else:
             lines.append("极端行情保护: 正常")
@@ -568,6 +540,18 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         # 凯利公式
         if self.config.kelly_enabled:
             lines.append(f"\n凯利公式: 开启 (保守系数{self.config.kelly_fraction})")
+
+        # VaR/CVaR 风险度量 (搬运自 QuantStats)
+        vm = self.get_var_metrics()
+        if vm["sufficient_data"]:
+            lines.append("")
+            lines.append("── VaR 风险度量 ──")
+            lines.append(f"VaR(95%): ${vm['var_95']:.2f}  |  CVaR: ${vm['cvar_95']:.2f}")
+            lines.append(
+                f"Sortino: {vm['sortino']:.2f}  |  Tail比: {vm['tail_ratio']:.2f}  |  Calmar: {vm['calmar']:.2f}"
+            )
+        elif vm["pnl_count"] > 0:
+            lines.append(f"\nVaR: 数据不足 ({vm['pnl_count']}/10笔)")
 
         return "\n".join(lines)
 
@@ -592,15 +576,9 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             "consecutive_losses": self._consecutive_losses,
             "in_cooldown": self._is_in_cooldown(),
             "cooldown_until": self._cooldown_until.isoformat() if self._cooldown_until else None,
-            "max_risk_per_trade": round(
-                self.config.total_capital * self.config.max_risk_per_trade_pct, 2
-            ),
-            "max_position_value": round(
-                self.config.total_capital * self.config.max_position_pct, 2
-            ),
-            "max_total_exposure": round(
-                self.config.total_capital * self.config.max_total_exposure_pct, 2
-            ),
+            "max_risk_per_trade": round(self.config.total_capital * self.config.max_risk_per_trade_pct, 2),
+            "max_position_value": round(self.config.total_capital * self.config.max_position_pct, 2),
+            "max_total_exposure": round(self.config.total_capital * self.config.max_total_exposure_pct, 2),
             # v2.0 新增
             "tiered_cooldown_tier": self._current_tier,
             "position_scale": self._position_scale,
@@ -610,6 +588,8 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             "win_rate": round(stats["win_rate"] * 100, 1),
             "total_history_trades": stats["total_trades"],
             "kelly_enabled": self.config.kelly_enabled,
+            # v2.1 新增: VaR/CVaR 风险度量 (搬运自 QuantStats)
+            "var_metrics": self.get_var_metrics(),
         }
 
     # ============ 内部方法 ============
@@ -628,22 +608,14 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
     def _is_trading_hours(self) -> bool:
         """检查是否在交易时段"""
         now = now_et()
-        start = now.replace(
-            hour=self.config.trading_start_hour,
-            minute=self.config.trading_start_minute,
-            second=0
-        )
-        end = now.replace(
-            hour=self.config.trading_end_hour,
-            minute=self.config.trading_end_minute,
-            second=0
-        )
+        start = now.replace(hour=self.config.trading_start_hour, minute=self.config.trading_start_minute, second=0)
+        end = now.replace(hour=self.config.trading_end_hour, minute=self.config.trading_end_minute, second=0)
         return start <= now <= end
 
     def _refresh_today_pnl(self):
         """从交易日志刷新今日PnL（每5分钟刷新一次）"""
         now = now_et()
-        today = now.strftime('%Y-%m-%d')
+        today = now.strftime("%Y-%m-%d")
 
         # 检测新交易日 -> 自动重置
         if self._last_pnl_update and self._last_pnl_update != today:
@@ -652,7 +624,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
             return
 
         # 每5分钟刷新一次（而非每天只刷新一次）
-        if hasattr(self, '_last_refresh_ts') and self._last_refresh_ts:
+        if hasattr(self, "_last_refresh_ts") and self._last_refresh_ts:
             try:
                 elapsed = (now - self._last_refresh_ts).total_seconds()
             except TypeError as e:  # noqa: F841
@@ -664,8 +636,8 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         if self.journal:
             try:
                 today_data = self.journal.get_today_pnl()
-                self._today_pnl = today_data.get('pnl', 0)
-                self._today_trades = today_data.get('trades', 0)
+                self._today_pnl = today_data.get("pnl", 0)
+                self._today_trades = today_data.get("trades", 0)
             except Exception as e:
                 logger.error(f"[RiskManager] 刷新今日PnL失败: {e}")
 
@@ -695,13 +667,13 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         score += min(25, int(pos_pct / self.config.max_position_pct * 25))
 
         # 止损幅度风险 (0-20分)
-        if side == 'BUY' and stop_loss > 0 and entry_price > 0:
+        if side == "BUY" and stop_loss > 0 and entry_price > 0:
             sl_pct = (entry_price - stop_loss) / entry_price
             if sl_pct > 0.05:
                 score += min(20, int(sl_pct * 200))
             else:
                 score += int(sl_pct * 100)
-        elif side == 'BUY' and stop_loss <= 0:
+        elif side == "BUY" and stop_loss <= 0:
             score += 20  # 无止损 = 高风险
 
         # 信号强度风险 (0-15分) - 信号越弱风险越高
@@ -742,29 +714,22 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
         if losses >= self.config.tier3_losses:
             self._current_tier = 3
             self._position_scale = 0.0  # 完全停止
-            self._cooldown_until = now_et() + timedelta(
-                minutes=self.config.tier3_cooldown_minutes
-            )
+            self._cooldown_until = now_et() + timedelta(minutes=self.config.tier3_cooldown_minutes)
             logger.warning(
-                f"[RiskManager] 阶梯熔断 Tier3: 连续{losses}笔亏损，"
-                f"停止交易{self.config.tier3_cooldown_minutes}分钟"
+                f"[RiskManager] 阶梯熔断 Tier3: 连续{losses}笔亏损，停止交易{self.config.tier3_cooldown_minutes}分钟"
             )
         elif losses >= self.config.tier2_losses:
             self._current_tier = 2
             self._position_scale = 0.0
-            self._cooldown_until = now_et() + timedelta(
-                minutes=self.config.tier2_cooldown_minutes
-            )
+            self._cooldown_until = now_et() + timedelta(minutes=self.config.tier2_cooldown_minutes)
             logger.warning(
-                f"[RiskManager] 阶梯熔断 Tier2: 连续{losses}笔亏损，"
-                f"暂停{self.config.tier2_cooldown_minutes}分钟"
+                f"[RiskManager] 阶梯熔断 Tier2: 连续{losses}笔亏损，暂停{self.config.tier2_cooldown_minutes}分钟"
             )
         elif losses >= self.config.tier1_losses:
             self._current_tier = 1
             self._position_scale = self.config.tier1_position_scale
             logger.warning(
-                f"[RiskManager] 阶梯熔断 Tier1: 连续{losses}笔亏损，"
-                f"仓位缩放至{self._position_scale*100:.0f}%"
+                f"[RiskManager] 阶梯熔断 Tier1: 连续{losses}笔亏损，仓位缩放至{self._position_scale * 100:.0f}%"
             )
 
     # ============ v2.0 回撤与频率 ============
@@ -782,13 +747,13 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
 
         if drawdown >= self.config.drawdown_halt_pct:
             logger.warning(
-                f"[RiskManager] 回撤保护-停止: 回撤{drawdown*100:.1f}% "
+                f"[RiskManager] 回撤保护-停止: 回撤{drawdown * 100:.1f}% "
                 f"(峰值${self._peak_capital:.2f} -> 当前${current_capital:.2f})"
             )
             return "halt"
         elif drawdown >= self.config.drawdown_warn_pct:
             logger.warning(
-                f"[RiskManager] 回撤保护-警告: 回撤{drawdown*100:.1f}% "
+                f"[RiskManager] 回撤保护-警告: 回撤{drawdown * 100:.1f}% "
                 f"(峰值${self._peak_capital:.2f} -> 当前${current_capital:.2f})"
             )
             return "warn"
@@ -800,17 +765,13 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
 
         # 每日交易次数
         if self._today_trades >= self.config.max_trades_per_day:
-            return (f"今日已交易{self._today_trades}笔，达到上限"
-                    f"{self.config.max_trades_per_day}笔")
+            return f"今日已交易{self._today_trades}笔，达到上限{self.config.max_trades_per_day}笔"
 
         # 每小时交易次数
         one_hour_ago = now - timedelta(hours=1)
-        recent_count = sum(
-            1 for t in self._hourly_trade_times if t > one_hour_ago
-        )
+        recent_count = sum(1 for t in self._hourly_trade_times if t > one_hour_ago)
         if recent_count >= self.config.max_trades_per_hour:
-            return (f"最近1小时已交易{recent_count}笔，达到上限"
-                    f"{self.config.max_trades_per_hour}笔，请稍后再试")
+            return f"最近1小时已交易{recent_count}笔，达到上限{self.config.max_trades_per_hour}笔，请稍后再试"
 
         return None
 
@@ -838,7 +799,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin):
                 logger.warning(
                     f"[RiskManager] 盈利回吐警告: {symbol} 浮盈从"
                     f"${current_peak:.2f}回撤至${unrealized_pnl:.2f} "
-                    f"(回撤{drawdown*100:.1f}%)"
+                    f"(回撤{drawdown * 100:.1f}%)"
                 )
                 return {
                     "symbol": symbol,
