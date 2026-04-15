@@ -14,7 +14,7 @@ v2.1 变更 (2026-03-23):
   - 新增 natural_number(): "1,234,567" / "1.2 million"
 """
 
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 import logging
 
