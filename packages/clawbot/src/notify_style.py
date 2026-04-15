@@ -499,3 +499,85 @@ def format_bounty_result(
 
     lines.append(f"\n  ⏱ {timestamp_tag()}")
     return "\n".join(lines)
+
+
+# ── 长消息自动分割（Telegram 单消息上限 4096 字符）──────────
+
+
+def split_long_message(text: str, max_len: int = 4096) -> List[str]:
+    """将超长文本按 section 边界智能分割为多条消息。
+
+    分割策略（按优先级）：
+    1. 按 section 分隔符（━━━ 或 ▸ 开头行）分割
+    2. 如果单个 section 仍超长，按换行符分割
+    3. 最后兜底强制截断，保证不在行中间断开
+
+    Args:
+        text: 原始文本
+        max_len: 单条消息最大字符数，默认 4096（Telegram 限制）
+
+    Returns:
+        分割后的消息列表，每条不超过 max_len
+    """
+    if len(text) <= max_len:
+        return [text]
+
+    import re
+
+    # 按 section 分隔符拆分（━━━ 分隔线 或 ▸ 开头的标题行前断开）
+    parts = re.split(r"(?=\n━━━|\n▸ )", text)
+
+    chunks: List[str] = []
+    current = ""
+
+    for part in parts:
+        # 当前块加上新 part 不超限，合并
+        if len(current) + len(part) <= max_len:
+            current += part
+        else:
+            # 当前块已满，保存并开始新块
+            if current.strip():
+                chunks.append(current.strip())
+            # 单个 part 本身就超长，按换行符进一步分割
+            if len(part) > max_len:
+                sub_chunks = _split_by_lines(part, max_len)
+                chunks.extend(sub_chunks[:-1])
+                current = sub_chunks[-1] if sub_chunks else ""
+            else:
+                current = part
+
+    if current.strip():
+        chunks.append(current.strip())
+
+    # 多页时添加分页标记
+    if len(chunks) > 1:
+        total = len(chunks)
+        chunks = [f"{chunk}\n\n📄 ({i + 1}/{total})" for i, chunk in enumerate(chunks)]
+
+    return chunks if chunks else [text[:max_len]]
+
+
+def _split_by_lines(text: str, max_len: int) -> List[str]:
+    """按换行符分割超长文本，保证不在行中间断开"""
+    lines = text.split("\n")
+    chunks: List[str] = []
+    current = ""
+
+    for line in lines:
+        candidate = current + "\n" + line if current else line
+        if len(candidate) <= max_len:
+            current = candidate
+        else:
+            if current.strip():
+                chunks.append(current.strip())
+            # 单行超长（极端情况），强制截断
+            if len(line) > max_len:
+                chunks.append(line[:max_len])
+                current = ""
+            else:
+                current = line
+
+    if current.strip():
+        chunks.append(current.strip())
+
+    return chunks if chunks else [text[:max_len]]
