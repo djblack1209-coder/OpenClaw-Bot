@@ -1,7 +1,8 @@
 """System status endpoints — ping, version, full status"""
+
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import Ping, SystemStatus

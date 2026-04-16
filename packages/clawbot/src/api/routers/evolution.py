@@ -1,8 +1,9 @@
 """Evolution API endpoints — scan, proposals, capability gaps"""
+
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
 from ..error_utils import safe_error as _safe_error
@@ -18,11 +19,13 @@ def _get_engine():
     global _engine
     if _engine is None:
         from src.evolution.engine import EvolutionEngine
+
         _engine = EvolutionEngine()
     return _engine
 
 
 # ──────────────── Response Models ────────────────
+
 
 class ProposalOut(BaseModel):
     id: str
@@ -71,6 +74,7 @@ class StatusUpdateRequest(BaseModel):
 
 
 # ──────────────── Endpoints ────────────────
+
 
 @router.post("/scan", response_model=ScanResponse)
 async def trigger_scan(background_tasks: BackgroundTasks):
