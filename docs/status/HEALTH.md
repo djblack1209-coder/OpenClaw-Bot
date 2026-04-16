@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-16 (MRU全量优化: P0-P3完成, 测试100%, 新增15个文件/~4000行代码)
+> 最后更新: 2026-04-16 (价值位阶推进R2: P0-P2完成, 测试1339/100%, 沟通风格修复+记账扩充+206新测试+ControlCenter拆分+日报天气汇率)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -26,7 +26,9 @@
 |---|-----|----------|----------|------|------|---------|
 | 4 | ~~IBKR 实盘接入~~ | 5 | 3 | 7 | ✅ 完成 | — |
 | 5 | ~~投资决策→回测→执行闭环~~ | 5 | 2 | 8 | ✅ 完成 | — |
-| 6 | 反编译文件重写 (message_mixin 优先) | 4 | 5 | 3 | 🚀立即 | HI-007/008 |
+| 6 | ~~反编译文件重写 (message_mixin 优先)~~ | 4 | 5 | 3 | ⏸ 降级 | HI-007/008 |
+
+> **#6 备注**: 经 2026-04-16 侦察确认，`message_mixin.py` **并非反编译文件**。文件头注释清楚标注 `搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 流式模式`，代码可读性中等偏上，有中文注释和 docstring。1058 行可考虑按 text/voice/streaming 拆分但非紧急。此条目降级为 P3。
 
 ### Phase 3 — 增长引擎
 
@@ -47,22 +49,22 @@
 | 开发工具性能 | 🟢 优化 | OpenCode watcher 扫描文件数从 32.8万 降至 ~5千 (项目瘦身 16GB→6.6GB + 30+条 ignore 规则) |
 | LLM 路由 | 🟢 加固 | 主链调整为 SiliconFlow/iflow/Groq/Gemini → Cerebras/OpenRouter/NVIDIA/Volcengine → Mistral/Cohere/GPT_API_Free/g4f，切断 XAPI Claude 空余额兜底 + iflow Key 7天有效期自动检测+告警 |
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 + 安静时段过滤(0-7点不推送) |
-| AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 |
+| AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 + 沟通风格偏好确定性注入(onboarding→profile链路修复) |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 + 提醒同义词扩展(帮我记住/别忘了/设个闹钟等) |
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 99.9% | 1132/1135 Python (1项环境依赖失败: curl_cffi版本, 2项跳过), 0 TypeScript错误, Rust cargo check 零警告 |
+| 测试通过率 | 🟢 100% | 1339/1341 Python (2项跳过), 0 TypeScript错误, Rust cargo check 零警告。本轮新增 206 个测试覆盖 risk_validators/risk_var/resilience_bulkhead/llm_routing_config |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
-| 生活自动化 | 🟢 运行中 | 提醒(周期性+同义词触发+北京时区)+记账(收入/支出/月预算/超支告警/月度聚合/ticker防误触发)+话费水电费余额追踪+定时低余额告警 |
+| 生活自动化 | 🟢 加固 | 提醒(周期性+同义词触发+北京时区)+记账(收入/支出/月预算/超支告警/月度聚合/ticker防误触发/17个分类含宠物美容保险人情烟酒)+话费水电费余额追踪+定时低余额告警 |
 | 购物比价 | 🟢 加固 | 四级降级比价+降价提醒监控(price_watches)+6h定时检查+中文NLP触发+平台可用性标注(淘宝禁用) |
 | 代码优化 | 🟢 完成 | 41轮迭代, 全部活跃HI修复, start_trading_system 786→33行, _setup_scheduler 698→48行, 273 个未使用 import 清理 + 6 处 create_task 修复 + 498 处静默异常修复 + 前端 Mock 数据替换 + 11处前端命令命名修复 + 2个死模块接入 + R22深度清理: 15死文件(3.4K行)+38未使用import+28死方法+17重复函数合并 + R22续: 14个未定义名称修复+admin_ids逻辑Bug+PriceAgent/tweepy缺失实现补全+9个死import+5个死依赖 + R23: 19幽灵pyc+5空目录+deploy_bundle_final移出git+33无占位符f-string+config.py提取 + R24: 24个API端点加错误处理+SF-Key竞态锁+6个社交函数async修复+UA常量统一+Twilio/yaml清理 + R25: 6脚本修复+7处Rust安全加固+14个前端any替换 |
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False + RequestSizeLimitMiddleware(10MB) |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** + ControlCenter 773行拆分为8子组件(主文件123行) |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
