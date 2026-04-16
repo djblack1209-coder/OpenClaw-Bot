@@ -295,6 +295,29 @@ button:disabled {
 
     /* 玻璃效果 RGB 值 */
     --glass-rgb: 241, 245, 249;
+
+    /* === C 端设计 Token === */
+    /* 品牌主色（苹果蓝） */
+    --oc-brand: #0A84FF;
+    --oc-brand-hover: #0070E0;
+    --oc-brand-active: #005FC5;
+    /* 语义色 */
+    --oc-success: #30D158;
+    --oc-danger: #FF453A;
+    --oc-warning: #FFD60A;
+    --oc-info: #64D2FF;
+    /* 卡片背景 */
+    --oc-card-bg: #FFFFFF;
+    --oc-card-border: rgba(0, 0, 0, 0.06);
+    --oc-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    --oc-card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
+    /* 侧边栏 */
+    --oc-sidebar-bg: #F5F5F7;
+    --oc-sidebar-active: rgba(10, 132, 255, 0.12);
+    --oc-sidebar-text: #1D1D1F;
+    --oc-sidebar-text-muted: #86868B;
+    /* 数字字体（等宽数字防跳动） */
+    --oc-font-tabular: 'SF Pro Display', -apple-system, system-ui, sans-serif;
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -343,5 +366,94 @@ button:disabled {
 
     /* 玻璃效果 RGB 值 */
     --glass-rgb: 26, 26, 29;
+
+    /* === C 端设计 Token === */
+    --oc-brand: #0A84FF;
+    --oc-brand-hover: #409CFF;
+    --oc-brand-active: #0A84FF;
+    --oc-success: #30D158;
+    --oc-danger: #FF453A;
+    --oc-warning: #FFD60A;
+    --oc-info: #64D2FF;
+    --oc-card-bg: #1C1C1E;
+    --oc-card-border: rgba(255, 255, 255, 0.08);
+    --oc-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    --oc-card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --oc-sidebar-bg: #1C1C1E;
+    --oc-sidebar-active: rgba(10, 132, 255, 0.2);
+    --oc-sidebar-text: #F5F5F7;
+    --oc-sidebar-text-muted: #98989D;
+    --oc-font-tabular: 'SF Pro Display', -apple-system, system-ui, sans-serif;
+  }
+}
+
+/* === C 端通用样式 === */
+
+/* 玻璃卡片 */
+.oc-glass-card {
+  background: var(--oc-card-bg);
+  border: 1px solid var(--oc-card-border);
+  border-radius: 16px;
+  box-shadow: var(--oc-card-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.oc-glass-card:hover {
+  box-shadow: var(--oc-card-shadow-hover);
+  transform: translateY(-2px);
+}
+
+/* 数字等宽显示（防止数字变化时宽度抖动） */
+.oc-tabular-nums {
+  font-family: var(--oc-font-tabular);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 状态指示圆点（C 端版本） */
+.oc-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.oc-status-dot--running {
+  background: var(--oc-success);
+  box-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
+  animation: oc-pulse 2s ease-in-out infinite;
+}
+
+.oc-status-dot--stopped {
+  background: #98989D;
+}
+
+.oc-status-dot--error {
+  background: var(--oc-danger);
+  box-shadow: 0 0 8px rgba(255, 69, 58, 0.6);
+}
+
+.oc-status-dot--warning {
+  background: var(--oc-warning);
+}
+
+@keyframes oc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 页面过渡动画 */
+.oc-page-enter {
+  animation: oc-page-in 0.15s ease-out;
+}
+
+@keyframes oc-page-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
