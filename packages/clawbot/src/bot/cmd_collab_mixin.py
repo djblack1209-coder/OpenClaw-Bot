@@ -24,6 +24,7 @@ from src.bot.globals import (
     shared_memory,
     _pending_trades,
 )
+
 # 幻影导入修复: 8 个符号从实际定义模块导入
 from src.broker_selector import ibkr
 from src.trading_journal import journal
@@ -32,8 +33,12 @@ from src.ta_engine import get_full_analysis, format_analysis
 from src.invest_tools import format_quote, get_market_summary
 from src.constants import TG_SAFE_LENGTH
 from src.constants import (
-    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+    BOT_QWEN,
+    BOT_DEEPSEEK,
+    BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_SONNET,
+    BOT_CLAUDE_OPUS,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,26 +46,27 @@ logger = logging.getLogger(__name__)
 
 def _parse_trade_recommendations(text: str) -> list:
     """从策略师回复中解析JSON交易建议
-    
+
     寻找 ```json {...} ``` 代码块，提取trades数组
     返回: [{"action": "BUY", "symbol": "AAPL", "qty": 5, "entry_price": 150.0,
             "stop_loss": 145.0, "take_profit": 160.0, "reason": "..."}, ...]
     """
     if not text:
         return []
-    
+
     # 尝试匹配 ```json ... ``` 代码块
     patterns = [
-        r'```json\s*(\{.*?\})\s*```',
-        r'```\s*(\{.*?\})\s*```',
+        r"```json\s*(\{.*?\})\s*```",
+        r"```\s*(\{.*?\})\s*```",
         r'(\{"trades"\s*:\s*\[.*?\]\s*\})',
     ]
-    
+
     for pattern in patterns:
         matches = re.findall(pattern, text, re.DOTALL)
         for match in matches:
             try:
                 from json_repair import loads as jloads
+
                 data = jloads(match)
                 trades = data.get("trades", [])
                 if not trades:
@@ -85,15 +91,14 @@ def _parse_trade_recommendations(text: str) -> list:
                         }
                         valid_trades.append(trade)
                 if valid_trades:
-                    logger.info(f"[Invest] 解析到 {len(valid_trades)} 条交易建议: {valid_trades}")
+                    logger.info("[Invest] 解析到 %s 条交易建议: %s", len(valid_trades), valid_trades)
                     return valid_trades
             except (json.JSONDecodeError, TypeError, ValueError) as e:
-                logger.debug(f"[Invest] JSON解析失败: {e}")
+                logger.debug("[Invest] JSON解析失败: %s", e)
                 continue
-    
+
     logger.info("[Invest] 未解析到交易建议（策略师可能建议观望）")
     return []
-
 
 
 class CollabCommandsMixin:
@@ -110,7 +115,7 @@ class CollabCommandsMixin:
 
         # 检查日亏损限额
         today_pnl = journal.get_today_pnl()
-        if today_pnl['hit_limit']:
+        if today_pnl["hit_limit"]:
             await update.message.reply_text(
                 f"{self.emoji} 今日已亏损 ${abs(today_pnl['pnl']):.2f}，触及日亏损限额 ${today_pnl['limit']:.0f}\n"
                 "风控规则：停止交易，明天再来。"
@@ -136,9 +141,10 @@ class CollabCommandsMixin:
             await safe_edit(msg, error_service_failed("市场扫描"))
             return
 
-        top = scan_result.get('top_candidates', [])
+        top = scan_result.get("top_candidates", [])
         if not top:
-            await safe_edit(msg,
+            await safe_edit(
+                msg,
                 f"{self.emoji} 全市场扫描完成\n\n"
                 f"扫描: {scan_result['total_scanned']}个标的\n"
                 f"层1通过: {scan_result['layer1_passed']}\n"
@@ -146,13 +152,13 @@ class CollabCommandsMixin:
                 f"耗时: {scan_result['scan_time']}s\n\n"
                 "结果: 暂无明显信号，市场平静。\n"
                 "建议: 观望等待，不勉强交易。\n\n"
-                "稍后可以再说「开始投资」重新扫描。"
+                "稍后可以再说「开始投资」重新扫描。",
             )
             return
 
         # 挑选最佳标的（前5个）
         top5 = top[:5]
-        top_symbols = [s['symbol'] for s in top5]
+        top_symbols = [s["symbol"] for s in top5]
 
         scan_summary = (
             f"阶段 1/3: 全市场扫描完成\n"
@@ -164,18 +170,14 @@ class CollabCommandsMixin:
             "发现信号:\n"
         )
         for s in top5:
-            arrow = "+" if s['change_pct'] >= 0 else ""
-            vol = " [放量]" if s.get('volume_surge') else ""
+            arrow = "+" if s["change_pct"] >= 0 else ""
+            vol = " [放量]" if s.get("volume_surge") else ""
             scan_summary += (
                 f"  {s['signal_cn']} {s['symbol']} ${s['price']} "
                 f"({arrow}{s['change_pct']}%) 评分:{s['score']:+d}{vol}\n"
             )
 
-        await safe_edit(msg,
-            f"{self.emoji} 全自动投资\n\n"
-            f"{scan_summary}\n"
-            "阶段 2/3: 获取详细技术数据...\n"
-        )
+        await safe_edit(msg, f"{self.emoji} 全自动投资\n\n{scan_summary}\n阶段 2/3: 获取详细技术数据...\n")
 
         # === 阶段2: 获取详细技术分析 ===
         ta_tasks = [get_full_analysis(sym) for sym in top_symbols]
@@ -186,12 +188,13 @@ class CollabCommandsMixin:
             if isinstance(data, dict) and "error" not in data:
                 ta_text += f"\n{format_analysis(data)}\n"
 
-        await safe_edit(msg,
+        await safe_edit(
+            msg,
             f"{self.emoji} 全自动投资\n\n"
             f"{scan_summary}\n"
             "阶段 2/3: 技术数据就绪\n"
             "阶段 3/3: AI超短线团队分析中...\n\n"
-            "市场雷达 → 宏观猎手 → 图表狙击手 → 风控铁闸 → 交易指挥官"
+            "市场雷达 → 宏观猎手 → 图表狙击手 → 风控铁闸 → 交易指挥官",
         )
 
         # === 阶段3: 触发投资会议 ===
@@ -218,7 +221,7 @@ class CollabCommandsMixin:
                 "`/invest 分析一下NVDA`\n\n"
                 "流程: 情报收集 -> 基本面 -> 技术面 -> 风控 -> 最终决策 -> 终审确认\n"
                 "发送 /stop_discuss 可中断",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
             return
 
@@ -239,11 +242,43 @@ class CollabCommandsMixin:
         # 如果话题提到具体标的，获取行情+技术分析
         target_quote = ""
         ta_data_text = ""
-        potential_symbols = re.findall(r'\b([A-Z]{2,5})\b', topic.upper())
-        known_symbols = {"AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",
-                         "NFLX", "BABA", "JD", "PDD", "NIO", "XPEV", "LI", "TSM", "ASML", "AVGO",
-                         "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "SPY", "QQQ", "DIA", "IWM",
-                         "CRM", "ORCL", "ADBE", "QCOM"}
+        potential_symbols = re.findall(r"\b([A-Z]{2,5})\b", topic.upper())
+        known_symbols = {
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "GOOG",
+            "AMZN",
+            "NVDA",
+            "META",
+            "TSLA",
+            "AMD",
+            "INTC",
+            "NFLX",
+            "BABA",
+            "JD",
+            "PDD",
+            "NIO",
+            "XPEV",
+            "LI",
+            "TSM",
+            "ASML",
+            "AVGO",
+            "BTC",
+            "ETH",
+            "SOL",
+            "BNB",
+            "XRP",
+            "DOGE",
+            "SPY",
+            "QQQ",
+            "DIA",
+            "IWM",
+            "CRM",
+            "ORCL",
+            "ADBE",
+            "QCOM",
+        }
         target_syms = [sym for sym in potential_symbols if sym in known_symbols]
         # 并行获取行情+技术分析
         if target_syms:
@@ -293,14 +328,18 @@ class CollabCommandsMixin:
         # ── 血管 2: 注入历史分析上下文 ──
         try:
             history_hits = shared_memory.search(topic, limit=3)
-            invest_history = [h for h in history_hits if "invest" in h.get("key", "").lower() or "ocr_financial" in h.get("key", "").lower()]
+            invest_history = [
+                h
+                for h in history_hits
+                if "invest" in h.get("key", "").lower() or "ocr_financial" in h.get("key", "").lower()
+            ]
             if invest_history:
                 invest_context += "\n历史分析参考:\n"
                 for h in invest_history[:2]:
                     invest_context += f"- [{h.get('key', '')}] {h.get('value', '')[:200]}\n"
                 invest_context += "\n"
         except Exception as e:
-            logger.debug(f"[Invest] 历史上下文注入失败(非致命): {e}")
+            logger.debug("[Invest] 历史上下文注入失败(非致命): %s", e)
 
         previous_opinions = []
         from src.message_sender import _clean_for_telegram, _split_message
@@ -328,8 +367,7 @@ class CollabCommandsMixin:
             return "\n".join(lines)
 
         # 发送初始进度消息
-        progress_msg = await context.bot.send_message(
-            chat_id=chat_id, text=_render_invest_progress())
+        progress_msg = await context.bot.send_message(chat_id=chat_id, text=_render_invest_progress())
 
         async def _update_progress():
             try:
@@ -345,13 +383,14 @@ class CollabCommandsMixin:
             # 检查是否被中断
             if not chat_router.get_discuss_session(chat_id):
                 await context.bot.send_message(
-                    chat_id=chat_id, text="-- 投资分析会议已被中断 --", reply_to_message_id=message_id)
+                    chat_id=chat_id, text="-- 投资分析会议已被中断 --", reply_to_message_id=message_id
+                )
                 return
 
             caller = collab_orchestrator._api_callers.get(bot_id)
             target_bot = bot_registry.get(bot_id)
             if not caller or not target_bot or not target_bot.app:
-                logger.warning(f"[Invest] {bot_id} 未注册或未启动，跳过")
+                logger.warning("[Invest] %s 未注册或未启动，跳过", bot_id)
                 continue
 
             bot_telegram = target_bot.app.bot
@@ -362,13 +401,7 @@ class CollabCommandsMixin:
             await _update_progress()
 
             # 构造提示
-            prompt = (
-                f"【投资分析会议】\n"
-                f"议题: {topic}\n\n"
-                f"{invest_context}\n"
-                f"你的角色: {role_name}\n"
-                f"{role_prompt}\n"
-            )
+            prompt = f"【投资分析会议】\n议题: {topic}\n\n{invest_context}\n你的角色: {role_name}\n{role_prompt}\n"
             if previous_opinions:
                 prompt += "\n前面分析师的观点:\n" + "\n---\n".join(previous_opinions) + "\n"
 
@@ -387,7 +420,9 @@ class CollabCommandsMixin:
                 for pi, part in enumerate(parts):
                     reply_id = message_id if pi == 0 else None
                     try:
-                        await bot_telegram.send_message(chat_id=chat_id, text=part, parse_mode="Markdown", reply_to_message_id=reply_id)
+                        await bot_telegram.send_message(
+                            chat_id=chat_id, text=part, parse_mode="Markdown", reply_to_message_id=reply_id
+                        )
                     except Exception as e:  # noqa: F841
                         try:
                             await bot_telegram.send_message(chat_id=chat_id, text=part, reply_to_message_id=reply_id)
@@ -401,7 +436,7 @@ class CollabCommandsMixin:
             except asyncio.TimeoutError as e:
                 bot_status[bot_id] = "timeout"
                 await _update_progress()
-                logger.warning(f"[Invest] {bot_id} 回复超时 ({timeout_sec}s)")
+                logger.warning("[Invest] %s 回复超时 (%ss)", bot_id, timeout_sec)
                 try:
                     await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 回复超时，跳过]")
                 except Exception as e:
@@ -409,7 +444,7 @@ class CollabCommandsMixin:
             except Exception as e:
                 bot_status[bot_id] = "failed"
                 await _update_progress()
-                logger.error(f"[Invest] {bot_id} 发言失败: {e}")
+                logger.error("[Invest] %s 发言失败: %s", bot_id, e)
                 try:
                     await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 暂时无法回复，已跳过]")
                 except Exception as e:
@@ -435,16 +470,18 @@ class CollabCommandsMixin:
             buttons = []
             for idx, t in enumerate(trades):
                 action_cn = "买入" if t["action"] == "BUY" else "卖出"
-                lines.append(f"{idx+1}. {action_cn} {t['symbol']} x{t['qty']}  ({t['reason']})")
+                lines.append(f"{idx + 1}. {action_cn} {t['symbol']} x{t['qty']}  ({t['reason']})")
                 btn_text = f"{'🟢' if t['action'] == 'BUY' else '🔴'} {action_cn} {t['symbol']} x{t['qty']}"
                 callback_data = f"itrade:{trade_key}:{idx}"
                 buttons.append([InlineKeyboardButton(btn_text, callback_data=callback_data)])
 
             # 添加全部执行和取消按钮
-            buttons.append([
-                InlineKeyboardButton("✅ 全部执行", callback_data=f"itrade_all:{trade_key}"),
-                InlineKeyboardButton("❌ 取消", callback_data=f"itrade_cancel:{trade_key}"),
-            ])
+            buttons.append(
+                [
+                    InlineKeyboardButton("✅ 全部执行", callback_data=f"itrade_all:{trade_key}"),
+                    InlineKeyboardButton("❌ 取消", callback_data=f"itrade_cancel:{trade_key}"),
+                ]
+            )
             lines.append(f"\n预算剩余: ${ibkr.budget - ibkr.total_spent:.2f} / ${ibkr.budget:.2f}")
             lines.append("\n点击按钮确认下单到IBKR模拟账户:")
 
@@ -467,7 +504,10 @@ class CollabCommandsMixin:
             invest_summary = "\n---\n".join(previous_opinions) if previous_opinions else "无分析结果"
             trade_summary = ""
             if trades:
-                trade_lines = [f"{t['action']} {t['symbol']} x{t['qty']} (止损{t.get('stop_loss','N/A')}, 目标{t.get('take_profit','N/A')})" for t in trades]
+                trade_lines = [
+                    f"{t['action']} {t['symbol']} x{t['qty']} (止损{t.get('stop_loss', 'N/A')}, 目标{t.get('take_profit', 'N/A')})"
+                    for t in trades
+                ]
                 trade_summary = f"\n交易建议: {'; '.join(trade_lines)}"
             else:
                 trade_summary = "\n结论: 观望"
@@ -482,10 +522,9 @@ class CollabCommandsMixin:
                 importance=3,
                 ttl_hours=168,  # 保留 7 天
             )
-            logger.info(f"[Invest] 分析结果已写入 SharedMemory: {topic}")
+            logger.info("[Invest] 分析结果已写入 SharedMemory: %s", topic)
         except Exception as e:
-            logger.debug(f"[Invest] SharedMemory 写入失败(非致命): {e}")
-
+            logger.debug("[Invest] SharedMemory 写入失败(非致命): %s", e)
 
     @requires_auth
     @with_typing
@@ -505,7 +544,7 @@ class CollabCommandsMixin:
                 "`/discuss 3 AI会取代程序员吗`\n"
                 "`/discuss 2 比特币未来走势分析`\n\n"
                 "每轮所有Bot依次发言，人类可随时 /stop_discuss 结束。",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
             return
 
@@ -551,7 +590,7 @@ class CollabCommandsMixin:
             # 检查讨论是否仍然活跃（支持 /stop_discuss 中断）
             session = chat_router.get_discuss_session(chat_id)
             if not session or not session.get("active", False):
-                logger.info(f"[Discuss] chat={chat_id} 讨论已被中断")
+                logger.info("[Discuss] chat=%s 讨论已被中断", chat_id)
                 return
 
             turn = await chat_router.next_discuss_turn(chat_id)
@@ -573,7 +612,7 @@ class CollabCommandsMixin:
             caller = collab_orchestrator._api_callers.get(bot_id)
             target_bot = bot_registry.get(bot_id)
             if not caller or not target_bot or not target_bot.app:
-                logger.warning(f"[Discuss] {bot_id} 未注册或未启动，跳过")
+                logger.warning("[Discuss] %s 未注册或未启动，跳过", bot_id)
                 continue
 
             bot_telegram = target_bot.app.bot  # 该 bot 自己的 Telegram 实例
@@ -611,7 +650,7 @@ class CollabCommandsMixin:
                 # 间隔1秒，避免消息刷屏太快
                 await asyncio.sleep(1)
             except asyncio.TimeoutError as e:
-                logger.warning(f"[Discuss] {bot_id} 回复超时 ({timeout_sec}s)，跳过")
+                logger.warning("[Discuss] %s 回复超时 (%ss)，跳过", bot_id, timeout_sec)
                 try:
                     await bot_telegram.send_message(
                         chat_id=chat_id,
@@ -620,7 +659,7 @@ class CollabCommandsMixin:
                 except Exception as e:
                     logger.debug("[Discuss] 发送超时通知失败(静默)")
             except Exception as e:
-                logger.error(f"[Discuss] {bot_id} 发言失败: {e}")
+                logger.error("[Discuss] %s 发言失败: %s", bot_id, e)
                 try:
                     await bot_telegram.send_message(
                         chat_id=chat_id,
@@ -652,7 +691,7 @@ class CollabCommandsMixin:
                 "示例:\n"
                 "`/collab 帮我设计一个微服务架构的电商系统`\n"
                 "`/collab 写一篇关于AI发展趋势的深度分析报告`",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
             return
 
@@ -698,7 +737,7 @@ class CollabCommandsMixin:
             f"规划师: {planner_name}\n"
             f"执行者: Claude Opus 4.6 ✨\n"
             f"汇总者: ClawBot 🤖",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
 
         try:
@@ -708,18 +747,19 @@ class CollabCommandsMixin:
                 await safe_edit(status_msg, f"协作失败（规划阶段）: {task.error}")
                 return
 
-            await safe_edit(status_msg,
+            await safe_edit(
+                status_msg,
                 f"**🤝 协作模式**\n\n"
                 f"**阶段 1/4** ✅ 规划完成 ({planner_name})\n"
                 f"**阶段 2/4** - Claude Opus 4.6 执行中...\n"
                 f"**阶段 3/4** - 待审查\n"
-                f"**阶段 4/4** - 待汇总"
+                f"**阶段 4/4** - 待汇总",
             )
 
             # 用规划者自己的 Telegram 账号发送规划结果
-            await send_as_bot(task.planner_id, chat_id,
-                f"📋 规划结果\n\n{plan_result}",
-                reply_to_message_id=update.message.message_id)
+            await send_as_bot(
+                task.planner_id, chat_id, f"📋 规划结果\n\n{plan_result}", reply_to_message_id=update.message.message_id
+            )
 
             # 阶段2: 执行
             exec_result = await collab_orchestrator.run_execution(task)
@@ -727,36 +767,44 @@ class CollabCommandsMixin:
                 await safe_edit(status_msg, f"协作失败（执行阶段）: {task.error}")
                 return
 
-            await safe_edit(status_msg,
+            await safe_edit(
+                status_msg,
                 f"**🤝 协作模式**\n\n"
                 f"**阶段 1/4** ✅ 规划完成\n"
                 f"**阶段 2/4** ✅ 执行完成 (Claude Opus 4.6)\n"
                 f"**阶段 3/4** - {planner_name} 审查中...\n"
-                f"**阶段 4/4** - 待汇总"
+                f"**阶段 4/4** - 待汇总",
             )
 
             # 用 Claude 自己的 Telegram 账号发送执行结果
-            await send_as_bot(BOT_CLAUDE_SONNET, chat_id,
+            await send_as_bot(
+                BOT_CLAUDE_SONNET,
+                chat_id,
                 f"⚡ 执行结果\n\n{exec_result}",
-                reply_to_message_id=update.message.message_id)
+                reply_to_message_id=update.message.message_id,
+            )
 
             # 阶段3: 审查（规划者审查执行结果）
             review_result = await collab_orchestrator.run_review(task)
 
             # 用审查者自己的 Telegram 账号发送审查结果
             review_icon = "✅" if task.review_passed else "🔄"
-            await send_as_bot(task.reviewer_id, chat_id,
+            await send_as_bot(
+                task.reviewer_id,
+                chat_id,
                 f"{review_icon} 审查结果\n\n{review_result}",
-                reply_to_message_id=update.message.message_id)
+                reply_to_message_id=update.message.message_id,
+            )
 
             # 如果审查不通过且可以重试，进行修订
             if not task.review_passed and task.retry_count < task.max_retries:
-                await safe_edit(status_msg,
+                await safe_edit(
+                    status_msg,
                     "**🤝 协作模式**\n\n"
                     "**阶段 1/4** ✅ 规划完成\n"
                     "**阶段 2/4** 🔄 修订执行中 (Claude Opus 4.6)\n"
                     "**阶段 3/4** - 待重新审查\n"
-                    "**阶段 4/4** - 待汇总"
+                    "**阶段 4/4** - 待汇总",
                 )
 
                 exec_result = await collab_orchestrator.run_revised_execution(task)
@@ -764,16 +812,20 @@ class CollabCommandsMixin:
                     await safe_edit(status_msg, f"协作失败（修订执行）: {task.error}")
                     return
 
-                await send_as_bot(BOT_CLAUDE_SONNET, chat_id,
+                await send_as_bot(
+                    BOT_CLAUDE_SONNET,
+                    chat_id,
                     f"🔄 修订结果\n\n{exec_result}",
-                    reply_to_message_id=update.message.message_id)
+                    reply_to_message_id=update.message.message_id,
+                )
 
-            await safe_edit(status_msg,
+            await safe_edit(
+                status_msg,
                 f"**🤝 协作模式**\n\n"
                 f"**阶段 1/4** ✅ 规划完成\n"
                 f"**阶段 2/4** ✅ 执行完成\n"
                 f"**阶段 3/4** ✅ 审查{'通过' if task.review_passed else '(修订后继续)'}\n"
-                f"**阶段 4/4** - ClawBot 汇总中..."
+                f"**阶段 4/4** - ClawBot 汇总中...",
             )
 
             # 阶段4: 汇总
@@ -783,18 +835,19 @@ class CollabCommandsMixin:
                 return
 
             retry_note = f" (经{task.retry_count}次修订)" if task.retry_count > 0 else ""
-            await safe_edit(status_msg,
+            await safe_edit(
+                status_msg,
                 f"**🤝 协作模式 - 完成 ✅**{retry_note}\n\n"
                 f"**阶段 1/4** ✅ 规划 ({planner_name})\n"
                 f"**阶段 2/4** ✅ 执行 (Claude Opus 4.6)\n"
                 f"**阶段 3/4** ✅ 审查 ({planner_name})\n"
-                f"**阶段 4/4** ✅ 汇总 (ClawBot)"
+                f"**阶段 4/4** ✅ 汇总 (ClawBot)",
             )
 
             # 用 ClawBot 自己的 Telegram 账号发送最终汇总
-            await send_as_bot(BOT_QWEN, chat_id,
-                f"📊 最终汇总\n\n{summary_result}",
-                reply_to_message_id=update.message.message_id)
+            await send_as_bot(
+                BOT_QWEN, chat_id, f"📊 最终汇总\n\n{summary_result}", reply_to_message_id=update.message.message_id
+            )
 
             # 保存协作结论到共享记忆
             try:
@@ -807,10 +860,10 @@ class CollabCommandsMixin:
                     chat_id=chat_id,
                 )
             except Exception as mem_err:
-                logger.warning(f"[Collab] 保存共享记忆失败: {mem_err}")
+                logger.warning("[Collab] 保存共享记忆失败: %s", mem_err)
 
         except Exception as e:
-            logger.exception(f"[{self.name}] 协作任务出错")
+            logger.exception("[%s] 协作任务出错", self.name)
             try:
                 await status_msg.edit_text(error_service_failed("协作任务"))
             except Exception as e:
