@@ -4,6 +4,7 @@
 提供新闻分析、执行摘要、每日建议的 LLM 生成功能。
 所有 LLM 调用均有 try/except 降级，确保日报不因 AI 失败中断。
 """
+
 import logging
 from typing import List
 
@@ -12,9 +13,7 @@ from src.constants import FAMILY_QWEN
 logger = logging.getLogger(__name__)
 
 
-async def _analyze_news_with_llm(
-    headlines: List[str], holdings: List[str]
-) -> List[str]:
+async def _analyze_news_with_llm(headlines: List[str], holdings: List[str]) -> List[str]:
     """用最便宜的 LLM 对新闻标题做一句话分析 + 持仓影响关联。
 
     成本控制: 用免费的 qwen 模型，max_tokens=300，prompt 限制100字回复。
@@ -22,11 +21,12 @@ async def _analyze_news_with_llm(
     """
     try:
         from src.litellm_router import free_pool
+
         if not free_pool:
             return None
 
         # 构建新闻列表文本
-        news_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(headlines))
+        news_text = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(headlines))
 
         # 构建 prompt — 精简控制 token 成本
         holdings_part = ""
@@ -55,10 +55,7 @@ async def _analyze_news_with_llm(
             return None
 
         # 解析 LLM 输出为行列表
-        lines = [
-            ln.strip() for ln in text.split("\n")
-            if ln.strip() and not ln.strip().startswith("```")
-        ]
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip() and not ln.strip().startswith("```")]
         if not lines:
             return None
 
@@ -73,7 +70,7 @@ async def _analyze_news_with_llm(
         return result if result else None
 
     except Exception as e:
-        logger.debug(f"[DailyBrief] LLM 新闻分析失败，降级到纯标题: {e}")
+        logger.debug("[DailyBrief] LLM 新闻分析失败，降级到纯标题: %s", e)
         return None
 
 
@@ -101,6 +98,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
 
     try:
         from src.litellm_router import free_pool
+
         if not free_pool:
             raise RuntimeError("free_pool 不可用")
 
@@ -147,7 +145,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
             return text
 
     except Exception as e:
-        logger.debug(f"[DailyBrief] 执行摘要 LLM 调用失败，降级为模板: {e}")
+        logger.debug("[DailyBrief] 执行摘要 LLM 调用失败，降级为模板: %s", e)
 
     # 降级: 模板摘要 — 不依赖 LLM
     parts = []
@@ -197,6 +195,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
 
     try:
         from src.litellm_router import free_pool
+
         if not free_pool:
             return []
 
@@ -244,10 +243,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
             return []
 
         # 解析 LLM 输出为建议列表
-        lines = [
-            ln.strip() for ln in text.split("\n")
-            if ln.strip() and not ln.strip().startswith("```")
-        ]
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip() and not ln.strip().startswith("```")]
         # 清理编号前缀，统一格式
         result = []
         for ln in lines:
@@ -259,5 +255,5 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
         return result[:3] if result else []
 
     except Exception as e:
-        logger.debug(f"[DailyBrief] 今日建议 LLM 调用失败: {e}")
+        logger.debug("[DailyBrief] 今日建议 LLM 调用失败: %s", e)
         return []
