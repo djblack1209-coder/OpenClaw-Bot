@@ -360,6 +360,17 @@ class SmartMemoryPipeline:
             # 获取该用户的所有记忆（传入 chat_id 确保用户隔离）
             search_result = self.memory.search(f"user_{user_id}", limit=20, chat_id=chat_id)
             all_memories = search_result.get("results", []) if isinstance(search_result, dict) else []
+            # 补充搜索用户偏好记忆（onboarding 存的 comm_style/interest 等用 user_preference 分类）
+            try:
+                pref_result = self.memory.search(f"comm_style_{user_id}", limit=5, chat_id=chat_id)
+                pref_memories = pref_result.get("results", []) if isinstance(pref_result, dict) else []
+                # 去重合并（按 key 去重）
+                existing_keys = {m.get("key", "") for m in all_memories}
+                for pm in pref_memories:
+                    if pm.get("key", "") not in existing_keys:
+                        all_memories.append(pm)
+            except Exception:
+                pass  # 补充搜索失败不阻塞主流程
             if len(all_memories) < 3:
                 return
 
@@ -370,6 +381,22 @@ class SmartMemoryPipeline:
             # 解析并存储用户画像
             profile = self._parse_json(response)
             if profile:
+                # 确定性注入: 从 SharedMemory 读取 onboarding 设置的沟通风格偏好
+                # 修复断裂链路 — onboarding 存 comm_style_{uid}，但 LLM 搜索用 user_{uid} 前缀会漏掉
+                try:
+                    style_mem = self.memory.recall(f"comm_style_{user_id}", category="user_preference")
+                    if style_mem.get("success") and style_mem.get("value"):
+                        # 值格式: "用户偏好的沟通风格: 简洁"
+                        style_val = style_mem["value"]
+                        if ":" in style_val:
+                            style_label = style_val.split(":", 1)[1].strip()
+                        else:
+                            style_label = style_val.strip()
+                        if style_label:
+                            profile["communication_style"] = style_label
+                            logger.debug(f"[SmartMemory] 已注入 onboarding 沟通风格偏好: {style_label}")
+                except Exception:
+                    pass  # recall 失败不阻塞画像更新
                 self.memory.remember(
                     f"user_profile_{user_id}",
                     json.dumps(profile, ensure_ascii=False),
