@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from contextlib import contextmanager
 from typing import List, Dict, Optional
 
+from src.db_utils import get_conn as _get_db_conn
+
 # 导入所有 Mixin
 from src.journal_performance import JournalPerformanceMixin
 from src.journal_predictions import JournalPredictionsMixin
@@ -49,18 +51,9 @@ class TradingJournal(
 
     @contextmanager
     def _conn(self):
-        # P2#27: timeout=10 防止并发 "database is locked"
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
+        """SQLite 连接 (委托给全局连接工厂，含 WAL + busy_timeout + 回滚)"""
+        with _get_db_conn(self.db_path, row_factory=sqlite3.Row) as conn:
             yield conn
-            conn.commit()
-        except Exception as e:  # noqa: F841
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def _init_db(self):
         with self._conn() as conn:

@@ -12,12 +12,15 @@ AI 网文写作引擎 v1.0
     chapter = await writer.write_next_chapter(novel_id)
     txt = writer.export_txt(novel_id)
 """
+
 import asyncio
 import json
 import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+
+from src.db_utils import get_conn as _get_db_conn
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -81,19 +84,9 @@ class NovelWriter:
 
     @contextmanager
     def _conn(self):
-        """SQLite 连接管理"""
-        conn = sqlite3.connect(str(self.db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
+        """SQLite 连接管理 (委托给全局连接工厂)"""
+        with _get_db_conn(self.db_path, row_factory=sqlite3.Row) as conn:
             yield conn
-            conn.commit()
-        except Exception as e:  # noqa: F841
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def _init_db(self):
         """初始化数据库表"""
@@ -133,16 +126,19 @@ class NovelWriter:
         """调用 LLM（利用已有的 litellm_router 免费多模型路由）"""
         try:
             from src.litellm_router import free_pool
+
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ]
             resp = await asyncio.wait_for(
                 free_pool.acompletion(
-                    model="default", messages=messages,
-                    max_tokens=max_tokens, temperature=0.8,
+                    model="default",
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=0.8,
                 ),
-                timeout=120
+                timeout=120,
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
@@ -154,13 +150,14 @@ class NovelWriter:
         # 1. 用 LLM 生成大纲
         user_prompt = f"请为以下题材生成一部网文小说的完整大纲：\n题材：{genre}\n风格：{style}"
         raw = await self._llm_call(SYSTEM_OUTLINE, user_prompt, max_tokens=3000)
-        
+
         # 2. 解析 JSON
         outline = {}
         try:
             # 尝试提取 JSON
             import re
-            json_match = re.search(r'\{[\s\S]*\}', raw)
+
+            json_match = re.search(r"\{[\s\S]*\}", raw)
             if json_match:
                 outline = json.loads(json_match.group())
         except json.JSONDecodeError as e:
@@ -169,15 +166,15 @@ class NovelWriter:
 
         title = outline.get("title", f"{genre}小说")
         tagline = outline.get("tagline", "")
-        
+
         # 3. 保存到数据库
         with self._conn() as conn:
             cursor = conn.execute(
                 "INSERT INTO novels (title, tagline, genre, style, outline_json, user_id) VALUES (?,?,?,?,?,?)",
-                (title, tagline, genre, style, json.dumps(outline, ensure_ascii=False), user_id)
+                (title, tagline, genre, style, json.dumps(outline, ensure_ascii=False), user_id),
             )
             novel_id = cursor.lastrowid
-        
+
         logger.info("[NovelWriter] 新小说创建: #%d《%s》(%s)", novel_id, title, genre)
         return {"novel_id": novel_id, "title": title, "tagline": tagline, "outline": outline}
 
@@ -187,37 +184,40 @@ class NovelWriter:
             novel = conn.execute("SELECT * FROM novels WHERE id=?", (novel_id,)).fetchone()
             if not novel:
                 return {"error": f"小说 #{novel_id} 不存在"}
-            
+
             # 获取已写章节
             chapters = conn.execute(
                 "SELECT * FROM chapters WHERE novel_id=? ORDER BY chapter_num", (novel_id,)
             ).fetchall()
-        
+
         outline = json.loads(novel["outline_json"] or "{}")
         chapter_num = len(chapters) + 1
-        
+
         # 从大纲中获取本章信息
         all_chapter_titles = []
         for act in outline.get("acts", []):
             all_chapter_titles.extend(act.get("chapters", []))
-        
-        chapter_title = all_chapter_titles[chapter_num - 1] if chapter_num <= len(all_chapter_titles) else f"第{chapter_num}章"
+
+        chapter_title = (
+            all_chapter_titles[chapter_num - 1] if chapter_num <= len(all_chapter_titles) else f"第{chapter_num}章"
+        )
         # 清理标题格式
         if chapter_title.startswith("第") and "章" in chapter_title:
             chapter_title = chapter_title.split("章", 1)[-1].strip() if "章" in chapter_title else chapter_title
-        
+
         # 构建前文摘要（最近3章）
         recent = chapters[-3:] if chapters else []
-        previous_summary = "\n\n".join([
-            f"【第{ch['chapter_num']}章】{ch['content'][-500:]}" for ch in recent
-        ]) or "（这是第一章，无前文）"
-        
+        previous_summary = (
+            "\n\n".join([f"【第{ch['chapter_num']}章】{ch['content'][-500:]}" for ch in recent])
+            or "（这是第一章，无前文）"
+        )
+
         # 构建角色信息
-        characters_text = "\n".join([
-            f"- {c['name']}({c['role']}): {c['personality']}"
-            for c in outline.get("characters", [])
-        ]) or "（角色待定）"
-        
+        characters_text = (
+            "\n".join([f"- {c['name']}({c['role']}): {c['personality']}" for c in outline.get("characters", [])])
+            or "（角色待定）"
+        )
+
         # 调用 LLM 续写
         system = SYSTEM_WRITER.format(
             genre=novel["genre"],
@@ -230,24 +230,22 @@ class NovelWriter:
             chapter_summary=f"第{chapter_num}章的内容",
             previous_summary=previous_summary,
         )
-        
+
         content = await self._llm_call(system, f"请续写第{chapter_num}章", max_tokens=4000)
-        
+
         if not content:
             return {"error": "LLM 续写失败"}
-        
+
         word_count = len(content)  # 字符数（中文1字=1字符）
-        
+
         # 保存章节
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO chapters (novel_id, chapter_num, title, content, word_count) VALUES (?,?,?,?,?)",
-                (novel_id, chapter_num, chapter_title, content, word_count)
+                (novel_id, chapter_num, chapter_title, content, word_count),
             )
-            conn.execute(
-                "UPDATE novels SET updated_at=datetime('now','localtime') WHERE id=?", (novel_id,)
-            )
-        
+            conn.execute("UPDATE novels SET updated_at=datetime('now','localtime') WHERE id=?", (novel_id,))
+
         logger.info("[NovelWriter] 续写完成: 《%s》第%d章 (%d字)", novel["title"], chapter_num, word_count)
         return {
             "novel_id": novel_id,
@@ -264,10 +262,9 @@ class NovelWriter:
             if not novel:
                 return {"error": f"小说 #{novel_id} 不存在"}
             chapters = conn.execute(
-                "SELECT chapter_num, title, word_count FROM chapters WHERE novel_id=? ORDER BY chapter_num",
-                (novel_id,)
+                "SELECT chapter_num, title, word_count FROM chapters WHERE novel_id=? ORDER BY chapter_num", (novel_id,)
             ).fetchall()
-        
+
         total_words = sum(ch["word_count"] for ch in chapters)
         return {
             "novel_id": novel_id,
@@ -277,7 +274,9 @@ class NovelWriter:
             "style": novel["style"],
             "chapters": len(chapters),
             "total_words": total_words,
-            "chapter_list": [{"num": ch["chapter_num"], "title": ch["title"], "words": ch["word_count"]} for ch in chapters],
+            "chapter_list": [
+                {"num": ch["chapter_num"], "title": ch["title"], "words": ch["word_count"]} for ch in chapters
+            ],
         }
 
     def list_novels(self, user_id: int = 0) -> List[Dict]:
@@ -285,16 +284,24 @@ class NovelWriter:
         with self._conn() as conn:
             novels = conn.execute(
                 "SELECT id, title, genre, style, status, created_at FROM novels WHERE user_id=? ORDER BY updated_at DESC",
-                (user_id,)
+                (user_id,),
             ).fetchall()
             result = []
             for n in novels:
                 ch_count = conn.execute("SELECT COUNT(*) FROM chapters WHERE novel_id=?", (n["id"],)).fetchone()[0]
-                word_count = conn.execute("SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id=?", (n["id"],)).fetchone()[0]
-                result.append({
-                    "id": n["id"], "title": n["title"], "genre": n["genre"],
-                    "chapters": ch_count, "words": word_count, "created_at": n["created_at"],
-                })
+                word_count = conn.execute(
+                    "SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id=?", (n["id"],)
+                ).fetchone()[0]
+                result.append(
+                    {
+                        "id": n["id"],
+                        "title": n["title"],
+                        "genre": n["genre"],
+                        "chapters": ch_count,
+                        "words": word_count,
+                        "created_at": n["created_at"],
+                    }
+                )
         return result
 
     def export_txt(self, novel_id: int) -> Optional[str]:
@@ -306,32 +313,34 @@ class NovelWriter:
             chapters = conn.execute(
                 "SELECT * FROM chapters WHERE novel_id=? ORDER BY chapter_num", (novel_id,)
             ).fetchall()
-        
+
         if not chapters:
             return None
-        
+
         lines = [f"《{novel['title']}》\n"]
         if novel["tagline"]:
             lines.append(f"{novel['tagline']}\n")
         lines.append(f"题材: {novel['genre']}  风格: {novel['style']}\n")
         lines.append("=" * 40 + "\n\n")
-        
+
         for ch in chapters:
             lines.append(f"\n第{ch['chapter_num']}章 {ch['title']}\n\n")
             lines.append(ch["content"] + "\n")
-        
+
         # 写入文件
         safe_title = "".join(c for c in novel["title"] if c.isalnum() or c in "_ -")[:50]
         export_path = _EXPORT_DIR / f"{safe_title}_{novel_id}.txt"
         export_path.write_text("\n".join(lines), encoding="utf-8")
-        
-        logger.info("[NovelWriter] 导出: %s (%d章, %d字)",
-                     export_path, len(chapters), sum(ch["word_count"] for ch in chapters))
+
+        logger.info(
+            "[NovelWriter] 导出: %s (%d章, %d字)", export_path, len(chapters), sum(ch["word_count"] for ch in chapters)
+        )
         return str(export_path)
 
 
 # 全局单例
 _writer: Optional[NovelWriter] = None
+
 
 def get_novel_writer() -> NovelWriter:
     """获取全局 NovelWriter 实例"""

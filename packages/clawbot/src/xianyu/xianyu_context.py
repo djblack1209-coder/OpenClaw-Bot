@@ -1,4 +1,5 @@
 """闲鱼对话上下文管理 — SQLite 持久化"""
+
 import json
 import os
 import sqlite3
@@ -7,13 +8,14 @@ from contextlib import contextmanager
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 from src.utils import now_et
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
 # 订单通知状态
-NOTIFY_NONE = 0       # 未通知
-NOTIFY_ORDER = 1      # 已发下单通知
-NOTIFY_SHIPMENT = 2   # 已发发货提醒
+NOTIFY_NONE = 0  # 未通知
+NOTIFY_ORDER = 1  # 已发下单通知
+NOTIFY_SHIPMENT = 2  # 已发发货提醒
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 DB_PATH = os.path.join(DB_DIR, "xianyu_chat.db")
@@ -28,15 +30,9 @@ class XianyuContextManager:
 
     @contextmanager
     def _conn(self):
-        """获取 SQLite 连接 (上下文管理器自动关闭)"""
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
+        """获取 SQLite 连接 (委托给全局连接工厂)"""
+        with _get_db_conn(self.db_path) as conn:
             yield conn
-            conn.commit()
-        finally:
-            conn.close()
 
     def _init_db(self):
         with self._conn() as c:
@@ -167,8 +163,9 @@ class XianyuContextManager:
         return json.loads(row[0]) if row else None
 
     # ---- orders ----
-    def record_order(self, chat_id: str, user_id: str, item_id: str, status: str,
-                     amount: float = 0.0, cost: float = 0.0):
+    def record_order(
+        self, chat_id: str, user_id: str, item_id: str, status: str, amount: float = 0.0, cost: float = 0.0
+    ):
         with self._conn() as c:
             c.execute(
                 "INSERT INTO orders(chat_id,user_id,item_id,status,amount,cost) VALUES(?,?,?,?,?,?)",
@@ -178,9 +175,11 @@ class XianyuContextManager:
     def get_unnotified_orders(self) -> List[Dict[str, Any]]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT id,chat_id,user_id,item_id,status,ts FROM orders WHERE notified=?"\
-            , (NOTIFY_NONE,)).fetchall()
-        return [{"id": r[0], "chat_id": r[1], "user_id": r[2], "item_id": r[3], "status": r[4], "ts": r[5]} for r in rows]
+                "SELECT id,chat_id,user_id,item_id,status,ts FROM orders WHERE notified=?", (NOTIFY_NONE,)
+            ).fetchall()
+        return [
+            {"id": r[0], "chat_id": r[1], "user_id": r[2], "item_id": r[3], "status": r[4], "ts": r[5]} for r in rows
+        ]
 
     def mark_notified(self, order_id: int):
         with self._conn() as c:
@@ -235,7 +234,7 @@ class XianyuContextManager:
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT item_id FROM messages WHERE user_id=? AND item_id IS NOT NULL AND item_id != '' ORDER BY ts DESC LIMIT 1",
-                (user_id,)
+                (user_id,),
             ).fetchone()
         return row[0] if row else None
 
@@ -249,9 +248,7 @@ class XianyuContextManager:
                 "SELECT COUNT(DISTINCT chat_id) FROM consultations WHERE first_ts LIKE ?", (f"{date}%",)
             ).fetchone()[0]
             # 下单数
-            order_total = c.execute(
-                "SELECT COUNT(*) FROM orders WHERE ts LIKE ?", (f"{date}%",)
-            ).fetchone()[0]
+            order_total = c.execute("SELECT COUNT(*) FROM orders WHERE ts LIKE ?", (f"{date}%",)).fetchone()[0]
             # 付款数
             paid_total = c.execute(
                 "SELECT COUNT(*) FROM orders WHERE ts LIKE ? AND status LIKE '%付款%'", (f"{date}%",)
@@ -264,7 +261,7 @@ class XianyuContextManager:
             converted = c.execute(
                 "SELECT COUNT(*) FROM consultations WHERE first_ts LIKE ? AND converted=1", (f"{date}%",)
             ).fetchone()[0]
-        rate = f"{converted/consult_total*100:.1f}%" if consult_total > 0 else "0%"
+        rate = f"{converted / consult_total * 100:.1f}%" if consult_total > 0 else "0%"
         return {
             "date": date,
             "consultations": consult_total,
@@ -282,9 +279,8 @@ class XianyuContextManager:
         cutoff = (now_et() - timedelta(hours=hours_threshold)).strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as c:
             rows = c.execute(
-                "SELECT id, chat_id, item_id, status, ts FROM orders "
-                "WHERE status='paid' AND ts < ? AND notified < ?",
-                (cutoff, NOTIFY_SHIPMENT)
+                "SELECT id, chat_id, item_id, status, ts FROM orders WHERE status='paid' AND ts < ? AND notified < ?",
+                (cutoff, NOTIFY_SHIPMENT),
             ).fetchall()
         return [{"id": r[0], "chat_id": r[1], "item_id": r[2], "status": r[3], "ts": r[4]} for r in rows]
 
@@ -300,7 +296,7 @@ class XianyuContextManager:
             rows = c.execute(
                 "SELECT amount, cost, COALESCE(commission_rate, 0.06) FROM orders "
                 "WHERE status IN ('paid','completed') AND ts > datetime('now', '-' || ? || ' days')",
-                (days,)
+                (days,),
             ).fetchall()
         total_orders = len(rows)
         total_revenue = 0.0
@@ -350,15 +346,17 @@ class XianyuContextManager:
                     item_name = json.loads(r[7]).get("title", r[1] or "")
                 except Exception as e:  # noqa: F841
                     item_name = r[1] or ""
-                result.append({
-                    "date": r[0] or "",
-                    "item_name": item_name,
-                    "buyer": r[2] or "",
-                    "status": r[3] or "",
-                    "amount": r[4] or 0,
-                    "cost": r[5] or 0,
-                    "commission_rate": r[6] if r[6] is not None else 0.06,
-                })
+                result.append(
+                    {
+                        "date": r[0] or "",
+                        "item_name": item_name,
+                        "buyer": r[2] or "",
+                        "status": r[3] or "",
+                        "amount": r[4] or 0,
+                        "cost": r[5] or 0,
+                        "commission_rate": r[6] if r[6] is not None else 0.06,
+                    }
+                )
             return result
         except Exception as e:
             logger.error("[XianyuContext] 获取全部订单失败: %s", e)
@@ -395,13 +393,15 @@ class XianyuContextManager:
                 except Exception as e:  # noqa: F841
                     title = ""
                 rate = round(converted / consult * 100, 1) if consult > 0 else 0.0
-                result.append({
-                    "item_id": item_id,
-                    "title": title,
-                    "consultations": consult,
-                    "conversions": converted,
-                    "conversion_rate": f"{rate}%",
-                })
+                result.append(
+                    {
+                        "item_id": item_id,
+                        "title": title,
+                        "consultations": consult,
+                        "conversions": converted,
+                        "conversion_rate": f"{rate}%",
+                    }
+                )
             return result
         except Exception as e:
             logger.debug("get_item_rankings 异常: %s", e)
@@ -437,7 +437,7 @@ class XianyuContextManager:
 
     # ---- 回复配置 (风格/FAQ/商品规则) ----
 
-    _FAQ_LIMIT = 50       # FAQ 最多 50 条
+    _FAQ_LIMIT = 50  # FAQ 最多 50 条
     _ITEM_RULE_LIMIT = 100  # 商品规则最多 100 条
 
     def set_reply_style(self, tone: str):
@@ -455,9 +455,7 @@ class XianyuContextManager:
         返回 True 表示成功, False 表示已达上限。
         """
         with self._conn() as c:
-            count = c.execute(
-                "SELECT COUNT(*) FROM reply_config WHERE config_type='faq'"
-            ).fetchone()[0]
+            count = c.execute("SELECT COUNT(*) FROM reply_config WHERE config_type='faq'").fetchone()[0]
             if count >= self._FAQ_LIMIT:
                 return False
             c.execute(
@@ -490,9 +488,7 @@ class XianyuContextManager:
         返回 True 表示成功, False 表示已达上限。
         """
         with self._conn() as c:
-            count = c.execute(
-                "SELECT COUNT(*) FROM reply_config WHERE config_type='item_rule'"
-            ).fetchone()[0]
+            count = c.execute("SELECT COUNT(*) FROM reply_config WHERE config_type='item_rule'").fetchone()[0]
             # 允许更新已有规则，不计入上限
             existing = c.execute(
                 "SELECT 1 FROM reply_config WHERE config_type='item_rule' AND key=?",
@@ -594,6 +590,7 @@ class XianyuContextManager:
         if last_ts_str:
             try:
                 from datetime import datetime
+
                 last_ts = datetime.strptime(last_ts_str, "%Y-%m-%d %H:%M:%S")
                 delta = now_et().replace(tzinfo=None) - last_ts
                 last_contact_days = max(delta.days, 0)

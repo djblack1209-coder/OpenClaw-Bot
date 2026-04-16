@@ -22,6 +22,7 @@ from typing import Optional, Dict, Tuple
 
 from src.utils import now_et, env_bool
 from src.http_client import ResilientHTTPClient
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -309,21 +310,11 @@ class Portfolio:
 
     @contextmanager
     def _conn(self):
-        """SQLite 连接 context manager，自动提交/关闭，防泄漏"""
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA busy_timeout=5000")
+        """SQLite 连接 (委托给全局连接工厂，自动 WAL + busy_timeout + 回滚)"""
+        with _get_db_conn(self.db_path) as conn:
             yield conn
-            conn.commit()
-        except Exception as e:  # noqa: F841
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def _init_db(self):
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self._conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS positions (

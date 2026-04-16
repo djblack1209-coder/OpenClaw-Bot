@@ -18,11 +18,14 @@
     shipper = AutoShipper()
     result = shipper.process_order(order_id, item_id, buyer_id)
 """
+
 import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +43,9 @@ class AutoShipper:
 
     @contextmanager
     def _conn(self):
-        conn = sqlite3.connect(str(self.db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
+        """SQLite 连接 (委托给全局连接工厂)"""
+        with _get_db_conn(self.db_path, row_factory=sqlite3.Row) as conn:
             yield conn
-            conn.commit()
-        except Exception as e:  # noqa: F841
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def _init_db(self):
         with self._conn() as conn:
@@ -109,8 +103,7 @@ class AutoShipper:
                     continue
                 try:
                     conn.execute(
-                        "INSERT INTO card_inventory (item_id, spec, card_content) VALUES (?,?,?)",
-                        (item_id, spec, card)
+                        "INSERT INTO card_inventory (item_id, spec, card_content) VALUES (?,?,?)", (item_id, spec, card)
                     )
                     added += 1
                 except sqlite3.IntegrityError as e:  # noqa: F841
@@ -128,7 +121,7 @@ class AutoShipper:
                        SUM(CASE WHEN status='used' THEN 1 ELSE 0 END) as used,
                        COUNT(*) as total
                        FROM card_inventory WHERE item_id=? GROUP BY item_id, spec""",
-                    (item_id,)
+                    (item_id,),
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -142,9 +135,14 @@ class AutoShipper:
 
     # ── 发货规则 ──
 
-    def set_rule(self, item_id: str, auto_ship: bool = True,
-                 delay_seconds: int = 30, reply_template: str = None,
-                 max_daily_ship: int = 50) -> Dict:
+    def set_rule(
+        self,
+        item_id: str,
+        auto_ship: bool = True,
+        delay_seconds: int = 30,
+        reply_template: str = None,
+        max_daily_ship: int = 50,
+    ) -> Dict:
         """设置商品发货规则"""
         template = reply_template or "您好，您的卡券如下：\n{card_content}\n请注意保存，如有问题随时联系~"
         with self._conn() as conn:
@@ -154,22 +152,19 @@ class AutoShipper:
                    ON CONFLICT(item_id) DO UPDATE SET
                    auto_ship=excluded.auto_ship, delay_seconds=excluded.delay_seconds,
                    reply_template=excluded.reply_template, max_daily_ship=excluded.max_daily_ship""",
-                (item_id, auto_ship, max(10, delay_seconds), template, max_daily_ship)
+                (item_id, auto_ship, max(10, delay_seconds), template, max_daily_ship),
             )
         return {"success": True, "item_id": item_id}
 
     def get_rule(self, item_id: str) -> Optional[Dict]:
         """获取商品发货规则"""
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM shipping_rules WHERE item_id=?", (item_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM shipping_rules WHERE item_id=?", (item_id,)).fetchone()
         return dict(row) if row else None
 
     # ── 发货执行 ──
 
-    def process_order(self, order_id: str, item_id: str, buyer_id: str = "",
-                      spec: str = "") -> Dict:
+    def process_order(self, order_id: str, item_id: str, buyer_id: str = "", spec: str = "") -> Dict:
         """处理订单 → 分配卡券 → 返回发货内容"""
         # 检查发货规则
         rule = self.get_rule(item_id)
@@ -178,9 +173,7 @@ class AutoShipper:
 
         # 幂等: 检查是否已处理过此订单
         with self._conn() as conn:
-            existing = conn.execute(
-                "SELECT id FROM shipping_log WHERE order_id=?", (order_id,)
-            ).fetchone()
+            existing = conn.execute("SELECT id FROM shipping_log WHERE order_id=?", (order_id,)).fetchone()
             if existing:
                 return {"success": True, "reason": "已发货（幂等跳过）", "duplicate": True}
 
@@ -188,7 +181,7 @@ class AutoShipper:
         with self._conn() as conn:
             today_count = conn.execute(
                 "SELECT COUNT(*) FROM shipping_log WHERE item_id=? AND shipped_at >= date('now','localtime')",
-                (item_id,)
+                (item_id,),
             ).fetchone()[0]
             max_daily = rule["max_daily_ship"] if rule else 50
             if today_count >= max_daily:
@@ -202,7 +195,7 @@ class AutoShipper:
                                WHERE item_id=? AND spec=? AND status='available' 
                                ORDER BY id LIMIT 1)
                    AND status='available'""",
-                (order_id, item_id, spec)
+                (order_id, item_id, spec),
             )
             if cursor.rowcount == 0:
                 # 尝试不限规格
@@ -212,23 +205,22 @@ class AutoShipper:
                                    WHERE item_id=? AND status='available' 
                                    ORDER BY id LIMIT 1)
                        AND status='available'""",
-                    (order_id, item_id)
+                    (order_id, item_id),
                 )
-            
+
             if cursor.rowcount == 0:
                 logger.warning("[AutoShipper] 库存不足: item=%s", item_id)
                 return {"success": False, "reason": "库存不足，请补充卡券"}
-            
+
             # 查询刚刚分配的卡券内容
             card = conn.execute(
-                "SELECT id, card_content FROM card_inventory WHERE assigned_order=? AND status='used'",
-                (order_id,)
+                "SELECT id, card_content FROM card_inventory WHERE assigned_order=? AND status='used'", (order_id,)
             ).fetchone()
 
             # 记录发货日志
             conn.execute(
                 "INSERT INTO shipping_log (order_id, item_id, buyer_id, card_id, card_content) VALUES (?,?,?,?,?)",
-                (order_id, item_id, buyer_id, card["id"], card["card_content"])
+                (order_id, item_id, buyer_id, card["id"], card["card_content"]),
             )
 
         # 格式化发货消息
@@ -236,7 +228,9 @@ class AutoShipper:
         message = template.replace("{card_content}", card["card_content"])
 
         remaining = self._get_remaining(item_id)
-        logger.info("[AutoShipper] 发货成功: order=%s, item=%s, card=#%d, 剩余=%d", order_id, item_id, card["id"], remaining)
+        logger.info(
+            "[AutoShipper] 发货成功: order=%s, item=%s, card=#%d, 剩余=%d", order_id, item_id, card["id"], remaining
+        )
         result = {
             "success": True,
             "order_id": order_id,
@@ -253,8 +247,7 @@ class AutoShipper:
         """获取剩余库存"""
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM card_inventory WHERE item_id=? AND status='available'",
-                (item_id,)
+                "SELECT COUNT(*) FROM card_inventory WHERE item_id=? AND status='available'", (item_id,)
             ).fetchone()
         return row[0] if row else 0
 
@@ -276,7 +269,7 @@ class AutoShipper:
                 total = conn.execute("SELECT COUNT(*) FROM shipping_log WHERE item_id=?", (item_id,)).fetchone()[0]
                 today = conn.execute(
                     "SELECT COUNT(*) FROM shipping_log WHERE item_id=? AND shipped_at >= date('now','localtime')",
-                    (item_id,)
+                    (item_id,),
                 ).fetchone()[0]
             else:
                 total = conn.execute("SELECT COUNT(*) FROM shipping_log").fetchone()[0]
