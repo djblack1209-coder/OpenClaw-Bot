@@ -12,6 +12,7 @@ OpenClaw OMEGA — 核心编排器 (Brain)
     brain = get_brain()
     result = await brain.process_message("telegram", "帮我分析茅台今天能买吗")
 """
+
 import asyncio
 import importlib.util
 import logging
@@ -25,8 +26,10 @@ from src.constants import FAMILY_QWEN
 from src.core.event_bus import EventType, get_event_bus
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.task_graph import (
-    TaskGraph, TaskGraphExecutor,
-    TaskNode, NodeStatus,
+    TaskGraph,
+    TaskGraphExecutor,
+    TaskNode,
+    NodeStatus,
 )
 from config.prompts import (
     CHAT_FALLBACK_PROMPT,
@@ -35,6 +38,7 @@ from src.core.response_synthesizer import (
     get_response_synthesizer,
     get_context_collector,
 )
+
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.resilience import api_limiter
 
@@ -50,9 +54,11 @@ _CONFIG_PATH = _BASE_DIR / "config" / "omega.yaml"
 
 # ── 结果数据结构 ──────────────────────────────────────────
 
+
 @dataclass
 class TaskResult:
     """一次任务执行的完整结果"""
+
     task_id: str
     intent: Optional[ParsedIntent] = None
     graph_progress: Optional[Dict] = None
@@ -101,11 +107,7 @@ class TaskResult:
             )
 
         if self.needs_clarification:
-            params_text = (
-                "、".join(self.clarification_params)
-                if self.clarification_params
-                else "更多信息"
-            )
+            params_text = "、".join(self.clarification_params) if self.clarification_params else "更多信息"
             return f"🤔 需要补充信息：请告诉我 {params_text}"
 
         if self.final_result:
@@ -116,6 +118,7 @@ class TaskResult:
 
 
 # ── 核心编排器 ──────────────────────────────────────────
+
 
 class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     """
@@ -155,9 +158,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 "team_enabled": True,
                 "auto_trade": False,
                 "risk_rules": {
-                    "max_position_single": 0.30,     # 与 risk_manager.py 对齐
-                    "max_drawdown_stop": 0.10,        # 与 risk_manager.py drawdown_halt_pct 对齐
-                    "daily_loss_limit": 0.05,          # $100/$2000=5%, 与 risk_manager.py 对齐
+                    "max_position_single": 0.30,  # 与 risk_manager.py 对齐
+                    "max_drawdown_stop": 0.10,  # 与 risk_manager.py drawdown_halt_pct 对齐
+                    "daily_loss_limit": 0.05,  # $100/$2000=5%, 与 risk_manager.py 对齐
                     "require_human_approval_rmb": 100000,
                 },
             },
@@ -168,6 +171,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         if _CONFIG_PATH.exists():
             try:
                 import yaml
+
                 with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
                     loaded = yaml.safe_load(f) or {}
                     # 合并（loaded 覆盖 defaults）
@@ -179,7 +183,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                         else:
                             defaults[k] = v
             except Exception as e:
-                logger.warning(f"加载 omega.yaml 失败，使用默认配置: {e}")
+                logger.warning("加载 omega.yaml 失败，使用默认配置: %s", e)
         return defaults
 
     # ── 主入口 ──────────────────────────────────────────
@@ -223,11 +227,11 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             )
 
             # 1. 意图解析
-            logger.info(f"[{task_id}] 开始处理消息: {message[:80]}...")
+            logger.info("[%s] 开始处理消息: %s...", task_id, message[:80])
             # GAP 9 修复: 复用调用方预解析的意图，避免重复 LLM 调用
             if pre_parsed_intent and pre_parsed_intent.is_actionable:
                 intent = pre_parsed_intent
-                logger.debug(f"[{task_id}] 复用预解析意图: {intent.task_type}")
+                logger.debug("[%s] 复用预解析意图: %s", task_id, intent.task_type)
             else:
                 intent = await self._intent_parser.parse(message, message_type, context)
             result.intent = intent
@@ -236,24 +240,27 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             # 检测"分析TSLA然后发到小红书"这类包含多个子任务的指令
             sub_intents = _detect_compound_intent(message, intent)
             if sub_intents and len(sub_intents) > 1:
-                logger.info(f"[{task_id}] 复合意图检测到 {len(sub_intents)} 个子任务")
+                logger.info("[%s] 复合意图检测到 %s 个子任务", task_id, len(sub_intents))
                 # 按序执行子任务，前一个结果传给下一个
                 combined_results = {}
                 for i, sub_intent in enumerate(sub_intents, 1):
                     # 发布进度事件
                     await self._event_bus.publish(
                         "brain.progress",
-                        {"step": i, "total": len(sub_intents),
-                         "name": sub_intent.goal, "status": "running"},
+                        {"step": i, "total": len(sub_intents), "name": sub_intent.goal, "status": "running"},
                         source="brain",
                     )
                     sub_result = await self.process_message(
-                        source=source, message=sub_intent.raw_message or sub_intent.goal,
-                        message_type=message_type, context=context,
-                        pre_parsed_intent=sub_intent, skip_chat_fallback=True,
+                        source=source,
+                        message=sub_intent.raw_message or sub_intent.goal,
+                        message_type=message_type,
+                        context=context,
+                        pre_parsed_intent=sub_intent,
+                        skip_chat_fallback=True,
                     )
                     combined_results[f"step_{i}_{sub_intent.task_type.value}"] = (
-                        sub_result.final_result if sub_result.success
+                        sub_result.final_result
+                        if sub_result.success
                         else {"error": sub_result.error or "未知错误"}  # error 已在子调用中经过 _scrub_secrets 清洗
                     )
                 result.final_result = combined_results
@@ -263,11 +270,12 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             # 写入 current_task 到 core memory (让后续消息知道当前在做什么)
             try:
                 from src.bot.globals import tiered_context_manager as _tcm
+
                 _chat_id = int(context.get("chat_id", 0))
                 if _tcm and _chat_id:
                     _tcm.core_set("current_task", f"{intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
             except Exception as e:
-                logger.debug(f"写入 current_task 到 core memory 失败: {e}")
+                logger.debug("写入 current_task 到 core memory 失败: %s", e)
 
             if not intent.is_actionable:
                 # ── 模糊输入智能引导 — 无法识别明确意图时提供快捷操作建议 ──
@@ -292,6 +300,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 # 无法识别为特定任务 → 用 LLM 直接回答（闲聊/问答）
                 try:
                     from src.litellm_router import free_pool
+
                     if free_pool:
                         # 构建系统提示: 基础人格 + 用户画像
                         _profile = brain_context.get("user_profile", "")
@@ -311,10 +320,12 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                         # 注入最近对话历史 (让 Brain 知道"那"指什么)
                         recent = brain_context.get("recent_messages", "")
                         if recent:
-                            messages.append({
-                                "role": "system",
-                                "content": f"最近对话:\n{recent}",
-                            })
+                            messages.append(
+                                {
+                                    "role": "system",
+                                    "content": f"最近对话:\n{recent}",
+                                }
+                            )
                         messages.append({"role": "user", "content": message})
 
                         async with api_limiter("llm"):
@@ -330,7 +341,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                             result.elapsed_seconds = time.time() - start_time
                             return result
                 except Exception as e:
-                    logger.debug(f"闲聊 LLM 失败: {e}")
+                    logger.debug("闲聊 LLM 失败: %s", e)
 
                 # 最终降级：转发给现有 MultiBot
                 result.final_result = {"action": "forward_to_chat", "message": message}
@@ -344,13 +355,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 partial_task = None
                 if graph and len(graph.nodes) > 0:
                     # 有可先执行的节点 → 启动后台执行
-                    partial_task = asyncio.create_task(
-                        self._graph_executor.execute(graph)
-                    )
+                    partial_task = asyncio.create_task(self._graph_executor.execute(graph))
                     partial_task.add_done_callback(
-                        lambda t: t.exception() and logger.error(
-                            "[Brain] 后台任务图执行失败: %s", t.exception()
-                        )
+                        lambda t: t.exception() and logger.error("[Brain] 后台任务图执行失败: %s", t.exception())
                     )
 
                 # 始终存储 pending callback（无论是否有可先执行的节点）
@@ -381,11 +388,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 return result
 
             # 4. 执行任务图（带总超时保护 — 防止降级链累积导致 6-15 分钟等待）
-            logger.info(f"[{task_id}] 执行任务图: {graph.name}, {len(graph.nodes)} 个节点")
+            logger.info("[%s] 执行任务图: %s, %s 个节点", task_id, graph.name, len(graph.nodes))
             try:
-                completed_graph = await asyncio.wait_for(
-                    self._graph_executor.execute(graph), timeout=90
-                )
+                completed_graph = await asyncio.wait_for(self._graph_executor.execute(graph), timeout=90)
             except asyncio.TimeoutError:
                 result.error = "任务执行超时(90秒)，请简化请求或稍后重试"
                 result.elapsed_seconds = time.time() - start_time
@@ -404,17 +409,17 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 # 更新 current_task (记录最近完成的任务)
                 try:
                     if _tcm and _chat_id:
-                        _tcm.core_set("current_task", f"[已完成] {intent.task_type.value}: {intent.goal}", chat_id=_chat_id)
+                        _tcm.core_set(
+                            "current_task", f"[已完成] {intent.task_type.value}: {intent.goal}", chat_id=_chat_id
+                        )
                 except Exception as e:
-                    logger.debug(f"更新已完成任务的 current_task 状态失败: {e}")
+                    logger.debug("更新已完成任务的 current_task 状态失败: %s", e)
 
                 # 6. 响应合成 — 将数据结果转化为对话式回复
                 try:
                     synth = get_response_synthesizer()
                     task_type_str = (
-                        intent.task_type.value
-                        if hasattr(intent.task_type, "value")
-                        else str(intent.task_type)
+                        intent.task_type.value if hasattr(intent.task_type, "value") else str(intent.task_type)
                     )
                     synthesized = await synth.synthesize(
                         raw_data=results,
@@ -428,11 +433,13 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                         tldr = ""
                         try:
                             _suggest_task = synth.generate_suggestions(
-                                synthesized, task_type_str,
+                                synthesized,
+                                task_type_str,
                             )
                             _tldr_task = synth.generate_tldr(synthesized)
                             suggestions, tldr = await asyncio.gather(
-                                _suggest_task, _tldr_task,
+                                _suggest_task,
+                                _tldr_task,
                                 return_exceptions=True,
                             )
                             # asyncio.gather 的 return_exceptions 可能返回异常对象
@@ -463,17 +470,11 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 except Exception as e:
                     logger.debug(f"响应合成失败 (使用原始结果): {e}")
             else:
-                failed_nodes = [
-                    n for n in completed_graph.nodes.values()
-                    if n.status == NodeStatus.FAILED
-                ]
-                result.error = "; ".join(
-                    f"{n.name}: {n.error}" for n in failed_nodes
-                )
+                failed_nodes = [n for n in completed_graph.nodes.values() if n.status == NodeStatus.FAILED]
+                result.error = "; ".join(f"{n.name}: {n.error}" for n in failed_nodes)
 
             # 6. 发布完成事件
-            event_type = (EventType.TASK_COMPLETED if result.success
-                         else EventType.TASK_FAILED)
+            event_type = EventType.TASK_COMPLETED if result.success else EventType.TASK_FAILED
             await self._event_bus.publish(
                 event_type,
                 result.to_dict(),
@@ -484,6 +485,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             logger.error(f"[{task_id}] 处理消息失败: {e}", exc_info=True)
             # 清洗技术信息后再存入 result.error，防止 API URL / 模型名等泄露到用户消息
             from src.litellm_router import _scrub_secrets
+
             result.error = _scrub_secrets(str(e))
 
             # 尝试自愈
@@ -500,15 +502,15 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             # 清理活跃任务（延迟清理，保留一段时间供查询）
             try:
                 loop = asyncio.get_running_loop()
+
                 async def _deferred_pop(tid: str) -> None:
                     await asyncio.sleep(300)
                     async with self._lock:
                         self._active_tasks.pop(tid, None)
+
                 _cleanup = loop.create_task(_deferred_pop(task_id))
                 _cleanup.add_done_callback(
-                    lambda t: t.exception() and logger.debug(
-                        "[Brain] 延迟清理任务失败: %s", t.exception()
-                    )
+                    lambda t: t.exception() and logger.debug("[Brain] 延迟清理任务失败: %s", t.exception())
                 )
             except RuntimeError as e:  # noqa: F841
                 # 无运行中的事件循环时直接同步清理
@@ -542,10 +544,8 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             logger.error(f"构建任务图失败 ({intent.task_type}): {e}", exc_info=True)
             return None
 
-
     # ── _build_*_graph 方法已拆分至 brain_graph_builders.py ──
     # ── _exec_* 方法已拆分至 brain_executors.py ──
-
 
     # ── 追问回答处理 ────────────────────────────────────
 
@@ -557,9 +557,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         """
         return self._pending_clarifications.get(chat_id)
 
-    async def resume_with_answer(
-        self, task_id: str, answer: str, context: Dict
-    ) -> TaskResult:
+    async def resume_with_answer(self, task_id: str, answer: str, context: Dict) -> TaskResult:
         """用用户的文本回答恢复被追问中断的任务。
 
         工作流:
@@ -622,9 +620,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 try:
                     synth = get_response_synthesizer()
                     task_type_str = (
-                        intent.task_type.value
-                        if hasattr(intent.task_type, "value")
-                        else str(intent.task_type)
+                        intent.task_type.value if hasattr(intent.task_type, "value") else str(intent.task_type)
                     )
                     synthesized = await synth.synthesize(
                         raw_data=results,
@@ -713,16 +709,14 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     def cleanup_pending_callbacks(self, max_age_seconds: int = 600):
         """Remove pending callbacks older than max_age."""
         now = time.time()
-        stale = [k for k, v in self._pending_callbacks.items()
-                 if now - v.get("created_at", 0) > max_age_seconds]
+        stale = [k for k, v in self._pending_callbacks.items() if now - v.get("created_at", 0) > max_age_seconds]
         for k in stale:
             del self._pending_callbacks[k]
         if stale:
             logger.debug("Cleaned %d stale pending callbacks", len(stale))
         # 同步清理 clarification 映射中已过期的条目
         stale_clarifications = [
-            chat_id for chat_id, tid in self._pending_clarifications.items()
-            if tid not in self._pending_callbacks
+            chat_id for chat_id, tid in self._pending_clarifications.items() if tid not in self._pending_callbacks
         ]
         for chat_id in stale_clarifications:
             del self._pending_clarifications[chat_id]
@@ -751,6 +745,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         """尝试自愈 — 传递 context 但不传 retry_callable（Brain 层重试逻辑由调用者决定）"""
         try:
             from src.core.self_heal import get_self_heal_engine
+
             engine = get_self_heal_engine()
             result = await engine.heal(error, context, retry_callable=None)
             return result.healed
@@ -837,12 +832,14 @@ def _detect_compound_intent(message: str, primary_intent: ParsedIntent) -> list:
         if sub_type == TaskType.UNKNOWN:
             sub_type = primary_intent.task_type  # 降级用主意图类型
 
-        sub_intents.append(ParsedIntent(
-            goal=part,
-            task_type=sub_type,
-            known_params=dict(primary_intent.known_params),
-            confidence=0.7,
-            raw_message=part,
-        ))
+        sub_intents.append(
+            ParsedIntent(
+                goal=part,
+                task_type=sub_type,
+                known_params=dict(primary_intent.known_params),
+                confidence=0.7,
+                raw_message=part,
+            )
+        )
 
     return sub_intents if len(sub_intents) >= 2 else None

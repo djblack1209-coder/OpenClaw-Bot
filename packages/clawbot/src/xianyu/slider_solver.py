@@ -14,6 +14,7 @@
     # 在 Playwright page 上注入 stealth 并自动处理滑块
     solved = await solver.solve(page, max_retries=5)
 """
+
 import logging
 import math
 import random
@@ -189,11 +190,13 @@ def _generate_trajectory(distance: int, steps: int = 30) -> list[dict]:
         # Y 轴逐渐归零
         y_noise = perlin_noise_1d((main_steps + i) * 0.5, seed_y) * 1.5 * (1 - progress)
 
-        trajectory.append({
-            "x": x,
-            "y": y_noise,
-            "dt": random.uniform(25, 50),  # 修正时速度较慢
-        })
+        trajectory.append(
+            {
+                "x": x,
+                "y": y_noise,
+                "dt": random.uniform(25, 50),  # 修正时速度较慢
+            }
+        )
 
     return trajectory
 
@@ -203,13 +206,13 @@ class SliderSolver:
 
     # 淘宝/闲鱼滑块的 CSS 选择器（多种变体）
     SLIDER_SELECTORS = [
-        "#nc_1_n1z",              # 标准滑块按钮
-        "#nc_1__scale_text",      # 滑块轨道文字
-        ".nc-lang-cnt",           # 滑块容器
-        "#nocaptcha",             # nocaptcha 容器
-        ".nc_wrapper",            # 滑块包裹器
+        "#nc_1_n1z",  # 标准滑块按钮
+        "#nc_1__scale_text",  # 滑块轨道文字
+        ".nc-lang-cnt",  # 滑块容器
+        "#nocaptcha",  # nocaptcha 容器
+        ".nc_wrapper",  # 滑块包裹器
         "#baxia-dialog-content",  # 百姓验证弹窗
-        "iframe[src*='captcha']", # 验证码 iframe
+        "iframe[src*='captcha']",  # 验证码 iframe
     ]
 
     # 滑块按钮选择器（用于实际拖动）
@@ -241,7 +244,7 @@ class SliderSolver:
             await page.add_init_script(STEALTH_JS)
             logger.debug("Stealth JS 已注入")
         except Exception as e:
-            logger.warning(f"Stealth JS 注入失败: {e}")
+            logger.warning("Stealth JS 注入失败: %s", e)
 
     async def detect_slider(self, page) -> bool:
         """检测页面上是否存在滑块验证码。
@@ -257,7 +260,7 @@ class SliderSolver:
             try:
                 element = await page.query_selector(selector)
                 if element and await element.is_visible():
-                    logger.info(f"检测到滑块验证码: {selector}")
+                    logger.info("检测到滑块验证码: %s", selector)
                     return True
             except Exception:
                 continue
@@ -268,7 +271,7 @@ class SliderSolver:
                 for selector in self.SLIDER_BUTTON_SELECTORS:
                     element = await frame.query_selector(selector)
                     if element and await element.is_visible():
-                        logger.info(f"检测到 iframe 内滑块验证码: {selector}")
+                        logger.info("检测到 iframe 内滑块验证码: %s", selector)
                         return True
             except Exception:
                 continue
@@ -321,7 +324,7 @@ class SliderSolver:
             是否成功（通过检测页面变化判断）
         """
         self._attempt_count += 1
-        logger.info(f"滑块求解: 第 {self._attempt_count} 次尝试")
+        logger.info("滑块求解: 第 %s 次尝试", self._attempt_count)
 
         try:
             # 获取滑块按钮和轨道的位置
@@ -340,7 +343,7 @@ class SliderSolver:
             else:
                 slide_distance = 300
 
-            logger.info(f"滑动距离: {slide_distance}px")
+            logger.info("滑动距离: %spx", slide_distance)
 
             # 生成人类化轨迹
             steps = random.randint(25, 40)
@@ -382,7 +385,7 @@ class SliderSolver:
             return await self._check_solved(page)
 
         except Exception as e:
-            logger.warning(f"滑块拖动异常: {e}")
+            logger.warning("滑块拖动异常: %s", e)
             return False
 
     async def _check_solved(self, page) -> bool:
@@ -397,9 +400,9 @@ class SliderSolver:
         try:
             # 检查成功标志
             success_selectors = [
-                ".nc-lang-cnt.nc_done",   # 标准成功状态
-                "#nc_1__success",          # 成功提示
-                ".nc_ok",                  # 成功 class
+                ".nc-lang-cnt.nc_done",  # 标准成功状态
+                "#nc_1__success",  # 成功提示
+                ".nc_ok",  # 成功 class
             ]
             for sel in success_selectors:
                 elem = await page.query_selector(sel)
@@ -432,7 +435,7 @@ class SliderSolver:
                 return True
 
         except Exception as e:
-            logger.debug(f"检查滑块状态异常: {e}")
+            logger.debug("检查滑块状态异常: %s", e)
 
         return False
 
@@ -460,7 +463,7 @@ class SliderSolver:
             # 查找滑块元素
             slider_btn, slider_track, target = await self._find_slider_elements(page)
             if not slider_btn:
-                logger.warning(f"第 {attempt + 1} 次: 检测到滑块但无法定位按钮")
+                logger.warning("第 %s 次: 检测到滑块但无法定位按钮", attempt + 1)
                 await _async_sleep(2)
                 continue
 
@@ -471,15 +474,15 @@ class SliderSolver:
 
             # 失败后等待一段时间再重试（可能需要刷新验证码）
             wait = random.uniform(2, 4)
-            logger.info(f"等待 {wait:.1f}s 后重试...")
+            logger.info("等待 %.1fs 后重试...", wait)
             await _async_sleep(wait)
 
             # 尝试点击刷新/重试按钮
             try:
                 refresh_selectors = [
                     ".nc-lang-cnt .errloading a",  # 错误后的重新加载链接
-                    "#nc_1__refresh",               # 刷新按钮
-                    ".errloading",                  # 点击错误区域重试
+                    "#nc_1__refresh",  # 刷新按钮
+                    ".errloading",  # 点击错误区域重试
                 ]
                 for sel in refresh_selectors:
                     elem = await page.query_selector(sel)
@@ -497,6 +500,7 @@ class SliderSolver:
 async def _async_sleep(seconds: float) -> None:
     """异步等待（兼容 sync 和 async 上下文）"""
     import asyncio
+
     await asyncio.sleep(seconds)
 
 
@@ -597,8 +601,7 @@ class SliderSolverSync:
             start_y = btn_box["y"] + btn_box["height"] / 2
 
             # 接近滑块
-            page.mouse.move(start_x + random.uniform(-30, -10),
-                          start_y + random.uniform(-5, 5))
+            page.mouse.move(start_x + random.uniform(-30, -10), start_y + random.uniform(-5, 5))
             time.sleep(random.uniform(0.1, 0.3))
 
             # 移到滑块上
