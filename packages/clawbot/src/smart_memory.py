@@ -254,7 +254,7 @@ class SmartMemoryPipeline:
                     importance=5,
                     chat_id=chat_id,
                 )
-                logger.info(f"💬 实时偏好捕获: {pref_fact[:60]}")
+                logger.info("💬 实时偏好捕获: %s", pref_fact[:60])
 
                 # 偏好变化 → 触发画像立即更新（不等 profile_interval）
                 if self.llm_fn:
@@ -265,7 +265,7 @@ class SmartMemoryPipeline:
                     )
 
         except Exception as e:
-            logger.debug(f"实时偏好检测异常 (不影响主流程): {e}")
+            logger.debug("实时偏好检测异常 (不影响主流程): %s", e)
 
     async def _extract_and_store(self, chat_id: int, user_id: int, bot_id: str):
         """阶段1: LLM 事实提取 + 阶段2: 冲突解决（搬运自 mem0）"""
@@ -288,7 +288,7 @@ class SmartMemoryPipeline:
             if not facts:
                 return
 
-            logger.info(f"[SmartMemory] chat={chat_id} 提取到 {len(facts)} 条事实")
+            logger.info("[SmartMemory] chat=%s 提取到 %s 条事实", chat_id, len(facts))
             emit_flow_event("llm", "mem0", "running", f"提取到 {len(facts)} 条新事实", {"facts": facts})
 
             # 阶段2: 对每条事实做冲突解决
@@ -296,9 +296,9 @@ class SmartMemoryPipeline:
                 await self._resolve_and_store(fact, chat_id, user_id, bot_id)
 
         except asyncio.TimeoutError as e:
-            logger.debug(f"[SmartMemory] 事实提取超时 (chat={chat_id})")
+            logger.debug("[SmartMemory] 事实提取超时 (chat=%s)", chat_id)
         except Exception as e:
-            logger.warning(f"[SmartMemory] 事实提取失败 (chat={chat_id}): {e}")
+            logger.warning("[SmartMemory] 事实提取失败 (chat=%s): %s", chat_id, e)
 
     async def _resolve_and_store(self, fact: str, chat_id: int, user_id: int, bot_id: str):
         """对单条事实做冲突解决 — 搬运自 mem0 的 update memory 流程"""
@@ -313,7 +313,7 @@ class SmartMemoryPipeline:
                 # 无相关记忆，直接 ADD（传入 chat_id 确保用户隔离）
                 key = f"auto_{user_id}_{int(time.time())}"
                 self.memory.remember(key, fact, source_bot=bot_id, importance=3, chat_id=chat_id)
-                logger.debug(f"[SmartMemory] ADD: {fact[:60]}")
+                logger.debug("[SmartMemory] ADD: %s", fact[:80])
                 emit_flow_event("mem0", "db", "success", "存储新记忆", {"action": "ADD", "fact": fact})
                 return
 
@@ -330,27 +330,27 @@ class SmartMemoryPipeline:
             if action.event == "ADD":
                 key = f"auto_{user_id}_{int(time.time())}"
                 self.memory.remember(key, action.text or fact, source_bot=bot_id, importance=3, chat_id=chat_id)
-                logger.debug(f"[SmartMemory] ADD: {(action.text or fact)[:60]}")
+                logger.debug("[SmartMemory] ADD: %s", (action.text or fact)[:80])
                 emit_flow_event("mem0", "db", "success", "追加记忆", {"action": "ADD", "fact": action.text or fact})
 
             elif action.event == "UPDATE" and action.key:
                 self.memory.remember(action.key, action.text, source_bot=bot_id, importance=4, chat_id=chat_id)
-                logger.debug(f"[SmartMemory] UPDATE {action.key}: {action.text[:60]}")
+                logger.debug("[SmartMemory] UPDATE %s: %s", action.key, action.text[:80])
                 emit_flow_event(
                     "mem0", "db", "success", "更新记忆", {"action": "UPDATE", "key": action.key, "text": action.text}
                 )
 
             elif action.event == "DELETE" and action.key:
                 self.memory.forget(action.key)
-                logger.debug(f"[SmartMemory] DELETE: {action.key}")
+                logger.debug("[SmartMemory] DELETE: %s", action.key)
                 emit_flow_event("mem0", "db", "success", "删除冲突记忆", {"action": "DELETE", "key": action.key})
 
             # NONE: 不操作
 
         except asyncio.TimeoutError as e:
-            logger.debug(f"[SmartMemory] 冲突解决超时: {fact[:40]}")
+            logger.debug("[SmartMemory] 冲突解决超时: %s", fact[:80])
         except Exception as e:
-            logger.debug(f"[SmartMemory] 冲突解决失败: {e}")
+            logger.debug("[SmartMemory] 冲突解决失败: %s", e)
 
     async def _update_user_profile(self, chat_id: int, user_id: int):
         """周期性用户画像更新 — 搬运自 Tiger_bot 的反思循环"""
@@ -394,7 +394,7 @@ class SmartMemoryPipeline:
                             style_label = style_val.strip()
                         if style_label:
                             profile["communication_style"] = style_label
-                            logger.debug(f"[SmartMemory] 已注入 onboarding 沟通风格偏好: {style_label}")
+                            logger.debug("[SmartMemory] 已注入 onboarding 沟通风格偏好: %s", style_label)
                 except Exception as e:
                     logger.warning("[SmartMemory] 沟通偏好召回失败: %s", e)
                 self.memory.remember(
@@ -404,7 +404,7 @@ class SmartMemoryPipeline:
                     importance=5,
                     chat_id=chat_id,
                 )
-                logger.info(f"[SmartMemory] 用户画像已更新: user={user_id}")
+                logger.info("[SmartMemory] 用户画像已更新: user=%s", user_id)
                 emit_flow_event("mem0", "profile", "success", "用户画像更新", {"profile": profile})
 
                 # 同步画像到 TieredContextManager core memory
@@ -430,7 +430,7 @@ class SmartMemoryPipeline:
                             _tcm.core_set("user_profile", profile_text, chat_id=chat_id)
                             logger.info("[SmartMemory] 画像已同步到 TieredContextManager core memory")
                 except Exception as tcm_e:
-                    logger.debug(f"[SmartMemory] 同步到 TCM 失败: {tcm_e}")
+                    logger.debug("[SmartMemory] 同步到 TCM 失败: %s", tcm_e)
 
                 # 自动将画像同步写入硬盘的 MEMORY.md 供人类（严总）阅读
                 try:
@@ -476,12 +476,12 @@ class SmartMemoryPipeline:
                         logger.info("[SmartMemory] 已将最新用户画像同步至 MEMORY.md")
                         emit_flow_event("mem0", "file", "success", "更新 MEMORY.md 文件", {"file": "MEMORY.md"})
                 except Exception as sync_e:
-                    logger.warning(f"[SmartMemory] 同步至 MEMORY.md 失败: {sync_e}")
+                    logger.warning("[SmartMemory] 同步至 MEMORY.md 失败: %s", sync_e)
 
         except asyncio.TimeoutError as e:
-            logger.debug(f"[SmartMemory] 用户画像更新超时: user={user_id}")
+            logger.debug("[SmartMemory] 用户画像更新超时: user=%s", user_id)
         except Exception as e:
-            logger.warning(f"[SmartMemory] 用户画像更新失败: {e}")
+            logger.warning("[SmartMemory] 用户画像更新失败: %s", e)
 
     # ── 解析工具 ──
 
@@ -681,12 +681,12 @@ class SmartMemoryPipeline:
                 "removed": removed_count,
                 "original_count": len(memories),
             }
-            logger.info(f"[SmartMemory] 记忆整合完成: {len(memories)}条 → 删除{removed_count} + 新增{added_count}")
+            logger.info("[SmartMemory] 记忆整合完成: %s条 → 删除%s + 新增%s", len(memories), removed_count, added_count)
             emit_flow_event("memory_consolidation", result)
             return result
 
         except Exception as e:
-            logger.warning(f"[SmartMemory] 记忆整合失败: {e}")
+            logger.warning("[SmartMemory] 记忆整合失败: %s", e)
             return {"consolidated": 0, "removed": 0, "error": str(e)}
 
 

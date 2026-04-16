@@ -493,7 +493,7 @@ class SliderSolver:
             except Exception as e:
                 logger.debug("滑块刷新按钮点击失败(可忽略): %s", e)
 
-        logger.warning(f"滑块求解失败，已尝试 {max_retries} 次")
+        logger.warning("滑块求解失败，已尝试 %s 次", max_retries)
         return False
 
 
@@ -534,7 +534,7 @@ class SliderSolverSync:
             try:
                 element = page.query_selector(selector)
                 if element and element.is_visible():
-                    logger.info(f"检测到滑块验证码: {selector}")
+                    logger.info("检测到滑块验证码: %s", selector)
                     return True
             except Exception:
                 continue
@@ -545,7 +545,7 @@ class SliderSolverSync:
                 for selector in self.SLIDER_BUTTON_SELECTORS:
                     element = frame.query_selector(selector)
                     if element and element.is_visible():
-                        logger.info(f"检测到 iframe 内滑块: {selector}")
+                        logger.info("检测到 iframe 内滑块: %s", selector)
                         return True
             except Exception:
                 continue
@@ -578,7 +578,7 @@ class SliderSolverSync:
     def _slide_once(self, page, slider_btn, slider_track) -> bool:
         """执行一次滑块拖动（同步版）"""
         self._attempt_count += 1
-        logger.info(f"滑块求解: 第 {self._attempt_count} 次尝试")
+        logger.info("滑块求解: 第 %s 次尝试", self._attempt_count)
 
         try:
             btn_box = slider_btn.bounding_box()
@@ -592,7 +592,7 @@ class SliderSolverSync:
             else:
                 slide_distance = 300
 
-            logger.info(f"滑动距离: {slide_distance}px")
+            logger.info("滑动距离: %spx", slide_distance)
 
             steps = random.randint(25, 40)
             trajectory = _generate_trajectory(slide_distance, steps=steps)
@@ -627,7 +627,7 @@ class SliderSolverSync:
             return self._check_solved(page)
 
         except Exception as e:
-            logger.warning(f"滑块拖动异常: {e}")
+            logger.warning("滑块拖动异常: %s", e)
             return False
 
     def _check_solved(self, page) -> bool:
@@ -656,7 +656,7 @@ class SliderSolverSync:
             return True
 
         except Exception as e:
-            logger.debug(f"检查滑块状态异常: {e}")
+            logger.debug("检查滑块状态异常: %s", e)
             return False
 
     def solve(self, page, max_retries: int = 5) -> bool:
@@ -673,7 +673,7 @@ class SliderSolverSync:
 
             slider_btn, slider_track, target = self._find_slider_elements(page)
             if not slider_btn:
-                logger.warning(f"第 {attempt + 1} 次: 检测到滑块但无法定位按钮")
+                logger.warning("第 %s 次: 检测到滑块但无法定位按钮", attempt + 1)
                 time.sleep(2)
                 continue
 
@@ -682,7 +682,7 @@ class SliderSolverSync:
                 return True
 
             wait = random.uniform(2, 4)
-            logger.info(f"等待 {wait:.1f}s 后重试...")
+            logger.info("等待 %.1fs 后重试...", wait)
             time.sleep(wait)
 
             # 尝试刷新验证码
@@ -696,5 +696,5 @@ class SliderSolverSync:
             except Exception as e:
                 logger.debug("同步滑块刷新按钮点击失败(可忽略): %s", e)
 
-        logger.warning(f"滑块求解失败，已尝试 {max_retries} 次")
+        logger.warning("滑块求解失败，已尝试 %s 次", max_retries)
         return False
