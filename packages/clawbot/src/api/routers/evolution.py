@@ -147,15 +147,15 @@ def update_proposal(proposal_id: str, req: StatusUpdateRequest):
         engine = _get_engine()
         valid = {"proposed", "approved", "rejected", "integrated"}
         if req.status not in valid:
-            return {"status": "error", "message": f"无效状态，必须是: {valid}"}
+            raise HTTPException(status_code=422, detail=f"无效状态，必须是: {valid}")
 
         ok = engine.update_proposal_status(proposal_id, req.status)
         if ok:
             return {"status": "ok", "message": f"提案 {proposal_id} 已更新为 '{req.status}'"}
-        return {"status": "error", "message": f"提案 {proposal_id} 未找到"}
+        raise HTTPException(status_code=404, detail=f"提案 {proposal_id} 未找到")
     except Exception as e:
         logger.exception("更新提案状态失败 (proposal_id=%s)", proposal_id)
-        return {"status": "error", "message": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/gaps", response_model=list[GapOut])
@@ -190,4 +190,4 @@ def scan_history(limit: int = Query(20, ge=1, le=100)):
         return engine.get_scan_history(limit=limit)
     except Exception as e:
         logger.exception("获取扫描历史失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))

@@ -23,7 +23,7 @@ async def get_positions():
         return await ClawBotRPC._rpc_trading_positions()
     except Exception as e:
         logger.exception("获取交易持仓失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/trading/pnl", response_model=PnLSummary)
@@ -33,7 +33,7 @@ async def get_pnl():
         return await ClawBotRPC._rpc_trading_pnl()
     except Exception as e:
         logger.exception("获取盈亏摘要失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/trading/signals", response_model=Dict[str, Any])
@@ -45,7 +45,7 @@ def get_signals():
         return {"signals": signals if isinstance(signals, list) else []}
     except Exception as e:
         logger.exception("获取交易信号失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/trading/system", response_model=Dict[str, Any])
@@ -57,7 +57,7 @@ def get_trading_system():
         return result if isinstance(result, dict) else {"status": "unknown"}
     except Exception as e:
         logger.exception("获取交易系统状态失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/trading/dashboard")
@@ -90,10 +90,10 @@ async def trigger_vote(req: TeamVoteRequest):
         )
     except Exception as e:
         logger.exception("获取 %s 技术分析失败", req.symbol)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
     if not analysis:
-        return {"error": f"无法获取 {req.symbol} 的市场数据"}
+        raise HTTPException(status_code=422, detail=f"无法获取 {req.symbol} 的市场数据")
 
     # 第二步：用分析数据跑 AI 团队投票
     try:
@@ -104,7 +104,7 @@ async def trigger_vote(req: TeamVoteRequest):
         return result
     except Exception as e:
         logger.exception("AI 团队投票失败 (symbol=%s)", req.symbol)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/trading/kline")

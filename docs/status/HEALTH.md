@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-16 (价值位阶推进R2: P0-P2完成, 测试1339/100%, 沟通风格修复+记账扩充+206新测试+ControlCenter拆分+日报天气汇率)
+> 最后更新: 2026-04-16 (价值位阶推进R3: P1-P2完成, 数据库索引+通知重试+API状态码+函数拆分+输入验证, 测试1339/100%)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -54,7 +54,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1339/1341 Python (2项跳过), 0 TypeScript错误, Rust cargo check 零警告。本轮新增 206 个测试覆盖 risk_validators/risk_var/resilience_bulkhead/llm_routing_config |
+| 测试通过率 | 🟢 100% | 1339/1341 Python (2项跳过), 0 TypeScript错误, Rust cargo check 零警告。R3新增: DB索引+通知重试+API状态码+函数拆分+输入验证 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |

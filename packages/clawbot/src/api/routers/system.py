@@ -18,7 +18,7 @@ def ping():
         return ClawBotRPC._rpc_ping()
     except Exception as e:
         logger.exception("Ping 失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.get("/status", response_model=SystemStatus)
@@ -28,4 +28,4 @@ def system_status():
         return ClawBotRPC._rpc_system_status()
     except Exception as e:
         logger.exception("获取系统状态失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
