@@ -4,6 +4,44 @@
 
 ---
 
+## [2026-04-17 04:00] 交易投票弃权机制修复
+
+### 本次完成了什么
+
+**背景**: AI 团队投票中 6 个模型有 3 个超时（SiliconFlow 45s × 3 次重试 = 135s 远超外层 60s 超时），超时产生的默认 HOLD(1/10) 票被当作正常投票计入统计，导致共识度虚高、分歧度失真。
+
+| # | 改动 | 说明 |
+|---|------|------|
+| 1 | BotVote 新增 `abstained` 字段 | 超时/失败标记为弃权，区分正常 HOLD |
+| 2 | timeout_per_bot 60s→120s | 适配 LiteLLM Router 内部重试链 |
+| 3 | 3 处弃权标记 | _call_bot/commander/strategist 失败时 `abstained=True` |
+| 4 | 统计逻辑排除弃权票 | buy/hold/skip 计数 + 分歧度σ + 加权confidence |
+| 5 | 否决逻辑修复 | 弃权的风控官/策略师不触发 SKIP 否决 |
+| 6 | Telegram 报告展示弃权 | 投票统计行 + 投票明细 + summary |
+
+### 未完成的工作
+
+**微信 Bot 问题**：已确认系统不支持微信双向消息。wechat_bridge.py 是单向推送桥（通过 iLink API），无消息接收器。实现双向聊天需接入 Wechaty 桥接服务（新功能开发）。
+
+**可继续推进方向（按价值排序）：**
+- 超长函数拆分：handle_message(611行)、_match_chinese_command(582行)、_run_cycle(472行)、setup_proactive_listeners(398行)
+- 裸 httpx.AsyncClient 绕过 ResilientHTTPClient：9文件18处直接创建 httpx.AsyncClient
+- 全局可变状态无锁保护：7处高风险
+- JSON load/save 样板重复：27处/13文件可提取为 json_utils
+- 剩余 logger f-string：全局还有约 550 处
+
+### 需要注意的坑
+- timeout_per_bot 从 60s 提到 120s，整体投票时间上限会增加（但比之前 3 个超时失败好）
+- 弃权票仍然保留在 result.votes 列表中（用于 Telegram 展示），但不参与任何统计计算
+- 如果所有 6 个模型都超时，active_votes 为空，avg_confidence 将为 0，decision 为 HOLD（安全兜底）
+
+### 当前系统状态
+- 后端测试: 1339/1341 (2 项 skip, 0 失败, 100% 通过率)
+- 前端 tsc: 零错误
+- 累计五轮改进: R1(15项) + R2(6项) + R3(6项) + R4(4项) + R5(4项) = 35 项改进 + 投票弃权机制修复
+
+---
+
 ## [2026-04-17 03:00] 价值位阶推进 R5 — P1~P2 四项改进
 
 ### 本次完成了什么
