@@ -2,6 +2,7 @@
 Execution Hub — 数据库层
 SQLite 连接管理和表结构定义
 """
+
 import os
 import sqlite3
 import logging
@@ -108,6 +109,8 @@ def init_db(db_path=None):
             status TEXT DEFAULT 'pending',
             created_at TEXT
         )""")
+        # 高频查询索引：定时任务按状态+时间查找待触发提醒
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_status_time ON reminders(status, remind_at)")
 
         # v2.0: 新增重复提醒 + 用户隔离字段
         for col_sql in [
@@ -144,6 +147,9 @@ def init_db(db_path=None):
             note TEXT DEFAULT '',
             ts REAL DEFAULT (strftime('%s','now'))
         )""")
+
+        # 高频查询索引：按用户+群组查账目
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user_chat ON expenses(user_id, chat_id)")
 
         # v2.2.1: 给 expenses 表新增 type 列区分收入/支出 (安全 ALTER)
         try:
@@ -232,4 +238,6 @@ def init_db(db_path=None):
             last_checked REAL DEFAULT 0,
             triggered_at REAL DEFAULT 0
         )""")
+        # 高频查询索引：定时任务按状态筛选活跃监控项
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_price_watches_status ON price_watches(status)")
     logger.debug("[ExecutionDB] tables initialized")

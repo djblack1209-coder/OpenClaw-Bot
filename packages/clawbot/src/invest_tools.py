@@ -11,6 +11,7 @@ ClawBot 投资工具集 v2.2
 - [v2.2] get_quick_quotes() 快速多标的报价
 - [v2.2] get_earnings_calendar() 财报日历（yfinance）
 """
+
 import asyncio
 import logging
 import sqlite3
@@ -37,6 +38,7 @@ def _get_global_quote_cache():
     """获取全局 QuoteCache 实例（延迟导入避免循环依赖）"""
     try:
         from src.trading_system import get_quote_cache
+
         return get_quote_cache()
     except Exception as e:  # noqa: F841
         return None
@@ -89,6 +91,7 @@ def _ensure_yf():
     if _yf_module is None:
         try:
             import yfinance as yf
+
             _yf_module = yf
         except ImportError:
             return None
@@ -96,6 +99,7 @@ def _ensure_yf():
 
 
 # ============ yfinance 同步封装 ============
+
 
 def _sync_get_quote(symbol: str) -> dict:
     """同步获取行情（在线程池中执行，不阻塞事件循环）"""
@@ -123,8 +127,8 @@ def _sync_get_quote(symbol: str) -> dict:
         except Exception as e:
             logger.debug("[InvestTools] %s ticker.info 获取失败(不影响行情): %s", symbol, e)
 
-        last_close = hist['Close'].iloc[-1]
-        prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else last_close
+        last_close = hist["Close"].iloc[-1]
+        prev_close = hist["Close"].iloc[-2] if len(hist) > 1 else last_close
         change = last_close - prev_close
         change_pct = (change / prev_close) * 100 if prev_close else 0
 
@@ -134,9 +138,9 @@ def _sync_get_quote(symbol: str) -> dict:
             "price": round(float(last_close), 2),
             "change": round(float(change), 2),
             "change_pct": round(float(change_pct), 2),
-            "volume": int(hist['Volume'].iloc[-1]) if 'Volume' in hist else 0,
-            "high": round(float(hist['High'].iloc[-1]), 2),
-            "low": round(float(hist['Low'].iloc[-1]), 2),
+            "volume": int(hist["Volume"].iloc[-1]) if "Volume" in hist else 0,
+            "high": round(float(hist["High"].iloc[-1]), 2),
+            "low": round(float(hist["Low"].iloc[-1]), 2),
             "market_cap": info.get("marketCap", 0),
             "pe_ratio": info.get("trailingPE", 0),
             "52w_high": info.get("fiftyTwoWeekHigh", 0),
@@ -151,6 +155,7 @@ def _sync_get_quote(symbol: str) -> dict:
 
 # ============ 异步行情查询 ============
 
+
 async def get_stock_quote(symbol: str) -> dict:
     """查询股票/ETF实时行情（异步，不阻塞事件循环，60秒缓存）"""
     symbol = symbol.upper().strip()
@@ -161,6 +166,7 @@ async def get_stock_quote(symbol: str) -> dict:
     if env_bool("PREFER_IBKR_QUOTES", True):
         try:
             from src.broker_selector import ibkr as _ibkr
+
             if hasattr(_ibkr, "ensure_connected"):
                 connected = await _ibkr.ensure_connected()
                 if connected and hasattr(_ibkr, "get_realtime_snapshot"):
@@ -192,6 +198,7 @@ async def get_stock_quote(symbol: str) -> dict:
     # 统一数据提供层: 自动检测 US/CN_A/CRYPTO 并路由到对应数据源
     try:
         from src.data_providers import get_quote
+
         return await get_quote(symbol)
     except ImportError:
         # 回退到 yfinance-only (原始代码)
@@ -233,10 +240,7 @@ async def get_market_summary() -> str:
     # 并行查询所有行情
     sym_list = list(symbols.keys())
     name_list = list(symbols.values())
-    quotes = await asyncio.gather(
-        *[get_stock_quote(sym) for sym in sym_list],
-        return_exceptions=True
-    )
+    quotes = await asyncio.gather(*[get_stock_quote(sym) for sym in sym_list], return_exceptions=True)
 
     results = []
     for name, quote in zip(name_list, quotes):
@@ -245,9 +249,7 @@ async def get_market_summary() -> str:
         elif "error" not in quote:
             arrow = "↑" if quote["change"] >= 0 else "↓"
             sign = "+" if quote["change"] >= 0 else ""
-            results.append(
-                f"{name}: {quote['price']} {arrow} {sign}{quote['change_pct']}%"
-            )
+            results.append(f"{name}: {quote['price']} {arrow} {sign}{quote['change_pct']}%")
         else:
             results.append(f"{name}: 数据获取失败")
 
@@ -272,16 +274,16 @@ def format_quote(quote: dict) -> str:
     if quote.get("volume"):
         vol = quote["volume"]
         if vol > 1_000_000:
-            lines.append(f"成交量: {vol/1_000_000:.1f}M")
+            lines.append(f"成交量: {vol / 1_000_000:.1f}M")
         else:
             lines.append(f"成交量: {vol:,}")
 
     if quote.get("market_cap"):
         mc = quote["market_cap"]
         if mc > 1_000_000_000_000:
-            lines.append(f"市值: {mc/1_000_000_000_000:.2f}T")
+            lines.append(f"市值: {mc / 1_000_000_000_000:.2f}T")
         elif mc > 1_000_000_000:
-            lines.append(f"市值: {mc/1_000_000_000:.2f}B")
+            lines.append(f"市值: {mc / 1_000_000_000:.2f}B")
 
     if quote.get("pe_ratio"):
         lines.append(f"PE: {quote['pe_ratio']:.1f}")
@@ -294,15 +296,13 @@ def format_quote(quote: dict) -> str:
 
 # ============ 模拟投资组合 ============
 
+
 class Portfolio:
     """模拟投资组合管理器（SQLite context manager + 动态 initial_capital）"""
 
     def __init__(self, db_path: str = None):
         if db_path is None:
-            db_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "..", "data", "portfolio.db"
-            )
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "portfolio.db")
         self.db_path = db_path
         self._init_db()
 
@@ -337,6 +337,8 @@ class Portfolio:
                     status TEXT DEFAULT 'open'
                 )
             """)
+            # 高频查询索引：按品种+状态筛选持仓
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_symbol_status ON positions(symbol, status)")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS trades (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -367,79 +369,60 @@ class Portfolio:
                     value TEXT
                 )
             """)
-            conn.execute(
-                "INSERT OR IGNORE INTO portfolio_config (key, value) VALUES ('initial_capital', '100000')"
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO portfolio_config (key, value) VALUES ('cash', '100000')"
-            )
+            conn.execute("INSERT OR IGNORE INTO portfolio_config (key, value) VALUES ('initial_capital', '100000')")
+            conn.execute("INSERT OR IGNORE INTO portfolio_config (key, value) VALUES ('cash', '100000')")
 
     def _get_config(self, key: str, default: float = 0) -> float:
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM portfolio_config WHERE key=?", (key,)
-            ).fetchone()
+            row = conn.execute("SELECT value FROM portfolio_config WHERE key=?", (key,)).fetchone()
         return float(row[0]) if row else default
 
     def _set_config(self, key: str, value: float):
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE portfolio_config SET value=? WHERE key=?",
-                (str(value), key)
-            )
+            conn.execute("UPDATE portfolio_config SET value=? WHERE key=?", (str(value), key))
 
     def get_cash(self) -> float:
-        return self._get_config('cash', 100000.0)
+        return self._get_config("cash", 100000.0)
 
     def get_initial_capital(self) -> float:
-        return self._get_config('initial_capital', 100000.0)
+        return self._get_config("initial_capital", 100000.0)
 
-    def buy(self, symbol: str, quantity: float, price: float,
-            decided_by: str = "", reason: str = "") -> dict:
+    def buy(self, symbol: str, quantity: float, price: float, decided_by: str = "", reason: str = "") -> dict:
         """买入"""
         total = quantity * price
 
         # 在同一个事务中完成：读取现金 → 检查余额 → 更新持仓 → 记录交易 → 扣减现金
         # 防止并发买入导致 double-spend（读写分离竞态）
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM portfolio_config WHERE key='cash'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM portfolio_config WHERE key='cash'").fetchone()
             cash = float(row[0]) if row else 100000.0
 
             if total > cash:
                 return {"error": f"资金不足: 需要${total:.2f}, 可用${cash:.2f}"}
 
             existing = conn.execute(
-                "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'",
-                (symbol.upper(),)
+                "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'", (symbol.upper(),)
             ).fetchone()
 
             if existing:
                 old_qty, old_avg = existing[1], existing[2]
                 new_qty = old_qty + quantity
                 new_avg = (old_qty * old_avg + quantity * price) / new_qty
-                conn.execute(
-                    "UPDATE positions SET quantity=?, avg_price=? WHERE id=?",
-                    (new_qty, new_avg, existing[0])
-                )
+                conn.execute("UPDATE positions SET quantity=?, avg_price=? WHERE id=?", (new_qty, new_avg, existing[0]))
             else:
                 conn.execute(
                     "INSERT INTO positions (symbol, quantity, avg_price, opened_by, reason) VALUES (?,?,?,?,?)",
-                    (symbol.upper(), quantity, price, decided_by, reason)
+                    (symbol.upper(), quantity, price, decided_by, reason),
                 )
 
             conn.execute(
                 "INSERT INTO trades (symbol, action, quantity, price, total, decided_by, reason) VALUES (?,?,?,?,?,?,?)",
-                (symbol.upper(), "BUY", quantity, price, total, decided_by, reason)
+                (symbol.upper(), "BUY", quantity, price, total, decided_by, reason),
             )
 
             # 在同一事务中更新现金，避免读写分离竞态
             new_cash = cash - total
-            conn.execute(
-                "UPDATE portfolio_config SET value=? WHERE key='cash'",
-                (str(new_cash),)
-            )
+            conn.execute("UPDATE portfolio_config SET value=? WHERE key='cash'", (str(new_cash),))
 
         return {
             "action": "BUY",
@@ -450,15 +433,13 @@ class Portfolio:
             "remaining_cash": round(new_cash, 2),
         }
 
-    def sell(self, symbol: str, quantity: float, price: float,
-             decided_by: str = "", reason: str = "") -> dict:
+    def sell(self, symbol: str, quantity: float, price: float, decided_by: str = "", reason: str = "") -> dict:
         """卖出"""
         # 在同一个事务中完成：查持仓 → 更新持仓 → 记录交易 → 增加现金
         # 防止并发卖出导致现金读写分离竞态
         with self._conn() as conn:
             existing = conn.execute(
-                "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'",
-                (symbol.upper(),)
+                "SELECT id, quantity, avg_price FROM positions WHERE symbol=? AND status='open'", (symbol.upper(),)
             ).fetchone()
 
             if not existing:
@@ -478,19 +459,14 @@ class Portfolio:
 
             conn.execute(
                 "INSERT INTO trades (symbol, action, quantity, price, total, decided_by, reason) VALUES (?,?,?,?,?,?,?)",
-                (symbol.upper(), "SELL", quantity, price, total, decided_by, reason)
+                (symbol.upper(), "SELL", quantity, price, total, decided_by, reason),
             )
 
             # 在同一事务中读取并更新现金，避免读写分离竞态
-            row = conn.execute(
-                "SELECT value FROM portfolio_config WHERE key='cash'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM portfolio_config WHERE key='cash'").fetchone()
             cash = float(row[0]) if row else 100000.0
             new_cash = cash + total
-            conn.execute(
-                "UPDATE portfolio_config SET value=? WHERE key='cash'",
-                (str(new_cash),)
-            )
+            conn.execute("UPDATE portfolio_config SET value=? WHERE key='cash'", (str(new_cash),))
 
         return {
             "action": "SELL",
@@ -509,8 +485,7 @@ class Portfolio:
                 "SELECT symbol, quantity, avg_price, opened_by, reason, opened_at FROM positions WHERE status='open'"
             ).fetchall()
         return [
-            {"symbol": r[0], "quantity": r[1], "avg_price": r[2],
-             "opened_by": r[3], "reason": r[4], "opened_at": r[5]}
+            {"symbol": r[0], "quantity": r[1], "avg_price": r[2], "opened_by": r[3], "reason": r[4], "opened_at": r[5]}
             for r in rows
         ]
 
@@ -519,11 +494,19 @@ class Portfolio:
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT symbol, action, quantity, price, total, decided_by, reason, executed_at FROM trades ORDER BY id DESC LIMIT ?",
-                (limit,)
+                (limit,),
             ).fetchall()
         return [
-            {"symbol": r[0], "action": r[1], "quantity": r[2], "price": r[3],
-             "total": r[4], "decided_by": r[5], "reason": r[6], "executed_at": r[7]}
+            {
+                "symbol": r[0],
+                "action": r[1],
+                "quantity": r[2],
+                "price": r[3],
+                "total": r[4],
+                "decided_by": r[5],
+                "reason": r[6],
+                "executed_at": r[7],
+            }
             for r in rows
         ]
 
@@ -533,8 +516,12 @@ class Portfolio:
             total_trades = conn.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
             buy_count = conn.execute("SELECT COUNT(*) FROM trades WHERE action='BUY'").fetchone()[0]
             sell_count = conn.execute("SELECT COUNT(*) FROM trades WHERE action='SELL'").fetchone()[0]
-            total_buy_amount = conn.execute("SELECT COALESCE(SUM(total), 0) FROM trades WHERE action='BUY'").fetchone()[0]
-            total_sell_amount = conn.execute("SELECT COALESCE(SUM(total), 0) FROM trades WHERE action='SELL'").fetchone()[0]
+            total_buy_amount = conn.execute("SELECT COALESCE(SUM(total), 0) FROM trades WHERE action='BUY'").fetchone()[
+                0
+            ]
+            total_sell_amount = conn.execute(
+                "SELECT COALESCE(SUM(total), 0) FROM trades WHERE action='SELL'"
+            ).fetchone()[0]
             closed_positions = conn.execute("SELECT COUNT(*) FROM positions WHERE status='closed'").fetchone()[0]
             open_positions = conn.execute("SELECT COUNT(*) FROM positions WHERE status='open'").fetchone()[0]
         return {
@@ -548,14 +535,15 @@ class Portfolio:
             "open_positions": open_positions,
         }
 
-    def add_watchlist(self, symbol: str, added_by: str = "", reason: str = "",
-                      target_price: float = 0, stop_loss: float = 0) -> dict:
+    def add_watchlist(
+        self, symbol: str, added_by: str = "", reason: str = "", target_price: float = 0, stop_loss: float = 0
+    ) -> dict:
         """添加自选股"""
         try:
             with self._conn() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO watchlist (symbol, added_by, reason, target_price, stop_loss) VALUES (?,?,?,?,?)",
-                    (symbol.upper(), added_by, reason, target_price, stop_loss)
+                    (symbol.upper(), added_by, reason, target_price, stop_loss),
                 )
             return {"symbol": symbol.upper(), "status": "added"}
         except Exception as e:
@@ -564,22 +552,16 @@ class Portfolio:
     def remove_watchlist(self, symbol: str) -> dict:
         """移除自选股"""
         with self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM watchlist WHERE symbol=?", (symbol.upper(),)
-            )
+            cursor = conn.execute("DELETE FROM watchlist WHERE symbol=?", (symbol.upper(),))
             if cursor.rowcount == 0:
                 return {"error": f"{symbol.upper()} 不在自选股中"}
         return {"symbol": symbol.upper(), "status": "removed"}
 
     def get_watchlist(self) -> list:
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT symbol, added_by, reason, target_price, stop_loss FROM watchlist"
-            ).fetchall()
+            rows = conn.execute("SELECT symbol, added_by, reason, target_price, stop_loss FROM watchlist").fetchall()
         return [
-            {"symbol": r[0], "added_by": r[1], "reason": r[2],
-             "target_price": r[3], "stop_loss": r[4]}
-            for r in rows
+            {"symbol": r[0], "added_by": r[1], "reason": r[2], "target_price": r[3], "stop_loss": r[4]} for r in rows
         ]
 
     def reset_portfolio(self, initial_capital: float = 100000) -> dict:
@@ -587,14 +569,8 @@ class Portfolio:
         with self._conn() as conn:
             conn.execute("DELETE FROM positions")
             conn.execute("DELETE FROM trades")
-            conn.execute(
-                "UPDATE portfolio_config SET value=? WHERE key='cash'",
-                (str(initial_capital),)
-            )
-            conn.execute(
-                "UPDATE portfolio_config SET value=? WHERE key='initial_capital'",
-                (str(initial_capital),)
-            )
+            conn.execute("UPDATE portfolio_config SET value=? WHERE key='cash'", (str(initial_capital),))
+            conn.execute("UPDATE portfolio_config SET value=? WHERE key='initial_capital'", (str(initial_capital),))
         return {
             "status": "reset",
             "initial_capital": initial_capital,
@@ -611,10 +587,7 @@ class Portfolio:
             return f"投资组合\n\n现金: ${cash:,.2f}\n持仓: 无\n总资产: ${cash:,.2f}"
 
         # 并行查询所有持仓行情
-        quotes = await asyncio.gather(
-            *[get_stock_quote(pos["symbol"]) for pos in positions],
-            return_exceptions=True
-        )
+        quotes = await asyncio.gather(*[get_stock_quote(pos["symbol"]) for pos in positions], return_exceptions=True)
 
         lines = ["投资组合\n"]
         total_value = cash
@@ -695,15 +668,21 @@ async def get_fear_greed_index() -> Dict:
 
         # Emoji 映射
         emoji_map = {
-            "Extreme Fear": "😱", "Fear": "😰",
-            "Neutral": "😐", "Greed": "🤑", "Extreme Greed": "🤯",
+            "Extreme Fear": "😱",
+            "Fear": "😰",
+            "Neutral": "😐",
+            "Greed": "🤑",
+            "Extreme Greed": "🤯",
         }
         emoji = emoji_map.get(label, "📊")
 
         # 中文标签
         label_cn_map = {
-            "Extreme Fear": "极度恐惧", "Fear": "恐惧",
-            "Neutral": "中性", "Greed": "贪婪", "Extreme Greed": "极度贪婪",
+            "Extreme Fear": "极度恐惧",
+            "Fear": "恐惧",
+            "Neutral": "中性",
+            "Greed": "贪婪",
+            "Extreme Greed": "极度贪婪",
         }
         label_cn = label_cn_map.get(label, label)
 
@@ -723,8 +702,11 @@ async def get_fear_greed_index() -> Dict:
     except Exception as e:
         logger.warning(f"[invest_tools] Fear & Greed 获取失败: {e}")
         return {
-            "value": 50, "label": "Neutral", "label_cn": "中性",
-            "emoji": "📊", "source": "fallback",
+            "value": 50,
+            "label": "Neutral",
+            "label_cn": "中性",
+            "emoji": "📊",
+            "source": "fallback",
             "telegram_text": "📊 恐惧贪婪指数: 暂不可用",
         }
 
@@ -793,13 +775,15 @@ async def get_earnings_calendar(symbols: list, days_ahead: int = 14) -> list:
                             else:
                                 continue
                             if now <= dt <= cutoff:
-                                events.append({
-                                    "symbol": sym,
-                                    "date": dt.strftime("%Y-%m-%d"),
-                                    "event": "Earnings",
-                                    "est_eps": cal_dict.get("Earnings Average", {}).get(0, None),
-                                    "est_revenue": cal_dict.get("Revenue Average", {}).get(0, None),
-                                })
+                                events.append(
+                                    {
+                                        "symbol": sym,
+                                        "date": dt.strftime("%Y-%m-%d"),
+                                        "event": "Earnings",
+                                        "est_eps": cal_dict.get("Earnings Average", {}).get(0, None),
+                                        "est_revenue": cal_dict.get("Revenue Average", {}).get(0, None),
+                                    }
+                                )
                                 break
             except Exception as e:
                 logger.debug(f"[invest_tools] 财报日历 {sym} 获取失败: {e}")
