@@ -3,6 +3,7 @@ ClawBot - Telegram UX 增强层 v1.0
 参考: python-telegram-bot 最佳实践 + grammY (Telegram bot framework 15k⭐) 的 UX 模式
 提供: typing 指示器、进度反馈、流式消息编辑、操作确认
 """
+
 import asyncio
 import time
 import logging
@@ -34,9 +35,7 @@ class TypingIndicator:
     async def _keep_typing(self):
         try:
             while True:
-                await self.context.bot.send_chat_action(
-                    chat_id=self.chat_id, action=ChatAction.TYPING
-                )
+                await self.context.bot.send_chat_action(chat_id=self.chat_id, action=ChatAction.TYPING)
                 await asyncio.sleep(self.interval)
         except asyncio.CancelledError as e:  # noqa: F841
             pass
@@ -73,8 +72,9 @@ class ProgressTracker:
 
     PROGRESS_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-    def __init__(self, chat_id: int, context: ContextTypes.DEFAULT_TYPE,
-                 title: str = "处理中", edit_interval: float = 2.0):
+    def __init__(
+        self, chat_id: int, context: ContextTypes.DEFAULT_TYPE, title: str = "处理中", edit_interval: float = 2.0
+    ):
         self.chat_id = chat_id
         self.context = context
         self.title = title
@@ -90,8 +90,7 @@ class ProgressTracker:
         self._start_time = time.time()
         try:
             self._message = await self.context.bot.send_message(
-                chat_id=self.chat_id,
-                text=f"{self.PROGRESS_FRAMES[0]} {self.title}..."
+                chat_id=self.chat_id, text=f"{self.PROGRESS_FRAMES[0]} {self.title}..."
             )
         except Exception as e:
             logger.debug(f"[ProgressTracker] send failed: {e}")
@@ -155,8 +154,9 @@ class StreamingEditor:
     基于已有的 routing/streaming.py，封装为更易用的 API。
     """
 
-    def __init__(self, chat_id: int, context: ContextTypes.DEFAULT_TYPE,
-                 edit_interval: float = 1.2, min_chars: int = 40):
+    def __init__(
+        self, chat_id: int, context: ContextTypes.DEFAULT_TYPE, edit_interval: float = 1.2, min_chars: int = 40
+    ):
         self.chat_id = chat_id
         self.context = context
         self.edit_interval = edit_interval
@@ -171,9 +171,7 @@ class StreamingEditor:
         """发送初始消息"""
         try:
             display = initial_text or f"{self._cursor}"
-            self._message = await self.context.bot.send_message(
-                chat_id=self.chat_id, text=display
-            )
+            self._message = await self.context.bot.send_message(chat_id=self.chat_id, text=display)
         except Exception as e:
             logger.debug(f"[StreamingEditor] start failed: {e}")
 
@@ -207,6 +205,7 @@ class StreamingEditor:
 
 # ============ 便捷装饰器 ============
 
+
 def with_typing(func):
     """装饰器：自动为命令处理器添加 typing 指示器
 
@@ -215,10 +214,12 @@ def with_typing(func):
         async def cmd_news(self, update, context):
             ...
     """
+
     async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         chat_id = update.effective_chat.id
         async with TypingIndicator(chat_id, context):
             return await func(self, update, context, *args, **kwargs)
+
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
     return wrapper
@@ -226,9 +227,10 @@ def with_typing(func):
 
 # ============ 进度条 — 搬运自 telebar 模式 ============
 
+
 class TelegramProgressBar:
     """长操作进度条 — 搬运自 telebar + tqdm 思路
-    
+
     用法:
         bar = TelegramProgressBar(total=8, label="回测", message=sent_msg, context=context)
         for sym in symbols:
@@ -236,11 +238,11 @@ class TelegramProgressBar:
             await bar.advance(detail=sym)
         await bar.finish("回测完成")
     """
+
     PHASES = ("░", "▒", "▓", "█")
     WIDTH = 10
 
-    def __init__(self, total: int, label: str, message, context,
-                 throttle_seconds: float = 1.5):
+    def __init__(self, total: int, label: str, message, context, throttle_seconds: float = 1.5):
         self.total = max(total, 1)
         self.label = label
         self.message = message
@@ -286,15 +288,16 @@ class TelegramProgressBar:
 
 # ============ 错误恢复 — 搬运自 n3d1117/chatgpt-telegram-bot ============
 
-async def send_error_with_retry(update, context, error: Exception,
-                                 retry_command: str = ""):
+
+async def send_error_with_retry(update, context, error: Exception, retry_command: str = ""):
     """出错时显示重试按钮，而不是死胡同
-    
+
     搬运自 n3d1117 的 error recovery 模式:
     - 分类错误类型，给用户可读的提示
     - 附加重试按钮，一键重新执行
     """
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
     # 延迟导入: 打破 telegram_ux ↔ bot 的循环依赖
     from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 
@@ -312,14 +315,19 @@ async def send_error_with_retry(update, context, error: Exception,
 
     keyboard = None
     if retry_command:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 重试", callback_data=f"cmd:{retry_command}"),
-            InlineKeyboardButton("📊 系统状态", callback_data="cmd:/status"),
-        ]])
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🔄 重试", callback_data=f"cmd:{retry_command}"),
+                    InlineKeyboardButton("📊 系统状态", callback_data="cmd:/status"),
+                ]
+            ]
+        )
 
     try:
         await update.effective_message.reply_text(
-            user_msg, reply_markup=keyboard,
+            user_msg,
+            reply_markup=keyboard,
         )
     except Exception as e:
         logger.debug("Silenced exception", exc_info=True)
@@ -327,18 +335,20 @@ async def send_error_with_retry(update, context, error: Exception,
 
 # ============ 通知批量合并 — 防止 auto_trader 刷屏 ============
 
+
 class NotificationBatcher:
     """智能通知合并器 — 搬运自 freqtrade 的通知节流思路
-    
+
     同一 chat_id 的通知在 flush_interval 内合并为一条，
     避免自动交易循环连发 10+ 条消息。
-    
+
     用法:
         batcher = NotificationBatcher(bot_send_func)
         await batcher.add(chat_id, "扫描完成: 50 个标的")
         await batcher.add(chat_id, "候选: AAPL, NVDA, TSLA")
         # 30秒后自动合并发送，或手动 flush
     """
+
     def __init__(self, send_func, flush_interval: float = 30.0, max_batch: int = 10):
         self.send_func = send_func
         self.flush_interval = flush_interval
@@ -361,12 +371,12 @@ class NotificationBatcher:
             if len(self._buffers[chat_id]) >= self.max_batch:
                 await self._flush(chat_id)
             elif chat_id not in self._timers:
-                task = asyncio.create_task(
-                    self._delayed_flush(chat_id)
-                )
+                task = asyncio.create_task(self._delayed_flush(chat_id))
+
                 def _flush_done(t):
                     if not t.cancelled() and t.exception():
                         logger.debug("[TelegramUX] flush 异常: %s", t.exception())
+
                 task.add_done_callback(_flush_done)
                 self._timers[chat_id] = task
 
@@ -392,6 +402,7 @@ class NotificationBatcher:
 
 
 # ============ 结构化卡片 — 搬运自 father-bot 的格式化模式 ============
+
 
 def format_trade_card(trade: dict) -> str:
     """交易通知卡片 — 搬运自 freqtrade 的通知格式
@@ -431,8 +442,8 @@ def format_trade_card(trade: dict) -> str:
     # 自动交易信号: 显示目标/止损/R:R
     if target and stop and entry:
         rr = abs(target - entry) / abs(entry - stop) if abs(entry - stop) > 0.01 else 0
-        lines.append(f"🎯 目标: ${target:.2f} ({(target/entry - 1)*100:+.1f}%)")
-        lines.append(f"🛑 止损: ${stop:.2f} ({(stop/entry - 1)*100:+.1f}%)")
+        lines.append(f"🎯 目标: ${target:.2f} ({(target / entry - 1) * 100:+.1f}%)")
+        lines.append(f"🛑 止损: ${stop:.2f} ({(stop / entry - 1) * 100:+.1f}%)")
         lines.append(f"📊 R:R = {rr:.1f} | 信心: {confidence_display:.0f}/10")
 
     # 手动交易结果: 显示总额/盈亏/余额
@@ -475,9 +486,7 @@ def format_portfolio_card(positions: list, cash: float = 0) -> str:
         bar = "█" * bar_len + "░" * (10 - bar_len)
 
         lines.append(
-            f"{emoji} <b>{sym}</b> x{qty}\n"
-            f"   {bar} {pct_of_total:.1f}%\n"
-            f"   成本 ${cost:.2f} | PnL {pnl_pct:+.1f}%"
+            f"{emoji} <b>{sym}</b> x{qty}\n   {bar} {pct_of_total:.1f}%\n   成本 ${cost:.2f} | PnL {pnl_pct:+.1f}%"
         )
 
     lines.append(f"\n💰 <b>总值: ${total_value:,.2f}</b> (现金 ${cash:,.2f})")
@@ -507,23 +516,28 @@ def format_quote_card(data: dict) -> str:
 
 import io
 
+
 def _setup_chart_style():
     """设置 Telegram 友好的暗色图表风格"""
     import matplotlib
-    matplotlib.use('Agg')
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    plt.style.use('dark_background')
-    plt.rcParams.update({
-        'font.size': 13,
-        'axes.titlesize': 15,
-        'axes.labelsize': 12,
-        'xtick.labelsize': 10,
-        'ytick.labelsize': 10,
-        'figure.facecolor': '#1a1a2e',
-        'axes.facecolor': '#16213e',
-        'grid.color': '#333333',
-        'grid.alpha': 0.3,
-    })
+
+    plt.style.use("dark_background")
+    plt.rcParams.update(
+        {
+            "font.size": 13,
+            "axes.titlesize": 15,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "figure.facecolor": "#1a1a2e",
+            "axes.facecolor": "#16213e",
+            "grid.color": "#333333",
+            "grid.alpha": 0.3,
+        }
+    )
     return plt
 
 
@@ -539,6 +553,7 @@ def generate_equity_chart(equity_curve: list, title: str = "权益曲线") -> io
     # Try plotly version first (richer charts with drawdown shading)
     try:
         from src.charts import generate_equity_curve as plotly_equity
+
         png_bytes = plotly_equity(equity_curve, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
@@ -548,32 +563,43 @@ def generate_equity_chart(equity_curve: list, title: str = "权益曲线") -> io
     plt = _setup_chart_style()
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
 
-    ax.plot(equity_curve, color='#00d4aa', linewidth=2, alpha=0.9)
-    ax.fill_between(range(len(equity_curve)), equity_curve,
-                    equity_curve[0], alpha=0.15, color='#00d4aa')
+    ax.plot(equity_curve, color="#00d4aa", linewidth=2, alpha=0.9)
+    ax.fill_between(range(len(equity_curve)), equity_curve, equity_curve[0], alpha=0.15, color="#00d4aa")
 
     # 标注最高点和最低点
     if equity_curve:
         max_idx = equity_curve.index(max(equity_curve))
         min_idx = equity_curve.index(min(equity_curve))
-        ax.annotate(f'${max(equity_curve):,.0f}', xy=(max_idx, max(equity_curve)),
-                    fontsize=10, color='#2ecc71', ha='center',
-                    xytext=(0, 10), textcoords='offset points')
-        ax.annotate(f'${min(equity_curve):,.0f}', xy=(min_idx, min(equity_curve)),
-                    fontsize=10, color='#e74c3c', ha='center',
-                    xytext=(0, -15), textcoords='offset points')
+        ax.annotate(
+            f"${max(equity_curve):,.0f}",
+            xy=(max_idx, max(equity_curve)),
+            fontsize=10,
+            color="#2ecc71",
+            ha="center",
+            xytext=(0, 10),
+            textcoords="offset points",
+        )
+        ax.annotate(
+            f"${min(equity_curve):,.0f}",
+            xy=(min_idx, min(equity_curve)),
+            fontsize=10,
+            color="#e74c3c",
+            ha="center",
+            xytext=(0, -15),
+            textcoords="offset points",
+        )
 
-    ax.set_title(title, pad=12, color='#e0e0e0')
-    ax.set_xlabel('交易日')
-    ax.set_ylabel('权益 ($)')
+    ax.set_title(title, pad=12, color="#e0e0e0")
+    ax.set_xlabel("交易日")
+    ax.set_ylabel("权益 ($)")
     ax.grid(True)
     fig.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
-    buf.name = 'equity.png'
+    buf.name = "equity.png"
     return buf
 
 
@@ -586,6 +612,7 @@ def generate_pnl_chart(trades: list, title: str = "交易盈亏") -> io.BytesIO:
     # Try plotly version first (waterfall chart, richer visualization)
     try:
         from src.charts import generate_pnl_waterfall as plotly_pnl
+
         png_bytes = plotly_pnl(trades, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
@@ -597,31 +624,36 @@ def generate_pnl_chart(trades: list, title: str = "交易盈亏") -> io.BytesIO:
 
     symbols = [t.get("symbol", "?") for t in trades]
     pnls = [t.get("pnl", 0) for t in trades]
-    colors = ['#2ecc71' if p >= 0 else '#e74c3c' for p in pnls]
+    colors = ["#2ecc71" if p >= 0 else "#e74c3c" for p in pnls]
 
     bars = ax.bar(range(len(pnls)), pnls, color=colors, alpha=0.85, width=0.7)
 
     # 在柱子上标注数值
     for bar, pnl in zip(bars, pnls):
         y = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width() / 2, y,
-                f'${pnl:+.0f}', ha='center',
-                va='bottom' if pnl >= 0 else 'top',
-                fontsize=9, color='#e0e0e0')
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            y,
+            f"${pnl:+.0f}",
+            ha="center",
+            va="bottom" if pnl >= 0 else "top",
+            fontsize=9,
+            color="#e0e0e0",
+        )
 
     ax.set_xticks(range(len(symbols)))
-    ax.set_xticklabels(symbols, rotation=45, ha='right')
-    ax.set_title(title, pad=12, color='#e0e0e0')
-    ax.set_ylabel('盈亏 ($)')
-    ax.axhline(y=0, color='#666666', linewidth=0.8)
-    ax.grid(True, axis='y')
+    ax.set_xticklabels(symbols, rotation=45, ha="right")
+    ax.set_title(title, pad=12, color="#e0e0e0")
+    ax.set_ylabel("盈亏 ($)")
+    ax.axhline(y=0, color="#666666", linewidth=0.8)
+    ax.grid(True, axis="y")
     fig.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
-    buf.name = 'pnl.png'
+    buf.name = "pnl.png"
     return buf
 
 
@@ -634,6 +666,7 @@ def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.B
     # Try plotly version first (interactive-style pie with pull-out)
     try:
         from src.charts import generate_portfolio_pie as plotly_pie
+
         png_bytes = plotly_pie(positions, title=title)
         if png_bytes:
             return io.BytesIO(png_bytes)
@@ -648,27 +681,30 @@ def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.B
     total = sum(values) or 1
 
     # 颜色方案
-    chart_colors = ['#00d4aa', '#3498db', '#e74c3c', '#f39c12',
-                    '#9b59b6', '#1abc9c', '#e67e22', '#2ecc71']
+    chart_colors = ["#00d4aa", "#3498db", "#e74c3c", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#2ecc71"]
     colors = [chart_colors[i % len(chart_colors)] for i in range(len(symbols))]
 
     wedges, texts, autotexts = ax.pie(
-        values, labels=symbols, autopct=lambda p: f'{p:.1f}%' if p > 3 else '',
-        colors=colors, startangle=90, pctdistance=0.8,
-        textprops={'color': '#e0e0e0', 'fontsize': 12},
+        values,
+        labels=symbols,
+        autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
+        colors=colors,
+        startangle=90,
+        pctdistance=0.8,
+        textprops={"color": "#e0e0e0", "fontsize": 12},
     )
     for t in autotexts:
         t.set_fontsize(10)
-        t.set_color('#ffffff')
+        t.set_color("#ffffff")
 
-    ax.set_title(f"{title}\n总值 ${total:,.0f}", pad=15, color='#e0e0e0', fontsize=14)
+    ax.set_title(f"{title}\n总值 ${total:,.0f}", pad=15, color="#e0e0e0", fontsize=14)
     fig.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
-    buf.name = 'portfolio.png'
+    buf.name = "portfolio.png"
     return buf
 
 
@@ -692,39 +728,59 @@ def generate_sector_pie(sector_values: dict, title: str = "行业分布") -> io.
 
     # 行业名中英对照（常见行业翻译）
     sector_cn = {
-        "Technology": "科技", "Healthcare": "医疗", "Financial Services": "金融",
-        "Consumer Cyclical": "可选消费", "Communication Services": "通信",
-        "Industrials": "工业", "Consumer Defensive": "必需消费",
-        "Energy": "能源", "Utilities": "公用事业", "Real Estate": "房地产",
-        "Basic Materials": "基础材料", "未知": "未知",
+        "Technology": "科技",
+        "Healthcare": "医疗",
+        "Financial Services": "金融",
+        "Consumer Cyclical": "可选消费",
+        "Communication Services": "通信",
+        "Industrials": "工业",
+        "Consumer Defensive": "必需消费",
+        "Energy": "能源",
+        "Utilities": "公用事业",
+        "Real Estate": "房地产",
+        "Basic Materials": "基础材料",
+        "未知": "未知",
     }
     labels = [sector_cn.get(s, s) for s in sectors]
 
     # 颜色方案（行业风格配色）
     sector_colors = [
-        '#00d4aa', '#3498db', '#e74c3c', '#f39c12',
-        '#9b59b6', '#1abc9c', '#e67e22', '#2ecc71',
-        '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
+        "#00d4aa",
+        "#3498db",
+        "#e74c3c",
+        "#f39c12",
+        "#9b59b6",
+        "#1abc9c",
+        "#e67e22",
+        "#2ecc71",
+        "#ff6b6b",
+        "#4ecdc4",
+        "#45b7d1",
+        "#96ceb4",
     ]
     colors = [sector_colors[i % len(sector_colors)] for i in range(len(sectors))]
 
     wedges, texts, autotexts = ax.pie(
-        values, labels=labels, autopct=lambda p: f'{p:.1f}%' if p > 3 else '',
-        colors=colors, startangle=90, pctdistance=0.8,
-        textprops={'color': '#e0e0e0', 'fontsize': 12},
+        values,
+        labels=labels,
+        autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
+        colors=colors,
+        startangle=90,
+        pctdistance=0.8,
+        textprops={"color": "#e0e0e0", "fontsize": 12},
     )
     for t in autotexts:
         t.set_fontsize(10)
-        t.set_color('#ffffff')
+        t.set_color("#ffffff")
 
-    ax.set_title(f"{title}\n总值 ${total:,.0f}", pad=15, color='#e0e0e0', fontsize=14)
+    ax.set_title(f"{title}\n总值 ${total:,.0f}", pad=15, color="#e0e0e0", fontsize=14)
     fig.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
-    buf.name = 'sector.png'
+    buf.name = "sector.png"
     return buf
 
 
@@ -732,10 +788,156 @@ async def send_chart(update, context, chart_buf: io.BytesIO, caption: str = ""):
     """发送图表到 Telegram — 带降级（matplotlib 不可用时发文字）"""
     try:
         await update.message.reply_photo(
-            photo=chart_buf, caption=caption,
+            photo=chart_buf,
+            caption=caption,
             reply_to_message_id=update.message.message_id,
         )
     except Exception as e:
         logger.warning("[Chart] 图片发送失败: %s, 降级为文字", e)
         if caption:
             await update.message.reply_text(caption)
+
+
+# ══════════════════════════════════════════════════════
+# P3-2: Telegram 卡片 Builder 链式 API
+# 借鉴 aiogram (5.5k⭐) InlineKeyboardBuilder 模式
+# ══════════════════════════════════════════════════════
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+
+class CardBuilder:
+    """Telegram 消息卡片链式构建器
+
+    借鉴 aiogram 的 InlineKeyboardBuilder 链式 API:
+    - 所有方法返回 self，支持链式调用
+    - 自动处理 Markdown 转义
+    - 内置按钮行管理
+
+    用法:
+        card = (CardBuilder("📊 AAPL 技术分析")
+            .line("价格: $175.50")
+            .line("RSI: 65.3 | MACD: 看涨")
+            .separator()
+            .line("信号: ⬆️ 买入 (评分 72/100)")
+            .button("详细分析", "detail_AAPL")
+            .button("加自选", "watch_AAPL")
+            .button_row()
+            .button("取消", "cancel")
+        )
+        await card.send(update)
+    """
+
+    def __init__(self, title: str = ""):
+        self._title = title
+        self._lines: list = []
+        self._buttons: list = []  # 当前行的按钮
+        self._button_rows: list = []  # 所有按钮行
+        self._parse_mode = "Markdown"
+
+    def title(self, text: str) -> "CardBuilder":
+        """设置标题（加粗）"""
+        self._title = text
+        return self
+
+    def line(self, text: str) -> "CardBuilder":
+        """添加一行文本"""
+        self._lines.append(text)
+        return self
+
+    def lines(self, texts: list) -> "CardBuilder":
+        """批量添加多行文本"""
+        self._lines.extend(texts)
+        return self
+
+    def separator(self, char: str = "─", length: int = 20) -> "CardBuilder":
+        """添加分隔线"""
+        self._lines.append(char * length)
+        return self
+
+    def blank(self) -> "CardBuilder":
+        """添加空行"""
+        self._lines.append("")
+        return self
+
+    def kv(self, key: str, value: str) -> "CardBuilder":
+        """添加键值对行"""
+        self._lines.append(f"{key}: `{value}`")
+        return self
+
+    def kvs(self, pairs: dict) -> "CardBuilder":
+        """批量添加键值对"""
+        for k, v in pairs.items():
+            self._lines.append(f"{k}: `{v}`")
+        return self
+
+    def button(self, text: str, callback_data: str = "", url: str = "") -> "CardBuilder":
+        """添加一个按钮到当前行"""
+        if url:
+            self._buttons.append(InlineKeyboardButton(text=text, url=url))
+        else:
+            self._buttons.append(InlineKeyboardButton(text=text, callback_data=callback_data or text))
+        return self
+
+    def button_row(self) -> "CardBuilder":
+        """结束当前按钮行，开始新行"""
+        if self._buttons:
+            self._button_rows.append(self._buttons)
+            self._buttons = []
+        return self
+
+    def build_text(self) -> str:
+        """构建消息文本"""
+        parts = []
+        if self._title:
+            parts.append(f"*{self._title}*")
+        if self._lines:
+            parts.append("\n".join(self._lines))
+        return "\n".join(parts)
+
+    def build_keyboard(self) -> InlineKeyboardMarkup | None:
+        """构建键盘"""
+        # 自动结束最后一行
+        if self._buttons:
+            self._button_rows.append(self._buttons)
+            self._buttons = []
+        if not self._button_rows:
+            return None
+        return InlineKeyboardMarkup(self._button_rows)
+
+    async def send(self, update: Update, **kwargs) -> None:
+        """发送构建好的卡片"""
+        text = self.build_text()
+        keyboard = self.build_keyboard()
+        try:
+            await update.message.reply_text(
+                text=text,
+                parse_mode=self._parse_mode,
+                reply_markup=keyboard,
+                **kwargs,
+            )
+        except Exception:
+            # Markdown 解析失败时降级为纯文本
+            await update.message.reply_text(
+                text=text.replace("*", "").replace("`", ""),
+                reply_markup=keyboard,
+                **kwargs,
+            )
+
+    async def edit(self, query, **kwargs) -> None:
+        """编辑已有消息（用于 callback query 场景）"""
+        text = self.build_text()
+        keyboard = self.build_keyboard()
+        try:
+            await query.edit_message_text(
+                text=text,
+                parse_mode=self._parse_mode,
+                reply_markup=keyboard,
+                **kwargs,
+            )
+        except Exception:
+            await query.edit_message_text(
+                text=text.replace("*", "").replace("`", ""),
+                reply_markup=keyboard,
+                **kwargs,
+            )
