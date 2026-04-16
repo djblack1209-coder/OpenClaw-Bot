@@ -438,6 +438,7 @@ class LiteLLMPool:
                 ("qwen/qwen3-32b", "qwen", TIER_B, 60),  # 60RPM, 1000RPD
                 ("meta-llama/llama-4-scout-17b-16e-instruct", "llama", TIER_B, 30),
                 ("llama-3.1-8b-instant", "llama", TIER_C, 30),  # 30RPM, 14400RPD
+                ("llama-3.1-8b-instant", "fast", TIER_A, 30),  # "fast" family 快速推理专用
             ]:
                 deps.append(
                     self._dep(

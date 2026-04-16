@@ -24,6 +24,7 @@ v2.0 新增：
   - trading_journal.py（AI 增强交易日志）
   - broker_bridge.py（IBKR 对接）
 """
+
 import asyncio
 import logging
 import os
@@ -32,6 +33,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
 from src.utils import now_et, env_float
+from src.constants import FAMILY_FAST  # noqa: F401 — 快速推理链
 from config.prompts import BACKTEST_ANALYST_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ _freqtrade_available = False
 try:
     from freqtrade.strategy import IStrategy
     from freqtrade.persistence import Trade
+
     _freqtrade_available = True
 except ImportError:
     IStrategy = None  # type: ignore[assignment,misc]
@@ -58,9 +61,7 @@ def get_freqtrade_config(
     datadir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """生成 Freqtrade 配置（桥接 ClawBot 现有设置）"""
-    data_dir = datadir or os.getenv(
-        "DATA_DIR", str(Path(__file__).parent.parent / "data")
-    )
+    data_dir = datadir or os.getenv("DATA_DIR", str(Path(__file__).parent.parent / "data"))
 
     return {
         "strategy": strategy,
@@ -107,6 +108,7 @@ if _freqtrade_available:
         3. confirm_trade_entry → 调用 RiskManager + DecisionValidator
         4. custom_exit → 调用 PositionMonitor 的止损/止盈逻辑
         """
+
         INTERFACE_VERSION = 3
         timeframe = "5m"
         can_short = False
@@ -125,8 +127,7 @@ if _freqtrade_available:
         _journal = None
 
         @classmethod
-        def inject_clawbot(cls, risk_manager=None, decision_validator=None,
-                           ta_engine_fn=None, journal=None):
+        def inject_clawbot(cls, risk_manager=None, decision_validator=None, ta_engine_fn=None, journal=None):
             """注入 ClawBot 组件（启动时调用）"""
             cls._risk_manager = risk_manager
             cls._decision_validator = decision_validator
@@ -141,7 +142,7 @@ if _freqtrade_available:
                     if isinstance(indicators, dict):
                         for k, v in indicators.items():
                             dataframe[k] = v
-                    elif hasattr(indicators, 'columns'):
+                    elif hasattr(indicators, "columns"):
                         return indicators
                 except Exception as e:
                     logger.warning("[ClawBotAIStrategy] ta_engine 失败: %s", e)
@@ -149,6 +150,7 @@ if _freqtrade_available:
             # 回退：基础指标
             try:
                 import talib.abstract as ta
+
                 dataframe["rsi"] = ta.RSI(dataframe, timeperiod=14)
                 dataframe["ema20"] = ta.EMA(dataframe, timeperiod=20)
                 dataframe["ema50"] = ta.EMA(dataframe, timeperiod=50)
@@ -203,32 +205,33 @@ if _freqtrade_available:
                 ] = (1, "rsi_overbought")
             return dataframe
 
-        def confirm_trade_entry(self, pair, order_type, amount, rate, time_in_force,
-                                current_time, entry_tag, side, **kwargs) -> bool:
+        def confirm_trade_entry(
+            self, pair, order_type, amount, rate, time_in_force, current_time, entry_tag, side, **kwargs
+        ) -> bool:
             """入场前调用 ClawBot 风控"""
             if self._risk_manager:
                 try:
-                    result = self._risk_manager.check_trade({
-                        "symbol": pair,
-                        "direction": "BUY" if side == "long" else "SELL",
-                        "price": rate,
-                        "amount": amount,
-                        "entry_tag": entry_tag,
-                    })
+                    result = self._risk_manager.check_trade(
+                        {
+                            "symbol": pair,
+                            "direction": "BUY" if side == "long" else "SELL",
+                            "price": rate,
+                            "amount": amount,
+                            "entry_tag": entry_tag,
+                        }
+                    )
                     if not result.get("approved", True):
-                        logger.info("[ClawBotAIStrategy] 风控拒绝: %s - %s",
-                                    pair, result.get("reason", ""))
+                        logger.info("[ClawBotAIStrategy] 风控拒绝: %s - %s", pair, result.get("reason", ""))
                         return False
                 except Exception as e:
                     logger.warning("[ClawBotAIStrategy] 风控检查异常: %s", e)
             return True
 
-        def custom_exit(self, pair, trade, current_time, current_rate,
-                        current_profit, **kwargs):
+        def custom_exit(self, pair, trade, current_time, current_rate, current_profit, **kwargs):
             """自定义退出逻辑（桥接 PositionMonitor）"""
             # 盈利回撤保护：盈利超过 3% 后回撤 30% 则退出
             if current_profit > 0.03:
-                if hasattr(trade, 'max_rate') and trade.max_rate:
+                if hasattr(trade, "max_rate") and trade.max_rate:
                     drawdown = (trade.max_rate - current_rate) / trade.max_rate
                     if drawdown > 0.01:  # 从最高点回撤 1%
                         return "profit_drawdown_guard"
@@ -246,6 +249,7 @@ if _freqtrade_available:
 #  辅助函数
 # ════════════════════════════════════════════
 
+
 def _pandas_rsi(series, period: int = 14):
     """纯 pandas RSI 计算"""
     delta = series.diff()
@@ -258,6 +262,7 @@ def _pandas_rsi(series, period: int = 14):
 def _compute_basic_score(df) -> float:
     """基础信号分数（-100 到 +100）"""
     import pandas as pd
+
     score = pd.Series(0.0, index=df.index)
     if "rsi" in df.columns:
         score += ((50 - df["rsi"]) * 0.5).clip(-25, 25)
@@ -274,9 +279,11 @@ def _compute_basic_score(df) -> float:
 #  回测桥接
 # ════════════════════════════════════════════
 
+
 @dataclass
 class BacktestResult:
     """回测结果结构体"""
+
     success: bool = False
     symbol: str = ""
     period: str = ""
@@ -329,13 +336,18 @@ class BacktestResult:
     def to_memory_dict(self) -> Dict[str, Any]:
         """转为 SharedMemory 存储格式"""
         return {
-            "symbol": self.symbol, "period": self.period,
-            "engine": self.engine, "strategy": self.strategy,
-            "total_trades": self.total_trades, "win_rate": self.win_rate,
+            "symbol": self.symbol,
+            "period": self.period,
+            "engine": self.engine,
+            "strategy": self.strategy,
+            "total_trades": self.total_trades,
+            "win_rate": self.win_rate,
             "total_profit_pct": self.total_profit_pct,
             "max_drawdown_pct": self.max_drawdown_pct,
-            "sharpe": self.sharpe_ratio, "sortino": self.sortino_ratio,
-            "sqn": self.sqn, "profit_factor": self.profit_factor,
+            "sharpe": self.sharpe_ratio,
+            "sortino": self.sortino_ratio,
+            "sqn": self.sqn,
+            "profit_factor": self.profit_factor,
             "timestamp": self.timestamp,
         }
 
@@ -356,7 +368,10 @@ class FreqtradeBacktestBridge:
     # ── 数据管道 ──
 
     def _download_data(
-        self, symbol: str, period: str = "1y", timeframe: str = "5m",
+        self,
+        symbol: str,
+        period: str = "1y",
+        timeframe: str = "5m",
     ) -> Optional[Path]:
         """yfinance 下载 → freqtrade OHLCV JSON 格式"""
         try:
@@ -366,8 +381,10 @@ class FreqtradeBacktestBridge:
             ticker = yf.Ticker(symbol)
             # 映射 period → yfinance interval 限制
             interval_map = {
-                "5m": ("5m", "60d"), "15m": ("15m", "60d"),
-                "1h": ("1h", period), "1d": ("1d", period),
+                "5m": ("5m", "60d"),
+                "15m": ("15m", "60d"),
+                "1h": ("1h", period),
+                "1d": ("1d", period),
             }
             interval, max_period = interval_map.get(timeframe, ("1d", period))
 
@@ -377,10 +394,15 @@ class FreqtradeBacktestBridge:
                 return None
 
             # 转为 freqtrade 格式: date,open,high,low,close,volume
-            df = df.rename(columns={
-                "Open": "open", "High": "high", "Low": "low",
-                "Close": "close", "Volume": "volume",
-            })
+            df = df.rename(
+                columns={
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
             df.index.name = "date"
             df = df[["open", "high", "low", "close", "volume"]]
 
@@ -396,10 +418,16 @@ class FreqtradeBacktestBridge:
             records = []
             for ts, row in df.iterrows():
                 ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
-                records.append([
-                    ts_ms, float(row["open"]), float(row["high"]),
-                    float(row["low"]), float(row["close"]), float(row["volume"]),
-                ])
+                records.append(
+                    [
+                        ts_ms,
+                        float(row["open"]),
+                        float(row["high"]),
+                        float(row["low"]),
+                        float(row["close"]),
+                        float(row["volume"]),
+                    ]
+                )
             with open(fpath, "w") as f:
                 json.dump(records, f)
 
@@ -414,8 +442,9 @@ class FreqtradeBacktestBridge:
     @staticmethod
     def _extract_results(bt_results: Dict, symbol: str, period: str) -> BacktestResult:
         """从 freqtrade 回测输出提取结构化结果"""
-        result = BacktestResult(success=True, symbol=symbol, period=period,
-                                engine="freqtrade", strategy="ClawBotAIStrategy")
+        result = BacktestResult(
+            success=True, symbol=symbol, period=period, engine="freqtrade", strategy="ClawBotAIStrategy"
+        )
         try:
             # freqtrade bt_results 结构: strategy_name -> stats dict
             stats = None
@@ -484,17 +513,16 @@ class FreqtradeBacktestBridge:
 
             bt = Backtesting(config)
             bt_data, timerange = bt.load_bt_data()
-            min_date, max_date = bt.backtest_one_strategy(
-                bt_data, bt.strategy, timerange
-            )
+            min_date, max_date = bt.backtest_one_strategy(bt_data, bt.strategy, timerange)
             bt_results = bt.results
             bt.cleanup()
 
             # 4. 提取结果
             result = self._extract_results(bt_results, symbol, period)
             result.timerange = f"{min_date} → {max_date}"
-            logger.info("[FTBridge] 回测完成: %s %d笔交易 %.1f%%收益",
-                        symbol, result.total_trades, result.total_profit_pct)
+            logger.info(
+                "[FTBridge] 回测完成: %s %d笔交易 %.1f%%收益", symbol, result.total_trades, result.total_profit_pct
+            )
             return result
 
         except Exception as e:
@@ -505,10 +533,14 @@ class FreqtradeBacktestBridge:
         """降级到自研 backtester.py"""
         try:
             from src.backtester import run_backtest as builtin_backtest
+
             report = builtin_backtest(symbol, period=period)
             result = BacktestResult(
-                success=True, symbol=symbol, period=period,
-                engine="builtin", strategy="multi_strategy",
+                success=True,
+                symbol=symbol,
+                period=period,
+                engine="builtin",
+                strategy="multi_strategy",
                 total_trades=getattr(report, "total_trades", 0),
                 win_rate=getattr(report, "win_rate", 0) * 100,
                 total_profit_pct=getattr(report, "total_return", 0) * 100,
@@ -533,11 +565,14 @@ class FreqtradeBacktestBridge:
     # ── SharedMemory 集成 ──
 
     async def save_to_memory(
-        self, result: BacktestResult, chat_id: Optional[int] = None,
+        self,
+        result: BacktestResult,
+        chat_id: Optional[int] = None,
     ) -> bool:
         """将回测结果写入 SharedMemory，供 AI 团队投票参考"""
         try:
             from src.bot.globals import shared_memory
+
             if not shared_memory:
                 logger.warning("[FTBridge] SharedMemory 未初始化，跳过存储")
                 return False
@@ -567,6 +602,7 @@ class FreqtradeBacktestBridge:
         """通过 LiteLLM Router (free_pool) 对回测结果做智能解读"""
         try:
             from src.litellm_router import free_pool
+
             if not free_pool:
                 return ""
 
@@ -582,7 +618,7 @@ class FreqtradeBacktestBridge:
             )
 
             resp = await free_pool.acompletion(
-                model_family="fast",
+                model_family=FAMILY_FAST,
                 messages=[{"role": "user", "content": prompt}],
                 system_prompt=BACKTEST_ANALYST_PROMPT,
             )
@@ -604,8 +640,7 @@ _backtest_bridge: Optional[FreqtradeBacktestBridge] = None
 def init_freqtrade_bridge(config: Optional[Dict] = None) -> FreqtradeBacktestBridge:
     global _backtest_bridge
     _backtest_bridge = FreqtradeBacktestBridge(config)
-    logger.info("[FreqtradeBridge] 初始化完成 (freqtrade=%s)",
-                "可用" if _freqtrade_available else "未安装→降级builtin")
+    logger.info("[FreqtradeBridge] 初始化完成 (freqtrade=%s)", "可用" if _freqtrade_available else "未安装→降级builtin")
     return _backtest_bridge
 
 
@@ -617,8 +652,11 @@ def get_backtest_bridge() -> FreqtradeBacktestBridge:
 
 
 async def run_backtest_async(
-    symbol: str, period: str = "1y", timeframe: str = "1d",
-    chat_id: Optional[int] = None, with_llm: bool = True,
+    symbol: str,
+    period: str = "1y",
+    timeframe: str = "1d",
+    chat_id: Optional[int] = None,
+    with_llm: bool = True,
 ) -> Tuple[BacktestResult, str]:
     """
     异步回测入口（供 Telegram /backtest --ft 调用）
@@ -629,7 +667,11 @@ async def run_backtest_async(
 
     # 回测（CPU 密集，放线程池）
     result = await asyncio.to_thread(
-        bridge.run_backtest, symbol, period, "ClawBotAIStrategy", timeframe,
+        bridge.run_backtest,
+        symbol,
+        period,
+        "ClawBotAIStrategy",
+        timeframe,
     )
 
     llm_text = ""
