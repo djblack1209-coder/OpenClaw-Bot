@@ -3,6 +3,22 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-17] 交易投票弃权机制 — 修复 50% 超时导致共识度失真
+> 领域: `trading`, `ai-pool`
+> 影响模块: `ai_team_voter`
+> 关联问题: AI 团队投票 6 个模型有 3 个超时，超时票被当作 HOLD(1/10) 计入统计，导致共识度虚高、分歧度失真、否决逻辑误触发
+### 变更内容
+- **BotVote 新增 `abstained: bool` 字段** — 超时/失败时标记为弃权，区别于正常 HOLD 票
+- **timeout_per_bot 默认值 60s→120s** — 适配 LiteLLM Router 内部 `num_retries=3` + fallback 链的实际耗时
+- **3 处超时默认 BotVote 添加 `abstained=True`** — `_call_bot` 失败、指挥官失败、首席策略师失败
+- **统计逻辑全面排除弃权票** — buy/hold/skip 计数、分歧度 σ 计算、加权平均 confidence 仅统计有效投票
+- **否决逻辑修复** — 弃权的风控官/首席策略师不触发 SKIP 否决（超时≠反对）
+- **Telegram 报告展示弃权信息** — 投票统计行显示弃权数、投票明细中弃权票标记为 "⏭ 弃权 (超时/失败)"、summary 含弃权数
+### 文件变更
+- `packages/clawbot/src/ai_team_voter.py` — BotVote.abstained 字段(L103) + timeout 120s(L459) + 3处弃权标记(L578-703) + 统计逻辑重写(L725-820) + format_telegram 弃权展示(L179-200)
+
+---
+
 ## [2026-04-17] 价值位阶推进 R5 — P1~P2 四项改进
 > 领域: `backend`, `xianyu`
 > 影响模块: `smart_memory`, `social_scheduler`, `message_mixin`, `data_providers`, `notify_style`, `trading/_init_system`, `daily_brief`, `daily_brief_data`, `daily_brief_llm`, `api/routers/social`, `api/routers/omega`, `api/routers/newapi`, `xianyu_live`, `brain`, `self_heal`, `slider_solver`, `team`, `scheduler`, `brain_exec_life`, `cmd_collab_mixin`

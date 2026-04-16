@@ -11,6 +11,7 @@ ClawBot AI 团队投票决策模块 v1.1
 - 每位分析师同时给出 1-10 的信心分
 - 最终置信度 = 加权平均信心分 / 10
 """
+
 import asyncio
 import logging
 import os
@@ -22,8 +23,12 @@ from config.prompts import INVEST_VOTE_PROMPTS
 from src.execution._utils import safe_float
 from src.utils import env_int, env_float
 from src.constants import (
-    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+    BOT_QWEN,
+    BOT_DEEPSEEK,
+    BOT_GPTOSS,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_SONNET,
+    BOT_CLAUDE_OPUS,
 )
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -48,43 +53,44 @@ async def _safe_notify(notify_func: Optional[Callable], msg: str) -> None:
 
 def _render_vote_progress(symbol: str, votes: list, total: int = 6, phase: str = "") -> str:
     """渲染实时投票进度 — 搬运自 lobe-chat 的进度可视化思路
-    
+
     让用户在等待时看到每个 AI 的投票实时出现，
     而不是 30-60 秒的静默等待。
     """
     vote_icons = {"BUY": "🟢", "HOLD": "🟡", "SKIP": "🔴"}
     pending_icon = "⏳"
-    
+
     lines = [f"🗳 {symbol} AI 团队投票中"]
     lines.append("───────────────────")
-    
+
     # 已完成的投票
     for v in votes:
         icon = vote_icons.get(v.vote, "❓")
         conf_bar = "█" * (v.confidence // 2) + "░" * (5 - v.confidence // 2)
         lines.append(f"{icon} {v.role}: {v.vote} [{conf_bar}] {v.confidence}/10")
-    
+
     # 待投票的占位
     remaining = total - len(votes)
     for _ in range(remaining):
         lines.append(f"{pending_icon} 等待投票...")
-    
+
     # 进度条
     pct = len(votes) / total
     bar_len = 20
     filled = int(pct * bar_len)
     bar = "▓" * filled + "░" * (bar_len - filled)
     lines.append(f"\n[{bar}] {len(votes)}/{total}")
-    
+
     if phase:
         lines.append(f"📍 {phase}")
-    
+
     return "\n".join(lines)
 
 
 @dataclass
 class BotVote:
     """单个Bot的投票"""
+
     bot_id: str
     bot_name: str
     role: str
@@ -94,11 +100,13 @@ class BotVote:
     entry_price: float = 0
     stop_loss: float = 0
     take_profit: float = 0
+    abstained: bool = False  # 弃权标记（超时/失败时为 True，不计入共识度和分歧度统计）
 
 
 @dataclass
 class VoteResult:
     """团队投票结果"""
+
     symbol: str
     votes: List[BotVote] = field(default_factory=list)
     decision: str = "HOLD"  # BUY / HOLD
@@ -124,12 +132,13 @@ class VoteResult:
     vol_ratio: float = 0
     rsi6: float = 0
     rsi14: float = 0
-    divergence: float = 0.0        # 信心分标准差（分歧度）
+    divergence: float = 0.0  # 信心分标准差（分歧度）
     is_high_divergence: bool = False  # 分歧度 > 2.5 时为 True
 
     def format_telegram(self) -> str:
         """格式化为 Telegram 完整流程报告（Full 模式）"""
         from src.utils import now_et
+
         now_text = now_et().strftime("%Y-%m-%d %H:%M ET")
         confidence_10 = self.avg_confidence * 10
 
@@ -167,7 +176,8 @@ class VoteResult:
             "",
             "A. 最终裁决",
             f"- 动作: {self.decision} | 置信度: {confidence_10:.1f}/10",
-            f"- 投票统计: BUY {self.buy_count} | HOLD {self.hold_count} | SKIP {self.skip_count}",
+            f"- 投票统计: BUY {self.buy_count} | HOLD {self.hold_count} | SKIP {self.skip_count}"
+            + (f" | 弃权 {sum(1 for v in self.votes if v.abstained)}" if any(v.abstained for v in self.votes) else ""),
             f"- 结论备注: {self.veto_reason if self.veto_reason else '无否决'}",
             "",
             "B. 数据完整性审计",
@@ -180,8 +190,12 @@ class VoteResult:
         ]
 
         for i, vote in enumerate(self.votes, start=1):
-            lines.append(f"{i}) {vote.role}: {vote.vote} ({vote.confidence}/10)")
-            lines.append(f"   理由: {vote.reasoning}")
+            if vote.abstained:
+                lines.append(f"{i}) {vote.role}: ⏭ 弃权 (超时/失败)")
+                lines.append(f"   理由: {vote.reasoning}")
+            else:
+                lines.append(f"{i}) {vote.role}: {vote.vote} ({vote.confidence}/10)")
+                lines.append(f"   理由: {vote.reasoning}")
 
         # 共识度/分歧度可视化
         if self.divergence > 0:
@@ -192,24 +206,28 @@ class VoteResult:
             if self.is_high_divergence:
                 lines.append(f"⚠️ 分歧警告: 信心分标准差 {self.divergence:.1f} (>2.5)，AI 团队意见严重分化")
 
-        lines.extend([
-            "",
-            "D. 风险闸门",
-            f"- 闸门状态: {'通过' if gate_ok else '未通过'}",
-            f"- 止损距离: {f'{stop_pct:.2f}%' if stop_pct > 0 else '待定'}",
-            f"- 风险收益比: {f'{risk_reward:.2f}:1' if risk_reward > 0 else '待定'}",
-            f"- 风险备注: {'；'.join(gate_notes)}",
-            "",
-            "E. 执行计划",
-        ])
+        lines.extend(
+            [
+                "",
+                "D. 风险闸门",
+                f"- 闸门状态: {'通过' if gate_ok else '未通过'}",
+                f"- 止损距离: {f'{stop_pct:.2f}%' if stop_pct > 0 else '待定'}",
+                f"- 风险收益比: {f'{risk_reward:.2f}:1' if risk_reward > 0 else '待定'}",
+                f"- 风险备注: {'；'.join(gate_notes)}",
+                "",
+                "E. 执行计划",
+            ]
+        )
 
         if self.decision == "BUY" and self.avg_entry > 0:
-            lines.extend([
-                f"- 入场价: ${self.avg_entry:.2f}",
-                f"- 止损价: ${self.avg_stop:.2f}" if self.avg_stop > 0 else "- 止损价: 待定",
-                f"- 目标价: ${self.avg_target:.2f}" if self.avg_target > 0 else "- 目标价: 待定",
-                "- 执行方式: 分批入场（突破确认 + 回踩确认）",
-            ])
+            lines.extend(
+                [
+                    f"- 入场价: ${self.avg_entry:.2f}",
+                    f"- 止损价: ${self.avg_stop:.2f}" if self.avg_stop > 0 else "- 止损价: 待定",
+                    f"- 目标价: ${self.avg_target:.2f}" if self.avg_target > 0 else "- 目标价: 待定",
+                    "- 执行方式: 分批入场（突破确认 + 回踩确认）",
+                ]
+            )
         else:
             trigger_parts: List[str] = []
             if self.resistance > 0:
@@ -218,22 +236,26 @@ class VoteResult:
                 trigger_parts.append("量比提升并持续")
             if not trigger_parts:
                 trigger_parts.append("趋势与量能双确认")
-            lines.extend([
-                "- 当前动作: 观望，不开新仓",
-                f"- 触发条件: {' + '.join(trigger_parts)}",
-                "- 触发前动作: 仅跟踪，不下单",
-            ])
+            lines.extend(
+                [
+                    "- 当前动作: 观望，不开新仓",
+                    f"- 触发条件: {' + '.join(trigger_parts)}",
+                    "- 触发前动作: 仅跟踪，不下单",
+                ]
+            )
 
-        lines.extend([
-            "",
-            "F. 失效条件与应急",
-            f"- 失效条件: {f'跌破 ${self.support:.2f} 且量价转弱' if self.support > 0 else '趋势走坏或出现放量反向'}",
-            "- 应急动作: 取消挂单 -> 降低风险暴露 -> 等下一窗口",
-            "",
-            "G. 复盘记录",
-            f"- 本次结论: {self.decision}",
-            "- 下次检查点: 下一根 4H 收线后复评",
-        ])
+        lines.extend(
+            [
+                "",
+                "F. 失效条件与应急",
+                f"- 失效条件: {f'跌破 ${self.support:.2f} 且量价转弱' if self.support > 0 else '趋势走坏或出现放量反向'}",
+                "- 应急动作: 取消挂单 -> 降低风险暴露 -> 等下一窗口",
+                "",
+                "G. 复盘记录",
+                f"- 本次结论: {self.decision}",
+                "- 下次检查点: 下一根 4H 收线后复评",
+            ]
+        )
         return "\n".join(lines)
 
 
@@ -257,7 +279,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
         text_raw = str(raw or "")
         text_raw = re.sub(r"```[\\s\\S]*?```", " ", text_raw)
         text_raw = re.sub(r"\{[\s\S]{30,}\}", " ", text_raw)
-        text_raw = re.sub(r"\s+", " ", text_raw).strip().strip('"\'')
+        text_raw = re.sub(r"\s+", " ", text_raw).strip().strip("\"'")
         if not text_raw:
             return "未提供明确理由"
         return text_raw[:160]
@@ -272,6 +294,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
             if not candidate:
                 return None
             from json_repair import loads as jloads
+
             if candidate.startswith("{") and candidate.endswith("}"):
                 try:
                     data = jloads(candidate)
@@ -310,7 +333,7 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
                     if ch == "}":
                         depth -= 1
                         if depth == 0:
-                            snippet = candidate[start:idx + 1]
+                            snippet = candidate[start : idx + 1]
                             if '"vote"' not in snippet and "'vote'" not in snippet:
                                 break
                             parsed = _try_json(snippet)
@@ -426,12 +449,12 @@ def _format_ta_summary(analysis: dict) -> str:
         lines.append(f"MACD={ind.get('macd', 0):.3f} Signal={ind.get('macd_signal', 0):.3f}")
         lines.append(f"趋势={ind.get('trend', '?')} 量比={ind.get('vol_ratio', 0):.1f}x")
         lines.append(f"ATR%={ind.get('atr_pct', 0):.2f}%")
-        adx = ind.get('adx', 0)
+        adx = ind.get("adx", 0)
         if adx > 0:
             adx_label = "强趋势" if adx >= 40 else "趋势" if adx >= 25 else "弱趋势" if adx >= 20 else "震荡"
             lines.append(f"ADX={adx:.0f}({adx_label}) +DI={ind.get('adx_pos', 0):.0f} -DI={ind.get('adx_neg', 0):.0f}")
         # OBV 方向
-        obv_rising = ind.get('obv_rising')
+        obv_rising = ind.get("obv_rising")
         if obv_rising is not None:
             lines.append(f"OBV方向={'上升(量价配合)' if obv_rising else '下降(量价背离)'}")
 
@@ -456,7 +479,7 @@ async def run_team_vote(
     analysis: dict,
     api_callers: Dict[str, Callable],
     notify_func: Optional[Callable] = None,
-    timeout_per_bot: float = 60,
+    timeout_per_bot: float = 120,
     account_context: str = "",
     vote_history: Optional[Dict[str, Dict]] = None,
     progress_func: Optional[Callable] = None,
@@ -480,7 +503,9 @@ async def run_team_vote(
     analysis_data = analysis if isinstance(analysis, dict) else {}
     ind = analysis_data.get("indicators", {}) if isinstance(analysis_data.get("indicators"), dict) else {}
     sig = analysis_data.get("signal", {}) if isinstance(analysis_data.get("signal"), dict) else {}
-    sr = analysis_data.get("support_resistance", {}) if isinstance(analysis_data.get("support_resistance"), dict) else {}
+    sr = (
+        analysis_data.get("support_resistance", {}) if isinstance(analysis_data.get("support_resistance"), dict) else {}
+    )
     supports = sr.get("supports") if isinstance(sr.get("supports"), list) else []
     resistances = sr.get("resistances") if isinstance(sr.get("resistances"), list) else []
     used, missing, completeness = _build_data_audit(analysis_data)
@@ -506,10 +531,7 @@ async def run_team_vote(
         h = vote_hist.get(bot_id)
         if not h or h.get("total", 0) < 3:
             return ""
-        return (
-            f"\n[你的历史表现: {h['total']}次投票, 准确率{h.get('accuracy', 0):.0f}%, "
-            f"请据此校准你的置信度]\n"
-        )
+        return f"\n[你的历史表现: {h['total']}次投票, 准确率{h.get('accuracy', 0):.0f}%, 请据此校准你的置信度]\n"
 
     # --- 阶段1: 前4个分析师并行投票（雷达/宏观/图表/风控）---
     parallel_bots = [b for b in VOTE_ORDER if b not in (BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS)]
@@ -517,16 +539,22 @@ async def run_team_vote(
     async def _call_bot(bot_id: str) -> BotVote:
         prompt_cfg = VOTE_PROMPTS.get(bot_id)
         if not prompt_cfg:
-            return BotVote(bot_id=bot_id, bot_name=bot_id, role="?",
-                           vote="HOLD", confidence=1, reasoning="无配置")
+            return BotVote(bot_id=bot_id, bot_name=bot_id, role="?", vote="HOLD", confidence=1, reasoning="无配置")
         caller = api_callers.get(bot_id)
         if not caller:
             logger.warning("[TeamVote] %s 无API caller，跳过", bot_id)
-            return BotVote(bot_id=bot_id, bot_name=bot_id, role=prompt_cfg["role"],
-                           vote="HOLD", confidence=1, reasoning="无API caller")
+            return BotVote(
+                bot_id=bot_id,
+                bot_name=bot_id,
+                role=prompt_cfg["role"],
+                vote="HOLD",
+                confidence=1,
+                reasoning="无API caller",
+            )
         role = prompt_cfg["role"]
         prompt = prompt_cfg["prompt"].format(
-            symbol=symbol, ta_summary=ta_summary,
+            symbol=symbol,
+            ta_summary=ta_summary,
             previous_votes="(并行投票，无前序结果)",
             account_context=account_ctx,
         )
@@ -540,7 +568,8 @@ async def run_team_vote(
         for attempt in range(max_attempts):
             try:
                 response = await asyncio.wait_for(
-                    caller(-999, prompt), timeout=timeout_per_bot,
+                    caller(-999, prompt),
+                    timeout=timeout_per_bot,
                 )
                 return _parse_vote(response, bot_id, bot_id, role)
             except asyncio.TimeoutError as e:
@@ -551,8 +580,15 @@ async def run_team_vote(
                 logger.warning("[TeamVote] %s 失败 [%d/%d]: %s", bot_id, attempt + 1, max_attempts, e)
             if attempt < max_attempts - 1:
                 await asyncio.sleep(2)
-        return BotVote(bot_id=bot_id, bot_name=bot_id, role=role,
-                       vote="HOLD", confidence=1, reasoning=f"重试{max_attempts}次失败: {last_err}")
+        return BotVote(
+            bot_id=bot_id,
+            bot_name=bot_id,
+            role=role,
+            vote="HOLD",
+            confidence=1,
+            reasoning=f"重试{max_attempts}次失败: {last_err}",
+            abstained=True,
+        )
 
     # 并行调用前4个分析师（错开0.5s减轻网关压力）
     async def _staggered_call(bot_id: str, delay: float) -> BotVote:
@@ -570,27 +606,32 @@ async def run_team_vote(
         vote: BotVote
         if isinstance(vote_or_exc, BaseException):
             prompt_cfg = VOTE_PROMPTS.get(bid, {})
-            vote = BotVote(bot_id=bid, bot_name=bid, role=prompt_cfg.get("role", "?"),
-                           vote="HOLD", confidence=1, reasoning=f"异常: {vote_or_exc}")
+            vote = BotVote(
+                bot_id=bid,
+                bot_name=bid,
+                role=prompt_cfg.get("role", "?"),
+                vote="HOLD",
+                confidence=1,
+                reasoning=f"异常: {vote_or_exc}",
+            )
         elif isinstance(vote_or_exc, BotVote):
             vote = vote_or_exc
         else:
-            vote = BotVote(bot_id=bid, bot_name=bid, role="?",
-                           vote="HOLD", confidence=1, reasoning="未知投票结果类型")
+            vote = BotVote(bot_id=bid, bot_name=bid, role="?", vote="HOLD", confidence=1, reasoning="未知投票结果类型")
         result.votes.append(vote)
         vote_icon = {"BUY": "+", "HOLD": "=", "SKIP": "-"}.get(vote.vote, "?")
         previous_votes_text += f"[{vote_icon}] {vote.role}: {vote.vote}({vote.confidence}/10) {vote.reasoning}\n"
 
     # 实时进度更新：阶段1完成
-    await _safe_notify(progress_func,
-        _render_vote_progress(symbol, result.votes, 6, "阶段1完成 · 指挥官投票中..."))
+    await _safe_notify(progress_func, _render_vote_progress(symbol, result.votes, 6, "阶段1完成 · 指挥官投票中..."))
 
     # --- 阶段2: 指挥官串行投票（看到前4人结果）---
     # 构建交易教训（闭环学习 — 让高级 AI 看到近期失败模式）
     trade_lessons = ""
     try:
         from src.trading_journal import journal as tj
-        if tj and hasattr(tj, 'get_latest_review'):
+
+        if tj and hasattr(tj, "get_latest_review"):
             latest_review = tj.get_latest_review("daily")
             if latest_review and latest_review.get("lessons_learned"):
                 trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
@@ -603,7 +644,8 @@ async def run_team_vote(
     if prompt_cfg and caller:
         role = prompt_cfg["role"]
         prompt = prompt_cfg["prompt"].format(
-            symbol=symbol, ta_summary=ta_summary,
+            symbol=symbol,
+            ta_summary=ta_summary,
             previous_votes=previous_votes_text,
             account_context=account_ctx,
             trade_lessons=trade_lessons,
@@ -615,11 +657,13 @@ async def run_team_vote(
             vote="HOLD",
             confidence=1,
             reasoning="重试2次失败",
+            abstained=True,
         )
         for _attempt in range(2):
             try:
                 response = await asyncio.wait_for(
-                    caller(-999, prompt), timeout=timeout_per_bot,
+                    caller(-999, prompt),
+                    timeout=timeout_per_bot,
                 )
                 commander_vote_result = _parse_vote(response, commander_id, commander_id, role)
                 break
@@ -632,8 +676,7 @@ async def run_team_vote(
         result.votes.append(commander_vote_result)
 
     # 实时进度更新：阶段2完成
-    await _safe_notify(progress_func,
-        _render_vote_progress(symbol, result.votes, 6, "阶段2完成 · 首席策略师投票中..."))
+    await _safe_notify(progress_func, _render_vote_progress(symbol, result.votes, 6, "阶段2完成 · 首席策略师投票中..."))
 
     # --- 阶段3: 首席策略师串行投票（看到前5人结果）---
     # 更新 previous_votes_text，加入指挥官的投票
@@ -648,7 +691,8 @@ async def run_team_vote(
     if prompt_cfg and caller:
         role = prompt_cfg["role"]
         prompt = prompt_cfg["prompt"].format(
-            symbol=symbol, ta_summary=ta_summary,
+            symbol=symbol,
+            ta_summary=ta_summary,
             previous_votes=previous_votes_text,
             account_context=account_ctx,
             trade_lessons=trade_lessons,
@@ -660,11 +704,13 @@ async def run_team_vote(
             vote="HOLD",
             confidence=1,
             reasoning="重试2次失败",
+            abstained=True,
         )
         for _attempt in range(2):
             try:
                 response = await asyncio.wait_for(
-                    caller(-999, prompt), timeout=timeout_per_bot,
+                    caller(-999, prompt),
+                    timeout=timeout_per_bot,
                 )
                 strategist_vote_result = _parse_vote(response, strategist_id, strategist_id, role)
                 break
@@ -677,16 +723,17 @@ async def run_team_vote(
         result.votes.append(strategist_vote_result)
 
     # 实时进度更新：全部投票完成
-    await _safe_notify(progress_func,
-        _render_vote_progress(symbol, result.votes, 6, "投票完成 · 统计中..."))
+    await _safe_notify(progress_func, _render_vote_progress(symbol, result.votes, 6, "投票完成 · 统计中..."))
 
-    # 统计投票
-    result.buy_count = sum(1 for v in result.votes if v.vote == "BUY")
-    result.hold_count = sum(1 for v in result.votes if v.vote == "HOLD")
-    result.skip_count = sum(1 for v in result.votes if v.vote == "SKIP")
+    # 统计投票（排除弃权票 — 超时/失败的投票不计入有效统计）
+    active_votes = [v for v in result.votes if not v.abstained]
+    abstained_votes = [v for v in result.votes if v.abstained]
+    result.buy_count = sum(1 for v in active_votes if v.vote == "BUY")
+    result.hold_count = sum(1 for v in active_votes if v.vote == "HOLD")
+    result.skip_count = sum(1 for v in active_votes if v.vote == "SKIP")
 
-    # 计算信心分标准差（分歧度）— prompts.py L238 规则的代码实现
-    all_confidences = [v.confidence for v in result.votes if v.confidence > 0]
+    # 计算信心分标准差（分歧度）— 仅计算有效投票，弃权票不参与
+    all_confidences = [v.confidence for v in active_votes if v.confidence > 0]
     result.divergence = statistics.stdev(all_confidences) if len(all_confidences) > 1 else 0.0
     result.is_high_divergence = result.divergence > 2.5
 
@@ -694,11 +741,11 @@ async def run_team_vote(
     min_avg_buy_conf = max(1.0, min(10.0, env_float("TEAM_MIN_AVG_BUY_CONF", 5.5)))
     veto_mode = _env_text("TEAM_VETO_MODE", "dual").lower()  # off / single / dual
 
-    # 风控官 / 首席策略师 否决规则（可配置）
+    # 风控官 / 首席策略师 否决规则（弃权者不触发否决）
     risk_vote = next((v for v in result.votes if v.bot_id == BOT_DEEPSEEK), None)
     strategist_vote = next((v for v in result.votes if v.bot_id == BOT_CLAUDE_OPUS), None)
-    risk_skip = bool(risk_vote and risk_vote.vote == "SKIP")
-    strategist_skip = bool(strategist_vote and strategist_vote.vote == "SKIP")
+    risk_skip = bool(risk_vote and risk_vote.vote == "SKIP" and not risk_vote.abstained)
+    strategist_skip = bool(strategist_vote and strategist_vote.vote == "SKIP" and not strategist_vote.abstained)
 
     if veto_mode == "single" and (risk_skip or strategist_skip):
         result.vetoed = True
@@ -716,7 +763,9 @@ async def run_team_vote(
     elif result.buy_count >= min_buy_votes:
         # 计算 BUY 投票者的平均置信度
         buy_votes_for_conf = [v for v in result.votes if v.vote == "BUY"]
-        avg_buy_conf = sum(v.confidence for v in buy_votes_for_conf) / len(buy_votes_for_conf) if buy_votes_for_conf else 0
+        avg_buy_conf = (
+            sum(v.confidence for v in buy_votes_for_conf) / len(buy_votes_for_conf) if buy_votes_for_conf else 0
+        )
         if avg_buy_conf >= min_avg_buy_conf:
             # 高分歧降级保护：边缘通过 + 团队严重分化 → 保守观望
             if result.is_high_divergence and result.buy_count == min_buy_votes:
@@ -726,15 +775,12 @@ async def run_team_vote(
                 result.decision = "BUY"
         else:
             result.decision = "HOLD"
-            result.veto_reason = (
-                "BUY票数达标但平均置信度不足(%.1f/10 < %.1f)"
-                % (avg_buy_conf, min_avg_buy_conf)
-            )
+            result.veto_reason = "BUY票数达标但平均置信度不足(%.1f/10 < %.1f)" % (avg_buy_conf, min_avg_buy_conf)
     else:
         result.decision = "HOLD"
 
-    # 计算加权平均
-    buy_votes = [v for v in result.votes if v.vote == "BUY"]
+    # 计算加权平均（仅有效投票，排除弃权票）
+    buy_votes = [v for v in active_votes if v.vote == "BUY"]
     if buy_votes:
         result.avg_confidence = sum(v.confidence for v in buy_votes) / (len(buy_votes) * 10)
 
@@ -753,17 +799,23 @@ async def run_team_vote(
             w = sum(v.confidence for v in target_votes)
             result.avg_target = sum(v.take_profit * v.confidence for v in target_votes) / w
     else:
-        result.avg_confidence = sum(v.confidence for v in result.votes) / (len(result.votes) * 10) if result.votes else 0
+        # 无 BUY 票时，用有效投票计算整体置信度（排除弃权票）
+        result.avg_confidence = (
+            sum(v.confidence for v in active_votes) / (len(active_votes) * 10) if active_votes else 0
+        )
 
-    main_reasons = [v.reasoning for v in result.votes if v.vote == result.decision and v.reasoning]
-    if not main_reasons and result.votes:
-        main_reasons = [result.votes[0].reasoning]
+    main_reasons = [v.reasoning for v in active_votes if v.vote == result.decision and v.reasoning]
+    if not main_reasons and active_votes:
+        main_reasons = [active_votes[0].reasoning]
     brief_reason = main_reasons[0][:40] if main_reasons else ""
 
+    # 构建 summary，含弃权票数
+    abstain_count = len(abstained_votes)
+    vote_detail = f"BUY:{result.buy_count} HOLD:{result.hold_count} SKIP:{result.skip_count}"
+    if abstain_count > 0:
+        vote_detail += f" 弃权:{abstain_count}"
     result.summary = (
-        f"{symbol}: {result.decision} "
-        f"(BUY:{result.buy_count} HOLD:{result.hold_count} SKIP:{result.skip_count}) "
-        f"置信度{result.avg_confidence:.0%} σ={result.divergence:.1f}"
+        f"{symbol}: {result.decision} ({vote_detail}) 置信度{result.avg_confidence:.0%} σ={result.divergence:.1f}"
     )
     if brief_reason:
         result.summary += f" | {brief_reason}"
@@ -804,8 +856,7 @@ async def run_team_vote_batch(
         symbol = candidate.get("symbol", "")
         analysis = analyses.get(symbol, {})
 
-        await _safe_notify(notify_func,
-            f"\n-- 分析候选 {i+1}/{min(len(candidates), max_candidates)}: {symbol} --")
+        await _safe_notify(notify_func, f"\n-- 分析候选 {i + 1}/{min(len(candidates), max_candidates)}: {symbol} --")
 
         vote_result = await run_team_vote(
             symbol=symbol,

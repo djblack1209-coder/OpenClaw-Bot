@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-17 (价值位阶推进R5: P1静默异常修复+daily_brief拆分+P2 API输入验证+logger lazy formatting, 测试1339/100%)
+> 最后更新: 2026-04-17 (交易投票弃权机制修复: 超时票排除统计+否决逻辑修正+Telegram弃权展示, 测试1339/100%)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -52,7 +52,7 @@
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 + 沟通风格偏好确定性注入(onboarding→profile链路修复) |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 + 提醒同义词扩展(帮我记住/别忘了/设个闹钟等) |
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
-| 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 |
+| 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
 | 测试通过率 | 🟢 100% | 1339/1341 Python (2项跳过), 0 TypeScript错误, Rust cargo check 零警告。R5新增: 静默异常修复+daily_brief拆分+API输入验证+logger lazy formatting |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
@@ -105,6 +105,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
+| HI-487 | `backend` | `wechat_bridge.py` | ARCH_LIMIT: 微信仅支持单向推送通知（通过 iLink API），不支持接收微信消息/双向聊天。brain.py 的 process_message() 仅支持 source=telegram/api/cron。实现双向需接入 Wechaty 桥接服务（新功能开发，非 Bug） | 2026-04-17 |
 | ~~HI-358~~ | ~~`backend`~~ | ~~多文件~~ | ~~7个>1000行大文件待拆~~ → **已修复 2026-04-11**: 全部7个文件拆分完成 — daily_brief(1158→498), proactive_engine(1016→328), trading_journal(1087→464), risk_manager(1191→854), broker_bridge(1091→762), auto_trader(1055→843), chinese_nlp_mixin(1248→705)。共新建 17 个子模块 | 2026-03-29 |
 | ~~HI-381~~ | ~~`backend`~~ | ~~120+文件~~ | ~~内联错误字符串分散~~ → **已解决 2026-04-11**: 重新评估实际为 ~50 处（非 120+），其中 5 条重复消息提取到 `constants.py`（ERR_RISK_NOT_INIT 等 5 个常量），10 处使用点已迁移；其余为上下文相关的唯一消息，保留内联合理 | 2026-03-29 |
 | ~~HI-383~~ | ~~`backend`~~ | ~~多文件~~ | ~~HTTP客户端碎片化~~ → **大部分解决 2026-04-11**: HI-463 迁移 20 个文件 35 处调用点到 ResilientHTTPClient（带自动重试+熔断）；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现合理 | 2026-03-29 |
