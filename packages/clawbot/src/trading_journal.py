@@ -14,6 +14,7 @@ v1.1: 拆分为 Mixin 模块（HI-358），按 DB 表域名分离：
 - journal_targets.py      — 盈利目标管理
 - journal_review.py       — 复盘 & 迭代改进
 """
+
 from src.utils import now_et
 import sqlite3
 import os
@@ -106,6 +107,9 @@ class TradingJournal(
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
             """)
+            # 高频查询索引：按状态筛选交易、按时间排序
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at)")
 
             # 每日绩效快照
             conn.execute("""
@@ -125,6 +129,8 @@ class TradingJournal(
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             """)
+            # 高频查询索引：按日期查询每日盈亏
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_pnl_date ON daily_pnl(date)")
 
             # 复盘会议记录
             conn.execute("""
@@ -159,16 +165,14 @@ class TradingJournal(
             """)
             # 默认配置
             defaults = {
-                'initial_capital': '2000',
-                'daily_loss_limit': '100',
-                'max_position_pct': '30',
-                'risk_per_trade_pct': '2',
-                'min_risk_reward': '2',
+                "initial_capital": "2000",
+                "daily_loss_limit": "100",
+                "max_position_pct": "30",
+                "risk_per_trade_pct": "2",
+                "min_risk_reward": "2",
             }
             for k, v in defaults.items():
-                conn.execute(
-                    "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v)
-                )
+                conn.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))
 
             # 盈利目标表（日/周/月）
             conn.execute("""
@@ -218,62 +222,85 @@ class TradingJournal(
 
     # ============ 配置 ============
 
-    def get_config(self, key: str, default: str = '0') -> str:
+    def get_config(self, key: str, default: str = "0") -> str:
         """获取配置项"""
         with self._conn() as conn:
             row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
-        return row['value'] if row else default
+        return row["value"] if row else default
 
     def set_config(self, key: str, value: str):
         """设置配置项"""
         with self._conn() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value)
-            )
+            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
 
     # ============ 交易记录 ============
 
-    def open_trade(self, symbol: str, side: str, quantity: float,
-                   entry_price: float, entry_order_id: str = '',
-                   stop_loss: float = 0, take_profit: float = 0,
-                   signal_score: int = 0, ai_analysis: str = '',
-                   entry_reason: str = '', decided_by: str = '',
-                   status: str = 'open') -> int:
+    def open_trade(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        entry_price: float,
+        entry_order_id: str = "",
+        stop_loss: float = 0,
+        take_profit: float = 0,
+        signal_score: int = 0,
+        ai_analysis: str = "",
+        entry_reason: str = "",
+        decided_by: str = "",
+        status: str = "open",
+    ) -> int:
         """开仓记录"""
         from src.utils import now_et
+
         _now_et = now_et()
-        safe_status = str(status or 'open').lower()
-        if safe_status not in ('open', 'pending', 'closed', 'cancelled'):
-            safe_status = 'open'
+        safe_status = str(status or "open").lower()
+        if safe_status not in ("open", "pending", "closed", "cancelled"):
+            safe_status = "open"
         with self._conn() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 INSERT INTO trades (symbol, side, quantity, entry_price, entry_time,
                     entry_order_id, stop_loss, take_profit, signal_score,
                     ai_analysis, entry_reason, decided_by, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (symbol.upper(), side.upper(), quantity, entry_price,
-                  _now_et.isoformat(), entry_order_id,
-                  stop_loss, take_profit, signal_score,
-                  ai_analysis, entry_reason, decided_by, safe_status))
+            """,
+                (
+                    symbol.upper(),
+                    side.upper(),
+                    quantity,
+                    entry_price,
+                    _now_et.isoformat(),
+                    entry_order_id,
+                    stop_loss,
+                    take_profit,
+                    signal_score,
+                    ai_analysis,
+                    entry_reason,
+                    decided_by,
+                    safe_status,
+                ),
+            )
             trade_id = cursor.lastrowid
-        logger.info(
-            f"[Journal] 开仓 #{trade_id}: {side} {symbol} x{quantity} @ {entry_price} "
-            f"(status={safe_status})"
-        )
+        logger.info(f"[Journal] 开仓 #{trade_id}: {side} {symbol} x{quantity} @ {entry_price} (status={safe_status})")
         return trade_id
 
     def get_pending_trades(self, limit: int = 200) -> List[Dict]:
         """获取待成交入场交易（status='pending'）"""
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM trades WHERE status='pending' ORDER BY created_at DESC LIMIT ?",
-                (limit,)
+                "SELECT * FROM trades WHERE status='pending' ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def mark_trade_entry_filled(self, trade_id: int, filled_qty: float,
-                                fill_price: float, entry_order_id: str = '',
-                                fill_time: Optional[str] = None) -> Dict:
+    def mark_trade_entry_filled(
+        self,
+        trade_id: int,
+        filled_qty: float,
+        fill_price: float,
+        entry_order_id: str = "",
+        fill_time: Optional[str] = None,
+    ) -> Dict:
         """将 pending 交易回写为 open（成交回补）"""
         if filled_qty <= 0 or fill_price <= 0:
             return {"error": "filled_qty/fill_price 必须大于0"}
@@ -283,7 +310,7 @@ class TradingJournal(
             if not trade:
                 return {"error": f"交易 #{trade_id} 不存在"}
 
-            existing_order_id = str(trade['entry_order_id'] or '')
+            existing_order_id = str(trade["entry_order_id"] or "")
             target_order_id = str(entry_order_id or existing_order_id)
 
             ts = fill_time or now_et().isoformat()
@@ -312,17 +339,18 @@ class TradingJournal(
             "status": "open",
         }
 
-    def cancel_trade(self, trade_id: int, reason: str = '') -> Dict:
+    def cancel_trade(self, trade_id: int, reason: str = "") -> Dict:
         """取消交易（通常用于 pending 入场订单撤单）"""
         with self._conn() as conn:
             trade = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
             if not trade:
                 return {"error": f"交易 #{trade_id} 不存在"}
 
-            if trade['status'] in ('closed', 'cancelled'):
+            if trade["status"] in ("closed", "cancelled"):
                 return {"error": f"交易 #{trade_id} 当前状态为 {trade['status']}"}
 
             from src.utils import now_et
+
             _now_et = now_et().isoformat()
             conn.execute(
                 """
@@ -341,11 +369,10 @@ class TradingJournal(
             "reason": reason,
         }
 
-    def set_trade_status(self, trade_id: int, status: str,
-                         reason: str = '') -> Dict:
+    def set_trade_status(self, trade_id: int, status: str, reason: str = "") -> Dict:
         """通用状态更新（open/pending/cancelled）"""
-        safe_status = str(status or '').lower().strip()
-        if safe_status not in ('open', 'pending', 'cancelled', 'closed'):
+        safe_status = str(status or "").lower().strip()
+        if safe_status not in ("open", "pending", "cancelled", "closed"):
             return {"error": f"不支持的状态: {status}"}
 
         with self._conn() as conn:
@@ -356,8 +383,9 @@ class TradingJournal(
             params = [safe_status, trade_id]
             sql = "UPDATE trades SET status=?, updated_at=datetime('now') WHERE id=?"
 
-            if safe_status == 'cancelled':
+            if safe_status == "cancelled":
                 from src.utils import now_et
+
                 _now_et = now_et().isoformat()
                 sql = (
                     "UPDATE trades SET status='cancelled', exit_time=?, exit_reason=?, "
@@ -373,48 +401,60 @@ class TradingJournal(
             "reason": reason,
         }
 
-    def close_trade(self, trade_id: int, exit_price: float,
-                    exit_order_id: str = '', exit_reason: str = '',
-                    fees: float = 0) -> Dict:
+    def close_trade(
+        self, trade_id: int, exit_price: float, exit_order_id: str = "", exit_reason: str = "", fees: float = 0
+    ) -> Dict:
         """平仓记录"""
         with self._conn() as conn:
             trade = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
             if not trade:
                 return {"error": f"交易 #{trade_id} 不存在"}
-            if trade['status'] != 'open':
+            if trade["status"] != "open":
                 return {"error": f"交易 #{trade_id} 已关闭"}
 
-            entry_price = trade['entry_price']
-            quantity = trade['quantity']
-            side = trade['side']
+            entry_price = trade["entry_price"]
+            quantity = trade["quantity"]
+            side = trade["side"]
 
-            if side == 'BUY':
+            if side == "BUY":
                 pnl = (exit_price - entry_price) * quantity - fees
             else:
                 pnl = (entry_price - exit_price) * quantity - fees
 
             pnl_pct = (pnl / (entry_price * quantity)) * 100 if entry_price * quantity > 0 else 0
 
-            entry_time = datetime.fromisoformat(trade['entry_time'])
+            entry_time = datetime.fromisoformat(trade["entry_time"])
             from src.utils import now_et, _ET
+
             _now_et = now_et()
             _tz = _ET if _ET is not None else _now_et.tzinfo
             hold_hours = (_now_et - entry_time.replace(tzinfo=_tz)).total_seconds() / 3600
 
-            conn.execute("""
+            conn.execute(
+                """
                 UPDATE trades SET exit_price=?, exit_time=?, exit_order_id=?,
                     exit_reason=?, pnl=?, pnl_pct=?, fees=?,
                     hold_duration_hours=?, status='closed',
                     updated_at=datetime('now')
                 WHERE id=?
-            """, (exit_price, _now_et.isoformat(), exit_order_id,
-                  exit_reason, round(pnl, 2), round(pnl_pct, 2), fees,
-                  round(hold_hours, 1), trade_id))
+            """,
+                (
+                    exit_price,
+                    _now_et.isoformat(),
+                    exit_order_id,
+                    exit_reason,
+                    round(pnl, 2),
+                    round(pnl_pct, 2),
+                    fees,
+                    round(hold_hours, 1),
+                    trade_id,
+                ),
+            )
 
         logger.info(f"[Journal] 平仓 #{trade_id}: {trade['symbol']} PnL=${pnl:.2f} ({pnl_pct:.1f}%)")
         return {
             "trade_id": trade_id,
-            "symbol": trade['symbol'],
+            "symbol": trade["symbol"],
             "pnl": round(pnl, 2),
             "pnl_pct": round(pnl_pct, 2),
             "hold_hours": round(hold_hours, 1),
@@ -423,9 +463,7 @@ class TradingJournal(
     def get_open_trades(self) -> List[Dict]:
         """获取所有未平仓交易"""
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM trades WHERE status='open' ORDER BY created_at DESC"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM trades WHERE status='open' ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
 
     def get_closed_trades(self, days: int = 30, limit: int = 50) -> List[Dict]:
@@ -434,7 +472,7 @@ class TradingJournal(
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT * FROM trades WHERE status='closed' AND exit_time>=? ORDER BY exit_time DESC LIMIT ?",
-                (since, limit)
+                (since, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
