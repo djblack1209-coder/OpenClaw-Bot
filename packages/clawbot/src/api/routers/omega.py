@@ -333,7 +333,7 @@ async def omega_generate_video(prompt: str, model: str = "fal-ai/kling-video/v1/
         return {"prompt": prompt, "video_url": url, "model": model}
     except Exception as e:
         logger.exception("AI 视频生成失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e))
 
 
 @router.get("/tools/media-models", response_model=Dict[str, Any])
@@ -345,4 +345,4 @@ async def omega_media_models():
         return {"models": get_available_models()}
     except Exception as e:
         logger.exception("获取媒体模型列表失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))
