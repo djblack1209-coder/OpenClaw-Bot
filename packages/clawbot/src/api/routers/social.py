@@ -1,4 +1,5 @@
 """Social media endpoints — status, topics, compose, publish, autopilot"""
+
 import logging
 from typing import Any, Dict
 
@@ -48,7 +49,7 @@ async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
         return await ClawBotRPC._rpc_social_discover_topics(count=count)
     except Exception as e:
         logger.exception("发现话题失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/social/compose", response_model=Dict[str, Any])
@@ -70,7 +71,7 @@ async def compose_content(
         )
     except Exception as e:
         logger.exception("AI 内容生成失败 (topic=%s, platform=%s)", topic, platform)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/social/publish", response_model=Dict[str, Any])
@@ -86,7 +87,7 @@ async def publish_content(req: SocialPublishRequest):
         )
     except Exception as e:
         logger.exception("社交内容发布失败 (platform=%s)", req.platform)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/social/research", response_model=Dict[str, Any])
@@ -96,7 +97,7 @@ async def deep_research(topic: str, count: int = Query(default=10, ge=1, le=50))
         return await ClawBotRPC._rpc_social_research(topic=topic, count=count)
     except Exception as e:
         logger.exception("深度话题研究失败 (topic=%s)", topic)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.get("/social/metrics", response_model=Dict[str, Any])
@@ -106,7 +107,7 @@ async def get_metrics():
         return await ClawBotRPC._rpc_social_metrics()
     except Exception as e:
         logger.exception("获取社交指标失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/social/personas", response_model=Dict[str, Any])
@@ -118,7 +119,7 @@ def list_personas():
         return {"personas": personas if isinstance(personas, list) else []}
     except Exception as e:
         logger.exception("列出社交人设失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/social/calendar", response_model=Dict[str, Any])
@@ -128,7 +129,7 @@ async def get_calendar(days: int = Query(default=7, ge=1, le=30)):
         return await ClawBotRPC._rpc_social_calendar(days=days)
     except Exception as e:
         logger.exception("内容日历生成失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/generate-image", response_model=Dict[str, Any])
@@ -138,7 +139,7 @@ async def gen_image(prompt: str):
         return await ClawBotRPC._rpc_generate_image(prompt)
     except Exception as e:
         logger.exception("图片生成失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/social/generate-persona-photo", response_model=Dict[str, Any])
@@ -152,12 +153,13 @@ async def gen_persona_photo(
         return await ClawBotRPC._rpc_generate_persona_photo(persona, scenario, mood)
     except Exception as e:
         logger.exception("人设照片生成失败 (persona=%s)", persona)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 # ──────────────────────────────────────────────
 #  Autopilot — 社交自动驾驶
 # ──────────────────────────────────────────────
+
 
 @router.get("/social/autopilot/status", response_model=Dict[str, Any])
 def autopilot_status():
@@ -166,7 +168,7 @@ def autopilot_status():
         return ClawBotRPC._rpc_autopilot_status()
     except Exception as e:
         logger.exception("获取自动驾驶状态失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/autopilot/start", response_model=Dict[str, Any])
@@ -176,7 +178,7 @@ def autopilot_start():
         return ClawBotRPC._rpc_autopilot_start()
     except Exception as e:
         logger.exception("启动自动驾驶失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/autopilot/stop", response_model=Dict[str, Any])
@@ -186,7 +188,7 @@ def autopilot_stop():
         return ClawBotRPC._rpc_autopilot_stop()
     except Exception as e:
         logger.exception("停止自动驾驶失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/autopilot/trigger/{job_id}", response_model=Dict[str, Any])
@@ -200,12 +202,13 @@ def autopilot_trigger(job_id: str):
         return ClawBotRPC._rpc_autopilot_trigger(job_id)
     except Exception as e:
         logger.exception("手动触发自动驾驶任务失败 (job_id=%s)", job_id)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ──────────────────────────────────────────────
 #  Drafts — 草稿管理
 # ──────────────────────────────────────────────
+
 
 @router.get("/social/drafts", response_model=Dict[str, Any])
 def list_drafts():
