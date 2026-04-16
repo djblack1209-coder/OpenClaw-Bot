@@ -53,8 +53,8 @@ def _alert_admin(message: str) -> None:
             for uid in ALLOWED_USER_IDS:
                 try:
                     await _send_proactive(str(uid), message)
-                except Exception:
-                    pass  # 单用户发送失败不影响其他用户
+                except Exception as e:
+                    logger.warning("[SocialScheduler] 消息发送失败: %s", e)
 
         # 尝试调度到主事件循环
         main_loop = SocialAutopilot._main_loop
@@ -64,8 +64,8 @@ def _alert_admin(message: str) -> None:
             # 主循环不可用时尝试 asyncio.run（临时循环）
             try:
                 asyncio.run(_do_alert())
-            except RuntimeError:
-                pass  # 无法创建事件循环时静默跳过
+            except RuntimeError as e:
+                logger.warning("[SocialScheduler] 事件循环创建失败: %s", e)
     except Exception:
         # 通知发送失败不影响主流程
         logger.debug("[Autopilot] 管理员告警发送失败", exc_info=True)

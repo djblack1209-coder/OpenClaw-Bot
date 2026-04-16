@@ -32,8 +32,7 @@ try:
     try:
         humanize.activate("zh_CN")
     except Exception as e:
-        pass  # 回退英文
-        logger.debug("静默异常: %s", e)
+        logger.warning("静默异常: %s", e)
     _HAS_HUMANIZE = True
 except ImportError:
     humanize = None  # type: ignore[assignment]

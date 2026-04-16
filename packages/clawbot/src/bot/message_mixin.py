@@ -43,7 +43,10 @@ def _detect_correction(text: str) -> bool:
             return True
     return False
 
-def _build_smart_reply_keyboard(response_text: str, bot_id: str, model_used: str, chat_id: int, ai_suggestions: list = None):
+
+def _build_smart_reply_keyboard(
+    response_text: str, bot_id: str, model_used: str, chat_id: int, ai_suggestions: list = None
+):
     """分析 LLM 回复内容，生成上下文相关的行动按钮
 
     规则:
@@ -70,86 +73,97 @@ def _build_smart_reply_keyboard(response_text: str, bot_id: str, model_used: str
             # 二次检查: callback_data 编码后不超过 64 字节
             if len(cb_data.encode("utf-8")) > 64:
                 cb_data = f"suggest:{suggestion[:12]}"
-            suggest_row.append(
-                InlineKeyboardButton(f"💬 {suggestion[:15]}", callback_data=cb_data)
-            )
+            suggest_row.append(InlineKeyboardButton(f"💬 {suggestion[:15]}", callback_data=cb_data))
 
     # 1. 检测股票代码 (英文ticker)
-    tickers_found = re.findall(r'\b([A-Z]{1,5})\b', response_text)
+    tickers_found = re.findall(r"\b([A-Z]{1,5})\b", response_text)
     # 过滤掉常见非ticker词
-    skip_words = {'AI', 'ETF', 'RSI', 'MACD', 'KDJ', 'EMA', 'SMA', 'ATR', 'VWAP',
-                  'API', 'USD', 'BTC', 'OK', 'VS', 'PDF', 'URL', 'VIA', 'BOT', 'LLM',
-                  'HTML', 'CSS', 'SQL', 'NLP', 'RPC', 'SOP', 'ROI', 'PNL', 'IPO',
-                  'CEO', 'CTO', 'GDP', 'CPI', 'FED', 'SEC', 'NYSE', 'PRO', 'MAX', 'MIN'}
+    skip_words = {
+        "AI",
+        "ETF",
+        "RSI",
+        "MACD",
+        "KDJ",
+        "EMA",
+        "SMA",
+        "ATR",
+        "VWAP",
+        "API",
+        "USD",
+        "BTC",
+        "OK",
+        "VS",
+        "PDF",
+        "URL",
+        "VIA",
+        "BOT",
+        "LLM",
+        "HTML",
+        "CSS",
+        "SQL",
+        "NLP",
+        "RPC",
+        "SOP",
+        "ROI",
+        "PNL",
+        "IPO",
+        "CEO",
+        "CTO",
+        "GDP",
+        "CPI",
+        "FED",
+        "SEC",
+        "NYSE",
+        "PRO",
+        "MAX",
+        "MIN",
+    }
     valid_tickers = [t for t in tickers_found if t not in skip_words and len(t) >= 2]
 
     if valid_tickers:
         ticker = valid_tickers[0]  # 取第一个
-        action_buttons.append(
-            InlineKeyboardButton(f"📊 分析{ticker}", callback_data=f"ta_{ticker}")
-        )
-        if any(kw in text for kw in ['买入', '建仓', '加仓', '推荐买', '可以买', '值得买', 'buy']):
-            action_buttons.append(
-                InlineKeyboardButton(f"💰 买入{ticker}", callback_data=f"buy_{ticker}")
-            )
-        elif any(kw in text for kw in ['卖出', '减仓', '止盈', '清仓', '平仓', 'sell']):
-            action_buttons.append(
-                InlineKeyboardButton(f"📉 卖出{ticker}", callback_data=f"cmd:sell {ticker}")
-            )
+        action_buttons.append(InlineKeyboardButton(f"📊 分析{ticker}", callback_data=f"ta_{ticker}"))
+        if any(kw in text for kw in ["买入", "建仓", "加仓", "推荐买", "可以买", "值得买", "buy"]):
+            action_buttons.append(InlineKeyboardButton(f"💰 买入{ticker}", callback_data=f"buy_{ticker}"))
+        elif any(kw in text for kw in ["卖出", "减仓", "止盈", "清仓", "平仓", "sell"]):
+            action_buttons.append(InlineKeyboardButton(f"📉 卖出{ticker}", callback_data=f"cmd:sell {ticker}"))
         else:
-            action_buttons.append(
-                InlineKeyboardButton(f"💹 报价{ticker}", callback_data=f"cmd:quote {ticker}")
-            )
+            action_buttons.append(InlineKeyboardButton(f"💹 报价{ticker}", callback_data=f"cmd:quote {ticker}"))
 
     # 2. 检测持仓/投资主题 (无特定ticker时)
-    if not action_buttons and any(kw in text for kw in ['持仓', '仓位', '组合', '盈亏', '浮盈', '浮亏']):
-        action_buttons.append(
-            InlineKeyboardButton("📋 查看持仓", callback_data="cmd:portfolio")
-        )
-        action_buttons.append(
-            InlineKeyboardButton("📊 查看绩效", callback_data="cmd:performance")
-        )
+    if not action_buttons and any(kw in text for kw in ["持仓", "仓位", "组合", "盈亏", "浮盈", "浮亏"]):
+        action_buttons.append(InlineKeyboardButton("📋 查看持仓", callback_data="cmd:portfolio"))
+        action_buttons.append(InlineKeyboardButton("📊 查看绩效", callback_data="cmd:performance"))
 
     # 3. 检测市场/行情主题
-    if not action_buttons and any(kw in text for kw in ['大盘', '市场', '指数', '行情', '美股', 'a股']):
-        action_buttons.append(
-            InlineKeyboardButton("💹 市场概览", callback_data="cmd:market")
-        )
-        action_buttons.append(
-            InlineKeyboardButton("📰 今日简报", callback_data="cmd:brief")
-        )
+    if not action_buttons and any(kw in text for kw in ["大盘", "市场", "指数", "行情", "美股", "a股"]):
+        action_buttons.append(InlineKeyboardButton("💹 市场概览", callback_data="cmd:market"))
+        action_buttons.append(InlineKeyboardButton("📰 今日简报", callback_data="cmd:brief"))
 
     # 4. 检测购物/商品主题
-    if not action_buttons and any(kw in text for kw in ['价格', '元', '优惠', '打折', '推荐', '购买',
-                                                         '京东', '淘宝', '拼多多', '亚马逊']):
+    if not action_buttons and any(
+        kw in text for kw in ["价格", "元", "优惠", "打折", "推荐", "购买", "京东", "淘宝", "拼多多", "亚马逊"]
+    ):
         # 尝试提取商品名
-        product_match = re.search(r'([\w\-]+\s*(?:Pro|Max|Plus|Ultra)?)', response_text)
+        product_match = re.search(r"([\w\-]+\s*(?:Pro|Max|Plus|Ultra)?)", response_text)
         if product_match and len(product_match.group(1)) > 2:
             product = product_match.group(1).strip()[:20]
-            action_buttons.append(
-                InlineKeyboardButton(f"🛒 比价{product}", callback_data=f"shop:{product}")
-            )
+            action_buttons.append(InlineKeyboardButton(f"🛒 比价{product}", callback_data=f"shop:{product}"))
 
     # 4.5 中文商品名检测 (补充英文正则覆盖不到的场景)
     cn_product_match = re.search(
-        r'(?:买|推荐|比价|搜|找)\s*(?:一[个台只双部条])?'
-        r'([\u4e00-\u9fff]{2,8}(?:Pro|Max|Plus|Ultra|mini)?)',
+        r"(?:买|推荐|比价|搜|找)\s*(?:一[个台只双部条])?"
+        r"([\u4e00-\u9fff]{2,8}(?:Pro|Max|Plus|Ultra|mini)?)",
         response_text,
     )
     if cn_product_match and not action_buttons:
         product = cn_product_match.group(1)
-        action_buttons.append(
-            InlineKeyboardButton(f"🛒 比价 {product}", callback_data=f"shop:{product}")
-        )
+        action_buttons.append(InlineKeyboardButton(f"🛒 比价 {product}", callback_data=f"shop:{product}"))
 
     # 5. 检测社媒主题
-    if not action_buttons and any(kw in text for kw in ['发文', '小红书', '推特', '热点', '社媒', '内容']):
-        action_buttons.append(
-            InlineKeyboardButton("🔥 热点发文", callback_data="cmd:hotpost")
-        )
-        action_buttons.append(
-            InlineKeyboardButton("📱 社媒计划", callback_data="cmd:social_plan")
-        )
+    if not action_buttons and any(kw in text for kw in ["发文", "小红书", "推特", "热点", "社媒", "内容"]):
+        action_buttons.append(InlineKeyboardButton("🔥 热点发文", callback_data="cmd:hotpost"))
+        action_buttons.append(InlineKeyboardButton("📱 社媒计划", callback_data="cmd:social_plan"))
 
     # 通用聊天: 无特定领域按钮时，展示能力发现按钮（替代无用的"继续聊"）
     # 搬运灵感: ChatGPT 首页的 suggested prompts / Google Gemini 推荐操作
@@ -174,6 +188,7 @@ def _build_smart_reply_keyboard(response_text: str, bot_id: str, model_used: str
 
     return InlineKeyboardMarkup(rows)
 
+
 from src.bot.workflow_mixin import WorkflowMixin
 from src.bot.callback_mixin import CallbackMixin
 
@@ -181,7 +196,7 @@ from src.bot.callback_mixin import CallbackMixin
 class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
     async def handle_message(self, update, context):
         """处理文本消息 — 流式输出到 Telegram
-        
+
         搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 的流式模式:
         - 发送占位消息 → 流式编辑 → 最终消息
         - 自适应编辑频率（群聊更保守，私聊更激进）
@@ -195,10 +210,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
         # ── HI-011 flood 根治: 时间门控 + 编辑次数上限 ──
         # Telegram 群聊 editMessageText 限制约 20次/分钟
-        EDIT_INTERVAL_GROUP = 3.0     # 群聊: 每条消息最少间隔 3 秒
-        EDIT_INTERVAL_PRIVATE = 1.0   # 私聊: 每条消息最少间隔 1 秒
-        MAX_EDITS_GROUP = 15          # 群聊: 单条消息最多编辑 15 次
-        MAX_EDITS_PRIVATE = 30        # 私聊: 单条消息最多编辑 30 次
+        EDIT_INTERVAL_GROUP = 3.0  # 群聊: 每条消息最少间隔 3 秒
+        EDIT_INTERVAL_PRIVATE = 1.0  # 私聊: 每条消息最少间隔 1 秒
+        MAX_EDITS_GROUP = 15  # 群聊: 单条消息最多编辑 15 次
+        MAX_EDITS_PRIVATE = 30  # 私聊: 单条消息最多编辑 30 次
 
         chat_id = update.effective_chat.id
         user = update.effective_user
@@ -217,6 +232,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         # 安全策略: fail-close — 消毒失败时拒绝处理，防止恶意输入绕过
         try:
             from src.core.security import get_security_gate
+
             _sec_gate = get_security_gate()
             text = _sec_gate.sanitize_input(text)
         except Exception as _sanitize_err:
@@ -229,8 +245,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         try:
             _session_gap_handled = await self._check_session_resumption(chat_id, user.id, update, context)
         except Exception as e:
-            pass  # 会话恢复失败不影响主流程
-            logger.debug("静默异常: %s", e)
+            logger.warning("静默异常: %s", e)
 
         # ── 纠错检测 — 搬运 ChatGPT correction handling ──────
         # 用户说"不对/说错了/我说的是X不是Y"时，把上一轮上下文 + 纠正指令合并重新处理
@@ -243,13 +258,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 _prev_context = ""
                 try:
                     from src.history_store import get_history_store
+
                     _hs = get_history_store()
                     if _hs:
                         _recent = _hs.get_messages(self.bot_id, chat_id, limit=2)
                         if _recent:
-                            _prev_context = " | ".join(
-                                m.get("content", "")[:200] for m in _recent
-                            )
+                            _prev_context = " | ".join(m.get("content", "")[:200] for m in _recent)
                 except Exception as e:
                     logger.debug("静默异常: %s", e)
                 # 拼接纠正上下文到消息，让 LLM/Brain 理解这是纠正
@@ -260,6 +274,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 text = _corrected_msg
                 # 发送确认
                 from src.bot.error_messages import correction_ack
+
                 await update.message.reply_text(correction_ack())
         except Exception as e:
             # 纠错检测失败不影响主流程
@@ -270,12 +285,14 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         # 本条消息作为回答路由回 Brain，而不是当作新消息处理。
         try:
             from src.core.brain import get_brain
+
             _brain = get_brain()
             _clarify_task_id = _brain.get_pending_clarification(chat_id)
             if _clarify_task_id:
                 await update.message.chat.send_action("typing")
                 _clarify_result = await _brain.resume_with_answer(
-                    _clarify_task_id, text,
+                    _clarify_task_id,
+                    text,
                     {"user_id": user.id, "chat_id": chat_id, "bot_id": self.bot_id},
                 )
                 if _clarify_result.success and _clarify_result.final_result:
@@ -284,19 +301,22 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         _clarify_markup = None
                         try:
                             _clarify_markup = _build_smart_reply_keyboard(
-                                _clarify_msg, self.bot_id, getattr(self, 'model', ''), chat_id
+                                _clarify_msg, self.bot_id, getattr(self, "model", ""), chat_id
                             )
                         except Exception as e:
                             logger.debug("静默异常: %s", e)
                         try:
                             safe = md_to_html(_clarify_msg)
                             await update.message.reply_text(
-                                safe, parse_mode="HTML", reply_markup=_clarify_markup,
+                                safe,
+                                parse_mode="HTML",
+                                reply_markup=_clarify_markup,
                             )
                         except Exception as e:
                             logger.exception("Brain 追问回答 HTML 渲染失败")
                             await update.message.reply_text(
-                                _clarify_msg, reply_markup=_clarify_markup,
+                                _clarify_msg,
+                                reply_markup=_clarify_markup,
                             )
                         return
                 elif _clarify_result.error:
@@ -317,12 +337,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 _sm = get_smart_memory()
                 if _sm:
                     action_label = f"[命令:{action_type}] {text}"
-                    _cmd_task = asyncio.create_task(
-                        _sm.on_message(chat_id, user.id, "user", action_label, self.bot_id)
-                    )
+                    _cmd_task = asyncio.create_task(_sm.on_message(chat_id, user.id, "user", action_label, self.bot_id))
+
                     def _cmd_task_done(t):
                         if not t.cancelled() and t.exception():
                             logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
+
                     _cmd_task.add_done_callback(_cmd_task_done)
             except Exception as e:
                 logger.debug("SmartMemory 命令记录失败", exc_info=True)
@@ -334,12 +354,14 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         # 只有可执行意图才路由到 brain；闲聊仍走下方 LLM 流式路径。
         # 设置 ENABLE_BRAIN_ROUTING=0 可关闭。
         import os
+
         if os.environ.get("ENABLE_BRAIN_ROUTING", "1").lower() not in ("0", "false", "no", "off"):
             try:
                 # GAP 5: Brain 路径 typing 指示器 — 用户不再看到死寂
                 await update.message.chat.send_action("typing")
 
                 from src.core.intent_parser import IntentParser
+
                 _parser = IntentParser()
                 quick_intent = _parser._try_fast_parse(text)
                 # 降级: fast_parse 未命中时，用轻量 LLM 分类器再试一次
@@ -351,6 +373,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         quick_intent = None
                 if quick_intent and quick_intent.is_actionable:
                     from src.core.brain import get_brain
+
                     brain = get_brain()
                     result = await brain.process_message(
                         source="telegram",
@@ -368,7 +391,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 # 从 Brain 结果中提取 AI 生成的追问建议
                                 _ai_suggestions = result.extra_data.get("followup_suggestions", [])
                                 reply_markup = _build_smart_reply_keyboard(
-                                    user_msg, self.bot_id, getattr(self, 'model', ''), chat_id,
+                                    user_msg,
+                                    self.bot_id,
+                                    getattr(self, "model", ""),
+                                    chat_id,
                                     ai_suggestions=_ai_suggestions,
                                 )
                             except Exception as e:
@@ -377,7 +403,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             try:
                                 safe = md_to_html(user_msg)
                                 await update.message.reply_text(
-                                    safe, parse_mode="HTML",
+                                    safe,
+                                    parse_mode="HTML",
                                     reply_markup=reply_markup,
                                 )
                             except Exception as e:
@@ -391,9 +418,11 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             try:
                                 _sm = get_smart_memory()
                                 if _sm:
+
                                     def _brain_mem_done(t):
                                         if not t.cancelled() and t.exception():
                                             logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
+
                                     _brain_t1 = asyncio.create_task(
                                         _sm.on_message(chat_id, user.id, "user", text, self.bot_id)
                                     )
@@ -426,6 +455,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         if os.environ.get("ENABLE_BRAIN_ROUTING", "1").lower() not in ("0", "false", "no", "off") and not is_group:
             try:
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
                 # 基于系统活跃模块推荐常用操作
                 _fuzzy_suggestions = [
                     ("📊 看持仓", "cmd:portfolio"),
@@ -436,17 +466,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 if importlib.util.find_spec("src.xianyu.xianyu_context"):
                     _fuzzy_suggestions.append(("🐟 闲鱼状态", "cmd:xianyu"))
                 _fuzzy_rows = [
-                    [InlineKeyboardButton(t, callback_data=cb)
-                     for t, cb in _fuzzy_suggestions[:3]],
+                    [InlineKeyboardButton(t, callback_data=cb) for t, cb in _fuzzy_suggestions[:3]],
                 ]
                 if len(_fuzzy_suggestions) > 3:
-                    _fuzzy_rows.append(
-                        [InlineKeyboardButton(t, callback_data=cb)
-                         for t, cb in _fuzzy_suggestions[3:]]
-                    )
+                    _fuzzy_rows.append([InlineKeyboardButton(t, callback_data=cb) for t, cb in _fuzzy_suggestions[3:]])
                 await update.message.reply_text(
-                    "严总，我不太确定你想做什么，试试这些？👇\n\n"
-                    "（或者直接告诉我更具体的需求）",
+                    "严总，我不太确定你想做什么，试试这些？👇\n\n（或者直接告诉我更具体的需求）",
                     reply_markup=InlineKeyboardMarkup(_fuzzy_rows),
                 )
             except Exception as e:
@@ -455,6 +480,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         # 消息频率限制 — 防止用户刷屏导致 API 过载
         # 幻影导入修复: rate_limiter 从实际定义模块导入
         from src.bot.rate_limiter import rate_limiter
+
         if rate_limiter:
             allowed, reason = rate_limiter.check(self.bot_id, "private" if not is_group else "group")
             if not allowed:
@@ -467,14 +493,13 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
         # 群聊：检查是否应该回复
         if is_group:
-            should, reason = await self._should_respond_async(
-                text, chat_type, update.message.message_id, user.id
-            )
+            should, reason = await self._should_respond_async(text, chat_type, update.message.message_id, user.id)
             if not should:
                 return
 
         # 优先级分类 — 关键消息（止损/风控/紧急）优先处理
         from src.bot.globals import priority_message_queue
+
         _msg_priority = None
         if priority_message_queue:
             try:
@@ -488,14 +513,17 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 # 入队追踪（不阻塞处理，仅用于统计和优先级感知）
                 from src.chat_router import PrioritizedMessage
                 import time as _ptime
-                await priority_message_queue.enqueue(PrioritizedMessage(
-                    priority=_msg_priority.value,
-                    timestamp=_ptime.time(),
-                    chat_id=chat_id,
-                    user_id=user.id,
-                    text=text[:200],
-                    bot_id=getattr(self, 'bot_id', ''),
-                ))
+
+                await priority_message_queue.enqueue(
+                    PrioritizedMessage(
+                        priority=_msg_priority.value,
+                        timestamp=_ptime.time(),
+                        chat_id=chat_id,
+                        user_id=user.id,
+                        text=text[:200],
+                        bot_id=getattr(self, "bot_id", ""),
+                    )
+                )
             except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)  # 优先级队列不影响主流程
 
@@ -503,22 +531,26 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         _sm = get_smart_memory()
         if _sm:
             _t = asyncio.create_task(_sm.on_message(chat_id, user.id, "user", text, self.bot_id))
-            _t.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(用户消息)后台任务异常: %s", t.exception()))
+            _t.add_done_callback(
+                lambda t: t.exception() and logger.debug("智能记忆(用户消息)后台任务异常: %s", t.exception())
+            )
 
         # 发送 typing 指示器
         typing_task = asyncio.create_task(self._keep_typing(chat_id, context))
-        typing_task.add_done_callback(lambda t: t.exception() and logger.debug("typing指示器后台任务异常: %s", t.exception()))
+        typing_task.add_done_callback(
+            lambda t: t.exception() and logger.debug("typing指示器后台任务异常: %s", t.exception())
+        )
 
         try:
             sent_message = None
             prev_text = ""
-            backoff_multiplier = 1.0   # HI-011: 指数退避乘数
+            backoff_multiplier = 1.0  # HI-011: 指数退避乘数
             chunk_idx = 0
             final_content = ""
-            model_used = getattr(self, 'model', 'unknown') or 'unknown'
+            model_used = getattr(self, "model", "unknown") or "unknown"
             edit_interval = EDIT_INTERVAL_GROUP if is_group else EDIT_INTERVAL_PRIVATE
             max_edits = MAX_EDITS_GROUP if is_group else MAX_EDITS_PRIVATE
-            last_edit_time = 0.0       # HI-011: 上次编辑时间 (monotonic)
+            last_edit_time = 0.0  # HI-011: 上次编辑时间 (monotonic)
 
             # Phase 1: "思考中" 占位符（搬运自 karfly/chatgpt_telegram_bot）
             sent_message = await update.message.reply_text(
@@ -549,9 +581,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
             _thinking_task = asyncio.create_task(_animate_thinking())
 
-            async for content, status in self._call_api_stream(
-                chat_id, text, save_history=True, chat_type=chat_type
-            ):
+            async for content, status in self._call_api_stream(chat_id, text, save_history=True, chat_type=chat_type):
                 if not content:
                     continue
                 final_content = content
@@ -574,9 +604,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         remaining = remaining[TG_MSG_LIMIT:]
                         try:
                             safe_chunk = md_to_html(chunk)
-                            sent_message = await update.message.reply_text(
-                                safe_chunk, parse_mode="HTML"
-                            )
+                            sent_message = await update.message.reply_text(safe_chunk, parse_mode="HTML")
                         except Exception as e:
                             try:
                                 sent_message = await update.message.reply_text(chunk)
@@ -627,7 +655,9 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         # Phase 3: 完成时用 md_to_html 安全渲染 + HTML parse_mode
                         if status == "finished":
                             try:
-                                display = md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
+                                display = (
+                                    md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
+                                )
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
                             except Exception as e:
@@ -636,9 +666,11 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 parse_mode = constants.ParseMode.MARKDOWN
                         else:
                             parse_mode = None
-                        reply_markup = _build_smart_reply_keyboard(
-                            content, self.bot_id, model_used, chat_id
-                        ) if status == "finished" else None
+                        reply_markup = (
+                            _build_smart_reply_keyboard(content, self.bot_id, model_used, chat_id)
+                            if status == "finished"
+                            else None
+                        )
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
@@ -649,11 +681,20 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         # LLM 流式路径补齐追问建议 — 先发消息，再异步更新按钮
                         # 搬运灵感: khoj follow_up / 前四轮只在 Brain 路径有，这里覆盖 80% 对话
                         if status == "finished" and sent_message:
-                            _sug_t = asyncio.create_task(self._async_update_suggestions(
-                                context, chat_id, sent_message.message_id,
-                                content, display, parse_mode, model_used,
-                            ))
-                            _sug_t.add_done_callback(lambda t: t.exception() and logger.debug("追问建议更新后台任务异常: %s", t.exception()))
+                            _sug_t = asyncio.create_task(
+                                self._async_update_suggestions(
+                                    context,
+                                    chat_id,
+                                    sent_message.message_id,
+                                    content,
+                                    display,
+                                    parse_mode,
+                                    model_used,
+                                )
+                            )
+                            _sug_t.add_done_callback(
+                                lambda t: t.exception() and logger.debug("追问建议更新后台任务异常: %s", t.exception())
+                            )
                         prev_text = content
                         last_edit_time = _time.monotonic()
                     except BadRequest as e:
@@ -729,8 +770,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
             # 记录 AI 回复到智能记忆 (1500字截断，保留更多分析上下文)
             if _sm and final_content:
-                _t2 = asyncio.create_task(_sm.on_message(chat_id, user.id, "assistant", final_content[:1500], self.bot_id))
-                _t2.add_done_callback(lambda t: t.exception() and logger.debug("智能记忆(AI回复)后台任务异常: %s", t.exception()))
+                _t2 = asyncio.create_task(
+                    _sm.on_message(chat_id, user.id, "assistant", final_content[:1500], self.bot_id)
+                )
+                _t2.add_done_callback(
+                    lambda t: t.exception() and logger.debug("智能记忆(AI回复)后台任务异常: %s", t.exception())
+                )
 
             # 语音回复 — 两种触发条件:
             # 1. 用户通过 /voice 手动开启语音回复模式 (短回复 <500字)
@@ -742,6 +787,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 _voice_len_limit = 2000 if _is_voice_input else 500
                 if final_content and (_is_voice_input or _voice_mode) and len(final_content) < _voice_len_limit:
                     from src.tts_engine import text_to_voice
+
                     audio_bytes = await text_to_voice(final_content)
                     if audio_bytes:
                         await update.message.reply_voice(io.BytesIO(audio_bytes))
@@ -778,6 +824,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 user_msg = error_generic()
             try:
                 from src.telegram_ux import send_error_with_retry
+
                 await send_error_with_retry(update, context, e, retry_command="")
             except Exception as e:
                 try:
@@ -818,6 +865,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             buf.name = "voice.ogg"
 
             import os
+
             transcribed = None
             stt_source = ""  # 记录最终使用的转写来源
 
@@ -847,8 +895,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         # Groq 免费版 20 RPM 限速，降级到 OpenAI
                         logger.info("[Voice] Groq Whisper 触发限速 (429)，降级到 OpenAI")
                     else:
-                        logger.debug("[Voice] Groq Whisper 返回 %d: %s",
-                                     resp.status_code, resp.text[:200])
+                        logger.debug("[Voice] Groq Whisper 返回 %d: %s", resp.status_code, resp.text[:200])
                 except Exception as groq_err:
                     logger.debug("[Voice] Groq Whisper 失败，降级到 OpenAI: %s", groq_err)
 
@@ -877,6 +924,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             if not transcribed:
                 try:
                     from src.tools.deepgram_stt import transcribe_audio
+
                     buf.seek(0)
                     audio_data = buf.read()
                     deepgram_result = await transcribe_audio(audio_data, language="zh")
@@ -915,31 +963,37 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             # 清理语音输入标记，防止后续文本消息被误判
             context.user_data.pop("_voice_input", None)
 
-
     @staticmethod
     def _stream_cutoff(is_group: bool, content: str) -> int:
         """自适应编辑频率 — 搬运自 n3d1117/chatgpt-telegram-bot
-        
+
         群聊更保守（Telegram 对群聊有更严格的 flood 限制），
         私聊更激进（用户体验优先）。
-        
+
         HI-011 根治: 群聊 cutoff 全面提升，配合时间门控使用。
         """
         content_len = len(content)
         if is_group:
-            if content_len > 1000: return 300   # was 180
-            if content_len > 200: return 200    # was 120
-            if content_len > 50: return 150     # was 90
-            return 80                 # was 50
+            if content_len > 1000:
+                return 300  # was 180
+            if content_len > 200:
+                return 200  # was 120
+            if content_len > 50:
+                return 150  # was 90
+            return 80  # was 50
         else:
-            if content_len > 1000: return 120   # was 90
-            if content_len > 200: return 60     # was 45
-            if content_len > 50: return 30      # was 25
+            if content_len > 1000:
+                return 120  # was 90
+            if content_len > 200:
+                return 60  # was 45
+            if content_len > 50:
+                return 30  # was 25
             return 15
 
     async def _keep_typing(self, chat_id: int, context):
         """持续发送 typing 指示器 — 搬运自 n3d1117 的 wrap_with_indicator"""
         from telegram.constants import ChatAction
+
         try:
             while True:
                 await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
@@ -954,11 +1008,13 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
     # Brain 路径已有追问建议（第一轮交付），但 LLM 流式路径（80%对话）没有
     # 这里在消息发出后异步生成建议，再更新按钮
 
-    async def _async_update_suggestions(self, context, chat_id, message_id,
-                                         raw_content, display_html, parse_mode, model_used):
+    async def _async_update_suggestions(
+        self, context, chat_id, message_id, raw_content, display_html, parse_mode, model_used
+    ):
         """异步生成追问建议并更新消息按钮 — 不阻塞主流程。"""
         try:
             from src.core.response_synthesizer import get_response_synthesizer
+
             synth = get_response_synthesizer()
             suggestions = await synth.generate_suggestions(raw_content)
             if not suggestions:
@@ -966,7 +1022,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
             # 用建议重新构建键盘
             new_markup = _build_smart_reply_keyboard(
-                raw_content, self.bot_id, model_used, chat_id,
+                raw_content,
+                self.bot_id,
+                model_used,
+                chat_id,
                 ai_suggestions=suggestions,
             )
             await context.bot.edit_message_reply_markup(
@@ -1007,10 +1066,12 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             # 1. 持仓变化
             from src.invest_tools import get_stock_quote
             from src.watchlist import get_watchlist_symbols
+
             symbols = get_watchlist_symbols()[:5]
             if symbols:
                 movers = []
                 import asyncio as _aio
+
                 quotes = await _aio.gather(
                     *[get_stock_quote(s) for s in symbols],
                     return_exceptions=True,
@@ -1029,6 +1090,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
         try:
             # 2. 闲鱼未读消息 — 通过 FastAPI 内部 API 查询闲鱼进程状态
             import os as _os
+
             api_token = _os.environ.get("OPENCLAW_API_TOKEN", "")
             resp = await _http_status.get(
                 "http://127.0.0.1:18790/api/v1/system/status",
@@ -1049,7 +1111,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
 
         # 发送恢复摘要
         try:
-            gap_text = f"{gap_hours:.0f}小时" if gap_hours < 24 else f"{gap_hours/24:.0f}天"
+            gap_text = f"{gap_hours:.0f}小时" if gap_hours < 24 else f"{gap_hours / 24:.0f}天"
             greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
             await update.message.reply_text(greeting)
             return True
