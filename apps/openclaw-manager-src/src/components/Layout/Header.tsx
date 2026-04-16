@@ -13,6 +13,13 @@ interface HeaderProps {
 }
 
 const pageTitles: Record<PageType, { title: string; description: string }> = {
+  /* C 端新页面 */
+  home: { title: '首页', description: '你的智能生活控制台' },
+  assistant: { title: 'AI 助手', description: '用自然语言操控一切' },
+  portfolio: { title: '我的资产', description: '持仓管理与 AI 投资决策' },
+  bots: { title: '我的机器人', description: '闲鱼客服、社媒发布、自动化脚本' },
+  store: { title: '插件商店', description: '发现和安装新能力' },
+  /* 原有页面 */
   control: { title: '总控中心', description: '最高权限总开关与 ClawBot 关键配置' },
   dashboard: { title: '概览', description: '服务状态、日志与快捷操作' },
   flow: { title: '智能流监控', description: 'Agent 执行链路与决策过程可视化大屏' },

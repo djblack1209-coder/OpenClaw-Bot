@@ -61,6 +61,32 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
     return (saved === 'light' ? 'light' : 'dark');
   });
 
+  // 开发者模式：三击版本号解锁
+  const devMode = useAppStore((s) => s.devMode);
+  const setDevMode = useAppStore((s) => s.setDevMode);
+  const [tapCount, setTapCount] = useState(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  /** 三击版本号解锁/关闭开发者模式 */
+  const handleVersionTap = () => {
+    const newCount = tapCount + 1;
+    setTapCount(newCount);
+
+    // 清除之前的定时器，重新计时
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+
+    if (newCount >= 3) {
+      // 三击达成
+      const next = !devMode;
+      setDevMode(next);
+      setTapCount(0);
+      toast.success(next ? '🔧 开发者模式已开启' : '🔒 开发者模式已关闭');
+    } else {
+      // 2 秒内没有后续点击则重置
+      tapTimerRef.current = setTimeout(() => setTapCount(0), 2000);
+    }
+  };
+
   // 初始化主题：页面加载时根据 localStorage 设置 DOM class
   // Tailwind darkMode: "class" 需要在 <html> 上切换 dark 类
   useEffect(() => {
