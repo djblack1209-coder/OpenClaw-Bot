@@ -27,6 +27,16 @@ BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state
 
 logger = logging.getLogger(__name__)
 
+# ============ IBKR 连接/重试时间常量（秒） ============
+IBKR_CONNECT_TIMEOUT = 20  # Gateway 连接超时
+IBKR_GATEWAY_LAUNCH_TIMEOUT = 150  # Gateway 自动启动命令超时（2.5分钟）
+IBKR_GATEWAY_READY_WAIT = 5  # Gateway 启动成功后等待就绪
+IBKR_RECONNECT_MAX_BACKOFF = 120.0  # 重连退避上限（2分钟）
+IBKR_HEARTBEAT_INTERVAL = 30  # 心跳保活间隔
+IBKR_RECONNECT_DEBOUNCE = 3  # 断连后重连前等待（防抖动）
+IBKR_ORDER_POLL_INTERVAL = 0.5  # 订单状态轮询间隔
+IBKR_CANCEL_CONFIRM_WAIT = 1  # 取消订单后等待确认
+
 if TYPE_CHECKING:
     from ib_async import IB, MarketOrder, LimitOrder
 
@@ -176,7 +186,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         self.port,
                         clientId=self.client_id,
                         readonly=False,  # 确保有下单权限
-                        timeout=20,  # 连接超时 20s（默认4s太短）
+                        timeout=IBKR_CONNECT_TIMEOUT,
                     )
                     self._connected = True
                     self._disconnect_count = 0
@@ -273,10 +283,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                             proc = await asyncio.create_subprocess_exec(
                                 *shlex.split(start_cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                             )
-                            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=150)
+                            stdout, stderr = await asyncio.wait_for(
+                                proc.communicate(), timeout=IBKR_GATEWAY_LAUNCH_TIMEOUT
+                            )
                             if proc.returncode == 0:
                                 logger.info("[IBKR] Gateway 启动成功，重试连接...")
-                                await asyncio.sleep(5)
+                                await asyncio.sleep(IBKR_GATEWAY_READY_WAIT)
                                 # 递归重试一次连接
                                 return await self.connect()
                             else:
@@ -287,7 +299,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                             logger.warning("[IBKR] Gateway 自动启动异常: %s", e)
 
             # 增加退避时间（最大 120s）
-            self._reconnect_backoff = min(self._reconnect_backoff * 2, 120.0)
+            self._reconnect_backoff = min(self._reconnect_backoff * 2, IBKR_RECONNECT_MAX_BACKOFF)
             self._consecutive_connect_failures += max_retries
             # 日志降频：首次失败打 ERROR，后续降为 WARNING/DEBUG
             if self._consecutive_connect_failures <= max_retries:
@@ -331,7 +343,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         async def _keepalive_loop():
             while self._connected and self.ib:
                 try:
-                    await asyncio.sleep(30)
+                    await asyncio.sleep(IBKR_HEARTBEAT_INTERVAL)
                     if self.ib and self.ib.isConnected():
                         t0 = _time.time()
                         # 用底层 client 发送原始 reqCurrentTime 包
@@ -377,7 +389,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             return  # 已有重连任务在跑
 
         async def _auto_reconnect():
-            await asyncio.sleep(3)  # 等 3s 再重连，避免瞬间抖动
+            await asyncio.sleep(IBKR_RECONNECT_DEBOUNCE)  # 等一下再重连，避免瞬间抖动
             # 自动重连日志降频：首次打 INFO，后续打 DEBUG
             if self._consecutive_connect_failures <= 3:
                 logger.info("[IBKR] 自动重连开始...")
@@ -570,7 +582,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             max_wait = 60 if order_type != "LMT" else 40
             lmt_submitted = False
             for _ in range(max_wait):
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(IBKR_ORDER_POLL_INTERVAL)
                 if trade.orderStatus.status == "Filled":
                     break
                 if trade.orderStatus.status in ("Submitted", "PreSubmitted") and order_type == "LMT":
@@ -800,7 +812,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             for trade in trades:
                 if trade.order.orderId == order_id:
                     self.ib.cancelOrder(trade.order)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(IBKR_CANCEL_CONFIRM_WAIT)
                     return {"order_id": order_id, "status": "cancelled"}
             return {"error": f"找不到订单 #{order_id}"}
         except Exception as e:
@@ -814,7 +826,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         try:
             self.ib.reqGlobalCancel()
-            await asyncio.sleep(1)
+            await asyncio.sleep(IBKR_CANCEL_CONFIRM_WAIT)
             return {"status": "all_cancelled"}
         except Exception as e:
             logger.exception("取消所有订单失败")
