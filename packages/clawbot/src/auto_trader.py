@@ -28,6 +28,10 @@ from src.utils import now_et as _now_et, env_bool, env_int
 
 logger = logging.getLogger(__name__)
 
+# ============ 交易循环时间常量（秒） ============
+SLEEP_MARKET_CLOSED = 3600  # 周末/假日休市等待间隔（1小时）
+SLEEP_OFF_HOURS = 600  # 非交易时段（盘前/盘后）等待间隔（10分钟）
+
 
 # 从拆分后的模块导入
 from src.trading.market_calendar import is_market_holiday
@@ -300,14 +304,14 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
                 # 周末不交易
                 if weekday >= 5:
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(SLEEP_MARKET_CLOSED)
                     continue
 
                 # 美股假日不交易
                 today_str = et_now.strftime("%Y-%m-%d")
                 if is_market_holiday(today_str):
                     logger.info("[AutoTrader] 今日 %s 为美股休市日，跳过", today_str)
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(SLEEP_MARKET_CLOSED)
                     continue
 
                 # 美东时间 9:30-16:00 为交易时段
@@ -316,7 +320,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
                 if not market_open or market_close:
                     # 收盘后不再在此处复盘，由 Scheduler eod_auto_review 统一处理
-                    await asyncio.sleep(600)
+                    await asyncio.sleep(SLEEP_OFF_HOURS)
                     continue
 
                 # 执行交易循环（带并发锁）

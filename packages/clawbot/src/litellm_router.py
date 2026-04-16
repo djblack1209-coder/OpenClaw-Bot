@@ -22,6 +22,20 @@ from litellm.router import Router
 
 logger = logging.getLogger(__name__)
 
+# ============ LLM 超时常量（秒） ============
+# Provider 级别超时 — 根据各平台推理速度和稳定性设定
+LLM_TIMEOUT_SILICONFLOW = 45  # SiliconFlow 大模型请求超时
+LLM_STREAM_TIMEOUT_SILICONFLOW = 60  # SiliconFlow 流式超时
+LLM_TIMEOUT_GROQ = 8  # Groq 极速推理（通常 <3s 完成）
+LLM_STREAM_TIMEOUT_GROQ = 15  # Groq 流式超时
+LLM_TIMEOUT_REASONING = 90  # 推理模型 (DeepSeek-R1 等) 请求超时
+LLM_STREAM_TIMEOUT_REASONING = 120  # 推理模型流式超时
+# Router 全局默认
+LLM_TIMEOUT_DEFAULT = 15  # 全局默认请求超时
+LLM_STREAM_TIMEOUT_DEFAULT = 30  # 全局默认流式超时
+LLM_COOLDOWN_TIME = 30  # 模型失败后冷却时间（暂停调度）
+LLM_RETRY_AFTER = 5  # 重试前等待时间
+
 
 def _scrub_secrets(msg: str) -> str:
     """从错误消息中移除 API Key 和敏感 URL — 代理到 utils.scrub_secrets"""
@@ -423,8 +437,8 @@ class LiteLLMPool:
                         tier=t,
                         family=fam,
                         note="SiliconFlow free",
-                        timeout=45,
-                        stream_timeout=60,
+                        timeout=LLM_TIMEOUT_SILICONFLOW,
+                        stream_timeout=LLM_STREAM_TIMEOUT_SILICONFLOW,
                     )
                 )  # 大模型需要更长超时
 
@@ -449,8 +463,8 @@ class LiteLLMPool:
                         tier=t,
                         family=fam,
                         note=f"Groq free {r}RPM",
-                        timeout=8,
-                        stream_timeout=15,
+                        timeout=LLM_TIMEOUT_GROQ,
+                        stream_timeout=LLM_STREAM_TIMEOUT_GROQ,
                     )
                 )  # Groq 极速推理，短超时
 
@@ -586,8 +600,8 @@ class LiteLLMPool:
                     rpm=10,
                     tier=TIER_S,
                     family="deepseek",
-                    timeout=90,
-                    stream_timeout=120,
+                    timeout=LLM_TIMEOUT_REASONING,
+                    stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
                 )
             )  # Reasoning 模型需要极长超时
 
@@ -731,8 +745,8 @@ class LiteLLMPool:
                 tier=TIER_C,
                 family="g4f",
                 note="g4f fallback (TIER_C)",
-                timeout=90,
-                stream_timeout=120,
+                timeout=LLM_TIMEOUT_REASONING,
+                stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
             )
         )
 
@@ -798,11 +812,11 @@ class LiteLLMPool:
                 model_list=deps,
                 fallbacks=fallbacks,
                 num_retries=3,  # 官方推荐 3 次重试（原 1 次太低）
-                timeout=15,  # 全局超时 15 秒
-                stream_timeout=30,  # 流式请求允许更长时间
+                timeout=LLM_TIMEOUT_DEFAULT,
+                stream_timeout=LLM_STREAM_TIMEOUT_DEFAULT,
                 allowed_fails=3,
-                cooldown_time=30,
-                retry_after=5,
+                cooldown_time=LLM_COOLDOWN_TIME,
+                retry_after=LLM_RETRY_AFTER,
                 routing_strategy="simple-shuffle",
                 # 按错误类型区分重试策略（官方推荐）
                 retry_policy=RetryPolicy(
