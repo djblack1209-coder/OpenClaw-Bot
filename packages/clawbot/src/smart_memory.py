@@ -369,8 +369,8 @@ class SmartMemoryPipeline:
                 for pm in pref_memories:
                     if pm.get("key", "") not in existing_keys:
                         all_memories.append(pm)
-            except Exception:
-                pass  # 补充搜索失败不阻塞主流程
+            except Exception as e:
+                logger.warning("[SmartMemory] 补充搜索失败: %s", e)
             if len(all_memories) < 3:
                 return
 
@@ -395,8 +395,8 @@ class SmartMemoryPipeline:
                         if style_label:
                             profile["communication_style"] = style_label
                             logger.debug(f"[SmartMemory] 已注入 onboarding 沟通风格偏好: {style_label}")
-                except Exception:
-                    pass  # recall 失败不阻塞画像更新
+                except Exception as e:
+                    logger.warning("[SmartMemory] 沟通偏好召回失败: %s", e)
                 self.memory.remember(
                     f"user_profile_{user_id}",
                     json.dumps(profile, ensure_ascii=False),
@@ -659,8 +659,8 @@ class SmartMemoryPipeline:
                 try:
                     self.memory.forget(key)
                     removed_count += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[SmartMemory] 记忆删除失败: %s", e)
 
             added_count = 0
             for text in consolidated:
@@ -673,8 +673,8 @@ class SmartMemoryPipeline:
                         memory_type="fact",
                     )
                     added_count += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[SmartMemory] 记忆摘要写入失败: %s", e)
 
             result = {
                 "consolidated": added_count,

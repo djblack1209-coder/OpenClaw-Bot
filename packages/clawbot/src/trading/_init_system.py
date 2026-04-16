@@ -2,6 +2,7 @@
 Trading — 系统初始化
 init_trading_system 和 set_ai_team_callers 的实现
 """
+
 import logging
 
 from src.utils import env_bool, env_int, env_float
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 def set_ai_team_callers(callers: dict):
     """注入AI团队的API调用函数（在bot启动后调用）"""
     import src.trading_system as _ts
+
     _ts._ai_team_api_callers = callers
     logger.info("[TradingSystem] AI团队API callers已注入: %s", list(callers.keys()))
 
@@ -56,6 +58,7 @@ def init_trading_system(
     # 1. 风控引擎 — 根据已有持仓自动校准资金基准
     from src.risk_config import RiskConfig
     from src.risk_manager import RiskManager
+
     effective_capital = float(capital)
     if portfolio and env_bool("AUTO_SCALE_CAPITAL_FROM_PORTFOLIO", True):
         exposure = _estimate_open_positions_exposure(portfolio)
@@ -77,6 +80,7 @@ def init_trading_system(
 
     # 2. 持仓监控器 — 包含卖出降级逻辑
     from src.position_monitor import PositionMonitor
+
     sell_func = None
     if broker:
         # 包装 broker.sell 为带重连和降级的版本
@@ -114,6 +118,7 @@ def init_trading_system(
                 if price > 0:
                     return portfolio.sell(symbol, quantity, price, decided_by, reason)
             return {"error": "IBKR和模拟卖出均失败: %s" % symbol}
+
         sell_func = _resilient_sell
     elif portfolio:
         # 包装 portfolio.sell 为异步函数
@@ -123,6 +128,7 @@ def init_trading_system(
             if price <= 0:
                 return {"error": "无法获取 %s 价格" % symbol}
             return portfolio.sell(symbol, quantity, price, decided_by, reason)
+
         sell_func = _sim_sell
 
     _ts._position_monitor = PositionMonitor(
@@ -138,6 +144,7 @@ def init_trading_system(
     # 3. 交易执行管道 — 含决策验证层
     from src.auto_trader import TradingPipeline
     from src.decision_validator import DecisionValidator
+
     _decision_validator = DecisionValidator(
         get_quote_func=quote_func,
         portfolio=portfolio,
@@ -158,6 +165,7 @@ def init_trading_system(
 
     # 4. 自主交易调度器 — 全市场扫描 + AI团队投票
     from src.auto_trader import AutoTrader
+
     max_scan_candidates = env_int("MAX_SCAN_CANDIDATES", 50, minimum=10)
     max_vote_candidates = env_int("MAX_VOTE_CANDIDATES", 10, minimum=3)
     scan_func = None
@@ -221,8 +229,10 @@ def init_trading_system(
                     # 策略引擎增强：将量化策略信号注入分析结果
                     try:
                         from src.bot.globals import strategy_engine_instance
+
                         if strategy_engine_instance and "closes" in data:
                             from src.strategy_engine import MarketData
+
                             md = MarketData(
                                 symbol=symbol,
                                 timeframe="1d",
@@ -246,6 +256,7 @@ def init_trading_system(
             except Exception as e:
                 logger.warning("[TradingSystem] 分析 %s 失败: %s", symbol, e)
             return None
+
         analyze_func = _analyze_candidate
     except ImportError:
         logger.warning("[TradingSystem] ta_engine 不可用")
@@ -253,12 +264,14 @@ def init_trading_system(
     # AI团队投票函数 — CrewAI 优先，降级到原生投票
     try:
         from src.crewai_bridge import get_crewai_bridge
+
         _crewai = get_crewai_bridge()
     except ImportError:
         _crewai = None
 
     try:
         from src.ai_team_voter import run_team_vote_batch
+
         _ai_team_vote_batch = run_team_vote_batch
 
         async def _ai_team_wrapper(candidates, analyses, notify_func=None, max_candidates=5, account_context=""):
@@ -271,6 +284,7 @@ def init_trading_system(
             vote_history = None
             try:
                 from src.trading_journal import journal as _tj
+
                 _acc = _tj.get_prediction_accuracy(days=30)
                 if _acc.get("total_predictions", 0) > 0:
                     vote_history = _acc.get("by_ai", {})
@@ -280,13 +294,13 @@ def init_trading_system(
             # 注入最近复盘教训（让全部6位 AI 投票时都能参考历史教训）
             try:
                 from src.trading_journal import journal as _tj_lessons
+
                 latest_review = _tj_lessons.get_latest_review()
                 if latest_review and latest_review.get("lessons_learned"):
                     lessons = str(latest_review["lessons_learned"])[:500]
                     account_context += f"\n\n⚠️ 上次复盘教训 (必须遵守):\n{lessons}"
             except Exception as e:
-                pass  # 教训获取失败不影响投票主流程
-                logger.debug("静默异常: %s", e)
+                logger.warning("静默异常: %s", e)
 
             # 尝试 CrewAI 多 Agent 协作
             if _crewai:
@@ -314,6 +328,7 @@ def init_trading_system(
                 account_context=account_context,
                 vote_history=vote_history,
             )
+
         ai_team_func = _ai_team_wrapper
         logger.info("[TradingSystem] AI团队投票模块已加载 (CrewAI: %s)", "可用" if _crewai else "不可用，使用原生")
     except ImportError:
@@ -343,6 +358,7 @@ def init_trading_system(
 
     # 5. 行情缓存
     from src.quote_cache import QuoteCache, CacheConfig
+
     _ts._quote_cache = QuoteCache(
         config=CacheConfig(ttl_seconds=60, refresh_interval=30),
         get_quote_func=quote_func,
@@ -351,6 +367,7 @@ def init_trading_system(
 
     # 6. 组合再平衡器
     from src.rebalancer import Rebalancer
+
     _ts._rebalancer = Rebalancer()
     logger.info("[TradingSystem] 再平衡器已初始化")
 

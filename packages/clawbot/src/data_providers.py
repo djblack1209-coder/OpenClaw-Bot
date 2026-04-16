@@ -11,6 +11,7 @@ ClawBot 统一数据提供层 v1.0
   - ccxt:    108+ 交易所的统一 API (35k⭐, MIT)
   - yfinance: 美股/ETF 数据 (已有)
 """
+
 import asyncio
 import logging
 import re
@@ -28,29 +29,27 @@ logger = logging.getLogger(__name__)
 
 # ============ 市场枚举 ============
 
+
 class Market(Enum):
-    US = "us"           # 美股/ETF (yfinance)
-    CN_A = "cn_a"       # A股 (akshare)
-    CRYPTO = "crypto"   # 加密货币 (ccxt)
+    US = "us"  # 美股/ETF (yfinance)
+    CN_A = "cn_a"  # A股 (akshare)
+    CRYPTO = "crypto"  # 加密货币 (ccxt)
 
 
 # ============ 市场自动检测 ============
 
 # A股代码模式: 6位纯数字, 或 带 .SZ/.SH/.BJ 后缀
 _CN_PATTERN = re.compile(
-    r'^(?:'
-    r'[036]\d{5}'              # 6位数字开头: 0/3(深圳) 6(上海)
-    r'|[48]\d{5}'              # 4/8 开头(北交所/新三板)
-    r'|\d{6}\.(?:SZ|SH|BJ)'   # 带后缀
-    r')$',
-    re.IGNORECASE
+    r"^(?:"
+    r"[036]\d{5}"  # 6位数字开头: 0/3(深圳) 6(上海)
+    r"|[48]\d{5}"  # 4/8 开头(北交所/新三板)
+    r"|\d{6}\.(?:SZ|SH|BJ)"  # 带后缀
+    r")$",
+    re.IGNORECASE,
 )
 
 # 加密货币模式: XXX/USDT, BTC/USD, ETH-USDT 等
-_CRYPTO_PATTERN = re.compile(
-    r'^[A-Z0-9]{2,10}[/-](?:USDT?|BUSD|USDC|EUR|BTC|ETH)$',
-    re.IGNORECASE
-)
+_CRYPTO_PATTERN = re.compile(r"^[A-Z0-9]{2,10}[/-](?:USDT?|BUSD|USDC|EUR|BTC|ETH)$", re.IGNORECASE)
 
 
 def detect_market(symbol: str) -> Market:
@@ -85,6 +84,7 @@ def _ensure_akshare():
     if _ak_module is None:
         try:
             import akshare as ak
+
             _ak_module = ak
         except ImportError:
             raise ImportError("akshare 未安装。请运行: pip install akshare")
@@ -97,6 +97,7 @@ def _ensure_ccxt():
     if _ccxt_module is None:
         try:
             import ccxt as _ccxt
+
             _ccxt_module = _ccxt
         except ImportError:
             raise ImportError("ccxt 未安装。请运行: pip install ccxt")
@@ -109,6 +110,7 @@ def _ensure_yfinance():
     if _yf_module is None:
         try:
             import yfinance as yf
+
             _yf_module = yf
         except ImportError:
             raise ImportError("yfinance 未安装。请运行: pip install yfinance")
@@ -117,13 +119,13 @@ def _ensure_yfinance():
 
 # ============ A股数据 (akshare) ============
 
+
 def _normalize_cn_symbol(symbol: str) -> str:
     """标准化A股代码: 去掉 .SZ/.SH/.BJ 后缀，返回纯6位数字"""
-    return re.sub(r'\.(SZ|SH|BJ)$', '', symbol.strip(), flags=re.IGNORECASE)
+    return re.sub(r"\.(SZ|SH|BJ)$", "", symbol.strip(), flags=re.IGNORECASE)
 
 
-def akshare_get_history(symbol: str, period: str = "3mo",
-                        interval: str = "1d") -> "pd.DataFrame":
+def akshare_get_history(symbol: str, period: str = "3mo", interval: str = "1d") -> "pd.DataFrame":
     """
     获取A股历史K线 (akshare)
 
@@ -136,14 +138,20 @@ def akshare_get_history(symbol: str, period: str = "3mo",
         标准化 DataFrame (columns: Open/High/Low/Close/Volume, index: DatetimeIndex)
     """
     import pandas as pd
+
     ak = _ensure_akshare()
 
     code = _normalize_cn_symbol(symbol)
 
     # 计算起止日期
     period_map = {
-        "1mo": 30, "3mo": 90, "6mo": 180,
-        "1y": 365, "2y": 730, "5d": 5, "1w": 7,
+        "1mo": 30,
+        "3mo": 90,
+        "6mo": 180,
+        "1y": 365,
+        "2y": 730,
+        "5d": 5,
+        "1w": 7,
     }
     days = period_map.get(period, 90)
     end_date = now_et().strftime("%Y%m%d")
@@ -267,10 +275,12 @@ def _get_exchange():
     global _default_exchange
     if _default_exchange is None:
         ccxt = _ensure_ccxt()
-        _default_exchange = ccxt.binance({
-            "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
-        })
+        _default_exchange = ccxt.binance(
+            {
+                "enableRateLimit": True,
+                "options": {"defaultType": "spot"},
+            }
+        )
     return _default_exchange
 
 
@@ -279,8 +289,7 @@ def _normalize_crypto_symbol(symbol: str) -> str:
     return symbol.strip().upper().replace("-", "/")
 
 
-def ccxt_get_history(symbol: str, period: str = "3mo",
-                     interval: str = "1d") -> "pd.DataFrame":
+def ccxt_get_history(symbol: str, period: str = "3mo", interval: str = "1d") -> "pd.DataFrame":
     """
     获取加密货币历史K线 (ccxt)
 
@@ -299,23 +308,41 @@ def ccxt_get_history(symbol: str, period: str = "3mo",
 
     # ccxt timeframe 映射
     tf_map = {
-        "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
-        "1h": "1h", "4h": "4h",
-        "1d": "1d", "1w": "1w", "1mo": "1M",
+        "1m": "1m",
+        "5m": "5m",
+        "15m": "15m",
+        "30m": "30m",
+        "1h": "1h",
+        "4h": "4h",
+        "1d": "1d",
+        "1w": "1w",
+        "1mo": "1M",
     }
     timeframe = tf_map.get(interval, "1d")
 
     # 计算数据条数
     period_map = {
-        "5d": 5, "1w": 7, "1mo": 30, "3mo": 90,
-        "6mo": 180, "1y": 365, "2y": 730,
+        "5d": 5,
+        "1w": 7,
+        "1mo": 30,
+        "3mo": 90,
+        "6mo": 180,
+        "1y": 365,
+        "2y": 730,
     }
     days = period_map.get(period, 90)
 
     # 根据 interval 计算需要多少根 K线
     interval_minutes = {
-        "1m": 1, "5m": 5, "15m": 15, "30m": 30,
-        "1h": 60, "4h": 240, "1d": 1440, "1w": 10080, "1mo": 43200,
+        "1m": 1,
+        "5m": 5,
+        "15m": 15,
+        "30m": 30,
+        "1h": 60,
+        "4h": 240,
+        "1d": 1440,
+        "1w": 10080,
+        "1mo": 43200,
     }
     mins_per_bar = interval_minutes.get(interval, 1440)
     limit = min(int(days * 1440 / mins_per_bar), 1000)  # ccxt 最多1000条
@@ -388,6 +415,7 @@ def ccxt_get_quote(symbol: str) -> dict:
 
 # ============ 统一同步接口 ============
 
+
 def get_quote_sync(symbol: str) -> dict:
     """
     统一行情查询 (同步) — 自动检测市场并路由到对应数据源
@@ -419,8 +447,7 @@ def get_quote_sync(symbol: str) -> dict:
         return _yfinance_get_quote(symbol)
 
 
-def get_history_sync(symbol: str, period: str = "3mo",
-                     interval: str = "1d") -> "pd.DataFrame":
+def get_history_sync(symbol: str, period: str = "3mo", interval: str = "1d") -> "pd.DataFrame":
     """
     统一历史K线查询 (同步) — 自动检测市场并路由
 
@@ -482,8 +509,7 @@ def _cached_yfinance_get_quote(symbol: str) -> dict:
             if data_date < today - timedelta(days=1):
                 result["_stale_warning"] = f"Data from {data_date}, today is {today}"
     except Exception as e:
-        pass  # staleness check is best-effort
-        logger.debug("静默异常: %s", e)
+        logger.warning("静默异常: %s", e)
 
     _quote_cache[cache_key] = (now, result)
     # 超出上限时淘汰所有过期条目
@@ -495,6 +521,7 @@ def _cached_yfinance_get_quote(symbol: str) -> dict:
 
 
 # ============ yfinance 内部封装 ============
+
 
 def _yfinance_get_quote(symbol: str) -> dict:
     """yfinance 行情查询 (内部使用) — 走缓存层"""
@@ -550,8 +577,7 @@ def _yfinance_get_quote_raw(symbol: str) -> dict:
         return {"error": f"查询 {symbol} 失败: {e}"}
 
 
-def _yfinance_get_history(symbol: str, period: str = "3mo",
-                          interval: str = "1d") -> "pd.DataFrame":
+def _yfinance_get_history(symbol: str, period: str = "3mo", interval: str = "1d") -> "pd.DataFrame":
     """yfinance 历史K线 (内部使用)"""
     yf = _ensure_yfinance()
     ticker = yf.Ticker(symbol)
@@ -563,12 +589,12 @@ def _yfinance_get_history(symbol: str, period: str = "3mo",
 
 # ============ 统一异步接口 ============
 
+
 async def get_quote(symbol: str) -> dict:
     """统一行情查询 (异步) — asyncio.to_thread 包装"""
     return await asyncio.to_thread(get_quote_sync, symbol)
 
 
-async def get_history(symbol: str, period: str = "3mo",
-                      interval: str = "1d") -> "pd.DataFrame":
+async def get_history(symbol: str, period: str = "3mo", interval: str = "1d") -> "pd.DataFrame":
     """统一历史K线查询 (异步) — asyncio.to_thread 包装"""
     return await asyncio.to_thread(get_history_sync, symbol, period, interval)
