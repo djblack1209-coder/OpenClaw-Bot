@@ -21,6 +21,8 @@ from src.execution.daily_brief_data import (  # noqa: F401
     _format_delta,
     _build_today_agenda,
     _fetch_trending_projects,
+    _fetch_weather,
+    _fetch_forex,
 )
 from src.execution.daily_brief_llm import (  # noqa: F401
     _analyze_news_with_llm,
@@ -45,6 +47,29 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
             sections.append(_section("📋 今日日程", agenda_items))
     except Exception as e:
         logger.debug(f"[DailyBrief] agenda: {e}")
+    # ── 0.5 天气 + 汇率（快速参考信息，放在日报前部）──────────
+    try:
+        import asyncio as _asyncio
+
+        # 并行获取天气和汇率，互不阻塞
+        weather_result, forex_result = await _asyncio.gather(
+            _fetch_weather(),
+            _fetch_forex(),
+            return_exceptions=True,
+        )
+        # 处理异常返回值
+        weather_text = weather_result if isinstance(weather_result, str) else ""
+        forex_text = forex_result if isinstance(forex_result, str) else ""
+
+        quick_ref_items = []
+        if weather_text:
+            quick_ref_items.append(f"🌤 天气: {weather_text}")
+        if forex_text:
+            quick_ref_items.append(f"💱 汇率: {forex_text}")
+        if quick_ref_items:
+            sections.append(_section("🌍 快速参考", quick_ref_items))
+    except Exception as e:
+        logger.debug(f"[DailyBrief] 天气/汇率: {e}")
     # ── 1. 持仓概览 ──────────────────────────────────────────
     try:
         from src.position_monitor import position_monitor

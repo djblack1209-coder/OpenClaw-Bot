@@ -1,10 +1,12 @@
 """
 每日日报 — 数据采集模块
 
-提供昨日对比、delta 计算、日程构建、趋势项目获取等数据采集功能。
+提供昨日对比、delta 计算、日程构建、趋势项目获取、天气、汇率等数据采集功能。
 每个数据源独立 try/except，一个失败不影响其他。
 """
+
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
 
@@ -22,6 +24,7 @@ def _get_timestamp_tag() -> str:
     """获取时间戳标签，优先使用 notify_style 的统一格式"""
     try:
         from src.notify_style import timestamp_tag
+
         return timestamp_tag()
     except Exception:
         return datetime.now(timezone.utc).strftime("%H:%M UTC")
@@ -39,12 +42,14 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
         昨日指标字典，如 {"portfolio_pnl": 100.5, "xianyu_consultations": 12, ...}
     """
     from src.utils import now_et
+
     yesterday_str = (now_et() - timedelta(days=1)).strftime("%Y-%m-%d")
     result = {}
 
     # 1. 昨日持仓盈亏 — 从交易日志获取
     try:
         from src.trading_journal import journal
+
         if journal and hasattr(journal, "get_today_pnl"):
             # get_today_pnl 返回今日的，我们需要用 get_performance(days=1) 近似
             perf = journal.get_performance(days=1)
@@ -56,6 +61,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
     # 2. 昨日闲鱼数据 — daily_stats 支持传入日期
     try:
         from src.xianyu.xianyu_context import XianyuContextManager
+
         xctx = XianyuContextManager()
         if hasattr(xctx, "daily_stats"):
             ystats = xctx.daily_stats(date=yesterday_str)
@@ -68,6 +74,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
     # 3. 昨日社媒发帖 — 通过 engagement_summary(days=1) 近似
     try:
         from src.execution.life_automation import get_engagement_summary
+
         eng = get_engagement_summary(days=1, db_path=db_path)
         if eng.get("success"):
             result["social_posts"] = eng.get("total_posts", 0)
@@ -139,6 +146,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     # ── 1. 持仓风险项 — 接近止损的持仓 ──
     try:
         from src.position_monitor import position_monitor
+
         if position_monitor and position_monitor.positions:
             status = position_monitor.get_status()
             for p in status.get("positions", []):
@@ -156,6 +164,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     try:
         from src.execution.life_automation import list_reminders
         from src.utils import now_et
+
         pending = list_reminders(status="pending", db_path=db_path)
         if pending:
             now = now_et()
@@ -174,6 +183,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     # ── 3. 账单到期 ──
     try:
         from src.execution.life_automation import get_bill_reminders_due
+
         bills = get_bill_reminders_due(db_path=db_path)
         for b in bills:
             name = b.get("account_name", b.get("account_type", "账单"))
@@ -187,6 +197,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     # ── 4. 今日待办 ──
     try:
         from src.execution.task_mgmt import top_tasks
+
         tasks = top_tasks(limit=3, db_path=db_path)
         for t in tasks:
             agenda.append((2, f"📝 {t.get('title', '未命名任务')} (待办)"))
@@ -220,10 +231,23 @@ async def _fetch_trending_projects() -> List[str]:
 
     # 关注的关键领域
     INTEREST_KEYWORDS = [
-        "telegram bot", "social media", "auto upload", "xianyu", "闲鱼",
-        "llm", "ai agent", "tts", "edge-tts", "novel writing",
-        "trading bot", "web scraping", "automation",
-        "小红书", "douyin", "bilibili", "wechat",
+        "telegram bot",
+        "social media",
+        "auto upload",
+        "xianyu",
+        "闲鱼",
+        "llm",
+        "ai agent",
+        "tts",
+        "edge-tts",
+        "novel writing",
+        "trading bot",
+        "web scraping",
+        "automation",
+        "小红书",
+        "douyin",
+        "bilibili",
+        "wechat",
     ]
 
     items: List[str] = []
@@ -231,6 +255,7 @@ async def _fetch_trending_projects() -> List[str]:
         # 使用现有的 github_trending 模块
         try:
             from src.evolution.github_trending import fetch_trending
+
             repos = await fetch_trending(language="python", since="daily")
             if repos:
                 for repo in repos[:10]:
@@ -240,9 +265,7 @@ async def _fetch_trending_projects() -> List[str]:
                     # 筛选与 OpenClaw 领域相关的
                     relevant = any(kw in desc or kw in name.lower() for kw in INTEREST_KEYWORDS)
                     if relevant and stars > 50:
-                        items.append(
-                            f"⭐{stars} {name}: {repo.description[:80] if repo.description else ''}"
-                        )
+                        items.append(f"⭐{stars} {name}: {repo.description[:80] if repo.description else ''}")
         except ImportError:
             pass
 
@@ -255,3 +278,106 @@ async def _fetch_trending_projects() -> List[str]:
         items.append("GitHub Trending 获取失败")
 
     return items
+
+
+# ── 天气数据采集 ──────────────────────────────────────────
+
+# 天气状况 → emoji 映射
+_WEATHER_EMOJI = {
+    "晴": "☀️",
+    "晴天": "☀️",
+    "多云": "⛅",
+    "阴天": "☁️",
+    "小雨": "🌦",
+    "中雨": "🌧",
+    "大雨": "🌧",
+    "暴雨": "⛈",
+    "雷阵雨": "⛈",
+    "小雪": "🌨",
+    "中雪": "❄️",
+    "大雪": "❄️",
+    "暴风雪": "❄️",
+    "薄雾": "🌫",
+    "大雾": "🌫",
+    "雨夹雪": "🌨",
+}
+
+
+def _weather_emoji(desc: str) -> str:
+    """根据天气描述返回对应 emoji"""
+    for keyword, emoji in _WEATHER_EMOJI.items():
+        if keyword in desc:
+            return emoji
+    return "🌤"
+
+
+async def _fetch_weather(city: str = "") -> str:
+    """获取天气数据，格式化为日报单行文本。
+
+    城市优先级: 参数 > 环境变量 WEATHER_CITY > 默认 Shanghai
+    失败时返回空字符串（不阻塞日报生成）。
+
+    Returns:
+        格式化文本如 "上海 ☀️ 25°C 湿度60% 风速12km/h"，失败返回 ""
+    """
+    if not city:
+        city = os.environ.get("WEATHER_CITY", "Shanghai")
+    try:
+        from src.tools.free_apis import get_weather
+
+        data = await get_weather(city)
+        if data.get("source") == "error":
+            return ""
+
+        cur = data.get("current", {})
+        temp = cur.get("temp", "")
+        weather_desc = cur.get("weather", "")
+        humidity = cur.get("humidity", "")
+        emoji = _weather_emoji(weather_desc)
+
+        # 组装文本：城市 emoji 温度 天气 湿度
+        parts = [f"{city} {emoji} {temp}°C"]
+        if weather_desc:
+            parts[0] += f" {weather_desc}"
+        if humidity:
+            parts.append(f"湿度{humidity}%")
+
+        # 追加今日温度范围（如果有预报数据）
+        forecasts = data.get("forecasts", [])
+        if forecasts:
+            today_fc = forecasts[0]
+            low = today_fc.get("nighttemp", "")
+            high = today_fc.get("daytemp", "")
+            if low and high:
+                parts.append(f"{low}~{high}°C")
+
+        return " | ".join(parts)
+    except Exception as e:
+        logger.debug("[DailyBrief] 天气数据获取失败: %s", e)
+        return ""
+
+
+# ── 汇率数据采集 ──────────────────────────────────────────
+
+
+async def _fetch_forex() -> str:
+    """获取 USD/CNY 汇率，格式化为日报单行文本。
+
+    优先使用已有的 free_apis.get_exchange_rate（免费无 key），
+    失败时返回空字符串（不阻塞日报生成）。
+
+    Returns:
+        格式化文本如 "USD/CNY 7.2345"，失败返回 ""
+    """
+    try:
+        from src.tools.free_apis import get_exchange_rate
+
+        data = await get_exchange_rate("USD", "CNY")
+        rate = data.get("rate", 0)
+        if not rate or rate == 0:
+            return ""
+
+        return f"USD/CNY {rate:.4f}"
+    except Exception as e:
+        logger.debug("[DailyBrief] 汇率数据获取失败: %s", e)
+        return ""
