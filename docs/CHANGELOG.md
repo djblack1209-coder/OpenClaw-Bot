@@ -3,6 +3,29 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 收尾推进 — fast bug修复 + ControlCenter拆分 + CardBuilder
+> 领域: `backend`, `frontend`, `infra`
+> 影响模块: `constants`, `litellm_router`, `cmd_life_mixin`, `freqtrade_bridge`, `ControlCenter`, `telegram_ux`
+> 关联问题: MRU分析 P3-2 + "fast" family 潜在bug
+### 变更内容
+- **修复: "fast" model_family 路由缺失**:
+  - 新增 `FAMILY_FAST` 常量 + Groq 8b 模型映射到 fast family
+  - 2处硬编码字符串改为常量引用，fallback: fast→llama→qwen→g4f
+- **ControlCenter 常量抽取**:
+  - 新增 `constants.ts`: CONFIG_FIELD_META/ACTION_LABEL等纯数据逻辑外部化
+  - index.tsx 882行→773行（降低单文件复杂度）
+- **P3-2: TG卡片 CardBuilder 链式API** (借鉴 aiogram 5.5k⭐):
+  - `CardBuilder("标题").line().kv().button().send()` 链式构建
+  - 自动Markdown降级 + 按钮行管理 + 键值对快捷方法
+### 文件变更
+- `packages/clawbot/src/constants.py` — 新增 FAMILY_FAST
+- `packages/clawbot/config/llm_routing.json` — fast family 路由映射
+- `packages/clawbot/src/telegram_ux.py` — 新增 CardBuilder 类 (160行)
+- `apps/openclaw-manager-src/src/components/ControlCenter/constants.ts` — 新建
+- `apps/openclaw-manager-src/src/components/ControlCenter/index.tsx` — 常量导入
+
+---
+
 ## [2026-04-16] 修复+M2+M3+P3 — 测试100%+记忆整合+图谱检索+Bulkhead
 > 领域: `backend`, `infra`
 > 影响模块: `self_heal`, `smart_memory`, `shared_memory`, `resilience`
