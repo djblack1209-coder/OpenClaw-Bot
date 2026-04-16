@@ -244,14 +244,16 @@ def get_model_score(model_id: str) -> float:
 
 
 # Bot 与 LLM 模型族的映射关系
-# 每个 Bot 优先使用对应族群的模型，避免全部走 g4f 兜底导致质量不可控
+# 每个 Bot 优先使用对应族群的模型，避免全部走同一入口导致单点故障
+# 2026-04-17: 分散映射 — 之前 haiku/sonnet/opus 全走 claude(Kiro Gateway 5RPM)，
+# 3 个 bot 撞一个瓶颈导致 50% 超时。现在分散到不同家族避免单点故障
 BOT_MODEL_FAMILY = {
     "qwen235b": "qwen",
     "gptoss": "gpt-oss",
-    "claude_sonnet": "claude",  # 走 Kiro Gateway 的 Claude 模型
-    "claude_haiku": "claude",  # 走 Kiro Gateway 的 Claude 模型
-    "deepseek_v3": "deepseek",  # 走 DeepSeek 族群模型
-    "claude_opus": "claude",  # 走 Kiro Gateway 的 Claude 模型
+    "claude_sonnet": "claude",  # 指挥官保留 Kiro Gateway（最高优先级角色）
+    "claude_haiku": "qwen",  # 市场雷达 → qwen 家族（SiliconFlow 多 Key 高可用）
+    "deepseek_v3": "deepseek",  # 风控官 → deepseek 家族
+    "claude_opus": "deepseek",  # 首席策略师 → deepseek 家族（高质量推理）
     "free_llm": None,  # 自动选择最强可用模型
 }
 
@@ -572,7 +574,16 @@ class LiteLLMPool:
         if kk:
             deps.append(
                 self._dep(
-                    "kiro", "openai/claude-sonnet-4", kk, kb, rpm=5, tier=TIER_S, family="claude", note="Kiro Gateway"
+                    "kiro",
+                    "openai/claude-sonnet-4",
+                    kk,
+                    kb,
+                    rpm=5,
+                    tier=TIER_S,
+                    family="claude",
+                    timeout=45,  # 显式超时（Claude 处理金融分析 prompt 需要 30s+）
+                    stream_timeout=60,
+                    note="Kiro Gateway",
                 )
             )
 

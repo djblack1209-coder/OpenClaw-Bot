@@ -134,10 +134,13 @@ class APIMixin:
 
         try:
             # 路由决策
+            # 投票场景（save_history=False）使用快速模式：减少 Router 内部重试次数
+            # 投票有自己的 2 次重试循环，Router 再重试 3 次只会浪费超时预算
+            fast_mode_kwargs = {"num_retries": 1} if not save_history else {}
             if chat_type == "private" and self.api_type == "free_first":
                 reply = await self._call_opus_smart(messages)
             else:
-                reply = await self._call_via_litellm(messages)
+                reply = await self._call_via_litellm(messages, **fast_mode_kwargs)
 
             # 记录使用
             rate_limiter.record(self.bot_id)
@@ -197,7 +200,7 @@ class APIMixin:
 
     # ---- 核心调用: LiteLLM Router ----
 
-    async def _call_via_litellm(self, messages: list) -> str:
+    async def _call_via_litellm(self, messages: list, **extra_kwargs) -> str:
         """通过 LiteLLM Router 调用，自动路由+fallback+重试"""
         bot_id = getattr(self, "bot_id", "")
         family = BOT_MODEL_FAMILY.get(bot_id)
@@ -206,6 +209,7 @@ class APIMixin:
             model_family=family,
             messages=messages,
             system_prompt=getattr(self, "system_prompt", ""),
+            **extra_kwargs,
         )
         return response.choices[0].message.content or "(无响应)"
 

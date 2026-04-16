@@ -105,7 +105,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-487 | `backend` | `wechat_bridge.py` | ARCH_LIMIT: 微信仅支持单向推送通知（通过 iLink API），不支持接收微信消息/双向聊天。brain.py 的 process_message() 仅支持 source=telegram/api/cron。实现双向需接入 Wechaty 桥接服务（新功能开发，非 Bug） | 2026-04-17 |
+| ~~HI-487~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~ARCH_LIMIT: 微信仅支持单向推送通知~~ → **描述修正 2026-04-17**: 微信双向对话由 TypeScript 层 `openclaw-weixin` 插件实现（iLink API getUpdates 长轮询），Python 层 `wechat_bridge.py` 仅负责系统通知推送。微信 Bot 基础设施正常运行：token 有效、Gateway 进程在线、sync 持续更新 | 2026-04-17 |
 | ~~HI-358~~ | ~~`backend`~~ | ~~多文件~~ | ~~7个>1000行大文件待拆~~ → **已修复 2026-04-11**: 全部7个文件拆分完成 — daily_brief(1158→498), proactive_engine(1016→328), trading_journal(1087→464), risk_manager(1191→854), broker_bridge(1091→762), auto_trader(1055→843), chinese_nlp_mixin(1248→705)。共新建 17 个子模块 | 2026-03-29 |
 | ~~HI-381~~ | ~~`backend`~~ | ~~120+文件~~ | ~~内联错误字符串分散~~ → **已解决 2026-04-11**: 重新评估实际为 ~50 处（非 120+），其中 5 条重复消息提取到 `constants.py`（ERR_RISK_NOT_INIT 等 5 个常量），10 处使用点已迁移；其余为上下文相关的唯一消息，保留内联合理 | 2026-03-29 |
 | ~~HI-383~~ | ~~`backend`~~ | ~~多文件~~ | ~~HTTP客户端碎片化~~ → **大部分解决 2026-04-11**: HI-463 迁移 20 个文件 35 处调用点到 ResilientHTTPClient（带自动重试+熔断）；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现合理 | 2026-03-29 |
