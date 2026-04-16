@@ -3,6 +3,35 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 价值位阶推进 R4 — P0~P2 四项改进
+> 领域: `backend`, `trading`, `ai-pool`
+> 影响模块: `auto_trader`, `position_monitor`, `broker_bridge`, `invest_tools`, `db_utils`(新), `execution/_db`, `litellm_router`, `cost_analyzer`, `license_manager`, `novel_writer`, `trading_journal`, `xianyu_context`, `auto_shipper`, `api/routers/omega`, `api/routers/social`, `api/routers/newapi`
+> 关联问题: 金融模块静默异常/SQLite样板重复/API返回码混乱/超时魔术数字
+### 变更内容
+- **P0 修复: 金融模块6处静默异常** — auto_trader 持仓获取失败返回保守敞口(总资金上限)防超额开仓; 交易日志读取失败/利润回撤预警/NM降级/成本基准获取/QuoteCache初始化 全部从 `pass`+`logger.debug` 升级为 `logger.warning` 带上下文
+- **P1 重构: SQLite 连接工厂统一化** — 新建 `src/db_utils.py` 全局连接工厂(WAL+busy_timeout+权限保护+自动回滚)，7个模块的 `_conn()` 委托给统一实现; 修复 cost_analyzer WAL/busy_timeout 不一致(7处裸连接全部替换); 修复 trading_journal WAL 仅在 init_db 设置的问题
+- **P2 修复: 剩余3个路由文件49处HTTP状态码** — omega(15处)/social(17处)/newapi(17处) 全部从 `return {"error":...}` 改为 `raise HTTPException(400/500/502/503)`; 累计R3+R4共62处API路由统一为标准HTTP响应
+- **P2 优化: 交易/LLM/券商28个超时魔术数字命名常量化** — auto_trader 2个(休市/非交易时段等待); broker_bridge 8个(连接/重连/心跳/轮询/取消); litellm_router 10个(SiliconFlow/Groq/Reasoning/全局超时/冷却/重试)
+### 文件变更
+- `packages/clawbot/src/db_utils.py` — **新建** 全局SQLite连接工厂
+- `packages/clawbot/src/auto_trader.py` — 静默异常修复 + SLEEP_MARKET_CLOSED/SLEEP_OFF_HOURS 常量
+- `packages/clawbot/src/position_monitor.py` — 2处静默异常升级为warning
+- `packages/clawbot/src/broker_bridge.py` — 1处静默异常修复 + 8个IBKR_*时间常量
+- `packages/clawbot/src/invest_tools.py` — QuoteCache失败加warning + _conn委托db_utils
+- `packages/clawbot/src/litellm_router.py` — 10个LLM_*超时常量
+- `packages/clawbot/src/execution/_db.py` — get_conn委托db_utils
+- `packages/clawbot/src/monitoring/cost_analyzer.py` — 7处裸连接替换为_conn + PRAGMA修复
+- `packages/clawbot/src/deployer/license_manager.py` — _conn委托db_utils
+- `packages/clawbot/src/novel_writer.py` — _conn委托db_utils
+- `packages/clawbot/src/trading_journal.py` — _conn委托db_utils + WAL修复
+- `packages/clawbot/src/xianyu/xianyu_context.py` — _conn委托db_utils
+- `packages/clawbot/src/xianyu/auto_shipper.py` — _conn委托db_utils
+- `packages/clawbot/src/api/routers/omega.py` — 15处 HTTPException
+- `packages/clawbot/src/api/routers/social.py` — 17处 HTTPException
+- `packages/clawbot/src/api/routers/newapi.py` — 17处 HTTPException
+
+---
+
 ## [2026-04-16] 价值位阶推进 R3 — P1~P2 六项改进
 > 领域: `backend`, `xianyu`
 > 影响模块: `trading_journal`, `execution/_db`, `invest_tools`, `notifications`, `api/routers/*`, `social_scheduler`, `cmd_xianyu_mixin`

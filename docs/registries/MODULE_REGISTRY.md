@@ -1,10 +1,26 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-16 | 新增 risk_var/backtester_pybroker/brain_exec_*/llm_routing_config/risk_validators (总模块数 245→253)
+> 最后更新: 2026-04-16 | 新增 db_utils (总模块数 253→254)
 
 ---
 
-## 新增模块 (2026-04-16)
+## 新增模块 (2026-04-16 R4)
+
+### db_utils.py — 全局 SQLite 连接工厂
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/db_utils.py` |
+| 行数 | 64 |
+| 导入方 | `execution/_db`, `license_manager`, `novel_writer`, `xianyu_context`, `invest_tools`, `auto_shipper`, `trading_journal`, `cost_analyzer` |
+| 依赖 | 标准库 (`sqlite3`, `os`, `logging`, `contextlib`) |
+
+**Public API:**
+- `get_conn(db_path, *, row_factory=None)` — contextmanager，统一 WAL + busy_timeout=5000 + 文件权限保护 + 异常自动回滚
+
+---
+
+## 新增模块 (2026-04-16 R1)
 
 ### risk_var.py — VaR/CVaR 风险度量 Mixin
 

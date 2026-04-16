@@ -4,6 +4,40 @@
 
 ---
 
+## [2026-04-16 23:00] 价值位阶推进 R4 — P0~P2 四项改进
+
+### 本次完成了什么
+
+**方法**: 全面侦察金融模块/数据库/路由/常量等改进方向，按价值排序执行 P0→P1→P2 四项改进。
+
+| # | 优先级 | 项目 | 改动 |
+|---|--------|------|------|
+| 1 | P0 | 金融模块静默异常修复 | 6处 pass+debug 升级为 warning（auto_trader/position_monitor/broker_bridge/invest_tools） |
+| 2 | P1 | SQLite 连接工厂统一化 | 新建 db_utils.py，7模块委托 + cost_analyzer 7处裸连接修复 |
+| 3 | P2 | 剩余路由 HTTP 状态码 | omega(15)+social(17)+newapi(17)=49处改 HTTPException |
+| 4 | P2 | 超时魔术数字常量化 | auto_trader 2个 + broker_bridge 8个 + litellm_router 10个 = 28个常量 |
+
+### 未完成的工作
+
+**可继续推进方向（按价值排序）：**
+- 超长函数拆分：handle_message(612行)、_match_chinese_command(584行)、_run_cycle(461行)
+- 类型注解覆盖率提升：562个公共函数缺类型注解（当前66.5%）
+- message_mixin.py 拆分（1058行，按 text/voice/streaming 拆，P3）
+- Langfuse 实际启用（需用户注册 cloud.langfuse.com）
+- shared_memory/history_store/feedback 的 thread-local/持久连接模式统一（风险较大，暂缓）
+
+### 需要注意的坑
+- auto_trader.py 的 `_default_budget()` 已修正为 `_get_capital()`，持仓获取失败时返回总资金作为保守敞口
+- newapi.py 的错误响应从 `{"success": False, "error":...}` 改为 HTTPException，前端如果有依赖 200+success:False 的逻辑需要改
+- cost_analyzer 之前 WAL 只在 _init_db 设置（技术上可行因为 WAL 是持久化到 DB 文件的），现在每次连接都设
+
+### 当前系统状态
+- 后端测试: 1339/1341 (2 项 skip, 0 失败, 100% 通过率)
+- 前端 tsc: 零错误
+- 累计四轮改进: R1(15项) + R2(6项) + R3(6项) + R4(4项) = 31 项改进
+
+---
+
 ## [2026-04-16 21:30] 价值位阶推进 R3 — P1~P2 六项改进
 
 ### 本次完成了什么
