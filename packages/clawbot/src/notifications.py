@@ -31,6 +31,7 @@ Apprise URL 格式参考: https://github.com/caronc/apprise/wiki
   Bark:      bark://server_key@hostname
   ...还有 100+ 更多渠道
 """
+
 import asyncio
 import logging
 import os
@@ -49,10 +50,7 @@ try:
 except ImportError:
     apprise = None  # type: ignore[assignment]
     APPRISE_AVAILABLE = False
-    logger.warning(
-        "apprise 未安装，通知系统降级为仅日志模式。"
-        "安装: pip install 'apprise>=1.9.0'"
-    )
+    logger.warning("apprise 未安装，通知系统降级为仅日志模式。安装: pip install 'apprise>=1.9.0'")
 
 # ── 配置路径 ──────────────────────────────────────────────
 
@@ -60,16 +58,21 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _BASE_DIR / "config"
 _NOTIFY_CONFIG_PATH = _CONFIG_DIR / "notifications.yaml"
 
+# ── 重试配置 ──────────────────────────────────────────────
+_RETRY_MAX = 3  # 最大重试次数
+_RETRY_BACKOFF = 1.0  # 首次重试间隔（秒），指数退避
+
 
 # ── 通知级别 ──────────────────────────────────────────────
+
 
 class NotifyLevel(IntEnum):
     """通知优先级，数值越小越紧急"""
 
     CRITICAL = 1  # 资金安全、系统宕机 → 所有渠道 + 声音提醒
-    HIGH = 2      # 交易成交、风控警报 → 主要渠道
-    NORMAL = 5    # 日报、社媒发布成功 → 默认渠道
-    LOW = 8       # 调试、信息性消息 → 仅日志渠道
+    HIGH = 2  # 交易成交、风控警报 → 主要渠道
+    NORMAL = 5  # 日报、社媒发布成功 → 默认渠道
+    LOW = 8  # 调试、信息性消息 → 仅日志渠道
 
     def to_apprise_type(self) -> str:
         """映射到 Apprise 的 NotifyType"""
@@ -164,6 +167,7 @@ _EVENT_NOTIFY_MAP: Dict[str, Dict[str, Any]] = {
 
 # ── 配置加载 ──────────────────────────────────────────────
 
+
 def _load_yaml_config(path: Path) -> Dict[str, Any]:
     """加载 YAML 配置文件，不存在则返回空字典"""
     if not path.exists():
@@ -195,6 +199,7 @@ def _build_telegram_url() -> Optional[str]:
 
 
 # ── 通知管理器 ────────────────────────────────────────────
+
 
 class NotificationManager:
     """
@@ -252,9 +257,7 @@ class NotificationManager:
         # 2. 环境变量 NOTIFY_URLS（逗号分隔）
         env_urls = os.environ.get("NOTIFY_URLS", "")
         if env_urls:
-            all_urls.extend(
-                u.strip() for u in env_urls.split(",") if u.strip()
-            )
+            all_urls.extend(u.strip() for u in env_urls.split(",") if u.strip())
 
         # 3. YAML 配置
         cfg_path = config_path or _NOTIFY_CONFIG_PATH
@@ -367,23 +370,30 @@ class NotificationManager:
         ap_type = notify_type or level.to_apprise_type()
         success = False
 
-        # 默认渠道
-        try:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self._ap.notify(
-                    body=body,
-                    title=title or None,
-                    notify_type=ap_type,
-                ),
-            )
-            if result:
-                success = True
-                self._send_count += 1
-        except Exception as e:
-            self._error_count += 1
-            logger.error(f"通知发送失败 (默认渠道): {e}")
+        # 默认渠道（指数退避重试）
+        loop = asyncio.get_running_loop()
+        for _attempt in range(1, _RETRY_MAX + 1):
+            try:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self._ap.notify(
+                        body=body,
+                        title=title or None,
+                        notify_type=ap_type,
+                    ),
+                )
+                if result:
+                    success = True
+                    self._send_count += 1
+                break  # 成功或 Apprise 返回 False 都不重试
+            except Exception as e:
+                if _attempt < _RETRY_MAX:
+                    _wait = _RETRY_BACKOFF * (2 ** (_attempt - 1))
+                    logger.warning("通知发送失败 (默认渠道, 第%d次), %.1fs 后重试: %s", _attempt, _wait, e)
+                    await asyncio.sleep(_wait)
+                else:
+                    self._error_count += 1
+                    logger.error("通知发送失败 (默认渠道, 已重试%d次): %s", _RETRY_MAX, e)
 
         # 标签路由（额外发送到匹配的标签渠道）
         if tags:
@@ -410,8 +420,13 @@ class NotificationManager:
         # ── 微信同步推送 (与 Telegram 同颗粒度) ──
         try:
             from src.wechat_bridge import is_wechat_notify_enabled, send_to_wechat
+
             if is_wechat_notify_enabled():
-                wx_text = f"{'🔴' if level == NotifyLevel.CRITICAL else '🟠' if level == NotifyLevel.HIGH else '📢'} {title}\n{body}" if title else body
+                wx_text = (
+                    f"{'🔴' if level == NotifyLevel.CRITICAL else '🟠' if level == NotifyLevel.HIGH else '📢'} {title}\n{body}"
+                    if title
+                    else body
+                )
                 await send_to_wechat(wx_text)
         except Exception as e:
             logger.debug("[通知] 微信桥接异常: %s", e)
@@ -452,9 +467,7 @@ class NotificationManager:
             )
 
             self._event_subscribed = True
-            logger.info(
-                f"通知系统已订阅 {len(_EVENT_NOTIFY_MAP)} 个事件类型 + system.* 通配符"
-            )
+            logger.info(f"通知系统已订阅 {len(_EVENT_NOTIFY_MAP)} 个事件类型 + system.* 通配符")
 
         except ImportError:
             logger.warning("无法导入 EventBus，通知系统不订阅事件")

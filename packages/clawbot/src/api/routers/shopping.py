@@ -1,8 +1,9 @@
 """Shopping endpoints — price comparison across platforms"""
+
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 
