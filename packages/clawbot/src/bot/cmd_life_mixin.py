@@ -13,6 +13,8 @@ import asyncio
 import json
 import logging
 
+from src.constants import FAMILY_FAST  # noqa: F401 — 快速推理链
+
 from src.bot.globals import execution_hub, send_long_message
 from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
@@ -45,7 +47,7 @@ class LifeCommandsMixin:
                     f"提醒已创建: #{ret.get('reminder_id')}\n触发时间: {ret.get('trigger_at')}"
                 )
             else:
-                await update.message.reply_text(error_service_failed("创建", ret.get('error', '')))
+                await update.message.reply_text(error_service_failed("创建", ret.get("error", "")))
             return
 
         if sub == "action":
@@ -143,7 +145,7 @@ class LifeCommandsMixin:
             return
 
         if sub == "list":
-            status = (rest[0].strip().lower() if rest else "")
+            status = rest[0].strip().lower() if rest else ""
             rows = await asyncio.to_thread(execution_hub.list_bounty_leads, status, 20)
             if not rows:
                 await update.message.reply_text("当前没有赏金线索")
@@ -251,7 +253,9 @@ class LifeCommandsMixin:
                 lines.append(f"评估数量: {bounty.get('evaluated', 0)}")
                 lines.append(f"接受单数: {bounty.get('accepted', 0)}")
                 lines.append(f"拒绝单数: {bounty.get('rejected', 0)}")
-                lines.append(f"当日成本: ${bounty.get('daily_cost_used', 0):.2f} / ${bounty.get('daily_cost_cap', 0):.2f}")
+                lines.append(
+                    f"当日成本: ${bounty.get('daily_cost_used', 0):.2f} / ${bounty.get('daily_cost_cap', 0):.2f}"
+                )
                 lines.append(f"最小ROI: ${bounty.get('min_roi', 0):.2f} | 最小信号分: {bounty.get('min_signal', 0)}")
                 if bounty.get("reused_shortlist"):
                     lines.append("本次命中不足，已回退到最近已验证 shortlist")
@@ -292,7 +296,7 @@ class LifeCommandsMixin:
             lines = ["推文监控导入结果", ""]
             lines.append(f"来源: {ret.get('source_url', '')}")
             lines.append(f"新增监控: {ret.get('count', 0)}")
-            note = str(ret.get('note', '') or '').strip()
+            note = str(ret.get("note", "") or "").strip()
             if note:
                 lines.append(f"说明: {note}")
             handles = ret.get("added", []) or ret.get("handles", []) or []
@@ -321,9 +325,13 @@ class LifeCommandsMixin:
         """
         import time as _time
         from src.execution.life_automation import (
-            add_bill_account, update_bill_balance, list_bill_accounts,
-            remove_bill_account, resolve_bill_type,
-            BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+            add_bill_account,
+            update_bill_balance,
+            list_bill_accounts,
+            remove_bill_account,
+            resolve_bill_type,
+            BILL_TYPE_EMOJI,
+            BILL_TYPE_LABEL,
         )
 
         user = update.effective_user
@@ -375,6 +383,7 @@ class LifeCommandsMixin:
                     lines.append(f"   🔔 每月{acct['remind_day']}号提醒查询")
                 # 智能消耗预测
                 from src.execution.life_automation import predict_balance_exhaustion
+
                 pred = predict_balance_exhaustion(acct["id"], db_path=self.db_path)
                 if pred.get("has_prediction"):
                     days = pred["days_remaining"]
@@ -399,10 +408,7 @@ class LifeCommandsMixin:
             raw_type = args[1]
             account_type = resolve_bill_type(raw_type)
             if not account_type:
-                await update.message.reply_text(
-                    f"❌ 不认识「{raw_type}」\n"
-                    "支持: 话费/电费/水费/燃气费/宽带"
-                )
+                await update.message.reply_text(f"❌ 不认识「{raw_type}」\n支持: 话费/电费/水费/燃气费/宽带")
                 return
             account_name = ""
             threshold = 30
@@ -423,9 +429,12 @@ class LifeCommandsMixin:
             if len(numbers_found) >= 2:
                 remind_day = int(numbers_found[1])
             result = add_bill_account(
-                user_id=user.id, chat_id=chat_id,
-                account_type=account_type, account_name=account_name,
-                low_threshold=threshold, remind_day=remind_day,
+                user_id=user.id,
+                chat_id=chat_id,
+                account_type=account_type,
+                account_name=account_name,
+                low_threshold=threshold,
+                remind_day=remind_day,
             )
             if result.get("success"):
                 emoji = BILL_TYPE_EMOJI.get(account_type, "📄")
@@ -476,18 +485,22 @@ class LifeCommandsMixin:
                     try:
                         from src.core.event_bus import get_event_bus, EventType
                         import asyncio
+
                         bus = get_event_bus()
-                        asyncio.ensure_future(bus.publish(
-                            EventType.BILL_DUE,
-                            {
-                                "user_id": str(user.id), "chat_id": str(chat_id),
-                                "account_type": result["account_type"],
-                                "account_name": name,
-                                "balance": result["balance"],
-                                "threshold": result["threshold"],
-                            },
-                            source="cmd_bill",
-                        ))
+                        asyncio.ensure_future(
+                            bus.publish(
+                                EventType.BILL_DUE,
+                                {
+                                    "user_id": str(user.id),
+                                    "chat_id": str(chat_id),
+                                    "account_type": result["account_type"],
+                                    "account_name": name,
+                                    "balance": result["balance"],
+                                    "threshold": result["threshold"],
+                                },
+                                source="cmd_bill",
+                            )
+                        )
                     except Exception as e:
                         logger.debug("Silenced exception", exc_info=True)
                 await update.message.reply_text(msg)
@@ -524,6 +537,7 @@ class LifeCommandsMixin:
             from src.execution.life_automation import (
                 get_discount_suggestions,
             )
+
             # 确定要查哪种费用
             target_type = ""
             if len(args) >= 2:
@@ -532,10 +546,7 @@ class LifeCommandsMixin:
                 # 没指定就查所有已追踪的类型
                 accounts = list_bill_accounts(user.id)
                 if not accounts:
-                    await update.message.reply_text(
-                        "严总，你还没有追踪任何费用\n\n"
-                        "先用 /bill add 话费 添加一个吧"
-                    )
+                    await update.message.reply_text("严总，你还没有追踪任何费用\n\n先用 /bill add 话费 添加一个吧")
                     return
                 # 汇总所有追踪类型的优惠
                 all_tips = []
@@ -549,9 +560,7 @@ class LifeCommandsMixin:
                     else:
                         all_tips.append(f"{emoji} {label}: 暂无优惠信息（AI 正在搜索中...）")
                         # 异步触发 AI 搜索优惠
-                        asyncio.ensure_future(
-                            self._fetch_bill_discounts(atype, user.id, chat_id, context)
-                        )
+                        asyncio.ensure_future(self._fetch_bill_discounts(atype, user.id, chat_id, context))
                 msg = "💡 缴费优惠渠道\n━━━━━━━━━━━━━━━\n\n" + "\n\n".join(all_tips)
                 await update.message.reply_text(msg)
                 return
@@ -569,6 +578,7 @@ class LifeCommandsMixin:
         # ── /bill predict [编号] — 消耗预测 ──
         if sub in {"predict", "预测", "预估"}:
             from src.execution.life_automation import predict_balance_exhaustion
+
             accounts = list_bill_accounts(user.id)
             if not accounts:
                 await update.message.reply_text("严总，你还没有追踪任何费用")
@@ -609,8 +619,11 @@ class LifeCommandsMixin:
     async def _fetch_bill_discounts(self, account_type: str, user_id, chat_id, context):
         """用 AI 搜索缴费优惠渠道并缓存结果"""
         from src.execution.life_automation import (
-            save_discount_suggestions, BILL_TYPE_LABEL, BILL_TYPE_EMOJI,
+            save_discount_suggestions,
+            BILL_TYPE_LABEL,
+            BILL_TYPE_EMOJI,
         )
+
         label = BILL_TYPE_LABEL.get(account_type, account_type)
         try:
             # 调用 LLM 搜索优惠信息
@@ -626,7 +639,7 @@ class LifeCommandsMixin:
                 f"4. 用简短的中文回答，不超过 200 字"
             )
             resp = await pool.acompletion(
-                model_family="fast",
+                model_family=FAMILY_FAST,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=300,
                 temperature=0.3,
@@ -638,8 +651,7 @@ class LifeCommandsMixin:
                 emoji = BILL_TYPE_EMOJI.get(account_type, "📋")
                 await context.bot.send_message(
                     chat_id,
-                    f"💡 {emoji} {label}缴费优惠\n━━━━━━━━━━━━━━━\n\n{tips}\n\n"
-                    f"💾 已缓存，7天内不会重复搜索",
+                    f"💡 {emoji} {label}缴费优惠\n━━━━━━━━━━━━━━━\n\n{tips}\n\n💾 已缓存，7天内不会重复搜索",
                 )
         except Exception as e:
             logger.warning("[Bill Tips] AI 搜索优惠失败: %s", e)
@@ -655,7 +667,9 @@ class LifeCommandsMixin:
         /pricewatch remove 3           — 删除第3个监控
         """
         from src.execution.life_automation import (
-            add_price_watch, list_price_watches, remove_price_watch,
+            add_price_watch,
+            list_price_watches,
+            remove_price_watch,
         )
 
         user = update.effective_user
@@ -687,8 +701,7 @@ class LifeCommandsMixin:
         if sub in ("add", "添加", "盯着", "a"):
             if len(args) < 3:
                 await update.message.reply_text(
-                    "❓ 用法: /pricewatch add <商品关键词> <目标价>\n"
-                    "例: /pricewatch add AirPods Pro 800"
+                    "❓ 用法: /pricewatch add <商品关键词> <目标价>\n例: /pricewatch add AirPods Pro 800"
                 )
                 return
             # 最后一个参数是目标价，前面的都是商品关键词
@@ -713,9 +726,7 @@ class LifeCommandsMixin:
                     f"💡 发送 /pricewatch list 查看所有监控"
                 )
             else:
-                await update.message.reply_text(
-                    f"⚠️ 添加失败: {result.get('error', '未知错误')}"
-                )
+                await update.message.reply_text(f"⚠️ 添加失败: {result.get('error', '未知错误')}")
             return
 
         # ── 列表 ──
@@ -736,10 +747,7 @@ class LifeCommandsMixin:
                     price_info = f"  当前 ¥{w['current_price']}"
                     if w["lowest_price"] > 0:
                         price_info += f" | 最低 ¥{w['lowest_price']}"
-                lines.append(
-                    f"{status_icon} #{w['id']} {w['keyword']}\n"
-                    f"  🎯 目标价 ¥{w['target_price']}{price_info}"
-                )
+                lines.append(f"{status_icon} #{w['id']} {w['keyword']}\n  🎯 目标价 ¥{w['target_price']}{price_info}")
             lines.append("\n💡 /pricewatch remove <编号> 删除监控")
             await update.message.reply_text("\n".join(lines))
             return
@@ -760,6 +768,4 @@ class LifeCommandsMixin:
                 await update.message.reply_text("❌ 删除失败 — 编号不存在或无权限")
             return
 
-        await update.message.reply_text(
-            f"❓ 未知子命令: {sub}\n发送 /pricewatch help 查看帮助"
-        )
+        await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /pricewatch help 查看帮助")

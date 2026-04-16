@@ -35,7 +35,8 @@
         {"id": "openai/gpt-oss-120b", "family": "gpt-oss", "tier": "A", "rpm": 30},
         {"id": "qwen/qwen3-32b", "family": "qwen", "tier": "B", "rpm": 60},
         {"id": "meta-llama/llama-4-scout-17b-16e-instruct", "family": "llama", "tier": "B", "rpm": 30},
-        {"id": "llama-3.1-8b-instant", "family": "llama", "tier": "C", "rpm": 30}
+        {"id": "llama-3.1-8b-instant", "family": "llama", "tier": "C", "rpm": 30},
+        {"id": "llama-3.1-8b-instant", "family": "fast", "tier": "A", "rpm": 30, "_comment": "快速推理专用映射"}
       ]
     },
 
@@ -227,7 +228,8 @@
     "gpt": ["qwen", "deepseek", "g4f"],
     "cohere": ["qwen", "deepseek", "g4f"],
     "mistral": ["qwen", "deepseek", "g4f"],
-    "doubao": ["qwen", "deepseek", "g4f"]
+    "doubao": ["qwen", "deepseek", "g4f"],
+    "fast": ["llama", "qwen", "g4f"]
   },
 
   "bot_model_family": {
