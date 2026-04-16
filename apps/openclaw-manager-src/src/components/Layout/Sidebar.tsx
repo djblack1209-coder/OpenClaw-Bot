@@ -1,23 +1,30 @@
 import { motion } from 'framer-motion';
 import {
+  Home,
+  MessageSquare,
+  TrendingUp,
+  Bot,
+  ShoppingBag,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  /* 开发者模式图标 */
   ShieldCheck,
   LayoutDashboard,
-  Bot,
-  MessageSquare,
-  Share2,
-  DollarSign,
+  Workflow,
+  Clock,
+  BrainCircuit,
+  Blocks,
   Code2,
   FlaskConical,
   ScrollText,
-  Settings,
-  Workflow,
-  BrainCircuit,
-  Blocks,
+  Share2,
+  DollarSign,
   Dna,
   Network,
-  Clock
 } from 'lucide-react';
 import { PageType } from '../../App';
+import { useAppStore } from '@/stores/appStore';
 import clsx from 'clsx';
 
 interface ServiceStatus {
@@ -32,15 +39,32 @@ interface SidebarProps {
   serviceStatus: ServiceStatus | null;
 }
 
-const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
+/* 菜单项定义 */
+interface MenuItem {
+  id: PageType;
+  label: string;
+  icon: React.ElementType;
+}
+
+/* C 端主导航（5 大分区） */
+const consumerItems: MenuItem[] = [
+  { id: 'home', label: '首页', icon: Home },
+  { id: 'assistant', label: 'AI 助手', icon: MessageSquare },
+  { id: 'portfolio', label: '我的资产', icon: TrendingUp },
+  { id: 'bots', label: '我的机器人', icon: Bot },
+  { id: 'store', label: '插件商店', icon: ShoppingBag },
+];
+
+/* 开发者模式追加项 */
+const devItems: MenuItem[] = [
   { id: 'control', label: '总控中心', icon: ShieldCheck },
   { id: 'dashboard', label: '概览', icon: LayoutDashboard },
   { id: 'flow', label: '智能流监控', icon: Workflow },
   { id: 'scheduler', label: '任务调度', icon: Clock },
   { id: 'memory', label: '记忆脑图', icon: BrainCircuit },
-  { id: 'plugins', label: 'MCP 插件市场', icon: Blocks },
+  { id: 'plugins', label: 'MCP 插件', icon: Blocks },
   { id: 'ai', label: 'AI 配置', icon: Bot },
-  { id: 'gateway' as PageType, label: 'API 网关', icon: Network },
+  { id: 'gateway', label: 'API 网关', icon: Network },
   { id: 'channels', label: '消息渠道', icon: MessageSquare },
   { id: 'social', label: '社媒总控', icon: Share2 },
   { id: 'money', label: '盈利总控', icon: DollarSign },
@@ -48,83 +72,163 @@ const menuItems: { id: PageType; label: string; icon: React.ElementType }[] = [
   { id: 'dev', label: '开发总控', icon: Code2 },
   { id: 'testing', label: '测试诊断', icon: FlaskConical },
   { id: 'logs', label: '应用日志', icon: ScrollText },
-  { id: 'settings', label: '设置', icon: Settings },
 ];
+
+/* 通用菜单项渲染 */
+function NavItem({
+  item,
+  isActive,
+  collapsed,
+  onNavigate,
+}: {
+  item: MenuItem;
+  isActive: boolean;
+  collapsed: boolean;
+  onNavigate: (page: PageType) => void;
+}) {
+  const Icon = item.icon;
+
+  return (
+    <li>
+      <button
+        onClick={() => onNavigate(item.id)}
+        title={collapsed ? item.label : undefined}
+        className={clsx(
+          'w-full flex items-center gap-3 rounded-lg transition-all text-sm font-medium relative',
+          collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-2',
+          isActive
+            ? 'bg-[var(--oc-sidebar-active)] text-[var(--oc-brand)]'
+            : 'text-[var(--oc-sidebar-text-muted)] hover:bg-dark-700 hover:text-[var(--oc-sidebar-text)]'
+        )}
+      >
+        {/* 左侧激活指示条 */}
+        {isActive && (
+          <motion.div
+            layoutId="activeIndicator"
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[var(--oc-brand)] rounded-r-full"
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          />
+        )}
+        <Icon
+          size={18}
+          className={clsx(
+            'transition-colors flex-shrink-0',
+            isActive ? 'text-[var(--oc-brand)]' : 'text-[var(--oc-sidebar-text-muted)]'
+          )}
+        />
+        {!collapsed && <span>{item.label}</span>}
+      </button>
+    </li>
+  );
+}
 
 export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps) {
   const isRunning = serviceStatus?.running ?? false;
+  const devMode = useAppStore((s) => s.devMode);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 
   return (
-    <aside className="w-16 lg:w-64 transition-all duration-300 bg-dark-800 border-r border-dark-600 flex flex-col">
+    <aside
+      className={clsx(
+        'transition-all duration-300 bg-[var(--oc-sidebar-bg)] border-r border-dark-600 flex flex-col',
+        sidebarCollapsed ? 'w-16' : 'w-60'
+      )}
+    >
       {/* Logo 区域（macOS 标题栏拖拽） */}
-      <div className="h-14 flex items-center px-2 lg:px-6 justify-center lg:justify-start titlebar-drag border-b border-dark-600">
+      <div className="h-14 flex items-center px-2 justify-center titlebar-drag border-b border-dark-600">
         <div className="flex items-center gap-2 titlebar-no-drag">
           <span className="text-2xl">🦞</span>
-          <span className="hidden lg:inline font-bold text-white tracking-wide">OpenClaw</span>
-        </div>
-      </div>
-
-      {/* 服务状态迷你指示器 */}
-      <div className="hidden lg:block px-6 py-4 border-b border-dark-600/50">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">服务状态</span>
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              {isRunning && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-              <span className={clsx("relative inline-flex rounded-full h-2 w-2", isRunning ? "bg-green-500" : "bg-red-500")}></span>
-            </span>
-            <span className={clsx("text-xs font-medium", isRunning ? "text-green-500" : "text-red-500")}>
-              {isRunning ? '在线' : '离线'}
-            </span>
-          </div>
+          {!sidebarCollapsed && (
+            <span className="font-bold text-[var(--oc-sidebar-text)] tracking-wide">OpenClaw</span>
+          )}
         </div>
       </div>
 
       {/* 导航菜单 */}
       <nav className="flex-1 py-4 px-3 overflow-y-auto scroll-container">
+        {/* C 端主导航 */}
         <ul className="space-y-1">
-          {menuItems.map((item) => {
-            const isActive = currentPage === item.id;
-            const Icon = item.icon;
-            
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => onNavigate(item.id)}
-                  className={clsx(
-                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium relative',
-                    isActive
-                      ? 'bg-claw-500/10 text-claw-400'
-                      : 'text-gray-400 hover:bg-dark-700 hover:text-white'
-                  )}
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeIndicator"
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-claw-500 rounded-r-full"
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                    />
-                  )}
-                  <Icon size={18} className={clsx('transition-colors', isActive ? 'text-claw-400' : 'text-gray-500')} />
-                  <span className="hidden lg:inline">{item.label}</span>
-                </button>
-              </li>
-            );
-          })}
+          {consumerItems.map((item) => (
+            <NavItem
+              key={item.id}
+              item={item}
+              isActive={currentPage === item.id}
+              collapsed={sidebarCollapsed}
+              onNavigate={onNavigate}
+            />
+          ))}
         </ul>
+
+        {/* 开发者模式区域 */}
+        {devMode && (
+          <>
+            <div className="my-4 border-t border-dark-600/50" />
+            {!sidebarCollapsed && (
+              <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--oc-sidebar-text-muted)]">
+                开发者工具
+              </p>
+            )}
+            <ul className="space-y-1">
+              {devItems.map((item) => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  isActive={currentPage === item.id}
+                  collapsed={sidebarCollapsed}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+
+        {/* 设置（始终显示，在最后） */}
+        <div className="mt-4 border-t border-dark-600/50 pt-4">
+          <ul>
+            <NavItem
+              item={{ id: 'settings', label: '设置', icon: Settings }}
+              isActive={currentPage === 'settings'}
+              collapsed={sidebarCollapsed}
+              onNavigate={onNavigate}
+            />
+          </ul>
+        </div>
       </nav>
 
-      {/* 底部信息 */}
-      <div className="p-4 border-t border-dark-600">
-        <div className="px-2 lg:px-4 py-3 bg-dark-700 rounded-lg flex items-center justify-center lg:block">
-          <div className="flex items-center gap-2 lg:mb-2">
-            <div className={clsx('status-dot', isRunning ? 'running' : 'stopped')} />
-            <span className="hidden lg:inline text-xs text-gray-400">
+      {/* 底部：服务状态 + 折叠按钮 */}
+      <div className="p-3 border-t border-dark-600">
+        {/* 服务状态 */}
+        <div className={clsx(
+          'px-2 py-2 bg-dark-700 rounded-lg flex items-center mb-2',
+          sidebarCollapsed ? 'justify-center' : 'gap-2'
+        )}>
+          <span className="relative flex h-2 w-2 flex-shrink-0">
+            {isRunning && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--oc-success)] opacity-75" />
+            )}
+            <span
+              className={clsx(
+                'relative inline-flex rounded-full h-2 w-2',
+                isRunning ? 'bg-[var(--oc-success)]' : 'bg-[var(--oc-danger)]'
+              )}
+            />
+          </span>
+          {!sidebarCollapsed && (
+            <span className={clsx('text-xs font-medium', isRunning ? 'text-[var(--oc-success)]' : 'text-[var(--oc-danger)]')}>
               {isRunning ? '服务运行中' : '服务未启动'}
             </span>
-          </div>
-          <p className="hidden lg:block text-xs text-gray-500">端口: {serviceStatus?.port ?? 18790}</p>
+          )}
         </div>
+
+        {/* 折叠/展开按钮 */}
+        <button
+          onClick={toggleSidebar}
+          className="w-full flex items-center justify-center py-1.5 rounded-lg text-[var(--oc-sidebar-text-muted)] hover:bg-dark-700 transition-colors"
+          title={sidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
+        >
+          {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
     </aside>
   );

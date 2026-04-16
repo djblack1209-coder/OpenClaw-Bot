@@ -6,6 +6,14 @@ import { Toaster } from 'sonner';
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 
+/* ====== C 端新页面（占位组件，后续各 Phase 会替换为完整实现） ====== */
+const HomeDashboard = lazy(() => import('./components/Home').then(m => ({ default: m.HomeDashboard })));
+const Assistant = lazy(() => import('./components/Assistant').then(m => ({ default: m.Assistant })));
+const Portfolio = lazy(() => import('./components/Portfolio').then(m => ({ default: m.Portfolio })));
+const Bots = lazy(() => import('./components/Bots').then(m => ({ default: m.Bots })));
+const Store = lazy(() => import('./components/Store').then(m => ({ default: m.Store })));
+
+/* ====== 原有页面（开发者模式下显示） ====== */
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 const ControlCenter = lazy(() => import('./components/ControlCenter').then(m => ({ default: m.ControlCenter })));
 const AIConfig = lazy(() => import('./components/AIConfig').then(m => ({ default: m.AIConfig })));
@@ -34,23 +42,26 @@ import { Header } from './components/Layout/Header';
 import { CommandPalette } from './components/CommandPalette';
 import { PageErrorBoundary } from './components/PageErrorBoundary';
 
-
-
-
-
-
-
-
-
-
-
-
-
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 import { useAppStore } from './stores/appStore';
 
-export type PageType = 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money' | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins' | 'memory' | 'evolution' | 'gateway' | 'scheduler';
+/**
+ * 页面类型联合类型
+ * C 端新增 5 个一级页面：home / assistant / portfolio / bots / store
+ * 原有 16 个页面保留，在开发者模式下可访问
+ */
+export type PageType =
+  /* C 端一级页面 */
+  | 'home'       // 首页 Dashboard
+  | 'assistant'  // AI 助手（对话界面）
+  | 'portfolio'  // 我的资产
+  | 'bots'       // 我的机器人
+  | 'store'      // 插件商店
+  /* 原有页面（开发者模式） */
+  | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
+  | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
+  | 'memory' | 'evolution' | 'gateway' | 'scheduler';
 
 export interface EnvironmentStatus {
   node_installed: boolean;
@@ -148,14 +159,22 @@ function App() {
   };
 
   const renderPage = () => {
+    /* 页面过渡动画：淡入 + 微缩放，比旧版的 x 偏移更有 Apple 质感 */
     const pageVariants = {
-      initial: { opacity: 0, x: 20 },
-      animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: -20 },
+      initial: { opacity: 0, scale: 0.98 },
+      animate: { opacity: 1, scale: 1 },
+      exit: { opacity: 0, scale: 0.98 },
     };
 
     // 每个页面用 PageErrorBoundary 隔离崩溃，单页出错不影响侧边栏和其他页面
     const pages: Record<PageType, JSX.Element> = {
+      /* C 端新页面 */
+      home: <PageErrorBoundary pageName="首页"><HomeDashboard /></PageErrorBoundary>,
+      assistant: <PageErrorBoundary pageName="AI 助手"><Assistant /></PageErrorBoundary>,
+      portfolio: <PageErrorBoundary pageName="我的资产"><Portfolio /></PageErrorBoundary>,
+      bots: <PageErrorBoundary pageName="我的机器人"><Bots /></PageErrorBoundary>,
+      store: <PageErrorBoundary pageName="插件商店"><Store /></PageErrorBoundary>,
+      /* 原有页面 */
       control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
       dashboard: <PageErrorBoundary pageName="仪表盘"><Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} /></PageErrorBoundary>,
       flow: <PageErrorBoundary pageName="执行流"><ExecutionFlow /></PageErrorBoundary>,
@@ -182,7 +201,7 @@ function App() {
           initial="initial"
           animate="animate"
           exit="exit"
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
           className="h-full"
         >
           <Suspense fallback={<PageLoader />}>
