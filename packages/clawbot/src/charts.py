@@ -13,6 +13,7 @@ OpenClaw 图表引擎 — 搬运 plotly (18.4k⭐) + kaleido
 所有图表输出 PNG bytes，直接发送到 Telegram。
 plotly/kaleido 不可用时自动降级到 telegram_ux.py 的 matplotlib 实现。
 """
+
 from __future__ import annotations
 
 import io
@@ -31,6 +32,7 @@ _PLOTLY_AVAILABLE = False
 try:
     import plotly.graph_objects as go  # type: ignore[import-untyped]
     from plotly.subplots import make_subplots  # type: ignore[import-untyped]
+
     _PLOTLY_AVAILABLE = True
 except ImportError:
     logger.info("[charts] plotly 未安装，将降级到 matplotlib")
@@ -72,6 +74,7 @@ _DARK_LAYOUT = dict(
 
 # ── 工具函数 ─────────────────────────────────────────────
 
+
 def _fig_to_png(fig: "go.Figure") -> bytes:
     """将 plotly Figure 导出为 PNG bytes (via kaleido)。"""
     try:
@@ -89,6 +92,7 @@ def _matplotlib_fallback(fn_name: str):
     """返回 telegram_ux.py 中同名的 matplotlib 函数，找不到则返回 None。"""
     try:
         from src import telegram_ux
+
         fn = getattr(telegram_ux, fn_name, None)
         if fn is not None:
             logger.info("[charts] 降级到 matplotlib: %s", fn_name)
@@ -100,6 +104,7 @@ def _matplotlib_fallback(fn_name: str):
 # ============================================================
 # a) K线图 — candlestick + volume + 技术指标叠加
 # ============================================================
+
 
 def generate_candlestick(
     ohlcv_data: List[Dict[str, Any]],
@@ -135,7 +140,9 @@ def generate_candlestick(
     volumes = [d.get("volume", 0) for d in ohlcv_data]
 
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
         vertical_spacing=0.03,
         row_heights=[0.75, 0.25],
     )
@@ -143,12 +150,17 @@ def generate_candlestick(
     # ── 主图：K 线
     fig.add_trace(
         go.Candlestick(
-            x=dates, open=opens, high=highs, low=lows, close=closes,
+            x=dates,
+            open=opens,
+            high=highs,
+            low=lows,
+            close=closes,
             increasing_line_color="#2ecc71",
             decreasing_line_color="#e74c3c",
             name=symbol or "OHLC",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # ── 叠加指标
@@ -160,11 +172,14 @@ def generate_candlestick(
             if vals:
                 fig.add_trace(
                     go.Scatter(
-                        x=dates[:len(vals)], y=vals,
-                        mode="lines", name=f"MA{period}",
+                        x=dates[: len(vals)],
+                        y=vals,
+                        mode="lines",
+                        name=f"MA{period}",
                         line=dict(width=1.2),
                     ),
-                    row=1, col=1,
+                    row=1,
+                    col=1,
                 )
 
         # 布林带
@@ -179,11 +194,14 @@ def generate_candlestick(
                 if vals:
                     fig.add_trace(
                         go.Scatter(
-                            x=dates[:len(vals)], y=vals,
-                            mode="lines", name=f"BB-{key}",
+                            x=dates[: len(vals)],
+                            y=vals,
+                            mode="lines",
+                            name=f"BB-{key}",
                             line=dict(width=1, color=color, dash=dash),
                         ),
-                        row=1, col=1,
+                        row=1,
+                        col=1,
                     )
 
         # 买卖信号标记
@@ -204,17 +222,16 @@ def generate_candlestick(
                         name=side.upper(),
                         showlegend=False,
                     ),
-                    row=1, col=1,
+                    row=1,
+                    col=1,
                 )
 
     # ── 副图：成交量
-    vol_colors = [
-        "#2ecc71" if c >= o else "#e74c3c"
-        for o, c in zip(opens, closes)
-    ]
+    vol_colors = ["#2ecc71" if c >= o else "#e74c3c" for o, c in zip(opens, closes)]
     fig.add_trace(
         go.Bar(x=dates, y=volumes, marker_color=vol_colors, name="Volume", showlegend=False),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     fig.update_layout(
@@ -234,6 +251,7 @@ def generate_candlestick(
 # ============================================================
 # b) 持仓分布饼图
 # ============================================================
+
 
 def generate_portfolio_pie(
     positions: List[Dict[str, Any]],
@@ -295,6 +313,7 @@ def generate_portfolio_pie(
 # c) PnL 瀑布图
 # ============================================================
 
+
 def generate_pnl_waterfall(
     trades: List[Dict[str, Any]],
     title: str = "交易盈亏",
@@ -355,6 +374,7 @@ def generate_pnl_waterfall(
 # d) 权益曲线 — 基准对比 + 回撤阴影
 # ============================================================
 
+
 def generate_equity_curve(
     equity_data: List[float],
     benchmark: Optional[List[float]] = None,
@@ -394,16 +414,21 @@ def generate_equity_curve(
     # 峰值线（透明，用于 fill between）
     fig.add_trace(
         go.Scatter(
-            x=x, y=drawdown_y,
-            mode="lines", line=dict(width=0), showlegend=False,
+            x=x,
+            y=drawdown_y,
+            mode="lines",
+            line=dict(width=0),
+            showlegend=False,
             hoverinfo="skip",
         )
     )
     # 权益线 + 回撤填充
     fig.add_trace(
         go.Scatter(
-            x=x, y=equity_data,
-            mode="lines", name="权益",
+            x=x,
+            y=equity_data,
+            mode="lines",
+            name="权益",
             line=dict(color="#00d4aa", width=2.5),
             fill="tonexty",
             fillcolor="rgba(239, 68, 68, 0.15)",  # 回撤区域红色半透
@@ -415,8 +440,10 @@ def generate_equity_curve(
         bm_x = list(range(len(benchmark)))
         fig.add_trace(
             go.Scatter(
-                x=bm_x, y=benchmark,
-                mode="lines", name="基准",
+                x=bm_x,
+                y=benchmark,
+                mode="lines",
+                name="基准",
                 line=dict(color="#f0b90b", width=1.5, dash="dash"),
             )
         )
@@ -429,18 +456,26 @@ def generate_equity_curve(
         min_idx = equity_data.index(min_val)
 
         fig.add_annotation(
-            x=max_idx, y=max_val,
+            x=max_idx,
+            y=max_val,
             text=f"${max_val:,.0f}",
-            showarrow=True, arrowhead=2, arrowcolor="#2ecc71",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="#2ecc71",
             font=dict(color="#2ecc71", size=11),
-            ax=0, ay=-25,
+            ax=0,
+            ay=-25,
         )
         fig.add_annotation(
-            x=min_idx, y=min_val,
+            x=min_idx,
+            y=min_val,
             text=f"${min_val:,.0f}",
-            showarrow=True, arrowhead=2, arrowcolor="#e74c3c",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="#e74c3c",
             font=dict(color="#e74c3c", size=11),
-            ax=0, ay=25,
+            ax=0,
+            ay=25,
         )
 
     fig.update_layout(
@@ -456,71 +491,9 @@ def generate_equity_curve(
 
 
 # ============================================================
-# e) 情绪仪表盘 — RSI / Fear&Greed
+# e) 任务 DAG 流程图 — mermaid.ink 渲染
 # ============================================================
 
-def generate_sentiment_gauge(
-    score: float,
-    label: str = "市场情绪",
-) -> bytes:
-    """仪表盘可视化 — 适用于 RSI、恐贪指数等 0-100 分值。
-
-    Args:
-        score: 0-100 分值
-        label: 显示标签 (如 "RSI", "Fear & Greed")
-
-    Returns:
-        PNG bytes
-    """
-    if not _PLOTLY_AVAILABLE:
-        logger.warning("[charts] plotly 不可用，gauge 无降级")
-        return b""
-
-    score = max(0.0, min(100.0, float(score)))
-
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number+delta",
-            value=score,
-            title=dict(text=label, font=dict(size=18, color=_TEXT_COLOR)),
-            number=dict(font=dict(size=40, color=_TEXT_COLOR)),
-            gauge=dict(
-                axis=dict(range=[0, 100], tickcolor=_TEXT_COLOR),
-                bar=dict(color="#f0b90b", thickness=0.3),
-                bgcolor=_PANEL_BG,
-                borderwidth=2,
-                bordercolor="#333333",
-                steps=[
-                    dict(range=[0, 25], color="#ef4444"),     # 极度恐惧 — 红
-                    dict(range=[25, 45], color="#f97316"),     # 恐惧 — 橙
-                    dict(range=[45, 55], color="#eab308"),     # 中性 — 黄
-                    dict(range=[55, 75], color="#84cc16"),     # 贪婪 — 黄绿
-                    dict(range=[75, 100], color="#22c55e"),    # 极度贪婪 — 绿
-                ],
-                threshold=dict(
-                    line=dict(color="#ffffff", width=3),
-                    thickness=0.8,
-                    value=score,
-                ),
-            ),
-        )
-    )
-
-    fig.update_layout(
-        paper_bgcolor=_DARK_BG,
-        plot_bgcolor=_PANEL_BG,
-        font=dict(color=_TEXT_COLOR),
-        width=_WIDTH,
-        height=_HEIGHT,
-        margin=dict(l=40, r=40, t=80, b=30),
-    )
-
-    return _fig_to_png(fig)
-
-
-# ============================================================
-# f) 任务 DAG 流程图 — mermaid.ink 渲染
-# ============================================================
 
 async def render_task_dag(
     nodes: Dict[str, Any],
@@ -596,28 +569,10 @@ async def render_task_dag(
             return resp.content
         logger.warning(
             "[charts] mermaid.ink 返回 %s, diagram=%s",
-            resp.status_code, diagram[:200],
+            resp.status_code,
+            diagram[:200],
         )
     except Exception as exc:
         logger.warning("[charts] mermaid.ink 请求失败: %s", exc)
 
-    return b""
-
-
-# ============================================================
-# 便捷入口: 从 TaskGraph 对象直接渲染
-# ============================================================
-
-async def render_graph(graph: Any, title: str = "") -> bytes:
-    """从 TaskGraph 对象渲染 DAG 图。
-
-    Args:
-        graph: core.task_graph.TaskGraph 实例
-        title: 可选标题 (默认取 graph.name)
-
-    Returns:
-        PNG bytes
-    """
-    if hasattr(graph, "nodes") and isinstance(graph.nodes, dict):
-        return await render_task_dag(graph.nodes, title=title or getattr(graph, "name", ""))
     return b""

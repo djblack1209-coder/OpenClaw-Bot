@@ -5,6 +5,7 @@
 
 > 最后更新: 2026-03-27
 """
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -48,39 +49,3 @@ def get_watchlist_with_targets() -> List[Dict]:
     except Exception as e:
         logger.debug(f"获取自选股详情失败: {e}")
         return []
-
-
-def add_watchlist_symbol(
-    symbol: str,
-    added_by: str = "system",
-    reason: str = "",
-    target_price: float = None,
-    stop_loss: float = None,
-) -> Dict:
-    """添加自选股（桥接 Portfolio.add_watchlist）"""
-    try:
-        from src.invest_tools import Portfolio
-
-        portfolio = Portfolio()
-        return portfolio.add_watchlist(
-            symbol=symbol,
-            added_by=added_by,
-            reason=reason,
-            target_price=target_price,
-            stop_loss=stop_loss,
-        )
-    except Exception as e:
-        logger.debug(f"添加自选股失败: {e}")
-        return {"error": str(e)}
-
-
-def remove_watchlist_symbol(symbol: str) -> Dict:
-    """移除自选股（桥接 Portfolio.remove_watchlist）"""
-    try:
-        from src.invest_tools import Portfolio
-
-        portfolio = Portfolio()
-        return portfolio.remove_watchlist(symbol)
-    except Exception as e:
-        logger.debug(f"移除自选股失败: {e}")
-        return {"error": str(e)}
