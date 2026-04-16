@@ -34,7 +34,7 @@ class LifeExecutorMixin:
             from src.tools.tavily_search import search_context, _HAS_TAVILY
 
             if _HAS_TAVILY:
-                logger.info(f"[比价] 使用 Tavily 搜索: {product}")
+                logger.info("[比价] 使用 Tavily 搜索: %s", product)
                 tavily_ctx = await search_context(f"{product} 价格对比 京东 淘宝 拼多多", max_results=5)
                 if tavily_ctx and len(tavily_ctx) > 200:
                     from src.litellm_router import free_pool
@@ -86,14 +86,14 @@ class LifeExecutorMixin:
         except ImportError:
             logger.debug("[比价] tavily_search 不可用")
         except Exception as e:
-            logger.warning(f"[比价] Tavily 搜索异常: {e}")
+            logger.warning("[比价] Tavily 搜索异常: %s", e)
 
         # ── 第一级: crawl4ai 结构化比价 ──
         try:
             from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
 
             if HAS_CRAWL4AI:
-                logger.info(f"[比价] 使用 crawl4ai 引擎: {product}")
+                logger.info("[比价] 使用 crawl4ai 引擎: %s", product)
                 result = await smart_compare(product)
                 if result.products and any(p.price > 0 for p in result.products):
                     data = result.to_dict()
@@ -104,7 +104,7 @@ class LifeExecutorMixin:
         except ImportError:
             logger.debug("[比价] crawl4ai_engine 不可用")
         except Exception as e:
-            logger.warning(f"[比价] crawl4ai 引擎异常: {e}")
+            logger.warning("[比价] crawl4ai 引擎异常: %s", e)
 
         # ── 第二级: Jina + LLM 分析 ──
         jina_context = ""
@@ -167,7 +167,7 @@ class LifeExecutorMixin:
                         "recommendation": content[:200],
                     }
         except Exception as e:
-            logger.warning(f"智能比价失败: {e}")
+            logger.warning("智能比价失败: %s", e)
 
         return {"source": "unavailable", "product": product, "note": "比价服务暂时不可用"}
 
@@ -194,10 +194,10 @@ class LifeExecutorMixin:
                     return {"source": platform, "results": report.__dict__}
                 return {"source": platform, "results": report if isinstance(report, dict) else str(report)}
         except ImportError as e:
-            logger.warning(f"{platform}搜索: 模块不可用 ({e})")
+            logger.warning("%s搜索: 模块不可用 (%s)", platform, e)
             return {"source": platform, "results": [], "note": f"{platform} 搜索模块未就绪"}
         except Exception as e:
-            logger.warning(f"{platform}搜索失败: {e}")
+            logger.warning("%s搜索失败: %s", platform, e)
             return {"source": platform, "results": [], "error": str(e)}
 
     async def _exec_rank_results(self, params: Dict) -> Dict:
@@ -225,7 +225,7 @@ class LifeExecutorMixin:
                     raw = tavily_raw
                     search_source = "tavily"
         except Exception as e:
-            logger.debug(f"[预订] Tavily 搜索失败: {e}")
+            logger.debug("[预订] Tavily 搜索失败: %s", e)
 
         if not raw:
             try:
@@ -233,7 +233,7 @@ class LifeExecutorMixin:
 
                 raw = await jina_search(f"{goal} 预约 预订 价格")
             except Exception as e:
-                logger.debug(f"[预订] Jina 搜索失败: {e}")
+                logger.debug("[预订] Jina 搜索失败: %s", e)
 
         if raw and len(raw) > 100:
             try:
@@ -259,7 +259,7 @@ class LifeExecutorMixin:
                         logger.debug("Silenced exception", exc_info=True)
                     return {"source": f"{search_source}_search", "results": [], "raw": content[:500]}
             except Exception as e:
-                logger.warning(f"预订搜索 LLM 结构化失败: {e}")
+                logger.warning("预订搜索 LLM 结构化失败: %s", e)
         return {"source": "booking_search", "results": [], "note": "预订搜索暂不可用"}
 
     async def _exec_detect_booking_method(self, params: Dict) -> Dict:
@@ -283,7 +283,7 @@ class LifeExecutorMixin:
                     return {"source": "browser_use", "success": True, "result": result}
                 return {"source": "browser_use", "success": False, "details": result}
         except Exception as e:
-            logger.warning(f"浏览器预订失败: {e}")
+            logger.warning("浏览器预订失败: %s", e)
         return {"source": "booking_fallback", "success": False, "note": "浏览器自动化未就绪"}
 
     async def _exec_booking_phone(self, params: Dict) -> Dict:
@@ -324,7 +324,7 @@ class LifeExecutorMixin:
                     return {"source": "weather", "city": city, "text": forecast_text, "forecasts": data["forecasts"]}
                 return {"source": "weather", "city": city, "note": "天气数据暂不可用"}
             except Exception as e:
-                logger.warning(f"天气查询失败: {e}")
+                logger.warning("天气查询失败: %s", e)
 
         # 提醒/日程
         if any(kw in goal for kw in ["提醒", "闹钟", "备忘", "remind"]):
@@ -334,7 +334,7 @@ class LifeExecutorMixin:
                 reminder = await create_reminder(goal)
                 return {"source": "reminder", "data": reminder}
             except Exception as e:
-                logger.warning(f"提醒设置失败: {e}")
+                logger.warning("提醒设置失败: %s", e)
 
         # 汇率查询
         if any(kw in goal for kw in ["汇率", "换算", "兑换", "exchange"]):
@@ -344,6 +344,6 @@ class LifeExecutorMixin:
                 data = await get_exchange_rate()
                 return {"source": "exchange_rate", "data": data}
             except Exception as e:
-                logger.warning(f"汇率查询失败: {e}")
+                logger.warning("汇率查询失败: %s", e)
 
         return {"source": "life", "note": "生活服务模块开发中"}

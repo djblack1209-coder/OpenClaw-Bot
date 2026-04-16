@@ -133,7 +133,7 @@ class ExecutionScheduler:
                 )
                 await self._private_notify_func(msg)
         except Exception as e:
-            logger.debug(f"[Strategy] 周度评估异常: {e}")
+            logger.debug("[Strategy] 周度评估异常: %s", e)
 
     async def _run_weekly_report(self):
         """每周日 20:30 推送综合周报 — 聚合投资+社媒+闲鱼+成本"""
@@ -153,7 +153,7 @@ class ExecutionScheduler:
                 await self._private_notify_func(result)
                 logger.info("[Scheduler] 综合周报已推送")
         except Exception as e:
-            logger.error(f"[Scheduler] 综合周报推送失败: {e}")
+            logger.error("[Scheduler] 综合周报推送失败: %s", e)
 
     async def _run_morning_news(self, now):
         """每天早上 8:00 自动推送科技早报 — 不需要用户手动发 /news"""
@@ -176,7 +176,7 @@ class ExecutionScheduler:
                 await self._private_notify_func(f"📰 今日科技早报\n\n{report}")
                 logger.info("[Scheduler] 科技早报已自动推送")
         except Exception as e:
-            logger.debug(f"[Scheduler] 科技早报推送失败: {e}")
+            logger.debug("[Scheduler] 科技早报推送失败: %s", e)
 
     async def _run_daily_coupon(self, _now):
         """每天自动领取微信笔笔省提现券
@@ -211,7 +211,7 @@ class ExecutionScheduler:
                 await self._private_notify_func(f"🎫 每日领券\n\n{result}")
                 logger.info("[Scheduler] 每日领券已执行: %s", result[:50])
         except Exception as e:
-            logger.debug(f"[Scheduler] 每日领券失败: {e}")
+            logger.debug("[Scheduler] 每日领券失败: %s", e)
 
     async def _run_daily_brief(self, now, brief_time):
         if os.getenv("OPS_BRIEF_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
@@ -243,7 +243,7 @@ class ExecutionScheduler:
             if self._notify_func and result and len(str(result).strip()) > 20:
                 await self._notify_func(result)
         except Exception as e:
-            logger.error(f"[Scheduler] daily brief failed: {e}")
+            logger.error("[Scheduler] daily brief failed: %s", e)
 
     async def _run_monitors(self, ts, interval):
         if os.getenv("OPS_MONITOR_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
@@ -262,7 +262,7 @@ class ExecutionScheduler:
                 if formatted.strip():
                     await self._notify_func(formatted)
         except Exception as e:
-            logger.error(f"[Scheduler] monitor failed: {e}")
+            logger.error("[Scheduler] monitor failed: %s", e)
 
     async def _run_social_operator(self, ts, interval):
         if interval <= 0 or not self.social_autopilot_func:
@@ -273,7 +273,7 @@ class ExecutionScheduler:
             await self.social_autopilot_func()
             self._last_social_operator_ts = ts
         except Exception as e:
-            logger.error(f"[Scheduler] social operator failed: {e}")
+            logger.error("[Scheduler] social operator failed: %s", e)
 
     async def _run_bounty_scan(self, ts, interval):
         if os.getenv("OPS_BOUNTY_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
@@ -292,7 +292,7 @@ class ExecutionScheduler:
                     f"下一步: /ops bounty top"
                 )
         except Exception as e:
-            logger.error(f"[Scheduler] bounty scan failed: {e}")
+            logger.error("[Scheduler] bounty scan failed: %s", e)
 
     async def _run_reminders(self):
         """检查并触发到期的提醒 — 每60秒执行一次"""
@@ -320,12 +320,12 @@ class ExecutionScheduler:
                         else:
                             await self._notify_func(notification)
                     except Exception as e:
-                        logger.warning(f"[Reminders] 通知发送失败: {e}")
+                        logger.warning("[Reminders] 通知发送失败: %s", e)
 
-                logger.info(f'[Reminders] 已触发: #{reminder["id"]} "{msg}"')
+                logger.info('[Reminders] 已触发: #%s "%s"', reminder["id"], msg)
 
         except Exception as e:
-            logger.warning(f"[Reminders] 检查异常: {e}")
+            logger.warning("[Reminders] 检查异常: %s", e)
 
     async def _run_bill_checks(self, now):
         """账单低余额告警 + 定期查询提醒
@@ -452,12 +452,12 @@ class ExecutionScheduler:
                     try:
                         await self._private_notify_func(msg)
                     except Exception as e:
-                        logger.warning(f"[Xianyu] 发货提醒通知失败: {e}")
+                        logger.warning("[Xianyu] 发货提醒通知失败: %s", e)
                 ctx.mark_shipment_reminded(order["id"])
         except ImportError:
             pass  # 闲鱼模块未安装
         except Exception as e:
-            logger.debug(f"[Xianyu] 发货检查异常: {e}")
+            logger.debug("[Xianyu] 发货检查异常: %s", e)
 
     async def _run_stock_check(self, ts):
         """每4小时巡检闲鱼商品库存，低于阈值推送 Telegram 预警"""
@@ -481,7 +481,7 @@ class ExecutionScheduler:
         except ImportError:
             pass
         except Exception as e:
-            logger.debug(f"[Scheduler] 库存巡检异常: {e}")
+            logger.debug("[Scheduler] 库存巡检异常: %s", e)
 
     async def _run_price_watch_check(self, now, ts):
         """每6小时检查降价监控 — 06:00/12:00/18:00/00:00 ET 各执行一次"""

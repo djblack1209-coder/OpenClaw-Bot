@@ -17,6 +17,7 @@ OpenClaw OMEGA — 多智能体投资团队 (Investment Team)
   - 复用 risk_manager.py 的风控规则
   - 通过 EventBus 发布交易事件
 """
+
 import asyncio
 import json
 import logging
@@ -31,24 +32,26 @@ logger = logging.getLogger(__name__)
 # ── 风控硬性规则（任何情况不得违反）─────────────────────
 
 RISK_RULES = {
-    "max_position_single": 0.20,      # 单标的最大仓位 20%
-    "max_sector_position": 0.35,      # 同行业最大仓位 35%
-    "max_total_position": 0.80,       # 总仓位上限 80%
-    "max_drawdown_stop": 0.08,        # 单标的回撤 >8% 自动止损
-    "daily_loss_limit": 0.03,         # 单日亏损 >3% 暂停交易
+    "max_position_single": 0.20,  # 单标的最大仓位 20%
+    "max_sector_position": 0.35,  # 同行业最大仓位 35%
+    "max_total_position": 0.80,  # 总仓位上限 80%
+    "max_drawdown_stop": 0.08,  # 单标的回撤 >8% 自动止损
+    "daily_loss_limit": 0.03,  # 单日亏损 >3% 暂停交易
     "require_human_approval_rmb": 100000,  # 单笔 >10万 RMB 需人工确认
-    "correlation_check": True,         # 持仓相关性检查
-    "liquidity_check": True,           # 流动性检查
+    "correlation_check": True,  # 持仓相关性检查
+    "liquidity_check": True,  # 流动性检查
 }
 
 # ── 数据结构 ──────────────────────────────────────────
 
+
 @dataclass
 class AgentReport:
     """单个角色的分析报告"""
+
     agent_id: str
     agent_name: str
-    score: float = 0.0            # 0-10 综合评分
+    score: float = 0.0  # 0-10 综合评分
     recommendation: str = "hold"  # buy/sell/hold
     reasoning: str = ""
     data: Dict[str, Any] = field(default_factory=dict)
@@ -58,6 +61,7 @@ class AgentReport:
 @dataclass
 class TeamAnalysis:
     """投资团队完整分析结果"""
+
     symbol: str
     market: str = "cn"
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
@@ -141,12 +145,14 @@ class TeamAnalysis:
                     lines.append(f"   🏆 最优策略: {sv['best_strategy']} ({best_pct:.1f}%)")
 
         # 最终决策
-        lines.extend([
-            "",
-            "━━━ 最终决策 ━━━",
-            f"建议: {self.final_recommendation.upper()}",
-            f"置信度: {self.confidence:.0%}",
-        ])
+        lines.extend(
+            [
+                "",
+                "━━━ 最终决策 ━━━",
+                f"建议: {self.final_recommendation.upper()}",
+                f"置信度: {self.confidence:.0%}",
+            ]
+        )
         if self.target_price > 0:
             lines.append(f"目标价: {self.target_price:.2f}")
         if self.stop_loss > 0:
@@ -160,6 +166,7 @@ class TeamAnalysis:
 @dataclass
 class DailyBrief:
     """每日投资简报"""
+
     date: str = field(default_factory=lambda: now_et().strftime("%Y-%m-%d"))
     market_overview: str = ""
     opportunities: List[Dict] = field(default_factory=list)
@@ -182,6 +189,7 @@ REVIEWER_PROMPT = _ROLES["reviewer"]
 
 
 # ── 投资团队 ──────────────────────────────────────────
+
 
 class InvestmentTeam:
     """
@@ -250,7 +258,7 @@ class InvestmentTeam:
         except ImportError:
             logger.warning("CrewAI 未安装，投资团队使用降级模式")
         except Exception as e:
-            logger.error(f"CrewAI 初始化失败: {e}", exc_info=True)
+            logger.error("CrewAI 初始化失败: %s", e, exc_info=True)
 
     async def analyze(
         self,
@@ -272,7 +280,7 @@ class InvestmentTeam:
         analysis = TeamAnalysis(symbol=symbol, market=market)
 
         # 1. 并行：研究 + TA + 量化
-        logger.info(f"[投资团队] 开始分析 {symbol}")
+        logger.info("[投资团队] 开始分析 %s", symbol)
         tasks = [
             self._run_researcher(symbol, market),
             self._run_ta_analyst(symbol, market),
@@ -282,7 +290,7 @@ class InvestmentTeam:
 
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.warning(f"角色分析失败: {result}")
+                logger.warning("角色分析失败: %s", result)
                 continue
             if i == 0:
                 analysis.research_report = result
@@ -300,7 +308,7 @@ class InvestmentTeam:
             analysis.veto_reason = analysis.risk_report.data.get("veto_reason", "风控否决")
             analysis.final_recommendation = "hold"
             analysis.confidence = 0.0
-            logger.info(f"[投资团队] {symbol} 被风控否决: {analysis.veto_reason}")
+            logger.info("[投资团队] %s 被风控否决: %s", symbol, analysis.veto_reason)
         else:
             # 4. 总监决策
             analysis.director_report = await self._run_director(symbol, analysis)
@@ -309,13 +317,12 @@ class InvestmentTeam:
                 analysis.confidence = analysis.director_report.data.get("confidence", 0.5)
                 analysis.target_price = analysis.director_report.data.get("target_price", 0)
                 analysis.stop_loss = analysis.director_report.data.get("stop_loss", 0)
-                analysis.position_size_pct = analysis.director_report.data.get(
-                    "position_size_pct", 0
-                )
+                analysis.position_size_pct = analysis.director_report.data.get("position_size_pct", 0)
 
         # 5. 发布事件
         try:
             from src.core.event_bus import get_event_bus, EventType
+
             bus = get_event_bus()
             await bus.publish(
                 EventType.TRADE_SIGNAL,
@@ -325,7 +332,7 @@ class InvestmentTeam:
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
 
-        logger.info(f"[投资团队] {symbol} 分析完成: {analysis.final_recommendation}")
+        logger.info("[投资团队] %s 分析完成: %s", symbol, analysis.final_recommendation)
         return analysis
 
     async def research(self, symbol: str) -> Dict:
@@ -352,6 +359,7 @@ class InvestmentTeam:
             # 协同管道富化：注入社交信号（如果有）
             try:
                 from src.core.synergy_pipelines import get_synergy_pipelines
+
                 sp = get_synergy_pipelines()
                 social_signal = sp.get_social_signal(symbol)
                 if social_signal:
@@ -371,7 +379,7 @@ class InvestmentTeam:
             report.data = analysis
         except Exception as e:
             report.reasoning = f"分析失败: {e}"
-            logger.warning(f"研究员分析失败: {e}")
+            logger.warning("研究员分析失败: %s", e)
 
         report.elapsed_seconds = time.time() - start
         return report
@@ -394,7 +402,7 @@ class InvestmentTeam:
             report.data = analysis
         except Exception as e:
             report.reasoning = f"分析失败: {e}"
-            logger.warning(f"技术分析师分析失败: {e}")
+            logger.warning("技术分析师分析失败: %s", e)
 
         report.elapsed_seconds = time.time() - start
         return report
@@ -411,20 +419,21 @@ class InvestmentTeam:
             signal_validation = {}
             try:
                 from src.modules.investment.backtester_vbt import quick_signal_validation
+
                 signal_validation = await asyncio.wait_for(
                     quick_signal_validation(symbol, period="6mo"),
                     timeout=15.0,
                 )
                 if signal_validation.get("available"):
                     quant_data["signal_validation"] = {
-                        "avg_win_rate": f"{signal_validation['avg_win_rate']*100:.1f}%",
+                        "avg_win_rate": f"{signal_validation['avg_win_rate'] * 100:.1f}%",
                         "best_strategy": signal_validation["best_strategy"],
-                        "best_win_rate": f"{signal_validation['best_win_rate']*100:.1f}%",
+                        "best_win_rate": f"{signal_validation['best_win_rate'] * 100:.1f}%",
                         "confidence": signal_validation["confidence_label"],
                         "strategies_tested": len(signal_validation["strategies"]),
                     }
             except Exception as bt_err:
-                logger.debug(f"量化分析师信号验证跳过: {bt_err}")
+                logger.debug("量化分析师信号验证跳过: %s", bt_err)
 
             analysis = await self._llm_analyze(
                 QUANT_PROMPT,
@@ -437,7 +446,7 @@ class InvestmentTeam:
             report.data["signal_validation"] = signal_validation
         except Exception as e:
             report.reasoning = f"分析失败: {e}"
-            logger.warning(f"量化工程师分析失败: {e}")
+            logger.warning("量化工程师分析失败: %s", e)
 
         report.elapsed_seconds = time.time() - start
         return report
@@ -450,22 +459,22 @@ class InvestmentTeam:
         try:
             # 收集各角色的建议
             team_summary = []
-            for label, r in [("研究员", analysis.research_report),
-                             ("技术分析", analysis.ta_report),
-                             ("量化", analysis.quant_report)]:
+            for label, r in [
+                ("研究员", analysis.research_report),
+                ("技术分析", analysis.ta_report),
+                ("量化", analysis.quant_report),
+            ]:
                 if r:
-                    team_summary.append(
-                        f"{label}: {r.recommendation} ({r.score:.1f}/10) — {r.reasoning[:50]}"
-                    )
+                    team_summary.append(f"{label}: {r.recommendation} ({r.score:.1f}/10) — {r.reasoning[:50]}")
 
             # 获取当前持仓信息
             portfolio_info = self._get_portfolio_context()
 
             risk_analysis = await self._llm_analyze(
                 RISK_PROMPT,
-                f"标的: {symbol}\n团队分析汇总:\n" +
-                "\n".join(team_summary) +
-                f"\n\n当前持仓:\n{json.dumps(portfolio_info, ensure_ascii=False, default=str)}",
+                f"标的: {symbol}\n团队分析汇总:\n"
+                + "\n".join(team_summary)
+                + f"\n\n当前持仓:\n{json.dumps(portfolio_info, ensure_ascii=False, default=str)}",
             )
             report.data = risk_analysis
             approved = risk_analysis.get("approved", True)
@@ -478,7 +487,7 @@ class InvestmentTeam:
             report.recommendation = "veto"
             report.reasoning = f"风控系统异常，默认否决: {e}"
             report.score = 0.0
-            logger.warning(f"风控审核失败: {e}")
+            logger.warning("风控审核失败: %s", e)
 
         report.elapsed_seconds = time.time() - start
         return report
@@ -491,19 +500,18 @@ class InvestmentTeam:
         try:
             # 汇总所有报告
             summary_parts = []
-            for label, r in [("研究员", analysis.research_report),
-                             ("技术分析", analysis.ta_report),
-                             ("量化", analysis.quant_report),
-                             ("风控", analysis.risk_report)]:
+            for label, r in [
+                ("研究员", analysis.research_report),
+                ("技术分析", analysis.ta_report),
+                ("量化", analysis.quant_report),
+                ("风控", analysis.risk_report),
+            ]:
                 if r:
-                    summary_parts.append(
-                        f"{label}: {r.recommendation} ({r.score:.1f}/10)\n  {r.reasoning}"
-                    )
+                    summary_parts.append(f"{label}: {r.recommendation} ({r.score:.1f}/10)\n  {r.reasoning}")
 
             decision = await self._llm_analyze(
                 DIRECTOR_PROMPT,
-                f"标的: {symbol}\n\n各角色分析报告:\n" +
-                "\n\n".join(summary_parts),
+                f"标的: {symbol}\n\n各角色分析报告:\n" + "\n\n".join(summary_parts),
             )
             report.recommendation = decision.get("recommendation", "hold")
             report.reasoning = decision.get("reasoning", "")
@@ -513,7 +521,7 @@ class InvestmentTeam:
             report.recommendation = "hold"
             report.reasoning = f"决策系统异常，默认观望: {e}"
             report.score = 0.0
-            logger.warning(f"总监决策失败: {e}")
+            logger.warning("总监决策失败: %s", e)
 
         report.elapsed_seconds = time.time() - start
         return report
@@ -522,6 +530,7 @@ class InvestmentTeam:
         """交易复盘"""
         try:
             from src.trading_journal import journal
+
             trade = journal.get_trade(trade_id) if journal else None
             if trade:
                 review = await self._llm_analyze(
@@ -530,7 +539,7 @@ class InvestmentTeam:
                 )
                 return review
         except Exception as e:
-            logger.warning(f"交易复盘失败: {e}")
+            logger.warning("交易复盘失败: %s", e)
         return {"decision_quality": "无数据", "lesson": "复盘模块未就绪"}
 
     async def daily_meeting(self) -> DailyBrief:
@@ -539,6 +548,7 @@ class InvestmentTeam:
         # 复用现有的简报功能
         try:
             from src.execution.daily_brief import generate_daily_brief
+
             brief_text = await generate_daily_brief()
             brief.market_overview = brief_text[:2000] if brief_text else ""
             brief.opportunities = []
@@ -561,18 +571,21 @@ class InvestmentTeam:
         # 源1: yfinance 基础数据
         try:
             import yfinance as yf
+
             ticker = yf.Ticker(symbol)
             info = ticker.info
-            data.update({
-                "name": info.get("longName", symbol),
-                "price": info.get("currentPrice", 0),
-                "pe": info.get("trailingPE", 0),
-                "pb": info.get("priceToBook", 0),
-                "market_cap": info.get("marketCap", 0),
-                "revenue_growth": info.get("revenueGrowth", 0),
-                "profit_margin": info.get("profitMargins", 0),
-                "sector": info.get("sector", ""),
-            })
+            data.update(
+                {
+                    "name": info.get("longName", symbol),
+                    "price": info.get("currentPrice", 0),
+                    "pe": info.get("trailingPE", 0),
+                    "pb": info.get("priceToBook", 0),
+                    "market_cap": info.get("marketCap", 0),
+                    "revenue_growth": info.get("revenueGrowth", 0),
+                    "profit_margin": info.get("profitMargins", 0),
+                    "sector": info.get("sector", ""),
+                }
+            )
         except Exception as e:
             logger.exception("yfinance 基本面数据获取失败: %s", symbol)
             data["yfinance_error"] = str(e)
@@ -580,6 +593,7 @@ class InvestmentTeam:
         # 源2: Jina Reader 获取最新新闻（零成本，替代爬虫）
         try:
             from src.tools.jina_reader import fetch_news_about
+
             company_name = data.get("name", symbol)
             news = await fetch_news_about(f"{company_name} {symbol} 最新消息 财报", max_length=2000)
             data["recent_news"] = news
@@ -590,6 +604,7 @@ class InvestmentTeam:
         # 源3: 统一数据提供者（akshare/ccxt）
         try:
             from src.data_providers import get_quote
+
             quote = await get_quote(symbol)
             if quote and isinstance(quote, dict):
                 data.update({k: v for k, v in quote.items() if k not in data})
@@ -602,6 +617,7 @@ class InvestmentTeam:
         """获取技术分析数据"""
         try:
             from src.ta_engine import get_full_analysis
+
             result = await get_full_analysis(symbol)
             return result or {}
         except Exception as e:
@@ -612,6 +628,7 @@ class InvestmentTeam:
         """获取量化数据"""
         try:
             import yfinance as yf
+
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="1y")
             if hist.empty:
@@ -619,13 +636,11 @@ class InvestmentTeam:
             returns = hist["Close"].pct_change().dropna()
             return {
                 "annual_return": float(returns.mean() * 252),
-                "annual_volatility": float(returns.std() * (252 ** 0.5)),
-                "sharpe_ratio": float(
-                    (returns.mean() * 252) / (returns.std() * (252 ** 0.5))
-                ) if returns.std() > 0 else 0,
-                "max_drawdown": float(
-                    (hist["Close"] / hist["Close"].cummax() - 1).min()
-                ),
+                "annual_volatility": float(returns.std() * (252**0.5)),
+                "sharpe_ratio": float((returns.mean() * 252) / (returns.std() * (252**0.5)))
+                if returns.std() > 0
+                else 0,
+                "max_drawdown": float((hist["Close"] / hist["Close"].cummax() - 1).min()),
                 "current_price": float(hist["Close"].iloc[-1]),
                 "price_52w_high": float(hist["Close"].max()),
                 "price_52w_low": float(hist["Close"].min()),
@@ -640,6 +655,7 @@ class InvestmentTeam:
         try:
             from src.broker_selector import ibkr
             from src.invest_tools import portfolio
+
             if ibkr and portfolio:
                 return {
                     "positions": portfolio.get("positions", []),
@@ -656,6 +672,7 @@ class InvestmentTeam:
         """统一的 LLM 分析调用"""
         try:
             from src.litellm_router import free_pool
+
             if free_pool is None:
                 raise RuntimeError("LLM 路由器未初始化")
 
@@ -673,21 +690,24 @@ class InvestmentTeam:
             # 解析 JSON
             try:
                 import json_repair
+
                 return json_repair.loads(raw)
             except Exception as e:
                 logger.exception("LLM 响应 JSON 解析失败")
                 import re
-                match = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
+
+                match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
                 if match:
                     return json.loads(match.group())
                 return {"reasoning": raw, "recommendation": "hold", "score": 5.0}
 
         except Exception as e:
-            logger.warning(f"LLM 分析调用失败: {e}")
+            logger.warning("LLM 分析调用失败: %s", e)
             return {"error": str(e), "recommendation": "hold", "score": 5.0}
 
 
 # ── 策略健康监控 ──────────────────────────────────────────
+
 
 class StrategyHealthMonitor:
     """
@@ -705,9 +725,7 @@ class StrategyHealthMonitor:
         self._strategy_performance: Dict[str, Dict] = {}
         self._suspended_strategies: set = set()
 
-    def record_performance(
-        self, strategy_name: str, live_return: float, backtest_return: float
-    ) -> Optional[str]:
+    def record_performance(self, strategy_name: str, live_return: float, backtest_return: float) -> Optional[str]:
         """
         记录策略表现，检测是否需要暂停。
 
@@ -728,20 +746,29 @@ class StrategyHealthMonitor:
                 f"(实盘:{live_return:.2%} vs 回测:{backtest_return:.2%})"
             )
             self._suspended_strategies.add(strategy_name)
-            logger.warning(f"[策略健康] 暂停: {reason}")
+            logger.warning("[策略健康] 暂停: %s", reason)
             # EventBus: 通知策略挂起
             try:
                 from src.core.event_bus import get_event_bus
+
                 bus = get_event_bus()
                 if bus:
                     import asyncio
+
                     try:
                         loop = asyncio.get_running_loop()
-                        _t = loop.create_task(bus.publish("trade.strategy_suspended", {
-                            "strategy": strategy_name, "reason": reason,
-                            "deviation": deviation, "live_return": live_return,
-                            "backtest_return": backtest_return,
-                        }))
+                        _t = loop.create_task(
+                            bus.publish(
+                                "trade.strategy_suspended",
+                                {
+                                    "strategy": strategy_name,
+                                    "reason": reason,
+                                    "deviation": deviation,
+                                    "live_return": live_return,
+                                    "backtest_return": backtest_return,
+                                },
+                            )
+                        )
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                     except RuntimeError as e:  # noqa: F841
                         pass
