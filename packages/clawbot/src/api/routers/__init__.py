@@ -11,6 +11,7 @@ from .shopping import router as router_shopping
 from .omega import router as router_omega
 from .newapi import router as router_newapi
 from .controls import router as router_controls
+from .conversation import router as router_conversation
 
 __all__ = [
     "router_system",
@@ -24,4 +25,5 @@ __all__ = [
     "router_omega",
     "router_newapi",
     "router_controls",
+    "router_conversation",
 ]
