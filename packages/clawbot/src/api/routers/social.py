@@ -217,7 +217,7 @@ def list_drafts():
         return ClawBotRPC._rpc_social_drafts()
     except Exception as e:
         logger.exception("列出草稿失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.patch("/social/drafts/{index}", response_model=Dict[str, Any])
@@ -227,7 +227,7 @@ def update_draft(index: int, text: str):
         return ClawBotRPC._rpc_social_draft_update(index, text)
     except Exception as e:
         logger.exception("更新草稿失败 (index=%d)", index)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.delete("/social/drafts/{index}", response_model=Dict[str, Any])
@@ -237,7 +237,7 @@ def delete_draft(index: int):
         return ClawBotRPC._rpc_social_draft_delete(index)
     except Exception as e:
         logger.exception("删除草稿失败 (index=%d)", index)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/social/drafts/{index}/publish", response_model=Dict[str, Any])
@@ -247,4 +247,4 @@ async def publish_draft(index: int):
         return await ClawBotRPC._rpc_social_draft_publish(index)
     except Exception as e:
         logger.exception("发布草稿失败 (index=%d)", index)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
