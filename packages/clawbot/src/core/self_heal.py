@@ -425,7 +425,7 @@ class SelfHealEngine:
                         logger.warning("[自愈] 延长超时后仍然超时")
                         return False
                     except Exception as e:
-                        logger.warning(f"[自愈] 延长超时重试失败: {e}")
+                        logger.warning("[自愈] 延长超时重试失败: %s", e)
                         return False
                 else:
                     await asyncio.sleep(5)
@@ -449,7 +449,7 @@ class SelfHealEngine:
                 return False  # 直接跳到 step 6
 
         except Exception as e:
-            logger.warning(f"[自愈] 执行方案失败: {e}")
+            logger.warning("[自愈] 执行方案失败: %s", e)
         return False
 
     async def _search_local_solutions(self, error_msg: str) -> Optional[str]:
@@ -476,7 +476,7 @@ class SelfHealEngine:
                                 del self._solution_cache[k]
                         return solution
         except Exception as e:
-            logger.debug(f"本地搜索失败: {e}")
+            logger.debug("本地搜索失败: %s", e)
         return None
 
     async def _search_web_solutions(self, error_msg: str) -> Optional[str]:
@@ -489,7 +489,7 @@ class SelfHealEngine:
             if result and len(result) > 50:
                 return result[:500]
         except Exception as e:
-            logger.debug(f"Jina搜索失败: {e}")
+            logger.debug("Jina搜索失败: %s", e)
 
         # 备选: Tavily API
         tavily_key = os.environ.get("TAVILY_API_KEY", "")
@@ -516,7 +516,7 @@ class SelfHealEngine:
                 if results:
                     return results[0].get("content", "")[:500]
         except Exception as e:
-            logger.debug(f"Tavily搜索失败: {e}")
+            logger.debug("Tavily搜索失败: %s", e)
         return None
 
     async def _apply_solution(
@@ -531,7 +531,7 @@ class SelfHealEngine:
           1. 如果有 retry_callable，先等待然后重试（解决方案通常是"等等再试"）
           2. 如果解决方案包含可操作建议（如切换模块），修改 context 并重试
         """
-        logger.info(f"[自愈] 尝试应用方案: {solution[:80]}")
+        logger.info("[自愈] 尝试应用方案: %s", solution[:80])
 
         # 检查方案是否包含"重试"/"retry"相关建议
         retry_keywords = ["重试", "retry", "again", "等待", "wait", "delay"]
@@ -545,7 +545,7 @@ class SelfHealEngine:
                 logger.info("[自愈] 应用方案后重试成功")
                 return True
             except Exception as e:
-                logger.warning(f"[自愈] 应用方案后重试失败: {e}")
+                logger.warning("[自愈] 应用方案后重试失败: %s", e)
                 return False
 
         # 检查方案是否建议切换工具/模块
@@ -558,7 +558,7 @@ class SelfHealEngine:
         for keyword, context_key in switch_keywords.items():
             if keyword in solution.lower():
                 context[context_key] = keyword
-                logger.info(f"[自愈] 方案建议切换到 {keyword}，已标记 context[{context_key}]")
+                logger.info("[自愈] 方案建议切换到 %s，已标记 context[%s]", keyword, context_key)
                 if retry_callable:
                     try:
                         await retry_callable()
@@ -584,7 +584,7 @@ class SelfHealEngine:
         retry_callable: Optional[Callable[..., Coroutine]] = None,
     ) -> bool:
         """Step 5: 尝试替代方案 — v2.0: 真实替换逻辑"""
-        logger.info(f"[自愈] 尝试替代方案: {error_type}")
+        logger.info("[自愈] 尝试替代方案: %s", error_type)
 
         # 替代策略映射
         alternatives = {
@@ -597,7 +597,7 @@ class SelfHealEngine:
 
         for pattern, (alt_name, context_key) in alternatives.items():
             if pattern.lower() in error_type.lower() or pattern.lower() in str(context).lower():
-                logger.info(f"[自愈] 尝试替代: {pattern} → {alt_name}")
+                logger.info("[自愈] 尝试替代: %s → %s", pattern, alt_name)
                 if context_key:
                     context[context_key] = alt_name
 
