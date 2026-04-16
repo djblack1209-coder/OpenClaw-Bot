@@ -3,6 +3,23 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 日报新增天气和汇率快速参考
+> 领域: `backend`
+> 影响模块: `daily_brief`, `daily_brief_data`
+> 关联问题: 日报信息丰富度提升
+### 变更内容
+- **新增: 日报天气数据** — 复用 free_apis.get_weather()，从 wttr.in 获取城市天气
+  - 支持环境变量 `WEATHER_CITY` 配置城市（默认 Shanghai）
+  - 显示温度/天气描述/湿度/今日温度范围，带天气 emoji
+- **新增: 日报汇率数据** — 复用 free_apis.get_exchange_rate()，显示 USD/CNY 实时汇率
+- 天气和汇率并行获取（asyncio.gather），任一失败不阻塞日报
+- 零新依赖，全部复用项目已有 API 封装
+### 文件变更
+- `packages/clawbot/src/execution/daily_brief_data.py` — 新增 _fetch_weather()、_fetch_forex() 函数
+- `packages/clawbot/src/execution/daily_brief.py` — 新增"🌍 快速参考" section（天气+汇率）
+
+---
+
 ## [2026-04-16] 收尾推进 — fast bug修复 + ControlCenter拆分 + CardBuilder
 > 领域: `backend`, `frontend`, `infra`
 > 影响模块: `constants`, `litellm_router`, `cmd_life_mixin`, `freqtrade_bridge`, `ControlCenter`, `telegram_ux`
