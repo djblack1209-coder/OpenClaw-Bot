@@ -4,6 +4,41 @@
 
 ---
 
+## [2026-04-16 21:30] 价值位阶推进 R3 — P1~P2 六项改进
+
+### 本次完成了什么
+
+**方法**: 在 R2 基础上继续侦察改进方向，按价值排序执行 P1→P2 六项改进。
+
+| # | 优先级 | 项目 | 改动 |
+|---|--------|------|------|
+| 1 | P1 | 数据库 6 张高频表加索引 | trades/daily_pnl/reminders/expenses/price_watches/positions |
+| 2 | P1 | 死代码清理 | 确认前轮 R22-R25 已清理，无新增死代码 |
+| 3 | P2 | 通知系统 send() 加重试 | 默认渠道+标签路由均加指数退避重试(最多3次, 1→2→4s) |
+| 4 | P2 | API 路由加 HTTP 状态码 | 5 个文件 13 个 except 块改为 HTTPException(500/422/404) |
+| 5 | P2 | job_late_review 拆分 | 183行→6个子函数 + 25行编排主函数 |
+| 6 | P2 | subprocess 输入验证 | 白名单校验 + pid 数字校验 + plist 存在性检查 |
+
+### 未完成的工作
+
+**可继续推进方向（按价值排序）：**
+- message_mixin.py 拆分（1058行，按 text/voice/streaming 拆，P3）
+- omega.py / social / newapi 等其余路由文件 HTTP 状态码统一（omega 13处, social 17处, newapi 7处）
+- Langfuse 实际启用（需用户注册 cloud.langfuse.com）
+- 购物比价接入慢慢买历史价格 API
+- executor.py 重命名为 omega_executor.py
+
+### 需要注意的坑
+- API 路由改动只覆盖了 trading/pool/shopping/system/evolution 5 个文件，omega/social/newapi 还保留旧模式。前端如果有依赖 200+error 的 catch 逻辑需要改
+- social_scheduler 拆分后 `_review_adjust_schedule()` 引用了 `SocialAutopilot` 类，定义在文件下方。Python 模块级函数在运行时才解析名称，不会出错，但如果改为类方法需注意
+
+### 当前系统状态
+- 后端测试: 1339/1341 (2 项 skip, 0 失败, 100% 通过率)
+- 前端 tsc: 零错误
+- 累计三轮改进: R1(15项) + R2(6项) + R3(6项) = 27 项改进
+
+---
+
 ## [2026-04-16 20:00] 价值位阶推进 R2 — P0~P2 六项改进
 
 ### 本次完成了什么

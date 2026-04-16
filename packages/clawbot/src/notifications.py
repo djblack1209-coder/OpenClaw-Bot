@@ -401,21 +401,28 @@ class NotificationManager:
                 tag_ap = self._tag_routes.get(tag)
                 if tag_ap is None:
                     continue
-                try:
-                    result = await loop.run_in_executor(
-                        None,
-                        lambda _ap=tag_ap: _ap.notify(
-                            body=body,
-                            title=title or None,
-                            notify_type=ap_type,
-                        ),
-                    )
-                    if result:
-                        success = True
-                        self._send_count += 1
-                except Exception as e:
-                    self._error_count += 1
-                    logger.error(f"通知发送失败 (标签 {tag}): {e}")
+                for _attempt in range(1, _RETRY_MAX + 1):
+                    try:
+                        result = await loop.run_in_executor(
+                            None,
+                            lambda _ap=tag_ap: _ap.notify(
+                                body=body,
+                                title=title or None,
+                                notify_type=ap_type,
+                            ),
+                        )
+                        if result:
+                            success = True
+                            self._send_count += 1
+                        break
+                    except Exception as e:
+                        if _attempt < _RETRY_MAX:
+                            _wait = _RETRY_BACKOFF * (2 ** (_attempt - 1))
+                            logger.warning("通知发送失败 (标签 %s, 第%d次), %.1fs 后重试: %s", tag, _attempt, _wait, e)
+                            await asyncio.sleep(_wait)
+                        else:
+                            self._error_count += 1
+                            logger.error("通知发送失败 (标签 %s, 已重试%d次): %s", tag, _RETRY_MAX, e)
 
         # ── 微信同步推送 (与 Telegram 同颗粒度) ──
         try:

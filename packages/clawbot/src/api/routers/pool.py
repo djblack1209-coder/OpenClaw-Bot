@@ -18,4 +18,4 @@ def get_pool_stats():
         return ClawBotRPC._rpc_pool_stats()
     except Exception as e:
         logger.exception("获取 API 池统计失败")
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))

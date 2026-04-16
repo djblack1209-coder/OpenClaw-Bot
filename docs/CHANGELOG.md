@@ -3,6 +3,31 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-16] 价值位阶推进 R3 — P1~P2 六项改进
+> 领域: `backend`, `xianyu`
+> 影响模块: `trading_journal`, `execution/_db`, `invest_tools`, `notifications`, `api/routers/*`, `social_scheduler`, `cmd_xianyu_mixin`
+> 关联问题: 数据库无索引/通知丢失/HTTP状态码混乱/巨型函数/命令注入风险
+### 变更内容
+- **P1 优化: 数据库 6 张高频表加索引** — trades/daily_pnl/reminders/expenses/price_watches/positions 全部添加查询索引，改善频繁读取场景性能
+- **P2 加固: 通知系统 send() 指数退避重试** — 默认渠道和标签路由均加入最多 3 次重试（1s→2s→4s 指数退避），风控通知不再静默丢失
+- **P2 修复: API 路由 HTTP 状态码** — trading/pool/shopping/system/evolution 共 5 个路由文件的 except 块从 `return {"error":...}` 改为 `raise HTTPException(500/422/404)`，前端/监控能正确感知错误
+- **P2 重构: social_scheduler job_late_review 拆分** — 183 行巨型函数拆为 6 个单职责子函数：_review_check_kpi / _review_save_engagement / _review_save_followers / _review_check_milestones / _review_learn_post_time / _review_adjust_schedule
+- **P2 安全: cmd_xianyu_mixin 输入验证** — 子命令白名单校验（5个合法值）+ pid 纯数字校验 + plist 路径存在性检查
+### 文件变更
+- `packages/clawbot/src/trading_journal.py` — 新增 trades/daily_pnl 索引
+- `packages/clawbot/src/execution/_db.py` — 新增 reminders/expenses/price_watches 索引
+- `packages/clawbot/src/invest_tools.py` — 新增 positions 索引
+- `packages/clawbot/src/notifications.py` — 重试常量 + send() 指数退避逻辑
+- `packages/clawbot/src/api/routers/trading.py` — 6 个 except 块改 HTTPException
+- `packages/clawbot/src/api/routers/pool.py` — 1 个 except 块改 HTTPException
+- `packages/clawbot/src/api/routers/shopping.py` — 1 个 except 块改 HTTPException
+- `packages/clawbot/src/api/routers/system.py` — 2 个 except 块改 HTTPException
+- `packages/clawbot/src/api/routers/evolution.py` — 3 个 except 块改 HTTPException + 无效状态 422 + 未找到 404
+- `packages/clawbot/src/social_scheduler.py` — job_late_review 拆分为 6 个子函数 + 编排主函数
+- `packages/clawbot/src/bot/cmd_xianyu_mixin.py` — 白名单 + pid 校验 + plist 检查
+
+---
+
 ## [2026-04-16] 价值位阶推进 R2 — P0~P2 六项改进
 > 领域: `backend`, `frontend`, `docs`
 > 影响模块: `smart_memory`, `bookkeeping`, `risk_validators`, `risk_var`, `resilience`, `llm_routing_config`, `langfuse_obs`, `ControlCenter`, `daily_brief`

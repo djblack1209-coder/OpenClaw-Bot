@@ -30,4 +30,4 @@ async def compare_prices(
         )
     except Exception as e:
         logger.exception("跨平台比价失败 (query=%s)", query)
-        return {"error": _safe_error(e)}
+        raise HTTPException(status_code=500, detail=_safe_error(e))

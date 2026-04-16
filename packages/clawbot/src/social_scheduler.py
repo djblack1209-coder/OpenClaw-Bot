@@ -502,8 +502,188 @@ def job_night_publish() -> None:
         _alert_admin(f"⚠️ 社媒自动发布整体失败\n错误: {str(e)[:100]}\n\n所有草稿均未发出，请手动检查")
 
 
+def _review_check_kpi(result: dict, state: dict) -> tuple:
+    """检查 X/XHS 阅读量是否达标，返回 (kpi_summary, warnings)"""
+    kpi_summary = {
+        "posts_today": state["stats"].get("posts_today", 0),
+        "metrics_raw": result if result.get("success") else {},
+        "review_time": now_et().isoformat(),
+    }
+    warnings: List[str] = []
+    if result.get("success"):
+        x_stats = result.get("x", {}).get("stats", {})
+        xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
+        x_views = x_stats.get("latest_like_count", 0) + x_stats.get("latest_repost_count", 0)
+        xhs_views = xhs_stats.get("views", 0)
+        if x_views < 200 and state["stats"].get("posts_today", 0) > 0:
+            warnings.append(f"X 阅读量 {x_views} 未达标 (目标>200)")
+        if xhs_views < 500 and state["stats"].get("posts_today", 0) > 0:
+            warnings.append(f"XHS 阅读量 {xhs_views} 未达标 (目标>500)")
+    return kpi_summary, warnings
+
+
+def _review_save_engagement(result: dict) -> None:
+    """将采集到的互动数据写入 post_engagement 表"""
+    try:
+        from src.execution.life_automation import record_post_engagement
+
+        x_stats = result.get("x", {}).get("stats", {})
+        xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
+        # X 平台数据: 用最新帖子的互动指标
+        if x_stats:
+            record_post_engagement(
+                draft_id=0,  # 0 表示 profile 级聚合快照
+                platform="x",
+                likes=x_stats.get("latest_like_count", 0),
+                comments=x_stats.get("latest_reply_count", 0),
+                shares=x_stats.get("latest_repost_count", 0),
+                views=x_stats.get("followers", 0),  # X 无直接浏览量，用粉丝数近似
+                post_url=result.get("x", {}).get("url", ""),
+            )
+            logger.info("[Autopilot] X 互动数据已存入 post_engagement")
+
+        # 小红书数据: 创作者中心有完整指标
+        if xhs_stats:
+            record_post_engagement(
+                draft_id=0,
+                platform="xhs",
+                likes=xhs_stats.get("likes", 0),
+                comments=xhs_stats.get("comments", 0),
+                shares=xhs_stats.get("shares", 0),
+                views=xhs_stats.get("views", 0),
+                post_url=result.get("xiaohongshu", {}).get("url", ""),
+            )
+            logger.info("[Autopilot] XHS 互动数据已存入 post_engagement")
+    except Exception as e:
+        logger.warning("[Autopilot] 存储互动数据失败(不影响主流程): %s", e)
+
+
+def _review_save_followers(result: dict) -> None:
+    """将粉丝数存入 follower_snapshots 表供趋势分析"""
+    try:
+        from src.execution.life_automation import record_follower_snapshot
+
+        x_stats = result.get("x", {}).get("stats", {})
+        xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
+        # X 平台: 粉丝数 + 关注数
+        if x_stats and x_stats.get("followers"):
+            record_follower_snapshot(
+                platform="x",
+                followers=x_stats.get("followers", 0),
+                following=x_stats.get("following", 0),
+            )
+        # 小红书: 粉丝数 + 获赞总数
+        if xhs_stats and xhs_stats.get("followers"):
+            record_follower_snapshot(
+                platform="xhs",
+                followers=xhs_stats.get("followers", 0),
+                total_likes=xhs_stats.get("total_likes", 0),
+                total_views=xhs_stats.get("views", 0),
+            )
+    except Exception as e:
+        logger.warning("[Autopilot] 存储粉丝快照失败(不影响主流程): %s", e)
+
+
+def _review_check_milestones() -> None:
+    """检测粉丝是否突破整数关口，触发里程碑事件"""
+    _MILESTONES = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
+    try:
+        from src.execution.life_automation import get_follower_growth
+
+        for _plat in ("x", "xhs"):
+            _growth = get_follower_growth(platform=_plat, days=2)
+            if not _growth or not _growth.get("success"):
+                continue
+            _snapshots = _growth.get("snapshots", [])
+            if len(_snapshots) < 2:
+                continue
+            _prev = _snapshots[-2].get("followers", 0)
+            _curr = _snapshots[-1].get("followers", 0)
+            if _curr <= 0 or _prev <= 0:
+                continue
+            # 检查是否跨越了任何里程碑
+            for ms in _MILESTONES:
+                if _prev < ms <= _curr:
+                    try:
+                        from src.core.event_bus import get_event_bus, EventType
+
+                        _bus = get_event_bus()
+                        # 使用 _run_async 将事件发布调度到主事件循环
+                        _run_async(
+                            _bus.publish(
+                                EventType.FOLLOWER_MILESTONE,
+                                {"platform": _plat, "count": ms},
+                                source="social_scheduler",
+                            )
+                        )
+                        logger.info("[Autopilot] 粉丝里程碑: %s 突破 %d", _plat, ms)
+                    except Exception as _me:
+                        logger.debug("[Autopilot] 粉丝里程碑事件发射失败: %s", _me)
+                    break  # 一次只触发最近的一个里程碑
+    except Exception as e:
+        logger.debug("[Autopilot] 粉丝里程碑检测失败(不影响主流程): %s", e)
+
+
+def _review_learn_post_time(result: dict) -> None:
+    """喂数据给 PostTimeOptimizer 学习最佳发布时间"""
+    try:
+        from src.social_tools import get_post_time_optimizer
+
+        x_stats = result.get("x", {}).get("stats", {})
+        xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
+        optimizer = get_post_time_optimizer()
+        current_hour = now_et().hour
+
+        # 计算两个平台的综合互动率
+        total_engagement = (
+            x_stats.get("latest_like_count", 0)
+            + x_stats.get("latest_reply_count", 0)
+            + x_stats.get("latest_repost_count", 0)
+            + xhs_stats.get("likes", 0)
+            + xhs_stats.get("comments", 0)
+            + xhs_stats.get("shares", 0)
+        )
+        total_views = max(xhs_stats.get("views", 0) + x_stats.get("followers", 1), 1)
+        engagement_rate = round(total_engagement / total_views * 100, 2)
+
+        optimizer.record_engagement(current_hour, engagement_rate)
+        logger.info("[Autopilot] PostTimeOptimizer 已记录 hour=%d rate=%.2f%%", current_hour, engagement_rate)
+    except Exception as e:
+        logger.warning("[Autopilot] PostTimeOptimizer 记录失败(不影响主流程): %s", e)
+
+
+def _review_adjust_schedule() -> None:
+    """根据今日互动数据更新明日发布时间"""
+    try:
+        from src.social_tools import get_post_time_optimizer as _get_optimizer
+
+        _opt = _get_optimizer()
+        new_best = _opt.best_hours("twitter", top_n=1)
+        if new_best:
+            new_hour = new_best[0]
+            # 通过单例获取 SocialAutopilot 实例的调度器
+            autopilot = SocialAutopilot._instance
+            if autopilot and autopilot._scheduler and autopilot._scheduler.running:
+                with SocialAutopilot._publish_hour_lock:
+                    current_publish_hour = getattr(autopilot, "_current_publish_hour", 20)
+                if new_hour != current_publish_hour:
+                    autopilot._scheduler.reschedule_job(
+                        "night_publish",
+                        trigger=CronTrigger(hour=new_hour, minute=30, timezone=_TIMEZONE),
+                    )
+                    logger.info(
+                        "[社媒] 明日发布时间调整: %d:30 → %d:30",
+                        current_publish_hour,
+                        new_hour,
+                    )
+                    with SocialAutopilot._publish_hour_lock:
+                        autopilot._current_publish_hour = new_hour
+    except Exception as e:
+        logger.debug("[社媒] 更新发布时间失败: %s", e)
+
+
 def job_late_review() -> None:
-    """22:00 — 数据统计 + 复盘"""
+    """22:00 — 数据统计 + 复盘（编排 6 个子任务）"""
     logger.info("[Autopilot] === 数据复盘 ===")
     state = _load_state()
 
@@ -512,168 +692,20 @@ def job_late_review() -> None:
 
         result = run_social_worker("metrics", {})
 
-        kpi_summary = {
-            "posts_today": state["stats"].get("posts_today", 0),
-            "metrics_raw": result if result.get("success") else {},
-            "review_time": now_et().isoformat(),
-        }
+        # 1. KPI 检查
+        kpi_summary, warnings = _review_check_kpi(result, state)
 
-        # KPI check (from SKILL.md: XHS>500 views, X>200 views)
-        warnings: List[str] = []
         if result.get("success"):
-            x_stats = result.get("x", {}).get("stats", {})
-            xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
-            x_views = x_stats.get("latest_like_count", 0) + x_stats.get("latest_repost_count", 0)
-            xhs_views = xhs_stats.get("views", 0)
-            if x_views < 200 and state["stats"].get("posts_today", 0) > 0:
-                warnings.append(f"X 阅读量 {x_views} 未达标 (目标>200)")
-            if xhs_views < 500 and state["stats"].get("posts_today", 0) > 0:
-                warnings.append(f"XHS 阅读量 {xhs_views} 未达标 (目标>500)")
-
-            # ── 管道接通: 将采集到的互动数据写入 post_engagement 表 ──
-            try:
-                from src.execution.life_automation import record_post_engagement
-
-                # X 平台数据: 用最新帖子的互动指标
-                if x_stats:
-                    record_post_engagement(
-                        draft_id=0,  # 0 表示 profile 级聚合快照
-                        platform="x",
-                        likes=x_stats.get("latest_like_count", 0),
-                        comments=x_stats.get("latest_reply_count", 0),
-                        shares=x_stats.get("latest_repost_count", 0),
-                        views=x_stats.get("followers", 0),  # X 无直接浏览量，用粉丝数近似
-                        post_url=result.get("x", {}).get("url", ""),
-                    )
-                    logger.info("[Autopilot] X 互动数据已存入 post_engagement")
-
-                # 小红书数据: 创作者中心有完整指标
-                if xhs_stats:
-                    record_post_engagement(
-                        draft_id=0,
-                        platform="xhs",
-                        likes=xhs_stats.get("likes", 0),
-                        comments=xhs_stats.get("comments", 0),
-                        shares=xhs_stats.get("shares", 0),
-                        views=xhs_stats.get("views", 0),
-                        post_url=result.get("xiaohongshu", {}).get("url", ""),
-                    )
-                    logger.info("[Autopilot] XHS 互动数据已存入 post_engagement")
-            except Exception as e:
-                logger.warning("[Autopilot] 存储互动数据失败(不影响主流程): %s", e)
-
-            # ── 管道接通: 将粉丝数存入 follower_snapshots 表供趋势分析 ──
-            try:
-                from src.execution.life_automation import record_follower_snapshot
-
-                # X 平台: 粉丝数 + 关注数
-                if x_stats and x_stats.get("followers"):
-                    record_follower_snapshot(
-                        platform="x",
-                        followers=x_stats.get("followers", 0),
-                        following=x_stats.get("following", 0),
-                    )
-
-                # 小红书: 粉丝数 + 获赞总数
-                if xhs_stats and xhs_stats.get("followers"):
-                    record_follower_snapshot(
-                        platform="xhs",
-                        followers=xhs_stats.get("followers", 0),
-                        total_likes=xhs_stats.get("total_likes", 0),
-                        total_views=xhs_stats.get("views", 0),
-                    )
-            except Exception as e:
-                logger.warning("[Autopilot] 存储粉丝快照失败(不影响主流程): %s", e)
-
-            # ── 粉丝里程碑检测 — 突破整数关口时发射事件 ──
-            _MILESTONES = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
-            try:
-                from src.execution.life_automation import get_follower_growth
-
-                for _plat in ("x", "xhs"):
-                    _growth = get_follower_growth(platform=_plat, days=2)
-                    if not _growth or not _growth.get("success"):
-                        continue
-                    _snapshots = _growth.get("snapshots", [])
-                    if len(_snapshots) < 2:
-                        continue
-                    _prev = _snapshots[-2].get("followers", 0)
-                    _curr = _snapshots[-1].get("followers", 0)
-                    if _curr <= 0 or _prev <= 0:
-                        continue
-                    # 检查是否跨越了任何里程碑
-                    for ms in _MILESTONES:
-                        if _prev < ms <= _curr:
-                            try:
-                                from src.core.event_bus import get_event_bus, EventType
-
-                                _bus = get_event_bus()
-                                # 使用 _run_async 将事件发布调度到主事件循环
-                                _run_async(
-                                    _bus.publish(
-                                        EventType.FOLLOWER_MILESTONE,
-                                        {"platform": _plat, "count": ms},
-                                        source="social_scheduler",
-                                    )
-                                )
-                                logger.info("[Autopilot] 粉丝里程碑: %s 突破 %d", _plat, ms)
-                            except Exception as _me:
-                                logger.debug("[Autopilot] 粉丝里程碑事件发射失败: %s", _me)
-                            break  # 一次只触发最近的一个里程碑
-            except Exception as e:
-                logger.debug("[Autopilot] 粉丝里程碑检测失败(不影响主流程): %s", e)
-
-            # ── 管道接通: 喂数据给 PostTimeOptimizer 学习最佳发布时间 ──
-            try:
-                from src.social_tools import get_post_time_optimizer
-
-                optimizer = get_post_time_optimizer()
-                current_hour = now_et().hour
-
-                # 计算两个平台的综合互动率
-                total_engagement = (
-                    x_stats.get("latest_like_count", 0)
-                    + x_stats.get("latest_reply_count", 0)
-                    + x_stats.get("latest_repost_count", 0)
-                    + xhs_stats.get("likes", 0)
-                    + xhs_stats.get("comments", 0)
-                    + xhs_stats.get("shares", 0)
-                )
-                total_views = max(xhs_stats.get("views", 0) + x_stats.get("followers", 1), 1)
-                engagement_rate = round(total_engagement / total_views * 100, 2)
-
-                optimizer.record_engagement(current_hour, engagement_rate)
-                logger.info("[Autopilot] PostTimeOptimizer 已记录 hour=%d rate=%.2f%%", current_hour, engagement_rate)
-            except Exception as e:
-                logger.warning("[Autopilot] PostTimeOptimizer 记录失败(不影响主流程): %s", e)
-
-            # ── 根据今日互动数据更新明日发布时间 ──
-            try:
-                from src.social_tools import get_post_time_optimizer as _get_optimizer
-
-                _opt = _get_optimizer()
-                new_best = _opt.best_hours("twitter", top_n=1)
-                if new_best:
-                    new_hour = new_best[0]
-                    # 通过单例获取 SocialAutopilot 实例的调度器
-                    autopilot = SocialAutopilot._instance
-                    if autopilot and autopilot._scheduler and autopilot._scheduler.running:
-                        with SocialAutopilot._publish_hour_lock:
-                            current_publish_hour = getattr(autopilot, "_current_publish_hour", 20)
-                        if new_hour != current_publish_hour:
-                            autopilot._scheduler.reschedule_job(
-                                "night_publish",
-                                trigger=CronTrigger(hour=new_hour, minute=30, timezone=_TIMEZONE),
-                            )
-                            logger.info(
-                                "[社媒] 明日发布时间调整: %d:30 → %d:30",
-                                current_publish_hour,
-                                new_hour,
-                            )
-                            with SocialAutopilot._publish_hour_lock:
-                                autopilot._current_publish_hour = new_hour
-            except Exception as e:
-                logger.debug("[社媒] 更新发布时间失败: %s", e)
+            # 2. 存储互动数据
+            _review_save_engagement(result)
+            # 3. 存储粉丝快照
+            _review_save_followers(result)
+            # 4. 粉丝里程碑检测
+            _review_check_milestones()
+            # 5. PostTimeOptimizer 学习
+            _review_learn_post_time(result)
+            # 6. 动态调整发布时间
+            _review_adjust_schedule()
 
         state["last_review"] = now_et().isoformat()
         _save_state(state)

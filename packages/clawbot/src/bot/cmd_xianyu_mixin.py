@@ -23,19 +23,32 @@ logger = logging.getLogger(__name__)
 class XianyuCommandsMixin:
     async def cmd_xianyu(self, update, context):
         """闲鱼 AI 客服远程控制"""
-        args = (context.args or [])
+        args = context.args or []
         action = args[0].lower() if args else ""
+
+        # 白名单校验：仅允许已知子命令，防止命令注入
+        _VALID_ACTIONS = {"", "start", "stop", "reload", "status"}
+        if action and action not in _VALID_ACTIONS:
+            action = "status"  # 未知命令回退到状态查看
 
         LABEL = "ai.openclaw.xianyu"
         PLIST = os.path.expanduser("~/Library/LaunchAgents/ai.openclaw.xianyu.plist")
+
+        # 启动/停止前检查 plist 文件是否存在
+        if action in ("start", "stop") and not os.path.isfile(PLIST):
+            await update.message.reply_text("⚠️ 闲鱼客服配置文件不存在，请先配置")
+            return
 
         # 无参数时展示帮助菜单 + 一行状态概要
         if not action:
             try:
                 # 使用异步子进程避免阻塞事件循环
                 proc = await asyncio.create_subprocess_exec(
-                    "pgrep", "-f", "xianyu_main",
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    "pgrep",
+                    "-f",
+                    "xianyu_main",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, _ = await proc.communicate()
                 status_line = "🟢 运行中" if stdout.decode().strip() else "🔴 未运行"
@@ -56,15 +69,18 @@ class XianyuCommandsMixin:
                 "\n"
                 f"当前状态: {status_line}\n"
                 "\n"
-                "💡 也可以说中文: \"闲鱼数据\" \"商品排行\" \"转化率\" \"闲鱼风格\" \"闲鱼FAQ\""
+                '💡 也可以说中文: "闲鱼数据" "商品排行" "转化率" "闲鱼风格" "闲鱼FAQ"'
             )
             await update.message.reply_text(help_msg)
             return
 
         if action == "start":
             proc = await asyncio.create_subprocess_exec(
-                "launchctl", "load", PLIST,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "launchctl",
+                "load",
+                PLIST,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             _, _ = await proc.communicate()
             if proc.returncode == 0:
@@ -74,8 +90,11 @@ class XianyuCommandsMixin:
 
         elif action == "stop":
             proc = await asyncio.create_subprocess_exec(
-                "launchctl", "unload", PLIST,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "launchctl",
+                "unload",
+                PLIST,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             _, _ = await proc.communicate()
             if proc.returncode == 0:
@@ -86,14 +105,20 @@ class XianyuCommandsMixin:
         elif action == "reload":
             # 发送 SIGUSR1 热更新 Cookie
             import signal
+
             proc = await asyncio.create_subprocess_exec(
-                "pgrep", "-f", "xianyu_main",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "pgrep",
+                "-f",
+                "xianyu_main",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await proc.communicate()
             pids = stdout.decode().strip().split()
-            if pids:
-                for pid in pids:
+            # 校验 pid 必须是纯数字，防止异常输出导致安全问题
+            valid_pids = [p for p in pids if p.isdigit()]
+            if valid_pids:
+                for pid in valid_pids:
                     os.kill(int(pid), signal.SIGUSR1)
                 await update.message.reply_text("🔄 已发送配置热更新信号，稍等几秒生效")
             else:
@@ -101,8 +126,11 @@ class XianyuCommandsMixin:
 
         else:  # status (显式传 status 或其他未知参数)
             proc = await asyncio.create_subprocess_exec(
-                "pgrep", "-fl", "xianyu_main",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "pgrep",
+                "-fl",
+                "xianyu_main",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await proc.communicate()
             output = stdout.decode().strip()
@@ -149,7 +177,9 @@ class XianyuCommandsMixin:
                 lines.append(f"\n❓ 常见问题 ({len(faqs)}/{xctx._FAQ_LIMIT}):")
                 if faqs:
                     for i, faq in enumerate(faqs, 1):
-                        lines.append(f"  {i}. 「{faq['key']}」→ {faq['value'][:50]}{'...' if len(faq['value']) > 50 else ''}")
+                        lines.append(
+                            f"  {i}. 「{faq['key']}」→ {faq['value'][:50]}{'...' if len(faq['value']) > 50 else ''}"
+                        )
                 else:
                     lines.append("  （暂无）")
 
@@ -226,11 +256,7 @@ class XianyuCommandsMixin:
                 try:
                     ok = xctx.add_faq(keyword, answer)
                     if ok:
-                        await update.message.reply_text(
-                            f"✅ FAQ 已添加\n\n"
-                            f"关键词: 「{keyword}」\n"
-                            f"回复: {answer}"
-                        )
+                        await update.message.reply_text(f"✅ FAQ 已添加\n\n关键词: 「{keyword}」\n回复: {answer}")
                     else:
                         await update.message.reply_text(f"❌ FAQ 已达上限 ({xctx._FAQ_LIMIT} 条)")
                 except Exception as e:
@@ -272,11 +298,7 @@ class XianyuCommandsMixin:
             try:
                 ok = xctx.set_item_rule(item_id, rule)
                 if ok:
-                    await update.message.reply_text(
-                        f"✅ 商品规则已设置\n\n"
-                        f"商品: {item_id}\n"
-                        f"规则: {rule}"
-                    )
+                    await update.message.reply_text(f"✅ 商品规则已设置\n\n商品: {item_id}\n规则: {rule}")
                 else:
                     await update.message.reply_text(f"❌ 商品规则已达上限 ({xctx._ITEM_RULE_LIMIT} 条)")
             except Exception as e:
@@ -311,7 +333,7 @@ class XianyuCommandsMixin:
             "/xianyu_style faq remove <关键词>      — 删除FAQ\n"
             "/xianyu_style rule <商品ID> <规则>      — 商品规则\n"
             "/xianyu_style rule_remove <商品ID>     — 删除商品规则\n\n"
-            "也可以说中文: \"闲鱼风格\" \"闲鱼FAQ\""
+            '也可以说中文: "闲鱼风格" "闲鱼FAQ"'
         )
 
     @requires_auth
@@ -333,14 +355,15 @@ class XianyuCommandsMixin:
 
         try:
             from src.xianyu.xianyu_context import XianyuContextManager
+
             xctx = XianyuContextManager()
 
             # 收入汇总
-            profit = xctx.get_profit_summary(days=days) if hasattr(xctx, 'get_profit_summary') else {}
+            profit = xctx.get_profit_summary(days=days) if hasattr(xctx, "get_profit_summary") else {}
             # 今日统计
-            today_stats = xctx.daily_stats() if hasattr(xctx, 'daily_stats') else {}
+            today_stats = xctx.daily_stats() if hasattr(xctx, "daily_stats") else {}
             # 待发货
-            pending_ship = xctx.get_pending_shipments() if hasattr(xctx, 'get_pending_shipments') else []
+            pending_ship = xctx.get_pending_shipments() if hasattr(xctx, "get_pending_shipments") else []
 
             lines = [f"🐟 <b>闲鱼收入报表 — 最近 {days} 天</b>", ""]
 
@@ -524,9 +547,7 @@ class XianyuCommandsMixin:
             item_id = args[1] if len(args) > 1 else None
             stats = shipper.get_shipping_stats(item_id)
             await update.message.reply_text(
-                f"📊 发货统计:\n"
-                f"  今日发货: {stats['today_shipped']}\n"
-                f"  累计发货: {stats['total_shipped']}"
+                f"📊 发货统计:\n  今日发货: {stats['today_shipped']}\n  累计发货: {stats['total_shipped']}"
             )
             return
 
@@ -554,4 +575,3 @@ class XianyuCommandsMixin:
         await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /ship help 查看帮助")
 
     # ---- AI 小说工坊 (novel_writer) ----
-
