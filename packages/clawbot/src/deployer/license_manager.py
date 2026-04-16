@@ -1,4 +1,5 @@
 """License 管理 — 账号验证 + 防复制 + 设备绑定 + 离线验证"""
+
 import hashlib
 import hmac
 import json
@@ -11,6 +12,8 @@ import uuid
 import logging
 from contextlib import contextmanager
 from typing import Optional, Dict
+
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +89,9 @@ class LicenseManager:
 
     @contextmanager
     def _conn(self):
-        """获取 SQLite 连接 (上下文管理器自动关闭)"""
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
+        """获取 SQLite 连接 (委托给全局连接工厂)"""
+        with _get_db_conn(self.db_path) as conn:
             yield conn
-            conn.commit()
-        finally:
-            conn.close()
 
     def _init_db(self):
         with self._conn() as c:
@@ -125,8 +122,15 @@ class LicenseManager:
             )""")
 
     # ---- 管理端 ----
-    def create_license(self, username: str, password: str, xianyu_order_id: str = "",
-                       max_devices: int = 1, days: int = 365, notes: str = "") -> str:
+    def create_license(
+        self,
+        username: str,
+        password: str,
+        xianyu_order_id: str = "",
+        max_devices: int = 1,
+        days: int = 365,
+        notes: str = "",
+    ) -> str:
         key = generate_offline_key(days=days)
         # 使用 PBKDF2 + 随机盐存储密码哈希，防止彩虹表攻击
         salt = secrets.token_hex(16)
@@ -146,8 +150,19 @@ class LicenseManager:
             rows = c.execute(
                 "SELECT license_key,username,status,max_devices,bound_devices,deploy_count,expires_at,created_at FROM licenses"
             ).fetchall()
-        return [{"key": r[0], "user": r[1], "status": r[2], "max_devices": r[3],
-                 "bound": json.loads(r[4]), "deploys": r[5], "expires": r[6], "created": r[7]} for r in rows]
+        return [
+            {
+                "key": r[0],
+                "user": r[1],
+                "status": r[2],
+                "max_devices": r[3],
+                "bound": json.loads(r[4]),
+                "deploys": r[5],
+                "expires": r[6],
+                "created": r[7],
+            }
+            for r in rows
+        ]
 
     def revoke_license(self, key: str):
         with self._conn() as c:
@@ -173,10 +188,10 @@ class LicenseManager:
         needs_upgrade = False
         for row in rows:
             stored_hash = row[1]
-            if ':' in stored_hash:
+            if ":" in stored_hash:
                 # 新格式: salt:hash (PBKDF2)
-                salt, expected_hash = stored_hash.split(':', 1)
-                computed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+                salt, expected_hash = stored_hash.split(":", 1)
+                computed = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000).hex()
                 if hmac.compare_digest(computed, expected_hash):
                     matched_row = row
                     break
@@ -210,14 +225,17 @@ class LicenseManager:
                 return {"ok": False, "message": f"设备数已达上限({max_dev})，请联系卖家解绑"}
             bound.append(machine_id)
             with self._conn() as c:
-                c.execute("UPDATE licenses SET bound_devices=? WHERE license_key=?",
-                          (json.dumps(bound), key))
+                c.execute("UPDATE licenses SET bound_devices=? WHERE license_key=?", (json.dumps(bound), key))
 
         # 记录日志
         with self._conn() as c:
-            c.execute("UPDATE licenses SET last_used=datetime('now'), deploy_count=deploy_count+1 WHERE license_key=?", (key,))
-            c.execute("INSERT INTO deploy_logs(license_key,machine_id,action,ip_addr,os_info) VALUES(?,?,?,?,?)",
-                      (key, machine_id, "auth", ip_addr, f"{platform.system()} {platform.release()}"))
+            c.execute(
+                "UPDATE licenses SET last_used=datetime('now'), deploy_count=deploy_count+1 WHERE license_key=?", (key,)
+            )
+            c.execute(
+                "INSERT INTO deploy_logs(license_key,machine_id,action,ip_addr,os_info) VALUES(?,?,?,?,?)",
+                (key, machine_id, "auth", ip_addr, f"{platform.system()} {platform.release()}"),
+            )
 
         return {"ok": True, "license_key": key, "message": "验证通过"}
 
@@ -252,13 +270,17 @@ class LicenseManager:
                 return {"ok": False, "message": f"设备数已达上限({max_dev})，请联系卖家解绑"}
             bound.append(machine_id)
             with self._conn() as c:
-                c.execute("UPDATE licenses SET bound_devices=? WHERE license_key=?",
-                          (json.dumps(bound), license_key))
+                c.execute("UPDATE licenses SET bound_devices=? WHERE license_key=?", (json.dumps(bound), license_key))
 
         with self._conn() as c:
-            c.execute("UPDATE licenses SET last_used=datetime('now'), deploy_count=deploy_count+1 WHERE license_key=?", (license_key,))
-            c.execute("INSERT INTO deploy_logs(license_key,machine_id,action,ip_addr,os_info) VALUES(?,?,?,?,?)",
-                      (license_key, machine_id, "key_auth", ip_addr, f"{platform.system()} {platform.release()}"))
+            c.execute(
+                "UPDATE licenses SET last_used=datetime('now'), deploy_count=deploy_count+1 WHERE license_key=?",
+                (license_key,),
+            )
+            c.execute(
+                "INSERT INTO deploy_logs(license_key,machine_id,action,ip_addr,os_info) VALUES(?,?,?,?,?)",
+                (license_key, machine_id, "key_auth", ip_addr, f"{platform.system()} {platform.release()}"),
+            )
 
         return {"ok": True, "license_key": license_key, "message": "验证通过"}
 

@@ -4,12 +4,16 @@ ClawBot 监控 — 成本归因分析器
 对标 LiteLLM 的 Budget Manager + Cost Tracking。
 按 bot/用户/功能/模型 维度的成本归因 + 月度预测 + 预算告警。
 """
+
 import time
 import sqlite3
 import logging
 import threading
+from contextlib import contextmanager
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +36,15 @@ class CostAnalyzer:
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._init_db()
-        # 内存缓存：最近 1000 条记录用于快速聚合
-        self._recent: List[Dict[str, Any]] = []
-        self._max_recent = 1000
+
+    @contextmanager
+    def _conn(self):
+        """SQLite 连接 (委托给全局连接工厂)"""
+        with _get_db_conn(self._db_path) as conn:
+            yield conn
 
     def _init_db(self):
-        conn = sqlite3.connect(self._db_path, timeout=10)
-        try:
-            # WAL 模式: 多线程高频写入场景防止 database is locked
-            conn.execute("PRAGMA journal_mode=WAL")
+        with self._conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cost_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,148 +67,158 @@ class CostAnalyzer:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_cost_bot ON cost_events(bot_id)
             """)
-            conn.commit()
-        finally:
-            conn.close()
 
-    def record(self, bot_id: str, model: str, input_tokens: int = 0,
-               output_tokens: int = 0, cost_usd: float = 0.0,
-               latency_ms: float = 0.0, success: bool = True,
-               user_id: int = 0, feature: str = "", provider: str = ""):
+        # 内存缓存：最近 1000 条记录用于快速聚合
+        self._recent: List[Dict[str, Any]] = []
+        self._max_recent = 1000
+
+    def record(
+        self,
+        bot_id: str,
+        model: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+        latency_ms: float = 0.0,
+        success: bool = True,
+        user_id: int = 0,
+        feature: str = "",
+        provider: str = "",
+    ):
         """记录一次 API 调用的成本事件"""
         now = time.time()
         event = {
-            "ts": now, "bot_id": bot_id, "user_id": user_id,
-            "feature": feature, "model": model, "provider": provider,
-            "input_tokens": input_tokens, "output_tokens": output_tokens,
-            "cost_usd": cost_usd, "latency_ms": latency_ms,
+            "ts": now,
+            "bot_id": bot_id,
+            "user_id": user_id,
+            "feature": feature,
+            "model": model,
+            "provider": provider,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": cost_usd,
+            "latency_ms": latency_ms,
             "success": 1 if success else 0,
         }
         with self._lock:
             self._recent.append(event)
             if len(self._recent) > self._max_recent:
-                self._recent = self._recent[-self._max_recent:]
-        # 写入 DB（显式关闭连接，防止连接泄漏）
-        conn = sqlite3.connect(self._db_path, timeout=10)
+                self._recent = self._recent[-self._max_recent :]
+        # 写入 DB
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute(
-                "INSERT INTO cost_events (ts,bot_id,user_id,feature,model,provider,"
-                "input_tokens,output_tokens,cost_usd,latency_ms,success) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (now, bot_id, user_id, feature, model, provider,
-                 input_tokens, output_tokens, cost_usd, latency_ms,
-                 1 if success else 0)
-            )
-            conn.commit()
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT INTO cost_events (ts,bot_id,user_id,feature,model,provider,"
+                    "input_tokens,output_tokens,cost_usd,latency_ms,success) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        now,
+                        bot_id,
+                        user_id,
+                        feature,
+                        model,
+                        provider,
+                        input_tokens,
+                        output_tokens,
+                        cost_usd,
+                        latency_ms,
+                        1 if success else 0,
+                    ),
+                )
         except Exception as e:
-            conn.rollback()
             logger.debug(f"[CostAnalyzer] DB写入失败: {e}")
-        finally:
-            conn.close()
 
     def analyze_by_bot(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
         """按 bot 维度的成本归因"""
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
-        conn = sqlite3.connect(self._db_path, timeout=10)
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            rows = conn.execute(
-                "SELECT bot_id, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
-                "COUNT(*), AVG(latency_ms), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) "
-                "FROM cost_events WHERE ts > ? GROUP BY bot_id", (cutoff,)
-            ).fetchall()
-            for r in rows:
-                result[r[0]] = {
-                    "cost_usd": round(r[1] or 0, 4),
-                    "input_tokens": r[2] or 0,
-                    "output_tokens": r[3] or 0,
-                    "requests": r[4] or 0,
-                    "avg_latency_ms": round(r[5] or 0, 1),
-                    "errors": r[6] or 0,
-                }
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT bot_id, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
+                    "COUNT(*), AVG(latency_ms), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) "
+                    "FROM cost_events WHERE ts > ? GROUP BY bot_id",
+                    (cutoff,),
+                ).fetchall()
+                for r in rows:
+                    result[r[0]] = {
+                        "cost_usd": round(r[1] or 0, 4),
+                        "input_tokens": r[2] or 0,
+                        "output_tokens": r[3] or 0,
+                        "requests": r[4] or 0,
+                        "avg_latency_ms": round(r[5] or 0, 1),
+                        "errors": r[6] or 0,
+                    }
         except Exception as e:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
-        finally:
-            conn.close()
         return result
 
     def analyze_by_model(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
         """按模型维度的成本归因"""
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
-        conn = sqlite3.connect(self._db_path, timeout=10)
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            rows = conn.execute(
-                "SELECT model, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
-                "COUNT(*), AVG(latency_ms) "
-                "FROM cost_events WHERE ts > ? GROUP BY model ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            for r in rows:
-                result[r[0]] = {
-                    "cost_usd": round(r[1] or 0, 4),
-                    "input_tokens": r[2] or 0,
-                    "output_tokens": r[3] or 0,
-                    "requests": r[4] or 0,
-                    "avg_latency_ms": round(r[5] or 0, 1),
-                }
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT model, SUM(cost_usd), SUM(input_tokens), SUM(output_tokens), "
+                    "COUNT(*), AVG(latency_ms) "
+                    "FROM cost_events WHERE ts > ? GROUP BY model ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,),
+                ).fetchall()
+                for r in rows:
+                    result[r[0]] = {
+                        "cost_usd": round(r[1] or 0, 4),
+                        "input_tokens": r[2] or 0,
+                        "output_tokens": r[3] or 0,
+                        "requests": r[4] or 0,
+                        "avg_latency_ms": round(r[5] or 0, 1),
+                    }
         except Exception as e:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
-        finally:
-            conn.close()
         return result
 
     def analyze_by_user(self, hours: float = 24) -> Dict[int, Dict[str, Any]]:
         """按用户维度的成本归因"""
         cutoff = time.time() - hours * 3600
         result: Dict[int, Dict[str, Any]] = {}
-        conn = sqlite3.connect(self._db_path, timeout=10)
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            rows = conn.execute(
-                "SELECT user_id, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
-                "FROM cost_events WHERE ts > ? AND user_id > 0 GROUP BY user_id "
-                "ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            for r in rows:
-                result[r[0]] = {
-                    "cost_usd": round(r[1] or 0, 4),
-                    "requests": r[2] or 0,
-                    "total_tokens": r[3] or 0,
-                }
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT user_id, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
+                    "FROM cost_events WHERE ts > ? AND user_id > 0 GROUP BY user_id "
+                    "ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,),
+                ).fetchall()
+                for r in rows:
+                    result[r[0]] = {
+                        "cost_usd": round(r[1] or 0, 4),
+                        "requests": r[2] or 0,
+                        "total_tokens": r[3] or 0,
+                    }
         except Exception as e:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
-        finally:
-            conn.close()
         return result
 
     def analyze_by_feature(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
         """按功能维度的成本归因"""
         cutoff = time.time() - hours * 3600
         result: Dict[str, Dict[str, Any]] = {}
-        conn = sqlite3.connect(self._db_path, timeout=10)
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            rows = conn.execute(
-                "SELECT feature, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
-                "FROM cost_events WHERE ts > ? AND feature != '' GROUP BY feature "
-                "ORDER BY SUM(cost_usd) DESC",
-                (cutoff,)
-            ).fetchall()
-            for r in rows:
-                result[r[0]] = {
-                    "cost_usd": round(r[1] or 0, 4),
-                    "requests": r[2] or 0,
-                    "total_tokens": r[3] or 0,
-                }
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT feature, SUM(cost_usd), COUNT(*), SUM(input_tokens+output_tokens) "
+                    "FROM cost_events WHERE ts > ? AND feature != '' GROUP BY feature "
+                    "ORDER BY SUM(cost_usd) DESC",
+                    (cutoff,),
+                ).fetchall()
+                for r in rows:
+                    result[r[0]] = {
+                        "cost_usd": round(r[1] or 0, 4),
+                        "requests": r[2] or 0,
+                        "total_tokens": r[3] or 0,
+                    }
         except Exception as e:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
-        finally:
-            conn.close()
         return result
 
     def predict_monthly_cost(self) -> Dict[str, float]:
@@ -230,16 +244,11 @@ class CostAnalyzer:
     def cleanup(self, days: int = 30):
         """清理过期数据"""
         cutoff = time.time() - days * 86400
-        conn = sqlite3.connect(self._db_path, timeout=10)
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute("DELETE FROM cost_events WHERE ts < ?", (cutoff,))
-            conn.commit()
+            with self._conn() as conn:
+                conn.execute("DELETE FROM cost_events WHERE ts < ?", (cutoff,))
         except Exception as e:
-            conn.rollback()
             logger.debug(f"[CostAnalyzer] 清理失败: {e}")
-        finally:
-            conn.close()
 
 
 # 全局实例

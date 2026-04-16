@@ -1,6 +1,7 @@
 """
 Execution Hub — 数据库层
 SQLite 连接管理和表结构定义
+（连接工厂委托给 src.db_utils，此模块仅保留表结构定义）
 """
 
 import os
@@ -8,6 +9,8 @@ import sqlite3
 import logging
 from contextlib import contextmanager
 from pathlib import Path
+
+from src.db_utils import get_conn as _get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -18,37 +21,12 @@ def ensure_db_dir():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _secure_db_permissions(db_path: str) -> None:
-    """设置数据库文件权限为仅所有者可读写 (0o600)，防止其他用户读取敏感数据"""
-    try:
-        if os.path.exists(db_path):
-            os.chmod(db_path, 0o600)
-            # 同时处理 WAL 和 SHM 附属文件
-            for suffix in ("-wal", "-shm"):
-                aux = db_path + suffix
-                if os.path.exists(aux):
-                    os.chmod(aux, 0o600)
-    except OSError as e:
-        logger.debug("设置数据库文件权限失败 (非致命): %s", e)
-
-
 @contextmanager
 def get_conn(db_path=None):
-    """获取数据库连接的上下文管理器，异常时自动回滚"""
+    """获取数据库连接的上下文管理器（委托给全局连接工厂）"""
     path = str(db_path or DB_PATH)
-    conn = sqlite3.connect(path, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    # 安全: 确保数据库文件仅所有者可访问
-    _secure_db_permissions(path)
-    try:
+    with _get_db_conn(path) as conn:
         yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def init_db(db_path=None):
