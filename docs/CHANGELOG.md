@@ -3,6 +3,39 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-17] 价值位阶推进 R5 — P1~P2 四项改进
+> 领域: `backend`, `xianyu`
+> 影响模块: `smart_memory`, `social_scheduler`, `message_mixin`, `data_providers`, `notify_style`, `trading/_init_system`, `daily_brief`, `daily_brief_data`, `daily_brief_llm`, `api/routers/social`, `api/routers/omega`, `api/routers/newapi`, `xianyu_live`, `brain`, `self_heal`, `slider_solver`, `team`, `scheduler`, `brain_exec_life`, `cmd_collab_mixin`
+> 关联问题: 静默异常/超长函数/API输入验证/logger性能
+### 变更内容
+- **P1 修复: 6文件10处静默异常** — smart_memory(4处 forget/remember/补充搜索/偏好召回)、social_scheduler(2处 消息发送/事件循环)、message_mixin/data_providers/notify_style/trading_init_system(各1处) 全部从 `pass`+`logger.debug` 升级为 `logger.warning` 带上下文
+- **P1 重构: daily_brief 超长函数拆分** — `generate_daily_brief()` 从 542 行拆为 18 个独立子函数（`_brief_agenda`/`_brief_positions`/`_brief_trading`/`_brief_xianyu` 等）+ 1 个指标收集函数 `_collect_brief_metrics`，主函数降至 ~80 行纯编排器。子函数全部下沉到 `daily_brief_data.py`
+- **P2 修复: 3个API路由文件11处参数输入验证** — social.py 3处 index 路径参数加 `Path(ge=0)`; newapi.py 4处 channel_id/token_id 加 `Path(ge=1)`; omega.py 4处 url/query/prompt 加 `Query(max_length=...)` 长度约束
+- **P2 优化: 11文件128处 logger f-string → lazy %s formatting** — xianyu_live(22→0)、brain(22→0)、self_heal(21→0)、slider_solver(19→0)、smart_memory(19→0)、daily_brief_data(8→0)、team(14→0)、scheduler(14→0)、brain_exec_life(14→0)、cmd_collab_mixin(14→0)、daily_brief_llm(3→0)
+### 文件变更
+- `packages/clawbot/src/smart_memory.py` — 4处静默异常修复 + 19处logger f-string
+- `packages/clawbot/src/social_scheduler.py` — 2处静默异常修复
+- `packages/clawbot/src/bot/message_mixin.py` — 1处静默异常修复
+- `packages/clawbot/src/data_providers.py` — 1处静默异常修复
+- `packages/clawbot/src/notify_style.py` — 1处静默异常修复
+- `packages/clawbot/src/trading/_init_system.py` — 1处静默异常修复
+- `packages/clawbot/src/execution/daily_brief.py` — 542行→~80行纯编排器(v5.0)
+- `packages/clawbot/src/execution/daily_brief_data.py` — 新增18个 _brief_xxx 子函数 + _collect_brief_metrics + 8处logger f-string
+- `packages/clawbot/src/execution/daily_brief_llm.py` — 3处logger f-string
+- `packages/clawbot/src/api/routers/social.py` — 3处 Path(ge=0) 输入验证
+- `packages/clawbot/src/api/routers/newapi.py` — 4处 Path(ge=1) 输入验证
+- `packages/clawbot/src/api/routers/omega.py` — 4处 Query(max_length=...) 输入验证
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 22处logger f-string
+- `packages/clawbot/src/core/brain.py` — 22处logger f-string
+- `packages/clawbot/src/core/self_heal.py` — 21处logger f-string
+- `packages/clawbot/src/xianyu/slider_solver.py` — 19处logger f-string
+- `packages/clawbot/src/modules/investment/team.py` — 14处logger f-string
+- `packages/clawbot/src/execution/scheduler.py` — 14处logger f-string
+- `packages/clawbot/src/core/brain_exec_life.py` — 14处logger f-string
+- `packages/clawbot/src/bot/cmd_collab_mixin.py` — 14处logger f-string
+
+---
+
 ## [2026-04-16] 价值位阶推进 R4 — P0~P2 四项改进
 > 领域: `backend`, `trading`, `ai-pool`
 > 影响模块: `auto_trader`, `position_monitor`, `broker_bridge`, `invest_tools`, `db_utils`(新), `execution/_db`, `litellm_router`, `cost_analyzer`, `license_manager`, `novel_writer`, `trading_journal`, `xianyu_context`, `auto_shipper`, `api/routers/omega`, `api/routers/social`, `api/routers/newapi`

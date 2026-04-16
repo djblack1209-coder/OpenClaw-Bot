@@ -1,6 +1,41 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-16
+> 最后更新: 2026-04-17
+
+---
+
+## [2026-04-17 03:00] 价值位阶推进 R5 — P1~P2 四项改进
+
+### 本次完成了什么
+
+**方法**: 全面侦察（超长函数34处/静默异常52处/logger f-string 678处/API输入验证/裸httpx/全局可变状态等），按价值排序执行 P1→P2 四项改进。
+
+| # | 优先级 | 项目 | 改动 |
+|---|--------|------|------|
+| 1 | P1 | 6文件10处静默异常修复 | smart_memory(4处)、social_scheduler(2处)、message_mixin/data_providers/notify_style/trading_init(各1处) |
+| 2 | P1 | daily_brief 超长函数拆分 | 542行→18个子函数+_collect_brief_metrics，主函数降至~80行编排器 |
+| 3 | P2 | API路由参数输入验证 | social(3处Path(ge=0))+newapi(4处Path(ge=1))+omega(4处Query(max_length=...))=11处 |
+| 4 | P2 | logger f-string→lazy formatting | 11文件128处修复 |
+
+### 未完成的工作
+
+**可继续推进方向（按价值排序）：**
+- 超长函数拆分：handle_message(611行)、_match_chinese_command(582行)、_run_cycle(472行)、setup_proactive_listeners(398行)
+- 裸 httpx.AsyncClient 绕过 ResilientHTTPClient：9文件18处直接创建 httpx.AsyncClient
+- 全局可变状态无锁保护：7处高风险（onboarding_mixin/litellm_router/price_engine/xianyu_live/slider_solver/backtester）
+- JSON load/save 样板重复：27处/13文件可提取为 json_utils
+- 剩余 logger f-string：全局还有约 550 处（本轮修了前10个文件128处）
+- message_mixin.py 1058行按 text/voice/streaming 拆分（P3）
+
+### 需要注意的坑
+- daily_brief.py 拆分后所有子函数在 daily_brief_data.py 中，daily_brief.py 通过 import 引用。向后兼容 re-export 已保留
+- smart_memory.py 的 logger 修复中，方括号切片表达式（如 `key[:4]`、`fact[:80]`）需要手动修正（正则脚本会截断）
+- newapi.py 的 `update_channel` 参数顺序调整为 `payload: ChannelCreate` 在前、`channel_id: int = Path(ge=1)` 在后
+
+### 当前系统状态
+- 后端测试: 1339/1341 (2 项 skip, 0 失败, 100% 通过率)
+- 前端 tsc: 零错误
+- 累计五轮改进: R1(15项) + R2(6项) + R3(6项) + R4(4项) + R5(4项) = 35 项改进
 
 ---
 
