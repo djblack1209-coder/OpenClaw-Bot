@@ -571,6 +571,43 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           </div>
         </div>
 
+        {/* 关于 & 开发者模式 */}
+        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">关于</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-white/80">应用名称</span>
+              <span className="text-sm text-white/60">OpenClaw</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-white/80">版本号</span>
+              <button
+                onClick={handleVersionTap}
+                className="text-sm text-white/60 hover:text-white/80 transition-colors select-none"
+              >
+                v2.0.0 {tapCount > 0 && tapCount < 3 && `(${tapCount}/3)`}
+              </button>
+            </div>
+            {devMode && (
+              <div className="flex items-center justify-between p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 mt-2">
+                <div>
+                  <p className="text-sm text-amber-300 font-medium">开发者模式</p>
+                  <p className="text-xs text-amber-400/70">侧边栏显示全部开发者工具</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setDevMode(false);
+                    toast.success('🔒 开发者模式已关闭');
+                  }}
+                  className="px-3 py-1 text-xs bg-amber-500/20 text-amber-300 rounded-lg hover:bg-amber-500/30 transition-colors"
+                >
+                  关闭
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* 安全设置 */}
         <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
           <div className="flex items-center gap-3 mb-6">
