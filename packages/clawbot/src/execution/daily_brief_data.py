@@ -56,7 +56,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
             if perf:
                 result["portfolio_pnl"] = perf.get("total_pnl", 0)
     except Exception as e:
-        logger.debug(f"[DailyBrief] 昨日持仓对比失败: {e}")
+        logger.debug("[DailyBrief] 昨日持仓对比失败: %s", e)
 
     # 2. 昨日闲鱼数据 — daily_stats 支持传入日期
     try:
@@ -69,7 +69,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
                 result["xianyu_consultations"] = ystats.get("consultations", 0)
                 result["xianyu_orders"] = ystats.get("orders", 0)
     except Exception as e:
-        logger.debug(f"[DailyBrief] 昨日闲鱼对比失败: {e}")
+        logger.debug("[DailyBrief] 昨日闲鱼对比失败: %s", e)
 
     # 3. 昨日社媒发帖 — 通过 engagement_summary(days=1) 近似
     try:
@@ -79,7 +79,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
         if eng.get("success"):
             result["social_posts"] = eng.get("total_posts", 0)
     except Exception as e:
-        logger.debug(f"[DailyBrief] 昨日社媒对比失败: {e}")
+        logger.debug("[DailyBrief] 昨日社媒对比失败: %s", e)
 
     return result
 
@@ -158,7 +158,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
                     if 0 < distance < 3:
                         agenda.append((0, f"⚡ {sym} 距止损仅 {distance:.1f}%，注意！"))
     except Exception as e:
-        logger.debug(f"[TodayAgenda] 持仓风险: {e}")
+        logger.debug("[TodayAgenda] 持仓风险: %s", e)
 
     # ── 2. 今日提醒 ──
     try:
@@ -178,7 +178,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
                 except (ValueError, TypeError):
                     pass
     except Exception as e:
-        logger.debug(f"[TodayAgenda] 提醒: {e}")
+        logger.debug("[TodayAgenda] 提醒: %s", e)
 
     # ── 3. 账单到期 ──
     try:
@@ -192,7 +192,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
             alert = " ‼️ 低于阈值" if threshold and balance < threshold else ""
             agenda.append((1, f"📱 {name} 余额 ¥{balance:.0f}{alert}"))
     except Exception as e:
-        logger.debug(f"[TodayAgenda] 账单: {e}")
+        logger.debug("[TodayAgenda] 账单: %s", e)
 
     # ── 4. 今日待办 ──
     try:
@@ -202,7 +202,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
         for t in tasks:
             agenda.append((2, f"📝 {t.get('title', '未命名任务')} (待办)"))
     except Exception as e:
-        logger.debug(f"[TodayAgenda] 待办: {e}")
+        logger.debug("[TodayAgenda] 待办: %s", e)
 
     # ── 5. 降价监控到期 — 超过1天未检查的活跃监控 ──
     try:
@@ -216,7 +216,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
             for r in rows:
                 agenda.append((3, f"🛒 {r[0]} 监控已超1天未检查"))
     except Exception as e:
-        logger.debug(f"[TodayAgenda] 降价监控: {e}")
+        logger.debug("[TodayAgenda] 降价监控: %s", e)
 
     if not agenda:
         return []
