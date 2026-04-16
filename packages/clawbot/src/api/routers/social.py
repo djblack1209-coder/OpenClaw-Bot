@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import SocialStatus, SocialPublishRequest
@@ -221,7 +221,7 @@ def list_drafts():
 
 
 @router.patch("/social/drafts/{index}", response_model=Dict[str, Any])
-def update_draft(index: int, text: str):
+def update_draft(index: int = Path(ge=0, description="草稿索引"), text: str = ""):
     """更新草稿文本内容"""
     try:
         return ClawBotRPC._rpc_social_draft_update(index, text)
@@ -231,7 +231,7 @@ def update_draft(index: int, text: str):
 
 
 @router.delete("/social/drafts/{index}", response_model=Dict[str, Any])
-def delete_draft(index: int):
+def delete_draft(index: int = Path(ge=0, description="草稿索引")):
     """按索引删除草稿"""
     try:
         return ClawBotRPC._rpc_social_draft_delete(index)
@@ -241,7 +241,7 @@ def delete_draft(index: int):
 
 
 @router.post("/social/drafts/{index}/publish", response_model=Dict[str, Any])
-async def publish_draft(index: int):
+async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
     """立即发布指定草稿"""
     try:
         return await ClawBotRPC._rpc_social_draft_publish(index)

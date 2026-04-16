@@ -251,7 +251,7 @@ async def omega_investment_backtest(
 
 
 @router.get("/tools/jina-read", response_model=Dict[str, Any])
-async def omega_jina_read(url: str):
+async def omega_jina_read(url: str = Query(max_length=2048, description="要读取的URL")):
     """读取URL内容（Jina Reader）"""
     # SSRF 防护: 校验 URL 协议 + 解析域名 IP 后再次校验（防 DNS 重绑定）
     parsed = urlparse(url)
@@ -298,7 +298,7 @@ async def omega_jina_read(url: str):
 
 
 @router.get("/tools/jina-search", response_model=Dict[str, Any])
-async def omega_jina_search(query: str):
+async def omega_jina_search(query: str = Query(max_length=500, description="搜索关键词")):
     """Web搜索（Jina Search）"""
     try:
         from src.tools.jina_reader import jina_search
@@ -311,7 +311,9 @@ async def omega_jina_search(query: str):
 
 
 @router.post("/tools/generate-image", response_model=Dict[str, Any])
-async def omega_generate_image(prompt: str, model: str = "fal-ai/flux/schnell"):
+async def omega_generate_image(
+    prompt: str = Query(max_length=1000, description="图像描述"), model: str = "fal-ai/flux/schnell"
+):
     """AI 图像生成 (fal.ai)"""
     try:
         from src.tools.fal_client import generate_image
@@ -324,7 +326,10 @@ async def omega_generate_image(prompt: str, model: str = "fal-ai/flux/schnell"):
 
 
 @router.post("/tools/generate-video", response_model=Dict[str, Any])
-async def omega_generate_video(prompt: str, model: str = "fal-ai/kling-video/v1/standard/text-to-video"):
+async def omega_generate_video(
+    prompt: str = Query(max_length=1000, description="视频描述"),
+    model: str = "fal-ai/kling-video/v1/standard/text-to-video",
+):
     """AI 视频生成 (fal.ai)"""
     try:
         from src.tools.fal_client import generate_video
