@@ -18,6 +18,7 @@ v2.0 新增 (2026-03-23):
     解决 LLM 生成 Markdown 在 Telegram 渲染失败的问题
   - strip_markdown() — 纯文本降级，发送失败时兜底
 """
+
 import logging
 import re
 from typing import Any, Dict, List, Tuple, Union
@@ -26,11 +27,13 @@ logger = logging.getLogger(__name__)
 
 # ── HTML 转义 ──────────────────────────────────────────────
 
-_HTML_ESCAPE_TABLE = str.maketrans({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-})
+_HTML_ESCAPE_TABLE = str.maketrans(
+    {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+    }
+)
 
 
 def escape_html(text: str) -> str:
@@ -59,38 +62,54 @@ import asyncio  # noqa: E402
 # 注意: s 是 str(error).lower()（保留空格），用于灵活匹配
 _ERROR_PATTERNS: List[Tuple[Any, str]] = [
     # LiteLLM 全链路降级失败（所有 provider 都挂了）
-    (lambda e, s: "no healthy deployment" in s or "all deployments" in s
-     or "no available deployment" in s,
-     "🔧 AI 服务全线繁忙，正在自动切换备用通道，请稍后重试"),
-
+    (
+        lambda e, s: "no healthy deployment" in s or "all deployments" in s or "no available deployment" in s,
+        "🔧 AI 服务全线繁忙，正在自动切换备用通道，请稍后重试",
+    ),
     # ConnectionError 家族
-    (lambda e, s: isinstance(e, ConnectionError)
-     or "connection refused" in s or "connectionrefused" in s
-     or "connect" in s or "network" in s,
-     "🔌 服务暂时无法连接，请稍后重试"),
-
+    (
+        lambda e, s: (
+            isinstance(e, ConnectionError)
+            or "connection refused" in s
+            or "connectionrefused" in s
+            or "connect" in s
+            or "network" in s
+        ),
+        "🔌 服务暂时无法连接，请稍后重试",
+    ),
     # Timeout
-    (lambda e, s: isinstance(e, (TimeoutError, asyncio.TimeoutError))
-     or "timeout" in s or "timed out" in s,
-     "⏱ 操作超时，请稍后重试"),
-
+    (
+        lambda e, s: isinstance(e, (TimeoutError, asyncio.TimeoutError)) or "timeout" in s or "timed out" in s,
+        "⏱ 操作超时，请稍后重试",
+    ),
     # Rate limit (429)
-    (lambda e, s: "429" in s or "ratelimit" in s or "rate_limit" in s
-     or "rate limit" in s or "too many requests" in s,
-     "⚡ 请求太频繁，请等待片刻"),
-
+    (
+        lambda e, s: (
+            "429" in s or "ratelimit" in s or "rate_limit" in s or "rate limit" in s or "too many requests" in s
+        ),
+        "⚡ 请求太频繁，请等待片刻",
+    ),
     # Auth errors (401/403)
-    (lambda e, s: "401" in s or "403" in s or "unauthorized" in s
-     or "forbidden" in s or ("auth" in s and "fail" in s),
-     "🔑 认证失败，请联系管理员"),
-
+    (
+        lambda e, s: (
+            "401" in s or "403" in s or "unauthorized" in s or "forbidden" in s or ("auth" in s and "fail" in s)
+        ),
+        "🔑 认证失败，请联系管理员",
+    ),
     # Server errors (5xx)
-    (lambda e, s: any(f" {code}" in s or f"_{code}" in s or f":{code}" in s
-                      or s.startswith(str(code))
-                      for code in range(500, 600))
-     or "internal server error" in s or "bad gateway" in s
-     or "service unavailable" in s or "server error" in s,
-     "🔧 服务端故障，正在自动恢复"),
+    (
+        lambda e, s: (
+            any(
+                f" {code}" in s or f"_{code}" in s or f":{code}" in s or s.startswith(str(code))
+                for code in range(500, 600)
+            )
+            or "internal server error" in s
+            or "bad gateway" in s
+            or "service unavailable" in s
+            or "server error" in s
+        ),
+        "🔧 服务端故障，正在自动恢复",
+    ),
 ]
 
 
@@ -115,7 +134,9 @@ def format_error(error: Union[Exception, str], context: str = "") -> str:
     if isinstance(error, Exception):
         logger.error(
             "操作失败 [context=%s] [type=%s]: %s",
-            context or "unknown", type(error).__name__, error,
+            context or "unknown",
+            type(error).__name__,
+            error,
             exc_info=error,
         )
         err_str = str(error).lower()
@@ -519,47 +540,6 @@ def _format_value(value: Any) -> str:
     return str(value)[:200]
 
 
-# ── 状态指示器 ──────────────────────────────────────────────
-
-def format_status_indicator(value: Union[bool, str]) -> str:
-    """将布尔值或状态字符串转为可读的中文状态。
-
-    Args:
-        value: True/False 或字符串状态
-
-    Returns:
-        "✅ 已开启" / "❌ 未开启" / 原始字符串
-    """
-    if isinstance(value, bool):
-        return "✅ 已开启" if value else "❌ 未开启"
-
-    # 字符串状态映射
-    _STATUS_MAP = {
-        "true": "✅ 已开启",
-        "false": "❌ 未开启",
-        "on": "✅ 已开启",
-        "off": "❌ 未开启",
-        "enabled": "✅ 已开启",
-        "disabled": "❌ 未开启",
-        "active": "✅ 活跃",
-        "inactive": "❌ 未活跃",
-        "connected": "✅ 已连接",
-        "disconnected": "❌ 未连接",
-        "running": "✅ 运行中",
-        "stopped": "❌ 已停止",
-        "ok": "✅ 正常",
-        "error": "❌ 异常",
-    }
-
-    if isinstance(value, str):
-        mapped = _STATUS_MAP.get(value.lower().strip())
-        if mapped:
-            return mapped
-        return value
-
-    return str(value)
-
-
 # ── Markdown → Telegram HTML 转换 ────────────────────────────
 # 搬运自 CoPaw (agentscope-ai/CoPaw, Apache-2.0 License)
 # 5 阶段管线: 保护代码块→转义→块级元素→行内格式→恢复占位符
@@ -603,8 +583,7 @@ def markdown_to_telegram_html(text: str) -> str:
         code = escape_html(m.group(2))
         if lang:
             return _ph(
-                f'<pre><code class="language-{escape_html(lang)}">'
-                f"{code}</code></pre>",
+                f'<pre><code class="language-{escape_html(lang)}">{code}</code></pre>',
             )
         return _ph(f"<pre>{code}</pre>")
 

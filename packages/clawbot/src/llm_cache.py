@@ -18,6 +18,7 @@ Usage:
         cache_ttl=3600,  # 1 hour
     )
 """
+
 import hashlib
 import json
 import logging
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ---- Graceful degradation ----
 try:
     import diskcache
+
     HAS_DISKCACHE = True
 except ImportError:
     HAS_DISKCACHE = False
@@ -50,9 +52,9 @@ _stats = {"hits": 0, "misses": 0, "errors": 0, "bypassed": 0}
 _cache_lock = threading.Lock()
 
 # ---- Default TTLs ----
-TTL_CHAT = 3600       # 闲聊/FAQ: 1 hour
-TTL_MARKET = 300      # 市场数据: 5 minutes
-TTL_STATUS = 30       # 系统状态: 30 seconds
+TTL_CHAT = 3600  # 闲聊/FAQ: 1 hour
+TTL_MARKET = 300  # 市场数据: 5 minutes
+TTL_STATUS = 30  # 系统状态: 30 seconds
 
 
 def _get_cache() -> Optional["diskcache.Cache"]:
@@ -91,10 +93,7 @@ def _make_cache_key(
     system_prompt is already part of messages when passed through acompletion.
     """
     key_parts = {
-        "messages": [
-            {"role": m.get("role", ""), "content": m.get("content", "")}
-            for m in messages
-        ],
+        "messages": [{"role": m.get("role", ""), "content": m.get("content", "")} for m in messages],
         "model": model_family or "",
         "temperature": round(temperature, 4),
     }
@@ -166,11 +165,7 @@ async def cached_completion(
 
     # ---- Build cache key ----
     # Include system_prompt in messages for key generation (mirrors acompletion behavior)
-    key_messages = (
-        [{"role": "system", "content": system_prompt}] + messages
-        if system_prompt
-        else messages
-    )
+    key_messages = [{"role": "system", "content": system_prompt}] + messages if system_prompt else messages
     cache_key = _make_cache_key(key_messages, model_family, temperature)
 
     # ---- Cache lookup ----
@@ -242,39 +237,3 @@ def get_cache_stats() -> Dict[str, Any]:
             logger.debug("Silenced exception", exc_info=True)
 
     return result
-
-
-def clear_cache() -> int:
-    """Clear all cached LLM responses.
-
-    Returns:
-        Number of entries removed.
-    """
-    cache = _get_cache()
-    if cache is None:
-        return 0
-
-    try:
-        count = len(cache)
-        cache.clear()
-        # Reset stats
-        _stats["hits"] = 0
-        _stats["misses"] = 0
-        _stats["errors"] = 0
-        _stats["bypassed"] = 0
-        logger.info(f"[LLM Cache] 已清空 {count} 条缓存")
-        return count
-    except Exception as e:
-        logger.error(f"[LLM Cache] 清空失败: {e}")
-        return 0
-
-
-def close_cache() -> None:
-    """Close the cache (call on shutdown for clean SQLite close)."""
-    global _cache
-    if _cache is not None:
-        try:
-            _cache.close()
-        except Exception as e:
-            logger.debug("Silenced exception", exc_info=True)
-        _cache = None
