@@ -16,6 +16,7 @@ v1.1 变更 (2026-03-23):
 6. 持仓监控（position_monitor 止损/止盈）
 7. 收盘复盘（trading_journal）
 """
+
 import asyncio
 import logging
 import os
@@ -33,6 +34,7 @@ from src.trading.market_calendar import is_market_holiday
 from src.trading_pipeline import TradingPipeline, TraderState
 from src.auto_trader_filters import AutoTraderFiltersMixin
 from src.auto_trader_review import AutoTraderReviewMixin
+
 
 class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
     """
@@ -73,7 +75,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self._task: Optional[asyncio.Task] = None
         self._cycle_count = 0
         self._today_trades = 0  # 今日已执行交易数
-        self._today_date = ""   # 用于日切重置
+        self._today_date = ""  # 用于日切重置
         self._last_scan: Optional[datetime] = None
         self._scan_results: List[Dict] = []
         self._proposals: List[TradeProposal] = []
@@ -106,12 +108,14 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self._running = True
         self.state = TraderState.IDLE
         self._task = asyncio.create_task(self._main_loop())
+
         def _main_loop_done(t):
             if t.cancelled():
                 return
             exc = t.exception()
             if exc:
                 logger.critical("[AutoTrader] 主循环崩溃: %s", exc)
+
         self._task.add_done_callback(_main_loop_done)
         logger.info("[AutoTrader] 已启动")
         await self._safe_notify(
@@ -141,15 +145,26 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         # 重要性分级：P0 必推、P1 默认推、P2 静默
         # P0: 成交、止损止盈、自动停机、风控拒绝 — 涉及真金白银
         p0_keywords = (
-            "交易待成交", "交易已成交", "成交回写完成", "次日重挂已提交",
-            "卖出完成", "止损触发", "止盈触发", "追踪止损",
-            "自动停机", "熔断", "日亏损限额",
-            "风控拒绝", "决策验证拒绝",
+            "交易待成交",
+            "交易已成交",
+            "成交回写完成",
+            "次日重挂已提交",
+            "卖出完成",
+            "止损触发",
+            "止盈触发",
+            "追踪止损",
+            "自动停机",
+            "熔断",
+            "日亏损限额",
+            "风控拒绝",
+            "决策验证拒绝",
         )
         # P1: 交易循环摘要、扫描结果、AI投票结论 — 有信息量
         p1_keywords = (
-            "阶段 4/4", "阶段 3/4: AI团队投票完成",
-            "防空仓策略", "IBKR 未连接",
+            "阶段 4/4",
+            "阶段 3/4: AI团队投票完成",
+            "防空仓策略",
+            "IBKR 未连接",
             "今日已达交易上限",
         )
 
@@ -176,15 +191,15 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             except Exception as e:
                 if is_p0 and attempt < 2:
                     logger.debug("[AutoTrader] P0通知重试 (%d/3): %s", attempt + 1, e)
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                     continue
                 logger.warning("[AutoTrader] 通知发送失败: %s (attempt %d)", e, attempt + 1)
                 return
 
     def _get_capital(self) -> float:
         """Return configured total capital, defaulting to 2000."""
-        if self.risk_manager and hasattr(self.risk_manager, 'config'):
-            return float(getattr(self.risk_manager.config, 'total_capital', 2000.0))
+        if self.risk_manager and hasattr(self.risk_manager, "config"):
+            return float(getattr(self.risk_manager.config, "total_capital", 2000.0))
         return 2000.0
 
     def _estimate_open_exposure(self) -> float:
@@ -193,8 +208,10 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             return 0.0
         try:
             positions = self.pipeline.portfolio.get_positions()
-        except Exception as e:  # noqa: F841
-            return 0.0
+        except Exception as e:
+            # 敞口估算失败时返回保守高值（总资金），防止系统误判为无持仓而超额开仓
+            logger.warning("[AutoTrader] 获取持仓失败，返回保守敞口(总资金上限): %s", e)
+            return self._get_capital()
 
         exposure = 0.0
         for p in positions or []:
@@ -212,9 +229,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         if not self.risk_manager or not hasattr(self.risk_manager, "config"):
             return float("inf")
         cfg = self.risk_manager.config
-        max_exposure = float(getattr(cfg, "total_capital", 2000.0)) * float(
-            getattr(cfg, "max_total_exposure_pct", 0.8)
-        )
+        max_exposure = float(getattr(cfg, "total_capital", 2000.0)) * float(getattr(cfg, "max_total_exposure_pct", 0.8))
         current_exposure = self._estimate_open_exposure()
         return max(0.0, max_exposure - current_exposure)
 
@@ -228,11 +243,11 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
         # 今日盈亏
         if self.risk_manager:
-            today_pnl = getattr(self.risk_manager, '_today_pnl', 0)
+            today_pnl = getattr(self.risk_manager, "_today_pnl", 0)
             lines.append("今日已实现盈亏: $%.2f" % today_pnl)
             daily_limit = 100
-            if hasattr(self.risk_manager, 'config'):
-                daily_limit = getattr(self.risk_manager.config, 'daily_loss_limit', 100)
+            if hasattr(self.risk_manager, "config"):
+                daily_limit = getattr(self.risk_manager.config, "daily_loss_limit", 100)
             lines.append("日亏损限额: $%.0f (剩余$%.0f)" % (daily_limit, daily_limit + today_pnl))
 
         # 当前持仓数
@@ -243,20 +258,25 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         # 闭环学习：注入近期交易结果 + 教训
         try:
             from src.trading_journal import journal as tj
+
             if tj:
-                closed = tj.get_closed_trades(days=3, limit=5) if hasattr(tj, 'get_closed_trades') else []
+                closed = tj.get_closed_trades(days=3, limit=5) if hasattr(tj, "get_closed_trades") else []
                 if closed:
                     lines.append("\n[近3日交易结果]")
                     for t in closed[:5]:
                         lines.append(
                             "  %s %s PnL=$%+.2f (%+.1f%%) 持仓%.1fh | %s"
-                            % (t.get("side", "?"), t.get("symbol", "?"),
-                               t.get("pnl", 0), t.get("pnl_pct", 0),
-                               t.get("hold_duration_hours", 0) or 0,
-                               (t.get("exit_reason") or t.get("entry_reason") or "")[:40])
+                            % (
+                                t.get("side", "?"),
+                                t.get("symbol", "?"),
+                                t.get("pnl", 0),
+                                t.get("pnl_pct", 0),
+                                t.get("hold_duration_hours", 0) or 0,
+                                (t.get("exit_reason") or t.get("entry_reason") or "")[:40],
+                            )
                         )
                 # 注入迭代教训
-                if hasattr(tj, 'generate_iteration_report'):
+                if hasattr(tj, "generate_iteration_report"):
                     report = tj.generate_iteration_report(days=7)
                     suggestions = report.get("improvement_suggestions", []) if isinstance(report, dict) else []
                     if suggestions:
@@ -264,7 +284,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         for s in suggestions[:3]:
                             lines.append("  - " + str(s))
         except Exception as e:
-            logger.debug("Silenced exception", exc_info=True)  # journal 不可用不影响投票
+            logger.warning("[AutoTrader] 交易日志读取失败，AI投票将缺少历史上下文: %s", e)
 
         return "\n".join(lines)
 
@@ -347,7 +367,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         # ========== IBKR 连接预检 ==========
         if self.pipeline and self.pipeline.broker:
             _broker = self.pipeline.broker
-            if hasattr(_broker, 'ensure_connected'):
+            if hasattr(_broker, "ensure_connected"):
                 try:
                     _connected = await _broker.ensure_connected()
                     if _connected:
@@ -362,8 +382,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         remaining_today = self.max_trades_per_day - self._today_trades
         if remaining_today <= 0:
             await self._safe_notify(
-                "今日已达交易上限 (%d/%d笔)，停止扫描。\n明日自动继续。"
-                % (self._today_trades, self.max_trades_per_day)
+                "今日已达交易上限 (%d/%d笔)，停止扫描。\n明日自动继续。" % (self._today_trades, self.max_trades_per_day)
             )
             self.state = TraderState.IDLE
             return cycle_result
@@ -375,8 +394,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         await self._safe_notify(
             "-- 交易循环 #%d 开始 --\n"
             "阶段 1/4: 全市场扫描中...\n"
-            "今日已交易: %d/%d笔"
-            % (self._cycle_count, self._today_trades, self.max_trades_per_day)
+            "今日已交易: %d/%d笔" % (self._cycle_count, self._today_trades, self.max_trades_per_day)
         )
 
         if self.scan_market:
@@ -391,9 +409,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 return cycle_result
 
         if not self._scan_results:
-            await self._safe_notify(
-                "阶段 1/4: 扫描完成，无信号。\n市场平静，继续观望。"
-            )
+            await self._safe_notify("阶段 1/4: 扫描完成，无信号。\n市场平静，继续观望。")
             self.state = TraderState.IDLE
             return cycle_result
 
@@ -402,24 +418,28 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         cycle_result["candidates"] = len(candidates)
 
         # 扩大候选池: 取 Top N 进入分析
-        top_candidates = candidates[:self.max_candidates_for_vote]
+        top_candidates = candidates[: self.max_candidates_for_vote]
 
         # 用 IBKR 快照刷新 Top 候选报价
         await self._enrich_candidates_with_broker_quotes(top_candidates)
 
         if self.notify:
             scan_lines = [
-                "阶段 1/4: 扫描完成\n"
-                "扫描 %d 个标的 -> 筛选出 %d 个候选\n"
-                % (cycle_result["scanned"], len(candidates))
+                "阶段 1/4: 扫描完成\n扫描 %d 个标的 -> 筛选出 %d 个候选\n" % (cycle_result["scanned"], len(candidates))
             ]
             for i, c in enumerate(top_candidates):
                 arrow = "+" if c.get("change_pct", 0) >= 0 else ""
                 scan_lines.append(
                     "  %d. %s $%.2f (%s%.1f%%) 评分:%+d %s"
-                    % (i + 1, c.get("symbol", "?"), c.get("price", 0),
-                       arrow, c.get("change_pct", 0), c.get("score", 0),
-                       c.get("signal_cn", ""))
+                    % (
+                        i + 1,
+                        c.get("symbol", "?"),
+                        c.get("price", 0),
+                        arrow,
+                        c.get("change_pct", 0),
+                        c.get("score", 0),
+                        c.get("signal_cn", ""),
+                    )
                 )
             if not top_candidates:
                 scan_lines.append("  无符合条件的候选，继续观望。")
@@ -432,10 +452,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         # ========== 阶段3: AI团队分析 + 投票 ==========
         self.state = TraderState.ANALYZING
 
-        await self._safe_notify(
-            "阶段 2/4: 获取 %d 个候选的详细技术数据..."
-            % len(top_candidates)
-        )
+        await self._safe_notify("阶段 2/4: 获取 %d 个候选的详细技术数据..." % len(top_candidates))
 
         # 优先复用扫描阶段已获取的分析数据（避免重复调用 yfinance 被限流）
         analyses = {}
@@ -474,8 +491,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         await self._safe_notify(
             "阶段 2/4: 技术数据就绪 (%d/%d)\n\n"
             "阶段 3/4: AI团队投票决策中...\n"
-            "雷达 -> 宏观 -> 图表 -> 风控 -> 指挥官"
-            % (len(analyses), len(top_candidates))
+            "雷达 -> 宏观 -> 图表 -> 风控 -> 指挥官" % (len(analyses), len(top_candidates))
         )
 
         # AI团队投票
@@ -504,9 +520,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 if vr.decision != "BUY":
                     continue
                 # 用投票的加权平均价格，或从候选数据中取
-                candidate = next(
-                    (c for c in top_candidates if c.get("symbol") == vr.symbol), {}
-                )
+                candidate = next((c for c in top_candidates if c.get("symbol") == vr.symbol), {})
                 price = vr.avg_entry if vr.avg_entry > 0 else candidate.get("price", 0)
                 stop = vr.avg_stop if vr.avg_stop > 0 else round(price * 0.97, 2)
                 target = vr.avg_target if vr.avg_target > 0 else round(price * 1.06, 2)
@@ -522,7 +536,8 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 quantity = 0
                 if self.risk_manager:
                     sizing = self.risk_manager.calc_safe_quantity(
-                        entry_price=price, stop_loss=stop,
+                        entry_price=price,
+                        stop_loss=stop,
                     )
                     if "error" not in sizing:
                         quantity = sizing["shares"]
@@ -547,31 +562,35 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 if quantity <= 0:
                     continue
 
-                proposals.append(TradeProposal(
-                    symbol=vr.symbol,
-                    action="BUY",
-                    quantity=quantity,
-                    entry_price=price,
-                    stop_loss=stop,
-                    take_profit=target,
-                    signal_score=candidate.get("score", 0),
-                    confidence=vr.avg_confidence,
-                    reason=vr.summary,
-                    decided_by="AI团队投票(%d/%d)" % (vr.buy_count, len(vr.votes)),
-                    atr=candidate.get("atr_pct", 2.0) / 100 * price,
-                ))
+                proposals.append(
+                    TradeProposal(
+                        symbol=vr.symbol,
+                        action="BUY",
+                        quantity=quantity,
+                        entry_price=price,
+                        stop_loss=stop,
+                        take_profit=target,
+                        signal_score=candidate.get("score", 0),
+                        confidence=vr.avg_confidence,
+                        reason=vr.summary,
+                        decided_by="AI团队投票(%d/%d)" % (vr.buy_count, len(vr.votes)),
+                        atr=candidate.get("atr_pct", 2.0) / 100 * price,
+                    )
+                )
                 exposure_budget_left -= quantity * price
                 if len(proposals) >= remaining_today:
                     break
         else:
             # 无AI团队时降级为机械策略
-            for candidate in top_candidates[:min(self.max_trades_per_cycle, remaining_today)]:
+            for candidate in top_candidates[: min(self.max_trades_per_cycle, remaining_today)]:
                 proposal = await self._generate_proposal(candidate)
                 if proposal and proposal.action == "BUY":
                     if exposure_budget_left <= 0:
                         logger.info("[AutoTrader] 总敞口额度已用尽，停止生成提案")
                         break
-                    max_qty_by_exposure = int(exposure_budget_left / proposal.entry_price) if proposal.entry_price > 0 else 0
+                    max_qty_by_exposure = (
+                        int(exposure_budget_left / proposal.entry_price) if proposal.entry_price > 0 else 0
+                    )
                     if max_qty_by_exposure <= 0:
                         logger.info("[AutoTrader] %s 可用敞口不足，跳过", proposal.symbol)
                         continue
@@ -600,10 +619,9 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             )
             if can_force:
                 forced_limit = min(self.max_trades_per_cycle, remaining_today, forced_quota)
-                force_candidates = [
-                    c for c in top_candidates
-                    if c.get("score", 0) >= self.force_trade_min_score
-                ][:forced_limit]
+                force_candidates = [c for c in top_candidates if c.get("score", 0) >= self.force_trade_min_score][
+                    :forced_limit
+                ]
                 for c in force_candidates:
                     p = await self._generate_proposal(c)
                     if p and p.action == "BUY":
@@ -617,9 +635,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         if p.quantity <= 0:
                             continue
                         p.decided_by = "AntiIdlePolicy"
-                        p.reason = (
-                            f"{p.reason} | 反空仓执行: 连续{self._no_trade_cycles}轮未达成AI共识"
-                        )
+                        p.reason = f"{p.reason} | 反空仓执行: 连续{self._no_trade_cycles}轮未达成AI共识"
                         proposals.append(p)
                         exposure_budget_left -= p.quantity * p.entry_price
                 if proposals:
@@ -649,8 +665,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             for p in proposals:
                 prop_lines.append(
                     "  BUY %s x%d @ $%.2f | 止损$%.2f 止盈$%.2f\n  %s"
-                    % (p.symbol, p.quantity, p.entry_price,
-                       p.stop_loss, p.take_profit, p.reason[:80])
+                    % (p.symbol, p.quantity, p.entry_price, p.stop_loss, p.take_profit, p.reason[:80])
                 )
             await self._safe_notify("\n".join(prop_lines))
 
@@ -671,6 +686,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         # 发射结构化交易事件 — 供 ProactiveEngine 延迟跟进
                         try:
                             from src.core.event_bus import get_event_bus, EventType as _EvtType
+
                             _trade_event_data = {
                                 "symbol": proposal.symbol,
                                 "direction": proposal.action,
@@ -690,8 +706,9 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                                 )
                             )
                             _evt_task.add_done_callback(
-                                lambda t: t.exception() and logger.debug(
-                                    "[AutoTrader] EventBus 交易事件发射异常: %s", t.exception()
+                                lambda t: (
+                                    t.exception()
+                                    and logger.debug("[AutoTrader] EventBus 交易事件发射异常: %s", t.exception())
                                 )
                             )
                         except Exception as _evt_err:
@@ -700,16 +717,19 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         # 结构化交易卡片 — 搬运自 freqtrade 通知格式
                         try:
                             from src.telegram_ux import format_trade_card
-                            card = format_trade_card({
-                                "action": proposal.action,
-                                "symbol": proposal.symbol,
-                                "quantity": proposal.quantity,
-                                "entry_price": proposal.entry_price,
-                                "stop_loss": proposal.stop_loss,
-                                "take_profit": proposal.take_profit,
-                                "reason": proposal.reason,
-                                "confidence": proposal.confidence,
-                            })
+
+                            card = format_trade_card(
+                                {
+                                    "action": proposal.action,
+                                    "symbol": proposal.symbol,
+                                    "quantity": proposal.quantity,
+                                    "entry_price": proposal.entry_price,
+                                    "stop_loss": proposal.stop_loss,
+                                    "take_profit": proposal.take_profit,
+                                    "reason": proposal.reason,
+                                    "confidence": proposal.confidence,
+                                }
+                            )
                             card += "\n\n今日交易: %d/%d笔" % (self._today_trades, self.max_trades_per_day)
                             await self._safe_notify(card)
                         except Exception as e:  # noqa: F841
@@ -718,17 +738,21 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                                 "BUY %s x%d @ $%.2f\n"
                                 "止损: $%.2f | 止盈: $%.2f\n"
                                 "今日交易: %d/%d笔"
-                                % (proposal.symbol, proposal.quantity,
-                                   proposal.entry_price, proposal.stop_loss,
-                                   proposal.take_profit,
-                                   self._today_trades, self.max_trades_per_day)
+                                % (
+                                    proposal.symbol,
+                                    proposal.quantity,
+                                    proposal.entry_price,
+                                    proposal.stop_loss,
+                                    proposal.take_profit,
+                                    self._today_trades,
+                                    self.max_trades_per_day,
+                                )
                             )
                     elif exec_result["status"] == "rejected":
                         cycle_result["rejected"] += 1
                         await self._safe_notify(
                             "交易被风控拒绝: %s %s\n原因: %s"
-                            % (proposal.symbol, proposal.action,
-                               exec_result.get("reason", "未知"))
+                            % (proposal.symbol, proposal.action, exec_result.get("reason", "未知"))
                         )
                     elif exec_result["status"] == "submitted":
                         cycle_result["submitted"] += 1
@@ -753,8 +777,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         "%s %s x%d @ $%.2f\n"
                         "止损: $%.2f | 止盈: $%.2f\n"
                         "理由: %s"
-                        % (p.action, p.symbol, p.quantity, p.entry_price,
-                           p.stop_loss, p.take_profit, p.reason)
+                        % (p.action, p.symbol, p.quantity, p.entry_price, p.stop_loss, p.take_profit, p.reason)
                     )
 
         self.state = TraderState.MONITORING
@@ -762,20 +785,31 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             "-- 循环 #%d 完成 --\n"
             "扫描%d -> 候选%d -> 分析%d -> 投票%d -> 提案%d -> 提交%d -> 执行%d 拒绝%d\n"
             "今日交易: %d/%d笔"
-            % (self._cycle_count,
-               cycle_result["scanned"], cycle_result["candidates"],
-               cycle_result.get("analyzed", 0), cycle_result["voted"],
-               cycle_result["proposals"], cycle_result["submitted"], cycle_result["executed"],
-               cycle_result["rejected"],
-               self._today_trades, self.max_trades_per_day)
+            % (
+                self._cycle_count,
+                cycle_result["scanned"],
+                cycle_result["candidates"],
+                cycle_result.get("analyzed", 0),
+                cycle_result["voted"],
+                cycle_result["proposals"],
+                cycle_result["submitted"],
+                cycle_result["executed"],
+                cycle_result["rejected"],
+                self._today_trades,
+                self.max_trades_per_day,
+            )
         )
 
         logger.info(
             "[AutoTrader] 循环 #%d 完成: 扫描%d 候选%d 投票%d 提案%d 提交%d 执行%d 拒绝%d",
-            self._cycle_count, cycle_result["scanned"],
-            cycle_result["candidates"], cycle_result["voted"],
+            self._cycle_count,
+            cycle_result["scanned"],
+            cycle_result["candidates"],
+            cycle_result["voted"],
             cycle_result["proposals"],
-            cycle_result["submitted"], cycle_result["executed"], cycle_result["rejected"],
+            cycle_result["submitted"],
+            cycle_result["executed"],
+            cycle_result["rejected"],
         )
         return cycle_result
 
@@ -798,9 +832,14 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
     def format_status(self) -> str:
         s = self.get_status()
         state_cn = {
-            "idle": "空闲", "scanning": "扫描中", "analyzing": "分析中",
-            "executing": "执行中", "monitoring": "监控中",
-            "reviewing": "复盘中", "paused": "暂停", "error": "异常",
+            "idle": "空闲",
+            "scanning": "扫描中",
+            "analyzing": "分析中",
+            "executing": "执行中",
+            "monitoring": "监控中",
+            "reviewing": "复盘中",
+            "paused": "暂停",
+            "error": "异常",
         }
         lines = [
             "AutoTrader 状态",
@@ -838,6 +877,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         count = len(self._proposals)
         self._proposals.clear()
         return count
+
 
 # ── 向后兼容导出 (v6.0 拆分) ──
 from src.trading_pipeline import TradingPipeline  # noqa: F401

@@ -619,7 +619,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                                     entry_cost = filled_qty * pos.avgCost
                                 break
                     except Exception as e:
-                        logger.debug("Silenced exception", exc_info=True)
+                        logger.warning("[IBKR] 获取 %s 成本基准失败，使用卖出价计算预算: %s", symbol, e)
                     self.total_spent = max(0, self.total_spent - entry_cost)
                     self._save_budget_state()
                     logger.info(
