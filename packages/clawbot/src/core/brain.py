@@ -444,13 +444,13 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                             )
                             # asyncio.gather 的 return_exceptions 可能返回异常对象
                             if isinstance(suggestions, BaseException):
-                                logger.debug(f"追问建议生成异常: {suggestions}")
+                                logger.debug("追问建议生成异常: %s", suggestions)
                                 suggestions = []
                             if isinstance(tldr, BaseException):
-                                logger.debug(f"TL;DR 摘要生成异常: {tldr}")
+                                logger.debug("TL;DR 摘要生成异常: %s", tldr)
                                 tldr = ""
                         except Exception as _gather_err:
-                            logger.debug(f"追问/摘要并行任务异常: {_gather_err}")
+                            logger.debug("追问/摘要并行任务异常: %s", _gather_err)
 
                         # TL;DR 摘要先行: 长回复前面加一句核心结论
                         display_reply = synthesized
@@ -468,7 +468,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                         if suggestions:
                             result.extra_data["followup_suggestions"] = suggestions
                 except Exception as e:
-                    logger.debug(f"响应合成失败 (使用原始结果): {e}")
+                    logger.debug("响应合成失败 (使用原始结果): %s", e)
             else:
                 failed_nodes = [n for n in completed_graph.nodes.values() if n.status == NodeStatus.FAILED]
                 result.error = "; ".join(f"{n.name}: {n.error}" for n in failed_nodes)
@@ -482,7 +482,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             )
 
         except Exception as e:
-            logger.error(f"[{task_id}] 处理消息失败: {e}", exc_info=True)
+            logger.error("[%s] 处理消息失败: %s", task_id, e, exc_info=True)
             # 清洗技术信息后再存入 result.error，防止 API URL / 模型名等泄露到用户消息
             from src.litellm_router import _scrub_secrets
 
@@ -495,7 +495,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     result.error = None
                     result.final_result = {"healed": True, "note": "已自动修复并重试"}
             except Exception as heal_error:
-                logger.error(f"[{task_id}] 自愈也失败: {heal_error}")
+                logger.error("[%s] 自愈也失败: %s", task_id, heal_error)
 
         finally:
             result.elapsed_seconds = time.time() - start_time
@@ -536,12 +536,12 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         }
         builder = builders.get(intent.task_type)
         if builder is None:
-            logger.warning(f"无任务图构建器: {intent.task_type}")
+            logger.warning("无任务图构建器: %s", intent.task_type)
             return None
         try:
             return await builder(intent)
         except Exception as e:
-            logger.error(f"构建任务图失败 ({intent.task_type}): {e}", exc_info=True)
+            logger.error("构建任务图失败 (%s): %s", intent.task_type, e, exc_info=True)
             return None
 
     # ── _build_*_graph 方法已拆分至 brain_graph_builders.py ──
@@ -604,7 +604,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 result.elapsed_seconds = time.time() - start_time
                 return result
 
-            logger.info(f"[{task_id}] 追问回答后恢复执行: {graph.name}")
+            logger.info("[%s] 追问回答后恢复执行: %s", task_id, graph.name)
             completed = await self._graph_executor.execute(graph)
             result.intent = intent
             result.graph_progress = completed.get_progress()
@@ -635,13 +635,13 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                             "_task_type": task_type_str,
                         }
                 except Exception as synth_err:
-                    logger.debug(f"追问回答响应合成失败: {synth_err}")
+                    logger.debug("追问回答响应合成失败: %s", synth_err)
             else:
                 result.error = "任务执行失败"
 
         except Exception as e:
             result.error = str(e)
-            logger.error(f"追问回答处理失败: {e}", exc_info=True)
+            logger.error("追问回答处理失败: %s", e, exc_info=True)
 
         result.elapsed_seconds = time.time() - start_time
         return result
@@ -685,7 +685,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     result.error = "任务执行失败"
         except Exception as e:
             result.error = str(e)
-            logger.error(f"回调处理失败: {e}", exc_info=True)
+            logger.error("回调处理失败: %s", e, exc_info=True)
 
         return result
 
@@ -702,7 +702,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             task.error = "用户取消"
             self._active_tasks.pop(task_id, None)
             self._pending_callbacks.pop(task_id, None)
-            logger.info(f"任务已取消: {task_id}")
+            logger.info("任务已取消: %s", task_id)
             return True
         return False
 
@@ -752,7 +752,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         except ImportError:
             logger.debug("自愈引擎未就绪")
         except Exception as e:
-            logger.warning(f"自愈失败: {e}")
+            logger.warning("自愈失败: %s", e)
         return False
 
 

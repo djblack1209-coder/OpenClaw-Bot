@@ -604,10 +604,10 @@ class SelfHealEngine:
                 if retry_callable:
                     try:
                         await retry_callable()
-                        logger.info(f"[自愈] 替代方案 {alt_name} 成功")
+                        logger.info("[自愈] 替代方案 %s 成功", alt_name)
                         return True
                     except Exception as e:
-                        logger.warning(f"[自愈] 替代方案 {alt_name} 也失败: {e}")
+                        logger.warning("[自愈] 替代方案 %s 也失败: %s", alt_name, e)
                         continue
 
         return False
@@ -651,7 +651,7 @@ class SelfHealEngine:
             )
         except Exception as e:
             logger.debug("Silenced exception", exc_info=True)
-        logger.warning(f"[自愈] 所有方案失败，已通知用户: {error}")
+        logger.warning("[自愈] 所有方案失败，已通知用户: %s", error)
 
     def _record_heal(self, error_msg: str, solution: str) -> None:
         """记录成功的自愈"""
@@ -687,7 +687,7 @@ class SelfHealEngine:
                 except RuntimeError as e:  # noqa: F841
                     pass
         except Exception as e:
-            logger.debug(f"发布自愈成功事件到 EventBus 失败: {e}")
+            logger.debug("发布自愈成功事件到 EventBus 失败: %s", e)
 
     def get_stats(self) -> Dict:
         """获取自愈统计"""
