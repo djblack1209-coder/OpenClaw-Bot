@@ -40,7 +40,8 @@ def _get_global_quote_cache():
         from src.trading_system import get_quote_cache
 
         return get_quote_cache()
-    except Exception as e:  # noqa: F841
+    except Exception as e:
+        logger.warning("[InvestTools] QuoteCache 初始化失败，行情将回退到本地缓存: %s", e)
         return None
 
 
