@@ -250,11 +250,11 @@ class SelfHealEngine:
         error_type = type(error).__name__
         error_sig = self._get_error_signature(error_type, error_msg)
 
-        logger.info(f"[自愈] 开始处理: {error_type}: {error_msg[:100]}")
+        logger.info("[自愈] 开始处理: %s: %s", error_type, error_msg[:100])
 
         # Circuit breaker 检查
         if self._is_circuit_open(error_sig):
-            logger.warning(f"[自愈] Circuit breaker 已触发，跳过: {error_sig}")
+            logger.warning("[自愈] Circuit breaker 已触发，跳过: %s", error_sig)
             result.error_category = ErrorCategory.UNKNOWN
             result.attempts.append({"step": 0, "action": "circuit_break", "skipped": True})
             result.elapsed_seconds = time.time() - start
@@ -374,7 +374,7 @@ class SelfHealEngine:
             if action == "retry_with_delay":
                 delay = solution.get("delay", 5)
                 max_attempts = solution.get("max_attempts", 3)
-                logger.info(f"[自愈] 等待 {delay}s 后重试（最多 {max_attempts} 次）")
+                logger.info("[自愈] 等待 %ss 后重试（最多 %s 次）", delay, max_attempts)
 
                 if retry_callable and HAS_TENACITY:
                     # 真正重试：用 tenacity 指数退避重新执行失败的操作
@@ -392,7 +392,7 @@ class SelfHealEngine:
                         logger.info("[自愈] 重试成功！")
                         return True
                     except RetryError as e:
-                        logger.warning(f"[自愈] {max_attempts} 次重试均失败")
+                        logger.warning("[自愈] %s 次重试均失败", max_attempts)
                         return False
                 elif retry_callable:
                     # 没有 tenacity — 手动重试
@@ -400,16 +400,16 @@ class SelfHealEngine:
                         await asyncio.sleep(delay * attempt)
                         try:
                             await retry_callable()
-                            logger.info(f"[自愈] 第 {attempt} 次重试成功")
+                            logger.info("[自愈] 第 %s 次重试成功", attempt)
                             return True
                         except Exception as e:
-                            logger.warning(f"[自愈] 第 {attempt} 次重试失败: {e}")
+                            logger.warning("[自愈] 第 %s 次重试失败: %s", attempt, e)
                     return False
                 else:
                     # 无 callable — 仅等待，由调用者决定是否重试
                     # 注意：返回 True 表示"已执行等待"，调用者应自行重试
                     await asyncio.sleep(delay)
-                    logger.info(f"[自愈] 已等待 {delay}s，建议调用者重试")
+                    logger.info("[自愈] 已等待 %ss，建议调用者重试", delay)
                     return True
 
             elif action == "retry_with_longer_timeout":
