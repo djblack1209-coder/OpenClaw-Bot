@@ -3,20 +3,29 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
-## [2026-04-16] 日报新增天气和汇率快速参考
-> 领域: `backend`
-> 影响模块: `daily_brief`, `daily_brief_data`
-> 关联问题: 日报信息丰富度提升
+## [2026-04-16] 价值位阶推进 R2 — P0~P2 六项改进
+> 领域: `backend`, `frontend`, `docs`
+> 影响模块: `smart_memory`, `bookkeeping`, `risk_validators`, `risk_var`, `resilience`, `llm_routing_config`, `langfuse_obs`, `ControlCenter`, `daily_brief`
+> 关联问题: 沟通风格断裂/记账分类不足/测试覆盖率/前端巨型组件/日报信息丰富度
 ### 变更内容
-- **新增: 日报天气数据** — 复用 free_apis.get_weather()，从 wttr.in 获取城市天气
-  - 支持环境变量 `WEATHER_CITY` 配置城市（默认 Shanghai）
-  - 显示温度/天气描述/湿度/今日温度范围，带天气 emoji
-- **新增: 日报汇率数据** — 复用 free_apis.get_exchange_rate()，显示 USD/CNY 实时汇率
-- 天气和汇率并行获取（asyncio.gather），任一失败不阻塞日报
-- 零新依赖，全部复用项目已有 API 封装
+- **P0 修复: 沟通风格偏好断裂** — onboarding 存的 `comm_style_{uid}` 偏好现在确定性注入用户画像，不再依赖 LLM 碰运气提取。补充了偏好记忆搜索范围（`smart_memory.py`）
+- **P1 新增: 记账分类扩充 12→17类** — 新增宠物🐾/美容💅/保险🛡️/人情🎁/烟酒🍷 五个类别，共78个关键词自动匹配
+- **P1 新增: 206个核心模块测试** — risk_validators(73) + risk_var(52) + resilience_bulkhead(25) + llm_routing_config(56)，测试从 1133→1339
+- **P2 优化: Langfuse 启动引导** — 启动日志增加配置引导提示，告知用户如何注册 Langfuse Cloud 启用 LLM 追踪
+- **P2 重构: ControlCenter 773→123行** — 拆为 8 个子组件（Hook/Header/ServiceMatrix/ConfigEditor/BotMatrix/UsagePanel/LogViewer/types）
+- **P2 新增: 日报天气+汇率** — 复用 free_apis 获取 wttr.in 天气和 USD/CNY 汇率，asyncio.gather 并行，城市可配置
+- **文档修正**: HEALTH.md 中 message_mixin "反编译文件" 条目降级（实际是搬运代码，可读）；社媒"循环依赖"确认为误报（单向调用）；测试通过率更新为 1339/100%
 ### 文件变更
-- `packages/clawbot/src/execution/daily_brief_data.py` — 新增 _fetch_weather()、_fetch_forex() 函数
-- `packages/clawbot/src/execution/daily_brief.py` — 新增"🌍 快速参考" section（天气+汇率）
+- `packages/clawbot/src/smart_memory.py` — 确定性注入 onboarding 沟通风格偏好 + 补充偏好搜索范围
+- `packages/clawbot/src/execution/bookkeeping.py` — 新增 5 个记账分类 + 78 个关键词
+- `packages/clawbot/tests/test_risk_validators.py` — 73 个测试 (新建)
+- `packages/clawbot/tests/test_risk_var.py` — 52 个测试 (新建)
+- `packages/clawbot/tests/test_resilience_bulkhead.py` — 25 个测试 (新建)
+- `packages/clawbot/tests/test_llm_routing_config.py` — 56 个测试 (新建)
+- `packages/clawbot/src/langfuse_obs.py` — 启动引导日志
+- `apps/openclaw-manager-src/src/components/ControlCenter/` — 8 个子组件 (新建/重构)
+- `packages/clawbot/src/execution/daily_brief_data.py` — 天气+汇率采集函数
+- `packages/clawbot/src/execution/daily_brief.py` — "快速参考" section
 
 ---
 
