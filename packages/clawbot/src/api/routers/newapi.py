@@ -10,7 +10,7 @@ import os
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel
 
 from src.http_client import ResilientHTTPClient
@@ -126,7 +126,7 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
 
 
 @router.put("/newapi/channels/{channel_id}")
-async def update_channel(channel_id: int, payload: ChannelCreate) -> dict[str, Any]:
+async def update_channel(payload: ChannelCreate, channel_id: int = Path(ge=1, description="通道ID")) -> dict[str, Any]:
     """更新通道 — 代理转发 PUT /api/channel/ 接口"""
     try:
         data = payload.model_dump()
@@ -149,7 +149,7 @@ async def update_channel(channel_id: int, payload: ChannelCreate) -> dict[str, A
 
 
 @router.delete("/newapi/channels/{channel_id}")
-async def delete_channel(channel_id: int) -> dict[str, Any]:
+async def delete_channel(channel_id: int = Path(ge=1, description="通道ID")) -> dict[str, Any]:
     """删除通道 — 代理转发 DELETE /api/channel/{id} 接口"""
     try:
         resp = await _http.request(
@@ -168,7 +168,7 @@ async def delete_channel(channel_id: int) -> dict[str, Any]:
 
 
 @router.post("/newapi/channels/{channel_id}/status")
-async def toggle_channel_status(channel_id: int) -> dict[str, Any]:
+async def toggle_channel_status(channel_id: int = Path(ge=1, description="通道ID")) -> dict[str, Any]:
     """切换通道启用/禁用状态 — 先获取当前状态再反转"""
     try:
         # 获取通道详情
@@ -200,7 +200,7 @@ async def toggle_channel_status(channel_id: int) -> dict[str, Any]:
 
 
 @router.delete("/newapi/tokens/{token_id}")
-async def delete_token(token_id: int) -> dict[str, Any]:
+async def delete_token(token_id: int = Path(ge=1, description="令牌ID")) -> dict[str, Any]:
     """删除令牌 — 代理转发 DELETE /api/token/{id} 接口"""
     try:
         resp = await _http.request(
