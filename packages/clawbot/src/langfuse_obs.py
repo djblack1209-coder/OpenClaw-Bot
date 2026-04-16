@@ -15,6 +15,7 @@ Langfuse 观测层 — 搬运自 langfuse (23.4k⭐)
   2. 设置环境变量 LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY / LANGFUSE_HOST
   3. 在 LLM 调用处用 trace_llm_call() 包装
 """
+
 import os
 import time
 import logging
@@ -30,6 +31,7 @@ _langfuse_client = None
 
 try:
     from langfuse import Langfuse
+
     _langfuse_available = True
 except ImportError:
     logger.info("[LangfuseObs] langfuse 未安装，观测层禁用")
@@ -51,6 +53,8 @@ def init_langfuse() -> bool:
 
     if not secret or not public:
         logger.info("[LangfuseObs] 未配置 LANGFUSE_SECRET_KEY/PUBLIC_KEY，观测层禁用")
+        logger.info("[LangfuseObs] 启用方法: 注册 https://cloud.langfuse.com (免费 50k events/月)")
+        logger.info("[LangfuseObs]   → 在 .env 中设置 LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY / LANGFUSE_HOST")
         return False
 
     try:
@@ -88,6 +92,7 @@ def trace_llm_call(
 
     自动记录：调用时间、延迟、输入/输出、模型、token 估算。
     """
+
     def decorator(fn):
         @wraps(fn)
         async def wrapper(*args, **kwargs):
@@ -150,6 +155,7 @@ def trace_llm_call(
                 raise
 
         return wrapper
+
     return decorator
 
 
@@ -242,6 +248,7 @@ def get_stats() -> Dict[str, Any]:
 
 # ── 内部工具 ──
 
+
 def _safe_input(args, kwargs) -> str:
     """安全提取调用输入"""
     try:
@@ -280,6 +287,6 @@ def _estimate_tokens(text: str) -> int:
     if not text:
         return 0
     # 简单启发式：中文字符数 * 0.7 + 英文单词数
-    cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
-    en_words = len(text.encode('ascii', 'ignore').split())
+    cn_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    en_words = len(text.encode("ascii", "ignore").split())
     return max(1, int(cn_chars * 0.7 + en_words + len(text) / 6))
