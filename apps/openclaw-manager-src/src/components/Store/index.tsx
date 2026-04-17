@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback, forwardRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { toast } from 'sonner';
 import {
@@ -27,13 +27,14 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '../ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from '../ui/sheet';
+import { Progress } from '../ui/progress';
 import { api, clawbotFetch } from '../../lib/tauri';
 import { useAppStore } from '@/stores/appStore';
 import { createLogger } from '@/lib/logger';
@@ -423,6 +424,8 @@ export function Store() {
     } catch {}
     return new Set(CURATED_PLUGINS.filter((p) => p.installed).map((p) => p.id));
   });
+  const [installingPlugin, setInstallingPlugin] = useState<string | null>(null);
+  const [installProgress, setInstallProgress] = useState(0);
 
   // Evolution 引擎状态
   const [evolutionPlugins, setEvolutionPlugins] = useState<Plugin[]>([]);
@@ -569,22 +572,45 @@ export function Store() {
   }, [searchQuery, selectedCategory, installedPlugins, allPlugins]);
 
   /**
-   * 安装插件
+   * 安装插件（带进度条动画）
    */
   const handleInstall = async (plugin: Plugin) => {
+    setInstallingPlugin(plugin.id);
+    setInstallProgress(0);
+    
     const toastId = plugin.id;
     toast.loading('正在安装...', { id: toastId });
+    
     try {
+      // 模拟安装进度
+      const progressInterval = setInterval(() => {
+        setInstallProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 100);
+
       // Try to call the evolution API to mark as approved/integrated
-      // This is best-effort — the plugin "install" is a conceptual action
       await clawbotFetch(`/api/v1/evolution/proposals/${plugin.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'integrated' }),
       }).catch(() => {}); // silently fail if not an evolution plugin
 
-      setInstalledPlugins((prev) => new Set(prev).add(plugin.id));
-      toast.success('安装成功！', { id: toastId });
+      clearInterval(progressInterval);
+      setInstallProgress(100);
+      
+      setTimeout(() => {
+        setInstalledPlugins((prev) => new Set(prev).add(plugin.id));
+        setInstallingPlugin(null);
+        setInstallProgress(0);
+        toast.success('安装成功！', { id: toastId });
+      }, 300);
     } catch {
+      setInstallingPlugin(null);
+      setInstallProgress(0);
       toast.error('安装失败', { id: toastId });
     }
   };
@@ -611,7 +637,7 @@ export function Store() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-[#0D0F14]">
       {/* 搜索栏 + 刷新按钮 */}
       <div className="px-6 pt-6 pb-4">
         <div className="flex items-center gap-2">
@@ -722,7 +748,30 @@ export function Store() {
         </div>
       </div>
 
-      {/* 插件网格 */}
+      {/* 精选横幅区 */}
+      {selectedCategory === 'featured' && (
+        <div className="px-6 pb-6">
+          <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <Sparkles size={18} className="text-[var(--oc-brand)]" />
+            精选推荐
+          </h2>
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
+            {filteredPlugins.slice(0, 3).map((plugin) => (
+              <FeaturedCard
+                key={plugin.id}
+                plugin={plugin}
+                installed={installedPlugins.has(plugin.id)}
+                installing={installingPlugin === plugin.id}
+                installProgress={installProgress}
+                onInstall={() => handleInstall(plugin)}
+                onClick={() => setSelectedPlugin(plugin)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 插件网格 - 4列布局 */}
       <div className="flex-1 px-6 pb-6 overflow-y-auto">
         {loading && evolutionPlugins.length === 0 ? (
           <div className="h-full flex items-center justify-center">
@@ -741,35 +790,39 @@ export function Store() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <AnimatePresence mode="popLayout">
-              {filteredPlugins.map((plugin) => (
+          <>
+            {selectedCategory !== 'featured' && (
+              <h2 className="text-base font-semibold text-white mb-4">
+                所有插件
+              </h2>
+            )}
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {(selectedCategory === 'featured' ? filteredPlugins.slice(3) : filteredPlugins).map((plugin) => (
                 <PluginCard
                   key={plugin.id}
                   plugin={plugin}
                   installed={installedPlugins.has(plugin.id)}
+                  installing={installingPlugin === plugin.id}
+                  installProgress={installProgress}
                   onInstall={() => handleInstall(plugin)}
-                  onUninstall={() => handleUninstall(plugin)}
                   onClick={() => setSelectedPlugin(plugin)}
                 />
               ))}
-            </AnimatePresence>
-          </div>
+            </div>
+          </>
         )}
       </div>
 
-      {/* 插件详情弹窗 */}
-      <Dialog open={!!selectedPlugin} onOpenChange={() => setSelectedPlugin(null)}>
+      {/* 插件详情侧边栏 */}
+      <Sheet open={!!selectedPlugin} onOpenChange={() => setSelectedPlugin(null)}>
         {selectedPlugin && (
-          <DialogContent className="max-w-2xl bg-[#1a1a1a] border-white/10">
-            <DialogHeader>
+          <SheetContent className="w-full sm:max-w-lg">
+            <SheetHeader>
               <div className="flex items-start gap-4">
                 <div className="text-5xl">{selectedPlugin.icon}</div>
                 <div className="flex-1">
-                  <DialogTitle className="text-xl text-white mb-2">
-                    {selectedPlugin.name}
-                  </DialogTitle>
-                  <div className="flex items-center gap-3 text-sm text-gray-400">
+                  <SheetTitle>{selectedPlugin.name}</SheetTitle>
+                  <div className="flex items-center gap-3 text-sm text-gray-400 mt-2">
                     <div className="flex items-center gap-1">
                       <Star size={14} className="text-yellow-500 fill-yellow-500" />
                       <span>{(selectedPlugin.stars / 1000).toFixed(1)}k</span>
@@ -783,25 +836,27 @@ export function Store() {
                   </div>
                 </div>
               </div>
-            </DialogHeader>
+            </SheetHeader>
 
-            <DialogDescription className="text-gray-300 leading-relaxed">
-              {selectedPlugin.fullDescription}
-            </DialogDescription>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <SheetDescription className="text-gray-300 leading-relaxed mb-6">
+                {selectedPlugin.fullDescription}
+              </SheetDescription>
 
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-white">功能特性</h4>
-              <ul className="space-y-1.5">
-                {selectedPlugin.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-gray-400">
-                    <Check size={16} className="text-[var(--oc-success)] mt-0.5 shrink-0" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-white">功能特性</h4>
+                <ul className="space-y-1.5">
+                  {selectedPlugin.features.map((feature, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm text-gray-400">
+                      <Check size={16} className="text-[var(--oc-success)] mt-0.5 shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
 
-            <DialogFooter className="flex-row gap-2">
+            <SheetFooter className="flex-row gap-2">
               {installedPlugins.has(selectedPlugin.id) ? (
                 <>
                   <Button
@@ -829,88 +884,168 @@ export function Store() {
                     setSelectedPlugin(null);
                   }}
                   className="flex-1 bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+                  disabled={installingPlugin === selectedPlugin.id}
                 >
-                  <Download size={16} />
-                  安装插件
+                  {installingPlugin === selectedPlugin.id ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      安装中...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      安装插件
+                    </>
+                  )}
                 </Button>
               )}
-            </DialogFooter>
-          </DialogContent>
+            </SheetFooter>
+          </SheetContent>
         )}
-      </Dialog>
+      </Sheet>
     </div>
   );
 }
 
 /**
- * 插件卡片组件
+ * 精选卡片组件 - 大尺寸横向滚动卡片
+ */
+interface FeaturedCardProps {
+  plugin: Plugin;
+  installed: boolean;
+  installing: boolean;
+  installProgress: number;
+  onInstall: () => void;
+  onClick: () => void;
+}
+
+function FeaturedCard({ plugin, installed, installing, installProgress, onInstall, onClick }: FeaturedCardProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="min-w-[320px] max-w-[320px]"
+    >
+      <GlassCard
+        className="p-5 cursor-pointer hover:border-[var(--oc-brand)]/40 transition-all hover:shadow-lg hover:shadow-[var(--oc-brand)]/10"
+        onClick={onClick}
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="text-5xl">{plugin.icon}</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-bold text-white mb-1 truncate">{plugin.name}</h3>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="flex items-center gap-1">
+                <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                <span>{(plugin.stars / 1000).toFixed(1)}k</span>
+              </div>
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-[var(--oc-brand)]/10 text-[var(--oc-brand)] border-[var(--oc-brand)]/30">
+                精选
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-300 mb-4 line-clamp-2 leading-relaxed">{plugin.description}</p>
+
+        <div onClick={(e) => e.stopPropagation()}>
+          {installed ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full text-[var(--oc-success)] border-[var(--oc-success)]/30 hover:bg-[var(--oc-success)]/10"
+              disabled
+            >
+              <Check size={14} />
+              已安装
+            </Button>
+          ) : installing ? (
+            <div className="space-y-2">
+              <Progress value={installProgress} max={100} />
+              <p className="text-xs text-center text-gray-400">安装中 {installProgress}%</p>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              className="w-full bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+              onClick={onInstall}
+            >
+              <Download size={14} />
+              安装插件
+            </Button>
+          )}
+        </div>
+      </GlassCard>
+    </motion.div>
+  );
+}
+
+/**
+ * 插件卡片组件 - 标准网格卡片（200×180px）
  */
 interface PluginCardProps {
   plugin: Plugin;
   installed: boolean;
+  installing: boolean;
+  installProgress: number;
   onInstall: () => void;
-  onUninstall: () => void;
   onClick: () => void;
 }
 
-// 用 forwardRef 包裹，让 Framer Motion 的 AnimatePresence 能正确传递 ref
-const PluginCard = forwardRef<HTMLDivElement, PluginCardProps>(
-  function PluginCard({ plugin, installed, onInstall, onUninstall, onClick }, ref) {
-    return (
-      <motion.div
-        ref={ref}
-        layout
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        transition={{ duration: 0.2 }}
+function PluginCard({ plugin, installed, installing, installProgress, onInstall, onClick }: PluginCardProps) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.2 }}
+    >
+      <GlassCard
+        className="p-3 cursor-pointer hover:border-[var(--oc-brand)]/30 transition-colors h-[180px] flex flex-col"
+        onClick={onClick}
       >
-        <GlassCard
-          className="p-4 cursor-pointer hover:border-[var(--oc-brand)]/30 transition-colors"
-          onClick={onClick}
-        >
-          <div className="flex items-start gap-3 mb-3">
-            <div className="text-3xl">{plugin.icon}</div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-white mb-1 truncate">{plugin.name}</h3>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <div className="flex items-center gap-1">
-                  <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                  <span>{(plugin.stars / 1000).toFixed(1)}k</span>
-                </div>
-                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                  {CATEGORIES.find((c) => c.id === plugin.category[0])?.label}
-                </Badge>
-              </div>
+        <div className="flex items-start gap-2 mb-2">
+          <div className="text-2xl">{plugin.icon}</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xs font-semibold text-white mb-0.5 truncate">{plugin.name}</h3>
+            <div className="flex items-center gap-1 text-[10px] text-gray-400">
+              <Star size={10} className="text-yellow-500 fill-yellow-500" />
+              <span>{(plugin.stars / 1000).toFixed(1)}k</span>
             </div>
           </div>
+        </div>
 
-          <p className="text-xs text-gray-400 mb-3 line-clamp-2">{plugin.description}</p>
+        <p className="text-[11px] text-gray-400 mb-auto line-clamp-3 leading-relaxed">{plugin.description}</p>
 
-          <div onClick={(e) => e.stopPropagation()}>
-            {installed ? (
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full text-[var(--oc-success)] border-[var(--oc-success)]/30 hover:bg-[var(--oc-success)]/10"
-                onClick={onUninstall}
-              >
-                <Check size={14} />
-                已安装
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                className="w-full bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
-                onClick={onInstall}
-              >
-                <Download size={14} />
-                安装
-              </Button>
-            )}
-          </div>
-        </GlassCard>
-      </motion.div>
-    );
-  }
-);
+        <div onClick={(e) => e.stopPropagation()} className="mt-2">
+          {installed ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-7 text-xs text-[var(--oc-success)] border-[var(--oc-success)]/30 hover:bg-[var(--oc-success)]/10"
+              disabled
+            >
+              <Check size={12} />
+              已安装
+            </Button>
+          ) : installing ? (
+            <div className="space-y-1">
+              <Progress value={installProgress} max={100} className="h-1" />
+              <p className="text-[10px] text-center text-gray-400">{installProgress}%</p>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+              onClick={onInstall}
+            >
+              <Download size={12} />
+              安装
+            </Button>
+          )}
+        </div>
+      </GlassCard>
+    </motion.div>
+  );
+}
