@@ -9,6 +9,7 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 对标: LiteLLM (39.6k⭐), Portkey Gateway (11k⭐)
 """
 
+import asyncio
 import json
 import logging
 import os
