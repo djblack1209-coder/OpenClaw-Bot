@@ -800,6 +800,107 @@ export const api = {
     clawbotFetch(`/api/v1/conversation/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`, {
       method: 'POST',
     }),
+
+  // ══════════════════════════════════════════════
+  //  闲鱼扫码登录 (Xianyu QR Login)
+  // ══════════════════════════════════════════════
+
+  /** 生成闲鱼扫码登录二维码 */
+  xianyuGenerateQR: async () => {
+    const resp = await clawbotFetch('/api/v1/xianyu/qr/generate', { method: 'POST' });
+    return resp.json();
+  },
+
+  /** 查询闲鱼二维码扫码状态 */
+  xianyuQRStatus: async () => {
+    const resp = await clawbotFetch('/api/v1/xianyu/qr/status');
+    return resp.json();
+  },
+
+  /** 获取闲鱼最近对话列表 */
+  xianyuConversations: async (limit: number = 20) => {
+    const resp = await clawbotFetch(`/api/v1/xianyu/conversations?limit=${limit}`);
+    return resp.json();
+  },
+
+  // ══════════════════════════════════════════════
+  //  服务控制 (Service Control)
+  // ══════════════════════════════════════════════
+
+  /** 启动指定服务 */
+  serviceStart: async (serviceId: string) => {
+    const resp = await clawbotFetch(`/api/v1/system/services/${serviceId}/start`, { method: 'POST' });
+    return resp.json();
+  },
+
+  /** 停止指定服务 */
+  serviceStop: async (serviceId: string) => {
+    const resp = await clawbotFetch(`/api/v1/system/services/${serviceId}/stop`, { method: 'POST' });
+    return resp.json();
+  },
+
+  // ══════════════════════════════════════════════
+  //  交易操作 (Trading Actions)
+  // ══════════════════════════════════════════════
+
+  /** 卖出持仓 */
+  tradingSell: async (symbol: string, quantity: number, orderType: string = 'MKT') => {
+    const resp = await clawbotFetch('/api/v1/trading/sell', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, quantity, order_type: orderType }),
+    });
+    return resp.json();
+  },
+
+  // ══════════════════════════════════════════════
+  //  自选股监控 (Watchlist)
+  // ══════════════════════════════════════════════
+
+  /** 获取自选股列表 */
+  watchlist: async () => {
+    const resp = await clawbotFetch('/api/v1/trading/watchlist');
+    return resp.json();
+  },
+
+  /** 添加自选股 */
+  watchlistAdd: async (symbol: string, targetPrice: number, direction: 'above' | 'below') => {
+    const resp = await clawbotFetch('/api/v1/trading/watchlist', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, target_price: targetPrice, direction }),
+    });
+    return resp.json();
+  },
+
+  /** 删除自选股 */
+  watchlistRemove: async (symbol: string) => {
+    const resp = await clawbotFetch(`/api/v1/trading/watchlist/${symbol}`, { method: 'DELETE' });
+    return resp.json();
+  },
+
+  // ══════════════════════════════════════════════
+  //  Evolution 引擎 (HTTP 降级)
+  // ══════════════════════════════════════════════
+
+  /** 获取进化提案列表（HTTP） */
+  evolutionProposals: async (status?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (limit) params.set('limit', String(limit));
+    const resp = await clawbotFetch(`/api/v1/evolution/proposals?${params}`);
+    return resp.json();
+  },
+
+  /** 获取进化统计数据（HTTP） */
+  evolutionStats: async () => {
+    const resp = await clawbotFetch('/api/v1/evolution/stats');
+    return resp.json();
+  },
+
+  /** 触发进化扫描（HTTP） */
+  evolutionScan: async () => {
+    const resp = await clawbotFetch('/api/v1/evolution/scan', { method: 'POST' });
+    return resp.json();
+  },
 };
 
 // WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost
@@ -823,4 +924,26 @@ export async function clawbotFetch(path: string, init?: RequestInit): Promise<Re
     headers.set('Content-Type', 'application/json');
   }
   return fetch(`${CLAWBOT_API_BASE}${path}`, { ...init, headers });
+}
+
+/**
+ * 带友好错误提示的 fetch 封装 — 自动转换 HTTP 错误为友好消息
+ * 用于需要向用户展示错误的场景
+ */
+export async function clawbotFetchSafe(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    const resp = await clawbotFetch(path, init);
+    if (!resp.ok) {
+      // Import dynamically to avoid circular deps
+      const { toFriendlyError } = await import('./errorMessages');
+      const friendly = toFriendlyError(resp);
+      throw Object.assign(new Error(friendly.title), { friendly });
+    }
+    return resp;
+  } catch (err) {
+    if (err && typeof err === 'object' && 'friendly' in err) throw err;
+    const { toFriendlyError } = await import('./errorMessages');
+    const friendly = toFriendlyError(err);
+    throw Object.assign(new Error(friendly.title), { friendly });
+  }
 }

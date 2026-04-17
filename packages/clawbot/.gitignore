@@ -16,6 +16,8 @@ config/.env.*
 data/api_keys.json
 *.pem
 *.key
+.openclaw/coupon_token.json
+.openclaw/iflow_key_timestamp.json
 
 # 数据（运行时生成）
 data/

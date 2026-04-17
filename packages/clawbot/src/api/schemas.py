@@ -222,6 +222,8 @@ class WSMessageType(str, Enum):
     MEMORY_UPDATED = "memory_updated"
     EVOLUTION_PROPOSAL = "evolution_proposal"
     SYNERGY_ACTION = "synergy_action"
+    NOTIFICATION = "notification"
+    SERVICE_CHANGE = "service_change"
 
 
 class WSMessage(BaseModel):

@@ -113,6 +113,33 @@ export function usePositions(pollInterval = 30000) {
       const resp = await clawbotFetch('/api/v1/trading/positions');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
+      // Normalize backend field names to frontend interface
+      if (json?.positions) {
+        json.positions = json.positions.map((p: any) => ({
+          ...p,
+          quantity: p.quantity ?? p.qty ?? 0,
+          avg_cost: p.avg_cost ?? p.avg_price ?? 0,
+          unrealized_pnl: p.unrealized_pnl ?? p.pnl ?? 0,
+          unrealized_pnl_pct: p.unrealized_pnl_pct ?? p.pnl_pct ?? 0,
+          current_price: p.current_price ?? p.price ?? 0,
+          market_value: p.market_value ?? p.mkt_value ?? 0,
+        }));
+      }
+      // Compute totals if missing from backend response
+      if (json.total_market_value === undefined || json.total_market_value === null) {
+        const normalizedPositions = json.positions ?? [];
+        json.total_market_value = normalizedPositions.reduce((sum: number, p: any) => sum + (p.market_value || 0), 0);
+        json.total_unrealized_pnl = normalizedPositions.reduce((sum: number, p: any) => sum + (p.unrealized_pnl || 0), 0);
+        json.total_unrealized_pnl_pct = json.total_market_value > 0
+          ? (json.total_unrealized_pnl / json.total_market_value) * 100
+          : 0;
+      }
+      if (json.updated_at === undefined) {
+        json.updated_at = new Date().toISOString();
+      }
+      if (json.connected === undefined) {
+        json.connected = false;
+      }
       setData(json);
       setError(null);
     } catch (e) {

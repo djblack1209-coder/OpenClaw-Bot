@@ -1,9 +1,13 @@
-"""Trading endpoints — positions, PnL, signals, team vote, system status, K线数据"""
+"""Trading endpoints — positions, PnL, signals, team vote, system status, K线数据, 卖出, 自选股"""
 
+import json
 import logging
-from typing import Any, Dict, Optional
+import os
+from datetime import datetime, timezone
+from pathlib import Path as FilePath
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import (
@@ -176,8 +180,8 @@ async def portfolio_summary():
         enriched_positions = []
 
         for pos in positions_list:
-            qty = pos.get("qty", 0)
-            avg_cost = pos.get("avg_cost", 0)
+            qty = pos.get("quantity", 0)
+            avg_cost = pos.get("avg_price", 0)
             current_price = pos.get("current_price", 0)
             market_value = qty * current_price if qty and current_price else 0
             cost_basis = qty * avg_cost if qty and avg_cost else 0
@@ -237,3 +241,167 @@ async def portfolio_summary():
             "connected": False,
             "error": _safe_error(e),
         }
+
+
+@router.post("/trading/sell")
+async def sell_position(request: Request):
+    """手动卖出持仓"""
+    try:
+        body = await request.json()
+        symbol = body.get("symbol", "").strip().upper()
+        quantity = float(body.get("quantity", 0))
+        order_type = body.get("order_type", "MKT").upper()
+
+        if not symbol:
+            raise HTTPException(status_code=422, detail="缺少 symbol 参数")
+        if quantity <= 0:
+            raise HTTPException(status_code=422, detail="quantity 必须大于零")
+
+        # 懒加载 broker bridge 获取 IBKRBridge 实例
+        from src.broker_selector import ibkr
+
+        if not ibkr or not ibkr.is_connected():
+            return {"success": False, "message": "IBKR 未连接"}
+
+        result = await ibkr.sell(
+            symbol=symbol,
+            quantity=quantity,
+            order_type=order_type,
+            decided_by="manual_ui",
+            reason="用户通过 Portfolio 页面手动卖出",
+        )
+
+        if "error" in result:
+            return {"success": False, "message": result["error"]}
+
+        # 推送系统通知
+        try:
+            from .system import push_notification
+
+            push_notification(
+                title=f"卖出 {symbol}",
+                body=f"已提交卖出 {quantity:.0f} 股 {symbol}（{order_type}），订单号 #{result.get('order_id', 'N/A')}",
+                category="trading",
+                level="success",
+            )
+        except Exception as e:
+            logger.debug("卖出通知推送失败: %s", e)
+
+        return {
+            "success": True,
+            "message": "卖出订单已提交",
+            "order_id": str(result.get("order_id", "")),
+            "status": result.get("status", ""),
+            "filled_qty": result.get("filled_qty", 0),
+            "avg_price": result.get("avg_price", 0),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("卖出持仓失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ══════════════════════════════════════════════
+#  自选股监控 (Watchlist)
+# ══════════════════════════════════════════════
+
+# 存储路径：项目 data/ 目录下
+_WATCHLIST_DIR = FilePath(os.path.dirname(__file__)).resolve().parents[2] / "data"
+_WATCHLIST_FILE = _WATCHLIST_DIR / "watchlist.json"
+
+
+def _load_watchlist() -> List[Dict[str, Any]]:
+    """从 JSON 文件加载自选股列表"""
+    try:
+        if _WATCHLIST_FILE.exists():
+            return json.loads(_WATCHLIST_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("读取自选股文件失败: %s", e)
+    return []
+
+
+def _save_watchlist(watchlist: List[Dict[str, Any]]) -> None:
+    """保存自选股列表到 JSON 文件"""
+    _WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
+    _WATCHLIST_FILE.write_text(
+        json.dumps(watchlist, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+@router.get("/trading/watchlist")
+def get_watchlist():
+    """获取自选股列表"""
+    try:
+        return _load_watchlist()
+    except Exception as e:
+        logger.exception("获取自选股列表失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.post("/trading/watchlist")
+async def add_to_watchlist(request: Request):
+    """添加自选股"""
+    try:
+        body = await request.json()
+        symbol = body.get("symbol", "").strip().upper()
+        target_price = body.get("target_price")
+        direction = body.get("direction", "above").lower()
+
+        if not symbol:
+            raise HTTPException(status_code=422, detail="缺少 symbol 参数")
+        if target_price is None:
+            raise HTTPException(status_code=422, detail="缺少 target_price 参数")
+        try:
+            target_price = float(target_price)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="target_price 必须为数字")
+        if target_price <= 0:
+            raise HTTPException(status_code=422, detail="target_price 必须大于零")
+        if direction not in ("above", "below"):
+            raise HTTPException(status_code=422, detail="direction 必须为 above 或 below")
+
+        watchlist = _load_watchlist()
+
+        # 检查是否已存在
+        for item in watchlist:
+            if item.get("symbol") == symbol:
+                raise HTTPException(status_code=409, detail=f"{symbol} 已在自选股列表中")
+
+        watchlist.append({
+            "symbol": symbol,
+            "target_price": target_price,
+            "direction": direction,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+        })
+        _save_watchlist(watchlist)
+        return watchlist
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("添加自选股失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.delete("/trading/watchlist/{symbol}")
+def remove_from_watchlist(symbol: str = Path(..., description="要删除的标的代码")):
+    """删除自选股"""
+    try:
+        symbol = symbol.strip().upper()
+        watchlist = _load_watchlist()
+        new_list = [item for item in watchlist if item.get("symbol") != symbol]
+
+        if len(new_list) == len(watchlist):
+            raise HTTPException(status_code=404, detail=f"{symbol} 不在自选股列表中")
+
+        _save_watchlist(new_list)
+        return new_list
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("删除自选股失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))

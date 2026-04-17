@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { toast } from 'sonner';
@@ -15,6 +15,11 @@ import {
   MessageSquare,
   Home,
   Code,
+  RefreshCw,
+  Loader2,
+  Radar,
+  Zap,
+  Clock,
 } from 'lucide-react';
 
 import { GlassCard } from '../shared';
@@ -29,6 +34,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from '../ui/dialog';
+import { api, clawbotFetch } from '../../lib/tauri';
+import { useAppStore } from '@/stores/appStore';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('Store');
 
 /**
  * 插件分类定义
@@ -59,14 +69,16 @@ interface Plugin {
   fullDescription: string;
   author: string;
   features: string[];
-  installed: boolean;
+  installed?: boolean;
   featured?: boolean;
 }
 
 /**
- * 模拟插件数据（后续会接入 Evolution 引擎）
+ * 预置插件目录 — 已知的高质量集成能力
+ * 安装状态由 localStorage 管理，不在此硬编码
+ * 真实 star 数据由 Evolution 引擎补充
  */
-const MOCK_PLUGINS: Plugin[] = [
+const CURATED_PLUGINS: Plugin[] = [
   {
     id: 'comfyui',
     name: 'ComfyUI 图片生成',
@@ -327,21 +339,211 @@ const MOCK_PLUGINS: Plugin[] = [
 ];
 
 /**
+ * 将 Evolution 提案的模块/分类映射到商店分类
+ */
+function mapProposalCategory(moduleOrCategory?: string): CategoryId[] {
+  if (!moduleOrCategory) return ['dev'];
+  const lower = moduleOrCategory.toLowerCase();
+  if (lower.includes('trading') || lower.includes('invest') || lower.includes('finance'))
+    return ['trading'];
+  if (lower.includes('social') || lower.includes('media'))
+    return ['social'];
+  if (lower.includes('ecommerce') || lower.includes('shop') || lower.includes('commerce'))
+    return ['ecommerce'];
+  if (lower.includes('ai') || lower.includes('llm') || lower.includes('model'))
+    return ['ai'];
+  if (lower.includes('life') || lower.includes('util'))
+    return ['life'];
+  return ['dev'];
+}
+
+/**
+ * 将 Evolution 提案转换为 Plugin 格式
+ */
+function proposalToPlugin(p: Record<string, unknown>): Plugin {
+  const repo = (p.repo || p.repo_name || '') as string;
+  return {
+    id: (p.id || p.proposal_id || repo || '') as string,
+    name: (p.name || repo?.split('/').pop() || 'Unknown') as string,
+    icon: (p.icon as string) || '🔌',
+    category: mapProposalCategory(
+      (p.target_module || p.module || p.category) as string | undefined
+    ),
+    stars: ((p.stars || p.stargazers_count || 0) as number),
+    description: (p.summary || p.description || '') as string,
+    fullDescription: (p.details || p.description || '') as string,
+    author: (p.author || (repo ? repo.split('/')[0] : '') || 'Community') as string,
+    features: (p.features as string[]) || [],
+    installed: p.status === 'integrated',
+    featured: ((p.value_score || p.score || 0) as number) > 80,
+  };
+}
+
+/**
+ * Evolution 引擎统计数据（展示用）
+ */
+interface EvolutionStats {
+  totalProposals: number;
+  lastScan: string | null;
+  approved: number;
+  pending: number;
+}
+
+/**
+ * 格式化最后扫描时间为相对时间
+ */
+function formatLastScan(timeStr: string): string {
+  try {
+    const date = new Date(timeStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return '刚刚';
+    if (diffMin < 60) return `${diffMin} 分钟前`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} 小时前`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay} 天前`;
+  } catch {
+    return timeStr;
+  }
+}
+
+/**
  * 插件商店主组件
  */
 export function Store() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('featured');
   const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null);
-  const [installedPlugins, setInstalledPlugins] = useState<Set<string>>(
-    new Set(MOCK_PLUGINS.filter((p) => p.installed).map((p) => p.id))
-  );
+  const [installedPlugins, setInstalledPlugins] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('openclaw-installed-plugins');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(CURATED_PLUGINS.filter((p) => p.installed).map((p) => p.id));
+  });
+
+  // Evolution 引擎状态
+  const [evolutionPlugins, setEvolutionPlugins] = useState<Plugin[]>([]);
+  const [evolutionStats, setEvolutionStats] = useState<EvolutionStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  // Persist installed plugins to localStorage on every change
+  useEffect(() => {
+    localStorage.setItem('openclaw-installed-plugins', JSON.stringify([...installedPlugins]));
+  }, [installedPlugins]);
+
+  /**
+   * 合并 Evolution + 预置目录插件，按 id 去重
+   * Evolution 真实数据优先，预置目录填补空白
+   */
+  const allPlugins = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: Plugin[] = [];
+    // Evolution 真实数据优先
+    for (const p of evolutionPlugins) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        merged.push(p);
+      }
+    }
+    // 预置目录填补空白
+    for (const p of CURATED_PLUGINS) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        merged.push(p);
+      }
+    }
+    return merged;
+  }, [evolutionPlugins]);
+
+  /**
+   * 从 Evolution 引擎加载提案和统计数据
+   */
+  const fetchEvolutionData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [proposalsResp, statsResp] = await Promise.allSettled([
+        api.evolutionProposals('approved', 50),
+        api.evolutionStats(),
+      ]);
+
+      // 处理提案数据
+      if (proposalsResp.status === 'fulfilled') {
+        const data = proposalsResp.value;
+        const rawProposals: Record<string, unknown>[] =
+          (data as any)?.proposals ?? (data as any)?.data ?? (Array.isArray(data) ? data : []);
+        const transformed = rawProposals.map(proposalToPlugin);
+        setEvolutionPlugins(transformed);
+
+        // 标记已集成的插件
+        const integratedIds = transformed.filter((p) => p.installed).map((p) => p.id);
+        if (integratedIds.length > 0) {
+          setInstalledPlugins((prev) => {
+            const next = new Set(prev);
+            integratedIds.forEach((id) => next.add(id));
+            return next;
+          });
+        }
+      }
+
+      // 处理统计数据
+      if (statsResp.status === 'fulfilled') {
+        const stats = statsResp.value as Record<string, unknown>;
+        setEvolutionStats({
+          totalProposals: (stats.total_proposals ?? stats.proposals_count ?? 0) as number,
+          lastScan: (stats.last_scan ?? stats.last_scan_at ?? stats.last_scan_time ?? null) as string | null,
+          approved: (stats.approved ?? (stats.by_status as any)?.approved ?? 0) as number,
+          pending: (stats.pending ?? (stats.by_status as any)?.pending ?? 0) as number,
+        });
+      }
+    } catch (err) {
+      // 静默失败——商店仍展示 MOCK 数据
+      logger.warn('Evolution 数据加载失败，使用本地数据', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * 触发扫描并刷新
+   */
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    try {
+      await api.evolutionScan();
+      toast.success('扫描已触发，正在发现新插件...');
+      // 等待一小段时间让后端处理完
+      setTimeout(() => {
+        fetchEvolutionData().finally(() => setScanning(false));
+      }, 2000);
+    } catch (err) {
+      toast.error('扫描触发失败');
+      setScanning(false);
+    }
+  }, [fetchEvolutionData]);
+
+  /**
+   * 刷新数据
+   */
+  const handleRefresh = useCallback(async () => {
+    toast.loading('正在刷新...', { id: 'store-refresh' });
+    await fetchEvolutionData();
+    toast.success('已刷新', { id: 'store-refresh' });
+  }, [fetchEvolutionData]);
+
+  // 组件挂载时加载 Evolution 数据
+  useEffect(() => {
+    fetchEvolutionData();
+  }, [fetchEvolutionData]);
 
   /**
    * 过滤插件列表
    */
   const filteredPlugins = useMemo(() => {
-    let result = MOCK_PLUGINS;
+    let result = allPlugins;
 
     // 分类筛选
     if (selectedCategory === 'installed') {
@@ -364,54 +566,135 @@ export function Store() {
     }
 
     return result;
-  }, [searchQuery, selectedCategory, installedPlugins]);
+  }, [searchQuery, selectedCategory, installedPlugins, allPlugins]);
 
   /**
    * 安装插件
    */
-  const handleInstall = (plugin: Plugin) => {
-    toast.loading('正在安装...', { id: plugin.id });
-    setTimeout(() => {
+  const handleInstall = async (plugin: Plugin) => {
+    const toastId = plugin.id;
+    toast.loading('正在安装...', { id: toastId });
+    try {
+      // Try to call the evolution API to mark as approved/integrated
+      // This is best-effort — the plugin "install" is a conceptual action
+      await clawbotFetch(`/api/v1/evolution/proposals/${plugin.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'integrated' }),
+      }).catch(() => {}); // silently fail if not an evolution plugin
+
       setInstalledPlugins((prev) => new Set(prev).add(plugin.id));
-      toast.success('安装成功！', { id: plugin.id });
-    }, 1500);
+      toast.success('安装成功！', { id: toastId });
+    } catch {
+      toast.error('安装失败', { id: toastId });
+    }
   };
 
   /**
    * 卸载插件
    */
-  const handleUninstall = (plugin: Plugin) => {
-    if (!confirm(`确定要卸载「${plugin.name}」吗？`)) return;
-    
-    toast.loading('正在卸载...', { id: plugin.id });
-    setTimeout(() => {
+  const handleUninstall = async (plugin: Plugin) => {
+    const toastId = plugin.id;
+    toast.loading('正在卸载...', { id: toastId });
+    try {
       setInstalledPlugins((prev) => {
         const next = new Set(prev);
         next.delete(plugin.id);
         return next;
       });
-      toast.success('已卸载', { id: plugin.id });
+      toast.success('已卸载', { id: toastId });
       if (selectedPlugin?.id === plugin.id) {
         setSelectedPlugin(null);
       }
-    }, 800);
+    } catch {
+      toast.error('卸载失败', { id: toastId });
+    }
   };
 
   return (
     <div className="h-full flex flex-col">
-      {/* 搜索栏 */}
+      {/* 搜索栏 + 刷新按钮 */}
       <div className="px-6 pt-6 pb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <Input
-            type="text"
-            placeholder="搜索插件..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10 bg-white/5 border-white/10 text-white placeholder:text-gray-500"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <Input
+              type="text"
+              placeholder="搜索插件..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-10 bg-white/5 border-white/10 text-white placeholder:text-gray-500"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="h-10 px-3 border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+          >
+            {loading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <RefreshCw size={16} />
+            )}
+            刷新
+          </Button>
         </div>
       </div>
+
+      {/* Evolution 引擎状态卡片 */}
+      {evolutionStats && (
+        <div className="px-6 pb-4">
+          <GlassCard className="p-4 border-[var(--oc-brand)]/20 bg-[var(--oc-brand)]/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[var(--oc-brand)]/20 flex items-center justify-center">
+                  <Radar size={20} className="text-[var(--oc-brand)]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    Evolution 引擎
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-[var(--oc-brand)] border-[var(--oc-brand)]/30">
+                      在线
+                    </Badge>
+                  </h3>
+                  <div className="flex items-center gap-4 text-xs text-gray-400 mt-0.5">
+                    <span className="flex items-center gap-1">
+                      <Zap size={12} />
+                      已扫描 {evolutionStats.totalProposals} 个提案
+                    </span>
+                    {evolutionStats.lastScan && (
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        {formatLastScan(evolutionStats.lastScan)}
+                      </span>
+                    )}
+                    <span>
+                      ✅ {evolutionStats.approved} 已批准
+                    </span>
+                    <span>
+                      ⏳ {evolutionStats.pending} 待审核
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleScan}
+                disabled={scanning}
+                className="bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+              >
+                {scanning ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Radar size={14} />
+                )}
+                发现新插件
+              </Button>
+            </div>
+          </GlassCard>
+        </div>
+      )}
 
       {/* 分类标签 */}
       <div className="px-6 pb-4">
@@ -441,7 +724,15 @@ export function Store() {
 
       {/* 插件网格 */}
       <div className="flex-1 px-6 pb-6 overflow-y-auto">
-        {filteredPlugins.length === 0 ? (
+        {loading && evolutionPlugins.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <Loader2 size={36} className="text-[var(--oc-brand)] mx-auto mb-3 animate-spin" />
+              <p className="text-gray-400">正在加载插件...</p>
+              <p className="text-sm text-gray-500 mt-1">正在连接 Evolution 引擎</p>
+            </div>
+          </div>
+        ) : filteredPlugins.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <Package size={48} className="text-gray-600 mx-auto mb-3" />
@@ -520,7 +811,13 @@ export function Store() {
                   >
                     卸载插件
                   </Button>
-                  <Button className="flex-1 bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80">
+                  <Button
+                    className="flex-1 bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+                    onClick={() => {
+                      setSelectedPlugin(null);
+                      useAppStore.getState().setCurrentPage('assistant');
+                    }}
+                  >
                     <ExternalLink size={16} />
                     在 AI 助手中使用
                   </Button>

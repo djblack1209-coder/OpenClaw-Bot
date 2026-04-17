@@ -209,20 +209,47 @@ class ClawBotRPC:
             except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
         else:
-            # ── Fallback: local Portfolio (sync) ──
+            # ── Fallback: local Portfolio (sync) + yfinance live prices ──
             try:
                 local_positions = portfolio.get_positions() if portfolio else []
+                symbols = [p.get("symbol", "") for p in local_positions or [] if p.get("symbol")]
+
+                # Batch-fetch current prices via yfinance (already a project dependency)
+                live_prices: dict = {}
+                if symbols:
+                    try:
+                        import yfinance as yf
+                        tickers = yf.Tickers(" ".join(symbols))
+                        for sym in symbols:
+                            try:
+                                info = tickers.tickers[sym].fast_info
+                                price = float(getattr(info, "last_price", 0) or 0)
+                                if price <= 0:
+                                    price = float(getattr(info, "previous_close", 0) or 0)
+                                live_prices[sym] = price
+                            except Exception:
+                                live_prices[sym] = 0.0
+                    except Exception as e_yf:
+                        logger.warning("yfinance price fetch failed (degraded to zeros): %s", e_yf)
+
                 for p in local_positions or []:
                     qty = float(p.get("quantity", 0) or 0)
+                    avg_price = float(p.get("avg_price", 0) or p.get("avg_cost", 0) or 0)
+                    sym = p.get("symbol", "")
+                    current_price = live_prices.get(sym, 0.0)
+                    market_value = qty * current_price if qty and current_price else 0.0
+                    cost_basis = qty * avg_price if qty and avg_price else 0.0
+                    unrealized_pnl = market_value - cost_basis
+                    unrealized_pnl_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
                     positions.append(
                         {
-                            "symbol": p.get("symbol", ""),
+                            "symbol": sym,
                             "quantity": qty,
-                            "avg_price": float(p.get("avg_price", 0) or p.get("avg_cost", 0) or 0),
-                            "current_price": 0.0,
-                            "unrealized_pnl": float(p.get("unrealized_pnl", 0) or 0),
-                            "unrealized_pnl_pct": 0.0,
-                            "market_value": 0.0,
+                            "avg_price": avg_price,
+                            "current_price": round(current_price, 2),
+                            "unrealized_pnl": round(unrealized_pnl, 2),
+                            "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+                            "market_value": round(market_value, 2),
                             "side": "short" if qty < 0 else "long",
                         }
                     )

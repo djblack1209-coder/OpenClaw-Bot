@@ -21,12 +21,16 @@ interface AppState {
   
   /* 开发者模式（默认关闭，三击版本号解锁） */
   devMode: boolean;
-  
+
+  /* 引导流程 */
+  onboardingComplete: boolean;
+
   /** 导航守卫，由需要拦截离开的页面注册 */
   navigationGuard: NavigationGuard | null;
-  
+
   /* Actions */
   setCurrentPage: (page: PageType) => void;
+  setOnboardingComplete: (complete: boolean) => void;
   setEnvStatus: (status: EnvironmentStatus | null) => void;
   setServiceStatus: (status: ServiceStatus | null) => void;
   setIsReady: (ready: boolean | null) => void;
@@ -46,10 +50,14 @@ export const useAppStore = create<AppState>()(
       serviceStatus: null,
       isReady: null,
       devMode: false,
+      onboardingComplete: false,
       navigationGuard: null,
-      
+
       /* Actions */
       setCurrentPage: (page) => set({ currentPage: page }),
+      setOnboardingComplete: (complete) => {
+        set({ onboardingComplete: complete });
+      },
       setEnvStatus: (status) => set({ envStatus: status }),
       setServiceStatus: (status) => set({ serviceStatus: status }),
       setIsReady: (ready) => set({ isReady: ready }),
@@ -64,6 +72,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         devMode: state.devMode,
         sidebarCollapsed: state.sidebarCollapsed,
+        onboardingComplete: state.onboardingComplete,
       }),
     }
   )
