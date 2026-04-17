@@ -76,7 +76,7 @@ const devItems: MenuItem[] = [
   { id: 'logs', label: '应用日志', icon: ScrollText },
 ];
 
-/* 通用菜单项渲染 */
+/* 通用菜单项渲染 - TradingView 风格 */
 function NavItem({
   item,
   isActive,
@@ -96,29 +96,48 @@ function NavItem({
         onClick={() => onNavigate(item.id)}
         title={collapsed ? item.label : undefined}
         className={clsx(
-          'w-full flex items-center gap-3 rounded-lg transition-all text-sm font-medium relative',
-          collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-2',
+          'w-full flex items-center gap-3 rounded-lg transition-all text-sm font-medium relative group',
+          collapsed ? 'px-0 py-2.5 justify-center' : 'px-3 py-2.5',
           isActive
-            ? 'bg-[var(--oc-sidebar-active)] text-[var(--oc-brand)]'
-            : 'text-[var(--oc-sidebar-text-muted)] hover:bg-dark-700 hover:text-[var(--oc-sidebar-text)]'
+            ? 'bg-[var(--brand-500)]/10 text-[var(--brand-500)]'
+            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]'
         )}
       >
         {/* 左侧激活指示条 */}
         {isActive && (
           <motion.div
             layoutId="activeIndicator"
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[var(--oc-brand)] rounded-r-full"
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[var(--brand-500)] rounded-r-full shadow-glow"
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           />
         )}
         <Icon
-          size={18}
+          size={20}
           className={clsx(
-            'transition-colors flex-shrink-0',
-            isActive ? 'text-[var(--oc-brand)]' : 'text-[var(--oc-sidebar-text-muted)]'
+            'transition-all flex-shrink-0',
+            isActive 
+              ? 'text-[var(--brand-500)]' 
+              : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)]'
           )}
+          strokeWidth={isActive ? 2.5 : 2}
         />
-        {!collapsed && <span>{item.label}</span>}
+        {!collapsed && (
+          <span className={clsx(
+            'transition-colors',
+            isActive ? 'font-semibold' : 'font-medium'
+          )}>
+            {item.label}
+          </span>
+        )}
+        {/* hover 发光效果 */}
+        {isActive && !collapsed && (
+          <motion.div
+            className="absolute inset-0 bg-[var(--brand-500)]/5 rounded-lg -z-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2 }}
+          />
+        )}
       </button>
     </li>
   );
