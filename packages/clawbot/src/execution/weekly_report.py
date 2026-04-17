@@ -4,6 +4,7 @@
 聚合投资+社媒+闲鱼+成本的周度表现。
 由 scheduler 每周日 20:30 自动触发，也可通过 /weekly 手动触发。
 """
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
@@ -37,16 +38,20 @@ async def weekly_report() -> str:
         items = []
         # 发文绩效报告
         try:
-            from src.content_pipeline import content_pipeline
+            # 修复: content_pipeline 实际位于 src/execution/social/ 目录下
+            from src.execution.social.content_pipeline import content_pipeline
+
             if content_pipeline and hasattr(content_pipeline, "get_post_performance_report"):
                 post_report = content_pipeline.get_post_performance_report(days=7)
                 if post_report:
                     if post_report.get("best_post"):
                         bp = post_report["best_post"]
-                        items.append(bullet(
-                            f"最佳帖子: {bp.get('title', '无标题')[:30]} "
-                            f"({bp.get('engagement', 0)} 互动)", icon="⭐"
-                        ))
+                        items.append(
+                            bullet(
+                                f"最佳帖子: {bp.get('title', '无标题')[:30]} ({bp.get('engagement', 0)} 互动)",
+                                icon="⭐",
+                            )
+                        )
                     if post_report.get("follower_change") is not None:
                         fc = post_report["follower_change"]
                         fc_emoji = "📈" if fc >= 0 else "📉"
@@ -57,6 +62,7 @@ async def weekly_report() -> str:
         # 社交自动驾驶状态
         try:
             from src.social_scheduler import social_autopilot
+
             if social_autopilot and hasattr(social_autopilot, "status"):
                 s = social_autopilot.status()
                 if s and s.get("posts_today", 0) > 0:
@@ -67,6 +73,7 @@ async def weekly_report() -> str:
         # 粉丝增长趋势 (7天)
         try:
             from src.execution.life_automation import get_follower_growth
+
             growth = get_follower_growth(days=7)
             if growth:
                 _plat_names = {"x": "X", "xhs": "小红书"}
@@ -75,10 +82,7 @@ async def weekly_report() -> str:
                     change = data.get("change", 0)
                     pct = data.get("change_pct", 0)
                     fc_emoji = "📈" if change >= 0 else "📉"
-                    items.append(kv(
-                        f"{name} 粉丝",
-                        f"{fc_emoji} {data.get('end', 0):,} ({change:+d}, {pct:+.1f}%)"
-                    ))
+                    items.append(kv(f"{name} 粉丝", f"{fc_emoji} {data.get('end', 0):,} ({change:+d}, {pct:+.1f}%)"))
         except Exception as e:
             logger.debug("静默异常: %s", e)
 
@@ -92,6 +96,7 @@ async def weekly_report() -> str:
         xctx = None
         try:
             from src.xianyu.xianyu_context import XianyuContextManager
+
             xctx = XianyuContextManager()
         except ImportError:
             pass
@@ -132,6 +137,7 @@ async def weekly_report() -> str:
         ca = None
         try:
             from src.monitoring import cost_analyzer
+
             ca = cost_analyzer
         except ImportError:
             pass
@@ -173,6 +179,7 @@ async def weekly_report() -> str:
         tj = None
         try:
             from src.trading_journal import journal
+
             tj = journal
         except ImportError:
             pass

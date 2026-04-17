@@ -30,6 +30,7 @@ def _get_session() -> Optional[Dict[str, Any]]:
 # POST /xianyu/qr/generate
 # ---------------------------------------------------------------------------
 
+
 @router.post("/xianyu/qr/generate")
 async def generate_qr_code():
     """生成闲鱼登录二维码。
@@ -103,9 +104,7 @@ async def _check_qr_status_once(
     Returns a dict with at least ``{"status": "..."}`` and optionally
     ``{"success": True, "cookies_str": "..."}`` on confirmed login.
     """
-    async with httpx.AsyncClient(
-        follow_redirects=True, timeout=_QUERY_TIMEOUT
-    ) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=_QUERY_TIMEOUT) as client:
         resp = await client.post(
             _API_QUERY_QR,
             data=manager.params,
@@ -113,11 +112,7 @@ async def _check_qr_status_once(
             headers=_QUERY_HEADERS,
         )
         data = resp.json()
-        qr_status = (
-            data.get("content", {})
-            .get("data", {})
-            .get("qrCodeStatus", "")
-        )
+        qr_status = data.get("content", {}).get("data", {}).get("qrCodeStatus", "")
 
         if qr_status == "CONFIRMED":
             # Check for risk-control redirect (phone verification)
@@ -125,12 +120,8 @@ async def _check_qr_status_once(
                 return {"status": "scanned"}  # still waiting for user verification
 
             # Login confirmed — extract cookies
-            manager.cookies.update(
-                {k: v for k, v in resp.cookies.items()}
-            )
-            cookies_str = "; ".join(
-                f"{k}={v}" for k, v in manager.cookies.items()
-            )
+            manager.cookies.update({k: v for k, v in resp.cookies.items()})
+            cookies_str = "; ".join(f"{k}={v}" for k, v in manager.cookies.items())
             return {
                 "status": "confirmed",
                 "success": True,
@@ -185,19 +176,45 @@ async def qr_login_status():
 # GET /xianyu/conversations
 # ---------------------------------------------------------------------------
 
+
 @router.get("/xianyu/conversations")
 async def get_xianyu_conversations(limit: int = 20):
     """获取闲鱼最近对话列表"""
     try:
-        from src.xianyu.xianyu_bot import XianyuBot
-        bot = XianyuBot.get_instance()  # singleton
-        if bot is None:
-            return {"conversations": [], "total": 0}
+        # 修复: xianyu_bot.py 不存在，改用 XianyuContextManager 查询对话列表
+        # XianyuContextManager 通过 SQLite 管理所有闲鱼对话数据
+        from src.xianyu.xianyu_context import XianyuContextManager
 
-        conversations = bot.get_recent_conversations(limit=limit)
+        ctx = XianyuContextManager()
+
+        # 从 messages 表查询最近的对话（按 chat_id 分组）
+        with ctx._conn() as c:
+            rows = c.execute(
+                """
+                SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
+                       (SELECT content FROM messages m2
+                        WHERE m2.chat_id = m.chat_id
+                        ORDER BY id DESC LIMIT 1) as last_msg
+                FROM messages m
+                GROUP BY chat_id
+                ORDER BY last_ts DESC
+                LIMIT ?
+            """,
+                (limit,),
+            ).fetchall()
+
+        conversations = [
+            {
+                "chat_id": r[0],
+                "last_ts": r[1],
+                "msg_count": r[2],
+                "last_msg": r[3][:100] if r[3] else "",
+            }
+            for r in rows
+        ]
         return {"conversations": conversations, "total": len(conversations)}
     except ImportError:
-        # XianyuBot 模块未安装
+        # XianyuContextManager 模块未安装
         return {"conversations": [], "total": 0}
     except Exception as e:
         logger.exception("获取闲鱼对话失败")
