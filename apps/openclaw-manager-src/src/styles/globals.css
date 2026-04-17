@@ -318,6 +318,36 @@ button:disabled {
     --oc-sidebar-text-muted: #86868B;
     /* 数字字体（等宽数字防跳动） */
     --oc-font-tabular: 'SF Pro Display', -apple-system, system-ui, sans-serif;
+    
+    /* === Design Tokens - 品牌色（青色系）=== */
+    --brand-50: #E5F9FF;
+    --brand-100: #CCF3FF;
+    --brand-200: #99E7FF;
+    --brand-300: #66DBFF;
+    --brand-400: #33CFFF;
+    --brand-500: #00D4FF;
+    --brand-600: #00A3CC;
+    --brand-700: #007A99;
+    --brand-800: #005266;
+    --brand-900: #002933;
+    
+    /* === Design Tokens - 背景系统 === */
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F5F5F7;
+    --bg-tertiary: #E5E5EA;
+    --bg-elevated: #FFFFFF;
+    
+    /* === Design Tokens - 文字颜色 === */
+    --text-primary: #1D1D1F;
+    --text-secondary: #6E6E73;
+    --text-tertiary: #86868B;
+    --text-disabled: #C7C7CC;
+    
+    /* === Design Tokens - 边框颜色 === */
+    --border-default: rgba(0, 0, 0, 0.1);
+    --border-light: rgba(0, 0, 0, 0.05);
+    --border-medium: rgba(0, 0, 0, 0.15);
+    --border-strong: rgba(0, 0, 0, 0.2);
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -384,6 +414,36 @@ button:disabled {
     --oc-sidebar-text: #F5F5F7;
     --oc-sidebar-text-muted: #98989D;
     --oc-font-tabular: 'SF Pro Display', -apple-system, system-ui, sans-serif;
+    
+    /* === Design Tokens - 品牌色（青色系）=== */
+    --brand-50: #002933;
+    --brand-100: #005266;
+    --brand-200: #007A99;
+    --brand-300: #00A3CC;
+    --brand-400: #00D4FF;
+    --brand-500: #00D4FF;
+    --brand-600: #33CFFF;
+    --brand-700: #66DBFF;
+    --brand-800: #99E7FF;
+    --brand-900: #CCF3FF;
+    
+    /* === Design Tokens - 背景系统 === */
+    --bg-primary: #0D0F14;
+    --bg-secondary: #1A1A1D;
+    --bg-tertiary: #242428;
+    --bg-elevated: #2E2E33;
+    
+    /* === Design Tokens - 文字颜色 === */
+    --text-primary: #FFFFFF;
+    --text-secondary: #9CA3AF;
+    --text-tertiary: #6B7280;
+    --text-disabled: #4B5563;
+    
+    /* === Design Tokens - 边框颜色 === */
+    --border-default: rgba(255, 255, 255, 0.1);
+    --border-light: rgba(255, 255, 255, 0.05);
+    --border-medium: rgba(255, 255, 255, 0.15);
+    --border-strong: rgba(255, 255, 255, 0.2);
   }
 }
 

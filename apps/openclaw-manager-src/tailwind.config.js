@@ -1,3 +1,5 @@
+import { designTokens } from './src/styles/tokens';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
@@ -62,7 +64,7 @@ export default {
           border: 'var(--sidebar-border)',
           ring: 'var(--sidebar-ring)'
         },
-        // OpenClaw 品牌色
+        // OpenClaw 品牌色（保留兼容性）
         claw: {
           50: '#fef3f2',
           100: '#fee4e2',
@@ -88,25 +90,31 @@ export default {
           300: 'var(--dark-300)',
           200: 'var(--dark-200)',
           100: 'var(--dark-100)',
-        }
+        },
+        // Design Tokens - 品牌色（青色系）
+        brand: designTokens.colors.brand,
+        // Design Tokens - 语义色
+        success: designTokens.colors.semantic.success,
+        danger: designTokens.colors.semantic.danger,
+        warning: designTokens.colors.semantic.warning,
+        info: designTokens.colors.semantic.info,
       },
-      fontFamily: {
-        sans: [
-          'SF Pro Display',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'PingFang SC',
-          'Hiragino Sans GB',
-          'Microsoft YaHei',
-          'sans-serif',
-        ],
-        mono: [
-          'SF Mono',
-          'JetBrains Mono',
-          'Fira Code',
-          'Menlo',
-          'monospace',
-        ],
+      fontFamily: designTokens.typography.fontFamily,
+      fontSize: designTokens.typography.fontSize,
+      fontWeight: designTokens.typography.fontWeight,
+      spacing: designTokens.spacing,
+      borderRadius: {
+        ...designTokens.borderRadius,
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)'
+      },
+      boxShadow: {
+        ...designTokens.boxShadow,
+        'glow-claw': '0 0 30px rgba(249, 77, 58, 0.3)',
+        'glow-cyan': '0 0 30px rgba(34, 211, 238, 0.3)',
+        'glow-green': '0 0 30px rgba(74, 222, 128, 0.3)',
+        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -133,20 +141,10 @@ export default {
           '100%': { opacity: '1' },
         },
       },
-      boxShadow: {
-        'glow-claw': '0 0 30px rgba(249, 77, 58, 0.3)',
-        'glow-cyan': '0 0 30px rgba(34, 211, 238, 0.3)',
-        'glow-green': '0 0 30px rgba(74, 222, 128, 0.3)',
-        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
-      },
       backdropBlur: {
         xs: '2px',
       },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)'
-      }
+      zIndex: designTokens.zIndex,
     },
   },
   plugins: [require("tailwindcss-animate")],
