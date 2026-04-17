@@ -14,6 +14,8 @@ import { Switch } from '@/components/ui/switch';
 import { api, isTauri, clawbotFetch, type TradingStatusResponse } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
 import KlineChart from './KlineChart';
+import DepthChart from './DepthChart';
+import OrderBook from './OrderBook';
 
 const moneyLogger = createLogger('Money');
 
@@ -63,6 +65,7 @@ export function Money() {
   const [ibkrConnected, setIbkrConnected] = useState(false);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [currentSymbol, setCurrentSymbol] = useState('AAPL'); // 当前查看的标的
   // 交易控制面板状态
   const [tradingControls, setTradingControls] = useState<TradingControlsState>({
     auto_trader_enabled: false,
@@ -223,7 +226,22 @@ export function Money() {
           </TabsList>
 
           <TabsContent value="kline" className="mt-4">
-            <KlineChart />
+            {/* TradingView 风格布局：左侧 K线图 + 右侧深度图和订单簿 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* 左侧：K线图（占 2/3） */}
+              <div className="lg:col-span-2">
+                <KlineChart onSymbolChange={setCurrentSymbol} />
+              </div>
+              
+              {/* 右侧：深度图 + 订单簿（占 1/3） */}
+              <div className="space-y-4">
+                {/* 深度图 */}
+                <DepthChart symbol={currentSymbol} />
+                
+                {/* 订单簿 */}
+                <OrderBook symbol={currentSymbol} />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="dashboard" className="mt-4 space-y-6">
