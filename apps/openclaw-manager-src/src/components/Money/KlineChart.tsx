@@ -34,7 +34,11 @@ const PERIODS = [
   { value: '1y', label: '1年' },
 ];
 
-export default function KlineChart() {
+interface KlineChartProps {
+  onSymbolChange?: (symbol: string) => void;
+}
+
+export default function KlineChart({ onSymbolChange }: KlineChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [symbol, setSymbol] = useState('AAPL');
@@ -168,8 +172,16 @@ export default function KlineChart() {
 
   const handleSearch = () => {
     const sym = inputValue.trim().toUpperCase();
-    if (sym) setSymbol(sym);
+    if (sym) {
+      setSymbol(sym);
+      onSymbolChange?.(sym);
+    }
   };
+
+  // 当 symbol 变化时通知父组件
+  useEffect(() => {
+    onSymbolChange?.(symbol);
+  }, [symbol, onSymbolChange]);
 
   return (
     <div className="space-y-4">
@@ -203,7 +215,11 @@ export default function KlineChart() {
               {DEFAULT_SYMBOLS.map(s => (
                 <button
                   key={s}
-                  onClick={() => { setInputValue(s); setSymbol(s); }}
+                  onClick={() => { 
+                    setInputValue(s); 
+                    setSymbol(s);
+                    onSymbolChange?.(s);
+                  }}
                   className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
                     symbol === s
                       ? 'bg-green-500/20 text-green-400 border border-green-500/30'
