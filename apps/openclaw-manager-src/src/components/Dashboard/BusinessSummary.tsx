@@ -178,10 +178,10 @@ export function BusinessSummary() {
       : 0;
 
   return (
-    <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
+    <div className="bg-[var(--bg-primary)] rounded-xl p-6 border border-[var(--border-default)] shadow-lg">
       {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-lg font-semibold text-white">今日经营概览</h3>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">今日经营概览</h3>
         <button
           onClick={fetchBusinessData}
           disabled={loading}
@@ -197,53 +197,61 @@ export function BusinessSummary() {
         </button>
       </div>
 
-      {/* 4 张指标卡片 */}
+      {/* 4 张指标卡片 - TradingView 风格 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* ── 1. 今日盈亏 ── */}
-        <div className="bg-dark-600 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-light)] hover:border-[var(--brand-500)] transition-all hover:shadow-glow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-[var(--text-secondary)] font-medium">今日盈亏</span>
             {data.trading.todayPnl !== null && data.trading.todayPnl >= 0 ? (
-              <TrendingUp size={16} className="text-green-400" />
+              <TrendingUp size={16} className="text-success" />
             ) : (
-              <TrendingDown size={16} className="text-red-400" />
+              <TrendingDown size={16} className="text-danger" />
             )}
-            <span className="text-xs text-gray-400">今日盈亏</span>
           </div>
           <p
             className={clsx(
-              'text-xl font-semibold',
+              'text-2xl font-bold mb-2 oc-tabular-nums',
               data.trading.todayPnl === null
-                ? 'text-gray-500'
+                ? 'text-[var(--text-disabled)]'
                 : data.trading.todayPnl >= 0
-                ? 'text-green-400'
-                : 'text-red-400'
+                ? 'text-success'
+                : 'text-danger'
             )}
           >
             {formatPnl(data.trading.todayPnl)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            {data.trading.connected ? '交易已连接' : '未连接'}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <div
+              className={clsx(
+                'w-1.5 h-1.5 rounded-full',
+                data.trading.connected ? 'bg-success animate-pulse' : 'bg-gray-500'
+              )}
+            />
+            <p className="text-xs text-[var(--text-tertiary)]">
+              {data.trading.connected ? '交易已连接' : '未连接'}
+            </p>
+          </div>
         </div>
 
         {/* ── 2. 闲鱼客服 ── */}
-        <div className="bg-dark-600 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ShoppingBag size={16} className="text-amber-400" />
-            <span className="text-xs text-gray-400">闲鱼客服</span>
+        <div className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-light)] hover:border-[var(--brand-500)] transition-all hover:shadow-glow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-[var(--text-secondary)] font-medium">闲鱼客服</span>
+            <ShoppingBag size={16} className="text-warning" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-2">
             <div
               className={clsx(
                 'w-2 h-2 rounded-full',
-                data.xianyu.online ? 'bg-green-400' : 'bg-gray-500'
+                data.xianyu.online ? 'bg-success animate-pulse' : 'bg-gray-500'
               )}
             />
-            <p className="text-xl font-semibold text-white">
+            <p className="text-2xl font-bold text-[var(--text-primary)]">
               {data.xianyu.online ? '在线' : '离线'}
             </p>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-[var(--text-tertiary)]">
             {data.xianyu.messageCount !== null
               ? `今日 ${data.xianyu.messageCount} 条消息`
               : '暂无数据'}
@@ -251,29 +259,29 @@ export function BusinessSummary() {
         </div>
 
         {/* ── 3. 今日 AI 花费 ── */}
-        <div className="bg-dark-600 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BrainCircuit size={16} className="text-purple-400" />
-            <span className="text-xs text-gray-400">今日 AI 花费</span>
+        <div className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-light)] hover:border-[var(--brand-500)] transition-all hover:shadow-glow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-[var(--text-secondary)] font-medium">今日 AI 花费</span>
+            <BrainCircuit size={16} className="text-info" />
           </div>
-          <p className="text-xl font-semibold text-white">
+          <p className="text-2xl font-bold text-[var(--text-primary)] mb-2 oc-tabular-nums">
             {formatUsd(data.llmCost.todayCost)}
           </p>
           {/* 花费进度条 */}
-          <div className="mt-2">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-[var(--text-tertiary)]">
               <span>{formatUsd(data.llmCost.todayCost)}</span>
               <span>${data.llmCost.dailyBudget.toFixed(0)}</span>
             </div>
-            <div className="w-full bg-dark-500 rounded-full h-1.5">
+            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
               <div
                 className={clsx(
-                  'h-1.5 rounded-full transition-all',
+                  'h-1.5 rounded-full transition-all duration-300',
                   costPercent >= 90
-                    ? 'bg-red-500'
+                    ? 'bg-danger'
                     : costPercent >= 60
-                    ? 'bg-amber-500'
-                    : 'bg-purple-500'
+                    ? 'bg-warning'
+                    : 'bg-info'
                 )}
                 style={{ width: `${costPercent}%` }}
               />
@@ -282,17 +290,25 @@ export function BusinessSummary() {
         </div>
 
         {/* ── 4. 社媒运营 ── */}
-        <div className="bg-dark-600 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Share2 size={16} className="text-sky-400" />
-            <span className="text-xs text-gray-400">社媒运营</span>
+        <div className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-light)] hover:border-[var(--brand-500)] transition-all hover:shadow-glow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-[var(--text-secondary)] font-medium">社媒运营</span>
+            <Share2 size={16} className="text-[var(--brand-500)]" />
           </div>
-          <p className="text-xl font-semibold text-white">
+          <p className="text-2xl font-bold text-[var(--text-primary)] mb-2 oc-tabular-nums">
             {data.social.todayPosts !== null ? `${data.social.todayPosts} 篇` : '--'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            {data.social.running ? '自动驾驶中' : '未运行'}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <div
+              className={clsx(
+                'w-1.5 h-1.5 rounded-full',
+                data.social.running ? 'bg-success animate-pulse' : 'bg-gray-500'
+              )}
+            />
+            <p className="text-xs text-[var(--text-tertiary)]">
+              {data.social.running ? '自动驾驶中' : '未运行'}
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -6,6 +6,8 @@ import { StatusCard } from './StatusCard';
 import { QuickActions } from './QuickActions';
 import { SystemInfo } from './SystemInfo';
 import { BusinessSummary } from './BusinessSummary';
+import { AssetDistribution } from './AssetDistribution';
+import { RecentActivity } from './RecentActivity';
 import { Setup } from '../Setup';
 import { api, isTauri } from '../../lib/tauri';
 import { useAppStore } from '@/stores/appStore';
@@ -146,7 +148,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="space-y-6 max-w-[1400px] mx-auto"
+        className="space-y-6 max-w-[1600px] mx-auto"
       >
         {/* 环境安装向导（仅在需要时显示） */}
         {needsSetup && (
@@ -160,25 +162,32 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
           <BusinessSummary />
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
+        {/* TradingView 风格布局：左侧主区域 + 右侧侧边栏 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 左侧主区域（占 2/3） */}
+          <div className="lg:col-span-2 space-y-6">
             {/* 服务状态卡片 */}
             <motion.div variants={itemVariants}>
               <StatusCard status={serviceStatus} loading={loading} />
             </motion.div>
 
+            {/* 资产分布 */}
+            <motion.div variants={itemVariants}>
+              <AssetDistribution />
+            </motion.div>
+
             {/* 实时日志 */}
             <motion.div variants={itemVariants}>
-              <Card className="bg-dark-700/50 border-dark-500 shadow-xl backdrop-blur-sm overflow-hidden">
+              <Card className="bg-[var(--bg-primary)] border-[var(--border-default)] shadow-lg backdrop-blur-sm overflow-hidden">
                 {/* 日志标题栏 */}
                 <div 
-                  className="flex items-center justify-between px-4 py-3 bg-dark-600/50 cursor-pointer hover:bg-dark-600/80 transition-colors"
+                  className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
                   onClick={() => setLogsExpanded(!logsExpanded)}
                 >
                   <div className="flex items-center gap-2">
-                    <Terminal size={16} className="text-gray-400" />
-                    <span className="text-sm font-semibold text-white">实时日志</span>
-                    <span className="text-xs text-gray-500">
+                    <Terminal size={16} className="text-[var(--text-secondary)]" />
+                    <span className="text-sm font-semibold text-[var(--text-primary)]">实时日志</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">
                       ({logs.length} 行)
                     </span>
                   </div>
@@ -186,14 +195,14 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                     {logsExpanded && (
                       <>
                         <label 
-                          className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 cursor-pointer"
+                          className="flex items-center gap-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
                           onClick={e => e.stopPropagation()}
                         >
                           <input
                             type="checkbox"
                             checked={autoRefreshLogs}
                             onChange={(e) => setAutoRefreshLogs(e.target.checked)}
-                            className="w-3 h-3 rounded border-dark-500 bg-dark-600 text-claw-500"
+                            className="w-3 h-3 rounded border-[var(--border-default)] bg-[var(--bg-secondary)] text-[var(--brand-500)]"
                           />
                           自动刷新
                         </label>
@@ -202,7 +211,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                             e.stopPropagation();
                             fetchLogs();
                           }}
-                          className="text-gray-500 hover:text-white transition-colors"
+                          className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                           title="刷新日志"
                           aria-label="刷新日志"
                         >
@@ -211,18 +220,18 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                       </>
                     )}
                     {logsExpanded ? (
-                      <ChevronUp size={16} className="text-gray-500" />
+                      <ChevronUp size={16} className="text-[var(--text-tertiary)]" />
                     ) : (
-                      <ChevronDown size={16} className="text-gray-500" />
+                      <ChevronDown size={16} className="text-[var(--text-tertiary)]" />
                     )}
                   </div>
                 </div>
 
                 {/* 日志内容 */}
                 {logsExpanded && (
-                  <div ref={logsContainerRef} className="h-[400px] overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-dark-900/80">
+                  <div ref={logsContainerRef} className="h-[400px] overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-[var(--bg-elevated)]">
                     {logs.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-gray-500">
+                      <div className="h-full flex items-center justify-center text-[var(--text-tertiary)]">
                         <p>暂无日志，请先启动服务</p>
                       </div>
                     ) : (
@@ -230,7 +239,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                         {logs.map((line, index) => (
                           <div
                             key={index}
-                            className={clsx('py-0.5 whitespace-pre-wrap break-all hover:bg-dark-800/50 px-2 -mx-2 rounded', getLogLineClass(line))}
+                            className={clsx('py-0.5 whitespace-pre-wrap break-all hover:bg-[var(--bg-secondary)] px-2 -mx-2 rounded', getLogLineClass(line))}
                           >
                             {line}
                           </div>
@@ -243,6 +252,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
             </motion.div>
           </div>
 
+          {/* 右侧侧边栏（占 1/3） */}
           <div className="space-y-6">
             {/* 快捷操作 */}
             <motion.div variants={itemVariants}>
@@ -253,6 +263,11 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
                 onStop={() => setShowStopConfirm(true)}
                 onRestart={handleRestart}
               />
+            </motion.div>
+
+            {/* 最近活动 */}
+            <motion.div variants={itemVariants}>
+              <RecentActivity />
             </motion.div>
 
             {/* 系统信息 */}
