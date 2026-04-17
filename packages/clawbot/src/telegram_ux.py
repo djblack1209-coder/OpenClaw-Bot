@@ -895,7 +895,7 @@ class CardBuilder:
             parts.append("\n".join(self._lines))
         return "\n".join(parts)
 
-    def build_keyboard(self) -> InlineKeyboardMarkup | None:
+    def build_keyboard(self) -> Optional[InlineKeyboardMarkup]:
         """构建键盘"""
         # 自动结束最后一行
         if self._buttons:
