@@ -13,7 +13,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Path, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
-from ..schemas import Ping, SystemStatus
+from ..schemas import Ping, SystemStatus, WSMessageType
+from .ws import push_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -314,3 +315,155 @@ def get_service_status(service_id: str = Path(...)):
         "status": "running" if alive else "stopped",
         "port": svc["port"],
     }
+
+
+# clawbot 包根目录（packages/clawbot/）
+_CLAWBOT_PKG_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
+)
+
+# 服务 ID → 启动命令映射
+_SERVICE_START_COMMANDS: Dict[str, Optional[List[str]]] = {
+    "clawbot-agent": ["python", "-m", "src.multi_main"],
+    "xianyu": ["python", "-m", "src.xianyu.xianyu_main"],
+    "gateway": None,   # 需要手动启动
+    "g4f": ["python", "-m", "g4f.api"],
+    "newapi": None,     # Docker 容器，跳过
+}
+
+
+def _lookup_service(service_id: str) -> Dict[str, Any]:
+    """按 id 查找服务定义，找不到则 404"""
+    svc = next((s for s in _SERVICE_REGISTRY if s["id"] == service_id), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="服务不存在")
+    return svc
+
+
+@router.post("/system/services/{service_id}/start")
+def start_service(service_id: str = Path(...)):
+    """启动指定服务"""
+    try:
+        svc = _lookup_service(service_id)
+
+        # 已经在运行
+        if _check_process_alive(svc["process_keyword"]):
+            return {"status": "already_running", "service_id": service_id}
+
+        # 检查是否有对应的启动命令
+        cmd = _SERVICE_START_COMMANDS.get(service_id)
+
+        if service_id == "newapi":
+            msg = "New-API 为 Docker 容器服务，请通过 docker-compose 手动启动"
+            logger.info(msg)
+            push_notification(
+                title=f"服务 {svc['name']} 需要手动启动",
+                body=msg,
+                category="system",
+                level="warning",
+            )
+            push_event(WSMessageType.SERVICE_CHANGE, {"service_id": service_id, "action": "start", "success": False, "reason": "skipped"})
+            return {"status": "skipped", "service_id": service_id, "message": msg}
+
+        if service_id == "gateway":
+            msg = "Kiro 网关需要手动启动，请在终端执行对应启动脚本"
+            logger.info(msg)
+            push_notification(
+                title=f"服务 {svc['name']} 需要手动启动",
+                body=msg,
+                category="system",
+                level="warning",
+            )
+            push_event(WSMessageType.SERVICE_CHANGE, {"service_id": service_id, "action": "start", "success": False, "reason": "skipped"})
+            return {"status": "skipped", "service_id": service_id, "message": msg}
+
+        if cmd is None:
+            raise HTTPException(status_code=400, detail="该服务不支持自动启动")
+
+        # 启动子进程（后台分离）
+        log_file = os.path.join(_CLAWBOT_PKG_DIR, "logs", f"{service_id}.out")
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+        with open(log_file, "a") as fout:
+            subprocess.Popen(
+                cmd,
+                cwd=_CLAWBOT_PKG_DIR,
+                stdout=fout,
+                stderr=fout,
+                start_new_session=True,
+            )
+
+        msg = f"服务 {svc['name']} 正在启动，日志: {log_file}"
+        logger.info(msg)
+        push_notification(
+            title=f"服务 {svc['name']} 已启动",
+            body=msg,
+            category="system",
+            level="success",
+        )
+        push_event(WSMessageType.SERVICE_CHANGE, {"service_id": service_id, "action": "start", "success": True})
+        return {"status": "starting", "service_id": service_id, "message": msg}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("启动服务 %s 失败", service_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.post("/system/services/{service_id}/stop")
+def stop_service(service_id: str = Path(...)):
+    """停止指定服务"""
+    try:
+        svc = _lookup_service(service_id)
+
+        # 未在运行
+        if not _check_process_alive(svc["process_keyword"]):
+            return {"status": "already_stopped", "service_id": service_id}
+
+        keyword = svc["process_keyword"]
+
+        # 发送终止信号
+        subprocess.run(
+            ["pkill", "-f", keyword],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # 短暂等待后确认
+        time.sleep(1)
+        still_alive = _check_process_alive(keyword)
+
+        if still_alive:
+            # 如果仍在运行，尝试强制杀死
+            subprocess.run(
+                ["pkill", "-9", "-f", keyword],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            time.sleep(0.5)
+            still_alive = _check_process_alive(keyword)
+
+        status = "stopped" if not still_alive else "stopping"
+        msg = (
+            f"服务 {svc['name']} 已停止"
+            if not still_alive
+            else f"服务 {svc['name']} 正在停止，可能需要几秒钟"
+        )
+        logger.info(msg)
+        push_notification(
+            title=f"服务 {svc['name']} {'已停止' if not still_alive else '正在停止'}",
+            body=msg,
+            category="system",
+            level="info",
+        )
+        push_event(WSMessageType.SERVICE_CHANGE, {"service_id": service_id, "action": "stop", "success": not still_alive})
+        return {"status": status, "service_id": service_id, "message": msg}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("停止服务 %s 失败", service_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e))

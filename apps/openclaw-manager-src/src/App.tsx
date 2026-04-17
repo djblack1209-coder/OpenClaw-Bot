@@ -12,6 +12,7 @@ const Assistant = lazy(() => import('./components/Assistant').then(m => ({ defau
 const Portfolio = lazy(() => import('./components/Portfolio').then(m => ({ default: m.Portfolio })));
 const Bots = lazy(() => import('./components/Bots').then(m => ({ default: m.Bots })));
 const Store = lazy(() => import('./components/Store').then(m => ({ default: m.Store })));
+const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })));
 
 /* ====== 原有页面（开发者模式下显示） ====== */
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -58,6 +59,7 @@ export type PageType =
   | 'portfolio'  // 我的资产
   | 'bots'       // 我的机器人
   | 'store'      // 插件商店
+  | 'onboarding' // 引导流程（仅首次启动）
   /* 原有页面（开发者模式） */
   | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
   | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
@@ -99,6 +101,8 @@ function App() {
   const setEnvStatus = useAppStore((s) => s.setEnvStatus);
   const serviceStatus = useAppStore((s) => s.serviceStatus);
   const setServiceStatus = useAppStore((s) => s.setServiceStatus);
+  const onboardingComplete = useAppStore((s) => s.onboardingComplete);
+  const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
 
   // 检查环境
   const checkEnvironment = useCallback(async () => {
@@ -174,6 +178,7 @@ function App() {
       portfolio: <PageErrorBoundary pageName="我的资产"><Portfolio /></PageErrorBoundary>,
       bots: <PageErrorBoundary pageName="我的机器人"><Bots /></PageErrorBoundary>,
       store: <PageErrorBoundary pageName="插件商店"><Store /></PageErrorBoundary>,
+      onboarding: <PageErrorBoundary pageName="引导"><Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} /></PageErrorBoundary>,
       /* 原有页面 */
       control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
       dashboard: <PageErrorBoundary pageName="仪表盘"><Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} /></PageErrorBoundary>,
@@ -223,6 +228,29 @@ function App() {
           </div>
           <p className="text-dark-400">正在启动...</p>
         </div>
+      </div>
+    );
+  }
+
+  // 首次运行引导流程（全屏，不显示侧边栏和标题栏）
+  if (!onboardingComplete) {
+    return (
+      <div className="h-screen bg-dark-900 overflow-hidden">
+        <Toaster
+          theme={toasterTheme}
+          position="top-right"
+          toastOptions={{
+            className: 'bg-dark-800 border-dark-700 text-dark-100',
+          }}
+        />
+        <Suspense fallback={<PageLoader />}>
+          <Onboarding
+            onComplete={() => {
+              setOnboardingComplete(true);
+              setCurrentPage('home');
+            }}
+          />
+        </Suspense>
       </div>
     );
   }

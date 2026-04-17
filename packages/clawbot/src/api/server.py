@@ -34,6 +34,7 @@ from .routers import (
     router_newapi,
     router_controls,
     router_conversation,
+    router_xianyu,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     - 不依赖任何第三方库，纯标准库实现
     """
 
-    # 默认限制：每个 IP 每分钟 60 次请求
-    MAX_REQUESTS: int = 60
+    # 默认限制：每个 IP 每分钟 300 次请求
+    # 较高阈值：此服务仅监听 localhost，供 Tauri 桌面端单用户使用，
+    # 前端多个组件并行轮询（5s/10s/15s/30s）轻松超过 60 req/min。
+    MAX_REQUESTS: int = 300
     WINDOW_SECONDS: int = 60
 
-    def __init__(self, app, max_requests: int = 60, window_seconds: int = 60):
+    def __init__(self, app, max_requests: int = 300, window_seconds: int = 60):
         super().__init__(app)
         self.MAX_REQUESTS = max_requests
         self.WINDOW_SECONDS = window_seconds
@@ -259,6 +262,7 @@ class APIServer:
         self.app.include_router(router_newapi, prefix="/api/v1", tags=["New-API"])
         self.app.include_router(router_controls, prefix="/api/v1", tags=["Controls"])
         self.app.include_router(router_conversation, prefix="/api/v1", tags=["Conversation"])
+        self.app.include_router(router_xianyu, prefix="/api/v1", tags=["Xianyu"])
 
     def start(self):
         """Start uvicorn in a daemon thread"""

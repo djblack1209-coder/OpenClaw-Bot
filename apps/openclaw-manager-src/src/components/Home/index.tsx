@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Sun,
   Moon,
@@ -14,7 +14,6 @@ import {
   DollarSign,
   Fish,
   Calendar,
-  Sparkles,
   AlertCircle,
   CheckCircle,
   Info,
@@ -22,6 +21,11 @@ import {
 import { GlassCard, StatusIndicator, AnimatedNumber } from '../shared';
 import { clawbotFetch, api } from '../../lib/tauri';
 import { useAppStore } from '@/stores/appStore';
+import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { createLogger } from '@/lib/logger';
+import type { PageType } from '../../App';
+
+const logger = createLogger('Home');
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
@@ -86,6 +90,119 @@ const notificationColors = {
   info: 'text-[var(--oc-brand)]',
 };
 
+/* AI 建议条目 */
+interface AISuggestion {
+  id: string;
+  icon: string;
+  text: string;
+  action: { label: string; page: PageType };
+  priority: number; // lower = higher priority
+}
+
+/* 根据当前系统状态动态生成建议列表 */
+function generateSuggestions(
+  summary: SystemSummary,
+  isRunning: boolean,
+  notifications: NotificationItem[],
+): AISuggestion[] {
+  const suggestions: AISuggestion[] = [];
+
+  // Priority 1: Critical system issues
+  if (!isRunning) {
+    suggestions.push({
+      id: 'offline',
+      icon: '⚠️',
+      text: '服务尚未启动，请先到设置页面启动 ClawBot 服务。',
+      action: { label: '前往设置', page: 'settings' },
+      priority: 0,
+    });
+  }
+
+  // Priority 2: Cost warnings
+  if (summary.aiBudget > 0 && summary.aiCostToday / summary.aiBudget > 0.8) {
+    suggestions.push({
+      id: 'budget',
+      icon: '💰',
+      text: `AI 费用已达预算 ${((summary.aiCostToday / summary.aiBudget) * 100).toFixed(0)}%，建议优化使用频率或调整预算。`,
+      action: { label: '调整预算', page: 'settings' },
+      priority: 1,
+    });
+  }
+
+  // Priority 3: Trading loss alert
+  if (summary.tradingEnabled && summary.dailyPnl < -50) {
+    suggestions.push({
+      id: 'loss',
+      icon: '📉',
+      text: `今日交易亏损 $${Math.abs(summary.dailyPnl).toFixed(2)}，建议查看持仓并调整策略。`,
+      action: { label: '查看持仓', page: 'portfolio' },
+      priority: 2,
+    });
+  }
+
+  // Priority 4: Unread notifications
+  const urgentCount = notifications.filter(
+    (n) => n.type === 'error' || n.type === 'warning',
+  ).length;
+  if (urgentCount > 0) {
+    suggestions.push({
+      id: 'urgent-notif',
+      icon: '🔔',
+      text: `有 ${urgentCount} 条紧急通知需要处理。`,
+      action: { label: '查看通知', page: 'bots' },
+      priority: 3,
+    });
+  }
+
+  // Priority 5: Xianyu conversations
+  if (summary.conversationsToday > 0 && isRunning) {
+    suggestions.push({
+      id: 'xianyu',
+      icon: '🐟',
+      text: `闲鱼今日有 ${summary.conversationsToday} 条对话，建议查看客服状态。`,
+      action: { label: '管理客服', page: 'bots' },
+      priority: 5,
+    });
+  }
+
+  // Priority 6: Social media timing (8-10 PM is best for XHS)
+  const hour = new Date().getHours();
+  if (hour >= 19 && hour <= 21 && isRunning) {
+    suggestions.push({
+      id: 'social-time',
+      icon: '📱',
+      text: '现在是小红书最佳发文时间（晚 8-10 点），是否准备发布内容？',
+      action: { label: '发布内容', page: 'bots' },
+      priority: 6,
+    });
+  }
+
+  // Priority 7: Trading profit
+  if (summary.tradingEnabled && summary.dailyPnl > 100) {
+    suggestions.push({
+      id: 'profit',
+      icon: '🎉',
+      text: `今日盈利 $${summary.dailyPnl.toFixed(2)}，表现不错！可以考虑部分止盈。`,
+      action: { label: '查看持仓', page: 'portfolio' },
+      priority: 7,
+    });
+  }
+
+  // Priority 8: General - all good
+  if (suggestions.length === 0 && isRunning) {
+    suggestions.push({
+      id: 'all-good',
+      icon: '✨',
+      text: '所有系统运行正常。可以用 AI 助手开始今天的工作，或查看投资组合表现。',
+      action: { label: '打开 AI 助手', page: 'assistant' },
+      priority: 99,
+    });
+  }
+
+  // Sort by priority and return top 3
+  return suggestions.sort((a, b) => a.priority - b.priority).slice(0, 3);
+}
+
 /**
  * 首页 Dashboard —— C 端主页面
  * 展示：问候语 + 今日简报 + 模块状态卡片 + 通知预览 + 快捷操作 + AI 建议
@@ -118,6 +235,34 @@ export function HomeDashboard() {
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
+  /* 动态计算 AI 建议 */
+  const suggestions = useMemo(
+    () => generateSuggestions(summary, isRunning, notifications),
+    [summary, isRunning, notifications],
+  );
+
+  // WebSocket: receive real-time status updates to supplement polling
+  useClawbotWS('status', useCallback((event) => {
+    // Merge WS status data into summary
+    const data = event.data as Record<string, unknown>;
+    setSummary(prev => ({
+      ...prev,
+      serviceRunning: true, // If we're receiving WS events, service is running
+      uptime: (data.uptime as string) ?? prev.uptime,
+    }));
+  }, []));
+
+  // WebSocket: receive notification events instantly
+  useClawbotWS('notification', useCallback((event) => {
+    const data = event.data as Record<string, unknown>;
+    setNotifications(prev => [{
+      id: String(data.id || Date.now()),
+      type: (data.level === 'error' ? 'error' : data.level === 'warning' ? 'warning' : 'info') as NotificationItem['type'],
+      message: String(data.title || data.message || ''),
+      timestamp: new Date(),
+    }, ...prev].slice(0, 10));
+  }, []));
+
   /* 拉取系统概要 */
   const fetchSummary = useCallback(async () => {
     try {
@@ -134,7 +279,7 @@ export function HomeDashboard() {
         clawbotFetch('/api/v1/status'),
         clawbotFetch('/api/v1/omega/status'),
         clawbotFetch('/api/v1/controls/trading'),
-        clawbotFetch('/api/v1/controls/social'),
+        clawbotFetch('/api/v1/social/autopilot/status'),
         clawbotFetch('/api/v1/trading/pnl'),
         clawbotFetch('/api/v1/trading/positions'),
         api.dailyBrief(),
@@ -159,15 +304,18 @@ export function HomeDashboard() {
         omegaReady: omegaData?.brain_ready ?? false,
         aiCostToday: omegaData?.cost_today_usd ?? 0,
         aiBudget: omegaData?.daily_budget_usd ?? 50,
-        tradingEnabled: tradingData?.auto_trade_enabled ?? false,
-        socialEnabled: socialData?.autopilot_enabled ?? false,
+        tradingEnabled: tradingData?.auto_trade_enabled ?? tradingData?.auto_trader_enabled ?? false,
+        socialEnabled: socialData?.running ?? socialData?.autopilot_enabled ?? socialData?.autopilot_running ?? false,
         uptime: statusData?.uptime ?? '--',
         dailyPnl: pnlData?.daily_pnl ?? 0,
         dailyPnlPct: pnlData?.daily_pnl_pct ?? 0,
-        totalMarketValue: positionsData?.total_market_value ?? 0,
+        totalMarketValue: positionsData?.total_market_value
+          ?? (Array.isArray(positionsData?.positions)
+            ? positionsData.positions.reduce((s: number, p: any) => s + (p.market_value ?? p.mkt_value ?? 0), 0)
+            : 0),
         positionsCount: positionsData?.positions?.length ?? briefData?.metrics?.positions_count ?? 0,
         conversationsToday: briefData?.metrics?.xianyu_consultations ?? statusData?.conversations_today ?? 0,
-        postsToday: briefData?.metrics?.social_posts ?? statusData?.posts_today ?? 0,
+        postsToday: socialData?.posts_today ?? briefData?.metrics?.social_posts ?? statusData?.posts_today ?? 0,
         notificationsCount: statusData?.notifications_count ?? 0,
       });
       
@@ -188,8 +336,9 @@ export function HomeDashboard() {
       }
       
       setLastRefresh(new Date());
-    } catch {
-      // 静默处理，使用默认值
+    } catch (err) {
+      // Replace silent catch with user-visible error state when service is truly unreachable
+      logger.error('Dashboard fetch failed:', err);
     } finally {
       setLoading(false);
     }
@@ -299,13 +448,13 @@ export function HomeDashboard() {
               </div>
               
               <div className="flex flex-col">
-                <span className="text-xs text-gray-500 mb-1">今日交易</span>
+                <span className="text-xs text-gray-500 mb-1">持仓</span>
                 <div className="flex items-baseline gap-1">
                   <TrendingUp size={14} className="text-[var(--oc-success)]" />
                   <span className="text-base font-semibold text-white oc-tabular-nums">
                     {summary.positionsCount}
                   </span>
-                  <span className="text-xs text-gray-500">笔</span>
+                  <span className="text-xs text-gray-500">只</span>
                 </div>
               </div>
               
@@ -340,22 +489,22 @@ export function HomeDashboard() {
               <div className="space-y-2">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">总市值</p>
-                  <AnimatedNumber 
-                    value={summary.totalMarketValue} 
-                    prefix="¥" 
-                    decimals={2} 
-                    className="text-2xl font-bold text-white oc-tabular-nums" 
+                  <AnimatedNumber
+                    value={summary.totalMarketValue}
+                    prefix="$"
+                    decimals={2}
+                    className="text-2xl font-bold text-white oc-tabular-nums"
                   />
                 </div>
                 
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">今日盈亏</span>
-                  <AnimatedNumber 
-                    value={summary.dailyPnl} 
-                    prefix="¥" 
-                    decimals={2} 
-                    colored 
-                    className="text-sm font-semibold oc-tabular-nums" 
+                  <AnimatedNumber
+                    value={summary.dailyPnl}
+                    prefix="$"
+                    decimals={2}
+                    colored
+                    className="text-sm font-semibold oc-tabular-nums"
                   />
                   <AnimatedNumber 
                     value={summary.dailyPnlPct} 
@@ -545,72 +694,24 @@ export function HomeDashboard() {
         {/* ========== AI 智能建议 ========== */}
         <div>
           <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">AI 建议</h2>
-          <GlassCard hoverable={false}>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Sparkles size={16} className="text-[var(--oc-brand)]" />
-              </div>
-              <div className="flex-1">
-                {!isRunning ? (
-                  <>
-                    <p className="text-sm text-white mb-2">
-                      服务尚未启动，请先到设置页面启动 ClawBot 服务。
-                    </p>
+          <div className="space-y-3">
+            {suggestions.map((suggestion) => (
+              <GlassCard key={suggestion.id} hoverable={false}>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl flex-shrink-0">{suggestion.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm text-white mb-2">{suggestion.text}</p>
                     <button
-                      onClick={() => setCurrentPage('settings')}
+                      onClick={() => setCurrentPage(suggestion.action.page)}
                       className="text-xs text-[var(--oc-brand)] hover:underline"
                     >
-                      前往设置 →
+                      {suggestion.action.label} →
                     </button>
-                  </>
-                ) : summary.aiCostToday / summary.aiBudget > 0.8 ? (
-                  <>
-                    <p className="text-sm text-white mb-2">
-                      AI 费用已达预算 {((summary.aiCostToday / summary.aiBudget) * 100).toFixed(0)}%，建议优化使用频率或调整预算。
-                    </p>
-                    <button
-                      onClick={() => setCurrentPage('settings')}
-                      className="text-xs text-[var(--oc-brand)] hover:underline"
-                    >
-                      调整预算 →
-                    </button>
-                  </>
-                ) : summary.tradingEnabled && summary.dailyPnl < 0 ? (
-                  <>
-                    <p className="text-sm text-white mb-2">
-                      今日交易亏损 ¥{Math.abs(summary.dailyPnl).toFixed(2)}，建议查看持仓并调整策略。
-                    </p>
-                    <button
-                      onClick={() => setCurrentPage('portfolio')}
-                      className="text-xs text-[var(--oc-brand)] hover:underline"
-                    >
-                      查看持仓 →
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-white mb-2">
-                      所有系统运行正常。可以用 AI 助手开始今天的工作，或查看投资组合表现。
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setCurrentPage('assistant')}
-                        className="text-xs text-[var(--oc-brand)] hover:underline"
-                      >
-                        打开 AI 助手 →
-                      </button>
-                      <button
-                        onClick={() => setCurrentPage('portfolio')}
-                        className="text-xs text-[var(--oc-brand)] hover:underline"
-                      >
-                        查看投资组合 →
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </GlassCard>
+                  </div>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
         </div>
       </div>
     </div>

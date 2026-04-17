@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Fish,
   Smartphone,
-  Trophy,
-  Mail,
-  ShoppingCart,
-  TrendingUp,
-  CheckSquare,
+  Bot,
+  Globe,
+  Cpu,
+  Server,
   Bell,
   AlertCircle,
   DollarSign,
@@ -21,9 +22,18 @@ import {
   Pause,
   Play,
   QrCode,
+  RefreshCw,
+  CheckCircle2,
+  Loader2,
+  TrendingUp,
+  BarChart3,
+  Users,
+  Clock,
+  MessageCircle,
+  ChevronRight,
 } from 'lucide-react';
 
-import { GlassCard, StatusIndicator, ToggleSwitch, AnimatedNumber } from '../shared';
+import { GlassCard, StatusIndicator, ToggleSwitch, AnimatedNumber, ErrorState } from '../shared';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -34,7 +44,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { clawbotFetch } from '@/lib/tauri';
+import { api, clawbotFetch } from '@/lib/tauri';
+import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { toFriendlyError } from '@/lib/errorMessages';
+import { createLogger } from '@/lib/logger';
+import type { FriendlyError } from '@/lib/errorMessages';
+
+const logger = createLogger('Bots');
 
 /**
  * 我的机器人 —— 自动化控制中心
@@ -67,6 +83,15 @@ export function Bots() {
    Section 1: 闲鱼 AI 客服
 ──────────────────────────────────────────────────────────────── */
 
+interface XianyuConversation {
+  id: string;
+  buyer_name: string;
+  last_message: string;
+  timestamp: string;
+  unread_count: number;
+  item_title?: string;
+}
+
 interface XianyuStatus {
   online: boolean;
   today_conversations?: number;
@@ -79,15 +104,104 @@ function XianyuSection() {
   const [loading, setLoading] = useState(true);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
 
+  // ── QR Login state ──
+  type QRState = 'idle' | 'loading' | 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'error';
+  const [qrState, setQrState] = useState<QRState>('idle');
+  const [qrImage, setQrImage] = useState<string>('');
+  const [countdown, setCountdown] = useState(60);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 清理轮询和倒计时
+  const cleanupQR = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+  }, []);
+
+  // 生成二维码
+  const generateQR = useCallback(async () => {
+    cleanupQR();
+    setQrState('loading');
+    setQrImage('');
+    setCountdown(60);
+
+    try {
+      const data = await api.xianyuGenerateQR();
+      if (!data?.qr_image) {
+        setQrState('error');
+        return;
+      }
+
+      setQrImage(data.qr_image);
+      setQrState('waiting');
+
+      // 开始 60 秒倒计时
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            cleanupQR();
+            setQrState('expired');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // 每 2 秒轮询扫码状态
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusData = await api.xianyuQRStatus();
+          const s = statusData?.status;
+
+          if (s === 'scanned') {
+            setQrState('scanned');
+          } else if (s === 'confirmed') {
+            cleanupQR();
+            setQrState('confirmed');
+            toast.success('闲鱼扫码登录成功');
+            setTimeout(() => {
+              setQrDialogOpen(false);
+              setQrState('idle');
+            }, 1500);
+          } else if (s === 'expired') {
+            cleanupQR();
+            setQrState('expired');
+          }
+        } catch {
+          // 轮询失败时静默忽略，等待下一次
+        }
+      }, 2000);
+    } catch {
+      setQrState('error');
+    }
+  }, [cleanupQR]);
+
+  // Dialog 打开时生成二维码
+  useEffect(() => {
+    if (qrDialogOpen) {
+      generateQR();
+    } else {
+      cleanupQR();
+      setQrState('idle');
+    }
+    return cleanupQR;
+  }, [qrDialogOpen, generateQR, cleanupQR]);
+
   // 10秒轮询状态
   useEffect(() => {
     const fetchStatus = async () => {
       try {
         const res = await clawbotFetch('/api/v1/status');
         const data = await res.json();
-        setStatus(data.xianyu || { online: false });
+        const xianyuData = data.xianyu || {};
+        setStatus({
+          online: xianyuData.running ?? xianyuData.online ?? false,
+          today_conversations: xianyuData.today_conversations ?? 0,
+          auto_deals: xianyuData.auto_deals ?? 0,
+          pending_deals: xianyuData.pending_deals ?? 0,
+        });
       } catch (err) {
-        console.error('获取闲鱼状态失败:', err);
+        logger.error('获取闲鱼状态失败:', err);
       } finally {
         setLoading(false);
       }
@@ -99,8 +213,18 @@ function XianyuSection() {
   }, []);
 
   const handleToggle = async (checked: boolean) => {
-    // TODO: 后端 API 未就绪，暂时只更新本地状态
-    setStatus((prev) => ({ ...prev, online: checked }));
+    try {
+      if (checked) {
+        await api.serviceStart('xianyu');
+      } else {
+        await api.serviceStop('xianyu');
+      }
+      setStatus((prev) => ({ ...prev, online: checked }));
+      toast.success(checked ? '闲鱼客服已启动' : '闲鱼客服已停止');
+    } catch (err) {
+      toast.error(`${checked ? '启动' : '停止'}闲鱼客服失败`);
+      logger.error('Toggle xianyu failed:', err);
+    }
   };
 
   return (
@@ -154,26 +278,113 @@ function XianyuSection() {
             {status.online ? <Pause size={14} className="mr-1.5" /> : <Play size={14} className="mr-1.5" />}
             {status.online ? '暂停' : '启动'}
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => toast.info('闲鱼客服设置功能开发中')}>
             <Settings size={14} className="mr-1.5" />
             设置
           </Button>
         </div>
+
+        {/* 最近对话预览 */}
+        <XianyuConversationList />
       </GlassCard>
 
       {/* 扫码登录弹窗 */}
       <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>闲鱼扫码登录</DialogTitle>
             <DialogDescription>使用闲鱼 App 扫描二维码登录</DialogDescription>
           </DialogHeader>
-          <div className="flex items-center justify-center py-8">
-            <div className="w-48 h-48 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-              <div className="text-center text-gray-400">
-                <QrCode size={48} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">功能开发中</p>
-              </div>
+          <div className="flex flex-col items-center justify-center py-6 gap-4">
+            {/* QR Image area */}
+            <div className="w-[200px] h-[200px] rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
+              {qrState === 'loading' && (
+                <Loader2 size={48} className="text-gray-400 animate-spin" />
+              )}
+
+              {qrState === 'waiting' && qrImage && (
+                <img
+                  src={qrImage.startsWith('data:') ? qrImage : `data:image/png;base64,${qrImage}`}
+                  alt="闲鱼登录二维码"
+                  className="w-full h-full object-contain"
+                />
+              )}
+
+              {qrState === 'scanned' && (
+                <div className="text-center text-green-500">
+                  <CheckCircle2 size={48} className="mx-auto mb-2" />
+                </div>
+              )}
+
+              {qrState === 'confirmed' && (
+                <motion.div
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-center text-green-500"
+                >
+                  <CheckCircle2 size={64} className="mx-auto mb-2" />
+                  <p className="text-sm font-medium">登录成功</p>
+                </motion.div>
+              )}
+
+              {qrState === 'expired' && (
+                <div className="text-center text-gray-400">
+                  <QrCode size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">二维码已过期</p>
+                </div>
+              )}
+
+              {qrState === 'error' && (
+                <div className="text-center text-red-400">
+                  <AlertCircle size={48} className="mx-auto mb-2 opacity-70" />
+                  <p className="text-sm">生成失败</p>
+                </div>
+              )}
+
+              {qrState === 'idle' && (
+                <div className="text-center text-gray-400">
+                  <QrCode size={48} className="mx-auto mb-2 opacity-50" />
+                </div>
+              )}
+            </div>
+
+            {/* Status text */}
+            <div className="text-center text-sm">
+              {qrState === 'loading' && (
+                <p className="text-gray-400">正在生成二维码…</p>
+              )}
+              {qrState === 'waiting' && (
+                <div className="space-y-1">
+                  <p className="text-gray-300">请在 {countdown} 秒内打开闲鱼APP扫描</p>
+                  <div className="w-48 h-1 bg-gray-700 rounded-full mx-auto overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--oc-brand)] rounded-full transition-all duration-1000 ease-linear"
+                      style={{ width: `${(countdown / 60) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {qrState === 'scanned' && (
+                <p className="text-green-400">✅ 已扫码，请在手机上确认</p>
+              )}
+              {qrState === 'confirmed' && (
+                <p className="text-green-400">✅ 登录成功，即将关闭…</p>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              {(qrState === 'expired' || qrState === 'error') && (
+                <Button variant="outline" size="sm" onClick={generateQR}>
+                  <RefreshCw size={14} className="mr-1.5" />
+                  重新生成
+                </Button>
+              )}
+              {qrState !== 'confirmed' && (
+                <Button variant="outline" size="sm" onClick={() => setQrDialogOpen(false)}>
+                  取消
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -183,20 +394,129 @@ function XianyuSection() {
 }
 
 /* ────────────────────────────────────────────────────────────────
+   闲鱼对话记录子组件
+──────────────────────────────────────────────────────────────── */
+
+function XianyuConversationList() {
+  const [conversations, setConversations] = useState<XianyuConversation[]>([]);
+  const [showAll, setShowAll] = useState(false);
+
+  // 15秒轮询对话列表
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        const data = await api.xianyuConversations(20);
+        const items: XianyuConversation[] = Array.isArray(data?.conversations)
+          ? data.conversations
+          : [];
+        setConversations(items);
+      } catch {
+        // 静默失败
+      }
+    };
+
+    fetchConversations();
+    const timer = setInterval(fetchConversations, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const displayed = showAll ? conversations : conversations.slice(0, 5);
+  const hasMore = conversations.length > 5;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-white/10">
+      <h4 className="text-sm font-medium text-white mb-3">最近对话</h4>
+      {conversations.length === 0 ? (
+        <div className="text-center py-4 text-gray-500 text-xs flex flex-col items-center gap-2">
+          <MessageCircle size={20} className="opacity-40" />
+          暂无对话记录
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {displayed.map((conv) => (
+            <div
+              key={conv.id}
+              className="flex items-center gap-3 p-2.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              {/* Buyer avatar — first char */}
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                {conv.buyer_name?.charAt(0) || '?'}
+              </div>
+
+              {/* Message preview */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-medium text-white truncate">{conv.buyer_name}</span>
+                  {conv.item_title && (
+                    <span className="text-xs text-gray-500 truncate max-w-[120px]">
+                      · {conv.item_title}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 truncate">
+                  {conv.last_message?.length > 40
+                    ? conv.last_message.slice(0, 40) + '…'
+                    : conv.last_message}
+                </p>
+              </div>
+
+              {/* Timestamp & unread badge */}
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <span className="text-xs text-gray-500">
+                  {formatDistanceToNow(new Date(conv.timestamp), {
+                    addSuffix: true,
+                    locale: zhCN,
+                  })}
+                </span>
+                {conv.unread_count > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--oc-danger)] text-white text-xs font-bold">
+                    {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* 查看更多 */}
+          {hasMore && !showAll && (
+            <button
+              className="flex items-center justify-center gap-1 w-full py-2 text-xs text-[var(--oc-brand)] hover:text-white transition-colors"
+              onClick={() => setShowAll(true)}
+            >
+              查看更多
+              <ChevronRight size={12} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
    Section 2: 社媒自动驾驶
 ──────────────────────────────────────────────────────────────── */
 
 interface SocialStatus {
-  platforms?: {
-    xiaohongshu?: { connected: boolean };
-    twitter?: { connected: boolean };
-  };
+  autopilot_running?: boolean;
+  platforms?: Array<{
+    platform: string;
+    connected: boolean;
+    posts_today?: number;
+    total_posts?: number;
+  }>;
 }
 
 interface AutopilotStatus {
   running?: boolean;
+  enabled?: boolean;
   today_planned?: number;
   today_published?: number;
+  posts_today?: number;
+  draft_count?: number;
+  topics_selected?: number;
+  next_action?: string;
+  next_time?: string;
 }
 
 interface CalendarItem {
@@ -207,11 +527,67 @@ interface CalendarItem {
   status: 'pending' | 'published' | 'failed';
 }
 
+interface AnalyticsData {
+  engagement_by_day?: { date: string; likes: number; comments: number }[];
+  total_engagement?: number;
+  engagement_rate?: number;
+  posts_this_week?: number;
+  best_time?: string;
+  top_posts?: { id: string; content: string; platform: string; likes: number; comments: number }[];
+}
+
+interface MetricsData {
+  total_followers?: number;
+  xiaohongshu_followers?: number;
+  twitter_followers?: number;
+}
+
+function ContentCalendarGrid({ items }: { items: CalendarItem[] }) {
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() + i);
+    return date;
+  });
+
+  return (
+    <div className="grid grid-cols-7 gap-2">
+      {days.map((day) => {
+        const dayItems = items.filter(item => {
+          const itemDate = new Date(item.scheduled_at);
+          return itemDate.toDateString() === day.toDateString();
+        });
+
+        return (
+          <div key={day.toISOString()} className="min-h-[100px] p-2 rounded-lg bg-white/5 border border-white/10">
+            <div className="text-xs text-gray-400 mb-2">
+              {day.toLocaleDateString('zh-CN', { weekday: 'short', day: 'numeric' })}
+            </div>
+            {dayItems.map(item => (
+              <div key={item.id} className={clsx(
+                'text-xs p-1 rounded mb-1 truncate',
+                item.status === 'published' ? 'bg-[var(--oc-success)]/20 text-[var(--oc-success)]' :
+                item.status === 'failed' ? 'bg-[var(--oc-danger)]/20 text-[var(--oc-danger)]' :
+                'bg-[var(--oc-brand)]/20 text-[var(--oc-brand)]'
+              )}>
+                {item.platform === 'xiaohongshu' ? '📕' : '🐦'} {item.content.slice(0, 15)}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SocialSection() {
   const [socialStatus, setSocialStatus] = useState<SocialStatus>({});
   const [autopilotStatus, setAutopilotStatus] = useState<AutopilotStatus>({});
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
+  const [analyticsExpanded, setAnalyticsExpanded] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({});
+  const [metricsData, setMetricsData] = useState<MetricsData>({});
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [composeDialogOpen, setComposeDialogOpen] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState('xiaohongshu');
@@ -226,15 +602,15 @@ function SocialSection() {
           clawbotFetch('/api/v1/social/calendar?days=7'),
         ]);
         
-        const socialData = await socialRes.json();
-        const autopilotData = await autopilotRes.json();
-        const calendarData = await calendarRes.json();
+        const socialData = socialRes.ok ? await socialRes.json() : {};
+        const autopilotData = autopilotRes.ok ? await autopilotRes.json() : {};
+        const calendarData = calendarRes.ok ? await calendarRes.json() : { items: [] };
         
         setSocialStatus(socialData);
         setAutopilotStatus(autopilotData);
         setCalendar(calendarData.items || []);
       } catch (err) {
-        console.error('获取社媒状态失败:', err);
+        logger.error('获取社媒状态失败:', err);
       }
     };
 
@@ -243,33 +619,57 @@ function SocialSection() {
     return () => clearInterval(timer);
   }, []);
 
+  // Lazy-load analytics data when expanded
+  useEffect(() => {
+    if (!analyticsExpanded) return;
+    setAnalyticsLoading(true);
+
+    Promise.all([
+      clawbotFetch('/api/v1/social/analytics?days=7').then(r => r.ok ? r.json() : {}),
+      clawbotFetch('/api/v1/social/metrics').then(r => r.ok ? r.json() : {}),
+    ])
+      .then(([analytics, metrics]) => {
+        setAnalyticsData(analytics);
+        setMetricsData(metrics);
+      })
+      .catch(err => {
+        logger.error('获取分析数据失败:', err);
+      })
+      .finally(() => {
+        setAnalyticsLoading(false);
+      });
+  }, [analyticsExpanded]);
+
   const handleAutopilotToggle = async (checked: boolean) => {
     try {
       const endpoint = checked ? '/api/v1/social/autopilot/start' : '/api/v1/social/autopilot/stop';
       await clawbotFetch(endpoint, { method: 'POST' });
       setAutopilotStatus((prev) => ({ ...prev, running: checked }));
     } catch (err) {
-      console.error('切换自动驾驶失败:', err);
+      logger.error('切换自动驾驶失败:', err);
     }
   };
 
   const handlePublish = async () => {
     if (!composeText.trim()) return;
-    
+
     try {
-      await clawbotFetch('/api/v1/social/publish', {
+      const resp = await clawbotFetch('/api/v1/social/publish', {
         method: 'POST',
         body: JSON.stringify({ platform: selectedPlatform, content: composeText }),
       });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      toast.success('发布成功');
       setComposeDialogOpen(false);
       setComposeText('');
     } catch (err) {
-      console.error('发布失败:', err);
+      toast.error(`发布失败: ${err instanceof Error ? err.message : '未知错误'}`);
     }
   };
 
-  const xhsConnected = socialStatus.platforms?.xiaohongshu?.connected ?? false;
-  const twitterConnected = socialStatus.platforms?.twitter?.connected ?? false;
+  const platformsList = Array.isArray(socialStatus.platforms) ? socialStatus.platforms : [];
+  const xhsConnected = platformsList.find(p => p.platform === 'xhs')?.connected ?? false;
+  const twitterConnected = platformsList.find(p => p.platform === 'x')?.connected ?? false;
 
   return (
     <section>
@@ -301,13 +701,13 @@ function SocialSection() {
           <div className="p-3 rounded-lg bg-white/5">
             <div className="text-xs text-gray-400 mb-1">今日计划</div>
             <div className="text-xl font-bold text-white">
-              <AnimatedNumber value={autopilotStatus.today_planned || 0} decimals={0} />条
+              <AnimatedNumber value={autopilotStatus.topics_selected ?? autopilotStatus.today_planned ?? 0} decimals={0} />条
             </div>
           </div>
           <div className="p-3 rounded-lg bg-white/5">
             <div className="text-xs text-gray-400 mb-1">已发布</div>
             <div className="text-xl font-bold text-white">
-              <AnimatedNumber value={autopilotStatus.today_published || 0} decimals={0} />条
+              <AnimatedNumber value={autopilotStatus.posts_today ?? autopilotStatus.today_published ?? 0} decimals={0} />条
             </div>
           </div>
         </div>
@@ -326,12 +726,13 @@ function SocialSection() {
             <Send size={14} className="mr-1.5" />
             立即发布
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setAnalyticsExpanded(!analyticsExpanded)}>
+            <TrendingUp size={14} className="mr-1.5" />
             查看效果
           </Button>
         </div>
 
-        {/* 内容日历展开区域 */}
+        {/* 内容日历展开区域 - 7天视觉网格 */}
         {calendarExpanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
@@ -343,20 +744,135 @@ function SocialSection() {
             {calendar.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">暂无计划内容</p>
             ) : (
-              <div className="space-y-2">
-                {calendar.slice(0, 5).map((item) => (
-                  <div key={item.id} className="p-2 rounded-lg bg-white/5 text-sm">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-xs">
-                        {item.platform === 'xiaohongshu' ? '小红书' : 'X'}
-                      </Badge>
-                      <span className="text-xs text-gray-400">
-                        {new Date(item.scheduled_at).toLocaleDateString('zh-CN')}
-                      </span>
+              <ContentCalendarGrid items={calendar} />
+            )}
+          </motion.div>
+        )}
+
+        {/* 数据分析展开区域 */}
+        {analyticsExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="mt-4 pt-4 border-t border-white/10"
+          >
+            <h4 className="text-sm font-medium text-white mb-3">数据分析</h4>
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={24} className="text-gray-400 animate-spin" />
+                <span className="ml-2 text-sm text-gray-400">加载分析数据…</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Key metrics row - 4 cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Users size={12} className="text-purple-400" />
+                      <span className="text-xs text-gray-400">总粉丝数</span>
                     </div>
-                    <p className="text-gray-300 line-clamp-2">{item.content}</p>
+                    <div className="text-lg font-bold text-white">
+                      <AnimatedNumber value={metricsData.total_followers || 0} decimals={0} />
+                    </div>
                   </div>
-                ))}
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <TrendingUp size={12} className="text-green-400" />
+                      <span className="text-xs text-gray-400">互动率</span>
+                    </div>
+                    <div className="text-lg font-bold text-white">
+                      {((analyticsData.engagement_rate || 0) * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <BarChart3 size={12} className="text-blue-400" />
+                      <span className="text-xs text-gray-400">本周发布</span>
+                    </div>
+                    <div className="text-lg font-bold text-white">
+                      <AnimatedNumber value={analyticsData.posts_this_week || 0} decimals={0} />条
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Clock size={12} className="text-orange-400" />
+                      <span className="text-xs text-gray-400">最佳发布时间</span>
+                    </div>
+                    <div className="text-lg font-bold text-white">
+                      {analyticsData.best_time || '--:--'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Engagement trend chart */}
+                {analyticsData.engagement_by_day && analyticsData.engagement_by_day.length > 0 && (
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <h5 className="text-xs text-gray-400 mb-3">互动趋势（近7天）</h5>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <LineChart
+                        data={analyticsData.engagement_by_day.map(d => ({
+                          date: new Date(d.date).toLocaleDateString('zh-CN', { weekday: 'short' }),
+                          engagement: d.likes + d.comments,
+                        }))}
+                        margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+                      >
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: '#9ca3af', fontSize: 11 }}
+                          axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fill: '#9ca3af', fontSize: 11 }}
+                          axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontSize: 12,
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="engagement"
+                          stroke="var(--oc-brand)"
+                          strokeWidth={2}
+                          dot={{ fill: 'var(--oc-brand)', r: 3 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Top performing posts */}
+                {analyticsData.top_posts && analyticsData.top_posts.length > 0 && (
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                    <h5 className="text-xs text-gray-400 mb-3">热门内容 Top 3</h5>
+                    <div className="space-y-2">
+                      {analyticsData.top_posts.slice(0, 3).map((post, idx) => (
+                        <div key={post.id} className="flex items-start gap-2 p-2 rounded-lg bg-white/5">
+                          <span className="text-xs font-bold text-[var(--oc-brand)] mt-0.5">#{idx + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-300 line-clamp-2">{post.content}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <Badge variant="outline" className="text-xs">
+                                {post.platform === 'xiaohongshu' ? '小红书' : 'X'}
+                              </Badge>
+                              <span className="text-xs text-gray-400">❤️ {post.likes}</span>
+                              <span className="text-xs text-gray-400">💬 {post.comments}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
@@ -418,51 +934,152 @@ function SocialSection() {
    Section 3: 自动化脚本网格
 ──────────────────────────────────────────────────────────────── */
 
-interface ServiceCardData {
+type ServiceDisplayStatus = 'running' | 'stopped' | 'error' | 'starting' | 'stopping';
+
+interface ServiceItem {
   id: string;
-  name: string;
-  icon: React.ReactNode;
-  status: 'running' | 'stopped';
+  status: ServiceDisplayStatus;
 }
 
-const SERVICES: ServiceCardData[] = [
-  { id: 'bounty_hunter', name: '赏金猎人', icon: <Trophy size={20} />, status: 'running' },
-  { id: 'email_triage', name: '邮件管家', icon: <Mail size={20} />, status: 'stopped' },
-  { id: 'shopping_compare', name: '购物比价', icon: <ShoppingCart size={20} />, status: 'running' },
-  { id: 'position_monitor', name: '持仓监控', icon: <TrendingUp size={20} />, status: 'running' },
-  { id: 'task_mgmt', name: '任务管理', icon: <CheckSquare size={20} />, status: 'stopped' },
-];
+const SERVICE_META: Record<string, { name: string; icon: React.ReactNode }> = {
+  'clawbot-agent': { name: 'AI 助手后端', icon: <Bot size={20} /> },
+  'xianyu': { name: '闲鱼 AI 客服', icon: <Fish size={20} /> },
+  'gateway': { name: 'API 网关', icon: <Globe size={20} /> },
+  'g4f': { name: 'G4F 免费模型', icon: <Cpu size={20} /> },
+  'newapi': { name: 'New-API 网关', icon: <Server size={20} /> },
+};
 
 function ServicesSection() {
-  const [services] = useState(SERVICES);
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [transitioning, setTransitioning] = useState<Set<string>>(new Set());
+  const [fetchError, setFetchError] = useState<FriendlyError | null>(null);
 
-  const handleToggle = () => {
-    // TODO: 后端 API 未就绪，显示提示
-    alert('功能开发中');
-  };
+  // Use a ref to avoid re-creating fetchServices (and stacking intervals)
+  // every time `transitioning` changes identity.
+  const transitioningRef = useRef(transitioning);
+  transitioningRef.current = transitioning;
+
+  const fetchServices = useCallback(async () => {
+    try {
+      const data = await api.services();
+      const list: ServiceItem[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.services)
+          ? data.services
+          : [];
+      // 保留 transitioning 状态，仅更新非过渡中的服务
+      setServices((prev) => {
+        return list.map((svc: { id: string; status?: string }) => {
+          const prevSvc = prev.find((p) => p.id === svc.id);
+          const isTransitioning = transitioningRef.current.has(svc.id);
+          const backendStatus = svc.status === 'running' ? 'running' : 'stopped';
+          return {
+            id: svc.id,
+            status: isTransitioning && prevSvc ? prevSvc.status : backendStatus,
+          } as ServiceItem;
+        });
+      });
+
+      // 如果后端状态已确认，清除 transitioning 标记
+      setTransitioning((prev) => {
+        const next = new Set(prev);
+        for (const svc of list as Array<{ id: string; status?: string }>) {
+          if (next.has(svc.id)) {
+            next.delete(svc.id);
+          }
+        }
+        return next.size === prev.size ? prev : next;
+      });
+      setFetchError(null);
+    } catch (err) {
+      setFetchError(toFriendlyError(err));
+    }
+  }, []);
+
+  // WebSocket: receive service status changes in real-time
+  useClawbotWS('service_change', useCallback((_event) => {
+    // Trigger an immediate refresh instead of waiting for next poll
+    fetchServices();
+  }, [fetchServices]));
+
+  // 初始拉取 + 30 秒轮询（WebSocket service_change 事件已提供实时更新）
+  useEffect(() => {
+    fetchServices();
+    const timer = setInterval(fetchServices, 30000);
+    return () => clearInterval(timer);
+  }, [fetchServices]);
+
+  const handleToggle = useCallback(async (serviceId: string, currentlyRunning: boolean) => {
+    const targetStatus: ServiceDisplayStatus = currentlyRunning ? 'stopping' : 'starting';
+
+    // 乐观更新 UI
+    setServices((prev) =>
+      prev.map((s) => (s.id === serviceId ? { ...s, status: targetStatus } : s))
+    );
+    setTransitioning((prev) => new Set(prev).add(serviceId));
+
+    try {
+      if (currentlyRunning) {
+        await api.serviceStop(serviceId);
+      } else {
+        await api.serviceStart(serviceId);
+      }
+      // 操作成功后立即刷新
+      await fetchServices();
+    } catch {
+      // 回滚状态
+      setServices((prev) =>
+        prev.map((s) =>
+          s.id === serviceId ? { ...s, status: currentlyRunning ? 'running' : 'stopped' } : s
+        )
+      );
+      setTransitioning((prev) => {
+        const next = new Set(prev);
+        next.delete(serviceId);
+        return next;
+      });
+      toast.error(`${currentlyRunning ? '停止' : '启动'}服务失败`);
+    }
+  }, [fetchServices]);
 
   return (
     <section>
       <h2 className="text-lg font-semibold text-white mb-3">自动化脚本</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {services.map((service) => (
-          <GlassCard key={service.id} className="p-4">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white">
-                {service.icon}
+        {services.map((service) => {
+          const meta = SERVICE_META[service.id] || { name: service.id, icon: <Server size={20} /> };
+          const isRunning = service.status === 'running';
+          const isBusy = service.status === 'starting' || service.status === 'stopping';
+          return (
+            <GlassCard key={service.id} className="p-4">
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white">
+                  {meta.icon}
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-white mb-1">{meta.name}</h4>
+                  <StatusIndicator status={service.status} size="sm" />
+                </div>
+                <ToggleSwitch
+                  checked={isRunning || service.status === 'stopping'}
+                  onChange={() => handleToggle(service.id, isRunning)}
+                  size="sm"
+                  disabled={isBusy}
+                />
               </div>
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-white mb-1">{service.name}</h4>
-                <StatusIndicator status={service.status} size="sm" />
-              </div>
-              <ToggleSwitch
-                checked={service.status === 'running'}
-                onChange={handleToggle}
-                size="sm"
-              />
-            </div>
-          </GlassCard>
-        ))}
+            </GlassCard>
+          );
+        })}
+        {services.length === 0 && fetchError && (
+          <div className="col-span-full">
+            <ErrorState error={fetchError} onRetry={fetchServices} compact />
+          </div>
+        )}
+        {services.length === 0 && !fetchError && (
+          <div className="col-span-full text-center py-8 text-gray-400 text-sm">
+            加载服务列表中…
+          </div>
+        )}
       </div>
     </section>
   );
@@ -480,47 +1097,9 @@ interface Notification {
   title: string;
   body: string;
   timestamp: Date;
+  read?: boolean;
   actions?: { label: string; onClick: () => void }[];
 }
-
-// 演示数据
-const DEMO_NOTIFICATIONS: Notification[] = [
-  {
-    id: '1',
-    type: 'urgent',
-    title: '闲鱼客服需要人工介入',
-    body: '买家询问退货政策，AI 置信度不足，建议人工回复',
-    timestamp: new Date(Date.now() - 5 * 60 * 1000),
-  },
-  {
-    id: '2',
-    type: 'trading',
-    title: 'AAPL 触发止盈信号',
-    body: '当前盈利 +8.5%，建议部分止盈',
-    timestamp: new Date(Date.now() - 15 * 60 * 1000),
-  },
-  {
-    id: '3',
-    type: 'xianyu',
-    title: '自动成交 1 单',
-    body: '商品「二手 MacBook Pro」已自动成交，买家已付款',
-    timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000),
-  },
-  {
-    id: '4',
-    type: 'social',
-    title: '小红书内容已发布',
-    body: '「AI 工具推荐」已成功发布到小红书',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-  },
-  {
-    id: '5',
-    type: 'system',
-    title: '系统更新可用',
-    body: 'OpenClaw Bot v1.2.0 已发布，包含性能优化和新功能',
-    timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000),
-  },
-];
 
 const NOTIFICATION_CONFIG: Record<
   NotificationType,
@@ -533,9 +1112,71 @@ const NOTIFICATION_CONFIG: Record<
   system: { icon: <Info size={16} />, color: 'text-blue-400', label: '系统' },
 };
 
+/** Map backend category to frontend NotificationType */
+function mapCategory(category: string): NotificationType {
+  switch (category) {
+    case 'trading':
+      return 'trading';
+    case 'xianyu':
+      return 'xianyu';
+    case 'social':
+      return 'social';
+    case 'security':
+    case 'ai':
+    case 'system':
+      return 'system';
+    default:
+      return 'system';
+  }
+}
+
 function NotificationSection() {
   const [filter, setFilter] = useState<'all' | NotificationType>('all');
-  const [notifications] = useState(DEMO_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [fetchError, setFetchError] = useState<FriendlyError | null>(null);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const data = await api.notifications({ limit: 50 });
+      const items: Array<Record<string, unknown>> = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.notifications)
+          ? data.notifications
+          : [];
+
+      const mapped: Notification[] = items.map((n) => ({
+        id: String(n.id || n.notification_id || ''),
+        type: mapCategory(String(n.category || 'system')),
+        title: String(n.title || ''),
+        body: String(n.body || n.message || n.content || ''),
+        timestamp: new Date(String(n.timestamp ?? n.created_at ?? Date.now())),
+        read: Boolean(n.read),
+      }));
+
+      setNotifications(mapped);
+      setFetchError(null);
+    } catch (err) {
+      setFetchError(toFriendlyError(err));
+    }
+  }, []);
+
+  // 初始拉取 + 10 秒轮询
+  useEffect(() => {
+    fetchNotifications();
+    const timer = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(timer);
+  }, [fetchNotifications]);
+
+  const handleMarkRead = useCallback(async (notifId: string) => {
+    try {
+      await api.markNotificationRead(notifId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notifId ? { ...n, read: true } : n))
+      );
+    } catch {
+      // 静默失败
+    }
+  }, []);
 
   const filtered =
     filter === 'all'
@@ -561,7 +1202,9 @@ function NotificationSection() {
           </TabsList>
 
           <TabsContent value={filter} className="mt-0">
-            {filtered.length === 0 ? (
+            {fetchError && notifications.length === 0 ? (
+              <ErrorState error={fetchError} onRetry={fetchNotifications} compact />
+            ) : filtered.length === 0 ? (
               <div className="text-center py-12">
                 <Bell size={48} className="mx-auto mb-3 text-gray-500 opacity-50" />
                 <p className="text-gray-400">暂无通知</p>
@@ -575,7 +1218,10 @@ function NotificationSection() {
                       key={notif.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                      className={clsx(
+                        'p-3 rounded-lg hover:bg-white/10 transition-colors',
+                        notif.read ? 'bg-white/3 opacity-60' : 'bg-white/5'
+                      )}
                     >
                       <div className="flex items-start gap-3">
                         <div className={clsx('mt-0.5', config.color)}>{config.icon}</div>
@@ -585,10 +1231,29 @@ function NotificationSection() {
                               {config.label}
                             </Badge>
                             <span className="text-xs text-gray-400">{formatTime(notif.timestamp)}</span>
+                            {!notif.read && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-[var(--oc-brand)]" />
+                            )}
                           </div>
                           <h4 className="text-sm font-medium text-white mb-1">{notif.title}</h4>
                           <p className="text-sm text-gray-300">{notif.body}</p>
-                          {notif.actions && (
+                          {!notif.read && (
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMarkRead(notif.id)}
+                              >
+                                标记已读
+                              </Button>
+                              {notif.actions?.map((action, idx) => (
+                                <Button key={idx} variant="outline" size="sm" onClick={action.onClick}>
+                                  {action.label}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                          {notif.read && notif.actions && (
                             <div className="flex gap-2 mt-2">
                               {notif.actions.map((action, idx) => (
                                 <Button key={idx} variant="outline" size="sm" onClick={action.onClick}>
