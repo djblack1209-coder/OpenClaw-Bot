@@ -20,7 +20,7 @@ import {
   Info,
 } from 'lucide-react';
 import { GlassCard, StatusIndicator, AnimatedNumber } from '../shared';
-import { clawbotFetch } from '../../lib/tauri';
+import { clawbotFetch, api } from '../../lib/tauri';
 import { useAppStore } from '@/stores/appStore';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
@@ -129,6 +129,7 @@ export function HomeDashboard() {
         socialResp,
         pnlResp,
         positionsResp,
+        briefResult,
       ] = await Promise.allSettled([
         clawbotFetch('/api/v1/status'),
         clawbotFetch('/api/v1/omega/status'),
@@ -136,6 +137,7 @@ export function HomeDashboard() {
         clawbotFetch('/api/v1/controls/social'),
         clawbotFetch('/api/v1/trading/pnl'),
         clawbotFetch('/api/v1/trading/positions'),
+        api.dailyBrief(),
       ]);
 
       const statusData = statusResp.status === 'fulfilled' && statusResp.value.ok
@@ -150,6 +152,7 @@ export function HomeDashboard() {
         ? await pnlResp.value.json() : null;
       const positionsData = positionsResp.status === 'fulfilled' && positionsResp.value.ok
         ? await positionsResp.value.json() : null;
+      const briefData = briefResult.status === 'fulfilled' ? briefResult.value : null;
 
       setSummary({
         serviceRunning: isRunning,
@@ -162,34 +165,27 @@ export function HomeDashboard() {
         dailyPnl: pnlData?.daily_pnl ?? 0,
         dailyPnlPct: pnlData?.daily_pnl_pct ?? 0,
         totalMarketValue: positionsData?.total_market_value ?? 0,
-        positionsCount: positionsData?.positions?.length ?? 0,
-        conversationsToday: statusData?.conversations_today ?? 0,
-        postsToday: statusData?.posts_today ?? 0,
+        positionsCount: positionsData?.positions?.length ?? briefData?.metrics?.positions_count ?? 0,
+        conversationsToday: briefData?.metrics?.xianyu_consultations ?? statusData?.conversations_today ?? 0,
+        postsToday: briefData?.metrics?.social_posts ?? statusData?.posts_today ?? 0,
         notificationsCount: statusData?.notifications_count ?? 0,
       });
       
-      /* 模拟通知数据（实际应从后端获取） */
-      const mockNotifications: NotificationItem[] = [
-        {
-          id: '1',
-          type: 'success',
-          message: '自动交易系统已开启，当前持仓 3 个',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000),
-        },
-        {
-          id: '2',
-          type: 'info',
-          message: '小红书自动发布完成，今日已发布 2 条内容',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000),
-        },
-        {
-          id: '3',
-          type: 'warning',
-          message: 'AI 费用已达预算 75%，请注意控制',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        },
-      ];
-      setNotifications(mockNotifications);
+      /* 从后端获取通知数据 */
+      try {
+        const notifData = await api.notifications({ limit: 5 });
+        if (notifData?.notifications) {
+          const mapped = notifData.notifications.map((n: Record<string, unknown>) => ({
+            id: n.id as string,
+            type: (n.level === 'error' ? 'error' : n.level === 'warning' ? 'warning' : n.level === 'success' ? 'success' : 'info') as NotificationItem['type'],
+            message: (n.title as string) || (n.body as string) || '通知',
+            timestamp: new Date(n.created_at as string),
+          }));
+          setNotifications(mapped);
+        }
+      } catch {
+        // 通知获取失败时使用空列表，不影响页面加载
+      }
       
       setLastRefresh(new Date());
     } catch {

@@ -149,3 +149,91 @@ async def get_kline_data(
     except Exception as e:
         logger.exception("获取K线数据失败 (symbol=%s)", symbol)
         return {"symbol": symbol, "data": [], "error": _safe_error(e)}
+
+
+@router.get("/trading/portfolio-summary")
+async def portfolio_summary():
+    """持仓摘要 — 为首页和资产页提供聚合数据
+
+    返回:
+    - total_value: 总资产价值 (USD)
+    - total_pnl: 总盈亏
+    - total_pnl_pct: 总盈亏百分比
+    - positions: [{symbol, qty, avg_cost, current_price, pnl, pnl_pct, weight}]
+    - sector_allocation: [{sector, weight}] 行业分布
+    - day_change: 今日涨跌
+    - connected: IBKR 连接状态
+    """
+    try:
+        # 获取持仓数据
+        positions_data = await ClawBotRPC._rpc_trading_positions()
+        pnl_data = await ClawBotRPC._rpc_trading_pnl()
+        dashboard_data = await ClawBotRPC._rpc_trading_dashboard()
+
+        positions_list = positions_data.get("positions", [])
+        total_value = 0.0
+        total_cost = 0.0
+        enriched_positions = []
+
+        for pos in positions_list:
+            qty = pos.get("qty", 0)
+            avg_cost = pos.get("avg_cost", 0)
+            current_price = pos.get("current_price", 0)
+            market_value = qty * current_price if qty and current_price else 0
+            cost_basis = qty * avg_cost if qty and avg_cost else 0
+            pnl = market_value - cost_basis
+            pnl_pct = (pnl / cost_basis * 100) if cost_basis else 0
+
+            total_value += market_value
+            total_cost += cost_basis
+
+            enriched_positions.append(
+                {
+                    "symbol": pos.get("symbol", ""),
+                    "qty": qty,
+                    "avg_cost": round(avg_cost, 2),
+                    "current_price": round(current_price, 2),
+                    "market_value": round(market_value, 2),
+                    "pnl": round(pnl, 2),
+                    "pnl_pct": round(pnl_pct, 2),
+                }
+            )
+
+        # 计算各持仓权重
+        for ep in enriched_positions:
+            ep["weight"] = round(ep["market_value"] / total_value * 100, 1) if total_value else 0
+
+        total_pnl = total_value - total_cost
+        total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0
+
+        # PnL 数据中的日盈亏
+        day_change = pnl_data.get("today_pnl", 0)
+        day_change_pct = pnl_data.get("today_pnl_pct", 0)
+
+        return {
+            "total_value": round(total_value, 2),
+            "total_cost": round(total_cost, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_pct": round(total_pnl_pct, 2),
+            "day_change": round(day_change, 2) if day_change else 0,
+            "day_change_pct": round(day_change_pct, 2) if day_change_pct else 0,
+            "positions": enriched_positions,
+            "position_count": len(enriched_positions),
+            "connected": dashboard_data.get("connected", False),
+        }
+
+    except Exception as e:
+        logger.exception("获取持仓摘要失败")
+        # 降级返回空数据而非 500 错误（首页不应因交易系统离线而崩溃）
+        return {
+            "total_value": 0,
+            "total_cost": 0,
+            "total_pnl": 0,
+            "total_pnl_pct": 0,
+            "day_change": 0,
+            "day_change_pct": 0,
+            "positions": [],
+            "position_count": 0,
+            "connected": False,
+            "error": _safe_error(e),
+        }

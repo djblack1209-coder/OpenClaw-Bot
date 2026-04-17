@@ -8,8 +8,6 @@
 import { clawbotFetch } from '../lib/tauri';
 import { useConversationStore, type SessionSummary, type Session, type Message } from '../stores/conversationStore';
 
-const API_BASE = 'http://localhost:18790/api/v1/conversation';
-
 /** 拉取会话列表 */
 export async function fetchSessions(): Promise<SessionSummary[]> {
   const store = useConversationStore.getState();
@@ -115,12 +113,14 @@ export async function sendMessage(sessionId: string, message: string): Promise<v
   store.addMessage(assistantMsg);
 
   try {
-    // 3. 发起 SSE 请求（直接用 fetch，不走 clawbotFetch，因为需要流式读取）
-    const url = `${API_BASE}/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Accept': 'text/event-stream' },
-    });
+    // 3. 发起 SSE 请求（通过 clawbotFetch 发送，自动附加 API Token）
+    const response = await clawbotFetch(
+      `/api/v1/conversation/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`,
+      {
+        method: 'POST',
+        headers: { 'Accept': 'text/event-stream' },
+      }
+    );
 
     if (!response.ok || !response.body) {
       throw new Error(`HTTP ${response.status}`);
