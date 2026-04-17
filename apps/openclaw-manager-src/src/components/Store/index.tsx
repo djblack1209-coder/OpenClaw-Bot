@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, forwardRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { toast } from 'sonner';
@@ -853,60 +853,64 @@ interface PluginCardProps {
   onClick: () => void;
 }
 
-function PluginCard({ plugin, installed, onInstall, onUninstall, onClick }: PluginCardProps) {
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.2 }}
-    >
-      <GlassCard
-        className="p-4 cursor-pointer hover:border-[var(--oc-brand)]/30 transition-colors"
-        onClick={onClick}
+// 用 forwardRef 包裹，让 Framer Motion 的 AnimatePresence 能正确传递 ref
+const PluginCard = forwardRef<HTMLDivElement, PluginCardProps>(
+  function PluginCard({ plugin, installed, onInstall, onUninstall, onClick }, ref) {
+    return (
+      <motion.div
+        ref={ref}
+        layout
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.2 }}
       >
-        <div className="flex items-start gap-3 mb-3">
-          <div className="text-3xl">{plugin.icon}</div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-white mb-1 truncate">{plugin.name}</h3>
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <div className="flex items-center gap-1">
-                <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                <span>{(plugin.stars / 1000).toFixed(1)}k</span>
+        <GlassCard
+          className="p-4 cursor-pointer hover:border-[var(--oc-brand)]/30 transition-colors"
+          onClick={onClick}
+        >
+          <div className="flex items-start gap-3 mb-3">
+            <div className="text-3xl">{plugin.icon}</div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-white mb-1 truncate">{plugin.name}</h3>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <div className="flex items-center gap-1">
+                  <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                  <span>{(plugin.stars / 1000).toFixed(1)}k</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                  {CATEGORIES.find((c) => c.id === plugin.category[0])?.label}
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                {CATEGORIES.find((c) => c.id === plugin.category[0])?.label}
-              </Badge>
             </div>
           </div>
-        </div>
 
-        <p className="text-xs text-gray-400 mb-3 line-clamp-2">{plugin.description}</p>
+          <p className="text-xs text-gray-400 mb-3 line-clamp-2">{plugin.description}</p>
 
-        <div onClick={(e) => e.stopPropagation()}>
-          {installed ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full text-[var(--oc-success)] border-[var(--oc-success)]/30 hover:bg-[var(--oc-success)]/10"
-              onClick={onUninstall}
-            >
-              <Check size={14} />
-              已安装
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              className="w-full bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
-              onClick={onInstall}
-            >
-              <Download size={14} />
-              安装
-            </Button>
-          )}
-        </div>
-      </GlassCard>
-    </motion.div>
-  );
-}
+          <div onClick={(e) => e.stopPropagation()}>
+            {installed ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-[var(--oc-success)] border-[var(--oc-success)]/30 hover:bg-[var(--oc-success)]/10"
+                onClick={onUninstall}
+              >
+                <Check size={14} />
+                已安装
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="w-full bg-[var(--oc-brand)] hover:bg-[var(--oc-brand)]/80"
+                onClick={onInstall}
+              >
+                <Download size={14} />
+                安装
+              </Button>
+            )}
+          </div>
+        </GlassCard>
+      </motion.div>
+    );
+  }
+);
