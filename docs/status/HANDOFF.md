@@ -4,6 +4,43 @@
 
 ---
 
+## [2026-04-17 06:00] 后端 API 新增 + 前端真实数据对接
+
+### 本次完成了什么
+
+| # | 改动 | 说明 |
+|---|------|------|
+| 1 | 后端新增 4 组 API 端点 | daily-brief、notifications（含已读）、portfolio-summary、services |
+| 2 | 挂载 conversation 路由 | SSE 流式对话 333 行代码之前未在 server.py 注册，现已挂载 |
+| 3 | 前端 tauri.ts 全量封装 | 新增 10+ API 函数，覆盖所有新端点 + conversation |
+| 4 | Home 首页对接真实数据 | 模拟通知→api.notifications()，摘要→api.dailyBrief() |
+| 5 | conversationService SSE 修复 | 裸 fetch→clawbotFetch，携带 API Token |
+| 6 | TypeScript 零错误 + Vite 构建成功 + 后端 1339 测试全通过 | 无回归 |
+
+### 未完成的工作
+
+**可继续推进方向（按优先级）：**
+- EventBus → 通知 API 桥接：当前通知 API 用内存 deque，需要将 EventBus 事件自动推送到 push_notification()
+- Bots 页面服务开关对接：后端 services API 只有 GET 查询，还没有 POST 启动/停止
+- 闲鱼二维码登录 API：POST /api/xianyu/generate-qr + GET /api/xianyu/qr-status
+- 日志友好化过滤层（UserFriendlyLogFilter 中间件）
+- 开发者模式 vs 普通模式切换
+- Phase 5 打磨（动画/错误状态/新手引导/暗色模式适配）
+
+### 需要注意的坑
+- 通知 API 用的是独立内存 deque（与 Apprise 推送通道分离），重启后通知会清空
+- services API 用 pgrep 检测进程状态，只能查不能控
+- Portfolio 页面已通过 usePortfolioAPI hooks 对接，不需要额外修改
+
+### 当前系统状态
+- 后端测试: 1339/1341 (2 skip, 0 失败, 100%)
+- 前端 tsc: 零错误
+- Vite 构建: 成功 (6.54s)
+- 已对接真实 API 的页面: Home（部分）、Portfolio（完整）、Assistant（SSE 已修复）
+- 仍用模拟数据的页面: Bots（服务状态查询已通但开关未对接）、Store（纯前端演示）
+
+---
+
 ## [2026-04-17 04:00] 交易投票弃权机制修复
 
 ### 本次完成了什么

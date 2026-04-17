@@ -716,6 +716,90 @@ export const api = {
     clawbotFetch(`/api/v1/newapi/tokens/${tokenId}`, {
       method: 'DELETE',
     }),
+
+  // ══════════════════════════════════════════════
+  //  今日简报 (Daily Brief)
+  // ══════════════════════════════════════════════
+
+  /** 获取首页今日简报数据 — 聚合各模块指标 */
+  dailyBrief: () =>
+    clawbotFetch('/api/v1/system/daily-brief').then(r => r.json()),
+
+  // ══════════════════════════════════════════════
+  //  通知中心 (Notifications)
+  // ══════════════════════════════════════════════
+
+  /** 获取通知列表 */
+  notifications: (params?: { limit?: number; category?: string; unread_only?: boolean }) => {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set('limit', String(params.limit));
+    if (params?.category) sp.set('category', params.category);
+    if (params?.unread_only) sp.set('unread_only', 'true');
+    const qs = sp.toString();
+    return clawbotFetch(`/api/v1/system/notifications${qs ? '?' + qs : ''}`).then(r => r.json());
+  },
+
+  /** 标记单条通知为已读 */
+  markNotificationRead: (notificationId: string) =>
+    clawbotFetch(`/api/v1/system/notifications/${notificationId}/read`, {
+      method: 'POST',
+    }).then(r => r.json()),
+
+  /** 标记所有通知为已读 */
+  markAllNotificationsRead: () =>
+    clawbotFetch('/api/v1/system/notifications/read-all', {
+      method: 'POST',
+    }).then(r => r.json()),
+
+  // ══════════════════════════════════════════════
+  //  持仓摘要 (Portfolio Summary)
+  // ══════════════════════════════════════════════
+
+  /** 获取持仓聚合摘要 — 总资产/盈亏/持仓列表/权重 */
+  portfolioSummary: () =>
+    clawbotFetch('/api/v1/trading/portfolio-summary').then(r => r.json()),
+
+  // ══════════════════════════════════════════════
+  //  服务管理 (Services)
+  // ══════════════════════════════════════════════
+
+  /** 获取所有服务状态 */
+  services: () =>
+    clawbotFetch('/api/v1/system/services').then(r => r.json()),
+
+  /** 获取单个服务状态 */
+  serviceStatus: (serviceId: string) =>
+    clawbotFetch(`/api/v1/system/services/${serviceId}`).then(r => r.json()),
+
+  // ══════════════════════════════════════════════
+  //  AI 会话 (Conversation)
+  // ══════════════════════════════════════════════
+
+  /** 获取会话列表 */
+  conversationSessions: (limit: number = 50) =>
+    clawbotFetch(`/api/v1/conversation/sessions?limit=${limit}`).then(r => r.json()),
+
+  /** 创建新会话 */
+  conversationCreate: (title: string = '新对话') =>
+    clawbotFetch(`/api/v1/conversation/sessions?title=${encodeURIComponent(title)}`, {
+      method: 'POST',
+    }).then(r => r.json()),
+
+  /** 获取会话详情（含所有消息） */
+  conversationGet: (sessionId: string) =>
+    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}`).then(r => r.json()),
+
+  /** 删除会话 */
+  conversationDelete: (sessionId: string) =>
+    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  /** 发送消息（返回 SSE 流式 Response 对象，调用方需自行处理 EventSource） */
+  conversationSend: (sessionId: string, message: string) =>
+    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`, {
+      method: 'POST',
+    }),
 };
 
 // WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost
