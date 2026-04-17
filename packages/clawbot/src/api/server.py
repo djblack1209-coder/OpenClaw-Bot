@@ -33,6 +33,7 @@ from .routers import (
     router_omega,
     router_newapi,
     router_controls,
+    router_conversation,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,6 +258,7 @@ class APIServer:
         self.app.include_router(router_omega, prefix="/api/v1", tags=["OMEGA"])
         self.app.include_router(router_newapi, prefix="/api/v1", tags=["New-API"])
         self.app.include_router(router_controls, prefix="/api/v1", tags=["Controls"])
+        self.app.include_router(router_conversation, prefix="/api/v1", tags=["Conversation"])
 
     def start(self):
         """Start uvicorn in a daemon thread"""
