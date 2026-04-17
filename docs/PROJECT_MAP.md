@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-03-27 (第五轮产品跃迁: 3系统管道接通+4新命令+周报) | AI 开发助手请先读完本文再开始工作 | 含用户痛点地图
+> 最后更新: 2026-04-17 (Sprint 4 全量端到端审计) | AI 开发助手请先读完本文再开始工作 | 含用户痛点地图
 
 ## 一句话概述
 
@@ -657,9 +657,28 @@ CREW          # CrewAI 多智能体
 - 可观测: Langfuse + Phoenix OTEL 双栈
 
 ### Manager 桌面端
+
+#### C-端页面 (面向终端用户)
+| 页面 | 组件 | 说明 |
+|---|---|---|
+| Home | `Home/index.tsx` | 首页 Dashboard — 今日简报 + 模块状态 + 通知 + AI 建议 |
+| Assistant | `Assistant/index.tsx` | AI 助手 — 4 模式 (闲聊/投资/执行/创作) + Markdown 渲染 |
+| Portfolio | `Portfolio/index.tsx` | 我的资产 — 5 tabs (持仓概览/交易决策/自动交易/回测分析/交易日志) |
+| Bots | `Bots/index.tsx` | 我的机器人 — 4 sections (闲鱼客服/社媒驾驶/自动化脚本/通知中心) |
+| Store | `Store/index.tsx` | 插件商店 — App Store 风格 + Evolution 数据优先 |
+| Onboarding | `Onboarding/index.tsx` | 新用户向导 — 分步引导配置 |
+
+#### B-端页面 (开发者/高级用户)
+| 页面 | 组件 | 说明 |
+|---|---|---|
+| Dashboard | `Dashboard/` | 系统总览大屏 |
+| ExecutionFlow | `ExecutionFlow/` | xyflow 节点可视化 |
+| Logs | `Logs/` | 实时日志流 WebSocket |
+| Evolution | `Evolution/` | 自进化引擎面板 |
+| Social | `Social/` | 社媒运营面板 |
+| Settings | `Settings/` | 系统设置 |
+
 - Tauri 2 + React + shadcn 完整重构
-- Execution Flow 大屏 (xyflow 节点可视化)
-- MCP 插件市场模块
 - 实时日志流 WebSocket 桥接
 
 ### 近期修复

@@ -6,7 +6,8 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Path, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
-from ..schemas import SocialStatus, SocialPublishRequest
+from ..schemas import SocialStatus, SocialPublishRequest, WSMessageType
+from .ws import push_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,10 +82,23 @@ async def publish_content(req: SocialPublishRequest):
     需要浏览器 worker 已配置，否则返回明确的错误消息。
     """
     try:
-        return await ClawBotRPC._rpc_social_publish(
+        result = await ClawBotRPC._rpc_social_publish(
             platform=req.platform,
             content=req.content,
         )
+
+        # Push social published event via WebSocket (best-effort)
+        try:
+            if result.get("success"):
+                push_event(WSMessageType.SOCIAL_PUBLISHED, {
+                    "platform": req.platform,
+                    "content_preview": req.content[:120],
+                    "success": True,
+                })
+        except Exception:
+            pass
+
+        return result
     except Exception as e:
         logger.exception("社交内容发布失败 (platform=%s)", req.platform)
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
@@ -175,7 +189,18 @@ def autopilot_status():
 def autopilot_start():
     """启动社交自动驾驶调度器（5 个定时任务）"""
     try:
-        return ClawBotRPC._rpc_autopilot_start()
+        result = ClawBotRPC._rpc_autopilot_start()
+
+        # Push autopilot event via WebSocket (best-effort)
+        try:
+            push_event(WSMessageType.AUTOPILOT_EVENT, {
+                "action": "start",
+                "status": result.get("status", ""),
+            })
+        except Exception:
+            pass
+
+        return result
     except Exception as e:
         logger.exception("启动自动驾驶失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -185,7 +210,18 @@ def autopilot_start():
 def autopilot_stop():
     """停止社交自动驾驶调度器"""
     try:
-        return ClawBotRPC._rpc_autopilot_stop()
+        result = ClawBotRPC._rpc_autopilot_stop()
+
+        # Push autopilot event via WebSocket (best-effort)
+        try:
+            push_event(WSMessageType.AUTOPILOT_EVENT, {
+                "action": "stop",
+                "status": result.get("status", ""),
+            })
+        except Exception:
+            pass
+
+        return result
     except Exception as e:
         logger.exception("停止自动驾驶失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -199,7 +235,19 @@ def autopilot_trigger(job_id: str):
     night_publish, late_review。
     """
     try:
-        return ClawBotRPC._rpc_autopilot_trigger(job_id)
+        result = ClawBotRPC._rpc_autopilot_trigger(job_id)
+
+        # Push autopilot event via WebSocket (best-effort)
+        try:
+            push_event(WSMessageType.AUTOPILOT_EVENT, {
+                "action": "trigger",
+                "job_id": job_id,
+                "success": result.get("success", not result.get("error")),
+            })
+        except Exception:
+            pass
+
+        return result
     except Exception as e:
         logger.exception("手动触发自动驾驶任务失败 (job_id=%s)", job_id)
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -244,7 +292,21 @@ def delete_draft(index: int = Path(ge=0, description="草稿索引")):
 async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
     """立即发布指定草稿"""
     try:
-        return await ClawBotRPC._rpc_social_draft_publish(index)
+        result = await ClawBotRPC._rpc_social_draft_publish(index)
+
+        # Push social published event via WebSocket (best-effort)
+        try:
+            if result.get("success"):
+                push_event(WSMessageType.SOCIAL_PUBLISHED, {
+                    "platform": result.get("platform", ""),
+                    "draft_index": index,
+                    "success": True,
+                    "source": "draft",
+                })
+        except Exception:
+            pass
+
+        return result
     except Exception as e:
         logger.exception("发布草稿失败 (index=%d)", index)
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e

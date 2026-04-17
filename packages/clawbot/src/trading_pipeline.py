@@ -183,6 +183,20 @@ class TradingPipeline:
                     "[Pipeline] 风控拒绝: %s %s - %s",
                     proposal.symbol, proposal.action, check.reason,
                 )
+
+                # Push risk alert via WebSocket (best-effort)
+                try:
+                    from src.api.routers.ws import push_event
+                    from src.api.schemas import WSMessageType
+                    push_event(WSMessageType.RISK_ALERT, {
+                        "symbol": proposal.symbol,
+                        "action": proposal.action,
+                        "reason": check.reason,
+                        "decided_by": proposal.decided_by,
+                    })
+                except Exception:
+                    pass
+
                 if self.notify:
                     await self._safe_notify(
                         "风控拒绝 %s %s\n原因: %s"
@@ -255,6 +269,20 @@ class TradingPipeline:
         if order_result and "error" in order_result:
             result["status"] = "error"
             result["reason"] = order_result["error"]
+
+            # Push bot error via WebSocket (best-effort)
+            try:
+                from src.api.routers.ws import push_event
+                from src.api.schemas import WSMessageType
+                push_event(WSMessageType.BOT_ERROR, {
+                    "module": "trading_pipeline",
+                    "symbol": proposal.symbol,
+                    "action": proposal.action,
+                    "error": order_result["error"],
+                })
+            except Exception:
+                pass
+
             return result
 
         order_status = str(order_result.get("status", "") or "") if order_result else ""
@@ -393,6 +421,24 @@ class TradingPipeline:
         result["status"] = "executed"
         result["quantity"] = actual_qty
         result["entry_price"] = fill_price  # P0#3: 返回实际成交价
+
+        # Push trade executed via WebSocket (best-effort)
+        try:
+            from src.api.routers.ws import push_event
+            from src.api.schemas import WSMessageType
+            push_event(WSMessageType.TRADE_EXECUTED, {
+                "symbol": proposal.symbol,
+                "action": proposal.action,
+                "quantity": actual_qty,
+                "price": fill_price,
+                "stop_loss": proposal.stop_loss,
+                "take_profit": proposal.take_profit,
+                "decided_by": proposal.decided_by,
+                "trade_id": trade_id,
+                "source": "pipeline",
+            })
+        except Exception:
+            pass
 
         # Step 5: 通知
         if self.notify:

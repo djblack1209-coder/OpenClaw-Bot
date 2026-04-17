@@ -4,7 +4,8 @@ import logging
 from fastapi import APIRouter, Body, HTTPException, Query
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
-from ..schemas import MemorySearchResult, MemoryStats
+from ..schemas import MemorySearchResult, MemoryStats, WSMessageType
+from .ws import push_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,6 +48,14 @@ def delete_memory(key: str = Body(..., embed=True)):
     try:
         result = ClawBotRPC._rpc_memory_delete(key)
         if result.get("success"):
+            # Push memory updated event via WebSocket (best-effort)
+            try:
+                push_event(WSMessageType.MEMORY_UPDATED, {
+                    "action": "delete",
+                    "key": key,
+                })
+            except Exception:
+                pass
             return result
         raise HTTPException(status_code=404, detail=result.get("error", f"未找到: {key}"))
     except HTTPException:
@@ -65,6 +74,14 @@ def update_memory(
     try:
         result = ClawBotRPC._rpc_memory_update(key, value)
         if result.get("success"):
+            # Push memory updated event via WebSocket (best-effort)
+            try:
+                push_event(WSMessageType.MEMORY_UPDATED, {
+                    "action": "update",
+                    "key": key,
+                })
+            except Exception:
+                pass
             return result
         raise HTTPException(status_code=404, detail=result.get("error", f"未找到: {key}"))
     except HTTPException:

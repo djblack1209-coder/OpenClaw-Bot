@@ -169,6 +169,13 @@ def push_notification(
         "created_at": datetime.now().isoformat(),
     }
     _notifications.appendleft(notif)
+
+    # Push real-time WS event (best-effort)
+    try:
+        push_event(WSMessageType.NOTIFICATION, notif)
+    except Exception:
+        pass
+
     return notif
 
 
