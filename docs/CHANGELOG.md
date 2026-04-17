@@ -3,6 +3,25 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## [2026-04-17] C 端 APP 全面重构 — 5 个核心页面从占位符升级为完整功能
+> 领域: `frontend`
+> 影响模块: `Home`, `Portfolio`, `Bots`, `Store`, `Assistant`
+> 关联问题: 桌面 APP 需要面向 C 端小白用户的可视化控制面板
+### 变更内容
+- **首页 Dashboard 增强** — 新增今日简报卡片（日期+系统状态+4指标），模块状态卡片升级为2x2网格（投资组合/闲鱼客服/社媒运营/自动交易），新增通知预览区（最近5条），AI 智能建议升级为多场景感知（服务离线/费用超标/交易亏损）
+- **Portfolio 我的资产页面** — 4 Tab 架构：持仓概览（饼图+列表+汇总栏）、交易决策（AI 团队投票触发+AIVoteCard 集成）、自动交易（iOS 风格开关+策略三档选择+风控参数展示）、回测分析（策略回测+权益曲线图）
+- **Bots 我的机器人页面** — 4 大板块：闲鱼 AI 客服（状态卡片+扫码登录弹窗占位）、社媒自动驾驶（平台连接状态+自动驾驶开关+内容日历+发布弹窗）、自动化脚本网格（5 个服务卡片+开关）、通知中心（6 类筛选+演示通知）
+- **Store 插件商店** — App Store 风格，15 个插件（AI 工具/投资交易/电商/社媒/开发者 5 大分类），搜索过滤+分类标签+详情弹窗+模拟安装/卸载
+- **Assistant AI 助手增强** — 4 种模式切换（闲聊/投资/执行/创作），简单 Markdown 渲染（粗体/斜体/代码/列表），三点波浪思考动画，状态文本中文友好化翻译，消息悬停操作（复制/反馈），语音/附件按钮占位
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Home/index.tsx` — 300行→622行，全面增强
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — 22行→606行，从占位符到完整实现
+- `apps/openclaw-manager-src/src/components/Bots/index.tsx` — 22行→612行，从占位符到完整实现
+- `apps/openclaw-manager-src/src/components/Store/index.tsx` — 22行→615行，从占位符到完整实现
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 323行→645行，增强版
+
+---
+
 ## [2026-04-17] 交易投票弃权机制 — 修复 50% 超时导致共识度失真
 > 领域: `trading`, `ai-pool`
 > 影响模块: `ai_team_voter`
