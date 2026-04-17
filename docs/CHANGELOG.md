@@ -3,6 +3,35 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## 2026-04-17 — 全量端到端审计 (Sprint 4 审计)
+
+### backend
+- **[修复]** yfinance 价格回退：IBKR 离线时自动通过 yfinance 获取实时报价 `rpc.py`
+- **[修复]** portfolio-summary 字段映射：qty→quantity, avg_cost→avg_price `trading.py`
+- **[修复]** 速率限制提高至 300 req/min `server.py`
+- **[新增]** 闲鱼路由: conversations/qr 端点 `routers/xianyu.py`
+- **[新增]** WebSocket 事件类型: NOTIFICATION/SERVICE_CHANGE `schemas.py`
+- **[修复]** CI 测试断言修复 (Sortino/TailRatio 兼容 quantstats) `test_risk_var.py`
+
+### frontend
+- **[修复]** Portfolio 崩溃：avg_cost/avg_price 字段映射 + .toFixed() 安全兜底
+- **[修复]** 总市值自动计算 (后端无 total_market_value 字段时从 positions 聚合)
+- **[修复]** Store 安装持久化至 localStorage，移除 window.confirm()
+- **[修复]** 闲鱼开关接入 serviceStart/serviceStop 真实 API
+- **[修复]** 社媒平台数据映射 (数组→对象, xhs/x 名称)
+- **[修复]** 死按钮修复 (设置/AI助手使用/发布反馈)
+- **[优化]** MOCK_PLUGINS → CURATED_PLUGINS，Evolution 数据优先
+- **[优化]** console.error → createLogger 结构化日志
+- **[新增]** Onboarding 向导、ErrorState 组件、useClawbotWS hook
+- **[新增]** Markdown h1/h2/h3 标题渲染
+- **[优化]** AI 模型标签 "Claude 助手" → "AI 助手"
+
+### infra
+- **[构建]** Tauri 重新构建并安装至 /Applications/OpenClaw.app
+- **[CI]** GitHub Actions CI 通过 (1339 passed)
+
+---
+
 ## [2026-04-17] 后端 API 新增 + 前端真实数据对接 — 从演示数据到可用系统
 > 领域: `backend`, `frontend`
 > 影响模块: `api/routers/system`, `api/routers/trading`, `api/server`, `api/routers/conversation`, `tauri.ts`, `Home`, `conversationService`

@@ -14,7 +14,9 @@ from ..schemas import (
     TradingPositions,
     PnLSummary,
     TeamVoteRequest,
+    WSMessageType,
 )
+from .ws import push_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -105,6 +107,19 @@ async def trigger_vote(req: TeamVoteRequest):
             symbol=req.symbol,
             analysis=analysis,
         )
+
+        # Push trade signal via WebSocket (best-effort)
+        try:
+            push_event(WSMessageType.TRADE_SIGNAL, {
+                "symbol": req.symbol,
+                "consensus_signal": result.get("consensus_signal", ""),
+                "consensus_score": result.get("consensus_score", 0),
+                "passed": result.get("passed", False),
+                "vote_count": len(result.get("votes", [])),
+            })
+        except Exception:
+            pass
+
         return result
     except Exception as e:
         logger.exception("AI 团队投票失败 (symbol=%s)", req.symbol)
@@ -286,6 +301,22 @@ async def sell_position(request: Request):
             )
         except Exception as e:
             logger.debug("卖出通知推送失败: %s", e)
+
+        # Push trade executed via WebSocket (best-effort)
+        try:
+            push_event(WSMessageType.TRADE_EXECUTED, {
+                "symbol": symbol,
+                "action": "SELL",
+                "quantity": quantity,
+                "order_type": order_type,
+                "order_id": str(result.get("order_id", "")),
+                "status": result.get("status", ""),
+                "filled_qty": result.get("filled_qty", 0),
+                "avg_price": result.get("avg_price", 0),
+                "source": "manual_ui",
+            })
+        except Exception:
+            pass
 
         return {
             "success": True,
