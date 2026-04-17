@@ -610,10 +610,12 @@ CREW          # CrewAI 多智能体
 - MongoDB — 支持但默认不启用
 
 ### 模块状态
-- `src/modules/commerce/` — 已废弃，电商功能在 `src/xianyu/` + `src/shopping/`
-- `src/modules/life/` — 已废弃，生活功能在 `src/execution/life_automation.py`
-- `src/senses/` — 已废弃，感知功能在 `src/tools/` (OCR/STT/图片处理)
-- `src/actions/` — 已废弃，动作功能在 `src/core/executor.py`
+- ~~`src/modules/commerce/`~~ — ✅ 已清理（2026-04-18），电商功能已迁移至 `src/xianyu/` + `src/shopping/`
+- ~~`src/modules/life/`~~ — ✅ 已清理（2026-04-18），生活功能已迁移至 `src/execution/life_automation.py`
+- ~~`src/senses/`~~ — ✅ 已清理（2026-04-18），感知功能已迁移至 `src/tools/` (OCR/STT/图片处理)
+- ~~`src/actions/`~~ — ✅ 已清理（2026-04-18），动作功能已迁移至 `src/core/executor.py`
+- ~~`src/execution_hub.py`~~ — ✅ 已清理（2026-04-18），功能已迁移至 `src/execution/` 模块化包
+- `src/chat_router.py` — ⚠️ 保留作为向后兼容层，实际逻辑在 `src/routing/` 包（被 3 个文件引用）
 - 部分 executor 路径 (VOICE_CALL, HUMAN) 为框架定义，待实际集成
 
 ### 运行环境
