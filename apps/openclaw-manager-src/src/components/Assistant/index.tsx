@@ -9,7 +9,7 @@ import {
   Bot,
   User,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { useConversationStore, type Message } from '../../stores/conversationStore';
 import {

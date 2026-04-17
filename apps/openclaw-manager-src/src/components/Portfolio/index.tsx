@@ -13,7 +13,6 @@ import {
   Play,
   AlertCircle,
   BarChart3,
-  DollarSign,
   PieChart as PieChartIcon,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
@@ -24,7 +23,6 @@ import { GlassCard, AnimatedNumber, ToggleSwitch } from '../shared';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { AIVoteCard } from './AIVoteCard';
 
 /* Hooks 导入 */
@@ -167,7 +165,7 @@ function PositionsOverview() {
                     borderRadius: '8px',
                     color: '#fff',
                   }}
-                  formatter={(value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  formatter={(value: unknown) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                 />
               </PieChart>
             </ResponsiveContainer>
