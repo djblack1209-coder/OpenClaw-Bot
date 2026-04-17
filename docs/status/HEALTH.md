@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-17 (交易投票弃权机制修复: 超时票排除统计+否决逻辑修正+Telegram弃权展示, 测试1339/100%)
+> 最后更新: 2026-04-17 (CSO全量安全审计: 4项CRITICAL+3项HIGH+3项MEDIUM修复, 测试1339/100%)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -64,8 +64,8 @@
 | 架构治理 | 🟢 完成 | 全链路: 人格/提示词/装饰器/错误消息/认证/记忆隔离/日志安全/配置校验/备份 |
 | API 安全 | 🟢 加固 | X-API-Token + CORS + SSRF + 输入验证 + diagnose=False + RequestSizeLimitMiddleware(10MB) |
 | LLM 安全 | 🟢 加固 | Key脱敏(8字符) + 死Key禁用 + 错误清洗 |
-| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** + ControlCenter 773行拆分为8子组件(主文件123行) |
-| 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 |
+| 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** + ControlCenter 773行拆分为8子组件(主文件123行) + CSO审计: sucrase未使用依赖移除+PluginCard forwardRef警告修复+App.tsx注释修正 |
+| 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 + CSO审计: Webhook签名hmac.compare_digest防时序攻击 + NewAPI容器cap_drop:ALL/no-new-privileges + .env权限600 + Docker资源调优(Redis 128M/OpenClaw 1G) + 双网络架构(公网+内网隔离) |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
 | 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
 | 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
@@ -164,6 +164,16 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-510 | `backend` | `weekly_report.py` | 🔴 CRITICAL: 周报导入路径错误 — `from src.content_pipeline` 应为 `from src.execution.social.content_pipeline`，导致周报生成必然崩溃 | 修正导入路径为正确的模块位置 | 2026-04-17 | CSO全量安全审计 |
+| HI-511 | `backend` | `api/routers/xianyu.py` | 🔴 CRITICAL: 闲鱼路由导入不存在的 `XianyuBot` 类，服务启动时 ImportError | 替换为 `XianyuContextManager` 直接查询 SQLite | 2026-04-17 | CSO全量安全审计 |
+| HI-512 | `deploy` | `docker-compose.yml` | 🔴 CRITICAL: Docker 资源超配(Redis 512M/OpenClaw 2G) + `internal: true` 阻断容器互联网访问 | Redis 128M/OpenClaw 1G + 移除 internal + 双网络架构 | 2026-04-17 | CSO全量安全审计 |
+| HI-513 | `infra` | `Makefile` | 🔴 CRITICAL: 硬编码 `/usr/bin/python3` 路径在 macOS/brew 环境不存在 | 自动检测: `which python3 \|\| which python` | 2026-04-17 | CSO全量安全审计 |
+| HI-514 | `security` | `deploy_server.py` | 🟠 HIGH: Webhook 签名验证使用 `==` 比较存在时序攻击漏洞 | 改为 `hmac.compare_digest()` 常量时间比较 | 2026-04-17 | CSO全量安全审计 |
+| HI-515 | `deploy` | `docker-compose.newapi.yml` | 🟠 HIGH: NewAPI 容器无安全加固，默认 root + 全权限运行 | 添加 `cap_drop: ALL` + `security_opt: no-new-privileges:true` | 2026-04-17 | CSO全量安全审计 |
+| HI-516 | `frontend` | `openclaw-manager-src` | 🟠 HIGH: 未使用的 `sucrase` 依赖增加供应链攻击面 | 移除 sucrase 依赖 | 2026-04-17 | CSO全量安全审计 |
+| HI-517 | `frontend` | `App.tsx` | 🟡 MEDIUM: 注释与实际代码行为不符，产生误导 | 修正注释为准确描述 | 2026-04-17 | CSO全量安全审计 |
+| HI-518 | `frontend` | `Store/index.tsx` | 🟡 MEDIUM: PluginCard 触发 React forwardRef 废弃警告 | 修复组件定义消除警告 | 2026-04-17 | CSO全量安全审计 |
+| HI-519 | `security` | `.env` | 🟡 MEDIUM: .env 文件权限未收紧，同机其他用户可读取密钥 | 所有 .env 权限设为 600 | 2026-04-17 | CSO全量安全审计 |
 | HI-456 | `backend` | `brain.py` | 共享字典 `_active_tasks/_pending_callbacks/_pending_clarifications` 无锁保护 | 已有 `self._lock` 现在全部读写入口加 `async with self._lock` 保护；`get_active_tasks` 改用 `list()` 快照迭代；延迟清理改用 async task + lock | 2026-04-11 | 价值位阶审计 Tier 2 |
 | HI-457 | `backend` | `social_tools.py` | PostTimeOptimizer `_save()` 在锁外读取共享数据 + 单例工厂无锁 | `record_engagement` 在锁内拍快照传给 `_save()`；`_save()` 支持传入快照或自行加锁；`get_post_time_optimizer()` 加双重检查锁 | 2026-04-11 | 价值位阶审计 Tier 2 |
 | HI-464 | `backend` | `proactive_engine.py` | `_sent_log/_recent_notifications` 无 asyncio.Lock | 新增 `self._lock = asyncio.Lock()`，evaluate 频率检查和 record_sent 均加锁保护 | 2026-04-11 | 价值位阶审计 Tier 2 |
@@ -635,11 +645,11 @@
 
 | 严重度 | 活跃 | 已解决 | 合计 |
 |--------|------|--------|------|
-| 🔴 阻塞 | 0 | 16 | 16 |
-| 🟠 重要 | 4 | 90 | 94 |
-| 🟡 一般 | 6 | 107 | 113 |
+| 🔴 阻塞 | 0 | 20 | 20 |
+| 🟠 重要 | 4 | 93 | 97 |
+| 🟡 一般 | 6 | 110 | 116 |
 | 🔵 低优先 | 1 | 32 | 33 |
-| **合计** | **11** | **245** | **256** |
+| **合计** | **11** | **255** | **266** |
 
 ---
 

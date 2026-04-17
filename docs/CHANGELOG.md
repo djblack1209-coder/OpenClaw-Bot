@@ -3,6 +3,43 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
+## 2026-04-17 — CSO 全量安全审计修复 (10项)
+> 领域: `backend`, `infra`, `frontend`, `deploy`
+> 影响模块: `weekly_report`, `xianyu.py`, `docker-compose.yml`, `Makefile`, `deploy_server.py`, `docker-compose.newapi.yml`, `openclaw-manager-src`, `App.tsx`, `Store/index.tsx`, `.env`
+> 关联问题: CSO 安全审计 2026-04-17
+
+### 变更内容
+
+**🔴 CRITICAL 修复 (4项)**
+1. **周报导入路径修复**: `weekly_report.py` 中 `from src.content_pipeline import ...` 导入路径错误（模块位于 `src.execution.social.content_pipeline`），导致周报生成必然崩溃。修正为正确路径
+2. **闲鱼路由 XianyuBot 幻影导入修复**: `api/routers/xianyu.py` 导入不存在的 `XianyuBot` 类，替换为 `XianyuContextManager` 直接查询 SQLite，消除启动时 ImportError
+3. **Docker 资源超配修复**: `docker-compose.yml` Redis 内存限制 512M→128M、OpenClaw 主服务 2G→1G，防止 OOM killer 干掉容器；移除 `internal: true` 网络标记恢复容器互联网访问；新增双网络架构（公网+内网隔离）
+4. **Makefile Python 路径修复**: 硬编码 `/usr/bin/python3` 在 macOS/brew 环境下不存在，改为 `which python3 || which python` 自动检测
+
+**🟠 HIGH 修复 (3项)**
+5. **部署服务器时序攻击修复**: `deploy_server.py` Webhook 签名验证使用 `==` 字符串比较存在时序攻击漏洞，改为 `hmac.compare_digest()` 常量时间比较
+6. **NewAPI Docker 安全加固**: `docker-compose.newapi.yml` 添加 `cap_drop: ALL` + `security_opt: no-new-privileges:true`，最小权限原则
+7. **移除未使用依赖**: `openclaw-manager-src` 前端项目移除未使用的 `sucrase` 依赖，减少供应链攻击面
+
+**🟡 MEDIUM 修复 (3项)**
+8. **误导注释修复**: `App.tsx` 中注释与实际代码行为不符，修正为准确描述
+9. **forwardRef 警告修复**: `Store/index.tsx` 中 `PluginCard` 组件触发 React forwardRef 废弃警告，修复组件定义
+10. **.env 文件权限加固**: 所有 `.env` 文件权限设置为 `600`（仅 owner 可读写），防止同机其他用户读取密钥
+
+### 文件变更
+- `packages/clawbot/src/execution/weekly_report.py` — 修正 content_pipeline 导入路径
+- `packages/clawbot/src/api/routers/xianyu.py` — 替换 XianyuBot 为 XianyuContextManager 直接查询
+- `docker-compose.yml` — 资源限制调整 + 网络架构重构 + 移除 internal 标记
+- `Makefile` — Python 路径自动检测
+- `packages/clawbot/src/deployer/deploy_server.py` — hmac.compare_digest 替换 ==
+- `docker-compose.newapi.yml` — 安全加固 cap_drop/no-new-privileges
+- `apps/openclaw-manager-src/package.json` — 移除 sucrase 依赖
+- `apps/openclaw-manager-src/src/App.tsx` — 修正误导注释
+- `apps/openclaw-manager-src/src/components/Store/index.tsx` — 修复 forwardRef 警告
+- `config/.env*` — 权限收紧为 600
+
+---
+
 ## 2026-04-17 — 全量端到端审计 (Sprint 4 审计)
 
 ### backend
