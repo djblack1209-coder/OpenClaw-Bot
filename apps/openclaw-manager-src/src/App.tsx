@@ -22,6 +22,7 @@ const Channels = lazy(() => import('./components/Channels').then(m => ({ default
 const Social = lazy(() => import('./components/Social').then(m => ({ default: m.Social })));
 const Money = lazy(() => import('./components/Money').then(m => ({ default: m.Money })));
 const Dev = lazy(() => import('./components/Dev').then(m => ({ default: m.Dev })));
+const DevPanel = lazy(() => import('./components/DevPanel'));
 const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
 const Testing = lazy(() => import('./components/Testing').then(m => ({ default: m.Testing })));
 const Logs = lazy(() => import('./components/Logs').then(m => ({ default: m.Logs })));
@@ -62,7 +63,7 @@ export type PageType =
   | 'onboarding' // 引导流程（仅首次启动）
   /* 原有页面（开发者模式） */
   | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
-  | 'dev' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
+  | 'dev' | 'devpanel' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
   | 'memory' | 'evolution' | 'gateway' | 'scheduler';
 
 export interface EnvironmentStatus {
@@ -190,6 +191,7 @@ function App() {
       social: <PageErrorBoundary pageName="社媒"><Social /></PageErrorBoundary>,
       money: <PageErrorBoundary pageName="财务"><Money /></PageErrorBoundary>,
       dev: <PageErrorBoundary pageName="开发"><Dev /></PageErrorBoundary>,
+      devpanel: <PageErrorBoundary pageName="开发者工作台"><DevPanel /></PageErrorBoundary>,
       testing: <PageErrorBoundary pageName="测试"><Testing /></PageErrorBoundary>,
       logs: <PageErrorBoundary pageName="日志"><Logs /></PageErrorBoundary>,
       settings: <PageErrorBoundary pageName="设置"><Settings onEnvironmentChange={checkEnvironment} /></PageErrorBoundary>,

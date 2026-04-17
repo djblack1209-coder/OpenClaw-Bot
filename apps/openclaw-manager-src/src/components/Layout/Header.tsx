@@ -30,6 +30,7 @@ const pageTitles: Record<PageType, { title: string; description: string }> = {
   social: { title: '社媒总控', description: '发文、热点、人设、计划与自动运营' },
   money: { title: '盈利总控', description: '收入看板、Alpha 研究、风控与日报' },
   dev: { title: '开发总控', description: '开发任务、编码代理与 GitHub 操作' },
+  devpanel: { title: '开发者工作台', description: 'AionUi Cowork 风格的终端 + AI 对话 + 文件树' },
   testing: { title: '测试诊断', description: '系统诊断与问题排查' },
   logs: { title: '应用日志', description: '查看 OpenClaw 应用的控制台日志' },
   settings: { title: '设置', description: '身份配置与高级选项' },
