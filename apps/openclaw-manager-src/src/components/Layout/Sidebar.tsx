@@ -16,6 +16,7 @@ import {
   BrainCircuit,
   Blocks,
   Code2,
+  Terminal,
   FlaskConical,
   ScrollText,
   Share2,
@@ -70,6 +71,7 @@ const devItems: MenuItem[] = [
   { id: 'money', label: '盈利总控', icon: DollarSign },
   { id: 'evolution', label: '进化引擎', icon: Dna },
   { id: 'dev', label: '开发总控', icon: Code2 },
+  { id: 'devpanel', label: '开发者工作台', icon: Terminal },
   { id: 'testing', label: '测试诊断', icon: FlaskConical },
   { id: 'logs', label: '应用日志', icon: ScrollText },
 ];
