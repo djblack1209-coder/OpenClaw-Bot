@@ -225,7 +225,7 @@ export function Assistant() {
         {/* 对话内容 */}
         <div className="flex-1 overflow-y-auto scroll-container p-6 space-y-4">
           {messages.length === 0 ? (
-            /* 空状态：欢迎界面 + 快捷命令 */}
+            /* 空状态：欢迎界面 + 快捷命令 */
             <div className="h-full flex flex-col items-center justify-center">
               <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[var(--oc-brand)]/20 to-[var(--oc-brand)]/5 flex items-center justify-center mb-6">
                 <Bot size={40} className="text-[var(--oc-brand)]" />
@@ -531,7 +531,6 @@ function MarkdownContent({ content }: { content: string }) {
     const elements: React.ReactNode[] = [];
     let inCodeBlock = false;
     let codeBlockContent: string[] = [];
-    let codeBlockLang = '';
 
     lines.forEach((line, index) => {
       // 代码块开始/结束
@@ -548,8 +547,7 @@ function MarkdownContent({ content }: { content: string }) {
           codeBlockContent = [];
           inCodeBlock = false;
         } else {
-          // 开始代码块
-          codeBlockLang = line.slice(3).trim();
+          // 开始代码块（忽略语言标记）
           inCodeBlock = true;
         }
         return;

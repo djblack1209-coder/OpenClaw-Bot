@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Home,
   Code,
-  X,
 } from 'lucide-react';
 
 import { GlassCard } from '../shared';
