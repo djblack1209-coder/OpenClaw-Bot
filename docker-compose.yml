@@ -13,11 +13,14 @@ services:
     user: "999:999"
     security_opt:
       - no-new-privileges:true
+    # 资源限制: 2GB 服务器，Redis 分配 128M 足够（仅做队列缓存）
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.5'
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
@@ -57,11 +60,14 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    # 资源限制: 2GB 服务器，主服务分配 1G（含 Python 运行时 + 业务逻辑）
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '1.5'
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18790/api/v1/ping')"]
       interval: 30s
@@ -69,14 +75,18 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      # 应用服务在内部网络（访问 Redis）+ 端口映射对外暴露 API
+      # 应用服务同时接入内部网络（访问 Redis）和外部网络（访问 Telegram/LLM API）
       - clawbot-internal
+      - clawbot-external
 
 volumes:
   redis_data:
 
 networks:
-  # 内部网络: 容器间通信隔离，不使用默认 bridge
+  # 内部网络: Redis 专用，隔离外网访问，仅容器间通信
   clawbot-internal:
     driver: bridge
     internal: true
+  # 外部网络: openclaw 主服务用，允许访问 Telegram Bot API / LLM API 等外部服务
+  clawbot-external:
+    driver: bridge

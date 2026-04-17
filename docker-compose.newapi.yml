@@ -9,6 +9,11 @@ services:
     image: calciumion/new-api:v0.12.6
     container_name: openclaw-newapi
     restart: unless-stopped
+    # 安全加固: 丢弃所有 Linux 能力，禁止提权
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
