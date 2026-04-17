@@ -1,4 +1,6 @@
 """部署授权服务端 — Flask API"""
+
+import hmac
 import os
 import logging
 from flask import Flask, request, jsonify
@@ -20,10 +22,12 @@ if not ADMIN_TOKEN:
 
 def _check_admin(req):
     token = req.headers.get("X-Admin-Token", "")
-    return token == ADMIN_TOKEN
+    # 使用常量时间比较，防止时序攻击
+    return hmac.compare_digest(token, ADMIN_TOKEN)
 
 
 # ---- 客户端接口 ----
+
 
 @app.route("/api/deploy/auth", methods=["POST"])
 def auth():
@@ -73,6 +77,7 @@ def heartbeat():
 
 # ---- 管理接口 ----
 
+
 @app.route("/api/admin/licenses", methods=["GET"])
 def list_licenses():
     if not _check_admin(request):
@@ -105,6 +110,7 @@ def revoke_license(key):
 
 
 # ---- 部署配置生成 ----
+
 
 def _build_deploy_config(data: dict) -> dict:
     """根据客户信息生成 OpenClaw 配置"""
