@@ -1,12 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Home,
   Sun,
   Moon,
   Cloud,
   TrendingUp,
-  TrendingDown,
-  Bot,
   Share2,
   Bell,
   Zap,
@@ -16,6 +13,11 @@ import {
   Activity,
   DollarSign,
   Fish,
+  Calendar,
+  Sparkles,
+  AlertCircle,
+  CheckCircle,
+  Info,
 } from 'lucide-react';
 import { GlassCard, StatusIndicator, AnimatedNumber } from '../shared';
 import { clawbotFetch } from '../../lib/tauri';
@@ -41,6 +43,21 @@ interface SystemSummary {
   tradingEnabled: boolean;
   socialEnabled: boolean;
   uptime: string;
+  dailyPnl: number;
+  dailyPnlPct: number;
+  totalMarketValue: number;
+  positionsCount: number;
+  conversationsToday: number;
+  postsToday: number;
+  notificationsCount: number;
+}
+
+/* 通知条目 */
+interface NotificationItem {
+  id: string;
+  type: 'success' | 'warning' | 'error' | 'info';
+  message: string;
+  timestamp: Date;
 }
 
 /* 快捷操作配置 */
@@ -53,9 +70,25 @@ const quickActions = [
   { label: '查看通知', icon: Bell, page: 'bots' as const, color: 'text-[var(--oc-warning)]' },
 ];
 
+/* 通知类型图标映射 */
+const notificationIcons = {
+  success: CheckCircle,
+  warning: AlertCircle,
+  error: AlertCircle,
+  info: Info,
+};
+
+/* 通知类型颜色映射 */
+const notificationColors = {
+  success: 'text-[var(--oc-success)]',
+  warning: 'text-[var(--oc-warning)]',
+  error: 'text-[var(--oc-danger)]',
+  info: 'text-[var(--oc-brand)]',
+};
+
 /**
  * 首页 Dashboard —— C 端主页面
- * 展示：问候语 + 系统状态概览 + 模块状态卡片 + 快捷操作
+ * 展示：问候语 + 今日简报 + 模块状态卡片 + 通知预览 + 快捷操作 + AI 建议
  */
 export function HomeDashboard() {
   const greeting = getGreeting();
@@ -72,7 +105,16 @@ export function HomeDashboard() {
     tradingEnabled: false,
     socialEnabled: false,
     uptime: '--',
+    dailyPnl: 0,
+    dailyPnlPct: 0,
+    totalMarketValue: 0,
+    positionsCount: 0,
+    conversationsToday: 0,
+    postsToday: 0,
+    notificationsCount: 0,
   });
+  
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -80,11 +122,20 @@ export function HomeDashboard() {
   const fetchSummary = useCallback(async () => {
     try {
       /* 并行请求多个端点 */
-      const [statusResp, omegaResp, tradingResp, socialResp] = await Promise.allSettled([
-        clawbotFetch('/api/v1/system/status'),
+      const [
+        statusResp,
+        omegaResp,
+        tradingResp,
+        socialResp,
+        pnlResp,
+        positionsResp,
+      ] = await Promise.allSettled([
+        clawbotFetch('/api/v1/status'),
         clawbotFetch('/api/v1/omega/status'),
         clawbotFetch('/api/v1/controls/trading'),
         clawbotFetch('/api/v1/controls/social'),
+        clawbotFetch('/api/v1/trading/pnl'),
+        clawbotFetch('/api/v1/trading/positions'),
       ]);
 
       const statusData = statusResp.status === 'fulfilled' && statusResp.value.ok
@@ -95,6 +146,10 @@ export function HomeDashboard() {
         ? await tradingResp.value.json() : null;
       const socialData = socialResp.status === 'fulfilled' && socialResp.value.ok
         ? await socialResp.value.json() : null;
+      const pnlData = pnlResp.status === 'fulfilled' && pnlResp.value.ok
+        ? await pnlResp.value.json() : null;
+      const positionsData = positionsResp.status === 'fulfilled' && positionsResp.value.ok
+        ? await positionsResp.value.json() : null;
 
       setSummary({
         serviceRunning: isRunning,
@@ -104,7 +159,38 @@ export function HomeDashboard() {
         tradingEnabled: tradingData?.auto_trade_enabled ?? false,
         socialEnabled: socialData?.autopilot_enabled ?? false,
         uptime: statusData?.uptime ?? '--',
+        dailyPnl: pnlData?.daily_pnl ?? 0,
+        dailyPnlPct: pnlData?.daily_pnl_pct ?? 0,
+        totalMarketValue: positionsData?.total_market_value ?? 0,
+        positionsCount: positionsData?.positions?.length ?? 0,
+        conversationsToday: statusData?.conversations_today ?? 0,
+        postsToday: statusData?.posts_today ?? 0,
+        notificationsCount: statusData?.notifications_count ?? 0,
       });
+      
+      /* 模拟通知数据（实际应从后端获取） */
+      const mockNotifications: NotificationItem[] = [
+        {
+          id: '1',
+          type: 'success',
+          message: '自动交易系统已开启，当前持仓 3 个',
+          timestamp: new Date(Date.now() - 5 * 60 * 1000),
+        },
+        {
+          id: '2',
+          type: 'info',
+          message: '小红书自动发布完成，今日已发布 2 条内容',
+          timestamp: new Date(Date.now() - 15 * 60 * 1000),
+        },
+        {
+          id: '3',
+          type: 'warning',
+          message: 'AI 费用已达预算 75%，请注意控制',
+          timestamp: new Date(Date.now() - 30 * 60 * 1000),
+        },
+      ];
+      setNotifications(mockNotifications);
+      
       setLastRefresh(new Date());
     } catch {
       // 静默处理，使用默认值
@@ -128,6 +214,18 @@ export function HomeDashboard() {
       y: 0,
       transition: { delay: i * 0.08, duration: 0.3, ease: 'easeOut' },
     }),
+  };
+
+  /* 生成系统状态摘要文本 */
+  const getSystemStatusText = () => {
+    if (!isRunning) return '系统离线，请先启动服务';
+    if (!summary.omegaReady) return '系统启动中，AI 大脑正在初始化...';
+    
+    const parts = [];
+    if (summary.tradingEnabled) parts.push('自动交易运行中');
+    if (summary.socialEnabled) parts.push('社媒自动驾驶中');
+    if (parts.length === 0) return '所有系统就绪，等待指令';
+    return parts.join(' · ');
   };
 
   return (
@@ -158,89 +256,267 @@ export function HomeDashboard() {
           </div>
         </div>
 
-        {/* ========== 系统状态总览（一行 4 卡片） ========== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 服务状态 */}
-          <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
-            <GlassCard className="h-full">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">服务状态</span>
-                <StatusIndicator status={isRunning ? 'running' : 'stopped'} size="sm" />
+        {/* ========== 今日简报卡片 ========== */}
+        <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
+          <GlassCard hoverable={false} className="bg-gradient-to-br from-[var(--oc-brand)]/10 to-transparent border border-[var(--oc-brand)]/20">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar size={18} className="text-[var(--oc-brand)]" />
+                  <h2 className="text-lg font-semibold text-white">
+                    {new Date().toLocaleDateString('zh-CN', { 
+                      month: 'long', 
+                      day: 'numeric',
+                      weekday: 'short' 
+                    })}
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-400">{getSystemStatusText()}</p>
               </div>
-              <div className="flex items-baseline gap-2">
-                <Activity size={16} className={isRunning ? 'text-[var(--oc-success)]' : 'text-gray-500'} />
-                <span className="text-lg font-semibold text-white">
-                  {isRunning ? '在线' : '离线'}
-                </span>
+              <StatusIndicator status={isRunning ? 'running' : 'stopped'} size="md" />
+            </div>
+            
+            {/* 4 个迷你指标 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">服务状态</span>
+                <div className="flex items-baseline gap-1">
+                  <Activity size={14} className={isRunning ? 'text-[var(--oc-success)]' : 'text-gray-500'} />
+                  <span className="text-base font-semibold text-white">
+                    {isRunning ? '在线' : '离线'}
+                  </span>
+                </div>
               </div>
-              {isRunning && (
-                <p className="text-xs text-gray-500 mt-1">运行时间 {summary.uptime}</p>
-              )}
-            </GlassCard>
-          </motion.div>
+              
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">AI 费用</span>
+                <div className="flex items-baseline gap-1">
+                  <DollarSign size={14} className="text-[var(--oc-brand)]" />
+                  <AnimatedNumber 
+                    value={summary.aiCostToday} 
+                    prefix="$" 
+                    decimals={2} 
+                    className="text-base font-semibold text-white oc-tabular-nums" 
+                  />
+                  <span className="text-xs text-gray-500">/ ${summary.aiBudget}</span>
+                </div>
+              </div>
+              
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">今日交易</span>
+                <div className="flex items-baseline gap-1">
+                  <TrendingUp size={14} className="text-[var(--oc-success)]" />
+                  <span className="text-base font-semibold text-white oc-tabular-nums">
+                    {summary.positionsCount}
+                  </span>
+                  <span className="text-xs text-gray-500">笔</span>
+                </div>
+              </div>
+              
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">通知</span>
+                <div className="flex items-baseline gap-1">
+                  <Bell size={14} className="text-[var(--oc-warning)]" />
+                  <span className="text-base font-semibold text-white oc-tabular-nums">
+                    {summary.notificationsCount}
+                  </span>
+                  <span className="text-xs text-gray-500">条</span>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+        </motion.div>
 
-          {/* AI 费用 */}
+        {/* ========== 模块状态卡片（2x2 网格） ========== */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 💰 投资组合 */}
           <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible">
-            <GlassCard className="h-full">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">今日 AI 费用</span>
-                <DollarSign size={16} className="text-[var(--oc-brand)]" />
-              </div>
-              <div className="flex items-baseline gap-1">
-                <AnimatedNumber value={summary.aiCostToday} prefix="$" decimals={2} className="text-lg font-semibold text-white" />
-                <span className="text-xs text-gray-500">/ ${summary.aiBudget}</span>
-              </div>
-              {/* 预算进度条 */}
-              <div className="mt-2 h-1.5 bg-dark-600 rounded-full overflow-hidden">
-                <div
-                  className={clsx(
-                    'h-full rounded-full transition-all duration-500',
-                    summary.aiCostToday / summary.aiBudget > 0.8 ? 'bg-[var(--oc-danger)]' : 'bg-[var(--oc-brand)]'
-                  )}
-                  style={{ width: `${Math.min(100, (summary.aiCostToday / summary.aiBudget) * 100)}%` }}
-                />
-              </div>
-            </GlassCard>
-          </motion.div>
-
-          {/* 自动交易 */}
-          <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible">
             <GlassCard className="h-full" onClick={() => setCurrentPage('portfolio')}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">自动交易</span>
-                <TrendingUp size={16} className="text-[var(--oc-success)]" />
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-[var(--oc-success)]/10 flex items-center justify-center">
+                    <TrendingUp size={16} className="text-[var(--oc-success)]" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-300">投资组合</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">总市值</p>
+                  <AnimatedNumber 
+                    value={summary.totalMarketValue} 
+                    prefix="¥" 
+                    decimals={2} 
+                    className="text-2xl font-bold text-white oc-tabular-nums" 
+                  />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">今日盈亏</span>
+                  <AnimatedNumber 
+                    value={summary.dailyPnl} 
+                    prefix="¥" 
+                    decimals={2} 
+                    colored 
+                    className="text-sm font-semibold oc-tabular-nums" 
+                  />
+                  <AnimatedNumber 
+                    value={summary.dailyPnlPct} 
+                    suffix="%" 
+                    decimals={2} 
+                    colored 
+                    className="text-sm font-semibold oc-tabular-nums" 
+                  />
+                </div>
+              </div>
+              
+              <p className="text-xs text-gray-500 mt-3">点击查看持仓详情 →</p>
+            </GlassCard>
+          </motion.div>
+
+          {/* 🤖 AI 客服（闲鱼） */}
+          <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible">
+            <GlassCard className="h-full" onClick={() => setCurrentPage('bots')}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                    <Fish size={16} className="text-orange-400" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-300">AI 客服（闲鱼）</span>
+                </div>
+                <StatusIndicator 
+                  status={summary.serviceRunning ? 'running' : 'stopped'} 
+                  size="sm" 
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-white oc-tabular-nums">
+                    {summary.conversationsToday}
+                  </span>
+                  <span className="text-sm text-gray-500">次对话</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {summary.serviceRunning ? '自动回复运行中' : '服务未启动'}
+                </p>
+              </div>
+              
+              <p className="text-xs text-gray-500 mt-3">点击管理客服机器人 →</p>
+            </GlassCard>
+          </motion.div>
+
+          {/* 📱 社媒运营 */}
+          <motion.div custom={3} variants={cardVariants} initial="hidden" animate="visible">
+            <GlassCard className="h-full" onClick={() => setCurrentPage('bots')}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                    <Share2 size={16} className="text-pink-400" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-300">社媒运营</span>
+                </div>
                 <span className={clsx(
                   'px-2 py-0.5 rounded-full text-xs font-medium',
-                  summary.tradingEnabled ? 'bg-[var(--oc-success)]/20 text-[var(--oc-success)]' : 'bg-gray-500/20 text-gray-400'
+                  summary.socialEnabled 
+                    ? 'bg-pink-500/20 text-pink-400' 
+                    : 'bg-gray-500/20 text-gray-400'
+                )}>
+                  {summary.socialEnabled ? '自动驾驶' : '手动'}
+                </span>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-white oc-tabular-nums">
+                    {summary.postsToday}
+                  </span>
+                  <span className="text-sm text-gray-500">条内容</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  小红书 · X (Twitter)
+                </p>
+              </div>
+              
+              <p className="text-xs text-gray-500 mt-3">点击管理内容发布 →</p>
+            </GlassCard>
+          </motion.div>
+
+          {/* ⚡ 自动交易 */}
+          <motion.div custom={4} variants={cardVariants} initial="hidden" animate="visible">
+            <GlassCard className="h-full" onClick={() => setCurrentPage('portfolio')}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/10 flex items-center justify-center">
+                    <Zap size={16} className="text-[var(--oc-brand)]" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-300">自动交易</span>
+                </div>
+                <span className={clsx(
+                  'px-2 py-0.5 rounded-full text-xs font-medium',
+                  summary.tradingEnabled 
+                    ? 'bg-[var(--oc-success)]/20 text-[var(--oc-success)]' 
+                    : 'bg-gray-500/20 text-gray-400'
                 )}>
                   {summary.tradingEnabled ? '已开启' : '未开启'}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-2">点击查看持仓详情</p>
-            </GlassCard>
-          </motion.div>
-
-          {/* 社媒自动驾驶 */}
-          <motion.div custom={3} variants={cardVariants} initial="hidden" animate="visible">
-            <GlassCard className="h-full" onClick={() => setCurrentPage('bots')}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">社媒运营</span>
-                <Share2 size={16} className="text-pink-400" />
+              
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-white oc-tabular-nums">
+                    {summary.positionsCount}
+                  </span>
+                  <span className="text-sm text-gray-500">个持仓</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {summary.tradingEnabled ? '策略：多因子量化' : '点击开启自动交易'}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={clsx(
-                  'px-2 py-0.5 rounded-full text-xs font-medium',
-                  summary.socialEnabled ? 'bg-pink-500/20 text-pink-400' : 'bg-gray-500/20 text-gray-400'
-                )}>
-                  {summary.socialEnabled ? '自动驾驶中' : '手动模式'}
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">点击管理内容发布</p>
+              
+              <p className="text-xs text-gray-500 mt-3">点击查看交易详情 →</p>
             </GlassCard>
           </motion.div>
         </div>
+
+        {/* ========== 通知预览 ========== */}
+        {notifications.length > 0 && (
+          <motion.div custom={5} variants={cardVariants} initial="hidden" animate="visible">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">最新通知</h2>
+              <button
+                onClick={() => setCurrentPage('bots')}
+                className="text-xs text-[var(--oc-brand)] hover:underline"
+              >
+                查看全部 →
+              </button>
+            </div>
+            <GlassCard hoverable={false}>
+              <div className="space-y-3">
+                {notifications.slice(0, 5).map((notif) => {
+                  const Icon = notificationIcons[notif.type];
+                  const colorClass = notificationColors[notif.type];
+                  
+                  return (
+                    <div key={notif.id} className="flex items-start gap-3 pb-3 border-b border-dark-600 last:border-0 last:pb-0">
+                      <Icon size={16} className={clsx('flex-shrink-0 mt-0.5', colorClass)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white">{notif.message}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {notif.timestamp.toLocaleTimeString('zh-CN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
 
         {/* ========== 快捷操作 ========== */}
         <div>
@@ -251,7 +527,7 @@ export function HomeDashboard() {
               return (
                 <motion.button
                   key={action.label}
-                  custom={i + 4}
+                  custom={i + 6}
                   variants={cardVariants}
                   initial="hidden"
                   animate="visible"
@@ -270,26 +546,72 @@ export function HomeDashboard() {
           </div>
         </div>
 
-        {/* ========== AI 智能建议（占位） ========== */}
+        {/* ========== AI 智能建议 ========== */}
         <div>
           <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">AI 建议</h2>
           <GlassCard hoverable={false}>
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Zap size={16} className="text-[var(--oc-brand)]" />
+                <Sparkles size={16} className="text-[var(--oc-brand)]" />
               </div>
-              <div>
-                <p className="text-sm text-white">
-                  {isRunning
-                    ? '所有系统运行正常。可以用 AI 助手开始今天的工作。'
-                    : '服务尚未启动，请先到设置页面启动 ClawBot 服务。'}
-                </p>
-                <button
-                  onClick={() => setCurrentPage(isRunning ? 'assistant' : 'settings')}
-                  className="text-xs text-[var(--oc-brand)] hover:underline mt-1"
-                >
-                  {isRunning ? '打开 AI 助手 →' : '前往设置 →'}
-                </button>
+              <div className="flex-1">
+                {!isRunning ? (
+                  <>
+                    <p className="text-sm text-white mb-2">
+                      服务尚未启动，请先到设置页面启动 ClawBot 服务。
+                    </p>
+                    <button
+                      onClick={() => setCurrentPage('settings')}
+                      className="text-xs text-[var(--oc-brand)] hover:underline"
+                    >
+                      前往设置 →
+                    </button>
+                  </>
+                ) : summary.aiCostToday / summary.aiBudget > 0.8 ? (
+                  <>
+                    <p className="text-sm text-white mb-2">
+                      AI 费用已达预算 {((summary.aiCostToday / summary.aiBudget) * 100).toFixed(0)}%，建议优化使用频率或调整预算。
+                    </p>
+                    <button
+                      onClick={() => setCurrentPage('settings')}
+                      className="text-xs text-[var(--oc-brand)] hover:underline"
+                    >
+                      调整预算 →
+                    </button>
+                  </>
+                ) : summary.tradingEnabled && summary.dailyPnl < 0 ? (
+                  <>
+                    <p className="text-sm text-white mb-2">
+                      今日交易亏损 ¥{Math.abs(summary.dailyPnl).toFixed(2)}，建议查看持仓并调整策略。
+                    </p>
+                    <button
+                      onClick={() => setCurrentPage('portfolio')}
+                      className="text-xs text-[var(--oc-brand)] hover:underline"
+                    >
+                      查看持仓 →
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-white mb-2">
+                      所有系统运行正常。可以用 AI 助手开始今天的工作，或查看投资组合表现。
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setCurrentPage('assistant')}
+                        className="text-xs text-[var(--oc-brand)] hover:underline"
+                      >
+                        打开 AI 助手 →
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage('portfolio')}
+                        className="text-xs text-[var(--oc-brand)] hover:underline"
+                      >
+                        查看投资组合 →
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </GlassCard>
