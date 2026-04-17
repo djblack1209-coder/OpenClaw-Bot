@@ -6,7 +6,7 @@ import { Toaster } from 'sonner';
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 
-/* ====== C 端新页面（占位组件，后续各 Phase 会替换为完整实现） ====== */
+/* ====== C 端新页面（懒加载完整实现） ====== */
 const HomeDashboard = lazy(() => import('./components/Home').then(m => ({ default: m.HomeDashboard })));
 const Assistant = lazy(() => import('./components/Assistant').then(m => ({ default: m.Assistant })));
 const Portfolio = lazy(() => import('./components/Portfolio').then(m => ({ default: m.Portfolio })));
