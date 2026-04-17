@@ -354,6 +354,8 @@ class LiteLLMPool:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_cost = 0.0
+        # 并发统计锁 — 多个 Bot 同时调用 LLM 时保护计数器原子更新
+        self._stats_lock = asyncio.Lock()
 
         # Phoenix OTEL — 与 Langfuse 并行运行，OpenTelemetry 标准协议
         try:
@@ -919,17 +921,18 @@ class LiteLLMPool:
                 return self._wrap_streaming(response, model, start)
 
             latency = (time.time() - start) * 1000
-            self._call_count += 1
-            self._total_latency += latency
-            if hasattr(response, "usage") and response.usage:
-                self._total_input_tokens += getattr(response.usage, "prompt_tokens", 0)
-                self._total_output_tokens += getattr(response.usage, "completion_tokens", 0)
-                # Calculate cost from LiteLLM response
-                try:
-                    cost = litellm.completion_cost(completion_response=response)
-                    self._total_cost += cost
-                except Exception as e:
-                    logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
+            async with self._stats_lock:
+                self._call_count += 1
+                self._total_latency += latency
+                if hasattr(response, "usage") and response.usage:
+                    self._total_input_tokens += getattr(response.usage, "prompt_tokens", 0)
+                    self._total_output_tokens += getattr(response.usage, "completion_tokens", 0)
+                    # Calculate cost from LiteLLM response
+                    try:
+                        cost = litellm.completion_cost(completion_response=response)
+                        self._total_cost += cost
+                    except Exception as e:
+                        logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
 
             # ---- Store to cache ----
             if use_cache:
@@ -940,7 +943,8 @@ class LiteLLMPool:
 
             return response
         except Exception as e:
-            self._error_count += 1
+            async with self._stats_lock:
+                self._error_count += 1
             scrubbed = _scrub_secrets(str(e))
             logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {scrubbed}")
             # 全链路降级到 g4f 时通知管理员（意味着所有优质 provider 都挂了）
@@ -1050,23 +1054,24 @@ class LiteLLMPool:
                 total_tokens = getattr(chunk.usage, "total_tokens", 0) or 0
             yield chunk
 
-        # After stream completes, record metrics
+        # After stream completes, record metrics（加锁保护统计计数器）
         latency = (time.time() - start_time) * 1000
-        self._call_count += 1
-        self._total_latency += latency
+        async with self._stats_lock:
+            self._call_count += 1
+            self._total_latency += latency
 
-        if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
-            self._total_input_tokens += prompt_tokens
-            self._total_output_tokens += completion_tokens
-            try:
-                cost = litellm.completion_cost(
-                    model=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                )
-                self._total_cost += cost
-            except Exception as e:
-                logger.debug("Silenced exception", exc_info=True)
+            if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
+                self._total_input_tokens += prompt_tokens
+                self._total_output_tokens += completion_tokens
+                try:
+                    cost = litellm.completion_cost(
+                        model=model,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    self._total_cost += cost
+                except Exception as e:
+                    logger.debug("Silenced exception", exc_info=True)
 
     # ---- 兼容旧接口 ----
 
