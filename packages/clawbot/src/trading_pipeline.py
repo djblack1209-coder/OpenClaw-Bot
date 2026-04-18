@@ -146,8 +146,12 @@ class TradingPipeline:
                 if validation.adjusted_proposal:
                     proposal = validation.adjusted_proposal
             except Exception as e:
-                logger.warning("[Pipeline] 决策验证异常(%s)，继续执行", e)
+                # 安全修复: 决策验证异常时拒绝交易(fail-closed)，而非继续执行
+                logger.error("[Pipeline] 决策验证异常(%s)，拒绝交易(fail-closed)", e)
                 result["steps"].append({"validation_error": str(e)})
+                result["action"] = "REJECTED"
+                result["error"] = f"决策验证系统异常: {e}"
+                return result
 
         # Step 1: 风控审核
         if self.risk_manager and proposal.action in ("BUY", "SELL"):
