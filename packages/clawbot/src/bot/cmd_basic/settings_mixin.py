@@ -17,6 +17,18 @@ class _SettingsMixin:
     @requires_auth
     @with_typing
     async def cmd_settings(self, update, context):
+        """用户个人偏好设置管理"""
+        try:
+            return await self._cmd_settings_inner(update, context)
+        except Exception as e:
+            logger.exception("[Settings] 命令执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 设置操作失败，请稍后重试")
+            except Exception:
+                pass
+
+    async def _cmd_settings_inner(self, update, context):
+        """设置管理 — 内部实现"""
         from src.bot.globals import user_prefs
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
