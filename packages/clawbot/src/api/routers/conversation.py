@@ -191,6 +191,19 @@ async def delete_session(session_id: str):
     raise HTTPException(status_code=404, detail="会话不存在")
 
 
+@router.patch("/sessions/{session_id}")
+async def update_session(session_id: str, body: dict = Body(...)):
+    """更新会话属性（目前仅支持修改标题）"""
+    session = _store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    new_title = body.get("title", "").strip()
+    if not new_title:
+        raise HTTPException(status_code=422, detail="标题不能为空")
+    session["title"] = new_title[:100]
+    return {"ok": True, "title": session["title"]}
+
+
 @router.post("/sessions/{session_id}/send")
 async def send_message(
     session_id: str,
