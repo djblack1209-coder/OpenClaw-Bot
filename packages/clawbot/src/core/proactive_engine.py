@@ -137,6 +137,8 @@ class ProactiveEngine:
         """
         # 0. 频率限制
         async with self._lock:
+            # 定期清理过期记录，防止内存无限增长
+            self._cleanup_old_entries()
             if self._is_rate_limited(user_id):
                 logger.debug(f"主动通知频率限制: user={user_id}")
                 return None
