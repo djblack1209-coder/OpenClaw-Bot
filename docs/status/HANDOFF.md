@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-04-18] 全方位审计 v3.0 — R2 后端核心引擎审计完成
+
+### 本次完成了什么
+1. **R2 后端核心引擎审计**: 46 个条目全部审查（28 通过 / 14 修复 / 5 技术债）
+2. **关键修复**:
+   - rpc.py NameError (HI-NEW-01)
+   - WebSocket 多客户端丢消息+初始状态无保护 (HI-NEW-02/03)
+   - 5个API路由安全与设计修复（conversation/trading/omega/evolution/newapi）
+   - proactive_listeners 5处 await sync subscribe（5个事件监听器静默失败）
+   - brain.py 密钥泄露防护 + proactive_engine 内存泄漏修复
+   - litellm_router iflow key SHA256 hash + trading_pipeline 静默异常修复
+   - pydantic_agents iflow key 模块级固化→property 实时读取
+   - 前端 conversationService/api 同步改为 JSON body
+3. **技术债登记**: HI-525~528（JSON配置漂移/59个静默异常/8个幽灵task/无DB备份）
+
+### 未完成的工作
+- **R3-R11**: 9 轮审计待执行（约 380 个条目）
+- **R3 下一轮**: Telegram Bot 命令层（92+命令+14回调+NLP触发，~45条目）
+
+### 需要注意的坑
+- pytest 基线: 1035 passed / 213 failed / 2 skipped / 22 errors（忽略3个collection-error文件）
+- test_ai_assistant_features.py 也是 collection error（litellm 未安装），可考虑加到忽略列表
+- R8 有 3 个风控 Bug（HI-522/523/524）影响交易安全，等到 R8 时处理
+
+### 当前系统状态
+- Git: 干净，所有修复已提交
+- 审计进度: R1 ✅ / R2 ✅ / R3-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动读取 AUDIT_PLAN.md 定位到 R3）
+
+---
+
 ## [2026-04-18] 全方位审计 v3.0 — R1 基础设施审计完成
 
 ### 本次完成了什么
