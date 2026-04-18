@@ -12,6 +12,42 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R8 投资交易系统深度审计（40 条目 / 4 修复 / 10 技术债）
+> 领域: `trading`, `backend`
+> 影响模块: `broker_bridge`, `trading_pipeline`, `auto_trader`, `ai_team_voter`, `risk_manager`, `position_monitor`
+> 关联问题: R8 HI-567~576
+
+### R8 投资交易系统深度审计 (40 条目 / 4 修复)
+1. **IBKR connect() 死锁修复 (HI-567a)**: asyncio.Lock 不可重入，Gateway 启动后递归调用 connect() 导致死锁 → 消除递归，在锁内直接重试
+2. **DecisionValidator fail-closed (HI-568a)**: 决策验证异常时放行交易(fail-open) → 改为拒绝交易(fail-closed)
+3. **AutoTrader 风控绕过修复 (HI-569a)**: 风控计算失败时用 20% 仓位 fallback 绕过 → 改为跳过该候选
+4. **AI 投票异常弃权 (HI-570a)**: bot 抛异常时假 HOLD 票计入共识统计 → 设置 abstained=True
+
+### 审计通过项 (26 项)
+- 风控 Validator 链架构: 11 个独立 Validator + 可插拔设计 + fail-fast (优秀)
+- VaR/CVaR/Sortino/Calmar 风险度量集成
+- 阶梯式熔断(3 级)+ 凯利公式仓位 + 板块集中度检查
+- IBKR 连接管理 + 指数退避 + 白名单安全
+- AI 投票超时 120s + 弃权机制 + 否决逻辑
+- 策略引擎 8 策略 + QuantStats 回测 + 信号预测回验
+- 持仓监控 + 观察列表 + 收益报告 + 大盘监控
+- 模拟 vs 实盘安全阀 + 多账户隔离
+
+### 技术债 (10 项 — 登记 HEALTH.md)
+- IBKR 预算 read-modify-write 非原子 / market_value 字段名误导
+- IBKR 失败静默降级模拟盘(幽灵持仓) / 时间止损 datetime 混合
+- 做空止损预警缺失 / confirm_proposal 不计日交易数
+- reset_budget 硬编码 $2000 / 恢复持仓 entry_time 可能丢失
+- /ibuy /isell 绕过 Pipeline / invest_tools datetime 混合
+
+### 文件变更
+- `packages/clawbot/src/broker_bridge.py` — 消除 connect() 递归死锁
+- `packages/clawbot/src/trading_pipeline.py` — DecisionValidator 异常时 fail-closed
+- `packages/clawbot/src/auto_trader.py` — 风控失败跳过候选而非绕过
+- `packages/clawbot/src/ai_team_voter.py` — 异常票标记 abstained=True
+
+---
+
 ## 2026-04-19 — R7 macOS 业务页面审计（40 条目 / 6 修复 / 20 技术债）
 > 领域: `frontend`
 > 影响模块: `OrderBook`, `DepthChart`, `KlineChart`, `Money`, `Memory`
