@@ -387,7 +387,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       {/* macOS draggable title bar area */}
       <div className="h-12 flex-shrink-0" data-tauri-drag-region="" />
 
-      {/* Progress bar */}
+      {/* Progress bar + 跳过按钮 */}
       <div className="relative z-10 px-8 mb-6">
         <div className="max-w-lg mx-auto flex items-center gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
@@ -400,6 +400,16 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               />
             </div>
           ))}
+          {/* 跳过引导按钮：所有步骤（除完成页）都可以跳过 */}
+          {step < TOTAL_STEPS - 1 && (
+            <button
+              onClick={handleFinish}
+              className="ml-2 text-xs text-gray-500 hover:text-gray-300 transition-colors whitespace-nowrap"
+              aria-label="跳过引导"
+            >
+              跳过
+            </button>
+          )}
         </div>
       </div>
 
