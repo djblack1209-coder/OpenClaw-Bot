@@ -353,10 +353,23 @@ export const CLAWBOT_WS_URL = `ws://${CLAWBOT_API_HOST}:${import.meta.env.VITE_A
 const CLAWBOT_API_TOKEN = import.meta.env.VITE_CLAWBOT_API_TOKEN || '';
 const CLAWBOT_API_BASE = `http://${CLAWBOT_API_HOST}:${import.meta.env.VITE_API_PORT || '18790'}`;
 
+// ── 默认请求超时（毫秒） ──
+const DEFAULT_TIMEOUT_MS = 30_000; // 30 秒，普通 API 请求
+/** AI 分析等长时间操作使用的超时（120秒），供调用方传入 timeoutMs 参数 */
+export const LONG_TIMEOUT_MS = 120_000;
+
 /**
- * 带认证的 fetch 封装 — 浏览器降级模式下自动附加 X-API-Token
+ * 带认证+超时的 fetch 封装 — 自动附加 X-API-Token + AbortController 超时控制
+ *
+ * @param path  API 路径（如 /api/v1/system/status）
+ * @param init  fetch 选项
+ * @param timeoutMs  超时时间（毫秒），默认 30 秒。传 0 表示不限时
  */
-export async function clawbotFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function clawbotFetch(
+  path: string,
+  init?: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (CLAWBOT_API_TOKEN) {
     headers.set('X-API-Token', CLAWBOT_API_TOKEN);
@@ -364,6 +377,29 @@ export async function clawbotFetch(path: string, init?: RequestInit): Promise<Re
   if (!headers.has('Content-Type') && init?.body) {
     headers.set('Content-Type', 'application/json');
   }
+
+  // 超时控制：用 AbortController 实现，不影响已有的 signal
+  if (timeoutMs > 0 && !init?.signal) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${CLAWBOT_API_BASE}${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      return resp;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`请求超时（${timeoutMs / 1000}秒）: ${path}`);
+      }
+      throw err;
+    }
+  }
+
+  // 调用方已提供 signal 或不限时 — 直接透传
   return fetch(`${CLAWBOT_API_BASE}${path}`, { ...init, headers });
 }
 

@@ -12,31 +12,26 @@
 
 ## 最近更新（2026-04）
 
-## 2026-04-19 — R3 Bot 命令层审计 + R4 Bot 业务场景审计
-> 领域: `backend`, `docs`
-> 影响模块: `callback_mixin`, `help_mixin`, `workflow_mixin`, `COMMAND_REGISTRY.md`
-> 关联问题: R3 审计 HI-529~534, R4 审计 HI-535~542
+## 2026-04-19 — R3+R4+R5 三轮审计（120 条目 / 5 修复 / 19 技术债）
+> 领域: `backend`, `frontend`, `docs`
+> 影响模块: `callback_mixin`, `help_mixin`, `workflow_mixin`, `config.rs`, `tauri-core.ts`, `COMMAND_REGISTRY.md`
+> 关联问题: R3 HI-529~534, R4 HI-535~542, R5 HI-543~549
 
-### R3 Bot 命令层审计 (45 条目 / 3 修复 / 3 技术债)
-
-**修复 (3项)**:
-1. **回调→命令崩溃修复 (HI-532)**: `handle_card_action_callback` 5 处 cmd_ 调用无 try/except，新增 `_safe_cmd_from_callback()` 统一保护
-2. **帮助文本人数修正 (HI-533)**: /help 中 /invest "5 位 AI" → "6 位 AI"
+### R3 Bot 命令层审计 (45 条目 / 3 修复)
+1. **回调→命令崩溃修复 (HI-532)**: 新增 `_safe_cmd_from_callback()` 保护 5 处调用
+2. **帮助文本修正 (HI-533)**: /invest "5 位 AI" → "6 位 AI"
 3. **返回类型一致性 (HI-534)**: `_pick_workflow_bot()` 兜底返回字符串→元组
+4. **COMMAND_REGISTRY.md 9 项文档修正**
 
-**文档修复 (9项)**: COMMAND_REGISTRY.md handler名/行号/缺失回调/编号/MIME类型/pattern全部修正
+### R4 Bot 业务场景审计 (40 条目 / 32 通过 / 8 技术债)
+- 闲鱼 8/8 全通过 + Kiro Gateway 4/4 全通过 + 投资全链路完整
+- 技术债: AI 投票独立追踪/yfinance 缓存降级/freqtrade 死代码/社媒适配器模式/双草稿系统/双价格引擎/ticker 误识别/通知无 flush
 
-### R4 Bot 业务场景审计 (40 条目 / 32 通过 / 1 设计问题 / 7 技术债)
-
-**审计范围**: 投资(8) + 社媒(8) + 闲鱼(8) + 生活自动化(8) + Kiro Gateway(4) + 通知系统(4)
-
-**亮点**:
-- 闲鱼客服 8/8 全部通过（底价防护/限速/心跳/熔断器/利润核算全部健壮）
-- Kiro Gateway 4/4 全部通过（CORS 限制/10MB 限制/OpenAI+Anthropic 兼容）
-- 投资链路完整：NLP→ticker解析→技术分析→AI投票(6模型)→确认→执行
-- 通知系统 P0 重试+指数退避+微信推送全部正常
-
-**技术债登记 (8项)**: HI-535~542
+### R5 macOS 桌面端架构审计 (35 条目 / 2 修复)
+5. **Rust panic 修复 (HI-548)**: `generate_token()` 的 `.expect()` → `if let Err` 降级方案
+6. **前端超时修复 (HI-549)**: `clawbotFetch()` 新增 30s AbortController 超时 + `LONG_TIMEOUT_MS` 导出
+- Tauri 2 配置 8/8 全通过（CSP/DevTools/权限模型/Vite 配置）
+- 97 个 IPC 命令 + 23 页面路由 + 3 层 ErrorBoundary 架构优秀
 
 ### 文件变更
 - `packages/clawbot/src/bot/cmd_basic/callback_mixin.py` — 新增 `_safe_cmd_from_callback()` + 保护所有回调→命令调用
