@@ -864,8 +864,15 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             remaining,
         )
 
-    def reset_budget(self, new_budget: float = 2000.0):
-        """重置预算"""
+    def reset_budget(self, new_budget: float = 0.0):
+        """重置预算（total_spent 归零）
+
+        Args:
+            new_budget: 新预算上限。为 0 时从环境变量 IBKR_BUDGET 读取，
+                        环境变量也未设置则默认 2000 美元。
+        """
+        if new_budget <= 0:
+            new_budget = float(_os.getenv("IBKR_BUDGET", "2000"))
         self.budget = new_budget
         self.total_spent = 0.0
         self._save_budget_state()

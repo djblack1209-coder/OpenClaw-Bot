@@ -28,7 +28,7 @@ async def _daily_risk_reset():
     try:
         from src.broker_selector import ibkr as _ibkr
 
-        _ibkr.reset_budget()
+        _ibkr.reset_budget(_ibkr.budget)  # 保留当前预算额度，仅重置 total_spent
         logger.info("[Scheduler] IBKR预算已重置")
     except Exception as e:
         logger.warning("[Scheduler] IBKR预算重置失败: %s", e)

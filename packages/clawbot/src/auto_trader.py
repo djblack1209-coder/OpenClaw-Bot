@@ -882,7 +882,15 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             return None
         proposal = self._proposals.pop(index)
         if self.pipeline:
-            return await self.pipeline.execute_proposal(proposal)
+            result = await self.pipeline.execute_proposal(proposal)
+            # HI-572: 手动确认也要计入日交易数
+            if result and result.get("status") in ("executed", "simulated"):
+                self._today_trades += 1
+                logger.info(
+                    "[AutoTrader] confirm_proposal 交易计数+1，今日: %d/%d笔",
+                    self._today_trades, self.max_trades_per_day,
+                )
+            return result
         return None
 
     def cancel_proposals(self) -> int:

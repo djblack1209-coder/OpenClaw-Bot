@@ -240,15 +240,34 @@ class TradingPipeline:
                     )
                 result["steps"].append({"order": order_result})
                 # IBKR返回error时回退到模拟组合
-                if order_result and "error" in order_result and self.portfolio:
-                    logger.warning("[Pipeline] IBKR失败(%s)，回退到模拟组合",
-                                   order_result.get("error", ""))
-                    result["steps"].append({"broker_fallback": "sim"})
-                    order_result = None  # 清除错误，走下面的模拟逻辑
+                if order_result and "error" in order_result:
+                    if self.portfolio:
+                        logger.warning(
+                            "[Pipeline] IBKR失败(%s)，回退到模拟组合（注意：后续为模拟执行，不代表真实持仓）",
+                            order_result.get("error", ""),
+                        )
+                        result["steps"].append({"broker_fallback": "sim"})
+                        order_result = None  # 清除错误，走下面的模拟逻辑
+                    else:
+                        # 无模拟组合可用，直接返回错误
+                        logger.error(
+                            "[Pipeline] IBKR失败且无模拟组合，交易中止: %s",
+                            order_result.get("error", ""),
+                        )
+                        result["status"] = "error"
+                        result["reason"] = "IBKR下单失败且无模拟组合: " + order_result.get("error", "")
+                        return result
             except Exception as e:
-                logger.warning("[Pipeline] IBKR异常(%s)，回退到模拟组合", e)
-                result["steps"].append({"broker_error": str(e)})
-                order_result = None  # 走下面的模拟逻辑
+                if self.portfolio:
+                    logger.warning("[Pipeline] IBKR异常(%s)，回退到模拟组合（注意：后续为模拟执行）", e)
+                    result["steps"].append({"broker_error": str(e)})
+                    order_result = None  # 走下面的模拟逻辑
+                else:
+                    # 无模拟组合可用，直接返回错误
+                    logger.error("[Pipeline] IBKR异常且无模拟组合，交易中止: %s", e)
+                    result["status"] = "error"
+                    result["reason"] = "IBKR下单异常且无模拟组合: %s" % e
+                    return result
 
         if order_result is None and self.portfolio:
             if proposal.action == "BUY":
@@ -422,7 +441,16 @@ class TradingPipeline:
             )
             return result
 
-        result["status"] = "executed"
+        # HI-569: 模拟降级交易使用 "simulated" 状态，避免 ghost position
+        if is_simulated_fallback:
+            result["status"] = "simulated"
+            result["simulated"] = True
+            logger.warning(
+                "[Pipeline] 模拟执行(非真实持仓): %s %s x%s @ $%.2f — IBKR下单失败后降级",
+                proposal.action, proposal.symbol, actual_qty, fill_price,
+            )
+        else:
+            result["status"] = "executed"
         result["quantity"] = actual_qty
         result["entry_price"] = fill_price  # P0#3: 返回实际成交价
 

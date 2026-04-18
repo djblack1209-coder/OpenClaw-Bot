@@ -46,58 +46,112 @@ _ILINK_BASE = "https://ilinkai.weixin.qq.com"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # → OpenClaw Bot/
 _ACCOUNTS_DIR = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts"
 
-# 缓存
-_cached_token: Optional[str] = None
-_cached_user_id: Optional[str] = None
-_cached_context_token: Optional[str] = None
-_context_token_ts: float = 0
-_warned_not_configured = False
+
+class _CredentialStore:
+    """微信凭证安全存储 — 防止凭证作为模块级全局变量被随意访问
+
+    使用 __slots__ 限制属性访问，__repr__ 屏蔽敏感值，
+    避免 token 在日志、调试器或 dir() 中意外泄露。
+    """
+    __slots__ = ("_token", "_user_id", "_context_token", "_context_token_ts", "_warned")
+
+    def __init__(self) -> None:
+        self._token: Optional[str] = None
+        self._user_id: Optional[str] = None
+        self._context_token: Optional[str] = None
+        self._context_token_ts: float = 0
+        self._warned: bool = False
+
+    def __repr__(self) -> str:
+        # 屏蔽敏感值，防止在日志或调试中意外泄露
+        has_token = "set" if self._token else "unset"
+        has_user = "set" if self._user_id else "unset"
+        return f"<_CredentialStore token={has_token} user_id={has_user}>"
+
+    @property
+    def token(self) -> Optional[str]:
+        self._ensure_loaded()
+        return self._token
+
+    @property
+    def user_id(self) -> Optional[str]:
+        self._ensure_loaded()
+        return self._user_id
+
+    @property
+    def context_token(self) -> Optional[str]:
+        return self._context_token
+
+    @context_token.setter
+    def context_token(self, value: Optional[str]) -> None:
+        self._context_token = value
+
+    @property
+    def context_token_ts(self) -> float:
+        return self._context_token_ts
+
+    @context_token_ts.setter
+    def context_token_ts(self, value: float) -> None:
+        self._context_token_ts = value
+
+    @property
+    def warned(self) -> bool:
+        return self._warned
+
+    @warned.setter
+    def warned(self, value: bool) -> None:
+        self._warned = value
+
+    def _ensure_loaded(self) -> None:
+        """懒加载凭证 — 首次访问时才从文件读取"""
+        if self._token and self._user_id:
+            return
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """从本地凭证文件读取 Bot Token 和用户 ID"""
+        try:
+            accounts_file = _ACCOUNTS_DIR.parent / "accounts.json"
+            if not accounts_file.exists():
+                alt = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts.json"
+                if alt.exists():
+                    accounts_file = alt
+
+            if not accounts_file.exists():
+                return
+
+            with open(accounts_file, "r") as f:
+                account_ids = json.load(f)
+
+            if not account_ids:
+                return
+
+            account_id = account_ids[0] if isinstance(account_ids, list) else None
+            if not account_id:
+                return
+
+            cred_file = _ACCOUNTS_DIR / f"{account_id}.json"
+            if not cred_file.exists():
+                return
+
+            with open(cred_file, "r") as f:
+                cred = json.load(f)
+
+            self._token = cred.get("token", "")
+            self._user_id = cred.get("userId", "")
+            logger.debug("[WeChatBridge] 凭证已加载: user=%s...", self._user_id[:20] if self._user_id else "")
+
+        except Exception as e:
+            logger.debug("[WeChatBridge] 凭证读取失败: %s", e)
+
+    def clear_context(self) -> None:
+        """清除 context_token 缓存（token 过期时调用）"""
+        self._context_token = None
+        self._context_token_ts = 0
 
 
-def _load_credentials() -> tuple[Optional[str], Optional[str]]:
-    """从本地文件读取 Bot Token 和用户 ID。"""
-    global _cached_token, _cached_user_id
-    if _cached_token and _cached_user_id:
-        return _cached_token, _cached_user_id
-
-    try:
-        # 读取 accounts.json 获取账号 ID
-        accounts_file = _ACCOUNTS_DIR.parent / "accounts.json"
-        if not accounts_file.exists():
-            # 尝试 .openclaw 根目录
-            alt = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts.json"
-            if alt.exists():
-                accounts_file = alt
-        
-        if not accounts_file.exists():
-            return None, None
-
-        with open(accounts_file, "r") as f:
-            account_ids = json.load(f)
-
-        if not account_ids:
-            return None, None
-
-        account_id = account_ids[0] if isinstance(account_ids, list) else None
-        if not account_id:
-            return None, None
-
-        # 读取账号凭证
-        cred_file = _ACCOUNTS_DIR / f"{account_id}.json"
-        if not cred_file.exists():
-            return None, None
-
-        with open(cred_file, "r") as f:
-            cred = json.load(f)
-
-        _cached_token = cred.get("token", "")
-        _cached_user_id = cred.get("userId", "")
-        logger.debug(f"[WeChatBridge] 凭证已加载: user={_cached_user_id[:20]}...")
-        return _cached_token, _cached_user_id
-
-    except Exception as e:
-        logger.debug(f"[WeChatBridge] 凭证读取失败: {e}")
-        return None, None
+# 模块级单例 — 通过属性访问凭证，不直接暴露 token 字符串
+_creds = _CredentialStore()
 
 
 def _random_wechat_uin() -> str:
@@ -123,16 +177,14 @@ def is_wechat_notify_enabled() -> bool:
     """检查微信通知是否已启用并有凭证。"""
     if not _WECHAT_ENABLED:
         return False
-    token, user_id = _load_credentials()
-    return bool(token and user_id)
+    return bool(_creds.token and _creds.user_id)
 
 
 async def _get_context_token(token: str, user_id: str) -> Optional[str]:
     """通过 getconfig API 获取 contextToken（30 分钟 TTL 自动刷新）。"""
-    global _cached_context_token, _context_token_ts
     import time
-    if _cached_context_token and (time.time() - _context_token_ts) < 1800:
-        return _cached_context_token
+    if _creds.context_token and (time.time() - _creds.context_token_ts) < 1800:
+        return _creds.context_token
 
     try:
         body = json.dumps({
@@ -151,8 +203,8 @@ async def _get_context_token(token: str, user_id: str) -> Optional[str]:
                 data = resp.json()
                 ct = data.get("context_token", "")
                 if ct:
-                    _cached_context_token = ct
-                    _context_token_ts = time.time()
+                    _creds.context_token = ct
+                    _creds.context_token_ts = time.time()
                     return ct
     except Exception as e:
         logger.debug(f"[WeChatBridge] getconfig 失败: {e}")
@@ -169,21 +221,19 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     Returns:
         True 发送成功, False 发送失败
     """
-    global _warned_not_configured, _cached_context_token
-
     if not _WECHAT_ENABLED:
         return False
 
-    token, default_user = _load_credentials()
-    target = user_id or default_user
+    token = _creds.token
+    target = user_id or _creds.user_id
 
     if not token or not target:
-        if not _warned_not_configured:
+        if not _creds.warned:
             logger.info(
                 "[WeChatBridge] 微信凭证未找到 — "
                 "请先执行 openclaw channels login --channel openclaw-weixin 扫码登录"
             )
-            _warned_not_configured = True
+            _creds.warned = True
         return False
 
     text = text[:TG_SAFE_LENGTH]
@@ -229,13 +279,11 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
                 return True
             # token 过期，清缓存重试
             if resp.status_code in (401, 403):
-                _cached_context_token = None
-                _context_token_ts = 0
+                _creds.clear_context()
                 context_token = await _get_context_token(token, target)
                 continue
             logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
-            _cached_context_token = None
-            _context_token_ts = 0
+            _creds.clear_context()
         except Exception as e:
             logger.debug("[微信桥接] 发送失败: %s", e)
     return False
