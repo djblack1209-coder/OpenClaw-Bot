@@ -12,6 +12,45 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-18 — 技术债清理第3批: 死代码+数据降级+交易安全+闲鱼+通知系统（10项）
+> 领域: `backend`, `trading`, `xianyu`, `infra`
+> 影响模块: `help_mixin`, `workflow_mixin`, `invest_tools`, `position_monitor`, `broker_bridge`, `xianyu_live`, `xianyu_context`, `notifications`, `event_bus`, `freqtrade_bridge`
+> 关联问题: HI-531, HI-530, HI-536, HI-571, HI-568, HI-579, HI-542, HI-581, HI-537, HI-539
+
+### 功能修复 (2项)
+1. **HI-531: /help 菜单命令覆盖补全**: 29 个已注册命令未出现在 /help 分类菜单中，已按功能归类补全（/tts, /novel, /icancel, /evolution, /keyhealth, /xianyu_style, /ship, /coupon 等）
+2. **HI-571: 止损接近预警支持 SELL 方向**: `_check_proximity_alert` 从仅支持 BUY 扩展为同时支持做空(SELL)方向；`_cleanup_stale_cooldowns` 死代码激活，在每次监控循环后自动清理过期冷却记录
+
+### 死代码清理 (2项)
+3. **HI-530: workflow_mixin 精简**: 25 个方法中 23 个为未接入的链式讨论脚手架代码，文件从 461 行精简到 122 行，仅保留活跃的 `_cmd_smart_shop` 和 `_extract_json_object`
+4. **HI-537: freqtrade inject_clawbot 标记**: 添加详细注释说明此方法未在启动流程中自动调用，属于回测降级路径
+
+### 数据降级 (1项)
+5. **HI-536: yfinance stale-data fallback**: 缓存过期后 yfinance 请求失败时，返回过期缓存数据（带 `_stale=True` 标记），而非直接报错
+
+### 交易安全 (1项)
+6. **HI-568: market_value 字段澄清**: broker_bridge `get_positions()` 中 `market_value` 实际为成本基础(qty*avgCost)，添加详细注释提醒下游消费者使用 `quantity * current_price` 计算真实市值
+
+### 闲鱼修复 (2项)
+7. **HI-579: 底价自动接受上限优化**: 从 `floor*10` 固定倍数改为优先使用商品标价(soldPrice)作为上限，兜底保留 10 倍底价
+8. **HI-581: License 发送安全加固**: 通过 `ctx.get_latest_chat_id()` 封装层查询替代直接 `_conn()` 数据库访问
+
+### 基础设施 (2项)
+9. **HI-542: 通知系统 shutdown 机制**: NotificationManager 新增 `shutdown()` 方法（等待执行器完成 + 统计日志）；EventBus 新增 `shutdown()` 方法（清理订阅 + 统计日志）
+10. **HI-539 确认关闭**: 两套草稿系统已在 HI-585（第2批）中统一为 JSON 持久化
+
+### 文件变更
+- `src/bot/cmd_basic/help_mixin.py` — 29 个命令补入分类菜单
+- `src/bot/workflow_mixin.py` — 461→122 行，删除 23 个死方法
+- `src/invest_tools.py` — stale-data fallback + `_get_cached_quote(allow_stale)` 参数
+- `src/position_monitor.py` — SELL 方向预警 + 冷却清理激活
+- `src/broker_bridge.py` — market_value 注释澄清
+- `src/xianyu/xianyu_live.py` — 标价上限 + 封装层查询
+- `src/xianyu/xianyu_context.py` — 新增 `get_latest_chat_id()`
+- `src/notifications.py` — 新增 `shutdown()` 方法
+- `src/core/event_bus.py` — 新增 `shutdown()` 方法
+- `src/freqtrade_bridge.py` — inject_clawbot 注释补全
+
 ## 2026-04-19 — 技术债清理第2批: 稳定性+功能+数据完整性修复（11项）
 > 领域: `backend`, `trading`, `xianyu`, `ai-pool`, `social`
 > 影响模块: `litellm_router`, `xianyu_live`, `cmd_ibkr_mixin`, `position_monitor`, `invest_tools`, `nlp_ticker_map`, `drafts`, `broker_bridge`

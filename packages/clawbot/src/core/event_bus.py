@@ -323,6 +323,22 @@ class EventBus:
             for e in events[-limit:]
         ]
 
+    async def shutdown(self) -> None:
+        """优雅关闭 — 清理订阅并记录统计
+
+        在进程退出前调用，确保事件处理状态可追溯。
+        """
+        stats = self.get_stats()
+        logger.info(
+            "[EventBus] 关闭: %d 个事件已处理, %d 个订阅, %d 个历史记录",
+            stats.get("total_events", 0),
+            stats.get("subscription_count", 0),
+            stats.get("history_size", 0),
+        )
+        # 清理订阅，防止关闭后仍有 handler 被调用
+        self._subscriptions.clear()
+        self._wildcard_subs.clear()
+
 
 # ── 全局单例 ──────────────────────────────────────────────
 

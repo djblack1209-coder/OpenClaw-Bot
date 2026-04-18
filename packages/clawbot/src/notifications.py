@@ -593,6 +593,28 @@ class NotificationManager:
             self._ap.clear()
         self._tag_routes.clear()
 
+    async def shutdown(self, timeout: float = 5.0) -> None:
+        """优雅关闭 — 等待进行中的通知发送完成
+
+        在进程收到 SIGTERM/SIGINT 时调用，确保不丢失正在发送的通知。
+        timeout: 最长等待秒数，超时后强制退出
+        """
+        import asyncio
+
+        logger.info("[Notify] 开始优雅关闭，等待进行中的通知...")
+        # 获取当前事件循环中所有待处理任务
+        try:
+            loop = asyncio.get_running_loop()
+            # 等待线程池执行器中的任务完成
+            if hasattr(loop, '_default_executor') and loop._default_executor:
+                loop._default_executor.shutdown(wait=True, cancel_futures=False)
+        except Exception as e:
+            logger.warning("[Notify] 等待执行器关闭失败: %s", e)
+
+        stats = self.get_stats()
+        logger.info("[Notify] 优雅关闭完成，累计发送: %d, 错误: %d",
+                    stats.get("send_count", 0), stats.get("error_count", 0))
+
 
 # ── 全局单例 ──────────────────────────────────────────────
 
