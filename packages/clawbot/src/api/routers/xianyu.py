@@ -6,12 +6,14 @@ import time
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from ..auth import verify_api_token
 from ..error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+# 安全加固(HI-582): 路由级别也挂载 Token 认证，防止被单独挂载时缺少全局认证保护
+router = APIRouter(dependencies=[Depends(verify_api_token)])
 
 # ---------------------------------------------------------------------------
 # Module-level session storage
@@ -119,13 +121,29 @@ async def _check_qr_status_once(
             if data.get("content", {}).get("data", {}).get("iframeRedirect"):
                 return {"status": "scanned"}  # still waiting for user verification
 
-            # Login confirmed — extract cookies
+            # Login confirmed — extract cookies and save server-side
             manager.cookies.update({k: v for k, v in resp.cookies.items()})
             cookies_str = "; ".join(f"{k}={v}" for k, v in manager.cookies.items())
+
+            # 安全加固(HI-583): cookies 仅在服务端保存，不返回给前端
+            # 防止 cookies 通过 API 响应泄露到客户端日志或前端存储
+            try:
+                import dotenv
+                env_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "..", "..", "..", "config", ".env",
+                )
+                env_path = os.path.normpath(env_path)
+                dotenv.set_key(env_path, "XIANYU_COOKIES", cookies_str)
+                logger.info("闲鱼 cookies 已保存到 .env 文件")
+            except Exception:
+                logger.exception("保存闲鱼 cookies 到 .env 失败，尝试写入环境变量")
+                os.environ["XIANYU_COOKIES"] = cookies_str
+
             return {
                 "status": "confirmed",
                 "success": True,
-                "cookies_str": cookies_str,
+                # cookies 不返回给前端，已在服务端安全存储
             }
 
         elif qr_status == "SCANED":
