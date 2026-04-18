@@ -34,42 +34,46 @@ class TradingCommandsMixin:
     @with_typing
     async def cmd_autotrader(self, update, context):
         """/autotrader [start|stop|status|auto|manual|cycle]"""
-        trader = get_auto_trader()
-        if not trader:
-            await update.message.reply_text("⚠️ 严总，自动交易系统还没准备好，请稍等")
-            return
-        args = context.args
-        sub = args[0].lower() if args else "status"
-        if sub == "start":
-            await trader.start()
-            await update.message.reply_text("AutoTrader 已启动 (扫描间隔%d分钟)" % trader.scan_interval)
-        elif sub == "stop":
-            await trader.stop()
-            await update.message.reply_text("AutoTrader 已停止")
-        elif sub == "auto":
-            trader.set_auto_mode(True)
-            await update.message.reply_text("已切换为全自动模式 - 交易将自动执行，无需确认")
-        elif sub == "manual":
-            trader.set_auto_mode(False)
-            await update.message.reply_text("已切换为手动确认模式 - 交易需要确认后执行")
-        elif sub == "cycle":
-            await update.message.reply_text("手动触发交易循环...")
-            result = await trader.run_cycle_once()
-            await update.message.reply_text(
-                "交易循环完成\n\n扫描信号: %d\n候选标的: %d\n交易提案: %d\n已执行: %d\n被拒绝: %d"
-                % (result["scanned"], result["candidates"], result["proposals"], result["executed"], result["rejected"])
-            )
-        elif sub == "confirm":
-            result = await trader.confirm_proposal()
-            if result:
-                await update.message.reply_text("提案已执行: %s" % result.get("status", "unknown"))
+        try:
+            trader = get_auto_trader()
+            if not trader:
+                await update.message.reply_text("⚠️ 严总，自动交易系统还没准备好，请稍等")
+                return
+            args = context.args
+            sub = args[0].lower() if args else "status"
+            if sub == "start":
+                await trader.start()
+                await update.message.reply_text("AutoTrader 已启动 (扫描间隔%d分钟)" % trader.scan_interval)
+            elif sub == "stop":
+                await trader.stop()
+                await update.message.reply_text("AutoTrader 已停止")
+            elif sub == "auto":
+                trader.set_auto_mode(True)
+                await update.message.reply_text("已切换为全自动模式 - 交易将自动执行，无需确认")
+            elif sub == "manual":
+                trader.set_auto_mode(False)
+                await update.message.reply_text("已切换为手动确认模式 - 交易需要确认后执行")
+            elif sub == "cycle":
+                await update.message.reply_text("手动触发交易循环...")
+                result = await trader.run_cycle_once()
+                await update.message.reply_text(
+                    "交易循环完成\n\n扫描信号: %d\n候选标的: %d\n交易提案: %d\n已执行: %d\n被拒绝: %d"
+                    % (result["scanned"], result["candidates"], result["proposals"], result["executed"], result["rejected"])
+                )
+            elif sub == "confirm":
+                result = await trader.confirm_proposal()
+                if result:
+                    await update.message.reply_text("提案已执行: %s" % result.get("status", "unknown"))
+                else:
+                    await update.message.reply_text("无待确认提案")
+            elif sub == "cancel":
+                count = trader.cancel_proposals()
+                await update.message.reply_text("已取消 %d 个待确认提案" % count)
             else:
-                await update.message.reply_text("无待确认提案")
-        elif sub == "cancel":
-            count = trader.cancel_proposals()
-            await update.message.reply_text("已取消 %d 个待确认提案" % count)
-        else:
-            await update.message.reply_text(trader.format_status())
+                await update.message.reply_text(trader.format_status())
+        except Exception as e:
+            logger.error("cmd_autotrader 异常: %s", e, exc_info=True)
+            await update.message.reply_text(f"⚠️ 严总，自动交易操作出了点问题: {e}")
 
     @requires_auth
     @with_typing

@@ -288,6 +288,12 @@ class CallbackMixin:
             if idx >= len(trades):
                 return
             t = trades[idx]
+            # 防重复执行: 检查该笔交易是否已被执行过
+            executed_set = pending.setdefault("_executed_indices", set())
+            if idx in executed_set:
+                await query.message.reply_text("⚠️ 该笔交易已执行过，不可重复操作。")
+                return
+            executed_set.add(idx)
             try:
                 pipeline = get_trading_pipeline()
                 if pipeline:

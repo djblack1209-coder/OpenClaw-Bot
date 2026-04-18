@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class XianyuCommandsMixin:
+    @requires_auth
     async def cmd_xianyu(self, update, context):
         """闲鱼 AI 客服远程控制"""
         args = context.args or []

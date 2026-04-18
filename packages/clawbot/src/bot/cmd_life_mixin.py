@@ -666,6 +666,17 @@ class LifeCommandsMixin:
         /pricewatch list               — 查看我的监控列表
         /pricewatch remove 3           — 删除第3个监控
         """
+        try:
+            return await self._cmd_pricewatch_inner(update, context)
+        except Exception as e:
+            logger.exception("[PriceWatch] 命令执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 降价监控操作失败，请稍后重试")
+            except Exception:
+                pass
+
+    async def _cmd_pricewatch_inner(self, update, context):
+        """降价提醒 — 内部实现"""
         from src.execution.life_automation import (
             add_price_watch,
             list_price_watches,

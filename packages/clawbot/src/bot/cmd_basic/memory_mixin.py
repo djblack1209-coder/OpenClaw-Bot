@@ -20,6 +20,17 @@ class _MemoryMixin:
     @with_typing
     async def cmd_memory(self, update, context):
         """查看/管理 Bot 记住的关于你的信息"""
+        try:
+            return await self._cmd_memory_inner(update, context)
+        except Exception as e:
+            logger.exception("[Memory] 命令执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 记忆管理操作失败，请稍后重试")
+            except Exception:
+                pass
+
+    async def _cmd_memory_inner(self, update, context):
+        """记忆管理 — 内部实现"""
         from src.smart_memory import get_smart_memory
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
@@ -129,6 +140,10 @@ class _MemoryMixin:
 
         if action == "mem_clear":
             user_id = int(parts[1])
+            # 安全校验: 只允许操作自己的记忆，防止跨用户删除
+            if query.from_user.id != user_id:
+                logger.warning("跨用户记忆操作被拒绝: from=%s target=%s", query.from_user.id, user_id)
+                return
             sm = get_smart_memory()
             if sm:
                 # 删除该用户的所有自动记忆
@@ -144,6 +159,9 @@ class _MemoryMixin:
 
         elif action == "mem_page":
             user_id = int(parts[1])
+            # 安全校验: 只允许查看自己的记忆
+            if query.from_user.id != user_id:
+                return
             page = int(parts[2])
             sm = get_smart_memory()
             if not sm:
