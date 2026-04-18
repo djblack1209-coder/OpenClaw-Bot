@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R9 闲鱼+社媒+工具链审计: 4修复 + 14技术债)
+> 最后更新: 2026-04-19 (R10+R11 部署运维+端到端审计: 0修复 + 8技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -211,6 +211,13 @@
 | HI-587 | `backend` | `wechat_coupon.py:45` | SECURITY: verify_ssl=False 全局禁用 SSL 验证，中间人攻击风险 (R9.30) | 2026-04-19 |
 | HI-588 | `backend` | `wechat_coupon.py:68` | SECURITY: Token 文件 /tmp/wechat_coupon_token.txt 全局可读写，应使用 ~/.openclaw/ + 0o600 权限 (R9.30) | 2026-04-19 |
 | HI-589 | `backend` | `wechat_coupon.py:324` | SECURITY: _set_macos_proxy() 修改系统级网络代理，影响所有应用流量，代理期间可截获敏感数据 (R9.29) | 2026-04-19 |
+| HI-590 | `infra` | `tools/launchagents/ai.openclaw.gateway.plist` | SECURITY: OPENCLAW_GATEWAY_TOKEN 硬编码弱 token "openclaw-manager-local-token"，gateway-launcher.sh 也重复硬编码 (R10.23) | 2026-04-19 |
+| HI-591 | `infra` | `tools/launchagents/ai.openclaw.heartbeat-sender.plist` | SECURITY: VPS IP 101.43.41.96 + SSH 端口 29222 硬编码在 Git 跟踪的 plist 中；StrictHostKeyChecking=accept-new 有 MITM 风险 (R10.19) | 2026-04-19 |
+| HI-592 | `infra` | `tools/newsyslog.d/openclaw.conf` | CONFIG: 日志路径指向旧的 "com-clawbot-*.log"，但 plist 已迁移到 ~/Library/Logs/OpenClaw/，newsyslog 轮转完全无效 (R10.25) | 2026-04-19 |
+| HI-593 | `infra` | `tools/launchagents/ai.openclaw.browser-bootstrap.plist` | CONFIG: 未使用 /bin/bash -c exec 模式，macOS 26+ Sandbox 会拦截执行(exit 78)；日志路径与其他 plist 不统一 (R10.23) | 2026-04-19 |
+| HI-594 | `deploy` | `docker-compose.goofish.yml + kiro-gateway/docker-compose.yml` | CONFIG: 两个服务都绑定 127.0.0.1:8000，同时运行会端口冲突；goofish 用 latest 标签无版本锁定 (R10.09) | 2026-04-19 |
+| HI-595 | `docs` | `docs/guides/DR_GUIDE.md` | MISSING: 灾难恢复指南不存在——6个 SQLite 数据库、Redis 数据、对话历史等关键数据无备份/恢复文档 (R10.29) | 2026-04-19 |
+| HI-596 | `docs` | `MODULE_REGISTRY + DEPENDENCY_MAP` | CONFIG: MODULE_REGISTRY 声称 254 模块 vs 实际 256+；DEPENDENCY_MAP 声称 80+ vs requirements.txt 288 行，存在偏差 (R11.01) | 2026-04-19 |
 
 ### 🔵 低优先
 
