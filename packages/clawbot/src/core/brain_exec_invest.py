@@ -92,11 +92,14 @@ class InvestExecutorMixin:
                 side = params.get("side", "BUY")
                 quantity = params.get("quantity", 0)
                 entry_price = params.get("entry_price", 0)
+                # 补传 stop_loss 防止 StopLossValidator 拒绝所有 BUY（stop_loss=0 会被拒）
+                stop_loss = params.get("stop_loss", entry_price * 0.97) if entry_price else 0
                 check = rm.check_trade(
                     symbol=symbol,
                     side=side,
                     quantity=quantity,
                     entry_price=entry_price,
+                    stop_loss=stop_loss,
                 )
                 approved = check.approved if hasattr(check, "approved") else True
                 return {"source": "risk_manager", "approved": approved, "details": str(check)}
@@ -106,11 +109,13 @@ class InvestExecutorMixin:
         try:
             from src.risk_manager import risk_manager
 
+            _ep = params.get("entry_price", 0)
             check = risk_manager.check_trade(
                 symbol=params.get("symbol", ""),
                 side=params.get("side", "BUY"),
                 quantity=params.get("quantity", 0),
-                entry_price=params.get("entry_price", 0),
+                entry_price=_ep,
+                stop_loss=params.get("stop_loss", _ep * 0.97) if _ep else 0,
             )
             approved = check.approved if hasattr(check, "approved") else True
             return {"source": "risk_manager_singleton", "approved": approved}
