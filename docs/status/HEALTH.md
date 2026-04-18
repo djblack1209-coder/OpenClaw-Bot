@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (技术债清理第3批: 10项死代码+数据降级+交易安全+闲鱼+通知修复)
+> 最后更新: 2026-04-18 (技术债清理第4批: 静默异常65处+命令错误处理39函数+LLM配置同步+备份补全+DR文档)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -67,8 +67,8 @@
 | 前端 | 🟢 修复 | 0 TS错误, Tauri shell权限收窄, CSP启用, 状态同步, 内存泄漏修复, JSON.parse 崩溃防护 + 定时器泄漏修复 + 250 行重复代码消除 + Mock 数据替换为 API 调用 + R25: 14个any类型替换为强类型接口+1个未使用导入移除 + P4: 确认对话框(替换browser native)+aria-labels(31个)+Toaster挂载+表单验证(5组件)+空状态(Channels+Plugins)+PageErrorBoundary(14页面)+Settings未保存变更警告 + Dev页面IPC修复+资源仪表盘实现+Channels完整CRUD+CommandPalette真实响应+APIGateway自定义确认框+postcss嵌套修复 + **进化引擎数据映射修复(扁平数组兼容+字段名对齐)+微信渠道配置面板补全+API网关诊断指南** + ControlCenter 773行拆分为8子组件(主文件123行) + CSO审计: sucrase未使用依赖移除+PluginCard forwardRef警告修复+App.tsx注释修正 |
 | 部署安全 | 🟢 加固 | VPS systemd加固(non-root+沙箱) + .env排除 + LaunchAgent改进 + deploy_server 默认绑定 127.0.0.1 + compose 资源限制 + CSO审计: Webhook签名hmac.compare_digest防时序攻击 + NewAPI容器cap_drop:ALL/no-new-privileges + .env权限600 + Docker资源调优(Redis 128M/OpenClaw 1G) + 双网络架构(公网+内网隔离) |
 | Git 仓库 | 🟢 清理 | 49K 文件从 Git 索引移除 (.venv/node_modules/browser), .gitignore 补充, R21清理24截图+2数据库+残留目录, R23: deploy_bundle_final(4文件)移出git+.gitignore补充, R25: 9101文件移出git(openclaw-npm/node_modules 6139+dist 2896+.openclaw运行时~60+.playwright-cli 2+__pycache__ 1)+.gitignore新增15+规则 |
-| 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 3个DB自动清理(每日03:00) + 9个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
-| 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR指南 + VPS rsync排除数据库 |
+| 数据完整性 | 🟢 加固 | yfinance 60s缓存+新鲜度检测 + 4个DB自动清理(每日03:00) + 11个DB自动备份(每日04:00) + 全部SQLite启用WAL模式 |
+| 灾难恢复 | 🟢 就绪 | 自动备份(7日/4周保留) + DR_GUIDE.md(4场景恢复步骤) + VPS rsync排除数据库 |
 | 通知可靠性 | 🟢 加固 | P0通知3次重试 + 关机刷新批处理 + EventBus异常日志 |
 
 ---
@@ -153,11 +153,11 @@
 | HI-522 | `trading` | `risk_manager.py` | ~~TECH_DEBT: `check_trade()` 读取 `_today_pnl/_today_trade_count` 等共享状态无锁保护~~ → **已确认修复 2026-04-19**: check_trade() 在 `_state_lock` 内刷新+快照共享状态，所有写入方法也在锁内，无竞态 | 2026-04-18 |
 | HI-523 | `trading` | `risk_manager.py` | ARCH_LIMIT: SELL 方向交易几乎不做风控检查（仅持仓验证），缺少卖空风控、止损验证等 | 2026-04-18 |
 | HI-524 | `trading` | `risk_manager.py` | ARCH_LIMIT: 新账户首笔交易时 `_today_pnl=0 / _today_trade_count=0 / positions=[]`，VaR 保护因无持仓数据而完全失效 | 2026-04-18 |
-| HI-525 | `ai-pool` | `litellm_router.py` + `config/llm_routing.json` | TECH_DEBT: JSON 配置与硬编码完全漂移 — iflow_unlimited 的 URL 和模型名不一致，需确认统一切换策略 (R2.25/R2.29) | 2026-04-18 |
-| HI-526 | `backend` | `src/` 全目录 | TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44) | 2026-04-18 |
+| HI-525 | `ai-pool` | `litellm_router.py` + `config/llm_routing.json` | ~~TECH_DEBT: JSON 配置与硬编码完全漂移 — iflow_unlimited 的 URL 和模型名不一致，需确认统一切换策略 (R2.25/R2.29)~~ → **已修复 2026-04-18**: 12 个 provider 的 base_url/模型名/RPM/prefix/tier/timeout 全面同步到 JSON | 2026-04-18 |
+| HI-526 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44)~~ → **已修复 2026-04-18**: 28 个文件 65 处静默异常改造（pass→warning 13处，debug→warning 52处），同时修复 15 处 f-string→lazy 格式 | 2026-04-18 |
 | HI-527 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`~~ → **已修复 2026-04-19**: litellm_router 启动健康摘要添加 `_log_task_exception` callback；telegram_ux 两处为 context manager 内部使用（cancel 处理），不需要 callback；message_mixin 思考动画为局部变量。实际需修复 1 处已完成 | 2026-04-18 |
-| HI-528 | `backend` | SQLite 全部 6 实例 | TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36) | 2026-04-18 |
-| HI-529 | `backend` | `src/bot/cmd_*.py` | TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45) | 2026-04-19 |
+| HI-528 | `backend` | SQLite 全部 6 实例 | ~~TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36)~~ → **已确认存在+补全 2026-04-18**: 每日 04:00 自动备份已在 scheduler.py 中实现，本次补全 novels.db 和 auto_shipper.db 到备份列表（9→11 个数据库） | 2026-04-18 |
+| HI-529 | `backend` | `src/bot/cmd_*.py` | ~~TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45)~~ → **已修复 2026-04-18**: 14 个文件 39 个 cmd_ 函数添加外层 try/except（warning 日志 + 用户友好提示），覆盖率从 27% 提升到 67% | 2026-04-19 |
 | HI-530 | `backend` | `src/bot/workflow_mixin.py` | ~~TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法~~ → **已修复 2026-04-18**: 文件从 461 行精简到 122 行，删除 23 个死方法，仅保留 `_cmd_smart_shop` 和 `_extract_json_object` | 2026-04-19 |
 | HI-531 | `backend` | `cmd_basic/help_mixin.py` | ~~TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖~~ → **已修复 2026-04-18**: 29 个命令按功能归类补入帮助菜单（日常/社媒/投资/IBKR/高级/闲鱼 6 个分类） | 2026-04-19 |
 | HI-535 | `backend` | `src/modules/investment/` | TECH_DEBT: AI 投票系统只追踪共识决策的准确率，不追踪单个模型的独立预测准确率，无法评估哪个 AI 分析师表现最好 (R4.03) | 2026-04-19 |
@@ -216,7 +216,7 @@
 | HI-592 | `infra` | `tools/newsyslog.d/openclaw.conf` | ~~CONFIG: 日志路径指向旧位置~~ → **已修复 2026-04-19**: 全部路径更新为 `~/Library/Logs/OpenClaw/`，与 plist 一致 | 2026-04-19 |
 | HI-593 | `infra` | `tools/launchagents/ai.openclaw.browser-bootstrap.plist` | ~~CONFIG: 未使用 /bin/bash -c exec 模式~~ → **已修复 2026-04-19**: 改用 bash -c exec 模式 + 日志路径统一到 ~/Library/Logs/OpenClaw/ | 2026-04-19 |
 | HI-594 | `deploy` | `docker-compose.goofish.yml + kiro-gateway/docker-compose.yml` | ~~CONFIG: 两个服务都绑定 127.0.0.1:8000~~ → **已修复 2026-04-19**: goofish 改为端口 8001 + 镜像版本锁定 | 2026-04-19 |
-| HI-595 | `docs` | `docs/guides/DR_GUIDE.md` | MISSING: 灾难恢复指南不存在——6个 SQLite 数据库、Redis 数据、对话历史等关键数据无备份/恢复文档 (R10.29) | 2026-04-19 |
+| HI-595 | `docs` | `docs/guides/DR_GUIDE.md` | ~~MISSING: 灾难恢复指南不存在——6个 SQLite 数据库、Redis 数据、对话历史等关键数据无备份/恢复文档 (R10.29)~~ → **已创建 2026-04-18**: 涵盖 11 个 SQLite 数据资产清单、4 个恢复场景操作步骤、保留策略说明 | 2026-04-19 |
 | HI-596 | `docs` | `MODULE_REGISTRY + DEPENDENCY_MAP` | CONFIG: MODULE_REGISTRY 声称 254 模块 vs 实际 256+；DEPENDENCY_MAP 声称 80+ vs requirements.txt 288 行，存在偏差 (R11.01) | 2026-04-19 |
 
 ### 🔵 低优先

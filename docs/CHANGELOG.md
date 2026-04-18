@@ -12,6 +12,29 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-18 — 技术债清理第4批: 静默异常+命令错误处理+LLM配置+备份+DR文档（5项）
+> 领域: `backend`, `ai-pool`, `docs`
+> 影响模块: 28+ 个后端源文件, `llm_routing.json`, `backup_databases.py`, `DR_GUIDE.md`
+> 关联问题: HI-526, HI-529, HI-525, HI-528, HI-595
+
+### 高优先级修复 (2项)
+
+1. **HI-526: 静默异常修复 (65处)**: 28 个源文件中 65 处 `except Exception: pass` 或 `logger.debug` 改造 — API 路由层 13 处 pass→warning、后端核心 21 处 debug→warning、中危模块 31 处 debug→warning。同时修复 15 处 f-string→lazy `%s` 格式
+2. **HI-529: 命令错误处理 (39个函数)**: 14 个 cmd_* 文件中 39 个缺少 try/except 的 Telegram 命令处理函数添加外层错误保护（异常时 warning 日志 + 用户友好提示）
+
+### 中优先级修复 (3项)
+
+3. **HI-525: LLM 配置漂移修复**: `config/llm_routing.json` 与 `litellm_router.py` 硬编码同步 — 12 个 provider 的 base_url/模型名/RPM/prefix/tier/timeout 全面对齐（iflow_unlimited 🔴严重漂移已修复）
+4. **HI-528: 数据库备份覆盖补全**: `novels.db` 和 `auto_shipper.db` 加入每日自动备份列表（9→11 个数据库）
+5. **HI-595: 灾难恢复指南**: 新建 `docs/guides/DR_GUIDE.md`，涵盖 11 个 SQLite 数据资产、4 个恢复场景操作步骤、保留策略说明
+
+### 文件变更
+- 28+ 个 `src/` 下源文件 — 静默异常修复
+- 14 个 `src/bot/cmd_*.py` — 命令错误处理
+- `config/llm_routing.json` — 12 provider 配置同步
+- `scripts/backup_databases.py` — 备份列表扩展
+- `docs/guides/DR_GUIDE.md` — 新建灾难恢复指南
+
 ## 2026-04-18 — 技术债清理第3批: 死代码+数据降级+交易安全+闲鱼+通知系统（10项）
 > 领域: `backend`, `trading`, `xianyu`, `infra`
 > 影响模块: `help_mixin`, `workflow_mixin`, `invest_tools`, `position_monitor`, `broker_bridge`, `xianyu_live`, `xianyu_context`, `notifications`, `event_bus`, `freqtrade_bridge`
