@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R6 macOS核心页面审计: 8修复 + 15技术债)
+> 最后更新: 2026-04-19 (R7 macOS业务页面审计: 6修复 + 20技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -179,6 +179,15 @@
 | HI-553 | `frontend` | `Settings/index.tsx` | TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测，LLM 模型列表硬编码 5 个选项 (R6.23/R6.20) | 2026-04-19 |
 | HI-554 | `frontend` | `Channels/index.tsx` | TECH_DEBT: 频道列表仅支持编辑——缺少新建和删除功能。频道无实时连接状态(在线/离线/错误) (R6.38/R6.41) | 2026-04-19 |
 | HI-555 | `frontend` | `Onboarding/index.tsx` | TECH_DEBT: 新手引导缺少"跳过引导"按钮——用户必须走完 4 步才能进入主界面 (R6.35) | 2026-04-19 |
+| HI-558 | `frontend` | `DevPanel/index.tsx` | TECH_DEBT: 整个 DevPanel 是纯 UI 原型——TODO 未接后端，Bot 状态硬编码，6 个按钮无 onClick，AI 对话框无功能，文件树静态 (R7.23) | 2026-04-19 |
+| HI-559 | `frontend` | `logger.ts` + `service.rs` | TECH_DEBT: 日志系统无脱敏——前端 logger 和 Rust get_logs 都直接输出原始消息，API Key/Token 可能泄露到 Logs 页面 (R7.22) | 2026-04-19 |
+| HI-560 | `frontend` | `Logs/index.tsx` | TECH_DEBT: 日志搜索无关键词高亮——searchText 只做过滤，匹配文字不高亮。两套日志(前端/后端)数据源割裂 (R7.21/R7.19) | 2026-04-19 |
+| HI-561 | `frontend` | `Portfolio/index.tsx` | TECH_DEBT: 风险参数(2%/$100/1:2)全部硬编码；无买入流程(仅有卖出); tradingSell 不检查 resp.ok; 净值图始终绿色 (R7.01/R7.07) | 2026-04-19 |
+| HI-562 | `frontend` | `Social/index.tsx` | TECH_DEBT: 日历视图无可视化组件(仅命令触发); 人设管理无专用 UI(后端 API 已就绪); Autopilot 用原生 window.confirm (R7.13/R7.14/R7.12) | 2026-04-19 |
+| HI-563 | `frontend` | `Memory/index.tsx` | TECH_DEBT: 记忆统计 API 仅 Tauri 环境调用(HTTP 降级缺失); 无按来源/重要度筛选器; 无分类统计和使用频率 (R7.15/R7.17) | 2026-04-19 |
+| HI-564 | `frontend` | `Evolution/index.tsx` | TECH_DEBT: 进化历史时间线缺失——created_at 已映射但未在 UI 展示。提案无时间排序视图 (R7.31) | 2026-04-19 |
+| HI-565 | `frontend` | `AIConfig/index.tsx` | TECH_DEBT: 模型切换后前端立刻更新但后端需重启才生效，缺少重启提示。Token 创建和渠道编辑 UI 未实现 (R7.35/R7.36) | 2026-04-19 |
+| HI-566 | `frontend` | `Scheduler/index.tsx` | TECH_DEBT: 定时任务仅有启停切换——缺少创建/编辑/删除。只展示最后一次执行，无历史记录列表 (R7.39/R7.40) | 2026-04-19 |
 
 ### 🔵 低优先
 
