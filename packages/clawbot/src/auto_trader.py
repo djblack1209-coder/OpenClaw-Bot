@@ -545,8 +545,17 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                     )
                     if "error" not in sizing:
                         quantity = sizing["shares"]
+                    else:
+                        # 安全修复: 风控引擎计算失败时跳过该候选，不绕过风控
+                        logger.warning(
+                            "[AutoTrader] %s 风控仓位计算失败(%s)，跳过该候选",
+                            vr.symbol, sizing.get("error", "未知")
+                        )
+                        continue
                 if quantity <= 0:
-                    quantity = max(1, int(self._get_capital() * 0.20 / price))
+                    # 风控引擎建议不交易（如凯利公式得出0仓位）
+                    logger.info("[AutoTrader] %s 风控建议仓位为0，跳过", vr.symbol)
+                    continue
 
                 if exposure_budget_left <= 0:
                     logger.info("[AutoTrader] 总敞口额度已用尽，跳过新增提案")

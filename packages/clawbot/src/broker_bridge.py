@@ -289,8 +289,27 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                             if proc.returncode == 0:
                                 logger.info("[IBKR] Gateway 启动成功，重试连接...")
                                 await asyncio.sleep(IBKR_GATEWAY_READY_WAIT)
-                                # 递归重试一次连接
-                                return await self.connect()
+                                # 修复死锁: asyncio.Lock 不可重入，不能递归调用 connect()
+                                # 直接在锁内重试连接逻辑（只尝试一次）
+                                try:
+                                    self.ib = IB()
+                                    self.ib.disconnectedEvent += self._on_disconnect
+                                    await self.ib.connectAsync(
+                                        self.host, self.port, clientId=self.client_id,
+                                        readonly=False, timeout=IBKR_CONNECT_TIMEOUT,
+                                    )
+                                    self._connected = True
+                                    self._disconnect_count = 0
+                                    self._reconnect_backoff = 5.0
+                                    self._consecutive_pings = 0
+                                    self._connected_since = _time.time()
+                                    self._consecutive_connect_failures = 0
+                                    accounts = self.ib.managedAccounts()
+                                    logger.info("[IBKR] Gateway 启动后连接成功，账户: %s", accounts)
+                                    self._start_keepalive()
+                                    return True
+                                except Exception as retry_e:
+                                    logger.warning("[IBKR] Gateway 启动后连接仍失败: %s", retry_e)
                             else:
                                 logger.warning(
                                     "[IBKR] Gateway 启动失败: rc=%d, %s", proc.returncode, stderr.decode()[:200]

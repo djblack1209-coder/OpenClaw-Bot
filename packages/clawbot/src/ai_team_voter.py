@@ -613,11 +613,12 @@ async def run_team_vote(
                 vote="HOLD",
                 confidence=1,
                 reasoning=f"异常: {vote_or_exc}",
+                abstained=True,  # 安全修复: 异常导致的票标记为弃权，不计入共识统计
             )
         elif isinstance(vote_or_exc, BotVote):
             vote = vote_or_exc
         else:
-            vote = BotVote(bot_id=bid, bot_name=bid, role="?", vote="HOLD", confidence=1, reasoning="未知投票结果类型")
+            vote = BotVote(bot_id=bid, bot_name=bid, role="?", vote="HOLD", confidence=1, reasoning="未知投票结果类型", abstained=True)
         result.votes.append(vote)
         vote_icon = {"BUY": "+", "HOLD": "=", "SKIP": "-"}.get(vote.vote, "?")
         previous_votes_text += f"[{vote_icon}] {vote.role}: {vote.vote}({vote.confidence}/10) {vote.reasoning}\n"
