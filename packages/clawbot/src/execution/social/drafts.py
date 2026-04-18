@@ -66,6 +66,34 @@ def _generate_draft_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+class _DraftStoreProxy:
+    """向后兼容代理：测试代码通过 drafts._draft_store.clear() 清理草稿
+    实际操作委托给持久化文件存储"""
+
+    def clear(self):
+        """清空所有草稿（测试用）"""
+        with _lock:
+            _save_drafts([])
+
+    def __len__(self):
+        with _lock:
+            return len(_load_drafts())
+
+    def __iter__(self):
+        with _lock:
+            return iter(_load_drafts())
+
+    def append(self, item):
+        with _lock:
+            drafts = _load_drafts()
+            drafts.append(item)
+            _save_drafts(drafts)
+
+
+# 向后兼容：测试和旧代码通过 drafts._draft_store 访问
+_draft_store = _DraftStoreProxy()
+
+
 def _tokenize(text: str) -> set:
     """简单分词用于去重"""
     return set(re.findall(r"[\w\u4e00-\u9fff]+", str(text).lower()))
