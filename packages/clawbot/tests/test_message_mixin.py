@@ -84,6 +84,111 @@ class TestMatchChineseCommand:
         assert result is not None
         assert result == ("market", "")
 
+    # ── T2 新增: 歧义消除测试 ──
+
+    def test_shopping_vs_investment_买苹果_with_股(self):
+        """'帮我买100股苹果' → 投资(buy), 不是购物"""
+        result = _match_chinese_command("帮我买100股苹果")
+        assert result is not None
+        action, arg = result
+        assert action == "buy"
+        assert "AAPL" in arg.upper()
+
+    def test_shopping_vs_investment_想入手_without_股(self):
+        """'想入手AirPods' → 购物, 不是投资"""
+        result = _match_chinese_command("想入手AirPods")
+        assert result is not None
+        action, _ = result
+        assert action == "smart_shop"
+
+    def test_shopping_vs_investment_想买_with_手(self):
+        """'想买500手期权' 含'手' → 不走购物路径"""
+        result = _match_chinese_command("想买500手期权")
+        # 应该不匹配购物（含"手"和"期权"排除词）
+        if result is not None:
+            action, _ = result
+            assert action != "smart_shop"
+
+    def test_shopping_exclude_股票名(self):
+        """'想买特斯拉' → 走投资信号(signal), 不走购物"""
+        result = _match_chinese_command("想买特斯拉")
+        # _resolve_chinese_ticker 应识别为 TSLA, 返回 None 使购物跳过
+        if result is not None:
+            action, _ = result
+            # 不应该是 smart_shop（因为 _resolve_chinese_ticker 能识别特斯拉=TSLA）
+            assert action != "smart_shop"
+
+    # ── T2 新增: 走势/查询表达测试 ──
+
+    def test_chart_走势(self):
+        """'AAPL走势' → ('chart', 'AAPL')"""
+        result = _match_chinese_command("AAPL走势")
+        assert result is not None
+        action, arg = result
+        assert action == "chart"
+        assert arg == "AAPL"
+
+    def test_chart_苹果走势(self):
+        """'苹果走势' → ('chart', 'AAPL') — 中文公司名走势"""
+        result = _match_chinese_command("苹果走势")
+        assert result is not None
+        action, arg = result
+        assert action == "chart"
+        assert "AAPL" in arg.upper()
+
+    def test_ta_帮我查(self):
+        """'帮我查TSLA' → ('ta', 'TSLA')"""
+        result = _match_chinese_command("帮我查TSLA")
+        assert result is not None
+        action, arg = result
+        assert action == "ta"
+        assert arg == "TSLA"
+
+    def test_ta_查一下(self):
+        """'查一下NVDA' → ('ta', 'NVDA')"""
+        result = _match_chinese_command("查一下NVDA")
+        assert result is not None
+        action, arg = result
+        assert action == "ta"
+        assert arg == "NVDA"
+
+    # ── T2 新增: 记账消歧测试 ──
+
+    def test_expense_不误匹配股票代码(self):
+        """'35 AAPL' → None (不应触发记账, AAPL 是大写字母序列)"""
+        result = _match_chinese_command("35 AAPL")
+        # 大写字母序列被过滤，不应该匹配 expense_add
+        if result is not None:
+            action, _ = result
+            assert action != "expense_add"
+
+    # ── T2 新增: 自动交易状态 ──
+
+    def test_autotrader_status(self):
+        """'自动交易状态' → ('autotrader_status', '')"""
+        result = _match_chinese_command("自动交易状态")
+        assert result is not None
+        action, _ = result
+        assert action == "autotrader_status"
+
+    # ── T2 新增: 回测/卖出测试 ──
+
+    def test_backtest_command(self):
+        """'回测AAPL' → ('backtest', 'AAPL')"""
+        result = _match_chinese_command("回测AAPL")
+        assert result is not None
+        action, arg = result
+        assert action == "backtest"
+        assert "AAPL" in arg.upper()
+
+    def test_sell_command(self):
+        """'卖掉特斯拉' → ('sell', ...)"""
+        result = _match_chinese_command("卖掉特斯拉")
+        assert result is not None
+        action, arg = result
+        assert action == "sell"
+        assert "TSLA" in arg.upper()
+
 
 # ============ _dispatch_chinese_action ============
 
