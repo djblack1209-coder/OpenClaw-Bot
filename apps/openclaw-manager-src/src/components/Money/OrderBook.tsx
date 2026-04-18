@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookOpen, Loader2 } from 'lucide-react';
+import { BookOpen, Loader2, AlertCircle } from 'lucide-react';
 import { clawbotFetch } from '@/lib/tauri';
 
 /**
@@ -25,7 +25,7 @@ interface OrderBookProps {
 
 /**
  * 订单簿组件 - TradingView 风格
- * 显示实时买卖盘挂单
+ * 审计修复: 移除 Mock 数据，API 失败时展示空态
  */
 export default function OrderBook({ symbol }: OrderBookProps) {
   const [orderBook, setOrderBook] = useState<OrderBookData>({ bids: [], asks: [] });
@@ -43,15 +43,11 @@ export default function OrderBook({ symbol }: OrderBookProps) {
         
         if (data.error) {
           setError(data.error);
-          // 使用模拟数据
-          setOrderBook(generateMockOrderBook());
         } else {
           setOrderBook(data);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : '获取订单簿失败');
-        // 使用模拟数据
-        setOrderBook(generateMockOrderBook());
       } finally {
         setLoading(false);
       }
@@ -63,45 +59,10 @@ export default function OrderBook({ symbol }: OrderBookProps) {
     return () => clearInterval(interval);
   }, [symbol]);
 
-  // 生成模拟订单簿数据
-  const generateMockOrderBook = (): OrderBookData => {
-    const basePrice = 150;
-    const bids: OrderBookEntry[] = [];
-    const asks: OrderBookEntry[] = [];
-    
-    let bidTotal = 0;
-    for (let i = 0; i < 10; i++) {
-      const amount = Math.random() * 100 + 10;
-      bidTotal += amount;
-      bids.push({
-        price: basePrice - i * 0.1,
-        amount,
-        total: bidTotal,
-      });
-    }
-    
-    let askTotal = 0;
-    for (let i = 0; i < 10; i++) {
-      const amount = Math.random() * 100 + 10;
-      askTotal += amount;
-      asks.push({
-        price: basePrice + 0.1 + i * 0.1,
-        amount,
-        total: askTotal,
-      });
-    }
-    
-    const spread = asks[0].price - bids[0].price;
-    const spreadPercent = (spread / bids[0].price) * 100;
-    
-    return { bids, asks, spread, spreadPercent };
-  };
-
-  // 计算最大总量用于进度条
-  const maxTotal = Math.max(
-    ...orderBook.bids.map(b => b.total),
-    ...orderBook.asks.map(a => a.total)
-  );
+  // 计算最大总量用于进度条（空数组安全处理）
+  const bidTotals = orderBook.bids.map(b => b.total);
+  const askTotals = orderBook.asks.map(a => a.total);
+  const maxTotal = Math.max(1, ...bidTotals, ...askTotals);
 
   return (
     <Card className="border-dark-600/50 bg-dark-800/40 backdrop-blur-sm h-full flex flex-col">
@@ -116,8 +77,10 @@ export default function OrderBook({ symbol }: OrderBookProps) {
       </CardHeader>
       <CardContent className="p-2 flex-1 overflow-hidden flex flex-col">
         {error && !orderBook.bids.length ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-xs">
-            {error}
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <AlertCircle className="h-6 w-6 text-gray-500 mb-2" />
+            <p className="text-gray-500 text-xs">{error}</p>
+            <p className="text-gray-600 text-xs mt-1">订单簿数据暂不可用</p>
           </div>
         ) : (
           <>

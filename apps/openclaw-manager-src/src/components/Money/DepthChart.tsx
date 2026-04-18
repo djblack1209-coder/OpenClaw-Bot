@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Layers, Loader2 } from 'lucide-react';
+import { Layers, Loader2, AlertCircle } from 'lucide-react';
 import { clawbotFetch } from '@/lib/tauri';
 
 /**
@@ -24,7 +24,7 @@ interface DepthChartProps {
 
 /**
  * 深度图组件 - TradingView 风格
- * 显示买卖盘深度分布
+ * 审计修复: 移除 Mock 数据，API 失败时展示空态
  */
 export default function DepthChart({ symbol }: DepthChartProps) {
   const [depthData, setDepthData] = useState<DepthData>({ bids: [], asks: [] });
@@ -42,15 +42,11 @@ export default function DepthChart({ symbol }: DepthChartProps) {
         
         if (data.error) {
           setError(data.error);
-          // 使用模拟数据
-          setDepthData(generateMockDepth());
         } else {
           setDepthData(data);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : '获取深度数据失败');
-        // 使用模拟数据
-        setDepthData(generateMockDepth());
       } finally {
         setLoading(false);
       }
@@ -61,37 +57,6 @@ export default function DepthChart({ symbol }: DepthChartProps) {
     const interval = setInterval(fetchDepth, 10000);
     return () => clearInterval(interval);
   }, [symbol]);
-
-  // 生成模拟深度数据
-  const generateMockDepth = (): DepthData => {
-    const basePrice = 150;
-    const bids: DepthDataPoint[] = [];
-    const asks: DepthDataPoint[] = [];
-    
-    let bidTotal = 0;
-    for (let i = 0; i < 20; i++) {
-      const amount = Math.random() * 1000 + 100;
-      bidTotal += amount;
-      bids.push({
-        price: basePrice - i * 0.5,
-        amount,
-        total: bidTotal,
-      });
-    }
-    
-    let askTotal = 0;
-    for (let i = 0; i < 20; i++) {
-      const amount = Math.random() * 1000 + 100;
-      askTotal += amount;
-      asks.push({
-        price: basePrice + i * 0.5,
-        amount,
-        total: askTotal,
-      });
-    }
-    
-    return { bids: bids.reverse(), asks };
-  };
 
   // 合并买卖盘数据用于图表展示
   const chartData = [
@@ -112,8 +77,15 @@ export default function DepthChart({ symbol }: DepthChartProps) {
       </CardHeader>
       <CardContent className="p-2">
         {error && !depthData.bids.length ? (
-          <div className="flex items-center justify-center h-[200px] text-gray-500 text-xs">
-            {error}
+          <div className="flex flex-col items-center justify-center h-[200px] text-center">
+            <AlertCircle className="h-6 w-6 text-gray-500 mb-2" />
+            <p className="text-gray-500 text-xs">{error}</p>
+            <p className="text-gray-600 text-xs mt-1">深度数据暂不可用</p>
+          </div>
+        ) : depthData.bids.length === 0 && depthData.asks.length === 0 && !loading ? (
+          <div className="flex flex-col items-center justify-center h-[200px] text-center">
+            <Layers className="h-6 w-6 text-gray-500 mb-2" />
+            <p className="text-gray-500 text-xs">暂无深度数据</p>
           </div>
         ) : (
           <div className="h-[200px] w-full">

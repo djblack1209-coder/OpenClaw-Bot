@@ -125,10 +125,11 @@ export function Money() {
     fetchControls();
   }, []);
 
-  // 切换交易控制开关
+  // 切换交易控制开关（审计修复: 失败时回滚状态）
   const handleControlToggle = async (key: keyof TradingControlsState, value: boolean | number) => {
     // 风控不允许关闭
     if (key === 'risk_protection_enabled' && !value) return;
+    const prev = { ...tradingControls };
     const updated = { ...tradingControls, [key]: value };
     setTradingControls(updated);
     try {
@@ -145,7 +146,8 @@ export function Money() {
         body: JSON.stringify(updated),
       });
     } catch (e) {
-      moneyLogger.warn('更新交易控制失败', e);
+      moneyLogger.warn('更新交易控制失败，已回滚', e);
+      setTradingControls(prev);
     }
   };
 

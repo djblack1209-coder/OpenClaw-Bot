@@ -43,7 +43,7 @@ export default function KlineChart({ onSymbolChange }: KlineChartProps) {
   const chartRef = useRef<IChartApi | null>(null);
   const [symbol, setSymbol] = useState('AAPL');
   const [inputValue, setInputValue] = useState('AAPL');
-  const [interval, setInterval] = useState('1d');
+  const [timeInterval, setTimeInterval] = useState('1d');
   const [period, setPeriod] = useState('3mo');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,7 +98,7 @@ export default function KlineChart({ onSymbolChange }: KlineChartProps) {
       },
       timeScale: {
         borderColor: 'rgba(75, 85, 99, 0.3)',
-        timeVisible: interval !== '1d' && interval !== '1wk',
+        timeVisible: timeInterval !== '1d' && timeInterval !== '1wk',
       },
       width: chartContainerRef.current.clientWidth,
       height: 420,
@@ -127,7 +127,7 @@ export default function KlineChart({ onSymbolChange }: KlineChartProps) {
     });
 
     // 加载数据
-    fetchKlineData(symbol, interval, period).then(data => {
+    fetchKlineData(symbol, timeInterval, period).then(data => {
       if (data.length > 0) {
         const candles: CandlestickData<Time>[] = data.map(d => ({
           time: d.time as Time,
@@ -168,7 +168,7 @@ export default function KlineChart({ onSymbolChange }: KlineChartProps) {
       chart.remove();
       chartRef.current = null;
     };
-  }, [symbol, interval, period]);
+  }, [symbol, timeInterval, period]);
 
   const handleSearch = () => {
     const sym = inputValue.trim().toUpperCase();
@@ -239,9 +239,9 @@ export default function KlineChart({ onSymbolChange }: KlineChartProps) {
               {INTERVALS.map(i => (
                 <button
                   key={i.value}
-                  onClick={() => setInterval(i.value)}
+                  onClick={() => setTimeInterval(i.value)}
                   className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
-                    interval === i.value
+                    timeInterval === i.value
                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                       : 'bg-dark-700/50 text-gray-400 hover:text-white border border-dark-600/50'
                   }`}
