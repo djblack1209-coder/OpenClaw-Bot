@@ -1,6 +1,50 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-19
+> 最后更新: 2026-04-18
+
+---
+
+## [2026-04-18] 技术债清理第3批 — 10 项死代码+数据降级+交易安全+闲鱼+通知修复
+
+### 本次完成了什么
+1. **功能修复 (2项)**:
+   - HI-531: /help 菜单 29 个命令补入分类（/tts, /novel, /icancel, /evolution 等）
+   - HI-571: 止损接近预警扩展支持 SELL(做空)方向 + _cleanup_stale_cooldowns 死代码激活
+
+2. **死代码清理 (2项)**:
+   - HI-530: workflow_mixin 从 461 行精简到 122 行，删除 23 个未接入的链式讨论脚手架方法
+   - HI-537: freqtrade inject_clawbot 添加详细注释说明未接入主启动流程
+
+3. **数据降级 (1项)**:
+   - HI-536: yfinance 缓存过期后请求失败时返回带 `_stale=True` 标记的过期数据
+
+4. **交易安全 (1项)**:
+   - HI-568: broker_bridge market_value 字段添加详细注释，提醒下游使用 qty*current_price 计算真实市值
+
+5. **闲鱼修复 (2项)**:
+   - HI-579: 底价自动接受上限优先使用商品标价(soldPrice)，兜底保留 floor*10
+   - HI-581: License 发送改为通过 ctx.get_latest_chat_id() 封装层查询
+
+6. **基础设施 (2项)**:
+   - HI-542: NotificationManager + EventBus 新增 shutdown() 方法
+   - HI-539: 确认已被 HI-585 解决（两套草稿已统一为 JSON 持久化）
+
+### 未完成的工作
+- **剩余技术债 (~20 项)**: HEALTH.md 中未修复的 HI-523~596
+- **高优先级**: HI-526 静默异常(56处) / HI-529 命令错误处理(72个)
+- **中优先级**: HI-523 SELL风控 / HI-524 新账户VaR / HI-525 LLM配置漂移
+- **前端技术债**: HI-543~566 (14项前端问题)
+
+### 需要注意的坑
+- workflow_mixin 精简后，callback_mixin.py 中有一个 `_cmd_smart_shop` 的重复定义（被 MRO 遮蔽），暂不影响
+- yfinance stale-data 降级数据带 `_stale` 和 `_stale_age_secs` 字段，下游如需区分应检查这些标记
+- `shutdown()` 方法需在进程退出前手动调用（如 `signal.SIGTERM` handler 中）
+
+### 当前系统状态
+- Git: 10 个修改文件待提交
+- Python 语法: 全部 py_compile 通过
+- 回归测试: 998 passed / 211 failed / 12 errors（与基线完全一致，零回归）
+- 技术债: 30 → ~20 项（累计 36 项已修复，含第1批15项 + 第2批11项 + 第3批10项）
 
 ---
 
