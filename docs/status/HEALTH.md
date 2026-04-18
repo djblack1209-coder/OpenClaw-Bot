@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (T4 QuantStats报告活化 + T5 LiteLLM配置外化, 测试1326+2skip/5预存失败)
+> 最后更新: 2026-04-18 (T2 意图识别+T3 风控BUG修复+T4 QuantStats+T5 LiteLLM外化, 测试1338+2skip/5预存失败)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -148,6 +148,11 @@
 | ~~HI-495~~ | ~~`ai-pool`~~ | ~~`litellm_router.py`~~ | ~~LLM 路由 122 部署中仅 3/14 provider 可用(Groq/Cerebras/Mistral)，SiliconFlow全军覆没(auth_error)、OpenRouter额度耗尽(429)、Gemini/NVIDIA模型名过时、Cohere/iflow/gpt_free/kiro/volcengine 认证或服务异常~~ → **已诊断并修复 2026-04-13**: 重新测试后确认 6/16 正常(含 SF 付费/NVIDIA/Cohere)。g4f 改为读取 G4F_API_KEY。SF 免费/Gemini/iflow/Volc/GPT_API_Free/Kiro 等均为平台侧余额耗尽、模型下线或 token 过期，代码本身逻辑正确。 | 2026-04-13 |
 | ~~HI-496~~ | ~~`infra`~~ | ~~`heartbeat-sender`~~ | ~~心跳发送进程停摆 6 天(自4月7日)，launchd agent 已注册但未活跃，VPS failover 无法检测主节点存活~~ → **已修复 2026-04-13**: HI-492 解决后心跳进程已自动恢复运行（PID 存活），日志显示成功发送心跳；因本地网络问题导致间歇性 SSH 失败，进程机制正常。 | 2026-04-13 |
 | ~~HI-497~~ | ~~`trading`~~ | ~~`_scheduler_daily.py`~~ | ~~IBKR Gateway 未运行(127.0.0.1:4002 连接拒绝)，IBKR_START_CMD 被白名单拦截无法自动启动，交易调度器每3分钟重连失败造成日志洪泛~~ → **已修复 2026-04-13**: 为 `_ibkr_health_check` 引入 `_ibkr_health_fail_count`，将无脑 3 分钟一刷的错误日志降频为第 1 次及每 10 次(约30分钟)提示，并将检测间隔通过 `IBKR_HEALTH_CHECK_INTERVAL_MIN` 暴露为可配置。 | 2026-04-13 |
+| ~~HI-520~~ | ~~`trading`~~ | ~~`freqtrade_bridge.py`~~ | ~~BUG: `confirm_trade_entry()` 传 dict 给 `check_trade()` 而非关键字参数，且用 `.get("approved")` 而非 `.approved` 属性访问 RiskCheckResult~~ → **已修复 2026-04-18**: 改为关键字参数调用 + `.approved` 属性 + 默认 3% 止损 | 2026-04-18 |
+| ~~HI-521~~ | ~~`trading`~~ | ~~`brain_exec_invest.py`~~ | ~~BUG: `_exec_risk_check()` 两处 `check_trade()` 调用不传 `stop_loss`(默认0)，导致 `StopLossValidator` 拒绝所有 BUY 交易~~ → **已修复 2026-04-18**: 补传 `stop_loss=entry_price*0.97`(默认3%止损)，优先读取 params 中用户指定值 | 2026-04-18 |
+| HI-522 | `trading` | `risk_manager.py` | TECH_DEBT: `check_trade()` 读取 `_today_pnl/_today_trade_count` 等共享状态无锁保护，多协程并发交易可能出现竞态条件 | 2026-04-18 |
+| HI-523 | `trading` | `risk_manager.py` | ARCH_LIMIT: SELL 方向交易几乎不做风控检查（仅持仓验证），缺少卖空风控、止损验证等 | 2026-04-18 |
+| HI-524 | `trading` | `risk_manager.py` | ARCH_LIMIT: 新账户首笔交易时 `_today_pnl=0 / _today_trade_count=0 / positions=[]`，VaR 保护因无持仓数据而完全失效 | 2026-04-18 |
 
 ### 🔵 低优先
 

@@ -4,40 +4,43 @@
 
 ---
 
-## [2026-04-18 12:00] T4+T5 四阶段方法论实施
+## [2026-04-18 23:00] 四阶段方法论 T2+T3+T4+T5 全部完成
 
 ### 本次完成了什么
 
 | # | 改动 | 说明 |
 |---|------|------|
 | 1 | T4: QuantStats HTML 报告活化 | generate_quantstats_report() 从死代码升级为全功能（8策略+SPY基准+Telegram发送） |
-| 2 | T4: 自研引擎接入 QuantStats | /backtest 单股回测路径自动生成 tearsheet 并 Telegram 发送 |
-| 3 | T4: risk_var.py 死代码清理 | calc_var/calc_cvar 中被 numpy 覆盖的 qs 调用已移除 |
-| 4 | T5: Router 参数从 JSON 读取 | initialize() 消费 JSON router_config，替代硬编码 |
-| 5 | T5: BOT_MODEL_FAMILY 从 JSON 加载 | 新增 _load_bot_model_family()，JSON 为真相源 |
-| 6 | T5: MODEL_RANKING 移入 JSON | 50+ 模型评分集中管理，Python 动态加载 |
-| 7 | T5: smart_route 映射移入 JSON | model_to_family 映射外化到 JSON |
+| 2 | T5: LiteLLM 配置外化 | Router参数/BOT_MODEL_FAMILY/MODEL_RANKING/smart_route 全部从 JSON 加载 |
+| 3 | T2: 意图识别准确率提升 | 正则层扩充（走势/查询/autotrader）+ 购物消歧修复 + LLM prompt 优化（11类型+5 few-shot）+ 12个新测试 |
+| 4 | T3: freqtrade_bridge BUG 修复 (HI-520) | confirm_trade_entry() 传dict→关键字参数 + .get("approved")→.approved + 补传3%止损 |
+| 5 | T3: brain_exec_invest BUG 修复 (HI-521) | _exec_risk_check() 两处 check_trade() 补传 stop_loss=entry_price*0.97 |
+| 6 | T3: 风控架构问题登记 (HI-522~524) | 竞态/SELL风控缺失/新账户VaR空白 — 记入技术债 |
 
 ### 未完成的工作
 
-**四阶段方法论剩余动作（按 ROI 排序）：**
+**四阶段方法论剩余动作：**
 - T1: LLM 语义缓存层（4h，LLM成本-30%）— diskcache 已有基础，需加 embedding 相似度匹配
-- T2: 意图识别 prompt 优化 + 正则扩充（2h，准确率85%→95%）
-- T3: check_trade() 风控检查清单重构（3h）
+
+**风控技术债（非紧急，已登记 HEALTH.md）：**
+- HI-522: check_trade() 共享状态竞态（_today_pnl 等无锁）
+- HI-523: SELL 方向风控几乎空白
+- HI-524: 新账户首笔交易 VaR 保护失效
 
 **预存测试失败（非本次引入）：**
-- `test_self_heal.py` 5 个 CircuitBreaker 测试失败（_is_circuit_open 逻辑问题）
-- `test_api_routes_regression.py` 收集错误（TypeError）
+- `test_self_heal.py` 5 个 CircuitBreaker 测试失败
+- `test_api_routes_regression.py` 收集错误（Python 3.9 不支持 `str | None`）
 
 ### 需要注意的坑
 - T5 改动保留了所有硬编码作为 fallback — JSON 加载失败不会导致系统崩溃
-- JSON 中 bot_model_family 已同步修正（claude_haiku→qwen, claude_opus→deepseek）
-- test_self_heal.py 的 5 个失败是预存问题，与 T4/T5 无关
+- T3 freqtrade_bridge 和 brain_exec_invest 的 stop_loss 默认 3%（entry_price * 0.97），与 cmd_invest_mixin 一致
+- check_trade() 有 6 个调用点，本次修复了 freqtrade_bridge 和 brain_exec_invest 两处，其余 4 处已正确传参
 
 ### 当前系统状态
-- 后端测试: 1326 passed / 2 skipped / 5 预存失败 (非本次引入)
+- 后端测试: 1338 passed / 2 skipped / 5 预存失败 (非本次引入)
 - T4/T5 已提交: `b9826e6f0` (T4) + `6d81deea4` (T5)
-- JSON 配置现在是 LLM 路由的单一真相源（router_config + model_ranking + bot_model_family + smart_route 映射）
+- T2 已提交: `573ccebac`
+- T3 待提交: freqtrade_bridge + brain_exec_invest + HEALTH.md + CHANGELOG
 
 ---
 

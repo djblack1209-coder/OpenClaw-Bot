@@ -211,17 +211,17 @@ if _freqtrade_available:
             """入场前调用 ClawBot 风控"""
             if self._risk_manager:
                 try:
+                    # 修复: 使用关键字参数调用 check_trade (之前传 dict 导致 API 不匹配)
                     result = self._risk_manager.check_trade(
-                        {
-                            "symbol": pair,
-                            "direction": "BUY" if side == "long" else "SELL",
-                            "price": rate,
-                            "amount": amount,
-                            "entry_tag": entry_tag,
-                        }
+                        symbol=pair,
+                        side="BUY" if side == "long" else "SELL",
+                        quantity=amount,
+                        entry_price=rate,
+                        stop_loss=rate * 0.97,  # 默认 3% 止损（与 cmd_invest_mixin 一致）
                     )
-                    if not result.get("approved", True):
-                        logger.info("[ClawBotAIStrategy] 风控拒绝: %s - %s", pair, result.get("reason", ""))
+                    # 修复: 使用 .approved 属性 (RiskCheckResult 是 dataclass 不是 dict)
+                    if not result.approved:
+                        logger.info("[ClawBotAIStrategy] 风控拒绝: %s - %s", pair, result.reason)
                         return False
                 except Exception as e:
                     logger.warning("[ClawBotAIStrategy] 风控检查异常: %s", e)
