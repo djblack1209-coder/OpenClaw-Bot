@@ -143,7 +143,7 @@ async def _reconcile_ibkr_entry_fills():
                     )
                 )
             except Exception as e:
-                logger.debug("[Reconcile] 成交通知失败: %s", e)
+                logger.warning("[Reconcile] 成交通知失败: %s", e)
 
     # 兼容旧逻辑：open + entry_order_id 但无持仓/无挂单时，自动修正状态
     if open_with_order:
@@ -323,7 +323,7 @@ async def _cancel_stale_pending_entries():
                     )
                 )
             except Exception as e:
-                logger.debug("[PendingCancel] 通知失败: %s", e)
+                logger.warning("[PendingCancel] 通知失败: %s", e)
 
 
 # ============ 重入队列提交 ============
