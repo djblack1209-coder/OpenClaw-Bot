@@ -4,38 +4,33 @@
 
 ---
 
-## [2026-04-19] 全方位审计 v3.0 — R3 Bot 命令层审计完成
+## [2026-04-19] 全方位审计 v3.0 — R3+R4 审计完成
 
 ### 本次完成了什么
-1. **R3 Bot 命令层审计**: 45 个条目全部审查（通过多项 / 3 项修复 / 3 项技术债登记）
-2. **关键修复**:
-   - callback→cmd 崩溃修复: handle_card_action_callback 5处 cmd_ 调用无保护，新增 `_safe_cmd_from_callback()` 统一保护 (HI-532)
-   - help_mixin /invest 人数修正: 5位→6位AI (HI-533)
-   - workflow_mixin `_pick_workflow_bot()` 返回类型不一致修复 (HI-534)
-3. **文档修复**: COMMAND_REGISTRY.md 9项问题修正（handler名/行号/缺失回调/编号重复/MIME类型/pattern截断）
-4. **技术债登记**: HI-529~531（72个cmd_缺try/except / 22个workflow死方法 / 30个命令未上/help菜单）
-
-### 审计发现汇总
-- **命令注册**: 99个命令全部正确注册，代码与文档 1:1 对应
-- **回调按钮**: 16个回调pattern全部注册，每个handler都有 query.answer() 响应
-- **NLP触发**: 中文正则覆盖全面，三级漏斗(正则→LLM轻量→LLM完整)链路通畅
-- **消息管道**: sanitize→intent→brain→streaming 完整链路审查通过
-- **错误处理**: 全局 error handler + 用户友好中文消息 + retry 按钮均已就位
-- **Flood控制**: Telegram 429 退避 + 编辑频率限制 + 应用层速率限制三层防护
+1. **R3 Bot 命令层审计**: 45 条目 / 3 项修复 / 9 项文档修正 / 3 项技术债
+   - callback→cmd 崩溃修复(HI-532) + help人数修正(HI-533) + workflow返回类型(HI-534)
+   - COMMAND_REGISTRY.md 9 项文档修正
+2. **R4 Bot 业务场景审计**: 40 条目 / 32 通过 / 1 设计问题 / 7 技术债
+   - 投资链路: NLP→ticker→分析→AI投票(6模型)→确认→执行 完整通过
+   - 闲鱼客服: 8/8 全部通过（底价防护/限速/心跳/熔断/利润核算）
+   - Kiro Gateway: 4/4 全部通过（CORS/10MB/OpenAI+Anthropic兼容）
+   - 通知系统: P0重试+微信推送正常
+3. **技术债登记**: HI-529~542（共 11 项新增）
 
 ### 未完成的工作
-- **R4-R11**: 8 轮审计待执行（约 335 个条目）
-- **R4 下一轮**: Bot 业务逻辑层（投资分析/交易执行/社媒发文/闲鱼客服等业务深审）
+- **R5-R11**: 7 轮审计待执行（约 295 个条目）
+- **R5 下一轮**: macOS 架构审计（LaunchAgent/进程管理/Tauri桌面端）
 
 ### 需要注意的坑
-- pytest 基线变化: 983 passed / 210 failed / 2 skipped / 12 errors（多个测试文件有 collection error: test_adaptive_router/test_litellm_router/test_message_mixin）
-- HI-529 技术债(72个cmd_缺try/except)是大批量改造，建议分模块逐步推进
-- workflow_mixin 的 22 个死方法是链式讨论工作流的残留骨架，删除需确认不影响未来规划
+- pytest 基线: 983 passed / 210 failed / 2 skipped / 12 errors（多个 collection error 文件需 ignore）
+- R4.28: 定时价格监控用简单爬虫引擎，交互式比价用四级降级链——两套引擎能力差异大
+- R4.16: 两套平行的草稿系统（内存/JSON），数据不同步
+- R4.40: 通知系统无 shutdown flush，进程被 kill 时通知丢失
 
 ### 当前系统状态
-- Git: 干净，所有修复待提交
-- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4-R11 待执行
-- 继续指令: `继续审计任务`（AI 自动读取 AUDIT_PLAN.md 定位到 R4）
+- Git: 干净，所有修复已提交
+- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动定位到 R5）
 
 ---
 

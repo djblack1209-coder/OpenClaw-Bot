@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R3 Bot命令层审计: 3项修复+3技术债登记)
+> 最后更新: 2026-04-19 (R3+R4 审计完成: R3 3项修复+3技术债 / R4 0修复+8技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -160,6 +160,14 @@
 | HI-529 | `backend` | `src/bot/cmd_*.py` | TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45) | 2026-04-19 |
 | HI-530 | `backend` | `src/bot/workflow_mixin.py` | TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法。整个链式讨论工作流基础设施搭建了但未接入消息管道 (R3.31-R3.35) | 2026-04-19 |
 | HI-531 | `backend` | `cmd_basic/help_mixin.py` | TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖（/calc, /chart, /drl, /factors, /icancel, /tts, /novel, /evolution, /coupon 等），用户无法通过帮助菜单发现这些命令 (R3.04) | 2026-04-19 |
+| HI-535 | `backend` | `src/modules/investment/` | TECH_DEBT: AI 投票系统只追踪共识决策的准确率，不追踪单个模型的独立预测准确率，无法评估哪个 AI 分析师表现最好 (R4.03) | 2026-04-19 |
+| HI-536 | `backend` | `invest_tools.py` | TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据——缺少 stale-data fallback (R4.04) | 2026-04-19 |
+| HI-537 | `backend` | `freqtrade_bridge.py` | TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用，freqtrade 集成路径实际为死代码；策略类正确但从未被连接 (R4.06) | 2026-04-19 |
+| HI-538 | `backend` | `src/execution/social/` | TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式，Weibo/Discord/WeChat 定义了限制参数但无实际发布实现；添加新平台需改多个文件 (R4.13) | 2026-04-19 |
+| HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | TECH_DEBT: 存在两套平行的草稿系统——Telegram 命令用的内存 `_draft_store` 重启即丢失，自动驾驶用的 JSON 文件持久化。两者数据不同步 (R4.16) | 2026-04-19 |
+| HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大 (R4.28) | 2026-04-19 |
+| HI-541 | `backend` | `nlp_ticker_map.py` | TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单(AT/IT/TO/BE/GO 等可能被误识别为股票代码) (R4.30) | 2026-04-19 |
+| HI-542 | `backend` | `notifications.py` + `event_bus.py` | TECH_DEBT: 通知系统无 shutdown flush 机制——进程被 kill 时正在发送的通知会静默丢失；EventBus 也没有 drain pending tasks (R4.40) | 2026-04-19 |
 
 ### 🔵 低优先
 
