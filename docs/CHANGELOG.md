@@ -12,6 +12,33 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-18 — 技术债清理第5批: 前端安全+体验+架构优化（6项）
+> 领域: `frontend`, `backend`
+> 影响模块: `logger.ts`, `service.rs`, `clawbot.rs`, `Onboarding`, `Assistant`, `Settings`, `conversation.py`
+> 关联问题: HI-559, HI-543, HI-555, HI-550, HI-547, HI-553
+
+### 安全修复 (1项)
+1. **HI-559: 前端+Rust 日志脱敏**: logger.ts 新增 scrubSecrets/scrubString 脱敏函数（8种正则规则），formatMessage 在记录前自动掩码 API Key/Token/Cookie/密码/Bearer/SSH 等敏感信息；Rust get_logs 命令返回前对每行日志应用正则脱敏
+
+### 架构修复 (1项)
+2. **HI-543: Rust tokio 阻塞修复**: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 替换为 `tokio::time::sleep`，函数改为 async，避免阻塞 tokio 工作线程池
+
+### 体验优化 (4项)
+3. **HI-555: Onboarding 跳过按钮**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），用户不再需要强制走完4步才能进入主界面
+4. **HI-550: 会话删除确认+重命名**: 删除会话前弹出 ConfirmDialog 二次确认（红色危险样式）；新增双击标题或铅笔图标重命名功能；后端新增 PATCH /sessions/{id} 端点
+5. **HI-547: 暗色模式跟随系统**: 主题从二选一(深色/浅色)扩展为三选一(深色/浅色/系统)，系统模式监听 prefers-color-scheme 媒体查询自动切换
+6. **HI-553: Settings 运营设置脏状态检测**: isDirty 函数扩展检测 opsSettings 的 7 个字段，修改运营设置后离开页面会触发未保存变更警告
+
+### 文件变更
+- `apps/openclaw-manager-src/src/lib/logger.ts` — 新增脱敏函数 + formatMessage 自动脱敏
+- `apps/openclaw-manager-src/src-tauri/src/commands/service.rs` — get_logs 脱敏 + regex/once_cell 依赖
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs` — stop_service_via_pid async 改造
+- `apps/openclaw-manager-src/src-tauri/Cargo.toml` — 新增 regex + once_cell 依赖
+- `apps/openclaw-manager-src/src/components/Onboarding/index.tsx` — 跳过按钮
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 删除确认 + 重命名
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 三选一主题 + 脏状态扩展
+- `packages/clawbot/src/api/routers/conversation.py` — 新增 PATCH session 端点
+
 ## 2026-04-18 — 技术债清理第4批: 静默异常+命令错误处理+LLM配置+备份+DR文档（5项）
 > 领域: `backend`, `ai-pool`, `docs`
 > 影响模块: 28+ 个后端源文件, `llm_routing.json`, `backup_databases.py`, `DR_GUIDE.md`

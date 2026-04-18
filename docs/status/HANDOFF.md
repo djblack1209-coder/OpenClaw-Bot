@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-04-18] 技术债清理第5批 — 前端安全+体验+架构优化（6项）
+
+### 本次完成了什么
+1. **HI-559: 日志系统脱敏**: 前端 logger.ts 新增 scrubSecrets 函数（8种正则规则），formatMessage 自动脱敏；Rust get_logs 命令返回前对每行日志正则脱敏。覆盖 API Key/Token/Cookie/密码等
+2. **HI-543: Rust tokio 阻塞修复**: `stop_service_via_pid()` 的 `std::thread::sleep` 替换为 `tokio::time::sleep`，函数改为 async
+3. **HI-555: Onboarding 跳过按钮**: 进度条右侧新增"跳过"按钮，用户不再需要强制走完4步
+4. **HI-550: 会话删除确认+重命名**: ConfirmDialog 二次确认 + 双击/铅笔图标重命名 + 后端 PATCH 端点
+5. **HI-547: 主题跟随系统**: 深色/浅色/系统三选一，监听 prefers-color-scheme 自动切换
+6. **HI-553: Settings 脏状态扩展**: isDirty 新增 opsSettings 7 个字段检测
+
+### 未完成的工作
+- **剩余前端技术债 (~9 项)**: HI-544(Rust错误类型) / HI-545(Shell权限) / HI-546(Fetch统一) / HI-551(Markdown升级) / HI-552(Bot详情页) / HI-554(频道CRUD) / HI-558(DevPanel空壳) / HI-560(日志高亮) / HI-561(Portfolio硬编码)
+- **剩余后端/文档 (~4 项)**: HI-523(SELL风控) / HI-524(新账户VaR) / HI-535(单模型追踪) / HI-596(文档偏差)
+- **长期遗留**: HI-388(diskcache CVE) / HI-462(低风险日志脱敏) / HI-538(适配器模式) / HI-540(比价引擎)
+
+### 需要注意的坑
+- 日志脱敏正则用 global flag，Rust 端用 `once_cell::Lazy` 初始化，注意新增的 regex + once_cell 依赖
+- 会话重命名依赖后端 PATCH 端点（内存存储），重启后会话数据清空
+- 主题"跟随系统"模式下 matchMedia 事件监听会在组件卸载时清理
+- Settings isDirty 扩展后，修改任何运营设置都会触发离开警告
+
+### 当前系统状态
+- Git: 6 个修复已提交
+- Python 语法: 全部通过
+- TypeScript: 零错误
+- Rust cargo check: 零错误
+- 回归测试: 1035 passed / 213 failed / 25 errors（与基线完全一致，零回归）
+- 技术债: ~15 → ~9 项前端 + ~4 项后端/文档（累计 47 项已修复）
+
+---
+
 ## [2026-04-18] 技术债清理第4批 — 静默异常+命令错误处理+LLM配置+备份+DR文档（5项）
 
 ### 本次完成了什么
