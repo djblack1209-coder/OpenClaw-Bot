@@ -323,7 +323,8 @@ fn start_service_via_script(definition: &ManagedServiceDefinition) -> Result<Str
 }
 
 /// 停止通过脚本启动的服务（通过端口找到 PID 并 kill）
-fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<String, String> {
+/// 使用 tokio::time::sleep 替代 std::thread::sleep，避免阻塞 tokio 工作线程
+async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<String, String> {
     let port = definition.port
         .ok_or_else(|| format!("{} 未配置端口，无法通过进程方式停止", definition.name))?;
 
@@ -337,13 +338,13 @@ fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<String,
         .map_err(|e| format!("发送停止信号失败: {}", e))?;
 
     if output.status.success() {
-        // 等待进程退出
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        // 等待进程退出（异步等待，不阻塞 tokio 线程）
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         // 检查进程是否还在
         if find_pid_by_port(port).is_some() {
             // 强制杀死
             let _ = Command::new("kill").args(["-KILL", &pid.to_string()]).output();
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
         Ok(format!("{} 已停止 (PID: {})", definition.name, pid))
     } else {
@@ -864,7 +865,7 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
             let _ = bootout_service(&uid, &definition);
             // 无论 launchd 是否成功，都检查端口并 kill 残留进程
             if definition.port.is_some() {
-                if let Ok(msg) = stop_service_via_pid(&definition) {
+                if let Ok(msg) = stop_service_via_pid(&definition).await {
                     return Ok(msg);
                 }
             }
@@ -874,7 +875,7 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
             // 停止：先 launchd bootout + kill 进程
             let _ = bootout_service(&uid, &definition);
             if definition.port.is_some() {
-                let _ = stop_service_via_pid(&definition);
+                let _ = stop_service_via_pid(&definition).await;
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             // 启动：先 launchd，失败则降级脚本
