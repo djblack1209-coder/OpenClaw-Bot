@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (技术债清理第4批: 静默异常65处+命令错误处理39函数+LLM配置同步+备份补全+DR文档)
+> 最后更新: 2026-04-18 (技术债清理第5批: 日志脱敏+tokio阻塞+Onboarding跳过+会话管理+主题跟随系统+Settings脏状态)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -168,19 +168,19 @@
 | HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大 (R4.28) | 2026-04-19 |
 | HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
 | HI-542 | `backend` | `notifications.py` + `event_bus.py` | ~~TECH_DEBT: 通知系统无 shutdown flush 机制~~ → **已修复 2026-04-18**: NotificationManager 新增 `shutdown()` 方法；EventBus 新增 `shutdown()` 方法（清理订阅+统计日志） | 2026-04-19 |
-| HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程（应使用 `tokio::task::spawn_blocking` 或改为 async），影响有限因仅在手动停止服务时触发 (R5.14) | 2026-04-19 |
+| HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程~~ → **已修复 2026-04-18**: 函数改为 async，`std::thread::sleep` 替换为 `tokio::time::sleep`，调用方添加 `.await` | 2026-04-19 |
 | HI-544 | `frontend` | `src-tauri/src/commands/` | TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型，`thiserror` crate 已引入但未使用。前端无法程序化区分错误类型 (R5.14) | 2026-04-19 |
 | HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型，无集中式命令白名单。`IBKR_START_CMD`/`IBKR_STOP_CMD` 从 .env 读取后直接 `bash -c` 执行 (R5.13) | 2026-04-19 |
 | HI-546 | `frontend` | `src/lib/tauri-core.ts` | TECH_DEBT: `clawbotFetchSafe` 比 `clawbotFetch` 更安全但几乎未被使用——大部分调用方直接用 `clawbotFetch` 并自行处理错误（模式不一致）(R5.20) | 2026-04-19 |
-| HI-547 | `frontend` | `src/components/` | TECH_DEBT: 暗色/亮色模式无"跟随系统"选项——仅手动切换，不监听 `prefers-color-scheme` 媒体查询。CSS 基础设施已完备 (R5.33) | 2026-04-19 |
-| HI-550 | `frontend` | `conversationService.ts` | TECH_DEBT: AI 助手模式切换仅前端装饰——不传递给后端，模式信息在 sendMessage 中丢失。会话重命名功能完全缺失。删除会话无二次确认弹窗 (R6.09/R6.11) | 2026-04-19 |
+| HI-547 | `frontend` | `src/components/` | ~~TECH_DEBT: 暗色/亮色模式无"跟随系统"选项~~ → **已修复 2026-04-18**: 新增 `system` 选项，监听 `prefers-color-scheme` 媒体查询自动切换，Settings 页面改为三选一分段按钮组 | 2026-04-19 |
+| HI-550 | `frontend` | `conversationService.ts` | ~~TECH_DEBT: 会话重命名功能完全缺失。删除会话无二次确认弹窗~~ → **已修复 2026-04-18**: 新增 ConfirmDialog 删除确认（红色危险样式）+ 双击标题或铅笔图标重命名 + 后端 PATCH 端点。AI 模式切换仍为前端装饰(低优先级) | 2026-04-19 |
 | HI-551 | `frontend` | `Assistant/index.tsx` | TECH_DEBT: Markdown 渲染器为手写简易版——不支持图片 `![](url)`、有序列表 `1.`、表格、代码块复制按钮。建议迁移到 react-markdown (R6.13) | 2026-04-19 |
 | HI-552 | `frontend` | `Bots/index.tsx` | TECH_DEBT: 无独立 Bot 详情页——无法查看单个 Bot 的配置/日志/统计。SERVICE_META 硬编码 5 个服务 ID。C 端不展示模型和命令数 (R6.19/R6.20) | 2026-04-19 |
-| HI-553 | `frontend` | `Settings/index.tsx` | TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测，LLM 模型列表硬编码 5 个选项 (R6.23/R6.20) | 2026-04-19 |
+| HI-553 | `frontend` | `Settings/index.tsx` | ~~TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测~~ → **已修复 2026-04-18**: isDirty 扩展检测 opsSettings 的 7 个字段 + initialOpsSettingsRef 记录初始值 + 保存成功后重置脏状态。LLM 模型列表硬编码问题保留(低优先级) | 2026-04-19 |
 | HI-554 | `frontend` | `Channels/index.tsx` | TECH_DEBT: 频道列表仅支持编辑——缺少新建和删除功能。频道无实时连接状态(在线/离线/错误) (R6.38/R6.41) | 2026-04-19 |
-| HI-555 | `frontend` | `Onboarding/index.tsx` | TECH_DEBT: 新手引导缺少"跳过引导"按钮——用户必须走完 4 步才能进入主界面 (R6.35) | 2026-04-19 |
+| HI-555 | `frontend` | `Onboarding/index.tsx` | ~~TECH_DEBT: 新手引导缺少"跳过引导"按钮~~ → **已修复 2026-04-18**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），点击直接调用 handleFinish 完成引导 | 2026-04-19 |
 | HI-558 | `frontend` | `DevPanel/index.tsx` | TECH_DEBT: 整个 DevPanel 是纯 UI 原型——TODO 未接后端，Bot 状态硬编码，6 个按钮无 onClick，AI 对话框无功能，文件树静态 (R7.23) | 2026-04-19 |
-| HI-559 | `frontend` | `logger.ts` + `service.rs` | TECH_DEBT: 日志系统无脱敏——前端 logger 和 Rust get_logs 都直接输出原始消息，API Key/Token 可能泄露到 Logs 页面 (R7.22) | 2026-04-19 |
+| HI-559 | `frontend` | `logger.ts` + `service.rs` | ~~TECH_DEBT: 日志系统无脱敏~~ → **已修复 2026-04-18**: 前端 logger.ts 新增 scrubSecrets/scrubString 函数（8种正则规则），formatMessage 在记录前自动脱敏；Rust get_logs 返回前对每行日志应用正则脱敏。覆盖 API Key/Token/Cookie/密码/Bearer/SSH 等 | 2026-04-19 |
 | HI-560 | `frontend` | `Logs/index.tsx` | TECH_DEBT: 日志搜索无关键词高亮——searchText 只做过滤，匹配文字不高亮。两套日志(前端/后端)数据源割裂 (R7.21/R7.19) | 2026-04-19 |
 | HI-561 | `frontend` | `Portfolio/index.tsx` | TECH_DEBT: 风险参数(2%/$100/1:2)全部硬编码；无买入流程(仅有卖出); tradingSell 不检查 resp.ok; 净值图始终绿色 (R7.01/R7.07) | 2026-04-19 |
 | HI-562 | `frontend` | `Social/index.tsx` | TECH_DEBT: 日历视图无可视化组件(仅命令触发); 人设管理无专用 UI(后端 API 已就绪); Autopilot 用原生 window.confirm (R7.13/R7.14/R7.12) | 2026-04-19 |
