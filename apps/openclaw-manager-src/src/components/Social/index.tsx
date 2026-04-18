@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { format } from 'date-fns';
 import { api, isTauri, clawbotFetch } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
@@ -299,6 +300,8 @@ export function Social() {
   const [editDraftTarget, setEditDraftTarget] = useState<Draft | null>(null);
   const [operatingDraftId, setOperatingDraftId] = useState<number | null>(null);
   const [browserStatus, setBrowserStatus] = useState({ x: 'unknown', xhs: 'unknown' });
+  // Autopilot 确认弹窗状态（替代 window.confirm）
+  const [autopilotConfirm, setAutopilotConfirm] = useState<{ id: string; cmd: string; hasInput?: boolean } | null>(null);
 
   // ──── 社媒控制面板状态 ────
   const [socialControls, setSocialControls] = useState<SocialControlsState>({
@@ -394,10 +397,17 @@ export function Social() {
     // 检查是否需要用户确认（如全托管运营模式）
     const action = actions.find(a => a.id === id);
     if (action?.confirm) {
-      const confirmed = window.confirm('确认开启全自动运营模式？开启后系统将自动发布内容、回复评论。');
-      if (!confirmed) return;
+      // 打开自定义确认弹窗，暂存操作参数
+      setAutopilotConfirm({ id, cmd, hasInput });
+      return;
     }
 
+    await executeAction(id, cmd, hasInput);
+  };
+
+  /** 实际执行操作（确认后调用） */
+  const executeAction = async (id: string, cmd: string, _hasInput?: boolean) => {
+    const input = inputs[id];
     setStatuses(prev => ({ ...prev, [id]: { running: true } }));
 
     try {
@@ -781,6 +791,22 @@ export function Social() {
         title="编辑标题"
         defaultValue={editDraftTarget?.title ?? ''}
         placeholder="输入新标题"
+      />
+
+      {/* Autopilot 确认弹窗（替代 window.confirm） */}
+      <ConfirmDialog
+        open={autopilotConfirm !== null}
+        onClose={() => setAutopilotConfirm(null)}
+        onConfirm={async () => {
+          if (autopilotConfirm) {
+            const { id, cmd, hasInput } = autopilotConfirm;
+            setAutopilotConfirm(null);
+            await executeAction(id, cmd, hasInput);
+          }
+        }}
+        title="开启全自动运营"
+        description="确认开启全自动运营模式？开启后系统将自动发布内容、回复评论。"
+        confirmText="开启"
       />
     </div>
   );
