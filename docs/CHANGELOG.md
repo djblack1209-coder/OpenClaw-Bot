@@ -12,33 +12,31 @@
 
 ## 最近更新（2026-04）
 
-## 2026-04-19 — R3 Bot 命令层审计 (45条目审查 / 3修复 / 3技术债)
+## 2026-04-19 — R3 Bot 命令层审计 + R4 Bot 业务场景审计
 > 领域: `backend`, `docs`
 > 影响模块: `callback_mixin`, `help_mixin`, `workflow_mixin`, `COMMAND_REGISTRY.md`
-> 关联问题: R3 审计, HI-532, HI-533, HI-534, HI-529~531
+> 关联问题: R3 审计 HI-529~534, R4 审计 HI-535~542
 
-### 变更内容
-
-**审计范围**: 45 个条目 — 命令注册完整性 / 核心命令验证 / 回调按钮处理器 / 中文NLP触发 / Workflow Mixin / 消息处理管道 / 错误处理
+### R3 Bot 命令层审计 (45 条目 / 3 修复 / 3 技术债)
 
 **修复 (3项)**:
-1. **回调→命令崩溃修复 (HI-532)**: `handle_card_action_callback` 中 5 处 `cmd_*()` 调用无 try/except，在回调上下文中 `update.message` 为 None 导致 AttributeError 无声崩溃。新增 `_safe_cmd_from_callback()` 辅助函数统一保护所有回调→命令调用
-2. **帮助文本人数修正 (HI-533)**: /help 投资分析分类中 /invest 描述 "5 位 AI" → "6 位 AI"
-3. **返回类型一致性修复 (HI-534)**: `workflow_mixin._pick_workflow_bot()` 兜底路径返回字符串（而非元组），调用方解构会崩溃。改为 `return None, self.bot_id`
+1. **回调→命令崩溃修复 (HI-532)**: `handle_card_action_callback` 5 处 cmd_ 调用无 try/except，新增 `_safe_cmd_from_callback()` 统一保护
+2. **帮助文本人数修正 (HI-533)**: /help 中 /invest "5 位 AI" → "6 位 AI"
+3. **返回类型一致性 (HI-534)**: `_pick_workflow_bot()` 兜底返回字符串→元组
 
-**文档修复 (9项)**:
-4. `/dualpost` handler 名修正: `cmd_dual_post`(不存在) → `cmd_post`(实际别名)
-5. 回调处理器补全: 新增 `handle_clarification_callback` 和 `handle_suggest_callback` 两个缺失条目
-6. 回调编号修正: 重排为 1-16（原有 #4 重复）
-7. 行号引用更新: 命令注册/回调注册/消息处理器三处行号与当前代码对齐
-8. `handle_document_ocr` 过滤器补全: 补充 .docx/.pptx/.xlsx/.doc/.xls/.ppt 六种 Office 格式
-9. 卡片操作回调 pattern 补全: 展开截断的 `...` 为完整 9 个前缀
-10. Source 列修正: 多处 `cmd_basic_mixin` → 精确到实际 mixin 文件名
+**文档修复 (9项)**: COMMAND_REGISTRY.md handler名/行号/缺失回调/编号/MIME类型/pattern全部修正
 
-**技术债登记 (3项)**:
-11. HI-529: 98 个 cmd_ 中 72 个(73%)缺 try/except
-12. HI-530: workflow_mixin 22/25 方法为死代码
-13. HI-531: /help 菜单有 30 个命令未覆盖
+### R4 Bot 业务场景审计 (40 条目 / 32 通过 / 1 设计问题 / 7 技术债)
+
+**审计范围**: 投资(8) + 社媒(8) + 闲鱼(8) + 生活自动化(8) + Kiro Gateway(4) + 通知系统(4)
+
+**亮点**:
+- 闲鱼客服 8/8 全部通过（底价防护/限速/心跳/熔断器/利润核算全部健壮）
+- Kiro Gateway 4/4 全部通过（CORS 限制/10MB 限制/OpenAI+Anthropic 兼容）
+- 投资链路完整：NLP→ticker解析→技术分析→AI投票(6模型)→确认→执行
+- 通知系统 P0 重试+指数退避+微信推送全部正常
+
+**技术债登记 (8项)**: HI-535~542
 
 ### 文件变更
 - `packages/clawbot/src/bot/cmd_basic/callback_mixin.py` — 新增 `_safe_cmd_from_callback()` + 保护所有回调→命令调用
