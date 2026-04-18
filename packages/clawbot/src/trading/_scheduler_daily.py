@@ -407,7 +407,7 @@ async def _setup_scheduler():
                             },
                         )
             except Exception as e:
-                logger.debug("[Scheduler] 每日成本报告失败: %s", e)
+                logger.warning("[Scheduler] 每日成本报告失败: %s", e)
 
         _ts._scheduler.add_task("cost_daily_report", _cost_daily_report, schedule_time=time(23, 0))
 

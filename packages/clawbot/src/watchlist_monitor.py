@@ -101,7 +101,7 @@ class WatchlistMonitor:
             except asyncio.CancelledError as e:  # noqa: F841
                 break
             except Exception as e:
-                logger.debug(f"自选股异动检查异常 (将继续): {e}")
+                logger.warning("[WatchList] 自选股异动检查异常: %s", e)
 
             # 定期清理过期冷却
             self._cleanup_cooldowns()
