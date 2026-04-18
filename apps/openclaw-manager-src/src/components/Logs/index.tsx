@@ -150,6 +150,19 @@ export function Logs() {
     }
   };
 
+  // 搜索关键词高亮：将匹配文字用 <mark> 包裹
+  const highlightText = (text: string): React.ReactNode => {
+    if (!searchText) return text;
+    const regex = new RegExp(`(${searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    if (parts.length <= 1) return text;
+    return parts.map((part, i) =>
+      regex.test(part)
+        ? <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">{part}</mark>
+        : part
+    );
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* 工具栏 */}
@@ -284,7 +297,7 @@ export function Logs() {
                       [{log.module}]
                     </span>
                     <span className="text-gray-300 break-all">
-                      {log.message}
+                      {highlightText(log.message)}
                     </span>
                   </div>
                   {log.args.length > 0 && (
