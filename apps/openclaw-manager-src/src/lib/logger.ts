@@ -1,9 +1,70 @@
 /**
  * 前端日志工具
  * 统一管理所有前端日志输出，方便调试和追踪
+ * 内置脱敏机制：自动检测并掩码 API Key / Token / Cookie / 密码等敏感信息
  */
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/**
+ * 敏感信息脱敏规则
+ * 匹配常见的 API Key、Token、密码等模式，替换为掩码
+ */
+const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  // Bearer Token: "Bearer sk-xxxx..." → "Bearer sk-****..."
+  { pattern: /Bearer\s+[A-Za-z0-9_\-./+=]{8,}/gi, replacement: 'Bearer ****' },
+  // API Key 类参数: api_key=xxx / apiKey=xxx / token=xxx
+  { pattern: /(api[_-]?key|token|secret|password|authorization|credential|app[_-]?key)[=:]\s*["']?([A-Za-z0-9_\-./+=]{8,})["']?/gi, replacement: '$1=****' },
+  // 常见 Key 前缀: sk-xxx / gsk_xxx / xai-xxx / nvapi-xxx / ghp_xxx
+  { pattern: /\b(sk-|gsk_|xai-|nvapi-|ghp_|glpat-|Bearer\s+)[A-Za-z0-9_\-./+=]{8,}/gi, replacement: '$1****' },
+  // Cookie 字符串: cookie=xxx 或 Cookie: xxx
+  { pattern: /(cookie)[=:]\s*["']?[^"'\s]{16,}["']?/gi, replacement: '$1=****' },
+  // JSON 格式的敏感字段: "api_key": "xxx" / "token": "xxx" / "password": "xxx"
+  { pattern: /"(api[_-]?key|token|secret|password|authorization|cookie|app[_-]?key)"\s*:\s*"([^"]{8,})"/gi, replacement: '"$1":"****"' },
+  // 邮箱密码: smtp_password / email_password
+  { pattern: /(smtp[_-]?password|email[_-]?password)[=:]\s*["']?[^\s"']{4,}["']?/gi, replacement: '$1=****' },
+  // SSH Key / 私钥
+  { pattern: /-----BEGIN\s+[A-Z\s]+PRIVATE\s+KEY-----[\s\S]*?-----END\s+[A-Z\s]+PRIVATE\s+KEY-----/g, replacement: '****PRIVATE_KEY****' },
+];
+
+/**
+ * 对字符串进行敏感信息脱敏
+ */
+function scrubString(input: string): string {
+  let result = input;
+  for (const { pattern, replacement } of SENSITIVE_PATTERNS) {
+    // 重置 lastIndex（全局正则需要）
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+/**
+ * 递归脱敏：支持字符串、对象、数组
+ */
+function scrubSecrets(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return scrubString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubSecrets);
+  }
+  if (value !== null && typeof value === 'object') {
+    const scrubbed: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // 字段名本身就包含敏感关键词的，直接掩码值
+      const keyLower = k.toLowerCase();
+      if (/(?:api[_-]?key|token|secret|password|authorization|cookie|credential|app[_-]?key)/.test(keyLower)) {
+        scrubbed[k] = typeof v === 'string' && v.length > 0 ? '****' : v;
+      } else {
+        scrubbed[k] = scrubSecrets(v);
+      }
+    }
+    return scrubbed;
+  }
+  return value;
+}
 
 // 日志条目
 export interface LogEntry {
@@ -127,23 +188,27 @@ class Logger {
     const prefix = `%c${timestamp} %c[${this.module}]%c`;
     
     const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
+
+    // 脱敏处理：对 message 和 args 中的敏感信息进行掩码
+    const safeMessage = scrubString(message);
+    const safeArgs = args.map(scrubSecrets);
     
     console[consoleMethod](
-      prefix + ` %c${message}`,
+      prefix + ` %c${safeMessage}`,
       'color: #666',
       `color: ${moduleColor}; font-weight: bold`,
       '',
       STYLES[level],
-      ...args
+      ...safeArgs
     );
 
-    // 存储日志
+    // 存储脱敏后的日志
     logStore.add({
       timestamp: now,
       level,
       module: this.module,
-      message,
-      args,
+      message: safeMessage,
+      args: safeArgs,
     });
   }
 
@@ -188,6 +253,9 @@ class Logger {
     this.debug(`📊 状态变化: ${description}`, state);
   }
 }
+
+// 导出脱敏函数，供日志导出等场景使用
+export { scrubString, scrubSecrets };
 
 // 创建模块 logger 的工厂函数
 export function createLogger(module: string): Logger {
