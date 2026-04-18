@@ -326,6 +326,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ symbol, quantity, order_type: orderType }),
     });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`卖出请求失败 (HTTP ${resp.status}): ${text || '未知错误'}`);
+    }
     return resp.json();
   },
 
