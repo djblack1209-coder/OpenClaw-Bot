@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R7 macOS业务页面审计: 6修复 + 20技术债)
+> 最后更新: 2026-04-19 (R8 投资交易系统审计: 4修复 + 10技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -188,6 +188,16 @@
 | HI-564 | `frontend` | `Evolution/index.tsx` | TECH_DEBT: 进化历史时间线缺失——created_at 已映射但未在 UI 展示。提案无时间排序视图 (R7.31) | 2026-04-19 |
 | HI-565 | `frontend` | `AIConfig/index.tsx` | TECH_DEBT: 模型切换后前端立刻更新但后端需重启才生效，缺少重启提示。Token 创建和渠道编辑 UI 未实现 (R7.35/R7.36) | 2026-04-19 |
 | HI-566 | `frontend` | `Scheduler/index.tsx` | TECH_DEBT: 定时任务仅有启停切换——缺少创建/编辑/删除。只展示最后一次执行，无历史记录列表 (R7.39/R7.40) | 2026-04-19 |
+| HI-567 | `trading` | `broker_bridge.py` | TECH_DEBT: total_spent/budget 浮点属性在异步环境中 read-modify-write 不原子（如 L608 self.total_spent += ...），高并发下单可能预算追踪失准 (R8.11) | 2026-04-19 |
+| HI-568 | `trading` | `broker_bridge.py` | TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值，字段名误导下游消费者 (R8.14) | 2026-04-19 |
+| HI-569 | `trading` | `trading_pipeline.py` | TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行，可能导致监控系统认为有持仓但实际没有，止损触发时执行无效卖出（幽灵持仓风险）(R8.36) | 2026-04-19 |
+| HI-570 | `trading` | `position_monitor.py` | BUG(低频): 时间止损中 naive/aware datetime 混合比较——当 entry.tzinfo 为 None 时 now_et()-entry 会抛 TypeError。影响有限因 entry_time 通常由系统生成（aware）(R8.29) | 2026-04-19 |
+| HI-571 | `trading` | `position_monitor.py` | TECH_DEBT: _check_proximity_alert 只支持 BUY 方向，做空(SELL)方向的止损接近预警完全缺失。_cleanup_stale_cooldowns 已定义但从未被调用 (R8.29) | 2026-04-19 |
+| HI-572 | `trading` | `auto_trader.py` | TECH_DEBT: confirm_proposal() 执行交易后不增加 _today_trades 计数，可能导致日交易数超限不被检测 (R8.38) | 2026-04-19 |
+| HI-573 | `trading` | `_scheduler_daily.py` | TECH_DEBT: _daily_risk_reset 中 ibkr.reset_budget() 无参数调用硬编码重置为 $2000 默认值，会覆盖用户通过 IBKR_BUDGET 或 sync_capital 设置的预算 (R8.35) | 2026-04-19 |
+| HI-574 | `trading` | `_lifecycle.py` | TECH_DEBT: 恢复持仓时 entry_time 解析逻辑——空字符串 created_at 会导致 _parse_datetime 返回 None，入场时间被替换为当前时间，时间止损计算错误 (R8.29) | 2026-04-19 |
+| HI-575 | `trading` | `cmd_ibkr_mixin.py` | TECH_DEBT: /ibuy 和 /isell 命令直接调用 ibkr.buy()/sell() 绕过 TradingPipeline，手动交易不被记录到 journal，不进入持仓监控 (R8.16) | 2026-04-19 |
+| HI-576 | `trading` | `invest_tools.py` | TECH_DEBT: get_earnings_calendar 中 naive/aware datetime 比较可能抛 TypeError；get_quick_quotes 声称并行但实际串行 (R8.30) | 2026-04-19 |
 
 ### 🔵 低优先
 
@@ -205,6 +215,10 @@
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
 | HI-550a | `frontend` | `conversationService.ts` | 🔴 CRITICAL: SSE 流式请求使用 30s 默认超时，AI 任务（搜索/回测/生成）经常被中断 | `clawbotFetch` 调用传 `timeoutMs: 0` 禁用超时 | 2026-04-19 | R6 核心页面审计 |
+| HI-567a | `trading` | `broker_bridge.py` | 🔴 CRITICAL: connect() 方法在 asyncio.Lock 内部递归调用自身，asyncio.Lock 不可重入导致死锁——Gateway 自动启动后永远挂起 | 消除递归调用，Gateway 启动后在锁内直接重试连接逻辑 | 2026-04-19 | R8 交易系统审计 |
+| HI-568a | `trading` | `trading_pipeline.py` | 🟠 HIGH: DecisionValidator 异常时放行交易(fail-open)，违反金融系统 fail-closed 原则 | 改为异常时拒绝交易并返回错误 | 2026-04-19 | R8 交易系统审计 |
+| HI-569a | `trading` | `auto_trader.py` | 🟠 HIGH: 风控引擎 calc_safe_quantity 返回 error 时，fallback 用 20% 仓位绕过风控下单 | 风控计算失败时跳过该候选，不使用固定比例替代 | 2026-04-19 | R8 交易系统审计 |
+| HI-570a | `trading` | `ai_team_voter.py` | 🟠 HIGH: 并行投票中 bot 抛异常时，默认 HOLD 票 abstained=False 计入共识统计，拉低 buy_count 或拉高 hold_count | 异常情况设置 abstained=True，与超时/失败行为一致 | 2026-04-19 | R8 交易系统审计 |
 | HI-551a | `frontend` | `AssetDistribution.tsx` | 🟠 HIGH: 三处相同 Mock 数据(股票$45k/加密$28k等)在 API 失败时展示，用户误以为真实资产 | 移除 Mock，API 失败/空时展示空态 + 错误提示 + 60s 定时刷新 | 2026-04-19 | R6 核心页面审计 |
 | HI-552a | `frontend` | `RecentActivity.tsx` | 🟠 HIGH: 虚假活动列表(买入AAPL/闲鱼客服/小红书笔记)在 API 失败时展示 | 移除 Mock，展示空态 + 错误提示 | 2026-04-19 | R6 核心页面审计 |
 | HI-553a | `frontend` | `Assistant/index.tsx` | 🟠 HIGH: 流式 chunk 每次追加都触发 scrollIntoView，用户向上查看历史时被强制拉回底部 | 新增 `isNearBottomRef` 判断，仅在底部 100px 范围内时自动滚动 | 2026-04-19 | R6 核心页面审计 |

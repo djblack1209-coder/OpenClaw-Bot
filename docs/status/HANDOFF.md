@@ -4,6 +4,35 @@
 
 ---
 
+## [2026-04-19] 全方位审计 v3.0 — R8 投资交易系统审计完成
+
+### 本次完成了什么
+1. **R8 投资交易系统深度审计**: 40 条目 / 4 修复 / 10 技术债
+   - broker_bridge.py connect() asyncio.Lock 递归死锁修复（🔴 CRITICAL）
+   - trading_pipeline.py DecisionValidator 异常放行→fail-closed（🟠 HIGH）
+   - auto_trader.py 风控计算失败时 20% fallback 绕过→跳过候选（🟠 HIGH）
+   - ai_team_voter.py 异常导致假 HOLD 票计入共识→标记 abstained（🟠 HIGH）
+2. **全量代码审查**: 51 个交易相关文件 / 20,129 行代码
+3. **审计通过确认**: 风控 Validator 链架构优秀 / VaR-CVaR 集成完备 / 阶梯熔断+凯利公式正常
+
+### 未完成的工作
+- **R9-R11**: 3 轮审计待执行（约 90 个条目）
+- **R9 下一轮**: 闲鱼+社媒+微信+工具链审计
+
+### 需要注意的坑
+- IBKR 失败静默降级到模拟盘（HI-569）——可能产生幽灵持仓，需要明确标记降级来源
+- _daily_risk_reset 中 ibkr.reset_budget() 硬编码 $2000（HI-573）——如果用户改了预算会被覆盖
+- /ibuy 和 /isell 命令直接调用 ibkr 绕过 TradingPipeline（HI-575）——手动交易不进 journal
+- position_monitor 的时间止损有 naive/aware datetime 混合风险（HI-570）
+
+### 当前系统状态
+- Git: 干净，R8 修复已提交
+- 交易测试: 241 passed / 22 failed（与基线一致，0 回归）
+- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5 ✅ / R6 ✅ / R7 ✅ / R8 ✅ / R9-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动定位到 R9）
+
+---
+
 ## [2026-04-19] 全方位审计 v3.0 — R6+R7 macOS 前端审计完成
 
 ### 本次完成了什么
