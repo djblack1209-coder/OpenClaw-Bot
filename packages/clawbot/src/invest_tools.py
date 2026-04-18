@@ -46,9 +46,15 @@ def _get_global_quote_cache():
         return None
 
 
-def _get_cached_quote(symbol: str) -> Optional[dict]:
-    """获取缓存的行情 — 优先从 QuoteCache 读取，回退到本地缓存"""
+def _get_cached_quote(symbol: str, allow_stale: bool = False) -> Optional[dict]:
+    """获取缓存的行情 — 优先从 QuoteCache 读取，回退到本地缓存
+
+    Args:
+        symbol: 股票代码
+        allow_stale: 是否允许返回过期缓存（用于请求失败时的降级）
+    """
     key = symbol.upper()
+    now = _time.time()
 
     # 优先从全局 QuoteCache 获取（持仓监控也用这个）
     qc = _get_global_quote_cache()
@@ -58,14 +64,20 @@ def _get_cached_quote(symbol: str) -> Optional[dict]:
             # QuoteCache 只存 price，本地缓存存完整 dict
             if key in _quote_cache:
                 quote, ts = _quote_cache[key]
-                if _time.time() - ts < CACHE_TTL:
+                if now - ts < CACHE_TTL:
                     return quote
 
     # 回退到本地缓存
     if key in _quote_cache:
         quote, ts = _quote_cache[key]
-        if _time.time() - ts < CACHE_TTL:
+        if now - ts < CACHE_TTL:
             return quote
+        # 允许过期降级时，返回旧数据并标记
+        if allow_stale:
+            stale_copy = dict(quote)
+            stale_copy["_stale"] = True
+            stale_copy["_stale_age_secs"] = int(now - ts)
+            return stale_copy
     return None
 
 
@@ -152,6 +164,12 @@ def _sync_get_quote(symbol: str) -> dict:
         _set_cached_quote(symbol, result)
         return result
     except Exception as e:
+        # 请求失败时尝试返回过期缓存数据（stale-data fallback）
+        stale = _get_cached_quote(symbol, allow_stale=True)
+        if stale:
+            logger.warning("[InvestTools] %s yfinance 请求失败, 返回过期缓存 (age=%ds): %s",
+                           symbol, stale.get("_stale_age_secs", 0), e)
+            return stale
         return {"error": f"查询 {symbol} 失败: {str(e)}"}
 
 
