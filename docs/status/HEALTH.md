@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (T2 意图识别+T3 风控BUG修复+T4 QuantStats+T5 LiteLLM外化, 测试1338+2skip/5预存失败)
+> 最后更新: 2026-04-18 (R2后端核心引擎审计完成: 14项修复+5技术债登记)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -153,6 +153,10 @@
 | HI-522 | `trading` | `risk_manager.py` | TECH_DEBT: `check_trade()` 读取 `_today_pnl/_today_trade_count` 等共享状态无锁保护，多协程并发交易可能出现竞态条件 | 2026-04-18 |
 | HI-523 | `trading` | `risk_manager.py` | ARCH_LIMIT: SELL 方向交易几乎不做风控检查（仅持仓验证），缺少卖空风控、止损验证等 | 2026-04-18 |
 | HI-524 | `trading` | `risk_manager.py` | ARCH_LIMIT: 新账户首笔交易时 `_today_pnl=0 / _today_trade_count=0 / positions=[]`，VaR 保护因无持仓数据而完全失效 | 2026-04-18 |
+| HI-525 | `ai-pool` | `litellm_router.py` + `config/llm_routing.json` | TECH_DEBT: JSON 配置与硬编码完全漂移 — iflow_unlimited 的 URL 和模型名不一致，需确认统一切换策略 (R2.25/R2.29) | 2026-04-18 |
+| HI-526 | `backend` | `src/` 全目录 | TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44) | 2026-04-18 |
+| HI-527 | `backend` | `src/` 全目录 | TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`，异常静默吞掉形成幽灵任务 (R2.45) | 2026-04-18 |
+| HI-528 | `backend` | SQLite 全部 6 实例 | TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36) | 2026-04-18 |
 
 ### 🔵 低优先
 
