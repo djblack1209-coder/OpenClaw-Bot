@@ -126,11 +126,11 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
             except Exception as e:
                 logger.debug(f"风控主动通知评估失败: {e}")
 
-        # 注册监听器
+        # 注册监听器（注意：subscribe 是同步方法，不能用 await）
         if hasattr(EventType, "TRADE_EXECUTED"):
-            await bus.subscribe(EventType.TRADE_EXECUTED, on_trade_executed)
+            bus.subscribe(EventType.TRADE_EXECUTED, on_trade_executed)
         if hasattr(EventType, "RISK_ALERT"):
-            await bus.subscribe(EventType.RISK_ALERT, on_risk_alert)
+            bus.subscribe(EventType.RISK_ALERT, on_risk_alert)
 
         # 自选股异动 → 情报级主动推送（新闻+K线图+RSI+持仓浮盈）
         async def on_watchlist_anomaly(event_data: Dict[str, Any]):
@@ -238,7 +238,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 logger.debug(f"自选股异动通知失败: {e}")
 
         if hasattr(EventType, "WATCHLIST_ANOMALY"):
-            await bus.subscribe(EventType.WATCHLIST_ANOMALY, on_watchlist_anomaly)
+            bus.subscribe(EventType.WATCHLIST_ANOMALY, on_watchlist_anomaly)
 
         # 任务闭环跟踪 — 搬运 Apple Reminders / Todoist 定时回看模式
         # 投资类任务执行完后，延迟 2 小时检查结果变化并主动推送
@@ -299,7 +299,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 logger.debug(f"任务完成监听异常: {e}")
 
         if hasattr(EventType, "TASK_COMPLETED"):
-            await bus.subscribe(EventType.TASK_COMPLETED, on_task_completed)
+            bus.subscribe(EventType.TASK_COMPLETED, on_task_completed)
 
         # 流式进度反馈 — 搬运 Claude artifact 流式 / ChatGPT 思考过程
         # 多步任务每完成一步实时推送进度到用户
@@ -325,7 +325,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
             except Exception as e:
                 logger.debug(f"进度推送异常: {e}")
 
-        await bus.subscribe("brain.progress", on_brain_progress)
+        bus.subscribe("brain.progress", on_brain_progress)
 
         # ── 闲鱼订单支付 — 提醒发货 ──
         async def on_xianyu_order_paid(event_data):

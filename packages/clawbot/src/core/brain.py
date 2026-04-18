@@ -640,7 +640,12 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 result.error = "任务执行失败"
 
         except Exception as e:
-            result.error = str(e)
+            # 脱敏异常信息，防止 API Key/URL 泄露给用户
+            try:
+                from src.litellm_router import _scrub_secrets
+                result.error = _scrub_secrets(str(e))
+            except Exception:
+                result.error = "追问处理失败"
             logger.error("追问回答处理失败: %s", e, exc_info=True)
 
         result.elapsed_seconds = time.time() - start_time
@@ -684,7 +689,12 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                 else:
                     result.error = "任务执行失败"
         except Exception as e:
-            result.error = str(e)
+            # 脱敏异常信息，防止 API Key/URL 泄露给用户
+            try:
+                from src.litellm_router import _scrub_secrets
+                result.error = _scrub_secrets(str(e))
+            except Exception:
+                result.error = "回调处理失败"
             logger.error("回调处理失败: %s", e, exc_info=True)
 
         return result
