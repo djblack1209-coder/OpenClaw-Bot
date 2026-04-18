@@ -146,31 +146,40 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
 
         v2.2: 硬检查走 Validator 链（可插拔），软检查保留在此方法中。
         返回 RiskCheckResult，approved=False 则禁止执行
+
+        HI-522: 加 _state_lock 保护共享状态读取，防止多协程并发交易的竞态条件
         """
         warnings = []
         symbol = symbol.upper()
         side = side.upper()
 
         # === 阶段一: Validator 链硬检查（reject 即终止）===
-        self._refresh_today_pnl()
-        ctx = ValidatorContext(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            signal_score=signal_score,
-            current_positions=current_positions or [],
-            config=self.config,
-            today_pnl=self._today_pnl,
-            consecutive_losses=self._consecutive_losses,
-            position_scale=self._position_scale,
-            current_tier=self._current_tier,
-            rolling_pnl=list(self._rolling_pnl),
-            trade_history=list(self._trade_history),
-            peak_capital=self._peak_capital,
-        )
+        # HI-522: 在锁内刷新并读取共享状态的一致性快照，避免竞态
+        with self._state_lock:
+            self._refresh_today_pnl()
+            ctx = ValidatorContext(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                signal_score=signal_score,
+                current_positions=current_positions or [],
+                config=self.config,
+                today_pnl=self._today_pnl,
+                consecutive_losses=self._consecutive_losses,
+                position_scale=self._position_scale,
+                current_tier=self._current_tier,
+                rolling_pnl=list(self._rolling_pnl),
+                trade_history=list(self._trade_history),
+                peak_capital=self._peak_capital,
+            )
+            # 快照本地副本，锁外使用
+            snap_today_pnl = self._today_pnl
+            snap_position_scale = self._position_scale
+            snap_current_tier = self._current_tier
+
         chain_result = self._validator_chain.run(ctx)
         if not chain_result.approved:
             return chain_result
@@ -188,22 +197,22 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         if abs(signal_score) < self.config.min_signal_score and signal_score != 0:
             warnings.append(f"信号评分{signal_score}偏弱(阈值±{self.config.min_signal_score})，建议谨慎")
 
-        # 剩余日亏损额度预估
-        remaining_daily = self.config.daily_loss_limit + self._today_pnl
+        # 剩余日亏损额度预估（使用快照值，避免二次加锁）
+        remaining_daily = self.config.daily_loss_limit + snap_today_pnl
         if side == "BUY" and stop_loss > 0:
             potential_loss = quantity * (entry_price - stop_loss)
             if potential_loss > remaining_daily:
                 warnings.append(f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额(剩余额度${remaining_daily:.2f})")
 
-        # 阶梯式熔断仓位缩放
-        if self.config.tiered_cooldown_enabled and self._position_scale < 1.0:
+        # 阶梯式熔断仓位缩放（使用快照值）
+        if self.config.tiered_cooldown_enabled and snap_position_scale < 1.0:
             original_qty = result.adjusted_quantity or quantity
-            scaled_qty = max(1, int(original_qty * self._position_scale))
+            scaled_qty = max(1, int(original_qty * snap_position_scale))
             if scaled_qty < original_qty:
                 result.adjusted_quantity = scaled_qty
                 warnings.append(
-                    f"阶梯熔断Tier{self._current_tier}: 仓位缩放至"
-                    f"{self._position_scale * 100:.0f}%，"
+                    f"阶梯熔断Tier{snap_current_tier}: 仓位缩放至"
+                    f"{snap_position_scale * 100:.0f}%，"
                     f"数量{original_qty}->{scaled_qty}"
                 )
                 quantity = scaled_qty
@@ -301,16 +310,20 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
             )
 
     def reset_daily(self):
-        """每日重置（新交易日开始时调用）"""
-        self._today_pnl = 0.0
-        self._today_trades = 0
-        self._consecutive_losses = 0
-        self._cooldown_until = None
-        # FIX 9: 同步重置分层状态，确保每日干净启动
-        self._current_tier = 0
-        self._position_scale = 1.0
-        self._last_pnl_update = now_et().strftime("%Y-%m-%d")
-        self._last_refresh_ts = None
+        """每日重置（新交易日开始时调用）
+
+        HI-522: 加锁保护共享状态写入，防止与 check_trade / record_trade_result 并发冲突
+        """
+        with self._state_lock:
+            self._today_pnl = 0.0
+            self._today_trades = 0
+            self._consecutive_losses = 0
+            self._cooldown_until = None
+            # FIX 9: 同步重置分层状态，确保每日干净启动
+            self._current_tier = 0
+            self._position_scale = 1.0
+            self._last_pnl_update = now_et().strftime("%Y-%m-%d")
+            self._last_refresh_ts = None
         logger.info("[RiskManager] 日重置完成（含连续亏损、熔断、分层状态清零）")
 
     # ============ 仓位计算 ============
@@ -435,41 +448,45 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         return "\n".join(lines)
 
     def get_status(self) -> Dict:
-        """获取风控系统状态（v2.0增强版）"""
-        self._refresh_today_pnl()
-        remaining_daily = self.config.daily_loss_limit + self._today_pnl
-        stats = self._get_trade_stats()
+        """获取风控系统状态（v2.0增强版）
 
-        # 回撤计算
-        current_capital = self.config.total_capital + self._today_pnl
-        drawdown = 0
-        if self._peak_capital > 0:
-            drawdown = (self._peak_capital - current_capital) / self._peak_capital
+        HI-522: 加锁保护共享状态读取，确保返回一致性快照
+        """
+        with self._state_lock:
+            self._refresh_today_pnl()
+            remaining_daily = self.config.daily_loss_limit + self._today_pnl
+            stats = self._get_trade_stats()
 
-        return {
-            "capital": self.config.total_capital,
-            "today_pnl": round(self._today_pnl, 2),
-            "today_trades": self._today_trades,
-            "daily_loss_limit": self.config.daily_loss_limit,
-            "remaining_daily_loss_budget": round(max(0, remaining_daily), 2),
-            "consecutive_losses": self._consecutive_losses,
-            "in_cooldown": self._is_in_cooldown(),
-            "cooldown_until": self._cooldown_until.isoformat() if self._cooldown_until else None,
-            "max_risk_per_trade": round(self.config.total_capital * self.config.max_risk_per_trade_pct, 2),
-            "max_position_value": round(self.config.total_capital * self.config.max_position_pct, 2),
-            "max_total_exposure": round(self.config.total_capital * self.config.max_total_exposure_pct, 2),
-            # v2.0 新增
-            "tiered_cooldown_tier": self._current_tier,
-            "position_scale": self._position_scale,
-            "drawdown_pct": round(drawdown * 100, 2),
-            "peak_capital": round(self._peak_capital, 2),
-            "rolling_pnl": round(sum(self._rolling_pnl), 2) if self._rolling_pnl else 0,
-            "win_rate": round(stats["win_rate"] * 100, 1),
-            "total_history_trades": stats["total_trades"],
-            "kelly_enabled": self.config.kelly_enabled,
-            # v2.1 新增: VaR/CVaR 风险度量 (搬运自 QuantStats)
-            "var_metrics": self.get_var_metrics(),
-        }
+            # 回撤计算
+            current_capital = self.config.total_capital + self._today_pnl
+            drawdown = 0
+            if self._peak_capital > 0:
+                drawdown = (self._peak_capital - current_capital) / self._peak_capital
+
+            return {
+                "capital": self.config.total_capital,
+                "today_pnl": round(self._today_pnl, 2),
+                "today_trades": self._today_trades,
+                "daily_loss_limit": self.config.daily_loss_limit,
+                "remaining_daily_loss_budget": round(max(0, remaining_daily), 2),
+                "consecutive_losses": self._consecutive_losses,
+                "in_cooldown": self._is_in_cooldown(),
+                "cooldown_until": self._cooldown_until.isoformat() if self._cooldown_until else None,
+                "max_risk_per_trade": round(self.config.total_capital * self.config.max_risk_per_trade_pct, 2),
+                "max_position_value": round(self.config.total_capital * self.config.max_position_pct, 2),
+                "max_total_exposure": round(self.config.total_capital * self.config.max_total_exposure_pct, 2),
+                # v2.0 新增
+                "tiered_cooldown_tier": self._current_tier,
+                "position_scale": self._position_scale,
+                "drawdown_pct": round(drawdown * 100, 2),
+                "peak_capital": round(self._peak_capital, 2),
+                "rolling_pnl": round(sum(self._rolling_pnl), 2) if self._rolling_pnl else 0,
+                "win_rate": round(stats["win_rate"] * 100, 1),
+                "total_history_trades": stats["total_trades"],
+                "kelly_enabled": self.config.kelly_enabled,
+                # v2.1 新增: VaR/CVaR 风险度量 (搬运自 QuantStats)
+                "var_metrics": self.get_var_metrics(),
+            }
 
     # ============ 内部方法 ============
 
