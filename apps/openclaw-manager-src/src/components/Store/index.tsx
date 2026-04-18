@@ -20,6 +20,7 @@ import {
   Radar,
   Zap,
   Clock,
+  AlertCircle,
 } from 'lucide-react';
 
 import { GlassCard } from '../shared';
@@ -432,6 +433,8 @@ export function Store() {
   const [evolutionStats, setEvolutionStats] = useState<EvolutionStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  /** 标记是否为本地缓存数据（Evolution API 不可达时） */
+  const [usingLocalData, setUsingLocalData] = useState(false);
 
   // Persist installed plugins to localStorage on every change
   useEffect(() => {
@@ -503,7 +506,8 @@ export function Store() {
         });
       }
     } catch (err) {
-      // 静默失败——商店仍展示 MOCK 数据
+      // 展示本地缓存数据降级提示
+      setUsingLocalData(true);
       logger.warn('Evolution 数据加载失败，使用本地数据', err);
     } finally {
       setLoading(false);
@@ -637,7 +641,14 @@ export function Store() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0D0F14]">
+    <div className="h-full flex flex-col bg-[var(--bg-primary)]">
+      {/* 本地数据降级提示 */}
+      {usingLocalData && (
+        <div className="mx-6 mt-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400 flex items-center gap-2">
+          <AlertCircle size={14} />
+          当前展示为本地缓存数据，后端 Evolution API 不可达
+        </div>
+      )}
       {/* 搜索栏 + 刷新按钮 */}
       <div className="px-6 pt-6 pb-4">
         <div className="flex items-center gap-2">

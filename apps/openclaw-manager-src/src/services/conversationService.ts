@@ -6,6 +6,7 @@
  */
 
 import { clawbotFetch } from '../lib/tauri';
+import { toast } from 'sonner';
 import { useConversationStore, type SessionSummary, type Session, type Message } from '../stores/conversationStore';
 
 /** 拉取会话列表 */
@@ -21,6 +22,7 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
     return sessions;
   } catch (e) {
     console.error('获取会话列表失败:', e);
+    toast.error('获取会话列表失败');
     return [];
   } finally {
     store.setLoadingSessions(false);
@@ -44,6 +46,7 @@ export async function createSession(title?: string): Promise<string | null> {
     return session.id;
   } catch (e) {
     console.error('创建会话失败:', e);
+    toast.error('创建会话失败');
     return null;
   }
 }
@@ -59,6 +62,7 @@ export async function loadSession(sessionId: string): Promise<void> {
     store.setMessages(session.messages ?? []);
   } catch (e) {
     console.error('加载会话详情失败:', e);
+    toast.error('加载会话详情失败');
   }
 }
 
@@ -73,6 +77,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
     await fetchSessions();
   } catch (e) {
     console.error('删除会话失败:', e);
+    toast.error('删除会话失败');
   }
 }
 
@@ -114,6 +119,7 @@ export async function sendMessage(sessionId: string, message: string): Promise<v
 
   try {
     // 3. 发起 SSE 请求（通过 clawbotFetch 发送，自动附加 API Token）
+    // SSE 流式响应可能持续很长时间（AI 分析/搜索等），禁用超时
     const response = await clawbotFetch(
       `/api/v1/conversation/sessions/${sessionId}/send`,
       {
@@ -123,7 +129,8 @@ export async function sendMessage(sessionId: string, message: string): Promise<v
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message }),
-      }
+      },
+      0 // 禁用超时，SSE 流式响应不应被中断
     );
 
     if (!response.ok || !response.body) {

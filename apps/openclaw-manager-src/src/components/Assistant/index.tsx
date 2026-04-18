@@ -102,6 +102,9 @@ export function Assistant() {
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  /** 记录用户是否在消息列表底部附近，用于控制自动滚动 */
+  const isNearBottomRef = useRef(true);
 
   const currentModeConfig = MODES.find((m) => m.id === currentMode) || MODES[0];
 
@@ -110,9 +113,11 @@ export function Assistant() {
     fetchSessions();
   }, []);
 
-  /* 消息变化时自动滚动到底部 */
+  /* 消息变化时自动滚动到底部 — 仅在用户已处于底部附近时触发 */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   /* 发送消息 */
@@ -239,7 +244,17 @@ export function Assistant() {
         </div>
 
         {/* 对话内容 */}
-        <div className="flex-1 overflow-y-auto scroll-container p-6 space-y-4">
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto scroll-container p-6 space-y-4"
+          onScroll={() => {
+            const el = messagesContainerRef.current;
+            if (el) {
+              // 用户在底部 100px 范围内视为"在底部"
+              isNearBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 100;
+            }
+          }}
+        >
           {messages.length === 0 ? (
             /* 空状态：欢迎界面 + 快捷命令 */
             <div className="h-full flex flex-col items-center justify-center">
@@ -887,7 +902,7 @@ function MarkdownContent({ content }: { content: string }) {
     return elements;
   };
 
-  // 解析行内 Markdown（粗体、斜体、行内代码）
+  // 解析行内 Markdown（粗体、斜体、行内代码、链接）
   const parseInlineMarkdown = (text: string): React.ReactNode => {
     const parts: React.ReactNode[] = [];
     let remaining = text;
@@ -903,6 +918,24 @@ function MarkdownContent({ content }: { content: string }) {
           </code>
         );
         remaining = remaining.slice(codeMatch[0].length);
+        continue;
+      }
+
+      // 链接 [text](url)
+      const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
+      if (linkMatch) {
+        parts.push(
+          <a
+            key={key++}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--oc-brand)] hover:underline"
+          >
+            {linkMatch[1]}
+          </a>
+        );
+        remaining = remaining.slice(linkMatch[0].length);
         continue;
       }
 
@@ -931,7 +964,7 @@ function MarkdownContent({ content }: { content: string }) {
       }
 
       // 普通文本
-      const nextSpecial = remaining.search(/[`*]/);
+      const nextSpecial = remaining.search(/[`*\[]/);
       if (nextSpecial === -1) {
         parts.push(remaining);
         break;

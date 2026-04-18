@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Wallet, Loader2 } from 'lucide-react';
+import { Wallet, Loader2, AlertCircle } from 'lucide-react';
 import { api, isTauri } from '@/lib/tauri';
 
 /**
@@ -15,25 +15,19 @@ interface AssetItem {
 
 /**
  * 资产分布饼图组件 - TradingView 风格
+ * 审计修复: 移除 Mock 数据，API 失败时展示空态而非虚假资产数字
  */
 export function AssetDistribution() {
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalValue, setTotalValue] = useState(0);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchAssets = async () => {
       if (!isTauri()) {
+        // 非 Tauri 环境（浏览器开发），展示空态
         setLoading(false);
-        // 使用模拟数据
-        const mockData: AssetItem[] = [
-          { name: '股票', value: 45000, color: '#00D4FF' },
-          { name: '加密货币', value: 28000, color: '#4ADE80' },
-          { name: '现金', value: 15000, color: '#FBBF24' },
-          { name: '其他', value: 12000, color: '#9CA3AF' },
-        ];
-        setAssets(mockData);
-        setTotalValue(mockData.reduce((sum, item) => sum + item.value, 0));
         return;
       }
 
@@ -44,34 +38,39 @@ export function AssetDistribution() {
         if (data.assets && data.assets.length > 0) {
           setAssets(data.assets);
           setTotalValue(data.total || data.assets.reduce((sum, item) => sum + item.value, 0));
-        } else {
-          // 使用模拟数据
-          const mockData: AssetItem[] = [
-            { name: '股票', value: 45000, color: '#00D4FF' },
-            { name: '加密货币', value: 28000, color: '#4ADE80' },
-            { name: '现金', value: 15000, color: '#FBBF24' },
-            { name: '其他', value: 12000, color: '#9CA3AF' },
-          ];
-          setAssets(mockData);
-          setTotalValue(mockData.reduce((sum, item) => sum + item.value, 0));
         }
-      } catch (e) {
-        // 使用模拟数据
-        const mockData: AssetItem[] = [
-          { name: '股票', value: 45000, color: '#00D4FF' },
-          { name: '加密货币', value: 28000, color: '#4ADE80' },
-          { name: '现金', value: 15000, color: '#FBBF24' },
-          { name: '其他', value: 12000, color: '#9CA3AF' },
-        ];
-        setAssets(mockData);
-        setTotalValue(mockData.reduce((sum, item) => sum + item.value, 0));
+        // API 返回空数据时保持空态，不使用 Mock
+      } catch {
+        setError(true);
       } finally {
         setLoading(false);
       }
     };
 
     fetchAssets();
+    // 每60秒刷新一次
+    const interval = setInterval(fetchAssets, 60000);
+    return () => clearInterval(interval);
   }, []);
+
+  // 空态组件：无数据或出错时展示
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center h-[280px] text-center">
+      {error ? (
+        <>
+          <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)] mb-2" />
+          <p className="text-sm text-[var(--text-secondary)]">资产数据加载失败</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">请检查后端服务是否运行</p>
+        </>
+      ) : (
+        <>
+          <Wallet className="h-8 w-8 text-[var(--text-tertiary)] mb-2" />
+          <p className="text-sm text-[var(--text-secondary)]">暂无资产数据</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">连接交易系统后自动展示</p>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <Card className="border-[var(--border-default)] bg-[var(--bg-primary)] shadow-lg h-full">
@@ -86,6 +85,8 @@ export function AssetDistribution() {
           <div className="flex items-center justify-center h-[280px]">
             <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-500)]" />
           </div>
+        ) : assets.length === 0 ? (
+          <EmptyState />
         ) : (
           <>
             {/* 总资产 */}

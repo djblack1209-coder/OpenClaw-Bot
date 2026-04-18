@@ -182,6 +182,12 @@ export function Channels() {
           <div className="flex items-center justify-center p-12 text-gray-400">
             <Loader2 className="animate-spin w-8 h-8" />
           </div>
+        ) : !loading && channels.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center">
+            <MessageCircle className="w-12 h-12 text-gray-500 mb-3" />
+            <p className="text-sm text-gray-300 font-medium">暂无消息渠道</p>
+            <p className="text-xs text-gray-500 mt-1">渠道由后端注册，请确认后端服务正常运行</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {channels.map((channel) => {
