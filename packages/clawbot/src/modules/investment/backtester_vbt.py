@@ -760,48 +760,154 @@ class VectorbtBacktester:
         symbol: str,
         period: str = "1y",
         strategy: str = "ma_cross",
+        returns_series=None,
+        benchmark_symbol: str = "SPY",
     ) -> Optional[str]:
-        """生成 QuantStats HTML 完整报告（Tearsheet）"""
-        if not self._available or not HAS_QS:
-            logger.info("quantstats 或 vectorbt 未安装")
+        """生成 QuantStats HTML 完整报告（Tearsheet）
+
+        支持两种模式:
+        1. 传入 returns_series（推荐）— 直接用已有回测收益率序列
+        2. 不传 returns_series — 从 vectorbt 运行策略获取收益率
+
+        参数:
+            symbol: 标的代码
+            period: 回测周期
+            strategy: 策略名称（用于报告标题）
+            returns_series: pandas Series 日收益率序列（可选）
+            benchmark_symbol: 基准标的代码（默认 SPY，用于对比）
+
+        返回:
+            HTML 报告文件路径，失败返回 None
+        """
+        if not HAS_QS:
+            logger.info("quantstats 未安装，跳过 HTML 报告生成")
             return None
 
         def _run():
+            import pandas as pd
             try:
-                import yfinance as yf
-                df = yf.download(symbol, period=period, progress=False, auto_adjust=True)
-                if df.empty:
-                    return None
-                price = df["Close"].squeeze()
-                
-                # 运行策略获取信号
-                if strategy == "ma_cross":
-                    fast_ma = vbt.MA.run(price, 10)
-                    slow_ma = vbt.MA.run(price, 30)
-                    entries = fast_ma.ma_crossed_above(slow_ma)
-                    exits = fast_ma.ma_crossed_below(slow_ma)
-                elif strategy == "rsi":
-                    rsi = vbt.RSI.run(price, 14)
-                    entries = rsi.rsi_below(30)
-                    exits = rsi.rsi_above(70)
+                # 模式1: 使用传入的收益率序列（来自任何回测引擎）
+                if returns_series is not None:
+                    if isinstance(returns_series, (list, tuple)):
+                        returns = pd.Series(returns_series, dtype=float)
+                    else:
+                        returns = returns_series
+
+                    # 列表形式的日收益率可能是百分比(如 2.5)，需要转换为小数(0.025)
+                    if returns.abs().max() > 1.0:
+                        returns = returns / 100.0
+
+                # 模式2: 从 vectorbt 运行策略获取
+                elif self._available:
+                    price = _fetch_price(symbol, period)
+                    if price is None or price.empty:
+                        return None
+
+                    # 支持所有策略
+                    entries, exits = self._get_strategy_signals(strategy, price, symbol, period)
+                    if entries is None:
+                        return None
+
+                    pf = vbt.Portfolio.from_signals(price, entries, exits, **self._pf_kwargs())
+                    returns = pf.returns()
                 else:
+                    logger.info("vectorbt 未安装且未提供收益率数据")
                     return None
 
-                pf = vbt.Portfolio.from_signals(price, entries, exits, **self._pf_kwargs())
-                returns = pf.returns()
+                # 过滤掉 NaN 和无效值
+                returns = returns.dropna()
+                if len(returns) < 5:
+                    logger.warning("[backtester] 收益率数据不足，跳过报告")
+                    return None
+
+                # 尝试下载基准收益率（非致命，失败则不对比）
+                benchmark = None
+                try:
+                    import yfinance as yf
+                    bm_data = yf.download(
+                        benchmark_symbol, period=period,
+                        progress=False, auto_adjust=True
+                    )
+                    if not bm_data.empty:
+                        bm_close = bm_data["Close"].squeeze()
+                        benchmark = bm_close.pct_change().dropna()
+                        # 对齐长度
+                        min_len = min(len(returns), len(benchmark))
+                        returns = returns.iloc[:min_len]
+                        benchmark = benchmark.iloc[:min_len]
+                except Exception as bm_err:
+                    logger.debug("[backtester] 基准数据下载失败(非致命): %s", bm_err)
 
                 # 生成 HTML 报告
                 report_dir = Path(__file__).resolve().parent.parent.parent / "data" / "reports"
                 report_dir.mkdir(parents=True, exist_ok=True)
-                report_path = report_dir / f"{symbol}_{strategy}_{period}_tearsheet.html"
-                qs.reports.html(returns, output=str(report_path), title=f"{symbol} {strategy.upper()}")
-                logger.info(f"[backtester] QuantStats 报告已生成: {report_path}")
+                # 安全文件名
+                safe_strategy = strategy.replace("/", "-").replace("\\", "-")
+                report_path = report_dir / f"{symbol}_{safe_strategy}_{period}_tearsheet.html"
+
+                title = f"{symbol} {strategy} ({period})"
+                if benchmark is not None:
+                    qs.reports.html(
+                        returns, benchmark=benchmark,
+                        output=str(report_path), title=title,
+                        download_filename=f"{symbol}_tearsheet.html",
+                    )
+                else:
+                    qs.reports.html(
+                        returns, output=str(report_path), title=title,
+                        download_filename=f"{symbol}_tearsheet.html",
+                    )
+                logger.info("[backtester] QuantStats 报告已生成: %s", report_path)
                 return str(report_path)
             except Exception as e:
-                logger.warning(f"[backtester] QuantStats 报告生成失败: {e}")
+                logger.warning("[backtester] QuantStats 报告生成失败: %s", e)
                 return None
 
         return await asyncio.to_thread(_run)
+
+    def _get_strategy_signals(self, strategy: str, price, symbol: str, period: str):
+        """根据策略名称获取买卖信号（供 QuantStats 报告用）
+
+        返回:
+            (entries, exits) 元组，失败返回 (None, None)
+        """
+        if not self._available:
+            return None, None
+
+        try:
+            if strategy in ("ma_cross", "MA交叉", "MA(10/30)交叉"):
+                fast_ma = vbt.MA.run(price, 10)
+                slow_ma = vbt.MA.run(price, 30)
+                return fast_ma.ma_crossed_above(slow_ma), fast_ma.ma_crossed_below(slow_ma)
+            elif strategy in ("rsi", "RSI"):
+                rsi = vbt.RSI.run(price, 14)
+                return rsi.rsi_below(30), rsi.rsi_above(70)
+            elif strategy in ("macd", "MACD"):
+                macd = vbt.MACD.run(price, fast_window=12, slow_window=26, signal_window=9)
+                entries = macd.macd_above(0) & macd.signal_above(0)
+                exits = macd.macd_below(0) | macd.signal_below(0)
+                return entries, exits
+            elif strategy in ("bbands", "BBands", "布林带"):
+                bb = vbt.BBANDS.run(price, window=20, alpha=2.0)
+                return price < bb.lower, price > bb.upper
+            elif strategy in ("volume", "Volume突破", "成交量突破"):
+                df = _fetch_ohlcv(symbol, period)
+                if df is not None and "Volume" in df.columns:
+                    volume = df["Volume"].squeeze()
+                    vol_ma = volume.rolling(20).mean()
+                    price_change = price.pct_change() * 100
+                    entries = (volume > vol_ma * 2.0) & (price_change > 2.0)
+                    exits = price_change < -2.0
+                    return entries, exits
+                return None, None
+            else:
+                # 未知策略，使用默认 MA 交叉
+                fast_ma = vbt.MA.run(price, 10)
+                slow_ma = vbt.MA.run(price, 30)
+                return fast_ma.ma_crossed_above(slow_ma), fast_ma.ma_crossed_below(slow_ma)
+        except Exception as e:
+            logger.warning("[backtester] 策略信号获取失败: %s", e)
+            return None, None
 
 
 # ── 全局单例 ──────────────────────────────────────────────
