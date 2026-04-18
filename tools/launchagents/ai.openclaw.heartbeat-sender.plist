@@ -36,7 +36,7 @@ HEARTBEAT_CONTENT="bot_alive|${TIMESTAMP}"
 SENT=0
 for i in $(seq 1 $MAX_RETRIES); do
     if ssh -o "ConnectTimeout=${SSH_TIMEOUT}" \
-           -o "StrictHostKeyChecking=accept-new" \
+           -o "StrictHostKeyChecking=yes" \
            -o "BatchMode=yes" \
            -p "${VPS_PORT}" \
            "${VPS_USER}@${VPS_HOST}" \
@@ -63,12 +63,15 @@ fi
     <string>/Users/blackdj</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- 安全加固(HI-591): VPS 连接信息不应硬编码在 Git 跟踪文件中 -->
+    <!-- 加载前必须设置: launchctl setenv DEPLOY_VPS_HOST <your-ip> -->
+    <!-- 或将真实值写入 ~/.openclaw/heartbeat.env 由脚本加载 -->
     <key>DEPLOY_VPS_HOST</key>
-    <string>101.43.41.96</string>
+    <string></string>
     <key>DEPLOY_VPS_USER</key>
     <string>openclaw</string>
     <key>DEPLOY_VPS_PORT</key>
-    <string>29222</string>
+    <string></string>
   </dict>
 
   <key>RunAtLoad</key>
