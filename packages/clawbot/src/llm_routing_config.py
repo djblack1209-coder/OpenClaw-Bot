@@ -176,6 +176,19 @@ def get_router_config(config: Dict) -> Dict:
     )
 
 
+def get_model_ranking(config: Dict) -> Dict:
+    """获取模型强度评分表 — T5-3: 从 JSON model_ranking 加载"""
+    ranking = config.get("model_ranking", {})
+    # 过滤掉 _comment 等元数据字段
+    return {k: v for k, v in ranking.items() if not k.startswith("_") and isinstance(v, (int, float))}
+
+
+def get_smart_route_mapping(config: Dict) -> Dict:
+    """获取 smart_route 的 model→family 映射 — T5-4: 从 JSON smart_route_model_to_family 加载"""
+    mapping = config.get("smart_route_model_to_family", {})
+    return {k: v for k, v in mapping.items() if not k.startswith("_")}
+
+
 def _resolve_keys(provider_cfg: Dict) -> List[str]:
     """解析 provider 的 API Key（支持单 key 和多 key）"""
     # 必选 key
