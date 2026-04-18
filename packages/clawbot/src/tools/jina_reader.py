@@ -79,7 +79,8 @@ async def jina_search(query: str, max_results: int = 5) -> Optional[str]:
     else:
         # 无 API key 时降级：用 Jina Read 读取搜索引擎结果页
         try:
-            return await jina_read(f"https://www.google.com/search?q={query}", max_length=5000)
+            from urllib.parse import quote
+            return await jina_read(f"https://www.google.com/search?q={quote(query)}", max_length=5000)
         except Exception as e:  # noqa: F841
             return None
 

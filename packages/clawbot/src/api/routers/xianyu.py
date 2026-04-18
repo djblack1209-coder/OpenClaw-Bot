@@ -180,6 +180,8 @@ async def qr_login_status():
 @router.get("/xianyu/conversations")
 async def get_xianyu_conversations(limit: int = 20):
     """获取闲鱼最近对话列表"""
+    # 安全修复: 限制 limit 参数范围，防止大值 DoS
+    limit = min(max(1, limit), 100)
     try:
         # 修复: xianyu_bot.py 不存在，改用 XianyuContextManager 查询对话列表
         # XianyuContextManager 通过 SQLite 管理所有闲鱼对话数据
