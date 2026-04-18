@@ -126,7 +126,7 @@ class CostAnalyzer:
                     ),
                 )
         except Exception as e:
-            logger.debug(f"[CostAnalyzer] DB写入失败: {e}")
+            logger.warning("[CostAnalyzer] DB写入失败: %s", e)
 
     def analyze_by_bot(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
         """按 bot 维度的成本归因"""

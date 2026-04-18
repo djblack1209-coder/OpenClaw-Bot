@@ -26,8 +26,8 @@ class _MemoryMixin:
             logger.exception("[Memory] 命令执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 记忆管理操作失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Memory] 记忆命令回复失败: %s", e)
 
     async def _cmd_memory_inner(self, update, context):
         """记忆管理 — 内部实现"""

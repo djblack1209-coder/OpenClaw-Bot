@@ -173,8 +173,8 @@ def push_notification(
     # Push real-time WS event (best-effort)
     try:
         push_event(WSMessageType.NOTIFICATION, notif)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[System] 系统通知WS推送失败: %s", e)
 
     return notif
 

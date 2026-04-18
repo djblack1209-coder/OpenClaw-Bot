@@ -185,7 +185,7 @@ class ErrorHandler:
                 json={"chat_id": self.admin_chat_id, "text": text},
             )
         except Exception as e:
-            logger.debug(f"[ErrorHandler] 通知管理员失败: {e}")
+            logger.warning("[ErrorHandler] 通知管理员失败: %s", e)
 
     async def telegram_error_handler(self, update, context):
         """python-telegram-bot 的全局 error handler 回调

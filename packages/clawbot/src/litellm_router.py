@@ -1088,8 +1088,8 @@ class LiteLLMPool:
                 result = {k: v for k, v in mapping.items() if not k.startswith("_")}
                 if result:
                     return result
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Router] 模型路由映射解析失败: %s", e)
         return _default
 
     def _pick_strongest_family(self) -> str:

@@ -112,7 +112,7 @@ def init_trading_system(
                     try:
                         await notify_func("!! IBKR卖出失败，降级模拟卖出 %s x%s !!" % (symbol, quantity))
                     except Exception as e:
-                        logger.debug("[TradingSystem] 降级卖出通知失败: %s", e)
+                        logger.warning("[TradingSystem] 降级卖出通知失败: %s", e)
                 price_data = await get_quote_func(symbol)
                 price = price_data.get("price", 0) if isinstance(price_data, dict) else 0
                 if price > 0:

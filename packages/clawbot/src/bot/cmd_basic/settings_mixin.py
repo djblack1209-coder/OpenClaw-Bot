@@ -24,8 +24,8 @@ class _SettingsMixin:
             logger.exception("[Settings] 命令执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 设置操作失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Settings] 设置命令回复失败: %s", e)
 
     async def _cmd_settings_inner(self, update, context):
         """设置管理 — 内部实现"""
