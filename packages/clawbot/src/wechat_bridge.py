@@ -285,7 +285,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
             logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
             _creds.clear_context()
         except Exception as e:
-            logger.debug("[微信桥接] 发送失败: %s", e)
+            logger.warning("[微信桥接] 发送失败: %s", e)
     return False
 
 

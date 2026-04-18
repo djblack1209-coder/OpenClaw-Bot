@@ -102,7 +102,7 @@ class TelegramAlertNotifier:
                 json={"chat_id": self.chat_id, "text": text},
             )
         except Exception as e:
-            logger.debug(f"[TelegramAlert] 发送失败: {e}")
+            logger.warning("[TelegramAlert] 发送失败: %s", e)
 
     def _send_sync(self, rule_name: str, message: str):
         try:
@@ -114,7 +114,7 @@ class TelegramAlertNotifier:
                     json={"chat_id": self.chat_id, "text": text},
                 )
         except Exception as e:
-            logger.debug(f"[TelegramAlert] 同步发送失败: {e}")
+            logger.warning("[TelegramAlert] 同步发送失败: %s", e)
 
 
 # ============ 系统资源监控 ============
