@@ -439,9 +439,12 @@ function AutoTrading() {
         </div>
       </GlassCard>
 
-      {/* 风险参数 */}
+      {/* 风险参数（默认值展示，实际由后端 risk_manager 控制） */}
       <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">风险参数</h3>
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">
+          风险参数
+          <span className="text-xs text-gray-500 font-normal ml-2">后端配置</span>
+        </h3>
         <div className="grid grid-cols-3 gap-4">
           <div className="p-3 rounded-lg bg-dark-700/50">
             <p className="text-xs text-gray-400 mb-1">单笔风险上限</p>
