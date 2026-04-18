@@ -115,10 +115,14 @@ export async function sendMessage(sessionId: string, message: string): Promise<v
   try {
     // 3. 发起 SSE 请求（通过 clawbotFetch 发送，自动附加 API Token）
     const response = await clawbotFetch(
-      `/api/v1/conversation/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`,
+      `/api/v1/conversation/sessions/${sessionId}/send`,
       {
         method: 'POST',
-        headers: { 'Accept': 'text/event-stream' },
+        headers: {
+          'Accept': 'text/event-stream',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message }),
       }
     );
 

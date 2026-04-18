@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from ..error_utils import safe_error as _safe_error
@@ -36,8 +36,17 @@ class ConversationStore:
         # 会话列表: {session_id: {id, title, created_at, updated_at, messages: [...]}}
         self._sessions: Dict[str, Dict[str, Any]] = {}
 
+    # 会话上限保护：防止无限创建导致内存耗尽
+    MAX_SESSIONS = 200
+
     def create_session(self, title: str = "新对话") -> Dict[str, Any]:
         """创建新会话"""
+        # 超过上限时自动淘汰最旧会话
+        if len(self._sessions) >= self.MAX_SESSIONS:
+            oldest = min(self._sessions.values(), key=lambda s: s["updated_at"])
+            del self._sessions[oldest["id"]]
+        # 标题长度限制
+        title = title[:100]
         session_id = uuid.uuid4().hex[:12]
         now = datetime.now().isoformat()
         session = {
@@ -185,7 +194,7 @@ async def delete_session(session_id: str):
 @router.post("/sessions/{session_id}/send")
 async def send_message(
     session_id: str,
-    message: str = Query(max_length=2000),
+    message: str = Body(max_length=2000, embed=True, description="用户消息内容"),
 ):
     """
     发送消息并获取 SSE 流式响应。

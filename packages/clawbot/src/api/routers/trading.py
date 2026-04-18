@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path as FilePath
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query
+from pydantic import BaseModel, Field
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import (
@@ -20,6 +21,20 @@ from .ws import push_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class SellRequest(BaseModel):
+    """卖出请求体 — 替代手动 request.json() 解析，自动校验类型"""
+    symbol: str = Field(..., min_length=1, max_length=10, description="股票代码")
+    quantity: float = Field(..., gt=0, description="卖出数量")
+    order_type: str = Field(default="MKT", max_length=10, description="订单类型")
+
+
+class WatchlistAddRequest(BaseModel):
+    """添加自选股请求体"""
+    symbol: str = Field(..., min_length=1, max_length=10, description="股票代码")
+    target_price: float = Field(..., gt=0, description="目标价格")
+    direction: str = Field(default="above", pattern=r"^(above|below)$", description="方向")
 
 
 @router.get("/trading/positions", response_model=TradingPositions)
@@ -259,18 +274,14 @@ async def portfolio_summary():
 
 
 @router.post("/trading/sell")
-async def sell_position(request: Request):
+async def sell_position(req: SellRequest):
     """手动卖出持仓"""
     try:
-        body = await request.json()
-        symbol = body.get("symbol", "").strip().upper()
-        quantity = float(body.get("quantity", 0))
-        order_type = body.get("order_type", "MKT").upper()
+        symbol = req.symbol.strip().upper()
+        quantity = req.quantity
+        order_type = req.order_type.upper()
 
-        if not symbol:
-            raise HTTPException(status_code=422, detail="缺少 symbol 参数")
-        if quantity <= 0:
-            raise HTTPException(status_code=422, detail="quantity 必须大于零")
+        # Pydantic 已验证 symbol 非空和 quantity > 0
 
         # 懒加载 broker bridge 获取 IBKRBridge 实例
         from src.broker_selector import ibkr
@@ -373,26 +384,12 @@ def get_watchlist():
 
 
 @router.post("/trading/watchlist")
-async def add_to_watchlist(request: Request):
+async def add_to_watchlist(req: WatchlistAddRequest):
     """添加自选股"""
     try:
-        body = await request.json()
-        symbol = body.get("symbol", "").strip().upper()
-        target_price = body.get("target_price")
-        direction = body.get("direction", "above").lower()
-
-        if not symbol:
-            raise HTTPException(status_code=422, detail="缺少 symbol 参数")
-        if target_price is None:
-            raise HTTPException(status_code=422, detail="缺少 target_price 参数")
-        try:
-            target_price = float(target_price)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="target_price 必须为数字")
-        if target_price <= 0:
-            raise HTTPException(status_code=422, detail="target_price 必须大于零")
-        if direction not in ("above", "below"):
-            raise HTTPException(status_code=422, detail="direction 必须为 above 或 below")
+        symbol = req.symbol.strip().upper()
+        target_price = req.target_price
+        direction = req.direction
 
         watchlist = _load_watchlist()
 

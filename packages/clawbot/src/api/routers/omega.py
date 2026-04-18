@@ -7,7 +7,7 @@ import logging
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from ..error_utils import safe_error as _safe_error
 
@@ -133,7 +133,10 @@ async def omega_tasks():
 
 
 @router.post("/process", response_model=Dict[str, Any])
-async def omega_process(message: str = Query(max_length=1000), source: str = "api"):
+async def omega_process(
+    message: str = Body(max_length=1000, embed=True, description="发送给 Brain 的消息"),
+    source: str = Body(default="api", embed=True, description="消息来源"),
+):
     """通过 API 发送消息给 Brain"""
     try:
         from src.core.brain import get_brain
@@ -173,7 +176,9 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         engine = get_pydantic_engine()
         if engine.available:
             result = await engine.full_analysis(symbol)
-            return result.to_dict()
+        return result.to_dict()
+    except HTTPException:
+        raise
     except Exception as e:
         # Pydantic AI 引擎不可用，降级到原有团队
         logger.exception("Pydantic AI 投资分析引擎调用失败，降级到原有团队")

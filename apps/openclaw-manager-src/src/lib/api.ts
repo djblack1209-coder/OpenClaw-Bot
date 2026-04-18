@@ -272,8 +272,10 @@ export const api = {
 
   /** 发送消息（返回 SSE 流式 Response 对象，调用方需自行处理 EventSource） */
   conversationSend: (sessionId: string, message: string) =>
-    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}/send?message=${encodeURIComponent(message)}`, {
+    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}/send`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
     }),
 
   // ══════════════════════════════════════════════
