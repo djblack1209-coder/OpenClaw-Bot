@@ -12,6 +12,27 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R10+R11 部署运维+端到端集成验证（55 条目 / 0 修复 / 8 技术债）
+> 领域: `infra`, `deploy`, `docs`
+> 影响模块: `launchagents`, `docker-compose`, `newsyslog`, `MODULE_REGISTRY`, `DEPENDENCY_MAP`
+> 关联问题: R10+R11 HI-590~596
+
+### R10 部署运维审计 (30 条目 / 0 修复 / 5 技术债)
+- Docker 配置安全加固: 网络隔离 ✅ / 非 root ✅ / 资源限制 ✅ / cap_drop ✅ / 端口 127.0.0.1 ✅
+- VPS 服务器端: 需人工 SSH 验证 (R10.01-R10.08, R10.09-R10.14, R10.15-R10.18)
+- 心跳+故障转移: 架构正确，IP 硬编码需移除（HI-591）
+- macOS LaunchAgent: Gateway token 硬编码弱值（HI-590）/ browser-bootstrap 未用 bash -c exec（HI-593）
+- newsyslog 日志轮转: 路径与 plist 不匹配，实际无效（HI-592）
+- 灾难恢复指南: 不存在（HI-595）
+
+### R11 端到端集成验证 (25 条目 / 0 修复 / 3 技术债)
+- COMMAND_REGISTRY.md: 99 命令全部有记录 ✅
+- MODULE_REGISTRY.md: 254 vs 实际 256+，偏差 ~2 个（HI-596）
+- DEPENDENCY_MAP.md: 80+ vs requirements.txt 288 行，偏差较大（HI-596）
+- goofish + kiro-gateway 端口冲突 8000（HI-594）
+
+---
+
 ## 2026-04-19 — R9 闲鱼+社媒+微信+工具链审计（35 条目 / 4 修复 / 14 技术债）
 > 领域: `xianyu`, `backend`, `security`
 > 影响模块: `xianyu_live`, `xianyu.py(API)`, `jina_reader`, `drafts`, `wechat_coupon`, `wechat_bridge`

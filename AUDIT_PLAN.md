@@ -56,8 +56,8 @@
 | R7 | macOS 业务页面 | Trading/Social/Xianyu/Memory/Logs | ~40 | [R07](docs/audit/R07_MACOS_BUSINESS.md) | ✅ 已完成(6项修复/20技术债) |
 | R8 | 投资交易系统 | IBKR/风控/回测/AI投票/仓位 | ~40 | [R08](docs/audit/R08_TRADING.md) | ✅ 已完成(4项修复/10技术债) |
 | R9 | 闲鱼+社媒+微信+工具链 | 闲鱼客服/社媒/微信Bridge/TTS/OCR | ~35 | [R09](docs/audit/R09_XIANYU_SOCIAL.md) | ✅ 已完成(4项修复/14技术债) |
-| R10 | 生产部署与运维 | VPS/Docker/心跳/监控/备份 | ~30 | [R10](docs/audit/R10_DEPLOY.md) | 待执行 |
-| R11 | 端到端集成验证 | 全链路冒烟/文档终态/报告归档 | ~25 | [R11](docs/audit/R11_E2E_FINAL.md) | 待执行 |
+| R10 | 生产部署与运维 | VPS/Docker/心跳/监控/备份 | ~30 | [R10](docs/audit/R10_DEPLOY.md) | ✅ 已完成(0项修复/5技术债/VPS需人工验证) |
+| R11 | 端到端集成验证 | 全链路冒烟/文档终态/报告归档 | ~25 | [R11](docs/audit/R11_E2E_FINAL.md) | ✅ 已完成(0项修复/3技术债) |
 | **合计** | | | **~425** | | |
 
 ---
