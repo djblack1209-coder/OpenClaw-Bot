@@ -12,6 +12,40 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 技术债清理第2批: 稳定性+功能+数据完整性修复（11项）
+> 领域: `backend`, `trading`, `xianyu`, `ai-pool`, `social`
+> 影响模块: `litellm_router`, `xianyu_live`, `cmd_ibkr_mixin`, `position_monitor`, `invest_tools`, `nlp_ticker_map`, `drafts`, `broker_bridge`
+> 关联问题: HI-522, HI-527, HI-541, HI-567, HI-570, HI-575, HI-576, HI-577, HI-578, HI-580, HI-585
+
+### 稳定性修复 (3项)
+1. **HI-522: 风控竞态锁已确认**: check_trade() 共享状态读取已在 `_state_lock` 内完成（上批已修复，本批验证确认）
+2. **HI-527: 幽灵任务修复**: litellm_router 启动健康摘要 create_task 添加 `_log_task_exception` done_callback
+3. **HI-567: 预算追踪原子化**: broker_bridge 的 `total_spent/budget` read-modify-write 操作用 `asyncio.Lock` 保护
+
+### 闲鱼修复 (3项)
+4. **HI-577: app-key 硬编码清理**: 默认值从代码中移除，改为 `XIANYU_APP_KEY` 环境变量读取
+5. **HI-578: 通知 FIFO 逐出**: `_notified_chats` 从 set 改为 OrderedDict，超限时 `popitem(last=False)` 逐出最旧条目，不再 clear() 全部清空
+6. **HI-580: 自动发货异步化**: 延时发货从 `await asyncio.sleep(120s)` 阻塞主路径改为 `create_task` 后台执行
+
+### 交易修复 (3项)
+7. **HI-575: 手动交易记录**: /ibuy /isell 成功后调用 `TradingJournal.open_trade()` 记录交易历史
+8. **HI-570: 时间止损修复**: position_monitor naive/aware datetime 混合比较改为统一转换后再比较
+9. **HI-576: 行情并行获取**: invest_tools `get_quick_quotes` 从串行循环改为 `asyncio.gather()` 并行查询 + earnings_calendar datetime 统一为 naive
+
+### 功能增强 (2项)
+10. **HI-541: ticker 黑名单**: nlp_ticker_map 新增 ~120 个常见英语单词黑名单（AT/IT/TO/BE/GO 等不再误识别为股票代码）
+11. **HI-585: 草稿持久化**: drafts.py 从纯内存 dict 改为 `~/.openclaw/drafts.json` 文件持久化（threading.Lock 保护 + uuid4 ID + 向后兼容代理）
+
+### 文件变更
+- `src/litellm_router.py` — 新增 `_log_task_exception` + create_task 加 callback
+- `src/xianyu/xianyu_live.py` — OrderedDict 通知 + app-key 环境变量 + 自动发货异步化
+- `src/bot/cmd_ibkr_mixin.py` — /ibuy /isell 交易记录
+- `src/position_monitor.py` — datetime 统一处理
+- `src/invest_tools.py` — 并行查询 + datetime 修复
+- `src/bot/nlp_ticker_map.py` — ticker 黑名单
+- `src/execution/social/drafts.py` — JSON 持久化重写
+- `src/broker_bridge.py` — 预算操作加锁
+
 ## 2026-04-19 — 技术债清理第1批: 安全+交易+配置修复（15项）
 > 领域: `security`, `trading`, `xianyu`, `backend`, `infra`, `deploy`
 > 影响模块: `xianyu.py(API)`, `xianyu_agent`, `wechat_coupon`, `wechat_bridge`, `trading_pipeline`, `auto_trader`, `broker_bridge`, `_lifecycle`, `_scheduler_daily`, `launchagents`, `newsyslog`, `docker-compose`

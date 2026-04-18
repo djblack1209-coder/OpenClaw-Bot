@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-04-19] 技术债清理第2批 — 11 项稳定性+功能+数据完整性修复
+
+### 本次完成了什么
+1. **稳定性修复 (3项)**:
+   - HI-522: 风控竞态锁确认已完成（check_trade 在 _state_lock 内操作）
+   - HI-527: litellm_router create_task 添加 `_log_task_exception` done_callback
+   - HI-567: broker_bridge 预算 read-modify-write 操作加 `asyncio.Lock` 保护
+
+2. **闲鱼修复 (3项)**:
+   - HI-577: app-key 硬编码清理（改为 XIANYU_APP_KEY 环境变量）
+   - HI-578: `_notified_chats` 从 set 改 OrderedDict + FIFO popitem 逐出
+   - HI-580: 自动发货拆为 `_delayed_auto_ship` 后台 task，不阻塞消息处理
+
+3. **交易修复 (3项)**:
+   - HI-575: /ibuy /isell 成功后调用 TradingJournal.open_trade() 记录
+   - HI-570: position_monitor naive/aware datetime 统一转换后比较
+   - HI-576: invest_tools get_quick_quotes 改 asyncio.gather 并行 + datetime 统一
+
+4. **功能增强 (2项)**:
+   - HI-541: nlp_ticker_map 新增 ~120 个常见英语单词黑名单
+   - HI-585: drafts.py 改为 ~/.openclaw/drafts.json 持久化
+
+### 未完成的工作
+- **剩余技术债 (~30 项)**: HEALTH.md 中未修复的 HI-523~596
+- **高优先级**: HI-526 静默异常(56处) / HI-529 命令错误处理(72个) / HI-531 /help菜单覆盖
+- **中优先级**: HI-530 workflow_mixin 死代码 / HI-550~566 前端技术债
+
+### 需要注意的坑
+- HI-577 修改后 **必须设置** `XIANYU_APP_KEY` 环境变量，否则 WS 注册会失败
+- HI-585 草稿持久化路径是 `~/.openclaw/drafts.json`，VPS 部署需确保目录存在
+- HI-575 依赖 TradingJournal 的 `open_trade` 方法，如果方法签名变动需同步修改
+- HI-567 `_budget_lock` 是 asyncio.Lock，仅在 async 方法中使用；`reset_budget` 是同步方法不需要锁
+
+### 当前系统状态
+- Git: 待提交
+- Python 语法: 8 个修改文件全部 py_compile 通过
+- 回归测试: 1035 passed / 213 failed / 22 errors（与修改前基线完全一致，零回归）
+- 技术债: 41 → 30 项（累计 26 项已修复，含第1批 15 项 + 第2批 11 项）
+
+---
+
 ## [2026-04-19] 技术债清理第1批 — 15 项安全+交易+配置修复
 
 ### 本次完成了什么
