@@ -217,7 +217,7 @@ class IntentParser:
                 "goal_template": "购物比价: {match}",
                 "param_key": "product_hint",
                 # v2.0: 排除股票上下文 (含"股/手/份/期权/基金"则不走购物)
-                "exclude_pattern": r"股|手|份|期权|基金|债券|ETF|AAPL|TSLA|NVDA|GOOGL|MSFT",
+                "exclude_pattern": r"股|手|份|期权|基金|债券|ETF|AAPL|TSLA|NVDA|GOOGL|MSFT|AMZN|META|BTC|比特币|以太坊|茅台|特斯拉|英伟达",
             },
             # 预订类
             {
@@ -401,10 +401,24 @@ class IntentParser:
 
             classify_prompt = (
                 "判断以下用户消息属于哪个任务类型。只返回 JSON。\n"
-                "任务类型: investment(投资/股票/交易/行情), social(社媒/发帖), "
-                "shopping(购物/比价), booking(预订/订餐/订酒店), "
-                "life(天气/快递/提醒/日程), info(查询/搜索/新闻), "
-                "system(系统/状态), unknown(闲聊/不确定)\n\n"
+                "任务类型:\n"
+                "- investment: 投资/股票/交易/行情/持仓/回测/K线\n"
+                "- social: 社媒/发帖/小红书/推特/热点\n"
+                "- shopping: 购物/比价/哪里买/便宜 (注意: 含'股/手/份/期权/基金'则为investment)\n"
+                "- booking: 预订/订餐/订酒店/订机票/挂号\n"
+                "- life: 天气/快递/提醒/日程/记账/账单\n"
+                "- code: 编程/代码/GitHub/开发/bug\n"
+                "- info: 查询/搜索/新闻/百科\n"
+                "- communication: 发消息/发邮件/通知\n"
+                "- system: 系统/状态/配置/成本\n"
+                "- evolution: 进化/扫描/能力评估\n"
+                "- unknown: 闲聊/不确定\n\n"
+                "示例:\n"
+                "- '帮我买100股苹果' → investment (含'股')\n"
+                "- '帮我找便宜的AirPods' → shopping\n"
+                "- '苹果多少钱' → investment (苹果=AAPL股票)\n"
+                "- '明天提醒我开会' → life\n"
+                "- '写个Python脚本' → code\n\n"
                 f"用户消息: {message[:200]}\n\n"
                 '返回格式: {"task_type": "...", "confidence": 0.0-1.0, "goal": "一句话目标"}'
             )

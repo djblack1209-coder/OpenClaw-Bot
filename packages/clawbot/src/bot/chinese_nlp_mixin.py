@@ -95,6 +95,17 @@ def _match_chinese_command(text=None):
                 ticker = m_t.group(1).upper()
         if ticker:
             return ("chart", ticker)
+    # 模式: "AAPL走势" / "苹果走势" (走势 = chart 的同义词)
+    m_chart3 = re.search(r"(.{1,10}?)(?:的)?走势", cleaned)
+    if m_chart3:
+        name = m_chart3.group(1).strip()
+        ticker = _resolve_chinese_ticker(name)
+        if not ticker:
+            m_t = re.search(r"([A-Za-z]{1,5}(?:-USD)?)", name)
+            if m_t:
+                ticker = m_t.group(1).upper()
+        if ticker:
+            return ("chart", ticker)
     # 模式: "分析/看看/研究 + 中文公司名"
     m_ta_cn = re.search(r"(?:分析|技术分析|看看|研究)\s*(.{1,10})$", cleaned)
     if m_ta_cn and not re.search(r"[a-zA-Z]{2,}", m_ta_cn.group(1)):
@@ -141,7 +152,7 @@ def _match_chinese_command(text=None):
         product = m_shop2.group(1).strip()
         return ("smart_shop", product)
     m_shop3 = re.search(r"(?:我想买|想买个?|想入手)\s*(.{2,30})", cleaned)
-    if m_shop3 and not re.search(r"股|期权|基金", cleaned):
+    if m_shop3 and not re.search(r"股|手|份|期权|基金|债券|ETF", cleaned):
         product = m_shop3.group(1).strip()
         ticker = _resolve_chinese_ticker(product)
         if not ticker:
@@ -502,6 +513,10 @@ def _match_chinese_command(text=None):
         cleaned,
     ):
         return ("auto_invest", cleaned)
+    # 模式: "帮我查AAPL" / "查一下TSLA" / "看下NVDA" (缺失的查询表达)
+    m_query = re.search(r"(?:帮我查|查一下|查下|看下|看一下)\s*([A-Za-z]{1,5}(?:-USD)?)", cleaned)
+    if m_query:
+        return ("ta", m_query.group(1).upper())
     if re.search("扫描|扫一下|扫一扫|看看市场|市场扫描|全市场", cleaned):
         return ("scan", "")
     m = re.search(r"(?:分析|技术分析|看看|研究)\s*([A-Za-z]{1,5}(?:-USD)?)", cleaned)
@@ -669,6 +684,9 @@ class ChineseNLPMixin:
             "risk": self.cmd_risk,
             "monitor": self.cmd_monitor,
             "tradingsystem": self.cmd_tradingsystem,
+            "autotrader_start": self.cmd_autotrader,
+            "autotrader_stop": self.cmd_autotrader,
+            "autotrader_status": self.cmd_autotrader,
             "backtest": self.cmd_backtest,
             "rebalance": self.cmd_rebalance,
             "watchlist": self.cmd_watchlist,
