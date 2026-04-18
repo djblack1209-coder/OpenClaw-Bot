@@ -142,19 +142,28 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   // 记录从服务端加载的初始值，用于检测是否有未保存修改
   const initialIdentityRef = useRef(identity);
   const initialSecurityRef = useRef(security);
+  const initialOpsSettingsRef = useRef(opsSettings);
 
-  /** 判断当前表单是否有未保存的修改 */
+  /** 判断当前表单是否有未保存的修改（包含运营设置） */
   const isDirty = useCallback(() => {
     const initId = initialIdentityRef.current;
     const initSec = initialSecurityRef.current;
+    const initOps = initialOpsSettingsRef.current;
     return (
       identity.botName !== initId.botName ||
       identity.userName !== initId.userName ||
       identity.timezone !== initId.timezone ||
       security.enableWhitelist !== initSec.enableWhitelist ||
-      security.allowFileAccess !== initSec.allowFileAccess
+      security.allowFileAccess !== initSec.allowFileAccess ||
+      opsSettings.daily_budget_usd !== initOps.daily_budget_usd ||
+      opsSettings.default_llm_model !== initOps.default_llm_model ||
+      opsSettings.local_hf_model_enabled !== initOps.local_hf_model_enabled ||
+      opsSettings.local_hf_model_endpoint !== initOps.local_hf_model_endpoint ||
+      opsSettings.auto_heal_enabled !== initOps.auto_heal_enabled ||
+      opsSettings.scheduler_enabled !== initOps.scheduler_enabled ||
+      opsSettings.maintenance_mode !== initOps.maintenance_mode
     );
-  }, [identity, security]);
+  }, [identity, security, opsSettings]);
 
   const setNavigationGuard = useAppStore((s) => s.setNavigationGuard);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
@@ -215,6 +224,8 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
         if (resp.ok) {
           const data = await resp.json();
           setOpsSettings(data);
+          // 记录初始值用于脏状态检测
+          initialOpsSettingsRef.current = data;
         }
       } catch {
         // 接口不可用时使用默认值，不弹错误提示
@@ -233,6 +244,8 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       toast.success('运营设置已保存');
+      // 更新初始值，重置脏状态
+      initialOpsSettingsRef.current = { ...opsSettings };
     } catch {
       toast.error('保存运营设置失败');
     } finally {
