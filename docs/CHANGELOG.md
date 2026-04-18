@@ -12,6 +12,34 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R7 macOS 业务页面审计（40 条目 / 6 修复 / 20 技术债）
+> 领域: `frontend`
+> 影响模块: `OrderBook`, `DepthChart`, `KlineChart`, `Money`, `Memory`
+> 关联问题: R7 HI-558~563
+
+### R7 macOS 业务页面审计 (40 条目 / 6 修复)
+1. **OrderBook Mock 数据清理 (HI-558)**: 移除 basePrice=150 硬编码 Mock，改为空态 + 错误提示
+2. **DepthChart Mock 数据清理 (HI-559)**: 同上，移除虚假深度图数据
+3. **KlineChart 变量名冲突 (HI-560)**: `setInterval` 覆盖全局函数 → 重命名为 `timeInterval`
+4. **交易控制乐观更新回滚 (HI-561)**: 请求失败时恢复开关旧状态
+5. **记忆统计总数 BUG (HI-562)**: `entries.length`(分页数) → `memoryStats.total`(真实总数)
+6. **OrderBook maxTotal 空数组保护 (HI-563)**: `Math.max(...[])` → `Math.max(1, ...)`
+
+### 技术债 (20 项 — 登记 HEALTH.md)
+- 风险参数硬编码 / 无买入流程 / tradingSell 不检查 resp.ok / DevPanel 整个是空壳
+- 日志无脱敏机制 / 搜索无高亮 / 两套日志数据源割裂
+- 社媒日历无可视化组件 / 人设管理无 UI / Autopilot 用原生 confirm
+- 记忆无筛选器 / 进化时间线缺失 / 模型切换需重启 / Token CRUD 不完整 / 调度器无创建编辑
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Money/OrderBook.tsx` — Mock 清理 + 空态 + maxTotal 保护
+- `apps/openclaw-manager-src/src/components/Money/DepthChart.tsx` — Mock 清理 + 空态
+- `apps/openclaw-manager-src/src/components/Money/KlineChart.tsx` — interval → timeInterval
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 控制开关失败回滚
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 统计总数优先用后端真实值
+
+---
+
 ## 2026-04-19 — R6 macOS 核心页面审计（45 条目 / 8 修复 / 15 技术债）
 > 领域: `frontend`
 > 影响模块: `conversationService`, `AssetDistribution`, `RecentActivity`, `Assistant`, `Store`, `Channels`
