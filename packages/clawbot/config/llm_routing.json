@@ -2,8 +2,8 @@
   "_meta": {
     "description": "LLM 路由配置 — 所有 provider/模型/降级链集中管理",
     "version": "1.0.0",
-    "last_updated": "2026-04-16",
-    "note": "修改此文件即可调整路由规则，无需改代码。重启生效（或调用 /pool reload）"
+    "last_updated": "2026-04-18",
+    "note": "修改此文件即可调整路由规则，无需改代码。重启生效（或调用 /pool reload）。HI-525: 已同步硬编码配置"
   },
 
   "providers": {
@@ -82,42 +82,44 @@
     "mistral": {
       "env_key": "MISTRAL_API_KEY",
       "prefix": "mistral/",
-      "note": "Mistral free",
+      "note": "Mistral free 1RPM (codestral 30RPM)",
       "models": [
         {"id": "mistral-small-latest", "family": "mistral", "tier": "B", "rpm": 1},
-        {"id": "codestral-latest", "family": "mistral", "tier": "A", "rpm": 1},
-        {"id": "mistral-medium-latest", "family": "mistral", "tier": "A", "rpm": 1}
+        {"id": "mistral-large-latest", "family": "mistral", "tier": "A", "rpm": 1},
+        {"id": "codestral-latest", "family": "mistral", "tier": "A", "rpm": 30}
       ]
     },
 
     "cohere": {
       "env_key": "COHERE_API_KEY",
-      "prefix": "cohere_chat/",
-      "note": "Cohere free",
+      "prefix": "cohere/",
+      "note": "Cohere 20RPM/1000次月额度",
       "models": [
-        {"id": "command-a-reasoning-08-2025", "family": "cohere", "tier": "A", "rpm": 10},
-        {"id": "command-a-vision-07-2025", "family": "cohere", "tier": "A", "rpm": 10}
+        {"id": "command-a-reasoning-08-2025", "family": "cohere", "tier": "A", "rpm": 20},
+        {"id": "command-a-vision-07-2025", "family": "cohere", "tier": "B", "rpm": 20}
       ]
     },
 
     "github_models": {
       "env_key": "GITHUB_MODELS_TOKEN",
-      "base_url": "https://models.inference.ai.azure.com",
+      "base_url": "https://models.github.ai/inference",
       "prefix": "openai/",
       "note": "GitHub Models free preview",
       "models": [
-        {"id": "gpt-4o", "family": "gpt", "tier": "A", "rpm": 10},
-        {"id": "gpt-4o-mini", "family": "gpt", "tier": "B", "rpm": 10},
-        {"id": "o4-mini", "family": "gpt", "tier": "A", "rpm": 10}
+        {"id": "gpt-4.1-mini", "family": "gpt", "tier": "A", "rpm": 15},
+        {"id": "o4-mini", "family": "gpt", "tier": "S", "rpm": 15},
+        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 15}
       ]
     },
 
     "kiro_gateway": {
       "env_key": "KIRO_API_KEY",
       "base_url_env": "KIRO_BASE_URL",
-      "base_url_default": "http://localhost:3700/v1",
+      "base_url_default": "http://127.0.0.1:18793/v1",
       "prefix": "openai/",
-      "note": "Kiro Gateway (Claude proxy)",
+      "timeout": 45,
+      "stream_timeout": 60,
+      "note": "Kiro Gateway (Claude proxy, 金融分析需30s+)",
       "models": [
         {"id": "claude-sonnet-4", "family": "claude", "tier": "S", "rpm": 5}
       ]
@@ -125,96 +127,104 @@
 
     "nvidia_nim": {
       "env_key": "NVIDIA_NIM_API_KEY",
-      "base_url": "https://integrate.api.nvidia.com/v1",
-      "prefix": "openai/",
-      "note": "NVIDIA NIM free",
+      "prefix": "nvidia_nim/",
+      "note": "NVIDIA NIM (信用额度制, 60RPM)",
       "models": [
-        {"id": "qwen/qwen3.5-397b-a17b", "family": "qwen", "tier": "S", "rpm": 5},
-        {"id": "qwen/qwen3-coder-480b-a35b-instruct", "family": "qwen", "tier": "A", "rpm": 5},
-        {"id": "deepseek-ai/deepseek-v3.2", "family": "deepseek", "tier": "A", "rpm": 5},
-        {"id": "meta/llama-3.3-70b-instruct", "family": "llama", "tier": "A", "rpm": 5}
+        {"id": "meta/llama-3.3-70b-instruct", "family": "llama", "tier": "A", "rpm": 60},
+        {"id": "deepseek-ai/deepseek-v3.2", "family": "deepseek", "tier": "S", "rpm": 60},
+        {"id": "qwen/qwen3.5-397b-a17b", "family": "qwen", "tier": "S", "rpm": 60},
+        {"id": "qwen/qwen3-coder-480b-a35b-instruct", "family": "qwen", "tier": "S", "rpm": 60}
       ]
     },
 
     "sambanova": {
       "env_key": "SAMBANOVA_API_KEY",
-      "prefix": "sambanova/",
-      "note": "Sambanova free",
+      "base_url": "https://api.sambanova.ai/v1",
+      "prefix": "openai/",
+      "timeout": 90,
+      "stream_timeout": 120,
+      "note": "Sambanova free (Reasoning 模型需要长超时)",
       "models": [
-        {"id": "deepseek-r1-distill-llama-70b", "family": "deepseek", "tier": "A", "rpm": 10}
+        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 10}
       ]
     },
 
     "iflow_unlimited": {
       "env_key": "SILICONFLOW_UNLIMITED_KEY",
-      "base_url": "https://api.siliconflow.cn/v1",
+      "base_url_env": "SILICONFLOW_UNLIMITED_URL",
+      "base_url_default": "https://apis.iflow.cn/v1",
       "prefix": "openai/",
-      "timeout": 45,
-      "stream_timeout": 60,
-      "note": "iflow 无限 API (7天有效期，需监控)",
+      "note": "iflow 无限 API (7天有效期，需监控。base_url 默认 apis.iflow.cn，非 api.siliconflow.cn)",
       "has_expiry_check": true,
       "models": [
-        {"id": "deepseek-ai/DeepSeek-V3-0324", "family": "deepseek", "tier": "S", "rpm": 200},
-        {"id": "Qwen/Qwen3-235B-A22B", "family": "qwen", "tier": "S", "rpm": 200},
-        {"id": "THUDM/GLM-4-32B-0414", "family": "qwen", "tier": "A", "rpm": 200},
-        {"id": "Qwen/Qwen3-32B", "family": "qwen", "tier": "A", "rpm": 200},
-        {"id": "deepseek-ai/DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 200},
-        {"id": "Pro/deepseek-ai/DeepSeek-V3-0324", "family": "deepseek_paid", "tier": "S", "rpm": 200},
-        {"id": "Pro/Qwen/Qwen3-235B-A22B", "family": "qwen", "tier": "S", "rpm": 200},
-        {"id": "Pro/deepseek-ai/DeepSeek-R1", "family": "deepseek_paid", "tier": "S", "rpm": 200},
-        {"id": "Pro/Qwen/Qwen3.5-397B-A17B", "family": "qwen", "tier": "S", "rpm": 200},
-        {"id": "qwen3-max", "family": "qwen", "tier": "S", "rpm": 200}
+        {"id": "qwen3-235b-a22b-instruct", "family": "qwen", "tier": "S", "rpm": 500},
+        {"id": "deepseek-v3.2", "family": "deepseek", "tier": "S", "rpm": 500},
+        {"id": "kimi-k2", "family": "kimi", "tier": "S", "rpm": 500},
+        {"id": "qwen3-max", "family": "qwen", "tier": "S", "rpm": 500},
+        {"id": "qwen3-coder-plus", "family": "qwen", "tier": "S", "rpm": 500},
+        {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 500},
+        {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 500},
+        {"id": "qwen3-vl-plus", "family": "qwen", "tier": "A", "rpm": 500},
+        {"id": "qwen3-32b", "family": "qwen", "tier": "A", "rpm": 500},
+        {"id": "qwen3-235b", "family": "qwen", "tier": "B", "rpm": 500}
       ]
     },
 
     "siliconflow_paid": {
       "env_key": "SILICONFLOW_PAID_KEYS",
       "multi_key": true,
-      "base_url": "https://api.siliconflow.cn/v1",
+      "base_url_env": "SILICONFLOW_PAID_BASE_URL",
+      "base_url_default": "https://api.siliconflow.cn/v1",
       "prefix": "openai/",
       "timeout": 45,
       "stream_timeout": 60,
-      "note": "SiliconFlow paid keys",
+      "note": "SiliconFlow paid keys (10条, 14元/条, 未实名, 禁止Pro模型)",
       "models": [
-        {"id": "Pro/deepseek-ai/DeepSeek-V3-0324", "family": "deepseek_paid", "tier": "S"},
-        {"id": "Pro/Qwen/Qwen3-235B-A22B", "family": "qwen", "tier": "S"},
-        {"id": "Pro/deepseek-ai/DeepSeek-R1", "family": "deepseek_paid", "tier": "S"},
-        {"id": "Pro/Qwen/Qwen3.5-397B-A17B", "family": "qwen", "tier": "S"}
+        {"id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "family": "qwen", "tier": "S", "_comment": "免费模型复用"},
+        {"id": "deepseek-ai/DeepSeek-V3.2", "family": "deepseek", "tier": "S", "_comment": "免费模型复用"},
+        {"id": "Qwen/Qwen3.5-397B-A17B", "family": "qwen", "tier": "S", "_comment": "免费模型复用"},
+        {"id": "Qwen/Qwen3-32B", "family": "qwen", "tier": "A", "_comment": "免费模型复用"},
+        {"id": "deepseek-ai/DeepSeek-R1", "family": "deepseek_paid", "tier": "S", "_comment": "扣费模型, gated"},
+        {"id": "deepseek-ai/DeepSeek-V3", "family": "deepseek_paid", "tier": "A", "_comment": "扣费模型, gated"}
       ]
     },
 
     "volcengine": {
       "env_key": "VOLCENGINE_API_KEY",
-      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "base_url_env": "VOLCENGINE_BASE_URL",
+      "base_url_default": "https://ark.cn-beijing.volces.com/api/v3",
       "prefix": "openai/",
-      "note": "火山引擎",
+      "note": "火山引擎 (需 Ark Console 激活模型)",
       "models": [
-        {"id": "doubao-seed-2-0-pro-260215", "family": "doubao", "tier": "S", "rpm": 100},
-        {"id": "doubao-seed-1-6-flash-250828", "family": "doubao", "tier": "A", "rpm": 100}
+        {"id": "doubao-seed-2-0-pro-260215", "family": "doubao", "tier": "S", "rpm": 10},
+        {"id": "doubao-seed-1-6-flash-250828", "family": "doubao", "tier": "A", "rpm": 10}
       ]
     },
 
     "gpt_api_free": {
       "env_key": "GPT_API_FREE_KEY",
-      "base_url": "https://api.chatanywhere.tech/v1",
+      "base_url_env": "GPT_API_FREE_BASE_URL",
+      "base_url_default": "https://api.gpt.ge/v1",
       "prefix": "openai/",
-      "note": "GPT API Free",
+      "note": "GPT API Free (gpt系5次/天, deepseek系30次/天)",
       "models": [
-        {"id": "gpt-4o-mini", "family": "gpt", "tier": "B", "rpm": 3},
-        {"id": "gpt-4.1-mini", "family": "gpt", "tier": "A", "rpm": 3},
-        {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 3},
-        {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 3}
+        {"id": "gpt-4o", "family": "gpt", "tier": "S", "rpm": 2},
+        {"id": "gpt-4o-mini", "family": "gpt", "tier": "A", "rpm": 5},
+        {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 2},
+        {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 2}
       ]
     },
 
     "g4f": {
       "env_key_optional": "G4F_API_KEY",
       "base_url_env": "G4F_BASE_URL",
-      "base_url_default": "http://localhost:1337/v1",
+      "base_url_default": "http://127.0.0.1:18891/v1",
       "prefix": "openai/",
-      "note": "g4f 兜底 (本地服务)",
+      "timeout": 90,
+      "stream_timeout": 120,
+      "note": "g4f 兜底 (本地服务, TIER_C, 响应慢30-90s)",
       "models": [
-        {"id": "auto", "family": "g4f", "tier": "C", "rpm": 5}
+        {"id": "auto", "family": "g4f", "tier": "C"}
       ]
     }
   },
