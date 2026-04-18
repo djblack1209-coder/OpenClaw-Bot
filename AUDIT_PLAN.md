@@ -47,7 +47,7 @@
 
 | 轮次 | 名称 | 范围 | 预估条目 | 详细文档 | 状态 |
 |------|------|------|---------|---------|------|
-| R1 | 基础设施与文件治理 | Git/CI-CD/Docker/依赖/文档对齐 | ~40 | [R01](docs/audit/R01_INFRA.md) | 待执行 |
+| R1 | 基础设施与文件治理 | Git/CI-CD/Docker/依赖/文档对齐 | ~40 | [R01](docs/audit/R01_INFRA.md) | ✅ 已完成(6项修复) |
 | R2 | 后端核心引擎 | Brain/EventBus/Router/LiteLLM/API/安全 | ~50 | [R02](docs/audit/R02_BACKEND_CORE.md) | 待执行 |
 | R3 | Telegram Bot 命令层 | 92+命令+14回调+NLP触发 | ~45 | [R03](docs/audit/R03_BOT_COMMANDS.md) | 待执行 |
 | R4 | Telegram Bot 业务场景 | 投资/社媒/闲鱼/执行 | ~40 | [R04](docs/audit/R04_BOT_BUSINESS.md) | 待执行 |
