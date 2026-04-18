@@ -22,48 +22,56 @@ class _ToolsMixin:
     @requires_auth
     @with_typing
     async def cmd_draw(self, update, context):
-        args = context.args
-        if not args:
-            await update.message.reply_text(
-                "用法: `/draw 图片描述`\n可选: `/draw 描述 --model flux/sd3/sdxl`",
-                parse_mode="Markdown"
-            )
-            return
-
-        prompt_parts = []
-        model = IMG_MODEL_FLUX
-        i = 0
-        while i < len(args):
-            if args[i] == "--model" and i + 1 < len(args):
-                model = args[i + 1]
-                i += 2
-            else:
-                prompt_parts.append(args[i])
-                i += 1
-
-        prompt = " ".join(prompt_parts)
-
-        async with ProgressTracker(update.effective_chat.id, context, title=f"生成: {prompt[:30]}") as progress:
-            await progress.update("准备 API Key")
-            api_key = get_siliconflow_key()
-            if not api_key:
-                await update.message.reply_text("没有可用的 API Key")
+        """AI绘图"""
+        try:
+            args = context.args
+            if not args:
+                await update.message.reply_text(
+                    "用法: `/draw 图片描述`\n可选: `/draw 描述 --model flux/sd3/sdxl`",
+                    parse_mode="Markdown"
+                )
                 return
 
-            await progress.update(f"调用 {model} 模型")
-            image_tool.set_api_key(api_key)
-            result = await image_tool.generate(prompt, model)
+            prompt_parts = []
+            model = IMG_MODEL_FLUX
+            i = 0
+            while i < len(args):
+                if args[i] == "--model" and i + 1 < len(args):
+                    model = args[i + 1]
+                    i += 2
+                else:
+                    prompt_parts.append(args[i])
+                    i += 1
 
-        if result["success"]:
-            for path in result["paths"]:
-                with open(path, "rb") as f:
-                    await context.bot.send_photo(
-                        chat_id=update.effective_chat.id,
-                        photo=f,
-                        caption=f"描述: {prompt[:100]}"
-                    )
-        else:
-            await update.message.reply_text(f"生成失败: {result.get('error')}")
+            prompt = " ".join(prompt_parts)
+
+            async with ProgressTracker(update.effective_chat.id, context, title=f"生成: {prompt[:30]}") as progress:
+                await progress.update("准备 API Key")
+                api_key = get_siliconflow_key()
+                if not api_key:
+                    await update.message.reply_text("没有可用的 API Key")
+                    return
+
+                await progress.update(f"调用 {model} 模型")
+                image_tool.set_api_key(api_key)
+                result = await image_tool.generate(prompt, model)
+
+            if result["success"]:
+                for path in result["paths"]:
+                    with open(path, "rb") as f:
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=f,
+                            caption=f"描述: {prompt[:100]}"
+                        )
+            else:
+                await update.message.reply_text(f"生成失败: {result.get('error')}")
+        except Exception as e:
+            logger.warning("[cmd_draw] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing

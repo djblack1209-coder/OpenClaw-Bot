@@ -86,18 +86,25 @@ class _HelpMixin:
     @with_typing
     async def cmd_help(self, update, context):
         """/help 命令 — 始终展示帮助菜单（不触发向导）"""
-        if not self._is_authorized(update.effective_user.id):
-            await update.message.reply_text("👋 你好！这是一个私有 Bot，暂未对你开放。\n如需使用请联系管理员获取授权。")
-            return
+        try:
+            if not self._is_authorized(update.effective_user.id):
+                await update.message.reply_text("👋 你好！这是一个私有 Bot，暂未对你开放。\n如需使用请联系管理员获取授权。")
+                return
 
-        welcome = (
-            f"{self.emoji}  {self.name}\n"
-            f"───────────────────\n"
-            f"{self.role} · {self.model.split('/')[-1]}\n\n"
-            f"直接发消息就能对话，群聊 @我 即可。\n"
-            f"下面按场景展开更多功能 👇"
-        )
-        await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
+            welcome = (
+                f"{self.emoji}  {self.name}\n"
+                f"───────────────────\n"
+                f"{self.role} · {self.model.split('/')[-1]}\n\n"
+                f"直接发消息就能对话，群聊 @我 即可。\n"
+                f"下面按场景展开更多功能 👇"
+            )
+            await update.message.reply_text(welcome, reply_markup=_build_help_main_keyboard())
+        except Exception as e:
+            logger.warning("[cmd_help] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     async def handle_help_callback(self, update, context):
         """处理 help:* 按钮回调（帮助分类菜单）"""

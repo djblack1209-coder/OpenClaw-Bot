@@ -258,37 +258,76 @@ class IntelCommandMixin:
             /intel military — 查看军事安全情报
             /intel 搜索关键词 — 按关键词搜索
         """
-        if not _WORLDMONITOR_AVAILABLE:
-            await update.message.reply_text(
-                "⚠️ 情报系统暂时不可用，请联系管理员检查。"
-            )
-            return
+        try:
+            if not _WORLDMONITOR_AVAILABLE:
+                await update.message.reply_text(
+                    "⚠️ 情报系统暂时不可用，请联系管理员检查。"
+                )
+                return
 
-        args = context.args
+            args = context.args
 
-        # 无参数 → 显示交互式菜单
-        if not args:
-            await update.message.reply_text(
-                "🌍 <b>全球情报速递</b>\n\n"
-                "选择你感兴趣的领域，获取最新情报：",
-                parse_mode="HTML",
-                reply_markup=_build_intel_keyboard(),
-            )
-            return
+            # 无参数 → 显示交互式菜单
+            if not args:
+                await update.message.reply_text(
+                    "🌍 <b>全球情报速递</b>\n\n"
+                    "选择你感兴趣的领域，获取最新情报：",
+                    parse_mode="HTML",
+                    reply_markup=_build_intel_keyboard(),
+                )
+                return
 
-        # 有参数 → 尝试匹配分类
-        user_input = " ".join(args)
-        cat_key = _category_name_to_key(user_input)
+            # 有参数 → 尝试匹配分类
+            user_input = " ".join(args)
+            cat_key = _category_name_to_key(user_input)
 
-        if cat_key and _is_industry_key(cat_key):
-            # 匹配到行业分类
-            cat_info = INDUSTRY_CATEGORIES[cat_key]
-            await update.message.reply_text(
-                f"⏳ 正在获取 {cat_info['emoji']} {cat_info['name']} 情报..."
-            )
-            items = await fetch_category_news(cat_key)
+            if cat_key and _is_industry_key(cat_key):
+                # 匹配到行业分类
+                cat_info = INDUSTRY_CATEGORIES[cat_key]
+                await update.message.reply_text(
+                    f"⏳ 正在获取 {cat_info['emoji']} {cat_info['name']} 情报..."
+                )
+                items = await fetch_category_news(cat_key)
+                if items:
+                    header = f"{cat_info['emoji']} <b>{cat_info['name']}情报</b>\n\n"
+                    body = format_intel_items(items, max_items=6)
+                    await update.message.reply_text(
+                        header + body,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"{cat_info['emoji']} {cat_info['name']}暂无最新情报。"
+                    )
+                return
+
+            if cat_key and _is_region_key(cat_key):
+                # 匹配到地区分类
+                reg_info = REGION_CATEGORIES[cat_key]
+                await update.message.reply_text(
+                    f"⏳ 正在获取 {reg_info['emoji']} {reg_info['name']} 情报..."
+                )
+                items = await fetch_region_news(cat_key)
+                if items:
+                    header = f"{reg_info['emoji']} <b>{reg_info['name']}情报</b>\n\n"
+                    body = format_intel_items(items, max_items=6)
+                    await update.message.reply_text(
+                        header + body,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"{reg_info['emoji']} {reg_info['name']}暂无最新情报。"
+                    )
+                return
+
+            # 都没匹配到 → 作为自由搜索关键词
+            await update.message.reply_text(f"⏳ 正在搜索「{user_input}」相关情报...")
+            items = await fetch_news_by_query(user_input)
             if items:
-                header = f"{cat_info['emoji']} <b>{cat_info['name']}情报</b>\n\n"
+                header = f"🔍 <b>「{_escape_html(user_input)}」搜索结果</b>\n\n"
                 body = format_intel_items(items, max_items=6)
                 await update.message.reply_text(
                     header + body,
@@ -297,46 +336,14 @@ class IntelCommandMixin:
                 )
             else:
                 await update.message.reply_text(
-                    f"{cat_info['emoji']} {cat_info['name']}暂无最新情报。"
+                    f"🔍 未找到「{user_input}」相关情报，请换个关键词试试。"
                 )
-            return
-
-        if cat_key and _is_region_key(cat_key):
-            # 匹配到地区分类
-            reg_info = REGION_CATEGORIES[cat_key]
-            await update.message.reply_text(
-                f"⏳ 正在获取 {reg_info['emoji']} {reg_info['name']} 情报..."
-            )
-            items = await fetch_region_news(cat_key)
-            if items:
-                header = f"{reg_info['emoji']} <b>{reg_info['name']}情报</b>\n\n"
-                body = format_intel_items(items, max_items=6)
-                await update.message.reply_text(
-                    header + body,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-            else:
-                await update.message.reply_text(
-                    f"{reg_info['emoji']} {reg_info['name']}暂无最新情报。"
-                )
-            return
-
-        # 都没匹配到 → 作为自由搜索关键词
-        await update.message.reply_text(f"⏳ 正在搜索「{user_input}」相关情报...")
-        items = await fetch_news_by_query(user_input)
-        if items:
-            header = f"🔍 <b>「{_escape_html(user_input)}」搜索结果</b>\n\n"
-            body = format_intel_items(items, max_items=6)
-            await update.message.reply_text(
-                header + body,
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-        else:
-            await update.message.reply_text(
-                f"🔍 未找到「{user_input}」相关情报，请换个关键词试试。"
-            )
+        except Exception as e:
+            logger.warning("[cmd_intel] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     async def handle_intel_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

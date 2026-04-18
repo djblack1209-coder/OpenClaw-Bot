@@ -118,15 +118,22 @@ class AnalysisCommandsMixin:
     @with_typing
     async def cmd_performance(self, update, context):
         """绩效仪表盘: /performance"""
-        days = 30
-        if context.args:
+        try:
+            days = 30
+            if context.args:
+                try:
+                    days = int(context.args[0])
+                except ValueError as e:  # noqa: F841
+                    await update.message.reply_text("⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
+            text = journal.format_performance(days)
+            await send_long_message(update.effective_chat.id, text, context,
+                                    reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_performance] 执行失败: %s", e)
             try:
-                days = int(context.args[0])
-            except ValueError as e:  # noqa: F841
-                await update.message.reply_text("⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
-        text = journal.format_performance(days)
-        await send_long_message(update.effective_chat.id, text, context,
-                                reply_to_message_id=update.message.message_id)
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
@@ -222,35 +229,42 @@ class AnalysisCommandsMixin:
     @with_typing
     async def cmd_journal(self, update, context):
         """交易日志: /journal"""
-        open_trades = journal.get_open_trades()
-        closed = journal.get_closed_trades(days=7, limit=10)
+        try:
+            open_trades = journal.get_open_trades()
+            closed = journal.get_closed_trades(days=7, limit=10)
 
-        lines = ["交易日志\n"]
-        if open_trades:
-            lines.append(f"-- 持仓中 ({len(open_trades)}笔) --")
-            for t in open_trades:
-                lines.append(
-                    f"#{t['id']} {t['side']} {t['symbol']} x{t['quantity']} "
-                    f"入:{t['entry_price']} 止损:{t['stop_loss'] or '无'} "
-                    f"理由:{(t['entry_reason'] or '无')[:30]} "
-                    f"[🤖 {t.get('decided_by', '未知')}]"
-                )
-        else:
-            lines.append("持仓: 无")
+            lines = ["交易日志\n"]
+            if open_trades:
+                lines.append(f"-- 持仓中 ({len(open_trades)}笔) --")
+                for t in open_trades:
+                    lines.append(
+                        f"#{t['id']} {t['side']} {t['symbol']} x{t['quantity']} "
+                        f"入:{t['entry_price']} 止损:{t['stop_loss'] or '无'} "
+                        f"理由:{(t['entry_reason'] or '无')[:30]} "
+                        f"[🤖 {t.get('decided_by', '未知')}]"
+                    )
+            else:
+                lines.append("持仓: 无")
 
-        if closed:
-            lines.append(f"\n-- 近期已平仓 ({len(closed)}笔) --")
-            for t in closed:
-                sign = "+" if t['pnl'] >= 0 else ""
-                lines.append(
-                    f"#{t['id']} {t['side']} {t['symbol']} "
-                    f"PnL:{sign}${t['pnl']:.2f}({sign}{t['pnl_pct']:.1f}%) "
-                    f"持仓:{t['hold_duration_hours'] or 0:.0f}h "
-                    f"[🤖 {t.get('decided_by', '未知')}]"
-                )
+            if closed:
+                lines.append(f"\n-- 近期已平仓 ({len(closed)}笔) --")
+                for t in closed:
+                    sign = "+" if t['pnl'] >= 0 else ""
+                    lines.append(
+                        f"#{t['id']} {t['side']} {t['symbol']} "
+                        f"PnL:{sign}${t['pnl']:.2f}({sign}{t['pnl_pct']:.1f}%) "
+                        f"持仓:{t['hold_duration_hours'] or 0:.0f}h "
+                        f"[🤖 {t.get('decided_by', '未知')}]"
+                    )
 
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context,
-                                reply_to_message_id=update.message.message_id)
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context,
+                                    reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_journal] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     # ============ 新增: AI预测准确率 / 权益曲线 / 盈利目标进度 ============
 
