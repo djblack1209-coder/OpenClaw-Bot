@@ -380,7 +380,7 @@ export function Memory() {
                 <CardContent className="p-4 space-y-4">
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">总记忆条目</span>
-                        <span className="text-lg font-mono text-white">{entries.length > 0 ? entries.length.toLocaleString() : '—'}</span>
+                        <span className="text-lg font-mono text-white">{memoryStats?.total ? memoryStats.total.toLocaleString() : entries.length > 0 ? entries.length.toLocaleString() : '—'}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">提取轮次</span>
