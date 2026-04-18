@@ -473,106 +473,113 @@ class XianyuCommandsMixin:
     @with_typing
     async def cmd_ship(self, update, context):
         """闲鱼卡券管理 — /ship <子命令>"""
-        import time as _time
-        from src.xianyu.auto_shipper import AutoShipper
+        try:
+            import time as _time
+            from src.xianyu.auto_shipper import AutoShipper
 
-        shipper = AutoShipper()
-        args = context.args or []
-        sub = args[0] if args else "help"
+            shipper = AutoShipper()
+            args = context.args or []
+            sub = args[0] if args else "help"
 
-        if sub == "help" or sub == "帮助":
-            help_text = (
-                "📦 闲鱼自动发货管理\n\n"
-                "子命令:\n"
-                "  /ship add <商品ID> <卡券内容> — 添加单张卡券\n"
-                "  /ship batch <商品ID> — 批量添加(下一条消息每行一个)\n"
-                "  /ship stock [商品ID] — 查看库存\n"
-                "  /ship rule <商品ID> [延时秒数] — 设置发货规则\n"
-                "  /ship stats [商品ID] — 发货统计\n"
-                "  /ship test <商品ID> — 模拟发货测试\n\n"
-                "示例:\n"
-                "  /ship add item_001 ABCD-EFGH-1234\n"
-                "  /ship stock\n"
-                "  /ship rule item_001 60"
-            )
-            await update.message.reply_text(help_text)
-            return
-
-        if sub == "add" or sub == "添加":
-            if len(args) < 3:
-                await update.message.reply_text("❓ 用法: /ship add <商品ID> <卡券内容>")
-                return
-            item_id = args[1]
-            card = " ".join(args[2:])
-            result = shipper.add_cards(item_id, [card])
-            if result["added"] > 0:
-                remaining = shipper._get_remaining(item_id)
-                await update.message.reply_text(f"✅ 卡券已添加\n商品: {item_id}\n当前库存: {remaining}")
-            else:
-                await update.message.reply_text("⚠️ 卡券已存在（重复）")
-            return
-
-        if sub == "stock" or sub == "库存":
-            item_id = args[1] if len(args) > 1 else None
-            inv = shipper.get_inventory(item_id)
-            if not inv:
-                await update.message.reply_text("📦 暂无库存")
-                return
-            msg = "📦 卡券库存:\n\n"
-            for item in inv:
-                msg += f"  {item['item_id']}"
-                if item.get("spec"):
-                    msg += f" ({item['spec']})"
-                msg += f": {item['available']}可用 / {item['used']}已用 / {item['total']}总计\n"
-            await update.message.reply_text(msg)
-            return
-
-        if sub == "rule" or sub == "规则":
-            if len(args) < 2:
-                await update.message.reply_text("❓ 用法: /ship rule <商品ID> [延时秒数]")
-                return
-            item_id = args[1]
-            delay = int(args[2]) if len(args) > 2 else 30
-            shipper.set_rule(item_id, auto_ship=True, delay_seconds=delay)
-            rule = shipper.get_rule(item_id)
-            await update.message.reply_text(
-                f"✅ 发货规则已设置\n"
-                f"商品: {item_id}\n"
-                f"自动发货: {'开启' if rule['auto_ship'] else '关闭'}\n"
-                f"延时: {rule['delay_seconds']}秒\n"
-                f"日上限: {rule['max_daily_ship']}单"
-            )
-            return
-
-        if sub == "stats" or sub == "统计":
-            item_id = args[1] if len(args) > 1 else None
-            stats = shipper.get_shipping_stats(item_id)
-            await update.message.reply_text(
-                f"📊 发货统计:\n  今日发货: {stats['today_shipped']}\n  累计发货: {stats['total_shipped']}"
-            )
-            return
-
-        if sub == "test" or sub == "测试":
-            if len(args) < 2:
-                await update.message.reply_text("❓ 用法: /ship test <商品ID>")
-                return
-            item_id = args[1]
-            inv = shipper.get_inventory(item_id)
-            if not inv or inv[0]["available"] == 0:
-                await update.message.reply_text(f"⚠️ 商品 {item_id} 无可用卡券")
-                return
-            result = shipper.process_order(f"test_{int(_time.time())}", item_id, "test_buyer")
-            if result["success"]:
-                await update.message.reply_text(
-                    f"✅ 模拟发货成功\n"
-                    f"卡券: {result['card_content'][:50]}...\n"
-                    f"发送消息:\n{result['message'][:200]}\n"
-                    f"剩余库存: {result['remaining']}"
+            if sub == "help" or sub == "帮助":
+                help_text = (
+                    "📦 闲鱼自动发货管理\n\n"
+                    "子命令:\n"
+                    "  /ship add <商品ID> <卡券内容> — 添加单张卡券\n"
+                    "  /ship batch <商品ID> — 批量添加(下一条消息每行一个)\n"
+                    "  /ship stock [商品ID] — 查看库存\n"
+                    "  /ship rule <商品ID> [延时秒数] — 设置发货规则\n"
+                    "  /ship stats [商品ID] — 发货统计\n"
+                    "  /ship test <商品ID> — 模拟发货测试\n\n"
+                    "示例:\n"
+                    "  /ship add item_001 ABCD-EFGH-1234\n"
+                    "  /ship stock\n"
+                    "  /ship rule item_001 60"
                 )
-            else:
-                await update.message.reply_text(f"⚠️ 模拟失败: {result['reason']}")
-            return
+                await update.message.reply_text(help_text)
+                return
 
-        await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /ship help 查看帮助")
+            if sub == "add" or sub == "添加":
+                if len(args) < 3:
+                    await update.message.reply_text("❓ 用法: /ship add <商品ID> <卡券内容>")
+                    return
+                item_id = args[1]
+                card = " ".join(args[2:])
+                result = shipper.add_cards(item_id, [card])
+                if result["added"] > 0:
+                    remaining = shipper._get_remaining(item_id)
+                    await update.message.reply_text(f"✅ 卡券已添加\n商品: {item_id}\n当前库存: {remaining}")
+                else:
+                    await update.message.reply_text("⚠️ 卡券已存在（重复）")
+                return
+
+            if sub == "stock" or sub == "库存":
+                item_id = args[1] if len(args) > 1 else None
+                inv = shipper.get_inventory(item_id)
+                if not inv:
+                    await update.message.reply_text("📦 暂无库存")
+                    return
+                msg = "📦 卡券库存:\n\n"
+                for item in inv:
+                    msg += f"  {item['item_id']}"
+                    if item.get("spec"):
+                        msg += f" ({item['spec']})"
+                    msg += f": {item['available']}可用 / {item['used']}已用 / {item['total']}总计\n"
+                await update.message.reply_text(msg)
+                return
+
+            if sub == "rule" or sub == "规则":
+                if len(args) < 2:
+                    await update.message.reply_text("❓ 用法: /ship rule <商品ID> [延时秒数]")
+                    return
+                item_id = args[1]
+                delay = int(args[2]) if len(args) > 2 else 30
+                shipper.set_rule(item_id, auto_ship=True, delay_seconds=delay)
+                rule = shipper.get_rule(item_id)
+                await update.message.reply_text(
+                    f"✅ 发货规则已设置\n"
+                    f"商品: {item_id}\n"
+                    f"自动发货: {'开启' if rule['auto_ship'] else '关闭'}\n"
+                    f"延时: {rule['delay_seconds']}秒\n"
+                    f"日上限: {rule['max_daily_ship']}单"
+                )
+                return
+
+            if sub == "stats" or sub == "统计":
+                item_id = args[1] if len(args) > 1 else None
+                stats = shipper.get_shipping_stats(item_id)
+                await update.message.reply_text(
+                    f"📊 发货统计:\n  今日发货: {stats['today_shipped']}\n  累计发货: {stats['total_shipped']}"
+                )
+                return
+
+            if sub == "test" or sub == "测试":
+                if len(args) < 2:
+                    await update.message.reply_text("❓ 用法: /ship test <商品ID>")
+                    return
+                item_id = args[1]
+                inv = shipper.get_inventory(item_id)
+                if not inv or inv[0]["available"] == 0:
+                    await update.message.reply_text(f"⚠️ 商品 {item_id} 无可用卡券")
+                    return
+                result = shipper.process_order(f"test_{int(_time.time())}", item_id, "test_buyer")
+                if result["success"]:
+                    await update.message.reply_text(
+                        f"✅ 模拟发货成功\n"
+                        f"卡券: {result['card_content'][:50]}...\n"
+                        f"发送消息:\n{result['message'][:200]}\n"
+                        f"剩余库存: {result['remaining']}"
+                    )
+                else:
+                    await update.message.reply_text(f"⚠️ 模拟失败: {result['reason']}")
+                return
+
+            await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /ship help 查看帮助")
+        except Exception as e:
+            logger.warning("[cmd_ship] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     # ---- AI 小说工坊 (novel_writer) ----

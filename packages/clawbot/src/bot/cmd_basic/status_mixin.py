@@ -89,81 +89,102 @@ class _StatusMixin:
     @with_typing
     async def cmd_metrics(self, update, context):
         """运行指标命令"""
-        stats = metrics.get_stats()
-        health = health_checker.get_status()
-        db_stats = history_store.get_stats()
+        try:
+            stats = metrics.get_stats()
+            health = health_checker.get_status()
+            db_stats = history_store.get_stats()
 
-        lines = [
-            "📊  运行指标",
-            "───────────────────",
-            f" · 运行  {stats['uptime_hours']}h",
-            f" · 总消息  {stats['total_messages']} | 今日  {stats['today_messages']}",
-            f" · API调用  {stats['total_api_calls']} | 错误率  {stats['error_rate']}%",
-            f" · 平均延迟  {stats['avg_latency_ms']}ms",
-            "",
-            "▸ 存储",
-            f"  数据库 {db_stats['db_size_kb']}KB | {db_stats['total_messages']}条 | {db_stats['total_chats']}个对话",
-        ]
+            lines = [
+                "📊  运行指标",
+                "───────────────────",
+                f" · 运行  {stats['uptime_hours']}h",
+                f" · 总消息  {stats['total_messages']} | 今日  {stats['today_messages']}",
+                f" · API调用  {stats['total_api_calls']} | 错误率  {stats['error_rate']}%",
+                f" · 平均延迟  {stats['avg_latency_ms']}ms",
+                "",
+                "▸ 存储",
+                f"  数据库 {db_stats['db_size_kb']}KB | {db_stats['total_messages']}条 | {db_stats['total_chats']}个对话",
+            ]
 
-        model_usage = stats.get('model_usage', {})
-        if model_usage:
-            lines.extend(["", "▸ 模型使用"])
-            for model, count in model_usage.items():
-                lines.append(f"  {model.split('/')[-1]}: {count}")
+            model_usage = stats.get('model_usage', {})
+            if model_usage:
+                lines.extend(["", "▸ 模型使用"])
+                for model, count in model_usage.items():
+                    lines.append(f"  {model.split('/')[-1]}: {count}")
 
-        lines.extend(["", "▸ 健康"])
-        for bot_id, status in health.items():
-            icon = "💚" if status['healthy'] else "🔴"
-            lines.append(f"  {icon} {bot_id}: 连续错误 {status['consecutive_errors']}")
+            lines.extend(["", "▸ 健康"])
+            for bot_id, status in health.items():
+                icon = "💚" if status['healthy'] else "🔴"
+                lines.append(f"  {icon} {bot_id}: 连续错误 {status['consecutive_errors']}")
 
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_metrics] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_model(self, update, context):
         """查看当前模型信息"""
-        pool_stats = free_pool.get_stats()
-        api_type_label = {
-            "free_pool": "LiteLLM 动态路由",
-            "free_first": "免费优先（私聊可降级付费）",
-            "g4f": "g4f 本地",
-            "kiro": "Kiro Gateway",
-            "siliconflow": "硅基流动",
-        }.get(getattr(self, "api_type", ""), "未知")
+        try:
+            pool_stats = free_pool.get_stats()
+            api_type_label = {
+                "free_pool": "LiteLLM 动态路由",
+                "free_first": "免费优先（私聊可降级付费）",
+                "g4f": "g4f 本地",
+                "kiro": "Kiro Gateway",
+                "siliconflow": "硅基流动",
+            }.get(getattr(self, "api_type", ""), "未知")
 
-        text = (
-            f"{self.emoji} **{self.name} 模型信息**\n\n"
-            f"配置模型: `{self.model}`\n"
-            f"路由方式: {api_type_label}\n"
-            f"活跃模型数: {pool_stats['active_sources']}/{pool_stats['total_sources']}\n"
-            f"模型族数: {pool_stats['model_families']}\n"
-        )
-        await update.message.reply_text(text, parse_mode="Markdown")
+            text = (
+                f"{self.emoji} **{self.name} 模型信息**\n\n"
+                f"配置模型: `{self.model}`\n"
+                f"路由方式: {api_type_label}\n"
+                f"活跃模型数: {pool_stats['active_sources']}/{pool_stats['total_sources']}\n"
+                f"模型族数: {pool_stats['model_families']}\n"
+            )
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning("[cmd_model] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_pool(self, update, context):
         """查看统一 LLM 号池 + 智能路由状态"""
-        pool_stats = free_pool.get_stats()
-        text = "🤖 **统一 LLM 号池状态**\n\n"
-        text += f"总源数: {pool_stats['total_sources']}\n"
-        text += f"活跃源: {pool_stats['active_sources']}\n"
-        text += f"模型族: {pool_stats['model_families']}\n\n"
-        text += "主链: SiliconFlow / iflow / Groq / Gemini\n"
-        text += "补位: Cerebras / OpenRouter / NVIDIA / Volcengine\n"
-        text += "兜底: Mistral / Cohere / GPT_API_Free / g4f\n"
-        text += "付费 Claude: 仅 /claude 显式调用\n\n"
+        try:
+            pool_stats = free_pool.get_stats()
+            text = "🤖 **统一 LLM 号池状态**\n\n"
+            text += f"总源数: {pool_stats['total_sources']}\n"
+            text += f"活跃源: {pool_stats['active_sources']}\n"
+            text += f"模型族: {pool_stats['model_families']}\n\n"
+            text += "主链: SiliconFlow / iflow / Groq / Gemini\n"
+            text += "补位: Cerebras / OpenRouter / NVIDIA / Volcengine\n"
+            text += "兜底: Mistral / Cohere / GPT_API_Free / g4f\n"
+            text += "付费 Claude: 仅 /claude 显式调用\n\n"
 
-        for family, info in pool_stats.get("families", {}).items():
-            icon = "✅" if info["active"] > 0 else "❌"
-            text += f"{icon} {family}: {info['active']}/{info['total']} 活跃\n"
+            for family, info in pool_stats.get("families", {}).items():
+                icon = "✅" if info["active"] > 0 else "❌"
+                text += f"{icon} {family}: {info['active']}/{info['total']} 活跃\n"
 
-        # AdaptiveRouter 智能路由状态
-        from src.litellm_router import adaptive_router
-        if adaptive_router:
-            text += f"\n{adaptive_router.format_routing_status()}"
+            # AdaptiveRouter 智能路由状态
+            from src.litellm_router import adaptive_router
+            if adaptive_router:
+                text += f"\n{adaptive_router.format_routing_status()}"
 
-        await send_long_message(update.effective_chat.id, text, context)
+            await send_long_message(update.effective_chat.id, text, context)
+        except Exception as e:
+            logger.warning("[cmd_pool] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing

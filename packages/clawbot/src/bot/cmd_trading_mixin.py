@@ -175,14 +175,22 @@ class TradingCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_tradingsystem(self, update, context):
-        status = get_system_status()
-        if len(status) > TG_SAFE_LENGTH:
-            parts = status.split("\n\n")
-            for part in parts:
-                if part.strip():
-                    await update.message.reply_text(part)
-        else:
-            await update.message.reply_text(status)
+        """交易系统状态"""
+        try:
+            status = get_system_status()
+            if len(status) > TG_SAFE_LENGTH:
+                parts = status.split("\n\n")
+                for part in parts:
+                    if part.strip():
+                        await update.message.reply_text(part)
+            else:
+                await update.message.reply_text(status)
+        except Exception as e:
+            logger.warning("[cmd_tradingsystem] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing

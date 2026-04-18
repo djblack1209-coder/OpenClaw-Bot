@@ -28,147 +28,168 @@ class OpsCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_ops(self, update, context):
-        args = context.args or []
-        if not args:
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        try:
+            args = context.args or []
+            if not args:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-            keyboard = [
-                [
-                    InlineKeyboardButton("📝 任务管理", callback_data="ops_task"),
-                    InlineKeyboardButton("📊 项目报告", callback_data="ops_project"),
-                ],
-                [
-                    InlineKeyboardButton("🔥 热点扫描", callback_data="ops_hot"),
-                    InlineKeyboardButton("✍️ 发帖", callback_data="ops_post"),
-                ],
-                [
-                    InlineKeyboardButton("📧 邮件", callback_data="ops_email"),
-                    InlineKeyboardButton("📝 会议纪要", callback_data="ops_meeting"),
-                ],
-                [
-                    InlineKeyboardButton("🏠 生活提醒", callback_data="ops_life"),
-                    InlineKeyboardButton("💰 赏金猎人", callback_data="ops_bounty"),
-                ],
-                [
-                    InlineKeyboardButton("📺 监控", callback_data="ops_monitor"),
-                    InlineKeyboardButton("🔧 开发", callback_data="ops_dev"),
-                ],
-            ]
-            await update.message.reply_text(
-                "<b>🎯 自动化工作台</b>\n选择要执行的操作：",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-            )
-            return
-
-        main = args[0].lower().strip()
-        rest = args[1:]
-
-        if main in {"help", "h", "-h", "--help"}:
-            await update.message.reply_text(self._ops_help())
-            return
-
-        if main == "email":
-            await update.message.reply_text("正在整理邮箱...")
-            only_unread = True
-            if rest and rest[0].lower() in {"all", "--all"}:
-                only_unread = False
-            triage = await asyncio.to_thread(execution_hub.triage_email, 120, only_unread)
-            text = execution_hub.format_email_triage(triage)
-            await send_long_message(update.effective_chat.id, text, context)
-            return
-
-        if main == "brief":
-            await update.message.reply_text("正在生成执行简报...")
-            text = await execution_hub.generate_daily_brief()
-            await send_long_message(update.effective_chat.id, text, context)
-            return
-
-        if main == "docs":
-            await self._ops_docs(update, context, rest)
-            return
-
-        if main == "meeting":
-            await self._ops_meeting(update, context, rest)
-            return
-
-        if main == "task":
-            await self._ops_task(update, context, rest)
-            return
-
-        if main == "content":
-            keyword = " ".join(rest).strip() or "AI"
-            await update.message.reply_text(f"正在生成「{keyword}」选题...")
-            ideas = await execution_hub.generate_content_ideas(keyword=keyword, count=5)
-            lines = [f"社媒选题 ({keyword})", ""]
-            for i, it in enumerate(ideas, 1):
-                lines.append(f"{i}. {it}")
-            await update.message.reply_text("\n".join(lines))
-            return
-
-        if main == "bounty":
-            await self._ops_bounty(update, context, rest)
-            return
-
-        if main == "tweet":
-            await self._ops_tweet(update, context, rest)
-            return
-
-        if main == "monitor":
-            await self._ops_monitor(update, context, rest)
-            return
-
-        if main == "life":
-            await self._ops_life(update, context, rest)
-            return
-
-        if main == "project":
-            target = " ".join(rest).strip() or "."
-            await update.message.reply_text(f"正在生成项目报告: {target}")
-            report = await asyncio.to_thread(execution_hub.generate_project_report, target, 7)
-            await send_long_message(update.effective_chat.id, report, context)
-            return
-
-        if main == "dev":
-            target = " ".join(rest).strip() or "."
-            await update.message.reply_text(f"正在执行开发流程: {target}")
-            result = await asyncio.to_thread(execution_hub.run_dev_workflow, target)
-            if not result.get("success"):
-                await send_long_message(
-                    update.effective_chat.id,
-                    error_service_failed("开发流程", result.get("error", "")),
-                    context,
+                keyboard = [
+                    [
+                        InlineKeyboardButton("📝 任务管理", callback_data="ops_task"),
+                        InlineKeyboardButton("📊 项目报告", callback_data="ops_project"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔥 热点扫描", callback_data="ops_hot"),
+                        InlineKeyboardButton("✍️ 发帖", callback_data="ops_post"),
+                    ],
+                    [
+                        InlineKeyboardButton("📧 邮件", callback_data="ops_email"),
+                        InlineKeyboardButton("📝 会议纪要", callback_data="ops_meeting"),
+                    ],
+                    [
+                        InlineKeyboardButton("🏠 生活提醒", callback_data="ops_life"),
+                        InlineKeyboardButton("💰 赏金猎人", callback_data="ops_bounty"),
+                    ],
+                    [
+                        InlineKeyboardButton("📺 监控", callback_data="ops_monitor"),
+                        InlineKeyboardButton("🔧 开发", callback_data="ops_dev"),
+                    ],
+                ]
+                await update.message.reply_text(
+                    "<b>🎯 自动化工作台</b>\n选择要执行的操作：",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
                 )
                 return
 
-            lines = ["开发流程结果", ""]
-            for i, step in enumerate(result.get("steps", []), 1):
-                ok = "成功" if step.get("ok") else "失败"
-                lines.append(f"[{i}] {ok} {step.get('command', '')}")
-                out = (step.get("stdout", "") or "").strip()
-                err = (step.get("stderr", "") or "").strip()
-                if out:
-                    lines.append(f"输出: {out[:300]}")
-                if err:
-                    lines.append(f"错误: {err[:300]}")
-                lines.append("")
-            await send_long_message(update.effective_chat.id, "\n".join(lines).strip(), context)
-            return
+            main = args[0].lower().strip()
+            rest = args[1:]
 
-        await update.message.reply_text("❓ 未知子命令，请使用 /ops help 查看可用操作")
+            if main in {"help", "h", "-h", "--help"}:
+                await update.message.reply_text(self._ops_help())
+                return
+
+            if main == "email":
+                await update.message.reply_text("正在整理邮箱...")
+                only_unread = True
+                if rest and rest[0].lower() in {"all", "--all"}:
+                    only_unread = False
+                triage = await asyncio.to_thread(execution_hub.triage_email, 120, only_unread)
+                text = execution_hub.format_email_triage(triage)
+                await send_long_message(update.effective_chat.id, text, context)
+                return
+
+            if main == "brief":
+                await update.message.reply_text("正在生成执行简报...")
+                text = await execution_hub.generate_daily_brief()
+                await send_long_message(update.effective_chat.id, text, context)
+                return
+
+            if main == "docs":
+                await self._ops_docs(update, context, rest)
+                return
+
+            if main == "meeting":
+                await self._ops_meeting(update, context, rest)
+                return
+
+            if main == "task":
+                await self._ops_task(update, context, rest)
+                return
+
+            if main == "content":
+                keyword = " ".join(rest).strip() or "AI"
+                await update.message.reply_text(f"正在生成「{keyword}」选题...")
+                ideas = await execution_hub.generate_content_ideas(keyword=keyword, count=5)
+                lines = [f"社媒选题 ({keyword})", ""]
+                for i, it in enumerate(ideas, 1):
+                    lines.append(f"{i}. {it}")
+                await update.message.reply_text("\n".join(lines))
+                return
+
+            if main == "bounty":
+                await self._ops_bounty(update, context, rest)
+                return
+
+            if main == "tweet":
+                await self._ops_tweet(update, context, rest)
+                return
+
+            if main == "monitor":
+                await self._ops_monitor(update, context, rest)
+                return
+
+            if main == "life":
+                await self._ops_life(update, context, rest)
+                return
+
+            if main == "project":
+                target = " ".join(rest).strip() or "."
+                await update.message.reply_text(f"正在生成项目报告: {target}")
+                report = await asyncio.to_thread(execution_hub.generate_project_report, target, 7)
+                await send_long_message(update.effective_chat.id, report, context)
+                return
+
+            if main == "dev":
+                target = " ".join(rest).strip() or "."
+                await update.message.reply_text(f"正在执行开发流程: {target}")
+                result = await asyncio.to_thread(execution_hub.run_dev_workflow, target)
+                if not result.get("success"):
+                    await send_long_message(
+                        update.effective_chat.id,
+                        error_service_failed("开发流程", result.get("error", "")),
+                        context,
+                    )
+                    return
+
+                lines = ["开发流程结果", ""]
+                for i, step in enumerate(result.get("steps", []), 1):
+                    ok = "成功" if step.get("ok") else "失败"
+                    lines.append(f"[{i}] {ok} {step.get('command', '')}")
+                    out = (step.get("stdout", "") or "").strip()
+                    err = (step.get("stderr", "") or "").strip()
+                    if out:
+                        lines.append(f"输出: {out[:300]}")
+                    if err:
+                        lines.append(f"错误: {err[:300]}")
+                    lines.append("")
+                await send_long_message(update.effective_chat.id, "\n".join(lines).strip(), context)
+                return
+
+            await update.message.reply_text("❓ 未知子命令，请使用 /ops help 查看可用操作")
+        except Exception as e:
+            logger.warning("[cmd_ops] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     async def cmd_dev(self, update, context):
-        args = ["dev", *(context.args or [])]
-        context.args = args
-        await self.cmd_ops(update, context)
+        try:
+            args = ["dev", *(context.args or [])]
+            context.args = args
+            await self.cmd_ops(update, context)
+        except Exception as e:
+            logger.warning("[cmd_dev] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_brief(self, update, context):
-        await update.message.reply_text("正在生成执行简报...")
-        brief = await execution_hub.generate_daily_brief()
-        await send_long_message(update.effective_chat.id, brief, context)
+        try:
+            await update.message.reply_text("正在生成执行简报...")
+            brief = await execution_hub.generate_daily_brief()
+            await send_long_message(update.effective_chat.id, brief, context)
+        except Exception as e:
+            logger.warning("[cmd_brief] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     async def cmd_lane(self, update, context):
@@ -177,53 +198,67 @@ class OpsCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_cost(self, update, context):
-        throttle_flags = {
-            "group_llm": os.getenv("CHAT_ROUTER_ENABLE_GROUP_LLM", "false").lower() in {"1", "true", "yes", "on"},
-            "group_intent": os.getenv("CHAT_ROUTER_ENABLE_GROUP_INTENT", "false").lower() in {"1", "true", "yes", "on"},
-            "group_fallback": os.getenv("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", "false").lower()
-            in {"1", "true", "yes", "on"},
-            "fill_only": os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"},
-        }
-        text = format_cost_card(
-            throttle_flags=throttle_flags,
-            token_rows=token_budget.get_all_status(),
-            rate_rows=rate_limiter.get_all_status(),
-        )
-        await send_long_message(update.effective_chat.id, text, context)
+        try:
+            throttle_flags = {
+                "group_llm": os.getenv("CHAT_ROUTER_ENABLE_GROUP_LLM", "false").lower() in {"1", "true", "yes", "on"},
+                "group_intent": os.getenv("CHAT_ROUTER_ENABLE_GROUP_INTENT", "false").lower() in {"1", "true", "yes", "on"},
+                "group_fallback": os.getenv("CHAT_ROUTER_ENABLE_GROUP_FALLBACK", "false").lower()
+                in {"1", "true", "yes", "on"},
+                "fill_only": os.getenv("AUTO_TRADE_NOTIFY_ONLY_FILLS", "false").lower() in {"1", "true", "yes", "on"},
+            }
+            text = format_cost_card(
+                throttle_flags=throttle_flags,
+                token_rows=token_budget.get_all_status(),
+                rate_rows=rate_limiter.get_all_status(),
+            )
+            await send_long_message(update.effective_chat.id, text, context)
+        except Exception as e:
+            logger.warning("[cmd_cost] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_config(self, update, context):
-        lines = ["当前执行配置", ""]
-        lines.append("自动调度:")
-        lines.append(f"- 执行简报: {os.getenv('OPS_BRIEF_ENABLED', 'false')}")
-        lines.append(f"- 任务 Top3: {os.getenv('OPS_TASK_TOP3_ENABLED', 'false')}")
-        lines.append(f"- 资讯监控: {os.getenv('OPS_MONITOR_ENABLED', 'false')}")
-        lines.append(f"- 赏金播报: {os.getenv('OPS_BOUNTY_ENABLED', 'false')}")
-        lines.append(f"- 变现 watcher: {os.getenv('OPS_PAYOUT_WATCH_ENABLED', 'true')}")
-        lines.append("")
-        lines.append("模型 / 路由:")
-        lines.append(f"- 群聊免费 LLM 路由: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false')}")
-        lines.append(f"- 群聊意图自动回复: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false')}")
-        lines.append(f"- 群聊兜底轮换: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_FALLBACK', 'false')}")
-        lines.append(f"- Upwork 自动接单: {os.getenv('OPS_UPWORK_AUTO_ACCEPT_OFFER', 'false')}")
-        lines.append(f"- 社媒浏览器: OpenClaw 专用浏览器 (port {os.getenv('OPENCLAW_SOCIAL_BROWSER_PORT', '19222')})")
-        persona = execution_hub.get_social_persona_summary()
-        if persona.get("success"):
-            lines.append(f"- 当前社媒人设: {persona.get('name', '')} / {persona.get('headline', '')}")
-        lines.append("")
-        lines.append("高频入口:")
-        lines.append("- /dev <路径> -> 开发/配置流程")
-        lines.append("- /brief -> 手动生成执行简报")
-        lines.append("- /hot [x|xhs|all] [题材] -> 抓热点并一键发文")
-        lines.append("- /post_social [题材] -> 自动拉起专用浏览器并双发")
-        lines.append("- /social_plan [题材] -> 生成发文计划")
-        lines.append("- /social_repost [题材] -> 生成双平台草稿")
-        lines.append("- /social_launch -> 查看数字生命首发包")
-        lines.append("- /social_persona -> 查看当前社媒人设")
-        lines.append("- /cost -> 查看请求/Token/节流状态")
-        lines.append("- /ops -> 全量自动化入口")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        try:
+            lines = ["当前执行配置", ""]
+            lines.append("自动调度:")
+            lines.append(f"- 执行简报: {os.getenv('OPS_BRIEF_ENABLED', 'false')}")
+            lines.append(f"- 任务 Top3: {os.getenv('OPS_TASK_TOP3_ENABLED', 'false')}")
+            lines.append(f"- 资讯监控: {os.getenv('OPS_MONITOR_ENABLED', 'false')}")
+            lines.append(f"- 赏金播报: {os.getenv('OPS_BOUNTY_ENABLED', 'false')}")
+            lines.append(f"- 变现 watcher: {os.getenv('OPS_PAYOUT_WATCH_ENABLED', 'true')}")
+            lines.append("")
+            lines.append("模型 / 路由:")
+            lines.append(f"- 群聊免费 LLM 路由: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_LLM', 'false')}")
+            lines.append(f"- 群聊意图自动回复: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_INTENT', 'false')}")
+            lines.append(f"- 群聊兜底轮换: {os.getenv('CHAT_ROUTER_ENABLE_GROUP_FALLBACK', 'false')}")
+            lines.append(f"- Upwork 自动接单: {os.getenv('OPS_UPWORK_AUTO_ACCEPT_OFFER', 'false')}")
+            lines.append(f"- 社媒浏览器: OpenClaw 专用浏览器 (port {os.getenv('OPENCLAW_SOCIAL_BROWSER_PORT', '19222')})")
+            persona = execution_hub.get_social_persona_summary()
+            if persona.get("success"):
+                lines.append(f"- 当前社媒人设: {persona.get('name', '')} / {persona.get('headline', '')}")
+            lines.append("")
+            lines.append("高频入口:")
+            lines.append("- /dev <路径> -> 开发/配置流程")
+            lines.append("- /brief -> 手动生成执行简报")
+            lines.append("- /hot [x|xhs|all] [题材] -> 抓热点并一键发文")
+            lines.append("- /post_social [题材] -> 自动拉起专用浏览器并双发")
+            lines.append("- /social_plan [题材] -> 生成发文计划")
+            lines.append("- /social_repost [题材] -> 生成双平台草稿")
+            lines.append("- /social_launch -> 查看数字生命首发包")
+            lines.append("- /social_persona -> 查看当前社媒人设")
+            lines.append("- /cost -> 查看请求/Token/节流状态")
+            lines.append("- /ops -> 全量自动化入口")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_config] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     async def _ops_docs(self, update, context, args):
         if not args:
