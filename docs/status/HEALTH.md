@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R3+R4+R5 审计完成: R3 3修复/R4 0修复/R5 2修复 + 14技术债)
+> 最后更新: 2026-04-19 (R6 macOS核心页面审计: 8修复 + 15技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -173,6 +173,12 @@
 | HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型，无集中式命令白名单。`IBKR_START_CMD`/`IBKR_STOP_CMD` 从 .env 读取后直接 `bash -c` 执行 (R5.13) | 2026-04-19 |
 | HI-546 | `frontend` | `src/lib/tauri-core.ts` | TECH_DEBT: `clawbotFetchSafe` 比 `clawbotFetch` 更安全但几乎未被使用——大部分调用方直接用 `clawbotFetch` 并自行处理错误（模式不一致）(R5.20) | 2026-04-19 |
 | HI-547 | `frontend` | `src/components/` | TECH_DEBT: 暗色/亮色模式无"跟随系统"选项——仅手动切换，不监听 `prefers-color-scheme` 媒体查询。CSS 基础设施已完备 (R5.33) | 2026-04-19 |
+| HI-550 | `frontend` | `conversationService.ts` | TECH_DEBT: AI 助手模式切换仅前端装饰——不传递给后端，模式信息在 sendMessage 中丢失。会话重命名功能完全缺失。删除会话无二次确认弹窗 (R6.09/R6.11) | 2026-04-19 |
+| HI-551 | `frontend` | `Assistant/index.tsx` | TECH_DEBT: Markdown 渲染器为手写简易版——不支持图片 `![](url)`、有序列表 `1.`、表格、代码块复制按钮。建议迁移到 react-markdown (R6.13) | 2026-04-19 |
+| HI-552 | `frontend` | `Bots/index.tsx` | TECH_DEBT: 无独立 Bot 详情页——无法查看单个 Bot 的配置/日志/统计。SERVICE_META 硬编码 5 个服务 ID。C 端不展示模型和命令数 (R6.19/R6.20) | 2026-04-19 |
+| HI-553 | `frontend` | `Settings/index.tsx` | TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测，LLM 模型列表硬编码 5 个选项 (R6.23/R6.20) | 2026-04-19 |
+| HI-554 | `frontend` | `Channels/index.tsx` | TECH_DEBT: 频道列表仅支持编辑——缺少新建和删除功能。频道无实时连接状态(在线/离线/错误) (R6.38/R6.41) | 2026-04-19 |
+| HI-555 | `frontend` | `Onboarding/index.tsx` | TECH_DEBT: 新手引导缺少"跳过引导"按钮——用户必须走完 4 步才能进入主界面 (R6.35) | 2026-04-19 |
 
 ### 🔵 低优先
 
@@ -189,6 +195,14 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-550a | `frontend` | `conversationService.ts` | 🔴 CRITICAL: SSE 流式请求使用 30s 默认超时，AI 任务（搜索/回测/生成）经常被中断 | `clawbotFetch` 调用传 `timeoutMs: 0` 禁用超时 | 2026-04-19 | R6 核心页面审计 |
+| HI-551a | `frontend` | `AssetDistribution.tsx` | 🟠 HIGH: 三处相同 Mock 数据(股票$45k/加密$28k等)在 API 失败时展示，用户误以为真实资产 | 移除 Mock，API 失败/空时展示空态 + 错误提示 + 60s 定时刷新 | 2026-04-19 | R6 核心页面审计 |
+| HI-552a | `frontend` | `RecentActivity.tsx` | 🟠 HIGH: 虚假活动列表(买入AAPL/闲鱼客服/小红书笔记)在 API 失败时展示 | 移除 Mock，展示空态 + 错误提示 | 2026-04-19 | R6 核心页面审计 |
+| HI-553a | `frontend` | `Assistant/index.tsx` | 🟠 HIGH: 流式 chunk 每次追加都触发 scrollIntoView，用户向上查看历史时被强制拉回底部 | 新增 `isNearBottomRef` 判断，仅在底部 100px 范围内时自动滚动 | 2026-04-19 | R6 核心页面审计 |
+| HI-554a | `frontend` | `Assistant/index.tsx` | 🟡 MEDIUM: Markdown 行内解析器不支持 `[text](url)` 链接，显示原始文本 | 在 `parseInlineMarkdown` 中新增链接正则匹配 + `<a>` 渲染 | 2026-04-19 | R6 核心页面审计 |
+| HI-555a | `frontend` | `conversationService.ts` | 🟡 MEDIUM: 会话 CRUD 四处 catch 仅 console.error，用户看不到错误提示 | 所有 catch 块新增 `toast.error()` 用户可见提示 | 2026-04-19 | R6 核心页面审计 |
+| HI-556a | `frontend` | `Store/index.tsx` | 🟡 MEDIUM: 商店页面 `bg-[#0D0F14]` 硬编码背景色，浅色模式下始终深色 | 改为 `bg-[var(--bg-primary)]` + 降级数据提示条 | 2026-04-19 | R6 核心页面审计 |
+| HI-557a | `frontend` | `Channels/index.tsx` | 🟡 MEDIUM: 加载完成后零频道时页面空白，无任何提示 | 新增空状态组件"暂无消息渠道" | 2026-04-19 | R6 核心页面审计 |
 | HI-532 | `backend` | `callback_mixin.py` | 🟠 HIGH: 回调按钮调用 cmd_ 命令时 `update.message` 为 None 导致 AttributeError — handle_card_action_callback 无 try/except 保护(5处 cmd_ 调用)，handle_notify_action_callback 有 try/except 但错误消息为技术堆栈 | 新增 `_safe_cmd_from_callback()` 辅助函数统一包裹所有回调→命令调用，捕获 AttributeError 并用 query.message 回复友好提示 | 2026-04-19 | R3 Bot命令层审计 |
 | HI-533 | `backend` | `help_mixin.py` | 🟡 MEDIUM: /help 投资分析分类中 /invest 描述为"5 位 AI 协作分析"，实际为 6 位 | 修正为"6 位 AI 协作分析" | 2026-04-19 | R3 Bot命令层审计 |
 | HI-534 | `backend` | `workflow_mixin.py` | 🟡 MEDIUM: `_pick_workflow_bot()` 兜底返回值类型不一致 — 正常路径返回 `(candidates, bot_id)` 元组，所有 bot 被排除时返回 `self.bot_id` 字符串，调用方解构会崩溃 | 兜底路径改为 `return None, self.bot_id` 保持元组类型一致 | 2026-04-19 | R3 Bot命令层审计 |

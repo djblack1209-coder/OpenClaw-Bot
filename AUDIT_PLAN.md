@@ -51,8 +51,8 @@
 | R2 | 后端核心引擎 | Brain/EventBus/Router/LiteLLM/API/安全 | 46 | [R02](docs/audit/R02_BACKEND_CORE.md) | ✅ 已完成(14项修复/5技术债) |
 | R3 | Telegram Bot 命令层 | 92+命令+14回调+NLP触发 | ~45 | [R03](docs/audit/R03_BOT_COMMANDS.md) | 待执行 |
 | R4 | Telegram Bot 业务场景 | 投资/社媒/闲鱼/执行 | ~40 | [R04](docs/audit/R04_BOT_BUSINESS.md) | 待执行 |
-| R5 | macOS 桌面端架构 | Tauri2+React 集成/IPC/构建 | ~35 | [R05](docs/audit/R05_MACOS_ARCH.md) | 待执行 |
-| R6 | macOS 核心页面 | Dashboard/Assistant/Bots/Settings | ~45 | [R06](docs/audit/R06_MACOS_CORE.md) | 待执行 |
+| R5 | macOS 桌面端架构 | Tauri2+React 集成/IPC/构建 | ~35 | [R05](docs/audit/R05_MACOS_ARCH.md) | ✅ 已完成(2项修复/5技术债) |
+| R6 | macOS 核心页面 | Dashboard/Assistant/Bots/Settings | ~45 | [R06](docs/audit/R06_MACOS_CORE.md) | ✅ 已完成(8项修复/15技术债) |
 | R7 | macOS 业务页面 | Trading/Social/Xianyu/Memory/Logs | ~40 | [R07](docs/audit/R07_MACOS_BUSINESS.md) | 待执行 |
 | R8 | 投资交易系统 | IBKR/风控/回测/AI投票/仓位 | ~40 | [R08](docs/audit/R08_TRADING.md) | 待执行 |
 | R9 | 闲鱼+社媒+微信+工具链 | 闲鱼客服/社媒/微信Bridge/TTS/OCR | ~35 | [R09](docs/audit/R09_XIANYU_SOCIAL.md) | 待执行 |

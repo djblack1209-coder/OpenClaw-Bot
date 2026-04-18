@@ -4,6 +4,38 @@
 
 ---
 
+## [2026-04-19] 全方位审计 v3.0 — R6 macOS 核心页面审计完成
+
+### 本次完成了什么
+1. **R6 macOS 核心页面审计**: 45 条目 / 8 修复 / 15 技术债
+   - SSE 流式请求 30s 超时 → 禁用超时 (HI-550a)
+   - AssetDistribution + RecentActivity Mock 数据清理 (HI-551a/552a)
+   - Assistant 流式追加强制滚动 → 智能滚动 (HI-553a)
+   - Markdown 行内解析器新增链接支持 (HI-554a)
+   - 会话 CRUD 4 处静默 catch → toast 提示 (HI-555a)
+   - Store 硬编码背景色修复 + 降级数据提示 (HI-556a)
+   - Channels 空状态展示 (HI-557a)
+2. **审计覆盖**: Home/Dashboard/Assistant/Bots/Settings/ControlCenter/UI/Channels/Plugins
+3. **通过项**: 37 条通过（包括设置持久化/导航/错误边界/新手引导等）
+
+### 未完成的工作
+- **R7-R11**: 5 轮审计待执行（约 170 个条目）
+- **R7 下一轮**: macOS 业务页面审计（Trading/Social/Xianyu/Memory/Logs）
+
+### 需要注意的坑
+- SSE 禁用超时后，网络完全断开时请求会永远挂起 — 需依赖浏览器级别的连接关闭
+- AssetDistribution 空态依赖后端 clawbotTradingSystem API 返回 assets 字段 — 后端未返回时始终为空
+- Store `usingLocalData` 标志在 Evolution API 恢复后不会自动清除（需刷新页面）
+- Markdown 解析器仍为手写简易版，建议后续迁移到 react-markdown
+
+### 当前系统状态
+- Git: 干净，R6 修复已提交
+- TypeScript: 零错误
+- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5 ✅ / R6 ✅ / R7-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动定位到 R7）
+
+---
+
 ## [2026-04-19] 全方位审计 v3.0 — R3+R4+R5 三轮审计完成
 
 ### 本次完成了什么
