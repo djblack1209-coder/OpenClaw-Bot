@@ -201,6 +201,15 @@ class XianyuContextManager:
             else:
                 c.execute("UPDATE consultations SET converted=1 WHERE chat_id=?", (chat_id,))
 
+    def get_latest_chat_id(self, user_id: str) -> Optional[str]:
+        """根据用户ID获取最近一次咨询的 chat_id"""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT chat_id FROM consultations WHERE user_id=? ORDER BY last_ts DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            return row[0] if row else None
+
     # ---- floor prices (底价) ----
     def set_floor_price(self, item_id: str, floor_price: float):
         """设置商品底价"""

@@ -128,7 +128,12 @@ if _freqtrade_available:
 
         @classmethod
         def inject_clawbot(cls, risk_manager=None, decision_validator=None, ta_engine_fn=None, journal=None):
-            """注入 ClawBot 组件（启动时调用）"""
+            """注入 ClawBot 组件（启动时调用）
+
+            注意: 此方法当前未在启动流程中自动调用（HI-537 技术债）。
+            freqtrade 集成路径仅用于回测降级，策略类正确但未接入主流程。
+            如需启用，在 start_trading_system() 中调用 inject_clawbot() 即可。
+            """
             cls._risk_manager = risk_manager
             cls._decision_validator = decision_validator
             cls._ta_engine = ta_engine_fn

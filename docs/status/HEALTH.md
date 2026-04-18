@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (技术债清理第2批: 11项稳定性+功能+数据完整性修复)
+> 最后更新: 2026-04-18 (技术债清理第3批: 10项死代码+数据降级+交易安全+闲鱼+通知修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -158,7 +158,7 @@
 | HI-527 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`~~ → **已修复 2026-04-19**: litellm_router 启动健康摘要添加 `_log_task_exception` callback；telegram_ux 两处为 context manager 内部使用（cancel 处理），不需要 callback；message_mixin 思考动画为局部变量。实际需修复 1 处已完成 | 2026-04-18 |
 | HI-528 | `backend` | SQLite 全部 6 实例 | TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36) | 2026-04-18 |
 | HI-529 | `backend` | `src/bot/cmd_*.py` | TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45) | 2026-04-19 |
-| HI-530 | `backend` | `src/bot/workflow_mixin.py` | TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法。整个链式讨论工作流基础设施搭建了但未接入消息管道 (R3.31-R3.35) | 2026-04-19 |
+| HI-530 | `backend` | `src/bot/workflow_mixin.py` | ~~TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法~~ → **已修复 2026-04-18**: 文件从 461 行精简到 122 行，删除 23 个死方法，仅保留 `_cmd_smart_shop` 和 `_extract_json_object` | 2026-04-19 |
 | HI-531 | `backend` | `cmd_basic/help_mixin.py` | TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖（/calc, /chart, /drl, /factors, /icancel, /tts, /novel, /evolution, /coupon 等），用户无法通过帮助菜单发现这些命令 (R3.04) | 2026-04-19 |
 | HI-535 | `backend` | `src/modules/investment/` | TECH_DEBT: AI 投票系统只追踪共识决策的准确率，不追踪单个模型的独立预测准确率，无法评估哪个 AI 分析师表现最好 (R4.03) | 2026-04-19 |
 | HI-536 | `backend` | `invest_tools.py` | TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据——缺少 stale-data fallback (R4.04) | 2026-04-19 |
