@@ -383,6 +383,9 @@ class PositionMonitor:
         for signal in exit_signals:
             await self._execute_exit(signal)
 
+        # 定期清理过期的预警冷却记录（防止内存泄漏）
+        self._cleanup_stale_cooldowns()
+
     def _check_exit_conditions(self, pos: MonitoredPosition) -> Optional[ExitSignal]:
         price = pos.current_price
 
@@ -709,20 +712,32 @@ class PositionMonitor:
         搬运自 PanWatch (MIT) 的 throttle 模式:
         - 按 (trade_id, AlertLevel) 维度冷却
         - 越接近止损，冷却越短 (CRITICAL=5min, DANGER=15min, WARN=30min)
+        - 支持 BUY 和 SELL(做空) 两个方向
         """
-        if pos.side != "BUY" or pos.stop_loss <= 0:
+        if pos.stop_loss <= 0:
             return
         if pos.current_price <= 0 or pos.entry_price <= 0:
+            return
+        if pos.side not in ("BUY", "SELL"):
             return
 
         # 计算距止损的距离占比
         # distance_ratio = 0 表示已触及止损, 1.0 表示在入场价
-        total_distance = pos.entry_price - pos.stop_loss
-        if total_distance <= 0:
-            return
-        remaining_distance = pos.current_price - pos.stop_loss
+        if pos.side == "BUY":
+            # 做多: 止损在入场价下方，价格下跌接近止损
+            total_distance = pos.entry_price - pos.stop_loss
+            if total_distance <= 0:
+                return
+            remaining_distance = pos.current_price - pos.stop_loss
+        else:
+            # 做空(SELL): 止损在入场价上方，价格上涨接近止损
+            total_distance = pos.stop_loss - pos.entry_price
+            if total_distance <= 0:
+                return
+            remaining_distance = pos.stop_loss - pos.current_price
+
         if remaining_distance <= 0:
-            return  # 已低于止损，由 _check_exit_conditions 处理
+            return  # 已触及/穿越止损，由 _check_exit_conditions 处理
         distance_ratio = remaining_distance / total_distance
 
         # 检查阈值 (从高到低，取最高级别)
@@ -738,16 +753,19 @@ class PositionMonitor:
                 self._alert_cooldowns[cooldown_key] = now
                 emoji = _ALERT_EMOJI.get(level, "⚠️")
                 distance_pct = distance_ratio * 100
+                direction_arrow = "▼" if pos.side == "BUY" else "▲"
                 msg = (
                     "%s %s 接近止损位\n"
                     "━━━━━━━━━━━━━━━━\n"
-                    "现价: $%.2f (▼%.1f%%)\n"
+                    "方向: %s | 现价: $%.2f (%s%.1f%%)\n"
                     "止损: $%.2f (距离 $%.2f, %.0f%%)\n"
                     "浮亏: $%.2f (%.1f%%)"
                 ) % (
                     emoji,
                     pos.symbol,
+                    pos.side,
                     pos.current_price,
+                    direction_arrow,
                     abs(pos.unrealized_pnl_pct),
                     pos.stop_loss,
                     remaining_distance,
