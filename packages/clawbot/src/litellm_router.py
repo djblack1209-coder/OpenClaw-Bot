@@ -341,8 +341,9 @@ def _record_iflow_key_usage() -> None:
     try:
         _IFLOW_TIMESTAMP_FILE.parent.mkdir(parents=True, exist_ok=True)
         current_key = os.getenv("SILICONFLOW_UNLIMITED_KEY", "")
-        # 用 key 的前8位做指纹（不存完整 key，安全考虑）
-        key_fingerprint = current_key[:8] if current_key else ""
+        # 用 key 的 SHA256 前8位做指纹（不存明文前缀，防止缩小暴力搜索范围）
+        import hashlib
+        key_fingerprint = hashlib.sha256(current_key.encode()).hexdigest()[:8] if current_key else ""
 
         if _IFLOW_TIMESTAMP_FILE.exists():
             data = json.loads(_IFLOW_TIMESTAMP_FILE.read_text(encoding="utf-8"))
