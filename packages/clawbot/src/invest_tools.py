@@ -705,14 +705,20 @@ async def get_fear_greed_index() -> Dict:
 
 async def get_quick_quotes(symbols: list) -> Dict:
     """快速获取多标的报价（并行）— 供 daily_brief 等使用"""
+    if not symbols:
+        return {}
+    # HI-576: 改为真正的并行查询，替代原来的串行循环
     results = {}
-    for sym in symbols:
-        try:
-            quote = await get_stock_quote(sym)
-            if quote:
-                results[sym] = quote
-        except Exception as e:
-            logger.debug("Silenced exception", exc_info=True)
+    quotes = await asyncio.gather(
+        *[get_stock_quote(sym) for sym in symbols],
+        return_exceptions=True,
+    )
+    for sym, quote in zip(symbols, quotes):
+        if isinstance(quote, Exception):
+            logger.debug("[InvestTools] get_quick_quotes %s 异常: %s", sym, quote)
+            continue
+        if quote:
+            results[sym] = quote
     return results
 
 
@@ -739,7 +745,9 @@ async def get_earnings_calendar(symbols: list, days_ahead: int = 14) -> list:
 
         events = []
         now = now_et()
-        cutoff = now + timedelta(days=days_ahead)
+        # HI-576: 统一为 naive datetime 比较，避免 aware/naive 混合 TypeError
+        now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+        cutoff = now_naive + timedelta(days=days_ahead)
 
         for sym in symbols:
             try:
@@ -766,7 +774,8 @@ async def get_earnings_calendar(symbols: list, days_ahead: int = 14) -> list:
                                 dt = ts.to_pydatetime().replace(tzinfo=None)
                             else:
                                 continue
-                            if now <= dt <= cutoff:
+                            # HI-576: 使用统一的 naive datetime 比较
+                            if now_naive <= dt <= cutoff:
                                 events.append(
                                     {
                                         "symbol": sym,

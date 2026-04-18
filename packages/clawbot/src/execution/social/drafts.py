@@ -10,9 +10,14 @@ Social — 草稿管理 (从 execution_hub.py 迁移)
 - publish_social_draft: 通过 browser worker 发布草稿
 
 迁移自: execution_hub.py (反编译巨石) → HI-006/HI-008
+持久化改造: HI-585 — 草稿持久化到 JSON 文件，防止重启丢失
 """
+import json
 import logging
 import re
+import threading
+import uuid
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from src.utils import now_et
@@ -20,10 +25,45 @@ from src.utils import now_et
 logger = logging.getLogger(__name__)
 
 
-# ── 内存草稿存储 ─────────────────────────────────────────────
+# ── 持久化草稿存储 ─────────────────────────────────────────────
 
-_draft_store: List[Dict] = []
-_max_drafts: int = 500
+# 草稿文件路径：~/.openclaw/drafts.json
+_DRAFTS_DIR = Path.home() / ".openclaw"
+_DRAFTS_FILE = _DRAFTS_DIR / "drafts.json"
+_MAX_DRAFTS: int = 500
+
+# 线程锁：保护并发读写（多 worker 进程内线程安全）
+_lock = threading.Lock()
+
+
+def _load_drafts() -> List[Dict]:
+    """从 JSON 文件加载草稿列表，文件不存在或损坏时返回空列表"""
+    try:
+        if _DRAFTS_FILE.exists():
+            raw = _DRAFTS_FILE.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return data
+            logger.warning("[Drafts] drafts.json 格式异常（非列表），重置为空")
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("[Drafts] 加载 drafts.json 失败: %s，重置为空", e)
+    return []
+
+
+def _save_drafts(drafts: List[Dict]) -> None:
+    """将草稿列表写入 JSON 文件，自动创建目录"""
+    try:
+        _DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_file = _DRAFTS_FILE.with_suffix(".tmp")
+        tmp_file.write_text(json.dumps(drafts, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_file.replace(_DRAFTS_FILE)
+    except OSError as e:
+        logger.error("[Drafts] 写入 drafts.json 失败: %s", e)
+
+
+def _generate_draft_id() -> str:
+    """生成唯一草稿 ID（uuid4 前 12 位，碰撞概率极低）"""
+    return uuid.uuid4().hex[:12]
 
 
 def _tokenize(text: str) -> set:
@@ -48,8 +88,10 @@ def _detect_duplicate(
     topic: str = "",
     threshold: float = 0.7,
 ) -> Optional[Dict]:
-    """检测与现有草稿的重复"""
-    for draft in _draft_store[-50:]:
+    """检测与现有草稿的重复（调用前需持有 _lock）"""
+    drafts = _load_drafts()
+    # 只检查最近 50 条
+    for draft in drafts[-50:]:
         if draft.get("platform") != platform:
             continue
         existing_body = draft.get("body", "")
@@ -66,9 +108,7 @@ def save_social_draft(
     sources: Optional[List] = None,
     topic: str = "",
 ) -> Dict:
-    """保存社媒草稿 (含去重检测)"""
-    global _draft_store
-
+    """保存社媒草稿 (含去重检测，持久化到文件)"""
     platform_name = str(platform or "").strip().lower()
     if platform_name not in frozenset({"x", "xiaohongshu", "both"}):
         return {"success": False, "error": "仅支持 x / xiaohongshu / both"}
@@ -80,33 +120,38 @@ def save_social_draft(
     title = title or ""
     topic = topic or title
 
-    # 去重检测
-    duplicate = _detect_duplicate(platform_name, str(title), content, topic=topic)
-    if duplicate and duplicate.get("duplicate"):
-        existing = duplicate.get("existing", {})
-        return {
-            "success": False,
-            "error": "内容与最近草稿过于相似",
-            "duplicate": True,
-            "existing_id": existing.get("id", 0),
+    with _lock:
+        # 去重检测
+        duplicate = _detect_duplicate(platform_name, str(title), content, topic=topic)
+        if duplicate and duplicate.get("duplicate"):
+            existing = duplicate.get("existing", {})
+            return {
+                "success": False,
+                "error": "内容与最近草稿过于相似",
+                "duplicate": True,
+                "existing_id": existing.get("id", ""),
+            }
+
+        draft_id = _generate_draft_id()
+        row = {
+            "id": draft_id,
+            "success": True,
+            "draft_id": draft_id,
+            "platform": platform_name,
+            "title": title,
+            "body": content,
+            "topic": topic,
+            "updated_at": now_et().isoformat(),
         }
 
-    draft_id = len(_draft_store) + 1
-    row = {
-        "id": draft_id,
-        "success": True,
-        "draft_id": draft_id,
-        "platform": platform_name,
-        "title": title,
-        "body": content,
-        "topic": topic,
-        "updated_at": now_et().isoformat(),
-    }
-    _draft_store.append(row)
+        drafts = _load_drafts()
+        drafts.append(row)
 
-    # 内存上限裁剪
-    if len(_draft_store) > _max_drafts:
-        _draft_store = _draft_store[-_max_drafts:]
+        # 上限裁剪
+        if len(drafts) > _MAX_DRAFTS:
+            drafts = drafts[-_MAX_DRAFTS:]
+
+        _save_drafts(drafts)
 
     return row
 
@@ -117,7 +162,8 @@ def list_social_drafts(
     limit: int = 20,
 ) -> List[Dict]:
     """列出草稿"""
-    result = list(_draft_store)
+    with _lock:
+        result = _load_drafts()
     if platform:
         result = [d for d in result if d.get("platform") == platform]
     if status:
@@ -125,21 +171,39 @@ def list_social_drafts(
     return result[-limit:]
 
 
-def get_social_draft(draft_id: int) -> Optional[Dict]:
-    """获取单个草稿"""
-    for draft in _draft_store:
-        if draft.get("id") == draft_id:
+def get_social_draft(draft_id) -> Optional[Dict]:
+    """获取单个草稿（兼容字符串和整数 ID）"""
+    with _lock:
+        drafts = _load_drafts()
+    # 兼容旧版整数 ID 和新版字符串 ID
+    for draft in drafts:
+        if draft.get("id") == draft_id or str(draft.get("id")) == str(draft_id):
             return draft
     return None
 
 
-def update_social_draft_status(draft_id: int, status: str) -> Dict:
+def update_social_draft_status(draft_id, status: str) -> Dict:
     """更新草稿状态"""
-    for draft in _draft_store:
-        if draft.get("id") == draft_id:
-            draft["status"] = status
-            draft["updated_at"] = now_et().isoformat()
-            return {"success": True, "draft_id": draft_id, "status": status}
+    with _lock:
+        drafts = _load_drafts()
+        for draft in drafts:
+            if draft.get("id") == draft_id or str(draft.get("id")) == str(draft_id):
+                draft["status"] = status
+                draft["updated_at"] = now_et().isoformat()
+                _save_drafts(drafts)
+                return {"success": True, "draft_id": draft_id, "status": status}
+    return {"success": False, "error": f"草稿 {draft_id} 不存在"}
+
+
+def delete_social_draft(draft_id) -> Dict:
+    """删除草稿"""
+    with _lock:
+        drafts = _load_drafts()
+        original_len = len(drafts)
+        drafts = [d for d in drafts if not (d.get("id") == draft_id or str(d.get("id")) == str(draft_id))]
+        if len(drafts) < original_len:
+            _save_drafts(drafts)
+            return {"success": True, "draft_id": draft_id}
     return {"success": False, "error": f"草稿 {draft_id} 不存在"}
 
 
@@ -259,7 +323,7 @@ def _build_xiaohongshu_body(items: List[Dict], topic: str = "") -> str:
 
 def publish_social_draft(
     platform: str = None,
-    draft_id: int = None,
+    draft_id=None,
     worker_fn=None,
 ) -> Dict:
     """通过 browser worker 发布草稿"""

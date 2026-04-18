@@ -68,6 +68,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self.ib: Optional[IB] = None
         self._connected = False
         self._reconnect_lock = asyncio.Lock()
+        self._budget_lock = asyncio.Lock()  # 预算读写原子锁，防止并发下单时预算追踪失准
         self._notify_func = None  # Telegram 通知回调，由外部注入
         self._disconnect_count = 0
         self._last_reconnect_attempt = 0.0  # 上次重连时间戳
@@ -577,9 +578,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
 
-        # 买入时检查预算
+        # 买入时检查预算（加锁保证原子读取）
         if side == "BUY":
-            remaining = self.budget - self.total_spent
+            async with self._budget_lock:
+                remaining = self.budget - self.total_spent
             if remaining <= 0:
                 return {"error": "预算已用完 ($%.2f/$%.2f)" % (self.total_spent, self.budget)}
 
@@ -621,11 +623,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 "[IBKR] %s %s x%s -> %s (filled=%s @ %s)", side, symbol, quantity, status, filled_qty, avg_price
             )
 
-            # 预算追踪
+            # 预算追踪（加锁保证 read-modify-write 原子性）
             if filled_qty > 0 and avg_price > 0:
                 if side == "BUY":
-                    self.total_spent += filled_qty * avg_price
-                    self._save_budget_state()
+                    async with self._budget_lock:
+                        self.total_spent += filled_qty * avg_price
+                        self._save_budget_state()
                     # 滑点估算日志（仅买入）
                     try:
                         slippage_est = await self.estimate_slippage(symbol, quantity, side="BUY")
@@ -651,8 +654,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                                 break
                     except Exception as e:
                         logger.warning("[IBKR] 获取 %s 成本基准失败，使用卖出价计算预算: %s", symbol, e)
-                    self.total_spent = max(0, self.total_spent - entry_cost)
-                    self._save_budget_state()
+                    async with self._budget_lock:
+                        self.total_spent = max(0, self.total_spent - entry_cost)
+                        self._save_budget_state()
                     logger.info(
                         "[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f", entry_cost, self.budget - self.total_spent
                     )

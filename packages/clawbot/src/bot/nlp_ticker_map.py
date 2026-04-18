@@ -160,6 +160,35 @@ def _suggest_command(text: str):
 
 # ── v2.0: 中文公司名 → ticker 映射 (高频交易标的) ─────────────
 # 覆盖用户最常提到的公司, 不做全量映射 (全量用 akshare/yfinance 解析)
+
+# HI-541: 常见英语单词黑名单，避免误识别为股票代码
+# 注意: 不包含真实热门股票代码 (如 AAPL, MSFT, TSLA 等)
+# 部分代码与单词重合 (如 A=Agilent, ALL=Allstate)，但为减少误报仍加入黑名单
+_TICKER_BLACKLIST = frozenset({
+    # 常见介词/连词/动词/代词
+    "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "HE", "IF",
+    "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "ON", "OR", "SO",
+    "TO", "UP", "US", "WE",
+    # 常见 3 字母词
+    "ALL", "AND", "ARE", "BUT", "CAN", "DID", "FOR", "GET", "GOT", "HAS",
+    "HAD", "HER", "HIM", "HIS", "HOW", "ITS", "LET", "MAY", "NEW", "NOT",
+    "NOW", "OLD", "ONE", "OUR", "OUT", "OWN", "RUN", "SAY", "SET", "SHE",
+    "THE", "TOO", "TRY", "TWO", "USE", "WAY", "WHO", "WHY", "WIN", "YES",
+    # 常见 4 字母词
+    "ALSO", "BACK", "BEEN", "CALL", "COME", "EACH", "EVEN", "FIND", "FROM",
+    "GIVE", "GOOD", "HAVE", "HERE", "HIGH", "HOLD", "HOME", "JUST", "KEEP",
+    "KNOW", "LAST", "LIKE", "LINE", "LONG", "LOOK", "MADE", "MAKE", "MANY",
+    "MORE", "MOST", "MUCH", "MUST", "NAME", "NEED", "NEXT", "ONLY", "OPEN",
+    "OVER", "PART", "PLAY", "REAL", "SAME", "SHOW", "SIDE", "SOME", "SUCH",
+    "SURE", "TAKE", "TELL", "TEXT", "THAN", "THAT", "THEM", "THEN", "THEY",
+    "THIS", "TIME", "TURN", "UPON", "VERY", "WANT", "WELL", "WERE", "WHAT",
+    "WHEN", "WILL", "WITH", "WORD", "WORK", "YEAR", "YOUR",
+    # 常见 5 字母词
+    "BEING", "COULD", "EVERY", "FIRST", "FOUND", "GREAT", "NEVER",
+    "OTHER", "PLACE", "POINT", "RIGHT", "SHALL", "SINCE", "STILL",
+    "THEIR", "THERE", "THESE", "THING", "THINK", "THOSE", "THREE",
+    "UNDER", "WATER", "WHERE", "WHICH", "WHILE", "WORLD", "WOULD",
+})
 _CN_TICKER_MAP = {
     # 美股科技
     "苹果": "AAPL",
@@ -223,7 +252,11 @@ def _resolve_chinese_ticker(name: str) -> str:
         return ""
     # 已经是英文 ticker
     if re.fullmatch(r"[A-Za-z]{1,5}(?:-USD)?", name):
-        return name.upper()
+        # HI-541: 过滤常见英语单词，避免误识别为股票代码
+        upper = name.upper()
+        if upper in _TICKER_BLACKLIST:
+            return ""
+        return upper
     # 中文映射
     lower = name.lower().replace(" ", "")
     ticker = _CN_TICKER_MAP.get(lower, "")

@@ -499,13 +499,15 @@ class PositionMonitor:
 
         # 时间止损（仅对亏损/持平持仓触发，盈利持仓转为纯尾部止损）
         if pos.max_hold_hours > 0:
-            # P0#2: 安全处理 naive/aware datetime 混合
+            # HI-570: 安全处理 naive/aware datetime 混合，防止 TypeError
             entry = pos.entry_time
-            if entry.tzinfo is None:
-                # 旧数据用 naive datetime，保持 naive 比较
-                now = _now_et()  # Bug fix v2.0: was now_et() (missing import)
-            else:
-                now = _now_et()
+            now = _now_et()
+            if entry.tzinfo is None and now.tzinfo is not None:
+                # entry 是 naive，now 是 aware → 统一为 naive 比较
+                now = now.replace(tzinfo=None)
+            elif entry.tzinfo is not None and now.tzinfo is None:
+                # entry 是 aware，now 是 naive → 统一为 naive 比较
+                entry = entry.replace(tzinfo=None)
             hold_hours = (now - entry).total_seconds() / 3600
             if hold_hours >= pos.max_hold_hours:
                 if pos.unrealized_pnl <= 0:
