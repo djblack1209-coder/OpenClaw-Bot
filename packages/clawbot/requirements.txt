@@ -5,7 +5,7 @@ python-dotenv~=1.2.1
 beautifulsoup4~=4.14.3
 
 # 代码沙箱安全 — AST 级别限制用户代码执行
-RestrictedPython>=8.0
+RestrictedPython>=8.0,<9.0  # 安全沙箱，锁定主版本防止API变更
 requests~=2.32.0
 
 # Flask — 部署服务器 (deployer/deploy_server.py, web_installer.py)

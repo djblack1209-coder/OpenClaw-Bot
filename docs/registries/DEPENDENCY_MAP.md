@@ -24,7 +24,7 @@
 | **PyBroker** | **3.3k** | **Numba加速回测+Bootstrap验证** | **modules/investment/backtester_pybroker.py** | **>=1.2.12** |
 | diskcache | 2.8k | LLM 响应缓存 | llm_cache.py | >=5.6.0 |
 | fpdf2 | 1.5k | PDF 报告 | tools/pdf_report.py | ==2.7.9 | ⚠️ 已注释 (HI-366) |
-| stamina | 1.4k | 声明式重试 | resilience.py | >=2.0.0 |
+| stamina | 1.4k | 声明式重试 | resilience.py | >=24.1.0,<26 |
 | kaleido | 1.2k | Plotly 静态导出 | charts.py | >=0.2.0 |
 | mistletoe | 1k | Telegram MD 渲染 | telegram_markdown.py | >=1.4.0 |
 | PyrateLimiter | 485 | API 令牌桶限流 | resilience.py | >=3.0.0 |
