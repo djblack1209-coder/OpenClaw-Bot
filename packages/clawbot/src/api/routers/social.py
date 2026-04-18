@@ -95,8 +95,8 @@ async def publish_content(req: SocialPublishRequest):
                     "content_preview": req.content[:120],
                     "success": True,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Social] 发布结果WS推送失败: %s", e)
 
         return result
     except Exception as e:
@@ -197,8 +197,8 @@ def autopilot_start():
                 "action": "start",
                 "status": result.get("status", ""),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Social] Autopilot启动事件推送失败: %s", e)
 
         return result
     except Exception as e:
@@ -218,8 +218,8 @@ def autopilot_stop():
                 "action": "stop",
                 "status": result.get("status", ""),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Social] Autopilot停止事件推送失败: %s", e)
 
         return result
     except Exception as e:
@@ -244,8 +244,8 @@ def autopilot_trigger(job_id: str):
                 "job_id": job_id,
                 "success": result.get("success", not result.get("error")),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Social] Autopilot触发事件推送失败: %s", e)
 
         return result
     except Exception as e:
@@ -303,8 +303,8 @@ async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
                     "success": True,
                     "source": "draft",
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Social] 草稿发布事件推送失败: %s", e)
 
         return result
     except Exception as e:

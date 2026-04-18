@@ -165,10 +165,10 @@ class CostController:
                             "usage_pct": self._today_spend / self._daily_budget,
                         }))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError as e:  # noqa: F841
-                        pass
+                    except RuntimeError as e:
+                        logger.warning("[CostControl] EventBus成本预警发布失败: %s", e)
             except Exception as e:
-                logger.debug(f"发布成本预警事件失败: {e}")
+                logger.warning("[CostControl] 发布成本预警事件失败: %s", e)
 
     def get_daily_spend(self) -> float:
         self._check_date_rollover()

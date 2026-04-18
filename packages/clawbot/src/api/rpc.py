@@ -109,8 +109,8 @@ class ClawBotRPC:
                 _ibkr_port = int(os.environ.get("IBKR_PORT", "4002"))
                 with _socket.create_connection(("127.0.0.1", _ibkr_port), timeout=1):
                     ibkr_connected = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[RPC] IBKR连接检测失败: %s", e)
 
         # ── Shared memory stats ──
         mem_entries = 0

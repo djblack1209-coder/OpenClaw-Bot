@@ -132,8 +132,8 @@ async def trigger_vote(req: TeamVoteRequest):
                 "passed": result.get("passed", False),
                 "vote_count": len(result.get("votes", [])),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Trading] 交易信号WS推送失败: %s", e)
 
         return result
     except Exception as e:
@@ -311,7 +311,7 @@ async def sell_position(req: SellRequest):
                 level="success",
             )
         except Exception as e:
-            logger.debug("卖出通知推送失败: %s", e)
+            logger.warning("[Trading] 卖出通知推送失败: %s", e)
 
         # Push trade executed via WebSocket (best-effort)
         try:
@@ -326,8 +326,8 @@ async def sell_position(req: SellRequest):
                 "avg_price": result.get("avg_price", 0),
                 "source": "manual_ui",
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Trading] 卖出执行WS推送失败: %s", e)
 
         return {
             "success": True,

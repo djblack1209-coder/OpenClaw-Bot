@@ -553,7 +553,7 @@ class PositionMonitor:
                             ),
                         )
             except Exception as e:
-                logger.debug("[Monitor] 日亏损检查异常: %s", e)
+                logger.warning("[Monitor] 日亏损检查异常: %s", e)
 
         return None
 

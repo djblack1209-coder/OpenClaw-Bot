@@ -445,7 +445,7 @@ class InvestCommandsMixin:
                 if journal:
                     journal.open_trade(symbol, "BUY", quantity, price, stop_loss=round(price * 0.97, 2))
             except Exception as e:
-                logger.debug("交易日志记录失败: %s", e)
+                logger.warning("[Invest] 交易日志记录失败: %s", e)
             # 仓位监控
             try:
                 from src.position_monitor import get_position_monitor
@@ -461,7 +461,7 @@ class InvestCommandsMixin:
                 if bus:
                     await bus.publish("trade.executed", trade_data)
             except Exception as e:
-                logger.debug("交易事件发布失败: %s", e)
+                logger.warning("[Invest] 交易事件发布失败: %s", e)
         except Exception as e:
             pass  # 闭环增强不影响主流程
             logger.debug("静默异常: %s", e)

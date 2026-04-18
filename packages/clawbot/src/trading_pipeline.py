@@ -199,7 +199,7 @@ class TradingPipeline:
                         "decided_by": proposal.decided_by,
                     })
                 except Exception as e:
-                    logger.debug("风控告警WS推送失败: %s", e)
+                    logger.warning("[Pipeline] 风控告警WS推送失败: %s", e)
 
                 if self.notify:
                     await self._safe_notify(
@@ -304,7 +304,7 @@ class TradingPipeline:
                     "error": order_result["error"],
                 })
             except Exception as e:
-                logger.debug("交易错误WS推送失败: %s", e)
+                logger.warning("[Pipeline] 交易错误WS推送失败: %s", e)
 
             return result
 
@@ -376,7 +376,7 @@ class TradingPipeline:
                         trade_id=trade_id,
                     )
                 except Exception as e:
-                    logger.debug("[Pipeline] 记录AI预测失败: %s", e)
+                    logger.warning("[Pipeline] 记录AI预测失败: %s", e)
                 if is_entry_pending:
                     result["steps"].append({"journal": "trade #%s (pending)" % trade_id})
                 else:
@@ -470,7 +470,7 @@ class TradingPipeline:
                 "source": "pipeline",
             })
         except Exception as e:
-            logger.debug("交易执行WS推送失败: %s", e)
+            logger.warning("[Pipeline] 交易执行WS推送失败: %s", e)
 
         # Step 5: 通知
         if self.notify:

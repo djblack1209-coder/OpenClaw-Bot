@@ -64,7 +64,7 @@ async def _eod_auto_review():
                         pred_result.get("accuracy", 0),
                     )
             except Exception as e:
-                logger.debug("[Scheduler] 预测验证失败: %s", e)
+                logger.warning("[Scheduler] 预测验证失败: %s", e)
 
             lines = ["-- 每日自动复盘 --\n"]
             lines.append("今日盈亏: $%.2f (%d笔交易)" % (today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
@@ -338,7 +338,7 @@ async def _ibkr_health_check():
 
         _cleanup_pending_trades()
     except Exception as e:
-        logger.debug("[Scheduler] 清理待确认交易失败: %s", e)
+        logger.warning("[Scheduler] 清理待确认交易失败: %s", e)
 
 
 # ============ Scheduler 配置与启动 ============

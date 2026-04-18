@@ -133,7 +133,7 @@ class ExecutionScheduler:
                 )
                 await self._private_notify_func(msg)
         except Exception as e:
-            logger.debug("[Strategy] 周度评估异常: %s", e)
+            logger.warning("[Strategy] 周度评估异常: %s", e)
 
     async def _run_weekly_report(self):
         """每周日 20:30 推送综合周报 — 聚合投资+社媒+闲鱼+成本"""
@@ -176,7 +176,7 @@ class ExecutionScheduler:
                 await self._private_notify_func(f"📰 今日科技早报\n\n{report}")
                 logger.info("[Scheduler] 科技早报已自动推送")
         except Exception as e:
-            logger.debug("[Scheduler] 科技早报推送失败: %s", e)
+            logger.warning("[Scheduler] 科技早报推送失败: %s", e)
 
     async def _run_daily_coupon(self, _now):
         """每天自动领取微信笔笔省提现券
@@ -211,7 +211,7 @@ class ExecutionScheduler:
                 await self._private_notify_func(f"🎫 每日领券\n\n{result}")
                 logger.info("[Scheduler] 每日领券已执行: %s", result[:50])
         except Exception as e:
-            logger.debug("[Scheduler] 每日领券失败: %s", e)
+            logger.warning("[Scheduler] 每日领券失败: %s", e)
 
     async def _run_daily_brief(self, now, brief_time):
         if os.getenv("OPS_BRIEF_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
@@ -427,7 +427,7 @@ class ExecutionScheduler:
                     len(reminders) if is_morning else 0,
                 )
         except Exception as e:
-            logger.debug("[Scheduler] 账单检查异常: %s", e)
+            logger.warning("[Scheduler] 账单检查异常: %s", e)
 
     async def _run_xianyu_shipment_check(self):
         """检查超时未发货的闲鱼订单并提醒"""
@@ -457,7 +457,7 @@ class ExecutionScheduler:
         except ImportError:
             pass  # 闲鱼模块未安装
         except Exception as e:
-            logger.debug("[Xianyu] 发货检查异常: %s", e)
+            logger.warning("[Xianyu] 发货检查异常: %s", e)
 
     async def _run_stock_check(self, ts):
         """每4小时巡检闲鱼商品库存，低于阈值推送 Telegram 预警"""
@@ -546,7 +546,7 @@ class ExecutionScheduler:
             if alert_count > 0:
                 logger.info("[Scheduler] 预算检查: 发送 %d 条超支提醒", alert_count)
         except Exception as e:
-            logger.debug("[Scheduler] 预算检查异常: %s", e)
+            logger.warning("[Scheduler] 预算检查异常: %s", e)
 
     @staticmethod
     def _run_cleanup(now):

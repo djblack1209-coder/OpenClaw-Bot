@@ -23,20 +23,20 @@ async def _safe_cmd_from_callback(query, handler, update, context, cmd_name: str
             logger.warning("回调调用 /%s 时 update.message 为 None，降级到 query.message 回复", cmd_name)
             try:
                 await query.message.reply_text(f"✅ 已执行 /{cmd_name}（回调模式）")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Callback] 回调回复失败: %s", e)
         else:
             logger.error("回调执行 /%s 异常: %s", cmd_name, e)
             try:
                 await query.message.reply_text(f"⚠️ 执行 /{cmd_name} 时出错，请直接输入命令重试。")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Callback] 回调回复失败: %s", e)
     except Exception as e:
         logger.error("回调执行 /%s 异常: %s", cmd_name, e)
         try:
             await query.message.reply_text(format_error(e, f"执行 /{cmd_name}"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Callback] 回调回复失败: %s", e)
 
 
 class _CallbackMixin:

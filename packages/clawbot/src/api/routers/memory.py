@@ -54,8 +54,8 @@ def delete_memory(key: str = Body(..., embed=True)):
                     "action": "delete",
                     "key": key,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Memory] 记忆删除事件WS推送失败: %s", e)
             return result
         raise HTTPException(status_code=404, detail=result.get("error", f"未找到: {key}"))
     except HTTPException:
@@ -80,8 +80,8 @@ def update_memory(
                     "action": "update",
                     "key": key,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Memory] 记忆更新事件WS推送失败: %s", e)
             return result
         raise HTTPException(status_code=404, detail=result.get("error", f"未找到: {key}"))
     except HTTPException:

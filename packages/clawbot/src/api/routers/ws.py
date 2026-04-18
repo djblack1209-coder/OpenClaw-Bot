@@ -46,8 +46,8 @@ def push_event(event_type: WSMessageType, data: dict = None):
                 try:
                     queue.get_nowait()
                     queue.put_nowait(event)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[WS] 慢客户端事件队列溢出: %s", e)
 
 
 async def broadcast_event(event_type: WSMessageType, data: dict = None):

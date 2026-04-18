@@ -368,7 +368,7 @@ def check_budget_alert(user_id, db_path=None) -> tuple:
                 # 无事件循环（同步调用场景），跳过事件发射
                 pass
         except Exception as e:
-            logger.debug(f"[预算] 发射超支事件失败: {e}")
+            logger.warning("[预算] 发射超支事件失败: %s", e)
 
         msg = (
             f"🔴 {month} 已超预算!\n"
