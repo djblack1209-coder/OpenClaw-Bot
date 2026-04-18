@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R3+R4 审计完成: R3 3项修复+3技术债 / R4 0修复+8技术债)
+> 最后更新: 2026-04-19 (R3+R4+R5 审计完成: R3 3修复/R4 0修复/R5 2修复 + 14技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -168,6 +168,11 @@
 | HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大 (R4.28) | 2026-04-19 |
 | HI-541 | `backend` | `nlp_ticker_map.py` | TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单(AT/IT/TO/BE/GO 等可能被误识别为股票代码) (R4.30) | 2026-04-19 |
 | HI-542 | `backend` | `notifications.py` + `event_bus.py` | TECH_DEBT: 通知系统无 shutdown flush 机制——进程被 kill 时正在发送的通知会静默丢失；EventBus 也没有 drain pending tasks (R4.40) | 2026-04-19 |
+| HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程（应使用 `tokio::task::spawn_blocking` 或改为 async），影响有限因仅在手动停止服务时触发 (R5.14) | 2026-04-19 |
+| HI-544 | `frontend` | `src-tauri/src/commands/` | TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型，`thiserror` crate 已引入但未使用。前端无法程序化区分错误类型 (R5.14) | 2026-04-19 |
+| HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型，无集中式命令白名单。`IBKR_START_CMD`/`IBKR_STOP_CMD` 从 .env 读取后直接 `bash -c` 执行 (R5.13) | 2026-04-19 |
+| HI-546 | `frontend` | `src/lib/tauri-core.ts` | TECH_DEBT: `clawbotFetchSafe` 比 `clawbotFetch` 更安全但几乎未被使用——大部分调用方直接用 `clawbotFetch` 并自行处理错误（模式不一致）(R5.20) | 2026-04-19 |
+| HI-547 | `frontend` | `src/components/` | TECH_DEBT: 暗色/亮色模式无"跟随系统"选项——仅手动切换，不监听 `prefers-color-scheme` 媒体查询。CSS 基础设施已完备 (R5.33) | 2026-04-19 |
 
 ### 🔵 低优先
 
@@ -187,6 +192,8 @@
 | HI-532 | `backend` | `callback_mixin.py` | 🟠 HIGH: 回调按钮调用 cmd_ 命令时 `update.message` 为 None 导致 AttributeError — handle_card_action_callback 无 try/except 保护(5处 cmd_ 调用)，handle_notify_action_callback 有 try/except 但错误消息为技术堆栈 | 新增 `_safe_cmd_from_callback()` 辅助函数统一包裹所有回调→命令调用，捕获 AttributeError 并用 query.message 回复友好提示 | 2026-04-19 | R3 Bot命令层审计 |
 | HI-533 | `backend` | `help_mixin.py` | 🟡 MEDIUM: /help 投资分析分类中 /invest 描述为"5 位 AI 协作分析"，实际为 6 位 | 修正为"6 位 AI 协作分析" | 2026-04-19 | R3 Bot命令层审计 |
 | HI-534 | `backend` | `workflow_mixin.py` | 🟡 MEDIUM: `_pick_workflow_bot()` 兜底返回值类型不一致 — 正常路径返回 `(candidates, bot_id)` 元组，所有 bot 被排除时返回 `self.bot_id` 字符串，调用方解构会崩溃 | 兜底路径改为 `return None, self.bot_id` 保持元组类型一致 | 2026-04-19 | R3 Bot命令层审计 |
+| HI-548 | `frontend` | `config.rs:generate_token()` | 🟡 MEDIUM: `getrandom().expect()` 在系统 RNG 不可用时会 panic 导致 APP 崩溃 | 改为 `if let Err` 降级方案：时间戳+进程ID+栈地址拼接 | 2026-04-19 | R5 macOS架构审计 |
+| HI-549 | `frontend` | `tauri-core.ts:clawbotFetch()` | 🟡 MEDIUM: HTTP 请求无超时控制——后端无响应时请求永远挂起 | 新增 AbortController 超时机制，默认 30s，支持自定义 timeoutMs 参数 | 2026-04-19 | R5 macOS架构审计 |
 | HI-510 | `backend` | `weekly_report.py` | 🔴 CRITICAL: 周报导入路径错误 — `from src.content_pipeline` 应为 `from src.execution.social.content_pipeline`，导致周报生成必然崩溃 | 修正导入路径为正确的模块位置 | 2026-04-17 | CSO全量安全审计 |
 | HI-511 | `backend` | `api/routers/xianyu.py` | 🔴 CRITICAL: 闲鱼路由导入不存在的 `XianyuBot` 类，服务启动时 ImportError | 替换为 `XianyuContextManager` 直接查询 SQLite | 2026-04-17 | CSO全量安全审计 |
 | HI-512 | `deploy` | `docker-compose.yml` | 🔴 CRITICAL: Docker 资源超配(Redis 512M/OpenClaw 2G) + `internal: true` 阻断容器互联网访问 | Redis 128M/OpenClaw 1G + 移除 internal + 双网络架构 | 2026-04-17 | CSO全量安全审计 |

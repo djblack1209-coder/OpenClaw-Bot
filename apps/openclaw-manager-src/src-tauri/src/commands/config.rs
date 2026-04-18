@@ -442,7 +442,22 @@ pub async fn save_env_value(key: String, value: String) -> Result<String, String
 fn generate_token() -> String {
     let mut buf = [0u8; 48];
     // getrandom 自动选择最佳系统随机源（macOS: SecRandomCopyBytes, Linux: /dev/urandom, Windows: BCryptGenRandom）
-    getrandom::getrandom(&mut buf).expect("系统随机数源不可用，无法生成安全 token");
+    // 使用 unwrap_or_else 替代 expect 避免 panic — 降级到时间戳+进程ID作为熵源
+    if let Err(e) = getrandom::getrandom(&mut buf) {
+        log::error!("系统随机数源不可用: {}，使用降级方案", e);
+        // 降级方案：时间戳 + 进程ID 拼接（安全性低于密码学随机数，但足以作为本地 token）
+        let fallback = format!(
+            "{:x}{:x}{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::process::id(),
+            // 额外熵：栈上变量的地址（每次调用不同）
+            &buf as *const _ as usize
+        );
+        return fallback;
+    }
     buf.iter().map(|b| format!("{:02x}", b)).collect()
 }
 

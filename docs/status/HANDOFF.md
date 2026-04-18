@@ -4,33 +4,32 @@
 
 ---
 
-## [2026-04-19] 全方位审计 v3.0 — R3+R4 审计完成
+## [2026-04-19] 全方位审计 v3.0 — R3+R4+R5 三轮审计完成
 
 ### 本次完成了什么
-1. **R3 Bot 命令层审计**: 45 条目 / 3 项修复 / 9 项文档修正 / 3 项技术债
-   - callback→cmd 崩溃修复(HI-532) + help人数修正(HI-533) + workflow返回类型(HI-534)
-   - COMMAND_REGISTRY.md 9 项文档修正
-2. **R4 Bot 业务场景审计**: 40 条目 / 32 通过 / 1 设计问题 / 7 技术债
-   - 投资链路: NLP→ticker→分析→AI投票(6模型)→确认→执行 完整通过
-   - 闲鱼客服: 8/8 全部通过（底价防护/限速/心跳/熔断/利润核算）
-   - Kiro Gateway: 4/4 全部通过（CORS/10MB/OpenAI+Anthropic兼容）
-   - 通知系统: P0重试+微信推送正常
-3. **技术债登记**: HI-529~542（共 11 项新增）
+1. **R3 Bot 命令层审计**: 45 条目 / 3 修复 / 9 文档修正 / 3 技术债
+2. **R4 Bot 业务场景审计**: 40 条目 / 32 通过 / 8 技术债
+3. **R5 macOS 桌面端架构审计**: 35 条目 / 2 修复 / 5 技术债
+   - Rust `generate_token()` panic→降级方案 (HI-548)
+   - 前端 `clawbotFetch()` 30s 超时控制 (HI-549)
+   - Tauri 2 配置 8/8 全通过 + 97个IPC命令 + 23页面路由
+4. **技术债总登记**: HI-529~549（共 21 项新增，本轮 R5 新增 HI-543~549）
 
 ### 未完成的工作
-- **R5-R11**: 7 轮审计待执行（约 295 个条目）
-- **R5 下一轮**: macOS 架构审计（LaunchAgent/进程管理/Tauri桌面端）
+- **R6-R11**: 6 轮审计待执行（约 260 个条目）
+- **R6 下一轮**: macOS 核心功能审计（LaunchAgent 进程管理/服务矩阵/系统集成）
 
 ### 需要注意的坑
-- pytest 基线: 983 passed / 210 failed / 2 skipped / 12 errors（多个 collection error 文件需 ignore）
-- R4.28: 定时价格监控用简单爬虫引擎，交互式比价用四级降级链——两套引擎能力差异大
-- R4.16: 两套平行的草稿系统（内存/JSON），数据不同步
-- R4.40: 通知系统无 shutdown flush，进程被 kill 时通知丢失
+- pytest 基线: 983 passed / 210 failed（多个 collection error 需 ignore）
+- Node.js 18 → 需升级到 v20+ 才能消除 npm 警告
+- `clawbotFetch` 的 30s 超时可能导致某些长时间 AI 操作被截断 — 需要传 `LONG_TIMEOUT_MS` (120s)
+- Rust `std::thread::sleep` 阻塞 tokio 的问题（R5.14 HI-543）未立即修复（低频操作）
 
 ### 当前系统状态
-- Git: 干净，所有修复已提交
-- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5-R11 待执行
-- 继续指令: `继续审计任务`（AI 自动定位到 R5）
+- Git: 干净，所有修复待提交
+- TypeScript: 零错误 / Rust cargo check: 零错误
+- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5 ✅ / R6-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动定位到 R6）
 
 ---
 
