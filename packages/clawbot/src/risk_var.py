@@ -57,19 +57,10 @@ class VaRMixin:
         if len(pnl_list) < 5:
             return 0.0
 
-        if HAS_QS:
-            # 使用 QuantStats 的专业实现
-            import pandas as pd
-
-            returns = pd.Series(pnl_list)
-            # QuantStats var() 返回负数，取绝对值
-            var_value = abs(float(qs.stats.var(returns, sigma=1, confidence=conf)))
-            # QuantStats 按收益率算，我们需要金额
-            # 如果 pnl_list 是金额而非收益率，直接用百分位
-            var_value = abs(float(np.percentile(pnl_list, (1 - conf) * 100)))
-        else:
-            # 内置简化计算：历史模拟法
-            var_value = abs(float(np.percentile(pnl_list, (1 - conf) * 100)))
+        # 历史模拟法：直接用百分位计算 VaR
+        # 注: QuantStats 的 qs.stats.var() 适用于收益率序列，
+        # 此处 pnl_list 是金额序列，直接用 numpy 百分位更准确
+        var_value = abs(float(np.percentile(pnl_list, (1 - conf) * 100)))
 
         return round(var_value, 2)
 
@@ -92,20 +83,12 @@ class VaRMixin:
         if len(pnl_list) < 5:
             return 0.0
 
-        if HAS_QS:
-            import pandas as pd
-
-            returns = pd.Series(pnl_list)
-            cvar_value = abs(float(qs.stats.cvar(returns, sigma=1, confidence=conf)))
-            # 同上，直接用金额百分位
-            var_threshold = np.percentile(pnl_list, (1 - conf) * 100)
-            tail_losses = [p for p in pnl_list if p <= var_threshold]
-            cvar_value = abs(float(np.mean(tail_losses))) if tail_losses else 0.0
-        else:
-            # 内置简化计算
-            var_threshold = np.percentile(pnl_list, (1 - conf) * 100)
-            tail_losses = [p for p in pnl_list if p <= var_threshold]
-            cvar_value = abs(float(np.mean(tail_losses))) if tail_losses else 0.0
+        # CVaR = VaR 以下的尾部损失均值
+        # 注: QuantStats 的 qs.stats.cvar() 适用于收益率序列，
+        # 此处 pnl_list 是金额序列，直接用 numpy 计算更准确
+        var_threshold = np.percentile(pnl_list, (1 - conf) * 100)
+        tail_losses = [p for p in pnl_list if p <= var_threshold]
+        cvar_value = abs(float(np.mean(tail_losses))) if tail_losses else 0.0
 
         return round(cvar_value, 2)
 

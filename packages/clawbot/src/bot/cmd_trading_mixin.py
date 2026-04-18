@@ -381,6 +381,12 @@ class TradingCommandsMixin:
                         await update.message.reply_text(result_text)
                     # Bokeh 可视化图表（增强）
                     await self._send_bokeh_chart(update, context, symbol, period)
+
+                    # QuantStats HTML 完整报告（30+ 指标 + 图表）
+                    await self._send_quantstats_report(
+                        update, context, symbol, period,
+                        daily_returns=getattr(report, "daily_returns", None),
+                    )
                 except Exception as e:
                     logger.exception("自研引擎回测执行失败")
                     from src.telegram_ux import send_error_with_retry
@@ -496,6 +502,47 @@ class TradingCommandsMixin:
                     await update.message.reply_text(f"📈 backtesting.py 增强分析:\n\n{stats_text}")
         except Exception as e:
             logger.debug("[Backtest] Bokeh 图表生成失败(非致命): %s", e)
+
+    async def _send_quantstats_report(
+        self, update, context, symbol: str, period: str,
+        daily_returns=None, strategy: str = "自研引擎",
+    ):
+        """生成并发送 QuantStats HTML 报告（非致命，失败静默）
+
+        参数:
+            daily_returns: 日收益率列表（百分比格式，如 [2.5, -1.3, ...]）
+            strategy: 策略名称（用于报告标题）
+        """
+        if not daily_returns or len(daily_returns) < 5:
+            return
+        try:
+            from src.modules.investment.backtester_vbt import get_backtester
+            bt = get_backtester()
+            report_path = await bt.generate_quantstats_report(
+                symbol=symbol,
+                period=period,
+                strategy=strategy,
+                returns_series=daily_returns,
+                benchmark_symbol="SPY",
+            )
+            if report_path:
+                import os
+                file_size = os.path.getsize(report_path)
+                # Telegram 文件大小限制 50MB，HTML 报告通常 1-3MB
+                if file_size < 50 * 1024 * 1024:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=open(report_path, "rb"),
+                        filename=f"{symbol}_tearsheet_{period}.html",
+                        caption=(
+                            f"📊 {symbol} QuantStats 完整报告 ({period})\n"
+                            f"含 30+ 指标: 夏普/索提诺/卡玛/VaR/月度热力图/回撤曲线等\n"
+                            f"💡 下载后用浏览器打开查看交互式图表"
+                        ),
+                    )
+                    logger.info("[Backtest] QuantStats 报告已发送: %s", symbol)
+        except Exception as e:
+            logger.debug("[Backtest] QuantStats 报告生成/发送失败(非致命): %s", e)
 
     @requires_auth
     @with_typing
