@@ -33,7 +33,7 @@ _http_iflow = ResilientHTTPClient(timeout=60.0, name="pydantic_agents")
 
 # ── iflow API 配置 ──────────────────────────────────
 
-IFLOW_KEY = os.environ.get("SILICONFLOW_UNLIMITED_KEY", "")
+# 注意: iflow key 不在模块级缓存，改由 property 实时读取，避免 key 轮换后不感知
 IFLOW_BASE = os.environ.get("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
 if IFLOW_BASE.endswith("/chat/completions"):
     IFLOW_BASE = IFLOW_BASE.rsplit("/chat/completions", 1)[0]
@@ -206,14 +206,20 @@ class PydanticInvestmentEngine:
     """
 
     def __init__(self):
-        self._key = IFLOW_KEY or os.environ.get("SILICONFLOW_UNLIMITED_KEY", "")
+        # 不再把 key 固化到实例变量，改用 property 实时读取环境变量
+        # 这样 key 轮换（7天过期）后无需重启进程
         self._base = IFLOW_BASE
-        if not self._key:
+        if not self.key:
             logger.warning("SILICONFLOW_UNLIMITED_KEY 未设置，分析引擎不可用")
 
     @property
+    def key(self) -> str:
+        """实时读取 iflow key，避免模块级固化导致 key 过期后不感知"""
+        return os.environ.get("SILICONFLOW_UNLIMITED_KEY", "")
+
+    @property
     def available(self) -> bool:
-        return bool(self._key)
+        return bool(self.key)
 
     async def full_analysis(self, symbol: str, market_data: Optional[Dict] = None) -> StructuredAnalysis:
         """完整的6角色分析（并行 → 串行风控 → 决策）"""
@@ -298,7 +304,7 @@ class PydanticInvestmentEngine:
         resp = await _http_iflow.post(
             f"{self._base}/chat/completions",
             headers={
-                "Authorization": f"Bearer {self._key}",
+                "Authorization": f"Bearer {self.key}",
                 "Content-Type": "application/json",
             },
             json={

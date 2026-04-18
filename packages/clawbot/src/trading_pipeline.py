@@ -194,8 +194,8 @@ class TradingPipeline:
                         "reason": check.reason,
                         "decided_by": proposal.decided_by,
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("风控告警WS推送失败: %s", e)
 
                 if self.notify:
                     await self._safe_notify(
@@ -280,8 +280,8 @@ class TradingPipeline:
                     "action": proposal.action,
                     "error": order_result["error"],
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("交易错误WS推送失败: %s", e)
 
             return result
 
@@ -437,8 +437,8 @@ class TradingPipeline:
                 "trade_id": trade_id,
                 "source": "pipeline",
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("交易执行WS推送失败: %s", e)
 
         # Step 5: 通知
         if self.notify:
