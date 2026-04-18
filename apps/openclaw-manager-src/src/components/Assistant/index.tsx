@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   MessageSquare,
   Plus,
@@ -14,6 +14,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   Activity,
+  Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -26,6 +27,7 @@ import {
   deleteSession,
   sendMessage,
 } from '../../services/conversationService';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /* ========== 模式定义 ========== */
 type AssistantMode = 'chat' | 'invest' | 'execute' | 'create';
@@ -100,6 +102,12 @@ export function Assistant() {
   const [inputValue, setInputValue] = useState('');
   const [currentMode, setCurrentMode] = useState<AssistantMode>('chat');
   const [showStatusPanel, setShowStatusPanel] = useState(false);
+  /** 删除确认弹窗：记录待删除的会话 ID */
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  /** 重命名编辑：记录正在编辑的会话 ID 和编辑文本 */
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -168,6 +176,44 @@ export function Assistant() {
     toast.info('功能开发中');
   };
 
+  /* 确认删除会话 */
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteConfirmId) return;
+    await deleteSession(deleteConfirmId);
+    setDeleteConfirmId(null);
+  }, [deleteConfirmId]);
+
+  /* 开始重命名会话 */
+  const startRenaming = useCallback((sessionId: string, currentTitle: string) => {
+    setEditingSessionId(sessionId);
+    setEditingTitle(currentTitle || '新对话');
+    // 下一帧聚焦输入框
+    setTimeout(() => editInputRef.current?.select(), 50);
+  }, []);
+
+  /* 提交重命名（通过后端 API 更新标题） */
+  const submitRename = useCallback(async () => {
+    if (!editingSessionId) return;
+    const newTitle = editingTitle.trim();
+    if (!newTitle) {
+      setEditingSessionId(null);
+      return;
+    }
+    try {
+      const { clawbotFetch } = await import('../../lib/tauri-core');
+      await clawbotFetch(`/api/v1/conversation/sessions/${editingSessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      // 刷新会话列表获取最新标题
+      await fetchSessions();
+    } catch {
+      toast.error('重命名失败');
+    }
+    setEditingSessionId(null);
+  }, [editingSessionId, editingTitle]);
+
   return (
     <div className="h-full flex overflow-hidden rounded-xl border border-dark-600">
       {/* ========== 左侧：会话历史 ========== */}
@@ -207,20 +253,60 @@ export function Assistant() {
                     : 'text-gray-400 hover:bg-dark-700 hover:text-gray-200'
                 )}
               >
-                <p className="font-medium truncate pr-6">{session.title || '新对话'}</p>
+                {/* 标题：编辑模式显示输入框，否则双击进入编辑 */}
+                {editingSessionId === session.id ? (
+                  <input
+                    ref={editInputRef}
+                    value={editingTitle}
+                    onChange={(e) => setEditingTitle(e.target.value)}
+                    onBlur={submitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitRename();
+                      if (e.key === 'Escape') setEditingSessionId(null);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full bg-dark-600 border border-dark-400 rounded px-1.5 py-0.5 text-sm text-white outline-none focus:border-[var(--oc-brand)]"
+                  />
+                ) : (
+                  <p
+                    className="font-medium truncate pr-12"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      startRenaming(session.id, session.title);
+                    }}
+                    title="双击重命名"
+                  >
+                    {session.title || '新对话'}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 truncate mt-0.5">
                   {session.message_count}条消息 · {new Date(session.updated_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
                 </p>
-                {/* 删除按钮 */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteSession(session.id);
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-600 text-gray-500 hover:text-red-400 transition-all"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {/* 操作按钮组：重命名 + 删除 */}
+                {editingSessionId !== session.id && (
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRenaming(session.id, session.title);
+                      }}
+                      className="p-1 rounded hover:bg-dark-600 text-gray-500 hover:text-gray-300"
+                      title="重命名"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirmId(session.id);
+                      }}
+                      className="p-1 rounded hover:bg-dark-600 text-gray-500 hover:text-red-400"
+                      title="删除"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </button>
             ))
           )}
@@ -501,6 +587,17 @@ export function Assistant() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 删除会话确认弹窗 */}
+      <ConfirmDialog
+        open={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={handleConfirmDelete}
+        title="删除对话"
+        description="确定要删除这个对话吗？对话中的所有消息将被永久删除，此操作无法撤销。"
+        confirmText="删除"
+        destructive
+      />
     </div>
   );
 }
