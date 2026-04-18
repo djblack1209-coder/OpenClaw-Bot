@@ -59,33 +59,40 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_social_persona(self, update, context):
-        ret = await asyncio.to_thread(execution_hub.get_social_persona_summary)
-        if not ret.get("success"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "读取社媒人设"))
-            return
-        lines = [f"当前社媒人设 | {ret.get('name', '')}", ""]
-        if ret.get("headline"):
-            lines.append(f"- 定位: {ret.get('headline')}")
-        if ret.get("truth"):
-            lines.append(f"- 真相声明: {ret.get('truth')}")
-        if ret.get("background"):
-            lines.append(f"- 外壳背景: {ret.get('background')}")
-        keywords = ret.get("voice_keywords", []) or []
-        if keywords:
-            lines.append(f"- 声线关键词: {' / '.join(keywords[:6])}")
-        must_keep = ret.get("must_keep", []) or []
-        if must_keep:
-            lines.append(f"- 必须保留: {'；'.join(must_keep[:3])}")
-        avoid = ret.get("avoid", []) or []
-        if avoid:
-            lines.append(f"- 明确避免: {'；'.join(avoid[:3])}")
-        if ret.get("x_style"):
-            lines.append(f"- X 风格: {ret.get('x_style')}")
-        if ret.get("xhs_style"):
-            lines.append(f"- 小红书风格: {ret.get('xhs_style')}")
-        if ret.get("path"):
-            lines.append(f"- 人设文件: {ret.get('path')}")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        try:
+            ret = await asyncio.to_thread(execution_hub.get_social_persona_summary)
+            if not ret.get("success"):
+                await update.message.reply_text(format_error(ret.get('error', '未知错误'), "读取社媒人设"))
+                return
+            lines = [f"当前社媒人设 | {ret.get('name', '')}", ""]
+            if ret.get("headline"):
+                lines.append(f"- 定位: {ret.get('headline')}")
+            if ret.get("truth"):
+                lines.append(f"- 真相声明: {ret.get('truth')}")
+            if ret.get("background"):
+                lines.append(f"- 外壳背景: {ret.get('background')}")
+            keywords = ret.get("voice_keywords", []) or []
+            if keywords:
+                lines.append(f"- 声线关键词: {' / '.join(keywords[:6])}")
+            must_keep = ret.get("must_keep", []) or []
+            if must_keep:
+                lines.append(f"- 必须保留: {'；'.join(must_keep[:3])}")
+            avoid = ret.get("avoid", []) or []
+            if avoid:
+                lines.append(f"- 明确避免: {'；'.join(avoid[:3])}")
+            if ret.get("x_style"):
+                lines.append(f"- X 风格: {ret.get('x_style')}")
+            if ret.get("xhs_style"):
+                lines.append(f"- 小红书风格: {ret.get('xhs_style')}")
+            if ret.get("path"):
+                lines.append(f"- 人设文件: {ret.get('path')}")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_social_persona] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
@@ -144,138 +151,159 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_topic(self, update, context):
-        topic = " ".join(context.args or []).strip() or "AI出海"
-        await update.message.reply_text(f"正在研究题材：{topic}")
-        ret = await execution_hub.research_social_topic(topic, limit=5)
-        if not ret.get("success"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "题材研究"))
-            return
-        research = ret.get("research", {}) or {}
-        strategy = ret.get("strategy", {}) or {}
-        lines = [f"题材研究 | {topic}", ""]
-        lines.append("热点来源:")
-        for item in (research.get("x") or [])[:3]:
-            lines.append(f"- [X] {item.get('title', '')}")
-        for item in (research.get("xiaohongshu") or [])[:3]:
-            lines.append(f"- [小红书] {item.get('title', '')}")
-        lines.append("")
-        lines.append("学习结论:")
-        lines.append(f"- 实用价值分: {strategy.get('utility_score', 0)}/100")
-        if strategy.get("positioning"):
-            lines.append(f"- 内容定位: {strategy.get('positioning')}")
-        if strategy.get("audience"):
-            lines.append(f"- 目标受众: {strategy.get('audience')}")
-        if strategy.get("primary_format"):
-            lines.append(f"- 推荐形式: {strategy.get('primary_format')}")
-        lines.append(f"- 结构: {' / '.join(strategy.get('patterns', [])[:3]) or '短结论 + 清单展开'}")
-        if strategy.get("opportunity"):
-            lines.append(f"- 信息差: {strategy.get('opportunity')}")
-        if strategy.get("mvp_rule"):
-            lines.append(f"- MVP原则: {strategy.get('mvp_rule')}")
-        if strategy.get("x_warning"):
-            lines.append(f"- X提醒: {strategy.get('x_warning')}")
-        if strategy.get("x_tactic"):
-            lines.append(f"- X打法: {strategy.get('x_tactic')}")
-        if strategy.get("xhs_tactic"):
-            lines.append(f"- 小红书打法: {strategy.get('xhs_tactic')}")
-        if strategy.get("lead_magnet"):
-            lines.append(f"- 诱饵/资料包: {strategy.get('lead_magnet')}")
-        if strategy.get("cta"):
-            lines.append(f"- CTA: {strategy.get('cta')}")
-        proof_assets = strategy.get("proof_assets", []) or []
-        if proof_assets:
-            lines.append(f"- 证明材料: {'；'.join(proof_assets[:3])}")
-        repurpose_path = strategy.get("repurpose_path", []) or []
-        if repurpose_path:
-            lines.append(f"- 发布路径: {' -> '.join(repurpose_path[:4])}")
-        if strategy.get("measurement_window"):
-            lines.append(f"- 观察窗口: {strategy.get('measurement_window')}")
-        metrics = strategy.get("validation_metrics", []) or []
-        if metrics:
-            lines.append(f"- 验证指标: {'；'.join(metrics[:2])}")
-        triggers = strategy.get("investment_triggers", []) or []
-        if triggers:
-            lines.append(f"- 加预算触发点: {'；'.join(triggers[:2])}")
-        if strategy.get("stale_points"):
-            lines.append(f"- 需避开: {'；'.join(strategy.get('stale_points', [])[:2])}")
-        lines.append(f"- 学习存档: {ret.get('memory_path', '')}")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        try:
+            topic = " ".join(context.args or []).strip() or "AI出海"
+            await update.message.reply_text(f"正在研究题材：{topic}")
+            ret = await execution_hub.research_social_topic(topic, limit=5)
+            if not ret.get("success"):
+                await update.message.reply_text(format_error(ret.get('error', '未知错误'), "题材研究"))
+                return
+            research = ret.get("research", {}) or {}
+            strategy = ret.get("strategy", {}) or {}
+            lines = [f"题材研究 | {topic}", ""]
+            lines.append("热点来源:")
+            for item in (research.get("x") or [])[:3]:
+                lines.append(f"- [X] {item.get('title', '')}")
+            for item in (research.get("xiaohongshu") or [])[:3]:
+                lines.append(f"- [小红书] {item.get('title', '')}")
+            lines.append("")
+            lines.append("学习结论:")
+            lines.append(f"- 实用价值分: {strategy.get('utility_score', 0)}/100")
+            if strategy.get("positioning"):
+                lines.append(f"- 内容定位: {strategy.get('positioning')}")
+            if strategy.get("audience"):
+                lines.append(f"- 目标受众: {strategy.get('audience')}")
+            if strategy.get("primary_format"):
+                lines.append(f"- 推荐形式: {strategy.get('primary_format')}")
+            lines.append(f"- 结构: {' / '.join(strategy.get('patterns', [])[:3]) or '短结论 + 清单展开'}")
+            if strategy.get("opportunity"):
+                lines.append(f"- 信息差: {strategy.get('opportunity')}")
+            if strategy.get("mvp_rule"):
+                lines.append(f"- MVP原则: {strategy.get('mvp_rule')}")
+            if strategy.get("x_warning"):
+                lines.append(f"- X提醒: {strategy.get('x_warning')}")
+            if strategy.get("x_tactic"):
+                lines.append(f"- X打法: {strategy.get('x_tactic')}")
+            if strategy.get("xhs_tactic"):
+                lines.append(f"- 小红书打法: {strategy.get('xhs_tactic')}")
+            if strategy.get("lead_magnet"):
+                lines.append(f"- 诱饵/资料包: {strategy.get('lead_magnet')}")
+            if strategy.get("cta"):
+                lines.append(f"- CTA: {strategy.get('cta')}")
+            proof_assets = strategy.get("proof_assets", []) or []
+            if proof_assets:
+                lines.append(f"- 证明材料: {'；'.join(proof_assets[:3])}")
+            repurpose_path = strategy.get("repurpose_path", []) or []
+            if repurpose_path:
+                lines.append(f"- 发布路径: {' -> '.join(repurpose_path[:4])}")
+            if strategy.get("measurement_window"):
+                lines.append(f"- 观察窗口: {strategy.get('measurement_window')}")
+            metrics = strategy.get("validation_metrics", []) or []
+            if metrics:
+                lines.append(f"- 验证指标: {'；'.join(metrics[:2])}")
+            triggers = strategy.get("investment_triggers", []) or []
+            if triggers:
+                lines.append(f"- 加预算触发点: {'；'.join(triggers[:2])}")
+            if strategy.get("stale_points"):
+                lines.append(f"- 需避开: {'；'.join(strategy.get('stale_points', [])[:2])}")
+            lines.append(f"- 学习存档: {ret.get('memory_path', '')}")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_topic] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_xhs(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        if not topic:
-            await update.message.reply_text("📕 小红书热点发布中...")
-            ret = await execution_hub.autopost_hot_content("xiaohongshu")
-            package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
-            if not package:
-                await update.message.reply_text(error_service_failed("小红书热点发布", package.get('error', ret.get('error', ''))))
+        try:
+            topic = " ".join(context.args or []).strip()
+            if not topic:
+                await update.message.reply_text("📕 小红书热点发布中...")
+                ret = await execution_hub.autopost_hot_content("xiaohongshu")
+                package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
+                if not package:
+                    await update.message.reply_text(error_service_failed("小红书热点发布", package.get('error', ret.get('error', ''))))
+                    return
+                published = package.get("published", {}) or {}
+                if not published.get("success"):
+                    await update.message.reply_text(
+                        f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
+                        f"{self._social_login_retry_hint(published, '/post_xhs')}"
+                    )
+                    return
+                text = format_social_published(
+                    platform="xiaohongshu",
+                    topic=package.get("topic", ""),
+                    url=published.get("url", ""),
+                    title=package.get("title", ""),
+                    memory_path=package.get("memory_path", ""),
+                )
+                if package.get("trend_label"):
+                    text = f" 📈 蹭热点: {package.get('trend_label')}\n{text}"
+                await send_long_message(update.effective_chat.id, text, context)
                 return
-            published = package.get("published", {}) or {}
+
+            await update.message.reply_text(f"📕 小红书发布: {topic}")
+            ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
+            if not ret.get("success"):
+                await update.message.reply_text(
+                    error_service_failed("小红书发帖", ret.get('error', ''))
+                    + f"\n{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
+                )
+                return
+            published = ret.get("published", {}) or {}
             if not published.get("success"):
                 await update.message.reply_text(
                     f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
-                    f"{self._social_login_retry_hint(published, '/post_xhs')}"
+                    f"{self._social_login_retry_hint(published, '/post_xhs ' + topic if topic else '/post_xhs')}"
                 )
                 return
             text = format_social_published(
                 platform="xiaohongshu",
-                topic=package.get("topic", ""),
+                topic=topic,
                 url=published.get("url", ""),
-                title=package.get("title", ""),
-                memory_path=package.get("memory_path", ""),
+                title=ret.get("title", ""),
+                memory_path=ret.get("memory_path", ""),
             )
-            if package.get("trend_label"):
-                text = f" 📈 蹭热点: {package.get('trend_label')}\n{text}"
             await send_long_message(update.effective_chat.id, text, context)
-            return
-
-        await update.message.reply_text(f"📕 小红书发布: {topic}")
-        ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
-        if not ret.get("success"):
-            await update.message.reply_text(
-                error_service_failed("小红书发帖", ret.get('error', ''))
-                + f"\n{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
-            )
-            return
-        published = ret.get("published", {}) or {}
-        if not published.get("success"):
-            await update.message.reply_text(
-                f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
-                f"{self._social_login_retry_hint(published, '/post_xhs ' + topic if topic else '/post_xhs')}"
-            )
-            return
-        text = format_social_published(
-            platform="xiaohongshu",
-            topic=topic,
-            url=published.get("url", ""),
-            title=ret.get("title", ""),
-            memory_path=ret.get("memory_path", ""),
-        )
-        await send_long_message(update.effective_chat.id, text, context)
+        except Exception as e:
+            logger.warning("[cmd_xhs] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_post(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        if not topic:
-            await self.cmd_hotpost(update, context)
-            return
-        await update.message.reply_text(f"📱 双平台发文: {topic}")
-        xhs = await execution_hub.autopost_topic_content("xiaohongshu", topic)
-        xret = await execution_hub.autopost_topic_content("x", topic)
-        mem = xhs.get('memory_path') or xret.get('memory_path') or ''
-        hint = self._social_login_retry_hint(xhs.get('published', xhs), f"/post {topic}") or self._social_login_retry_hint(xret.get('published', xret), f"/post {topic}")
-        text = format_social_dual_result(
-            topic=topic,
-            xhs_result=xhs,
-            x_result=xret,
-            memory_path=mem,
-        )
-        if hint:
-            text += f"\n{hint.strip()}"
-        await send_long_message(update.effective_chat.id, text, context)
+        try:
+            topic = " ".join(context.args or []).strip()
+            if not topic:
+                await self.cmd_hotpost(update, context)
+                return
+            await update.message.reply_text(f"📱 双平台发文: {topic}")
+            xhs = await execution_hub.autopost_topic_content("xiaohongshu", topic)
+            xret = await execution_hub.autopost_topic_content("x", topic)
+            mem = xhs.get('memory_path') or xret.get('memory_path') or ''
+            hint = self._social_login_retry_hint(xhs.get('published', xhs), f"/post {topic}") or self._social_login_retry_hint(xret.get('published', xret), f"/post {topic}")
+            text = format_social_dual_result(
+                topic=topic,
+                xhs_result=xhs,
+                x_result=xret,
+                memory_path=mem,
+            )
+            if hint:
+                text += f"\n{hint.strip()}"
+            await send_long_message(update.effective_chat.id, text, context)
+        except Exception as e:
+            logger.warning("[cmd_post] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
@@ -409,72 +437,86 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_social_plan(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        if topic:
-            await update.message.reply_text(f"正在生成题材发文计划：{topic}")
-        else:
-            await update.message.reply_text("正在生成今日社媒发文计划...")
-        ret = await execution_hub.build_social_plan(topic=topic, limit=3)
-        if not ret.get("success"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "生成发文计划"))
-            return
-        if ret.get("mode") == "topic":
-            strategy = ret.get("strategy", {}) or {}
-            lines = [f"社媒发文计划 | {ret.get('topic', topic)}", ""]
-            lines.append(f"- 定位: {strategy.get('positioning', 'OpenClaw 实操内容')}" )
-            if strategy.get("x_tactic"):
-                lines.append(f"- X: {strategy.get('x_tactic')}")
-            if strategy.get("xhs_tactic"):
-                lines.append(f"- 小红书: {strategy.get('xhs_tactic')}")
-            if strategy.get("cta"):
-                lines.append(f"- CTA: {strategy.get('cta')}")
-            if strategy.get("measurement_window"):
-                lines.append(f"- 观察窗口: {strategy.get('measurement_window')}")
-            for action in (ret.get("next_actions", []) or [])[:2]:
-                lines.append(f"- 下一步: {action}")
-            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
-            return
+        try:
+            topic = " ".join(context.args or []).strip()
+            if topic:
+                await update.message.reply_text(f"正在生成题材发文计划：{topic}")
+            else:
+                await update.message.reply_text("正在生成今日社媒发文计划...")
+            ret = await execution_hub.build_social_plan(topic=topic, limit=3)
+            if not ret.get("success"):
+                await update.message.reply_text(format_error(ret.get('error', '未知错误'), "生成发文计划"))
+                return
+            if ret.get("mode") == "topic":
+                strategy = ret.get("strategy", {}) or {}
+                lines = [f"社媒发文计划 | {ret.get('topic', topic)}", ""]
+                lines.append(f"- 定位: {strategy.get('positioning', 'OpenClaw 实操内容')}" )
+                if strategy.get("x_tactic"):
+                    lines.append(f"- X: {strategy.get('x_tactic')}")
+                if strategy.get("xhs_tactic"):
+                    lines.append(f"- 小红书: {strategy.get('xhs_tactic')}")
+                if strategy.get("cta"):
+                    lines.append(f"- CTA: {strategy.get('cta')}")
+                if strategy.get("measurement_window"):
+                    lines.append(f"- 观察窗口: {strategy.get('measurement_window')}")
+                for action in (ret.get("next_actions", []) or [])[:2]:
+                    lines.append(f"- 下一步: {action}")
+                await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+                return
 
-        lines = ["今日社媒发文计划", ""]
-        for idx, item in enumerate((ret.get("plans", []) or [])[:3], 1):
-            lines.append(f"{idx}. {item.get('topic', '')} | {item.get('trend_label', '')}")
-            if item.get("hook"):
-                lines.append(f"   切角: {item.get('hook')}")
-            if item.get("x_tactic"):
-                lines.append(f"   X: {item.get('x_tactic')}")
-            if item.get("xhs_tactic"):
-                lines.append(f"   小红书: {item.get('xhs_tactic')}")
-        lines.append("")
-        lines.append("下一步: /social_repost <题材> 或 /post_social <题材>")
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+            lines = ["今日社媒发文计划", ""]
+            for idx, item in enumerate((ret.get("plans", []) or [])[:3], 1):
+                lines.append(f"{idx}. {item.get('topic', '')} | {item.get('trend_label', '')}")
+                if item.get("hook"):
+                    lines.append(f"   切角: {item.get('hook')}")
+                if item.get("x_tactic"):
+                    lines.append(f"   X: {item.get('x_tactic')}")
+                if item.get("xhs_tactic"):
+                    lines.append(f"   小红书: {item.get('xhs_tactic')}")
+            lines.append("")
+            lines.append("下一步: /social_repost <题材> 或 /post_social <题材>")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_social_plan] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_social_repost(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        if topic:
-            await update.message.reply_text(f"正在生成双平台改写草稿：{topic}")
-        else:
-            await update.message.reply_text("正在把今日热点改写成双平台草稿...")
-        ret = await execution_hub.build_social_repost_bundle(topic=topic)
-        if not ret.get("success"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "双平台改写"))
-            return
-        lines = [f"双平台改写 | {ret.get('topic', topic or '自动选题')}", ""]
-        for name in ["xiaohongshu", "x"]:
-            package = (ret.get("results", {}) or {}).get(name, {}) or {}
-            label = "小红书" if name == "xiaohongshu" else "X"
-            if package.get("success"):
-                if package.get("draft_id"):
-                    lines.append(f"- {label}草稿ID: {package.get('draft_id')}")
-                if package.get("title"):
-                    lines.append(f"- {label}标题: {package.get('title')}")
-                lines.append(f"- {label}预览: {str(package.get('body', '') or '')[:88]}")
+        try:
+            topic = " ".join(context.args or []).strip()
+            if topic:
+                await update.message.reply_text(f"正在生成双平台改写草稿：{topic}")
             else:
-                lines.append(f"- {error_service_failed(label, package.get('error', ''))}")
-        lines.append("")
-        lines.append(f"下一步: /post_social {ret.get('topic', topic or '').strip()}".rstrip())
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+                await update.message.reply_text("正在把今日热点改写成双平台草稿...")
+            ret = await execution_hub.build_social_repost_bundle(topic=topic)
+            if not ret.get("success"):
+                await update.message.reply_text(format_error(ret.get('error', '未知错误'), "双平台改写"))
+                return
+            lines = [f"双平台改写 | {ret.get('topic', topic or '自动选题')}", ""]
+            for name in ["xiaohongshu", "x"]:
+                package = (ret.get("results", {}) or {}).get(name, {}) or {}
+                label = "小红书" if name == "xiaohongshu" else "X"
+                if package.get("success"):
+                    if package.get("draft_id"):
+                        lines.append(f"- {label}草稿ID: {package.get('draft_id')}")
+                    if package.get("title"):
+                        lines.append(f"- {label}标题: {package.get('title')}")
+                    lines.append(f"- {label}预览: {str(package.get('body', '') or '')[:88]}")
+                else:
+                    lines.append(f"- {error_service_failed(label, package.get('error', ''))}")
+            lines.append("")
+            lines.append(f"下一步: /post_social {ret.get('topic', topic or '').strip()}".rstrip())
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_social_repost] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
 
     @requires_auth
@@ -489,140 +531,182 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_xbrief(self, update, context):
-        await update.message.reply_text("正在生成 X 博主更新摘要...")
-        digest = await execution_hub.generate_x_monitor_brief()
-        if not digest:
-            await update.message.reply_text("当前没有 X 博主更新，先用 /xwatch 或 /ops monitor addx 添加监控")
-            return
-        await send_long_message(update.effective_chat.id, digest, context)
+        try:
+            await update.message.reply_text("正在生成 X 博主更新摘要...")
+            digest = await execution_hub.generate_x_monitor_brief()
+            if not digest:
+                await update.message.reply_text("当前没有 X 博主更新，先用 /xwatch 或 /ops monitor addx 添加监控")
+                return
+            await send_long_message(update.effective_chat.id, digest, context)
+        except Exception as e:
+            logger.warning("[cmd_xbrief] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_xdraft(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        await update.message.reply_text("正在生成 X 草稿...")
-        ret = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
-        if not ret.get("success"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "X 草稿生成"))
-            return
-        lines = ["X 草稿", ""]
-        lines.append(f"草稿ID: {ret.get('draft_id')}")
-        if topic:
-            lines.append(f"主题: {topic}")
-        lines.append(ret.get("body", ""))
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        try:
+            topic = " ".join(context.args or []).strip()
+            await update.message.reply_text("正在生成 X 草稿...")
+            ret = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
+            if not ret.get("success"):
+                await update.message.reply_text(format_error(ret.get('error', '未知错误'), "X 草稿生成"))
+                return
+            lines = ["X 草稿", ""]
+            lines.append(f"草稿ID: {ret.get('draft_id')}")
+            if topic:
+                lines.append(f"主题: {topic}")
+            lines.append(ret.get("body", ""))
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_xdraft] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_xpost(self, update, context):
-        args = context.args or []
-        draft_id = 0
-        topic = ""
-        if args and str(args[0]).isdigit():
-            draft_id = int(args[0])
-        else:
-            topic = " ".join(args).strip()
-        if draft_id <= 0:
-            draft = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
-            if not draft.get("success"):
-                await update.message.reply_text(error_service_failed("X 发帖", draft.get('error', '')))
-                return
-            draft_id = int(draft.get("draft_id", 0) or 0)
-        await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发 X...")
-        ret = await asyncio.to_thread(execution_hub.publish_social_draft, "x", draft_id)
-        if ret.get("success"):
-            await update.message.reply_text(f"X 已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-        else:
-            await update.message.reply_text(
-                f"X 自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                f"页面: {ret.get('url', '')}"
-                f"{self._social_login_retry_hint(ret, '/post_x ' + topic if topic else '/post_x')}"
-            )
+        try:
+            args = context.args or []
+            draft_id = 0
+            topic = ""
+            if args and str(args[0]).isdigit():
+                draft_id = int(args[0])
+            else:
+                topic = " ".join(args).strip()
+            if draft_id <= 0:
+                draft = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
+                if not draft.get("success"):
+                    await update.message.reply_text(error_service_failed("X 发帖", draft.get('error', '')))
+                    return
+                draft_id = int(draft.get("draft_id", 0) or 0)
+            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发 X...")
+            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "x", draft_id)
+            if ret.get("success"):
+                await update.message.reply_text(f"X 已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
+            else:
+                await update.message.reply_text(
+                    f"X 自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
+                    f"页面: {ret.get('url', '')}"
+                    f"{self._social_login_retry_hint(ret, '/post_x ' + topic if topic else '/post_x')}"
+                )
+        except Exception as e:
+            logger.warning("[cmd_xpost] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_xhsdraft(self, update, context):
-        topic = " ".join(context.args or []).strip()
-        await update.message.reply_text("正在生成小红书草稿...")
-        ret = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
-        if not ret.get("success"):
-            await update.message.reply_text(error_service_failed("小红书草稿", ret.get('error', '')))
-            return
-        lines = ["小红书草稿", ""]
-        lines.append(f"草稿ID: {ret.get('draft_id')}")
-        lines.append(f"标题: {ret.get('title', '')}")
-        lines.append("")
-        lines.append(ret.get("body", ""))
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        try:
+            topic = " ".join(context.args or []).strip()
+            await update.message.reply_text("正在生成小红书草稿...")
+            ret = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
+            if not ret.get("success"):
+                await update.message.reply_text(error_service_failed("小红书草稿", ret.get('error', '')))
+                return
+            lines = ["小红书草稿", ""]
+            lines.append(f"草稿ID: {ret.get('draft_id')}")
+            lines.append(f"标题: {ret.get('title', '')}")
+            lines.append("")
+            lines.append(ret.get("body", ""))
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
+        except Exception as e:
+            logger.warning("[cmd_xhsdraft] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_xhspost(self, update, context):
-        args = context.args or []
-        draft_id = 0
-        topic = ""
-        if args and str(args[0]).isdigit():
-            draft_id = int(args[0])
-        else:
-            topic = " ".join(args).strip()
-        if draft_id <= 0:
-            draft = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
-            if not draft.get("success"):
-                await update.message.reply_text(error_service_failed("小红书发帖", draft.get('error', '')))
-                return
-            draft_id = int(draft.get("draft_id", 0) or 0)
-        await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发小红书...")
-        ret = await asyncio.to_thread(execution_hub.publish_social_draft, "xiaohongshu", draft_id)
-        if ret.get("success"):
-            await update.message.reply_text(f"小红书已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-        else:
-            await update.message.reply_text(
-                f"小红书自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                f"页面: {ret.get('url', '')}"
-                f"{self._social_login_retry_hint(ret, '/post_xhs ' + topic if topic else '/post_xhs')}"
-            )
+        try:
+            args = context.args or []
+            draft_id = 0
+            topic = ""
+            if args and str(args[0]).isdigit():
+                draft_id = int(args[0])
+            else:
+                topic = " ".join(args).strip()
+            if draft_id <= 0:
+                draft = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
+                if not draft.get("success"):
+                    await update.message.reply_text(error_service_failed("小红书发帖", draft.get('error', '')))
+                    return
+                draft_id = int(draft.get("draft_id", 0) or 0)
+            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发小红书...")
+            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "xiaohongshu", draft_id)
+            if ret.get("success"):
+                await update.message.reply_text(f"小红书已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
+            else:
+                await update.message.reply_text(
+                    f"小红书自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
+                    f"页面: {ret.get('url', '')}"
+                    f"{self._social_login_retry_hint(ret, '/post_xhs ' + topic if topic else '/post_xhs')}"
+                )
+        except Exception as e:
+            logger.warning("[cmd_xhspost] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_publish(self, update, context):
         """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
-        from src.sau_bridge import publish_video, publish_note, get_supported_platforms, PLATFORMS
+        try:
+            from src.sau_bridge import publish_video, publish_note, get_supported_platforms, PLATFORMS
 
-        args = context.args or []
-        if len(args) < 2:
-            platforms = get_supported_platforms()
-            help_text = "📤 社媒发布\n\n用法:\n"
-            help_text += "  /publish <平台> <文件路径> [标题]\n\n"
-            help_text += "支持平台:\n"
-            for key, info in platforms.items():
-                caps = []
-                if info["video"]: caps.append("视频")
-                if info["note"]: caps.append("图文")
-                help_text += f"  • {key} ({info['name']}) — {'/'.join(caps)}\n"
-            help_text += "\n示例:\n  /publish douyin /path/to/video.mp4 我的视频标题"
-            await update.message.reply_text(help_text)
-            return
+            args = context.args or []
+            if len(args) < 2:
+                platforms = get_supported_platforms()
+                help_text = "📤 社媒发布\n\n用法:\n"
+                help_text += "  /publish <平台> <文件路径> [标题]\n\n"
+                help_text += "支持平台:\n"
+                for key, info in platforms.items():
+                    caps = []
+                    if info["video"]: caps.append("视频")
+                    if info["note"]: caps.append("图文")
+                    help_text += f"  • {key} ({info['name']}) — {'/'.join(caps)}\n"
+                help_text += "\n示例:\n  /publish douyin /path/to/video.mp4 我的视频标题"
+                await update.message.reply_text(help_text)
+                return
 
-        platform = args[0].lower()
-        file_path = args[1]
-        title = " ".join(args[2:]) if len(args) > 2 else "OpenClaw 自动发布"
+            platform = args[0].lower()
+            file_path = args[1]
+            title = " ".join(args[2:]) if len(args) > 2 else "OpenClaw 自动发布"
 
-        if platform not in PLATFORMS:
-            await update.message.reply_text(f"❓ 不支持的平台: {platform}\n支持: {', '.join(PLATFORMS.keys())}")
-            return
+            if platform not in PLATFORMS:
+                await update.message.reply_text(f"❓ 不支持的平台: {platform}\n支持: {', '.join(PLATFORMS.keys())}")
+                return
 
-        await update.message.reply_text(f"📤 正在发布到 {PLATFORMS[platform]['name']}...")
+            await update.message.reply_text(f"📤 正在发布到 {PLATFORMS[platform]['name']}...")
 
-        if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
-            result = await publish_video(platform, file_path, title)
-        else:
-            result = await publish_note(platform, [file_path], title)
+            if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
+                result = await publish_video(platform, file_path, title)
+            else:
+                result = await publish_note(platform, [file_path], title)
 
-        if result.get("success"):
-            await update.message.reply_text(f"✅ 发布到 {PLATFORMS[platform]['name']} 成功!")
-        else:
-            error = result.get("error", result.get("stderr", "未知错误"))
-            await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
+            if result.get("success"):
+                await update.message.reply_text(f"✅ 发布到 {PLATFORMS[platform]['name']} 成功!")
+            else:
+                error = result.get("error", result.get("stderr", "未知错误"))
+                await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
+        except Exception as e:
+            logger.warning("[cmd_publish] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     # ---- 闲鱼 AI 客服控制 ----
 
