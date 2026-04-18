@@ -3,7 +3,9 @@
 export OPENCLAW_STATE_DIR="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw"
 export OPENCLAW_CONFIG_PATH="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json"
 export OPENCLAW_GATEWAY_PORT="18789"
-export OPENCLAW_GATEWAY_TOKEN="openclaw-manager-local-token"
+# 安全加固(HI-590): 从配置文件读取 token，不在脚本中硬编码弱默认值
+# 生成方法: openssl rand -hex 32 > ~/.openclaw/gateway_token
+export OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-$(cat ~/.openclaw/gateway_token 2>/dev/null || echo '')}"
 export OPENCLAW_LAUNCHD_LABEL="ai.openclaw.gateway"
 export OPENCLAW_SERVICE_MARKER="openclaw"
 export OPENCLAW_SERVICE_KIND="gateway"

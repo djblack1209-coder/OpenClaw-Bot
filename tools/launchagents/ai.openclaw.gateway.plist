@@ -53,8 +53,10 @@
     <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json</string>
     <key>OPENCLAW_GATEWAY_PORT</key>
     <string>18789</string>
+    <!-- 安全加固(HI-590): 必须在加载 LaunchAgent 前设置强随机 token，禁止使用弱默认值 -->
+    <!-- 生成方法: openssl rand -hex 32 > ~/.openclaw/gateway_token -->
     <key>OPENCLAW_GATEWAY_TOKEN</key>
-    <string>openclaw-manager-local-token</string>
+    <string></string>
     <key>OPENCLAW_LAUNCHD_LABEL</key>
     <string>ai.openclaw.gateway</string>
     <key>OPENCLAW_SYSTEMD_UNIT</key>
