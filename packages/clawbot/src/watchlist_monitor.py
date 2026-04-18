@@ -264,7 +264,7 @@ class WatchlistMonitor:
                     self._mark_cooldown(sym, ANOMALY_RSI_EXTREME)
 
             except Exception as e:
-                logger.debug(f"深度扫描 {sym} 失败: {e}")
+                logger.warning("[WatchList] 深度扫描 %s 失败: %s", sym, e)
 
     async def _enrich_anomalies(self, anomalies: List[Dict]):
         """为异动通知附加新闻原因、迷你K线图、RSI指标、持仓信息。
@@ -352,7 +352,7 @@ class WatchlistMonitor:
             for pos in positions:
                 holding_map[pos["symbol"]] = pos
         except Exception as e:
-            logger.debug(f"持仓查询失败: {e}")
+            logger.warning("[WatchList] 持仓查询失败: %s", e)
 
         # ── 4. 将增强数据注入每条异动事件 ──
         for anomaly in anomalies:
@@ -383,7 +383,7 @@ class WatchlistMonitor:
                 )
                 logger.info(f"📡 自选股异动: {anomaly.get('details', '')}")
         except Exception as e:
-            logger.debug(f"发布异动事件失败: {e}")
+            logger.warning("[WatchList] 发布异动事件失败: %s", e)
 
     # ── 冷却机制（搬运 position_monitor PanWatch 模式） ────────
 
