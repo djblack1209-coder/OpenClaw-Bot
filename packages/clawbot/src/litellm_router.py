@@ -173,8 +173,8 @@ class FreeAPISource:
         return True
 
 
-# ---- 模型强度排名 ----
-MODEL_RANKING = {
+# ---- 模型强度排名 — T5-3: 优先从 JSON 加载，fallback 到硬编码默认值 ----
+_MODEL_RANKING_DEFAULT = {
     "gemini-2.5-pro": 98,
     "gemini-2.5-flash": 97,
     "claude-sonnet-4": 95,
@@ -222,15 +222,34 @@ MODEL_RANKING = {
     "nvidia/nemotron-3-super-120b-a12b:free": 90,
     "minimax/minimax-m2.5:free": 88,
     "qwen/qwen3-next-80b-a3b-instruct:free": 85,
-    "qwen/qwen3.5-397b-a17b": 93,  # NVIDIA NIM 最强 Qwen 模型
-    "qwen/qwen3-coder-480b-a35b-instruct": 91,  # NVIDIA NIM Qwen Coder
-    "deepseek-ai/deepseek-v3.2": 91,  # NVIDIA NIM DeepSeek V3.2
-    "doubao-seed-2-0-pro-260215": 91,  # 火山引擎最新旗舰
-    "doubao-seed-1-6-flash-250828": 85,  # 火山引擎快速版
+    "qwen/qwen3.5-397b-a17b": 93,
+    "qwen/qwen3-coder-480b-a35b-instruct": 91,
+    "deepseek-ai/deepseek-v3.2": 91,
+    "doubao-seed-2-0-pro-260215": 91,
+    "doubao-seed-1-6-flash-250828": 85,
     "gpt-4o": 88,
     "gpt-4o-mini": 78,
     "auto": 65,
 }
+
+
+def _load_model_ranking() -> dict:
+    """从 JSON 配置加载模型评分，加载失败时回退到硬编码默认值"""
+    try:
+        from src.llm_routing_config import load_routing_config
+        config = load_routing_config()
+        if config and config.get("model_ranking"):
+            ranking = config["model_ranking"]
+            # 过滤掉 _comment 等元数据字段，只保留数值评分
+            result = {k: v for k, v in ranking.items() if not k.startswith("_") and isinstance(v, (int, float))}
+            if result:
+                return result
+    except Exception as e:
+        logger.debug("[ModelRanking] JSON 加载失败，使用默认值: %s", e)
+    return _MODEL_RANKING_DEFAULT.copy()
+
+
+MODEL_RANKING = _load_model_ranking()
 
 
 # 构建大小写不敏感的查找表，防止因大小写差异导致模型评分失效 (HI-382 根因)
@@ -244,19 +263,37 @@ def get_model_score(model_id: str) -> float:
     return _MODEL_RANKING_LOWER.get(model_id.lower(), 50.0)
 
 
-# Bot 与 LLM 模型族的映射关系
-# 每个 Bot 优先使用对应族群的模型，避免全部走同一入口导致单点故障
-# 2026-04-17: 分散映射 — 之前 haiku/sonnet/opus 全走 claude(Kiro Gateway 5RPM)，
-# 3 个 bot 撞一个瓶颈导致 50% 超时。现在分散到不同家族避免单点故障
-BOT_MODEL_FAMILY = {
+# Bot 与 LLM 模型族的映射关系 — 优先从 JSON config 加载，fallback 到硬编码默认值
+# T5-2: JSON 为单一真相源，修改 config/llm_routing.json 的 bot_model_family 即可调整
+_BOT_MODEL_FAMILY_DEFAULT = {
     "qwen235b": "qwen",
     "gptoss": "gpt-oss",
-    "claude_sonnet": "claude",  # 指挥官保留 Kiro Gateway（最高优先级角色）
-    "claude_haiku": "qwen",  # 市场雷达 → qwen 家族（SiliconFlow 多 Key 高可用）
-    "deepseek_v3": "deepseek",  # 风控官 → deepseek 家族
-    "claude_opus": "deepseek",  # 首席策略师 → deepseek 家族（高质量推理）
-    "free_llm": None,  # 自动选择最强可用模型
+    "claude_sonnet": "claude",
+    "claude_haiku": "qwen",
+    "deepseek_v3": "deepseek",
+    "claude_opus": "deepseek",
+    "free_llm": None,
 }
+
+
+def _load_bot_model_family() -> dict:
+    """从 JSON 配置加载 Bot→模型族映射，加载失败时回退到硬编码默认值"""
+    try:
+        from src.llm_routing_config import load_routing_config, get_bot_model_family
+        config = load_routing_config()
+        if config and config.get("bot_model_family"):
+            mapping = config["bot_model_family"]
+            # 过滤掉 _comment 等元数据字段
+            result = {k: v for k, v in mapping.items() if not k.startswith("_")}
+            if result:
+                return result
+    except Exception as e:
+        logger.debug("[BotModelFamily] JSON 加载失败，使用默认值: %s", e)
+    return _BOT_MODEL_FAMILY_DEFAULT.copy()
+
+
+# 模块加载时初始化（兼容所有 23 个导入点）
+BOT_MODEL_FAMILY = _load_bot_model_family()
 
 
 # ---- iflow Key 有效期监控 ----
@@ -819,22 +856,26 @@ class LiteLLMPool:
         families = set(d["model_name"] for d in deps)
 
         try:
-            # 按照 LiteLLM 官方推荐配置 Router
+            # 从 JSON router_config 读取参数（T5-2: 消除硬编码，JSON 为单一真相源）
             from litellm.router import RetryPolicy
+
+            rc = {}
+            if hasattr(self, "_routing_config") and self._routing_config:
+                rc = get_router_config(self._routing_config)
 
             self._router = Router(
                 model_list=deps,
                 fallbacks=fallbacks,
-                num_retries=3,  # 官方推荐 3 次重试（原 1 次太低）
-                timeout=LLM_TIMEOUT_DEFAULT,
-                stream_timeout=LLM_STREAM_TIMEOUT_DEFAULT,
-                allowed_fails=3,
-                cooldown_time=LLM_COOLDOWN_TIME,
-                retry_after=LLM_RETRY_AFTER,
-                routing_strategy="simple-shuffle",
+                num_retries=rc.get("num_retries", 3),
+                timeout=rc.get("timeout", LLM_TIMEOUT_DEFAULT),
+                stream_timeout=rc.get("stream_timeout", LLM_STREAM_TIMEOUT_DEFAULT),
+                allowed_fails=rc.get("allowed_fails", 3),
+                cooldown_time=rc.get("cooldown_time", LLM_COOLDOWN_TIME),
+                retry_after=rc.get("retry_after", LLM_RETRY_AFTER),
+                routing_strategy=rc.get("routing_strategy", "simple-shuffle"),
                 # 按错误类型区分重试策略（官方推荐）
                 retry_policy=RetryPolicy(
-                    RateLimitErrorRetries=3,  # 429 限速适当重试（原 5 次太多，配合 fallback 延迟过长）
+                    RateLimitErrorRetries=3,  # 429 限速适当重试
                     TimeoutErrorRetries=2,  # 超时少量重试（已有 fallback 兜底）
                     ContentPolicyViolationErrorRetries=0,  # 内容违规不重试
                     AuthenticationErrorRetries=0,  # 认证错误不重试
@@ -1002,6 +1043,7 @@ class LiteLLMPool:
         """根据复杂度 + 预算状态选择最优模型族
 
         利用 cost_control.py 已有的 COMPLEXITY_TO_MODEL 映射 + suggest_model()
+        T5-4: model_to_family 映射从 JSON 配置加载
         """
         try:
             from src.core.cost_control import get_cost_controller
@@ -1009,21 +1051,34 @@ class LiteLLMPool:
             cc = get_cost_controller()
             # suggest_model 已内置预算降级逻辑（>70%用免费，>90%强制免费）
             suggested = cc.suggest_model(complexity)
-            # 将模型名映射回 family 名
-            model_to_family = {
-                "qwen3-235b": "qwen",
-                "claude-haiku-3.5": "claude",
-                "claude-sonnet-4": "claude",
-                "claude-opus-4": "claude",
-                "deepseek-v3": "deepseek",
-                "gemini-2.5-flash": "gemini",
-            }
+            # 从 JSON 配置加载 model→family 映射，fallback 到硬编码默认值
+            model_to_family = self._get_smart_route_mapping()
             family = model_to_family.get(suggested, "qwen")
             logger.debug("[SmartRoute] 复杂度=%s → 建议=%s → family=%s", complexity, suggested, family)
             return family
         except Exception as e:
             logger.debug("[SmartRoute] 降级到 _pick_strongest_family: %s", e)
             return self._pick_strongest_family()
+
+    def _get_smart_route_mapping(self) -> dict:
+        """获取 smart_route 的 model→family 映射 — 优先从 JSON 加载"""
+        _default = {
+            "qwen3-235b": "qwen",
+            "claude-haiku-3.5": "claude",
+            "claude-sonnet-4": "claude",
+            "claude-opus-4": "claude",
+            "deepseek-v3": "deepseek",
+            "gemini-2.5-flash": "gemini",
+        }
+        try:
+            if hasattr(self, "_routing_config") and self._routing_config:
+                mapping = self._routing_config.get("smart_route_model_to_family", {})
+                result = {k: v for k, v in mapping.items() if not k.startswith("_")}
+                if result:
+                    return result
+        except Exception:
+            pass
+        return _default
 
     def _pick_strongest_family(self) -> str:
         best_fam, best_score = "g4f", 0
