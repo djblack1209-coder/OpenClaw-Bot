@@ -719,7 +719,7 @@ class SharedMemory:
                 if row and row["mem0_id"]:
                     self._mem0.delete(row["mem0_id"])
             except Exception as e:
-                logger.debug("[SharedMemory] Mem0 删除失败: %s", e)
+                logger.warning("[SharedMemory] Mem0 删除失败: %s", e)
 
         if category:
             result = conn.execute(
@@ -982,7 +982,7 @@ class SharedMemory:
                 logger.debug(f"[SharedMemory] 图谱扩展: +{len(related_rows)} 条关联记忆")
 
         except Exception as e:
-            logger.debug(f"[SharedMemory] 图谱扩展失败: {e}")
+            logger.warning("[SharedMemory] 图谱扩展失败: %s", e)
 
         return results[:limit]
 
@@ -1046,7 +1046,7 @@ class SharedMemory:
             if decayed_count > 0:
                 logger.info(f"[SharedMemory] 记忆衰减: {decayed_count} 条情景记忆 importance 降级")
         except Exception as e:
-            logger.debug(f"[SharedMemory] 记忆衰减失败: {e}")
+            logger.warning("[SharedMemory] 记忆衰减失败: %s", e)
 
         # 阶段2: LRU 淘汰 — 超过总量上限时，按低重要性+低访问+旧时间淘汰
         total = conn.execute("SELECT COUNT(*) FROM shared_memories").fetchone()[0]

@@ -436,7 +436,7 @@ class NotificationManager:
                 )
                 await send_to_wechat(wx_text)
         except Exception as e:
-            logger.debug("[通知] 微信桥接异常: %s", e)
+            logger.warning("[通知] 微信桥接异常: %s", e)
 
         return success
 
