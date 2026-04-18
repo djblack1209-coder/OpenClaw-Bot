@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Loader2, TrendingUp, ShoppingBag, Share2, Bot } from 'lucide-react';
+import { Activity, Loader2, TrendingUp, ShoppingBag, Share2, Bot, AlertCircle } from 'lucide-react';
 import { api, isTauri } from '@/lib/tauri';
 import clsx from 'clsx';
 
@@ -23,17 +23,18 @@ interface ActivityItem {
 
 /**
  * 最近活动时间线组件 - TradingView 风格
+ * 审计修复: 移除 Mock 数据，API 失败时展示空态而非虚假活动
  */
 export function RecentActivity() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchActivities = async () => {
       if (!isTauri()) {
+        // 非 Tauri 环境（浏览器开发），展示空态
         setLoading(false);
-        // 使用模拟数据
-        setActivities(getMockActivities());
         return;
       }
 
@@ -43,13 +44,10 @@ export function RecentActivity() {
         
         if ((data.activities && data.activities.length > 0) || (data.recent_activities && data.recent_activities.length > 0)) {
           setActivities(data.activities || data.recent_activities || []);
-        } else {
-          // 使用模拟数据
-          setActivities(getMockActivities());
         }
-      } catch (e) {
-        // 使用模拟数据
-        setActivities(getMockActivities());
+        // API 返回空数据时保持空态，不使用 Mock
+      } catch {
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -60,52 +58,6 @@ export function RecentActivity() {
     const interval = setInterval(fetchActivities, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  const getMockActivities = (): ActivityItem[] => {
-    const now = new Date();
-    return [
-      {
-        id: '1',
-        type: 'trading',
-        title: '交易执行',
-        description: '买入 AAPL 100 股 @ $150.25',
-        timestamp: new Date(now.getTime() - 5 * 60000).toISOString(),
-        status: 'success',
-      },
-      {
-        id: '2',
-        type: 'xianyu',
-        title: '闲鱼客服',
-        description: '自动回复买家咨询 3 条',
-        timestamp: new Date(now.getTime() - 15 * 60000).toISOString(),
-        status: 'success',
-      },
-      {
-        id: '3',
-        type: 'social',
-        title: '社媒发布',
-        description: '发布小红书笔记《投资心得分享》',
-        timestamp: new Date(now.getTime() - 45 * 60000).toISOString(),
-        status: 'success',
-      },
-      {
-        id: '4',
-        type: 'trading',
-        title: '风控提醒',
-        description: '持仓 TSLA 回撤超过 5%',
-        timestamp: new Date(now.getTime() - 90 * 60000).toISOString(),
-        status: 'warning',
-      },
-      {
-        id: '5',
-        type: 'system',
-        title: '系统启动',
-        description: 'OpenClaw Bot 服务已启动',
-        timestamp: new Date(now.getTime() - 120 * 60000).toISOString(),
-        status: 'success',
-      },
-    ];
-  };
 
   const getActivityIcon = (type: ActivityType) => {
     switch (type) {
@@ -159,6 +111,22 @@ export function RecentActivity() {
         {loading ? (
           <div className="flex items-center justify-center h-[400px]">
             <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-500)]" />
+          </div>
+        ) : activities.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[400px] text-center">
+            {error ? (
+              <>
+                <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)] mb-2" />
+                <p className="text-sm text-[var(--text-secondary)]">活动数据加载失败</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">请检查后端服务是否运行</p>
+              </>
+            ) : (
+              <>
+                <Activity className="h-8 w-8 text-[var(--text-tertiary)] mb-2" />
+                <p className="text-sm text-[var(--text-secondary)]">暂无活动记录</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">系统运行后自动展示</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-4 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-default)] scrollbar-track-transparent">
