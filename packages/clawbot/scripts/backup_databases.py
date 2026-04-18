@@ -34,6 +34,8 @@ DATABASES = [
     "feedback.db",
     "cost_analytics.db",
     "deploy_licenses.db",
+    "novels.db",
+    "auto_shipper.db",
 ]
 
 
