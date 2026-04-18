@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import clsx from 'clsx';
 import {
   User,
   Shield,
@@ -56,9 +57,11 @@ interface SettingsProps {
 }
 
 export function Settings({ onEnvironmentChange }: SettingsProps) {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     const saved = localStorage.getItem('openclaw-theme');
-    return (saved === 'light' ? 'light' : 'dark');
+    if (saved === 'light') return 'light';
+    if (saved === 'system') return 'system';
+    return 'dark';
   });
 
   // 开发者模式：三击版本号解锁
@@ -89,11 +92,25 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
 
   // 初始化主题：页面加载时根据 localStorage 设置 DOM class
   // Tailwind darkMode: "class" 需要在 <html> 上切换 dark 类
+  // 支持 'system' 模式：监听 prefers-color-scheme 媒体查询
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    const applyTheme = (isDark: boolean) => {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    if (theme === 'system') {
+      // 跟随系统：读取当前系统偏好并监听变化
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      applyTheme(mq.matches);
+      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
     } else {
-      document.documentElement.classList.remove('dark');
+      applyTheme(theme === 'dark');
     }
   }, [theme]);
 
@@ -551,23 +568,31 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-white/80">主题模式</p>
-              <p className="text-xs text-white/40 mt-0.5">切换深色/浅色主题</p>
+              <p className="text-xs text-white/40 mt-0.5">选择深色、浅色或跟随系统</p>
             </div>
-            <button
-              onClick={() => {
-                const next = theme === 'dark' ? 'light' : 'dark';
-                setTheme(next);
-                localStorage.setItem('openclaw-theme', next);
-                if (next === 'dark') {
-                  document.documentElement.classList.add('dark');
-                } else {
-                  document.documentElement.classList.remove('dark');
-                }
-              }}
-              className="px-3 py-1.5 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600"
-            >
-              {theme === 'dark' ? '🌙 深色' : '☀️ 浅色'}
-            </button>
+            <div className="flex gap-1 bg-dark-700 rounded-lg p-0.5">
+              {([
+                { value: 'dark' as const, label: '🌙 深色' },
+                { value: 'light' as const, label: '☀️ 浅色' },
+                { value: 'system' as const, label: '💻 系统' },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setTheme(opt.value);
+                    localStorage.setItem('openclaw-theme', opt.value);
+                  }}
+                  className={clsx(
+                    'px-2.5 py-1 rounded-md text-xs transition-colors',
+                    theme === opt.value
+                      ? 'bg-dark-500 text-white font-medium'
+                      : 'text-white/50 hover:text-white/80'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
