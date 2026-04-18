@@ -27,13 +27,20 @@ async def _restore_open_positions():
             open_trades = tj.get_open_trades()
             for t in open_trades:
                 try:
+                    # HI-574: 解析 entry_time，失败时记录 WARNING 并降级为当前时间
+                    _parsed_entry_time = _parse_datetime(t["created_at"]) if t.get("created_at") else None
+                    if t.get("created_at") and _parsed_entry_time is None:
+                        logger.warning(
+                            "[TradingSystem] 持仓 %s (id=%s) 的 created_at 解析失败('%s')，降级为当前时间",
+                            t.get("symbol"), t.get("id"), t.get("created_at"),
+                        )
                     pos = MonitoredPosition(
                         trade_id=t["id"],
                         symbol=t["symbol"],
                         side=t.get("side", "BUY"),
                         quantity=float(t.get("quantity", 0)),
                         entry_price=float(t.get("entry_price", 0)),
-                        entry_time=_parse_datetime(t["created_at"]) or now_et() if t.get("created_at") else now_et(),
+                        entry_time=_parsed_entry_time or now_et(),
                         stop_loss=float(t.get("stop_loss", 0) or 0),
                         take_profit=float(t.get("take_profit", 0) or 0),
                         trailing_stop_pct=0.03,

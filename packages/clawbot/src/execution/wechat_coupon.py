@@ -41,8 +41,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 模块级别 HTTP 客户端（自动重试 + 熔断）
-# verify_ssl=False: macOS Python 3.12 的 certifi 证书链不完整，调用微信 API 时会报 SSL 错误
-_http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon", verify_ssl=False)
+# 默认启用 SSL 验证。如果遇到 certifi 证书链问题，请设置环境变量 SSL_CERT_FILE 指向正确的 CA 证书
+_http = ResilientHTTPClient(timeout=15.0, name="wechat_coupon", verify_ssl=True)
 
 # ── 常量 ──────────────────────────────────────────────
 
@@ -65,7 +65,8 @@ _APP_ID = "wxdb3c0e388702f785"
 # 微信 URL Scheme（打开小程序）
 _MINI_PROGRAM_URL = f"weixin://launchapplet/?app_id={_APP_ID}"
 # token 临时文件路径（与 mitm_token_addon.py 约定）
-_TOKEN_FILE = Path(os.getenv("COUPON_TOKEN_FILE", "/tmp/wechat_coupon_token.txt"))
+# 默认存储在用户目录下，避免 /tmp 被其他进程读取导致凭证泄露
+_TOKEN_FILE = Path(os.getenv("COUPON_TOKEN_FILE", os.path.expanduser("~/.openclaw/wechat_coupon_token.txt")))
 # mitm addon 脚本路径
 _MITM_ADDON = Path(__file__).parent.parent.parent / "scripts" / "mitm_token_addon.py"
 # 最大重试次数
@@ -136,6 +137,8 @@ def save_token_persistent(token: str) -> None:
     """
     try:
         _PERSISTENT_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+        # 目录权限设为 700，仅当前用户可访问
+        os.chmod(_PERSISTENT_TOKEN_DIR, 0o700)
         now = datetime.now(timezone.utc)
         data = {
             "token": token,
@@ -146,6 +149,8 @@ def save_token_persistent(token: str) -> None:
             json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        # 文件权限设为 600，仅当前用户可读写，防止凭证泄露
+        os.chmod(_PERSISTENT_TOKEN_PATH, 0o600)
         logger.info("token 已持久化保存到 %s", _PERSISTENT_TOKEN_PATH)
     except OSError as e:
         logger.error("持久化保存 token 失败: %s", e)
@@ -309,6 +314,10 @@ async def claim_with_saved_token() -> str:
 def _set_macos_proxy(enable: bool) -> bool:
     """设置或恢复 macOS 系统 HTTP/HTTPS 代理
 
+    ⚠️ 危险操作：此函数修改系统级网络代理设置，影响本机所有应用程序的网络流量。
+    如果进程异常退出导致代理未恢复，所有应用（浏览器、邮件等）将无法联网。
+    调用方必须确保在 finally 块中调用 _set_macos_proxy(False) 恢复代理。
+
     使用 networksetup 命令操作。开启时指向 127.0.0.1:8080，
     关闭时恢复为直连。
 
@@ -320,6 +329,13 @@ def _set_macos_proxy(enable: bool) -> bool:
     """
     try:
         if enable:
+            logger.warning(
+                "⚠️ 即将修改系统级网络代理设置 → 127.0.0.1:%d，"
+                "这会影响本机所有应用程序的网络流量。"
+                "如果进程异常退出，请手动执行: "
+                "%s -setwebproxystate %s off && %s -setsecurewebproxystate %s off",
+                _PROXY_PORT, _NETWORKSETUP, _NETWORK_SERVICE, _NETWORKSETUP, _NETWORK_SERVICE,
+            )
             # 设置 HTTP 代理
             subprocess.run(
                 [_NETWORKSETUP, "-setwebproxy", _NETWORK_SERVICE, "127.0.0.1", str(_PROXY_PORT)],
@@ -354,6 +370,19 @@ def _set_macos_proxy(enable: bool) -> bool:
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         logger.error("代理设置失败: %s", e)
+        if enable:
+            # 开启代理失败时，尝试恢复直连，避免处于半开状态
+            try:
+                subprocess.run(
+                    [_NETWORKSETUP, "-setwebproxystate", _NETWORK_SERVICE, "off"],
+                    capture_output=True, timeout=10,
+                )
+                subprocess.run(
+                    [_NETWORKSETUP, "-setsecurewebproxystate", _NETWORK_SERVICE, "off"],
+                    capture_output=True, timeout=10,
+                )
+            except Exception:
+                logger.error("⚠️ 代理恢复也失败了！请手动关闭系统代理")
         return False
 
 
@@ -377,6 +406,9 @@ def _start_mitmdump() -> Optional[subprocess.Popen]:
         # 设置环境变量让 addon 知道 token 写入路径
         env = os.environ.copy()
         env["COUPON_TOKEN_FILE"] = str(_TOKEN_FILE)
+
+        # 确保 token 文件的父目录存在
+        _TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
 
         proc = subprocess.Popen(
             [
