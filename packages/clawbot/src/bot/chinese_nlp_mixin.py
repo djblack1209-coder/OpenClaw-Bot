@@ -565,6 +565,9 @@ def _match_chinese_command(text=None):
         return ("autotrader_start", "")
     if re.search("停止自动|关闭自动|自动交易停止", cleaned):
         return ("autotrader_stop", "")
+    # 模式: "自动交易状态" / "自动交易怎么样" (查询自动交易运行情况)
+    if re.search("自动交易状态|自动交易情况|自动交易怎么样", cleaned):
+        return ("autotrader_status", "")
 
     # ── 高级回测分析（优先于普通回测匹配） ──
     # 蒙特卡洛模拟: "蒙特卡洛 AAPL" / "蒙特卡洛模拟 苹果"
