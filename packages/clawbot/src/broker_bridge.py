@@ -531,6 +531,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             positions = self.ib.positions(account=self.account)
             result = []
             for pos in positions:
+                cost_basis = float(pos.position) * float(pos.avgCost)
                 result.append(
                     {
                         "symbol": pos.contract.symbol,
@@ -539,8 +540,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         "currency": pos.contract.currency,
                         "quantity": float(pos.position),
                         "avg_cost": float(pos.avgCost),
-                        "market_value": float(pos.position) * float(pos.avgCost),  # 成本基础（IBKR 不直接提供实时市值）
-                        "cost_basis": float(pos.position) * float(pos.avgCost),
+                        # 注意: market_value 实际为成本基础(qty*avgCost)，非实时市值。
+                        # IBKR positions() 不提供实时市值，下游消费者应使用
+                        # quantity * current_price 计算真实市值。
+                        # 保留此字段是为了向后兼容下游（cmd_trading_mixin/telegram_ux/charts 等）。
+                        "market_value": cost_basis,
+                        "cost_basis": cost_basis,
                     }
                 )
             return result
