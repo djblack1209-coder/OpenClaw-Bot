@@ -12,6 +12,38 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R6 macOS 核心页面审计（45 条目 / 8 修复 / 15 技术债）
+> 领域: `frontend`
+> 影响模块: `conversationService`, `AssetDistribution`, `RecentActivity`, `Assistant`, `Store`, `Channels`
+> 关联问题: R6 HI-550~557
+
+### R6 macOS 核心页面审计 (45 条目 / 8 修复)
+1. **SSE 超时修复 (HI-550)**: AI 对话 SSE 流式请求从 30s 默认超时改为无超时（`timeoutMs: 0`）
+2. **Mock 数据清理 (HI-551)**: AssetDistribution 移除 3 处硬编码假资产数据，改为空态展示 + 错误提示
+3. **Mock 数据清理 (HI-552)**: RecentActivity 移除虚假活动列表（买入AAPL等），改为空态展示
+4. **滚动优化 (HI-553)**: 流式消息追加时不再强制拉回底部，仅在用户已处于底部时自动滚动
+5. **Markdown 链接 (HI-554)**: 行内解析器新增 `[text](url)` 链接支持
+6. **会话 CRUD toast (HI-555)**: 4 处 catch 块从仅 console.error 改为 toast.error 用户可见提示
+7. **Store 背景修复 (HI-556)**: `bg-[#0D0F14]` 硬编码改为 `bg-[var(--bg-primary)]`，浅色模式适配
+8. **Channels 空状态 (HI-557)**: 零频道时展示友好空态提示而非空白
+
+### 技术债 (15 项 — 登记 HEALTH.md)
+- 模式切换不传递给后端 / 会话重命名缺失 / 删除无确认
+- Bot 详情页缺失 / SERVICE_META 硬编码 / LLM 模型列表硬编码
+- 运营设置脏状态检测缺失 / Store 静默降级 / 跟随系统主题缺失
+- 频道无新建删除 / 无实时连接状态 / Onboarding 无跳过按钮
+- Markdown 图片/有序列表/表格不支持
+
+### 文件变更
+- `apps/openclaw-manager-src/src/services/conversationService.ts` — SSE 超时禁用 + CRUD toast
+- `apps/openclaw-manager-src/src/components/Dashboard/AssetDistribution.tsx` — Mock 数据清理 + 空态 + 定时刷新
+- `apps/openclaw-manager-src/src/components/Dashboard/RecentActivity.tsx` — Mock 数据清理 + 空态
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 智能滚动 + Markdown 链接
+- `apps/openclaw-manager-src/src/components/Store/index.tsx` — 背景修复 + 降级提示
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — 空状态组件
+
+---
+
 ## 2026-04-19 — R3+R4+R5 三轮审计（120 条目 / 5 修复 / 19 技术债）
 > 领域: `backend`, `frontend`, `docs`
 > 影响模块: `callback_mixin`, `help_mixin`, `workflow_mixin`, `config.rs`, `tauri-core.ts`, `COMMAND_REGISTRY.md`
