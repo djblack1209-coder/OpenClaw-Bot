@@ -588,29 +588,36 @@ class InvestCommandsMixin:
     @with_typing
     async def cmd_watchlist(self, update, context):
         """自选股: /watchlist 或 /watchlist add AAPL 理由"""
-        args = context.args
-        if args and args[0].lower() == "add" and len(args) >= 2:
-            symbol = args[1].upper()
-            reason = " ".join(args[2:]) if len(args) > 2 else ""
-            result = portfolio.add_watchlist(symbol, added_by=self.name, reason=reason)
-            if "error" in result:
-                await update.message.reply_text(error_service_failed("自选股", result.get('error', '')))
-            else:
-                await update.message.reply_text(f"已添加 {symbol} 到自选股")
-            return
-        items = portfolio.get_watchlist()
-        if not items:
-            await update.message.reply_text("自选股为空\n\n添加: `/watchlist add AAPL 看好AI概念`", parse_mode="Markdown")
-            return
-        lines = ["自选股列表\n"]
-        for item in items:
-            line = f"- {item['symbol']}"
-            if item.get("reason"):
-                line += f" ({item['reason']})"
-            if item.get("added_by"):
-                line += f" [来自 {item['added_by']}]"
-            lines.append(line)
-        await send_long_message(update.effective_chat.id, "\n".join(lines), context, reply_to_message_id=update.message.message_id)
+        try:
+            args = context.args
+            if args and args[0].lower() == "add" and len(args) >= 2:
+                symbol = args[1].upper()
+                reason = " ".join(args[2:]) if len(args) > 2 else ""
+                result = portfolio.add_watchlist(symbol, added_by=self.name, reason=reason)
+                if "error" in result:
+                    await update.message.reply_text(error_service_failed("自选股", result.get('error', '')))
+                else:
+                    await update.message.reply_text(f"已添加 {symbol} 到自选股")
+                return
+            items = portfolio.get_watchlist()
+            if not items:
+                await update.message.reply_text("自选股为空\n\n添加: `/watchlist add AAPL 看好AI概念`", parse_mode="Markdown")
+                return
+            lines = ["自选股列表\n"]
+            for item in items:
+                line = f"- {item['symbol']}"
+                if item.get("reason"):
+                    line += f" ({item['reason']})"
+                if item.get("added_by"):
+                    line += f" [来自 {item['added_by']}]"
+                lines.append(line)
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context, reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_watchlist] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
@@ -861,17 +868,24 @@ class InvestCommandsMixin:
     @with_typing
     async def cmd_reset_portfolio(self, update, context):
         """重置投资组合: /reset_portfolio"""
-        args = context.args
-        capital = 100000
-        if args:
+        try:
+            args = context.args
+            capital = 100000
+            if args:
+                try:
+                    capital = float(args[0])
+                except ValueError as e:  # noqa: F841
+                    await update.message.reply_text("⚠️ 资金参数无效 '%s'，使用默认值$100,000" % args[0])
+            result = portfolio.reset_portfolio(initial_capital=capital)
+            await update.message.reply_text(
+                f"投资组合已重置\n\n"
+                f"初始资金: ${result['initial_capital']:,.2f}\n"
+                f"现金: ${result['cash']:,.2f}\n"
+                f"交易记录已清空"
+            )
+        except Exception as e:
+            logger.warning("[cmd_reset_portfolio] 执行失败: %s", e)
             try:
-                capital = float(args[0])
-            except ValueError as e:  # noqa: F841
-                await update.message.reply_text("⚠️ 资金参数无效 '%s'，使用默认值$100,000" % args[0])
-        result = portfolio.reset_portfolio(initial_capital=capital)
-        await update.message.reply_text(
-            f"投资组合已重置\n\n"
-            f"初始资金: ${result['initial_capital']:,.2f}\n"
-            f"现金: ${result['cash']:,.2f}\n"
-            f"交易记录已清空"
-        )
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
