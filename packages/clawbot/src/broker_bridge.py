@@ -890,9 +890,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         available = summary.get("AvailableFunds", {}).get("value", 0)
         net_liq = summary.get("NetLiquidation", {}).get("value", 0)
         if available > 0:
-            self.budget = min(available, net_liq) if net_liq > 0 else available
-            self.total_spent = 0.0
-            self._save_budget_state()
+            async with self._budget_lock:
+                self.budget = min(available, net_liq) if net_liq > 0 else available
+                self.total_spent = 0.0
+                self._save_budget_state()
             logger.info("[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 预算设为=$%.2f", available, net_liq, self.budget)
         return self.budget
 
