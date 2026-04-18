@@ -12,6 +12,36 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R9 闲鱼+社媒+微信+工具链审计（35 条目 / 4 修复 / 14 技术债）
+> 领域: `xianyu`, `backend`, `security`
+> 影响模块: `xianyu_live`, `xianyu.py(API)`, `jina_reader`, `drafts`, `wechat_coupon`, `wechat_bridge`
+> 关联问题: R9 HI-577~589
+
+### R9 闲鱼+社媒+微信+工具链审计 (35 条目 / 4 修复)
+1. **License LIKE 注入修复 (HI-577a)**: `LIKE '%buyer_id%'` 模糊匹配可能错误吊销其他用户 License → 改为精确匹配
+2. **API limit 校验 (HI-578a)**: get_xianyu_conversations 的 limit 参数无上限 → 添加 `min(max(1,limit),100)`
+3. **floor 变量未初始化 (HI-579a)**: 底价变量在 if 块内赋值、块外引用可能 NameError → 初始化 `floor = None`
+4. **Jina URL 编码 (HI-580a)**: 查询参数未 URL 编码直接拼接 → `urllib.parse.quote(query)`
+
+### 审计通过项 (17 项)
+- 闲鱼 WebSocket 心跳/重连/熔断器正常运行
+- 10msg/min 频率限制 + prompt 注入防护 + sanitize_input 安全消毒
+- 社媒 browser-use 浏览器生命周期管理 + 排期准确性
+- 微信 iLink API 推送 + TypeScript 插件架构合理
+- OMEGA 工具链: Jina/TTS/OCR 超时控制到位
+
+### 技术债 (14 项 — 登记 HEALTH.md)
+- app-key 硬编码 / _notified_chats 粗暴清空 / 底价 10 倍上限 / 自动发货阻塞
+- License 明文消息 / API 端点无认证 / Cookie 响应明文 / prompt injection 风险
+- 草稿内存存储 / 微信凭证全局变量 / SSL 验证禁用 / Token /tmp 全局可读 / 系统代理影响
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — LIKE 注入修复 + floor 初始化
+- `packages/clawbot/src/api/routers/xianyu.py` — limit 参数校验
+- `packages/clawbot/src/tools/jina_reader.py` — URL 编码
+
+---
+
 ## 2026-04-19 — R8 投资交易系统深度审计（40 条目 / 4 修复 / 10 技术债）
 > 领域: `trading`, `backend`
 > 影响模块: `broker_bridge`, `trading_pipeline`, `auto_trader`, `ai_team_voter`, `risk_manager`, `position_monitor`

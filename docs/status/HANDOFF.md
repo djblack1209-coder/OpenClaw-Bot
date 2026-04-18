@@ -4,32 +4,37 @@
 
 ---
 
-## [2026-04-19] 全方位审计 v3.0 — R8 投资交易系统审计完成
+## [2026-04-19] 全方位审计 v3.0 — R8+R9 交易+闲鱼审计完成
 
 ### 本次完成了什么
 1. **R8 投资交易系统深度审计**: 40 条目 / 4 修复 / 10 技术债
-   - broker_bridge.py connect() asyncio.Lock 递归死锁修复（🔴 CRITICAL）
-   - trading_pipeline.py DecisionValidator 异常放行→fail-closed（🟠 HIGH）
-   - auto_trader.py 风控计算失败时 20% fallback 绕过→跳过候选（🟠 HIGH）
-   - ai_team_voter.py 异常导致假 HOLD 票计入共识→标记 abstained（🟠 HIGH）
-2. **全量代码审查**: 51 个交易相关文件 / 20,129 行代码
-3. **审计通过确认**: 风控 Validator 链架构优秀 / VaR-CVaR 集成完备 / 阶梯熔断+凯利公式正常
+   - IBKR connect() asyncio.Lock 递归死锁修复（🔴）
+   - DecisionValidator 异常放行→fail-closed（🟠）
+   - AutoTrader 风控绕过→跳过候选（🟠）
+   - AI 投票异常假 HOLD 票→abstained（🟠）
+2. **R9 闲鱼+社媒+微信+工具链审计**: 35 条目 / 4 修复 / 14 技术债
+   - License LIKE 注入→精确匹配（🔴）
+   - API limit 参数无上限→min/max 校验（🟠）
+   - floor 变量未初始化→None 初始化（🟠）
+   - Jina 查询未 URL 编码→quote()（🟠）
+3. **两轮共计**: 75 条目 / 8 修复 / 24 技术债
 
 ### 未完成的工作
-- **R9-R11**: 3 轮审计待执行（约 90 个条目）
-- **R9 下一轮**: 闲鱼+社媒+微信+工具链审计
+- **R10-R11**: 2 轮审计待执行（约 55 个条目）
+- **R10 下一轮**: 生产部署与运维审计（VPS/Docker/心跳/监控/备份）
 
 ### 需要注意的坑
-- IBKR 失败静默降级到模拟盘（HI-569）——可能产生幽灵持仓，需要明确标记降级来源
-- _daily_risk_reset 中 ibkr.reset_budget() 硬编码 $2000（HI-573）——如果用户改了预算会被覆盖
-- /ibuy 和 /isell 命令直接调用 ibkr 绕过 TradingPipeline（HI-575）——手动交易不进 journal
-- position_monitor 的时间止损有 naive/aware datetime 混合风险（HI-570）
+- /xianyu/* API 端点全部无认证（HI-582）——最大安全风险，任何人可查看对话
+- IBKR 失败静默降级模拟盘（HI-569）——幽灵持仓风险
+- wechat_coupon.py SSL 验证禁用（HI-587）——中间人攻击
+- 草稿系统纯内存存储（HI-585）——重启丢失
 
 ### 当前系统状态
-- Git: 干净，R8 修复已提交
-- 交易测试: 241 passed / 22 failed（与基线一致，0 回归）
-- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5 ✅ / R6 ✅ / R7 ✅ / R8 ✅ / R9-R11 待执行
-- 继续指令: `继续审计任务`（AI 自动定位到 R9）
+- Git: 干净，R8+R9 修复已提交
+- 交易测试: 241 passed / 22 failed（基线一致）
+- 闲鱼/社媒测试: 27 passed / 7 failed（基线一致）
+- 审计进度: R1-R9 ✅ / R10-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动定位到 R10）
 
 ---
 
