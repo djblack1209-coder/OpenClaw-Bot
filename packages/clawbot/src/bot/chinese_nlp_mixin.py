@@ -152,7 +152,8 @@ def _match_chinese_command(text=None):
         product = m_shop2.group(1).strip()
         return ("smart_shop", product)
     m_shop3 = re.search(r"(?:我想买|想买个?|想入手)\s*(.{2,30})", cleaned)
-    if m_shop3 and not re.search(r"股|手|份|期权|基金|债券|ETF", cleaned):
+    # 排除投资上下文 — "手"仅在量词用法时排除（"500手"），不排除"入手"这种动词
+    if m_shop3 and not re.search(r"股|份|期权|基金|债券|ETF|\d+手", cleaned):
         product = m_shop3.group(1).strip()
         ticker = _resolve_chinese_ticker(product)
         if not ticker:
@@ -298,6 +299,9 @@ def _match_chinese_command(text=None):
         _PRE + r"(?:清空|清空对话|重置对话|重置会话|清空聊天|清空记录|清除记录|删掉对话|重新开始)" + _SUF, cleaned
     ):
         return ("clear", "")
+    # 自动交易状态（放在基础"状态"之前，防止被泛匹配拦截）
+    if re.search("自动交易状态|自动交易情况|自动交易怎么样", cleaned):
+        return ("autotrader_status", "")
     if re.search(_PRE + r"(?:状态|查看状态|机器人状态|系统状态|运行状态|你的状态)" + _SUF, cleaned):
         return ("status", "")
     if re.search(_PRE + r"(?:配置|配置状态|当前配置|运行配置)" + _SUF, cleaned):
@@ -565,9 +569,6 @@ def _match_chinese_command(text=None):
         return ("autotrader_start", "")
     if re.search("停止自动|关闭自动|自动交易停止", cleaned):
         return ("autotrader_stop", "")
-    # 模式: "自动交易状态" / "自动交易怎么样" (查询自动交易运行情况)
-    if re.search("自动交易状态|自动交易情况|自动交易怎么样", cleaned):
-        return ("autotrader_status", "")
 
     # ── 高级回测分析（优先于普通回测匹配） ──
     # 蒙特卡洛模拟: "蒙特卡洛 AAPL" / "蒙特卡洛模拟 苹果"
