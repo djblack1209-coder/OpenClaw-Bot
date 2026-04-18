@@ -23,6 +23,16 @@ from litellm.router import Router
 
 logger = logging.getLogger(__name__)
 
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """记录后台任务异常，避免幽灵任务"""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.error("后台任务异常: %s", exc, exc_info=exc)
+
+
 # ============ LLM 超时常量（秒） ============
 # Provider 级别超时 — 根据各平台推理速度和稳定性设定
 LLM_TIMEOUT_SILICONFLOW = 45  # SiliconFlow 大模型请求超时
@@ -918,7 +928,8 @@ class LiteLLMPool:
             self._startup_summary_pending = False
             import asyncio
 
-            asyncio.create_task(self.send_startup_health_summary())
+            _task = asyncio.create_task(self.send_startup_health_summary())
+            _task.add_done_callback(_log_task_exception)
 
         # ── 智能路由: 根据查询复杂度 + 预算状态自动选模型 ──
         # 调用方传了 model_family 则尊重（如 FAMILY_CLAUDE 显式请求）

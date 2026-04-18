@@ -4,6 +4,7 @@ IBKR 实盘命令 Mixin — 从 multi_main.py L1488-L1649 提取
 """
 import logging
 
+from src.trading_journal import TradingJournal
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
 from src.constants import ERR_LIMIT_PRICE_INVALID
@@ -83,6 +84,20 @@ class IBKRCommandsMixin:
                  result["order_id"], ibkr.get_budget_status())
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
+            # HI-575: 手动交易也记录到 journal，确保交易历史完整
+            try:
+                journal = TradingJournal()
+                journal.open_trade(
+                    symbol=result["symbol"],
+                    side="BUY",
+                    quantity=result["quantity"],
+                    entry_price=result["avg_price"] if result["avg_price"] > 0 else limit_price,
+                    decided_by=self.name,
+                    entry_reason="Telegram手动下单 /ibuy",
+                    entry_order_id=str(result["order_id"]),
+                )
+            except Exception as e:
+                logger.warning("[IBKR] 手动交易记录失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -128,6 +143,20 @@ class IBKRCommandsMixin:
                  result["order_id"])
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
+            # HI-575: 手动卖出也记录到 journal
+            try:
+                journal = TradingJournal()
+                journal.open_trade(
+                    symbol=result["symbol"],
+                    side="SELL",
+                    quantity=result["quantity"],
+                    entry_price=result["avg_price"] if result["avg_price"] > 0 else limit_price,
+                    decided_by=self.name,
+                    entry_reason="Telegram手动下单 /isell",
+                    entry_order_id=str(result["order_id"]),
+                )
+            except Exception as e:
+                logger.warning("[IBKR] 手动交易记录失败: %s", e)
 
     @requires_auth
     @with_typing
