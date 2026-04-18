@@ -40,6 +40,11 @@ class ChannelCreate(BaseModel):
 
 def _headers() -> dict[str, str]:
     """构建请求头 — 携带管理员令牌"""
+    if not _NEWAPI_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="NEWAPI_ADMIN_TOKEN 未配置，无法访问 New-API 管理接口",
+        )
     return {
         "Authorization": f"Bearer {_NEWAPI_TOKEN}",
         "Content-Type": "application/json",

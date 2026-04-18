@@ -153,6 +153,8 @@ def update_proposal(proposal_id: str, req: StatusUpdateRequest):
         if ok:
             return {"status": "ok", "message": f"提案 {proposal_id} 已更新为 '{req.status}'"}
         raise HTTPException(status_code=404, detail=f"提案 {proposal_id} 未找到")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("更新提案状态失败 (proposal_id=%s)", proposal_id)
         raise HTTPException(status_code=500, detail=_safe_error(e))
