@@ -159,15 +159,15 @@
 | HI-528 | `backend` | SQLite 全部 6 实例 | TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36) | 2026-04-18 |
 | HI-529 | `backend` | `src/bot/cmd_*.py` | TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45) | 2026-04-19 |
 | HI-530 | `backend` | `src/bot/workflow_mixin.py` | ~~TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法~~ → **已修复 2026-04-18**: 文件从 461 行精简到 122 行，删除 23 个死方法，仅保留 `_cmd_smart_shop` 和 `_extract_json_object` | 2026-04-19 |
-| HI-531 | `backend` | `cmd_basic/help_mixin.py` | TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖（/calc, /chart, /drl, /factors, /icancel, /tts, /novel, /evolution, /coupon 等），用户无法通过帮助菜单发现这些命令 (R3.04) | 2026-04-19 |
+| HI-531 | `backend` | `cmd_basic/help_mixin.py` | ~~TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖~~ → **已修复 2026-04-18**: 29 个命令按功能归类补入帮助菜单（日常/社媒/投资/IBKR/高级/闲鱼 6 个分类） | 2026-04-19 |
 | HI-535 | `backend` | `src/modules/investment/` | TECH_DEBT: AI 投票系统只追踪共识决策的准确率，不追踪单个模型的独立预测准确率，无法评估哪个 AI 分析师表现最好 (R4.03) | 2026-04-19 |
-| HI-536 | `backend` | `invest_tools.py` | TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据——缺少 stale-data fallback (R4.04) | 2026-04-19 |
-| HI-537 | `backend` | `freqtrade_bridge.py` | TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用，freqtrade 集成路径实际为死代码；策略类正确但从未被连接 (R4.06) | 2026-04-19 |
+| HI-536 | `backend` | `invest_tools.py` | ~~TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据~~ → **已修复 2026-04-18**: `_get_cached_quote` 新增 `allow_stale` 参数，`_sync_get_quote` 失败时返回带 `_stale=True` 标记的过期缓存 | 2026-04-19 |
+| HI-537 | `backend` | `freqtrade_bridge.py` | ~~TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用~~ → **已标记 2026-04-18**: 添加详细注释说明此方法为回测降级路径，未接入主启动流程 | 2026-04-19 |
 | HI-538 | `backend` | `src/execution/social/` | TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式，Weibo/Discord/WeChat 定义了限制参数但无实际发布实现；添加新平台需改多个文件 (R4.13) | 2026-04-19 |
-| HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | TECH_DEBT: 存在两套平行的草稿系统——Telegram 命令用的内存 `_draft_store` 重启即丢失，自动驾驶用的 JSON 文件持久化。两者数据不同步 (R4.16) | 2026-04-19 |
+| HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | ~~TECH_DEBT: 存在两套平行的草稿系统~~ → **已确认关闭 2026-04-18**: HI-585 已将 drafts.py 改为 JSON 持久化，social_scheduler 和 execution 均通过 drafts 模块操作，不再有两套数据源 | 2026-04-19 |
 | HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大 (R4.28) | 2026-04-19 |
 | HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
-| HI-542 | `backend` | `notifications.py` + `event_bus.py` | TECH_DEBT: 通知系统无 shutdown flush 机制——进程被 kill 时正在发送的通知会静默丢失；EventBus 也没有 drain pending tasks (R4.40) | 2026-04-19 |
+| HI-542 | `backend` | `notifications.py` + `event_bus.py` | ~~TECH_DEBT: 通知系统无 shutdown flush 机制~~ → **已修复 2026-04-18**: NotificationManager 新增 `shutdown()` 方法；EventBus 新增 `shutdown()` 方法（清理订阅+统计日志） | 2026-04-19 |
 | HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程（应使用 `tokio::task::spawn_blocking` 或改为 async），影响有限因仅在手动停止服务时触发 (R5.14) | 2026-04-19 |
 | HI-544 | `frontend` | `src-tauri/src/commands/` | TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型，`thiserror` crate 已引入但未使用。前端无法程序化区分错误类型 (R5.14) | 2026-04-19 |
 | HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型，无集中式命令白名单。`IBKR_START_CMD`/`IBKR_STOP_CMD` 从 .env 读取后直接 `bash -c` 执行 (R5.13) | 2026-04-19 |
@@ -189,10 +189,10 @@
 | HI-565 | `frontend` | `AIConfig/index.tsx` | TECH_DEBT: 模型切换后前端立刻更新但后端需重启才生效，缺少重启提示。Token 创建和渠道编辑 UI 未实现 (R7.35/R7.36) | 2026-04-19 |
 | HI-566 | `frontend` | `Scheduler/index.tsx` | TECH_DEBT: 定时任务仅有启停切换——缺少创建/编辑/删除。只展示最后一次执行，无历史记录列表 (R7.39/R7.40) | 2026-04-19 |
 | HI-567 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: total_spent/budget 浮点属性在异步环境中 read-modify-write 不原子~~ → **已修复 2026-04-19**: 新增 `self._budget_lock = asyncio.Lock()`，买入预算检查/扣预算/卖出释放/sync_capital 四处加锁 | 2026-04-19 |
-| HI-568 | `trading` | `broker_bridge.py` | TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值，字段名误导下游消费者 (R8.14) | 2026-04-19 |
+| HI-568 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值~~ → **已修复 2026-04-18**: 添加详细注释提醒下游使用 qty*current_price 计算真实市值，代码提取 cost_basis 变量消除重复计算 | 2026-04-19 |
 | HI-569 | `trading` | `trading_pipeline.py` | ~~TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行~~ → **已修复 2026-04-19**: 降级执行明确标记 `status="simulated"` + `simulated=True`，无 portfolio 时返回错误而非静默成功 | 2026-04-19 |
 | HI-570 | `trading` | `position_monitor.py` | ~~BUG(低频): 时间止损中 naive/aware datetime 混合比较~~ → **已修复 2026-04-19**: 比较前检测两者 tzinfo 状态，统一为同类型后再做减法 | 2026-04-19 |
-| HI-571 | `trading` | `position_monitor.py` | TECH_DEBT: _check_proximity_alert 只支持 BUY 方向，做空(SELL)方向的止损接近预警完全缺失。_cleanup_stale_cooldowns 已定义但从未被调用 (R8.29) | 2026-04-19 |
+| HI-571 | `trading` | `position_monitor.py` | ~~TECH_DEBT: _check_proximity_alert 只支持 BUY 方向~~ → **已修复 2026-04-18**: 扩展为同时支持 BUY/SELL 两个方向；`_cleanup_stale_cooldowns` 激活——在每次 `_check_all_positions` 末尾调用 | 2026-04-19 |
 | HI-572 | `trading` | `auto_trader.py` | ~~TECH_DEBT: confirm_proposal() 执行交易后不增加 _today_trades 计数~~ → **已修复 2026-04-19**: 执行成功后递增 `_today_trades += 1`，日交易限额正常生效 | 2026-04-19 |
 | HI-573 | `trading` | `_scheduler_daily.py` | ~~TECH_DEBT: _daily_risk_reset 中 ibkr.reset_budget() 硬编码 $2000~~ → **已修复 2026-04-19**: `reset_budget` 默认从 `IBKR_BUDGET` 环境变量读取；调用方传 `_ibkr.budget` 保留当前预算 | 2026-04-19 |
 | HI-574 | `trading` | `_lifecycle.py` | ~~TECH_DEBT: 恢复持仓时 entry_time 解析失败静默回退~~ → **已修复 2026-04-19**: 解析失败时记录 WARNING 日志（含 symbol/id/原始值），修复运算符优先级问题 | 2026-04-19 |
@@ -200,9 +200,9 @@
 | HI-576 | `trading` | `invest_tools.py` | ~~TECH_DEBT: get_earnings_calendar 中 naive/aware datetime 比较 + get_quick_quotes 串行~~ → **已修复 2026-04-19**: datetime 统一为 naive 比较 + get_quick_quotes 改为 asyncio.gather 并行 | 2026-04-19 |
 | HI-577 | `xianyu` | `xianyu_live.py:545` | ~~TECH_DEBT: app-key 硬编码~~ → **已修复 2026-04-19**: 默认值从代码中移除，改为 `XIANYU_APP_KEY` 环境变量读取，未设置时 WARNING | 2026-04-19 |
 | HI-578 | `xianyu` | `xianyu_live.py:826` | ~~TECH_DEBT: _notified_chats 超限时 clear() 粗暴清空~~ → **已修复 2026-04-19**: 改为 OrderedDict + `popitem(last=False)` FIFO 逐出最旧条目 | 2026-04-19 |
-| HI-579 | `xianyu` | `xianyu_live.py:860` | TECH_DEBT: 底价自动接受上限为 floor*10，应基于商品标价限制而非底价倍数 (R9.03) | 2026-04-19 |
+| HI-579 | `xianyu` | `xianyu_live.py:860` | ~~TECH_DEBT: 底价自动接受上限为 floor*10~~ → **已修复 2026-04-18**: 优先使用商品标价(soldPrice)作为上限，无标价时兜底保留 floor*10 | 2026-04-19 |
 | HI-580 | `xianyu` | `xianyu_live.py:730` | ~~TECH_DEBT: 自动发货 sleep(delay) 阻塞消息处理主路径最长 120 秒~~ → **已修复 2026-04-19**: 拆为 `_delayed_auto_ship` 独立 task + done_callback | 2026-04-19 |
-| HI-581 | `xianyu` | `xianyu_live.py:965` | SECURITY: License 凭证通过闲鱼消息明文发送，平台可见。且直接使用 _conn() 绕过封装层 (R9.03) | 2026-04-19 |
+| HI-581 | `xianyu` | `xianyu_live.py:965` | ~~SECURITY: License 凭证直接使用 _conn() 绕过封装层~~ → **已修复 2026-04-18**: 新增 `ctx.get_latest_chat_id()` 封装方法替代直接 SQL 查询；License 明文发送是业务需求（买家需获取激活码），日志已脱敏 | 2026-04-19 |
 | HI-582 | `xianyu` | `api/routers/xianyu.py` | ~~SECURITY: 所有 /xianyu/* API 端点无认证/授权检查~~ → **已修复 2026-04-19**: 路由级别添加 `dependencies=[Depends(verify_api_token)]`，所有端点强制 Token 认证 | 2026-04-19 |
 | HI-583 | `xianyu` | `api/routers/xianyu.py:123` | ~~SECURITY: QR 登录确认后 Cookie 在 API 响应中明文返回给前端~~ → **已修复 2026-04-19**: Cookie 保存到服务端 .env 文件，不再返回给前端 | 2026-04-19 |
 | HI-584 | `xianyu` | `xianyu_agent.py:318` | ~~SECURITY: 对话历史注入 system prompt 存在 prompt injection 风险~~ → **已修复 2026-04-19**: system_prompt 移到最前面 + 用户数据用 XML 标签隔离 + 安全警告加强 | 2026-04-19 |
