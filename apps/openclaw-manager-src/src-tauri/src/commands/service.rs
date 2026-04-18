@@ -4,6 +4,8 @@ use tauri::command;
 use std::process::Command;
 use std::time::Duration;
 use log::{info, debug};
+use regex::Regex;
+use once_cell::sync::Lazy;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -244,7 +246,29 @@ pub async fn restart_service() -> Result<String, String> {
     start_service().await
 }
 
+/// 日志脱敏正则：掩码 API Key / Token / Cookie / 密码等敏感信息
+static LOG_SCRUB_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| vec![
+    // Bearer Token
+    (Regex::new(r"(?i)Bearer\s+[A-Za-z0-9_\-./+=]{8,}").unwrap(), "Bearer ****"),
+    // 常见 Key 前缀: sk- / gsk_ / xai- / nvapi- / ghp_
+    (Regex::new(r"(?i)\b(sk-|gsk_|xai-|nvapi-|ghp_|glpat-)[A-Za-z0-9_\-./+=]{8,}").unwrap(), "$1****"),
+    // api_key=xxx / token=xxx / password=xxx 等 Key-Value 对
+    (Regex::new(r#"(?i)(api[_-]?key|token|secret|password|authorization|cookie|credential|app[_-]?key)[=:]\s*["']?[A-Za-z0-9_\-./+=]{8,}["']?"#).unwrap(), "$1=****"),
+    // JSON 格式敏感字段: "api_key": "xxx"
+    (Regex::new(r#"(?i)"(api[_-]?key|token|secret|password|authorization|cookie|app[_-]?key)"\s*:\s*"[^"]{8,}""#).unwrap(), r#""$1":"****""#),
+]);
+
+/// 对单行日志进行敏感信息脱敏
+fn scrub_log_line(line: &str) -> String {
+    let mut result = line.to_string();
+    for (pattern, replacement) in LOG_SCRUB_PATTERNS.iter() {
+        result = pattern.replace_all(&result, *replacement).to_string();
+    }
+    result
+}
+
 /// 获取日志（直接读取日志文件，比 RPC 更可靠）
+/// 返回前自动脱敏敏感信息（API Key / Token / Cookie / 密码）
 #[command]
 pub async fn get_logs(lines: Option<u32>) -> Result<Vec<String>, String> {
     let n = lines.unwrap_or(100);
@@ -276,7 +300,8 @@ pub async fn get_logs(lines: Option<u32>) -> Result<Vec<String>, String> {
                 for line in content.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
-                        all_lines.push(trimmed.to_string());
+                        // 脱敏后再加入结果
+                        all_lines.push(scrub_log_line(trimmed));
                     }
                 }
             }
