@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R10+R11 部署运维+端到端审计: 0修复 + 8技术债)
+> 最后更新: 2026-04-19 (技术债清理第1批: 15项安全+交易+配置修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -190,12 +190,12 @@
 | HI-566 | `frontend` | `Scheduler/index.tsx` | TECH_DEBT: 定时任务仅有启停切换——缺少创建/编辑/删除。只展示最后一次执行，无历史记录列表 (R7.39/R7.40) | 2026-04-19 |
 | HI-567 | `trading` | `broker_bridge.py` | TECH_DEBT: total_spent/budget 浮点属性在异步环境中 read-modify-write 不原子（如 L608 self.total_spent += ...），高并发下单可能预算追踪失准 (R8.11) | 2026-04-19 |
 | HI-568 | `trading` | `broker_bridge.py` | TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值，字段名误导下游消费者 (R8.14) | 2026-04-19 |
-| HI-569 | `trading` | `trading_pipeline.py` | TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行，可能导致监控系统认为有持仓但实际没有，止损触发时执行无效卖出（幽灵持仓风险）(R8.36) | 2026-04-19 |
+| HI-569 | `trading` | `trading_pipeline.py` | ~~TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行~~ → **已修复 2026-04-19**: 降级执行明确标记 `status="simulated"` + `simulated=True`，无 portfolio 时返回错误而非静默成功 | 2026-04-19 |
 | HI-570 | `trading` | `position_monitor.py` | BUG(低频): 时间止损中 naive/aware datetime 混合比较——当 entry.tzinfo 为 None 时 now_et()-entry 会抛 TypeError。影响有限因 entry_time 通常由系统生成（aware）(R8.29) | 2026-04-19 |
 | HI-571 | `trading` | `position_monitor.py` | TECH_DEBT: _check_proximity_alert 只支持 BUY 方向，做空(SELL)方向的止损接近预警完全缺失。_cleanup_stale_cooldowns 已定义但从未被调用 (R8.29) | 2026-04-19 |
-| HI-572 | `trading` | `auto_trader.py` | TECH_DEBT: confirm_proposal() 执行交易后不增加 _today_trades 计数，可能导致日交易数超限不被检测 (R8.38) | 2026-04-19 |
-| HI-573 | `trading` | `_scheduler_daily.py` | TECH_DEBT: _daily_risk_reset 中 ibkr.reset_budget() 无参数调用硬编码重置为 $2000 默认值，会覆盖用户通过 IBKR_BUDGET 或 sync_capital 设置的预算 (R8.35) | 2026-04-19 |
-| HI-574 | `trading` | `_lifecycle.py` | TECH_DEBT: 恢复持仓时 entry_time 解析逻辑——空字符串 created_at 会导致 _parse_datetime 返回 None，入场时间被替换为当前时间，时间止损计算错误 (R8.29) | 2026-04-19 |
+| HI-572 | `trading` | `auto_trader.py` | ~~TECH_DEBT: confirm_proposal() 执行交易后不增加 _today_trades 计数~~ → **已修复 2026-04-19**: 执行成功后递增 `_today_trades += 1`，日交易限额正常生效 | 2026-04-19 |
+| HI-573 | `trading` | `_scheduler_daily.py` | ~~TECH_DEBT: _daily_risk_reset 中 ibkr.reset_budget() 硬编码 $2000~~ → **已修复 2026-04-19**: `reset_budget` 默认从 `IBKR_BUDGET` 环境变量读取；调用方传 `_ibkr.budget` 保留当前预算 | 2026-04-19 |
+| HI-574 | `trading` | `_lifecycle.py` | ~~TECH_DEBT: 恢复持仓时 entry_time 解析失败静默回退~~ → **已修复 2026-04-19**: 解析失败时记录 WARNING 日志（含 symbol/id/原始值），修复运算符优先级问题 | 2026-04-19 |
 | HI-575 | `trading` | `cmd_ibkr_mixin.py` | TECH_DEBT: /ibuy 和 /isell 命令直接调用 ibkr.buy()/sell() 绕过 TradingPipeline，手动交易不被记录到 journal，不进入持仓监控 (R8.16) | 2026-04-19 |
 | HI-576 | `trading` | `invest_tools.py` | TECH_DEBT: get_earnings_calendar 中 naive/aware datetime 比较可能抛 TypeError；get_quick_quotes 声称并行但实际串行 (R8.30) | 2026-04-19 |
 | HI-577 | `xianyu` | `xianyu_live.py:545` | TECH_DEBT: app-key 硬编码 "${XIANYU_APP_KEY}"，os.getenv 可覆盖但默认值暴露在代码中 (R9.02) | 2026-04-19 |
@@ -203,19 +203,19 @@
 | HI-579 | `xianyu` | `xianyu_live.py:860` | TECH_DEBT: 底价自动接受上限为 floor*10，应基于商品标价限制而非底价倍数 (R9.03) | 2026-04-19 |
 | HI-580 | `xianyu` | `xianyu_live.py:730` | TECH_DEBT: 自动发货 sleep(delay) 阻塞消息处理主路径最长 120 秒，应拆为独立 task (R9.04) | 2026-04-19 |
 | HI-581 | `xianyu` | `xianyu_live.py:965` | SECURITY: License 凭证通过闲鱼消息明文发送，平台可见。且直接使用 _conn() 绕过封装层 (R9.03) | 2026-04-19 |
-| HI-582 | `xianyu` | `api/routers/xianyu.py` | SECURITY: 所有 /xianyu/* API 端点无认证/授权检查，任何能访问 API 的人可查看对话/劫持登录 (R9.06) | 2026-04-19 |
-| HI-583 | `xianyu` | `api/routers/xianyu.py:123` | SECURITY: QR 登录确认后 Cookie 在 API 响应中明文返回给前端 (R9.02) | 2026-04-19 |
-| HI-584 | `xianyu` | `xianyu_agent.py:318` | SECURITY: 对话历史注入 system prompt 存在 prompt injection 风险，买家可嵌入恶意指令 (R9.03) | 2026-04-19 |
+| HI-582 | `xianyu` | `api/routers/xianyu.py` | ~~SECURITY: 所有 /xianyu/* API 端点无认证/授权检查~~ → **已修复 2026-04-19**: 路由级别添加 `dependencies=[Depends(verify_api_token)]`，所有端点强制 Token 认证 | 2026-04-19 |
+| HI-583 | `xianyu` | `api/routers/xianyu.py:123` | ~~SECURITY: QR 登录确认后 Cookie 在 API 响应中明文返回给前端~~ → **已修复 2026-04-19**: Cookie 保存到服务端 .env 文件，不再返回给前端 | 2026-04-19 |
+| HI-584 | `xianyu` | `xianyu_agent.py:318` | ~~SECURITY: 对话历史注入 system prompt 存在 prompt injection 风险~~ → **已修复 2026-04-19**: system_prompt 移到最前面 + 用户数据用 XML 标签隔离 + 安全警告加强 | 2026-04-19 |
 | HI-585 | `backend` | `drafts.py:25` | TECH_DEBT: 草稿纯内存存储(重启丢失/多worker不共享) + draft_id 裁剪后可能重复 + 全局列表无锁 (R9.12) | 2026-04-19 |
-| HI-586 | `backend` | `wechat_bridge.py:50` | SECURITY: 微信凭证 _cached_token 明文存储在模块级全局变量，任何能 import 的代码可读取 (R9.16) | 2026-04-19 |
-| HI-587 | `backend` | `wechat_coupon.py:45` | SECURITY: verify_ssl=False 全局禁用 SSL 验证，中间人攻击风险 (R9.30) | 2026-04-19 |
-| HI-588 | `backend` | `wechat_coupon.py:68` | SECURITY: Token 文件 /tmp/wechat_coupon_token.txt 全局可读写，应使用 ~/.openclaw/ + 0o600 权限 (R9.30) | 2026-04-19 |
-| HI-589 | `backend` | `wechat_coupon.py:324` | SECURITY: _set_macos_proxy() 修改系统级网络代理，影响所有应用流量，代理期间可截获敏感数据 (R9.29) | 2026-04-19 |
-| HI-590 | `infra` | `tools/launchagents/ai.openclaw.gateway.plist` | SECURITY: OPENCLAW_GATEWAY_TOKEN 硬编码弱 token "openclaw-manager-local-token"，gateway-launcher.sh 也重复硬编码 (R10.23) | 2026-04-19 |
-| HI-591 | `infra` | `tools/launchagents/ai.openclaw.heartbeat-sender.plist` | SECURITY: VPS IP 101.43.41.96 + SSH 端口 29222 硬编码在 Git 跟踪的 plist 中；StrictHostKeyChecking=accept-new 有 MITM 风险 (R10.19) | 2026-04-19 |
-| HI-592 | `infra` | `tools/newsyslog.d/openclaw.conf` | CONFIG: 日志路径指向旧的 "com-clawbot-*.log"，但 plist 已迁移到 ~/Library/Logs/OpenClaw/，newsyslog 轮转完全无效 (R10.25) | 2026-04-19 |
-| HI-593 | `infra` | `tools/launchagents/ai.openclaw.browser-bootstrap.plist` | CONFIG: 未使用 /bin/bash -c exec 模式，macOS 26+ Sandbox 会拦截执行(exit 78)；日志路径与其他 plist 不统一 (R10.23) | 2026-04-19 |
-| HI-594 | `deploy` | `docker-compose.goofish.yml + kiro-gateway/docker-compose.yml` | CONFIG: 两个服务都绑定 127.0.0.1:8000，同时运行会端口冲突；goofish 用 latest 标签无版本锁定 (R10.09) | 2026-04-19 |
+| HI-586 | `backend` | `wechat_bridge.py:50` | ~~SECURITY: 微信凭证 _cached_token 明文存储在模块级全局变量~~ → **已修复 2026-04-19**: 合并为 `_CredentialStore` 类（`__slots__` + `__repr__` 屏蔽 token 值），凭证懒加载 | 2026-04-19 |
+| HI-587 | `backend` | `wechat_coupon.py:45` | ~~SECURITY: verify_ssl=False 全局禁用 SSL 验证~~ → **已修复 2026-04-19**: 改为 `verify_ssl=True`，遇证书问题通过 `SSL_CERT_FILE` 环境变量解决 | 2026-04-19 |
+| HI-588 | `backend` | `wechat_coupon.py:68` | ~~SECURITY: Token 文件 /tmp/ 全局可读写~~ → **已修复 2026-04-19**: 默认路径改为 `~/.openclaw/wechat_coupon_token.txt`，写入后 `os.chmod 0o600` | 2026-04-19 |
+| HI-589 | `backend` | `wechat_coupon.py:324` | ~~SECURITY: _set_macos_proxy() 修改系统级网络代理~~ → **已加固 2026-04-19**: 操作前 WARNING 日志（含手动恢复命令）+ 失败时自动恢复直连 | 2026-04-19 |
+| HI-590 | `infra` | `tools/launchagents/ai.openclaw.gateway.plist` | ~~SECURITY: OPENCLAW_GATEWAY_TOKEN 硬编码弱 token~~ → **已修复 2026-04-19**: 默认值改为空字符串，gateway-launcher.sh 从 `~/.openclaw/gateway_token` 文件读取 | 2026-04-19 |
+| HI-591 | `infra` | `tools/launchagents/ai.openclaw.heartbeat-sender.plist` | ~~SECURITY: VPS IP + SSH 端口硬编码在 Git 跟踪文件中~~ → **已修复 2026-04-19**: 默认值改为空字符串（需通过 launchctl setenv 或配置文件设置），StrictHostKeyChecking=accept-new→yes | 2026-04-19 |
+| HI-592 | `infra` | `tools/newsyslog.d/openclaw.conf` | ~~CONFIG: 日志路径指向旧位置~~ → **已修复 2026-04-19**: 全部路径更新为 `~/Library/Logs/OpenClaw/`，与 plist 一致 | 2026-04-19 |
+| HI-593 | `infra` | `tools/launchagents/ai.openclaw.browser-bootstrap.plist` | ~~CONFIG: 未使用 /bin/bash -c exec 模式~~ → **已修复 2026-04-19**: 改用 bash -c exec 模式 + 日志路径统一到 ~/Library/Logs/OpenClaw/ | 2026-04-19 |
+| HI-594 | `deploy` | `docker-compose.goofish.yml + kiro-gateway/docker-compose.yml` | ~~CONFIG: 两个服务都绑定 127.0.0.1:8000~~ → **已修复 2026-04-19**: goofish 改为端口 8001 + 镜像版本锁定 | 2026-04-19 |
 | HI-595 | `docs` | `docs/guides/DR_GUIDE.md` | MISSING: 灾难恢复指南不存在——6个 SQLite 数据库、Redis 数据、对话历史等关键数据无备份/恢复文档 (R10.29) | 2026-04-19 |
 | HI-596 | `docs` | `MODULE_REGISTRY + DEPENDENCY_MAP` | CONFIG: MODULE_REGISTRY 声称 254 模块 vs 实际 256+；DEPENDENCY_MAP 声称 80+ vs requirements.txt 288 行，存在偏差 (R11.01) | 2026-04-19 |
 
