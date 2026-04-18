@@ -1,37 +1,41 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-18
+> 最后更新: 2026-04-19
 
 ---
 
-## [2026-04-18] 全方位审计 v3.0 — R2 后端核心引擎审计完成
+## [2026-04-19] 全方位审计 v3.0 — R3 Bot 命令层审计完成
 
 ### 本次完成了什么
-1. **R2 后端核心引擎审计**: 46 个条目全部审查（28 通过 / 14 修复 / 5 技术债）
+1. **R3 Bot 命令层审计**: 45 个条目全部审查（通过多项 / 3 项修复 / 3 项技术债登记）
 2. **关键修复**:
-   - rpc.py NameError (HI-NEW-01)
-   - WebSocket 多客户端丢消息+初始状态无保护 (HI-NEW-02/03)
-   - 5个API路由安全与设计修复（conversation/trading/omega/evolution/newapi）
-   - proactive_listeners 5处 await sync subscribe（5个事件监听器静默失败）
-   - brain.py 密钥泄露防护 + proactive_engine 内存泄漏修复
-   - litellm_router iflow key SHA256 hash + trading_pipeline 静默异常修复
-   - pydantic_agents iflow key 模块级固化→property 实时读取
-   - 前端 conversationService/api 同步改为 JSON body
-3. **技术债登记**: HI-525~528（JSON配置漂移/59个静默异常/8个幽灵task/无DB备份）
+   - callback→cmd 崩溃修复: handle_card_action_callback 5处 cmd_ 调用无保护，新增 `_safe_cmd_from_callback()` 统一保护 (HI-532)
+   - help_mixin /invest 人数修正: 5位→6位AI (HI-533)
+   - workflow_mixin `_pick_workflow_bot()` 返回类型不一致修复 (HI-534)
+3. **文档修复**: COMMAND_REGISTRY.md 9项问题修正（handler名/行号/缺失回调/编号重复/MIME类型/pattern截断）
+4. **技术债登记**: HI-529~531（72个cmd_缺try/except / 22个workflow死方法 / 30个命令未上/help菜单）
+
+### 审计发现汇总
+- **命令注册**: 99个命令全部正确注册，代码与文档 1:1 对应
+- **回调按钮**: 16个回调pattern全部注册，每个handler都有 query.answer() 响应
+- **NLP触发**: 中文正则覆盖全面，三级漏斗(正则→LLM轻量→LLM完整)链路通畅
+- **消息管道**: sanitize→intent→brain→streaming 完整链路审查通过
+- **错误处理**: 全局 error handler + 用户友好中文消息 + retry 按钮均已就位
+- **Flood控制**: Telegram 429 退避 + 编辑频率限制 + 应用层速率限制三层防护
 
 ### 未完成的工作
-- **R3-R11**: 9 轮审计待执行（约 380 个条目）
-- **R3 下一轮**: Telegram Bot 命令层（92+命令+14回调+NLP触发，~45条目）
+- **R4-R11**: 8 轮审计待执行（约 335 个条目）
+- **R4 下一轮**: Bot 业务逻辑层（投资分析/交易执行/社媒发文/闲鱼客服等业务深审）
 
 ### 需要注意的坑
-- pytest 基线: 1035 passed / 213 failed / 2 skipped / 22 errors（忽略3个collection-error文件）
-- test_ai_assistant_features.py 也是 collection error（litellm 未安装），可考虑加到忽略列表
-- R8 有 3 个风控 Bug（HI-522/523/524）影响交易安全，等到 R8 时处理
+- pytest 基线变化: 983 passed / 210 failed / 2 skipped / 12 errors（多个测试文件有 collection error: test_adaptive_router/test_litellm_router/test_message_mixin）
+- HI-529 技术债(72个cmd_缺try/except)是大批量改造，建议分模块逐步推进
+- workflow_mixin 的 22 个死方法是链式讨论工作流的残留骨架，删除需确认不影响未来规划
 
 ### 当前系统状态
-- Git: 干净，所有修复已提交
-- 审计进度: R1 ✅ / R2 ✅ / R3-R11 待执行
-- 继续指令: `继续审计任务`（AI 自动读取 AUDIT_PLAN.md 定位到 R3）
+- Git: 干净，所有修复待提交
+- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4-R11 待执行
+- 继续指令: `继续审计任务`（AI 自动读取 AUDIT_PLAN.md 定位到 R4）
 
 ---
 

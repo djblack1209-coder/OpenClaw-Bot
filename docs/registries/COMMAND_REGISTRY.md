@@ -1,12 +1,12 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-15 | 新增 /evolution 命令，总数 99
+> 最后更新: 2026-04-19 (R3 审计对齐) | 总数 99
 
 ---
 
 ## 1. 注册命令一览（99 个）
 
-命令在 `multi_bot.py:171-340` 统一注册。
+命令在 `multi_bot.py:289-387` 统一注册。
 
 ### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行)
 
@@ -124,7 +124,7 @@
 | 80 | `/xpost` | `cmd_xpost` | 自动发 X | N |
 | 81 | `/xhsdraft` | `cmd_xhsdraft` | 生成小红书草稿 | N |
 | 82 | `/xhspost` | `cmd_xhspost` | 自动发小红书 | N |
-| 83 | `/dualpost` | `cmd_dual_post` | 一键双平台发文 (AI生成→预览→确认) | N |
+| 83 | `/dualpost` | `cmd_post` | 一键双平台发文 (`/post` 的别名) | N |
 | 84 | `/publish` | `cmd_publish` | 社媒多平台发布 — sau_bridge (抖音/B站/小红书/快手) | N |
 | 85 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
 | 86 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
@@ -146,33 +146,35 @@
 
 ## 2. Callback Button 模式一览
 
-在 `multi_bot.py:245-268` 注册。
+在 `multi_bot.py:388-406` 注册。
 
 | # | Pattern | Handler | Source | 说明 |
 |---|---------|---------|--------|------|
-| 1 | `^itrade` | `handle_trade_callback` | message_mixin | 投资分析后一键下单 |
-| 2 | `^help:` | `handle_help_callback` | cmd_basic_mixin | /start 分类菜单导航 |
+| 1 | `^itrade` | `handle_trade_callback` | callback_mixin | 投资分析后一键下单 |
+| 2 | `^help:` | `handle_help_callback` | help_mixin | /start 分类菜单导航 |
 | 3 | `^ob_i:` | `onboard_interests` | onboarding_mixin | 引导向导 Step 1: 兴趣领域选择 (ConversationHandler 内部) |
 | 4 | `^ob_s:` | `onboard_style` | onboarding_mixin | 引导向导 Step 2: 沟通风格选择 (ConversationHandler 内部) |
-| 4 | `^fb\|` | `handle_feedback_callback` | cmd_basic_mixin | 👍/👎/🔄 反馈按钮 |
-| 5 | `^mem_` | `handle_memory_callback` | cmd_basic_mixin | 记忆分页/清除 |
-| 6 | `^settings\|` | `handle_settings_callback` | cmd_basic_mixin | 设置切换按钮 |
-| 7 | `^cmd:` | `handle_notify_action_callback` | cmd_basic_mixin | 交易通知 actionable 按钮 + 模糊引导快捷操作 (bill/xianyu 已加入 cmd_map) |
-| 8 | `^social_confirm:` | `handle_social_confirm_callback` | cmd_execution_mixin | 社交发文预览确认/取消/重生成 |
-| 9 | `^ops_` | `handle_ops_menu_callback` | cmd_execution_mixin | /ops 交互菜单按钮 |
-| 10 | `^(ta_\|buy_\|watch_)` | `handle_quote_action_callback` | cmd_invest_mixin | 行情卡片操作 (技术分析/买入/加自选) |
-| 11 | `^(trade:\|bt:\|ta:\|...)` | `handle_card_action_callback` | cmd_basic_mixin | OMEGA 响应卡片操作按钮 |
-| 12 | `^noop$` | lambda (answer) | multi_bot | 空操作（已收到反馈占位） |
-| 13 | `^intel_` | `handle_intel_callback` | cmd_intel_mixin | 情报分类/地区/简报按钮 (intel_cat:/intel_reg:/intel_brief) |
+| 5 | `^fb\|` | `handle_feedback_callback` | memory_mixin | 👍/👎/🔄 反馈按钮 |
+| 6 | `^mem_` | `handle_memory_callback` | memory_mixin | 记忆分页/清除 |
+| 7 | `^settings\|` | `handle_settings_callback` | settings_mixin | 设置切换按钮 |
+| 8 | `^cmd:` | `handle_notify_action_callback` | callback_mixin | 交易通知 actionable 按钮 + 模糊引导快捷操作 (bill/xianyu 已加入 cmd_map) |
+| 9 | `^social_confirm:` | `handle_social_confirm_callback` | cmd_social_mixin | 社交发文预览确认/取消/重生成 |
+| 10 | `^ops_` | `handle_ops_menu_callback` | cmd_ops_mixin | /ops 交互菜单按钮 |
+| 11 | `^intel_` | `handle_intel_callback` | cmd_intel_mixin | 情报分类/地区/简报按钮 (intel_cat:/intel_reg:/intel_brief) |
+| 12 | `^(ta_\|buy_\|watch_)` | `handle_quote_action_callback` | cmd_invest_mixin | 行情卡片操作 (技术分析/买入/加自选) |
+| 13 | `^(trade:\|bt:\|ta:\|analyze:\|news:\|evo:\|retry:\|shop:\|post:)` | `handle_card_action_callback` | callback_mixin | OMEGA 响应卡片操作按钮 |
+| 14 | `^\d+:.+:.+$` | `handle_clarification_callback` | callback_mixin | ClarificationCard 追问按钮 ({tid}:{param}:{value}) |
+| 15 | `^suggest:` | `handle_suggest_callback` | callback_mixin | 模糊输入建议按钮 |
+| 16 | `^noop$` | lambda (answer) | multi_bot | 空操作（已收到反馈占位） |
 
-### 非 Command 消息处理器 (multi_bot.py:270-281)
+### 非 Command 消息处理器 (multi_bot.py:408-434)
 
 | Handler | Filter | 说明 |
 |---------|--------|------|
 | `handle_message` | TEXT & ~COMMAND | 文本对话（流式输出 + 中文 NLP 拦截） |
 | `handle_photo` | PHOTO | OCR → 场景路由 → 业务决策链 |
 | `handle_voice` | VOICE \| AUDIO | Whisper 转文字 → handle_message |
-| `handle_document_ocr` | Document.PDF \| Document.IMAGE | 文档 OCR |
+| `handle_document_ocr` | Document.PDF \| Document.IMAGE \| .docx \| .pptx \| .xlsx \| .doc \| .xls \| .ppt | 文档 OCR (PDF/图片/Office文档) |
 | `handle_inline_query` | InlineQuery | @bot 搜股票/记忆/命令提示 |
 
 ---

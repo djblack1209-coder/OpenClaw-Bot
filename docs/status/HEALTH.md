@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (R2后端核心引擎审计完成: 14项修复+5技术债登记)
+> 最后更新: 2026-04-19 (R3 Bot命令层审计: 3项修复+3技术债登记)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -157,6 +157,9 @@
 | HI-526 | `backend` | `src/` 全目录 | TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44) | 2026-04-18 |
 | HI-527 | `backend` | `src/` 全目录 | TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`，异常静默吞掉形成幽灵任务 (R2.45) | 2026-04-18 |
 | HI-528 | `backend` | SQLite 全部 6 实例 | TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36) | 2026-04-18 |
+| HI-529 | `backend` | `src/bot/cmd_*.py` | TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45) | 2026-04-19 |
+| HI-530 | `backend` | `src/bot/workflow_mixin.py` | TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法。整个链式讨论工作流基础设施搭建了但未接入消息管道 (R3.31-R3.35) | 2026-04-19 |
+| HI-531 | `backend` | `cmd_basic/help_mixin.py` | TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖（/calc, /chart, /drl, /factors, /icancel, /tts, /novel, /evolution, /coupon 等），用户无法通过帮助菜单发现这些命令 (R3.04) | 2026-04-19 |
 
 ### 🔵 低优先
 
@@ -173,6 +176,9 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-532 | `backend` | `callback_mixin.py` | 🟠 HIGH: 回调按钮调用 cmd_ 命令时 `update.message` 为 None 导致 AttributeError — handle_card_action_callback 无 try/except 保护(5处 cmd_ 调用)，handle_notify_action_callback 有 try/except 但错误消息为技术堆栈 | 新增 `_safe_cmd_from_callback()` 辅助函数统一包裹所有回调→命令调用，捕获 AttributeError 并用 query.message 回复友好提示 | 2026-04-19 | R3 Bot命令层审计 |
+| HI-533 | `backend` | `help_mixin.py` | 🟡 MEDIUM: /help 投资分析分类中 /invest 描述为"5 位 AI 协作分析"，实际为 6 位 | 修正为"6 位 AI 协作分析" | 2026-04-19 | R3 Bot命令层审计 |
+| HI-534 | `backend` | `workflow_mixin.py` | 🟡 MEDIUM: `_pick_workflow_bot()` 兜底返回值类型不一致 — 正常路径返回 `(candidates, bot_id)` 元组，所有 bot 被排除时返回 `self.bot_id` 字符串，调用方解构会崩溃 | 兜底路径改为 `return None, self.bot_id` 保持元组类型一致 | 2026-04-19 | R3 Bot命令层审计 |
 | HI-510 | `backend` | `weekly_report.py` | 🔴 CRITICAL: 周报导入路径错误 — `from src.content_pipeline` 应为 `from src.execution.social.content_pipeline`，导致周报生成必然崩溃 | 修正导入路径为正确的模块位置 | 2026-04-17 | CSO全量安全审计 |
 | HI-511 | `backend` | `api/routers/xianyu.py` | 🔴 CRITICAL: 闲鱼路由导入不存在的 `XianyuBot` 类，服务启动时 ImportError | 替换为 `XianyuContextManager` 直接查询 SQLite | 2026-04-17 | CSO全量安全审计 |
 | HI-512 | `deploy` | `docker-compose.yml` | 🔴 CRITICAL: Docker 资源超配(Redis 512M/OpenClaw 2G) + `internal: true` 阻断容器互联网访问 | Redis 128M/OpenClaw 1G + 移除 internal + 双网络架构 | 2026-04-17 | CSO全量安全审计 |

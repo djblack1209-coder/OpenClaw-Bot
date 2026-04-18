@@ -167,7 +167,7 @@ class _HelpMixin:
             "invest": (
                 "📈 投资分析\n"
                 "───────────────────\n"
-                "/invest <话题>  5 位 AI 协作分析\n"
+                "/invest <话题>  6 位 AI 协作分析\n"
                 "/quote <代码>  实时行情\n"
                 "/market  市场概览\n"
                 "/ta <代码>  技术分析\n"

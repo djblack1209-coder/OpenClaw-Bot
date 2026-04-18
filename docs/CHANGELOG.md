@@ -12,6 +12,43 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R3 Bot 命令层审计 (45条目审查 / 3修复 / 3技术债)
+> 领域: `backend`, `docs`
+> 影响模块: `callback_mixin`, `help_mixin`, `workflow_mixin`, `COMMAND_REGISTRY.md`
+> 关联问题: R3 审计, HI-532, HI-533, HI-534, HI-529~531
+
+### 变更内容
+
+**审计范围**: 45 个条目 — 命令注册完整性 / 核心命令验证 / 回调按钮处理器 / 中文NLP触发 / Workflow Mixin / 消息处理管道 / 错误处理
+
+**修复 (3项)**:
+1. **回调→命令崩溃修复 (HI-532)**: `handle_card_action_callback` 中 5 处 `cmd_*()` 调用无 try/except，在回调上下文中 `update.message` 为 None 导致 AttributeError 无声崩溃。新增 `_safe_cmd_from_callback()` 辅助函数统一保护所有回调→命令调用
+2. **帮助文本人数修正 (HI-533)**: /help 投资分析分类中 /invest 描述 "5 位 AI" → "6 位 AI"
+3. **返回类型一致性修复 (HI-534)**: `workflow_mixin._pick_workflow_bot()` 兜底路径返回字符串（而非元组），调用方解构会崩溃。改为 `return None, self.bot_id`
+
+**文档修复 (9项)**:
+4. `/dualpost` handler 名修正: `cmd_dual_post`(不存在) → `cmd_post`(实际别名)
+5. 回调处理器补全: 新增 `handle_clarification_callback` 和 `handle_suggest_callback` 两个缺失条目
+6. 回调编号修正: 重排为 1-16（原有 #4 重复）
+7. 行号引用更新: 命令注册/回调注册/消息处理器三处行号与当前代码对齐
+8. `handle_document_ocr` 过滤器补全: 补充 .docx/.pptx/.xlsx/.doc/.xls/.ppt 六种 Office 格式
+9. 卡片操作回调 pattern 补全: 展开截断的 `...` 为完整 9 个前缀
+10. Source 列修正: 多处 `cmd_basic_mixin` → 精确到实际 mixin 文件名
+
+**技术债登记 (3项)**:
+11. HI-529: 98 个 cmd_ 中 72 个(73%)缺 try/except
+12. HI-530: workflow_mixin 22/25 方法为死代码
+13. HI-531: /help 菜单有 30 个命令未覆盖
+
+### 文件变更
+- `packages/clawbot/src/bot/cmd_basic/callback_mixin.py` — 新增 `_safe_cmd_from_callback()` + 保护所有回调→命令调用
+- `packages/clawbot/src/bot/cmd_basic/help_mixin.py` — 修正 /invest 描述 5→6 位 AI
+- `packages/clawbot/src/bot/workflow_mixin.py` — 修正 `_pick_workflow_bot()` 返回类型一致性
+- `docs/registries/COMMAND_REGISTRY.md` — 9 项文档修正
+- `docs/status/HEALTH.md` — 新增 HI-529~534
+
+---
+
 ## 2026-04-18 — T2+T3: 意图识别准确率提升 + 风控系统 BUG 修复
 > 领域: `backend`, `trading`
 > 影响模块: `chinese_nlp_mixin`, `intent_parser`, `freqtrade_bridge`, `brain_exec_invest`, `risk_manager`

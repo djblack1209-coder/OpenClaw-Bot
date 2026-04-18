@@ -8,6 +8,37 @@ from src.message_format import format_error
 logger = logging.getLogger(__name__)
 
 
+async def _safe_cmd_from_callback(query, handler, update, context, cmd_name: str):
+    """在回调上下文中安全执行 cmd_ 命令函数
+
+    回调上下文中 update.message 为 None，而大部分 cmd_ 函数使用
+    update.message.reply_text()，会抛 AttributeError。
+    本辅助函数用 try/except 捕获异常，用 query.message 回复错误。
+    """
+    try:
+        await handler(update, context)
+    except AttributeError as e:
+        if "'NoneType'" in str(e) and "reply" in str(e):
+            # update.message 为 None 导致的崩溃 — 用 query.message 回复
+            logger.warning("回调调用 /%s 时 update.message 为 None，降级到 query.message 回复", cmd_name)
+            try:
+                await query.message.reply_text(f"✅ 已执行 /{cmd_name}（回调模式）")
+            except Exception:
+                pass
+        else:
+            logger.error("回调执行 /%s 异常: %s", cmd_name, e)
+            try:
+                await query.message.reply_text(f"⚠️ 执行 /{cmd_name} 时出错，请直接输入命令重试。")
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error("回调执行 /%s 异常: %s", cmd_name, e)
+        try:
+            await query.message.reply_text(format_error(e, f"执行 /{cmd_name}"))
+        except Exception:
+            pass
+
+
 class _CallbackMixin:
     """Inline 回调按钮分发处理"""
 
@@ -76,10 +107,7 @@ class _CallbackMixin:
 
         # 构造 context.args 并执行命令
         context.args = cmd_args
-        try:
-            await handler(update, context)
-        except Exception as e:
-            await query.message.reply_text(format_error(e, f"执行 /{cmd_name}"))
+        await _safe_cmd_from_callback(query, handler, update, context, cmd_name)
 
     async def handle_card_action_callback(self, update, context):
         """处理 OMEGA 响应卡片上的操作按钮（response_cards.py 生成的 callback_data）"""
@@ -100,19 +128,19 @@ class _CallbackMixin:
             parts = data.split(":")
             symbol = parts[-1] if len(parts) > 2 else ""
             context.args = [symbol] if symbol else []
-            await self.cmd_backtest(update, context)
+            await _safe_cmd_from_callback(query, self.cmd_backtest, update, context, "backtest")
         elif data.startswith("ta:detail:"):
             symbol = data.split(":")[-1]
             context.args = [symbol]
-            await self.cmd_ta(update, context)
+            await _safe_cmd_from_callback(query, self.cmd_ta, update, context, "ta")
         elif data.startswith("analyze:"):
             symbol = data.split(":")[-1]
             context.args = [symbol]
-            await self.cmd_ta(update, context)
+            await _safe_cmd_from_callback(query, self.cmd_ta, update, context, "ta")
         elif data.startswith("news:"):
             symbol = data.split(":")[-1]
             context.args = [symbol]
-            await self.cmd_news(update, context)
+            await _safe_cmd_from_callback(query, self.cmd_news, update, context, "news")
         elif data.startswith("evo:approve:") or data.startswith("evo:reject:"):
             action = "approve" if "approve" in data else "reject"
             pid = data.split(":")[-1]
@@ -125,7 +153,7 @@ class _CallbackMixin:
         elif data.startswith("post:"):
             topic = data.split(":", 1)[-1]
             context.args = [topic]
-            await self.cmd_post(update, context)
+            await _safe_cmd_from_callback(query, self.cmd_post, update, context, "post")
         else:
             await query.message.reply_text("💡 此操作暂不支持")
 

@@ -20,6 +20,7 @@ class WorkflowMixin:
     """链式讨论工作流 Mixin — 服务需求分析的多模型协作"""
 
     def _pick_workflow_bot(self, candidates=None, exclude=None):
+        """选择工作流 Bot — 返回 (candidates, bot_id) 元组"""
         exclude_set = set(exclude or [])
         if candidates:
             for bot_id in candidates:
@@ -31,7 +32,8 @@ class WorkflowMixin:
             if bot_id in exclude_set:
                 continue
             return None, bot_id
-        return self.bot_id
+        # 全部被排除时兜底返回自身 — 保持返回类型一致为 tuple
+        return None, self.bot_id
 
     # ── v2.0: 自然语言购物比价 ─────────────────────────────────
 
