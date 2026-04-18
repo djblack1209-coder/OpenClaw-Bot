@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R8 投资交易系统审计: 4修复 + 10技术债)
+> 最后更新: 2026-04-19 (R9 闲鱼+社媒+工具链审计: 4修复 + 14技术债)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -198,6 +198,19 @@
 | HI-574 | `trading` | `_lifecycle.py` | TECH_DEBT: 恢复持仓时 entry_time 解析逻辑——空字符串 created_at 会导致 _parse_datetime 返回 None，入场时间被替换为当前时间，时间止损计算错误 (R8.29) | 2026-04-19 |
 | HI-575 | `trading` | `cmd_ibkr_mixin.py` | TECH_DEBT: /ibuy 和 /isell 命令直接调用 ibkr.buy()/sell() 绕过 TradingPipeline，手动交易不被记录到 journal，不进入持仓监控 (R8.16) | 2026-04-19 |
 | HI-576 | `trading` | `invest_tools.py` | TECH_DEBT: get_earnings_calendar 中 naive/aware datetime 比较可能抛 TypeError；get_quick_quotes 声称并行但实际串行 (R8.30) | 2026-04-19 |
+| HI-577 | `xianyu` | `xianyu_live.py:545` | TECH_DEBT: app-key 硬编码 "${XIANYU_APP_KEY}"，os.getenv 可覆盖但默认值暴露在代码中 (R9.02) | 2026-04-19 |
+| HI-578 | `xianyu` | `xianyu_live.py:826` | TECH_DEBT: _notified_chats 超限时 clear() 粗暴清空导致重复通知轰炸，应改为 FIFO 逐出 (R9.01) | 2026-04-19 |
+| HI-579 | `xianyu` | `xianyu_live.py:860` | TECH_DEBT: 底价自动接受上限为 floor*10，应基于商品标价限制而非底价倍数 (R9.03) | 2026-04-19 |
+| HI-580 | `xianyu` | `xianyu_live.py:730` | TECH_DEBT: 自动发货 sleep(delay) 阻塞消息处理主路径最长 120 秒，应拆为独立 task (R9.04) | 2026-04-19 |
+| HI-581 | `xianyu` | `xianyu_live.py:965` | SECURITY: License 凭证通过闲鱼消息明文发送，平台可见。且直接使用 _conn() 绕过封装层 (R9.03) | 2026-04-19 |
+| HI-582 | `xianyu` | `api/routers/xianyu.py` | SECURITY: 所有 /xianyu/* API 端点无认证/授权检查，任何能访问 API 的人可查看对话/劫持登录 (R9.06) | 2026-04-19 |
+| HI-583 | `xianyu` | `api/routers/xianyu.py:123` | SECURITY: QR 登录确认后 Cookie 在 API 响应中明文返回给前端 (R9.02) | 2026-04-19 |
+| HI-584 | `xianyu` | `xianyu_agent.py:318` | SECURITY: 对话历史注入 system prompt 存在 prompt injection 风险，买家可嵌入恶意指令 (R9.03) | 2026-04-19 |
+| HI-585 | `backend` | `drafts.py:25` | TECH_DEBT: 草稿纯内存存储(重启丢失/多worker不共享) + draft_id 裁剪后可能重复 + 全局列表无锁 (R9.12) | 2026-04-19 |
+| HI-586 | `backend` | `wechat_bridge.py:50` | SECURITY: 微信凭证 _cached_token 明文存储在模块级全局变量，任何能 import 的代码可读取 (R9.16) | 2026-04-19 |
+| HI-587 | `backend` | `wechat_coupon.py:45` | SECURITY: verify_ssl=False 全局禁用 SSL 验证，中间人攻击风险 (R9.30) | 2026-04-19 |
+| HI-588 | `backend` | `wechat_coupon.py:68` | SECURITY: Token 文件 /tmp/wechat_coupon_token.txt 全局可读写，应使用 ~/.openclaw/ + 0o600 权限 (R9.30) | 2026-04-19 |
+| HI-589 | `backend` | `wechat_coupon.py:324` | SECURITY: _set_macos_proxy() 修改系统级网络代理，影响所有应用流量，代理期间可截获敏感数据 (R9.29) | 2026-04-19 |
 
 ### 🔵 低优先
 
@@ -216,6 +229,10 @@
 |----|------|------|------|----------|----------|-----------|
 | HI-550a | `frontend` | `conversationService.ts` | 🔴 CRITICAL: SSE 流式请求使用 30s 默认超时，AI 任务（搜索/回测/生成）经常被中断 | `clawbotFetch` 调用传 `timeoutMs: 0` 禁用超时 | 2026-04-19 | R6 核心页面审计 |
 | HI-567a | `trading` | `broker_bridge.py` | 🔴 CRITICAL: connect() 方法在 asyncio.Lock 内部递归调用自身，asyncio.Lock 不可重入导致死锁——Gateway 自动启动后永远挂起 | 消除递归调用，Gateway 启动后在锁内直接重试连接逻辑 | 2026-04-19 | R8 交易系统审计 |
+| HI-577a | `xianyu` | `xianyu_live.py` | 🔴 CRITICAL: _auto_revoke_license() 使用 `LIKE '%buyer_id%'` 模糊匹配查找 License，短 buyer_id 可能匹配其他用户的 License 并错误吊销 | 改为精确匹配 `WHERE xianyu_order_id = ?`，并添加 xianyu_buyer_id 字段兼容查询 | 2026-04-19 | R9 闲鱼+社媒审计 |
+| HI-578a | `xianyu` | `api/routers/xianyu.py` | 🟠 HIGH: get_xianyu_conversations() 的 limit 参数无上限验证，恶意调用者可传 limit=999999 触发全表扫描 DoS | 添加 `limit = min(max(1, limit), 100)` 参数边界校验 | 2026-04-19 | R9 闲鱼+社媒审计 |
+| HI-579a | `xianyu` | `xianyu_live.py` | 🟠 HIGH: floor 变量在 `if item_id:` 块内赋值但在块外被引用，item_id 为空时触发 NameError | 在块外初始化 `floor = None` | 2026-04-19 | R9 闲鱼+社媒审计 |
+| HI-580a | `backend` | `jina_reader.py` | 🟠 HIGH: jina_search() 降级路径中 query 参数未 URL 编码直接拼接到 Google 搜索 URL | 使用 `urllib.parse.quote(query)` 编码 | 2026-04-19 | R9 闲鱼+社媒审计 |
 | HI-568a | `trading` | `trading_pipeline.py` | 🟠 HIGH: DecisionValidator 异常时放行交易(fail-open)，违反金融系统 fail-closed 原则 | 改为异常时拒绝交易并返回错误 | 2026-04-19 | R8 交易系统审计 |
 | HI-569a | `trading` | `auto_trader.py` | 🟠 HIGH: 风控引擎 calc_safe_quantity 返回 error 时，fallback 用 20% 仓位绕过风控下单 | 风控计算失败时跳过该候选，不使用固定比例替代 | 2026-04-19 | R8 交易系统审计 |
 | HI-570a | `trading` | `ai_team_voter.py` | 🟠 HIGH: 并行投票中 bot 抛异常时，默认 HOLD 票 abstained=False 计入共识统计，拉低 buy_count 或拉高 hold_count | 异常情况设置 abstained=True，与超时/失败行为一致 | 2026-04-19 | R8 交易系统审计 |
