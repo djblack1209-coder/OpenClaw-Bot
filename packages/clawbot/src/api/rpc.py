@@ -10,6 +10,7 @@ Design principles:
   4. Sync methods for fast reads, async methods only when calling async subsystems
 """
 
+import os
 import time
 import logging
 from typing import Optional, List
@@ -132,7 +133,6 @@ class ClawBotRPC:
         # ── 微信领券功能状态检测 ──
         wechat_connected = False
         try:
-            import os
             import json
 
             token_file = os.path.expanduser("~/.openclaw/coupon_token.json")
