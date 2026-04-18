@@ -1,6 +1,43 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-17
+> 最后更新: 2026-04-18
+
+---
+
+## [2026-04-18 12:00] T4+T5 四阶段方法论实施
+
+### 本次完成了什么
+
+| # | 改动 | 说明 |
+|---|------|------|
+| 1 | T4: QuantStats HTML 报告活化 | generate_quantstats_report() 从死代码升级为全功能（8策略+SPY基准+Telegram发送） |
+| 2 | T4: 自研引擎接入 QuantStats | /backtest 单股回测路径自动生成 tearsheet 并 Telegram 发送 |
+| 3 | T4: risk_var.py 死代码清理 | calc_var/calc_cvar 中被 numpy 覆盖的 qs 调用已移除 |
+| 4 | T5: Router 参数从 JSON 读取 | initialize() 消费 JSON router_config，替代硬编码 |
+| 5 | T5: BOT_MODEL_FAMILY 从 JSON 加载 | 新增 _load_bot_model_family()，JSON 为真相源 |
+| 6 | T5: MODEL_RANKING 移入 JSON | 50+ 模型评分集中管理，Python 动态加载 |
+| 7 | T5: smart_route 映射移入 JSON | model_to_family 映射外化到 JSON |
+
+### 未完成的工作
+
+**四阶段方法论剩余动作（按 ROI 排序）：**
+- T1: LLM 语义缓存层（4h，LLM成本-30%）— diskcache 已有基础，需加 embedding 相似度匹配
+- T2: 意图识别 prompt 优化 + 正则扩充（2h，准确率85%→95%）
+- T3: check_trade() 风控检查清单重构（3h）
+
+**预存测试失败（非本次引入）：**
+- `test_self_heal.py` 5 个 CircuitBreaker 测试失败（_is_circuit_open 逻辑问题）
+- `test_api_routes_regression.py` 收集错误（TypeError）
+
+### 需要注意的坑
+- T5 改动保留了所有硬编码作为 fallback — JSON 加载失败不会导致系统崩溃
+- JSON 中 bot_model_family 已同步修正（claude_haiku→qwen, claude_opus→deepseek）
+- test_self_heal.py 的 5 个失败是预存问题，与 T4/T5 无关
+
+### 当前系统状态
+- 后端测试: 1326 passed / 2 skipped / 5 预存失败 (非本次引入)
+- T4/T5 已提交: `b9826e6f0` (T4) + `6d81deea4` (T5)
+- JSON 配置现在是 LLM 路由的单一真相源（router_config + model_ranking + bot_model_family + smart_route 映射）
 
 ---
 

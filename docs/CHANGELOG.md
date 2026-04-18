@@ -12,6 +12,35 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-18 — T4+T5: QuantStats 报告活化 + LiteLLM 配置外化
+> 领域: `backend`, `ai-pool`
+> 影响模块: `backtester_vbt`, `cmd_trading_mixin`, `risk_var`, `litellm_router`, `llm_routing_config`, `llm_routing.json`
+> 关联问题: 四阶段方法论 T4/T5
+
+### 变更内容
+
+**T4: QuantStats HTML 报告活化**
+1. **generate_quantstats_report() 重构**: 从孤儿方法升级为实际可用功能 — 支持全8策略信号生成 + SPY 基准对比 + 接受任意 returns Series
+2. **自研引擎接入**: 在 `/backtest` 单股回测路径中新增 `_send_quantstats_report()` — 从 PerformanceReport.daily_returns 生成 HTML tearsheet 并通过 Telegram send_document() 发送
+3. **死代码清理**: `risk_var.py` 中 calc_var()/calc_cvar() 的 QuantStats 调用被 numpy 覆盖的死代码已移除
+
+**T5: LiteLLM 配置外化（JSON 为单一真相源）**
+4. **Router 参数从 JSON 读取**: `initialize()` 从 JSON `router_config` 字段读取 num_retries/timeout/cooldown 等参数，替代硬编码常量
+5. **BOT_MODEL_FAMILY 从 JSON 加载**: 新增 `_load_bot_model_family()` 从 JSON `bot_model_family` 加载 Bot→模型族映射
+6. **MODEL_RANKING 移入 JSON**: 50+ 模型评分集中到 JSON `model_ranking` 字段，Python 端动态加载
+7. **smart_route 映射移入 JSON**: `_smart_route()` 的 model→family 映射移入 JSON `smart_route_model_to_family` 字段
+8. **配置加载器扩展**: `llm_routing_config.py` 新增 `get_model_ranking()` / `get_smart_route_mapping()`
+
+### 文件变更
+- `packages/clawbot/src/modules/investment/backtester_vbt.py` — 重构 generate_quantstats_report() + 新增 _get_strategy_signals()
+- `packages/clawbot/src/bot/cmd_trading_mixin.py` — 新增 _send_quantstats_report() + 自研引擎接入
+- `packages/clawbot/src/risk_var.py` — 清理 calc_var()/calc_cvar() 死代码
+- `packages/clawbot/src/litellm_router.py` — Router 参数/BOT_MODEL_FAMILY/MODEL_RANKING/smart_route 从 JSON 加载
+- `packages/clawbot/src/llm_routing_config.py` — 新增 get_model_ranking()/get_smart_route_mapping()
+- `packages/clawbot/config/llm_routing.json` — 新增 model_ranking/smart_route_model_to_family + 修正 bot_model_family
+
+---
+
 ## 2026-04-17 — CSO 全量安全审计修复 (10项)
 > 领域: `backend`, `infra`, `frontend`, `deploy`
 > 影响模块: `weekly_report`, `xianyu.py`, `docker-compose.yml`, `Makefile`, `deploy_server.py`, `docker-compose.newapi.yml`, `openclaw-manager-src`, `App.tsx`, `Store/index.tsx`, `.env`
