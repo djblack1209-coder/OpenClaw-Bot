@@ -4,38 +4,49 @@
 
 ---
 
-## [2026-04-19] 全方位审计 v3.0 — R8+R9+R10+R11 全部 11 轮审计完成 🎉
+## [2026-04-19] 技术债清理第1批 — 15 项安全+交易+配置修复
 
 ### 本次完成了什么
-1. **R8 投资交易系统深度审计**: 40 条目 / 4 修复 / 10 技术债
-   - IBKR connect() 死锁修复 / DecisionValidator fail-closed / AutoTrader 风控绕过 / AI 投票弃权
-2. **R9 闲鱼+社媒+微信+工具链审计**: 35 条目 / 4 修复 / 14 技术债
-   - License LIKE 注入 / API limit 校验 / floor 未初始化 / Jina URL 编码
-3. **R10 部署运维审计**: 30 条目 / 0 修复 / 5 技术债
-   - Docker 加固 ✅ / Gateway token 硬编码 / VPS IP 硬编码 / newsyslog 路径失效 / 无 DR 文档
-4. **R11 端到端集成验证**: 25 条目 / 0 修复 / 3 技术债
-   - 命令注册 99 个全覆盖 ✅ / 模块+依赖注册偏差 / 端口冲突
-5. **四轮共计**: 130 条目 / 8 修复 / 32 技术债
+1. **安全修复 (8项)**:
+   - HI-582: 闲鱼 API 端点添加 Token 认证（路由级 `Depends(verify_api_token)`）
+   - HI-583: QR 登录后 Cookie 不再返回给前端（保存到服务端）
+   - HI-584: 闲鱼 Agent prompt injection 防护（system_prompt 前置 + XML 标签隔离 + 安全警告加强）
+   - HI-586: 微信凭证从模块级全局变量改为 `_CredentialStore` 类（`__slots__` + `__repr__` 屏蔽）
+   - HI-587/588: SSL 验证恢复 + Token 文件路径从 `/tmp/` 迁移到 `~/.openclaw/`（0o600 权限）
+   - HI-590: Gateway token 弱默认值移除（plist 空值 + launcher.sh 从文件读取）
+   - HI-591: VPS IP/SSH 端口硬编码清理（plist 空值 + StrictHostKeyChecking=yes）
 
-### 全量审计总结 (R1-R11)
-- **总条目**: ~425 个审计项
-- **总修复**: 22 项代码修复已提交
-- **总技术债**: ~56 项登记到 HEALTH.md
-- **回归**: 0（全部修复后测试与基线一致）
-- **审计覆盖**: 408 Python / 87 TS-TSX / 94 API / 112 IPC / 92 命令
+2. **交易安全修复 (4项)**:
+   - HI-569: IBKR 降级执行明确标记 `status="simulated"`，无 portfolio 时返回错误
+   - HI-572: `confirm_proposal()` 执行成功后递增 `_today_trades`
+   - HI-573: `reset_budget` 从 IBKR_BUDGET 环境变量读取 + 调用方保留当前预算
+   - HI-574: `entry_time` 解析失败时记录 WARNING
+
+3. **配置修复 (3项)**:
+   - HI-592: newsyslog 日志路径全部更新为 `~/Library/Logs/OpenClaw/`
+   - HI-593: browser-bootstrap plist 改用 bash -c exec + 日志路径统一
+   - HI-594: goofish 端口从 8000 改为 8001 + 镜像版本锁定
 
 ### 未完成的工作
-- **VPS 服务器端验证** (R10.01-R10.18): 需 SSH 登录实测 Docker/systemd/防火墙/磁盘
-- **技术债清理优先级**: HI-582 闲鱼 API 无认证 > HI-590 Gateway 弱 token > HI-569 IBKR 幽灵持仓
+- **VPS 服务器端验证**: 需 SSH 登录实测 Docker/systemd/防火墙/磁盘
+- **剩余技术债 (~41 项)**: 按优先级排序见 HEALTH.md（HI-522~596 中未修复部分）
+- **高优先级待处理**: HI-522 风控竞态锁 / HI-527 幽灵 task / HI-526 静默异常
+
+### 需要注意的坑
+- Gateway plist/launcher.sh 的 token 改为空值后，**必须在加载前设置**：`openssl rand -hex 32 > ~/.openclaw/gateway_token`
+- Heartbeat plist 的 VPS IP/端口改为空值后，**必须通过 `launchctl setenv` 设置**，否则心跳脚本会报错退出
+- `wechat_coupon.py` 的 SSL 验证恢复后，如果微信 API 报 SSL 错误，需设置 `SSL_CERT_FILE` 环境变量
+- goofish Docker 镜像版本用了占位值 `sha-a1b2c3d`，需替换为实际稳定版 SHA
 
 ### 当前系统状态
 - Git: 干净，所有修复已提交
-- 审计进度: R1 ✅ / R2 ✅ / R3 ✅ / R4 ✅ / R5 ✅ / R6 ✅ / R7 ✅ / R8 ✅ / R9 ✅ / R10 ✅ / R11 ✅
-- **全部 11 轮审计完成**
+- Python 语法: 9 个修改文件全部 py_compile 通过
+- Plist: 3 个修改文件全部 plutil -lint 通过
+- 技术债: 56 → 41 项（15 项已修复）
 
 ---
 
-## [2026-04-19] 全方位审计 v3.0 — R6+R7 macOS 前端审计完成
+## [2026-04-19] 全方位审计 v3.0 — R8+R9+R10+R11 全部 11 轮审计完成
 
 ### 本次完成了什么
 1. **R6 macOS 核心页面审计**: 45 条目 / 8 修复 / 15 技术债

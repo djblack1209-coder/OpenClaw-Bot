@@ -12,6 +12,51 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 技术债清理第1批: 安全+交易+配置修复（15项）
+> 领域: `security`, `trading`, `xianyu`, `backend`, `infra`, `deploy`
+> 影响模块: `xianyu.py(API)`, `xianyu_agent`, `wechat_coupon`, `wechat_bridge`, `trading_pipeline`, `auto_trader`, `broker_bridge`, `_lifecycle`, `_scheduler_daily`, `launchagents`, `newsyslog`, `docker-compose`
+> 关联问题: HI-582~594 (15项修复)
+
+### 安全修复 (8项)
+1. **HI-582: 闲鱼 API 认证加固**: 所有 /xianyu/* 端点添加 `Depends(verify_api_token)` 路由级认证
+2. **HI-583: Cookie 不再返回前端**: QR 登录确认后 Cookie 保存到服务端 .env，API 响应不含明文 Cookie
+3. **HI-584: 闲鱼 prompt injection 防护**: system_prompt 移到最前面 + 用户数据用 XML 标签隔离 + 安全警告加强
+4. **HI-586: 微信凭证安全**: 5个模块级全局变量合并为 `_CredentialStore` 类（`__slots__` + `__repr__` 屏蔽 token 值）
+5. **HI-587: SSL 验证恢复**: `verify_ssl=False` → `True`，证书问题通过 `SSL_CERT_FILE` 环境变量解决
+6. **HI-588: Token 文件安全**: 默认路径从 `/tmp/` → `~/.openclaw/`，写入后 `chmod 0o600`
+7. **HI-590: Gateway token 弱默认值移除**: plist 默认值改空 + launcher.sh 从 `~/.openclaw/gateway_token` 读取
+8. **HI-591: VPS IP 硬编码清理**: plist 中 IP/端口默认值改空 + `StrictHostKeyChecking=accept-new` → `yes`
+
+### 交易安全修复 (4项)
+9. **HI-569: 幽灵持仓修复**: IBKR 降级执行明确标记 `status="simulated"` + 无 portfolio 时返回错误
+10. **HI-572: 日交易计数修复**: `confirm_proposal()` 执行成功后递增 `_today_trades`
+11. **HI-573: 预算重置修复**: `reset_budget` 从 `IBKR_BUDGET` 环境变量读取，调用方传 `_ibkr.budget` 保留当前额度
+12. **HI-574: 持仓恢复时间修复**: `entry_time` 解析失败时记录 WARNING（含 symbol/id/原始值）
+
+### 配置修复 (3项)
+13. **HI-592: newsyslog 日志路径**: 全部更新为 `~/Library/Logs/OpenClaw/` 与 plist 一致
+14. **HI-593: browser-bootstrap bash -c exec**: 改用统一的 `/bin/bash -c exec` 模式 + 日志路径统一
+15. **HI-594: 端口冲突修复**: goofish 从 8000 改为 8001 + 镜像版本锁定
+
+### 文件变更
+- `packages/clawbot/src/api/routers/xianyu.py` — API 认证 + Cookie 不返回
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — prompt injection 防护
+- `packages/clawbot/src/wechat_bridge.py` — _CredentialStore 类替代全局变量
+- `packages/clawbot/src/execution/wechat_coupon.py` — SSL + Token路径 + 代理安全
+- `packages/clawbot/src/trading_pipeline.py` — 模拟降级标记
+- `packages/clawbot/src/auto_trader.py` — 日交易计数
+- `packages/clawbot/src/broker_bridge.py` — 预算重置从环境变量读取
+- `packages/clawbot/src/trading/_lifecycle.py` — entry_time 解析日志
+- `packages/clawbot/src/trading/_scheduler_daily.py` — 保留当前预算
+- `tools/launchagents/ai.openclaw.gateway.plist` — token 默认值清空
+- `tools/launchagents/gateway-launcher.sh` — 从配置文件读取 token
+- `tools/launchagents/ai.openclaw.heartbeat-sender.plist` — IP/端口默认值清空 + SSH 加固
+- `tools/launchagents/ai.openclaw.browser-bootstrap.plist` — bash -c exec + 日志路径
+- `tools/newsyslog.d/openclaw.conf` — 日志路径全量更新
+- `packages/clawbot/docker-compose.goofish.yml` — 端口 8001 + 版本锁定
+
+---
+
 ## 2026-04-19 — R10+R11 部署运维+端到端集成验证（55 条目 / 0 修复 / 8 技术债）
 > 领域: `infra`, `deploy`, `docs`
 > 影响模块: `launchagents`, `docker-compose`, `newsyslog`, `MODULE_REGISTRY`, `DEPENDENCY_MAP`
