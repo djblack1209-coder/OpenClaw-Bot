@@ -108,7 +108,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                         )
                     )
             except Exception as e:
-                logger.debug(f"交易后主动通知评估失败: {e}")
+                logger.warning("交易后主动通知评估失败: %s", e)
 
         async def on_risk_alert(event_data: Dict[str, Any]):
             """风控预警触发主动通知。"""
@@ -124,7 +124,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 if notification:
                     await _send_proactive(user_id, notification)
             except Exception as e:
-                logger.debug(f"风控主动通知评估失败: {e}")
+                logger.warning("风控主动通知评估失败: %s", e)
 
         # 注册监听器（注意：subscribe 是同步方法，不能用 await）
         if hasattr(EventType, "TRADE_EXECUTED"):
@@ -235,7 +235,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 )
 
             except Exception as e:
-                logger.debug(f"自选股异动通知失败: {e}")
+                logger.warning("自选股异动通知失败: %s", e)
 
         if hasattr(EventType, "WATCHLIST_ANOMALY"):
             bus.subscribe(EventType.WATCHLIST_ANOMALY, on_watchlist_anomaly)
@@ -343,7 +343,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 if notification:
                     await _send_proactive("default", notification)
             except Exception as e:
-                logger.debug(f"闲鱼订单主动通知失败: {e}")
+                logger.warning("闲鱼订单主动通知失败: %s", e)
 
         if hasattr(EventType, "XIANYU_ORDER_PAID"):
             bus.subscribe(EventType.XIANYU_ORDER_PAID, on_xianyu_order_paid)
@@ -366,7 +366,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 if notification:
                     await _send_proactive("default", notification)
             except Exception as e:
-                logger.debug(f"预算超支主动通知失败: {e}")
+                logger.warning("预算超支主动通知失败: %s", e)
 
         if hasattr(EventType, "BUDGET_EXCEEDED"):
             bus.subscribe(EventType.BUDGET_EXCEEDED, on_budget_exceeded)
@@ -399,7 +399,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                     lambda t: t.exception() and logger.debug("社媒跟进后台任务异常: %s", t.exception())
                 )
             except Exception as e:
-                logger.debug(f"社媒发布主动通知失败: {e}")
+                logger.warning("社媒发布主动通知失败: %s", e)
 
         if hasattr(EventType, "SOCIAL_PUBLISHED"):
             bus.subscribe(EventType.SOCIAL_PUBLISHED, on_social_published)
@@ -420,11 +420,11 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 if notification:
                     await _send_proactive("default", notification)
             except Exception as e:
-                logger.debug(f"粉丝里程碑主动通知失败: {e}")
+                logger.warning("粉丝里程碑主动通知失败: %s", e)
 
         if hasattr(EventType, "FOLLOWER_MILESTONE"):
             bus.subscribe(EventType.FOLLOWER_MILESTONE, on_follower_milestone)
 
         logger.info("主动智能引擎已注册 EventBus 监听器")
     except Exception as e:
-        logger.debug(f"EventBus 监听器注册失败 (非致命): {e}")
+        logger.warning("EventBus 监听器注册失败 (非致命): %s", e)
