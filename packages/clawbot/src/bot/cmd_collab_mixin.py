@@ -577,10 +577,17 @@ class CollabCommandsMixin:
     @with_typing
     async def cmd_stop_discuss(self, update, context):
         """停止讨论模式"""
-        chat_id = update.effective_chat.id
-        discuss_result = await chat_router.stop_discuss(chat_id)
-        workflow_result = await chat_router.stop_service_workflow(chat_id)
-        await update.message.reply_text(f"{discuss_result}\n{workflow_result}")
+        try:
+            chat_id = update.effective_chat.id
+            discuss_result = await chat_router.stop_discuss(chat_id)
+            workflow_result = await chat_router.stop_service_workflow(chat_id)
+            await update.message.reply_text(f"{discuss_result}\n{workflow_result}")
+        except Exception as e:
+            logger.warning("[cmd_stop_discuss] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     async def _run_discuss_loop(self, chat_id, context, reply_to):
         """驱动讨论循环：依次让每个Bot用自己的Telegram账号发言"""

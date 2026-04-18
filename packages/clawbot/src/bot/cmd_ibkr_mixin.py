@@ -161,26 +161,50 @@ class IBKRCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_ipositions(self, update, context):
-        await update.message.reply_text("%s 查询IBKR持仓..." % self.emoji)
-        text = await ibkr.get_positions_text()
-        await send_long_message(update.effective_chat.id, text, context,
-                                reply_to_message_id=update.message.message_id)
+        """IBKR持仓"""
+        try:
+            await update.message.reply_text("%s 查询IBKR持仓..." % self.emoji)
+            text = await ibkr.get_positions_text()
+            await send_long_message(update.effective_chat.id, text, context,
+                                    reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_ipositions] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_iorders(self, update, context):
-        text = await ibkr.get_orders_text()
-        await send_long_message(update.effective_chat.id, text, context,
-                                reply_to_message_id=update.message.message_id)
+        """IBKR订单"""
+        try:
+            text = await ibkr.get_orders_text()
+            await send_long_message(update.effective_chat.id, text, context,
+                                    reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_iorders] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
     async def cmd_iaccount(self, update, context):
-        await update.message.reply_text("%s 查询IBKR账户..." % self.emoji)
-        text = await ibkr.get_account_value()
-        text += "\n\n" + ibkr.get_budget_status()
-        await send_long_message(update.effective_chat.id, text, context,
-                                reply_to_message_id=update.message.message_id)
+        """IBKR账户"""
+        try:
+            await update.message.reply_text("%s 查询IBKR账户..." % self.emoji)
+            text = await ibkr.get_account_value()
+            text += "\n\n" + ibkr.get_budget_status()
+            await send_long_message(update.effective_chat.id, text, context,
+                                    reply_to_message_id=update.message.message_id)
+        except Exception as e:
+            logger.warning("[cmd_iaccount] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
+            except Exception:
+                pass
 
     @requires_auth
     @with_typing
