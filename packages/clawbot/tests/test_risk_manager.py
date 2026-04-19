@@ -135,6 +135,9 @@ class TestRiskCheckPerTradeRisk:
 
     def test_small_position_no_adjustment(self, risk_manager):
         # qty=5, risk per share=$5, total risk=$25 < $200
+        # HI-524: 填充足够交易历史以绕过新账户保护
+        for i in range(10):
+            risk_manager._trade_history.append({"pnl": 5.0, "symbol": "TEST", "time": "2024-01-01"})
         result = risk_manager.check_trade("AAPL", "BUY", 5, 150.0, 145.0, 162.0, signal_score=50)
         assert result.approved
         assert result.adjusted_quantity is None
