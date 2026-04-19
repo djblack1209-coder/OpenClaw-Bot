@@ -422,11 +422,14 @@ class TestStopLossValidator:
         v.validate(ctx)
         assert len(ctx.warnings) == 0
 
-    def test_卖出方向不检查止损(self):
-        """SELL 方向不检查止损"""
+    def test_卖出方向必须设定止损(self):
+        """HI-523: SELL 方向也必须设定止损"""
         v = StopLossValidator()
         ctx = _make_ctx(side="SELL", stop_loss=0.0)
-        assert v.validate(ctx) is None
+        result = v.validate(ctx)
+        assert result is not None
+        assert result[0] is False
+        assert "卖空必须设定止损价" in result[1]
 
 
 # ── RiskRewardValidator 测试 ──────────────────────────────
@@ -643,8 +646,8 @@ class TestExposureValidator:
         # 只有 GOOG 的 $10 是活跃敞口，新增 $10 → 总 $20 < $8000 ✓
         assert v.validate(ctx) is None
 
-    def test_卖出方向不检查持仓数(self):
-        """SELL 方向不受最大持仓数限制"""
+    def test_卖出方向也检查持仓数(self):
+        """HI-523: SELL 方向也受最大持仓数限制"""
         v = ExposureValidator()
         positions = [{"symbol": f"SYM{i}", "quantity": 1, "avg_price": 10.0, "status": "open"} for i in range(5)]
         ctx = _make_ctx(
@@ -653,7 +656,10 @@ class TestExposureValidator:
             entry_price=10.0,
             current_positions=positions,
         )
-        assert v.validate(ctx) is None
+        result = v.validate(ctx)
+        assert result is not None
+        assert result[0] is False
+        assert "达到上限" in result[1]
 
 
 # ── CooldownValidator 测试 ──────────────────────────────

@@ -199,8 +199,13 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
 
         # 剩余日亏损额度预估（使用快照值，避免二次加锁）
         remaining_daily = self.config.daily_loss_limit + snap_today_pnl
-        if side == "BUY" and stop_loss > 0:
-            potential_loss = quantity * (entry_price - stop_loss)
+        # HI-523: 移除 BUY-only 限制，SELL 方向同样需要日亏损预估
+        if stop_loss > 0:
+            if side == "BUY":
+                potential_loss = quantity * (entry_price - stop_loss)
+            else:
+                # SELL 方向: 亏损 = 止损价 - 入场价
+                potential_loss = quantity * (stop_loss - entry_price)
             if potential_loss > remaining_daily:
                 warnings.append(f"该笔最大亏损${potential_loss:.2f}可能触及日亏损限额(剩余额度${remaining_daily:.2f})")
 
@@ -217,23 +222,67 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
                 )
                 quantity = scaled_qty
 
-        # 板块集中度警告
-        if current_positions and side == "BUY":
+        # HI-524: 新账户保护 — 交易历史不足时限制仓位
+        new_acct_threshold = getattr(self.config, "new_account_trade_threshold", 10)
+        if len(list(self._trade_history)) < new_acct_threshold:
+            cap = self.config.total_capital
+            new_max_pos_pct = getattr(self.config, "new_account_max_position_pct", 0.05)
+            new_max_single = getattr(self.config, "new_account_max_single_trade", 500.0)
+            new_max_exp_pct = getattr(self.config, "new_account_max_exposure_pct", 0.30)
+            # 单笔仓位限制: min(资金*5%, $500)
+            max_trade_value = min(cap * new_max_pos_pct, new_max_single)
+            current_trade_value = quantity * entry_price
+            if current_trade_value > max_trade_value:
+                suggested_qty = max(1, int(max_trade_value / entry_price))
+                if suggested_qty < quantity:
+                    result.adjusted_quantity = suggested_qty
+                    warnings.append(
+                        f"新账户保护模式: 仓位限额降低，"
+                        f"单笔上限${max_trade_value:.2f}，"
+                        f"数量{quantity}->{suggested_qty}"
+                    )
+                    quantity = suggested_qty
+            # 总敞口限制: 30% 资金
+            if current_positions:
+                total_exposure = sum(
+                    p.get("quantity", 0) * (p.get("avg_price", 0) or p.get("avg_cost", 0))
+                    for p in current_positions
+                    if p.get("status", "open") == "open" or "status" not in p
+                )
+                new_total = total_exposure + quantity * entry_price
+                max_new_exposure = cap * new_max_exp_pct
+                if new_total > max_new_exposure:
+                    warnings.append(
+                        f"新账户保护: 总敞口${new_total:.2f}将超过保守上限"
+                        f"${max_new_exposure:.2f}(资金的{new_max_exp_pct * 100}%)"
+                    )
+
+        # 板块集中度警告 — HI-523: 移除 BUY-only 限制，SELL 方向同样需要板块集中度检查
+        if current_positions:
             sector_warning = self._check_sector_concentration(symbol, quantity * entry_price, current_positions)
             if sector_warning:
                 warnings.append(sector_warning)
 
-        # VaR/CVaR 风险度量警告
-        if side == "BUY" and stop_loss > 0:
-            proposed_loss = quantity * (entry_price - stop_loss)
+        # VaR/CVaR 风险度量警告 — HI-523: 移除 BUY-only 限制，SELL 方向同样需要 VaR 检查
+        if stop_loss > 0:
+            if side == "BUY":
+                proposed_loss = quantity * (entry_price - stop_loss)
+            else:
+                # SELL 方向: 亏损 = 止损价 - 入场价
+                proposed_loss = quantity * (stop_loss - entry_price)
             var_check = self.check_var_limit(proposed_loss)
             if var_check:
                 warnings.append(var_check)
 
         # 计算最终风险指标
         final_qty = result.adjusted_quantity or quantity
-        if side == "BUY" and stop_loss > 0:
-            result.max_loss = final_qty * (entry_price - stop_loss)
+        # HI-523: 区分 BUY/SELL 方向的最大亏损计算
+        if stop_loss > 0:
+            if side == "BUY":
+                result.max_loss = final_qty * (entry_price - stop_loss)
+            else:
+                # SELL 方向: 亏损 = 止损价 - 入场价
+                result.max_loss = final_qty * (stop_loss - entry_price)
         result.max_position_value = final_qty * entry_price
         result.risk_score = self._calc_risk_score(
             symbol, side, final_qty, entry_price, stop_loss, take_profit, signal_score, current_positions
@@ -563,13 +612,20 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         score += min(25, int(pos_pct / self.config.max_position_pct * 25))
 
         # 止损幅度风险 (0-20分)
+        # HI-523: 区分 BUY/SELL 方向的止损评分
         if side == "BUY" and stop_loss > 0 and entry_price > 0:
             sl_pct = (entry_price - stop_loss) / entry_price
             if sl_pct > 0.05:
                 score += min(20, int(sl_pct * 200))
             else:
                 score += int(sl_pct * 100)
-        elif side == "BUY" and stop_loss <= 0:
+        elif side == "SELL" and stop_loss > 0 and entry_price > 0:
+            sl_pct = (stop_loss - entry_price) / entry_price
+            if sl_pct > 0.05:
+                score += min(20, int(sl_pct * 200))
+            else:
+                score += int(sl_pct * 100)
+        elif stop_loss <= 0:
             score += 20  # 无止损 = 高风险
 
         # 信号强度风险 (0-15分) - 信号越弱风险越高

@@ -98,6 +98,13 @@ class RiskConfig:
     var_max_daily_pct: float = 0.03  # 单日 VaR 不超过资金的 3%
     cvar_reject_threshold: float = 0.05  # CVaR 超过资金 5% 时拒绝交易
 
+    # === v2.3 新增: 新账户保护参数 (HI-524) ===
+    new_account_trade_threshold: int = 10  # 低于此交易次数激活保护
+    new_account_max_position_pct: float = 0.05  # 5% 最大单笔仓位
+    new_account_max_exposure_pct: float = 0.30  # 30% 最大总敞口
+    new_account_max_single_trade: float = 500.0  # $500 单笔上限
+    new_account_var_daily_pct: float = 0.02  # 2% 日VaR限额
+
 
 @dataclass
 class RiskCheckResult:

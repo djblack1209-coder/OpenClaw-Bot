@@ -447,10 +447,13 @@ class TestCheckVarLimit:
         mgr = make_manager(deterministic_pnl, var_enabled=False)
         assert mgr.check_var_limit(1000.0) is None
 
-    def test_insufficient_data_returns_none(self):
-        """数据不足 10 条时不做限制，返回 None。"""
+    def test_insufficient_data_uses_conservative_limit(self):
+        """HI-524: 数据不足 10 条时使用保守限额保护新账户。"""
         mgr = make_manager([-10, -5, 0, 5, 10])
-        assert mgr.check_var_limit(1000.0) is None
+        # 资金 10000，保守单笔限额 = 10000 * 0.01 = 100，1000 远超限额
+        result = mgr.check_var_limit(1000.0)
+        assert result is not None
+        assert "新账户VaR保护" in result
 
     def test_safe_trade_passes(self, deterministic_pnl):
         """正常交易不应触发限额。"""
@@ -489,10 +492,13 @@ class TestCheckVarLimit:
         if result is not None:
             assert "VaR" in result
 
-    def test_no_trade_history_passes(self):
-        """无交易历史时不做限制。"""
+    def test_no_trade_history_uses_conservative_limit(self):
+        """HI-524: 无交易历史时使用保守限额保护新账户。"""
         mgr = make_manager([])
-        assert mgr.check_var_limit(500.0) is None
+        # 资金 10000，保守单笔限额 = 10000 * 0.01 = 100，500 远超限额
+        result = mgr.check_var_limit(500.0)
+        assert result is not None
+        assert "新账户VaR保护" in result
 
 
 # ============ _get_pnl_series() 内部方法测试 ============
