@@ -1,887 +1,490 @@
 /**
- * Portfolio — 我的资产页面
- * 5 个 Tab：持仓概览 | 交易决策 | 自动交易 | 回测分析 | 自选股监控
- * 集成 IBKR 实盘持仓、AI 团队投票、自动交易开关、策略回测、自选股监控
+ * Portfolio — 投资组合页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
  */
-import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import {
-  TrendingUp,
-  TrendingDown,
-  Loader2,
-  Search,
-  Play,
-  AlertCircle,
-  BarChart3,
-  PieChart as PieChartIcon,
-  Plus,
-  Trash2,
-  Eye,
-} from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
-import clsx from 'clsx';
-import { toast } from 'sonner';
 
-/* 组件导入 */
-import { GlassCard, AnimatedNumber, ToggleSwitch } from '../shared';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
-import { AIVoteCard } from './AIVoteCard';
-import { ConfirmDialog } from '../ui/confirm-dialog';
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06 } },
+};
 
-/* Hooks 导入 */
-import {
-  usePositions,
-  usePnL,
-  useTradingControls,
-  useAIVote,
-  useBacktest,
-  type Position,
-} from '../../hooks/usePortfolioAPI';
-import { api } from '../../lib/tauri';
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
 
-/* ══════════════════════════════════════
- * Tab 1: 持仓概览
- * ══════════════════════════════════════ */
+/* ====== 模拟数据 ====== */
 
-/** 持仓饼图颜色 */
-const PIE_COLORS = [
-  'var(--oc-brand)',
-  'var(--oc-success)',
-  'var(--oc-warning)',
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#f59e0b', // amber
-  '#10b981', // emerald
-  '#3b82f6', // blue
+/** 持仓数据 */
+const HOLDINGS = [
+  { symbol: 'NVDA', name: '英伟达', qty: 50, price: 875.30, pnl: 12350, pnlPct: 38.2 },
+  { symbol: 'AAPL', name: '苹果', qty: 120, price: 198.50, pnl: 4280, pnlPct: 21.5 },
+  { symbol: 'TSLA', name: '特斯拉', qty: 30, price: 245.80, pnl: -1520, pnlPct: -6.8 },
+  { symbol: 'BTC', name: '比特币', qty: 0.85, price: 67420, pnl: 8960, pnlPct: 15.6 },
+  { symbol: 'MSFT', name: '微软', qty: 80, price: 415.20, pnl: 3640, pnlPct: 12.3 },
 ];
 
-function PositionsOverview() {
-  const { positions, loading, error, refresh } = usePositions(60000); // 60秒轮询
-  const { pnl } = usePnL(60000);
+/** AI 建议 */
+const AI_RECOMMENDATIONS = [
+  { text: '建议减持 NVDA — 估值偏高', severity: 'var(--accent-amber)' },
+  { text: '建议增持 AAPL — 技术突破', severity: 'var(--accent-green)' },
+  { text: '关注 BTC — Hurst指数看涨', severity: 'var(--accent-cyan)' },
+];
 
-  if (loading && !positions) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 size={32} className="text-[var(--oc-brand)] animate-spin" />
-      </div>
-    );
-  }
+/** 风险指标 */
+const RISK_METRICS = [
+  { label: '夏普比率', value: '1.82', color: 'var(--accent-green)' },
+  { label: '最大回撤', value: '-8.3%', color: 'var(--accent-red)' },
+  { label: 'Beta', value: '0.95', color: 'var(--accent-cyan)' },
+  { label: 'VaR(95%)', value: '$2,150', color: 'var(--accent-amber)' },
+];
 
-  if (error) {
-    return (
-      <GlassCard className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertCircle size={48} className="text-[var(--oc-danger)] mx-auto mb-3" />
-          <p className="text-sm text-gray-400">无法加载持仓数据</p>
-          <p className="text-xs text-gray-500 mt-1">{error}</p>
-        </div>
-      </GlassCard>
-    );
-  }
+/** Bot 投票 */
+const BOT_VOTES = [
+  { name: '巴菲特', signal: '看多' as const, color: 'var(--accent-green)' },
+  { name: '塔勒布', signal: '中性' as const, color: 'var(--accent-amber)' },
+  { name: '木头姐', signal: '看多' as const, color: 'var(--accent-green)' },
+  { name: 'Burry', signal: '看空' as const, color: 'var(--accent-red)' },
+  { name: '德鲁肯米勒', signal: '看多' as const, color: 'var(--accent-green)' },
+];
 
-  if (!positions) {
-    return (
-      <GlassCard className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertCircle size={48} className="text-[var(--oc-danger)] mx-auto mb-3" />
-          <p className="text-sm text-gray-400">无法加载持仓数据</p>
-          <p className="text-xs text-gray-500 mt-1">请检查 IBKR 连接</p>
-        </div>
-      </GlassCard>
-    );
-  }
+/** 持仓分布 */
+const SECTOR_ALLOCATION = [
+  { sector: '科技', pct: 45, color: 'var(--accent-cyan)' },
+  { sector: '金融', pct: 20, color: 'var(--accent-green)' },
+  { sector: '医疗', pct: 15, color: 'var(--accent-purple)' },
+  { sector: '能源', pct: 12, color: 'var(--accent-amber)' },
+  { sector: '其他', pct: 8, color: 'var(--text-tertiary)' },
+];
 
-  /* 准备饼图数据 */
-  const pieData = positions.positions.map((p) => ({
-    name: p.symbol,
-    value: p.market_value,
-  }));
+/** 交易日志 */
+const TRADE_LOG = [
+  { time: '14:32', action: '买入' as const, symbol: 'AAPL', qty: 20, price: 198.50 },
+  { time: '13:15', action: '卖出' as const, symbol: 'TSLA', qty: 10, price: 248.30 },
+  { time: '11:08', action: '买入' as const, symbol: 'BTC', qty: 0.15, price: 67200 },
+  { time: '09:45', action: '卖出' as const, symbol: 'META', qty: 25, price: 512.40 },
+  { time: '09:31', action: '买入' as const, symbol: 'NVDA', qty: 5, price: 870.10 },
+];
 
-  /* 今日盈亏 */
-  const dailyPnl = pnl?.daily_pnl || 0;
-  const dailyPnlPct = pnl?.daily_pnl_pct || 0;
-  const isPositive = dailyPnl >= 0;
+/** 30天收益走势数据 (模拟百分比变化) */
+const SPARKLINE_DATA = [
+  0.5, -0.3, 0.8, 1.2, -0.1, 0.4, 0.9, -0.5, 0.2, 1.5,
+  -0.8, 0.3, 0.7, 1.1, 0.6, -0.2, 0.4, 1.3, -0.4, 0.8,
+  0.2, -0.6, 1.0, 0.5, 0.9, -0.1, 1.4, 0.3, 0.7, 1.8,
+];
 
-  return (
-    <div className="space-y-4">
-      {/* 顶部汇总栏 */}
-      <GlassCard hoverable={false}>
-        <div className="flex items-center justify-between">
-          {/* 总市值 */}
-          <div>
-            <p className="text-xs text-gray-400 mb-1">总市值</p>
-            <p className="text-3xl font-bold text-white oc-tabular-nums">
-              ${positions.total_market_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
+/* ====== 辅助函数 ====== */
 
-          {/* 今日盈亏 */}
-          <div className="text-right">
-            <p className="text-xs text-gray-400 mb-1">今日盈亏</p>
-            <div className="flex items-center gap-2">
-              <AnimatedNumber
-                value={dailyPnl}
-                decimals={2}
-                prefix="$"
-                colored
-                className="text-xl font-bold"
-              />
-              {isPositive ? (
-                <TrendingUp size={20} className="text-[var(--oc-success)]" />
-              ) : (
-                <TrendingDown size={20} className="text-[var(--oc-danger)]" />
-              )}
-              <AnimatedNumber
-                value={dailyPnlPct}
-                decimals={2}
-                suffix="%"
-                colored
-                className="text-sm font-medium"
-              />
-            </div>
-          </div>
-
-          {/* 持仓数量 */}
-          <div className="text-right">
-            <p className="text-xs text-gray-400 mb-1">持仓数量</p>
-            <p className="text-2xl font-bold text-white">{positions.positions.length} 只</p>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* 饼图 + 持仓列表 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 左侧：饼图 */}
-        <GlassCard hoverable={false}>
-          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <PieChartIcon size={16} />
-            持仓分布
-          </h3>
-          {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.name} ${positions.total_market_value > 0 ? ((entry.value / positions.total_market_value) * 100).toFixed(1) : 0}%`}
-                  outerRadius={90}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                    border: '1px solid rgba(75, 85, 99, 0.3)',
-                    borderRadius: '8px',
-                    color: '#fff',
-                  }}
-                  formatter={(value: unknown) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
-              暂无持仓
-            </div>
-          )}
-        </GlassCard>
-
-        {/* 右侧：持仓列表 */}
-        <GlassCard hoverable={false} className="overflow-hidden">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4">持仓明细</h3>
-          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-2">
-            {positions.positions.map((pos) => (
-              <PositionRow key={pos.symbol} position={pos} onSellComplete={refresh} />
-            ))}
-            {positions.positions.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-8">暂无持仓</p>
-            )}
-          </div>
-        </GlassCard>
-      </div>
-    </div>
-  );
+/** 格式化盈亏颜色 */
+function pnlColor(value: number): string {
+  return value >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
 }
 
-/** 单个持仓行 */
-function PositionRow({ position, onSellComplete }: { position: Position; onSellComplete?: () => void }) {
-  const isProfit = position.unrealized_pnl >= 0;
-  const [sellDialogOpen, setSellDialogOpen] = useState(false);
-  const [selling, setSelling] = useState(false);
+/** 格式化盈亏符号 */
+function pnlSign(value: number): string {
+  return value >= 0 ? '+' : '';
+}
 
-  const handleSell = async () => {
-    setSelling(true);
-    try {
-      const result = await api.tradingSell(position.symbol, position.quantity);
-      if (result.success) {
-        toast.success(`${position.symbol} 卖出订单已提交`);
-        setSellDialogOpen(false);
-        // 刷新持仓数据
-        onSellComplete?.();
-      } else {
-        toast.error(`卖出失败: ${result.message || '未知错误'}`);
-      }
-    } catch (e) {
-      toast.error(`卖出失败: ${e instanceof Error ? e.message : '网络错误'}`);
-    } finally {
-      setSelling(false);
-    }
-  };
+/** 把数值映射到 ASCII 柱状图字符 */
+function sparklineBar(value: number, max: number): string {
+  const blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  const normalized = Math.max(0, (value + Math.abs(max)) / (max * 2));
+  const idx = Math.min(Math.floor(normalized * blocks.length), blocks.length - 1);
+  return blocks[idx];
+}
+
+/* ====== 子卡片组件 ====== */
+
+/** 总资产概览卡片 */
+function AssetOverviewCard() {
+  const stats = [
+    { label: '总资产', value: '$125,430', color: 'var(--text-primary)' },
+    { label: '今日盈亏', value: '+$1,240', color: 'var(--accent-green)' },
+    { label: '总收益率', value: '+18.5%', color: 'var(--accent-green)' },
+    { label: '持仓数量', value: '12', color: 'var(--accent-cyan)' },
+  ];
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-3 rounded-lg bg-dark-700/50 hover:bg-dark-600/50 transition-colors"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <p className="text-sm font-bold text-white">{position.symbol}</p>
-            <p className="text-xs text-gray-400">{position.quantity} 股</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-white oc-tabular-nums">
-                ${(position.current_price ?? 0).toFixed(2)}
-              </p>
-              <p className={clsx('text-xs font-medium oc-tabular-nums', isProfit ? 'text-[var(--oc-success)]' : 'text-[var(--oc-danger)]')}>
-                {isProfit ? '+' : ''}{(position.unrealized_pnl_pct ?? 0).toFixed(2)}%
-              </p>
+    <div className="abyss-card p-6 h-full flex flex-col">
+      {/* 顶部标签 */}
+      <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+        PORTFOLIO // OVERVIEW
+      </span>
+      <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        投资组合
+      </h2>
+
+      {/* 4列统计数据 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <span className="text-label">{s.label}</span>
+            <div className="text-metric mt-1" style={{ color: s.color }}>
+              {s.value}
             </div>
-            <button
-              onClick={() => setSellDialogOpen(true)}
-              className="px-2.5 py-1 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-md transition-colors"
-            >
-              卖出
-            </button>
           </div>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">
-            市值 <span className="text-gray-300 font-medium oc-tabular-nums">${(position.market_value ?? 0).toFixed(2)}</span>
-          </span>
-          <span className="text-gray-500">
-            成本 <span className="text-gray-300 font-medium oc-tabular-nums">${(position.avg_cost ?? 0).toFixed(2)}</span>
-          </span>
-          <span className={clsx('font-medium oc-tabular-nums', isProfit ? 'text-[var(--oc-success)]' : 'text-[var(--oc-danger)]')}>
-            {isProfit ? '+' : ''}${(position.unrealized_pnl ?? 0).toFixed(2)}
-          </span>
-        </div>
-      </motion.div>
-
-      <ConfirmDialog
-        open={sellDialogOpen}
-        onClose={() => !selling && setSellDialogOpen(false)}
-        onConfirm={handleSell}
-        title={`确认卖出 ${position.quantity} 股 ${position.symbol}？`}
-        description={`预计成交价约 $${(position.current_price ?? 0).toFixed(2)}，总金额约 $${(position.market_value ?? 0).toFixed(2)}`}
-        confirmText="确认卖出"
-        cancelText="取消"
-        destructive
-        loading={selling}
-      />
-    </>
-  );
-}
-
-/* ══════════════════════════════════════
- * Tab 2: 交易决策
- * ══════════════════════════════════════ */
-
-function TradingDecision() {
-  const [symbol, setSymbol] = useState('');
-  const { voteResult, voting, voteError, triggerVote } = useAIVote();
-
-  const handleVote = () => {
-    if (symbol.trim()) {
-      triggerVote(symbol.trim().toUpperCase());
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* 输入区域 */}
-      {!voteResult && !voting && (
-        <GlassCard hoverable={false}>
-          <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-            <Search size={16} />
-            AI 团队分析
-          </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            输入股票代码，6 个 AI 分析师会分别给出买入/持有/跳过建议，并进行团队投票
-          </p>
-          <div className="flex gap-3">
-            <Input
-              type="text"
-              placeholder="输入代码，如 AAPL"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && symbol.trim()) {
-                  handleVote();
-                }
-              }}
-              className="flex-1"
-            />
-            <Button
-              onClick={handleVote}
-              disabled={!symbol.trim()}
-              className="px-6"
-            >
-              <BarChart3 size={16} />
-              分析
-            </Button>
-          </div>
-          {voteError && (
-            <p className="text-xs text-[var(--oc-danger)] mt-2">{voteError}</p>
-          )}
-        </GlassCard>
-      )}
-
-      {/* AI 投票卡片 */}
-      <AIVoteCard
-        result={voteResult}
-        loading={voting}
-        error={voteError}
-        onTriggerVote={(sym) => {
-          setSymbol(sym);
-          triggerVote(sym);
-        }}
-      />
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════
- * Tab 3: 自动交易
- * ══════════════════════════════════════ */
-
-function AutoTrading() {
-  const { controls, loading, saving, update } = useTradingControls();
-  const [strategy, setStrategy] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced');
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 size={32} className="text-[var(--oc-brand)] animate-spin" />
+        ))}
       </div>
-    );
-  }
 
-  if (!controls) {
-    return (
-      <GlassCard className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertCircle size={48} className="text-[var(--oc-danger)] mx-auto mb-3" />
-          <p className="text-sm text-gray-400">无法加载交易控制</p>
-        </div>
-      </GlassCard>
-    );
-  }
-
-  const handleToggle = async (checked: boolean) => {
-    try {
-      await update({ auto_trader_enabled: checked });
-    } catch (e) {
-      console.error('更新失败:', e);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* 主开关 */}
-      <GlassCard hoverable={false}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-white mb-1">自动交易</h3>
-            <p className="text-xs text-gray-400">
-              {controls.auto_trader_enabled ? '系统正在自动执行交易策略' : '手动模式，需要人工确认'}
-            </p>
-          </div>
-          <ToggleSwitch
-            checked={controls.auto_trader_enabled}
-            onChange={handleToggle}
-            disabled={saving}
-            size="lg"
-          />
-        </div>
-      </GlassCard>
-
-      {/* 策略选择 */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">交易策略</h3>
-        <div className="flex gap-3">
-          {(['conservative', 'balanced', 'aggressive'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStrategy(s)}
-              className={clsx(
-                'flex-1 py-3 px-4 rounded-lg border-2 transition-all',
-                strategy === s
-                  ? 'border-[var(--oc-brand)] bg-[var(--oc-brand)]/10'
-                  : 'border-dark-600 bg-dark-700/30 hover:border-dark-500'
-              )}
+      {/* 持仓列表 */}
+      <div className="mt-5 flex-1">
+        <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
+          TOP HOLDINGS
+        </span>
+        <div className="mt-2 space-y-1">
+          {HOLDINGS.map((h) => (
+            <div
+              key={h.symbol}
+              className="flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer transition-colors"
+              style={{ background: 'rgba(255,255,255,0.02)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
             >
-              <p className={clsx('text-sm font-semibold', strategy === s ? 'text-[var(--oc-brand)]' : 'text-gray-300')}>
-                {s === 'conservative' ? '保守' : s === 'balanced' ? '均衡' : '激进'}
-              </p>
-            </button>
+              {/* 股票代码 */}
+              <span className="font-mono text-sm font-semibold w-14" style={{ color: 'var(--accent-cyan)' }}>
+                {h.symbol}
+              </span>
+              {/* 名称 */}
+              <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
+                {h.name}
+              </span>
+              {/* 数量 */}
+              <span className="font-mono text-xs w-12 text-right" style={{ color: 'var(--text-tertiary)' }}>
+                {h.qty}
+              </span>
+              {/* 现价 */}
+              <span className="font-mono text-xs w-20 text-right" style={{ color: 'var(--text-secondary)' }}>
+                ${h.price.toLocaleString()}
+              </span>
+              {/* 盈亏额 */}
+              <span className="font-mono text-xs w-20 text-right" style={{ color: pnlColor(h.pnl) }}>
+                {pnlSign(h.pnl)}${Math.abs(h.pnl).toLocaleString()}
+              </span>
+              {/* 盈亏率 */}
+              <span className="font-mono text-xs w-16 text-right font-semibold" style={{ color: pnlColor(h.pnlPct) }}>
+                {pnlSign(h.pnlPct)}{h.pnlPct}%
+              </span>
+            </div>
           ))}
         </div>
-      </GlassCard>
-
-      {/* 风险参数（默认值展示，实际由后端 risk_manager 控制） */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">
-          风险参数
-          <span className="text-xs text-gray-500 font-normal ml-2">后端配置</span>
-        </h3>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-3 rounded-lg bg-dark-700/50">
-            <p className="text-xs text-gray-400 mb-1">单笔风险上限</p>
-            <p className="text-lg font-bold text-white">2%</p>
-          </div>
-          <div className="p-3 rounded-lg bg-dark-700/50">
-            <p className="text-xs text-gray-400 mb-1">日亏限额</p>
-            <p className="text-lg font-bold text-white">$100</p>
-          </div>
-          <div className="p-3 rounded-lg bg-dark-700/50">
-            <p className="text-xs text-gray-400 mb-1">盈亏比</p>
-            <p className="text-lg font-bold text-white">≥1:2</p>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* 今日交易历史 */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">今日交易</h3>
-        <div className="text-center py-8 text-gray-500 text-sm">
-          暂无交易记录
-        </div>
-      </GlassCard>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════
- * Tab 4: 回测分析
- * ══════════════════════════════════════ */
-
-function BacktestAnalysis() {
-  const [symbol, setSymbol] = useState('');
-  const [strategy, setStrategy] = useState('ma_cross');
-  const [period, setPeriod] = useState('1y');
-  const { backtestResult, backtesting, backtestError, runBacktest } = useBacktest();
-
-  const handleRun = () => {
-    if (symbol.trim()) {
-      runBacktest(symbol.trim().toUpperCase(), strategy, period);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* 参数选择 */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">回测参数</h3>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs text-gray-400 mb-2 block">股票代码</label>
-            <Input
-              type="text"
-              placeholder="如 AAPL"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-2 block">策略</label>
-            <select
-              value={strategy}
-              onChange={(e) => setStrategy(e.target.value)}
-              className="w-full h-8 rounded-lg border border-input bg-dark-700 px-2.5 text-sm text-white"
-            >
-              <option value="ma_cross">均线交叉</option>
-              <option value="rsi">RSI 超买超卖</option>
-              <option value="macd">MACD</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-2 block">周期</label>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="w-full h-8 rounded-lg border border-input bg-dark-700 px-2.5 text-sm text-white"
-            >
-              <option value="3mo">3 个月</option>
-              <option value="6mo">6 个月</option>
-              <option value="1y">1 年</option>
-              <option value="2y">2 年</option>
-            </select>
-          </div>
-        </div>
-        <Button
-          onClick={handleRun}
-          disabled={!symbol.trim() || backtesting}
-          className="w-full mt-4"
-        >
-          {backtesting ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              回测中...
-            </>
-          ) : (
-            <>
-              <Play size={16} />
-              开始回测
-            </>
-          )}
-        </Button>
-        {backtestError && (
-          <p className="text-xs text-[var(--oc-danger)] mt-2">{backtestError}</p>
-        )}
-      </GlassCard>
-
-      {/* 回测结果 */}
-      {backtestResult && (
-        <>
-          {/* 关键指标 */}
-          <div className="grid grid-cols-4 gap-3">
-            <GlassCard hoverable={false} className="text-center">
-              <p className="text-xs text-gray-400 mb-1">胜率</p>
-              <p className="text-2xl font-bold text-[var(--oc-success)]">
-                {(backtestResult.win_rate * 100).toFixed(1)}%
-              </p>
-            </GlassCard>
-            <GlassCard hoverable={false} className="text-center">
-              <p className="text-xs text-gray-400 mb-1">总收益</p>
-              <p className={clsx('text-2xl font-bold', backtestResult.total_return >= 0 ? 'text-[var(--oc-success)]' : 'text-[var(--oc-danger)]')}>
-                {backtestResult.total_return >= 0 ? '+' : ''}{backtestResult.total_return.toFixed(2)}%
-              </p>
-            </GlassCard>
-            <GlassCard hoverable={false} className="text-center">
-              <p className="text-xs text-gray-400 mb-1">最大回撤</p>
-              <p className="text-2xl font-bold text-[var(--oc-danger)]">
-                {backtestResult.max_drawdown.toFixed(2)}%
-              </p>
-            </GlassCard>
-            <GlassCard hoverable={false} className="text-center">
-              <p className="text-xs text-gray-400 mb-1">夏普比率</p>
-              <p className="text-2xl font-bold text-white">
-                {backtestResult.sharpe_ratio.toFixed(2)}
-              </p>
-            </GlassCard>
-          </div>
-
-          {/* 权益曲线 */}
-          <GlassCard hoverable={false}>
-            <h3 className="text-sm font-semibold text-gray-300 mb-4">权益曲线</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={backtestResult.chart_data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.2)" />
-                <XAxis
-                  dataKey="time"
-                  stroke="#9ca3af"
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis
-                  stroke="#9ca3af"
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                    border: '1px solid rgba(75, 85, 99, 0.3)',
-                    borderRadius: '8px',
-                    color: '#fff',
-                  }}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="equity"
-                  stroke="var(--oc-brand)"
-                  strokeWidth={2}
-                  dot={false}
-                  name="策略"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="benchmark"
-                  stroke="#9ca3af"
-                  strokeWidth={2}
-                  dot={false}
-                  strokeDasharray="5 5"
-                  name="基准"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </GlassCard>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════
- * Tab 5: 自选股监控
- * ══════════════════════════════════════ */
-
-interface WatchlistItem {
-  symbol: string;
-  target_price: number;
-  direction: 'above' | 'below';
-  added_at: string;
-}
-
-function WatchlistView() {
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [newSymbol, setNewSymbol] = useState('');
-  const [newTargetPrice, setNewTargetPrice] = useState('');
-  const [newDirection, setNewDirection] = useState<'above' | 'below'>('above');
-  const [adding, setAdding] = useState(false);
-
-  /* 获取自选股列表 */
-  const fetchWatchlist = useCallback(async () => {
-    try {
-      const data = await api.watchlist();
-      setWatchlist(Array.isArray(data) ? data : []);
-    } catch {
-      // 静默
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /* 轮询 30 秒 */
-  useEffect(() => {
-    fetchWatchlist();
-    const id = setInterval(fetchWatchlist, 30000);
-    return () => clearInterval(id);
-  }, [fetchWatchlist]);
-
-  /* 添加自选股 */
-  const handleAdd = async () => {
-    const sym = newSymbol.trim().toUpperCase();
-    const price = parseFloat(newTargetPrice);
-    if (!sym) { toast.error('请输入股票代码'); return; }
-    if (isNaN(price) || price <= 0) { toast.error('请输入有效的目标价格'); return; }
-
-    setAdding(true);
-    try {
-      const data = await api.watchlistAdd(sym, price, newDirection);
-      setWatchlist(Array.isArray(data) ? data : []);
-      setNewSymbol('');
-      setNewTargetPrice('');
-      toast.success(`已添加 ${sym} 到自选股`);
-    } catch (e) {
-      toast.error(`添加失败: ${e instanceof Error ? e.message : '未知错误'}`);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  /* 删除自选股 */
-  const handleRemove = async (symbol: string) => {
-    try {
-      const data = await api.watchlistRemove(symbol);
-      setWatchlist(Array.isArray(data) ? data : []);
-      toast.success(`已移除 ${symbol}`);
-    } catch (e) {
-      toast.error(`删除失败: ${e instanceof Error ? e.message : '未知错误'}`);
-    }
-  };
-
-  if (loading && watchlist.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 size={32} className="text-[var(--oc-brand)] animate-spin" />
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* 添加表单 */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-          <Plus size={16} />
-          添加自选股
-        </h3>
-        <div className="flex gap-3 items-end">
-          <div className="flex-1">
-            <label className="text-xs text-gray-400 mb-1.5 block">股票代码</label>
-            <Input
-              type="text"
-              placeholder="如 AAPL"
-              value={newSymbol}
-              onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-xs text-gray-400 mb-1.5 block">目标价格</label>
-            <Input
-              type="number"
-              placeholder="如 180.00"
-              value={newTargetPrice}
-              onChange={(e) => setNewTargetPrice(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-              min={0}
-              step={0.01}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">方向</label>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setNewDirection('above')}
-                className={clsx(
-                  'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors',
-                  newDirection === 'above'
-                    ? 'border-[var(--oc-success)] bg-[var(--oc-success)]/10 text-[var(--oc-success)]'
-                    : 'border-dark-600 bg-dark-700/30 text-gray-400 hover:border-dark-500'
-                )}
-              >
-                ↑ 突破
-              </button>
-              <button
-                onClick={() => setNewDirection('below')}
-                className={clsx(
-                  'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors',
-                  newDirection === 'below'
-                    ? 'border-[var(--oc-danger)] bg-[var(--oc-danger)]/10 text-[var(--oc-danger)]'
-                    : 'border-dark-600 bg-dark-700/30 text-gray-400 hover:border-dark-500'
-                )}
-              >
-                ↓ 跌破
-              </button>
-            </div>
-          </div>
-          <Button onClick={handleAdd} disabled={adding} className="px-6">
-            {adding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-            添加
-          </Button>
-        </div>
-      </GlassCard>
-
-      {/* 自选股列表 */}
-      <GlassCard hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-          <Eye size={16} />
-          监控列表
-          <span className="text-xs text-gray-500 font-normal">({watchlist.length} 只)</span>
-        </h3>
-
-        {watchlist.length === 0 ? (
-          <div className="text-center py-12 text-gray-500 text-sm">
-            暂无自选股，点击上方添加
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {/* 表头 */}
-            <div className="grid grid-cols-5 gap-4 px-3 py-2 text-xs text-gray-500 font-medium">
-              <span>代码</span>
-              <span className="text-right">目标价格</span>
-              <span className="text-center">方向</span>
-              <span className="text-center">状态</span>
-              <span className="text-right">操作</span>
-            </div>
-
-            {/* 数据行 */}
-            {watchlist.map((item) => (
-              <motion.div
-                key={item.symbol}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="grid grid-cols-5 gap-4 items-center px-3 py-3 rounded-lg bg-dark-700/50 hover:bg-dark-600/50 transition-colors"
-              >
-                <span className="text-sm font-bold text-white">{item.symbol}</span>
-                <span className="text-sm text-right text-gray-300 oc-tabular-nums">
-                  ${item.target_price.toFixed(2)}
-                </span>
-                <span className="text-center">
-                  {item.direction === 'above' ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--oc-success)]">
-                      <TrendingUp size={14} /> 突破
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--oc-danger)]">
-                      <TrendingDown size={14} /> 跌破
-                    </span>
-                  )}
-                </span>
-                <span className="text-center">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-500/10 text-gray-400">
-                    监控中
-                  </span>
-                </span>
-                <span className="text-right">
-                  <button
-                    onClick={() => handleRemove(item.symbol)}
-                    className="px-2.5 py-1 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-md transition-colors inline-flex items-center gap-1"
-                  >
-                    <Trash2 size={12} />
-                    删除
-                  </button>
-                </span>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </GlassCard>
     </div>
   );
 }
 
-/* ══════════════════════════════════════
- * 主组件: Portfolio
- * ══════════════════════════════════════ */
+/** AI 投资建议卡片 */
+function AIAdvisorCard() {
+  return (
+    <div className="abyss-card p-6 h-full flex flex-col">
+      <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
+        AI ADVISOR
+      </span>
+      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        AI 投资顾问
+      </h3>
+      <div className="mt-4 space-y-3 flex-1">
+        {AI_RECOMMENDATIONS.map((rec, i) => (
+          <div
+            key={i}
+            className="flex items-start gap-3 p-3 rounded-lg"
+            style={{ background: 'rgba(255,255,255,0.03)' }}
+          >
+            {/* 严重度圆点 */}
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full mt-0.5 flex-shrink-0"
+              style={{ background: rec.severity, boxShadow: `0 0 8px ${rec.severity}40` }}
+            />
+            <span className="font-mono text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {rec.text}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] font-mono mt-3" style={{ color: 'var(--text-disabled)' }}>
+        基于 7-Bot 多智能体共识分析
+      </p>
+    </div>
+  );
+}
 
-export function Portfolio() {
-  const [activeTab, setActiveTab] = useState('overview');
+/** 风险指标卡片 */
+function RiskMetricsCard() {
+  return (
+    <div className="abyss-card p-6 h-full flex flex-col">
+      <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
+        RISK METRICS
+      </span>
+      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        风险指标
+      </h3>
+      <div className="mt-4 space-y-4 flex-1">
+        {RISK_METRICS.map((m) => (
+          <div key={m.label} className="flex items-center justify-between">
+            <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {m.label}
+            </span>
+            <span className="text-metric text-base" style={{ color: m.color }}>
+              {m.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 7-Bot 共识卡片 */
+function BotConsensusCard() {
+  /* 统计各信号数量用于百分比条 */
+  const total = BOT_VOTES.length;
+  const bullCount = BOT_VOTES.filter((b) => b.signal === '看多').length;
+  const bearCount = BOT_VOTES.filter((b) => b.signal === '看空').length;
+  const neutralCount = total - bullCount - bearCount;
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList variant="line" className="mb-6">
-          <TabsTrigger value="overview">持仓概览</TabsTrigger>
-          <TabsTrigger value="decision">交易决策</TabsTrigger>
-          <TabsTrigger value="auto">自动交易</TabsTrigger>
-          <TabsTrigger value="backtest">回测分析</TabsTrigger>
-          <TabsTrigger value="watchlist">自选</TabsTrigger>
-        </TabsList>
+    <div className="abyss-card p-6 h-full flex flex-col">
+      <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+        7-BOT CONSENSUS
+      </span>
+      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        7-Bot 共识
+      </h3>
 
-        <TabsContent value="overview">
-          <PositionsOverview />
-        </TabsContent>
+      {/* 共识进度条 */}
+      <div className="flex h-3 rounded-full overflow-hidden mt-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div
+          className="h-full transition-all"
+          style={{ width: `${(bullCount / total) * 100}%`, background: 'var(--accent-green)' }}
+        />
+        <div
+          className="h-full transition-all"
+          style={{ width: `${(neutralCount / total) * 100}%`, background: 'var(--accent-amber)' }}
+        />
+        <div
+          className="h-full transition-all"
+          style={{ width: `${(bearCount / total) * 100}%`, background: 'var(--accent-red)' }}
+        />
+      </div>
 
-        <TabsContent value="decision">
-          <TradingDecision />
-        </TabsContent>
+      {/* Bot 列表 */}
+      <div className="mt-4 space-y-2 flex-1">
+        {BOT_VOTES.map((bot) => (
+          <div key={bot.name} className="flex items-center justify-between">
+            <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {bot.name}
+            </span>
+            <span
+              className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-full"
+              style={{
+                color: bot.color,
+                background: `${bot.color}15`,
+              }}
+            >
+              {bot.signal}
+            </span>
+          </div>
+        ))}
+      </div>
 
-        <TabsContent value="auto">
-          <AutoTrading />
-        </TabsContent>
+      {/* 统计汇总 */}
+      <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bullCount} 看多</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-amber)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{neutralCount} 中性</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-red)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bearCount} 看空</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
-        <TabsContent value="backtest">
-          <BacktestAnalysis />
-        </TabsContent>
+/** 持仓分布卡片 */
+function SectorAllocationCard() {
+  return (
+    <div className="abyss-card p-6 h-full flex flex-col">
+      <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+        ALLOCATION
+      </span>
+      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        持仓分布
+      </h3>
+      <div className="mt-4 space-y-3 flex-1">
+        {SECTOR_ALLOCATION.map((s) => (
+          <div key={s.sector}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {s.sector}
+              </span>
+              <span className="font-mono text-xs font-semibold" style={{ color: s.color }}>
+                {s.pct}%
+              </span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${s.pct}%`, background: s.color, opacity: 0.8 }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        <TabsContent value="watchlist">
-          <WatchlistView />
-        </TabsContent>
-      </Tabs>
+/** 交易日志卡片 */
+function TradeLogCard() {
+  return (
+    <div className="abyss-card p-6 h-full flex flex-col">
+      <span className="text-label" style={{ color: 'var(--accent-red)' }}>
+        TRADE LOG
+      </span>
+      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+        交易日志
+      </h3>
+      <div className="mt-4 space-y-1 flex-1 font-mono text-xs">
+        {TRADE_LOG.map((t, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2 py-1.5 px-2 rounded"
+            style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}
+          >
+            {/* 时间 */}
+            <span style={{ color: 'var(--text-disabled)' }}>{t.time}</span>
+            {/* 操作 */}
+            <span
+              className="w-8 text-center font-semibold"
+              style={{ color: t.action === '买入' ? 'var(--accent-green)' : 'var(--accent-red)' }}
+            >
+              {t.action}
+            </span>
+            {/* 股票 */}
+            <span style={{ color: 'var(--accent-cyan)' }}>{t.symbol}</span>
+            {/* 数量 */}
+            <span className="ml-auto" style={{ color: 'var(--text-tertiary)' }}>
+              x{t.qty}
+            </span>
+            {/* 价格 */}
+            <span className="w-20 text-right" style={{ color: 'var(--text-secondary)' }}>
+              ${t.price.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] font-mono mt-3" style={{ color: 'var(--text-disabled)' }}>
+        最近 5 笔交易记录
+      </p>
+    </div>
+  );
+}
+
+/** 30天收益走势卡片 */
+function SparklineCard() {
+  const max = Math.max(...SPARKLINE_DATA.map(Math.abs));
+
+  return (
+    <div className="abyss-card p-6 h-full">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+            PERFORMANCE // 30D
+          </span>
+          <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+            30天收益走势
+          </h3>
+        </div>
+        <div className="text-right">
+          <span className="text-label">累计收益</span>
+          <div className="text-metric mt-1" style={{ color: 'var(--accent-green)' }}>
+            +{SPARKLINE_DATA.reduce((a, b) => a + b, 0).toFixed(1)}%
+          </div>
+        </div>
+      </div>
+
+      {/* ASCII 柱状图 */}
+      <div className="mt-4 flex items-end gap-[3px] h-16 overflow-hidden">
+        {SPARKLINE_DATA.map((val, i) => (
+          <div
+            key={i}
+            className="flex-1 flex flex-col items-center justify-end"
+            title={`Day ${i + 1}: ${val >= 0 ? '+' : ''}${val}%`}
+          >
+            <span
+              className="font-mono text-lg leading-none select-none"
+              style={{ color: val >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', opacity: 0.9 }}
+            >
+              {sparklineBar(val, max)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* 底部日期标注 */}
+      <div className="flex justify-between mt-2">
+        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>30天前</span>
+        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>15天前</span>
+        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>今天</span>
+      </div>
+    </div>
+  );
+}
+
+/* ====== 主组件 ====== */
+
+/**
+ * Portfolio — Sonic Abyss Bento Grid 布局
+ * 12 列 CSS Grid，全模拟数据，无 API 调用
+ */
+export function Portfolio() {
+  return (
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 第一行：总资产概览 (span-8, row-span-2) + AI 建议 (span-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
+          <AssetOverviewCard />
+        </motion.div>
+
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <AIAdvisorCard />
+        </motion.div>
+
+        {/* 风险指标 (span-4) — 紧跟 AI 建议下方 */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <RiskMetricsCard />
+        </motion.div>
+
+        {/* ====== 第二行：Bot共识 (span-4) + 持仓分布 (span-4) + 交易日志 (span-4) ====== */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <BotConsensusCard />
+        </motion.div>
+
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <SectorAllocationCard />
+        </motion.div>
+
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <TradeLogCard />
+        </motion.div>
+
+        {/* ====== 第三行：收益走势 (span-12) ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <SparklineCard />
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
