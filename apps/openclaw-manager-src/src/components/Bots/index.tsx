@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -31,6 +31,12 @@ import {
   Clock,
   MessageCircle,
   ChevronRight,
+  Eye,
+  FileText,
+  Activity,
+  Terminal,
+  Hash,
+  Zap,
 } from 'lucide-react';
 
 import { GlassCard, StatusIndicator, ToggleSwitch, AnimatedNumber, ErrorState } from '../shared';
@@ -49,6 +55,7 @@ import { useClawbotWS } from '@/hooks/useClawbotWS';
 import { toFriendlyError } from '@/lib/errorMessages';
 import { createLogger } from '@/lib/logger';
 import type { FriendlyError } from '@/lib/errorMessages';
+import type { ManagedServiceStatus, ClawbotBotMatrixEntry } from '@/lib/tauri';
 
 const logger = createLogger('Bots');
 
@@ -939,9 +946,14 @@ type ServiceDisplayStatus = 'running' | 'stopped' | 'error' | 'starting' | 'stop
 interface ServiceItem {
   id: string;
   status: ServiceDisplayStatus;
+  /** 来自 getManagedServicesStatus 的友好名称 */
+  managedName?: string;
+  /** PID 信息 */
+  pid?: number | null;
 }
 
-const SERVICE_META: Record<string, { name: string; icon: React.ReactNode }> = {
+/** 默认图标和名称映射 — 仅当 API 未返回友好名称时做兜底 */
+const DEFAULT_SERVICE_META: Record<string, { name: string; icon: React.ReactNode }> = {
   'clawbot-agent': { name: 'AI 助手后端', icon: <Bot size={20} /> },
   'xianyu': { name: '闲鱼 AI 客服', icon: <Fish size={20} /> },
   'gateway': { name: 'API 网关', icon: <Globe size={20} /> },
@@ -949,15 +961,331 @@ const SERVICE_META: Record<string, { name: string; icon: React.ReactNode }> = {
   'newapi': { name: 'New-API 网关', icon: <Server size={20} /> },
 };
 
+/** 根据服务 ID 猜一个合适的图标 */
+function getServiceIcon(serviceId: string): React.ReactNode {
+  if (serviceId.includes('bot') || serviceId.includes('agent')) return <Bot size={20} />;
+  if (serviceId.includes('fish') || serviceId.includes('xianyu')) return <Fish size={20} />;
+  if (serviceId.includes('gateway') || serviceId.includes('api')) return <Globe size={20} />;
+  if (serviceId.includes('g4f') || serviceId.includes('model')) return <Cpu size={20} />;
+  return <Server size={20} />;
+}
+
+/* ── Bot 详情弹窗 ── */
+
+interface BotDetailProps {
+  service: ServiceItem;
+  botMatrix: ClawbotBotMatrixEntry[];
+  open: boolean;
+  onClose: () => void;
+}
+
+function BotDetailDialog({ service, botMatrix, open, onClose }: BotDetailProps) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState<Record<string, unknown> | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+
+  const meta = DEFAULT_SERVICE_META[service.id] || {
+    name: service.managedName || service.id,
+    icon: getServiceIcon(service.id),
+  };
+
+  // 关联的 Bot 矩阵条目 — 通过 ID 模糊匹配
+  const relatedBots = useMemo(() => {
+    return botMatrix.filter((b) => {
+      const sid = service.id.toLowerCase();
+      const bid = b.id.toLowerCase();
+      return bid.includes(sid) || sid.includes(bid) || bid === sid;
+    });
+  }, [botMatrix, service.id]);
+
+  // 切换到日志 Tab 时拉取日志
+  useEffect(() => {
+    if (activeTab !== 'logs' || !open) return;
+    let cancelled = false;
+    setLogsLoading(true);
+    api.getManagedServiceLogs(service.id, 30)
+      .then((data) => {
+        if (!cancelled) {
+          setLogs(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLogs(['（获取日志失败）']);
+      })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, service.id, open]);
+
+  // 切换到配置 Tab 时拉取运行时配置
+  useEffect(() => {
+    if (activeTab !== 'config' || !open) return;
+    let cancelled = false;
+    setConfigLoading(true);
+    api.getClawbotRuntimeConfig()
+      .then((data) => {
+        if (!cancelled) setRuntimeConfig(data as unknown as Record<string, unknown>);
+      })
+      .catch(() => {
+        if (!cancelled) setRuntimeConfig(null);
+      })
+      .finally(() => { if (!cancelled) setConfigLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, open]);
+
+  // 弹窗关闭时重置 Tab
+  useEffect(() => {
+    if (!open) {
+      setActiveTab('overview');
+      setLogs([]);
+      setRuntimeConfig(null);
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white flex-shrink-0">
+              {meta.icon}
+            </span>
+            {service.managedName || meta.name}
+          </DialogTitle>
+          <DialogDescription>
+            服务 ID: {service.id}
+            {service.pid ? ` · PID: ${service.pid}` : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
+          <TabsList className="w-full grid grid-cols-4">
+            <TabsTrigger value="overview"><Eye size={13} className="mr-1" />概览</TabsTrigger>
+            <TabsTrigger value="config"><Settings size={13} className="mr-1" />配置</TabsTrigger>
+            <TabsTrigger value="logs"><Terminal size={13} className="mr-1" />日志</TabsTrigger>
+            <TabsTrigger value="stats"><Activity size={13} className="mr-1" />统计</TabsTrigger>
+          </TabsList>
+
+          {/* ── 概览 Tab ── */}
+          <TabsContent value="overview" className="mt-3 overflow-y-auto flex-1">
+            <div className="space-y-3">
+              {/* 运行状态 */}
+              <div className="p-3 rounded-lg bg-white/5 flex items-center justify-between">
+                <span className="text-sm text-gray-400">运行状态</span>
+                <StatusIndicator status={service.status} />
+              </div>
+
+              {/* 模型信息（来自 Bot 矩阵） */}
+              {relatedBots.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                    <Zap size={12} /> 关联 Bot 信息
+                  </h4>
+                  {relatedBots.map((bot) => (
+                    <div key={bot.id} className="p-3 rounded-lg bg-white/5 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white">{bot.name}</span>
+                        <Badge variant={bot.ready ? 'default' : 'outline'} className="text-xs">
+                          {bot.ready ? '就绪' : '未就绪'}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-gray-400 space-y-0.5">
+                        <div>用户名: <span className="text-gray-300">{bot.username || '未配置'}</span></div>
+                        <div>模型: <span className="text-gray-300">{bot.route_model || '未配置'}</span></div>
+                        <div>提供商: <span className="text-gray-300">{bot.route_provider || '未配置'}</span></div>
+                        <div>Token: <span className="text-gray-300">{bot.token_configured ? (bot.token_masked || '已配置') : '未配置'}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {relatedBots.length === 0 && (
+                <div className="p-3 rounded-lg bg-white/5 text-center text-xs text-gray-500">
+                  <Bot size={20} className="mx-auto mb-1 opacity-40" />
+                  无关联 Bot 矩阵数据
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── 配置 Tab ── */}
+          <TabsContent value="config" className="mt-3 overflow-y-auto flex-1">
+            {configLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="text-gray-400 animate-spin" />
+                <span className="ml-2 text-sm text-gray-400">加载配置…</span>
+              </div>
+            ) : runtimeConfig ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400 mb-2">当前运行时配置（只读）</p>
+                {Object.entries(runtimeConfig).map(([key, value]) => (
+                  <div key={key} className="p-2.5 rounded-lg bg-white/5 flex items-start gap-2">
+                    <code className="text-xs text-[var(--oc-brand)] font-mono flex-shrink-0 mt-0.5">{key}</code>
+                    <span className="text-xs text-gray-300 break-all">
+                      {typeof value === 'string'
+                        ? (key.toLowerCase().includes('token') || key.toLowerCase().includes('key')
+                          ? '••••••'
+                          : value || '（空）')
+                        : JSON.stringify(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-sm text-gray-500">
+                <FileText size={24} className="mx-auto mb-2 opacity-40" />
+                暂无配置数据
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── 日志 Tab ── */}
+          <TabsContent value="logs" className="mt-3 overflow-y-auto flex-1">
+            {logsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="text-gray-400 animate-spin" />
+                <span className="ml-2 text-sm text-gray-400">加载日志…</span>
+              </div>
+            ) : logs.length > 0 ? (
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-gray-400">最近 {logs.length} 条日志</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setLogsLoading(true);
+                      api.getManagedServiceLogs(service.id, 30)
+                        .then((data) => setLogs(Array.isArray(data) ? data : []))
+                        .catch(() => setLogs(['（刷新失败）']))
+                        .finally(() => setLogsLoading(false));
+                    }}
+                  >
+                    <RefreshCw size={12} className="mr-1" />
+                    刷新
+                  </Button>
+                </div>
+                <div className="rounded-lg bg-black/30 p-3 max-h-[300px] overflow-y-auto font-mono text-xs text-gray-300 space-y-0.5">
+                  {logs.map((line, i) => (
+                    <div key={i} className="leading-relaxed break-all hover:bg-white/5 px-1 rounded">
+                      <span className="text-gray-600 mr-2 select-none">{i + 1}</span>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-sm text-gray-500">
+                <Terminal size={24} className="mx-auto mb-2 opacity-40" />
+                暂无日志数据
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── 统计 Tab ── */}
+          <TabsContent value="stats" className="mt-3 overflow-y-auto flex-1">
+            <div className="space-y-3">
+              {/* Bot 矩阵统计 */}
+              {relatedBots.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Hash size={12} className="text-blue-400" />
+                        <span className="text-xs text-gray-400">关联 Bot 数</span>
+                      </div>
+                      <div className="text-lg font-bold text-white">{relatedBots.length}</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Cpu size={12} className="text-purple-400" />
+                        <span className="text-xs text-gray-400">使用模型数</span>
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        {new Set(relatedBots.map((b) => b.route_model).filter(Boolean)).size}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <CheckCircle2 size={12} className="text-green-400" />
+                        <span className="text-xs text-gray-400">已就绪</span>
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        {relatedBots.filter((b) => b.ready).length}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertCircle size={12} className="text-orange-400" />
+                        <span className="text-xs text-gray-400">Token 已配置</span>
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        {relatedBots.filter((b) => b.token_configured).length}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-sm text-gray-500">
+                  <Activity size={24} className="mx-auto mb-2 opacity-40" />
+                  暂无统计数据
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ServicesSection() {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [transitioning, setTransitioning] = useState<Set<string>>(new Set());
   const [fetchError, setFetchError] = useState<FriendlyError | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  /** 从 getManagedServicesStatus 获取的服务元信息 */
+  const [managedMeta, setManagedMeta] = useState<Record<string, ManagedServiceStatus>>({});
+  /** Bot 矩阵数据 — 用于显示模型和命令数 */
+  const [botMatrix, setBotMatrix] = useState<ClawbotBotMatrixEntry[]>([]);
 
   // Use a ref to avoid re-creating fetchServices (and stacking intervals)
   // every time `transitioning` changes identity.
   const transitioningRef = useRef(transitioning);
   transitioningRef.current = transitioning;
+
+  // 拉取动态服务元信息 + Bot 矩阵
+  useEffect(() => {
+    // 获取 managed services 元信息（名称、PID 等）
+    api.getManagedServicesStatus()
+      .then((list) => {
+        if (Array.isArray(list)) {
+          const map: Record<string, ManagedServiceStatus> = {};
+          for (const svc of list) {
+            map[svc.label] = svc;
+          }
+          setManagedMeta(map);
+        }
+      })
+      .catch(() => {
+        // 回退到硬编码，不影响功能
+      });
+
+    // 获取 Bot 矩阵
+    api.getClawbotBotMatrix()
+      .then((list) => {
+        if (Array.isArray(list)) {
+          setBotMatrix(list);
+        }
+      })
+      .catch(() => {
+        // 静默失败
+      });
+  }, []);
 
   const fetchServices = useCallback(async () => {
     try {
@@ -1042,45 +1370,116 @@ function ServicesSection() {
     }
   }, [fetchServices]);
 
+  /** 合并 API 列表 + managed services — 确保所有已知服务都能显示 */
+  const allServices = useMemo(() => {
+    // 以 api.services() 返回的列表为基础
+    const result = [...services];
+    const existingIds = new Set(result.map((s) => s.id));
+
+    // 把 managedMeta 中没出现在 services 列表里的也加进来
+    for (const [label, meta] of Object.entries(managedMeta)) {
+      if (!existingIds.has(label)) {
+        result.push({
+          id: label,
+          status: meta.running ? 'running' : 'stopped',
+          managedName: meta.name,
+          pid: meta.pid,
+        });
+      }
+    }
+
+    // 给已有服务补充 managedName / pid
+    return result.map((svc) => {
+      const mm = managedMeta[svc.id];
+      if (mm) {
+        return { ...svc, managedName: mm.name, pid: mm.pid };
+      }
+      return svc;
+    });
+  }, [services, managedMeta]);
+
+  /** 快速查找某个服务关联了多少 bot 和模型 */
+  const getServiceBotInfo = useCallback((serviceId: string) => {
+    const related = botMatrix.filter((b) => {
+      const sid = serviceId.toLowerCase();
+      const bid = b.id.toLowerCase();
+      return bid.includes(sid) || sid.includes(bid) || bid === sid;
+    });
+    const modelSet = new Set(related.map((b) => b.route_model).filter(Boolean));
+    return { botCount: related.length, modelCount: modelSet.size };
+  }, [botMatrix]);
+
   return (
     <section>
       <h2 className="text-lg font-semibold text-white mb-3">自动化脚本</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {services.map((service) => {
-          const meta = SERVICE_META[service.id] || { name: service.id, icon: <Server size={20} /> };
+        {allServices.map((service) => {
+          const defaultMeta = DEFAULT_SERVICE_META[service.id];
+          const displayName = service.managedName || defaultMeta?.name || service.id;
+          const icon = defaultMeta?.icon || getServiceIcon(service.id);
           const isRunning = service.status === 'running';
           const isBusy = service.status === 'starting' || service.status === 'stopping';
+          const { botCount, modelCount } = getServiceBotInfo(service.id);
+
           return (
-            <GlassCard key={service.id} className="p-4">
+            <GlassCard
+              key={service.id}
+              className="p-4 cursor-pointer hover:ring-1 hover:ring-[var(--oc-brand)]/40 transition-all"
+              onClick={() => setSelectedService(service)}
+            >
               <div className="flex flex-col items-center text-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white">
-                  {meta.icon}
+                  {icon}
                 </div>
                 <div className="flex-1">
-                  <h4 className="text-sm font-medium text-white mb-1">{meta.name}</h4>
+                  <h4 className="text-sm font-medium text-white mb-1">{displayName}</h4>
                   <StatusIndicator status={service.status} size="sm" />
+                  {/* 模型数和 Bot 数 */}
+                  {botCount > 0 && (
+                    <div className="flex items-center justify-center gap-2 mt-1.5">
+                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        <Cpu size={10} />{modelCount} 模型
+                      </span>
+                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        <Bot size={10} />{botCount} Bot
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <ToggleSwitch
-                  checked={isRunning || service.status === 'stopping'}
-                  onChange={() => handleToggle(service.id, isRunning)}
-                  size="sm"
-                  disabled={isBusy}
-                />
+                {/* 阻止开关点击冒泡到卡片 */}
+                <div onClick={(e) => e.stopPropagation()}>
+                  <ToggleSwitch
+                    checked={isRunning || service.status === 'stopping'}
+                    onChange={() => handleToggle(service.id, isRunning)}
+                    size="sm"
+                    disabled={isBusy}
+                  />
+                </div>
               </div>
             </GlassCard>
           );
         })}
-        {services.length === 0 && fetchError && (
+        {allServices.length === 0 && fetchError && (
           <div className="col-span-full">
             <ErrorState error={fetchError} onRetry={fetchServices} compact />
           </div>
         )}
-        {services.length === 0 && !fetchError && (
+        {allServices.length === 0 && !fetchError && (
           <div className="col-span-full text-center py-8 text-gray-400 text-sm">
             加载服务列表中…
           </div>
         )}
       </div>
+
+      {/* Bot 详情弹窗 */}
+      {selectedService && (
+        <BotDetailDialog
+          service={selectedService}
+          botMatrix={botMatrix}
+          open={!!selectedService}
+          onClose={() => setSelectedService(null)}
+        />
+      )}
     </section>
   );
 }
