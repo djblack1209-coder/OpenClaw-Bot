@@ -12,6 +12,31 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 桌面面板修复 + 性能监控页面
+> 领域: `frontend`
+> 影响模块: `apps/openclaw-manager-src/src/components/Performance/`, `App.tsx`, `Sidebar.tsx`, `Header.tsx`, `api.ts`
+> 关联问题: —
+
+### 面板状态确认
+- **确认 OpenClaw-Manager 代码完整**: 88 个前端文件 + 18 个 Rust 文件，23 个页面，125 个 git 提交
+- **确认应用已安装**: `/Applications/OpenClaw.app` v0.0.7
+- **确认离线体验正常**: 后端未运行时显示"离线"状态 + 零值 + AI 提示启动服务
+- **调研 Hermes 替代方案**: hermes-web-ui (Vue, 不兼容) / hermes-control-interface (Vanilla JS, 不兼容) / Dify (太重) → 结论: 继续增强现有面板
+
+### 新增性能监控页面
+1. **Performance 组件** (301行): 顶部工具栏(刷新+自动刷新) + 4 个指标摘要卡片(颜色编码) + 详细数据表
+2. **路由注册**: App.tsx PageType + 懒加载 + PageErrorBoundary
+3. **侧边栏**: 系统管控分组新增"性能监控"入口 (Gauge 图标)
+4. **API 集成**: clawbotFetchJson('/api/v1/perf') 端点调用
+
+### 文件变更
+- `src/components/Performance/index.tsx` — 新增 (完整性能监控页面)
+- `src/App.tsx` — 新增 perf 页面注册
+- `src/components/Layout/Sidebar.tsx` — 新增侧边栏菜单项
+- `src/components/Layout/Header.tsx` — 新增页面标题
+- `src/lib/api.ts` — 新增 perfMetrics API 方法
+- **前端构建通过: 0 TypeScript 错误**
+
 ## 2026-04-19 — 体验升级三阶段：e2e 测试 + 上帝对象拆分 + 性能度量
 > 领域: `backend`
 > 影响模块: `src/bot/message_mixin.py`, `src/bot/input_processor.py`, `src/bot/voice_handler.py`, `src/bot/session_tracker.py`, `src/bot/stream_manager.py`, `src/perf_metrics.py`, `src/api/routers/system.py`, `src/bot/cmd_ops_mixin.py`, `tests/e2e/`
