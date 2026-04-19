@@ -105,6 +105,7 @@ export function HomeDashboard() {
   const [social, setSocial] = useState<SocialData>({ running: false, mode: 'manual', postsToday: 0 });
   const [xianyu, setXianyu] = useState<XianyuData>({ unreadChats: 0, cookieStatus: 'unknown', autoReplyActive: false });
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [briefData, setBriefData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
   /* WebSocket 实时日志推送 */
@@ -131,12 +132,13 @@ export function HomeDashboard() {
   /* ====== 数据拉取 ====== */
   const fetchAll = useCallback(async () => {
     try {
-      const [statusRes, pnlRes, socialRes, notifsRes, poolRes] = await Promise.allSettled([
+      const [statusRes, pnlRes, socialRes, notifsRes, poolRes, briefRes] = await Promise.allSettled([
         api.clawbotStatus(),
         api.portfolioSummary(),
         api.clawbotSocialStatus(),
         api.notifications({ limit: 20 }),
         api.clawbotPoolStats(),
+        api.dailyBrief(),
       ]);
 
       /* 解析系统状态 */
@@ -206,6 +208,11 @@ export function HomeDashboard() {
           poolActive: Number(pool.active_sources ?? pool.pool_active_sources ?? 0),
           poolTotal: Number(pool.total_sources ?? pool.pool_total_sources ?? 0),
         }));
+      }
+
+      /* 解析今日简报 */
+      if (briefRes.status === 'fulfilled' && briefRes.value) {
+        setBriefData(briefRes.value as Record<string, unknown>);
       }
     } catch (err) {
       logger.error('首页数据拉取失败:', err);
@@ -346,6 +353,38 @@ export function HomeDashboard() {
             </div>
           </div>
         </motion.div>
+
+        {/* ====== 今日简报卡片 (span-12) ====== */}
+        {briefData && (
+          <motion.div className="col-span-12" variants={cardVariants}>
+            <div className="abyss-card p-5">
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
+                DAILY BRIEF
+              </span>
+              <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
+                今日简报
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                {/* 简报数据项 — 动态渲染后端返回的指标 */}
+                {Object.entries(briefData).filter(([k]) => k !== 'timestamp' && k !== 'status').slice(0, 8).map(([key, value]) => (
+                  <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
+                      {key.replace(/_/g, ' ')}
+                    </span>
+                    <div className="font-mono text-lg font-bold mt-1" style={{ color: 'var(--accent-cyan)' }}>
+                      {typeof value === 'number' ? value.toLocaleString() : String(value ?? '—')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {typeof briefData.summary === 'string' && briefData.summary && (
+                <p className="font-mono text-xs mt-3" style={{ color: 'var(--text-secondary)' }}>
+                  {briefData.summary}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {/* ====== 第三行：Terminal Logs (span-8) + 系统状态摘要 (span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
