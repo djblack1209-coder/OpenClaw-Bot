@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import litellm
 from litellm.router import Router
 
+from src.perf_metrics import perf_timer
+
 logger = logging.getLogger(__name__)
 
 
@@ -902,6 +904,7 @@ class LiteLLMPool:
 
     # ---- 核心调用 ----
 
+    @perf_timer("llm.acompletion")
     async def acompletion(
         self,
         model_family: Optional[str],

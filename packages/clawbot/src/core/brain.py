@@ -42,6 +42,7 @@ from src.core.response_synthesizer import (
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.resilience import api_limiter
 
+from src.perf_metrics import perf_timer
 from src.core.brain_graph_builders import BrainGraphBuilderMixin
 from src.core.brain_executors import BrainExecutorMixin
 
@@ -188,6 +189,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 主入口 ──────────────────────────────────────────
 
+    @perf_timer("brain.process_message")
     async def process_message(
         self,
         source: str,
