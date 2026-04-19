@@ -1,1158 +1,460 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
-  MessageSquare,
-  Plus,
   Send,
-  Trash2,
-  Loader2,
-  Zap,
   Bot,
   User,
   Mic,
   Paperclip,
-  Copy,
-  ThumbsUp,
-  ThumbsDown,
-  Activity,
-  Pencil,
+  MessageSquare,
+  Clock,
+  Cpu,
+  Zap,
+  Brain,
+  TrendingUp,
+  Shield,
+  BarChart3,
+  Target,
+  ScanSearch,
+  PenTool,
+  Sparkles,
+  BookOpen,
+  Palette,
+  History,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { toast } from 'sonner';
-import { useConversationStore, type Message } from '../../stores/conversationStore';
-import {
-  fetchSessions,
-  createSession,
-  loadSession,
-  deleteSession,
-  sendMessage,
-} from '../../services/conversationService';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-/* ========== 模式定义 ========== */
+/* ========== 类型定义 ========== */
+
+/** 助手模式 */
 type AssistantMode = 'chat' | 'invest' | 'execute' | 'create';
 
-interface ModeConfig {
-  id: AssistantMode;
-  label: string;
-  icon: string;
-  commands: Array<{ label: string; prompt: string }>;
+/** 单条消息 */
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'ai';
+  content: string;
+  timestamp: string;
 }
 
-const MODES: ModeConfig[] = [
+/** 会话记录 */
+interface SessionRecord {
+  id: string;
+  title: string;
+  time: string;
+  count: number;
+}
+
+/* ========== 模式配置 ========== */
+
+/** 每种模式的配色、图标、快捷指令 */
+const MODE_CONFIG: Record<
+  AssistantMode,
   {
-    id: 'chat',
-    label: '闲聊模式',
-    icon: '💬',
+    label: string;
+    color: string;      // CSS 变量名
+    colorHex: string;    // 用于内联样式
+    commands: { label: string; icon: React.ReactNode }[];
+  }
+> = {
+  chat: {
+    label: '闲聊',
+    color: '--accent-cyan',
+    colorHex: '#00d4ff',
     commands: [
-      { label: '今日简报', prompt: '给我一份今日运营简报' },
-      { label: '天气查询', prompt: '今天天气怎么样？' },
-      { label: '购物比价', prompt: '帮我比价一下 iPhone 15 Pro' },
-      { label: '日程安排', prompt: '看看我今天有什么安排' },
+      { label: '今日简报', icon: <BookOpen size={14} /> },
+      { label: '天气查询', icon: <Sparkles size={14} /> },
+      { label: '翻译文本', icon: <PenTool size={14} /> },
+      { label: '写周报', icon: <Palette size={14} /> },
+      { label: '知识问答', icon: <Brain size={14} /> },
+      { label: '日程安排', icon: <Clock size={14} /> },
     ],
   },
-  {
-    id: 'invest',
-    label: '投资模式',
-    icon: '📊',
+  invest: {
+    label: '投资',
+    color: '--accent-green',
+    colorHex: '#00ffaa',
     commands: [
-      { label: '分析个股', prompt: '分析一下 AAPL 苹果公司的技术面' },
-      { label: '查看持仓', prompt: '看看我现在的持仓情况' },
-      { label: '策略回测', prompt: '帮我回测一下双均线策略' },
-      { label: 'AI投票', prompt: '看看 AI 投票结果' },
+      { label: '分析AAPL', icon: <TrendingUp size={14} /> },
+      { label: '查看持仓', icon: <BarChart3 size={14} /> },
+      { label: '回测策略', icon: <Target size={14} /> },
+      { label: '大师投票', icon: <Brain size={14} /> },
+      { label: '风控报告', icon: <Shield size={14} /> },
+      { label: '市场扫描', icon: <ScanSearch size={14} /> },
     ],
   },
-  {
-    id: 'execute',
-    label: '执行模式',
-    icon: '🤖',
+  execute: {
+    label: '执行',
+    color: '--accent-amber',
+    colorHex: '#fbbf24',
     commands: [
-      { label: '闲鱼管理', prompt: '看看闲鱼有没有新消息' },
-      { label: '社媒发布', prompt: '帮我发一条小红书' },
-      { label: '邮件处理', prompt: '处理一下未读邮件' },
-      { label: '赏金任务', prompt: '看看有什么赏金任务' },
+      { label: '发布推文', icon: <Send size={14} /> },
+      { label: '批量操作', icon: <Zap size={14} /> },
+      { label: '定时任务', icon: <Clock size={14} /> },
+      { label: '数据导出', icon: <BarChart3 size={14} /> },
+      { label: '系统检查', icon: <Cpu size={14} /> },
+      { label: '日志查看', icon: <History size={14} /> },
     ],
   },
-  {
-    id: 'create',
-    label: '创作模式',
-    icon: '🎨',
+  create: {
+    label: '创作',
+    color: '--accent-purple',
+    colorHex: '#a78bfa',
     commands: [
-      { label: '写文案', prompt: '帮我写一条小红书种草文案' },
-      { label: '生成图片', prompt: '生成一张产品宣传图' },
-      { label: '视频脚本', prompt: '写一个 60 秒短视频脚本' },
-      { label: '内容策划', prompt: '策划一个内容营销方案' },
+      { label: '写文章', icon: <PenTool size={14} /> },
+      { label: '生成图片', icon: <Palette size={14} /> },
+      { label: '视频脚本', icon: <Sparkles size={14} /> },
+      { label: '营销文案', icon: <BookOpen size={14} /> },
+      { label: '代码生成', icon: <Cpu size={14} /> },
+      { label: '头脑风暴', icon: <Brain size={14} /> },
     ],
+  },
+};
+
+/* ========== 模拟数据 ========== */
+
+/** 初始对话消息（投资模式下的分析场景） */
+const MOCK_MESSAGES: ChatMessage[] = [
+  {
+    id: '1',
+    role: 'user',
+    content: '帮我分析一下苹果公司最近的财报表现，重点看营收和利润趋势。',
+    timestamp: '14:32',
+  },
+  {
+    id: '2',
+    role: 'ai',
+    content:
+      '苹果 2025 Q1 财报概要：\n\n营收 $1243 亿，同比增长 4.2%，iPhone 收入占比 52%，服务业务收入创历史新高达 $268 亿。\n\n净利润 $367 亿，毛利率 46.9%，同比提升 1.2 个百分点。大中华区营收恢复增长，同比 +11%。\n\n整体偏正面，但硬件增速放缓，服务业务是新增长引擎。',
+    timestamp: '14:32',
+  },
+  {
+    id: '3',
+    role: 'user',
+    content: '七大师对 AAPL 当前价位怎么看？值得加仓吗？',
+    timestamp: '14:35',
+  },
+  {
+    id: '4',
+    role: 'ai',
+    content:
+      '七大师投票结果：\n\n✅ 巴菲特 — 买入（护城河稳固，服务收入持续增长）\n✅ 芒格 — 买入（品牌溢价+生态锁定）\n⚠️ 达里奥 — 观望（估值偏高，等待回调）\n✅ 彼得·林奇 — 买入（PEG 合理）\n⚠️ 索罗斯 — 观望（宏观不确定性大）\n✅ 格雷厄姆 — 买入（现金流充裕）\n✅ 费雪 — 买入（长期成长逻辑不变）\n\n综合：5 票买入 / 2 票观望，建议分批建仓。',
+    timestamp: '14:35',
+  },
+  {
+    id: '5',
+    role: 'ai',
+    content:
+      '补充一下风控提示：当前 AAPL 已占你组合的 18%，加仓后将超过 20% 的单只持仓上限。建议先评估整体仓位配置后再决定。需要我生成持仓再平衡方案吗？',
+    timestamp: '14:36',
   },
 ];
 
-/**
- * AI 助手 — 完整对话界面
- * 左侧：会话历史列表
- * 右侧：对话窗口 + 输入区
- */
+/** 模拟会话列表 */
+const MOCK_SESSIONS: SessionRecord[] = [
+  { id: 's1', title: 'AAPL 财报深度分析', time: '今天 14:32', count: 12 },
+  { id: 's2', title: '组合再平衡方案', time: '昨天 09:15', count: 8 },
+  { id: 's3', title: 'A 股板块轮动追踪', time: '04/17 16:40', count: 23 },
+  { id: 's4', title: '加密货币周报生成', time: '04/16 21:05', count: 6 },
+];
+
+/* ========== 组件 ========== */
+
 export function Assistant() {
-  const sessions = useConversationStore((s) => s.sessions);
-  const activeSessionId = useConversationStore((s) => s.activeSessionId);
-  const messages = useConversationStore((s) => s.messages);
-  const sending = useConversationStore((s) => s.sending);
-  const statusText = useConversationStore((s) => s.statusText);
-  const loadingSessions = useConversationStore((s) => s.loadingSessions);
+  /* --- 状态 --- */
+  const [mode, setMode] = useState<AssistantMode>('invest');
+  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
+  const [input, setInput] = useState('');
+  const [sessions] = useState<SessionRecord[]>(MOCK_SESSIONS);
 
-  const [inputValue, setInputValue] = useState('');
-  const [currentMode, setCurrentMode] = useState<AssistantMode>('chat');
-  const [showStatusPanel, setShowStatusPanel] = useState(false);
-  /** 删除确认弹窗：记录待删除的会话 ID */
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  /** 重命名编辑：记录正在编辑的会话 ID 和编辑文本 */
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
-  const editInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  /** 记录用户是否在消息列表底部附近，用于控制自动滚动 */
-  const isNearBottomRef = useRef(true);
-
-  const currentModeConfig = MODES.find((m) => m.id === currentMode) || MODES[0];
-
-  /* 初始化：拉取会话列表 */
+  /* 滚动到底部 */
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    fetchSessions();
-  }, []);
-
-  /* 消息变化时自动滚动到底部 — 仅在用户已处于底部附近时触发 */
-  useEffect(() => {
-    if (isNearBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  /* 发送消息 */
-  const handleSend = async () => {
-    const text = inputValue.trim();
-    if (!text || sending) return;
+  const cfg = MODE_CONFIG[mode];
 
-    let sessionId = activeSessionId;
-
-    // 如果没有激活的会话，自动创建一个
-    if (!sessionId) {
-      sessionId = await createSession();
-      if (!sessionId) return;
-    }
-
-    setInputValue('');
-    await sendMessage(sessionId, text);
-    // 刷新会话列表（标题可能更新了）
-    fetchSessions();
+  /** 发送消息（纯模拟） */
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text) return;
+    const now = new Date();
+    const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    setMessages((prev) => [
+      ...prev,
+      { id: `u-${Date.now()}`, role: 'user', content: text, timestamp: ts },
+    ]);
+    setInput('');
+    // 模拟 AI 回复
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: 'ai',
+          content: '收到，正在为你处理中…',
+          timestamp: ts,
+        },
+      ]);
+    }, 600);
   };
 
-  /* 键盘快捷键：Enter 发送，Shift+Enter 换行 */
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  /* 新建对话 */
-  const handleNewChat = async () => {
-    await createSession();
-  };
-
-  /* 点击快捷命令 */
-  const handleQuickCommand = (prompt: string) => {
-    setInputValue(prompt);
-    inputRef.current?.focus();
-  };
-
-  /* 语音输入（占位） */
-  const handleVoiceInput = () => {
-    toast.info('功能开发中');
-  };
-
-  /* 附件上传（占位） */
-  const handleAttachment = () => {
-    toast.info('功能开发中');
-  };
-
-  /* 确认删除会话 */
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteConfirmId) return;
-    await deleteSession(deleteConfirmId);
-    setDeleteConfirmId(null);
-  }, [deleteConfirmId]);
-
-  /* 开始重命名会话 */
-  const startRenaming = useCallback((sessionId: string, currentTitle: string) => {
-    setEditingSessionId(sessionId);
-    setEditingTitle(currentTitle || '新对话');
-    // 下一帧聚焦输入框
-    setTimeout(() => editInputRef.current?.select(), 50);
-  }, []);
-
-  /* 提交重命名（通过后端 API 更新标题） */
-  const submitRename = useCallback(async () => {
-    if (!editingSessionId) return;
-    const newTitle = editingTitle.trim();
-    if (!newTitle) {
-      setEditingSessionId(null);
-      return;
-    }
-    try {
-      const { clawbotFetch } = await import('../../lib/tauri-core');
-      await clawbotFetch(`/api/v1/conversation/sessions/${editingSessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle }),
-      });
-      // 刷新会话列表获取最新标题
-      await fetchSessions();
-    } catch {
-      toast.error('重命名失败');
-    }
-    setEditingSessionId(null);
-  }, [editingSessionId, editingTitle]);
-
+  /* ========== 渲染 ========== */
   return (
-    <div className="h-full flex overflow-hidden rounded-xl border border-dark-600">
-      {/* ========== 左侧：会话历史 ========== */}
-      <div className="w-64 flex-shrink-0 bg-dark-800 border-r border-dark-600 flex flex-col">
-        {/* 新建对话按钮 */}
-        <div className="p-3 border-b border-dark-600">
-          <button
-            onClick={handleNewChat}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--oc-brand)] text-white text-sm font-medium hover:bg-[var(--oc-brand-hover)] transition-colors"
-          >
-            <Plus size={16} />
-            新对话
-          </button>
-        </div>
-
-        {/* 会话列表 */}
-        <div className="flex-1 overflow-y-auto scroll-container p-2 space-y-1">
-          {loadingSessions ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={20} className="animate-spin text-gray-500" />
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="text-center py-8">
-              <MessageSquare size={24} className="mx-auto mb-2 text-gray-600" />
-              <p className="text-xs text-gray-500">还没有对话</p>
-              <p className="text-xs text-gray-600 mt-1">点击上方按钮开始</p>
-            </div>
-          ) : (
-            sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => loadSession(session.id)}
+    <div className="flex h-full gap-4 p-1">
+      {/* ====== 左侧主聊天区 ====== */}
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* 顶部：模式切换 */}
+        <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+          {(Object.keys(MODE_CONFIG) as AssistantMode[]).map((m) => {
+            const c = MODE_CONFIG[m];
+            const active = m === mode;
+            return (
+              <motion.button
+                key={m}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setMode(m)}
                 className={clsx(
-                  'w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all group relative',
-                  activeSessionId === session.id
-                    ? 'bg-[var(--oc-sidebar-active)] text-white'
-                    : 'text-gray-400 hover:bg-dark-700 hover:text-gray-200'
+                  'px-4 py-1.5 rounded-full text-xs font-medium font-display transition-all duration-200',
+                  active
+                    ? 'text-[var(--bg-base)]'
+                    : 'text-[var(--text-secondary)] border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)]',
                 )}
+                style={
+                  active
+                    ? { background: c.colorHex, boxShadow: `0 0 16px ${c.colorHex}33` }
+                    : undefined
+                }
               >
-                {/* 标题：编辑模式显示输入框，否则双击进入编辑 */}
-                {editingSessionId === session.id ? (
-                  <input
-                    ref={editInputRef}
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onBlur={submitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') submitRename();
-                      if (e.key === 'Escape') setEditingSessionId(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full bg-dark-600 border border-dark-400 rounded px-1.5 py-0.5 text-sm text-white outline-none focus:border-[var(--oc-brand)]"
-                  />
-                ) : (
-                  <p
-                    className="font-medium truncate pr-12"
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      startRenaming(session.id, session.title);
-                    }}
-                    title="双击重命名"
-                  >
-                    {session.title || '新对话'}
-                  </p>
-                )}
-                <p className="text-xs text-gray-500 truncate mt-0.5">
-                  {session.message_count}条消息 · {new Date(session.updated_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
-                </p>
-                {/* 操作按钮组：重命名 + 删除 */}
-                {editingSessionId !== session.id && (
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startRenaming(session.id, session.title);
-                      }}
-                      className="p-1 rounded hover:bg-dark-600 text-gray-500 hover:text-gray-300"
-                      title="重命名"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteConfirmId(session.id);
-                      }}
-                      className="p-1 rounded hover:bg-dark-600 text-gray-500 hover:text-red-400"
-                      title="删除"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      </div>
+                {c.label}
+              </motion.button>
+            );
+          })}
 
-      {/* ========== 右侧：对话区域 ========== */}
-      <div className="flex-1 flex flex-col bg-dark-900">
-        {/* Chat header */}
-        <div className="flex items-center justify-end px-4 py-2 border-b border-dark-600">
-          <button
-            onClick={() => setShowStatusPanel(!showStatusPanel)}
-            className={clsx(
-              'p-2 rounded-lg transition-colors',
-              showStatusPanel ? 'bg-[var(--oc-brand)]/20 text-[var(--oc-brand)]' : 'text-gray-400 hover:text-gray-300'
-            )}
-            title="执行详情"
-          >
-            <Activity size={16} />
-          </button>
-        </div>
-
-        {/* 对话内容 */}
-        <div
-          ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto scroll-container p-6 space-y-4"
-          onScroll={() => {
-            const el = messagesContainerRef.current;
-            if (el) {
-              // 用户在底部 100px 范围内视为"在底部"
-              isNearBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 100;
-            }
-          }}
-        >
-          {messages.length === 0 ? (
-            /* 空状态：欢迎界面 + 快捷命令 */
-            <div className="h-full flex flex-col items-center justify-center">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[var(--oc-brand)]/20 to-[var(--oc-brand)]/5 flex items-center justify-center mb-6">
-                <Bot size={40} className="text-[var(--oc-brand)]" />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-2">有什么可以帮你？</h2>
-              <p className="text-sm text-gray-400 mb-2 max-w-md text-center">
-                你可以用自然语言和我对话，查行情、下单、管理闲鱼、发社媒，什么都能做
-              </p>
-              <p className="text-xs text-gray-500 mb-10">
-                支持 92 个命令 + 66 个中文触发器
-              </p>
-
-              {/* 模式切换器 */}
-              <div className="flex items-center gap-2 mb-6 p-1 bg-dark-800 rounded-xl border border-dark-600">
-                {MODES.map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setCurrentMode(mode.id)}
-                    className={clsx(
-                      'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                      currentMode === mode.id
-                        ? 'bg-[var(--oc-brand)] text-white shadow-lg'
-                        : 'text-gray-400 hover:text-gray-300'
-                    )}
-                  >
-                    <span className="mr-1.5">{mode.icon}</span>
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* 快捷命令网格 */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-                {currentModeConfig.commands.map((cmd) => (
-                  <button
-                    key={cmd.label}
-                    onClick={() => handleQuickCommand(cmd.prompt)}
-                    className="px-4 py-4 rounded-xl bg-dark-700 hover:bg-dark-600 border border-dark-500 hover:border-[var(--oc-brand)]/30 text-left transition-all group"
-                  >
-                    <p className="text-sm text-white font-medium mb-1 group-hover:text-[var(--oc-brand)] transition-colors">
-                      {cmd.label}
-                    </p>
-                    <p className="text-xs text-gray-500 line-clamp-2">{cmd.prompt}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            /* 消息列表 */
-            <>
-              {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
-              {/* 思考动画 */}
-              {sending && statusText && (
-                <ThinkingIndicator statusText={statusText} />
-              )}
-              <div ref={messagesEndRef} />
-            </>
-          )}
-        </div>
-
-        {/* 底部输入区 */}
-        <div className="border-t border-dark-600 p-4">
-          <div className="max-w-3xl mx-auto">
-            {/* 模式切换器（消息列表中显示） */}
-            {messages.length > 0 && (
-              <div className="flex items-center gap-2 mb-3 justify-center">
-                {MODES.map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setCurrentMode(mode.id)}
-                    className={clsx(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                      currentMode === mode.id
-                        ? 'bg-[var(--oc-brand)] text-white'
-                        : 'text-gray-400 hover:text-gray-300 bg-dark-800'
-                    )}
-                  >
-                    <span className="mr-1">{mode.icon}</span>
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* 输入框 */}
-            <div className="flex items-end gap-2 bg-dark-700 rounded-2xl px-4 py-3 border border-dark-500 focus-within:border-[var(--oc-brand)]/50 transition-colors">
-              {/* 语音按钮 */}
-              <button
-                onClick={handleVoiceInput}
-                className="p-2 text-gray-400 hover:text-[var(--oc-brand)] transition-colors flex-shrink-0"
-                title="语音输入"
-              >
-                <Mic size={18} />
-              </button>
-
-              {/* 附件按钮 */}
-              <button
-                onClick={handleAttachment}
-                className="p-2 text-gray-400 hover:text-[var(--oc-brand)] transition-colors flex-shrink-0"
-                title="上传附件"
-              >
-                <Paperclip size={18} />
-              </button>
-
-              <textarea
-                ref={inputRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-                rows={1}
-                className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none text-sm resize-none max-h-32"
-                style={{ minHeight: '24px' }}
-                disabled={sending}
-              />
-              <button
-                onClick={handleSend}
-                disabled={!inputValue.trim() || sending}
-                className={clsx(
-                  'p-2 rounded-lg transition-colors flex-shrink-0',
-                  inputValue.trim() && !sending
-                    ? 'bg-[var(--oc-brand)] text-white hover:bg-[var(--oc-brand-hover)]'
-                    : 'text-gray-500 cursor-not-allowed'
-                )}
-              >
-                {sending ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Send size={18} />
-                )}
-              </button>
-            </div>
-
-            {/* 快捷操作标签 */}
-            <div className="flex items-center gap-2 mt-2 justify-center flex-wrap">
-              {currentModeConfig.commands.slice(0, 4).map((cmd) => (
-                <button
-                  key={cmd.label}
-                  onClick={() => handleQuickCommand(cmd.prompt)}
-                  className="px-3 py-1 rounded-full bg-dark-700 text-xs text-gray-400 border border-dark-500 hover:border-[var(--oc-brand)]/30 hover:text-gray-300 transition-colors"
-                  disabled={sending}
-                >
-                  <Zap size={10} className="inline mr-1" />
-                  {cmd.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========== 右侧执行状态面板 ========== */}
-      <AnimatePresence>
-        {showStatusPanel && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 260, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="flex-shrink-0 border-l border-dark-600 bg-dark-800 overflow-hidden"
-          >
-            <div className="w-[260px] h-full flex flex-col p-4">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <Activity size={14} />
-                执行详情
-              </h3>
-
-              {/* Current status */}
-              {sending && statusText && (
-                <div className="mb-4">
-                  <div className="text-xs text-gray-400 mb-2">当前状态</div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--oc-brand)]/10">
-                    <Loader2 size={12} className="animate-spin text-[var(--oc-brand)]" />
-                    <span className="text-xs text-[var(--oc-brand)]">{statusText}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Model info */}
-              <div className="mb-4">
-                <div className="text-xs text-gray-400 mb-2">AI 模型</div>
-                <div className="text-sm text-white">AI 助手</div>
-              </div>
-
-              {/* Session stats */}
-              <div className="mb-4">
-                <div className="text-xs text-gray-400 mb-2">本次会话</div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">消息数</span>
-                    <span className="text-white oc-tabular-nums">{messages.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">总费用</span>
-                    <span className="text-white oc-tabular-nums">
-                      ${messages
-                        .filter(m => m.metadata?.cost_usd)
-                        .reduce((sum, m) => sum + (m.metadata?.cost_usd || 0), 0)
-                        .toFixed(4)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent operations timeline */}
-              <div className="flex-1 overflow-y-auto">
-                <div className="text-xs text-gray-400 mb-2">操作历史</div>
-                <div className="space-y-2">
-                  {messages
-                    .filter(m => m.role === 'assistant' && m.metadata && !m.metadata.error)
-                    .slice(-5)
-                    .reverse()
-                    .map((m) => (
-                      <div key={m.id} className="p-2 rounded-lg bg-white/5 text-xs">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-gray-300 font-medium">
-                            {m.metadata?.task_type || 'AI 回复'}
-                          </span>
-                          {m.metadata?.elapsed && (
-                            <span className="text-gray-500 oc-tabular-nums">
-                              {m.metadata.elapsed.toFixed(1)}s
-                            </span>
-                          )}
-                        </div>
-                        {m.metadata?.cost_usd != null && (
-                          <span className="text-gray-500">
-                            费用: ${m.metadata.cost_usd.toFixed(4)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  {messages.filter(m => m.role === 'assistant' && m.metadata).length === 0 && (
-                    <div className="text-center py-4 text-gray-600 text-xs">
-                      开始对话后会显示操作记录
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 删除会话确认弹窗 */}
-      <ConfirmDialog
-        open={deleteConfirmId !== null}
-        onClose={() => setDeleteConfirmId(null)}
-        onConfirm={handleConfirmDelete}
-        title="删除对话"
-        description="确定要删除这个对话吗？对话中的所有消息将被永久删除，此操作无法撤销。"
-        confirmText="删除"
-        destructive
-      />
-    </div>
-  );
-}
-
-/* ========== 日志翻译层 ========== */
-const LOG_TRANSLATIONS: Array<[RegExp, string]> = [
-  // Browser automation
-  [/browser[._-]?use|navigate|browsing/i, '🌐 正在搜索网页...'],
-  [/screenshot|capture/i, '📸 正在截取页面...'],
-
-  // Xianyu
-  [/xianyu.*connect|闲鱼.*连接/i, '✅ 闲鱼客服已就绪'],
-  [/xianyu.*message|闲鱼.*消息/i, '🐟 处理闲鱼消息...'],
-
-  // Trading
-  [/auto_trader.*signal|交易信号/i, '📊 收到交易信号...'],
-  [/ibkr|broker|券商/i, '🏦 连接券商...'],
-  [/backtest|回测/i, '📈 正在回测...'],
-  [/technical.*analysis|技术分析/i, '📉 分析技术指标...'],
-
-  // AI/LLM
-  [/litellm.*fallback|模型切换/i, '🔄 AI 切换中...'],
-  [/self[_-]?heal.*retry|自愈/i, '🔧 自动修复中...'],
-  [/token.*usage|TokenUsage/i, '💰 计算费用...'],
-  [/claude|gpt|qwen|deepseek|gemini/i, '🤖 AI 分析中...'],
-  [/thinking|reasoning|推理/i, '🧠 深度思考中...'],
-
-  // Tools
-  [/tavily|search.*web|网页搜索/i, '🔍 搜索网页...'],
-  [/jina.*read|读取网页/i, '📄 读取网页内容...'],
-  [/comfyui|generate.*image|生成图片/i, '🎨 生成图片...'],
-  [/edge.?tts|语音/i, '🔊 生成语音...'],
-  [/whisper|speech.*text|语音识别/i, '🎤 识别语音...'],
-
-  // Social
-  [/social.*publish|发布/i, '📱 发布内容...'],
-  [/xiaohongshu|小红书/i, '📕 小红书操作中...'],
-  [/twitter|推特/i, '🐦 Twitter 操作中...'],
-
-  // Memory
-  [/mem0|memory.*search|记忆搜索/i, '🧠 搜索记忆...'],
-  [/memory.*store|记忆存储/i, '💾 保存到记忆...'],
-
-  // System
-  [/brain.*process|大脑处理/i, 'AI 正在思考...'],
-  [/调用|calling|invoke/i, '正在处理你的请求...'],
-  [/工具|tool/i, '⚡ 使用工具中...'],
-  [/完成|done|finish/i, '✨ 即将完成...'],
-
-  // Execution
-  [/bounty|赏金/i, '🏆 执行赏金任务...'],
-  [/email.*triage|邮件/i, '📧 处理邮件...'],
-  [/shopping|购物|比价/i, '🛒 比价中...'],
-];
-
-function getFriendlyStatus(text: string): string {
-  // If already looks user-friendly (starts with emoji or status symbol), pass through
-  if (/^[\u{1F300}-\u{1FAD6}]/u.test(text) || /^[✅❌⚠️🔄]/.test(text)) {
-    return text;
-  }
-
-  for (const [pattern, friendly] of LOG_TRANSLATIONS) {
-    if (pattern.test(text)) {
-      return friendly;
-    }
-  }
-
-  // Default: if it contains Chinese, keep it; otherwise generic
-  if (/[\u4e00-\u9fff]/.test(text)) {
-    return text;
-  }
-  return 'AI 正在思考...';
-}
-
-/* ========== 思考动画组件 ========== */
-function ThinkingIndicator({ statusText }: { statusText: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 items-start"
-    >
-      <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/10 flex items-center justify-center flex-shrink-0">
-        <Bot size={16} className="text-[var(--oc-brand)]" />
-      </div>
-      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl rounded-bl-md bg-dark-700 border border-dark-500">
-        {/* 波浪动画点 */}
-        <div className="flex items-center gap-1">
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              className="w-2 h-2 rounded-full bg-[var(--oc-brand)]"
-              animate={{
-                y: [0, -8, 0],
-                opacity: [0.5, 1, 0.5],
-              }}
-              transition={{
-                duration: 0.6,
-                repeat: Infinity,
-                delay: i * 0.15,
-                ease: 'easeInOut',
-              }}
+          {/* 当前模式指示点 */}
+          <div className="ml-auto flex items-center gap-1.5">
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ background: cfg.colorHex }}
             />
-          ))}
+            <span className="text-[10px] font-mono text-[var(--text-tertiary)]">在线</span>
+          </div>
         </div>
-        <span className="text-sm text-gray-400">{getFriendlyStatus(statusText)}</span>
-      </div>
-    </motion.div>
-  );
-}
 
-/* ========== 消息气泡组件 ========== */
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === 'user';
-  const isError = message.metadata?.error;
-  const [showActions, setShowActions] = useState(false);
-
-  /* 复制消息内容 */
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
-    toast.success('已复制到剪贴板');
-  };
-
-  /* 反馈按钮（占位） */
-  const handleFeedback = (type: 'up' | 'down') => {
-    toast.info(`感谢反馈！(${type === 'up' ? '👍' : '👎'})`);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={clsx('flex gap-3', isUser ? 'justify-end' : 'justify-start')}
-      onMouseEnter={() => !isUser && setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
-    >
-      {/* AI 头像 */}
-      {!isUser && (
-        <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/10 flex items-center justify-center flex-shrink-0 mt-1">
-          <Bot size={16} className="text-[var(--oc-brand)]" />
-        </div>
-      )}
-
-      {/* 消息内容 */}
-      <div className="flex flex-col gap-2 max-w-[70%]">
+        {/* 消息区域 */}
         <div
-          className={clsx(
-            'rounded-2xl px-4 py-3 text-sm leading-relaxed',
-            isUser
-              ? 'bg-[var(--oc-brand)] text-white rounded-br-md'
-              : isError
-                ? 'bg-red-500/10 border border-red-500/20 text-red-300 rounded-bl-md'
-                : 'bg-dark-700 text-gray-200 border border-dark-500 rounded-bl-md'
-          )}
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-white/10"
         >
-          {/* 渲染 Markdown 内容 */}
-          <MarkdownContent content={message.content} />
-          {message.streaming && (
-            <span className="inline-block w-1.5 h-4 bg-[var(--oc-brand)] rounded-sm ml-0.5 animate-pulse" />
-          )}
-        </div>
-
-        {/* AI 消息的操作按钮 */}
-        {!isUser && !isError && !message.streaming && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: showActions ? 1 : 0, y: showActions ? 0 : -5 }}
-            className="flex items-center gap-2 px-2"
-          >
-            <button
-              onClick={handleCopy}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-dark-700 transition-colors"
-              title="复制"
-            >
-              <Copy size={14} />
-            </button>
-            <button
-              onClick={() => handleFeedback('up')}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-green-400 hover:bg-dark-700 transition-colors"
-              title="有帮助"
-            >
-              <ThumbsUp size={14} />
-            </button>
-            <button
-              onClick={() => handleFeedback('down')}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-dark-700 transition-colors"
-              title="没帮助"
-            >
-              <ThumbsDown size={14} />
-            </button>
-            {/* 友好的完成提示 */}
-            <span className="text-[10px] text-gray-600 ml-2">AI 分析完成</span>
-            {message.metadata?.cost_usd != null && message.metadata.cost_usd > 0 && (
-              <span className="text-[10px] text-gray-600 ml-2">
-                （费用 ${message.metadata.cost_usd.toFixed(4)}）
-              </span>
-            )}
-          </motion.div>
-        )}
-      </div>
-
-      {/* 用户头像 */}
-      {isUser && (
-        <div className="w-8 h-8 rounded-lg bg-[var(--oc-brand)]/20 flex items-center justify-center flex-shrink-0 mt-1">
-          <User size={16} className="text-[var(--oc-brand)]" />
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-/* ========== 富卡片组件 ========== */
-/**
- * 富卡片标记格式（由后端在AI回复中嵌入）:
- * <!--STOCK:AAPL:182.5:+2.3%-->  → 股票行情卡
- * <!--VOTE:BUY:82:AAPL-->        → AI投票结果卡
- * <!--PROGRESS:75:分析市场数据-->  → 进度条卡
- * <!--ALERT:warning:止损预警-->    → 提醒卡
- */
-
-function StockCard({ symbol, price, change }: { symbol: string; price: string; change: string }) {
-  const isPositive = !change.startsWith('-');
-  return (
-    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800 border border-dark-600 my-1">
-      <span className="text-sm font-bold text-white">{symbol}</span>
-      <span className="text-sm text-white oc-tabular-nums">${price}</span>
-      <span className={clsx('text-xs font-medium oc-tabular-nums', isPositive ? 'text-[var(--oc-success)]' : 'text-[var(--oc-danger)]')}>
-        {change}
-      </span>
-    </div>
-  );
-}
-
-function VoteCard({ action, confidence, symbol }: { action: string; confidence: string; symbol: string }) {
-  const actionColor = action === 'BUY' ? 'text-[var(--oc-success)]' : action === 'SELL' ? 'text-[var(--oc-danger)]' : 'text-[var(--oc-warning)]';
-  const actionLabel = action === 'BUY' ? '买入' : action === 'SELL' ? '卖出' : '观望';
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-dark-800 border border-dark-600 my-2">
-      <div className="flex items-center gap-2">
-        <span className="text-lg">🤖</span>
-        <span className="text-sm font-semibold text-white">{symbol}</span>
-      </div>
-      <div className={clsx('text-sm font-bold', actionColor)}>{actionLabel}</div>
-      <div className="flex items-center gap-1">
-        <div className="w-16 h-1.5 rounded-full bg-dark-600 overflow-hidden">
-          <div className="h-full rounded-full bg-[var(--oc-brand)]" style={{ width: `${confidence}%` }} />
-        </div>
-        <span className="text-xs text-gray-400">{confidence}%</span>
-      </div>
-    </div>
-  );
-}
-
-function ProgressCard({ percent, label }: { percent: string; label: string }) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-dark-800 border border-dark-600 my-1">
-      <div className="flex-1">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-400">{label}</span>
-          <span className="text-xs text-white oc-tabular-nums">{percent}%</span>
-        </div>
-        <div className="w-full h-1.5 rounded-full bg-dark-600 overflow-hidden">
-          <motion.div className="h-full rounded-full bg-[var(--oc-brand)]"
-            initial={{ width: 0 }} animate={{ width: `${percent}%` }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AlertCard({ level, message }: { level: string; message: string }) {
-  const config = {
-    warning: { bg: 'bg-[var(--oc-warning)]/10', border: 'border-[var(--oc-warning)]/30', icon: '⚠️' },
-    error: { bg: 'bg-[var(--oc-danger)]/10', border: 'border-[var(--oc-danger)]/30', icon: '🚨' },
-    success: { bg: 'bg-[var(--oc-success)]/10', border: 'border-[var(--oc-success)]/30', icon: '✅' },
-    info: { bg: 'bg-[var(--oc-brand)]/10', border: 'border-[var(--oc-brand)]/30', icon: 'ℹ️' },
-  }[level] || { bg: 'bg-dark-800', border: 'border-dark-600', icon: 'ℹ️' };
-
-  return (
-    <div className={clsx('flex items-center gap-2 px-4 py-2 rounded-lg border my-1', config.bg, config.border)}>
-      <span>{config.icon}</span>
-      <span className="text-sm text-white">{message}</span>
-    </div>
-  );
-}
-
-/* ========== 简单 Markdown 渲染器 ========== */
-function MarkdownContent({ content }: { content: string }) {
-  // 解析 Markdown 为 React 元素
-  const parseMarkdown = (text: string): React.ReactNode[] => {
-    const lines = text.split('\n');
-    const elements: React.ReactNode[] = [];
-    let inCodeBlock = false;
-    let codeBlockContent: string[] = [];
-
-    lines.forEach((line, index) => {
-      // 代码块开始/结束
-      if (line.startsWith('```')) {
-        if (inCodeBlock) {
-          // 结束代码块，附带复制按钮
-          const codeText = codeBlockContent.join('\n');
-          elements.push(
-            <div key={`code-${index}`} style={{ position: 'relative' }}>
-              <button
-                onClick={() => navigator.clipboard.writeText(codeText)}
-                style={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 4,
-                  background: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  color: '#9CA3AF',
-                  zIndex: 1,
-                }}
-                title="复制代码"
+          <AnimatePresence initial>
+            {messages.map((msg, i) => (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06, duration: 0.35 }}
+                className={clsx('flex gap-2.5', msg.role === 'user' ? 'justify-end' : 'justify-start')}
               >
-                📋
-              </button>
-              <pre className="bg-dark-900 rounded-lg p-3 my-2 overflow-x-auto">
-                <code className="text-xs text-gray-300 font-mono">
-                  {codeText}
-                </code>
-              </pre>
-            </div>
-          );
-          codeBlockContent = [];
-          inCodeBlock = false;
-        } else {
-          // 开始代码块（忽略语言标记）
-          inCodeBlock = true;
-        }
-        return;
-      }
+                {/* AI 头像 */}
+                {msg.role === 'ai' && (
+                  <div
+                    className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-1"
+                    style={{ background: `${cfg.colorHex}18`, border: `1px solid ${cfg.colorHex}30` }}
+                  >
+                    <Bot size={14} style={{ color: cfg.colorHex }} />
+                  </div>
+                )}
 
-      if (inCodeBlock) {
-        codeBlockContent.push(line);
-        return;
-      }
+                {/* 消息气泡 */}
+                <div
+                  className={clsx(
+                    'abyss-card px-4 py-3 max-w-[75%] text-sm leading-relaxed',
+                    msg.role === 'user' && 'border-[var(--accent-cyan)]/20',
+                  )}
+                  style={
+                    msg.role === 'user'
+                      ? { borderColor: `${cfg.colorHex}30` }
+                      : undefined
+                  }
+                >
+                  {/* 消息内容 — 保留换行 */}
+                  <div className="whitespace-pre-wrap text-[var(--text-primary)]">{msg.content}</div>
+                  {/* 时间戳 */}
+                  <div className="mt-1.5 text-[10px] font-mono text-[var(--text-tertiary)] text-right">
+                    {msg.timestamp}
+                  </div>
+                </div>
 
-      // 富卡片标记检测
-      const cardMatch = line.match(/<!--(STOCK|VOTE|PROGRESS|ALERT):(.+?)-->/);
-      if (cardMatch) {
-        const [, type, params] = cardMatch;
-        const parts = params.split(':');
-        switch (type) {
-          case 'STOCK':
-            elements.push(<StockCard key={`card-${index}`} symbol={parts[0]} price={parts[1]} change={parts[2]} />);
-            break;
-          case 'VOTE':
-            elements.push(<VoteCard key={`card-${index}`} action={parts[0]} confidence={parts[1]} symbol={parts[2]} />);
-            break;
-          case 'PROGRESS':
-            elements.push(<ProgressCard key={`card-${index}`} percent={parts[0]} label={parts[1]} />);
-            break;
-          case 'ALERT':
-            elements.push(<AlertCard key={`card-${index}`} level={parts[0]} message={parts[1]} />);
-            break;
-        }
-        return;
-      }
+                {/* 用户头像 */}
+                {msg.role === 'user' && (
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-1 bg-[var(--accent-cyan)]/10 border border-[var(--accent-cyan)]/20">
+                    <User size={14} className="text-[var(--accent-cyan)]" />
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
 
-      // 标题 ###, ##, # (必须先匹配 ### 再 ## 再 #)
-      const h3Match = line.match(/^###\s+(.+)/);
-      if (h3Match) {
-        elements.push(
-          <h3 key={`h3-${index}`} className="text-base font-medium text-white mb-1">
-            {parseInlineMarkdown(h3Match[1])}
-          </h3>
-        );
-        return;
-      }
-      const h2Match = line.match(/^##\s+(.+)/);
-      if (h2Match) {
-        elements.push(
-          <h2 key={`h2-${index}`} className="text-lg font-semibold text-white mb-2">
-            {parseInlineMarkdown(h2Match[1])}
-          </h2>
-        );
-        return;
-      }
-      const h1Match = line.match(/^#\s+(.+)/);
-      if (h1Match) {
-        elements.push(
-          <h1 key={`h1-${index}`} className="text-xl font-bold text-white mb-2">
-            {parseInlineMarkdown(h1Match[1])}
-          </h1>
-        );
-        return;
-      }
-
-      // 水平分隔线 --- / *** / ___（三个以上相同字符）
-      if (line.match(/^(\-{3,}|\*{3,}|_{3,})$/)) {
-        elements.push(
-          <hr key={`hr-${index}`} style={{ borderColor: '#374151', margin: '8px 0' }} />
-        );
-        return;
-      }
-
-      // 无序列表项
-      if (line.match(/^[\-\*\+]\s/)) {
-        elements.push(
-          <div key={`list-${index}`} className="flex gap-2 my-1">
-            <span className="text-gray-500">•</span>
-            <span>{parseInlineMarkdown(line.replace(/^[\-\*\+]\s/, ''))}</span>
-          </div>
-        );
-        return;
-      }
-
-      // 有序列表项（数字+点+空格）
-      const orderedMatch = line.match(/^(\d+)\.\s+(.+)/);
-      if (orderedMatch) {
-        elements.push(
-          <div key={`olist-${index}`} className="flex gap-2 my-1">
-            <span className="text-gray-500" style={{ minWidth: '1.2em', textAlign: 'right' }}>{orderedMatch[1]}.</span>
-            <span>{parseInlineMarkdown(orderedMatch[2])}</span>
-          </div>
-        );
-        return;
-      }
-
-      // 引用块（以 > 开头）
-      if (line.match(/^>\s/)) {
-        elements.push(
+        {/* 输入区域 */}
+        <div className="flex-shrink-0 mt-3">
           <div
-            key={`quote-${index}`}
+            className={clsx(
+              'flex items-center gap-2 rounded-2xl px-4 py-2.5',
+              'bg-[var(--bg-card)] border border-[var(--glass-border)]',
+              'backdrop-blur-xl transition-all duration-300',
+              'focus-within:border-opacity-100',
+            )}
             style={{
-              borderLeft: '3px solid #4B5563',
-              paddingLeft: 12,
-              color: '#9CA3AF',
-              margin: '4px 0',
-              fontStyle: 'italic',
+              // 聚焦时边框发光 — 通过 CSS 自定义属性控制
+              boxShadow: `0 0 0 0px ${cfg.colorHex}00`,
+            }}
+            onFocus={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = `${cfg.colorHex}55`;
+              (e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${cfg.colorHex}15`;
+            }}
+            onBlur={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '';
+              (e.currentTarget as HTMLElement).style.boxShadow = '';
             }}
           >
-            {parseInlineMarkdown(line.replace(/^>\s/, ''))}
+            {/* 附件按钮 */}
+            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
+              <Paperclip size={16} />
+            </button>
+
+            {/* 输入框 */}
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+              placeholder="输入消息..."
+              className={clsx(
+                'flex-1 bg-transparent text-sm text-[var(--text-primary)] font-body',
+                'placeholder:text-[var(--text-tertiary)] outline-none',
+              )}
+            />
+
+            {/* 语音按钮 */}
+            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
+              <Mic size={16} />
+            </button>
+
+            {/* 发送按钮 */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleSend}
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+              style={{
+                background: input.trim() ? cfg.colorHex : 'rgba(255,255,255,0.06)',
+                color: input.trim() ? 'var(--bg-base)' : 'var(--text-tertiary)',
+              }}
+            >
+              <Send size={14} />
+            </motion.button>
           </div>
-        );
-        return;
-      }
+        </div>
+      </div>
 
-      // 普通行
-      if (line.trim()) {
-        elements.push(
-          <p key={`line-${index}`} className="my-1">
-            {parseInlineMarkdown(line)}
-          </p>
-        );
-      } else {
-        elements.push(<br key={`br-${index}`} />);
-      }
-    });
+      {/* ====== 右侧面板 ====== */}
+      <div className="w-[280px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+        {/* 快捷指令 */}
+        <div className="abyss-card p-4">
+          <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">
+            <Zap size={12} style={{ color: cfg.colorHex }} />
+            快捷指令
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {cfg.commands.map((cmd) => (
+              <motion.button
+                key={cmd.label}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setInput(cmd.label)}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono',
+                  'bg-white/[0.03] border border-[var(--glass-border)]',
+                  'hover:border-opacity-100 transition-all duration-200',
+                  'text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
+                )}
+                style={{ ['--tw-border-opacity' as string]: 0.5 }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = `${cfg.colorHex}40`;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = '';
+                }}
+              >
+                {cmd.icon}
+                {cmd.label}
+              </motion.button>
+            ))}
+          </div>
+        </div>
 
-    return elements;
-  };
+        {/* 会话历史 */}
+        <div className="abyss-card p-4">
+          <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">
+            <History size={12} className="text-[var(--text-tertiary)]" />
+            会话记录
+          </h3>
+          <div className="space-y-2">
+            {sessions.map((s, i) => (
+              <motion.div
+                key={s.id}
+                initial={{ opacity: 0, x: 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className={clsx(
+                  'flex items-start justify-between gap-2 px-3 py-2.5 rounded-xl cursor-pointer',
+                  'hover:bg-white/[0.03] transition-colors duration-200',
+                  i === 0 && 'bg-white/[0.02]',
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs text-[var(--text-primary)] truncate">{s.title}</div>
+                  <div className="text-[10px] font-mono text-[var(--text-tertiary)] mt-0.5">
+                    {s.time}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                  <MessageSquare size={10} className="text-[var(--text-tertiary)]" />
+                  <span className="text-[10px] font-mono text-[var(--text-tertiary)]">{s.count}</span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
 
-  // 解析行内 Markdown（粗体、斜体、行内代码、链接）
-  const parseInlineMarkdown = (text: string): React.ReactNode => {
-    const parts: React.ReactNode[] = [];
-    let remaining = text;
-    let key = 0;
-
-    while (remaining.length > 0) {
-      // 行内代码 `code`
-      const codeMatch = remaining.match(/^`([^`]+)`/);
-      if (codeMatch) {
-        parts.push(
-          <code key={key++} className="px-1.5 py-0.5 bg-dark-900 rounded text-[var(--oc-brand)] text-xs font-mono">
-            {codeMatch[1]}
-          </code>
-        );
-        remaining = remaining.slice(codeMatch[0].length);
-        continue;
-      }
-
-      // 图片 ![alt](url) — 必须在链接 [text](url) 之前检测
-      const imgMatch = remaining.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
-      if (imgMatch) {
-        parts.push(
-          <img
-            key={key++}
-            src={imgMatch[2]}
-            alt={imgMatch[1]}
-            style={{ maxWidth: '100%', borderRadius: 8, margin: '4px 0' }}
-          />
-        );
-        remaining = remaining.slice(imgMatch[0].length);
-        continue;
-      }
-
-      // 链接 [text](url)
-      const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
-      if (linkMatch) {
-        parts.push(
-          <a
-            key={key++}
-            href={linkMatch[2]}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--oc-brand)] hover:underline"
-          >
-            {linkMatch[1]}
-          </a>
-        );
-        remaining = remaining.slice(linkMatch[0].length);
-        continue;
-      }
-
-      // 粗体 **text**
-      const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/);
-      if (boldMatch) {
-        parts.push(
-          <strong key={key++} className="font-bold text-white">
-            {boldMatch[1]}
-          </strong>
-        );
-        remaining = remaining.slice(boldMatch[0].length);
-        continue;
-      }
-
-      // 斜体 *text*
-      const italicMatch = remaining.match(/^\*([^*]+)\*/);
-      if (italicMatch) {
-        parts.push(
-          <em key={key++} className="italic">
-            {italicMatch[1]}
-          </em>
-        );
-        remaining = remaining.slice(italicMatch[0].length);
-        continue;
-      }
-
-      // 普通文本（遇到可能的 Markdown 标记时停下来）
-      const nextSpecial = remaining.search(/[`!*\[]/);
-      if (nextSpecial === -1) {
-        parts.push(remaining);
-        break;
-      } else if (nextSpecial === 0) {
-        // 特殊字符开头但没匹配到任何模式，当普通文本消费一个字符
-        parts.push(remaining[0]);
-        remaining = remaining.slice(1);
-      } else {
-        parts.push(remaining.slice(0, nextSpecial));
-        remaining = remaining.slice(nextSpecial);
-      }
-    }
-
-    return <>{parts}</>;
-  };
-
-  return <div className="whitespace-pre-wrap break-words">{parseMarkdown(content)}</div>;
+        {/* 系统信息 */}
+        <div className="abyss-card p-4">
+          <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">
+            <Cpu size={12} className="text-[var(--text-tertiary)]" />
+            系统信息
+          </h3>
+          <div className="space-y-2.5">
+            {[
+              { label: '模型', value: 'GPT-4o', color: cfg.colorHex },
+              { label: '响应时间', value: '1.2s', color: '#00ffaa' },
+              { label: '本次 Tokens', value: '3,847', color: '#fbbf24' },
+              { label: '记忆条目', value: '128', color: '#a78bfa' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between">
+                <span className="text-[11px] text-[var(--text-tertiary)]">{item.label}</span>
+                <span
+                  className="text-xs font-mono font-medium"
+                  style={{ color: item.color }}
+                >
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
