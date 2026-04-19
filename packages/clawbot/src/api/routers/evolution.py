@@ -135,7 +135,7 @@ def list_proposals(
             )
             for p in proposals
         ]
-    except Exception as e:
+    except Exception:
         logger.exception("列出进化提案失败")
         return []
 
@@ -167,7 +167,7 @@ def list_capability_gaps():
         engine = _get_engine()
         gaps = engine.get_capability_gaps()
         return [GapOut(**g) for g in gaps]
-    except Exception as e:
+    except Exception:
         logger.exception("列出能力缺口失败")
         return []
 
@@ -179,7 +179,7 @@ def evolution_stats():
         engine = _get_engine()
         stats = engine.get_stats()
         return StatsOut(**stats)
-    except Exception as e:
+    except Exception:
         logger.exception("获取进化引擎统计失败")
         return StatsOut()
 

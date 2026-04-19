@@ -191,8 +191,8 @@ class AutoShipper:
             # 原子性分配: 用子查询避免竞态
             cursor = conn.execute(
                 """UPDATE card_inventory SET status='used', assigned_order=?, used_at=datetime('now','localtime')
-                   WHERE id = (SELECT id FROM card_inventory 
-                               WHERE item_id=? AND spec=? AND status='available' 
+                   WHERE id = (SELECT id FROM card_inventory
+                               WHERE item_id=? AND spec=? AND status='available'
                                ORDER BY id LIMIT 1)
                    AND status='available'""",
                 (order_id, item_id, spec),
@@ -201,8 +201,8 @@ class AutoShipper:
                 # 尝试不限规格
                 cursor = conn.execute(
                     """UPDATE card_inventory SET status='used', assigned_order=?, used_at=datetime('now','localtime')
-                       WHERE id = (SELECT id FROM card_inventory 
-                                   WHERE item_id=? AND status='available' 
+                       WHERE id = (SELECT id FROM card_inventory
+                                   WHERE item_id=? AND status='available'
                                    ORDER BY id LIMIT 1)
                        AND status='available'""",
                     (order_id, item_id),

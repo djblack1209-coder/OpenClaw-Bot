@@ -220,7 +220,7 @@ class ComfyUIClient:
         )
 
         # Build consistent prompt from persona fields
-        name = identity.get("display_name", identity.get("name", ""))
+        identity.get("display_name", identity.get("name", ""))
         age = identity.get("age", "25")
         appearance = identity.get("appearance", "")
         style = visual.get("clothing_style", "casual modern")

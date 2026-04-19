@@ -56,7 +56,7 @@ def classify_error(error: Exception) -> str:
 
 class ErrorThrottler:
     """错误去重/限流 — 相同指纹的错误在窗口期内只报一次
-    
+
     参考 Sentry 的 fingerprint grouping，避免错误风暴刷屏。
     """
 
@@ -96,13 +96,13 @@ class ErrorThrottler:
 
 class ErrorHandler:
     """全局错误处理器
-    
+
     用法:
         handler = ErrorHandler(admin_chat_id=123456, bot_token="xxx")
-        
+
         # 作为 python-telegram-bot 的 error handler
         app.add_error_handler(handler.telegram_error_handler)
-        
+
         # 手动上报
         await handler.report(error, bot_id="sonnet", context="cmd_invest")
     """
@@ -143,7 +143,7 @@ class ErrorHandler:
         if self._structured_logger:
             try:
                 self._structured_logger.log_error(bot_id, category, str(error))
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
         # 记录到标准日志
@@ -189,7 +189,7 @@ class ErrorHandler:
 
     async def telegram_error_handler(self, update, context):
         """python-telegram-bot 的全局 error handler 回调
-        
+
         用法: app.add_error_handler(handler.telegram_error_handler)
         """
         error = context.error

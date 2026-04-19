@@ -125,7 +125,7 @@ class SynergyEngine:
                         score = analysis.get("signal_score", 0)
                         if abs(score) >= 50:
                             _push("trade_signal", f"热点关联: {ticker} 信号{score}")
-                except Exception as e:
+                except Exception:
                     logger.debug("Silenced exception", exc_info=True)
         except Exception as e:
             logger.debug("[Synergy] 社交→交易异常: %s", e)
@@ -166,7 +166,7 @@ def _push(event_type: str, message: str):
             "source": "synergy",
             "ts": now_et().isoformat(),
         })
-    except Exception as e:
+    except Exception:
         logger.debug("Silenced exception", exc_info=True)
 
 

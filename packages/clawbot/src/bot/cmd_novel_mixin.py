@@ -20,12 +20,12 @@ class NovelCommandsMixin:
         """AI小说写作 — /novel <子命令>"""
         try:
             from src.novel_writer import get_novel_writer
-            
+
             writer = get_novel_writer()
             args = context.args or []
             sub = args[0] if args else "help"
             user_id = update.effective_user.id if update.effective_user else 0
-            
+
             if sub == "help" or sub == "帮助":
                 help_text = (
                     "📖 AI 小说工坊\n\n"
@@ -43,7 +43,7 @@ class NovelCommandsMixin:
                 )
                 await update.message.reply_text(help_text)
                 return
-            
+
             if sub == "new" or sub == "新建":
                 if len(args) < 2:
                     await update.message.reply_text("❓ 请指定题材: /novel new <题材> [风格]\n例: /novel new 都市修仙 轻松搞笑")
@@ -75,7 +75,7 @@ class NovelCommandsMixin:
                 msg += f"\n发送 /novel continue {result['novel_id']} 开始写第一章"
                 await update.message.reply_text(msg)
                 return
-            
+
             if sub == "continue" or sub == "续写":
                 if len(args) < 2:
                     await update.message.reply_text("❓ 请指定小说ID: /novel continue <ID>")
@@ -97,7 +97,7 @@ class NovelCommandsMixin:
                     content = content[:3900] + "\n\n...(完整内容请导出 TXT)"
                 await update.message.reply_text(header + content)
                 return
-            
+
             if sub == "status" or sub == "进度":
                 if len(args) < 2:
                     await update.message.reply_text("❓ 请指定小说ID: /novel status <ID>")
@@ -123,7 +123,7 @@ class NovelCommandsMixin:
                         msg += f"  第{ch['num']}章 {ch['title']} ({ch['words']}字)\n"
                 await update.message.reply_text(msg)
                 return
-            
+
             if sub == "list" or sub == "列表":
                 novels = writer.list_novels(user_id)
                 if not novels:
@@ -134,7 +134,7 @@ class NovelCommandsMixin:
                     msg += f"  #{n['id']} 《{n['title']}》 {n['genre']} — {n['chapters']}章/{n['words']}字\n"
                 await update.message.reply_text(msg)
                 return
-            
+
             if sub == "export" or sub == "导出":
                 if len(args) < 2:
                     await update.message.reply_text("❓ 请指定小说ID: /novel export <ID>")
@@ -155,7 +155,7 @@ class NovelCommandsMixin:
                     logger.warning("小说文件发送失败: %s", e)
                     await update.message.reply_text("⚠️ 文件发送出了问题，请稍后重试")
                 return
-            
+
             if sub == "tts":
                 if len(args) < 3:
                     await update.message.reply_text("❓ 用法: /novel tts <小说ID> <章节号>")
@@ -194,7 +194,7 @@ class NovelCommandsMixin:
                 else:
                     await update.message.reply_text("⚠️ 语音生成失败")
                 return
-            
+
             await update.message.reply_text(f"❓ 未知子命令: {sub}\n发送 /novel help 查看帮助")
         except Exception as e:
             logger.warning("[cmd_novel] 执行失败: %s", e)

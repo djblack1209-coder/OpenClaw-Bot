@@ -47,7 +47,7 @@ async def _safe_notify(notify_func: Optional[Callable], msg: str) -> None:
     if notify_func:
         try:
             await notify_func(msg)
-        except Exception as e:
+        except Exception:
             logger.debug("[TeamVote] notify failed: %s", msg[:80])
 
 
@@ -572,7 +572,7 @@ async def run_team_vote(
                     timeout=timeout_per_bot,
                 )
                 return _parse_vote(response, bot_id, bot_id, role)
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 last_err = "回复超时"
                 logger.warning("[TeamVote] %s 超时(%ds) [%d/%d]", bot_id, timeout_per_bot, attempt + 1, max_attempts)
             except Exception as e:
@@ -636,7 +636,7 @@ async def run_team_vote(
             latest_review = tj.get_latest_review("daily")
             if latest_review and latest_review.get("lessons_learned"):
                 trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
-    except Exception as e:
+    except Exception:
         logger.debug("Silenced exception", exc_info=True)
 
     commander_id = BOT_CLAUDE_SONNET
@@ -668,7 +668,7 @@ async def run_team_vote(
                 )
                 commander_vote_result = _parse_vote(response, commander_id, commander_id, role)
                 break
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", commander_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", commander_id, _attempt + 1, e)
@@ -715,7 +715,7 @@ async def run_team_vote(
                 )
                 strategist_vote_result = _parse_vote(response, strategist_id, strategist_id, role)
                 break
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", strategist_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", strategist_id, _attempt + 1, e)

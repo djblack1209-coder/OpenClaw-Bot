@@ -31,7 +31,7 @@ class OCRHandlerMixin:
             user = update.effective_user
             caption = update.message.caption or ""
             is_group = update.effective_chat.type in ("group", "supergroup")
-            
+
             # 群聊门控：仅在被 @ 或 caption 含触发词时才处理
             if is_group:
                 bot_username = (await context.bot.get_me()).username or ""
@@ -39,17 +39,17 @@ class OCRHandlerMixin:
                 trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "竞品", "财报"))
                 if not mentioned and not trigger:
                     return
-            
+
             # 下载图片（Vision 和 OCR 都需要）
             photo = update.message.photo[-1]
             file = await context.bot.get_file(photo.file_id)
             buf = io.BytesIO()
             await file.download_to_memory(buf)
             image_bytes = buf.getvalue()
-            
+
             logger.info(f"[Photo] 收到图片 from {user.id}, {len(image_bytes)} bytes, "
                          f"chat_type={'group' if is_group else 'private'}")
-            
+
             # ── 私聊默认 Vision 分析 ──────────────────────────────
             # 除非用户明确说"OCR/识别文字"，否则直接用 Vision 模型理解图片
             # 这比 OCR→场景路由 更自然，用户可以直接追问图片内容
@@ -60,7 +60,7 @@ class OCRHandlerMixin:
                     from src.tools.vision import analyze_image
                     vision_prompt = caption or "请仔细描述这张图片的内容，包括文字、图表、人物、场景等所有重要信息。"
                     vision_result = await analyze_image(bytes(image_bytes), vision_prompt)
-                    
+
                     # 删除处理中提示
                     try:
                         await hint_msg.delete()
@@ -97,10 +97,10 @@ class OCRHandlerMixin:
                         await hint_msg.delete()
                     except Exception as e:
                         logger.debug("删除处理提示消息失败(可忽略): %s", e)
-            
+
             # ── OCR 流程（群聊默认 / 私聊显式请求 / Vision 降级） ──
             hint_msg = await update.message.reply_text("🔍 正在识别图片文字...")
-            
+
             # 调用 OCR
             result: OcrResult = await ocr_image(
                 image_bytes,
@@ -108,19 +108,19 @@ class OCRHandlerMixin:
                 user_id=user.id,
                 file_unique_id=photo.file_unique_id,
             )
-            
+
             # 删除处理中提示
             try:
                 await hint_msg.delete()
             except Exception as e:
                 logger.debug("删除OCR处理提示消息失败(可忽略): %s", e)
-            
+
             # OCR 失败
             if not result.ok:
                 await send_long_message(chat_id, f"⚠️ OCR 失败: {result.error}", context,
                                         reply_to_message_id=update.message.message_id)
                 return
-            
+
             # OCR 无文字 → 降级到 Vision 模型分析
             if not result.text:
                 try:
@@ -141,15 +141,15 @@ class OCRHandlerMixin:
                 await send_long_message(chat_id, "📷 图片已收到，未识别到文字内容。", context,
                                         reply_to_message_id=update.message.message_id)
                 return
-            
+
             # 场景路由
             scene_match = classify_ocr_scene(result.text, caption)
-            
+
             if scene_match.scene == OcrScene.FINANCIAL:
                 # 交易/财报场景
                 proc_result = await process_financial_scene(
                     result.text, caption, user.id, chat_id, shared_memory)
-                
+
                 tag = " (缓存)" if result.cached else ""
                 reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
                 reply_parts.append(f"\n{'─' * 20}")
@@ -158,10 +158,10 @@ class OCRHandlerMixin:
                     reply_parts.append(proc_result.summary)
                     if proc_result.next_step:
                         reply_parts.append(f"\n💡 {proc_result.next_step}")
-                
+
                 await send_long_message(chat_id, "\n".join(reply_parts), context,
                                         reply_to_message_id=update.message.message_id)
-                
+
                 # 注入对话上下文（可追问）
                 if proc_result.context_injection:
                     try:
@@ -180,12 +180,12 @@ class OCRHandlerMixin:
                         await self.cmd_invest(update, context)
                     except Exception as e:
                         logger.error(f"[OCR] 自动触发 /invest 失败: {e}")
-            
+
             elif scene_match.scene == OcrScene.ECOMMERCE:
                 # 电商/竞品场景
                 proc_result = await process_ecommerce_scene(
                     result.text, caption, user.id, chat_id, shared_memory)
-                
+
                 tag = " (缓存)" if result.cached else ""
                 reply_parts = [f"📄 OCR 识别结果{tag}:\n\n{result.text}"]
                 reply_parts.append(f"\n{'─' * 20}")
@@ -194,10 +194,10 @@ class OCRHandlerMixin:
                     reply_parts.append(proc_result.summary)
                     if proc_result.next_step:
                         reply_parts.append(f"\n💡 定价建议: {proc_result.next_step}")
-                
+
                 await send_long_message(chat_id, "\n".join(reply_parts), context,
                                         reply_to_message_id=update.message.message_id)
-                
+
                 # 注入对话上下文（可追问）
                 if proc_result.context_injection:
                     try:
@@ -206,7 +206,7 @@ class OCRHandlerMixin:
                             "assistant", proc_result.context_injection)
                     except Exception as e:
                         logger.warning(f"[OCR] 电商场景上下文注入失败: {e}")
-            
+
             else:
                 # 通用场景: OCR 文字 + Vision 补充分析
                 tag = " (缓存)" if result.cached else ""
@@ -229,7 +229,7 @@ class OCRHandlerMixin:
 
                 await send_long_message(chat_id, reply, context,
                                         reply_to_message_id=update.message.message_id)
-                
+
         except Exception as e:
             logger.error(f"[OCR] handle_photo 异常: {e}", exc_info=True)
             try:
@@ -239,7 +239,7 @@ class OCRHandlerMixin:
             except Exception as e:
                 logger.debug("Silenced exception", exc_info=True)
 
-    
+
     async def handle_document_ocr(self, update, context):
         '''处理文档消息（PDF/DOCX/PPTX/XLSX/图片）— Docling 结构化理解 + OCR 降级'''
         try:
@@ -250,7 +250,7 @@ class OCRHandlerMixin:
             fname = doc.file_name or "document"
             caption = update.message.caption or ""
             is_group = update.effective_chat.type in ("group", "supergroup")
-            
+
             # 仅处理图片、PDF 和 Office 文档
             supported_mimes = (
                 "image/", "application/pdf",
@@ -261,7 +261,7 @@ class OCRHandlerMixin:
             )
             if not any(mime.startswith(m) for m in supported_mimes):
                 return
-            
+
             # 群聊门控
             if is_group:
                 bot_username = (await context.bot.get_me()).username or ""
@@ -269,12 +269,12 @@ class OCRHandlerMixin:
                 trigger = any(w in caption for w in ("OCR", "ocr", "识别", "文字", "提取", "分析", "总结", "摘要"))
                 if not mentioned and not trigger:
                     return
-            
+
             # 处理中提示
             hint_msg = await update.message.reply_text(f"🔍 正在分析 {fname}...")
-            
+
             logger.info(f"[DOC] 收到文档 {fname} ({mime}, {doc.file_size} bytes) from {user.id}")
-            
+
             file = await context.bot.get_file(doc.file_id)
             buf = io.BytesIO()
             await file.download_to_memory(buf)
@@ -291,7 +291,8 @@ class OCRHandlerMixin:
                     )
                     if HAS_DOCLING:
                         # 写入临时文件 — Docling 需要文件路径
-                        import os, tempfile
+                        import os
+                        import tempfile
                         suffix = os.path.splitext(fname)[1] or ".pdf"
                         with tempfile.NamedTemporaryFile(
                             suffix=suffix, delete=False,
@@ -313,7 +314,7 @@ class OCRHandlerMixin:
                                 # 删除处理中提示
                                 try:
                                     await hint_msg.delete()
-                                except Exception as e:
+                                except Exception:
                                     logger.debug("Silenced exception", exc_info=True)
                                 try:
                                     safe = md_to_html(result_text)
@@ -332,7 +333,7 @@ class OCRHandlerMixin:
                             # 清理临时文件
                             try:
                                 os.unlink(local_path)
-                            except Exception as e:
+                            except Exception:
                                 logger.debug("Silenced exception", exc_info=True)
                 except Exception as e:
                     logger.debug(f"[DOC] Docling 处理失败，降级到 OCR: {e}")
@@ -347,13 +348,13 @@ class OCRHandlerMixin:
                 user_id=user.id,
                 file_unique_id=doc.file_unique_id,
             )
-            
+
             # 删除处理中提示
             try:
                 await hint_msg.delete()
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
-            
+
             if result.ok and result.text:
                 tag = " (缓存)" if result.cached else ""
                 reply = f"📄 {fname} 识别结果{tag}:\n\n{result.text}"

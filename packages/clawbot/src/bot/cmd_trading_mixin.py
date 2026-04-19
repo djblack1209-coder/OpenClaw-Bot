@@ -114,7 +114,7 @@ class TradingCommandsMixin:
                 else:
                     status_lines.append("当前持仓: 无")
                     status_lines.append("")
-            except Exception as e:
+            except Exception:
                 logger.exception("IBKR 实时数据拉取失败")
                 status_lines.append("⚠️ 严总，券商数据暂时拉不到，不影响其他功能")
                 status_lines.append("")
@@ -165,7 +165,7 @@ class TradingCommandsMixin:
                         chart = generate_portfolio_pie(pie_data)
                         await send_chart(update, context, chart, caption="📊 持仓分布")
                     return
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)  # 降级到原有文字格式
 
             await update.message.reply_text(status_text)
@@ -265,11 +265,11 @@ class TradingCommandsMixin:
                     # 尝试生成 HTML 报告（含图表），降级到纯文本
                     try:
                         reporter = BacktestReporter()
-                        html_report = reporter.generate_comparison_report(reports)
+                        reporter.generate_comparison_report(reports)
                         # 发送纯文本摘要 + 提示有详细报告
                         summary = format_multi_report(reports)
                         summary += "\n\n📊 详细图表报告已生成（含权益曲线、回撤图、策略对比）"
-                    except Exception as e:
+                    except Exception:
                         logger.exception("回测 HTML 报告生成失败")
                         summary = format_multi_report(reports)
                     if len(summary) > TG_SAFE_LENGTH:
@@ -359,9 +359,9 @@ class TradingCommandsMixin:
                         result_text += "\n\n总交易: %d笔" % report.total_trades
                         try:
                             reporter = BacktestReporter()
-                            enhanced = reporter.generate_report(report)
+                            reporter.generate_report(report)
                             result_text += "\n📊 详细图表报告已生成（权益曲线、回撤、交易明细）"
-                        except Exception as e:
+                        except Exception:
                             logger.debug("Silenced exception", exc_info=True)
                         try:
                             from src.telegram_ux import generate_equity_chart, generate_pnl_chart, send_chart

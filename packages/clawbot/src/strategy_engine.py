@@ -108,7 +108,7 @@ class MarketData:
 
 class BaseStrategy(ABC):
     """策略基类 — 所有自定义策略必须继承此类
-    
+
     对标 freqtrade 的 IStrategy 接口：
     - analyze() 分析市场数据并生成信号
     - 支持多时间框架
@@ -125,7 +125,7 @@ class BaseStrategy(ABC):
     @abstractmethod
     def analyze(self, data: MarketData) -> TradeSignal:
         """分析市场数据，返回交易信号
-        
+
         子类必须实现此方法。
         """
         ...
@@ -485,7 +485,7 @@ class BollingerBandStrategy(BaseStrategy):
 
 class StrategyEngine:
     """策略引擎 — 管理多策略组合 + 加权投票
-    
+
     对标 freqtrade 的策略管理：
     - 注册/注销策略
     - 多策略并行分析
@@ -516,7 +516,7 @@ class StrategyEngine:
 
     def analyze(self, data: MarketData, strategies: Optional[List[str]] = None) -> Dict[str, Any]:
         """运行所有（或指定）策略并返回加权合并结果
-        
+
         Returns:
             {
                 "symbol": str,

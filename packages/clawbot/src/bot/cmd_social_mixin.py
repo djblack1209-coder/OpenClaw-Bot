@@ -132,7 +132,7 @@ class SocialCommandsMixin:
                     try:
                         with open(path, "rb") as f:
                             await context.bot.send_photo(chat_id=update.effective_chat.id, photo=f, caption=f"数字生命自拍 | {persona.get('name', '')}")
-                    except Exception as e:
+                    except Exception:
                         logger.exception("发送数字生命自拍失败: %s", path)
             else:
                 lines.append(error_service_failed("自拍生成", image_ret.get('error', '')))
@@ -328,7 +328,7 @@ class SocialCommandsMixin:
                 from src.bot.globals import user_prefs
                 if user_prefs.get(update.effective_user.id, "social_preview", False):
                     preview_mode = True
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
         if args and str(args[0]).lower() in {"x", "xhs", "xiaohongshu", "all", "both", "dual"}:
@@ -418,7 +418,7 @@ class SocialCommandsMixin:
                         variant_id, _ = ab_test_manager.get_content(test.test_id)
                         if plat_result.get("published", {}).get("success"):
                             ab_test_manager.record_engagement(test.test_id, variant_id, event="publish")
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)  # A/B 追踪不影响主流程
 
         hint = self._social_login_retry_hint(
@@ -828,7 +828,7 @@ class SocialCommandsMixin:
                                 imp = v.get("impressions", 0)
                                 clk = v.get("clicks", 0)
                                 lines.append(f"    变体{v.get('id', '?')[:6]}: {imp}曝光 {clk}点击 CTR={ctr:.1%}")
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)  # A/B 数据不影响主报告
 
         await send_long_message(update.effective_chat.id, "\n".join(lines), context)

@@ -41,7 +41,7 @@ def _normalize_item(item: dict) -> Optional[dict]:
 
 def load_pending_reentry_queue(journal=None) -> List[Dict]:
     """从 trading_journal 配置中加载并规范化重入队列。
-    
+
     Args:
         journal: TradingJournal 实例。为 None 时延迟导入全局实例。
     """
@@ -51,7 +51,7 @@ def load_pending_reentry_queue(journal=None) -> List[Dict]:
             journal = tj
         except ImportError:
             return []
-    
+
     try:
         raw = journal.get_config(_PENDING_REENTRY_CONFIG_KEY, "[]")
         payload = json.loads(raw) if isinstance(raw, str) else raw
@@ -92,12 +92,12 @@ def queue_reentry_from_trade(
     queue: List[Dict], trade: dict, reason: str = ""
 ) -> tuple[List[Dict], bool]:
     """将取消的交易加入重入队列。
-    
+
     Args:
         queue: 当前队列
         trade: 交易记录 dict
         reason: 重入原因
-    
+
     Returns:
         (更新后的队列, 是否成功入队)
     """

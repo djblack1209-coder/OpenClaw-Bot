@@ -415,7 +415,6 @@ class FreqtradeBacktestBridge:
             datadir = Path(self.config["datadir"])
             datadir.mkdir(parents=True, exist_ok=True)
             # freqtrade 命名: SYMBOL_QUOTE-timeframe.json
-            pair_name = f"{symbol}/USD"
             fname = f"{symbol}_USD-{timeframe}.json"
             fpath = datadir / fname
 

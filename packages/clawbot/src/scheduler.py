@@ -30,7 +30,7 @@ def _now_et() -> datetime:
 
 class Task:
     """定时任务（美东时间）"""
-    
+
     def __init__(
         self,
         name: str,
@@ -47,11 +47,11 @@ class Task:
         self.last_run: Optional[datetime] = None
         self.next_run: Optional[datetime] = None
         self._calculate_next_run()
-    
+
     def _calculate_next_run(self):
         """计算下次执行时间（美东时间）"""
         now = _now_et()
-        
+
         if self.schedule_time:
             # 固定时间任务（美东）
             next_run = datetime.combine(now.date(), self.schedule_time, tzinfo=ET)
@@ -62,14 +62,14 @@ class Task:
                     tzinfo=ET,
                 )
             self.next_run = next_run
-            
+
         elif self.interval_minutes:
             # 间隔任务
             if self.last_run:
                 self.next_run = self.last_run + timedelta(minutes=self.interval_minutes)
             else:
                 self.next_run = now
-    
+
     def should_run(self) -> bool:
         """判断是否应该执行"""
         if not self.enabled:
@@ -77,7 +77,7 @@ class Task:
         if not self.next_run:
             return False
         return _now_et() >= self.next_run
-    
+
     async def run(self) -> Any:
         """执行任务"""
         try:
@@ -93,12 +93,12 @@ class Task:
 
 class Scheduler:
     """任务调度器"""
-    
+
     def __init__(self):
         self.tasks: Dict[str, Task] = {}
         self._running = False
         self._task: Optional[asyncio.Task] = None
-    
+
     def add_task(
         self,
         name: str,
@@ -117,23 +117,23 @@ class Scheduler:
         )
         self.tasks[name] = task
         logger.info(f"添加任务: {name}, 下次执行: {task.next_run}")
-    
+
     def remove_task(self, name: str):
         """移除任务"""
         if name in self.tasks:
             del self.tasks[name]
             logger.info(f"移除任务: {name}")
-    
+
     def enable_task(self, name: str):
         """启用任务"""
         if name in self.tasks:
             self.tasks[name].enabled = True
-    
+
     def disable_task(self, name: str):
         """禁用任务"""
         if name in self.tasks:
             self.tasks[name].enabled = False
-    
+
     async def _run_loop(self):
         """调度循环"""
         while self._running:
@@ -146,7 +146,7 @@ class Scheduler:
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                     except Exception as e:
                         logger.error(f"任务调度错误: {e}")
-            
+
             # 每分钟检查一次
             await asyncio.sleep(60)
 
@@ -156,24 +156,24 @@ class Scheduler:
             await task.run()
         except Exception as e:
             logger.error(f"任务执行错误 [{task.name}]: {e}")
-    
+
     def start(self):
         """启动调度器"""
         if self._running:
             return
-        
+
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         self._task.add_done_callback(lambda t: t.exception() and logger.error("调度器主循环崩溃: %s", t.exception()))
         logger.info("调度器已启动")
-    
+
     def stop(self):
         """停止调度器"""
         self._running = False
         if self._task:
             self._task.cancel()
         logger.info("调度器已停止")
-    
+
     def get_status(self) -> List[Dict[str, Any]]:
         """获取所有任务状态"""
         status = []

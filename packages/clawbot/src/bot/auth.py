@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def requires_auth(func):
     """装饰器: 检查用户是否授权，并对命令参数做安全消毒。
-    
+
     安全措施:
       1. 未授权时静默返回（与原行为一致）
       2. 对 context.args 中的每个参数执行 sanitize_input（防 XSS/SQL注入/命令注入）

@@ -382,7 +382,7 @@ class PydanticInvestmentEngine:
             news = await fetch_news_about(f"{data.get('name', symbol)} stock news", max_length=800)
             if news and len(news) > 20:
                 data["recent_news"] = news
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         return data

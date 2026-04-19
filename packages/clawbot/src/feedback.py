@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 def build_feedback_keyboard(bot_id: str, model_used: str, chat_id: int) -> InlineKeyboardMarkup:
     """构建反馈按钮 — 附加到每条 AI 回复后
-    
+
     callback_data 格式: fb|{action}|{bot_id}|{model}|{chat_id}
     用 | 分隔（karfly 模式），总长度 < 64 字节（Telegram 限制）
     """
     model_short = (model_used or "unknown").split("/")[-1][:20]
     prefix = f"fb|{{}}|{bot_id[:10]}|{model_short}|{chat_id}"
-    
+
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("👍", callback_data=prefix.format("up")),
         InlineKeyboardButton("👎", callback_data=prefix.format("down")),
@@ -54,9 +54,10 @@ def parse_feedback_data(data: str) -> Optional[dict]:
 
 class FeedbackStore:
     """SQLite 反馈存储 — 轻量，不引入额外依赖"""
-    
+
     def __init__(self, db_path: str = ""):
-        import sqlite3, atexit
+        import sqlite3
+        import atexit
         # 使用相对于项目根目录的规范路径，避免不同工作目录启动时路径错误
         if db_path:
             self.db_path = db_path
@@ -80,7 +81,7 @@ class FeedbackStore:
             )
         """)
         self._conn.commit()
-    
+
     def record(self, user_id: int, chat_id: int, bot_id: str, model: str, rating: int):
         """记录反馈 — rating: 1=👍, -1=👎"""
         with self._lock:
@@ -89,7 +90,7 @@ class FeedbackStore:
                 (user_id, chat_id, bot_id, model, rating, time.time()),
             )
             self._conn.commit()
-    
+
     def get_model_score(self, model: str, window_hours: int = 24) -> dict:
         """获取模型在时间窗口内的评分统计"""
         cutoff = time.time() - window_hours * 3600
@@ -105,7 +106,7 @@ class FeedbackStore:
             "up": up, "down": down, "total": total,
             "score": round(up / max(total, 1), 3),
         }
-    
+
     def get_stats(self) -> dict:
         """全局统计"""
         with self._lock:

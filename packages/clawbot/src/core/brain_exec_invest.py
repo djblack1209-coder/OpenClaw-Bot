@@ -119,7 +119,7 @@ class InvestExecutorMixin:
             )
             approved = check.approved if hasattr(check, "approved") else True
             return {"source": "risk_manager_singleton", "approved": approved}
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         # FAIL-CLOSED: 风控模块不可用时，拒绝交易而非默认放行
         return {"source": "risk_default", "approved": False, "note": "风控模块未就绪，安全起见默认拒绝（fail-closed）"}

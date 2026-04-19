@@ -289,7 +289,7 @@ _BOT_MODEL_FAMILY_DEFAULT = {
 def _load_bot_model_family() -> dict:
     """从 JSON 配置加载 Bot→模型族映射，加载失败时回退到硬编码默认值"""
     try:
-        from src.llm_routing_config import load_routing_config, get_bot_model_family
+        from src.llm_routing_config import load_routing_config
         config = load_routing_config()
         if config and config.get("bot_model_family"):
             mapping = config["bot_model_family"]
@@ -952,7 +952,7 @@ class LiteLLMPool:
                 if cached is not None:
                     logger.debug(f"[LiteLLMPool] cache HIT key={cache_key[:16]}… model={model}")
                     return cached
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)  # Cache read error → fall through to LLM
 
         start = time.time()
@@ -985,14 +985,14 @@ class LiteLLMPool:
                     try:
                         cost = litellm.completion_cost(completion_response=response)
                         self._total_cost += cost
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
 
             # ---- Store to cache ----
             if use_cache:
                 try:
                     _llm_cache_set(cache_key, response, cache_ttl)
-                except Exception as e:
+                except Exception:
                     logger.debug("Silenced exception", exc_info=True)  # Cache write error → ignore
 
             return response
@@ -1138,7 +1138,7 @@ class LiteLLMPool:
                         completion_tokens=completion_tokens,
                     )
                     self._total_cost += cost
-                except Exception as e:
+                except Exception:
                     logger.debug("Silenced exception", exc_info=True)
 
     # ---- 兼容旧接口 ----
@@ -1300,7 +1300,7 @@ class LiteLLMPool:
                 checked += 1
                 try:
                     # Minimal ping: 1-token completion with short timeout
-                    resp = await asyncio.wait_for(
+                    await asyncio.wait_for(
                         self.acompletion(
                             model_family=family,
                             messages=[{"role": "user", "content": "hi"}],

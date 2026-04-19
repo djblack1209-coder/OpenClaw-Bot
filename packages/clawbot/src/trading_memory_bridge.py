@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class TradingMemoryBridge:
     """将交易事件自动写入 SharedMemory，沉淀交易经验。
-    
+
     在关键节点（开仓、平仓、复盘）自动生成记忆条目，
     使 AI 团队在后续决策中能检索到历史交易经验。
     """

@@ -214,7 +214,7 @@ class _ToolsMixin:
             # 删除"思考中"提示消息
             try:
                 await msg.delete()
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
         except Exception as e:
@@ -266,7 +266,7 @@ class _ToolsMixin:
                             card, parse_mode="HTML",
                         ),
                     ))
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # 2. 记忆搜索
@@ -287,7 +287,7 @@ class _ToolsMixin:
                                 f"🧠 {val}",
                             ),
                         ))
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # 3. 命令快捷入口
@@ -310,5 +310,5 @@ class _ToolsMixin:
 
         try:
             await query.answer(results[:10], cache_time=30)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)

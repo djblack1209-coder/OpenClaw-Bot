@@ -89,7 +89,7 @@ class ClawBotRPC:
         pool_stats: dict = {}
         try:
             pool_stats = free_pool.get_stats()
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # ── IBKR broker status ──
@@ -99,7 +99,7 @@ class ClawBotRPC:
             # 优先通过 IBKRBridge 实例检测（运行时有效）
             ibkr_connected = getattr(ibkr, "_connected", False) if ibkr else False
             ibkr_account = getattr(ibkr, "account", "") or ""
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         # 兜底：如果 IBKRBridge 实例不可用，直接检测 4002 端口
         if not ibkr_connected:
@@ -117,7 +117,7 @@ class ClawBotRPC:
         try:
             mem_stats = shared_memory.get_stats()
             mem_entries = mem_stats.get("total_entries", 0)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # ── 闲鱼客服状态检测 ──
@@ -180,7 +180,7 @@ class ClawBotRPC:
 
         try:
             connected = ibkr.connected if ibkr else False
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         if connected:
@@ -206,7 +206,7 @@ class ClawBotRPC:
 
             try:
                 account_summary = await ibkr.get_account_summary() or {}
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         else:
             # ── Fallback: local Portfolio (sync) + yfinance live prices ──

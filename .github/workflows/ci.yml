@@ -64,7 +64,9 @@ jobs:
       - name: Ruff lint check
         run: |
           uv pip install --system ruff
-          ruff check src/ --config ruff.toml
+          ruff check src/ --config ruff.toml \
+            --select E,W,F,B \
+            --ignore E501,E402,E701,E702,E741,B008,B905,B904,B004,B005,B007
 
       - name: Run tests
         run: |

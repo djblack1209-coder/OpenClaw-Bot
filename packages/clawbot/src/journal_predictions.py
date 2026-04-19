@@ -183,7 +183,7 @@ class JournalPredictionsMixin:
         with self._conn() as conn:
             # 共识预测准确率（原有逻辑）
             rows = conn.execute("""
-                SELECT decided_by, 
+                SELECT decided_by,
                        COUNT(*) as total,
                        SUM(CASE WHEN direction_correct=1 THEN 1 ELSE 0 END) as correct,
                        AVG(ABS(deviation_pct)) as avg_deviation

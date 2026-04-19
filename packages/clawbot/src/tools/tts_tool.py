@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # 推荐中文音色
 CHINESE_VOICES = {
     "晓晓": "zh-CN-XiaoxiaoNeural",      # 女声-温柔
-    "云希": "zh-CN-YunxiNeural",          # 男声-沉稳  
+    "云希": "zh-CN-YunxiNeural",          # 男声-沉稳
     "晓萱": "zh-CN-XiaoxuanNeural",      # 女声-活泼
     "云扬": "zh-CN-YunyangNeural",        # 男声-新闻播报
     "晓墨": "zh-CN-XiaomoNeural",        # 女声-知性
@@ -42,14 +42,14 @@ async def text_to_speech(
     output_path: Optional[str] = None,
 ) -> Optional[str]:
     """将文本转换为语音文件
-    
+
     Args:
         text: 要转换的文本 (最长 5000 字符)
         voice: 音色名称 (如 zh-CN-XiaoxiaoNeural)
         rate: 语速调节 (如 +20%, -10%)
         volume: 音量调节 (如 +50%)
         output_path: 输出文件路径 (默认自动生成)
-    
+
     Returns:
         生成的音频文件路径，失败返回 None
     """
@@ -58,17 +58,17 @@ async def text_to_speech(
     except ImportError:
         logger.error("[TTS] edge-tts 未安装: pip install edge-tts")
         return None
-    
+
     # 文本长度限制
     if not text or not text.strip():
         logger.warning("[TTS] 文本为空")
         return None
     text = text[:5000]
-    
+
     # 解析音色别名
     if text_voice := CHINESE_VOICES.get(voice):
         voice = text_voice
-    
+
     # 生成输出路径
     if output_path:
         _out = Path(output_path).resolve()
@@ -79,11 +79,11 @@ async def text_to_speech(
         import hashlib
         name_hash = hashlib.sha256(text[:50].encode()).hexdigest()[:8]
         output_path = str(_OUTPUT_DIR / f"tts_{name_hash}.mp3")
-    
+
     try:
         communicate = edge_tts.Communicate(text, voice, rate=rate, volume=volume)
         await asyncio.wait_for(communicate.save(output_path), timeout=60)
-        
+
         file_size = Path(output_path).stat().st_size
         logger.info("[TTS] 生成成功: %s (%.1f KB, voice=%s)", output_path, file_size/1024, voice)
         return output_path

@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from ..error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/conversation")

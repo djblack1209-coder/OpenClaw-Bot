@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path as FilePath
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
@@ -89,7 +89,7 @@ async def trading_dashboard():
         if isinstance(result, dict):
             return result
         return {"chart_data": [], "assets": [], "connected": False}
-    except Exception as e:
+    except Exception:
         logger.exception("获取交易仪表盘数据失败")
         return {"chart_data": [], "assets": [], "connected": False}
 

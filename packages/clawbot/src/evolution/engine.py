@@ -381,7 +381,7 @@ class EvolutionEngine:
                     try:
                         from src.synergy import get_synergy
                         await get_synergy().on_evolution_proposal(proposal.to_dict())
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)
 
                     # 高价值 + 低风险 → 自动批准
@@ -730,7 +730,7 @@ class EvolutionEngine:
                 proposal_data,
                 source="evolution_engine",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
     # ──────────────── Stats ────────────────

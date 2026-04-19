@@ -187,7 +187,7 @@ class SVGChart:
 
         # 值弧
         if pct > 0:
-            end_angle_rad = math.radians(angle)
+            math.radians(angle)
             end_x = cx + r * math.cos(math.radians(-90 + pct * 180))
             end_y = cy + r * math.sin(math.radians(-90 + pct * 180))
             large_arc = 1 if pct > 0.5 else 0

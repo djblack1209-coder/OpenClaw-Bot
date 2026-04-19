@@ -73,7 +73,7 @@ def get_broker():
         if HAS_IB and ib.is_connected():
             logger.debug("[BrokerSelector] 使用 IBKR (已连接)")
             return ib
-    except Exception as e:
+    except Exception:
         logger.debug("Silenced exception", exc_info=True)
 
     # 2. 检查 Alpaca 是否有 API Key

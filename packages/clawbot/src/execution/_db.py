@@ -4,7 +4,6 @@ SQLite 连接管理和表结构定义
 （连接工厂委托给 src.db_utils，此模块仅保留表结构定义）
 """
 
-import os
 import sqlite3
 import logging
 from contextlib import contextmanager

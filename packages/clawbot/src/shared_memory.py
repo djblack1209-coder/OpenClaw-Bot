@@ -122,11 +122,11 @@ def _build_mem0_config() -> dict:
     if sf_unlimited_url:
         # 去除 /chat/completions 等路径后缀，保留到 /v1
         if "/chat/completions" in sf_unlimited_url:
-            sf_unlimited_base = sf_unlimited_url.split("/chat/completions")[0]
+            sf_unlimited_url.split("/chat/completions")[0]
         else:
-            sf_unlimited_base = sf_unlimited_url.rstrip("/")
+            sf_unlimited_url.rstrip("/")
     else:
-        sf_unlimited_base = sf_base
+        pass
 
     # 选择可用的 SiliconFlow key 和对应 base URL
     # 优先使用标准 siliconflow.cn（稳定，支持 LLM + embeddings）

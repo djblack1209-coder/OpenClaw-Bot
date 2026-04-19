@@ -295,7 +295,7 @@ class SmartMemoryPipeline:
             for fact in facts[:5]:  # 限制每轮最多处理 5 条
                 await self._resolve_and_store(fact, chat_id, user_id, bot_id)
 
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             logger.debug("[SmartMemory] 事实提取超时 (chat=%s)", chat_id)
         except Exception as e:
             logger.warning("[SmartMemory] 事实提取失败 (chat=%s): %s", chat_id, e)
@@ -347,7 +347,7 @@ class SmartMemoryPipeline:
 
             # NONE: 不操作
 
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             logger.debug("[SmartMemory] 冲突解决超时: %s", fact[:80])
         except Exception as e:
             logger.debug("[SmartMemory] 冲突解决失败: %s", e)
@@ -478,7 +478,7 @@ class SmartMemoryPipeline:
                 except Exception as sync_e:
                     logger.warning("[SmartMemory] 同步至 MEMORY.md 失败: %s", sync_e)
 
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             logger.debug("[SmartMemory] 用户画像更新超时: user=%s", user_id)
         except Exception as e:
             logger.warning("[SmartMemory] 用户画像更新失败: %s", e)
@@ -492,7 +492,7 @@ class SmartMemoryPipeline:
             data = SmartMemoryPipeline._parse_json(response)
             if isinstance(data, dict) and "facts" in data:
                 return [f for f in data["facts"] if isinstance(f, str) and len(f) > 5]
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         return []
 
@@ -508,7 +508,7 @@ class SmartMemoryPipeline:
                     key=data.get("id", ""),
                     old_text=data.get("old_text", ""),
                 )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         return MemoryAction(event="NONE")
 
@@ -523,7 +523,7 @@ class SmartMemoryPipeline:
             result = jloads(text)
             if isinstance(result, dict):
                 return result
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         # 尝试从代码块中提取
         match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
@@ -532,7 +532,7 @@ class SmartMemoryPipeline:
                 result = jloads(match.group(1))
                 if isinstance(result, dict):
                     return result
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         # 尝试找匹配的 { ... }（支持嵌套大括号）
         depth = 0
@@ -560,7 +560,7 @@ class SmartMemoryPipeline:
         if results:
             try:
                 return json.loads(results[0].get("value", "{}"))
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         return None
 

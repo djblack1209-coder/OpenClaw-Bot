@@ -312,7 +312,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 parse_mode="HTML",
                                 reply_markup=_clarify_markup,
                             )
-                        except Exception as e:
+                        except Exception:
                             logger.exception("Brain 追问回答 HTML 渲染失败")
                             await update.message.reply_text(
                                 _clarify_msg,
@@ -344,7 +344,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             logger.debug("[MessageMixin] 后台任务异常: %s", t.exception())
 
                     _cmd_task.add_done_callback(_cmd_task_done)
-            except Exception as e:
+            except Exception:
                 logger.debug("SmartMemory 命令记录失败", exc_info=True)
             return  # Chinese command handled, skip LLM call
 
@@ -368,7 +368,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 if not quick_intent or not quick_intent.is_actionable:
                     try:
                         quick_intent = await _parser._try_llm_classify(text)
-                    except Exception as e:
+                    except Exception:
                         logger.exception("LLM 轻量分类器调用失败")
                         quick_intent = None
                 if quick_intent and quick_intent.is_actionable:
@@ -407,7 +407,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                     parse_mode="HTML",
                                     reply_markup=reply_markup,
                                 )
-                            except Exception as e:
+                            except Exception:
                                 logger.exception("Brain 路由回复 HTML 渲染失败")
                                 await update.message.reply_text(
                                     user_msg,
@@ -431,7 +431,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                         _sm.on_message(chat_id, user.id, "assistant", user_msg[:1500], self.bot_id)
                                     )
                                     _brain_t2.add_done_callback(_brain_mem_done)
-                            except Exception as e:
+                            except Exception:
                                 logger.debug("Brain 路径 SmartMemory 写入失败", exc_info=True)
 
                             return
@@ -442,7 +442,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             try:
                                 safe = md_to_html(clarify_text)
                                 await update.message.reply_text(safe, parse_mode="HTML")
-                            except Exception as e:
+                            except Exception:
                                 logger.exception("Brain 追问消息 HTML 渲染失败")
                                 await update.message.reply_text(clarify_text)
                             return
@@ -474,7 +474,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                     "严总，我不太确定你想做什么，试试这些？👇\n\n（或者直接告诉我更具体的需求）",
                     reply_markup=InlineKeyboardMarkup(_fuzzy_rows),
                 )
-            except Exception as e:
+            except Exception:
                 logger.debug("模糊引导按钮发送失败", exc_info=True)
 
         # 消息频率限制 — 防止用户刷屏导致 API 过载
@@ -487,7 +487,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 logger.info("[%s] 消息频率限制: %s (user=%s)", self.name, reason, user.id)
                 try:
                     await update.message.reply_text("⏳ 严总，您发得太快啦，等几秒再发就好。")
-                except Exception as e:
+                except Exception:
                     logger.debug("频率限制回复失败", exc_info=True)
                 return
 
@@ -524,7 +524,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         bot_id=getattr(self, "bot_id", ""),
                     )
                 )
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)  # 优先级队列不影响主流程
 
         # 智能记忆管道 — 记录用户消息（异步，不阻塞）
@@ -573,7 +573,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         phase_idx = min(phase_idx + 1, len(_thinking_phases) - 1)
                         try:
                             await sent_message.edit_text(_thinking_phases[phase_idx])
-                        except Exception as e:
+                        except Exception:
                             logger.exception("思考动画更新失败")
                             break
                 except asyncio.CancelledError as e:  # noqa: F841
@@ -605,7 +605,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         try:
                             safe_chunk = md_to_html(chunk)
                             sent_message = await update.message.reply_text(safe_chunk, parse_mode="HTML")
-                        except Exception as e:
+                        except Exception:
                             try:
                                 sent_message = await update.message.reply_text(chunk)
                             except Exception as e:
@@ -660,7 +660,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 )
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
-                            except Exception as e:
+                            except Exception:
                                 logger.exception("流式消息 HTML 渲染失败，降级为 Markdown")
                                 display = (content + f"\n\n`— {getattr(self, 'name', self.bot_id)}`")[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.MARKDOWN
@@ -746,7 +746,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             parse_mode=constants.ParseMode.HTML,
                             reply_markup=fb_markup,
                         )
-                    except BadRequest as e:
+                    except BadRequest:
                         try:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
@@ -754,7 +754,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                                 text=reply[:TG_MSG_LIMIT],
                                 reply_markup=fb_markup,
                             )
-                        except Exception as e:
+                        except Exception:
                             logger.debug("Silenced exception", exc_info=True)
                 else:
                     # 空回复 — 更新占位符
@@ -764,7 +764,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                             message_id=sent_message.message_id,
                             text=error_ai_busy(),
                         )
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)
                     logger.info(f"[{self.bot_id}] 空回复 (chat={chat_id})")
 
@@ -826,10 +826,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                 from src.telegram_ux import send_error_with_retry
 
                 await send_error_with_retry(update, context, e, retry_command="")
-            except Exception as e:
+            except Exception:
                 try:
                     await update.message.reply_text(user_msg)
-                except Exception as e:
+                except Exception:
                     logger.debug("Silenced exception", exc_info=True)
         finally:
             typing_task.cancel()
@@ -867,7 +867,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             import os
 
             transcribed = None
-            stt_source = ""  # 记录最终使用的转写来源
 
             # ── 第一优先: Groq 免费 Whisper ──────────────────────
             # Groq 提供免费的 whisper-large-v3-turbo，与 OpenAI Whisper 请求格式完全相同
@@ -889,7 +888,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                     if resp.status_code == 200:
                         transcribed = resp.json().get("text", "")
                         if transcribed:
-                            stt_source = "Groq"
                             logger.info("[Voice] Groq Whisper 转写成功 (%d 字符)", len(transcribed))
                     elif resp.status_code == 429:
                         # Groq 免费版 20 RPM 限速，降级到 OpenAI
@@ -914,7 +912,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                         if resp.status_code == 200:
                             transcribed = resp.json().get("text", "")
                             if transcribed:
-                                stt_source = "OpenAI"
                                 logger.info("[Voice] OpenAI Whisper 转写成功 (%d 字符)", len(transcribed))
                     except Exception as whisper_err:
                         logger.debug("[Voice] OpenAI Whisper 失败: %s", whisper_err)
@@ -930,7 +927,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
                     deepgram_result = await transcribe_audio(audio_data, language="zh")
                     if deepgram_result:
                         transcribed = deepgram_result
-                        stt_source = "Deepgram"
                         logger.info("[Voice] Deepgram Nova-3 转写成功 (%d 字符)", len(transcribed))
                 except Exception as dg_err:
                     logger.debug("[Voice] Deepgram 转写失败: %s", dg_err)
@@ -1115,6 +1111,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin):
             greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
             await update.message.reply_text(greeting)
             return True
-        except Exception as e:
+        except Exception:
             logger.exception("会话恢复摘要发送失败")
             return False

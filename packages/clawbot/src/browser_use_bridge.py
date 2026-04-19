@@ -157,7 +157,7 @@ class BrowserUseBridge:
         try:
             config = BrowserConfig(headless=True)
             browser = Browser(config=config)
-            page = await browser.new_context()
+            await browser.new_context()
 
             # 直接用 Playwright 截图（不需要 LLM）
             context = await browser._browser.new_context()

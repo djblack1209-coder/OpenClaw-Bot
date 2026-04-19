@@ -308,7 +308,7 @@ class ABTestManager:
 
     def get_content(self, test_id: str) -> Tuple[str, str]:
         """获取测试内容（自动选择变体）
-        
+
         Returns: (variant_id, content)
         """
         test = self._tests.get(test_id)

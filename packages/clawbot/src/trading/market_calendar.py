@@ -20,7 +20,7 @@ try:
     _xcal_nyse = xcals.get_calendar("XNYS")  # NYSE
     _HAS_XCAL = True
     logger.debug("[AutoTrader] exchange-calendars 已加载 (XNYS/NYSE)")
-except Exception as e:
+except Exception:
     logger.info("[AutoTrader] exchange-calendars 未安装，使用内置休市日计算 (pip install exchange-calendars)")
 
 
@@ -108,7 +108,7 @@ def is_market_holiday(date_str: str) -> bool:
     if _HAS_XCAL and _xcal_nyse is not None:
         try:
             return not _xcal_nyse.is_session(ts)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── 路径2: 手写计算（降级，不含特殊休市日）──

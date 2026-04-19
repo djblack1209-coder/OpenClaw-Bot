@@ -2,7 +2,6 @@
 
 import json
 import os
-import sqlite3
 import logging
 from contextlib import contextmanager
 from datetime import timedelta

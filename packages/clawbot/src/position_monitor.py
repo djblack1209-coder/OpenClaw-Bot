@@ -322,7 +322,7 @@ class PositionMonitor:
             try:
                 if self.positions:
                     await self._check_all_positions()
-            except asyncio.CancelledError as e:
+            except asyncio.CancelledError:
                 logger.info("[Monitor] 监控循环被取消")
                 raise  # 让 stop() 正常结束
             except Exception as e:

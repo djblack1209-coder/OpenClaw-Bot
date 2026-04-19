@@ -36,7 +36,7 @@ class LoginHelper:
 
     def mac_notify(self, title: str, message: str, sound: str = "Ping") -> bool:
         """macOS 通知 — 已禁用，仅记日志。
-        
+
         用户明确要求不弹任何 macOS 原生通知/弹窗/声音。
         所有登录提醒改为通过 Telegram 或纯日志输出。
         """
@@ -45,7 +45,7 @@ class LoginHelper:
 
     def mac_alert(self, title: str, message: str, button: str = "知道了") -> bool:
         """macOS 模态对话框 — 已禁用，仅记日志。
-        
+
         用户明确要求不弹任何 macOS 原生通知/弹窗/声音。
         """
         logger.info(f"[{self.service_name}] 弹窗: {title} - {message}")

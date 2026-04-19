@@ -160,7 +160,7 @@ class NovelWriter:
             json_match = re.search(r"\{[\s\S]*\}", raw)
             if json_match:
                 outline = json.loads(json_match.group())
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.warning("[NovelWriter] 大纲 JSON 解析失败，使用原始文本")
             outline = {"title": f"{genre}小说", "raw_outline": raw}
 

@@ -152,7 +152,7 @@ class ContextManager:
         if _HAS_TIKTOKEN and _tiktoken_encoder is not None:
             try:
                 return len(_tiktoken_encoder.encode(text))
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         # 降级: CJK 感知估算
         chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
@@ -741,7 +741,7 @@ class TieredContextManager:
                                     self._core_dirty[chat_id] = True
                     except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
                         pass
-            except Exception as e:
+            except Exception:
                 logger.debug("[TieredCtx] user_profile 同步失败", exc_info=True)
 
         except ImportError:
@@ -804,7 +804,7 @@ class TieredContextManager:
             (assembled_messages, metadata)
         """
         budget = self.total_budget
-        core_budget = int(budget * self.CORE_BUDGET_PCT)
+        int(budget * self.CORE_BUDGET_PCT)
         recall_budget = int(budget * self.RECALL_BUDGET_PCT)
         archival_budget = int(budget * self.ARCHIVAL_BUDGET_PCT)
 

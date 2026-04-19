@@ -106,7 +106,7 @@ SENSITIVE_PATTERNS = [
     r'\b\d{15,18}[xX]?\b',    # 身份证号
     r'password\s*[:=]\s*\S+',  # 密码
     r'token\s*[:=]\s*\S+',    # Token
-    
+
     # ── 新增：XSS 防护 ──
     r'(?i)<\s*script.*?>',
     r'(?i)<\s*/\s*script\s*>',
@@ -114,7 +114,7 @@ SENSITIVE_PATTERNS = [
     r'(?i)＜\s*/\s*script\s*＞', # 全角变体
     r'(?i)[\x00\u200b\u200c\u200d\ufeff]', # Unicode 空字符绕过
     r'(?i)<[^>]*\bon[a-z]+\s*=', # 标签内事件处理器
-    
+
     # ── 新增：SQL 注入防护 ──
     r'(?i)(\bUNION\s+SELECT\b)',
     r'(?i)(\bDROP\s+TABLE\b)',
@@ -429,7 +429,7 @@ class SecurityGate:
                         line = line.strip()
                         if line:
                             records.append(json.loads(line))
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         return records[-limit:]
 
@@ -447,7 +447,7 @@ def get_security_gate() -> SecurityGate:
             from src.bot.globals import ALLOWED_USER_IDS
             if ALLOWED_USER_IDS:
                 ids.extend(ALLOWED_USER_IDS)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         _gate = SecurityGate(admin_user_ids=list(set(ids)))
     return _gate

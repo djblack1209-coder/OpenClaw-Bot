@@ -28,11 +28,11 @@ class AutoTraderFiltersMixin:
         """
         candidates = []
         _rejected = {"score": 0, "trend": 0, "rsi": 0, "price": 0, "volume": 0, "adx": 0}
-        
+
         # 自适应评分阈值：根据信号数量动态调整
         high_score_count = sum(1 for s in signals if s.get("score", 0) >= 40)
         score_threshold = 25 if high_score_count >= 3 else 15
-        
+
         for s in signals:
             score = s.get("score", 0)
             if score < score_threshold:

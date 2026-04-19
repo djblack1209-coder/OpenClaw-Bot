@@ -226,7 +226,7 @@ class ChatRouter(SessionMixin):
 
         # 2. 被 @ 提及
         if f"@{bot.username}" in text:
-            other_bots_mentioned = any(
+            any(
                 f"@{other.username}" in text
                 for bid, other in self.bots.items()
                 if bid != bot_id

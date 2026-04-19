@@ -329,7 +329,7 @@ class InvestmentTeam:
                 {"symbol": symbol, "analysis": analysis.to_dict()},
                 source="investment_team",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         logger.info("[投资团队] %s 分析完成: %s", symbol, analysis.final_recommendation)
@@ -365,7 +365,7 @@ class InvestmentTeam:
                 if social_signal:
                     data["social_signal"] = social_signal
                     data["social_sentiment"] = "热门讨论中"
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
             # 用 LLM 分析
@@ -608,7 +608,7 @@ class InvestmentTeam:
             quote = await get_quote(symbol)
             if quote and isinstance(quote, dict):
                 data.update({k: v for k, v in quote.items() if k not in data})
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         return data if data else {"error": "无数据", "symbol": symbol}
@@ -662,7 +662,7 @@ class InvestmentTeam:
                     "total_value": portfolio.get("total_value", 0),
                     "cash": portfolio.get("cash", 0),
                 }
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         return {"positions": [], "total_value": 0, "cash": 0, "note": "券商未连接"}
 
@@ -692,7 +692,7 @@ class InvestmentTeam:
                 import json_repair
 
                 return json_repair.loads(raw)
-            except Exception as e:
+            except Exception:
                 logger.exception("LLM 响应 JSON 解析失败")
                 import re
 

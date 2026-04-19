@@ -231,7 +231,7 @@ class ExecutionScheduler:
                 logger.info("[Scheduler] 用户已关闭每日报告，跳过")
                 self._last_brief_date = today  # 标记已处理，避免每分钟重试
                 return
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)  # 偏好系统不可用不影响默认行为
 
         try:
@@ -394,7 +394,7 @@ class ExecutionScheduler:
                         },
                         source="scheduler_bill_alert",
                     )
-                except Exception as e:
+                except Exception:
                     logger.debug("Silenced exception", exc_info=True)
 
             # 定期查询提醒 (仅 09:00)
@@ -556,7 +556,7 @@ class ExecutionScheduler:
             from src.bot.globals import _cleanup_pending_trades
 
             _cleanup_pending_trades()
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # Daily database cleanup — run once at 03:00 ET to bound DB growth
@@ -577,7 +577,7 @@ def _run_daily_db_cleanup():
         deleted = journal.cleanup(days=365)
         if deleted:
             logger.info("[Scheduler] trading journal cleanup: %d rows", deleted)
-    except Exception as e:
+    except Exception:
         logger.debug("[Scheduler] trading journal cleanup failed", exc_info=True)
 
     # Feedback store: keep 90 days
@@ -588,7 +588,7 @@ def _run_daily_db_cleanup():
         deleted = store.cleanup(days=90)
         if deleted:
             logger.info("[Scheduler] feedback cleanup: %d rows", deleted)
-    except Exception as e:
+    except Exception:
         logger.debug("[Scheduler] feedback cleanup failed", exc_info=True)
 
     # Cost analyzer: keep 30 days (method already exists, just never auto-called)
@@ -596,7 +596,7 @@ def _run_daily_db_cleanup():
         from src.monitoring import cost_analyzer
 
         cost_analyzer.cleanup(days=30)
-    except Exception as e:
+    except Exception:
         logger.debug("[Scheduler] cost analyzer cleanup failed", exc_info=True)
 
     # 降价监控 + 账单追踪: 清理过期/已删除数据
@@ -607,7 +607,7 @@ def _run_daily_db_cleanup():
         total = sum(result.values())
         if total:
             logger.info("[Scheduler] stale watches cleanup: %s", result)
-    except Exception as e:
+    except Exception:
         logger.debug("[Scheduler] stale watches cleanup failed", exc_info=True)
 
 
@@ -625,5 +625,5 @@ def _run_daily_db_backup():
             for db, status in results.items():
                 if isinstance(status, str) and "FAILED" in status:
                     logger.error("[Scheduler] Backup failed: %s → %s", db, status)
-    except Exception as e:
+    except Exception:
         logger.error("[Scheduler] daily DB backup failed", exc_info=True)

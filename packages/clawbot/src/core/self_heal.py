@@ -391,7 +391,7 @@ class SelfHealEngine:
                         await _do_retry()
                         logger.info("[自愈] 重试成功！")
                         return True
-                    except RetryError as e:
+                    except RetryError:
                         logger.warning("[自愈] %s 次重试均失败", max_attempts)
                         return False
                 elif retry_callable:
@@ -421,7 +421,7 @@ class SelfHealEngine:
                         await asyncio.wait_for(retry_callable(), timeout=60)
                         logger.info("[自愈] 延长超时重试成功")
                         return True
-                    except asyncio.TimeoutError as e:
+                    except asyncio.TimeoutError:
                         logger.warning("[自愈] 延长超时后仍然超时")
                         return False
                     except Exception as e:
@@ -563,7 +563,7 @@ class SelfHealEngine:
                     try:
                         await retry_callable()
                         return True
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)
 
         # 如果有 callable 且方案看起来有效（长度 > 50 说明包含真实信息），尝试重试
@@ -572,7 +572,7 @@ class SelfHealEngine:
             try:
                 await retry_callable()
                 return True
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
         return False
@@ -649,7 +649,7 @@ class SelfHealEngine:
                 },
                 source="self_heal",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         logger.warning("[自愈] 所有方案失败，已通知用户: %s", error)
 

@@ -122,7 +122,6 @@ class CollabCommandsMixin:
             )
             return
 
-        chat_id = update.effective_chat.id
 
         # === 阶段1: 全市场扫描 ===
         universe_count = len(get_full_universe())
@@ -376,7 +375,7 @@ class CollabCommandsMixin:
                     message_id=progress_msg.message_id,
                     text=_render_invest_progress(),
                 )
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
         for i, bot_id in enumerate(invest_order):
@@ -433,13 +432,13 @@ class CollabCommandsMixin:
                 await asyncio.sleep(1)
                 bot_status[bot_id] = "done"
                 await _update_progress()
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 bot_status[bot_id] = "timeout"
                 await _update_progress()
                 logger.warning("[Invest] %s 回复超时 (%ss)", bot_id, timeout_sec)
                 try:
                     await bot_telegram.send_message(chat_id=chat_id, text=f"[{role_name} 回复超时，跳过]")
-                except Exception as e:
+                except Exception:
                     logger.debug("[Invest] 发送超时通知失败(静默)")
             except Exception as e:
                 bot_status[bot_id] = "failed"
@@ -656,14 +655,14 @@ class CollabCommandsMixin:
                         await asyncio.sleep(0.3)
                 # 间隔1秒，避免消息刷屏太快
                 await asyncio.sleep(1)
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 logger.warning("[Discuss] %s 回复超时 (%ss)，跳过", bot_id, timeout_sec)
                 try:
                     await bot_telegram.send_message(
                         chat_id=chat_id,
                         text=f"[回复超时({timeout_sec}s)，跳过本轮发言]",
                     )
-                except Exception as e:
+                except Exception:
                     logger.debug("[Discuss] 发送超时通知失败(静默)")
             except Exception as e:
                 logger.error("[Discuss] %s 发言失败: %s", bot_id, e)
@@ -869,9 +868,9 @@ class CollabCommandsMixin:
             except Exception as mem_err:
                 logger.warning("[Collab] 保存共享记忆失败: %s", mem_err)
 
-        except Exception as e:
+        except Exception:
             logger.exception("[%s] 协作任务出错", self.name)
             try:
                 await status_msg.edit_text(error_service_failed("协作任务"))
-            except Exception as e:
+            except Exception:
                 logger.debug("[Collab] 编辑错误消息失败(静默)")

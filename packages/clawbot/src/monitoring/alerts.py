@@ -28,7 +28,7 @@ class AlertRule:
             if self.condition_fn():
                 self.last_fired = now
                 return self.message_fn()
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
         return None
 

@@ -333,7 +333,7 @@ def _build_xiaohongshu_title(items: List[Dict], topic: str = "") -> str:
 def _build_xiaohongshu_body(items: List[Dict], topic: str = "") -> str:
     """构建小红书正文"""
     topic_label = topic or "AI/出海/独立开发"
-    tags = _social_topic_tags(topic)
+    _social_topic_tags(topic)
     lines = [
         f"今天整理了 {len(items)} 条值得追踪的{topic_label}动态，适合做信息流输入：",
         "",
