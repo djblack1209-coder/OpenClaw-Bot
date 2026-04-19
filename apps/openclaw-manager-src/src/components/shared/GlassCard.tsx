@@ -11,14 +11,15 @@ interface GlassCardProps {
 }
 
 /**
- * 毛玻璃卡片组件 —— C 端所有卡片的基础容器
- * 带有毛玻璃背景、圆角、阴影和可选的 hover 上浮动画
+ * Abyss 玻璃卡片组件 — Sonic Abyss 设计系统的核心容器
+ * 玻璃态背景 + 24px 圆角 + 光扫 hover 效果
+ * 同时导出为 GlassCard（兼容旧引用）和 AbyssCard（新名称）
  */
 export function GlassCard({ children, className, hoverable = true, onClick }: GlassCardProps) {
   return (
     <motion.div
       className={clsx(
-        'oc-glass-card p-5',
+        'abyss-card p-5',
         hoverable && 'cursor-default',
         onClick && 'cursor-pointer',
         className
@@ -31,3 +32,6 @@ export function GlassCard({ children, className, hoverable = true, onClick }: Gl
     </motion.div>
   );
 }
+
+/* 新名称别名 — 推荐在新代码中使用 AbyssCard */
+export const AbyssCard = GlassCard;
