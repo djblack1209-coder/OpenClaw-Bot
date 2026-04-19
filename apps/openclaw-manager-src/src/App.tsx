@@ -307,15 +307,6 @@ function App() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       <CommandPalette />
-      {/* 全局通知提示 */}
-      <Toaster 
-        theme={toasterTheme}
-        position="top-right"
-        toastOptions={{
-          className: 'abyss-card !border-[var(--glass-border)]',
-          style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
-        }}
-      />
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       
