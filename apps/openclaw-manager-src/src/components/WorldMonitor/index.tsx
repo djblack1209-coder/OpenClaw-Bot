@@ -155,7 +155,7 @@ function categoryMeta(category: IntelEntry['category']): { color: string; bg: st
 }
 
 /** 可点击外部链接组件 — 青色下划线悬停效果 */
-function ExtLink({ href, children, className = '' }: { href: string; children: React.ReactNode; className?: string }) {
+function ExtLink({ href, children, className = '', style }: { href: string; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <a
       href={href}
@@ -170,7 +170,7 @@ function ExtLink({ href, children, className = '' }: { href: string; children: R
         'hover:underline hover:decoration-[var(--accent-cyan)] hover:underline-offset-2',
         className
       )}
-      style={{ textDecoration: 'none' }}
+      style={{ textDecoration: 'none', ...style }}
     >
       {children}
     </a>
