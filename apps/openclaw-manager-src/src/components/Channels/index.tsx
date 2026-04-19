@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api, ChannelConfig } from '@/lib/tauri';
 import { createLogger } from '@/lib/logger';
 import { toast } from 'sonner';
 import {
-  MessageCircle, Save, Loader2, Link as LinkIcon, Edit2, AlertCircle, RefreshCw, Play
+  MessageCircle, Save, Loader2, Link as LinkIcon, Edit2, AlertCircle,
+  RefreshCw, Play, Plus, Trash2, X, ChevronDown
 } from 'lucide-react';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 const channelsLogger = createLogger('Channels');
 
@@ -59,6 +61,44 @@ const CHANNEL_INFO: Record<string, { name: string; icon: string; color: string; 
   }
 };
 
+// 可选的渠道类型列表（用于新建时选择）
+const CHANNEL_TYPES = Object.entries(CHANNEL_INFO).map(([key, info]) => ({
+  value: key,
+  label: info.name,
+}));
+
+/**
+ * 判断渠道的连接状态（基于配置完整性的简单启发式判断）
+ * - 'connected': 已配置关键字段（token、userId 等）
+ * - 'unverified': 有配置但关键字段为空
+ * - 'unconfigured': 无配置
+ */
+function getConnectionStatus(channel: ChannelConfig): 'connected' | 'unverified' | 'unconfigured' {
+  const configEntries = Object.entries(channel.config).filter(([k]) => k !== 'enabled');
+  if (configEntries.length === 0) return 'unconfigured';
+
+  // 检查是否有任何有值的配置项
+  const hasNonEmptyValue = configEntries.some(([, v]) => {
+    if (v === null || v === undefined || v === '') return false;
+    if (typeof v === 'string' && v.trim() === '') return false;
+    return true;
+  });
+
+  if (!hasNonEmptyValue) return 'unconfigured';
+
+  // 如果渠道标记为启用且有值，认为已连接
+  if (channel.enabled) return 'connected';
+
+  return 'unverified';
+}
+
+// 状态徽章配置
+const STATUS_BADGE: Record<string, { label: string; dot: string; textColor: string }> = {
+  connected: { label: '已连接', dot: 'bg-green-500', textColor: 'text-green-400' },
+  unverified: { label: '未验证', dot: 'bg-yellow-500', textColor: 'text-yellow-400' },
+  unconfigured: { label: '未配置', dot: 'bg-gray-500', textColor: 'text-gray-400' },
+};
+
 export function Channels() {
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +108,15 @@ export function Channels() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string; error?: string } | null>(null);
 
+  // 新建频道相关状态
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createType, setCreateType] = useState('');
+  const [createForm, setCreateForm] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
+
+  // 删除确认相关状态
+  const [deleteTarget, setDeleteTarget] = useState<ChannelConfig | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadChannels = async () => {
     try {
@@ -156,9 +205,67 @@ export function Channels() {
     }
   };
 
+  // ── 新建频道 ──
+  const handleCreate = async () => {
+    if (!createType) {
+      toast.error('请选择渠道类型');
+      return;
+    }
+
+    // 检查是否已存在同类型渠道
+    const exists = channels.some(ch => ch.channel_type === createType);
+    if (exists) {
+      toast.error('该类型渠道已存在', { description: '每种类型只能有一个渠道，请编辑现有渠道' });
+      return;
+    }
+
+    try {
+      setCreating(true);
+      const newChannel: ChannelConfig = {
+        id: createType,
+        channel_type: createType,
+        enabled: true,
+        config: createForm,
+      };
+      await api.saveChannelConfig(newChannel);
+      toast.success(`${CHANNEL_INFO[createType]?.name || createType} 渠道已创建`);
+      setShowCreateForm(false);
+      setCreateType('');
+      setCreateForm({});
+      await loadChannels();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('创建渠道失败', { description: msg });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // ── 删除频道 ──
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      setDeleting(true);
+      await api.clearChannelConfig(deleteTarget.id);
+      toast.success(`已删除渠道「${CHANNEL_INFO[deleteTarget.channel_type]?.name || deleteTarget.channel_type}」`);
+      setDeleteTarget(null);
+      await loadChannels();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('删除渠道失败', { description: msg });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // 当前选择的渠道类型信息（新建表单用）
+  const createTypeInfo = createType ? CHANNEL_INFO[createType] : null;
+
   return (
     <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {/* 顶部栏 */}
         <div className="bg-dark-700 rounded-2xl border border-dark-500 p-6 flex justify-between items-center">
           <div>
             <div className="flex items-center gap-2 text-claw-400 mb-2">
@@ -168,16 +275,154 @@ export function Channels() {
             <h2 className="text-xl font-semibold text-white">消息平台接入</h2>
             <p className="text-sm text-gray-400 mt-1">配置 OpenClaw Bot 连接的各个通讯渠道</p>
           </div>
-          <button
-            onClick={loadChannels}
-            disabled={loading}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            刷新
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowCreateForm(true); setCreateType(''); setCreateForm({}); }}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus size={16} />
+              新建频道
+            </button>
+            <button
+              onClick={loadChannels}
+              disabled={loading}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              刷新
+            </button>
+          </div>
         </div>
 
+        {/* 新建频道表单（展开面板） */}
+        <AnimatePresence>
+          {showCreateForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-dark-700 rounded-xl border border-claw-500/50 p-5 shadow-[0_0_20px_rgba(249,77,58,0.08)]">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-white">新建消息渠道</h3>
+                  <button
+                    onClick={() => setShowCreateForm(false)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-dark-600 rounded-lg transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* 渠道类型选择 */}
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-300">渠道类型</label>
+                    <div className="relative">
+                      <select
+                        value={createType}
+                        onChange={e => { setCreateType(e.target.value); setCreateForm({}); }}
+                        className="input-base py-2.5 text-sm w-full appearance-none pr-8"
+                      >
+                        <option value="">请选择渠道类型...</option>
+                        {CHANNEL_TYPES.filter(t => !channels.some(ch => ch.channel_type === t.value)).map(t => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* 渠道配置字段（根据选中类型动态渲染） */}
+                  {createTypeInfo && createTypeInfo.fields.length > 0 && (
+                    <div className="space-y-3 bg-dark-800 p-4 rounded-xl border border-dark-600">
+                      {createTypeInfo.fields.map(field => (
+                        <div key={field.key} className="space-y-1.5">
+                          <label className="text-xs font-medium text-gray-300">
+                            {field.label}
+                          </label>
+                          {field.type === 'select' ? (
+                            <select
+                              value={createForm[field.key] || (
+                                field.key === 'bridge' ? 'wechaty' :
+                                field.key === 'puppet' ? 'wechat4u' :
+                                field.key === 'autoAccept' ? 'false' :
+                                'allowlist'
+                              )}
+                              onChange={e => setCreateForm({ ...createForm, [field.key]: e.target.value })}
+                              className="input-base py-2 text-sm"
+                            >
+                              {field.key === 'bridge' ? (
+                                <>
+                                  <option value="wechaty">Wechaty（推荐）</option>
+                                  <option value="itchat">itchat（Python 原生）</option>
+                                  <option value="wechat-bot">wechat-bot（Node.js）</option>
+                                </>
+                              ) : field.key === 'puppet' ? (
+                                <>
+                                  <option value="wechat4u">puppet-wechat4u（免费/网页协议）</option>
+                                  <option value="padlocal">puppet-padlocal（付费/iPad协议）</option>
+                                  <option value="xp">puppet-xp（Windows桌面协议）</option>
+                                </>
+                              ) : field.key === 'autoAccept' ? (
+                                <>
+                                  <option value="false">关闭</option>
+                                  <option value="true">开启</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="allowlist">仅白名单 (Allowlist)</option>
+                                  <option value="everyone">所有人 (Everyone)</option>
+                                </>
+                              )}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={createForm[field.key] || ''}
+                              onChange={e => setCreateForm({ ...createForm, [field.key]: e.target.value })}
+                              className="input-base py-2 text-sm"
+                              placeholder={`输入 ${field.label}`}
+                            />
+                          )}
+                          {field.desc && <p className="text-[10px] text-gray-500">{field.desc}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 如果选中类型无字段，显示提示 */}
+                  {createTypeInfo && createTypeInfo.fields.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-3 bg-dark-800 rounded-xl border border-dark-600">
+                      此渠道主要通过命令行或手机扫码配置，创建后可在详情中查看接入说明
+                    </p>
+                  )}
+
+                  {/* 操作按钮 */}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      onClick={() => setShowCreateForm(false)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleCreate}
+                      disabled={!createType || creating}
+                      className="px-4 py-2 rounded-lg text-sm font-medium bg-claw-500 text-white hover:bg-claw-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                      创建渠道
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 渠道列表 */}
         {loading && channels.length === 0 ? (
           <div className="flex items-center justify-center p-12 text-gray-400">
             <Loader2 className="animate-spin w-8 h-8" />
@@ -186,13 +431,15 @@ export function Channels() {
           <div className="flex flex-col items-center justify-center p-12 text-center">
             <MessageCircle className="w-12 h-12 text-gray-500 mb-3" />
             <p className="text-sm text-gray-300 font-medium">暂无消息渠道</p>
-            <p className="text-xs text-gray-500 mt-1">渠道由后端注册，请确认后端服务正常运行</p>
+            <p className="text-xs text-gray-500 mt-1">点击上方「新建频道」添加你的第一个通讯渠道</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {channels.map((channel) => {
               const info = CHANNEL_INFO[channel.channel_type] || { name: channel.channel_type, color: 'text-gray-400', fields: [] };
               const isEditing = editingId === channel.id;
+              const status = getConnectionStatus(channel);
+              const badge = STATUS_BADGE[status];
               
               return (
                 <div key={channel.id} className={`bg-dark-700 rounded-xl border p-5 transition-all ${isEditing ? 'border-claw-500 shadow-[0_0_15px_rgba(249,77,58,0.1)]' : 'border-dark-500 hover:border-dark-400'}`}>
@@ -204,14 +451,14 @@ export function Channels() {
                       <div>
                         <h3 className="text-lg font-medium text-white">{info.name}</h3>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`w-2 h-2 rounded-full ${channel.enabled ? 'bg-green-500' : 'bg-gray-600'}`}></span>
-                          <span className="text-xs text-gray-400">{channel.enabled ? '已配置' : '未配置'}</span>
+                          <span className={`w-2 h-2 rounded-full ${badge.dot}`}></span>
+                          <span className={`text-xs ${badge.textColor}`}>{badge.label}</span>
                         </div>
                       </div>
                     </div>
                     
                     {!isEditing && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-1">
                         <button
                           onClick={() => handleTest(channel.channel_type, channel.id)}
                           disabled={testingId === channel.id}
@@ -226,6 +473,13 @@ export function Channels() {
                           title="编辑配置"
                         >
                           <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(channel)}
+                          className="p-2 text-gray-400 hover:text-red-400 hover:bg-dark-600 rounded-lg transition-colors"
+                          title="删除渠道"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     )}
@@ -358,6 +612,18 @@ export function Channels() {
           </div>
         )}
       </motion.div>
+
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="删除渠道"
+        description={deleteTarget ? `确定删除频道「${CHANNEL_INFO[deleteTarget.channel_type]?.name || deleteTarget.channel_type}」？此操作不可撤销。` : ''}
+        confirmText="删除"
+        destructive
+        loading={deleting}
+      />
     </div>
   );
 }
