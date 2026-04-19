@@ -556,6 +556,25 @@ class OpsCommandsMixin:
         except Exception as e:
             logger.warning("[OpsMenu] 执行 %s 失败: %s", data, e)
 
+    # ---- 性能指标报告 ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_perf(self, update, context):
+        """显示性能指标报告 — 展示所有被追踪函数的耗时统计"""
+        try:
+            from src.perf_metrics import get_tracker
+
+            tracker = get_tracker()
+            report = tracker.format_report()
+            await send_long_message(update.effective_chat.id, report, context)
+        except Exception as e:
+            logger.warning("[cmd_perf] 执行失败: %s", e)
+            try:
+                await update.message.reply_text("⚠️ 获取性能指标失败，请稍后重试")
+            except Exception:
+                pass
+
     # ---- 进化引擎 Telegram 命令入口 ----
 
     @requires_auth

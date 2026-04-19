@@ -32,6 +32,22 @@ def ping():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
+@router.get("/perf")
+def perf_metrics():
+    """获取性能度量指标 — 返回所有已记录指标的统计数据和格式化报告"""
+    try:
+        from src.perf_metrics import get_tracker
+
+        tracker = get_tracker()
+        return {
+            "metrics": tracker.get_all_stats(),
+            "report": tracker.format_report(),
+        }
+    except Exception as e:
+        logger.exception("获取性能指标失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
 @router.get("/status", response_model=SystemStatus)
 def system_status():
     """获取完整系统状态"""
