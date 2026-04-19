@@ -7,11 +7,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import {
   Cpu,
-  Zap,
-  DollarSign,
-  BarChart3,
   Terminal,
-  CheckCircle2,
 } from 'lucide-react';
 
 /* ====== 入场动画 ====== */

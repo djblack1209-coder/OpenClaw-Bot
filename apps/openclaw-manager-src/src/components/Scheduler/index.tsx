@@ -7,14 +7,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import {
   Clock,
-  Play,
-  Pause,
-  CheckCircle2,
-  XCircle,
-  Timer,
-  Cpu,
   Terminal,
-  ListOrdered,
 } from 'lucide-react';
 
 /* ====== 入场动画 ====== */
