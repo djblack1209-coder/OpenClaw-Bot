@@ -40,6 +40,34 @@ const Performance = lazy(() => import('./components/Performance').then(m => ({ d
   </div>
 );
 
+/* 新增页面的临时占位组件 — 后续逐步替换为完整实现 */
+function PlaceholderPage({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-4">
+      <div
+        className="w-16 h-16 rounded-2xl flex items-center justify-center"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--glass-border)',
+        }}
+      >
+        <Loader2 className="w-6 h-6" style={{ color: 'var(--accent-cyan)', opacity: 0.5 }} />
+      </div>
+      <div className="text-center">
+        <h2 className="font-display font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>
+          {title}
+        </h2>
+        <p className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {description}
+        </p>
+        <p className="font-mono text-[10px] mt-3" style={{ color: 'var(--text-disabled)' }}>
+          正在建设中...
+        </p>
+      </div>
+    </div>
+  );
+}
+
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
 import { CommandPalette } from './components/CommandPalette';
@@ -56,12 +84,16 @@ import { useAppStore } from './stores/appStore';
  */
 export type PageType =
   /* C 端一级页面 */
-  | 'home'       // 首页 Dashboard
-  | 'assistant'  // AI 助手（对话界面）
-  | 'portfolio'  // 我的资产
-  | 'bots'       // 我的机器人
-  | 'store'      // 插件商店
-  | 'onboarding' // 引导流程（仅首次启动）
+  | 'home'           // 首页 Dashboard
+  | 'assistant'      // AI 助手（对话界面）
+  | 'notifications'  // 通知中心
+  | 'portfolio'      // 投资组合
+  | 'trading'        // 交易引擎
+  | 'risk'           // 风险分析
+  | 'bots'           // 我的机器人
+  | 'store'          // Bot 商店
+  | 'xianyu'         // 闲鱼管理
+  | 'onboarding'     // 引导流程（仅首次启动）
   /* 原有页面（开发者模式） */
   | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
   | 'dev' | 'devpanel' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
@@ -173,9 +205,13 @@ function App() {
       /* C 端新页面 */
       home: <PageErrorBoundary pageName="首页"><HomeDashboard /></PageErrorBoundary>,
       assistant: <PageErrorBoundary pageName="AI 助手"><Assistant /></PageErrorBoundary>,
-      portfolio: <PageErrorBoundary pageName="我的资产"><Portfolio /></PageErrorBoundary>,
+      notifications: <PageErrorBoundary pageName="通知中心"><PlaceholderPage title="通知中心" description="系统消息、告警与操作通知" /></PageErrorBoundary>,
+      portfolio: <PageErrorBoundary pageName="投资组合"><Portfolio /></PageErrorBoundary>,
+      trading: <PageErrorBoundary pageName="交易引擎"><PlaceholderPage title="交易引擎" description="量化交易、策略回测与执行" /></PageErrorBoundary>,
+      risk: <PageErrorBoundary pageName="风险分析"><PlaceholderPage title="风险分析" description="Hurst 指数、VaR 与风控仪表盘" /></PageErrorBoundary>,
       bots: <PageErrorBoundary pageName="我的机器人"><Bots /></PageErrorBoundary>,
-      store: <PageErrorBoundary pageName="插件商店"><Store /></PageErrorBoundary>,
+      store: <PageErrorBoundary pageName="Bot 商店"><Store /></PageErrorBoundary>,
+      xianyu: <PageErrorBoundary pageName="闲鱼管理"><PlaceholderPage title="闲鱼管理" description="商品、客服 Bot、Cookie 管理" /></PageErrorBoundary>,
       onboarding: <PageErrorBoundary pageName="引导"><Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} /></PageErrorBoundary>,
       /* 原有页面 */
       control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
