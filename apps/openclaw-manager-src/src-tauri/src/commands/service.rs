@@ -1,4 +1,4 @@
-use crate::models::ServiceStatus;
+use crate::models::{ServiceStatus, AppResult, AppError};
 use crate::utils::shell;
 use tauri::command;
 use std::process::Command;
@@ -62,7 +62,7 @@ fn check_port_listening(port: u16) -> Option<u32> {
 
 /// 获取服务状态（简单版：直接检查端口占用）
 #[command]
-pub async fn get_service_status() -> Result<ServiceStatus, String> {
+pub async fn get_service_status() -> AppResult<ServiceStatus> {
     // 简单直接：检查端口是否被占用
     let pid = check_port_listening(SERVICE_PORT);
     let running = pid.is_some();
@@ -79,28 +79,28 @@ pub async fn get_service_status() -> Result<ServiceStatus, String> {
 
 /// 启动服务
 #[command]
-pub async fn start_service() -> Result<String, String> {
+pub async fn start_service() -> AppResult<String> {
     info!("[服务] 启动服务...");
     
     // 检查是否已经运行
     let status = get_service_status().await?;
     if status.running {
         info!("[服务] 服务已在运行中");
-        return Err("服务已在运行中".to_string());
+        return Err(AppError::conflict("服务已在运行中"));
     }
     
     // 检查 openclaw 命令是否存在
     let openclaw_path = shell::get_openclaw_path();
     if openclaw_path.is_none() {
         info!("[服务] 找不到 openclaw 命令");
-        return Err("找不到 openclaw 命令，请先通过 npm install -g openclaw 安装".to_string());
+        return Err(AppError::not_found("找不到 openclaw 命令，请先通过 npm install -g openclaw 安装"));
     }
     info!("[服务] openclaw 路径: {:?}", openclaw_path);
     
     // 直接后台启动 gateway（不等待 doctor，避免阻塞）
     info!("[服务] 后台启动 gateway...");
     shell::spawn_openclaw_gateway()
-        .map_err(|e| format!("启动服务失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("启动服务失败: {}", e)))?;
     
     // 轮询等待端口开始监听（最多 15 秒）
     info!("[服务] 等待端口 {} 开始监听...", SERVICE_PORT);
@@ -117,7 +117,7 @@ pub async fn start_service() -> Result<String, String> {
     }
     
     info!("[服务] 等待超时，端口仍未监听");
-    Err("服务启动超时（15秒），请检查 openclaw 日志".to_string())
+    Err(AppError::timeout("服务启动超时（15秒），请检查 openclaw 日志"))
 }
 
 /// 获取监听指定端口的所有 PID
@@ -190,7 +190,7 @@ fn kill_process(pid: u32, force: bool) -> bool {
 
 /// 停止服务（通过杀死监听端口的进程）
 #[command]
-pub async fn stop_service() -> Result<String, String> {
+pub async fn stop_service() -> AppResult<String> {
     info!("[服务] 停止服务...");
     
     let pids = get_pids_on_port(SERVICE_PORT);
@@ -228,13 +228,13 @@ pub async fn stop_service() -> Result<String, String> {
         info!("[服务] ✓ 已强制停止");
         Ok("服务已停止".to_string())
     } else {
-        Err(format!("无法停止服务，仍有进程: {:?}", still_running))
+        Err(AppError::process(format!("无法停止服务，仍有进程: {:?}", still_running)))
     }
 }
 
 /// 重启服务
 #[command]
-pub async fn restart_service() -> Result<String, String> {
+pub async fn restart_service() -> AppResult<String> {
     info!("[服务] 重启服务...");
     
     // 先停止
@@ -270,7 +270,7 @@ fn scrub_log_line(line: &str) -> String {
 /// 获取日志（直接读取日志文件，比 RPC 更可靠）
 /// 返回前自动脱敏敏感信息（API Key / Token / Cookie / 密码）
 #[command]
-pub async fn get_logs(lines: Option<u32>) -> Result<Vec<String>, String> {
+pub async fn get_logs(lines: Option<u32>) -> AppResult<Vec<String>> {
     let n = lines.unwrap_or(100);
     
     let config_dir = crate::utils::platform::get_config_dir();

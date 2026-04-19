@@ -1,3 +1,4 @@
+use crate::models::{AppResult, AppError};
 use crate::utils::{platform, shell};
 use serde::{Deserialize, Serialize};
 use tauri::command;
@@ -46,7 +47,7 @@ pub struct InstallResult {
 
 /// 检查环境状态
 #[command]
-pub async fn check_environment() -> Result<EnvironmentStatus, String> {
+pub async fn check_environment() -> AppResult<EnvironmentStatus> {
     info!("[环境检查] 开始检查系统环境...");
     
     let os = platform::get_os();
@@ -319,7 +320,7 @@ fn check_node_version_requirement(version: &Option<String>) -> bool {
 
 /// 安装 Node.js
 #[command]
-pub async fn install_nodejs() -> Result<InstallResult, String> {
+pub async fn install_nodejs() -> AppResult<InstallResult> {
     info!("[安装Node.js] 开始安装 Node.js...");
     let os = platform::get_os();
     info!("[安装Node.js] 检测到操作系统: {}", os);
@@ -357,7 +358,7 @@ pub async fn install_nodejs() -> Result<InstallResult, String> {
 }
 
 /// Windows 安装 Node.js
-async fn install_nodejs_windows() -> Result<InstallResult, String> {
+async fn install_nodejs_windows() -> AppResult<InstallResult> {
     // 使用 winget 安装 Node.js（Windows 10/11 自带）
     let script = r#"
 $ErrorActionPreference = 'Stop'
@@ -431,7 +432,7 @@ if ($nodeVersion) {
 }
 
 /// macOS 安装 Node.js
-async fn install_nodejs_macos() -> Result<InstallResult, String> {
+async fn install_nodejs_macos() -> AppResult<InstallResult> {
     // 使用 Homebrew 安装
     let script = r#"
 # 检查 Homebrew
@@ -470,7 +471,7 @@ node --version
 }
 
 /// Linux 安装 Node.js
-async fn install_nodejs_linux() -> Result<InstallResult, String> {
+async fn install_nodejs_linux() -> AppResult<InstallResult> {
     // 使用 NodeSource 仓库安装
     let script = r#"
 # 检测包管理器
@@ -514,7 +515,7 @@ node --version
 
 /// 安装 OpenClaw
 #[command]
-pub async fn install_openclaw() -> Result<InstallResult, String> {
+pub async fn install_openclaw() -> AppResult<InstallResult> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
     let os = platform::get_os();
     info!("[安装OpenClaw] 检测到操作系统: {}", os);
@@ -540,7 +541,7 @@ pub async fn install_openclaw() -> Result<InstallResult, String> {
 }
 
 /// Windows 安装 OpenClaw
-async fn install_openclaw_windows() -> Result<InstallResult, String> {
+async fn install_openclaw_windows() -> AppResult<InstallResult> {
     let script = r#"
 $ErrorActionPreference = 'Stop'
 
@@ -590,7 +591,7 @@ if ($openclawVersion) {
 }
 
 /// Unix 系统安装 OpenClaw
-async fn install_openclaw_unix() -> Result<InstallResult, String> {
+async fn install_openclaw_unix() -> AppResult<InstallResult> {
     let script = r#"
 # 检查 Node.js
 if ! command -v node &> /dev/null; then
@@ -621,7 +622,7 @@ openclaw --version
 
 /// 初始化 OpenClaw 配置
 #[command]
-pub async fn init_openclaw_config() -> Result<InstallResult, String> {
+pub async fn init_openclaw_config() -> AppResult<InstallResult> {
     info!("[初始化配置] 开始初始化 OpenClaw 配置...");
     
     let config_dir = platform::get_config_dir();
@@ -697,16 +698,16 @@ pub async fn init_openclaw_config() -> Result<InstallResult, String> {
 
 /// 打开终端执行安装脚本（用于需要管理员权限的场景）
 #[command]
-pub async fn open_install_terminal(install_type: String) -> Result<String, String> {
+pub async fn open_install_terminal(install_type: String) -> AppResult<String> {
     match install_type.as_str() {
         "nodejs" => open_nodejs_install_terminal().await,
         "openclaw" => open_openclaw_install_terminal().await,
-        _ => Err(format!("未知的安装类型: {}", install_type)),
+        _ => Err(AppError::validation(format!("未知的安装类型: {}", install_type))),
     }
 }
 
 /// 打开终端安装 Node.js
-async fn open_nodejs_install_terminal() -> Result<String, String> {
+async fn open_nodejs_install_terminal() -> AppResult<String> {
     if platform::is_windows() {
         // Windows: 打开 PowerShell 执行安装
         let script = r#"
@@ -770,26 +771,26 @@ read -p "按回车键关闭此窗口..."
         
         let script_path = "/tmp/openclaw_install_nodejs.command";
         std::fs::write(script_path, script_content)
-            .map_err(|e| format!("创建脚本失败: {}", e))?;
+            .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
         
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
-            .map_err(|e| format!("设置权限失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
         
         std::process::Command::new("open")
             .arg(script_path)
             .spawn()
-            .map_err(|e| format!("启动终端失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
         
         Ok("已打开安装终端".to_string())
     } else {
-        Err("请手动安装 Node.js: https://nodejs.org/".to_string())
+        Err(AppError::process("请手动安装 Node.js: https://nodejs.org/"))
     }
 }
 
 /// 打开终端安装 OpenClaw
-async fn open_openclaw_install_terminal() -> Result<String, String> {
+async fn open_openclaw_install_terminal() -> AppResult<String> {
     if platform::is_windows() {
         let script = r#"
 Start-Process powershell -ArgumentList '-NoExit', '-Command', '
@@ -842,17 +843,17 @@ read -p "按回车键关闭此窗口..."
         
         let script_path = "/tmp/openclaw_install_openclaw.command";
         std::fs::write(script_path, script_content)
-            .map_err(|e| format!("创建脚本失败: {}", e))?;
+            .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
         
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
-            .map_err(|e| format!("设置权限失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
         
         std::process::Command::new("open")
             .arg(script_path)
             .spawn()
-            .map_err(|e| format!("启动终端失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
         
         Ok("已打开安装终端".to_string())
     } else {
@@ -884,12 +885,12 @@ read -p "按回车键关闭..."
         
         let script_path = "/tmp/openclaw_install_openclaw.sh";
         std::fs::write(script_path, script_content)
-            .map_err(|e| format!("创建脚本失败: {}", e))?;
+            .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
         
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
-            .map_err(|e| format!("设置权限失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
         
         // 尝试不同的终端
         let terminals = ["gnome-terminal", "xfce4-terminal", "konsole", "xterm"];
@@ -903,13 +904,13 @@ read -p "按回车键关闭..."
             }
         }
         
-        Err("无法启动终端，请手动运行: npm install -g openclaw".to_string())
+        Err(AppError::process("无法启动终端，请手动运行: npm install -g openclaw"))
     }
 }
 
 /// 卸载 OpenClaw
 #[command]
-pub async fn uninstall_openclaw() -> Result<InstallResult, String> {
+pub async fn uninstall_openclaw() -> AppResult<InstallResult> {
     info!("[卸载OpenClaw] 开始卸载 OpenClaw...");
     let os = platform::get_os();
     info!("[卸载OpenClaw] 检测到操作系统: {}", os);
@@ -941,7 +942,7 @@ pub async fn uninstall_openclaw() -> Result<InstallResult, String> {
 }
 
 /// Windows 卸载 OpenClaw
-async fn uninstall_openclaw_windows() -> Result<InstallResult, String> {
+async fn uninstall_openclaw_windows() -> AppResult<InstallResult> {
     // 使用 cmd.exe 执行 npm uninstall，避免 PowerShell 执行策略问题
     info!("[卸载OpenClaw] 执行 npm uninstall -g openclaw...");
     
@@ -978,7 +979,7 @@ async fn uninstall_openclaw_windows() -> Result<InstallResult, String> {
 }
 
 /// Unix 系统卸载 OpenClaw
-async fn uninstall_openclaw_unix() -> Result<InstallResult, String> {
+async fn uninstall_openclaw_unix() -> AppResult<InstallResult> {
     let script = r#"
 echo "卸载 OpenClaw..."
 npm uninstall -g openclaw
@@ -1022,7 +1023,7 @@ pub struct UpdateInfo {
 
 /// 检查 OpenClaw 更新
 #[command]
-pub async fn check_openclaw_update() -> Result<UpdateInfo, String> {
+pub async fn check_openclaw_update() -> AppResult<UpdateInfo> {
     info!("[版本检查] 开始检查 OpenClaw 更新...");
     
     // 获取当前版本
@@ -1126,7 +1127,7 @@ fn compare_versions(current: &str, latest: &str) -> bool {
 
 /// 更新 OpenClaw
 #[command]
-pub async fn update_openclaw() -> Result<InstallResult, String> {
+pub async fn update_openclaw() -> AppResult<InstallResult> {
     info!("[更新OpenClaw] 开始更新 OpenClaw...");
     let os = platform::get_os();
     
@@ -1157,7 +1158,7 @@ pub async fn update_openclaw() -> Result<InstallResult, String> {
 }
 
 /// Windows 更新 OpenClaw
-async fn update_openclaw_windows() -> Result<InstallResult, String> {
+async fn update_openclaw_windows() -> AppResult<InstallResult> {
     info!("[更新OpenClaw] 执行 npm install -g openclaw@latest --force...");
     
     match shell::run_cmd_output("npm install -g openclaw@latest --force") {
@@ -1185,7 +1186,7 @@ async fn update_openclaw_windows() -> Result<InstallResult, String> {
 }
 
 /// Unix 系统更新 OpenClaw
-async fn update_openclaw_unix() -> Result<InstallResult, String> {
+async fn update_openclaw_unix() -> AppResult<InstallResult> {
     let restore_wrapper = get_custom_openclaw_symlink()
         .map(|(link_path, target_path)| {
             format!(

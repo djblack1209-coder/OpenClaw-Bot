@@ -1,3 +1,4 @@
+use crate::models::{AppResult, AppError};
 use crate::utils::shell;
 use super::config::{get_home_dir, mask_secret};
 use log::{info, warn};
@@ -142,7 +143,7 @@ pub struct ClawbotBotMatrixEntry {
 
 // get_home_dir 已提取至 config.rs，通过 use super::config::get_home_dir 导入
 
-fn get_base_dir() -> Result<String, String> {
+fn get_base_dir() -> AppResult<String> {
     // 优先从环境变量 OPENCLAW_PROJECT_DIR 获取项目根目录，支持部署到任意路径
     if let Ok(dir) = std::env::var("OPENCLAW_PROJECT_DIR") {
         if !dir.is_empty() {
@@ -153,7 +154,7 @@ fn get_base_dir() -> Result<String, String> {
     Ok(format!("{}/Desktop/OpenClaw Bot", home))
 }
 
-fn get_managed_services() -> Result<Vec<ManagedServiceDefinition>, String> {
+fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
     let base_dir = get_base_dir()?;
     let launchagents_dir = format!("{}/tools/launchagents", base_dir);
     let logs_dir = format!("{}/packages/clawbot/logs", base_dir);
@@ -217,15 +218,15 @@ fn get_managed_services() -> Result<Vec<ManagedServiceDefinition>, String> {
     ])
 }
 
-fn get_uid() -> Result<String, String> {
+fn get_uid() -> AppResult<String> {
     let output = Command::new("id")
         .arg("-u")
         .output()
-        .map_err(|e| format!("获取用户 UID 失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("获取用户 UID 失败: {}", e)))?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("获取用户 UID 失败: {}", err));
+        return Err(AppError::process(format!("获取用户 UID 失败: {}", err)));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -239,11 +240,11 @@ fn launchctl_domain(uid: &str) -> String {
     format!("gui/{}", uid)
 }
 
-fn run_launchctl(args: &[&str]) -> Result<String, String> {
+fn run_launchctl(args: &[&str]) -> AppResult<String> {
     let output = Command::new("launchctl")
         .args(args)
         .output()
-        .map_err(|e| format!("执行 launchctl 失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("执行 launchctl 失败: {}", e)))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -251,7 +252,7 @@ fn run_launchctl(args: &[&str]) -> Result<String, String> {
     if output.status.success() {
         Ok(stdout)
     } else {
-        Err(format!("{}{}", stdout, stderr).trim().to_string())
+        Err(AppError::process(format!("{}{}", stdout, stderr).trim().to_string()))
     }
 }
 
@@ -288,13 +289,13 @@ fn find_pid_by_port(port: u16) -> Option<u32> {
 /// 执行带有 provenance 属性的脚本文件（退出码 126: Operation not permitted）。
 ///
 /// 解决方案：读取脚本内容 → 通过 stdin 管道传给 bash，绕过文件执行权限检查。
-fn start_service_via_script(definition: &ManagedServiceDefinition) -> Result<String, String> {
+fn start_service_via_script(definition: &ManagedServiceDefinition) -> AppResult<String> {
     let script = definition.launcher_script.as_ref()
-        .ok_or_else(|| format!("{} 未配置启动脚本，无法通过进程方式启动", definition.name))?;
+        .ok_or_else(|| AppError::config(format!("{} 未配置启动脚本，无法通过进程方式启动", definition.name)))?;
 
     // 读取脚本文件内容（读取不受 provenance 限制，只有执行才被拦截）
     let script_content = std::fs::read_to_string(script)
-        .map_err(|e| format!("读取启动脚本失败 {}: {}", script, e))?;
+        .map_err(|e| AppError::io(format!("读取启动脚本失败 {}: {}", script, e)))?;
 
     // 将 exec 替换掉：exec 在 stdin 管道模式下行为不同，直接执行即可
     let adjusted_content = script_content.replace("exec ", "");
@@ -312,30 +313,30 @@ fn start_service_via_script(definition: &ManagedServiceDefinition) -> Result<Str
     let output = Command::new("bash")
         .args(["-c", &wrapper])
         .output()
-        .map_err(|e| format!("执行启动脚本失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("执行启动脚本失败: {}", e)))?;
 
     if output.status.success() {
         Ok(format!("{} 已通过启动脚本启动", definition.name))
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("{} 启动脚本执行失败: {}", definition.name, stderr.trim()))
+        Err(AppError::process(format!("{} 启动脚本执行失败: {}", definition.name, stderr.trim())))
     }
 }
 
 /// 停止通过脚本启动的服务（通过端口找到 PID 并 kill）
 /// 使用 tokio::time::sleep 替代 std::thread::sleep，避免阻塞 tokio 工作线程
-async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<String, String> {
+async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> AppResult<String> {
     let port = definition.port
-        .ok_or_else(|| format!("{} 未配置端口，无法通过进程方式停止", definition.name))?;
+        .ok_or_else(|| AppError::config(format!("{} 未配置端口，无法通过进程方式停止", definition.name)))?;
 
     let pid = find_pid_by_port(port)
-        .ok_or_else(|| format!("{} 未找到监听端口 {} 的进程", definition.name, port))?;
+        .ok_or_else(|| AppError::not_found(format!("{} 未找到监听端口 {} 的进程", definition.name, port)))?;
 
     // 先发 SIGTERM（优雅关闭），进程不响应再 SIGKILL
     let output = Command::new("kill")
         .args(["-TERM", &pid.to_string()])
         .output()
-        .map_err(|e| format!("发送停止信号失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("发送停止信号失败: {}", e)))?;
 
     if output.status.success() {
         // 等待进程退出（异步等待，不阻塞 tokio 线程）
@@ -349,7 +350,7 @@ async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> Result<S
         Ok(format!("{} 已停止 (PID: {})", definition.name, pid))
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("{} 停止失败: {}", definition.name, stderr.trim()))
+        Err(AppError::process(format!("{} 停止失败: {}", definition.name, stderr.trim())))
     }
 }
 
@@ -439,12 +440,12 @@ fn is_bootout_missing(err: &str) -> bool {
         || lower.contains("not loaded")
 }
 
-fn bootout_service(uid: &str, definition: &ManagedServiceDefinition) -> Result<(), String> {
+fn bootout_service(uid: &str, definition: &ManagedServiceDefinition) -> AppResult<()> {
     let domain = launchctl_domain(uid);
     match run_launchctl(&["bootout", domain.as_str(), definition.plist_path.as_str()]) {
         Ok(_) => Ok(()),
         Err(err) => {
-            if is_bootout_missing(&err) {
+            if is_bootout_missing(&err.message) {
                 Ok(())
             } else {
                 Err(err)
@@ -453,12 +454,12 @@ fn bootout_service(uid: &str, definition: &ManagedServiceDefinition) -> Result<(
     }
 }
 
-fn bootstrap_service(uid: &str, definition: &ManagedServiceDefinition) -> Result<(), String> {
+fn bootstrap_service(uid: &str, definition: &ManagedServiceDefinition) -> AppResult<()> {
     let domain = launchctl_domain(uid);
     match run_launchctl(&["bootstrap", domain.as_str(), definition.plist_path.as_str()]) {
         Ok(_) => Ok(()),
         Err(err) => {
-            if is_bootstrap_conflict(&err) {
+            if is_bootstrap_conflict(&err.message) {
                 Ok(())
             } else {
                 Err(err)
@@ -467,17 +468,17 @@ fn bootstrap_service(uid: &str, definition: &ManagedServiceDefinition) -> Result
     }
 }
 
-fn kickstart_service(uid: &str, definition: &ManagedServiceDefinition) -> Result<(), String> {
+fn kickstart_service(uid: &str, definition: &ManagedServiceDefinition) -> AppResult<()> {
     let target = launchctl_target(uid, &definition.label);
     run_launchctl(&["kickstart", "-k", target.as_str()]).map(|_| ())
 }
 
-fn find_service_definition(label: &str) -> Result<ManagedServiceDefinition, String> {
+fn find_service_definition(label: &str) -> AppResult<ManagedServiceDefinition> {
     let definitions = get_managed_services()?;
     definitions
         .into_iter()
         .find(|s| s.label == label)
-        .ok_or_else(|| format!("未找到服务: {}", label))
+        .ok_or_else(|| AppError::not_found(format!("未找到服务: {}", label)))
 }
 
 fn parse_env_content(content: &str) -> HashMap<String, String> {
@@ -534,12 +535,12 @@ fn set_or_append_env_line(lines: &mut Vec<String>, key: &str, value: &str) {
     }
 }
 
-fn get_clawbot_env_path() -> Result<String, String> {
+fn get_clawbot_env_path() -> AppResult<String> {
     let base_dir = get_base_dir()?;
     Ok(format!("{}/packages/clawbot/config/.env", base_dir))
 }
 
-fn get_service_log_path(label: &str) -> Result<String, String> {
+fn get_service_log_path(label: &str) -> AppResult<String> {
     let base_dir = get_base_dir()?;
     let path = match label {
         "ai.openclaw.gateway" => format!("{}/.openclaw/logs/gateway.log", base_dir),
@@ -551,7 +552,7 @@ fn get_service_log_path(label: &str) -> Result<String, String> {
         "ai.openclaw.xianyu" => {
             format!("{}/packages/clawbot/logs/com-clawbot-xianyu.stderr.log", base_dir)
         }
-        _ => return Err(format!("未知服务标签: {}", label)),
+        _ => return Err(AppError::not_found(format!("未知服务标签: {}", label))),
     };
     Ok(path)
 }
@@ -562,22 +563,22 @@ fn last_lines(content: &str, n: usize) -> Vec<String> {
     lines[start..].to_vec()
 }
 
-fn parse_socket_addr(host: &str, port: &str) -> Result<SocketAddr, String> {
+fn parse_socket_addr(host: &str, port: &str) -> AppResult<SocketAddr> {
     let port_num = port
         .parse::<u16>()
-        .map_err(|_| format!("端口格式无效: {}", port))?;
+        .map_err(|_| AppError::validation(format!("端口格式无效: {}", port)))?;
     let mut resolved = (host, port_num)
         .to_socket_addrs()
-        .map_err(|e| format!("地址解析失败 {}:{}: {}", host, port_num, e))?;
+        .map_err(|e| AppError::network(format!("地址解析失败 {}:{}: {}", host, port_num, e)))?;
     resolved
         .next()
-        .ok_or_else(|| format!("地址解析结果为空: {}:{}", host, port_num))
+        .ok_or_else(|| AppError::network(format!("地址解析结果为空: {}:{}", host, port_num)))
 }
 
-fn check_tcp(addr: SocketAddr) -> Result<(), String> {
+fn check_tcp(addr: SocketAddr) -> AppResult<()> {
     TcpStream::connect_timeout(&addr, Duration::from_secs(2))
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::network(e.to_string()))
 }
 
 fn parse_env_bool(value: Option<&String>, default_value: bool) -> bool {
@@ -590,7 +591,7 @@ fn parse_env_bool(value: Option<&String>, default_value: bool) -> bool {
     )
 }
 
-fn load_clawbot_env_map() -> Result<HashMap<String, String>, String> {
+fn load_clawbot_env_map() -> AppResult<HashMap<String, String>> {
     let env_path = get_clawbot_env_path()?;
     match fs::read_to_string(&env_path) {
         Ok(content) => Ok(parse_env_content(&content)),
@@ -602,19 +603,19 @@ fn load_clawbot_env_map() -> Result<HashMap<String, String>, String> {
     }
 }
 
-fn get_openclaw_config_path() -> Result<String, String> {
+fn get_openclaw_config_path() -> AppResult<String> {
     let base_dir = get_base_dir()?;
     Ok(format!("{}/.openclaw/openclaw.json", base_dir))
 }
 
-fn load_openclaw_config() -> Result<Value, String> {
+fn load_openclaw_config() -> AppResult<Value> {
     let cfg_path = get_openclaw_config_path()?;
     let content = fs::read_to_string(&cfg_path)
-        .map_err(|e| format!("读取 OpenClaw 配置失败: {}", e))?;
-    serde_json::from_str(&content).map_err(|e| format!("解析 OpenClaw 配置失败: {}", e))
+        .map_err(|e| AppError::config(format!("读取 OpenClaw 配置失败: {}", e)))?;
+    serde_json::from_str(&content).map_err(|e| AppError::serialization(format!("解析 OpenClaw 配置失败: {}", e)))
 }
 
-fn get_openclaw_main_matrix_entry() -> Result<Option<ClawbotBotMatrixEntry>, String> {
+fn get_openclaw_main_matrix_entry() -> AppResult<Option<ClawbotBotMatrixEntry>> {
     let cfg = load_openclaw_config()?;
     let agents = cfg
         .get("agents")
@@ -684,7 +685,7 @@ fn get_ibkr_host_port(env_map: &HashMap<String, String>) -> (String, String) {
     (host, port)
 }
 
-fn is_ibkr_reachable(env_map: &HashMap<String, String>) -> Result<(), String> {
+fn is_ibkr_reachable(env_map: &HashMap<String, String>) -> AppResult<()> {
     let (host, port) = get_ibkr_host_port(env_map);
     let addr = parse_socket_addr(&host, &port)?;
     check_tcp(addr)
@@ -722,7 +723,7 @@ fn query_ibkr_status(definition: &ManagedServiceDefinition) -> ManagedServiceSta
     }
 }
 
-fn control_ibkr_service(action: &str) -> Result<String, String> {
+fn control_ibkr_service(action: &str) -> AppResult<String> {
     let env_map = load_clawbot_env_map()?;
     let (host, port) = get_ibkr_host_port(&env_map);
     let start_cmd_raw = env_map
@@ -748,7 +749,7 @@ fn control_ibkr_service(action: &str) -> Result<String, String> {
     match action {
         "start" => {
             shell::run_script_output(&start_cmd)
-                .map_err(|e| format!("执行 IBKR 启动命令失败: {}", e))?;
+                .map_err(|e| AppError::process(format!("执行 IBKR 启动命令失败: {}", e)))?;
             Ok(format!(
                 "IBKR 启动命令已执行（{}），等待端口 {}:{} 就绪",
                 start_cmd, host, port
@@ -756,24 +757,24 @@ fn control_ibkr_service(action: &str) -> Result<String, String> {
         }
         "stop" => {
             shell::run_script_output(&stop_cmd)
-                .map_err(|e| format!("执行 IBKR 停止命令失败: {}", e))?;
+                .map_err(|e| AppError::process(format!("执行 IBKR 停止命令失败: {}", e)))?;
             Ok("IBKR 停止命令已执行".to_string())
         }
         "restart" => {
             shell::run_script_output(&stop_cmd)
-                .map_err(|e| format!("执行 IBKR 停止命令失败: {}", e))?;
+                .map_err(|e| AppError::process(format!("执行 IBKR 停止命令失败: {}", e)))?;
             shell::run_script_output(&start_cmd)
-                .map_err(|e| format!("执行 IBKR 启动命令失败: {}", e))?;
+                .map_err(|e| AppError::process(format!("执行 IBKR 启动命令失败: {}", e)))?;
             Ok(format!(
                 "IBKR 已重启（{}），等待端口 {}:{} 就绪",
                 start_cmd, host, port
             ))
         }
-        _ => Err(format!("不支持的操作: {}", action)),
+        _ => Err(AppError::validation(format!("不支持的操作: {}", action))),
     }
 }
 
-fn should_autostart_ibkr(action: &str) -> Result<bool, String> {
+fn should_autostart_ibkr(action: &str) -> AppResult<bool> {
     if action != "start" && action != "restart" {
         return Ok(true);
     }
@@ -804,7 +805,7 @@ fn get_route_base_url(provider: &str, env_map: &HashMap<String, String>) -> Stri
 }
 
 #[command]
-pub async fn get_managed_services_status() -> Result<Vec<ManagedServiceStatus>, String> {
+pub async fn get_managed_services_status() -> AppResult<Vec<ManagedServiceStatus>> {
     let uid = get_uid()?;
     let definitions = get_managed_services()?;
 
@@ -817,7 +818,7 @@ pub async fn get_managed_services_status() -> Result<Vec<ManagedServiceStatus>, 
 }
 
 #[command]
-pub async fn control_managed_service(label: String, action: String) -> Result<String, String> {
+pub async fn control_managed_service(label: String, action: String) -> AppResult<String> {
     if label == IBKR_MANAGED_LABEL {
         info!("[总控] 服务操作: {} -> {}", label, action);
         return control_ibkr_service(&action);
@@ -849,7 +850,7 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
                         info!("[总控] launchd 启动 {} 后未响应，降级为脚本启动", definition.label);
                         start_service_via_script(&definition)
                     } else {
-                        Err(format!("{} 启动失败：launchd 未能拉起服务", definition.name))
+                        Err(AppError::process(format!("{} 启动失败：launchd 未能拉起服务", definition.name)))
                     }
                 }
                 Err(_) if definition.launcher_script.is_some() => {
@@ -857,7 +858,7 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
                     info!("[总控] launchd 启动 {} 失败，降级为脚本启动", definition.label);
                     start_service_via_script(&definition)
                 }
-                Err(e) => Err(format!("{} 启动失败: {}", definition.name, e)),
+                Err(e) => Err(AppError::process(format!("{} 启动失败: {}", definition.name, e))),
             }
         }
         "stop" => {
@@ -892,7 +893,7 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
                         start_service_via_script(&definition)?;
                         Ok(format!("{} 已重启（脚本模式）", definition.name))
                     } else {
-                        Err(format!("{} 重启失败", definition.name))
+                        Err(AppError::process(format!("{} 重启失败", definition.name)))
                     }
                 }
                 Err(_) if definition.launcher_script.is_some() => {
@@ -900,15 +901,15 @@ pub async fn control_managed_service(label: String, action: String) -> Result<St
                     start_service_via_script(&definition)?;
                     Ok(format!("{} 已重启（脚本模式）", definition.name))
                 }
-                Err(e) => Err(format!("{} 重启失败: {}", definition.name, e)),
+                Err(e) => Err(AppError::process(format!("{} 重启失败: {}", definition.name, e))),
             }
         }
-        _ => Err(format!("不支持的操作: {}", action)),
+        _ => Err(AppError::validation(format!("不支持的操作: {}", action))),
     }
 }
 
 #[command]
-pub async fn control_all_managed_services(action: String) -> Result<String, String> {
+pub async fn control_all_managed_services(action: String) -> AppResult<String> {
     let mut services = get_managed_services()?;
 
     if action == "stop" {
@@ -936,7 +937,7 @@ pub async fn control_all_managed_services(action: String) -> Result<String, Stri
 }
 
 #[command]
-pub async fn get_clawbot_runtime_config() -> Result<HashMap<String, String>, String> {
+pub async fn get_clawbot_runtime_config() -> AppResult<HashMap<String, String>> {
     let parsed = load_clawbot_env_map()?;
 
     let mut result = HashMap::new();
@@ -951,7 +952,7 @@ pub async fn get_clawbot_runtime_config() -> Result<HashMap<String, String>, Str
 }
 
 #[command]
-pub async fn get_openclaw_usage_snapshot() -> Result<Value, String> {
+pub async fn get_openclaw_usage_snapshot() -> AppResult<Value> {
     // 使用超时机制避免 openclaw 命令挂起导致 UI 卡死
     let handle = std::thread::spawn(|| {
         shell::run_openclaw(&["status", "--usage", "--json"])
@@ -969,7 +970,7 @@ pub async fn get_openclaw_usage_snapshot() -> Result<Value, String> {
     };
 
     let parsed: Value = serde_json::from_str(output.trim())
-        .map_err(|e| format!("解析 openclaw usage 输出失败: {}", e))?;
+        .map_err(|e| AppError::serialization(format!("解析 openclaw usage 输出失败: {}", e)))?;
 
     Ok(parsed
         .get("usage")
@@ -978,10 +979,10 @@ pub async fn get_openclaw_usage_snapshot() -> Result<Value, String> {
 }
 
 #[command]
-pub async fn get_clawbot_bot_matrix() -> Result<Vec<ClawbotBotMatrixEntry>, String> {
+pub async fn get_clawbot_bot_matrix() -> AppResult<Vec<ClawbotBotMatrixEntry>> {
     let env_path = get_clawbot_env_path()?;
     let content = fs::read_to_string(&env_path)
-        .map_err(|e| format!("读取 ClawBot 配置失败: {}", e))?;
+        .map_err(|e| AppError::config(format!("读取 ClawBot 配置失败: {}", e)))?;
     let env_map = parse_env_content(&content);
 
     let mut entries = Vec::new();
@@ -1019,10 +1020,10 @@ pub async fn get_clawbot_bot_matrix() -> Result<Vec<ClawbotBotMatrixEntry>, Stri
 }
 
 #[command]
-pub async fn save_clawbot_runtime_config(values: HashMap<String, String>) -> Result<String, String> {
+pub async fn save_clawbot_runtime_config(values: HashMap<String, String>) -> AppResult<String> {
     let env_path = get_clawbot_env_path()?;
     let content = fs::read_to_string(&env_path)
-        .map_err(|e| format!("读取 ClawBot 配置失败: {}", e))?;
+        .map_err(|e| AppError::config(format!("读取 ClawBot 配置失败: {}", e)))?;
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
 
     for key in CLAWBOT_ENV_KEYS {
@@ -1036,13 +1037,13 @@ pub async fn save_clawbot_runtime_config(values: HashMap<String, String>) -> Res
     }
 
     fs::write(&env_path, lines.join("\n"))
-        .map_err(|e| format!("保存 ClawBot 配置失败: {}", e))?;
+        .map_err(|e| AppError::io(format!("保存 ClawBot 配置失败: {}", e)))?;
 
     Ok("ClawBot 配置已保存".to_string())
 }
 
 #[command]
-pub async fn get_managed_service_logs(label: String, lines: Option<u32>) -> Result<Vec<String>, String> {
+pub async fn get_managed_service_logs(label: String, lines: Option<u32>) -> AppResult<Vec<String>> {
     if label == IBKR_MANAGED_LABEL {
         let env_map = load_clawbot_env_map()?;
         let (host, port) = get_ibkr_host_port(&env_map);
@@ -1072,12 +1073,12 @@ pub async fn get_managed_service_logs(label: String, lines: Option<u32>) -> Resu
     let n = lines.unwrap_or(120) as usize;
     let log_path = get_service_log_path(&label)?;
     let content = fs::read_to_string(&log_path)
-        .map_err(|e| format!("读取日志失败 ({}): {}", log_path, e))?;
+        .map_err(|e| AppError::io(format!("读取日志失败 ({}): {}", log_path, e)))?;
     Ok(last_lines(&content, n))
 }
 
 #[command]
-pub async fn get_managed_endpoints_status() -> Result<Vec<ManagedEndpointStatus>, String> {
+pub async fn get_managed_endpoints_status() -> AppResult<Vec<ManagedEndpointStatus>> {
     let env_map = load_clawbot_env_map()?;
     let (ibkr_host, ibkr_port) = get_ibkr_host_port(&env_map);
 
@@ -1125,7 +1126,7 @@ pub async fn get_managed_endpoints_status() -> Result<Vec<ManagedEndpointStatus>
                     name,
                     address,
                     healthy: false,
-                    error: Some(err),
+                    error: Some(err.message),
                 },
             },
             Err(err) => ManagedEndpointStatus {
@@ -1133,7 +1134,7 @@ pub async fn get_managed_endpoints_status() -> Result<Vec<ManagedEndpointStatus>
                 name,
                 address,
                 healthy: false,
-                error: Some(err),
+                error: Some(err.message),
             },
         };
         results.push(status);
@@ -1156,7 +1157,7 @@ pub struct SkillsStatus {
 }
 
 #[command]
-pub async fn get_skills_status() -> Result<SkillsStatus, String> {
+pub async fn get_skills_status() -> AppResult<SkillsStatus> {
     let base_dir = get_base_dir()?;
     let skills_dir = format!("{}/apps/openclaw/skills", base_dir);
 

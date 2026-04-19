@@ -1,10 +1,11 @@
 use crate::utils::shell;
+use crate::models::{AppResult, AppError};
 use tauri::command;
 use log::{info, debug};
 
 /// 检查 OpenClaw 是否已安装
 #[command]
-pub async fn check_openclaw_installed() -> Result<bool, String> {
+pub async fn check_openclaw_installed() -> AppResult<bool> {
     info!("[进程检查] 检查 OpenClaw 是否已安装...");
     // 使用 get_openclaw_path 来检查，因为在 Windows 上 command_exists 可能不可靠
     let installed = shell::get_openclaw_path().is_some();
@@ -14,7 +15,7 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
 
 /// 获取 OpenClaw 版本
 #[command]
-pub async fn get_openclaw_version() -> Result<Option<String>, String> {
+pub async fn get_openclaw_version() -> AppResult<Option<String>> {
     info!("[进程检查] 获取 OpenClaw 版本...");
     // 使用 run_openclaw 来获取版本
     match shell::run_openclaw(&["--version"]) {
@@ -32,7 +33,7 @@ pub async fn get_openclaw_version() -> Result<Option<String>, String> {
 
 /// 检查端口是否被占用（通过尝试连接 openclaw gateway）
 #[command]
-pub async fn check_port_in_use(port: u16) -> Result<bool, String> {
+pub async fn check_port_in_use(port: u16) -> AppResult<bool> {
     info!("[进程检查] 检查端口 {} 是否被占用...", port);
     
     // 使用 openclaw health 检查 gateway 是否在运行
@@ -53,7 +54,7 @@ pub async fn check_port_in_use(port: u16) -> Result<bool, String> {
     
     let addr = format!("127.0.0.1:{}", port);
     let sock_addr: std::net::SocketAddr = addr.parse()
-        .map_err(|e| format!("地址解析失败: {}", e))?;
+        .map_err(|e| AppError::validation(format!("地址解析失败: {}", e)))?;
     match TcpStream::connect_timeout(&sock_addr, Duration::from_millis(500)) {
         Ok(_) => {
             info!("[进程检查] 端口 {} 被占用", port);
