@@ -12,6 +12,17 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 技术债清理第9批: DevPanel 开发者工作台完整功能化（1项）
+> 领域: `frontend`
+> 影响模块: `DevPanel`
+> 关联问题: HI-558
+
+### 前端修复 (1项)
+1. **HI-558: DevPanel 从空壳升级为功能完整的开发者工作台**: 服务启停按钮接入 controlAllManagedServices API；Bot 状态从硬编码改为 getClawbotBotMatrix 真实数据；端点健康接入 getManagedEndpointsStatus TCP 检查；实时日志查看器接入 getLogs/getManagedServiceLogs（5s 自动刷新+多源切换）；系统诊断接入 runDoctor 一键检查；系统资源仪表盘（CPU/内存/磁盘）；健康概况聚合展示服务/Bot/端点状态；删除全部硬编码数据和 TODO 占位符
+
+### 文件变更
+- `src/components/DevPanel/index.tsx` — 全面重写: 233 行空壳 → 350+ 行功能完整组件（三栏布局：服务管理+实时日志+系统监控）
+
 ## 2026-04-19 — 技术债清理第8批: 交易风控+AI追踪+社媒重构+比价统一+Bot详情（6项）
 > 领域: `trading`, `backend`, `social`, `frontend`
 > 影响模块: `risk_manager`, `risk_validators`, `risk_var`, `risk_kelly`, `risk_config`, `journal_predictions`, `trading_journal`, `trading_pipeline`, `auto_trader`, `_init_system`, `platform_adapter`, `x_adapter`, `xhs_adapter`, `brain_exec_social`, `rpc`, `drafts`, `social_scheduler`, `content_pipeline`, `price_engine`, `brain_exec_life`, `tracking`, `Bots`
