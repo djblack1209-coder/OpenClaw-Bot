@@ -54,7 +54,7 @@ interface NavGroup {
   items: MenuItem[];
 }
 
-/* ===== C 端主导航（5 大分区）===== */
+/* ===== C 端主导航（5 大分区） ===== */
 const consumerItems: MenuItem[] = [
   { id: 'home', label: '首页', icon: Home },
   { id: 'assistant', label: 'AI 助手', icon: MessageSquare },
@@ -99,7 +99,7 @@ const devGroups: NavGroup[] = [
   },
 ];
 
-/* ===== 通用菜单项渲染 ===== */
+/* ===== 导航项渲染 ===== */
 function NavItem({
   item,
   isActive,
@@ -119,32 +119,49 @@ function NavItem({
         onClick={() => onNavigate(item.id)}
         title={collapsed ? item.label : undefined}
         className={clsx(
-          'group w-full flex items-center gap-3 rounded-lg transition-all duration-200 text-sm font-medium relative',
+          'group w-full flex items-center gap-3 rounded-lg transition-all duration-200 relative',
           collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-2',
-          isActive
-            ? 'bg-[var(--brand-500)]/10 text-[var(--brand-500)]'
-            : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
         )}
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '12px',
+          textTransform: 'uppercase' as const,
+          letterSpacing: '0.5px',
+          color: isActive ? 'var(--accent-cyan)' : 'var(--text-tertiary)',
+          background: isActive ? 'rgba(0, 212, 255, 0.06)' : 'transparent',
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-tertiary)';
+          }
+        }}
       >
-        {/* 左侧激活指示条 — TradingView 风格：细长青色竖条 */}
+        {/* 左侧激活指示条 — 3px 青色竖条 */}
         {isActive && (
           <motion.div
             layoutId="activeIndicator"
             className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
-            style={{ background: 'var(--brand-500)' }}
+            style={{ background: 'var(--accent-cyan)' }}
             transition={{ type: 'spring', stiffness: 350, damping: 30 }}
           />
         )}
         <Icon
-          size={18}
-          className={clsx(
-            'transition-colors duration-200 flex-shrink-0',
-            isActive
-              ? 'text-[var(--brand-500)]'
-              : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'
-          )}
+          size={16}
+          className="flex-shrink-0 transition-colors duration-200"
+          style={{
+            color: isActive ? 'var(--accent-cyan)' : undefined,
+          }}
         />
-        {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && (
+          <span className="truncate">{item.label}</span>
+        )}
       </button>
     </li>
   );
@@ -153,17 +170,23 @@ function NavItem({
 /* ===== 分组标签渲染 ===== */
 function GroupLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
   if (collapsed) {
-    /* 折叠态：用一条短横线代替文字 */
     return (
       <div className="flex justify-center py-2">
-        <div className="w-4 h-px bg-[var(--border-medium)]" />
+        <div className="w-4 h-px" style={{ background: 'var(--glass-border)' }} />
       </div>
     );
   }
 
   return (
     <div className="px-3 pt-4 pb-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-disabled)]">
+      <span
+        className="font-mono uppercase"
+        style={{
+          fontSize: '10px',
+          letterSpacing: '1.5px',
+          color: 'var(--text-disabled)',
+        }}
+      >
         {label}
       </span>
     </div>
@@ -172,11 +195,12 @@ function GroupLabel({ label, collapsed }: { label: string; collapsed: boolean })
 
 /* ===== 分隔线 ===== */
 function Divider() {
-  return <div className="my-2 mx-3 h-px bg-[var(--border-light)]" />;
+  return <div className="my-2 mx-3 h-px" style={{ background: 'var(--glass-border)' }} />;
 }
 
 export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps) {
   const isRunning = serviceStatus?.running ?? false;
+  const port = serviceStatus?.port ?? 18790;
   const devMode = useAppStore((s) => s.devMode);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
@@ -184,24 +208,49 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
   return (
     <aside
       className={clsx(
-        'transition-all duration-300 flex flex-col border-r',
-        'bg-[var(--bg-secondary)] border-[var(--border-default)]',
-        sidebarCollapsed ? 'w-16' : 'w-60'
+        'transition-all duration-300 flex flex-col',
+        sidebarCollapsed ? 'w-14' : 'w-60'
       )}
+      style={{
+        background: 'transparent',
+        borderRight: '1px solid var(--glass-border)',
+      }}
     >
       {/* ===== Logo 区域（macOS 标题栏拖拽）===== */}
-      <div className="h-14 flex items-center px-2 justify-center titlebar-drag border-b border-[var(--border-default)]">
-        <div className="flex items-center gap-2 titlebar-no-drag">
-          <span className="text-2xl">🦞</span>
-          {!sidebarCollapsed && (
-            <span className="font-bold text-[var(--text-primary)] tracking-wide">OpenClaw</span>
+      <div
+        className="h-14 flex items-center px-3 titlebar-drag"
+        style={{ borderBottom: '1px solid var(--glass-border)' }}
+      >
+        <div className="flex items-center gap-1.5 titlebar-no-drag">
+          {!sidebarCollapsed ? (
+            <>
+              <span
+                className="font-display font-black tracking-wide"
+                style={{ fontSize: '15px', color: 'var(--text-primary)' }}
+              >
+                OPENCLAW
+              </span>
+              <span
+                className="font-display font-black tracking-wide"
+                style={{ fontSize: '15px', color: 'var(--accent-cyan)' }}
+              >
+                MANAGER
+              </span>
+            </>
+          ) : (
+            <span
+              className="font-display font-black"
+              style={{ fontSize: '15px', color: 'var(--accent-cyan)' }}
+            >
+              OC
+            </span>
           )}
         </div>
       </div>
 
       {/* ===== 导航菜单 ===== */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto scroll-container">
-        {/* — C 端主导航 — */}
+        {/* C 端主导航 */}
         <ul className="space-y-0.5">
           {consumerItems.map((item) => (
             <NavItem
@@ -214,13 +263,12 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           ))}
         </ul>
 
-        {/* — 开发者模式分组区域 — */}
+        {/* 开发者模式分组 */}
         {devMode && (
           <>
             <Divider />
             {devGroups.map((group, groupIndex) => (
               <div key={group.label}>
-                {/* 非首个分组前加分隔线 */}
                 {groupIndex > 0 && <Divider />}
                 <GroupLabel label={group.label} collapsed={sidebarCollapsed} />
                 <ul className="space-y-0.5">
@@ -239,7 +287,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           </>
         )}
 
-        {/* — 设置（始终显示，在最后）— */}
+        {/* 设置（始终显示） */}
         <Divider />
         <ul>
           <NavItem
@@ -251,35 +299,22 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
         </ul>
       </nav>
 
-      {/* ===== 底部：服务状态 + 折叠按钮 ===== */}
-      <div className="p-2 border-t border-[var(--border-default)]">
-        {/* 服务状态指示器 */}
+      {/* ===== 底部：状态栏 + 折叠按钮 ===== */}
+      <div className="px-2 pb-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+        {/* WebSocket 状态指示器 */}
         <div
           className={clsx(
-            'px-2 py-2 rounded-lg flex items-center',
-            'bg-[var(--bg-tertiary)]',
-            sidebarCollapsed ? 'justify-center' : 'gap-2'
+            'flex items-center py-2 mt-2 rounded-lg',
+            sidebarCollapsed ? 'justify-center px-1' : 'gap-2 px-2'
           )}
         >
-          {/* 状态圆点 + 呼吸动画 */}
-          <span className="relative flex h-2 w-2 flex-shrink-0">
-            {isRunning && (
-              <span
-                className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                style={{ background: 'var(--oc-success)' }}
-              />
-            )}
-            <span
-              className="relative inline-flex rounded-full h-2 w-2"
-              style={{ background: isRunning ? 'var(--oc-success)' : 'var(--oc-danger)' }}
-            />
-          </span>
+          <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           {!sidebarCollapsed && (
             <span
-              className="text-xs font-medium"
-              style={{ color: isRunning ? 'var(--oc-success)' : 'var(--oc-danger)' }}
+              className="font-mono text-[10px] tracking-wider"
+              style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
             >
-              {isRunning ? '服务运行中' : '服务未启动'}
+              WS: {port} / {isRunning ? 'ONLINE' : 'OFFLINE'}
             </span>
           )}
         </div>
@@ -287,13 +322,19 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
         {/* 折叠/展开按钮 */}
         <button
           onClick={toggleSidebar}
-          className={clsx(
-            'w-full flex items-center justify-center py-1.5 mt-1.5 rounded-lg transition-colors duration-200',
-            'text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-secondary)]'
-          )}
+          className="w-full flex items-center justify-center py-1.5 mt-1 rounded-lg transition-colors duration-200"
+          style={{ color: 'var(--text-tertiary)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+            e.currentTarget.style.color = 'var(--text-secondary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-tertiary)';
+          }}
           title={sidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
         >
-          {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       </div>
     </aside>
