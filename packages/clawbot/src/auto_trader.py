@@ -588,6 +588,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         reason=vr.summary,
                         decided_by="AI团队投票(%d/%d)" % (vr.buy_count, len(vr.votes)),
                         atr=candidate.get("atr_pct", 2.0) / 100 * price,
+                        votes=list(vr.votes),  # 保留每个AI的独立投票，供准确率追踪
                     )
                 )
                 exposure_budget_left -= quantity * price

@@ -365,7 +365,7 @@ class TradingPipeline:
                 result["trade_id"] = trade_id
                 # 管道1: 记录AI预测，供收盘验证准确率
                 try:
-                    self.journal.record_prediction(
+                    prediction_id = self.journal.record_prediction(
                         symbol=proposal.symbol,
                         direction="UP" if proposal.action == "BUY" else "DOWN",
                         target_price=proposal.take_profit,
@@ -375,6 +375,16 @@ class TradingPipeline:
                         decided_by=proposal.decided_by,
                         trade_id=trade_id,
                     )
+                    # 记录每个AI分析师的独立投票（HI-535: 个体预测准确率追踪）
+                    if prediction_id and getattr(proposal, 'votes', None):
+                        try:
+                            self.journal.record_vote_records(
+                                prediction_id=prediction_id,
+                                symbol=proposal.symbol,
+                                votes=proposal.votes,
+                            )
+                        except Exception as ve:
+                            logger.warning("[Pipeline] 记录个体投票失败: %s", ve)
                 except Exception as e:
                     logger.warning("[Pipeline] 记录AI预测失败: %s", e)
                 if is_entry_pending:
