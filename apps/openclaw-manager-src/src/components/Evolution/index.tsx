@@ -480,6 +480,13 @@ export function Evolution() {
                       </p>
                     )}
 
+                    {/* 创建时间 */}
+                    {p.created_at && (
+                      <p className="text-[10px] text-gray-600">
+                        发现于 {new Date(p.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })} {new Date(p.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                      </p>
+                    )}
+
                     {/* Actions (only for pending) */}
                     {p.status.toLowerCase() === 'pending' && (
                       <div className="flex items-center gap-2 pt-1">
