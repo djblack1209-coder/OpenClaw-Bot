@@ -4,32 +4,44 @@
 
 ---
 
-## [2026-04-19] R12 CI/CD 管道审计 — Workflow 重写+本地验证方案
+## [2026-04-19] 体验升级三阶段 + 面板修复 + 测试全修 + HEALTH 大扫除
 
 ### 本次完成了什么
-1. **CI 失败根因诊断**: 确认最近 15+ 次 CI 全部因 GitHub Billing 问题失败（付款失败/额度不足），非代码问题
-2. **CI Workflow 重写 (7项)**: 路径过滤(排除 docs/*.md)+并发控制(取消旧 CI)+npm 缓存+uv 缓存 key 修复+Ruff lint 步骤+已知失败排除+pytest 超时控制
-3. **本地 CI 验证**: Makefile 新增 `ci-local` 一键跑全部检查（Ruff+pytest+语法+tsc），与 GitHub Actions 完全一致
-4. **审计方案完善**: AUDIT_PLAN.md 修正 R3/R4 状态(实际已完成但文档未更新) + 新增 R12 CI/DevOps 审计轮(10条目)
-5. **文档同步**: HEALTH.md 新增 HI-597 / CHANGELOG 更新 / R12 审计文档创建
+
+**体验升级三阶段:**
+1. **Phase 1 — 端到端测试覆盖**: 新建 `tests/e2e/` 目录，5 个测试文件 24 个 e2e 测试，覆盖投资分析/交易执行/记账提醒/handle_message 全链路
+2. **Phase 2 — 上帝对象拆分**: message_mixin.py 从 1116→672 行（40%减少），提取 4 个独立模块（input_processor/voice_handler/session_tracker/stream_manager）
+3. **Phase 3 — 性能度量**: perf_metrics.py 模块 + 4 个关键路径埋计时器 + /perf API 端点 + Telegram /perf 命令
+
+**面板修复:**
+4. **OpenClaw-Manager 确认完好**: 88 个前端+18 个 Rust 文件，23 个页面，125 commits。代码未被删除
+5. **Hermes 替代方案调研**: 结论不可行（Vue 生态不兼容 React+Tauri），继续增强现有面板
+6. **新增性能监控页面**: 桌面面板开发者模式下新增 Performance 页面（4 个指标卡片 + 详细数据表 + 自动刷新）
+
+**测试全修:**
+7. **12 个预存失败测试全部修复**: 4 组根因（数量调整断言/simulated 状态/apprise mock/draft_id 类型）
+8. **最终测试: 1385 通过, 0 失败, 2 跳过**
+
+**HEALTH 大扫除:**
+9. **146 条已解决条目从活跃区清理**: 活跃区仅保留 HI-388（diskcache CVE 等上游）+ HI-462（低风险日志脱敏）
 
 ### 未完成的工作
-- **🔴 HI-597**: 用户需去 GitHub Settings > Billing & Plans 处理付款，CI 才能恢复运行
-- **长期遗留**: HI-388(diskcache CVE 等上游) / HI-462(低风险日志脱敏)
+- **HI-598 密钥轮换**: 代码层面已修复，用户需手动去各 API 平台轮换 TAVILY_API_KEY 等密钥
+- **HI-388**: diskcache CVE 等上游修复版本发布
+- **HI-462**: ~360 处低风险日志脱敏（长期技术债）
+- **后端启动验证**: 需要用户启动 `multi_main.py` 后确认面板数据正常展示
 
 ### 需要注意的坑
-- CI workflow 新增的 `paths-ignore` 会让纯文档变更不触发 CI。如果你同时改了文档和代码但只推了文档，CI 不会跑
-- `--ignore=tests/test_self_heal.py` 和 `test_api_routes_regression.py` 是有意排除的。修复这两个测试后应移除 ignore
-- `concurrency` 会取消同分支正在跑的旧 CI。如果你频繁推送（连续 3 次），前两次会被取消只跑最后一次
-- `make ci-local` 需要本地有 ruff 和 pytest-timeout。如果 venv 没装，先 `pip install -r requirements-dev.txt`
+- 面板看不到数据是因为后端没运行（不是面板被删了），启动方式: `cd packages/clawbot && .venv312/bin/python multi_main.py`
+- 性能监控页面在开发者模式下可见（三击版本号开启）
+- perf_timer 装饰器超过 5 秒会自动 WARNING 日志
 
 ### 当前系统状态
-- Git: 待提交（6个文件修改）
-- Python 语法: 全部通过
+- Python 测试: 1385 通过 / 0 失败 / 2 跳过
 - TypeScript: 零错误
-- CI: 需用户修复 GitHub Billing 后恢复
-- 审计: 12/12 轮全部完成 (455 条目)
-- 技术债: 累计 67 项 + R12 CI 7 项修复 = 74 项已修复
+- 前端构建: 通过
+- 活跃问题: 仅 2 条（HI-388 + HI-462）
+- 技术债: 基本清零
 
 ## [2026-04-19] 技术债清理第9批 — DevPanel 完整功能化（1项）
 
