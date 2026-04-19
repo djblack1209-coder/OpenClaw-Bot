@@ -55,6 +55,7 @@
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
 | 测试通过率 | 🟢 100% | 1385/1387 Python (2项跳过, 0 失败), 0 TypeScript错误 |
+| 前端数据接入 | 🟢 完成 | 31 页面全部接入真实 API (原 16 个 Mock + 3 个占位符)。0 页面展示假数据。monitor.py 路由已挂载。 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |

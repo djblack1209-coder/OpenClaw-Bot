@@ -12,6 +12,51 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — UI 全面数据接入：31 页面 Mock→真实 API 打通
+> 领域: `frontend` + `backend`
+> 影响模块: `apps/openclaw-manager-src/src/components/*` (22 个页面文件), `packages/clawbot/src/api/routers/monitor.py`, `packages/clawbot/src/api/server.py`
+> 关联问题: —
+
+### 变更内容
+
+**第 1 批 — 核心 C 端页面增强**
+1. **App.tsx**: 主界面挂载 `<Toaster />` 组件（之前仅 Onboarding 流程有）
+2. **Portfolio**: 从单页面重写为 5 标签页系统 — 持仓概览 / 交易决策(AI 团队投票) / 自动交易(4 开关+风控参数) / 回测分析(5 种策略) / 交易日志(待接入)。所有操作按钮加 toast 反馈
+3. **Bots**: 从纯服务列表升级为完整运营面板 — 新增闲鱼 AI 客服卡片、社媒自动驾驶卡片(启停控制)、定时任务卡片(独立开关)、通知渠道卡片。所有启停操作加 toast
+4. **Home**: 新增今日简报卡片，调用 `dailyBrief` API
+
+**第 2 批 — 开发者模式页面接入 (5 个)**
+5. **ControlCenter**: 主开关从 `controls/trading` + `controls/social` API 读取，服务矩阵从 `system/services` 读取
+6. **Dashboard**: 服务列表 + 系统状态 + 性能指标 + 日志全部走 API
+7. **Performance**: CPU/内存/延迟指标从 `perf` API 读取
+8. **APIGateway**: 渠道列表 + 令牌管理从 `newapi` 接口读取，支持启用/禁用/删除
+9. **AIConfig**: 模型渠道从 `newapi/channels` 读取，费用统计从 `pool/stats` 读取
+
+**第 3 批 — 全球情报监控 (后端路由挂载 + 3 个页面)**
+10. **后端**: `monitor.py` 路由前缀改为 `/monitor`，注册到 `server.py`。最终端点: `/api/v1/monitor/news`, `/risk`, `/risk/global`, `/finance/*`
+11. **WorldMonitor**: 国家风险 + 全球评分 + 情报流全部走 API
+12. **NewsFeed**: 新闻列表 + 来源排行 + 分类统计 + 热门话题从 API 聚合计算
+13. **FinRadar**: 四类行情(股指/加密/商品/外汇)分别调用对应 API
+
+**第 4 批 — 剩余页面 + 新增 3 页面 (11 个)**
+14. **Store**: 接入 `evolution/proposals`，"安装"→"通过提案"
+15. **Plugins**: 接入 `cli/tools` + MCP 插件 IPC 启停控制
+16. **Channels**: 接入 `getChannelsConfig` IPC 读取真实渠道配置
+17. **ExecutionFlow**: 接入 `omega/tasks` + `omega/status`
+18. **Money**: 接入 `trading/pnl` + `omega/cost`，无数据源标注"待接入"
+19. **Dev/DevPanel**: 接入 `status` + `perf` + `getSystemInfo`
+20. **Testing**: 移除假数据，诚实显示"请在终端运行 pytest"
+21. **Notifications** (新): 通知列表 + 分类筛选 + 已读管理 + WebSocket 实时推送
+22. **Trading** (新): 交易系统状态 + 活跃信号 + K 线图 + Portfolio 快捷跳转
+23. **Risk** (新): 风险仪表盘 + 波动率 + 集中度 + 风控参数 + 动态告警
+
+### 全局改进
+- 所有 16 个 Mock 页面替换为真实 API 调用或诚实占位
+- 所有操作按钮统一 Loading 状态 + toast 成功/失败反馈
+- 所有数据页面 30 秒自动刷新
+- 3 个占位符页面替换为完整功能实现
+- TypeScript 编译零错误
+
 ## 2026-04-19 — ai-hedge-fund 集成：估值模型 + Hurst 指数 + 大师 Agent
 > 领域: `trading`
 > 影响模块: `src/trading/valuation_models.py`, `src/trading/hurst_analysis.py`, `src/trading/master_analysts.py`
