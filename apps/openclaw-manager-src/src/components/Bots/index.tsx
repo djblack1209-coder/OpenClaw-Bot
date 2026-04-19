@@ -509,6 +509,321 @@ function XianyuConversationList() {
 }
 
 /* ────────────────────────────────────────────────────────────────
+   CookieCloud 管理子组件
+──────────────────────────────────────────────────────────────── */
+
+/** CookieCloud 状态接口 */
+interface CookieCloudStatusData {
+  enabled?: boolean;
+  cookie_valid?: boolean;
+  cookie_source?: string;
+  last_sync_time?: string;
+  last_update_time?: string;
+  sync_interval?: number;
+  host?: string;
+  uuid?: string;
+  sync_history?: Array<{
+    time: string;
+    success: boolean;
+    message?: string;
+  }>;
+}
+
+function CookieCloudSection() {
+  const [ccStatus, setCcStatus] = useState<CookieCloudStatusData>({});
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+
+  // 配置表单状态
+  const [configForm, setConfigForm] = useState({
+    host: '',
+    uuid: '',
+    password: '',
+    interval: 30,
+  });
+  const [configSaving, setConfigSaving] = useState(false);
+
+  // 获取 CookieCloud 状态
+  const fetchStatus = useCallback(async () => {
+    try {
+      const data = await api.cookieCloudStatus();
+      setCcStatus(data || {});
+    } catch {
+      // 静默失败，可能后端未部署该接口
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 初始拉取 + 30 秒轮询
+  useEffect(() => {
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 30000);
+    return () => clearInterval(timer);
+  }, [fetchStatus]);
+
+  // 立即同步
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await api.cookieCloudSync();
+      toast.success('Cookie 同步成功');
+      await fetchStatus();
+    } catch (err) {
+      toast.error(`同步失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // 保存配置
+  const handleSaveConfig = async () => {
+    if (!configForm.host.trim() || !configForm.uuid.trim() || !configForm.password.trim()) {
+      toast.error('请填写所有必填项');
+      return;
+    }
+    setConfigSaving(true);
+    try {
+      await api.cookieCloudConfigure({
+        host: configForm.host.trim(),
+        uuid: configForm.uuid.trim(),
+        password: configForm.password.trim(),
+        interval: configForm.interval,
+      });
+      toast.success('CookieCloud 配置已保存');
+      setConfigDialogOpen(false);
+      await fetchStatus();
+    } catch (err) {
+      toast.error(`保存失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  // 打开配置弹窗时预填已有数据
+  const openConfigDialog = () => {
+    setConfigForm({
+      host: ccStatus.host || '',
+      uuid: ccStatus.uuid || '',
+      password: '',
+      interval: ccStatus.sync_interval || 30,
+    });
+    setConfigDialogOpen(true);
+  };
+
+  // Cookie 有效状态判断
+  const cookieValid = ccStatus.cookie_valid ?? false;
+  const cookieSource = ccStatus.cookie_source || '未知';
+  const lastUpdate = ccStatus.last_update_time || ccStatus.last_sync_time;
+  const syncHistory = ccStatus.sync_history || [];
+  const isEnabled = ccStatus.enabled ?? false;
+
+  // 来源显示映射
+  const sourceLabel = (source: string) => {
+    switch (source) {
+      case 'cookiecloud': return 'CookieCloud';
+      case 'qr_login': return '手动扫码';
+      case 'manual': return '手动设置';
+      default: return source || '未知';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="mt-4 pt-4 border-t border-white/10">
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <Loader2 size={14} className="animate-spin" />
+          加载 Cookie 状态…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-4 pt-4 border-t border-white/10">
+        <h4 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+          <Cookie size={14} />
+          Cookie 管理
+        </h4>
+
+        {/* Cookie 状态卡片 */}
+        <div className="p-3 rounded-lg bg-white/5 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">状态</span>
+              <Badge variant={cookieValid ? 'default' : 'destructive'} className="text-xs">
+                {cookieValid ? '🟢 有效' : '🔴 过期/无效'}
+              </Badge>
+            </div>
+            <Badge variant="outline" className="text-xs">
+              来源: {sourceLabel(cookieSource)}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-400">
+            <span className="flex items-center gap-1">
+              <Clock size={11} />
+              上次更新: {lastUpdate
+                ? formatDistanceToNow(new Date(lastUpdate), { addSuffix: true, locale: zhCN })
+                : '无记录'}
+            </span>
+            {isEnabled && (
+              <span className="flex items-center gap-1">
+                <RefreshCw size={11} />
+                自动同步: 每 {ccStatus.sync_interval || '--'} 分钟
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 同步模式指示 */}
+        <div className="flex items-center gap-2 mb-3">
+          <Badge
+            variant={isEnabled ? 'default' : 'outline'}
+            className={clsx('text-xs cursor-default', isEnabled && 'bg-green-600/80')}
+          >
+            自动 (CookieCloud)
+          </Badge>
+          <Badge
+            variant={!isEnabled ? 'default' : 'outline'}
+            className={clsx('text-xs cursor-default', !isEnabled && 'bg-orange-600/80')}
+          >
+            手动扫码
+          </Badge>
+        </div>
+
+        {/* 操作按钮 */}
+        <div className="flex gap-2 mb-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={handleSync}
+            disabled={syncing || !isEnabled}
+          >
+            {syncing ? (
+              <Loader2 size={14} className="mr-1.5 animate-spin" />
+            ) : (
+              <RefreshCw size={14} className="mr-1.5" />
+            )}
+            {syncing ? '同步中…' : '立即同步'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={openConfigDialog}>
+            <CloudCog size={14} className="mr-1.5" />
+            配置 CookieCloud
+          </Button>
+        </div>
+
+        {/* 同步历史（最近 5 条） */}
+        {syncHistory.length > 0 && (
+          <div className="space-y-1.5">
+            <h5 className="text-xs text-gray-400 flex items-center gap-1">
+              <History size={11} />
+              同步历史
+            </h5>
+            {syncHistory.slice(0, 5).map((entry, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-white/5 text-xs"
+              >
+                {entry.success ? (
+                  <CheckCircle2 size={12} className="text-green-400 flex-shrink-0" />
+                ) : (
+                  <XCircle size={12} className="text-red-400 flex-shrink-0" />
+                )}
+                <span className="text-gray-400 flex-shrink-0">
+                  {formatDistanceToNow(new Date(entry.time), { addSuffix: true, locale: zhCN })}
+                </span>
+                {entry.message && (
+                  <span className="text-gray-500 truncate">{entry.message}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* CookieCloud 配置弹窗 */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>配置 CookieCloud</DialogTitle>
+            <DialogDescription>
+              填写 CookieCloud 服务器信息，实现 Cookie 自动同步
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1.5 block">
+                服务器地址 <span className="text-red-400">*</span>
+              </label>
+              <Input
+                placeholder="https://your-cookiecloud-server.com"
+                value={configForm.host}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, host: e.target.value }))}
+              />
+              <p className="text-xs text-gray-500 mt-1">CookieCloud 服务端的完整 URL</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1.5 block">
+                UUID <span className="text-red-400">*</span>
+              </label>
+              <Input
+                placeholder="输入 CookieCloud UUID"
+                value={configForm.uuid}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, uuid: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1.5 block">
+                密码 <span className="text-red-400">*</span>
+              </label>
+              <Input
+                type="password"
+                placeholder="输入 CookieCloud 加密密码"
+                value={configForm.password}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, password: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1.5 block">
+                同步间隔（分钟）
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={1440}
+                placeholder="30"
+                value={configForm.interval}
+                onChange={(e) =>
+                  setConfigForm((prev) => ({
+                    ...prev,
+                    interval: Math.max(1, Math.min(1440, Number(e.target.value) || 30)),
+                  }))
+                }
+              />
+              <p className="text-xs text-gray-500 mt-1">建议 15-60 分钟，最小 1 分钟</p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setConfigDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleSaveConfig} disabled={configSaving}>
+                {configSaving ? (
+                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                ) : null}
+                {configSaving ? '保存中…' : '保存配置'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
    Section 2: 社媒自动驾驶
 ──────────────────────────────────────────────────────────────── */
 
