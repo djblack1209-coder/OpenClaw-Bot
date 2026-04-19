@@ -354,7 +354,7 @@ def publish_social_draft(
     draft_id=None,
     worker_fn=None,
 ) -> Dict:
-    """通过 browser worker 发布草稿"""
+    """通过 browser worker 发布草稿 — 使用适配器统一分发"""
     draft = get_social_draft(draft_id) if draft_id else None
     if not draft:
         return {"success": False, "error": f"草稿 {draft_id} 不存在"}
@@ -366,12 +366,12 @@ def publish_social_draft(
     title = draft.get("title", "")
 
     try:
-        if platform == "x":
-            result = worker_fn("publish_x", {"text": body, "images": []})
-        elif platform == "xiaohongshu":
-            result = worker_fn("publish_xhs", {
-                "title": title, "body": body, "images": [],
-            })
+        from src.execution.social.platform_adapter import get_adapter
+
+        adapter = get_adapter(platform)
+        if adapter:
+            payload = adapter.build_worker_payload(body, title)
+            result = worker_fn(adapter.worker_action, payload)
         else:
             return {"success": False, "error": f"不支持的平台: {platform}"}
 

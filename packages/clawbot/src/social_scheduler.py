@@ -397,16 +397,14 @@ def job_night_publish() -> None:
             _save_state(state)
 
             try:
-                if platform == "x":
-                    result = await run_social_worker_async("publish_x", {"text": text})
-                elif platform == "xhs":
-                    lines = text.strip().splitlines()
-                    title = lines[0].strip() if lines else "无标题"
-                    body = "\n".join(lines[1:]).strip() if len(lines) > 1 else text
-                    result = await run_social_worker_async(
-                        "publish_xhs",
-                        {"title": title, "body": body},
-                    )
+                # 通过适配器统一分发到对应平台
+                from src.execution.social.platform_adapter import get_adapter
+
+                adapter = get_adapter(platform)
+                if adapter:
+                    title, body = adapter.normalize_content(text)
+                    payload = adapter.build_worker_payload(body, title)
+                    result = await run_social_worker_async(adapter.worker_action, payload)
                 else:
                     result = {"success": False, "error": f"未知平台: {platform}"}
 
