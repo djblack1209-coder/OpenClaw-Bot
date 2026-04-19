@@ -60,8 +60,6 @@ ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
 	@echo ""
 	@echo "══════ [2/4] Python Tests (pytest) ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q \
-		--ignore=tests/test_self_heal.py \
-		--ignore=tests/test_api_routes_regression.py \
 		-x --timeout=120
 	@echo ""
 	@echo "══════ [3/4] Python Syntax Check ══════"

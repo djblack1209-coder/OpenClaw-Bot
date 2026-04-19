@@ -1,5 +1,6 @@
 """Memory endpoints — search, stats"""
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from ..error_utils import safe_error as _safe_error
@@ -13,11 +14,11 @@ router = APIRouter()
 
 @router.get("/memory/search", response_model=MemorySearchResult)
 def search_memory(
-    query: str | None = Query(default=None),
-    q: str | None = Query(default=None),
+    query: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     limit: int = Query(10, ge=1, le=100),
     mode: str = Query("hybrid", pattern="^(keyword|semantic|hybrid)$"),
-    category: str | None = None,
+    category: Optional[str] = None,
 ):
     """搜索记忆库"""
     effective_query = query if query is not None else q
