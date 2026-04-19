@@ -12,6 +12,38 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — CookieCloud 集成 + Rust 路径修复 + 产品体验升级设计
+> 领域: `backend` + `frontend` + `xianyu` + `infra` + `docs`
+> 影响模块: `src/xianyu/cookie_cloud.py`, `src/xianyu/xianyu_live.py`, `src/api/routers/xianyu.py`, `multi_main.py`, `apps/openclaw-manager-src/src/components/Bots/`, `apps/openclaw-manager-src/src/lib/api.ts`, `src-tauri/src/commands/`, `src-tauri/src/utils/shell.rs`
+> 关联问题: —
+
+### CookieCloud 自动同步（P0 体验升级）
+1. **cookie_cloud.py (394行)**: CookieCloud 客户端 — 支持 legacy(AES-256-CBC) + aes-128-cbc-fixed 两种加密算法解密，闲鱼域名优先级合并
+2. **CookieCloudManager**: 定时同步管理器 — 定时拉取 + .env 写回 + SIGUSR1 热重载 + 静默通知策略
+3. **xianyu_live.py 集成**: Cookie 过期时优先尝试 CookieCloud 同步，失败再回退到传统 has_login 刷新
+4. **FastAPI 3 个新端点**: `/xianyu/cookiecloud/status` + `/sync` + `/configure`
+5. **multi_main.py**: 启动时自动注册 CookieCloud 同步循环
+6. **GUI Cookie 管理面板**: Bots 页面新增 CookieCloud 状态卡片、立即同步、配置弹窗、同步历史
+
+### Rust 路径修复
+7. **4 个 Rust 文件路径更新**: shell.rs / clawbot.rs / config.rs / clawbot_api.rs 中的 `Desktop/OpenClaw Bot` → `Desktop/OpenEverything`
+
+### 产品体验升级设计文档
+8. **设计文档**: `docs/specs/2026-04-19-ux-experience-upgrade-design.md` — 四大场景(CookieCloud/远程开发/服务面板/数据可视化)完整设计
+
+### 文件变更
+- `src/xianyu/cookie_cloud.py` — 新增 (CookieCloud 集成核心模块)
+- `src/xianyu/xianyu_live.py` — 增加 CookieCloud 优先刷新逻辑
+- `src/api/routers/xianyu.py` — 新增 3 个 CookieCloud API 端点
+- `multi_main.py` — 注册 CookieCloud 同步循环
+- `apps/openclaw-manager-src/src/components/Bots/index.tsx` — 新增 CookieCloud 管理 UI
+- `apps/openclaw-manager-src/src/lib/api.ts` — 新增 3 个 API 函数
+- `src-tauri/src/commands/clawbot.rs` — 路径修复
+- `src-tauri/src/commands/clawbot_api.rs` — 路径修复
+- `src-tauri/src/commands/config.rs` — 路径修复
+- `src-tauri/src/utils/shell.rs` — 路径修复
+- `docs/specs/2026-04-19-ux-experience-upgrade-design.md` — 新增设计文档
+
 ## 2026-04-19 — 桌面面板修复 + 性能监控页面
 > 领域: `frontend`
 > 影响模块: `apps/openclaw-manager-src/src/components/Performance/`, `App.tsx`, `Sidebar.tsx`, `Header.tsx`, `api.ts`

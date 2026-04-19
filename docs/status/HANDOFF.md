@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-04-19] CookieCloud 集成 + Rust 路径修复 + 产品体验升级设计
+
+### 本次完成了什么
+
+**产品体验升级第一期 (P0: CookieCloud 集成):**
+1. **cookie_cloud.py (394行)**: 从零开发 CookieCloud 客户端，支持 legacy + aes-128-cbc-fixed 两种加密解密，异步 httpx 拉取，闲鱼域名优先级合并
+2. **CookieCloudManager 同步管理器**: 定时从 CookieCloud 服务端拉取 Cookie → 写入 .env → SIGUSR1 热重载闲鱼进程，静默通知策略（30分钟内不骚扰，深夜不通知）
+3. **xianyu_live.py 集成**: Cookie 过期时先尝试 CookieCloud 同步，失败再回退传统 has_login 刷新
+4. **FastAPI 3 个新端点**: `/xianyu/cookiecloud/status` + `/sync` + `/configure`
+5. **multi_main.py 启动注册**: 后端启动时自动启动 CookieCloud 同步循环
+6. **GUI Cookie 管理面板**: Bots 页面新增状态卡片 + 同步按钮 + 配置弹窗 + 同步历史
+
+**基础设施修复:**
+7. **Rust 4 文件路径修复**: shell.rs/clawbot.rs/config.rs/clawbot_api.rs 中 `Desktop/OpenClaw Bot` → `Desktop/OpenEverything`
+8. **LaunchAgent plist 路径修复**: 所有 plist 和 launcher.sh 中的旧路径已更新并重新安装到 ~/Library/LaunchAgents/
+9. **服务连通性验证**: ClawBot Main(18790) + Gateway(18789) + Browser Control(18791) + Prometheus(9090) 全部启动成功
+
+**设计文档:**
+10. **产品体验升级设计文档**: 四大场景完整设计 — CookieCloud 集成(P0) / 远程开发(P1) / 服务面板(P2) / 数据可视化(P3)
+
+### 未完成的工作
+- **P0 CookieCloud 部署**: 用户需要安装 CookieCloud Server (Docker) + Chrome 插件，并在 GUI 中配置连接信息
+- **P1 远程开发**: 搬运 claude-code-telegram (2458★)，实现 Telegram /dev 命令
+- **P2 服务面板**: C 端首页"我的机器人"卡片 + Telegram /menu 内联键盘
+- **P3 数据可视化**: 实时仪表盘 + 交互式图表
+- **新增依赖记录**: pycryptodomex 已安装但未写入 requirements.txt
+- **Tauri 重编译**: Rust 路径已修复但需要重新编译才能让桌面应用使用新路径
+
+### 需要注意的坑
+- CookieCloud 需要浏览器保持登录闲鱼状态，如果浏览器关了或退出登录，Cookie 同步会失败
+- pycryptodomex 是新增依赖，需要加入 requirements.txt
+- LaunchAgent 的 bootstrap 有 I/O error，手动启动正常。后续可能需要 macOS 重启后测试
+- Gateway 需要 Node.js v22+，当前 homebrew node 是 v25 可用，但 /usr/local/bin/node 是旧 v18
+
+### 当前系统状态
+- Python 测试: 1385 通过 / 0 失败 / 2 跳过（零回归）
+- TypeScript: 零错误
+- Rust cargo check: 零错误
+- 核心服务: 4/7 运行中（ClawBot + Gateway + Browser + Prometheus）
+- 活跃问题: HI-388 + HI-462（长期遗留）
+
 ## [2026-04-19] 体验升级三阶段 + 面板修复 + 测试全修 + HEALTH 大扫除
 
 ### 本次完成了什么

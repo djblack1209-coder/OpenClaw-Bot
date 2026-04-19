@@ -286,3 +286,4 @@ tweepy>=4.14.0,<5.0.0  # 可选
 
 # vectorbt — 向量化回测引擎 (src/modules/investment/backtester_vbt.py)
 vectorbt>=0.26.0,<1.0.0  # 可选
+pycryptodomex>=3.20.0
