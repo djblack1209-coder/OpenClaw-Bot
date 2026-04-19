@@ -71,8 +71,6 @@ jobs:
           python -m pytest tests/ \
             --tb=short -q \
             --cov=src --cov-report=term-missing \
-            --ignore=tests/test_self_heal.py \
-            --ignore=tests/test_api_routes_regression.py \
             -x --timeout=120
         env:
           # 测试环境变量，避免依赖外部服务

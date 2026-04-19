@@ -15,6 +15,9 @@ import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# 如果 pybreaker 未安装，跳过整个测试文件（CircuitBreaker 功能需要 pybreaker）
+pybreaker = pytest.importorskip("pybreaker", reason="pybreaker 未安装，跳过断路器测试")
+
 from src.core.self_heal import SelfHealEngine, HealResult, ErrorCategory
 
 
