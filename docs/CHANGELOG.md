@@ -12,6 +12,31 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-18 — 技术债清理第6批: 前端体验+文档偏差修复（6项）
+> 领域: `frontend`, `docs`
+> 影响模块: `Logs`, `Portfolio`, `Social`, `Evolution`, `AIConfig`, `MODULE_REGISTRY`, `DEPENDENCY_MAP`
+> 关联问题: HI-560, HI-561, HI-562, HI-564, HI-565, HI-596
+
+### 体验优化 (5项)
+1. **HI-560: 日志搜索关键词高亮**: 新增 `highlightText` 函数，搜索匹配文字以黄色高亮展示
+2. **HI-561: tradingSell 错误检查**: `api.tradingSell` 在 HTTP 错误时抛出含状态码的异常；风险参数卡片标注"后端配置"说明来源
+3. **HI-562: Social Autopilot 确认弹窗**: `window.confirm` 替换为项目统一的 ConfirmDialog 组件
+4. **HI-564: Evolution 提案创建时间**: 提案卡片展示"发现于 X月X日 HH:MM"
+5. **HI-565: 模型切换重启提示**: 主模型切换和服务商保存后 toast 提示"重启后端服务后生效"
+
+### 文档修复 (1项)
+6. **HI-596: 文档数字偏差**: MODULE_REGISTRY 254→277, DEPENDENCY_MAP 80+→62
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Logs/index.tsx` — 搜索高亮
+- `apps/openclaw-manager-src/src/lib/api.ts` — tradingSell resp.ok 检查
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — 风险参数标注
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — ConfirmDialog 替换 window.confirm
+- `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — created_at 展示
+- `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — 重启提示
+- `docs/registries/MODULE_REGISTRY.md` — 数字修正
+- `docs/registries/DEPENDENCY_MAP.md` — 数字修正
+
 ## 2026-04-18 — 技术债清理第5批: 前端安全+体验+架构优化（6项）
 > 领域: `frontend`, `backend`
 > 影响模块: `logger.ts`, `service.rs`, `clawbot.rs`, `Onboarding`, `Assistant`, `Settings`, `conversation.py`
