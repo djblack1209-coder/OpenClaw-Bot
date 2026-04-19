@@ -1,626 +1,323 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Clock, RefreshCw, Pause, Play, AlertTriangle, CheckCircle2, XCircle, Loader2, Plus, Pencil, Trash2, ChevronDown, ChevronRight, History } from 'lucide-react';
+/**
+ * Scheduler — 任务调度中心 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { Switch } from '@/components/ui/switch';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { clawbotFetch } from '@/lib/tauri';
-import { createLogger } from '@/lib/logger';
-import { toast } from 'sonner';
+  Clock,
+  Play,
+  Pause,
+  CheckCircle2,
+  XCircle,
+  Timer,
+  Cpu,
+  Terminal,
+  ListOrdered,
+} from 'lucide-react';
 
-const schedulerLogger = createLogger('Scheduler');
-
-/** 单个定时任务的数据结构 */
-interface SchedulerTask {
-  id: string;
-  name: string;
-  cron: string;
-  enabled: boolean;
-  last_run?: string;
-  last_status?: string;
-  description?: string;
-}
-
-/** 单条执行历史记录 */
-interface ExecutionRecord {
-  timestamp: string;
-  status: 'success' | 'failed' | 'running';
-  duration?: number;
-}
-
-/** 调度器整体状态 */
-interface SchedulerState {
-  enabled: boolean;
-  maintenance_mode: boolean;
-  tasks: SchedulerTask[];
-}
-
-/** 新建/编辑任务的表单数据 */
-interface TaskFormData {
-  name: string;
-  scheduleType: 'cron' | 'interval';
-  cron: string;
-  intervalMinutes: number;
-  description: string;
-  enabled: boolean;
-}
-
-/** 表单初始值 */
-const EMPTY_FORM: TaskFormData = {
-  name: '',
-  scheduleType: 'cron',
-  cron: '0 9 * * *',
-  intervalMinutes: 60,
-  description: '',
-  enabled: true,
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+interface CronTask {
+  name: string;
+  cron: string;
+  status: 'running' | 'paused' | 'failed';
+  lastRun: string;
+  nextRun: string;
+  enabled: boolean;
+}
+
+const TASKS: CronTask[] = [
+  { name: '每日简报推送', cron: '0 9 * * *', status: 'running', lastRun: '09:00:12', nextRun: '明天 09:00', enabled: true },
+  { name: '社媒内容采集', cron: '*/30 * * * *', status: 'running', lastRun: '14:30:05', nextRun: '15:00:00', enabled: true },
+  { name: '闲鱼商品刷新', cron: '0 */2 * * *', status: 'running', lastRun: '14:00:22', nextRun: '16:00:00', enabled: true },
+  { name: '交易信号扫描', cron: '*/5 * * * *', status: 'running', lastRun: '14:45:01', nextRun: '14:50:00', enabled: true },
+  { name: '数据库备份', cron: '0 3 * * *', status: 'paused', lastRun: '03:00:44', nextRun: '—', enabled: false },
+  { name: '日志清理', cron: '0 4 * * 0', status: 'running', lastRun: '周日 04:00', nextRun: '下周日 04:00', enabled: true },
+  { name: '模型健康检查', cron: '*/15 * * * *', status: 'failed', lastRun: '14:30:08', nextRun: '14:45:00', enabled: true },
+  { name: '用户活跃度统计', cron: '0 0 * * *', status: 'running', lastRun: '00:00:33', nextRun: '明天 00:00', enabled: true },
+];
+
+const STATS = {
+  total: TASKS.length,
+  running: TASKS.filter((t) => t.status === 'running').length,
+  paused: TASKS.filter((t) => t.status === 'paused').length,
+  failed: TASKS.filter((t) => t.status === 'failed').length,
+};
+
+const METRICS = [
+  { label: '今日执行', value: '156', color: 'var(--accent-cyan)' },
+  { label: '成功率', value: '98.1%', color: 'var(--accent-green)' },
+  { label: '平均耗时', value: '2.4s', color: 'var(--accent-amber)' },
+  { label: '超时次数', value: '3', color: 'var(--accent-red)' },
+];
+
+const QUEUE = [
+  { name: '交易信号扫描', time: '14:50:00' },
+  { name: '社媒内容采集', time: '15:00:00' },
+  { name: '模型健康检查', time: '15:00:00' },
+  { name: '闲鱼商品刷新', time: '16:00:00' },
+  { name: '用户活跃度统计', time: '明天 00:00' },
+];
+
+const LOGS = [
+  { time: '14:45:01', msg: '[交易信号扫描] 执行完成 — 耗时 1.2s — 发现 3 个信号' },
+  { time: '14:30:08', msg: '[模型健康检查] 执行失败 — DeepSeek V3 连接超时' },
+  { time: '14:30:05', msg: '[社媒内容采集] 执行完成 — 采集 47 条内容' },
+  { time: '14:00:22', msg: '[闲鱼商品刷新] 执行完成 — 刷新 12 个商品' },
+  { time: '09:00:12', msg: '[每日简报推送] 执行完成 — 推送至 3 个渠道' },
+  { time: '03:00:44', msg: '[数据库备份] 执行完成 — 备份大小 234MB' },
+];
+
+const RESOURCES = [
+  { label: 'CPU 占用', value: '23%', ratio: 0.23 },
+  { label: '内存占用', value: '61%', ratio: 0.61 },
+  { label: '并发任务', value: '4/8', ratio: 0.5 },
+  { label: '队列深度', value: '5', ratio: 0.25 },
+];
+
+/* ====== 工具函数 ====== */
+
+function statusDot(status: CronTask['status']) {
+  if (status === 'running') return 'var(--accent-green)';
+  if (status === 'paused') return 'var(--accent-amber)';
+  return 'var(--accent-red)';
+}
+
+function renderBar(ratio: number, width: number = 16): string {
+  const filled = Math.round(ratio * width);
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/* ====== 主组件 ====== */
+
 export function Scheduler() {
-  const [state, setState] = useState<SchedulerState>({
-    enabled: true,
-    maintenance_mode: false,
-    tasks: [],
-  });
-  const [loading, setLoading] = useState(true);
+  const [toggles, setToggles] = useState<Record<number, boolean>>(
+    Object.fromEntries(TASKS.map((t, i) => [i, t.enabled])),
+  );
 
-  /* ── 新建/编辑对话框状态 ── */
-  const [showFormDialog, setShowFormDialog] = useState(false);
-  const [editingTask, setEditingTask] = useState<SchedulerTask | null>(null);
-  const [form, setForm] = useState<TaskFormData>(EMPTY_FORM);
-  const [submitting, setSubmitting] = useState(false);
-
-  /* ── 删除确认对话框状态 ── */
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [pendingDeleteTask, setPendingDeleteTask] = useState<SchedulerTask | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  /* ── 执行历史展开状态 ── */
-  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
-  const [historyMap, setHistoryMap] = useState<Record<string, ExecutionRecord[]>>({});
-  const [historyLoadingIds, setHistoryLoadingIds] = useState<Set<string>>(new Set());
-
-  /** 从后端拉取调度器状态 */
-  const fetchState = useCallback(async () => {
-    try {
-      const resp = await clawbotFetch('/api/v1/controls/scheduler');
-      if (resp.ok) {
-        const data = await resp.json();
-        setState(data);
-      }
-    } catch (e) {
-      schedulerLogger.warn('获取调度器状态失败', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /** 挂载时拉取 + 每 30 秒自动刷新 */
-  useEffect(() => {
-    fetchState();
-    const interval = setInterval(fetchState, 30000);
-    return () => clearInterval(interval);
-  }, [fetchState]);
-
-  /** 切换调度器全局开关 */
-  const toggleScheduler = async (enabled: boolean) => {
-    setState(prev => ({ ...prev, enabled }));
-    try {
-      await clawbotFetch(`/api/v1/controls/scheduler/toggle?enabled=${enabled}`, { method: 'POST' });
-      toast.success(enabled ? '调度器已启用' : '调度器已暂停');
-    } catch {
-      toast.error('操作失败');
-    }
-  };
-
-  /** 切换单个任务的启用/禁用 */
-  const toggleTask = async (taskId: string, enabled: boolean) => {
-    setState(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, enabled } : t),
-    }));
-    try {
-      await clawbotFetch(`/api/v1/controls/scheduler/task/${taskId}/toggle?enabled=${enabled}`, { method: 'POST' });
-    } catch {
-      toast.error('切换失败');
-    }
-  };
-
-  /** 根据任务状态返回对应图标 */
-  const getStatusIcon = (status?: string) => {
-    if (!status) return null;
-    if (status === 'success') return <CheckCircle2 size={14} className="text-green-400" />;
-    if (status === 'failed') return <XCircle size={14} className="text-red-400" />;
-    if (status === 'running') return <Loader2 size={14} className="text-blue-400 animate-spin" />;
-    return null;
-  };
-
-  /* ── 执行历史相关 ── */
-
-  /** 切换某个任务的历史展开/折叠 */
-  const toggleHistory = async (taskId: string) => {
-    const next = new Set(expandedHistoryIds);
-    if (next.has(taskId)) {
-      next.delete(taskId);
-      setExpandedHistoryIds(next);
-      return;
-    }
-    next.add(taskId);
-    setExpandedHistoryIds(next);
-
-    /* 如果还没加载过该任务的历史，尝试拉取 */
-    if (!historyMap[taskId]) {
-      setHistoryLoadingIds(prev => new Set(prev).add(taskId));
-      try {
-        const resp = await clawbotFetch(`/api/v1/system/scheduler/history?task_id=${taskId}`);
-        if (resp.ok) {
-          const data = await resp.json();
-          /* 后端可能返回 { records: [...] } 或直接数组 */
-          const records: ExecutionRecord[] = Array.isArray(data) ? data : (data.records ?? []);
-          setHistoryMap(prev => ({ ...prev, [taskId]: records.slice(0, 5) }));
-        } else {
-          /* 后端不支持历史接口时，从任务本身构建单条记录 */
-          const task = state.tasks.find(t => t.id === taskId);
-          if (task?.last_run) {
-            setHistoryMap(prev => ({
-              ...prev,
-              [taskId]: [{
-                timestamp: task.last_run!,
-                status: (task.last_status as ExecutionRecord['status']) || 'success',
-              }],
-            }));
-          } else {
-            setHistoryMap(prev => ({ ...prev, [taskId]: [] }));
-          }
-        }
-      } catch {
-        /* 接口不存在，从当前任务数据降级 */
-        const task = state.tasks.find(t => t.id === taskId);
-        if (task?.last_run) {
-          setHistoryMap(prev => ({
-            ...prev,
-            [taskId]: [{
-              timestamp: task.last_run!,
-              status: (task.last_status as ExecutionRecord['status']) || 'success',
-            }],
-          }));
-        } else {
-          setHistoryMap(prev => ({ ...prev, [taskId]: [] }));
-        }
-      } finally {
-        setHistoryLoadingIds(prev => {
-          const s = new Set(prev);
-          s.delete(taskId);
-          return s;
-        });
-      }
-    }
-  };
-
-  /** 状态文字映射 */
-  const statusLabel = (s: string) => {
-    if (s === 'success') return '成功';
-    if (s === 'failed') return '失败';
-    if (s === 'running') return '运行中';
-    return s;
-  };
-
-  /* ── 新建任务 ── */
-
-  const openCreateDialog = () => {
-    setEditingTask(null);
-    setForm(EMPTY_FORM);
-    setShowFormDialog(true);
-  };
-
-  /* ── 编辑任务 ── */
-
-  const openEditDialog = (task: SchedulerTask) => {
-    setEditingTask(task);
-    setForm({
-      name: task.name,
-      scheduleType: 'cron',
-      cron: task.cron,
-      intervalMinutes: 60,
-      description: task.description ?? '',
-      enabled: task.enabled,
-    });
-    setShowFormDialog(true);
-  };
-
-  /** 提交新建或编辑表单 */
-  const handleSubmitForm = async () => {
-    if (!form.name.trim()) {
-      toast.error('请填写任务名称');
-      return;
-    }
-    setSubmitting(true);
-    const cronValue = form.scheduleType === 'cron' ? form.cron : `*/${form.intervalMinutes} * * * *`;
-    const payload = {
-      name: form.name.trim(),
-      cron: cronValue,
-      enabled: form.enabled,
-      description: form.description.trim(),
-    };
-
-    try {
-      if (editingTask) {
-        /* 编辑模式 */
-        const resp = await clawbotFetch(`/api/v1/controls/scheduler/task/${editingTask.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (resp.ok) {
-          toast.success('任务已更新');
-          setShowFormDialog(false);
-          fetchState();
-        } else {
-          toast.error('后端暂不支持编辑操作');
-        }
-      } else {
-        /* 新建模式 */
-        const resp = await clawbotFetch('/api/v1/controls/scheduler/task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (resp.ok) {
-          toast.success('任务已创建');
-          setShowFormDialog(false);
-          fetchState();
-        } else {
-          toast.error('后端暂不支持新建操作');
-        }
-      }
-    } catch {
-      toast.error('后端暂不支持此操作');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  /* ── 删除任务 ── */
-
-  const openDeleteConfirm = (task: SchedulerTask) => {
-    setPendingDeleteTask(task);
-    setConfirmDeleteOpen(true);
-  };
-
-  const handleDeleteTask = async () => {
-    if (!pendingDeleteTask) return;
-    setDeleting(true);
-    try {
-      const resp = await clawbotFetch(`/api/v1/controls/scheduler/task/${pendingDeleteTask.id}`, {
-        method: 'DELETE',
-      });
-      if (resp.ok) {
-        toast.success('任务已删除');
-        setConfirmDeleteOpen(false);
-        setPendingDeleteTask(null);
-        fetchState();
-      } else {
-        toast.error('后端暂不支持删除操作');
-      }
-    } catch {
-      toast.error('后端暂不支持删除操作');
-    } finally {
-      setDeleting(false);
-    }
-  };
+  const toggle = (i: number) => setToggles((prev) => ({ ...prev, [i]: !prev[i] }));
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* 顶部标题栏：页面标题 + 新建按钮 + 刷新按钮 + 全局开关 */}
-        <div className="flex items-center justify-between bg-dark-800/40 p-4 rounded-2xl border border-dark-600/50 backdrop-blur-sm">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Clock className="text-claw-400 h-6 w-6" />
-              任务调度中心
-            </h2>
-            <p className="text-gray-400 text-sm mt-1">
-              管理每日自动任务：简报、监控、社媒、交易、数据维护
-            </p>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 调度总览 (col-8, row-span-2) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8 lg:row-span-2" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(6,182,212,0.15)' }}
+              >
+                <Clock size={20} style={{ color: 'var(--accent-cyan)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  CRON ORCHESTRATOR
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  任务调度中心 // TASK SCHEDULER
+                </p>
+              </div>
+            </div>
+
+            {/* 统计栏 */}
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              {[
+                { label: '总任务', value: STATS.total, color: 'var(--accent-cyan)' },
+                { label: '运行中', value: STATS.running, color: 'var(--accent-green)' },
+                { label: '已暂停', value: STATS.paused, color: 'var(--accent-amber)' },
+                { label: '已失败', value: STATS.failed, color: 'var(--accent-red)' },
+              ].map((s) => (
+                <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-secondary)' }}>
+                  <span className="text-label">{s.label}</span>
+                  <p className="text-metric mt-0.5" style={{ color: s.color, fontSize: '20px' }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* 任务列表 */}
+            <div className="flex-1 space-y-1.5 overflow-y-auto">
+              {TASKS.map((task, i) => (
+                <div
+                  key={task.name}
+                  className={clsx(
+                    'flex items-center justify-between py-2.5 px-3 rounded-lg transition-colors',
+                    !toggles[i] && 'opacity-40',
+                  )}
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: statusDot(task.status) }}
+                    />
+                    <span className="font-display text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                      {task.name}
+                    </span>
+                    <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                      {task.cron}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <span className="text-label">上次</span>
+                      <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{task.lastRun}</p>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <span className="text-label">下次</span>
+                      <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{task.nextRun}</p>
+                    </div>
+                    {/* 纯 div 开关 */}
+                    <button
+                      onClick={() => toggle(i)}
+                      className="relative w-9 h-5 rounded-full transition-colors flex-shrink-0"
+                      style={{
+                        background: toggles[i] ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                      }}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+                        style={{
+                          background: 'var(--text-primary)',
+                          left: toggles[i] ? '18px' : '2px',
+                        }}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Button size="sm" onClick={openCreateDialog}>
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline ml-1">新建任务</span>
-            </Button>
-            <button
-              onClick={fetchState}
-              className="p-2 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white transition-colors"
-              title="刷新"
+        </motion.div>
+
+        {/* ====== 调度指标 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>METRICS</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              调度指标
+            </h3>
+            <div className="space-y-4 flex-1">
+              {METRICS.map((m) => (
+                <div key={m.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-label">{m.label}</span>
+                    <span className="text-metric" style={{ color: m.color, fontSize: '20px' }}>{m.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 执行队列 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>QUEUE</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              执行队列
+            </h3>
+            <div className="flex-1 space-y-2">
+              {QUEUE.map((q, i) => (
+                <div
+                  key={q.name}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                      #{i + 1}
+                    </span>
+                    <span className="font-display text-sm" style={{ color: 'var(--text-primary)' }}>
+                      {q.name}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--accent-cyan)' }}>
+                    {q.time}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 执行日志 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <Terminal size={14} style={{ color: 'var(--accent-green)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>EXECUTION LOG</span>
+            </div>
+            <div
+              className="flex-1 rounded-lg p-3 font-mono text-[11px] leading-relaxed space-y-1"
+              style={{ background: 'var(--bg-primary)' }}
             >
-              <RefreshCw size={16} />
-            </button>
-            <div className="flex items-center gap-3 bg-dark-700/50 px-4 py-2 rounded-full border border-dark-600">
-              {state.enabled ? (
-                <Play size={14} className="text-green-400" />
-              ) : (
-                <Pause size={14} className="text-yellow-400" />
-              )}
-              <span className={clsx("text-sm font-medium", state.enabled ? "text-green-400" : "text-yellow-400")}>
-                {state.enabled ? '运行中' : '已暂停'}
-              </span>
-              <Switch
-                checked={state.enabled}
-                onCheckedChange={toggleScheduler}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 维护模式横幅 */}
-        {state.maintenance_mode && (
-          <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
-            <AlertTriangle size={18} className="text-yellow-400" />
-            <span className="text-sm text-yellow-300">维护模式已开启 — 所有 Bot 消息处理已暂停，API 服务正常</span>
-          </div>
-        )}
-
-        {/* 任务卡片网格 */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="h-28 bg-dark-800/50 rounded-xl border border-dark-700 animate-pulse" />
-            ))}
-          </div>
-        ) : state.tasks.length === 0 ? (
-          <div className="text-center py-16">
-            <Clock className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-            <p className="text-gray-400 text-sm">暂无定时任务</p>
-            <p className="text-gray-500 text-xs mt-1">点击上方「新建任务」添加</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {state.tasks.map((task) => {
-              const isHistoryExpanded = expandedHistoryIds.has(task.id);
-              const records = historyMap[task.id];
-              const isHistoryLoading = historyLoadingIds.has(task.id);
-
-              return (
-                <Card key={task.id} className={clsx(
-                  "bg-dark-800/80 border-dark-600 shadow-md transition-all overflow-hidden",
-                  !task.enabled && "opacity-50"
-                )}>
-                  <CardContent className="p-4">
-                    {/* 任务标题行：名称 + 操作按钮 */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0 mr-2">
-                        <h3 className="font-semibold text-white text-sm truncate">{task.name}</h3>
-                        <p className="text-xs text-gray-500 mt-0.5 font-mono">{task.cron}</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {/* 编辑按钮 */}
-                        <button
-                          onClick={() => openEditDialog(task)}
-                          className="p-1 rounded text-gray-500 hover:text-claw-400 hover:bg-claw-500/10 transition-colors"
-                          title="编辑"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        {/* 删除按钮 */}
-                        <button
-                          onClick={() => openDeleteConfirm(task)}
-                          className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          title="删除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        {/* 启用/禁用开关 */}
-                        <Switch
-                          checked={task.enabled}
-                          onCheckedChange={(v) => toggleTask(task.id, v)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* 状态行：上次执行 + 活跃标签 */}
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-gray-500">
-                        {getStatusIcon(task.last_status)}
-                        <span>{task.last_run || '尚未执行'}</span>
-                      </div>
-                      <span className={clsx(
-                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
-                        task.enabled ? "bg-green-500/10 text-green-400" : "bg-dark-700 text-gray-500"
-                      )}>
-                        {task.enabled ? '活跃' : '已禁用'}
-                      </span>
-                    </div>
-
-                    {/* 执行历史折叠区域 */}
-                    <div className="mt-3 pt-3 border-t border-dark-700/50">
-                      <button
-                        onClick={() => toggleHistory(task.id)}
-                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full"
-                      >
-                        {isHistoryExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <History size={12} />
-                        <span>执行历史</span>
-                      </button>
-
-                      {isHistoryExpanded && (
-                        <div className="mt-2 space-y-1.5">
-                          {isHistoryLoading ? (
-                            <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
-                              <Loader2 size={12} className="animate-spin" />
-                              <span>加载中...</span>
-                            </div>
-                          ) : records && records.length > 0 ? (
-                            records.map((rec, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center justify-between text-xs bg-dark-700/40 rounded-lg px-2.5 py-1.5"
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  {getStatusIcon(rec.status)}
-                                  <span className={clsx(
-                                    rec.status === 'success' ? 'text-green-400' :
-                                    rec.status === 'failed' ? 'text-red-400' : 'text-blue-400'
-                                  )}>
-                                    {statusLabel(rec.status)}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-gray-500">
-                                  {rec.duration !== undefined && (
-                                    <span>{rec.duration}ms</span>
-                                  )}
-                                  <span>{rec.timestamp}</span>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-xs text-gray-600 py-1.5">暂无执行记录</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 底部说明 */}
-        <div className="text-xs text-gray-600 text-center py-4">
-          任务由后端 ExecutionScheduler 管理 · 每 30 秒自动刷新 · 时区标注 ET=美东 / 北京=中国标准时间
-        </div>
-      </div>
-
-      {/* 新建/编辑任务对话框 */}
-      <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingTask ? '编辑任务' : '新建任务'}</DialogTitle>
-            <DialogDescription>
-              {editingTask ? '修改定时任务的配置' : '创建一个新的定时任务'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            {/* 任务名称 */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-300">任务名称 *</label>
-              <Input
-                placeholder="例如：每日简报推送"
-                value={form.name}
-                onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-
-            {/* 调度类型选择 */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-300">调度方式</label>
-              <div className="flex gap-2">
-                <button
-                  className={clsx(
-                    "flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                    form.scheduleType === 'cron'
-                      ? "border-claw-500/50 bg-claw-500/10 text-claw-400"
-                      : "border-dark-600 bg-dark-700/50 text-gray-400 hover:text-gray-300"
-                  )}
-                  onClick={() => setForm(f => ({ ...f, scheduleType: 'cron' }))}
-                >
-                  Cron 表达式
-                </button>
-                <button
-                  className={clsx(
-                    "flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                    form.scheduleType === 'interval'
-                      ? "border-claw-500/50 bg-claw-500/10 text-claw-400"
-                      : "border-dark-600 bg-dark-700/50 text-gray-400 hover:text-gray-300"
-                  )}
-                  onClick={() => setForm(f => ({ ...f, scheduleType: 'interval' }))}
-                >
-                  固定间隔
-                </button>
+              {LOGS.map((log, i) => (
+                <div key={i} className="flex gap-2">
+                  <span style={{ color: 'var(--text-disabled)' }}>{log.time}</span>
+                  <span
+                    style={{
+                      color: log.msg.includes('失败')
+                        ? 'var(--accent-red)'
+                        : 'var(--accent-green)',
+                    }}
+                  >
+                    {log.msg}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center gap-1 mt-2">
+                <span style={{ color: 'var(--accent-green)' }}>▊</span>
+                <span className="animate-pulse" style={{ color: 'var(--text-disabled)' }}>_</span>
               </div>
             </div>
+          </div>
+        </motion.div>
 
-            {/* Cron 表达式 或 间隔分钟数 */}
-            {form.scheduleType === 'cron' ? (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-300">Cron 表达式</label>
-                <Input
-                  placeholder="0 9 * * *"
-                  value={form.cron}
-                  onChange={(e) => setForm(f => ({ ...f, cron: e.target.value }))}
-                  className="font-mono"
-                />
-                <p className="text-[11px] text-gray-500">格式：分 时 日 月 周（例如 0 9 * * * = 每天 9:00）</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-300">间隔时间（分钟）</label>
-                <Input
-                  type="number"
-                  min={1}
-                  placeholder="60"
-                  value={String(form.intervalMinutes)}
-                  onChange={(e) => setForm(f => ({ ...f, intervalMinutes: Math.max(1, Number(e.target.value) || 1) }))}
-                />
-              </div>
-            )}
-
-            {/* 描述 */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-300">描述</label>
-              <Input
-                placeholder="任务的简要说明（可选）"
-                value={form.description}
-                onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-
-            {/* 启用状态 */}
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-300">创建后立即启用</label>
-              <Switch
-                checked={form.enabled}
-                onCheckedChange={(v) => setForm(f => ({ ...f, enabled: v }))}
-              />
+        {/* ====== 资源使用 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>RESOURCES</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              资源使用
+            </h3>
+            <div className="flex-1 space-y-4">
+              {RESOURCES.map((r) => (
+                <div key={r.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-label">{r.label}</span>
+                    <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {r.value}
+                    </span>
+                  </div>
+                  <div className="font-mono text-[10px] leading-none" style={{ color: r.ratio > 0.5 ? 'var(--accent-amber)' : 'var(--accent-cyan)' }}>
+                    {renderBar(r.ratio)}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFormDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={handleSubmitForm} disabled={submitting}>
-              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />}
-              {editingTask ? '保存' : '创建'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 删除确认对话框 */}
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        onClose={() => {
-          setConfirmDeleteOpen(false);
-          setPendingDeleteTask(null);
-        }}
-        title="删除定时任务"
-        description={`确定删除定时任务「${pendingDeleteTask?.name ?? ''}」？此操作不可撤销。`}
-        onConfirm={handleDeleteTask}
-        confirmText="删除"
-        destructive={true}
-        loading={deleting}
-      />
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

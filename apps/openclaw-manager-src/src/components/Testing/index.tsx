@@ -1,190 +1,260 @@
-import { useEffect, useState } from 'react';
+/**
+ * Testing — 测试诊断页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
 import { motion } from 'framer-motion';
-import { invoke } from '@tauri-apps/api/core';
 import {
-  CheckCircle,
-  XCircle,
+  FlaskConical,
   Play,
-  Loader2,
+  RefreshCw,
+  FileBarChart,
   Stethoscope,
+  CheckCircle2,
 } from 'lucide-react';
-import clsx from 'clsx';
-import { testingLogger } from '../../lib/logger';
-import { api, isTauri, type ManagedEndpointStatus, type ProjectContext } from '../../lib/tauri';
 
-interface DiagnosticResult {
-  name: string;
-  passed: boolean;
-  message: string;
-  suggestion: string | null;
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+/** 概览统计 */
+const TEST_STATS = [
+  { label: '总用例', value: '1,461', color: 'var(--accent-cyan)' },
+  { label: '通过', value: '1,461', color: 'var(--accent-green)' },
+  { label: '失败', value: '0', color: 'var(--accent-red)' },
+  { label: '覆盖率', value: '73%', color: 'var(--accent-amber)' },
+];
+
+/** 测试模块 */
+interface TestModule { name: string; total: number; passed: number; status: 'pass' | 'partial' | 'fail' }
+const TEST_MODULES: TestModule[] = [
+  { name: 'core/路由引擎', total: 312, passed: 312, status: 'pass' },
+  { name: 'bots/Bot管理器', total: 245, passed: 245, status: 'pass' },
+  { name: 'handlers/消息处理', total: 398, passed: 398, status: 'pass' },
+  { name: 'services/AI集成', total: 187, passed: 187, status: 'pass' },
+  { name: 'services/渠道适配', total: 156, passed: 156, status: 'pass' },
+  { name: 'utils/工具函数', total: 163, passed: 163, status: 'pass' },
+];
+
+/** 快速操作 */
+interface QuickAction { label: string; desc: string; icon: typeof Play; color: string }
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: '运行全部测试', desc: 'pytest tests/ -x', icon: Play, color: 'var(--accent-green)' },
+  { label: '运行失败测试', desc: 'pytest --lf', icon: RefreshCw, color: 'var(--accent-amber)' },
+  { label: '生成覆盖率报告', desc: 'pytest --cov', icon: FileBarChart, color: 'var(--accent-cyan)' },
+  { label: '系统诊断', desc: 'run_doctor', icon: Stethoscope, color: 'var(--accent-purple)' },
+];
+
+/** 终端输出 */
+const TERMINAL_OUTPUT: { text: string; color?: string }[] = [
+  { text: '$ pytest tests/ -x --tb=short -q', color: 'var(--text-primary)' },
+  { text: '' },
+  { text: 'tests/core/test_router.py ............................ [312/1461]', color: 'var(--accent-green)' },
+  { text: 'tests/bots/test_manager.py .......................... [557/1461]', color: 'var(--accent-green)' },
+  { text: 'tests/handlers/test_message.py ...................... [955/1461]', color: 'var(--accent-green)' },
+  { text: 'tests/services/test_ai.py .......................... [1142/1461]', color: 'var(--accent-green)' },
+  { text: 'tests/services/test_channel.py ..................... [1298/1461]', color: 'var(--accent-green)' },
+  { text: 'tests/utils/test_helpers.py ........................ [1461/1461]', color: 'var(--accent-green)' },
+  { text: '' },
+  { text: '================================ 1461 passed in 23.4s ================================', color: 'var(--accent-green)' },
+  { text: '' },
+  { text: '---------- coverage: 73.2% ----------', color: 'var(--accent-amber)' },
+  { text: 'Name                           Stmts   Miss  Cover', color: 'var(--text-tertiary)' },
+  { text: '-----------------------------------------------', color: 'var(--text-disabled)' },
+  { text: 'src/core/router.py              245     12    95%', color: 'var(--text-tertiary)' },
+  { text: 'src/bots/manager.py             189     38    80%', color: 'var(--text-tertiary)' },
+  { text: 'src/handlers/message.py         312     98    69%', color: 'var(--text-tertiary)' },
+  { text: 'src/services/ai_pool.py         156     51    67%', color: 'var(--text-tertiary)' },
+  { text: '-----------------------------------------------', color: 'var(--text-disabled)' },
+  { text: 'TOTAL                          1847    497    73%', color: 'var(--accent-cyan)' },
+];
+
+/* ====== 工具函数 ====== */
+
+function moduleStatusStyle(s: TestModule['status']) {
+  switch (s) {
+    case 'pass': return { label: '全部通过', bg: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' };
+    case 'partial': return { label: '部分通过', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' };
+    case 'fail': return { label: '失败', bg: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)' };
+  }
 }
 
+/* ====== 主组件 ====== */
+
 export function Testing() {
-  const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResult[]>([]);
-  const [endpointResults, setEndpointResults] = useState<ManagedEndpointStatus[]>([]);
-  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const init = async () => {
-      // 非 Tauri 环境下跳过初始化，避免报错
-      if (!isTauri()) return;
-      try {
-        const [context, endpoints] = await Promise.all([
-          api.getProjectContext(),
-          api.getManagedEndpointsStatus(),
-        ]);
-        setProjectContext(context);
-        setEndpointResults(endpoints);
-      } catch (e) {
-        testingLogger.error('[Testing] 上下文初始化失败:', e);
-      }
-    };
-    init();
-  }, []);
-
-  const runDiagnostics = async () => {
-    testingLogger.action('运行系统诊断');
-    testingLogger.info('开始系统诊断...');
-    setLoading(true);
-    setDiagnosticResults([]);
-    try {
-      const [results, endpoints] = await Promise.all([
-        invoke<DiagnosticResult[]>('run_doctor'),
-        api.getManagedEndpointsStatus(),
-      ]);
-      testingLogger.info(`诊断完成，共 ${results.length} 项检查`);
-      const passed = results.filter(r => r.passed).length;
-      testingLogger.state('诊断结果', { total: results.length, passed, failed: results.length - passed });
-      setDiagnosticResults(results);
-      setEndpointResults(endpoints);
-    } catch (e) {
-      testingLogger.error('诊断执行失败', e);
-      setDiagnosticResults([{
-        name: '诊断执行',
-        passed: false,
-        message: String(e),
-        suggestion: '请检查 OpenClaw 是否正确安装',
-      }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 统计结果
-  const passedCount = diagnosticResults.filter(r => r.passed).length;
-  const failedCount = diagnosticResults.filter(r => !r.passed).length;
-
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2">
-      <div className="max-w-4xl space-y-6">
-        {/* 诊断测试 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                <Stethoscope size={20} className="text-purple-400" />
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 测试概览 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(6,182,212,0.15)' }}
+              >
+                <FlaskConical size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-white">系统诊断</h3>
-                <p className="text-xs text-gray-500">
-                  检查 OpenClaw 安装和配置状态
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  TEST RUNNER
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  测试诊断 // TEST RUNNER
                 </p>
               </div>
             </div>
-            <button
-              onClick={runDiagnostics}
-              disabled={loading}
-              className="btn-primary flex items-center gap-2"
-            >
-              {loading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Play size={16} />
-              )}
-              运行诊断
-            </button>
-          </div>
 
-          {/* 诊断结果统计 */}
-          {diagnosticResults.length > 0 && (
-            <div className="flex gap-4 mb-4 p-3 bg-dark-600 rounded-lg">
-              <div className="flex items-center gap-2">
-                <CheckCircle size={16} className="text-green-400" />
-                <span className="text-sm text-green-400">{passedCount} 项通过</span>
-              </div>
-              {failedCount > 0 && (
-                <div className="flex items-center gap-2">
-                  <XCircle size={16} className="text-red-400" />
-                  <span className="text-sm text-red-400">{failedCount} 项失败</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 诊断结果列表 */}
-          {diagnosticResults.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-2"
-            >
-              {diagnosticResults.map((result, index) => (
+            {/* 统计指标 */}
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              {TEST_STATS.map((s) => (
                 <div
-                  key={index}
-                  className={clsx(
-                    'flex items-start gap-3 p-3 rounded-lg',
-                    result.passed ? 'bg-green-500/10' : 'bg-red-500/10'
-                  )}
+                  key={s.label}
+                  className="rounded-lg p-3"
+                  style={{ background: 'var(--bg-secondary)' }}
                 >
-                  {result.passed ? (
-                    <CheckCircle size={18} className="text-green-400 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <XCircle size={18} className="text-red-400 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={clsx(
-                        'text-sm font-medium',
-                        result.passed ? 'text-green-400' : 'text-red-400'
-                      )}
-                    >
-                      {result.name}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1 whitespace-pre-wrap break-words">{result.message}</p>
-                    {result.suggestion && (
-                      <p className="text-xs text-amber-400 mt-1">
-                        💡 {result.suggestion}
-                      </p>
-                    )}
-                  </div>
+                  <span className="text-label">{s.label}</span>
+                  <p className="text-metric mt-1" style={{ color: s.color, fontSize: '22px' }}>
+                    {s.value}
+                  </p>
                 </div>
               ))}
-            </motion.div>
-          )}
-
-          {/* 空状态 */}
-          {diagnosticResults.length === 0 && !loading && (
-            <div className="text-center py-8 text-gray-500">
-              <Stethoscope size={48} className="mx-auto mb-3 opacity-30" />
-              <p>点击"运行诊断"按钮开始检查系统状态</p>
             </div>
-          )}
-        </div>
 
-        {/* 说明 */}
-        <div className="bg-dark-700/50 rounded-xl p-4 border border-dark-500">
-          <h4 className="text-sm font-medium text-gray-400 mb-2">诊断说明</h4>
-          <ul className="text-sm text-gray-500 space-y-1">
-            <li>• 系统诊断会检查 Node.js、OpenClaw 安装、配置文件等状态</li>
-            <li>• 当前项目路径: <span className="text-claw-400">{projectContext?.project_base_dir ?? '加载中...'}</span></li>
-            <li>• 当前配置文件: <span className="text-claw-400">{projectContext?.config_file ?? '加载中...'}</span></li>
-            <li>• 关键端点可用性: <span className="text-claw-400">{endpointResults.filter((item) => item.healthy).length}/{endpointResults.length || 0}</span></li>
-            <li>• AI 连接测试请前往 <span className="text-claw-400">AI 配置</span> 页面进行</li>
-            <li>• 渠道测试请前往 <span className="text-claw-400">消息渠道</span> 页面进行</li>
-          </ul>
-        </div>
-      </div>
+            {/* 模块列表 */}
+            <div className="flex-1">
+              <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>测试模块</span>
+              <div className="space-y-1.5">
+                {TEST_MODULES.map((mod) => {
+                  const ms = moduleStatusStyle(mod.status);
+                  return (
+                    <div
+                      key={mod.name}
+                      className="flex items-center gap-3 py-2.5 px-4 rounded-lg"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <CheckCircle2 size={14} style={{ color: ms.color, flexShrink: 0 }} />
+                      <span className="font-mono text-xs font-bold flex-1" style={{ color: 'var(--text-primary)' }}>
+                        {mod.name}
+                      </span>
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        {mod.passed}/{mod.total}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider flex-shrink-0"
+                        style={{ background: ms.bg, color: ms.color }}
+                      >
+                        {ms.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 快速操作 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(168,85,247,0.15)' }}
+              >
+                <Play size={20} style={{ color: 'var(--accent-purple)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  快速操作
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  QUICK ACTIONS
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-3">
+              {QUICK_ACTIONS.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <button
+                    key={action.label}
+                    className="w-full flex items-center gap-3 py-3.5 px-4 rounded-lg transition-all"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: `color-mix(in srgb, ${action.color} 15%, transparent)` }}
+                    >
+                      <Icon size={16} style={{ color: action.color }} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                        {action.label}
+                      </p>
+                      <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        {action.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 最近测试结果 (col-12) ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <div className="abyss-card flex flex-col" style={{ background: 'rgba(5,5,12,0.95)' }}>
+            {/* 终端标题栏 */}
+            <div
+              className="flex items-center gap-3 px-5 py-3 border-b"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              <div className="flex gap-1.5">
+                <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent-red)' }} />
+                <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent-amber)' }} />
+                <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent-green)' }} />
+              </div>
+              <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                测试输出
+              </span>
+              <span className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                TEST OUTPUT
+              </span>
+            </div>
+
+            {/* 终端内容 */}
+            <div className="p-5 max-h-[360px] overflow-y-auto scroll-container">
+              <div className="space-y-0.5">
+                {TERMINAL_OUTPUT.map((line, i) => (
+                  <div key={i} className="font-mono text-[12px] leading-relaxed whitespace-pre">
+                    {line.text ? (
+                      <span style={{ color: line.color || 'var(--text-tertiary)' }}>{line.text}</span>
+                    ) : (
+                      <br />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

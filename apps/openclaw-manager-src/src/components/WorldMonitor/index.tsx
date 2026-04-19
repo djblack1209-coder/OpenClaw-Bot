@@ -26,8 +26,8 @@ import {
   Map,
 } from 'lucide-react';
 
-/* ====== TopoJSON 地图源 — Natural Earth 110m 分辨率 ====== */
-const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+/* ====== TopoJSON 地图源 — 本地打包，避免 Tauri CSP 拦截 ====== */
+const GEO_URL = '/countries-110m.json';
 
 /* ====== 入场动画配置（与 Home 一致） ====== */
 const containerVariants = {

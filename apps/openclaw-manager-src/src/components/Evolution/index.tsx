@@ -1,608 +1,311 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { toast } from 'sonner';
-
-import {
-  Dna, RefreshCw, WifiOff, Loader2, Scan,
-  Star, TrendingUp, AlertTriangle, CheckCircle2,
-  XCircle, Package, Target, Zap,
-} from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  api, isTauri,
-  type EvolutionStatsRaw, type EvolutionGapsRaw, type EvolutionProposalsRaw,
-  type CapabilityGapRaw, type EvolutionProposalRaw,
-} from '../../lib/tauri';
-import { createLogger } from '@/lib/logger';
-
-// 进化模块日志实例
-const evolutionLogger = createLogger('Evolution');
+/**
+ * Evolution — 进化引擎页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import {
+  Dna, Zap, TrendingUp, CheckCircle2,
+  Clock, ArrowUpRight, Sparkles, Terminal,
+} from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────
-
-interface EvolutionStats {
-  total_proposals: number;
-  total_scans: number;
-  capability_gaps: number;
-  last_scan?: string;
-  approved?: number;
-  rejected?: number;
-  pending?: number;
-}
-
-interface CapabilityGap {
-  module: string;
-  description: string;
-  priority?: string;
-  discovered_at?: string;
-}
-
-interface EvolutionProposal {
-  id?: string;
-  repo_name: string;
-  repo_url?: string;
-  stars?: number;
-  growth_rate?: number;
-  target_module: string;
-  value_score: number;
-  difficulty_score?: number;
-  risk_level: string;
-  integration_approach?: string;
-  status: string;
-  created_at?: string;
-}
-
-// ─── Constants ────────────────────────────────────────────────
-
-const REFRESH_INTERVAL = 60_000;
-
-const MODULE_COLORS: Record<string, { bg: string; text: string }> = {
-  trading:    { bg: 'bg-amber-500/15',  text: 'text-amber-400' },
-  social:     { bg: 'bg-blue-500/15',   text: 'text-blue-400' },
-  memory:     { bg: 'bg-purple-500/15', text: 'text-purple-400' },
-  evolution:  { bg: 'bg-green-500/15',  text: 'text-green-400' },
-  core:       { bg: 'bg-cyan-500/15',   text: 'text-cyan-400' },
-  analytics:  { bg: 'bg-pink-500/15',   text: 'text-pink-400' },
-  security:   { bg: 'bg-red-500/15',    text: 'text-red-400' },
-  default:    { bg: 'bg-gray-500/15',   text: 'text-gray-400' },
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
-function getModuleColor(mod: string) {
-  return MODULE_COLORS[mod.toLowerCase()] ?? MODULE_COLORS.default;
-}
-
-const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  LOW:    { bg: 'bg-green-500/15',  text: 'text-green-400',  border: 'border-green-500/30' },
-  MEDIUM: { bg: 'bg-amber-500/15',  text: 'text-amber-400',  border: 'border-amber-500/30' },
-  HIGH:   { bg: 'bg-red-500/15',    text: 'text-red-400',    border: 'border-red-500/30' },
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-function getRiskColor(level: string) {
-  return RISK_COLORS[level.toUpperCase()] ?? RISK_COLORS.MEDIUM;
+/* ====== 模拟数据 ====== */
+
+/** 进化状态记录 */
+interface EvolutionRecord {
+  time: string;
+  type: string;
+  typeColor: string;
+  desc: string;
+  status: '成功' | '执行中' | '已跳过';
 }
 
-const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  pending:  { bg: 'bg-amber-500/15',  text: 'text-amber-400',  border: 'border-amber-500/30' },
-  approved: { bg: 'bg-green-500/15',  text: 'text-green-400',  border: 'border-green-500/30' },
-  rejected: { bg: 'bg-red-500/15',    text: 'text-red-400',    border: 'border-red-500/30' },
-  merged:   { bg: 'bg-blue-500/15',   text: 'text-blue-400',   border: 'border-blue-500/30' },
-};
+const RECORDS: EvolutionRecord[] = [
+  { time: '14:32', type: '性能优化', typeColor: 'var(--accent-green)', desc: '缓存策略升级 — LRU → LFU，命中率 +18%', status: '成功' },
+  { time: '13:15', type: '依赖更新', typeColor: 'var(--accent-cyan)', desc: 'litellm 1.56 → 1.61，修复 token 计数偏移', status: '成功' },
+  { time: '12:47', type: '架构优化', typeColor: 'var(--accent-purple)', desc: '消息队列拆分为独立 worker，吞吐量 +35%', status: '执行中' },
+  { time: '11:20', type: '安全修复', typeColor: 'var(--accent-red)', desc: '修补 JWT 过期校验漏洞 CVE-2026-0412', status: '成功' },
+  { time: '09:05', type: '资源回收', typeColor: 'var(--accent-amber)', desc: '清理 3 个废弃插件，释放 120MB 内存', status: '已跳过' },
+];
 
-function getStatusColor(status: string) {
-  return STATUS_COLORS[status.toLowerCase()] ?? STATUS_COLORS.pending;
+/** 待执行优化 */
+interface PendingOptimization {
+  priority: '高' | '中' | '低';
+  desc: string;
+  benefit: string;
 }
 
-// ─── Component ────────────────────────────────────────────────
+const PENDING: PendingOptimization[] = [
+  { priority: '高', desc: '数据库连接池动态扩缩容', benefit: '预估降低 40% 连接超时' },
+  { priority: '中', desc: 'API 响应压缩启用 Brotli', benefit: '带宽节省约 25%' },
+  { priority: '低', desc: '日志采集切换到异步写入', benefit: '减少主线程阻塞 8ms' },
+];
+
+/** 进化日志 */
+const LOGS = [
+  { ts: '14:32:18', msg: '[EVOLVE] 缓存策略优化完成 — 命中率 72% → 90%' },
+  { ts: '13:15:42', msg: '[DEPS]   litellm 升级到 1.61.2 — 通过回归测试' },
+  { ts: '12:47:05', msg: '[ARCH]   启动消息队列拆分 — 预估耗时 12min' },
+  { ts: '11:20:33', msg: '[SEC]    JWT 漏洞已修补 — 签发新令牌' },
+  { ts: '09:05:11', msg: '[CLEAN]  跳过资源回收 — 内存占用未达阈值' },
+  { ts: '08:00:00', msg: '[CYCLE]  第 47 轮进化周期启动 — 扫描 6 个模块' },
+];
+
+/* ====== 工具函数 ====== */
+
+/** 优先级颜色 */
+function priorityColor(p: string) {
+  if (p === '高') return 'var(--accent-red)';
+  if (p === '中') return 'var(--accent-amber)';
+  return 'var(--accent-green)';
+}
+
+/** 状态显示 */
+function statusStyle(s: EvolutionRecord['status']) {
+  switch (s) {
+    case '成功': return { color: 'var(--accent-green)', Icon: CheckCircle2 };
+    case '执行中': return { color: 'var(--accent-cyan)', Icon: Zap };
+    case '已跳过': return { color: 'var(--text-disabled)', Icon: Clock };
+  }
+}
+
+/* ====== 主组件 ====== */
 
 export function Evolution() {
-  const [stats, setStats] = useState<EvolutionStats | null>(null);
-  const [gaps, setGaps] = useState<CapabilityGap[]>([]);
-  const [proposals, setProposals] = useState<EvolutionProposal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [apiOnline, setApiOnline] = useState(true);
-  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
-
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Fetch all data ─────────────────────────────────────────
-
-  const fetchAll = useCallback(async (silent = false) => {
-    if (!isTauri()) {
-      setLoading(false);
-      return;
-    }
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-
-    try {
-      const [rawStats, rawGaps, rawProposals] = await Promise.allSettled([
-        api.clawbotEvolutionStats(),
-        api.clawbotEvolutionGaps(),
-        api.clawbotEvolutionProposals(),
-      ]);
-
-      // 统计数据
-      if (rawStats.status === 'fulfilled' && rawStats.value) {
-        const s: EvolutionStatsRaw = rawStats.value;
-        // 兼容 by_status 嵌套结构和顶层字段
-        const byStatus = (s as Record<string, unknown>).by_status as Record<string, number> | undefined;
-        setStats({
-          total_proposals: (s.total_proposals ?? s.proposals_count ?? 0),
-          total_scans: (s.total_scans ?? s.scans_count ?? 0),
-          capability_gaps: (s.capability_gaps ?? s.gaps_count ?? 0),
-          // 后端字段名为 last_scan_time，前端兼容多种命名
-          last_scan: s.last_scan ?? s.last_scan_at
-            ?? (s as Record<string, unknown>).last_scan_time as string | undefined
-            ?? undefined,
-          approved: s.approved ?? byStatus?.approved ?? undefined,
-          rejected: s.rejected ?? byStatus?.rejected ?? undefined,
-          pending: s.pending ?? byStatus?.pending ?? byStatus?.proposed ?? undefined,
-        });
-      }
-
-      // 差距分析 — 兼容扁平数组和 {gaps:[]} / {data:[]} 包装对象
-      if (rawGaps.status === 'fulfilled' && rawGaps.value) {
-        const rawVal = rawGaps.value;
-        const gapList: CapabilityGapRaw[] = Array.isArray(rawVal)
-          ? rawVal
-          : ((rawVal as EvolutionGapsRaw)?.gaps ?? (rawVal as EvolutionGapsRaw)?.data ?? []);
-        setGaps(
-          gapList.map((g) => ({
-            module: (g.module ?? g.category ?? 'unknown'),
-            description: (g.description ?? g.gap ?? g.name ?? ''),
-            priority: g.priority ?? g.severity,
-            discovered_at: g.discovered_at ?? g.created_at,
-          }))
-        );
-      }
-
-      // 提案列表 — 兼容扁平数组和 {proposals:[]} / {data:[]} 包装对象
-      if (rawProposals.status === 'fulfilled' && rawProposals.value) {
-        const rawVal = rawProposals.value;
-        const propList: EvolutionProposalRaw[] = Array.isArray(rawVal)
-          ? rawVal
-          : ((rawVal as EvolutionProposalsRaw)?.proposals ?? (rawVal as EvolutionProposalsRaw)?.data ?? []);
-        setProposals(
-          propList.map((p) => ({
-            id: p.id ?? p.proposal_id,
-            repo_name: (p.repo_name ?? p.repo ?? p.name ?? 'unknown'),
-            repo_url: p.repo_url ?? p.url,
-            stars: p.stars ?? p.stargazers_count,
-            growth_rate: p.growth_rate ?? p.weekly_growth,
-            target_module: (p.target_module ?? p.module ?? 'core'),
-            value_score: (p.value_score ?? p.score ?? 0),
-            difficulty_score: p.difficulty_score ?? p.difficulty,
-            risk_level: (p.risk_level ?? p.risk ?? 'MEDIUM'),
-            integration_approach: p.integration_approach ?? p.approach,
-            status: (p.status ?? 'pending'),
-            created_at: p.created_at,
-          }))
-        );
-      }
-
-      setApiOnline(true);
-    } catch {
-      setApiOnline(false);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  // ── Scan now ───────────────────────────────────────────────
-
-  const handleScan = useCallback(async () => {
-    if (!isTauri() || scanning) return;
-    setScanning(true);
-    try {
-      await api.clawbotEvolutionScan();
-      setApiOnline(true);
-      // 扫描后刷新数据
-      await fetchAll(true);
-      toast.success('扫描完成，已更新进化提案列表');
-    } catch {
-      setApiOnline(false);
-      toast.error('扫描失败，请检查网络连接');
-    } finally {
-      setScanning(false);
-    }
-  }, [scanning, fetchAll]);
-
-  // ── Auto-refresh ──────────────────────────────────────────
-
-  useEffect(() => {
-    fetchAll();
-    timerRef.current = setInterval(() => fetchAll(true), REFRESH_INTERVAL);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [fetchAll]);
-
-  // ── Render ────────────────────────────────────────────────
-
   return (
-    <div className="h-full flex flex-col gap-6 max-w-6xl mx-auto overflow-y-auto scroll-container pr-2 pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Dna className="text-green-400" />
-            自进化引擎
-          </h1>
-          <p className="text-gray-400 mt-1">
-            自动扫描开源生态，发现能力缺口，生成进化提案。
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchAll(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-white transition-colors border border-dark-500"
-          >
-            <RefreshCw size={16} className={clsx((loading || refreshing) && 'animate-spin')} />
-            刷新
-          </button>
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:hover:bg-green-600 rounded-lg text-white transition-colors"
-          >
-            {scanning ? <Loader2 size={16} className="animate-spin" /> : <Scan size={16} />}
-            立即扫描
-          </button>
-        </div>
-      </div>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 进化状态 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            {/* 标题行 */}
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,255,170,0.12)' }}
+              >
+                <Dna size={20} style={{ color: 'var(--accent-green)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  AUTO-EVOLUTION
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  进化引擎 // SELF-OPTIMIZATION
+                </p>
+              </div>
+            </div>
 
-      {/* Offline Banner */}
-      {!apiOnline && !loading && (
-        <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-400">
-          <WifiOff size={18} />
-          <span className="text-sm font-medium">ClawBot API 离线 — 自进化引擎不可达</span>
-          <button
-            onClick={() => fetchAll()}
-            className="ml-auto text-xs bg-amber-500/20 hover:bg-amber-500/30 px-3 py-1 rounded-full transition-colors"
-          >
-            重试
-          </button>
-        </div>
-      )}
+            {/* 进化周期指标 */}
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              {[
+                { label: '当前周期', value: '第 47 轮', color: 'var(--accent-cyan)' },
+                { label: '发现机会', value: '12', color: 'var(--accent-amber)' },
+                { label: '已执行优化', value: '8', color: 'var(--accent-green)' },
+                { label: '成功率', value: '87.5%', color: 'var(--accent-green)' },
+              ].map((m) => (
+                <div key={m.label}>
+                  <span className="text-label">{m.label}</span>
+                  <p className="font-mono text-sm font-bold mt-1" style={{ color: m.color }}>
+                    {m.value}
+                  </p>
+                </div>
+              ))}
+            </div>
 
-      {/* Stats Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatsCard
-          icon={<Target size={20} className="text-blue-400" />}
-          label="总提案数"
-          value={stats?.total_proposals}
-          loading={loading}
-        />
-        <StatsCard
-          icon={<Scan size={20} className="text-green-400" />}
-          label="总扫描次数"
-          value={stats?.total_scans}
-          loading={loading}
-        />
-        <StatsCard
-          icon={<AlertTriangle size={20} className="text-amber-400" />}
-          label="能力缺口"
-          value={stats?.capability_gaps}
-          loading={loading}
-        />
-      </div>
-
-      {/* Last scan info */}
-      {stats?.last_scan && (
-        <div className="text-xs text-gray-500 flex items-center gap-1.5">
-          <Zap size={12} />
-          上次扫描: {new Date(stats.last_scan).toLocaleString()}
-        </div>
-      )}
-
-      {/* Capability Gaps Section */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-          <AlertTriangle size={18} className="text-amber-400" />
-          能力缺口
-        </h2>
-        {loading ? (
-          <SkeletonList count={3} />
-        ) : gaps.length === 0 ? (
-          <div className="text-center py-10 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
-            未发现能力缺口
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {gaps.map((gap, idx) => {
-              const color = getModuleColor(gap.module);
-              return (
-                <Card key={idx} className="bg-dark-800 border border-dark-600 hover:border-dark-400 transition-all">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={clsx(
-                          'px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase shrink-0',
-                          color.bg,
-                          color.text,
-                        )}
-                      >
-                        {gap.module}
+            {/* 最近进化记录 */}
+            <span className="text-label mb-2" style={{ color: 'var(--text-tertiary)' }}>
+              RECENT EVOLUTION
+            </span>
+            <div className="flex-1 space-y-1.5">
+              {RECORDS.map((r, i) => {
+                const ss = statusStyle(r.status);
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 py-2.5 px-3 rounded-lg"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    <span className="font-mono text-[10px] w-10 shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                      {r.time}
+                    </span>
+                    <span
+                      className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider shrink-0"
+                      style={{ background: `${r.typeColor}15`, color: r.typeColor }}
+                    >
+                      {r.type}
+                    </span>
+                    <span className="font-mono text-xs flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                      {r.desc}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <ss.Icon size={12} style={{ color: ss.color }} />
+                      <span className="font-mono text-[10px]" style={{ color: ss.color }}>
+                        {r.status}
                       </span>
-                      <span className="text-sm text-gray-200 flex-1">{gap.description}</span>
-                      {gap.priority && (
-                        <span className="text-[10px] text-gray-500 uppercase tracking-wider shrink-0">
-                          {gap.priority}
-                        </span>
-                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </section>
+        </motion.div>
 
-      {/* Proposals Section */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-          <Package size={18} className="text-blue-400" />
-          进化提案
-          {proposals.length > 0 && (
-            <span className="text-xs text-gray-500 font-normal ml-1">({proposals.length})</span>
-          )}
-        </h2>
-        {loading ? (
-          <SkeletonList count={4} />
-        ) : proposals.length === 0 ? (
-          <div className="text-center py-10 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
-            暂无提案 — 运行扫描以发现潜在集成
+        {/* ====== 进化指标 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+              EVOLUTION METRICS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              进化指标
+            </h3>
+
+            <div className="space-y-5 flex-1">
+              {/* 系统评分 */}
+              <div>
+                <span className="text-label">系统评分</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-metric" style={{ color: 'var(--accent-green)' }}>8.4</span>
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>/10</span>
+                </div>
+                {/* 评分条 */}
+                <div className="w-full h-2 rounded-full mt-2" style={{ background: 'var(--bg-tertiary)' }}>
+                  <div className="h-full rounded-full" style={{ width: '84%', background: 'var(--accent-green)' }} />
+                </div>
+              </div>
+
+              {/* 本周优化 */}
+              <div>
+                <span className="text-label">本周优化</span>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-metric" style={{ color: 'var(--accent-cyan)' }}>23</span>
+                  <span className="font-mono text-[10px] flex items-center gap-0.5" style={{ color: 'var(--accent-green)' }}>
+                    <ArrowUpRight size={10} /> +15%
+                  </span>
+                </div>
+              </div>
+
+              {/* 性能提升 */}
+              <div>
+                <span className="text-label">性能提升</span>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-metric" style={{ color: 'var(--accent-amber)' }}>+12%</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>对比上周</span>
+                </div>
+              </div>
+
+              {/* 资源节省 */}
+              <div>
+                <span className="text-label">资源节省</span>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-metric" style={{ color: 'var(--accent-purple)' }}>¥340</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>本月累计</span>
+                </div>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {proposals.map((p, idx) => {
-              const modColor = getModuleColor(p.target_module);
-              const riskColor = getRiskColor(p.risk_level);
-              const statusColor = getStatusColor(p.status);
+        </motion.div>
 
-              return (
-                <Card key={p.id ?? idx} className="bg-dark-800 border border-dark-600 hover:border-dark-400 transition-all">
-                  <CardContent className="p-4 space-y-3">
-                    {/* Top row: repo info + badges */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Repo name */}
-                          <span className="text-white font-medium text-sm">
-                            {p.repo_url ? (
-                              <a
-                                href={p.repo_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:text-green-400 transition-colors"
-                              >
-                                {p.repo_name}
-                              </a>
-                            ) : (
-                              p.repo_name
-                            )}
-                          </span>
+        {/* ====== 待执行优化 (col-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
+              PENDING OPTIMIZATIONS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              待执行优化
+            </h3>
 
-                          {/* Stars */}
-                          {p.stars != null && (
-                            <span className="flex items-center gap-1 text-xs text-gray-500">
-                              <Star size={11} className="text-yellow-500" />
-                              {p.stars >= 1000 ? `${(p.stars / 1000).toFixed(1)}k` : p.stars}
-                            </span>
-                          )}
-
-                          {/* Growth rate */}
-                          {p.growth_rate != null && (
-                            <span className="flex items-center gap-1 text-xs text-green-400">
-                              <TrendingUp size={11} />
-                              {p.growth_rate > 0 ? '+' : ''}
-                              {(p.growth_rate > 1 ? p.growth_rate : p.growth_rate * 100).toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right badges */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {/* Module badge */}
-                        <span
-                          className={clsx(
-                            'px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase',
-                            modColor.bg,
-                            modColor.text,
-                          )}
-                        >
-                          {p.target_module}
-                        </span>
-                        {/* Risk badge */}
-                        <span
-                          className={clsx(
-                            'px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase border',
-                            riskColor.bg,
-                            riskColor.text,
-                            riskColor.border,
-                          )}
-                        >
-                          {p.risk_level}
-                        </span>
-                        {/* Status badge */}
-                        <span
-                          className={clsx(
-                            'px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase border',
-                            statusColor.bg,
-                            statusColor.text,
-                            statusColor.border,
-                          )}
-                        >
-                          {p.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Scores row */}
-                    <div className="flex items-center gap-6">
-                      {/* Value score */}
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-xs text-gray-500 shrink-0 w-12">价值</span>
-                        <div className="flex-1 h-2 bg-dark-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-green-500 rounded-full transition-all"
-                            style={{ width: `${Math.min(p.value_score > 1 ? p.value_score : p.value_score * 100, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-green-400 font-mono w-10 text-right">
-                          {(p.value_score > 1 ? p.value_score : p.value_score * 100).toFixed(0)}
-                        </span>
-                      </div>
-                      {/* Difficulty score */}
-                      {p.difficulty_score != null && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">难度</span>
-                          <span className="text-xs text-gray-300 font-mono">
-                            {typeof p.difficulty_score === 'number' && p.difficulty_score <= 1
-                              ? (p.difficulty_score * 10).toFixed(1)
-                              : p.difficulty_score}
-                            /10
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Integration approach */}
-                    {p.integration_approach && (
-                      <p className="text-xs text-gray-400 leading-relaxed">
-                        <span className="text-gray-500">方案:</span> {p.integration_approach}
-                      </p>
-                    )}
-
-                    {/* 创建时间 */}
-                    {p.created_at && (
-                      <p className="text-[10px] text-gray-600">
-                        发现于 {new Date(p.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })} {new Date(p.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                      </p>
-                    )}
-
-                    {/* Actions (only for pending) */}
-                    {p.status.toLowerCase() === 'pending' && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => handleApprove(p.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs rounded-lg transition-colors border border-green-500/30"
-                        >
-                          <CheckCircle2 size={13} />
-                          批准
-                        </button>
-                        <button
-                          onClick={() => setRejectTarget(p.id ?? null)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs rounded-lg transition-colors border border-red-500/30"
-                        >
-                          <XCircle size={13} />
-                          拒绝
-                        </button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+            <div className="flex-1 space-y-2">
+              {PENDING.map((p, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 py-3 px-4 rounded-lg"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <span
+                    className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider mt-0.5 shrink-0"
+                    style={{
+                      background: `${priorityColor(p.priority)}15`,
+                      color: priorityColor(p.priority),
+                    }}
+                  >
+                    {p.priority}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                      {p.desc}
+                    </p>
+                    <p className="font-mono text-[10px] mt-1 flex items-center gap-1" style={{ color: 'var(--text-disabled)' }}>
+                      <Sparkles size={10} style={{ color: 'var(--accent-amber)' }} />
+                      {p.benefit}
+                    </p>
+                  </div>
+                  <TrendingUp size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-green)' }} />
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-      </section>
+        </motion.div>
 
-      {/* 拒绝提案确认弹窗 */}
-      <ConfirmDialog
-        open={rejectTarget !== null}
-        onClose={() => setRejectTarget(null)}
-        onConfirm={() => {
-          if (rejectTarget) handleReject(rejectTarget);
-          setRejectTarget(null);
-        }}
-        title="拒绝提案"
-        description="确定要拒绝该进化提案吗？此操作不可撤销。"
-        confirmText="拒绝"
-        destructive
-      />
-    </div>
-  );
+        {/* ====== 进化日志 (col-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                  EVOLUTION LOG
+                </span>
+                <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
+                  进化日志
+                </h3>
+              </div>
+              <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
+                <Terminal size={12} className="inline mr-1" />LIVE
+              </span>
+            </div>
 
-  // ── 提案操作处理 ───
-
-  async function handleApprove(id?: string) {
-    if (!id) return;
-    try {
-      await api.clawbotEvolutionUpdateProposal(id, 'approved');
-      setProposals((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, status: 'approved' } : p))
-      );
-      toast.success('提案已批准');
-    } catch (err) {
-      evolutionLogger.error('审批提案失败:', err);
-      toast.error('审批通过失败: ' + (err instanceof Error ? err.message : '未知错误'));
-    }
-  }
-
-  async function handleReject(id?: string) {
-    if (!id) return;
-    try {
-      await api.clawbotEvolutionUpdateProposal(id, 'rejected');
-      setProposals((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, status: 'rejected' } : p))
-      );
-    } catch (err) {
-      evolutionLogger.error('拒绝提案失败:', err);
-      toast.error('审批拒绝失败: ' + (err instanceof Error ? err.message : '未知错误'));
-    }
-  }
-}
-
-// ─── Sub-components ─────────────────────────────────────────
-
-function StatsCard({
-  icon,
-  label,
-  value,
-  loading,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value?: number;
-  loading: boolean;
-}) {
-  return (
-    <Card className="bg-dark-800 border-dark-600">
-      <CardContent className="p-4 flex items-center gap-4">
-        <div className="p-2.5 bg-dark-700 rounded-lg">{icon}</div>
-        <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
-          {loading ? (
-            <div className="w-12 h-6 rounded bg-dark-700 animate-pulse mt-1" />
-          ) : (
-            <p className="text-xl font-mono text-white mt-0.5">
-              {value != null ? value.toLocaleString() : '—'}
-            </p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SkeletonList({ count }: { count: number }) {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="p-4 rounded-lg bg-dark-800 border border-dark-700/50 animate-pulse">
-          <div className="flex items-center gap-3">
-            <div className="w-16 h-5 rounded bg-dark-700" />
-            <div className="w-full h-4 rounded bg-dark-700" />
+            <div
+              className="flex-1 rounded-lg p-4 space-y-1.5 overflow-hidden"
+              style={{ background: 'var(--bg-base)' }}
+            >
+              {LOGS.map((l, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="font-mono text-[10px] shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                    {l.ts}
+                  </span>
+                  <span
+                    className={clsx('font-mono text-[11px] leading-relaxed')}
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {l.msg}
+                  </span>
+                </div>
+              ))}
+              <span className="font-mono text-[10px] animate-pulse" style={{ color: 'var(--accent-green)' }}>
+                █
+              </span>
+            </div>
           </div>
-        </div>
-      ))}
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
