@@ -2,8 +2,9 @@
  * NewsFeed — 新闻聚合中心
  * 12 列 Bento Grid 布局，Sonic Abyss 终端美学
  * 包含：新闻列表、威胁雷达、来源排行、分类统计、AI 摘要
+ * 数据来自后端 /api/v1/monitor/news，每 30 秒自动刷新
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import {
@@ -15,7 +16,13 @@ import {
   TrendingUp,
   AlertTriangle,
   Clock,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
+
+/* ====== 自动刷新间隔（毫秒） ====== */
+const REFRESH_INTERVAL = 30_000;
 
 /* ====== 类型定义 ====== */
 
@@ -29,13 +36,25 @@ type NewsCategory =
   | 'MILITARY'
   | 'ENERGY';
 
-/** 单条新闻 */
+/** API 返回的新闻条目 */
+interface NewsApiItem {
+  title: string;
+  source: string;
+  category: string;
+  published_at: string;
+  summary: string;
+  threat_level: string;
+}
+
+/** 内部显示用的新闻条目 */
 interface NewsItem {
   id: string;
   source: string;
   title: string;
+  summary: string;
   timeAgo: string;
   category: NewsCategory;
+  threatLevel: string;
 }
 
 /** 威胁等级 */
@@ -65,98 +84,33 @@ const CATEGORY_COLORS: Record<NewsCategory, string> = {
   ENERGY: 'var(--accent-purple)',
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 分类映射：API category 字符串 → 内部 NewsCategory ====== */
+function mapCategory(cat: string): NewsCategory {
+  const upper = cat.toUpperCase();
+  if (upper.includes('FINANCE') || upper.includes('ECON')) return 'FINANCE';
+  if (upper.includes('TECH') || upper.includes('AI') || upper.includes('CYBER')) return 'TECH';
+  if (upper.includes('GEOPOLIT') || upper.includes('POLITIC')) return 'GEOPOLITICS';
+  if (upper.includes('CRYPTO') || upper.includes('BITCOIN') || upper.includes('BLOCKCHAIN')) return 'CRYPTO';
+  if (upper.includes('MILIT') || upper.includes('DEFENSE') || upper.includes('WAR')) return 'MILITARY';
+  if (upper.includes('ENERGY') || upper.includes('OIL') || upper.includes('GAS')) return 'ENERGY';
+  return 'GEOPOLITICS'; // 默认归类
+}
 
-/** 8 条模拟新闻，覆盖不同分类 */
-const MOCK_NEWS: NewsItem[] = [
-  {
-    id: '1',
-    source: 'REUTERS',
-    title: 'Federal Reserve signals potential rate cut amid slowing inflation data',
-    timeAgo: '12 min ago',
-    category: 'FINANCE',
-  },
-  {
-    id: '2',
-    source: 'COINDESK',
-    title: 'Bitcoin surges past $98,000 as institutional inflows reach record high',
-    timeAgo: '24 min ago',
-    category: 'CRYPTO',
-  },
-  {
-    id: '3',
-    source: 'BBC WORLD',
-    title: 'EU imposes new sanctions on Russian energy exports amid escalating tensions',
-    timeAgo: '38 min ago',
-    category: 'GEOPOLITICS',
-  },
-  {
-    id: '4',
-    source: 'TECHCRUNCH',
-    title: 'OpenAI announces GPT-5 with real-time multimodal reasoning capabilities',
-    timeAgo: '1 hr ago',
-    category: 'TECH',
-  },
-  {
-    id: '5',
-    source: 'BLOOMBERG',
-    title: 'NVIDIA market cap exceeds $5T on accelerating data center demand',
-    timeAgo: '1.5 hr ago',
-    category: 'FINANCE',
-  },
-  {
-    id: '6',
-    source: 'JANE\'S',
-    title: 'Pentagon awards $12B contract for next-generation autonomous drone fleet',
-    timeAgo: '2 hr ago',
-    category: 'MILITARY',
-  },
-  {
-    id: '7',
-    source: 'IEA',
-    title: 'Global renewable energy capacity surpasses fossil fuels for first time',
-    timeAgo: '3 hr ago',
-    category: 'ENERGY',
-  },
-  {
-    id: '8',
-    source: 'FT',
-    title: 'China central bank unexpectedly cuts reserve ratio to boost economic growth',
-    timeAgo: '4 hr ago',
-    category: 'FINANCE',
-  },
-];
-
-/** 模拟来源排行 */
-const MOCK_TOP_SOURCES: TopSource[] = [
-  { name: 'Reuters', count: 12 },
-  { name: 'BBC World', count: 8 },
-  { name: 'CoinDesk', count: 6 },
-  { name: 'Bloomberg', count: 5 },
-  { name: 'TechCrunch', count: 4 },
-  { name: 'Financial Times', count: 3 },
-];
-
-/** 模拟分类统计 */
-const MOCK_CATEGORY_STATS: CategoryStat[] = [
-  { name: 'Finance', count: 18, color: 'var(--accent-green)' },
-  { name: 'Tech', count: 14, color: 'var(--accent-cyan)' },
-  { name: 'Geopolitics', count: 11, color: 'var(--accent-red)' },
-  { name: 'Crypto', count: 9, color: 'var(--accent-amber)' },
-  { name: 'Military', count: 5, color: 'var(--accent-red)' },
-  { name: 'Energy', count: 4, color: 'var(--accent-purple)' },
-];
-
-/** 模拟热门话题 */
-const MOCK_TRENDING = [
-  { topic: 'Federal Reserve Policy', delta: '+340%' },
-  { topic: 'Bitcoin ETF Inflows', delta: '+210%' },
-  { topic: 'EU-Russia Sanctions', delta: '+180%' },
-];
-
-/** 模拟 AI 摘要 */
-const MOCK_AI_SUMMARY =
-  'Global markets are reacting strongly to the Federal Reserve\'s latest policy signals, with equity indices reaching new highs. Crypto markets continue their bullish momentum as institutional adoption accelerates. Geopolitical tensions between the EU and Russia are intensifying, with new sanctions targeting energy exports. Meanwhile, the AI sector sees major breakthroughs with GPT-5 launch driving tech valuations higher.';
+/** 把 ISO 时间转为 "X min ago / X hr ago" */
+function timeAgo(isoStr: string): string {
+  try {
+    const diff = Date.now() - new Date(isoStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch {
+    return '—';
+  }
+}
 
 /* ====== 入场动画配置 ====== */
 const containerVariants = {
@@ -191,33 +145,205 @@ const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string }> = {
   ELEVATED: { color: 'var(--accent-red)', bg: 'rgba(248, 113, 113, 0.08)' },
 };
 
-/* ====== 新闻威胁计数 ====== */
-const THREAT_COUNTS = {
-  critical: 2,
-  high: 5,
-  medium: 12,
-  low: 42,
-};
+/* ====== 错误/加载状态组件 ====== */
+function LoadingState({ message = '数据加载中...' }: { message?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-8">
+      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{message}</span>
+    </div>
+  );
+}
+
+function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-8">
+      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
+      <button
+        onClick={onRetry}
+        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
+        style={{
+          background: 'rgba(255, 0, 60, 0.1)',
+          color: 'var(--accent-red)',
+          border: '1px solid rgba(255, 0, 60, 0.25)',
+        }}
+      >
+        <RefreshCw size={12} className="inline mr-1.5" />
+        重试
+      </button>
+    </div>
+  );
+}
 
 /**
  * NewsFeed 新闻聚合中心
  * 12 列 Bento Grid，融合 RSS 聚合 + AI 分析 + 威胁评估
+ * 数据来自 /api/v1/monitor/news
  */
 export function NewsFeed() {
-  /* 当前选中的分类筛选 */
+  /* ====== 状态 ====== */
   const [activeCategory, setActiveCategory] = useState<NewsCategory>('ALL');
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* 当前威胁等级（模拟） */
-  const threatLevel: ThreatLevel = 'MODERATE';
+  /** 从后端拉取新闻数据 */
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      const resp = await clawbotFetchJson<{ items: NewsApiItem[] }>(
+        '/api/v1/monitor/news?limit=50'
+      );
 
-  /* 根据分类过滤新闻列表 */
-  const filteredNews =
-    activeCategory === 'ALL'
-      ? MOCK_NEWS
-      : MOCK_NEWS.filter((n) => n.category === activeCategory);
+      const items: NewsItem[] = (resp.items ?? []).map((item, idx) => ({
+        id: String(idx + 1),
+        source: item.source?.toUpperCase() ?? 'UNKNOWN',
+        title: item.title ?? '',
+        summary: item.summary ?? '',
+        timeAgo: timeAgo(item.published_at),
+        category: mapCategory(item.category ?? ''),
+        threatLevel: item.threat_level ?? 'low',
+      }));
 
-  /* 分类统计最大值，用于横向条占比计算 */
-  const maxCategoryCount = Math.max(...MOCK_CATEGORY_STATS.map((c) => c.count));
+      setNewsItems(items);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* 首次加载 + 定时刷新 */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(fetchData, REFRESH_INTERVAL);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ====== 衍生数据 ====== */
+
+  /** 根据分类过滤新闻列表 */
+  const filteredNews = useMemo(() => {
+    if (activeCategory === 'ALL') return newsItems;
+    return newsItems.filter((n) => n.category === activeCategory);
+  }, [newsItems, activeCategory]);
+
+  /** 从新闻条目中计算来源排行 */
+  const topSources = useMemo<TopSource[]>(() => {
+    const counts: Record<string, number> = {};
+    for (const item of newsItems) {
+      const src = item.source || 'UNKNOWN';
+      counts[src] = (counts[src] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [newsItems]);
+
+  /** 从新闻条目中计算分类统计 */
+  const categoryStats = useMemo<CategoryStat[]>(() => {
+    const colorMap: Record<string, string> = {
+      FINANCE: 'var(--accent-green)',
+      TECH: 'var(--accent-cyan)',
+      GEOPOLITICS: 'var(--accent-red)',
+      CRYPTO: 'var(--accent-amber)',
+      MILITARY: 'var(--accent-red)',
+      ENERGY: 'var(--accent-purple)',
+    };
+    const counts: Record<string, number> = {};
+    for (const item of newsItems) {
+      if (item.category !== 'ALL') {
+        counts[item.category] = (counts[item.category] || 0) + 1;
+      }
+    }
+    return Object.entries(counts)
+      .map(([name, count]) => ({
+        name,
+        count,
+        color: colorMap[name] || 'var(--text-tertiary)',
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [newsItems]);
+
+  /** 从新闻标题中提取热门话题（简单频率分析） */
+  const trending = useMemo(() => {
+    /* 统计分类出现频率，取变化最大的前 3 */
+    const catCounts: Record<string, number> = {};
+    for (const item of newsItems) {
+      if (item.category !== 'ALL') {
+        catCounts[item.category] = (catCounts[item.category] || 0) + 1;
+      }
+    }
+    return Object.entries(catCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([topic, count]) => ({
+        topic,
+        delta: `${count} 篇`,
+      }));
+  }, [newsItems]);
+
+  /** AI 摘要 — 组合前 3 条新闻的 summary */
+  const aiSummary = useMemo(() => {
+    const summaries = newsItems
+      .filter((n) => n.summary)
+      .slice(0, 3)
+      .map((n) => n.summary);
+    return summaries.length > 0
+      ? summaries.join(' ')
+      : '暂无摘要数据';
+  }, [newsItems]);
+
+  /** 威胁等级统计 */
+  const threatCounts = useMemo(() => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const item of newsItems) {
+      const level = item.threatLevel?.toLowerCase() ?? 'low';
+      if (level.includes('critical')) counts.critical++;
+      else if (level.includes('high')) counts.high++;
+      else if (level.includes('medium') || level.includes('moderate')) counts.medium++;
+      else counts.low++;
+    }
+    return counts;
+  }, [newsItems]);
+
+  /** 当前威胁等级 */
+  const threatLevel: ThreatLevel = useMemo(() => {
+    if (threatCounts.critical > 0) return 'ELEVATED';
+    if (threatCounts.high > 2) return 'ELEVATED';
+    if (threatCounts.high > 0 || threatCounts.medium > 5) return 'MODERATE';
+    return 'LOW';
+  }, [threatCounts]);
+
+  /** 分类统计最大值，用于横向条占比计算 */
+  const maxCategoryCount = Math.max(...categoryStats.map((c) => c.count), 1);
+
+  /* ====== 加载/错误状态 ====== */
+  if (loading && newsItems.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto scroll-container">
+        <div className="p-6 max-w-[1440px] mx-auto">
+          <LoadingState message="正在加载新闻数据..." />
+        </div>
+      </div>
+    );
+  }
+
+  if (error && newsItems.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto scroll-container">
+        <div className="p-6 max-w-[1440px] mx-auto">
+          <ErrorState message={`数据加载失败: ${error}`} onRetry={fetchData} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -254,7 +380,7 @@ export function NewsFeed() {
               className="font-mono text-[11px] mb-4"
               style={{ color: 'var(--text-tertiary)' }}
             >
-              435+ RSS FEEDS // 15 CATEGORIES
+              {newsItems.length} 条新闻 // {topSources.length} 个来源 // 每 30 秒自动刷新
             </p>
 
             {/* 分类筛选条 */}
@@ -344,7 +470,7 @@ export function NewsFeed() {
                     className="font-mono text-xs"
                     style={{ color: 'var(--text-disabled)' }}
                   >
-                    NO ARTICLES IN THIS CATEGORY
+                    该分类暂无文章
                   </span>
                 </div>
               )}
@@ -402,36 +528,14 @@ export function NewsFeed() {
             {/* 严重性分布 */}
             <div className="space-y-2.5 mb-5">
               {[
-                {
-                  label: 'CRITICAL',
-                  count: THREAT_COUNTS.critical,
-                  color: 'var(--accent-red)',
-                },
-                {
-                  label: 'HIGH',
-                  count: THREAT_COUNTS.high,
-                  color: 'var(--accent-amber)',
-                },
-                {
-                  label: 'MEDIUM',
-                  count: THREAT_COUNTS.medium,
-                  color: 'var(--accent-cyan)',
-                },
-                {
-                  label: 'LOW',
-                  count: THREAT_COUNTS.low,
-                  color: 'var(--accent-green)',
-                },
+                { label: 'CRITICAL', count: threatCounts.critical, color: 'var(--accent-red)' },
+                { label: 'HIGH', count: threatCounts.high, color: 'var(--accent-amber)' },
+                { label: 'MEDIUM', count: threatCounts.medium, color: 'var(--accent-cyan)' },
+                { label: 'LOW', count: threatCounts.low, color: 'var(--accent-green)' },
               ].map((s) => (
-                <div
-                  key={s.label}
-                  className="flex items-center justify-between"
-                >
+                <div key={s.label} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ background: s.color }}
-                    />
+                    <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
                     <span
                       className="font-mono text-[10px] uppercase tracking-wider"
                       style={{ color: 'var(--text-secondary)' }}
@@ -458,7 +562,7 @@ export function NewsFeed() {
                 TRENDING TOPICS
               </span>
               <div className="space-y-2">
-                {MOCK_TRENDING.map((t, i) => (
+                {trending.map((t, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between p-2 rounded-lg"
@@ -513,20 +617,16 @@ export function NewsFeed() {
             </div>
 
             <div className="space-y-3">
-              {MOCK_TOP_SOURCES.map((src, i) => (
+              {topSources.map((src, i) => (
                 <div
                   key={src.name}
                   className="flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2.5">
-                    {/* 排名序号 */}
                     <span
                       className="font-mono text-[10px] w-4 text-right"
                       style={{
-                        color:
-                          i < 3
-                            ? 'var(--accent-cyan)'
-                            : 'var(--text-disabled)',
+                        color: i < 3 ? 'var(--accent-cyan)' : 'var(--text-disabled)',
                       }}
                     >
                       {String(i + 1).padStart(2, '0')}
@@ -563,7 +663,7 @@ export function NewsFeed() {
                 className="font-mono text-xs font-semibold"
                 style={{ color: 'var(--accent-cyan)' }}
               >
-                38
+                {topSources.length}
               </span>
             </div>
           </div>
@@ -589,7 +689,7 @@ export function NewsFeed() {
             </div>
 
             <div className="space-y-3">
-              {MOCK_CATEGORY_STATS.map((cat) => (
+              {categoryStats.map((cat) => (
                 <div key={cat.name}>
                   <div className="flex items-center justify-between mb-1">
                     <span
@@ -633,13 +733,13 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--text-disabled)' }}
               >
-                TOTAL ARTICLES TODAY
+                TOTAL ARTICLES
               </span>
               <span
                 className="font-mono text-xs font-semibold"
                 style={{ color: 'var(--accent-green)' }}
               >
-                {MOCK_CATEGORY_STATS.reduce((a, c) => a + c.count, 0)}
+                {newsItems.length}
               </span>
             </div>
           </div>
@@ -672,7 +772,7 @@ export function NewsFeed() {
                 fontFamily: 'var(--font-body)',
               }}
             >
-              {MOCK_AI_SUMMARY}
+              {aiSummary}
             </p>
 
             {/* 底部元信息 */}
@@ -689,14 +789,14 @@ export function NewsFeed() {
                   className="font-mono text-[10px]"
                   style={{ color: 'var(--text-disabled)' }}
                 >
-                  GENERATED 8 MIN AGO
+                  每 30 秒自动刷新
                 </span>
               </div>
               <span
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--accent-purple)' }}
               >
-                GPT-4o
+                AI 摘要
               </span>
             </div>
           </div>

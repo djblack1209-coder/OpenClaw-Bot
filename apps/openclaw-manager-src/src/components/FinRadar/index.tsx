@@ -2,8 +2,9 @@
  * FinRadar — 金融雷达页面
  * Sonic Abyss 终端美学，12 列 Bento Grid 布局
  * 展示全球市场指数、加密货币、大宗商品、外汇实时数据
+ * 数据来自后端 /api/v1/monitor/finance/* API，每 30 秒自动刷新
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import {
@@ -14,11 +15,28 @@ import {
   Zap,
   Globe,
   Layers,
+  AlertTriangle,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
+
+/* ====== 自动刷新间隔（毫秒） ====== */
+const REFRESH_INTERVAL = 30_000;
 
 /* ====== 类型定义 ====== */
 
-/** 市场数据条目 */
+/** API 返回的报价条目 */
+interface QuoteApiItem {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  [key: string]: unknown;
+}
+
+/** 内部市场数据条目 */
 interface MarketEntry {
   symbol: string;
   name: string;
@@ -42,95 +60,12 @@ interface SectorEntry {
   change: number;
 }
 
-/* ====== 模拟数据 ====== */
-
-/** 各 Tab 对应的市场数据 */
-const MARKET_DATA: Record<TabKey, MarketEntry[]> = {
-  indices: [
-    { symbol: 'SPX', name: 'S&P 500', price: '5,234.18', change: 0.82 },
-    { symbol: 'DJI', name: 'Dow Jones', price: '39,512.84', change: 0.56 },
-    { symbol: 'IXIC', name: 'Nasdaq', price: '16,340.87', change: 1.24 },
-    { symbol: 'FTSE', name: 'FTSE 100', price: '8,139.83', change: -0.31 },
-    { symbol: 'DAX', name: 'DAX 40', price: '18,235.45', change: 0.47 },
-    { symbol: 'N225', name: 'Nikkei 225', price: '38,460.08', change: -0.68 },
-    { symbol: 'HSI', name: 'Hang Seng', price: '17,651.15', change: 1.85 },
-    { symbol: 'SHCOMP', name: 'Shanghai Comp', price: '3,088.64', change: 0.93 },
-  ],
-  crypto: [
-    { symbol: 'BTC', name: 'Bitcoin', price: '67,842.30', change: 2.15 },
-    { symbol: 'ETH', name: 'Ethereum', price: '3,456.78', change: 1.87 },
-    { symbol: 'SOL', name: 'Solana', price: '178.45', change: 5.32 },
-    { symbol: 'BNB', name: 'BNB', price: '612.90', change: -0.45 },
-    { symbol: 'XRP', name: 'Ripple', price: '0.5234', change: -1.23 },
-    { symbol: 'ADA', name: 'Cardano', price: '0.4521', change: 3.67 },
-    { symbol: 'AVAX', name: 'Avalanche', price: '38.92', change: 4.11 },
-    { symbol: 'DOGE', name: 'Dogecoin', price: '0.1634', change: -2.08 },
-  ],
-  commodities: [
-    { symbol: 'XAU', name: 'Gold', price: '2,338.50', change: 0.34 },
-    { symbol: 'XAG', name: 'Silver', price: '27.85', change: -0.56 },
-    { symbol: 'CL', name: 'WTI Crude Oil', price: '78.26', change: 1.12 },
-    { symbol: 'NG', name: 'Natural Gas', price: '2.134', change: -2.45 },
-    { symbol: 'HG', name: 'Copper', price: '4.5120', change: 0.89 },
-    { symbol: 'ZW', name: 'Wheat', price: '612.50', change: -0.78 },
-  ],
-  forex: [
-    { symbol: 'EUR/USD', name: 'Euro / Dollar', price: '1.0845', change: -0.12 },
-    { symbol: 'GBP/USD', name: 'Pound / Dollar', price: '1.2678', change: 0.08 },
-    { symbol: 'USD/JPY', name: 'Dollar / Yen', price: '154.32', change: 0.45 },
-    { symbol: 'USD/CNH', name: 'Dollar / CNH', price: '7.2456', change: 0.23 },
-    { symbol: 'AUD/USD', name: 'Aussie / Dollar', price: '0.6534', change: -0.34 },
-    { symbol: 'USD/CHF', name: 'Dollar / Franc', price: '0.9012', change: 0.15 },
-  ],
-};
-
-/** Tab 标签配置 */
-const TAB_CONFIG: { key: TabKey; label: string }[] = [
-  { key: 'indices', label: 'INDICES' },
-  { key: 'crypto', label: 'CRYPTO' },
-  { key: 'commodities', label: 'COMMODITIES' },
-  { key: 'forex', label: 'FOREX' },
-];
-
-/** Top Movers — 涨幅榜 */
-const TOP_GAINERS: MoverEntry[] = [
-  { symbol: 'SOL', name: 'Solana', change: 5.32 },
-  { symbol: 'AVAX', name: 'Avalanche', change: 4.11 },
-  { symbol: 'ADA', name: 'Cardano', change: 3.67 },
-];
-
-/** Top Movers — 跌幅榜 */
-const TOP_LOSERS: MoverEntry[] = [
-  { symbol: 'NG', name: 'Natural Gas', change: -2.45 },
-  { symbol: 'DOGE', name: 'Dogecoin', change: -2.08 },
-  { symbol: 'XRP', name: 'Ripple', change: -1.23 },
-];
-
-/** 板块表现 */
-const SECTORS: SectorEntry[] = [
-  { name: 'Technology', change: 1.2 },
-  { name: 'Healthcare', change: -0.5 },
-  { name: 'Energy', change: 2.1 },
-  { name: 'Finance', change: 0.3 },
-  { name: 'Consumer', change: -0.8 },
-  { name: 'Industrial', change: 0.6 },
-];
-
-/** 加密货币市值占比 */
-const CRYPTO_DOMINANCE = [
-  { name: 'BTC', pct: 52.4, color: 'var(--accent-amber)' },
-  { name: 'ETH', pct: 17.8, color: 'var(--accent-purple)' },
-  { name: 'Others', pct: 29.8, color: 'var(--text-tertiary)' },
-];
-
-/** 市场摘要数据 */
-const MARKET_SUMMARY = [
-  { label: 'Markets Up', value: '5', color: 'var(--accent-green)' },
-  { label: 'Markets Down', value: '3', color: 'var(--accent-red)' },
-  { label: 'BTC', value: '$67,842', color: 'var(--accent-amber)' },
-  { label: 'Gold', value: '$2,338', color: 'var(--accent-amber)' },
-  { label: 'DXY', value: '104.52', color: 'var(--accent-cyan)' },
-  { label: 'Oil', value: '$78.26', color: 'var(--text-primary)' },
+/* ====== Tab 标签配置 ====== */
+const TAB_CONFIG: { key: TabKey; label: string; endpoint: string }[] = [
+  { key: 'indices', label: '股指', endpoint: '/api/v1/monitor/finance/indices' },
+  { key: 'crypto', label: '加密', endpoint: '/api/v1/monitor/finance/crypto' },
+  { key: 'commodities', label: '商品', endpoint: '/api/v1/monitor/finance/commodities' },
+  { key: 'forex', label: '外汇', endpoint: '/api/v1/monitor/finance/forex' },
 ];
 
 /* ====== 入场动画 ====== */
@@ -160,14 +95,247 @@ function formatChange(val: number): string {
   return `${sign}${val.toFixed(2)}%`;
 }
 
+/** 格式化价格数字为带逗号的字符串 */
+function formatPrice(price: number): string {
+  if (price >= 1000) {
+    return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (price >= 1) {
+    return price.toFixed(2);
+  }
+  return price.toFixed(4);
+}
+
+/** 把 API 返回的报价转为内部格式 */
+function quoteToEntry(item: QuoteApiItem): MarketEntry {
+  return {
+    symbol: item.symbol,
+    name: item.name,
+    price: formatPrice(item.price ?? 0),
+    change: item.change_pct ?? item.change ?? 0,
+  };
+}
+
+/* ====== 错误/加载状态组件 ====== */
+function LoadingState({ message = '数据加载中...' }: { message?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-8">
+      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{message}</span>
+    </div>
+  );
+}
+
+function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-8">
+      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
+      <button
+        onClick={onRetry}
+        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
+        style={{
+          background: 'rgba(255, 0, 60, 0.1)',
+          color: 'var(--accent-red)',
+          border: '1px solid rgba(255, 0, 60, 0.25)',
+        }}
+      >
+        <RefreshCw size={12} className="inline mr-1.5" />
+        重试
+      </button>
+    </div>
+  );
+}
+
 /* ====== 主组件 ====== */
 
 export function FinRadar() {
   /* 当前激活的 Tab */
   const [activeTab, setActiveTab] = useState<TabKey>('indices');
 
-  /* 当前 Tab 对应的市场数据 */
-  const currentData = MARKET_DATA[activeTab];
+  /* 各 Tab 的市场数据 */
+  const [marketData, setMarketData] = useState<Record<TabKey, MarketEntry[]>>({
+    indices: [],
+    crypto: [],
+    commodities: [],
+    forex: [],
+  });
+
+  /* 加载与错误状态（按 Tab 独立） */
+  const [loadingTabs, setLoadingTabs] = useState<Record<TabKey, boolean>>({
+    indices: true,
+    crypto: true,
+    commodities: true,
+    forex: true,
+  });
+  const [errorTabs, setErrorTabs] = useState<Record<TabKey, string | null>>({
+    indices: null,
+    crypto: null,
+    commodities: null,
+    forex: null,
+  });
+
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /** 拉取单个 Tab 的数据 */
+  const fetchTab = useCallback(async (tab: typeof TAB_CONFIG[number]) => {
+    try {
+      setErrorTabs((prev) => ({ ...prev, [tab.key]: null }));
+      const resp = await clawbotFetchJson<{ quotes: QuoteApiItem[] }>(tab.endpoint);
+      const entries = (resp.quotes ?? []).map(quoteToEntry);
+      setMarketData((prev) => ({ ...prev, [tab.key]: entries }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setErrorTabs((prev) => ({ ...prev, [tab.key]: msg }));
+    } finally {
+      setLoadingTabs((prev) => ({ ...prev, [tab.key]: false }));
+    }
+  }, []);
+
+  /** 拉取所有 Tab 数据 */
+  const fetchAllData = useCallback(async () => {
+    await Promise.all(TAB_CONFIG.map(fetchTab));
+  }, [fetchTab]);
+
+  /* 首次加载 + 定时刷新 */
+  useEffect(() => {
+    fetchAllData();
+    timerRef.current = setInterval(fetchAllData, REFRESH_INTERVAL);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchAllData]);
+
+  /* ====== 衍生数据 ====== */
+
+  /** 当前 Tab 对应的市场数据 */
+  const currentData = marketData[activeTab];
+  const currentLoading = loadingTabs[activeTab];
+  const currentError = errorTabs[activeTab];
+
+  /** 把所有 Tab 的数据合并，计算涨跌榜 */
+  const allEntries = useMemo<MarketEntry[]>(() => {
+    return Object.values(marketData).flat();
+  }, [marketData]);
+
+  /** Top Gainers — 涨幅前 3 */
+  const topGainers = useMemo<MoverEntry[]>(() => {
+    return [...allEntries]
+      .filter((e) => e.change > 0)
+      .sort((a, b) => b.change - a.change)
+      .slice(0, 3)
+      .map((e) => ({ symbol: e.symbol, name: e.name, change: e.change }));
+  }, [allEntries]);
+
+  /** Top Losers — 跌幅前 3 */
+  const topLosers = useMemo<MoverEntry[]>(() => {
+    return [...allEntries]
+      .filter((e) => e.change < 0)
+      .sort((a, b) => a.change - b.change)
+      .slice(0, 3)
+      .map((e) => ({ symbol: e.symbol, name: e.name, change: e.change }));
+  }, [allEntries]);
+
+  /** 按 Tab 分组的板块表现 */
+  const sectors = useMemo<SectorEntry[]>(() => {
+    const tabLabels: Record<TabKey, string> = {
+      indices: '股指',
+      crypto: '加密货币',
+      commodities: '大宗商品',
+      forex: '外汇',
+    };
+    return TAB_CONFIG.map((tab) => {
+      const entries = marketData[tab.key];
+      if (entries.length === 0) return { name: tabLabels[tab.key], change: 0 };
+      const avg = entries.reduce((sum, e) => sum + e.change, 0) / entries.length;
+      return { name: tabLabels[tab.key], change: avg };
+    });
+  }, [marketData]);
+
+  /** 加密货币市值占比（从 crypto 数据推算） */
+  const cryptoDominance = useMemo(() => {
+    const cryptoData = marketData.crypto;
+    if (cryptoData.length === 0) {
+      return [
+        { name: 'BTC', pct: 0, color: 'var(--accent-amber)' },
+        { name: 'ETH', pct: 0, color: 'var(--accent-purple)' },
+        { name: 'Others', pct: 0, color: 'var(--text-tertiary)' },
+      ];
+    }
+    /* 用价格作为粗略权重参考 */
+    const btc = cryptoData.find((c) => c.symbol.toUpperCase() === 'BTC');
+    const eth = cryptoData.find((c) => c.symbol.toUpperCase() === 'ETH');
+    const btcPrice = btc ? parseFloat(btc.price.replace(/,/g, '')) : 0;
+    const ethPrice = eth ? parseFloat(eth.price.replace(/,/g, '')) : 0;
+    const totalRef = cryptoData.reduce((s, c) => s + parseFloat(c.price.replace(/,/g, '')), 0);
+    const btcPct = totalRef > 0 ? (btcPrice / totalRef) * 100 : 0;
+    const ethPct = totalRef > 0 ? (ethPrice / totalRef) * 100 : 0;
+    const othersPct = Math.max(0, 100 - btcPct - ethPct);
+    return [
+      { name: 'BTC', pct: Math.round(btcPct * 10) / 10, color: 'var(--accent-amber)' },
+      { name: 'ETH', pct: Math.round(ethPct * 10) / 10, color: 'var(--accent-purple)' },
+      { name: 'Others', pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
+    ];
+  }, [marketData]);
+
+  /** 市场摘要 — 从实际数据计算 */
+  const marketSummary = useMemo(() => {
+    const upCount = allEntries.filter((e) => e.change > 0).length;
+    const downCount = allEntries.filter((e) => e.change < 0).length;
+    const btc = marketData.crypto.find((c) => c.symbol.toUpperCase() === 'BTC');
+    const gold = marketData.commodities.find((c) => c.symbol.toUpperCase().includes('XAU') || c.name.toLowerCase().includes('gold'));
+    const oil = marketData.commodities.find((c) => c.symbol.toUpperCase().includes('CL') || c.name.toLowerCase().includes('oil') || c.name.toLowerCase().includes('crude'));
+
+    return [
+      { label: '上涨', value: String(upCount), color: 'var(--accent-green)' },
+      { label: '下跌', value: String(downCount), color: 'var(--accent-red)' },
+      { label: 'BTC', value: btc ? `$${btc.price}` : '—', color: 'var(--accent-amber)' },
+      { label: '黄金', value: gold ? `$${gold.price}` : '—', color: 'var(--accent-amber)' },
+      { label: '原油', value: oil ? `$${oil.price}` : '—', color: 'var(--text-primary)' },
+    ];
+  }, [allEntries, marketData]);
+
+  /** 恐贪指数 — 从涨跌比例粗略计算 */
+  const fearGreedIndex = useMemo(() => {
+    if (allEntries.length === 0) return 50;
+    const upRatio = allEntries.filter((e) => e.change > 0).length / allEntries.length;
+    return Math.round(upRatio * 100);
+  }, [allEntries]);
+
+  const fgLabel = fearGreedIndex >= 75 ? 'EXTREME GREED' :
+                  fearGreedIndex >= 55 ? 'GREED' :
+                  fearGreedIndex >= 45 ? 'NEUTRAL' :
+                  fearGreedIndex >= 25 ? 'FEAR' : 'EXTREME FEAR';
+
+  const fgColor = fearGreedIndex >= 55 ? 'var(--accent-green)' :
+                  fearGreedIndex >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)';
+
+  /* ====== 全局首次加载 ====== */
+  const allLoading = Object.values(loadingTabs).every(Boolean);
+  const allError = Object.values(errorTabs).every((e) => e !== null) && allEntries.length === 0;
+
+  if (allLoading && allEntries.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto pr-1">
+        <div className="p-6">
+          <LoadingState message="正在加载金融市场数据..." />
+        </div>
+      </div>
+    );
+  }
+
+  if (allError) {
+    return (
+      <div className="h-full overflow-y-auto pr-1">
+        <div className="p-6">
+          <ErrorState
+            message="数据加载失败"
+            onRetry={fetchAllData}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -204,10 +372,10 @@ export function FinRadar() {
               </div>
               <div>
                 <h2 className="font-display font-bold text-base" style={{ color: 'var(--text-primary)' }}>
-                  FINANCE RADAR
+                  金融雷达
                 </h2>
                 <p className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  GLOBAL MARKETS // REAL-TIME
+                  全球市场 // 每 30 秒自动刷新
                 </p>
               </div>
             </div>
@@ -247,60 +415,80 @@ export function FinRadar() {
           </div>
 
           {/* 数据表格 */}
-          <div className="overflow-hidden rounded-lg" style={{ border: '1px solid var(--glass-border)' }}>
-            {/* 表头 */}
-            <div
-              className="grid font-mono text-[10px] uppercase px-3 py-2"
-              style={{
-                gridTemplateColumns: '80px 1fr 120px 100px',
-                background: 'var(--bg-base)',
-                color: 'var(--text-tertiary)',
-                borderBottom: '1px solid var(--glass-border)',
+          {currentLoading && currentData.length === 0 ? (
+            <LoadingState message="加载中..." />
+          ) : currentError && currentData.length === 0 ? (
+            <ErrorState
+              message={`数据加载失败: ${currentError}`}
+              onRetry={() => {
+                const tab = TAB_CONFIG.find((t) => t.key === activeTab);
+                if (tab) fetchTab(tab);
               }}
-            >
-              <span>Symbol</span>
-              <span>Name</span>
-              <span className="text-right">Price</span>
-              <span className="text-right">24h Change</span>
-            </div>
-
-            {/* 数据行 */}
-            {currentData.map((entry, idx) => (
-              <motion.div
-                key={`${activeTab}-${entry.symbol}`}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.03, duration: 0.2 }}
-                className="grid font-mono text-xs px-3 py-2.5 transition-colors hover:brightness-110"
+            />
+          ) : (
+            <div className="overflow-hidden rounded-lg" style={{ border: '1px solid var(--glass-border)' }}>
+              {/* 表头 */}
+              <div
+                className="grid font-mono text-[10px] uppercase px-3 py-2"
                 style={{
                   gridTemplateColumns: '80px 1fr 120px 100px',
-                  borderBottom: idx < currentData.length - 1 ? '1px solid var(--glass-border)' : 'none',
-                  background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                  background: 'var(--bg-base)',
+                  color: 'var(--text-tertiary)',
+                  borderBottom: '1px solid var(--glass-border)',
                 }}
               >
-                {/* 代码 */}
-                <span className="font-semibold" style={{ color: 'var(--accent-cyan)' }}>
-                  {entry.symbol}
-                </span>
-                {/* 名称 */}
-                <span style={{ color: 'var(--text-secondary)' }}>
-                  {entry.name}
-                </span>
-                {/* 价格 */}
-                <span className="text-right" style={{ color: 'var(--text-primary)' }}>
-                  {entry.price}
-                </span>
-                {/* 涨跌幅 */}
-                <span
-                  className="text-right flex items-center justify-end gap-1"
-                  style={{ color: changeColor(entry.change) }}
+                <span>代码</span>
+                <span>名称</span>
+                <span className="text-right">价格</span>
+                <span className="text-right">24h 涨跌</span>
+              </div>
+
+              {/* 数据行 */}
+              {currentData.map((entry, idx) => (
+                <motion.div
+                  key={`${activeTab}-${entry.symbol}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.03, duration: 0.2 }}
+                  className="grid font-mono text-xs px-3 py-2.5 transition-colors hover:brightness-110"
+                  style={{
+                    gridTemplateColumns: '80px 1fr 120px 100px',
+                    borderBottom: idx < currentData.length - 1 ? '1px solid var(--glass-border)' : 'none',
+                    background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                  }}
                 >
-                  {entry.change > 0 ? <TrendingUp size={12} /> : entry.change < 0 ? <TrendingDown size={12} /> : null}
-                  {formatChange(entry.change)}
-                </span>
-              </motion.div>
-            ))}
-          </div>
+                  {/* 代码 */}
+                  <span className="font-semibold" style={{ color: 'var(--accent-cyan)' }}>
+                    {entry.symbol}
+                  </span>
+                  {/* 名称 */}
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {entry.name}
+                  </span>
+                  {/* 价格 */}
+                  <span className="text-right" style={{ color: 'var(--text-primary)' }}>
+                    {entry.price}
+                  </span>
+                  {/* 涨跌幅 */}
+                  <span
+                    className="text-right flex items-center justify-end gap-1"
+                    style={{ color: changeColor(entry.change) }}
+                  >
+                    {entry.change > 0 ? <TrendingUp size={12} /> : entry.change < 0 ? <TrendingDown size={12} /> : null}
+                    {formatChange(entry.change)}
+                  </span>
+                </motion.div>
+              ))}
+
+              {currentData.length === 0 && (
+                <div className="flex items-center justify-center py-8">
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                    暂无数据
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </motion.div>
 
         {/* ══════════════════════════════════════
@@ -315,24 +503,24 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-1">
             <Zap size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              Fear & Greed Index
+              恐惧&贪婪指数
             </span>
           </div>
 
           {/* 大数字 */}
           <span
             className="text-metric font-display text-5xl font-bold"
-            style={{ color: 'var(--accent-green)' }}
+            style={{ color: fgColor }}
           >
-            62
+            {fearGreedIndex}
           </span>
 
           {/* 情绪文字 */}
           <span
             className="font-mono text-sm font-semibold uppercase tracking-wider"
-            style={{ color: 'var(--accent-green)' }}
+            style={{ color: fgColor }}
           >
-            GREED
+            {fgLabel}
           </span>
 
           {/* 水平进度条 0-100 */}
@@ -351,7 +539,7 @@ export function FinRadar() {
               <div
                 className="absolute inset-y-0 left-0 rounded-full"
                 style={{
-                  width: '62%',
+                  width: `${fearGreedIndex}%`,
                   background: 'linear-gradient(90deg, var(--accent-red), var(--accent-amber), var(--accent-green))',
                 }}
               />
@@ -359,9 +547,9 @@ export function FinRadar() {
               <div
                 className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2"
                 style={{
-                  left: 'calc(62% - 5px)',
+                  left: `calc(${fearGreedIndex}% - 5px)`,
                   background: 'var(--bg-card)',
-                  borderColor: 'var(--accent-green)',
+                  borderColor: fgColor,
                 }}
               />
             </div>
@@ -380,12 +568,12 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <Globe size={14} style={{ color: 'var(--accent-cyan)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              Market Summary
+              市场总览
             </span>
           </div>
 
           <div className="flex flex-col gap-2">
-            {MARKET_SUMMARY.map((item) => (
+            {marketSummary.map((item) => (
               <div
                 key={item.label}
                 className="flex items-center justify-between py-1 px-2 rounded"
@@ -417,16 +605,19 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={14} style={{ color: 'var(--accent-green)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              Top Movers
+              涨跌排行
             </span>
           </div>
 
           {/* 涨幅榜 */}
           <div className="mb-3">
             <span className="font-mono text-[9px] uppercase mb-1.5 block" style={{ color: 'var(--accent-green)' }}>
-              Gainers
+              涨幅榜
             </span>
-            {TOP_GAINERS.map((item) => (
+            {topGainers.length === 0 && (
+              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>暂无数据</span>
+            )}
+            {topGainers.map((item) => (
               <div
                 key={item.symbol}
                 className="flex items-center justify-between py-1.5 px-2 rounded mb-0.5"
@@ -450,9 +641,12 @@ export function FinRadar() {
           {/* 跌幅榜 */}
           <div>
             <span className="font-mono text-[9px] uppercase mb-1.5 block" style={{ color: 'var(--accent-red)' }}>
-              Losers
+              跌幅榜
             </span>
-            {TOP_LOSERS.map((item) => (
+            {topLosers.length === 0 && (
+              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>暂无数据</span>
+            )}
+            {topLosers.map((item) => (
               <div
                 key={item.symbol}
                 className="flex items-center justify-between py-1.5 px-2 rounded mb-0.5"
@@ -486,16 +680,15 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 size={14} style={{ color: 'var(--accent-purple)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              Sector Performance
+              板块表现
             </span>
           </div>
 
           <div className="flex flex-col gap-2.5">
-            {SECTORS.map((sector) => {
-              /* 计算进度条宽度：以 3% 为满格，居中展示正负 */
+            {sectors.map((sector) => {
               const maxPct = 3;
               const absPct = Math.min(Math.abs(sector.change), maxPct);
-              const barWidth = (absPct / maxPct) * 50; // 最大占 50%
+              const barWidth = (absPct / maxPct) * 50;
               const isPositive = sector.change >= 0;
 
               return (
@@ -556,16 +749,15 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <Layers size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              Crypto Dominance
+              加密货币占比
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
-            {CRYPTO_DOMINANCE.map((item) => (
+            {cryptoDominance.map((item) => (
               <div key={item.name}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    {/* 颜色圆点 */}
                     <span
                       className="w-2 h-2 rounded-full"
                       style={{ background: item.color }}
@@ -595,16 +787,16 @@ export function FinRadar() {
             ))}
           </div>
 
-          {/* 总市值参考 */}
+          {/* 底部数据来源 */}
           <div
             className="mt-4 pt-3 flex items-center justify-between"
             style={{ borderTop: '1px solid var(--glass-border)' }}
           >
             <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-              TOTAL MARKET CAP
+              数据每 30 秒刷新
             </span>
             <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              $2.48T
+              LIVE
             </span>
           </div>
         </motion.div>
