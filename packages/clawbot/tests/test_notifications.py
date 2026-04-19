@@ -53,7 +53,15 @@ class TestSend:
         nm._ap = mock_ap
         nm._initialized = True
 
-        with patch("src.notifications.APPRISE_AVAILABLE", True):
+        # 需要同时 mock apprise 模块和 APPRISE_AVAILABLE 标志
+        mock_apprise_module = MagicMock()
+        mock_apprise_module.NotifyType.FAILURE = "failure"
+        mock_apprise_module.NotifyType.WARNING = "warning"
+        mock_apprise_module.NotifyType.SUCCESS = "success"
+        mock_apprise_module.NotifyType.INFO = "info"
+
+        with patch("src.notifications.APPRISE_AVAILABLE", True), \
+             patch("src.notifications.apprise", mock_apprise_module):
             result = await nm.send("test body", title="Test")
 
         assert result is True
@@ -68,7 +76,15 @@ class TestSend:
         nm._ap = mock_ap
         nm._initialized = True
 
-        with patch("src.notifications.APPRISE_AVAILABLE", True):
+        # 需要同时 mock apprise 模块和 APPRISE_AVAILABLE 标志
+        mock_apprise_module = MagicMock()
+        mock_apprise_module.NotifyType.FAILURE = "failure"
+        mock_apprise_module.NotifyType.WARNING = "warning"
+        mock_apprise_module.NotifyType.SUCCESS = "success"
+        mock_apprise_module.NotifyType.INFO = "info"
+
+        with patch("src.notifications.APPRISE_AVAILABLE", True), \
+             patch("src.notifications.apprise", mock_apprise_module):
             result = await nm.send("test body")
 
         assert result is False
@@ -84,7 +100,15 @@ class TestSend:
         nm._initialized = True
         initial_errors = nm._error_count
 
-        with patch("src.notifications.APPRISE_AVAILABLE", True):
+        # 需要同时 mock apprise 模块和 APPRISE_AVAILABLE 标志
+        mock_apprise_module = MagicMock()
+        mock_apprise_module.NotifyType.FAILURE = "failure"
+        mock_apprise_module.NotifyType.WARNING = "warning"
+        mock_apprise_module.NotifyType.SUCCESS = "success"
+        mock_apprise_module.NotifyType.INFO = "info"
+
+        with patch("src.notifications.APPRISE_AVAILABLE", True), \
+             patch("src.notifications.apprise", mock_apprise_module):
             await nm.send("fail msg")
 
         assert nm._error_count == initial_errors + 1
@@ -172,6 +196,16 @@ class TestNotifyLevel:
 
     def test_to_apprise_type_returns_string(self):
         """to_apprise_type always returns a string."""
-        for level in NotifyLevel:
-            result = level.to_apprise_type()
-            assert isinstance(result, str)
+        # apprise 可能未安装，此时 to_apprise_type 应返回 "info" 兜底
+        # 需要 mock apprise 模块以测试完整映射路径
+        mock_apprise_module = MagicMock()
+        mock_apprise_module.NotifyType.FAILURE = "failure"
+        mock_apprise_module.NotifyType.WARNING = "warning"
+        mock_apprise_module.NotifyType.SUCCESS = "success"
+        mock_apprise_module.NotifyType.INFO = "info"
+
+        with patch("src.notifications.apprise", mock_apprise_module), \
+             patch("src.notifications.APPRISE_AVAILABLE", True):
+            for level in NotifyLevel:
+                result = level.to_apprise_type()
+                assert isinstance(result, str)
