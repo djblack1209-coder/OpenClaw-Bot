@@ -9,7 +9,6 @@ import {
   MessageCircle,
   Repeat2,
   Globe,
-  Clock,
   TrendingUp,
   Eye,
   FileText,
@@ -423,18 +422,10 @@ export function Social() {
 
 /* ====== 子组件 ====== */
 
+type SProps = { icon: React.ElementType; label: string; value: string; accent: string };
+
 /** 概览统计块 */
-function StatBlock({
-  icon: Icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  accent: string;
-}) {
+function StatBlock({ icon: Icon, label, value, accent }: SProps) {
   return (
     <div className="p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
       <div className="flex items-center gap-1.5 mb-2">
@@ -446,83 +437,40 @@ function StatBlock({
   );
 }
 
-/** 热度条 — 红色渐变 */
+/** 热度条 */
 function HeatBar({ value }: { value: number }) {
-  const width = Math.round(value * 0.4);
   return (
     <div className="flex items-center gap-1.5 flex-shrink-0">
       <div className="w-10 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${value}%`,
-            background: `linear-gradient(90deg, var(--accent-amber), var(--accent-red))`,
-            opacity: 0.6 + value * 0.004,
-          }}
-        />
+        <div className="h-full rounded-full" style={{ width: `${value}%`, background: 'linear-gradient(90deg, var(--accent-amber), var(--accent-red))', opacity: 0.6 + value * 0.004 }} />
       </div>
-      <span className="font-mono text-[9px] w-6 text-right" style={{ color: 'var(--accent-red)' }}>
-        {value}
-      </span>
+      <span className="font-mono text-[9px] w-6 text-right" style={{ color: 'var(--accent-red)' }}>{value}</span>
     </div>
   );
 }
 
 /** AI 内容生成统计行 */
-function ContentStat({
-  label,
-  value,
-  unit,
-  accent,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  accent: string;
-}) {
+function ContentStat({ label, value, unit, accent }: { label: string; value: string; unit: string; accent: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-        {label}
-      </span>
+      <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{label}</span>
       <div className="flex items-baseline gap-1">
-        <span className="font-display text-lg font-bold" style={{ color: accent }}>
-          {value}
-        </span>
-        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-          {unit}
-        </span>
+        <span className="font-display text-lg font-bold" style={{ color: accent }}>{value}</span>
+        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{unit}</span>
       </div>
     </div>
   );
 }
 
 /** 周运营数据行 */
-function WeeklyStat({
-  icon: Icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  accent: string;
-}) {
+function WeeklyStat({ icon: Icon, label, value, accent }: SProps) {
   return (
     <div className="flex items-center gap-3">
-      <div
-        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: `color-mix(in srgb, ${accent} 15%, transparent)` }}
-      >
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${accent} 15%, transparent)` }}>
         <Icon size={14} style={{ color: accent }} />
       </div>
-      <span className="font-mono text-[11px] flex-1" style={{ color: 'var(--text-secondary)' }}>
-        {label}
-      </span>
-      <span className="font-display text-base font-bold" style={{ color: accent }}>
-        {value}
-      </span>
+      <span className="font-mono text-[11px] flex-1" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span className="font-display text-base font-bold" style={{ color: accent }}>{value}</span>
     </div>
   );
 }

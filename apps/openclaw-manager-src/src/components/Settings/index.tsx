@@ -1,955 +1,429 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'sonner';
-import clsx from 'clsx';
+import { motion } from 'framer-motion';
 import {
   User,
   Shield,
-  Save,
-  Loader2,
-  FolderOpen,
-  FileCode,
-  Trash2,
-  AlertTriangle,
-  X,
-  HardDrive,
   Cpu,
+  HardDrive,
+  Wifi,
+  Key,
+  Bell,
+  Settings2,
+  Download,
+  RotateCcw,
+  Trash2,
+  FileText,
+  Stethoscope,
+  Check,
+  MemoryStick,
 } from 'lucide-react';
-import { api, clawbotFetch, type ProjectContext } from '../../lib/tauri';
-import { Switch } from '@/components/ui/switch';
-import { createLogger } from '@/lib/logger';
-import { useAppStore } from '@/stores/appStore';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-// 设置模块日志实例
-const settingsLogger = createLogger('Settings');
-
-interface InstallResult {
-  success: boolean;
-  message: string;
-  error?: string;
-}
-
-/** 运营控制设置 */
-interface OperationsSettings {
-  daily_budget_usd: number;          // 每日 LLM 预算上限
-  default_llm_model: string;         // 默认模型
-  local_hf_model_enabled: boolean;   // 本地 HF 模型开关
-  local_hf_model_endpoint: string;   // 本地模型 API 地址
-  auto_heal_enabled: boolean;        // 自愈引擎开关
-  scheduler_enabled: boolean;        // 每日定时任务总开关
-  maintenance_mode: boolean;         // 维护模式
-}
-
-/** 运营设置默认值 */
-const DEFAULT_OPS_SETTINGS: OperationsSettings = {
-  daily_budget_usd: 50,
-  default_llm_model: 'claude-sonnet-4-20250514',
-  local_hf_model_enabled: false,
-  local_hf_model_endpoint: 'http://localhost:11434',
-  auto_heal_enabled: true,
-  scheduler_enabled: true,
-  maintenance_mode: false,
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+/** API 密钥配置 */
+interface ApiKeyItem {
+  id: string;
+  name: string;
+  configured: boolean;
+  maskedKey: string;
+}
+
+const mockApiKeys: ApiKeyItem[] = [
+  { id: 'openai', name: 'OpenAI', configured: true, maskedKey: 'sk-...Xk4m' },
+  { id: 'anthropic', name: 'Anthropic', configured: true, maskedKey: 'sk-ant-...9f2B' },
+  { id: 'deepseek', name: 'DeepSeek', configured: true, maskedKey: 'sk-...L7pQ' },
+  { id: 'ibkr', name: 'IBKR', configured: true, maskedKey: 'DU...8842' },
+];
+
+/** 通知开关 */
+interface NotifyToggle {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+const mockNotifications: NotifyToggle[] = [
+  { id: 'telegram', label: 'Telegram 通知', enabled: true },
+  { id: 'email', label: '邮件通知', enabled: false },
+  { id: 'trade', label: '交易提醒', enabled: true },
+  { id: 'error', label: '错误告警', enabled: true },
+];
+
+/** 高级设置项 */
+interface AdvancedItem {
+  id: string;
+  label: string;
+  value: string;
+  type: 'toggle' | 'text';
+}
+
+const mockAdvanced: AdvancedItem[] = [
+  { id: 'dev', label: '开发者模式', value: 'true', type: 'toggle' },
+  { id: 'log', label: '日志级别', value: 'DEBUG', type: 'text' },
+  { id: 'update', label: '自动更新', value: 'true', type: 'toggle' },
+  { id: 'backup', label: '数据备份', value: '每日', type: 'text' },
+];
+
+/** 操作按钮 */
+interface ActionButton {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  accent: string;
+}
+
+const mockActions: ActionButton[] = [
+  { id: 'export', label: '导出配置', icon: Download, accent: 'var(--accent-cyan)' },
+  { id: 'reset', label: '重置设置', icon: RotateCcw, accent: 'var(--accent-amber)' },
+  { id: 'cache', label: '清除缓存', icon: Trash2, accent: 'var(--accent-red)' },
+  { id: 'logs', label: '查看日志', icon: FileText, accent: 'var(--accent-purple)' },
+  { id: 'diag', label: '系统诊断', icon: Stethoscope, accent: 'var(--accent-green)' },
+];
+
+/* ====== 主组件 ====== */
+
+/**
+ * 设置页面 — Sonic Abyss 终端美学
+ * 12 列 Bento Grid 布局，展示系统配置的全部关键信息
+ */
+/** 接收外部 props（兼容 App.tsx 传入的 onEnvironmentChange） */
 interface SettingsProps {
   onEnvironmentChange?: () => void;
 }
 
-export function Settings({ onEnvironmentChange }: SettingsProps) {
-  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
-    const saved = localStorage.getItem('openclaw-theme');
-    if (saved === 'light') return 'light';
-    if (saved === 'system') return 'system';
-    return 'dark';
-  });
-
-  // 开发者模式：三击版本号解锁
-  const devMode = useAppStore((s) => s.devMode);
-  const setDevMode = useAppStore((s) => s.setDevMode);
-  const [tapCount, setTapCount] = useState(0);
-  const tapTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  /** 三击版本号解锁/关闭开发者模式 */
-  const handleVersionTap = () => {
-    const newCount = tapCount + 1;
-    setTapCount(newCount);
-
-    // 清除之前的定时器，重新计时
-    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
-
-    if (newCount >= 3) {
-      // 三击达成
-      const next = !devMode;
-      setDevMode(next);
-      setTapCount(0);
-      toast.success(next ? '🔧 开发者模式已开启' : '🔒 开发者模式已关闭');
-    } else {
-      // 2 秒内没有后续点击则重置
-      tapTimerRef.current = setTimeout(() => setTapCount(0), 2000);
-    }
-  };
-
-  // 初始化主题：页面加载时根据 localStorage 设置 DOM class
-  // Tailwind darkMode: "class" 需要在 <html> 上切换 dark 类
-  // 支持 'system' 模式：监听 prefers-color-scheme 媒体查询
-  useEffect(() => {
-    const applyTheme = (isDark: boolean) => {
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-
-    if (theme === 'system') {
-      // 跟随系统：读取当前系统偏好并监听变化
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      applyTheme(mq.matches);
-      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    } else {
-      applyTheme(theme === 'dark');
-    }
-  }, [theme]);
-
-  const [identity, setIdentity] = useState({
-    botName: 'OpenClaw',
-    userName: '严总',
-    timezone: 'Asia/Shanghai',
-  });
-  const [security, setSecurity] = useState({
-    enableWhitelist: false,
-    allowFileAccess: true,
-  });
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
-  const [openingSystemSettings, setOpeningSystemSettings] = useState(false);
-  const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
-  const [uninstalling, setUninstalling] = useState(false);
-  const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
-
-  // 运营控制设置
-  const [opsSettings, setOpsSettings] = useState<OperationsSettings>({ ...DEFAULT_OPS_SETTINGS });
-  const [savingOps, setSavingOps] = useState(false);
-
-  // 未保存变更警告相关状态
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const pendingNavigationRef = useRef<string | null>(null);
-
-  // 记录从服务端加载的初始值，用于检测是否有未保存修改
-  const initialIdentityRef = useRef(identity);
-  const initialSecurityRef = useRef(security);
-  const initialOpsSettingsRef = useRef(opsSettings);
-
-  /** 判断当前表单是否有未保存的修改（包含运营设置） */
-  const isDirty = useCallback(() => {
-    const initId = initialIdentityRef.current;
-    const initSec = initialSecurityRef.current;
-    const initOps = initialOpsSettingsRef.current;
-    return (
-      identity.botName !== initId.botName ||
-      identity.userName !== initId.userName ||
-      identity.timezone !== initId.timezone ||
-      security.enableWhitelist !== initSec.enableWhitelist ||
-      security.allowFileAccess !== initSec.allowFileAccess ||
-      opsSettings.daily_budget_usd !== initOps.daily_budget_usd ||
-      opsSettings.default_llm_model !== initOps.default_llm_model ||
-      opsSettings.local_hf_model_enabled !== initOps.local_hf_model_enabled ||
-      opsSettings.local_hf_model_endpoint !== initOps.local_hf_model_endpoint ||
-      opsSettings.auto_heal_enabled !== initOps.auto_heal_enabled ||
-      opsSettings.scheduler_enabled !== initOps.scheduler_enabled ||
-      opsSettings.maintenance_mode !== initOps.maintenance_mode
-    );
-  }, [identity, security, opsSettings]);
-
-  const setNavigationGuard = useAppStore((s) => s.setNavigationGuard);
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-
-  // 注册导航守卫：离开设置页时检测未保存修改
-  useEffect(() => {
-    setNavigationGuard((targetPage) => {
-      if (isDirty()) {
-        // 有未保存修改，弹出确认对话框，暂停导航
-        pendingNavigationRef.current = targetPage;
-        setShowUnsavedDialog(true);
-        return false; // 阻止导航
-      }
-      return true; // 允许导航
-    });
-    // 组件卸载时清除守卫
-    return () => setNavigationGuard(null);
-  }, [isDirty, setNavigationGuard]);
-
-  useEffect(() => {
-    const loadSettings = async () => {
-      setLoading(true);
-      try {
-        const [context, settings] = await Promise.all([
-          api.getProjectContext(),
-          api.getAppSettings(),
-        ]);
-        setProjectContext(context);
-        const loadedIdentity = {
-          botName: settings.identity.bot_name,
-          userName: settings.identity.user_name,
-          timezone: settings.identity.timezone,
-        };
-        const loadedSecurity = {
-          enableWhitelist: settings.security.enable_whitelist,
-          allowFileAccess: settings.security.allow_file_access,
-        };
-        setIdentity(loadedIdentity);
-        setSecurity(loadedSecurity);
-        // 记录初始值用于脏状态检测
-        initialIdentityRef.current = loadedIdentity;
-        initialSecurityRef.current = loadedSecurity;
-      } catch (e) {
-        toast.error(`读取设置失败: ${String(e)}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSettings();
-  }, []);
-
-  // 获取运营控制设置
-  useEffect(() => {
-    const fetchOpsSettings = async () => {
-      try {
-        const resp = await clawbotFetch('/api/v1/controls/settings');
-        if (resp.ok) {
-          const data = await resp.json();
-          setOpsSettings(data);
-          // 记录初始值用于脏状态检测
-          initialOpsSettingsRef.current = data;
-        }
-      } catch {
-        // 接口不可用时使用默认值，不弹错误提示
-      }
-    };
-    fetchOpsSettings();
-  }, []);
-
-  /** 保存运营控制设置 */
-  const saveOpsSettings = async () => {
-    setSavingOps(true);
-    try {
-      const resp = await clawbotFetch('/api/v1/controls/settings', {
-        method: 'POST',
-        body: JSON.stringify(opsSettings),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      toast.success('运营设置已保存');
-      // 更新初始值，重置脏状态
-      initialOpsSettingsRef.current = { ...opsSettings };
-    } catch {
-      toast.error('保存运营设置失败');
-    } finally {
-      setSavingOps(false);
-    }
-  };
-
-  const handleSave = async () => {
-    // 验证 Bot 名称不能为空
-    if (!identity.botName.trim()) {
-      toast.error('Bot 名称不能为空');
-      return;
-    }
-    setSaving(true);
-    try {
-      const message = await api.saveAppSettings({
-        identity: {
-          bot_name: identity.botName,
-          user_name: identity.userName,
-          timezone: identity.timezone,
-        },
-        security: {
-          enable_whitelist: security.enableWhitelist,
-          allow_file_access: security.allowFileAccess,
-        },
-      });
-      toast.success(message);
-      // 保存成功后，更新初始值基线（此时不再算"未保存"）
-      initialIdentityRef.current = { ...identity };
-      initialSecurityRef.current = { ...security };
-    } catch (e) {
-      toast.error(`保存失败: ${String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openConfigDir = async () => {
-    try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(projectContext?.config_dir ?? (await invoke<{ config_dir: string }>('get_system_info')).config_dir);
-    } catch (e) {
-      settingsLogger.error('打开目录失败:', e);
-      toast.error('打开目录失败: ' + (e instanceof Error ? e.message : '未知错误'));
-    }
-  };
-
-  const openFullDiskAccessSettings = async () => {
-    setOpeningSystemSettings(true);
-    try {
-      const message = await api.openMacOSFullDiskAccessSettings();
-      toast.success(message);
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setOpeningSystemSettings(false);
-    }
-  };
-
-  const handleUninstall = async () => {
-    setUninstalling(true);
-    setUninstallResult(null);
-    try {
-      const result = await invoke<InstallResult>('uninstall_openclaw');
-      setUninstallResult(result);
-      if (result.success) {
-        // 通知环境状态变化，触发重新检查
-        onEnvironmentChange?.();
-        // 卸载成功后关闭确认框
-        const timer = setTimeout(() => {
-          setShowUninstallConfirm(false);
-        }, 2000);
-        // 组件卸载时清理定时器
-        return () => clearTimeout(timer);
-      }
-    } catch (e) {
-      setUninstallResult({
-        success: false,
-        message: '卸载过程中发生错误',
-        error: String(e),
-      });
-    } finally {
-      setUninstalling(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-        <span className="ml-3 text-gray-400">加载设置...</span>
-      </div>
-    );
-  }
-
+export function Settings(_props: SettingsProps) {
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2">
-      <div className="max-w-2xl space-y-6">
-        {/* 身份配置 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-claw-500/20 flex items-center justify-center">
-              <User size={20} className="text-claw-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">身份配置</h3>
-              <p className="text-xs text-gray-500">设置 AI 助手的名称和称呼</p>
-            </div>
-          </div>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== Row 1: 账户信息 (span-8) + 系统状态 (span-4) ====== */}
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">
-                AI 助手名称
-              </label>
-              <input
-                type="text"
-                value={identity.botName}
-                onChange={(e) =>
-                  setIdentity({ ...identity, botName: e.target.value })
-                }
-                placeholder="OpenClaw"
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">
-                你的称呼
-              </label>
-              <input
-                type="text"
-                value={identity.userName}
-                onChange={(e) =>
-                  setIdentity({ ...identity, userName: e.target.value })
-                }
-                placeholder="严总"
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">时区</label>
-              <select
-                value={identity.timezone}
-                onChange={(e) =>
-                  setIdentity({ ...identity, timezone: e.target.value })
-                }
-                className="input-base"
+        {/* 账户信息 */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            {/* 标题区域 */}
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,212,255,0.15)' }}
               >
-                <option value="Asia/Shanghai">Asia/Shanghai (北京时间)</option>
-                <option value="Asia/Hong_Kong">Asia/Hong_Kong (香港时间)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
-                <option value="America/New_York">
-                  America/New_York (纽约时间)
-                </option>
-                <option value="America/Los_Angeles">
-                  America/Los_Angeles (洛杉矶时间)
-                </option>
-                <option value="Europe/London">Europe/London (伦敦时间)</option>
-                <option value="UTC">UTC</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* 运营控制 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-claw-500/20 flex items-center justify-center">
-              <Cpu size={20} className="text-claw-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">运营控制</h3>
-              <p className="text-xs text-gray-500">AI 预算、模型选择、自动化开关</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {/* 每日 LLM 预算 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">每日 AI 预算上限</p>
-                <p className="text-xs text-gray-500">超过此金额后暂停付费 API 调用</p>
+                <User size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">$</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={opsSettings.daily_budget_usd}
-                  onChange={(e) =>
-                    setOpsSettings((prev) => ({
-                      ...prev,
-                      daily_budget_usd: parseFloat(e.target.value) || 50,
-                    }))
-                  }
-                  className="w-20 bg-dark-800 border border-dark-500 rounded px-2 py-1.5 text-sm text-white text-center"
-                />
-              </div>
-            </div>
-
-            {/* 默认模型 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
               <div>
-                <p className="text-sm text-white">默认 LLM 模型</p>
-                <p className="text-xs text-gray-500">所有 Bot 的默认推理模型</p>
-              </div>
-              <select
-                value={opsSettings.default_llm_model}
-                onChange={(e) =>
-                  setOpsSettings((prev) => ({
-                    ...prev,
-                    default_llm_model: e.target.value,
-                  }))
-                }
-                className="bg-dark-800 border border-dark-500 rounded px-3 py-1.5 text-sm text-white"
-              >
-                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="deepseek-chat">DeepSeek V3</option>
-                <option value="qwen-max">Qwen Max</option>
-              </select>
-            </div>
-
-            {/* 本地轻量模型开关 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">本地轻量模型</p>
-                <p className="text-xs text-gray-500">
-                  用 Ollama/LM Studio 处理意图分类等轻量任务，节省 API 成本
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  账户信息 // ACCOUNT
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  IDENTITY // SYSTEM // PROFILE
                 </p>
               </div>
-              <Switch
-                checked={opsSettings.local_hf_model_enabled}
-                onCheckedChange={(v) =>
-                  setOpsSettings((prev) => ({ ...prev, local_hf_model_enabled: v }))
-                }
-              />
             </div>
 
-            {/* 本地模型端点（仅在启用时显示） */}
-            {opsSettings.local_hf_model_enabled && (
-              <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg ml-4">
-                <div>
-                  <p className="text-sm text-white">本地模型地址</p>
-                  <p className="text-xs text-gray-500">
-                    Ollama 默认 11434，LM Studio 默认 1234
-                  </p>
+            {/* 个人信息网格 */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <InfoBlock label="用户名" value="管理员" accent="var(--accent-cyan)" />
+              <InfoBlock label="Telegram ID" value="@openclaw_bot" accent="var(--accent-purple)" />
+              <InfoBlock label="系统版本" value="v2.0.0" accent="var(--accent-green)" />
+              <InfoBlock label="运行时间" value="47 天" accent="var(--accent-amber)" />
+              <InfoBlock label="最后登录" value="2026-04-19 09:32" accent="var(--text-secondary)" />
+              <InfoBlock label="许可证" value="Pro" accent="var(--accent-cyan)" />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* 系统状态 */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-5">
+              <Cpu size={16} style={{ color: 'var(--accent-green)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+                SYSTEM STATUS
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              <ResourceBar icon={Cpu} label="CPU 使用率" value={12} max={100} unit="%" accent="var(--accent-cyan)" />
+              <ResourceBar icon={MemoryStick} label="内存" value={2.1} max={8} unit="GB" accent="var(--accent-purple)" />
+              <ResourceBar icon={HardDrive} label="磁盘" value={45.2} max={256} unit="GB" accent="var(--accent-amber)" />
+
+              {/* 网络状态 */}
+              <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
+                <Wifi size={14} style={{ color: 'var(--accent-green)' }} />
+                <span className="font-mono text-[11px] flex-1" style={{ color: 'var(--text-secondary)' }}>
+                  网络状态
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent-green)' }} />
+                    <div
+                      className="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping opacity-30"
+                      style={{ background: 'var(--accent-green)' }}
+                    />
+                  </div>
+                  <span className="font-mono text-xs font-bold" style={{ color: 'var(--accent-green)' }}>
+                    在线
+                  </span>
                 </div>
-                <input
-                  type="text"
-                  value={opsSettings.local_hf_model_endpoint}
-                  onChange={(e) =>
-                    setOpsSettings((prev) => ({
-                      ...prev,
-                      local_hf_model_endpoint: e.target.value,
-                    }))
-                  }
-                  className="w-56 bg-dark-800 border border-dark-500 rounded px-3 py-1.5 text-sm text-white"
-                  placeholder="http://localhost:11434"
-                />
               </div>
-            )}
-
-            {/* 自愈引擎 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">自愈引擎</p>
-                <p className="text-xs text-gray-500">自动检测并修复常见运行异常</p>
-              </div>
-              <Switch
-                checked={opsSettings.auto_heal_enabled}
-                onCheckedChange={(v) =>
-                  setOpsSettings((prev) => ({ ...prev, auto_heal_enabled: v }))
-                }
-              />
             </div>
-
-            {/* 定时任务总开关 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">定时任务</p>
-                <p className="text-xs text-gray-500">
-                  每日简报、监控巡检、社媒发布等自动任务
-                </p>
-              </div>
-              <Switch
-                checked={opsSettings.scheduler_enabled}
-                onCheckedChange={(v) =>
-                  setOpsSettings((prev) => ({ ...prev, scheduler_enabled: v }))
-                }
-              />
-            </div>
-
-            {/* 维护模式 */}
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">维护模式</p>
-                <p className="text-xs text-gray-500">
-                  暂停所有 Bot 消息处理，不影响 API 服务
-                </p>
-              </div>
-              <Switch
-                checked={opsSettings.maintenance_mode}
-                onCheckedChange={(v) =>
-                  setOpsSettings((prev) => ({ ...prev, maintenance_mode: v }))
-                }
-              />
-            </div>
-
-            {/* 保存运营设置按钮 */}
-            <button
-              onClick={saveOpsSettings}
-              disabled={savingOps}
-              className="w-full flex items-center justify-center gap-2 bg-claw-500 hover:bg-claw-600 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
-            >
-              {savingOps ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Save size={16} />
-              )}
-              保存运营设置
-            </button>
           </div>
-        </div>
+        </motion.div>
 
-        {/* 外观设置 */}
-        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
-          <h3 className="text-sm font-semibold text-white/90 mb-3">外观</h3>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-white/80">主题模式</p>
-              <p className="text-xs text-white/40 mt-0.5">选择深色、浅色或跟随系统</p>
+        {/* ====== Row 2: API 密钥 (span-4) + 通知设置 (span-4) + 高级设置 (span-4) ====== */}
+
+        {/* API 密钥管理 */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-4">
+              <Key size={16} style={{ color: 'var(--accent-amber)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
+                API KEYS
+              </span>
             </div>
-            <div className="flex gap-1 bg-dark-700 rounded-lg p-0.5">
-              {([
-                { value: 'dark' as const, label: '🌙 深色' },
-                { value: 'light' as const, label: '☀️ 浅色' },
-                { value: 'system' as const, label: '💻 系统' },
-              ]).map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    setTheme(opt.value);
-                    localStorage.setItem('openclaw-theme', opt.value);
-                  }}
-                  className={clsx(
-                    'px-2.5 py-1 rounded-md text-xs transition-colors',
-                    theme === opt.value
-                      ? 'bg-dark-500 text-white font-medium'
-                      : 'text-white/50 hover:text-white/80'
-                  )}
+
+            <div className="space-y-3">
+              {mockApiKeys.map((key) => (
+                <div
+                  key={key.id}
+                  className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background: 'var(--bg-base)' }}
                 >
-                  {opt.label}
+                  {/* 状态图标 */}
+                  <div
+                    className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: key.configured ? 'rgba(0,255,170,0.12)' : 'rgba(255,0,60,0.12)' }}
+                  >
+                    {key.configured ? (
+                      <Check size={12} style={{ color: 'var(--accent-green)' }} />
+                    ) : (
+                      <Shield size={12} style={{ color: 'var(--accent-red)' }} />
+                    )}
+                  </div>
+
+                  {/* 名称 */}
+                  <span className="font-mono text-xs font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
+                    {key.name}
+                  </span>
+
+                  {/* 密钥预览 */}
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    {key.maskedKey}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* 通知设置 */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-4">
+              <Bell size={16} style={{ color: 'var(--accent-purple)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
+                NOTIFICATIONS
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {mockNotifications.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: 'var(--bg-base)' }}
+                >
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {item.label}
+                  </span>
+
+                  {/* 纯 CSS 开关 — 不依赖 shadcn */}
+                  <div
+                    className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
+                    style={{
+                      background: item.enabled ? 'var(--accent-cyan)' : 'var(--dark-500)',
+                    }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                      style={{
+                        background: 'var(--text-primary)',
+                        left: item.enabled ? '18px' : '2px',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* 高级设置 */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-4">
+              <Settings2 size={16} style={{ color: 'var(--accent-cyan)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                ADVANCED
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {mockAdvanced.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: 'var(--bg-base)' }}
+                >
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {item.label}
+                  </span>
+
+                  {item.type === 'toggle' ? (
+                    <div
+                      className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
+                      style={{
+                        background: item.value === 'true' ? 'var(--accent-cyan)' : 'var(--dark-500)',
+                      }}
+                    >
+                      <div
+                        className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                        style={{
+                          background: 'var(--text-primary)',
+                          left: item.value === 'true' ? '18px' : '2px',
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <span className="font-mono text-xs font-bold" style={{ color: 'var(--accent-cyan)' }}>
+                      {item.value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== Row 3: 操作区 (span-12) ====== */}
+
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <div className="abyss-card p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <Shield size={16} style={{ color: 'var(--text-tertiary)' }} />
+              <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
+                ACTIONS
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {mockActions.map((action) => (
+                <button
+                  key={action.id}
+                  className="flex items-center gap-2.5 px-5 py-3 rounded-xl transition-all cursor-pointer"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--glass-border)',
+                    color: action.accent,
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = action.accent;
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-border)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)';
+                  }}
+                >
+                  <action.icon size={16} />
+                  <span className="font-mono text-xs font-medium">{action.label}</span>
                 </button>
               ))}
             </div>
           </div>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ====== 子组件 ====== */
+
+/** 账户信息块 */
+function InfoBlock({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div className="p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
+      <span className="text-label block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+        {label}
+      </span>
+      <span className="font-mono text-sm font-medium" style={{ color: accent }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** 资源使用率条 */
+function ResourceBar({
+  icon: Icon,
+  label,
+  value,
+  max,
+  unit,
+  accent,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: number;
+  max: number;
+  unit: string;
+  accent: string;
+}) {
+  const pct = Math.round((value / max) * 100);
+
+  return (
+    <div className="p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Icon size={12} style={{ color: accent }} />
+          <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            {label}
+          </span>
         </div>
-
-        {/* 关于 & 开发者模式 */}
-        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
-          <h3 className="text-sm font-semibold text-white/90 mb-3">关于</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-white/80">应用名称</span>
-              <span className="text-sm text-white/60">OpenClaw</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-white/80">版本号</span>
-              <button
-                onClick={handleVersionTap}
-                className="text-sm text-white/60 hover:text-white/80 transition-colors select-none"
-              >
-                v2.0.0 {tapCount > 0 && tapCount < 3 && `(${tapCount}/3)`}
-              </button>
-            </div>
-            {devMode && (
-              <div className="flex items-center justify-between p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 mt-2">
-                <div>
-                  <p className="text-sm text-amber-300 font-medium">开发者模式</p>
-                  <p className="text-xs text-amber-400/70">侧边栏显示全部开发者工具</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setDevMode(false);
-                    toast.success('🔒 开发者模式已关闭');
-                  }}
-                  className="px-3 py-1 text-xs bg-amber-500/20 text-amber-300 rounded-lg hover:bg-amber-500/30 transition-colors"
-                >
-                  关闭
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 安全设置 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
-              <Shield size={20} className="text-amber-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">安全设置</h3>
-              <p className="text-xs text-gray-500">权限和访问控制</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">启用白名单</p>
-                <p className="text-xs text-gray-500">只允许白名单用户访问</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={security.enableWhitelist}
-                  onChange={(e) =>
-                    setSecurity({ ...security, enableWhitelist: e.target.checked })
-                  }
-                />
-                <div className="w-11 h-6 bg-dark-500 peer-focus:ring-2 peer-focus:ring-claw-500/50 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-claw-500"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-dark-600 rounded-lg">
-              <div>
-                <p className="text-sm text-white">文件访问权限</p>
-                <p className="text-xs text-gray-500">允许 AI 读写本地文件</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={security.allowFileAccess}
-                  onChange={(e) =>
-                    setSecurity({ ...security, allowFileAccess: e.target.checked })
-                  }
-                />
-                <div className="w-11 h-6 bg-dark-500 peer-focus:ring-2 peer-focus:ring-claw-500/50 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-claw-500"></div>
-              </label>
-            </div>
-
-            <div className="p-4 bg-dark-600 rounded-lg border border-dark-500">
-              <p className="text-sm text-white mb-1">macOS 完全磁盘访问</p>
-              <p className="text-xs text-gray-500 mb-3">系统权限无法自动授予，点击按钮可直接打开系统设置页面</p>
-              <button
-                onClick={openFullDiskAccessSettings}
-                disabled={openingSystemSettings}
-                className="btn-secondary flex items-center gap-2"
-              >
-                {openingSystemSettings ? <Loader2 size={16} className="animate-spin" /> : <HardDrive size={16} />}
-                打开权限设置
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 高级设置 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-              <FileCode size={20} className="text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">高级设置</h3>
-              <p className="text-xs text-gray-500">配置文件和目录</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={openConfigDir}
-              className="w-full flex items-center gap-3 p-4 bg-dark-600 rounded-lg hover:bg-dark-500 transition-colors text-left"
-            >
-              <FolderOpen size={18} className="text-gray-400" />
-              <div className="flex-1">
-                <p className="text-sm text-white">打开配置目录</p>
-                <p className="text-xs text-gray-500 break-all">{projectContext?.config_dir ?? '~/.openclaw'}</p>
-              </div>
-            </button>
-
-            <div className="p-4 bg-dark-600 rounded-lg border border-dark-500 space-y-1">
-              <p className="text-sm text-white">项目路径信息</p>
-              <p className="text-xs text-gray-500 break-all">项目根目录: {projectContext?.project_base_dir ?? '加载中...'}</p>
-              <p className="text-xs text-gray-500 break-all">工作区: {projectContext?.workspace_dir ?? '加载中...'}</p>
-              <p className="text-xs text-gray-500 break-all">配置文件: {projectContext?.config_file ?? '加载中...'}</p>
-              <p className="text-xs text-gray-500 break-all">本地设置: {projectContext?.settings_file ?? '加载中...'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* 数据管理 */}
-        <div className="bg-dark-800/60 rounded-xl p-5 border border-dark-600/50">
-          <h3 className="text-sm font-semibold text-white/90 mb-3">数据管理</h3>
-          <div className="flex gap-3">
-            <button
-              onClick={async () => {
-                try {
-                  const settings = await api.getAppSettings();
-                  const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `openclaw-settings-${new Date().toISOString().slice(0,10)}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success('设置已导出');
-                } catch (e) {
-                  toast.error('导出失败');
-                }
-              }}
-              className="px-4 py-2 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600 flex items-center gap-2"
-            >
-              导出设置
-            </button>
-            <label className="px-4 py-2 rounded-lg bg-dark-700 text-white/80 text-sm hover:bg-dark-600 cursor-pointer flex items-center gap-2">
-              导入设置
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const text = await file.text();
-                    const settings = JSON.parse(text);
-                    await api.saveAppSettings(settings);
-                    toast.success('设置已导入，请刷新页面');
-                    window.location.reload();
-                  } catch (err) {
-                    toast.error('导入失败：文件格式不正确');
-                  }
-                }}
-              />
-            </label>
-          </div>
-        </div>
-
-        {/* 危险操作 */}
-        <div className="bg-dark-700 rounded-2xl p-6 border border-red-900/30">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
-              <AlertTriangle size={20} className="text-red-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">危险操作</h3>
-              <p className="text-xs text-gray-500">以下操作不可撤销，请谨慎操作</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => setShowUninstallConfirm(true)}
-              className="w-full flex items-center gap-3 p-4 bg-red-950/30 rounded-lg hover:bg-red-900/40 transition-colors text-left border border-red-900/30"
-            >
-              <Trash2 size={18} className="text-red-400" />
-              <div className="flex-1">
-                <p className="text-sm text-red-300">卸载 OpenClaw</p>
-                <p className="text-xs text-red-400/70">从系统中移除 OpenClaw CLI 工具</p>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* 卸载确认对话框 */}
-        {showUninstallConfirm && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500 max-w-md w-full mx-4 shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
-                    <AlertTriangle size={20} className="text-red-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">确认卸载</h3>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowUninstallConfirm(false);
-                    setUninstallResult(null);
-                  }}
-                  className="text-gray-400 hover:text-white transition-colors"
-                  aria-label="关闭对话框"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {!uninstallResult ? (
-                <>
-                  <p className="text-gray-300 mb-4">
-                    确定要卸载 OpenClaw 吗？此操作将：
-                  </p>
-                  <ul className="text-sm text-gray-400 mb-6 space-y-2">
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
-                      停止正在运行的服务
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
-                      移除 OpenClaw CLI 工具
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></span>
-                      配置文件将被保留在 ~/.openclaw
-                    </li>
-                  </ul>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowUninstallConfirm(false)}
-                      className="flex-1 px-4 py-2.5 bg-dark-600 hover:bg-dark-500 text-white rounded-lg transition-colors"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleUninstall}
-                      disabled={uninstalling}
-                      className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {uninstalling ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          卸载中...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 size={16} />
-                          确认卸载
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className={`p-4 rounded-lg ${uninstallResult.success ? 'bg-green-900/30 border border-green-800' : 'bg-red-900/30 border border-red-800'}`}>
-                  <p className={`text-sm ${uninstallResult.success ? 'text-green-300' : 'text-red-300'}`}>
-                    {uninstallResult.message}
-                  </p>
-                  {uninstallResult.error && (
-                    <p className="text-xs text-red-400 mt-2 font-mono">
-                      {uninstallResult.error}
-                    </p>
-                  )}
-                  {uninstallResult.success && (
-                    <p className="text-xs text-gray-400 mt-3">
-                      对话框将自动关闭...
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 保存按钮 */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="btn-primary flex items-center gap-2"
-          >
-            {saving ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Save size={16} />
-            )}
-            保存设置
-          </button>
-        </div>
+        <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+          {value}{unit} / {max}{unit}
+        </span>
       </div>
-
-      {/* 离开页面前的未保存修改确认对话框 */}
-      <ConfirmDialog
-        open={showUnsavedDialog}
-        onClose={() => {
-          // 用户选择留在当前页
-          setShowUnsavedDialog(false);
-          pendingNavigationRef.current = null;
-        }}
-        onConfirm={() => {
-          // 用户选择放弃修改并离开
-          setShowUnsavedDialog(false);
-          const target = pendingNavigationRef.current;
-          pendingNavigationRef.current = null;
-          if (target) {
-            // 先清除守卫再导航，避免再次触发拦截
-            setNavigationGuard(null);
-            setCurrentPage(target as import('../../App').PageType);
-          }
-        }}
-        title="有未保存的修改"
-        description="你还有设置没有保存。离开此页面将丢失这些修改。"
-        confirmText="放弃修改"
-        cancelText="继续编辑"
-        destructive
-      />
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: accent }}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+        />
+      </div>
     </div>
   );
 }

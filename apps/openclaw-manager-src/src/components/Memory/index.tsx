@@ -1,490 +1,283 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-import { Database, Filter, Loader2, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { api, isTauri, clawbotFetch, type MemorySearchResponse, type MemoryEntryRaw } from '@/lib/tauri';
-import { createLogger } from '@/lib/logger';
-import { toast } from 'sonner';
-
+/**
+ * Memory — 记忆脑图页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  BrainCircuit,
+  Database,
+  Search,
+  Tag,
+  User,
+  Zap,
+  Clock,
+  Layers,
+  CheckCircle2,
+} from 'lucide-react';
 import clsx from 'clsx';
 
-const memoryLogger = createLogger('Memory');
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
+};
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+/** 记忆条目 */
 interface MemoryEntry {
-  key: string;
-  value: string;
-  source_bot: string;
+  id: string;
+  content: string;
+  category: 'profile' | 'fact' | 'preference';
+  source: string;
   importance: number;
-  updated_at: number;
+  updatedAt: string;
 }
 
-// API 返回的记忆条目原始格式
+const MEMORIES: MemoryEntry[] = [
+  { id: 'm1', content: '用户是自由职业者，主要做量化交易和闲鱼倒卖', category: 'profile', source: 'telegram', importance: 5, updatedAt: '2分钟前' },
+  { id: 'm2', content: '偏好使用 GPT-4o 模型，对 Claude 也感兴趣', category: 'preference', source: 'telegram', importance: 4, updatedAt: '15分钟前' },
+  { id: 'm3', content: '持有 NVDA、AAPL、BTC 等资产，总仓位约12万美元', category: 'fact', source: 'trading', importance: 5, updatedAt: '1小时前' },
+  { id: 'm4', content: '用户在深圳，时区 UTC+8', category: 'profile', source: 'system', importance: 3, updatedAt: '3小时前' },
+  { id: 'm5', content: '闲鱼店铺主营二手数码产品，月均收入 ¥8,000+', category: 'fact', source: 'xianyu', importance: 4, updatedAt: '5小时前' },
+  { id: 'm6', content: '喜欢使用终端风格 UI，不喜欢花哨的动画', category: 'preference', source: 'telegram', importance: 3, updatedAt: '1天前' },
+  { id: 'm7', content: '最近在研究 Tauri 2 + React 桌面应用开发', category: 'fact', source: 'telegram', importance: 4, updatedAt: '2天前' },
+  { id: 'm8', content: '投资风格偏激进，可接受 10% 以内的回撤', category: 'profile', source: 'trading', importance: 5, updatedAt: '3天前' },
+];
+
+/** 分类统计 */
+const CATEGORIES = [
+  { key: 'all', label: '全部', count: 847, color: 'var(--text-primary)' },
+  { key: 'profile', label: '用户画像', count: 156, color: 'var(--accent-purple)' },
+  { key: 'fact', label: '事实记录', count: 523, color: 'var(--accent-cyan)' },
+  { key: 'preference', label: '偏好设定', count: 168, color: 'var(--accent-amber)' },
+];
+
+/* ====== 工具函数 ====== */
+
+/** 分类颜色和标签 */
+function categoryBadge(cat: MemoryEntry['category']) {
+  switch (cat) {
+    case 'profile': return { label: '画像', color: 'var(--accent-purple)', bg: 'rgba(168,85,247,0.1)' };
+    case 'fact': return { label: '事实', color: 'var(--accent-cyan)', bg: 'rgba(6,182,212,0.1)' };
+    case 'preference': return { label: '偏好', color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.1)' };
+  }
+}
+
+/** 重要度渲染 */
+function importanceDots(level: number): string {
+  return '●'.repeat(level) + '○'.repeat(5 - level);
+}
+
+/* ====== 主组件 ====== */
+
 export function Memory() {
-  const [entries, setEntries] = useState<MemoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  // 分类筛选：全部 | 用户画像 | 事实 | 高优先级
-  const [filter, setFilter] = useState<'all' | 'profile' | 'fact' | 'important'>('all');
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  // 删除/编辑操作中的条目 key
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  // 记忆引擎在线状态
-  const [engineOnline, setEngineOnline] = useState<boolean | null>(null);
-  // 记忆统计数据
-  const [memoryStats, setMemoryStats] = useState<{ total: number; extraction_rounds: number; vector_dim: number } | null>(null);
-  // 删除确认对话框状态
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  // 搜索防抖计时器
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 分页：每次加载的条目上限
-  const [limit, setLimit] = useState(50);
-  // 分页：是否还有更多条目
-  const [hasMore, setHasMore] = useState(true);
-  // "加载更多"按钮的加载状态
-  const [loadMoreLoading, setLoadMoreLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('all');
 
-  // 执行删除记忆条目（由确认对话框触发）
-  const executeDelete = async (key: string) => {
-    try {
-      setActionLoading(key);
-      if (isTauri()) {
-        // Tauri 环境：通过 IPC 调用
-        await api.clawbotMemoryDelete(key);
-      } else {
-        // 降级: 直接HTTP调用
-        await clawbotFetch('/api/v1/memory/delete', {
-          method: 'POST',
-          body: JSON.stringify({ key }),
-        });
-      }
-      setEntries(prev => prev.filter(e => e.key !== key));
-    } catch (e) {
-      memoryLogger.error('删除记忆失败', e);
-      toast.error('删除失败，请稍后重试');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // 进入编辑模式
-  const handleEdit = (entry: MemoryEntry) => {
-    setEditingKey(entry.key);
-    setEditValue(entry.value);
-  };
-
-  // 保存编辑后的记忆内容
-  const handleSaveEdit = async () => {
-    if (!editingKey) return;
-    // 验证记忆内容不能为空
-    if (!editValue.trim()) {
-      toast.error('记忆内容不能为空');
-      return;
-    }
-    try {
-      setActionLoading(editingKey);
-      if (isTauri()) {
-        // Tauri 环境：通过 IPC 调用
-        await api.clawbotMemoryUpdate(editingKey, editValue);
-      } else {
-        // 降级: 直接HTTP调用
-        await clawbotFetch('/api/v1/memory/update', {
-          method: 'POST',
-          body: JSON.stringify({ key: editingKey, value: editValue }),
-        });
-      }
-      setEntries(prev => prev.map(e => e.key === editingKey ? { ...e, value: editValue } : e));
-      setEditingKey(null);
-    } catch (e) {
-      memoryLogger.error('更新记忆失败', e);
-      toast.error('更新失败，请稍后重试');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const fetchMemories = useCallback(async (fetchLimit?: number) => {
-    const currentLimit = fetchLimit ?? limit;
-    try {
-      setLoading(true);
-      let results: MemoryEntryRaw[] = [];
-
-      if (isTauri()) {
-        // Tauri 环境：通过 IPC 调用
-        const data: MemorySearchResponse = await api.clawbotMemorySearch('', currentLimit);
-        results = data?.results || data?.entries || [];
-      } else {
-        // 降级: 直接HTTP调用
-        const resp = await clawbotFetch(`/api/v1/memory/search?q=&limit=${currentLimit}`);
-        if (resp.ok) {
-          const data = await resp.json();
-          results = data.results || data.entries || data || [];
-        }
-      }
-
-      setEngineOnline(true);
-      // 尝试获取记忆统计数据（提取轮次、向量维度等）
-      try {
-        if (isTauri()) {
-          const stats = await api.clawbotMemoryStats();
-          if (stats) {
-            setMemoryStats({
-              total: (stats as Record<string, number>).total_count ?? 0,
-              extraction_rounds: (stats as Record<string, number>).extraction_rounds ?? 0,
-              vector_dim: (stats as Record<string, number>).vector_dim ?? 0,
-            });
-          }
-        } else {
-          // HTTP 降级: 浏览器环境直接调用后端 API
-          const resp = await clawbotFetch('/api/v1/memory/stats');
-          if (resp.ok) {
-            const stats = await resp.json();
-            setMemoryStats({
-              total: stats.total_count ?? 0,
-              extraction_rounds: stats.extraction_rounds ?? 0,
-              vector_dim: stats.vector_dim ?? 0,
-            });
-          }
-        }
-      } catch {
-        // 统计接口不可用不影响核心功能
-      }
-      if (Array.isArray(results) && results.length > 0) {
-        setEntries(results.map((r: MemoryEntryRaw) => ({
-          key: r.key || r.id || 'unknown',
-          value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
-          source_bot: r.source_bot || r.source || 'system',
-          importance: r.importance || r.score || 3,
-          updated_at: r.updated_at || Date.now() / 1000,
-        })));
-        // 返回数量等于 limit 说明可能还有更多
-        setHasMore(results.length >= currentLimit);
-      } else {
-        setEntries([]);
-        setHasMore(false);
-      }
-    } catch (e) {
-      memoryLogger.warn('记忆API不可用，显示空状态', e);
-      setEntries([]);
-      setEngineOnline(false);
-      setHasMore(false);
-    } finally {
-      setLoading(false);
-      setLoadMoreLoading(false);
-    }
-  }, [limit]);
-
-  useEffect(() => {
-    fetchMemories();
-  }, [fetchMemories]);
-
-  // 搜索关键词变化时，防抖调用 API 搜索
-  useEffect(() => {
-    // 空搜索不需要额外调用，初始加载已处理
-    if (!searchQuery.trim()) {
-      // 清空搜索时重新加载全部
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-      fetchMemories();
-      return;
-    }
-
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        setSearchLoading(true);
-        let results: MemoryEntryRaw[] = [];
-
-        if (isTauri()) {
-          const data: MemorySearchResponse = await api.clawbotMemorySearch(searchQuery, limit);
-          results = data?.results || data?.entries || [];
-        } else {
-          const resp = await clawbotFetch(`/api/v1/memory/search?q=${encodeURIComponent(searchQuery)}&limit=${limit}`);
-          if (resp.ok) {
-            const data = await resp.json();
-            results = data.results || data.entries || data || [];
-          }
-        }
-
-        if (Array.isArray(results) && results.length > 0) {
-          setEntries(results.map((r: MemoryEntryRaw) => ({
-            key: r.key || r.id || 'unknown',
-            value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value || r.content || ''),
-            source_bot: r.source_bot || r.source || 'system',
-            importance: r.importance || r.score || 3,
-            updated_at: r.updated_at || Date.now() / 1000,
-          })));
-        } else {
-          setEntries([]);
-        }
-      } catch (e) {
-        memoryLogger.warn('搜索记忆失败', e);
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
-
-  // 根据分类筛选过滤记忆条目（与文本搜索叠加使用）
-  const filteredEntries = useMemo(() => {
-    if (filter === 'all') return entries;
-    return entries.filter(entry => {
-      switch (filter) {
-        case 'profile':
-          return entry.key.includes('profile');
-        case 'fact':
-          return !entry.key.includes('profile');
-        case 'important':
-          return entry.importance >= 4;
-        default:
-          return true;
-      }
-    });
-  }, [entries, filter]);
+  /** 过滤后的记忆列表 */
+  const filtered = MEMORIES.filter((m) => {
+    const matchCat = activeCategory === 'all' || m.category === activeCategory;
+    const matchSearch = !searchQuery || m.content.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchCat && matchSearch;
+  });
 
   return (
-    <div className="h-full flex flex-col gap-6 max-w-6xl mx-auto overflow-y-auto scroll-container pr-2 pb-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BrainCircuit className="text-purple-400" />
-            记忆库
-          </h1>
-          <p className="text-gray-400 mt-1">
-            基于 Mem0 架构的长期记忆库。AI Agent 会自动从对话中提取事实、更新画像并解决记忆冲突。
-          </p>
-        </div>
-        <button 
-            onClick={() => fetchMemories()}
-            className="flex items-center gap-2 px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-white transition-colors border border-dark-500"
-        >
-            <RefreshCw size={16} className={clsx(loading && "animate-spin")} />
-            刷新
-        </button>
-      </div>
-
-      <div className="flex gap-6 flex-col lg:flex-row">
-        {/* 左侧：搜索与记忆列表 */}
-        <div className="flex-1 space-y-4">
-          <div className="relative">
-            {searchLoading ? (
-              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 animate-spin" size={18} />
-            ) : (
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            )}
-            <input 
-              type="text" 
-              placeholder="搜索记忆片段、实体或意图..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-dark-800 border border-dark-600 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-purple-500/50 transition-colors"
-              aria-label="搜索记忆"
-            />
-          </div>
-
-          {/* 分类筛选按钮组 */}
-          <div className="flex items-center gap-2">
-            <Filter size={14} className="text-gray-500 shrink-0" />
-            {([
-              { value: 'all', label: '全部' },
-              { value: 'profile', label: '用户画像' },
-              { value: 'fact', label: '事实' },
-              { value: 'important', label: '高优先级' },
-            ] as const).map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setFilter(opt.value)}
-                className={clsx(
-                  "px-3 py-1.5 text-xs rounded-lg border transition-colors",
-                  filter === opt.value
-                    ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
-                    : "bg-dark-800 text-gray-400 border-dark-600 hover:bg-dark-700 hover:text-gray-300"
-                )}
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 记忆统计 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(168,85,247,0.15)' }}
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+                <BrainCircuit size={20} style={{ color: 'var(--accent-purple)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  MEMORY BRAIN
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  记忆库 // MEM0 VECTOR ENGINE
+                </p>
+              </div>
+            </div>
 
-          <div className="space-y-3">
-            {filteredEntries.map(entry => {
-                const isProfile = entry.key.includes('profile');
-                return (
-                  <Card key={entry.key} className={clsx(
-                      "bg-dark-800 border transition-all hover:border-dark-400 group relative",
-                      isProfile ? "border-purple-500/30" : "border-dark-600"
-                  )}>
-                    <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1 pr-8">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className={clsx(
-                                        "px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase",
-                                        isProfile ? "bg-purple-500/20 text-purple-400" : "bg-dark-600 text-gray-400"
-                                    )}>
-                                        {isProfile ? '用户画像' : '事实'}
-                                    </span>
-                                    <span className="text-xs text-gray-500">标识: {entry.key}</span>
-                                    {entry.importance >= 4 && (
-                                        <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">高优先级</span>
-                                    )}
-                                </div>
-                                {editingKey === entry.key ? (
-                                  <div className="space-y-2">
-                                    <textarea
-                                      value={editValue}
-                                      onChange={(e) => setEditValue(e.target.value)}
-                                      className="w-full bg-dark-900 border border-purple-500/50 rounded-lg p-3 text-sm text-white font-mono focus:outline-none focus:border-purple-500 resize-y min-h-[80px]"
-                                      rows={4}
-                                      aria-label="编辑记忆内容"
-                                    />
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={handleSaveEdit}
-                                        disabled={!!actionLoading}
-                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
-                                      >
-                                        {actionLoading === editingKey ? <Loader2 size={12} className="animate-spin inline" /> : '保存'}
-                                      </button>
-                                      <button
-                                        onClick={() => setEditingKey(null)}
-                                        className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-gray-300 text-xs rounded-md transition-colors"
-                                      >
-                                        取消
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-mono">
-                                    {isProfile ? (() => {
-                                      try {
-                                        return JSON.stringify(JSON.parse(entry.value), null, 2);
-                                      } catch {
-                                        return entry.value;
-                                      }
-                                    })() : entry.value}
-                                  </div>
-                                )}
-                                <div className="mt-3 text-xs text-gray-600">
-                                    来源: {entry.source_bot} | 更新: {new Date(entry.updated_at * 1000).toLocaleString()}
-                                </div>
-                            </div>
-                            
-                            {/* 操作按钮 (仅悬浮显示) */}
-                            <div className="absolute right-4 top-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleEdit(entry)} disabled={actionLoading === entry.key} className="p-1.5 bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white rounded border border-dark-500 disabled:opacity-50" aria-label="编辑记忆">
-                                    <Edit size={14} />
-                                </button>
-                                <button onClick={() => setDeleteTarget(entry.key)} disabled={actionLoading === entry.key} className="p-1.5 bg-dark-700 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded border border-dark-500 hover:border-red-500/30 disabled:opacity-50" aria-label="删除记忆">
-                                    {actionLoading === entry.key ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                </button>
-                            </div>
-                        </div>
-                    </CardContent>
-                  </Card>
-                );
-            })}
-            
-            {!searchLoading && filteredEntries.length === 0 && (
-                <div className="text-center py-12 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
-                    {searchQuery ? '没有找到匹配的记忆记录' : filter !== 'all' ? '当前筛选条件下没有记忆记录' : '记忆库为空。与 Bot 对话后会自动记录。'}
+            {/* 统计数据 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: '总条目', value: '847', icon: Layers, color: 'var(--accent-cyan)' },
+                { label: '提取轮次', value: '1,256', icon: Zap, color: 'var(--accent-green)' },
+                { label: '向量维度', value: '1,536', icon: Database, color: 'var(--accent-purple)' },
+                { label: '今日新增', value: '23', icon: Clock, color: 'var(--accent-amber)' },
+              ].map((s) => (
+                <div key={s.label}>
+                  <span className="text-label flex items-center gap-1">
+                    <s.icon size={10} style={{ color: s.color }} />
+                    {s.label}
+                  </span>
+                  <div className="text-metric mt-1" style={{ color: s.color }}>
+                    {s.value}
+                  </div>
                 </div>
-            )}
+              ))}
+            </div>
 
-            {/* 加载更多按钮 */}
-            {!searchQuery && filteredEntries.length > 0 && hasMore && (
+            {/* 分类筛选 */}
+            <div className="flex gap-2 mb-4">
+              {CATEGORIES.map((cat) => (
                 <button
-                  onClick={() => {
-                    const newLimit = limit + 50;
-                    setLimit(newLimit);
-                    setLoadMoreLoading(true);
-                    fetchMemories(newLimit);
-                  }}
-                  disabled={loadMoreLoading}
-                  className="w-full py-3 text-sm text-gray-400 hover:text-white bg-dark-800 hover:bg-dark-700 border border-dark-600 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {loadMoreLoading ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      加载中...
-                    </>
-                  ) : (
-                    '加载更多'
+                  key={cat.key}
+                  onClick={() => setActiveCategory(cat.key)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg font-mono text-xs transition-colors border',
                   )}
+                  style={{
+                    background: activeCategory === cat.key ? 'var(--bg-tertiary)' : 'transparent',
+                    borderColor: activeCategory === cat.key ? 'var(--glass-border)' : 'transparent',
+                    color: activeCategory === cat.key ? cat.color : 'var(--text-tertiary)',
+                  }}
+                >
+                  {cat.label} ({cat.count})
                 </button>
-            )}
+              ))}
+            </div>
+
+            {/* 记忆列表 */}
+            <div className="flex-1 space-y-1.5">
+              {filtered.map((mem) => {
+                const badge = categoryBadge(mem.category);
+                return (
+                  <div
+                    key={mem.id}
+                    className="py-3 px-4 rounded-lg transition-colors"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span
+                            className="px-2 py-0.5 rounded font-mono text-[10px] font-semibold"
+                            style={{ background: badge.bg, color: badge.color }}
+                          >
+                            {badge.label}
+                          </span>
+                          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                            {importanceDots(mem.importance)}
+                          </span>
+                        </div>
+                        <p className="font-mono text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                          {mem.content}
+                        </p>
+                        <div className="flex gap-3 mt-2">
+                          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                            来源: {mem.source}
+                          </span>
+                          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                            {mem.updatedAt}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* 右侧：状态统计板 */}
-        <div className="w-full lg:w-80 shrink-0 space-y-4">
-            <Card className="bg-dark-800 border-dark-600">
-                <CardHeader className="pb-3 border-b border-dark-700">
-                    <CardTitle className="text-sm text-gray-300 flex items-center gap-2">
-                        <Database size={16} className="text-gray-400" />
-                        向量数据库状态
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">总记忆条目</span>
-                        <span className="text-lg font-mono text-white">{memoryStats?.total ? memoryStats.total.toLocaleString() : entries.length > 0 ? entries.length.toLocaleString() : '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">提取轮次</span>
-                        <span className="text-lg font-mono text-white">{memoryStats?.extraction_rounds ?? '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">向量维度</span>
-                        <span className="text-lg font-mono text-white">{memoryStats?.vector_dim ?? '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">引擎状态</span>
-                        <span className={clsx(
-                            "text-xs px-2 py-0.5 rounded border",
-                            engineOnline === null ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
-                            engineOnline ? "bg-green-500/20 text-green-400 border-green-500/30" :
-                            "bg-red-500/20 text-red-400 border-red-500/30"
-                        )}>
-                            {engineOnline === null ? '检查中...' : engineOnline ? '在线' : '未连接'}
-                        </span>
-                    </div>
-                </CardContent>
-            </Card>
+        {/* ====== 右侧面板 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4 space-y-4" variants={cardVariants}>
+          {/* 搜索框 */}
+          <div className="abyss-card p-6">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+              MEMORY SEARCH
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              记忆检索
+            </h3>
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-disabled)' }}
+              />
+              <input
+                type="text"
+                placeholder="搜索记忆片段..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full py-2.5 pl-10 pr-4 rounded-lg font-mono text-sm outline-none transition-colors"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--text-primary)',
+                }}
+              />
+            </div>
+            <p className="font-mono text-[10px] mt-2" style={{ color: 'var(--text-disabled)' }}>
+              支持语义搜索：输入自然语言即可匹配相关记忆
+            </p>
+          </div>
 
-            <Card className="bg-dark-800 border-dark-600">
-                <CardHeader className="pb-3 border-b border-dark-700">
-                    <CardTitle className="text-sm text-gray-300">什么是自动冲突解决？</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                    <p className="text-xs text-gray-400 leading-relaxed">
-                        当你在对话中提到 <span className="text-purple-400">"我改用 Solana 链了"</span> 时，Mem0 引擎会自动检索过往记忆。如果发现旧记忆 <span className="text-gray-500 line-through">"用户偏好 ETH 链"</span>，引擎会发送一条 UPDATE 或 DELETE 指令，自动覆盖冲突的旧认知，确保大模型的上下文永远是最新的。
-                    </p>
-                </CardContent>
-            </Card>
-        </div>
-      </div>
-      {/* 删除确认对话框 */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            executeDelete(deleteTarget);
-            setDeleteTarget(null);
-          }
-        }}
-        title="删除记忆"
-        description="确定要删除这条记忆吗？删除后无法恢复。"
-        confirmText="删除"
-        destructive
-      />
+          {/* 向量数据库状态 */}
+          <div className="abyss-card p-6">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+              VECTOR DB
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              向量引擎状态
+            </h3>
+            <div className="space-y-3">
+              {[
+                { label: '引擎状态', value: '在线', color: 'var(--accent-green)', icon: CheckCircle2 },
+                { label: '存储后端', value: 'Qdrant', color: 'var(--accent-cyan)', icon: Database },
+                { label: '嵌入模型', value: 'text-3-small', color: 'var(--accent-purple)', icon: Zap },
+                { label: '索引类型', value: 'HNSW', color: 'var(--accent-amber)', icon: Layers },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <span className="flex items-center gap-2">
+                    <item.icon size={12} style={{ color: item.color }} />
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {item.label}
+                    </span>
+                  </span>
+                  <span className="font-mono text-xs font-semibold" style={{ color: item.color }}>
+                    {item.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 冲突解决说明 */}
+            <div
+              className="mt-4 pt-3 border-t"
+              style={{ borderColor: 'var(--glass-border)' }}
+            >
+              <p className="font-mono text-[10px] leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
+                Mem0 引擎自动检测记忆冲突：当新事实与旧记忆矛盾时，引擎会发送 UPDATE/DELETE 指令覆盖过时认知。
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
