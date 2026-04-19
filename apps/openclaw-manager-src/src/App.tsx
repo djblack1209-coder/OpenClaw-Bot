@@ -220,7 +220,7 @@ function App() {
       /* 全球情报（worldmonitor） */
       worldmonitor: <PageErrorBoundary pageName="全球监控"><WorldMonitor /></PageErrorBoundary>,
       newsfeed: <PageErrorBoundary pageName="新闻中心"><NewsFeed /></PageErrorBoundary>,
-      finradar: <PageErrorBoundary pageName="金融雷达"><PlaceholderPage title="金融雷达" description="全球股市、加密货币、大宗商品实时雷达" /></PageErrorBoundary>,
+      finradar: <PageErrorBoundary pageName="金融雷达"><FinRadar /></PageErrorBoundary>,
       portfolio: <PageErrorBoundary pageName="投资组合"><Portfolio /></PageErrorBoundary>,
       trading: <PageErrorBoundary pageName="交易引擎"><PlaceholderPage title="交易引擎" description="量化交易、策略回测与执行" /></PageErrorBoundary>,
       risk: <PageErrorBoundary pageName="风险分析"><PlaceholderPage title="风险分析" description="Hurst 指数、VaR 与风控仪表盘" /></PageErrorBoundary>,
