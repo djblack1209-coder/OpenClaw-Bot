@@ -12,9 +12,24 @@
 
 ## 最近更新（2026-04）
 
-## 2026-04-19 — HI-540: 统一两个比价引擎，消除代码重复
-> 领域: `backend`
-> 影响模块: `shopping/price_engine`, `core/brain_exec_life`, `execution/tracking`
+## 2026-04-19 — 技术债清理第8批: 交易风控+AI追踪+社媒重构+比价统一+Bot详情（6项）
+> 领域: `trading`, `backend`, `social`, `frontend`
+> 影响模块: `risk_manager`, `risk_validators`, `risk_var`, `risk_kelly`, `risk_config`, `journal_predictions`, `trading_journal`, `trading_pipeline`, `auto_trader`, `_init_system`, `platform_adapter`, `x_adapter`, `xhs_adapter`, `brain_exec_social`, `rpc`, `drafts`, `social_scheduler`, `content_pipeline`, `price_engine`, `brain_exec_life`, `tracking`, `Bots`
+> 关联问题: HI-523, HI-524, HI-535, HI-538, HI-540, HI-552
+
+### 交易安全 (2项)
+1. **HI-523: SELL 方向完整风控 (9个缺口全修复)**: StopLossValidator 支持做空止损验证(止损>入场)、RiskRewardValidator 支持做空风险收益比、PositionSizeValidator 支持做空单笔风险量、ExposureValidator 最大持仓数对 BUY/SELL 一视同仁、3 个软检查移除 BUY-only 限制(日亏损/板块/VaR)、max_loss 区分方向、risk_score 区分方向、Kelly 公式自动推断方向
+2. **HI-524: 新账户 VaR 保护 (3个缺口全修复)**: check_var_limit() 交易<10笔时使用保守限额(2%日VaR+1%单笔)、check_trade() 新账户保护模式(单笔上限min(5%,$500)+总敞口30%)、risk_config.py 新增 5 个新账户保护参数
+
+### 后端增强 (2项)
+3. **HI-535: AI 单模型独立准确率追踪**: 新增 `vote_records` 表记录每个 AI 分析师的独立投票；收盘验证时逐个校验对错；`get_prediction_accuracy()` 新增 `per_voter` 维度；投票自我校准优先使用个体准确率
+4. **HI-538: 社媒发布适配器模式重构**: 新建 `platform_adapter.py`(基类+注册表)、`x_adapter.py`(X/Twitter)、`xhs_adapter.py`(小红书)；5 个文件 6 处 if/elif 链全部替换为 `get_adapter()` 分发；新增平台只需写适配器类
+
+### 架构统一 (1项)
+5. **HI-540: 比价引擎统一**: 新增 `smart_compare_prices()` 统一入口（SMZDM+JD→Tavily→crawl4ai→Jina+LLM 四级降级）；`brain_exec_life._exec_smart_shopping` 精简为调用统一入口；价格监控改用 `fast_mode=True`（仅直接爬取，不消耗 API 额度）
+
+### 前端增强 (1项)
+6. **HI-552: Bot 详情页**: 点击服务卡片弹出详情弹窗(4个Tab: 概览/配置/日志/统计)；SERVICE_META 改为动态+静态合并；服务卡片展示模型数和 Bot 数
 > 关联问题: HI-540
 
 ### 变更内容

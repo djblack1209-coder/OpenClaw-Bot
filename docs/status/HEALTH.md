@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (技术债清理第7批: Rust结构化错误+命令白名单+Fetch统一+Markdown增强+频道CRUD+记忆筛选+调度器CRUD)
+> 最后更新: 2026-04-19 (技术债清理第8批: SELL风控+新账户VaR+AI单模型追踪+社媒适配器+比价统一+Bot详情页)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -151,8 +151,8 @@
 | ~~HI-520~~ | ~~`trading`~~ | ~~`freqtrade_bridge.py`~~ | ~~BUG: `confirm_trade_entry()` 传 dict 给 `check_trade()` 而非关键字参数，且用 `.get("approved")` 而非 `.approved` 属性访问 RiskCheckResult~~ → **已修复 2026-04-18**: 改为关键字参数调用 + `.approved` 属性 + 默认 3% 止损 | 2026-04-18 |
 | ~~HI-521~~ | ~~`trading`~~ | ~~`brain_exec_invest.py`~~ | ~~BUG: `_exec_risk_check()` 两处 `check_trade()` 调用不传 `stop_loss`(默认0)，导致 `StopLossValidator` 拒绝所有 BUY 交易~~ → **已修复 2026-04-18**: 补传 `stop_loss=entry_price*0.97`(默认3%止损)，优先读取 params 中用户指定值 | 2026-04-18 |
 | HI-522 | `trading` | `risk_manager.py` | ~~TECH_DEBT: `check_trade()` 读取 `_today_pnl/_today_trade_count` 等共享状态无锁保护~~ → **已确认修复 2026-04-19**: check_trade() 在 `_state_lock` 内刷新+快照共享状态，所有写入方法也在锁内，无竞态 | 2026-04-18 |
-| HI-523 | `trading` | `risk_manager.py` | ARCH_LIMIT: SELL 方向交易几乎不做风控检查（仅持仓验证），缺少卖空风控、止损验证等 | 2026-04-18 |
-| HI-524 | `trading` | `risk_manager.py` | ARCH_LIMIT: 新账户首笔交易时 `_today_pnl=0 / _today_trade_count=0 / positions=[]`，VaR 保护因无持仓数据而完全失效 | 2026-04-18 |
+| HI-523 | `trading` | `risk_manager.py` | ~~ARCH_LIMIT: SELL 方向交易几乎不做风控检查~~ → **已修复 2026-04-19**: 9 个缺口全修复——StopLossValidator 做空止损验证、RiskRewardValidator 做空风险收益比、PositionSizeValidator 做空单笔风险量、ExposureValidator 双向一视同仁、3 个软检查移除 BUY-only、max_loss 区分方向、risk_score 区分方向、Kelly 自动推断方向 | 2026-04-18 |
+| HI-524 | `trading` | `risk_manager.py` | ~~ARCH_LIMIT: 新账户首笔交易 VaR 保护完全失效~~ → **已修复 2026-04-19**: check_var_limit() <10笔交易使用保守限额(2%日VaR+1%单笔)、check_trade() 新账户保护模式(单笔min(5%,$500)+总敞口30%)、risk_config 新增5个保护参数 | 2026-04-18 |
 | HI-525 | `ai-pool` | `litellm_router.py` + `config/llm_routing.json` | ~~TECH_DEBT: JSON 配置与硬编码完全漂移 — iflow_unlimited 的 URL 和模型名不一致，需确认统一切换策略 (R2.25/R2.29)~~ → **已修复 2026-04-18**: 12 个 provider 的 base_url/模型名/RPM/prefix/tier/timeout 全面同步到 JSON | 2026-04-18 |
 | HI-526 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44)~~ → **已修复 2026-04-18**: 28 个文件 65 处静默异常改造（pass→warning 13处，debug→warning 52处），同时修复 15 处 f-string→lazy 格式 | 2026-04-18 |
 | HI-527 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`~~ → **已修复 2026-04-19**: litellm_router 启动健康摘要添加 `_log_task_exception` callback；telegram_ux 两处为 context manager 内部使用（cancel 处理），不需要 callback；message_mixin 思考动画为局部变量。实际需修复 1 处已完成 | 2026-04-18 |
@@ -160,10 +160,10 @@
 | HI-529 | `backend` | `src/bot/cmd_*.py` | ~~TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45)~~ → **已修复 2026-04-18**: 14 个文件 39 个 cmd_ 函数添加外层 try/except（warning 日志 + 用户友好提示），覆盖率从 27% 提升到 67% | 2026-04-19 |
 | HI-530 | `backend` | `src/bot/workflow_mixin.py` | ~~TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法~~ → **已修复 2026-04-18**: 文件从 461 行精简到 122 行，删除 23 个死方法，仅保留 `_cmd_smart_shop` 和 `_extract_json_object` | 2026-04-19 |
 | HI-531 | `backend` | `cmd_basic/help_mixin.py` | ~~TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖~~ → **已修复 2026-04-18**: 29 个命令按功能归类补入帮助菜单（日常/社媒/投资/IBKR/高级/闲鱼 6 个分类） | 2026-04-19 |
-| HI-535 | `backend` | `src/modules/investment/` | TECH_DEBT: AI 投票系统只追踪共识决策的准确率，不追踪单个模型的独立预测准确率，无法评估哪个 AI 分析师表现最好 (R4.03) | 2026-04-19 |
+| HI-535 | `backend` | `src/modules/investment/` | ~~TECH_DEBT: AI 投票系统只追踪共识决策的准确率~~ → **已修复 2026-04-19**: 新增 `vote_records` 表记录每个 AI 分析师独立投票；收盘逐个验证；`get_prediction_accuracy()` 新增 `per_voter` 维度 | 2026-04-19 |
 | HI-536 | `backend` | `invest_tools.py` | ~~TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据~~ → **已修复 2026-04-18**: `_get_cached_quote` 新增 `allow_stale` 参数，`_sync_get_quote` 失败时返回带 `_stale=True` 标记的过期缓存 | 2026-04-19 |
 | HI-537 | `backend` | `freqtrade_bridge.py` | ~~TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用~~ → **已标记 2026-04-18**: 添加详细注释说明此方法为回测降级路径，未接入主启动流程 | 2026-04-19 |
-| HI-538 | `backend` | `src/execution/social/` | TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式，Weibo/Discord/WeChat 定义了限制参数但无实际发布实现；添加新平台需改多个文件 (R4.13) | 2026-04-19 |
+| HI-538 | `backend` | `src/execution/social/` | ~~TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式~~ → **已修复 2026-04-19**: 新建 `platform_adapter.py`(基类+注册表)、`x_adapter.py`、`xhs_adapter.py`；5 个文件 6 处 if/elif 链替换为 `get_adapter()` 分发；新增平台只需写适配器类 | 2026-04-19 |
 | HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | ~~TECH_DEBT: 存在两套平行的草稿系统~~ → **已确认关闭 2026-04-18**: HI-585 已将 drafts.py 改为 JSON 持久化，social_scheduler 和 execution 均通过 drafts 模块操作，不再有两套数据源 | 2026-04-19 |
 | HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | ~~TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大~~ → **已修复 2026-04-19**: 新增 `smart_compare_prices()` 统一入口，4级降级链(SMZDM+JD→Tavily→crawl4ai→Jina+LLM)，`brain_exec_life.py` 和 `tracking.py` 均改为调用统一入口，`fast_mode=True` 用于批量监控 | 2026-04-19 |
 | HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
@@ -175,7 +175,7 @@
 | HI-547 | `frontend` | `src/components/` | ~~TECH_DEBT: 暗色/亮色模式无"跟随系统"选项~~ → **已修复 2026-04-18**: 新增 `system` 选项，监听 `prefers-color-scheme` 媒体查询自动切换，Settings 页面改为三选一分段按钮组 | 2026-04-19 |
 | HI-550 | `frontend` | `conversationService.ts` | ~~TECH_DEBT: 会话重命名功能完全缺失。删除会话无二次确认弹窗~~ → **已修复 2026-04-18**: 新增 ConfirmDialog 删除确认（红色危险样式）+ 双击标题或铅笔图标重命名 + 后端 PATCH 端点。AI 模式切换仍为前端装饰(低优先级) | 2026-04-19 |
 | HI-551 | `frontend` | `Assistant/index.tsx` | ~~TECH_DEBT: Markdown 渲染器为手写简易版~~ → **已修复 2026-04-19**: 新增有序列表(`1.`)、引用块(`>`)、图片(`![](url)`)、代码块复制按钮(📋)、水平分隔线(`---`) 支持 | 2026-04-19 |
-| HI-552 | `frontend` | `Bots/index.tsx` | TECH_DEBT: 无独立 Bot 详情页——无法查看单个 Bot 的配置/日志/统计。SERVICE_META 硬编码 5 个服务 ID。C 端不展示模型和命令数 (R6.19/R6.20) | 2026-04-19 |
+| HI-552 | `frontend` | `Bots/index.tsx` | ~~TECH_DEBT: 无独立 Bot 详情页~~ → **已修复 2026-04-19**: 点击服务卡片弹出详情弹窗(4个Tab: 概览/配置/日志/统计)；SERVICE_META 改为动态+静态合并；服务卡片展示模型数和 Bot 数 | 2026-04-19 |
 | HI-553 | `frontend` | `Settings/index.tsx` | ~~TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测~~ → **已修复 2026-04-18**: isDirty 扩展检测 opsSettings 的 7 个字段 + initialOpsSettingsRef 记录初始值 + 保存成功后重置脏状态。LLM 模型列表硬编码问题保留(低优先级) | 2026-04-19 |
 | HI-554 | `frontend` | `Channels/index.tsx` | ~~TECH_DEBT: 频道列表仅支持编辑~~ → **已修复 2026-04-19**: 新增创建频道表单(6种类型)、删除确认对话框、连接状态徽章(🟢已连接/🟡未验证/⚪未配置) | 2026-04-19 |
 | HI-555 | `frontend` | `Onboarding/index.tsx` | ~~TECH_DEBT: 新手引导缺少"跳过引导"按钮~~ → **已修复 2026-04-18**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），点击直接调用 handleFinish 完成引导 | 2026-04-19 |

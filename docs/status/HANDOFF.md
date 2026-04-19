@@ -4,34 +4,33 @@
 
 ---
 
-## [2026-04-19] 技术债清理第7批 — 前端架构+安全+体验大升级（7项）
+## [2026-04-19] 技术债清理第8批 — 交易风控+AI追踪+社媒重构+比价统一+Bot详情（6项）
 
 ### 本次完成了什么
-1. **HI-544: Rust 结构化错误类型**: 新建 `models/error.rs`，`AppError`(kind+message) + `ErrorKind`(11种分类)，8 个命令文件 97 个 command 全部从 `Result<T,String>` 迁移到 `AppResult<T>`
-2. **HI-545: Shell 命令白名单**: `shell.rs` 新增 `ALLOWED_COMMANDS`(26个) + `validate_command()` 校验，所有 `Command::new()` 加入白名单检查
-3. **HI-546: HTTP API 统一错误检查**: 新增 `clawbotFetchJson()` 封装，api.ts 35 处裸调用全部替换
-4. **HI-551: Markdown 渲染器增强**: 有序列表、引用块、图片、代码复制按钮、水平分隔线
-5. **HI-554: 频道完整 CRUD**: 创建表单(6种类型)、删除确认、连接状态徽章
-6. **HI-563: 记忆统计 HTTP 降级+筛选器**: 浏览器环境统计数据 + 四选一分类筛选
-7. **HI-566: 调度器完整 CRUD**: 创建/编辑/删除 + 可折叠执行历史
+1. **HI-523: SELL 方向完整风控**: 9 个缺口全修复——StopLoss/RiskReward/PositionSize/Exposure 验证器支持做空，3 个软检查移除 BUY-only 限制，max_loss+risk_score+Kelly 区分方向
+2. **HI-524: 新账户 VaR 保护**: check_var_limit() <10笔使用保守限额(2%日VaR+1%单笔)，check_trade() 新账户保护模式(单笔min(5%,$500)+总敞口30%)，risk_config 新增 5 个保护参数
+3. **HI-535: AI 单模型独立准确率追踪**: 新增 `vote_records` 表+3个方法(record/validate/get_accuracy)，投票自我校准用个体数据
+4. **HI-538: 社媒发布适配器模式重构**: 新建 `platform_adapter.py` + `x_adapter.py` + `xhs_adapter.py`，5 个文件 6 处 if/elif 链替换为 `get_adapter()` 分发
+5. **HI-540: 比价引擎统一**: 新增 `smart_compare_prices()` 统一入口(4级降级)，brain_exec_life 精简为调用统一入口，价格监控改用 fast_mode
+6. **HI-552: Bot 详情页**: 点击服务卡片弹出详情弹窗(4个Tab)，SERVICE_META 动态+静态合并，展示模型数和 Bot 数
 
 ### 未完成的工作
-- **剩余前端技术债 (~2 项)**: HI-552(Bot详情页) / HI-558(DevPanel空壳)
-- **剩余后端 (~2 项)**: HI-523(SELL风控) / HI-524(新账户VaR) — 需用户确认架构方案
-- **长期遗留**: HI-388(diskcache CVE) / HI-462(低风险日志脱敏) / HI-535(单模型追踪) / HI-538(适配器模式) / HI-540(比价引擎)
+- **剩余前端技术债 (~1 项)**: HI-558(DevPanel空壳)
+- **长期遗留**: HI-388(diskcache CVE) / HI-462(低风险日志脱敏)
 
 ### 需要注意的坑
-- AppError 通过 Serialize 自动序列化为 JSON 传给前端，前端 catch 到的错误包含 `kind` 和 `message` 两个字段
-- `clawbotFetchJson` 默认泛型是 `any` 以兼容旧代码，未来可逐步加强为具体类型
-- Shell 白名单的 `bash` 允许执行任意脚本（用于 IBKR 启停），安全性依赖于命令来源是 .env 而非用户输入
-- 调度器 CRUD 的创建/编辑/删除 API 如果后端不支持，会 toast 提示"后端暂不支持此操作"
+- SELL 风控的止损验证要求 stop_loss > entry_price（做空止损在入场价上方），与 BUY 相反
+- 新账户保护模式在交易达到 10 笔后自动解除（过渡到正常 VaR）
+- vote_records 表是自动创建的，旧数据库会在首次调用时 CREATE TABLE IF NOT EXISTS
+- 社媒适配器的 `_auto_register()` 在模块导入时运行，如果 x_platform 或 xhs_platform 导入失败只会 warning 不会崩
+- `smart_compare_prices(fast_mode=True)` 不调用 Tavily/crawl4ai/Jina，仅用 SMZDM+JD 爬取
 
 ### 当前系统状态
-- Git: 7 个修复已提交
+- Git: 6 个修复已提交
 - TypeScript: 零错误
 - Rust cargo check: 零错误
 - 回归测试: 1006 passed / 214 failed / 9 errors（与基线完全一致，零回归）
-- 技术债: 累计 60 项已修复（第1批15 + 第2批11 + 第3批10 + 第4批5 + 第5批6 + 第6批6 + 第7批7）
+- 技术债: 累计 66 项已修复（第1-7批60项 + 第8批6项）
 
 ## [2026-04-18] 技术债清理第6批 — 前端体验+文档偏差修复（6项）
 
