@@ -1,6 +1,13 @@
 """
-Price Comparison Engine MVP v1.1
+Price Comparison Engine v2.0
 搬运 什么值得买 + 京东公开搜索 + AI 分析模式
+v2.0 新增统一比价入口 smart_compare_prices()，合并多级降级链
+
+v2.0 变更 (2026-04-19):
+  - 新增 smart_compare_prices() — 统一比价入口，4 级降级链
+  - 降级顺序: SMZDM+JD 爬取 → Tavily 搜索 → crawl4ai 结构化 → Jina+LLM
+  - fast_mode=True 时只走 SMZDM+JD（用于批量价格监控，不消耗 API 额度）
+  - 原 compare_prices() 保持不变，确保向后兼容
 
 v1.1 变更 (2026-03-23):
   - 搬运 price-parser (4.2k⭐) 替代手写 regex 价格提取
@@ -12,8 +19,9 @@ Layer 4 (商务层) — OMEGA blueprint gap fill.
 No login required: uses only public search pages.
 
 用法:
-  from src.shopping.price_engine import compare_prices
-  result = await compare_prices("iPhone 16 128GB")
+  from src.shopping.price_engine import compare_prices          # 原有入口
+  from src.shopping.price_engine import smart_compare_prices    # 新统一入口
+  result = await smart_compare_prices("iPhone 16 128GB")
 """
 import asyncio
 import logging
@@ -492,6 +500,322 @@ async def compare_prices(
     return ComparisonReport(
         query=query,
         results=[asdict(r) for r in all_results],
+        best_deal=asdict(best) if best else None,
+        ai_summary=ai_summary,
+        searched_platforms=platforms,
+    )
+
+
+# ──────────────────────────────────────────────
+#  统一比价入口: smart_compare_prices()
+#  合并 Engine A (brain_exec_life) + Engine B (compare_prices) 的降级链
+# ──────────────────────────────────────────────
+
+
+async def smart_compare_prices(
+    query: str,
+    *,
+    use_ai_summary: bool = True,
+    fast_mode: bool = False,
+    limit_per_platform: int = 5,
+) -> ComparisonReport:
+    """统一比价入口 — 多级降级链
+
+    降级顺序:
+    1. SMZDM+JD 直接爬取（总是尝试，速度最快、零 API 消耗）
+    2. Tavily 智能搜索（如果直接爬取结果太少，且 fast_mode=False）
+    3. crawl4ai 结构化提取（Tavily 失败时，且 fast_mode=False）
+    4. Jina Reader + LLM 分析（最终兜底，且 fast_mode=False）
+
+    多级结果会合并去重后返回统一的 ComparisonReport。
+
+    Args:
+        query: 商品名称/搜索关键词
+        use_ai_summary: 是否用 LLM 生成购买推荐
+        fast_mode: True 时只用直接爬取，不走 Tavily/crawl4ai/Jina
+                   （用于批量价格监控，保证速度、不消耗 API 额度）
+        limit_per_platform: 每个平台最多返回的商品数
+
+    Returns:
+        ComparisonReport — 与 compare_prices() 返回类型完全一致
+    """
+    if not query:
+        return ComparisonReport(query=query, ai_summary="未指定商品")
+
+    all_results: List[PriceResult] = []
+    platforms: List[str] = []
+
+    # ── 第一级: SMZDM+JD 直接爬取（总是执行，速度最快） ──
+    try:
+        base_report = await compare_prices(
+            query,
+            use_ai_summary=False,  # AI 总结放到最后统一做
+            limit_per_platform=limit_per_platform,
+        )
+        all_results.extend(
+            _dicts_to_price_results(base_report.results)
+        )
+        platforms.extend(base_report.searched_platforms)
+    except Exception as e:
+        logger.warning("[smart_compare] SMZDM+JD 爬取异常: %s", e)
+
+    # 统计有效价格数量，决定是否需要降级
+    priced_count = sum(1 for r in all_results if r.price > 0)
+
+    # fast_mode 下不走后续降级链（批量监控场景，需要速度优先）
+    if fast_mode:
+        return _build_final_report(query, all_results, platforms, use_ai_summary)
+
+    # ── 第二级: Tavily 智能搜索（爬取结果不足时启用） ──
+    if priced_count < 2:
+        tavily_results = await _tier_tavily(query)
+        if tavily_results:
+            all_results.extend(tavily_results)
+            if "Tavily" not in platforms:
+                platforms.append("Tavily")
+            priced_count = sum(1 for r in all_results if r.price > 0)
+
+    # ── 第三级: crawl4ai 结构化提取（Tavily 仍不足时） ──
+    if priced_count < 2:
+        crawl4ai_results = await _tier_crawl4ai(query, limit_per_platform)
+        if crawl4ai_results:
+            all_results.extend(crawl4ai_results)
+            if "crawl4ai" not in platforms:
+                platforms.append("crawl4ai")
+            priced_count = sum(1 for r in all_results if r.price > 0)
+
+    # ── 第四级: Jina Reader + LLM 分析（最终兜底） ──
+    if priced_count < 2:
+        jina_results = await _tier_jina_llm(query)
+        if jina_results:
+            all_results.extend(jina_results)
+            if "Jina+LLM" not in platforms:
+                platforms.append("Jina+LLM")
+
+    return _build_final_report(query, all_results, platforms, use_ai_summary)
+
+
+# ──────────────────────────────────────────────
+#  降级链各级实现
+# ──────────────────────────────────────────────
+
+
+def _dicts_to_price_results(result_dicts: List[dict]) -> List[PriceResult]:
+    """将 compare_prices 返回的 dict 列表转回 PriceResult 对象"""
+    results: List[PriceResult] = []
+    for d in result_dicts:
+        try:
+            results.append(PriceResult(
+                title=d.get("title", ""),
+                price=float(d.get("price", 0)),
+                platform=d.get("platform", ""),
+                url=d.get("url", ""),
+                shop=d.get("shop", ""),
+                historical_low=float(d.get("historical_low", 0)),
+                is_deal=bool(d.get("is_deal", False)),
+                source=d.get("source", ""),
+            ))
+        except (ValueError, TypeError):
+            continue
+    return results
+
+
+async def _tier_tavily(query: str) -> List[PriceResult]:
+    """第二级降级: Tavily 智能搜索 + LLM 分析"""
+    try:
+        from src.tools.tavily_search import search_context, _HAS_TAVILY
+
+        if not _HAS_TAVILY:
+            return []
+
+        logger.info("[smart_compare] 第二级降级: Tavily 搜索 '%s'", query)
+        tavily_ctx = await search_context(
+            f"{query} 价格对比 京东 淘宝 拼多多", max_results=5
+        )
+        if not tavily_ctx or len(tavily_ctx) <= 200:
+            return []
+
+        # 用 LLM 从 Tavily 搜索结果中提取结构化价格
+        return await _llm_extract_prices(query, tavily_ctx[:3000], "tavily")
+
+    except ImportError:
+        logger.debug("[smart_compare] tavily_search 不可用")
+    except Exception as e:
+        logger.warning("[smart_compare] Tavily 搜索异常: %s", e)
+    return []
+
+
+async def _tier_crawl4ai(query: str, limit: int = 5) -> List[PriceResult]:
+    """第三级降级: crawl4ai 结构化提取"""
+    try:
+        from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
+
+        if not HAS_CRAWL4AI:
+            return []
+
+        logger.info("[smart_compare] 第三级降级: crawl4ai 引擎 '%s'", query)
+        result = await smart_compare(query, limit_per_platform=limit)
+        if not result.products:
+            return []
+
+        # 将 crawl4ai 的 ProductPrice 转为 PriceResult
+        converted: List[PriceResult] = []
+        for p in result.products:
+            if p.price > 0:
+                converted.append(PriceResult(
+                    title=p.name,
+                    price=p.price,
+                    platform=p.platform,
+                    url=p.url,
+                    shop=p.shop,
+                    source=f"crawl4ai_{p.source}",
+                ))
+        return converted
+
+    except ImportError:
+        logger.debug("[smart_compare] crawl4ai_engine 不可用")
+    except Exception as e:
+        logger.warning("[smart_compare] crawl4ai 引擎异常: %s", e)
+    return []
+
+
+async def _tier_jina_llm(query: str) -> List[PriceResult]:
+    """第四级降级: Jina Reader 读取搜索页面 + LLM 提取价格"""
+    jina_context = ""
+    try:
+        from src.tools.jina_reader import jina_read
+        import urllib.parse
+
+        q = urllib.parse.quote(f"{query} 价格 对比")
+        raw = await jina_read(
+            f"https://cn.bing.com/shop?q={q}", max_length=3000
+        )
+        if raw and len(raw) > 200:
+            jina_context = raw[:2000]
+    except ImportError:
+        logger.debug("[smart_compare] jina_reader 不可用")
+    except Exception:
+        logger.debug("[smart_compare] Jina 读取异常", exc_info=True)
+
+    if not jina_context:
+        return []
+
+    logger.info("[smart_compare] 第四级降级: Jina+LLM '%s'", query)
+    return await _llm_extract_prices(query, jina_context, "jina_llm")
+
+
+async def _llm_extract_prices(
+    query: str, context: str, source_tag: str
+) -> List[PriceResult]:
+    """用 LLM 从文本上下文中提取结构化价格列表"""
+    try:
+        from src.litellm_router import free_pool
+        from src.constants import FAMILY_DEEPSEEK
+        from src.resilience import api_limiter
+        from config.prompts import SOUL_CORE
+
+        if not free_pool:
+            return []
+
+        async with api_limiter("llm"):
+            resp = await free_pool.acompletion(
+                model_family=FAMILY_DEEPSEEK,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            SOUL_CORE + "\n\n你现在在做购物比价任务。"
+                            "根据搜索结果提取各平台价格信息。"
+                            '输出JSON格式: {"products":[{"name":"商品名","price":999.0,'
+                            '"platform":"平台名","shop":"店铺名"}]}'
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"帮我从以下信息中提取 {query} 的价格数据:\n{context}"
+                        ),
+                    },
+                ],
+                max_tokens=600,
+                temperature=0.3,
+            )
+
+        content = resp.choices[0].message.content
+        if not content:
+            return []
+
+        import json_repair
+
+        data = json_repair.loads(content)
+        if not isinstance(data, dict):
+            return []
+
+        products = data.get("products", [])
+        if not isinstance(products, list):
+            return []
+
+        results: List[PriceResult] = []
+        for item in products[:10]:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                price = float(item.get("price", 0))
+            except (ValueError, TypeError):
+                price = _extract_price(str(item.get("price", "")))
+            if price <= 0:
+                continue
+            results.append(PriceResult(
+                title=name[:100],
+                price=price,
+                platform=(item.get("platform") or "").strip() or "未知",
+                url="",
+                shop=(item.get("shop") or "").strip(),
+                source=source_tag,
+            ))
+        return results
+
+    except ImportError:
+        logger.debug("[smart_compare] LLM 依赖不可用 (litellm_router/json_repair)")
+    except Exception as e:
+        logger.warning("[smart_compare] LLM 提取价格异常: %s", e)
+    return []
+
+
+async def _build_final_report(
+    query: str,
+    all_results: List[PriceResult],
+    platforms: List[str],
+    use_ai_summary: bool,
+) -> ComparisonReport:
+    """汇总所有降级层的结果，构建最终 ComparisonReport"""
+    # 按标题去重（保留价格更低的那个）
+    seen: dict = {}
+    for r in all_results:
+        key = r.title.strip().lower()
+        if key not in seen or (r.price > 0 and r.price < seen[key].price):
+            seen[key] = r
+    deduped = list(seen.values())
+
+    # 按价格排序（有价格优先，价格低优先）
+    priced = [r for r in deduped if r.price > 0]
+    priced.sort(key=lambda r: r.price)
+    unpriced = [r for r in deduped if r.price <= 0]
+    final = priced + unpriced
+
+    best = priced[0] if priced else None
+
+    # AI 总结
+    ai_summary = ""
+    if use_ai_summary and priced:
+        ai_summary = await _generate_ai_summary(query, priced)
+
+    return ComparisonReport(
+        query=query,
+        results=[asdict(r) for r in final],
         best_deal=asdict(best) if best else None,
         ai_summary=ai_summary,
         searched_platforms=platforms,
