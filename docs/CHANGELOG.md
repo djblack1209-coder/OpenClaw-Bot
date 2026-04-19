@@ -12,6 +12,26 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — ai-hedge-fund 集成：估值模型 + Hurst 指数 + 大师 Agent
+> 领域: `trading`
+> 影响模块: `src/trading/valuation_models.py`, `src/trading/hurst_analysis.py`, `src/trading/master_analysts.py`
+> 关联问题: —
+
+### 变更内容
+1. **valuation_models.py**: 4 种估值模型 — DCF 三场景(牛/中/熊概率加权)、巴菲特持有人收益法、EV/EBITDA 倍数估值、残余收入模型 + WACC 计算 + 综合估值汇总
+2. **hurst_analysis.py**: Hurst 指数 R/S 分析法 — 判断趋势/均值回归/随机 + z-score 统计套利信号
+3. **master_analysts.py**: 5 位投资大师人格 Agent — Buffett(护城河) / Taleb(反脆弱) / Wood(颠覆创新) / Burry(逆向价值) / Druckenmiller(宏观周期)，支持并行圆桌分析 + 信号聚合
+4. **55 个单元测试**: 覆盖全部 3 个模块的核心功能
+
+### 文件变更
+- `src/trading/valuation_models.py` — 新增: 4 种估值模型 + WACC + 综合汇总 (212 行)
+- `src/trading/hurst_analysis.py` — 新增: Hurst 指数 + 市场机制分类 + 统计套利 (150 行)
+- `src/trading/master_analysts.py` — 新增: 5 大师提示词 + 单独分析 + 圆桌会议 (233 行)
+- `src/trading/__init__.py` — 更新: 注册 3 个新子模块
+- `tests/test_valuation_models.py` — 新增: 27 个估值模型测试
+- `tests/test_hurst_analysis.py` — 新增: 16 个 Hurst 分析测试
+- `tests/test_master_analysts.py` — 新增: 12 个大师 Agent 测试
+
 ## 2026-04-19 — CookieCloud 集成 + Rust 路径修复 + 产品体验升级设计
 > 领域: `backend` + `frontend` + `xianyu` + `infra` + `docs`
 > 影响模块: `src/xianyu/cookie_cloud.py`, `src/xianyu/xianyu_live.py`, `src/api/routers/xianyu.py`, `multi_main.py`, `apps/openclaw-manager-src/src/components/Bots/`, `apps/openclaw-manager-src/src/lib/api.ts`, `src-tauri/src/commands/`, `src-tauri/src/utils/shell.rs`

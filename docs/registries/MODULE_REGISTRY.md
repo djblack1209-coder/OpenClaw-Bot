@@ -1,6 +1,55 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-19 | 新增 5 个模块 (280→285): 体验升级拆分 + 性能度量
+> 最后更新: 2026-04-19 | 新增 3 个模块 (285→288): ai-hedge-fund 估值 + Hurst + 大师 Agent
+
+---
+
+## 新增模块 (2026-04-19) — ai-hedge-fund 集成
+
+### valuation_models.py — 4 种投资估值模型
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/trading/valuation_models.py` |
+| 行数 | 212 |
+| 导入方 | `test_valuation_models` |
+| 依赖 | 无（纯数学计算） |
+
+**Public API:**
+- `calculate_intrinsic_value_dcf()` — DCF 三场景概率加权估值
+- `calculate_owner_earnings()` — 巴菲特持有人收益法
+- `calculate_ev_ebitda_value()` — 企业价值倍数隐含估值
+- `calculate_residual_income_value()` — 残余收入模型
+- `calculate_wacc()` — 加权平均资本成本
+- `get_valuation_summary()` — 整合 4 大模型的综合信号
+
+### hurst_analysis.py — Hurst 指数 + 统计套利
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/trading/hurst_analysis.py` |
+| 行数 | 150 |
+| 导入方 | `test_hurst_analysis` |
+| 依赖 | 标准库 (`math`, `statistics`) |
+
+**Public API:**
+- `calculate_hurst_exponent(prices)` — R/S 分析法计算 Hurst 指数
+- `classify_regime(hurst)` — 市场机制分类 (trending/mean_reverting/random)
+- `calculate_stat_arb_signals(prices, lookback)` — z-score 统计套利信号
+
+### master_analysts.py — 5 位投资大师人格 Agent
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/trading/master_analysts.py` |
+| 行数 | 233 |
+| 导入方 | `test_master_analysts` |
+| 依赖 | 标准库 (`asyncio`, `json`, `re`) |
+
+**Public API:**
+- `MASTER_PROMPTS` — 5 位大师的系统提示词字典
+- `analyze_as_master(master_name, ticker, data, llm_fn)` — 单个大师分析
+- `run_master_panel(ticker, data, llm_fn, masters)` — 圆桌并行分析 + 信号聚合
 
 ---
 
