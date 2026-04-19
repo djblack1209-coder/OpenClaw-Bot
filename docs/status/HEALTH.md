@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-18 (技术债清理第6批: 日志高亮+tradingSell+Social确认+Evolution时间线+模型重启提示+文档偏差)
+> 最后更新: 2026-04-19 (技术债清理第7批: Rust结构化错误+命令白名单+Fetch统一+Markdown增强+频道CRUD+记忆筛选+调度器CRUD)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -169,25 +169,25 @@
 | HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
 | HI-542 | `backend` | `notifications.py` + `event_bus.py` | ~~TECH_DEBT: 通知系统无 shutdown flush 机制~~ → **已修复 2026-04-18**: NotificationManager 新增 `shutdown()` 方法；EventBus 新增 `shutdown()` 方法（清理订阅+统计日志） | 2026-04-19 |
 | HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程~~ → **已修复 2026-04-18**: 函数改为 async，`std::thread::sleep` 替换为 `tokio::time::sleep`，调用方添加 `.await` | 2026-04-19 |
-| HI-544 | `frontend` | `src-tauri/src/commands/` | TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型，`thiserror` crate 已引入但未使用。前端无法程序化区分错误类型 (R5.14) | 2026-04-19 |
-| HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型，无集中式命令白名单。`IBKR_START_CMD`/`IBKR_STOP_CMD` 从 .env 读取后直接 `bash -c` 执行 (R5.13) | 2026-04-19 |
-| HI-546 | `frontend` | `src/lib/tauri-core.ts` | TECH_DEBT: `clawbotFetchSafe` 比 `clawbotFetch` 更安全但几乎未被使用——大部分调用方直接用 `clawbotFetch` 并自行处理错误（模式不一致）(R5.20) | 2026-04-19 |
+| HI-544 | `frontend` | `src-tauri/src/commands/` | ~~TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型~~ → **已修复 2026-04-19**: 新建 `models/error.rs` 定义 `AppError`(kind+message) + `ErrorKind`(11种分类)，8 个命令文件 97 个 command 全部迁移到 `AppResult<T>` | 2026-04-19 |
+| HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型~~ → **已修复 2026-04-19**: `shell.rs` 新增 `ALLOWED_COMMANDS` 白名单(26个) + `validate_command()` 校验函数，所有 `Command::new()` 调用点加入校验，IBKR 启停命令做程序名白名单检查防 RCE | 2026-04-19 |
+| HI-546 | `frontend` | `src/lib/tauri-core.ts` | ~~TECH_DEBT: `clawbotFetchSafe` 几乎未被使用~~ → **已修复 2026-04-19**: 新增 `clawbotFetchJson()` 封装(fetch+resp.ok+JSON)，api.ts 35 处裸 `.then(r=>r.json())` 全部替换，非 2xx 自动抛出含状态码的 Error | 2026-04-19 |
 | HI-547 | `frontend` | `src/components/` | ~~TECH_DEBT: 暗色/亮色模式无"跟随系统"选项~~ → **已修复 2026-04-18**: 新增 `system` 选项，监听 `prefers-color-scheme` 媒体查询自动切换，Settings 页面改为三选一分段按钮组 | 2026-04-19 |
 | HI-550 | `frontend` | `conversationService.ts` | ~~TECH_DEBT: 会话重命名功能完全缺失。删除会话无二次确认弹窗~~ → **已修复 2026-04-18**: 新增 ConfirmDialog 删除确认（红色危险样式）+ 双击标题或铅笔图标重命名 + 后端 PATCH 端点。AI 模式切换仍为前端装饰(低优先级) | 2026-04-19 |
-| HI-551 | `frontend` | `Assistant/index.tsx` | TECH_DEBT: Markdown 渲染器为手写简易版——不支持图片 `![](url)`、有序列表 `1.`、表格、代码块复制按钮。建议迁移到 react-markdown (R6.13) | 2026-04-19 |
+| HI-551 | `frontend` | `Assistant/index.tsx` | ~~TECH_DEBT: Markdown 渲染器为手写简易版~~ → **已修复 2026-04-19**: 新增有序列表(`1.`)、引用块(`>`)、图片(`![](url)`)、代码块复制按钮(📋)、水平分隔线(`---`) 支持 | 2026-04-19 |
 | HI-552 | `frontend` | `Bots/index.tsx` | TECH_DEBT: 无独立 Bot 详情页——无法查看单个 Bot 的配置/日志/统计。SERVICE_META 硬编码 5 个服务 ID。C 端不展示模型和命令数 (R6.19/R6.20) | 2026-04-19 |
 | HI-553 | `frontend` | `Settings/index.tsx` | ~~TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测~~ → **已修复 2026-04-18**: isDirty 扩展检测 opsSettings 的 7 个字段 + initialOpsSettingsRef 记录初始值 + 保存成功后重置脏状态。LLM 模型列表硬编码问题保留(低优先级) | 2026-04-19 |
-| HI-554 | `frontend` | `Channels/index.tsx` | TECH_DEBT: 频道列表仅支持编辑——缺少新建和删除功能。频道无实时连接状态(在线/离线/错误) (R6.38/R6.41) | 2026-04-19 |
+| HI-554 | `frontend` | `Channels/index.tsx` | ~~TECH_DEBT: 频道列表仅支持编辑~~ → **已修复 2026-04-19**: 新增创建频道表单(6种类型)、删除确认对话框、连接状态徽章(🟢已连接/🟡未验证/⚪未配置) | 2026-04-19 |
 | HI-555 | `frontend` | `Onboarding/index.tsx` | ~~TECH_DEBT: 新手引导缺少"跳过引导"按钮~~ → **已修复 2026-04-18**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），点击直接调用 handleFinish 完成引导 | 2026-04-19 |
 | HI-558 | `frontend` | `DevPanel/index.tsx` | TECH_DEBT: 整个 DevPanel 是纯 UI 原型——TODO 未接后端，Bot 状态硬编码，6 个按钮无 onClick，AI 对话框无功能，文件树静态 (R7.23) | 2026-04-19 |
 | HI-559 | `frontend` | `logger.ts` + `service.rs` | ~~TECH_DEBT: 日志系统无脱敏~~ → **已修复 2026-04-18**: 前端 logger.ts 新增 scrubSecrets/scrubString 函数（8种正则规则），formatMessage 在记录前自动脱敏；Rust get_logs 返回前对每行日志应用正则脱敏。覆盖 API Key/Token/Cookie/密码/Bearer/SSH 等 | 2026-04-19 |
 | HI-560 | `frontend` | `Logs/index.tsx` | ~~TECH_DEBT: 日志搜索无关键词高亮~~ → **已修复 2026-04-18**: 新增 `highlightText` 函数，搜索匹配文字以黄色 `<mark>` 标签高亮展示 | 2026-04-19 |
 | HI-561 | `frontend` | `Portfolio/index.tsx` | ~~TECH_DEBT: tradingSell 不检查 resp.ok~~ → **已修复 2026-04-18**: `api.tradingSell` 在 resp.ok 为 false 时抛出含 HTTP 状态码的错误；风险参数卡片标注"后端配置"说明来源 | 2026-04-19 |
 | HI-562 | `frontend` | `Social/index.tsx` | ~~TECH_DEBT: Autopilot 用原生 window.confirm~~ → **已修复 2026-04-18**: 替换为项目统一的 ConfirmDialog 组件，自定义标题和描述，与 UI 风格一致 | 2026-04-19 |
-| HI-563 | `frontend` | `Memory/index.tsx` | TECH_DEBT: 记忆统计 API 仅 Tauri 环境调用(HTTP 降级缺失); 无按来源/重要度筛选器; 无分类统计和使用频率 (R7.15/R7.17) | 2026-04-19 |
+| HI-563 | `frontend` | `Memory/index.tsx` | ~~TECH_DEBT: 记忆统计 API 仅 Tauri 环境调用(HTTP 降级缺失)~~ → **已修复 2026-04-19**: 新增浏览器环境 HTTP 降级获取统计数据；四选一分类筛选按钮(全部/用户画像/事实/高优先级)，与文本搜索叠加使用 | 2026-04-19 |
 | HI-564 | `frontend` | `Evolution/index.tsx` | ~~TECH_DEBT: 进化历史时间线缺失~~ → **已修复 2026-04-18**: 提案卡片新增"发现于 X月X日 HH:MM"时间展示，使用已映射的 created_at 字段 | 2026-04-19 |
 | HI-565 | `frontend` | `AIConfig/index.tsx` | ~~TECH_DEBT: 模型切换后缺少重启提示~~ → **已修复 2026-04-18**: handleSetPrimary 和 ProviderDialog onSave 成功后 toast 提示"重启后端服务后生效" | 2026-04-19 |
-| HI-566 | `frontend` | `Scheduler/index.tsx` | TECH_DEBT: 定时任务仅有启停切换——缺少创建/编辑/删除。只展示最后一次执行，无历史记录列表 (R7.39/R7.40) | 2026-04-19 |
+| HI-566 | `frontend` | `Scheduler/index.tsx` | ~~TECH_DEBT: 定时任务仅有启停切换~~ → **已修复 2026-04-19**: 新增创建任务表单(Cron/固定间隔)、编辑对话框、删除确认、可折叠执行历史(最近5条) | 2026-04-19 |
 | HI-567 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: total_spent/budget 浮点属性在异步环境中 read-modify-write 不原子~~ → **已修复 2026-04-19**: 新增 `self._budget_lock = asyncio.Lock()`，买入预算检查/扣预算/卖出释放/sync_capital 四处加锁 | 2026-04-19 |
 | HI-568 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值~~ → **已修复 2026-04-18**: 添加详细注释提醒下游使用 qty*current_price 计算真实市值，代码提取 cost_basis 变量消除重复计算 | 2026-04-19 |
 | HI-569 | `trading` | `trading_pipeline.py` | ~~TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行~~ → **已修复 2026-04-19**: 降级执行明确标记 `status="simulated"` + `simulated=True`，无 portfolio 时返回错误而非静默成功 | 2026-04-19 |
