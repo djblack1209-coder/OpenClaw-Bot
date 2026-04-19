@@ -165,7 +165,7 @@
 | HI-537 | `backend` | `freqtrade_bridge.py` | ~~TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用~~ → **已标记 2026-04-18**: 添加详细注释说明此方法为回测降级路径，未接入主启动流程 | 2026-04-19 |
 | HI-538 | `backend` | `src/execution/social/` | TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式，Weibo/Discord/WeChat 定义了限制参数但无实际发布实现；添加新平台需改多个文件 (R4.13) | 2026-04-19 |
 | HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | ~~TECH_DEBT: 存在两套平行的草稿系统~~ → **已确认关闭 2026-04-18**: HI-585 已将 drafts.py 改为 JSON 持久化，social_scheduler 和 execution 均通过 drafts 模块操作，不再有两套数据源 | 2026-04-19 |
-| HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大 (R4.28) | 2026-04-19 |
+| HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | ~~TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大~~ → **已修复 2026-04-19**: 新增 `smart_compare_prices()` 统一入口，4级降级链(SMZDM+JD→Tavily→crawl4ai→Jina+LLM)，`brain_exec_life.py` 和 `tracking.py` 均改为调用统一入口，`fast_mode=True` 用于批量监控 | 2026-04-19 |
 | HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
 | HI-542 | `backend` | `notifications.py` + `event_bus.py` | ~~TECH_DEBT: 通知系统无 shutdown flush 机制~~ → **已修复 2026-04-18**: NotificationManager 新增 `shutdown()` 方法；EventBus 新增 `shutdown()` 方法（清理订阅+统计日志） | 2026-04-19 |
 | HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程~~ → **已修复 2026-04-18**: 函数改为 async，`std::thread::sleep` 替换为 `tokio::time::sleep`，调用方添加 `.await` | 2026-04-19 |
