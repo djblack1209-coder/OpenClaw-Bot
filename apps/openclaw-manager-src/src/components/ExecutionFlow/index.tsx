@@ -64,9 +64,8 @@ const completedTasks = [
   { name: 'TSLA 情绪分析',    duration: '6.1s', result: '失败', time: '14:20:02' },
   { name: '闲鱼自动议价',     duration: '3.3s', result: '成功', time: '14:18:30' },
 ];
-
 // 执行日志
-const logEntries: LogEntry[] = [
+const logEntries: { time: string; level: LogLevel; message: string }[] = [
   { time: '14:32:05', level: 'INFO', message: '[DAG] 节点「意图解析」完成 → 输出: buy_signal(AAPL)' },
   { time: '14:32:04', level: 'OK',   message: '[LLM] GPT-4o 返回市场扫描结果, 耗时 0.8s' },
   { time: '14:32:03', level: 'INFO', message: '[DAG] 节点「市场扫描」启动 → 模型: DeepSeek-V3' },
@@ -76,9 +75,8 @@ const logEntries: LogEntry[] = [
   { time: '14:31:58', level: 'ERROR', message: '[LLM] Qwen 调用超时 (>5s), 自动切换 GPT-4o' },
   { time: '14:31:55', level: 'INFO', message: '[DAG] 管道「AAPL 投资分析」初始化完成' },
 ];
-
 // 模型调用统计
-const modelStats: ModelStat[] = [
+const modelStats = [
   { name: 'GPT-4o',   count: 23, color: 'var(--accent-cyan)' },
   { name: 'DeepSeek', count: 15, color: 'var(--accent-green)' },
   { name: 'Qwen',     count: 12, color: 'var(--accent-amber)' },
@@ -88,7 +86,7 @@ const modelStats: ModelStat[] = [
 const maxModelCount = Math.max(...modelStats.map((m) => m.count));
 
 /* ====== DAG 节点颜色映射 ====== */
-function nodeStyle(status: DagNode['status']) {
+function nodeStyle(status: NodeStatus) {
   switch (status) {
     case 'done':
       return {
@@ -115,44 +113,22 @@ function nodeStyle(status: DagNode['status']) {
 }
 
 /* 状态指示符 */
-function StatusIcon({ status }: { status: DagNode['status'] }) {
-  const size = 12;
-  switch (status) {
-    case 'done':
-      return <CheckCircle2 size={size} style={{ color: 'var(--accent-green)' }} />;
-    case 'running':
-      return (
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
-          className="inline-flex"
-        >
-          <Circle size={size} fill="var(--accent-amber)" style={{ color: 'var(--accent-amber)' }} />
-        </motion.span>
-      );
-    case 'pending':
-      return <Circle size={size} style={{ color: 'var(--text-tertiary)' }} />;
-  }
+function StatusIcon({ status }: { status: NodeStatus }) {
+  if (status === 'done') return <CheckCircle2 size={12} style={{ color: 'var(--accent-green)' }} />;
+  if (status === 'running') return (
+    <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} className="inline-flex">
+      <Circle size={12} fill="var(--accent-amber)" style={{ color: 'var(--accent-amber)' }} />
+    </motion.span>
+  );
+  return <Circle size={12} style={{ color: 'var(--text-tertiary)' }} />;
 }
 
 /* 状态文本 */
-function statusLabel(status: DagNode['status']) {
-  switch (status) {
-    case 'done': return '完成';
-    case 'running': return '运行中';
-    case 'pending': return '待执行';
-  }
-}
+const statusLabel = (s: NodeStatus) => s === 'done' ? '完成' : s === 'running' ? '运行中' : '待执行';
 
 /* 日志级别颜色 */
-function logColor(level: LogEntry['level']) {
-  switch (level) {
-    case 'OK':    return 'var(--accent-green)';
-    case 'WARN':  return 'var(--accent-amber)';
-    case 'ERROR': return 'var(--accent-red)';
-    default:      return 'var(--text-secondary)';
-  }
-}
+const logColor = (l: LogLevel) =>
+  l === 'OK' ? 'var(--accent-green)' : l === 'WARN' ? 'var(--accent-amber)' : l === 'ERROR' ? 'var(--accent-red)' : 'var(--text-secondary)';
 
 /**
  * 智能流监控 — Sonic Abyss DAG 引擎可视化
@@ -170,81 +146,41 @@ export function ExecutionFlow() {
         {/* ====== Row 1: DAG 引擎状态 (span-8, row-span-2) + 引擎指标 (span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
-            {/* 标题行 */}
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                DAG EXECUTOR
-              </span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG EXECUTOR</span>
               <div className="flex items-center gap-1.5">
-                <motion.span
-                  className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ background: 'var(--accent-green)' }}
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                  LIVE
-                </span>
+                <motion.span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-green)' }} animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
+                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
               </div>
             </div>
-            <h2
-              className="font-display text-xl font-bold"
-              style={{ color: 'var(--text-primary)' }}
-            >
+            <h2 className="font-display text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               智能流引擎 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// DAG EXECUTOR</span>
             </h2>
 
-            {/* === DAG 流水线可视化 === */}
+            {/* DAG 流水线可视化 */}
             <div className="flex-1 flex items-center justify-center mt-6 mb-4">
               <div className="flex items-center gap-0 w-full max-w-[720px]">
                 {dagNodes.map((node, i) => {
-                  const style = nodeStyle(node.status);
+                  const s = nodeStyle(node.status);
                   return (
                     <div key={node.id} className="flex items-center" style={{ flex: 1 }}>
-                      {/* 节点 */}
                       <motion.div
                         className="relative flex flex-col items-center justify-center rounded-xl px-3 py-3 w-full min-w-[90px]"
-                        style={{
-                          border: `1px solid ${style.border}`,
-                          background: style.bg,
-                          boxShadow: style.glow,
-                        }}
+                        style={{ border: `1px solid ${s.border}`, background: s.bg, boxShadow: s.glow }}
                         initial={{ scale: 0.85, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ delay: i * 0.08, duration: 0.3 }}
                       >
                         <StatusIcon status={node.status} />
-                        <span
-                          className="font-mono text-[11px] font-semibold mt-1.5 text-center leading-tight"
-                          style={{ color: style.text }}
-                        >
-                          {node.label}
-                        </span>
-                        <span
-                          className="font-mono text-[9px] mt-0.5"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          {statusLabel(node.status)}
-                        </span>
+                        <span className="font-mono text-[11px] font-semibold mt-1.5 text-center leading-tight" style={{ color: s.text }}>{node.label}</span>
+                        <span className="font-mono text-[9px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{statusLabel(node.status)}</span>
                       </motion.div>
 
-                      {/* 连接箭头（最后一个节点后无箭头） */}
+                      {/* 连接箭头 */}
                       {i < dagNodes.length - 1 && (
                         <div className="flex items-center px-1 shrink-0">
-                          <motion.div
-                            initial={{ scaleX: 0 }}
-                            animate={{ scaleX: 1 }}
-                            transition={{ delay: i * 0.08 + 0.15, duration: 0.25 }}
-                            style={{ transformOrigin: 'left' }}
-                          >
-                            <ArrowRight
-                              size={14}
-                              style={{
-                                color: node.status === 'done' && dagNodes[i + 1].status !== 'pending'
-                                  ? 'var(--accent-green)'
-                                  : 'var(--text-tertiary)',
-                              }}
-                            />
+                          <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: i * 0.08 + 0.15, duration: 0.25 }} style={{ transformOrigin: 'left' }}>
+                            <ArrowRight size={14} style={{ color: node.status === 'done' && dagNodes[i + 1].status !== 'pending' ? 'var(--accent-green)' : 'var(--text-tertiary)' }} />
                           </motion.div>
                         </div>
                       )}
@@ -255,13 +191,7 @@ export function ExecutionFlow() {
             </div>
 
             {/* 当前任务信息 */}
-            <div
-              className="rounded-lg px-4 py-3 flex items-center gap-6 font-mono text-xs"
-              style={{
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid var(--glass-border)',
-              }}
-            >
+            <div className="rounded-lg px-4 py-3 flex items-center gap-6 font-mono text-xs" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}>
               <div className="flex items-center gap-2">
                 <Zap size={13} style={{ color: 'var(--accent-amber)' }} />
                 <span style={{ color: 'var(--text-secondary)' }}>正在执行:</span>
