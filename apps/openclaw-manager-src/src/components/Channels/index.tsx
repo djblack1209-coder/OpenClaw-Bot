@@ -1,629 +1,295 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { api, ChannelConfig } from '@/lib/tauri';
-import { createLogger } from '@/lib/logger';
-import { toast } from 'sonner';
-import {
-  MessageCircle, Save, Loader2, Link as LinkIcon, Edit2, AlertCircle,
-  RefreshCw, Play, Plus, Trash2, X, ChevronDown
-} from 'lucide-react';
-import { ConfirmDialog } from '../ui/confirm-dialog';
-
-const channelsLogger = createLogger('Channels');
-
-// 渠道测试返回结果
-interface ChannelTestResult {
-  success: boolean;
-  message: string;
-  error?: string;
-  latency?: number;
-}
-
-const CHANNEL_INFO: Record<string, { name: string; icon: string; color: string; fields: { key: string; label: string; desc?: string; type?: string }[] }> = {
-  telegram: {
-    name: 'Telegram', icon: 'tg', color: 'text-blue-400',
-    fields: [
-      { key: 'userId', label: '管理员用户 ID', desc: '管理员Telegram ID（多用户逗号分隔）' },
-      { key: 'dmPolicy', label: '私聊策略', type: 'select' },
-      { key: 'groupPolicy', label: '群组策略', type: 'select' }
-    ]
-  },
-  discord: {
-    name: 'Discord', icon: 'dc', color: 'text-indigo-400',
-    fields: [
-      { key: 'testChannelId', label: '测试频道 ID', desc: '用于发送测试消息的Discord频道ID' }
-    ]
-  },
-  slack: {
-    name: 'Slack', icon: 'sl', color: 'text-rose-400',
-    fields: [
-      { key: 'testChannelId', label: '测试频道 ID', desc: '用于发送测试消息的Slack频道ID' }
-    ]
-  },
-  feishu: {
-    name: '飞书', icon: 'fs', color: 'text-cyan-500',
-    fields: [
-      { key: 'testChatId', label: '测试会话 ID', desc: '用于发送测试消息的飞书会话ID' }
-    ]
-  },
-  whatsapp: {
-    name: 'WhatsApp', icon: 'wa', color: 'text-green-500',
-    fields: []
-  },
-  wechat: {
-    name: '微信', icon: 'wc', color: 'text-emerald-500',
-    fields: [
-      { key: 'bridge', label: '桥接方式', desc: '选择微信接入方式（推荐 wechaty）', type: 'select' },
-      { key: 'puppet', label: 'Puppet 类型', desc: '微信协议层实现（推荐 puppet-wechat4u）', type: 'select' },
-      { key: 'autoAccept', label: '自动通过好友请求', type: 'select' },
-      { key: 'adminWxId', label: '管理员微信ID', desc: '你的微信号（用于管理指令）' },
-    ]
-  }
-};
-
-// 可选的渠道类型列表（用于新建时选择）
-const CHANNEL_TYPES = Object.entries(CHANNEL_INFO).map(([key, info]) => ({
-  value: key,
-  label: info.name,
-}));
-
 /**
- * 判断渠道的连接状态（基于配置完整性的简单启发式判断）
- * - 'connected': 已配置关键字段（token、userId 等）
- * - 'unverified': 有配置但关键字段为空
- * - 'unconfigured': 无配置
+ * Channels — 消息渠道页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
  */
-function getConnectionStatus(channel: ChannelConfig): 'connected' | 'unverified' | 'unconfigured' {
-  const configEntries = Object.entries(channel.config).filter(([k]) => k !== 'enabled');
-  if (configEntries.length === 0) return 'unconfigured';
+import { motion } from 'framer-motion';
+import {
+  MessageCircle,
+  Send,
+  Hash,
+  Users,
+  Webhook,
+  Globe,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  ArrowUpRight,
+  BarChart3,
+} from 'lucide-react';
+import clsx from 'clsx';
 
-  // 检查是否有任何有值的配置项
-  const hasNonEmptyValue = configEntries.some(([, v]) => {
-    if (v === null || v === undefined || v === '') return false;
-    if (typeof v === 'string' && v.trim() === '') return false;
-    return true;
-  });
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
+};
 
-  if (!hasNonEmptyValue) return 'unconfigured';
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
 
-  // 如果渠道标记为启用且有值，认为已连接
-  if (channel.enabled) return 'connected';
+/* ====== 模拟数据 ====== */
 
-  return 'unverified';
+/** 渠道信息 */
+interface Channel {
+  id: string;
+  name: string;
+  type: string;
+  status: 'connected' | 'disconnected' | 'configuring';
+  color: string;
+  icon: string;
+  msgToday: number;
+  msgTotal: number;
+  users: number;
+  latency: string;
 }
 
-// 状态徽章配置
-const STATUS_BADGE: Record<string, { label: string; dot: string; textColor: string }> = {
-  connected: { label: '已连接', dot: 'bg-green-500', textColor: 'text-green-400' },
-  unverified: { label: '未验证', dot: 'bg-yellow-500', textColor: 'text-yellow-400' },
-  unconfigured: { label: '未配置', dot: 'bg-gray-500', textColor: 'text-gray-400' },
-};
+const CHANNELS: Channel[] = [
+  { id: 'tg', name: 'Telegram', type: 'telegram', status: 'connected', color: 'var(--accent-cyan)', icon: '✈', msgToday: 847, msgTotal: 125600, users: 38, latency: '120ms' },
+  { id: 'dc', name: 'Discord', type: 'discord', status: 'connected', color: 'var(--accent-purple)', icon: '🎮', msgToday: 234, msgTotal: 45200, users: 156, latency: '85ms' },
+  { id: 'fs', name: '飞书', type: 'feishu', status: 'configuring', color: 'var(--accent-cyan)', icon: '🪶', msgToday: 0, msgTotal: 0, users: 0, latency: '—' },
+  { id: 'wx', name: '微信', type: 'wechat', status: 'disconnected', color: 'var(--accent-green)', icon: '💬', msgToday: 0, msgTotal: 8900, users: 12, latency: '—' },
+  { id: 'wa', name: 'WhatsApp', type: 'whatsapp', status: 'disconnected', color: 'var(--accent-green)', icon: '📱', msgToday: 0, msgTotal: 0, users: 0, latency: '—' },
+];
+
+/** 消息统计 */
+const MSG_STATS = [
+  { label: '今日消息', value: '1,081', color: 'var(--accent-cyan)' },
+  { label: '活跃渠道', value: '2/5', color: 'var(--accent-green)' },
+  { label: '总用户数', value: '206', color: 'var(--accent-purple)' },
+  { label: '平均延迟', value: '103ms', color: 'var(--accent-amber)' },
+];
+
+/** Webhook 配置 */
+interface WebhookConfig {
+  name: string;
+  url: string;
+  events: string;
+  status: 'active' | 'inactive';
+  lastTriggered: string;
+}
+
+const WEBHOOKS: WebhookConfig[] = [
+  { name: 'Telegram 通知', url: 'https://api.tg.bot/webhook', events: 'message,command', status: 'active', lastTriggered: '2分钟前' },
+  { name: 'Discord 同步', url: 'https://discord.com/api/webhooks/...', events: 'message', status: 'active', lastTriggered: '8分钟前' },
+  { name: '监控告警', url: 'https://monitor.internal/alert', events: 'error,warning', status: 'active', lastTriggered: '1小时前' },
+  { name: '飞书集成', url: 'https://open.feishu.cn/...', events: 'all', status: 'inactive', lastTriggered: '—' },
+];
+
+/** 每小时消息量 */
+const HOURLY_DATA = [
+  { hour: '08:00', count: 45 },
+  { hour: '10:00', count: 120 },
+  { hour: '12:00', count: 89 },
+  { hour: '14:00', count: 156 },
+  { hour: '16:00', count: 203 },
+  { hour: '18:00', count: 178 },
+  { hour: '20:00', count: 134 },
+  { hour: '22:00', count: 67 },
+];
+
+/* ====== 工具函数 ====== */
+
+function statusInfo(status: Channel['status']) {
+  switch (status) {
+    case 'connected': return { label: '已连接', color: 'var(--accent-green)', Icon: CheckCircle2 };
+    case 'disconnected': return { label: '未连接', color: 'var(--text-disabled)', Icon: XCircle };
+    case 'configuring': return { label: '配置中', color: 'var(--accent-amber)', Icon: Clock };
+  }
+}
+
+function renderBar(value: number, maxValue: number, width: number = 20): string {
+  const ratio = value / maxValue;
+  const filled = Math.round(ratio * width);
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/* ====== 主组件 ====== */
 
 export function Channels() {
-  const [channels, setChannels] = useState<ChannelConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string; error?: string } | null>(null);
-
-  // 新建频道相关状态
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createType, setCreateType] = useState('');
-  const [createForm, setCreateForm] = useState<Record<string, string>>({});
-  const [creating, setCreating] = useState(false);
-
-  // 删除确认相关状态
-  const [deleteTarget, setDeleteTarget] = useState<ChannelConfig | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const loadChannels = async () => {
-    try {
-      setLoading(true);
-      const data = await api.getChannelsConfig();
-      setChannels(data);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error('加载渠道配置失败', { description: msg });
-      channelsLogger.error('Failed to load channels:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadChannels();
-  }, []);
-
-  const handleEdit = (channel: ChannelConfig) => {
-    setEditingId(channel.id);
-    // 渠道配置值在表单中均为字符串
-    const stringConfig: Record<string, string> = {};
-    for (const [k, v] of Object.entries(channel.config)) {
-      stringConfig[k] = String(v ?? '');
-    }
-    setEditForm(stringConfig);
-    setTestResult(null);
-  };
-
-  const handleCancel = () => {
-    setEditingId(null);
-    setEditForm({});
-  };
-
-  const handleSave = async (channelId: string, channelType: string) => {
-    try {
-      setSaving(true);
-      const newConfig: ChannelConfig = {
-        id: channelId,
-        channel_type: channelType,
-        enabled: true,
-        config: editForm
-      };
-      await api.saveChannelConfig(newConfig);
-      toast.success('配置已保存');
-      setEditingId(null);
-      await loadChannels();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error('保存失败', { description: msg });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleTest = async (channelType: string, channelId: string) => {
-    try {
-      setTestingId(channelId);
-      setTestResult(null);
-      const result = await api.testChannel(channelType) as ChannelTestResult;
-      
-      setTestResult({
-        id: channelId,
-        success: result.success,
-        message: result.message,
-        error: result.error
-      });
-
-      if (result.success) {
-        toast.success(`[${channelType}] 测试通过`, { description: result.message });
-      } else {
-        toast.error(`[${channelType}] 测试失败`, { description: result.error || result.message });
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error('测试执行失败', { description: msg });
-      setTestResult({
-        id: channelId,
-        success: false,
-        message: '执行错误',
-        error: msg
-      });
-    } finally {
-      setTestingId(null);
-    }
-  };
-
-  // ── 新建频道 ──
-  const handleCreate = async () => {
-    if (!createType) {
-      toast.error('请选择渠道类型');
-      return;
-    }
-
-    // 检查是否已存在同类型渠道
-    const exists = channels.some(ch => ch.channel_type === createType);
-    if (exists) {
-      toast.error('该类型渠道已存在', { description: '每种类型只能有一个渠道，请编辑现有渠道' });
-      return;
-    }
-
-    try {
-      setCreating(true);
-      const newChannel: ChannelConfig = {
-        id: createType,
-        channel_type: createType,
-        enabled: true,
-        config: createForm,
-      };
-      await api.saveChannelConfig(newChannel);
-      toast.success(`${CHANNEL_INFO[createType]?.name || createType} 渠道已创建`);
-      setShowCreateForm(false);
-      setCreateType('');
-      setCreateForm({});
-      await loadChannels();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error('创建渠道失败', { description: msg });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // ── 删除频道 ──
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-
-    try {
-      setDeleting(true);
-      await api.clearChannelConfig(deleteTarget.id);
-      toast.success(`已删除渠道「${CHANNEL_INFO[deleteTarget.channel_type]?.name || deleteTarget.channel_type}」`);
-      setDeleteTarget(null);
-      await loadChannels();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error('删除渠道失败', { description: msg });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  // 当前选择的渠道类型信息（新建表单用）
-  const createTypeInfo = createType ? CHANNEL_INFO[createType] : null;
+  const maxHourly = Math.max(...HOURLY_DATA.map((d) => d.count));
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-        {/* 顶部栏 */}
-        <div className="bg-dark-700 rounded-2xl border border-dark-500 p-6 flex justify-between items-center">
-          <div>
-            <div className="flex items-center gap-2 text-claw-400 mb-2">
-              <MessageCircle size={18} />
-              <span className="text-sm font-medium">渠道管理</span>
-            </div>
-            <h2 className="text-xl font-semibold text-white">消息平台接入</h2>
-            <p className="text-sm text-gray-400 mt-1">配置 OpenClaw Bot 连接的各个通讯渠道</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setShowCreateForm(true); setCreateType(''); setCreateForm({}); }}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus size={16} />
-              新建频道
-            </button>
-            <button
-              onClick={loadChannels}
-              disabled={loading}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              刷新
-            </button>
-          </div>
-        </div>
-
-        {/* 新建频道表单（展开面板） */}
-        <AnimatePresence>
-          {showCreateForm && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="bg-dark-700 rounded-xl border border-claw-500/50 p-5 shadow-[0_0_20px_rgba(249,77,58,0.08)]">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-white">新建消息渠道</h3>
-                  <button
-                    onClick={() => setShowCreateForm(false)}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-dark-600 rounded-lg transition-colors"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* 渠道类型选择 */}
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-300">渠道类型</label>
-                    <div className="relative">
-                      <select
-                        value={createType}
-                        onChange={e => { setCreateType(e.target.value); setCreateForm({}); }}
-                        className="input-base py-2.5 text-sm w-full appearance-none pr-8"
-                      >
-                        <option value="">请选择渠道类型...</option>
-                        {CHANNEL_TYPES.filter(t => !channels.some(ch => ch.channel_type === t.value)).map(t => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  {/* 渠道配置字段（根据选中类型动态渲染） */}
-                  {createTypeInfo && createTypeInfo.fields.length > 0 && (
-                    <div className="space-y-3 bg-dark-800 p-4 rounded-xl border border-dark-600">
-                      {createTypeInfo.fields.map(field => (
-                        <div key={field.key} className="space-y-1.5">
-                          <label className="text-xs font-medium text-gray-300">
-                            {field.label}
-                          </label>
-                          {field.type === 'select' ? (
-                            <select
-                              value={createForm[field.key] || (
-                                field.key === 'bridge' ? 'wechaty' :
-                                field.key === 'puppet' ? 'wechat4u' :
-                                field.key === 'autoAccept' ? 'false' :
-                                'allowlist'
-                              )}
-                              onChange={e => setCreateForm({ ...createForm, [field.key]: e.target.value })}
-                              className="input-base py-2 text-sm"
-                            >
-                              {field.key === 'bridge' ? (
-                                <>
-                                  <option value="wechaty">Wechaty（推荐）</option>
-                                  <option value="itchat">itchat（Python 原生）</option>
-                                  <option value="wechat-bot">wechat-bot（Node.js）</option>
-                                </>
-                              ) : field.key === 'puppet' ? (
-                                <>
-                                  <option value="wechat4u">puppet-wechat4u（免费/网页协议）</option>
-                                  <option value="padlocal">puppet-padlocal（付费/iPad协议）</option>
-                                  <option value="xp">puppet-xp（Windows桌面协议）</option>
-                                </>
-                              ) : field.key === 'autoAccept' ? (
-                                <>
-                                  <option value="false">关闭</option>
-                                  <option value="true">开启</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="allowlist">仅白名单 (Allowlist)</option>
-                                  <option value="everyone">所有人 (Everyone)</option>
-                                </>
-                              )}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={createForm[field.key] || ''}
-                              onChange={e => setCreateForm({ ...createForm, [field.key]: e.target.value })}
-                              className="input-base py-2 text-sm"
-                              placeholder={`输入 ${field.label}`}
-                            />
-                          )}
-                          {field.desc && <p className="text-[10px] text-gray-500">{field.desc}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 如果选中类型无字段，显示提示 */}
-                  {createTypeInfo && createTypeInfo.fields.length === 0 && (
-                    <p className="text-sm text-gray-400 text-center py-3 bg-dark-800 rounded-xl border border-dark-600">
-                      此渠道主要通过命令行或手机扫码配置，创建后可在详情中查看接入说明
-                    </p>
-                  )}
-
-                  {/* 操作按钮 */}
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      onClick={() => setShowCreateForm(false)}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleCreate}
-                      disabled={!createType || creating}
-                      className="px-4 py-2 rounded-lg text-sm font-medium bg-claw-500 text-white hover:bg-claw-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                      创建渠道
-                    </button>
-                  </div>
-                </div>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 渠道列表 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(6,182,212,0.15)' }}
+              >
+                <MessageCircle size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  MESSAGE CHANNELS
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  消息渠道 // MULTI-PLATFORM HUB
+                </p>
+              </div>
+            </div>
 
-        {/* 渠道列表 */}
-        {loading && channels.length === 0 ? (
-          <div className="flex items-center justify-center p-12 text-gray-400">
-            <Loader2 className="animate-spin w-8 h-8" />
-          </div>
-        ) : !loading && channels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center">
-            <MessageCircle className="w-12 h-12 text-gray-500 mb-3" />
-            <p className="text-sm text-gray-300 font-medium">暂无消息渠道</p>
-            <p className="text-xs text-gray-500 mt-1">点击上方「新建频道」添加你的第一个通讯渠道</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {channels.map((channel) => {
-              const info = CHANNEL_INFO[channel.channel_type] || { name: channel.channel_type, color: 'text-gray-400', fields: [] };
-              const isEditing = editingId === channel.id;
-              const status = getConnectionStatus(channel);
-              const badge = STATUS_BADGE[status];
-              
-              return (
-                <div key={channel.id} className={`bg-dark-700 rounded-xl border p-5 transition-all ${isEditing ? 'border-claw-500 shadow-[0_0_15px_rgba(249,77,58,0.1)]' : 'border-dark-500 hover:border-dark-400'}`}>
-                  <div className="flex justify-between items-start mb-4">
+            {/* 渠道卡片列表 */}
+            <div className="flex-1 space-y-2">
+              {CHANNELS.map((ch) => {
+                const si = statusInfo(ch.status);
+                return (
+                  <div
+                    key={ch.id}
+                    className="flex items-center justify-between py-3 px-4 rounded-lg transition-colors"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg bg-dark-600 flex items-center justify-center border border-dark-500 ${info.color}`}>
-                        <MessageCircle size={20} />
-                      </div>
+                      <span className="text-xl w-8 text-center">{ch.icon}</span>
                       <div>
-                        <h3 className="text-lg font-medium text-white">{info.name}</h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`w-2 h-2 rounded-full ${badge.dot}`}></span>
-                          <span className={`text-xs ${badge.textColor}`}>{badge.label}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {!isEditing && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleTest(channel.channel_type, channel.id)}
-                          disabled={testingId === channel.id}
-                          className="p-2 text-gray-400 hover:text-cyan-400 hover:bg-dark-600 rounded-lg transition-colors disabled:opacity-50"
-                          title="测试连接"
-                        >
-                          {testingId === channel.id ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                        </button>
-                        <button
-                          onClick={() => handleEdit(channel)}
-                          className="p-2 text-gray-400 hover:text-claw-400 hover:bg-dark-600 rounded-lg transition-colors"
-                          title="编辑配置"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(channel)}
-                          className="p-2 text-gray-400 hover:text-red-400 hover:bg-dark-600 rounded-lg transition-colors"
-                          title="删除渠道"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {testResult && testResult.id === channel.id && !isEditing && (
-                    <div className={`mb-4 p-3 rounded-lg text-sm ${testResult.success ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        {testResult.success ? <LinkIcon size={14} /> : <AlertCircle size={14} />}
-                        <span className="font-medium">{testResult.message}</span>
-                      </div>
-                      {testResult.error && (
-                        <p className="text-xs opacity-80 whitespace-pre-wrap mt-1">{testResult.error}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {isEditing ? (
-                    <div className="space-y-4 bg-dark-800 p-4 rounded-xl border border-dark-600">
-                      {info.fields.length > 0 ? info.fields.map(field => (
-                        <div key={field.key} className="space-y-1.5">
-                          <label className="text-xs font-medium text-gray-300 flex justify-between">
-                            {field.label}
-                            {field.key.includes('Token') && <span className="text-amber-400 text-[10px]">敏感</span>}
-                          </label>
-                          {field.type === 'select' ? (
-                            <select
-                              value={editForm[field.key] || (
-                                field.key === 'bridge' ? 'wechaty' :
-                                field.key === 'puppet' ? 'wechat4u' :
-                                field.key === 'autoAccept' ? 'false' :
-                                'allowlist'
-                              )}
-                              onChange={e => setEditForm({ ...editForm, [field.key]: e.target.value })}
-                              className="input-base py-2 text-sm"
-                            >
-                              {field.key === 'bridge' ? (
-                                <>
-                                  <option value="wechaty">Wechaty（推荐）</option>
-                                  <option value="itchat">itchat（Python 原生）</option>
-                                  <option value="wechat-bot">wechat-bot（Node.js）</option>
-                                </>
-                              ) : field.key === 'puppet' ? (
-                                <>
-                                  <option value="wechat4u">puppet-wechat4u（免费/网页协议）</option>
-                                  <option value="padlocal">puppet-padlocal（付费/iPad协议）</option>
-                                  <option value="xp">puppet-xp（Windows桌面协议）</option>
-                                </>
-                              ) : field.key === 'autoAccept' ? (
-                                <>
-                                  <option value="false">关闭</option>
-                                  <option value="true">开启</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="allowlist">仅白名单 (Allowlist)</option>
-                                  <option value="everyone">所有人 (Everyone)</option>
-                                </>
-                              )}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={editForm[field.key] || ''}
-                              onChange={e => setEditForm({ ...editForm, [field.key]: e.target.value })}
-                              className="input-base py-2 text-sm"
-                              placeholder={`输入 ${field.label}`}
-                            />
-                          )}
-                          {field.desc && <p className="text-[10px] text-gray-500">{field.desc}</p>}
-                        </div>
-                      )) : (
-                        <p className="text-sm text-gray-400 text-center py-4">此渠道主要通过命令行或手机扫码配置</p>
-                      )}
-
-                      {/* 微信渠道特殊引导提示 */}
-                      {channel.channel_type === 'wechat' && (
-                        <div className="mt-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-gray-400 space-y-1.5">
-                          <p className="text-emerald-400 font-medium">微信接入说明</p>
-                          <p>微信渠道当前主要承担通知桥接和后续管理入口，不参与主 LLM 号池路由。</p>
-                          <p>微信机器人需要通过桥接服务接入，推荐使用 Wechaty + puppet-wechat4u 方案。</p>
-                          <p>配置保存后，在终端执行 <code className="text-emerald-400 bg-dark-700 px-1 rounded">openclaw plugins enable wechat</code> 启用微信插件，然后用手机扫码完成登录。</p>
-                          <p className="text-gray-500">提示：微信网页版登录需要已验证的微信号，新号可能无法使用网页协议。启用通知需同时设置 <code className="text-emerald-400 bg-dark-700 px-1 rounded">WECHAT_NOTIFY_ENABLED=true</code>。</p>
-                        </div>
-                      )}
-                      
-                      {/* WhatsApp 渠道特殊引导提示 */}
-                      {channel.channel_type === 'whatsapp' && info.fields.length === 0 && (
-                        <div className="mt-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20 text-xs text-gray-400 space-y-1.5">
-                          <p className="text-green-400 font-medium">WhatsApp 接入说明</p>
-                          <p>WhatsApp 通过扫码登录接入，保存配置后在终端执行 <code className="text-green-400 bg-dark-700 px-1 rounded">openclaw channel login whatsapp</code>。</p>
-                        </div>
-                      )}
-                      
-                      <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-dark-600">
-                        <button
-                          onClick={handleCancel}
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
-                        >
-                          取消
-                        </button>
-                        <button
-                          onClick={() => handleSave(channel.id, channel.channel_type)}
-                          disabled={saving}
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-claw-500 text-white hover:bg-claw-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                        >
-                          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                          保存
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {Object.entries(channel.config).filter(([k]) => k !== 'enabled').map(([key, value]) => (
-                        <div key={key} className="flex justify-between items-center text-sm">
-                          <span className="text-gray-400">{key}</span>
-                          <span className="text-gray-200 truncate max-w-[200px]" title={String(value)}>
-                            {String(value)}
+                        <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {ch.name}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <si.Icon size={10} style={{ color: si.color }} />
+                          <span className="font-mono text-[10px]" style={{ color: si.color }}>
+                            {si.label}
                           </span>
                         </div>
-                      ))}
-                      {Object.keys(channel.config).filter(k => k !== 'enabled').length === 0 && (
-                        <p className="text-sm text-gray-500 italic">默认配置</p>
-                      )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </motion.div>
 
-      {/* 删除确认对话框 */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => !deleting && setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="删除渠道"
-        description={deleteTarget ? `确定删除频道「${CHANNEL_INFO[deleteTarget.channel_type]?.name || deleteTarget.channel_type}」？此操作不可撤销。` : ''}
-        confirmText="删除"
-        destructive
-        loading={deleting}
-      />
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <span className="text-label">今日</span>
+                        <p className="font-mono text-sm font-semibold" style={{ color: ch.color }}>
+                          {ch.msgToday.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-label">用户</span>
+                        <p className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>
+                          {ch.users}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-label">延迟</span>
+                        <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          {ch.latency}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 消息统计 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+              MESSAGE STATS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              消息统计
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {MSG_STATS.map((s) => (
+                <div key={s.label}>
+                  <span className="text-label">{s.label}</span>
+                  <div className="text-metric mt-1" style={{ color: s.color }}>
+                    {s.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 每小时消息量 */}
+            <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
+              HOURLY THROUGHPUT
+            </span>
+            <div className="mt-2 flex-1 space-y-1">
+              {HOURLY_DATA.map((d) => (
+                <div key={d.hour} className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] w-10 shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                    {d.hour}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] flex-1 tracking-tight"
+                    style={{ color: 'var(--accent-cyan)', opacity: 0.85 }}
+                  >
+                    {renderBar(d.count, maxHourly, 16)}
+                  </span>
+                  <span className="font-mono text-[10px] w-8 text-right" style={{ color: 'var(--text-secondary)' }}>
+                    {d.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== Webhook 配置 (col-12) ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <div className="abyss-card p-6">
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
+              WEBHOOK CONFIG
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              Webhook 管理
+            </h3>
+
+            {/* 表头 */}
+            <div
+              className="grid grid-cols-5 gap-3 px-4 py-2 rounded-lg mb-1"
+              style={{ background: 'var(--bg-tertiary)' }}
+            >
+              {['名称', 'URL', '事件', '状态', '最近触发'].map((h) => (
+                <span key={h} className="text-label" style={{ fontSize: '10px' }}>
+                  {h}
+                </span>
+              ))}
+            </div>
+
+            {/* Webhook 列表 */}
+            <div className="space-y-1">
+              {WEBHOOKS.map((wh, i) => (
+                <div
+                  key={i}
+                  className="grid grid-cols-5 gap-3 px-4 py-3 rounded-lg"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {wh.name}
+                  </span>
+                  <span className="font-mono text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                    {wh.url}
+                  </span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                    {wh.events}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] font-semibold"
+                    style={{ color: wh.status === 'active' ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                  >
+                    {wh.status === 'active' ? '● 活跃' : '○ 停用'}
+                  </span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    {wh.lastTriggered}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
