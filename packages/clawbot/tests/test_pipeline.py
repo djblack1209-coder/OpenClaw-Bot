@@ -56,8 +56,9 @@ class TestPipelineSuccessfulExecution:
 
     @pytest.mark.asyncio
     async def test_buy_full_pipeline(self, pipeline, mock_broker, mock_journal, mock_monitor, mock_notify):
+        # 使用较小数量，避免风控自动调整
         proposal = TradeProposal(
-            symbol="AAPL", action="BUY", quantity=5,
+            symbol="AAPL", action="BUY", quantity=3,
             entry_price=150.0, stop_loss=145.0, take_profit=162.0,
             signal_score=50, decided_by="TestBot", reason="breakout",
         )
@@ -71,9 +72,11 @@ class TestPipelineSuccessfulExecution:
 
     @pytest.mark.asyncio
     async def test_sell_executes_without_risk_check(self, pipeline, mock_broker):
+        # SELL 现在也需要通过风控检查，需要设置 stop_loss
         proposal = TradeProposal(
-            symbol="AAPL", action="SELL", quantity=5,
-            entry_price=150.0, decided_by="TestBot", reason="take profit",
+            symbol="AAPL", action="SELL", quantity=3,
+            entry_price=150.0, stop_loss=155.0, take_profit=140.0,
+            decided_by="TestBot", reason="take profit",
         )
         result = await pipeline.execute_proposal(proposal)
         assert result["status"] == "executed"
@@ -103,25 +106,29 @@ class TestPipelineBrokerFallback:
     @pytest.mark.asyncio
     async def test_broker_error_falls_back_to_sim(self, pipeline, mock_broker, mock_portfolio):
         mock_broker.buy.return_value = {"error": "connection lost"}
+        # 使用较小数量，避免风控自动调整
         proposal = TradeProposal(
-            symbol="AAPL", action="BUY", quantity=5,
+            symbol="AAPL", action="BUY", quantity=3,
             entry_price=150.0, stop_loss=145.0, take_profit=162.0,
             signal_score=50, decided_by="TestBot",
         )
         result = await pipeline.execute_proposal(proposal)
-        assert result["status"] == "executed"
+        # broker 回退到模拟组合后状态为 "simulated"
+        assert result["status"] == "simulated"
         mock_portfolio.buy.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_broker_exception_falls_back_to_sim(self, pipeline, mock_broker, mock_portfolio):
         mock_broker.buy.side_effect = ConnectionError("IBKR down")
+        # 使用较小数量，避免风控自动调整
         proposal = TradeProposal(
-            symbol="AAPL", action="BUY", quantity=5,
+            symbol="AAPL", action="BUY", quantity=3,
             entry_price=150.0, stop_loss=145.0, take_profit=162.0,
             signal_score=50, decided_by="TestBot",
         )
         result = await pipeline.execute_proposal(proposal)
-        assert result["status"] == "executed"
+        # broker 回退到模拟组合后状态为 "simulated"
+        assert result["status"] == "simulated"
         mock_portfolio.buy.assert_called_once()
 
     @pytest.mark.asyncio
@@ -134,8 +141,9 @@ class TestPipelineBrokerFallback:
             monitor=mock_monitor,
             notify_func=mock_notify,
         )
+        # 使用较小数量，避免风控自动调整
         proposal = TradeProposal(
-            symbol="AAPL", action="BUY", quantity=5,
+            symbol="AAPL", action="BUY", quantity=3,
             entry_price=150.0, stop_loss=145.0, take_profit=162.0,
             signal_score=50, decided_by="TestBot",
         )
