@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import {
   Server,
   Clock,
@@ -12,8 +13,19 @@ import {
   AlertCircle,
   Wifi,
   WifiOff,
+  Fish,
+  MessageSquare,
+  Zap,
+  Navigation,
+  CalendarClock,
+  Bell,
+  ToggleLeft,
+  ToggleRight,
+  Timer,
+  Send,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -42,6 +54,35 @@ interface CookieStatus {
   last_cookie_available: boolean;
 }
 
+/* 闲鱼数据 */
+interface XianyuData {
+  online: boolean;
+  autoReplyEnabled: boolean;
+  conversationCount: number;
+}
+
+/* 社媒自动驾驶数据 */
+interface AutopilotData {
+  running: boolean;
+  mode: string;
+  nextPublishTime: string | null;
+  postsToday: number;
+}
+
+/* 定时任务数据 */
+interface SchedulerTask {
+  id: string;
+  name: string;
+  enabled: boolean;
+  next_run?: string;
+  interval?: string;
+}
+
+interface SchedulerData {
+  running: boolean;
+  tasks: SchedulerTask[];
+}
+
 /* ====== 辅助函数 ====== */
 
 /** 服务状态颜色 */
@@ -51,6 +92,10 @@ const statusColor = (s: string) =>
 /** 服务状态文本 */
 const statusText = (s: string) =>
   s === 'running' ? '运行中' : s === 'stopped' ? '已停止' : '异常';
+
+/** 查找服务名称（用于 toast 显示） */
+const findServiceName = (services: ServiceItem[], id: string) =>
+  services.find((s) => s.id === id)?.name ?? id;
 
 /**
  * Bots 页面 — Sonic Abyss Bento Grid 布局
@@ -65,21 +110,101 @@ export function Bots() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
+  /* 闲鱼状态 */
+  const [xianyuData, setXianyuData] = useState<XianyuData>({
+    online: false,
+    autoReplyEnabled: false,
+    conversationCount: 0,
+  });
+
+  /* 社媒自动驾驶状态 */
+  const [autopilotData, setAutopilotData] = useState<AutopilotData>({
+    running: false,
+    mode: 'manual',
+    nextPublishTime: null,
+    postsToday: 0,
+  });
+  const [autopilotLoading, setAutopilotLoading] = useState(false);
+
+  /* 定时任务状态 */
+  const [schedulerData, setSchedulerData] = useState<SchedulerData>({
+    running: false,
+    tasks: [],
+  });
+  const [schedulerTaskLoading, setSchedulerTaskLoading] = useState<Record<string, boolean>>({});
+
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
     try {
-      const [servicesRes, cookieRes] = await Promise.allSettled([
+      const [servicesRes, cookieRes, xianyuConvRes, autopilotRes, schedulerRes, statusRes] = await Promise.allSettled([
         api.services(),
         api.cookieCloudStatus(),
+        api.xianyuConversations(20),
+        api.clawbotAutopilotStatus(),
+        clawbotFetchJson('/api/v1/controls/scheduler').catch(() => null),
+        api.clawbotStatus(),
       ]);
 
+      /* 服务列表 */
       if (servicesRes.status === 'fulfilled') {
         const data = servicesRes.value as any;
         setServices(data?.services ?? []);
       }
+
+      /* Cookie 状态 */
       if (cookieRes.status === 'fulfilled') {
         setCookieStatus(cookieRes.value as any);
       }
+
+      /* 闲鱼数据：从系统状态 + 对话列表组合 */
+      let xianyuOnline = false;
+      let xianyuAutoReply = false;
+      if (statusRes.status === 'fulfilled' && statusRes.value) {
+        const s = statusRes.value as Record<string, unknown>;
+        const xy = s.xianyu as Record<string, unknown> | undefined;
+        if (xy) {
+          xianyuOnline = Boolean(xy.running ?? xy.online ?? false);
+          xianyuAutoReply = Boolean(xy.auto_reply_active ?? xy.auto_reply_enabled ?? false);
+        }
+      }
+      let convCount = 0;
+      if (xianyuConvRes.status === 'fulfilled' && xianyuConvRes.value) {
+        const convData = xianyuConvRes.value as any;
+        convCount = Array.isArray(convData?.conversations)
+          ? convData.conversations.length
+          : Array.isArray(convData) ? convData.length : Number(convData?.total ?? 0);
+      }
+      setXianyuData({ online: xianyuOnline, autoReplyEnabled: xianyuAutoReply, conversationCount: convCount });
+
+      /* 社媒自动驾驶 */
+      if (autopilotRes.status === 'fulfilled' && autopilotRes.value) {
+        const ap = autopilotRes.value as Record<string, unknown>;
+        setAutopilotData({
+          running: Boolean(ap.running ?? ap.active ?? false),
+          mode: String(ap.mode ?? 'manual'),
+          nextPublishTime: ap.next_publish_time ? String(ap.next_publish_time) : ap.next_run ? String(ap.next_run) : null,
+          postsToday: Number(ap.posts_today ?? ap.published_today ?? 0),
+        });
+      }
+
+      /* 定时任务 */
+      if (schedulerRes.status === 'fulfilled' && schedulerRes.value) {
+        const sc = schedulerRes.value as any;
+        const taskList: SchedulerTask[] = Array.isArray(sc?.tasks)
+          ? sc.tasks.map((t: any) => ({
+              id: String(t.id ?? t.name ?? ''),
+              name: String(t.name ?? t.id ?? '未知任务'),
+              enabled: Boolean(t.enabled ?? t.active ?? true),
+              next_run: t.next_run ? String(t.next_run) : undefined,
+              interval: t.interval ? String(t.interval) : t.cron ? String(t.cron) : undefined,
+            }))
+          : [];
+        setSchedulerData({
+          running: Boolean(sc?.running ?? sc?.active ?? taskList.length > 0),
+          tasks: taskList,
+        });
+      }
+
       setError(null);
     } catch (e: any) {
       setError(e?.message ?? '数据加载失败');
@@ -94,23 +219,65 @@ export function Bots() {
     return () => clearInterval(timer);
   }, [fetchData]);
 
-  /* ====== 服务启停 ====== */
+  /* ====== 服务启停（带 Toast 反馈） ====== */
   const handleToggleService = async (serviceId: string, currentStatus: string) => {
+    const serviceName = findServiceName(services, serviceId);
+    const isStop = currentStatus === 'running';
     setActionLoading((prev) => ({ ...prev, [serviceId]: true }));
     try {
-      if (currentStatus === 'running') {
+      if (isStop) {
         await api.serviceStop(serviceId);
       } else {
         await api.serviceStart(serviceId);
       }
-      // 等一小段时间让后端状态更新
+      /* 等一小段时间让后端状态更新 */
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
-    } catch {
-      // 静默，刷新状态即可
+      toast.success(isStop ? `${serviceName} 服务已停止` : `${serviceName} 服务已启动`);
+    } catch (e: any) {
       await fetchData();
+      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
     } finally {
       setActionLoading((prev) => ({ ...prev, [serviceId]: false }));
+    }
+  };
+
+  /* ====== 社媒自动驾驶启停 ====== */
+  const handleAutopilotToggle = async () => {
+    setAutopilotLoading(true);
+    try {
+      if (autopilotData.running) {
+        await api.clawbotAutopilotStop();
+        toast.success('社媒自动驾驶已停止');
+      } else {
+        await api.clawbotAutopilotStart();
+        toast.success('社媒自动驾驶已启动');
+      }
+      await new Promise((r) => setTimeout(r, 800));
+      await fetchData();
+    } catch (e: any) {
+      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
+    } finally {
+      setAutopilotLoading(false);
+    }
+  };
+
+  /* ====== 定时任务开关 ====== */
+  const handleSchedulerTaskToggle = async (taskId: string, currentEnabled: boolean) => {
+    setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: true }));
+    try {
+      await clawbotFetchJson(`/api/v1/controls/scheduler/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled }),
+      });
+      toast.success(`任务 ${taskId} 已${currentEnabled ? '禁用' : '启用'}`);
+      await new Promise((r) => setTimeout(r, 500));
+      await fetchData();
+    } catch (e: any) {
+      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
+    } finally {
+      setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: false }));
     }
   };
 
@@ -130,6 +297,10 @@ export function Bots() {
   const cookieValid = cookieStatus?.last_cookie_available && (cookieStatus?.consecutive_failures ?? 0) === 0;
   const cookieLabel = cookieValid ? 'VALID' : 'INVALID';
   const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
+
+  /* 通知服务状态（从 services 列表中查找） */
+  const notifService = services.find((s) => s.id === 'notification' || s.id === 'apprise' || s.name?.includes('通知'));
+  const notifRunning = notifService?.status === 'running';
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -432,6 +603,345 @@ export function Bots() {
             </div>
           </div>
         </motion.div>
+
+        {/* ══════════════════════════════════════════════════════════════
+            以下为新增区域
+           ══════════════════════════════════════════════════════════════ */}
+
+        {/* ====== 闲鱼 AI 客服 (col-span-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-1">
+              <Fish size={16} style={{ color: 'var(--accent-amber)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>XIANYU AI</span>
+            </div>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              闲鱼 AI 客服 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// XIANYU</span>
+            </h3>
+
+            <div className="space-y-4">
+              {/* 在线状态 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex-shrink-0">
+                    {xianyuData.online && (
+                      <motion.span
+                        className="absolute inset-[-3px] rounded-full"
+                        style={{ background: 'var(--accent-green)', opacity: 0.3 }}
+                        animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                    <span className="block w-2.5 h-2.5 rounded-full"
+                      style={{ background: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                  </span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>客服状态</span>
+                </div>
+                <span className="font-mono text-xs font-bold" style={{
+                  color: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)',
+                }}>
+                  {xianyuData.online ? 'ONLINE' : 'OFFLINE'}
+                </span>
+              </div>
+
+              {/* Cookie 状态 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Cookie size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Cookie 状态</span>
+                </div>
+                <span
+                  className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold"
+                  style={{
+                    color: cookieColor,
+                    background: cookieValid ? 'rgba(0,255,170,0.1)' : 'rgba(255,0,0,0.1)',
+                    border: `1px solid ${cookieValid ? 'rgba(0,255,170,0.25)' : 'rgba(255,0,0,0.25)'}`,
+                  }}
+                >
+                  {cookieStatus ? cookieLabel : '—'}
+                </span>
+              </div>
+
+              {/* 自动回复 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap size={13} style={{ color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>自动回复</span>
+                </div>
+                <span className="font-mono text-xs font-bold" style={{
+                  color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)',
+                }}>
+                  {xianyuData.autoReplyEnabled ? '已开启' : '未开启'}
+                </span>
+              </div>
+
+              {/* 最近对话数 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>最近对话</span>
+                </div>
+                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-amber)' }}>
+                  {xianyuData.conversationCount}
+                </span>
+              </div>
+            </div>
+
+            <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
+              闲鱼 AI 智能客服 · 自动议价 · 30s 刷新
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ====== 社媒自动驾驶 (col-span-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-1">
+              <Navigation size={16} style={{ color: 'var(--accent-purple)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>SOCIAL AUTOPILOT</span>
+            </div>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              社媒自动驾驶 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// AUTOPILOT</span>
+            </h3>
+
+            <div className="space-y-4">
+              {/* 运行状态 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex-shrink-0">
+                    {autopilotData.running && (
+                      <motion.span
+                        className="absolute inset-[-3px] rounded-full"
+                        style={{ background: 'var(--accent-green)', opacity: 0.3 }}
+                        animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                    <span className="block w-2.5 h-2.5 rounded-full"
+                      style={{ background: autopilotData.running ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                  </span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>驾驶状态</span>
+                </div>
+                <span className="font-mono text-xs font-bold" style={{
+                  color: autopilotData.running ? 'var(--accent-green)' : 'var(--text-disabled)',
+                }}>
+                  {autopilotData.running ? 'ACTIVE' : 'IDLE'}
+                </span>
+              </div>
+
+              {/* 下次发布时间 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Timer size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>下次发布</span>
+                </div>
+                <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {autopilotData.nextPublishTime
+                    ? new Date(autopilotData.nextPublishTime).toLocaleTimeString('zh-CN')
+                    : '—'}
+                </span>
+              </div>
+
+              {/* 今日发布 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Send size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>今日发布</span>
+                </div>
+                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-purple)' }}>
+                  {autopilotData.postsToday}
+                </span>
+              </div>
+
+              {/* 启停按钮 */}
+              <motion.button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer text-xs font-mono font-bold mt-2"
+                style={{
+                  background: autopilotData.running ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
+                  border: `1px solid ${autopilotData.running ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
+                  color: autopilotData.running ? 'var(--accent-red)' : 'var(--accent-green)',
+                  opacity: autopilotLoading ? 0.5 : 1,
+                  pointerEvents: autopilotLoading ? 'none' : 'auto',
+                }}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleAutopilotToggle}
+              >
+                {autopilotLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : autopilotData.running ? (
+                  <Square size={14} />
+                ) : (
+                  <Play size={14} />
+                )}
+                {autopilotData.running ? '停止自动驾驶' : '启动自动驾驶'}
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 定时任务 / 自动化 (col-span-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-1">
+              <CalendarClock size={16} style={{ color: 'var(--accent-cyan)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>SCHEDULER</span>
+              <div className="flex-1" />
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold" style={{
+                color: schedulerData.running ? 'var(--accent-green)' : 'var(--text-disabled)',
+                background: schedulerData.running ? 'rgba(0,255,170,0.1)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${schedulerData.running ? 'rgba(0,255,170,0.25)' : 'var(--glass-border)'}`,
+              }}>
+                {schedulerData.running ? 'ACTIVE' : 'IDLE'}
+              </span>
+            </div>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              定时任务 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// SCHEDULER</span>
+            </h3>
+
+            <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
+              {schedulerData.tasks.length === 0 && (
+                <div className="flex items-center justify-center py-6">
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无定时任务</span>
+                </div>
+              )}
+              {schedulerData.tasks.map((task) => {
+                const isTaskLoading = schedulerTaskLoading[task.id] ?? false;
+                return (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}
+                  >
+                    {/* 状态圆点 */}
+                    <span className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: task.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+
+                    {/* 任务名 */}
+                    <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
+                      {task.name}
+                    </span>
+
+                    {/* 间隔 / cron */}
+                    {task.interval && (
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                        {task.interval}
+                      </span>
+                    )}
+
+                    <div className="flex-1" />
+
+                    {/* 下次执行 */}
+                    {task.next_run && (
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                        下次: {new Date(task.next_run).toLocaleTimeString('zh-CN')}
+                      </span>
+                    )}
+
+                    {/* 开关按钮 */}
+                    <motion.button
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer"
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid var(--glass-border)',
+                        color: task.enabled ? 'var(--accent-green)' : 'var(--text-disabled)',
+                        opacity: isTaskLoading ? 0.5 : 1,
+                        pointerEvents: isTaskLoading ? 'none' : 'auto',
+                      }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleSchedulerTaskToggle(task.id, task.enabled)}
+                    >
+                      {isTaskLoading ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : task.enabled ? (
+                        <ToggleRight size={18} />
+                      ) : (
+                        <ToggleLeft size={18} />
+                      )}
+                    </motion.button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 通知渠道 (col-span-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-1">
+              <Bell size={16} style={{ color: 'var(--accent-amber)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>NOTIFICATIONS</span>
+            </div>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              通知渠道 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// APPRISE</span>
+            </h3>
+
+            <div className="space-y-4">
+              {/* 服务状态 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex-shrink-0">
+                    {notifRunning && (
+                      <motion.span
+                        className="absolute inset-[-3px] rounded-full"
+                        style={{ background: 'var(--accent-green)', opacity: 0.3 }}
+                        animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                    <span className="block w-2.5 h-2.5 rounded-full"
+                      style={{ background: notifRunning ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                  </span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>通知服务</span>
+                </div>
+                <span className="font-mono text-xs font-bold" style={{
+                  color: notifRunning ? 'var(--accent-green)' : 'var(--text-disabled)',
+                }}>
+                  {notifRunning ? 'ONLINE' : 'OFFLINE'}
+                </span>
+              </div>
+
+              {/* 服务名称 */}
+              {notifService && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server size={13} style={{ color: 'var(--text-disabled)' }} />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>服务名</span>
+                  </div>
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                    {notifService.name}
+                  </span>
+                </div>
+              )}
+
+              {/* 端口 */}
+              {notifService?.port && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal size={13} style={{ color: 'var(--text-disabled)' }} />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>端口</span>
+                  </div>
+                  <span className="font-mono text-xs" style={{ color: 'var(--accent-cyan)' }}>
+                    :{notifService.port}
+                  </span>
+                </div>
+              )}
+
+              {!notifService && (
+                <div className="flex items-center justify-center py-4">
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>未检测到通知服务</span>
+                </div>
+              )}
+            </div>
+
+            <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
+              Apprise 多渠道通知 · Telegram / Email / Webhook
+            </p>
+          </div>
+        </motion.div>
+
       </motion.div>
     </div>
   );
