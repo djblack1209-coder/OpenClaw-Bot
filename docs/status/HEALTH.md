@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (技术债清理第9批: DevPanel 完整功能化)
+> 最后更新: 2026-04-19 (R12 CI/DevOps 审计: CI workflow 重写+本地验证方案)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -77,7 +77,9 @@
 
 ### 🔴 阻塞
 
-(无)
+| ID | 领域 | 模块 | 描述 | 发现日期 |
+|----|------|------|------|----------|
+| HI-597 | `infra` | `.github/workflows/ci.yml` | GitHub Actions Billing 问题导致所有 CI 运行失败(15+ 次连续 failure) — 错误信息 "recent account payments have failed or your spending limit needs to be increased"。代码层已优化(路径过滤/缓存/Makefile ci-local)，**需用户去 GitHub Settings > Billing & Plans 处理付款或提高限额** | 2026-04-19 |
 
 ### 🟠 重要
 

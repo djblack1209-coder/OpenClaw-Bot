@@ -49,8 +49,8 @@
 |------|------|------|---------|---------|------|
 | R1 | 基础设施与文件治理 | Git/CI-CD/Docker/依赖/文档对齐 | ~40 | [R01](docs/audit/R01_INFRA.md) | ✅ 已完成(6项修复) |
 | R2 | 后端核心引擎 | Brain/EventBus/Router/LiteLLM/API/安全 | 46 | [R02](docs/audit/R02_BACKEND_CORE.md) | ✅ 已完成(14项修复/5技术债) |
-| R3 | Telegram Bot 命令层 | 92+命令+14回调+NLP触发 | ~45 | [R03](docs/audit/R03_BOT_COMMANDS.md) | 待执行 |
-| R4 | Telegram Bot 业务场景 | 投资/社媒/闲鱼/执行 | ~40 | [R04](docs/audit/R04_BOT_BUSINESS.md) | 待执行 |
+| R3 | Telegram Bot 命令层 | 92+命令+14回调+NLP触发 | ~45 | [R03](docs/audit/R03_BOT_COMMANDS.md) | ✅ 已完成(3项修复/9文档修正/3技术债) |
+| R4 | Telegram Bot 业务场景 | 投资/社媒/闲鱼/执行 | ~40 | [R04](docs/audit/R04_BOT_BUSINESS.md) | ✅ 已完成(32通过/8技术债) |
 | R5 | macOS 桌面端架构 | Tauri2+React 集成/IPC/构建 | ~35 | [R05](docs/audit/R05_MACOS_ARCH.md) | ✅ 已完成(2项修复/5技术债) |
 | R6 | macOS 核心页面 | Dashboard/Assistant/Bots/Settings | ~45 | [R06](docs/audit/R06_MACOS_CORE.md) | ✅ 已完成(8项修复/15技术债) |
 | R7 | macOS 业务页面 | Trading/Social/Xianyu/Memory/Logs | ~40 | [R07](docs/audit/R07_MACOS_BUSINESS.md) | ✅ 已完成(6项修复/20技术债) |
@@ -58,7 +58,8 @@
 | R9 | 闲鱼+社媒+微信+工具链 | 闲鱼客服/社媒/微信Bridge/TTS/OCR | ~35 | [R09](docs/audit/R09_XIANYU_SOCIAL.md) | ✅ 已完成(4项修复/14技术债) |
 | R10 | 生产部署与运维 | VPS/Docker/心跳/监控/备份 | ~30 | [R10](docs/audit/R10_DEPLOY.md) | ✅ 已完成(0项修复/5技术债/VPS需人工验证) |
 | R11 | 端到端集成验证 | 全链路冒烟/文档终态/报告归档 | ~25 | [R11](docs/audit/R11_E2E_FINAL.md) | ✅ 已完成(0项修复/3技术债) |
-| **合计** | | | **~425** | | |
+| R12 | CI/CD 管道与 DevOps | Workflow/测试策略/缓存/Billing/本地验证 | ~30 | [R12](docs/audit/R12_CI_DEVOPS.md) | ✅ 已完成(CI重写+Billing修复) |
+| **合计** | | | **~455** | | |
 
 ---
 
@@ -156,5 +157,6 @@ docs/audit/
 ├── R08_TRADING.md          ← R8 投资交易系统
 ├── R09_XIANYU_SOCIAL.md    ← R9 闲鱼+社媒+微信+工具链
 ├── R10_DEPLOY.md           ← R10 生产部署与运维
-└── R11_E2E_FINAL.md        ← R11 端到端集成验证
+├── R11_E2E_FINAL.md        ← R11 端到端集成验证
+└── R12_CI_DEVOPS.md        ← R12 CI/CD 管道与 DevOps
 ```
