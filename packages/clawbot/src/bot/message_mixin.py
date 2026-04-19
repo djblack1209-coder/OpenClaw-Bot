@@ -3,8 +3,8 @@
 
 import asyncio
 import importlib.util
+import io
 import logging
-import re
 import time as _time
 from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
 from src.telegram_markdown import md_to_html
