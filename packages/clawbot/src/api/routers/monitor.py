@@ -22,7 +22,7 @@ from fastapi import APIRouter, Query
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/monitor", tags=["WorldMonitor 全球情报"])
+router = APIRouter(prefix="/monitor", tags=["WorldMonitor 全球情报"])
 
 
 # ============================================================

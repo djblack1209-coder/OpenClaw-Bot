@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import {
@@ -24,10 +24,16 @@ import {
   Terminal,
   ExternalLink,
   Map,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== TopoJSON 地图源 — 本地打包，避免 Tauri CSP 拦截 ====== */
 const GEO_URL = '/countries-110m.json';
+
+/* ====== 自动刷新间隔（毫秒） ====== */
+const REFRESH_INTERVAL = 30_000;
 
 /* ====== 入场动画配置（与 Home 一致） ====== */
 const containerVariants = {
@@ -40,24 +46,45 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 类型定义 ====== */
+/* ====== API 返回类型定义 ====== */
 
-/** 国家风险条目 */
-interface CountryRisk {
-  country: string;        // 中文国家名
-  code: string;           // ISO alpha-2 国家代码
-  score: number;          // 风险分数 0-100
+/** 国家风险条目（API 返回格式） */
+interface RiskApiItem {
+  country_code: string;
+  country_name: string;
+  composite_score: number;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  change24h: number;      // 24小时变化（正数=上升，负数=下降）
-  link: string;           // 外部链接地址
+  sub_scores: Record<string, number>;
+  change_24h: number;
 }
 
-/** 冲突区域 */
-interface ConflictZone {
-  region: string;         // 中文区域名
-  severity: 'HIGH' | 'CRITICAL';
-  description: string;    // 中文描述
-  link: string;           // 外部链接地址
+/** 全局风险 API 返回 */
+interface GlobalRiskApi {
+  score: number;
+  severity: string;
+  [key: string]: unknown;
+}
+
+/** 新闻条目 API 返回 */
+interface NewsApiItem {
+  title: string;
+  source: string;
+  category: string;
+  published_at: string;
+  summary: string;
+  threat_level: string;
+}
+
+/* ====== 内部显示类型 ====== */
+
+/** 国家风险条目（显示用） */
+interface CountryRisk {
+  country: string;
+  code: string;
+  score: number;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  change24h: number;
+  link: string;
 }
 
 /** 情报日志条目 */
@@ -65,16 +92,16 @@ interface IntelEntry {
   id: string;
   timestamp: string;
   category: 'CONFLICT' | 'CYBER' | 'CLIMATE' | 'ECONOMIC';
-  message: string;        // 中文消息
+  message: string;
 }
 
 /** 地图悬停提示信息 */
 interface TooltipInfo {
-  name: string;           // 中文国家名
-  score: number;          // 风险分数
-  level: string;          // 中文等级
-  x: number;              // 鼠标 X 坐标
-  y: number;              // 鼠标 Y 坐标
+  name: string;
+  score: number;
+  level: string;
+  x: number;
+  y: number;
 }
 
 /* ====== 严重度中文映射 ====== */
@@ -93,64 +120,30 @@ const CATEGORY_CN: Record<string, string> = {
   ECONOMIC: '经济',
 };
 
-/** ISO alpha-3 → 中文国家名映射 */
-const ISO3_TO_CN: Record<string, string> = {
-  UKR: '乌克兰', ISR: '以色列', MMR: '缅甸', SDN: '苏丹', YEM: '也门',
-  SOM: '索马里', AFG: '阿富汗', SYR: '叙利亚', RUS: '俄罗斯', CHN: '中国',
-  USA: '美国', IRN: '伊朗', PRK: '朝鲜', PAK: '巴基斯坦', IRQ: '伊拉克',
-  LBY: '利比亚', NGA: '尼日利亚', COD: '刚果(金)', ETH: '埃塞俄比亚', MLI: '马里',
-  MEX: '墨西哥', VEN: '委内瑞拉', COL: '哥伦比亚', IND: '印度', TWN: '台湾',
-  PHL: '菲律宾', EGY: '埃及', LBN: '黎巴嫩', HTI: '海地', BFA: '布基纳法索',
+/** ISO alpha-2 → alpha-3 映射（用于地图着色） */
+const ISO2_TO_ISO3: Record<string, string> = {
+  AF: 'AFG', AL: 'ALB', DZ: 'DZA', AO: 'AGO', AR: 'ARG', AU: 'AUS', AT: 'AUT',
+  BD: 'BGD', BE: 'BEL', BO: 'BOL', BR: 'BRA', BG: 'BGR', BF: 'BFA', BI: 'BDI',
+  KH: 'KHM', CM: 'CMR', CA: 'CAN', CF: 'CAF', TD: 'TCD', CL: 'CHL', CN: 'CHN',
+  CO: 'COL', CG: 'COG', CD: 'COD', CR: 'CRI', HR: 'HRV', CU: 'CUB', CY: 'CYP',
+  CZ: 'CZE', DK: 'DNK', DO: 'DOM', EC: 'ECU', EG: 'EGY', SV: 'SLV', GQ: 'GNQ',
+  ER: 'ERI', EE: 'EST', ET: 'ETH', FI: 'FIN', FR: 'FRA', GA: 'GAB', GM: 'GMB',
+  GE: 'GEO', DE: 'DEU', GH: 'GHA', GR: 'GRC', GT: 'GTM', GN: 'GIN', GY: 'GUY',
+  HT: 'HTI', HN: 'HND', HU: 'HUN', IN: 'IND', ID: 'IDN', IR: 'IRN', IQ: 'IRQ',
+  IE: 'IRL', IL: 'ISR', IT: 'ITA', CI: 'CIV', JM: 'JAM', JP: 'JPN', JO: 'JOR',
+  KZ: 'KAZ', KE: 'KEN', KP: 'PRK', KR: 'KOR', KW: 'KWT', KG: 'KGZ', LA: 'LAO',
+  LV: 'LVA', LB: 'LBN', LS: 'LSO', LR: 'LBR', LY: 'LBY', LT: 'LTU', LU: 'LUX',
+  MG: 'MDG', MW: 'MWI', MY: 'MYS', ML: 'MLI', MR: 'MRT', MX: 'MEX', MN: 'MNG',
+  MA: 'MAR', MZ: 'MOZ', MM: 'MMR', NA: 'NAM', NP: 'NPL', NL: 'NLD', NZ: 'NZL',
+  NI: 'NIC', NE: 'NER', NG: 'NGA', NO: 'NOR', OM: 'OMN', PK: 'PAK', PA: 'PAN',
+  PG: 'PNG', PY: 'PRY', PE: 'PER', PH: 'PHL', PL: 'POL', PT: 'PRT', QA: 'QAT',
+  RO: 'ROU', RU: 'RUS', RW: 'RWA', SA: 'SAU', SN: 'SEN', SL: 'SLE', SG: 'SGP',
+  SK: 'SVK', SI: 'SVN', SO: 'SOM', ZA: 'ZAF', ES: 'ESP', LK: 'LKA', SD: 'SDN',
+  SR: 'SUR', SZ: 'SWZ', SE: 'SWE', CH: 'CHE', SY: 'SYR', TW: 'TWN', TJ: 'TJK',
+  TZ: 'TZA', TH: 'THA', TG: 'TGO', TT: 'TTO', TN: 'TUN', TR: 'TUR', TM: 'TKM',
+  UG: 'UGA', UA: 'UKR', AE: 'ARE', GB: 'GBR', US: 'USA', UY: 'URY', UZ: 'UZB',
+  VE: 'VEN', VN: 'VNM', YE: 'YEM', ZM: 'ZMB', ZW: 'ZWE',
 };
-
-/* ====== 国家风险分数表（ISO alpha-3 → 分数） ====== */
-const COUNTRY_RISK_SCORES: Record<string, number> = {
-  UKR: 94, ISR: 88, MMR: 79, SDN: 76, YEM: 71,
-  SOM: 68, AFG: 65, SYR: 63, RUS: 58, CHN: 42,
-  USA: 28, IRN: 72, PRK: 60, PAK: 55, IRQ: 67,
-  LBY: 62, NGA: 59, COD: 70, ETH: 57, MLI: 66,
-  MEX: 48, VEN: 53, COL: 45, IND: 38, TWN: 35,
-  PHL: 40, EGY: 44, LBN: 61, HTI: 73, BFA: 69,
-};
-
-/* ====== 模拟数据 ====== */
-
-/** 全球综合风险分数 */
-const GLOBAL_RISK_SCORE = 62;
-const GLOBAL_RISK_SEVERITY: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
-
-/** 前 8 高风险国家 */
-const TOP_RISK_COUNTRIES: CountryRisk[] = [
-  { country: '乌克兰',      code: 'UA', score: 94, severity: 'CRITICAL', change24h: 2.1,  link: 'https://acleddata.com' },
-  { country: '以色列',      code: 'IL', score: 88, severity: 'CRITICAL', change24h: -1.3, link: 'https://acleddata.com' },
-  { country: '缅甸',        code: 'MM', score: 79, severity: 'HIGH',     change24h: 0.5,  link: 'https://worldmonitor.app' },
-  { country: '苏丹',        code: 'SD', score: 76, severity: 'HIGH',     change24h: 3.8,  link: 'https://acleddata.com' },
-  { country: '也门',        code: 'YE', score: 71, severity: 'HIGH',     change24h: -0.2, link: 'https://acleddata.com' },
-  { country: '索马里',      code: 'SO', score: 68, severity: 'HIGH',     change24h: 1.1,  link: 'https://acleddata.com' },
-  { country: '阿富汗',      code: 'AF', score: 65, severity: 'HIGH',     change24h: -0.8, link: 'https://worldmonitor.app' },
-  { country: '叙利亚',      code: 'SY', score: 63, severity: 'MEDIUM',   change24h: 0.3,  link: 'https://acleddata.com' },
-];
-
-/** 活跃冲突区域 */
-const CONFLICT_ZONES: ConflictZone[] = [
-  { region: '东欧 — 俄乌前线',   severity: 'CRITICAL', description: '俄乌全面冲突持续，扎波罗热和赫尔松方向交火密集', link: 'https://acleddata.com' },
-  { region: '中东 — 加沙地区',   severity: 'CRITICAL', description: '加沙人道主义危机加剧，红海航运安全受胁', link: 'https://acleddata.com' },
-  { region: '东非 — 苏丹内战',   severity: 'HIGH',     description: '苏丹快速支援部队与政府军交战扩大化', link: 'https://acleddata.com' },
-];
-
-/** 情报日志流（全中文） */
-const INTEL_FEED: IntelEntry[] = [
-  { id: '1',  timestamp: '14:32:08', category: 'CONFLICT',  message: '[乌克兰] 扎波罗热方向检测到新一轮炮击活动，预计影响平民疏散路线' },
-  { id: '2',  timestamp: '14:28:41', category: 'CYBER',     message: '[全球] Cloudflare 报告亚太地区 DDoS 攻击流量激增 340%，多家金融机构受影响' },
-  { id: '3',  timestamp: '14:25:15', category: 'ECONOMIC',  message: '[中国] 人民币离岸汇率突破 7.28 关口，央行释放稳定信号，市场情绪谨慎' },
-  { id: '4',  timestamp: '14:21:33', category: 'CLIMATE',   message: '[日本] 气象厅发布九州地区暴雨特别警报，24小时降水量超 300mm' },
-  { id: '5',  timestamp: '14:18:02', category: 'CONFLICT',  message: '[苏丹] 快速支援部队控制北达尔富尔首府，联合国呼吁紧急人道主义通道' },
-  { id: '6',  timestamp: '14:14:47', category: 'CYBER',     message: '[美国] CISA 发布关键基础设施漏洞通告 CVE-2026-3891，CVSS 评分 9.8' },
-  { id: '7',  timestamp: '14:10:22', category: 'ECONOMIC',  message: '[欧盟] 欧洲央行维持利率不变，但暗示第三季度可能降息 25 个基点' },
-  { id: '8',  timestamp: '14:06:59', category: 'CLIMATE',   message: '[加拿大] 不列颠哥伦比亚省 3 处山火失控，过火面积超 12,000 公顷' },
-  { id: '9',  timestamp: '14:03:11', category: 'CONFLICT',  message: '[缅甸] 民族抵抗力量在掸邦北部推进，控制 2 个关键据点，军政府调派增援' },
-  { id: '10', timestamp: '13:58:44', category: 'CYBER',     message: '[俄罗斯] 多家俄罗斯银行遭受供应链攻击，支付系统中断约 2 小时' },
-];
 
 /* ====== 工具函数 ====== */
 
@@ -167,11 +160,11 @@ function severityColor(severity: string): string {
 
 /** 根据风险分数返回填充颜色（地图热力色阶） */
 function riskScoreToFill(score: number): string {
-  if (score >= 85) return '#ff003c';                // 危急 — 红色
-  if (score >= 70) return '#ff6b35';                // 高风险 — 橙色
-  if (score >= 50) return '#fbbf24';                // 升高 — 琥珀色
-  if (score >= 30) return '#00d4ff';                // 中等 — 青色
-  return 'rgba(255,255,255,0.08)';                  // 低/无数据 — 暗色
+  if (score >= 85) return '#ff003c';
+  if (score >= 70) return '#ff6b35';
+  if (score >= 50) return '#fbbf24';
+  if (score >= 30) return '#00d4ff';
+  return 'rgba(255,255,255,0.08)';
 }
 
 /** 根据风险分数返回中文等级标签 */
@@ -184,13 +177,41 @@ function riskScoreToLevel(score: number): string {
 }
 
 /** 根据情报类别返回对应颜色和背景色 */
-function categoryMeta(category: IntelEntry['category']): { color: string; bg: string } {
+function categoryMeta(category: string): { color: string; bg: string } {
   switch (category) {
     case 'CONFLICT': return { color: 'var(--accent-red)',    bg: 'rgba(255, 0, 60, 0.12)' };
     case 'CYBER':    return { color: 'var(--accent-cyan)',   bg: 'rgba(0, 212, 255, 0.12)' };
     case 'CLIMATE':  return { color: 'var(--accent-amber)',  bg: 'rgba(251, 191, 36, 0.12)' };
     case 'ECONOMIC': return { color: 'var(--accent-purple)', bg: 'rgba(167, 139, 250, 0.12)' };
+    default:         return { color: 'var(--text-tertiary)', bg: 'rgba(255,255,255,0.08)' };
   }
+}
+
+/** 把 API 的 category 字符串映射到内部类别 */
+function mapNewsCategory(cat: string): IntelEntry['category'] {
+  const upper = cat.toUpperCase();
+  if (upper.includes('CONFLICT') || upper.includes('MILITARY') || upper.includes('GEOPOLIT')) return 'CONFLICT';
+  if (upper.includes('CYBER') || upper.includes('TECH')) return 'CYBER';
+  if (upper.includes('CLIMATE') || upper.includes('WEATHER') || upper.includes('DISASTER')) return 'CLIMATE';
+  return 'ECONOMIC';
+}
+
+/** 把 API 时间字符串转为 HH:MM:SS 时间戳 */
+function formatTimestamp(isoStr: string): string {
+  try {
+    const d = new Date(isoStr);
+    return d.toTimeString().slice(0, 8);
+  } catch {
+    return '--:--:--';
+  }
+}
+
+/** 根据严重度推算等级文本 */
+function severityFromScore(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  if (score >= 85) return 'CRITICAL';
+  if (score >= 70) return 'HIGH';
+  if (score >= 50) return 'MEDIUM';
+  return 'LOW';
 }
 
 /** 可点击外部链接组件 — 青色下划线悬停效果 */
@@ -241,7 +262,6 @@ function ChangeIndicator({ value }: { value: number }) {
 
 /* ====== 地图色阶图例组件 ====== */
 function MapLegend() {
-  /* 色阶条目：颜色 + 中文标签 + 分数范围 */
   const items = [
     { color: '#ff003c', label: '危急', range: '85+' },
     { color: '#ff6b35', label: '高',   range: '70-84' },
@@ -305,16 +325,42 @@ function MapTooltip({ info }: { info: TooltipInfo | null }) {
   );
 }
 
+/* ====== 错误/加载状态组件 ====== */
+function LoadingState({ message = '数据加载中...' }: { message?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-8">
+      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{message}</span>
+    </div>
+  );
+}
+
+function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-8">
+      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
+      <button
+        onClick={onRetry}
+        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
+        style={{
+          background: 'rgba(255, 0, 60, 0.1)',
+          color: 'var(--accent-red)',
+          border: '1px solid rgba(255, 0, 60, 0.25)',
+        }}
+      >
+        <RefreshCw size={12} className="inline mr-1.5" />
+        重试
+      </button>
+    </div>
+  );
+}
+
 /* ====== SVG 世界地图热力图组件 ====== */
-function WorldHeatmap() {
+function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
-  /**
-   * 从 TopoJSON geography 的 properties 中提取 ISO alpha-3 代码
-   * world-atlas@2 的 countries-110m.json 不直接提供 ISO_A3，
-   * 但提供了 name 字段。我们用一个数字 ID → ISO alpha-3 的映射表来匹配。
-   * 参考：https://github.com/topojson/world-atlas 的 ID 是 ISO 3166-1 数字代码
-   */
+  /** ISO 数字 ID → ISO alpha-3 映射表 */
   const numericToIso3: Record<string, string> = useMemo(() => ({
     '004': 'AFG', '008': 'ALB', '012': 'DZA', '024': 'AGO', '032': 'ARG',
     '036': 'AUS', '040': 'AUT', '050': 'BGD', '056': 'BEL', '068': 'BOL',
@@ -351,18 +397,16 @@ function WorldHeatmap() {
   const handleMouseEnter = useCallback(
     (geo: { properties: { name: string }; id: string }, evt: React.MouseEvent) => {
       const iso3 = numericToIso3[geo.id] || '';
-      const score = COUNTRY_RISK_SCORES[iso3];
+      const score = riskScores[iso3];
       if (score !== undefined) {
-        const cnName = ISO3_TO_CN[iso3] || geo.properties.name;
         setTooltip({
-          name: cnName,
+          name: geo.properties.name,
           score,
           level: riskScoreToLevel(score),
           x: evt.clientX,
           y: evt.clientY,
         });
       } else {
-        /* 无数据的国家也显示名称 */
         setTooltip({
           name: geo.properties.name,
           score: 0,
@@ -372,7 +416,7 @@ function WorldHeatmap() {
         });
       }
     },
-    [numericToIso3]
+    [numericToIso3, riskScores]
   );
 
   /** 鼠标移动 — 跟踪提示位置 */
@@ -397,9 +441,7 @@ function WorldHeatmap() {
 
   return (
     <div className="relative w-full" style={{ minHeight: 320 }}>
-      {/* 悬停提示浮层 */}
       <MapTooltip info={tooltip} />
-
       <ComposableMap
         projection="geoEqualEarth"
         projectionConfig={{ scale: 160, center: [0, 0] }}
@@ -415,9 +457,8 @@ function WorldHeatmap() {
           <Geographies geography={GEO_URL}>
             {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: { name: string } }> }) =>
               geographies.map((geo) => {
-                /* 通过数字 ID 查找 ISO alpha-3 代码 */
                 const iso3 = numericToIso3[geo.id] || '';
-                const score = COUNTRY_RISK_SCORES[iso3];
+                const score = riskScores[iso3];
                 const fill = score !== undefined
                   ? riskScoreToFill(score)
                   : 'rgba(255,255,255,0.04)';
@@ -475,13 +516,131 @@ function WorldHeatmap() {
  * 全球监控面板 — Sonic Abyss Bento Grid 布局
  * 12 列 CSS Grid，玻璃卡片 + 终端美学
  * 展示地缘风险、冲突、基础设施状态、气候灾害与情报流
- * 第一行：全球风险分数 (span-4) + SVG 世界地图热力图 (span-8, row-span-2)
- * 第二行：活跃冲突 (span-4)（与地图同行）
- * 第三行：基础设施 + 气候灾害 + 网络安全（各 span-4）
- * 第四行：情报终端流 (span-12)
- * 所有文本标签使用中文，国家名和区域名可点击跳转外部源
+ * 数据来自后端 /api/v1/monitor/risk + /api/v1/monitor/news
+ * 每 30 秒自动刷新
  */
 export function WorldMonitor() {
+  /* ====== 状态 ====== */
+  const [riskList, setRiskList] = useState<RiskApiItem[]>([]);
+  const [globalRisk, setGlobalRisk] = useState<{ score: number; severity: string } | null>(null);
+  const [intelFeed, setIntelFeed] = useState<IntelEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /** 从后端拉取所有数据 */
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      const [riskResp, globalResp, newsResp] = await Promise.all([
+        clawbotFetchJson<{ risks: RiskApiItem[] }>('/api/v1/monitor/risk'),
+        clawbotFetchJson<GlobalRiskApi>('/api/v1/monitor/risk/global'),
+        clawbotFetchJson<{ items: NewsApiItem[] }>('/api/v1/monitor/news?category=geopolitics&limit=10'),
+      ]);
+
+      /* 国家风险列表 */
+      setRiskList(riskResp.risks ?? []);
+
+      /* 全球综合风险分数 */
+      setGlobalRisk({
+        score: globalResp.score ?? 0,
+        severity: globalResp.severity ?? 'LOW',
+      });
+
+      /* 情报日志 — 从新闻条目转换 */
+      const entries: IntelEntry[] = (newsResp.items ?? []).map((item, idx) => ({
+        id: String(idx + 1),
+        timestamp: formatTimestamp(item.published_at),
+        category: mapNewsCategory(item.category),
+        message: `[${item.source}] ${item.title}`,
+      }));
+      setIntelFeed(entries);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* 首次加载 + 定时刷新 */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(fetchData, REFRESH_INTERVAL);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ====== 衍生数据 ====== */
+
+  /** 构建 ISO alpha-3 → 风险分数 映射（供地图使用） */
+  const riskScoresMap = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    for (const item of riskList) {
+      const iso3 = ISO2_TO_ISO3[item.country_code.toUpperCase()];
+      if (iso3) {
+        map[iso3] = item.composite_score;
+      }
+    }
+    return map;
+  }, [riskList]);
+
+  /** 前 8 高风险国家（按分数降序） */
+  const topRiskCountries = useMemo<CountryRisk[]>(() => {
+    return [...riskList]
+      .sort((a, b) => b.composite_score - a.composite_score)
+      .slice(0, 8)
+      .map((r) => ({
+        country: r.country_name,
+        code: r.country_code.toUpperCase(),
+        score: r.composite_score,
+        severity: r.severity ?? severityFromScore(r.composite_score),
+        change24h: r.change_24h ?? 0,
+        link: 'https://worldmonitor.app',
+      }));
+  }, [riskList]);
+
+  /** 活跃冲突区域（CRITICAL + HIGH，按分数降序取前 5） */
+  const conflictZones = useMemo(() => {
+    return [...riskList]
+      .filter((r) => r.composite_score >= 70)
+      .sort((a, b) => b.composite_score - a.composite_score)
+      .slice(0, 5)
+      .map((r) => ({
+        region: r.country_name,
+        severity: (r.composite_score >= 85 ? 'CRITICAL' : 'HIGH') as 'CRITICAL' | 'HIGH',
+        description: `风险评分 ${r.composite_score}，24h变化 ${r.change_24h > 0 ? '+' : ''}${(r.change_24h ?? 0).toFixed(1)}`,
+        link: 'https://worldmonitor.app',
+      }));
+  }, [riskList]);
+
+  /* 全局风险值 */
+  const globalScore = globalRisk?.score ?? 0;
+  const globalSeverity = (globalRisk?.severity?.toUpperCase() ?? 'LOW') as string;
+  const coveredCountries = riskList.length;
+
+  /* ====== 加载/错误状态 ====== */
+  if (loading && riskList.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto scroll-container">
+        <div className="p-6 max-w-[1440px] mx-auto">
+          <LoadingState message="正在加载全球风险数据..." />
+        </div>
+      </div>
+    );
+  }
+
+  if (error && riskList.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto scroll-container">
+        <div className="p-6 max-w-[1440px] mx-auto">
+          <ErrorState message={`数据加载失败: ${error}`} onRetry={fetchData} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -509,7 +668,7 @@ export function WorldMonitor() {
                 <motion.div
                   className="absolute inset-0 rounded-full"
                   style={{
-                    background: `radial-gradient(circle, ${severityColor(GLOBAL_RISK_SEVERITY)}20 0%, transparent 70%)`,
+                    background: `radial-gradient(circle, ${severityColor(globalSeverity)}20 0%, transparent 70%)`,
                   }}
                   animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0.2, 0.6] }}
                   transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
@@ -519,10 +678,10 @@ export function WorldMonitor() {
                   style={{
                     fontSize: '72px',
                     lineHeight: 1,
-                    color: severityColor(GLOBAL_RISK_SEVERITY),
+                    color: severityColor(globalSeverity),
                   }}
                 >
-                  {GLOBAL_RISK_SCORE}
+                  {globalScore}
                 </span>
               </div>
               <span className="font-mono text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
@@ -535,12 +694,12 @@ export function WorldMonitor() {
               <span
                 className="px-3 py-1 rounded-full font-mono text-[10px] tracking-wider"
                 style={{
-                  background: `${severityColor(GLOBAL_RISK_SEVERITY)}15`,
-                  color: severityColor(GLOBAL_RISK_SEVERITY),
-                  border: `1px solid ${severityColor(GLOBAL_RISK_SEVERITY)}30`,
+                  background: `${severityColor(globalSeverity)}15`,
+                  color: severityColor(globalSeverity),
+                  border: `1px solid ${severityColor(globalSeverity)}30`,
                 }}
               >
-                {SEVERITY_CN[GLOBAL_RISK_SEVERITY]} 风险
+                {SEVERITY_CN[globalSeverity] ?? globalSeverity} 风险
               </span>
               <div className="flex items-center gap-1.5">
                 <motion.span
@@ -573,13 +732,13 @@ export function WorldMonitor() {
                 </div>
               </div>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                风险叠加 · 覆盖 30 国
+                风险叠加 · 覆盖 {coveredCountries} 国
               </span>
             </div>
 
             {/* SVG 世界地图 */}
             <div className="flex-1 mt-3 rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)' }}>
-              <WorldHeatmap />
+              <WorldHeatmap riskScores={riskScoresMap} />
             </div>
 
             {/* 色阶图例 */}
@@ -604,7 +763,7 @@ export function WorldMonitor() {
               </div>
 
               {/* 数据行 */}
-              {TOP_RISK_COUNTRIES.map((c, i) => (
+              {topRiskCountries.map((c, i) => (
                 <motion.div
                   key={c.code}
                   className="grid grid-cols-[1fr_80px_100px_80px] gap-2 px-3 py-2.5 rounded-lg transition-colors"
@@ -661,7 +820,7 @@ export function WorldMonitor() {
             <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <Radio size={12} style={{ color: 'var(--text-disabled)' }} />
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                数据每 15 分钟更新 · 来源:{' '}
+                每 30 秒自动刷新 · 来源:{' '}
                 <ExtLink href="https://acleddata.com" className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>ACLED</ExtLink>
                 {' / '}
                 <ExtLink href="https://worldmonitor.app" className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>WorldMonitor</ExtLink>
@@ -684,14 +843,19 @@ export function WorldMonitor() {
             {/* 冲突数量大数字 */}
             <div className="flex items-baseline gap-2 mt-4">
               <span className="text-metric" style={{ color: 'var(--accent-red)' }}>
-                {CONFLICT_ZONES.length}
+                {conflictZones.length}
               </span>
               <span className="text-label">活跃区域</span>
             </div>
 
             {/* 冲突列表 */}
             <div className="flex flex-col gap-2.5 mt-4 flex-1">
-              {CONFLICT_ZONES.map((zone) => (
+              {conflictZones.length === 0 && (
+                <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  暂无高风险区域
+                </span>
+              )}
+              {conflictZones.map((zone) => (
                 <div
                   key={zone.region}
                   className="flex items-start gap-3 p-3 rounded-xl"
@@ -704,7 +868,6 @@ export function WorldMonitor() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      {/* 区域名 — 可点击链接 */}
                       <ExtLink href={zone.link}>
                         <span className="font-mono text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
                           {zone.region}
@@ -746,96 +909,60 @@ export function WorldMonitor() {
               {/* 互联网中断 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(255, 0, 60, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255, 0, 60, 0.1)' }}>
                     <WifiOff size={15} style={{ color: 'var(--accent-red)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      互联网中断
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      全球断网事件
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>互联网中断</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>全球断网事件</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>
-                  7
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
               </div>
 
               {/* GPS 干扰 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(251, 191, 36, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(251, 191, 36, 0.1)' }}>
                     <AlertTriangle size={15} style={{ color: 'var(--accent-amber)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      GPS 干扰
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      导航信号异常区域
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>GPS 干扰</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>导航信号异常区域</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>
-                  12
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
               </div>
 
               {/* 电力网络 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(0, 255, 170, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0, 255, 170, 0.1)' }}>
                     <Zap size={15} style={{ color: 'var(--accent-green)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      电力网络
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      电网运行状态
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>电力网络</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>电网运行状态</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="status-dot-green" />
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                    稳定
-                  </span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>稳定</span>
                 </div>
               </div>
 
               {/* 海底光缆 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(0, 212, 255, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0, 212, 255, 0.1)' }}>
                     <Wifi size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      海底光缆
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      跨洋通信链路
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>海底光缆</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>跨洋通信链路</p>
                   </div>
                 </div>
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>
-                  2 条降级
-                </span>
+                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>—</span>
               </div>
             </div>
           </div>
@@ -852,98 +979,58 @@ export function WorldMonitor() {
             </h3>
 
             <div className="flex flex-col gap-4 mt-5 flex-1">
-              {/* 地震活动 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(251, 191, 36, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(251, 191, 36, 0.1)' }}>
                     <Shield size={15} style={{ color: 'var(--accent-amber)' }} />
                   </div>
                   <div>
                     <ExtLink href="https://earthquake.usgs.gov">
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                        地震活动
-                      </span>
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>地震活动</span>
                     </ExtLink>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      M5.0+ / 24小时
-                    </p>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>M5.0+ / 24小时</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>
-                  3
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
               </div>
 
-              {/* 山火告警 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(255, 0, 60, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255, 0, 60, 0.1)' }}>
                     <Flame size={15} style={{ color: 'var(--accent-red)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      山火告警
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      全球活跃山火
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>山火告警</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>全球活跃山火</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>
-                  5
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
               </div>
 
-              {/* 气候异常 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(167, 139, 250, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167, 139, 250, 0.1)' }}>
                     <CloudLightning size={15} style={{ color: 'var(--accent-purple)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      气候异常
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      检测到的异常数
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>气候异常</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>检测到的异常数</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>
-                  8
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
               </div>
 
-              {/* 极端天气预警 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(0, 212, 255, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0, 212, 255, 0.1)' }}>
                     <AlertTriangle size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      极端天气
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      恶劣天气预警
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>极端天气</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>恶劣天气预警</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>
-                  14
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
               </div>
             </div>
           </div>
@@ -960,98 +1047,58 @@ export function WorldMonitor() {
             </h3>
 
             <div className="flex flex-col gap-4 mt-5 flex-1">
-              {/* 活跃漏洞 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(255, 0, 60, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255, 0, 60, 0.1)' }}>
                     <Shield size={15} style={{ color: 'var(--accent-red)' }} />
                   </div>
                   <div>
                     <ExtLink href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                        活跃漏洞利用
-                      </span>
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>活跃漏洞利用</span>
                     </ExtLink>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      CISA 已知利用漏洞
-                    </p>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>CISA 已知利用漏洞</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>
-                  6
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
               </div>
 
-              {/* DDoS 攻击 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(251, 191, 36, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(251, 191, 36, 0.1)' }}>
                     <Zap size={15} style={{ color: 'var(--accent-amber)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      大规模 DDoS
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      24小时内检测
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>大规模 DDoS</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>24小时内检测</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>
-                  23
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
               </div>
 
-              {/* 勒索攻击 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(167, 139, 250, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167, 139, 250, 0.1)' }}>
                     <AlertTriangle size={15} style={{ color: 'var(--accent-purple)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      勒索软件事件
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      本周公开披露
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>勒索软件事件</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>本周公开披露</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>
-                  4
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
               </div>
 
-              {/* 供应链攻击 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(0, 212, 255, 0.1)' }}
-                  >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0, 212, 255, 0.1)' }}>
                     <Terminal size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      供应链攻击
-                    </span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      包管理器 / CI 投毒
-                    </p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>供应链攻击</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>包管理器 / CI 投毒</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>
-                  2
-                </span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
               </div>
             </div>
           </div>
@@ -1085,10 +1132,16 @@ export function WorldMonitor() {
               className="rounded-xl p-3 max-h-[280px] overflow-y-auto scroll-container"
               style={{ background: 'rgba(0,0,0,0.3)' }}
             >
-              {INTEL_FEED.map((entry, i) => {
+              {intelFeed.length === 0 && (
+                <div className="flex items-center justify-center py-6">
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                    暂无情报数据
+                  </span>
+                </div>
+              )}
+              {intelFeed.map((entry, i) => {
                 const meta = categoryMeta(entry.category);
-                /* 根据类别选择外部链接 */
-                const categoryLink: Record<IntelEntry['category'], string> = {
+                const categoryLink: Record<string, string> = {
                   CONFLICT: 'https://acleddata.com',
                   CYBER: 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog',
                   CLIMATE: 'https://earthquake.usgs.gov',
@@ -1114,7 +1167,7 @@ export function WorldMonitor() {
                     </span>
 
                     {/* 类别徽章 — 中文 + 可点击 */}
-                    <ExtLink href={categoryLink[entry.category]} className="flex-shrink-0 mt-0.5">
+                    <ExtLink href={categoryLink[entry.category] || '#'} className="flex-shrink-0 mt-0.5">
                       <span
                         className="px-1.5 py-0.5 rounded font-mono text-[9px] tracking-wider"
                         style={{
@@ -1125,7 +1178,7 @@ export function WorldMonitor() {
                           display: 'inline-block',
                         }}
                       >
-                        {CATEGORY_CN[entry.category]}
+                        {CATEGORY_CN[entry.category] ?? entry.category}
                       </span>
                     </ExtLink>
 
@@ -1144,10 +1197,10 @@ export function WorldMonitor() {
             {/* 底部信息 */}
             <div className="flex items-center justify-between mt-3">
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                显示最近 {INTEL_FEED.length} 条 · 来源: 开源情报 / GDELT / ACLED / CVE
+                显示最近 {intelFeed.length} 条 · 来源: 开源情报 / GDELT / ACLED / CVE
               </span>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                自动刷新 60秒
+                自动刷新 30秒
               </span>
             </div>
           </div>
