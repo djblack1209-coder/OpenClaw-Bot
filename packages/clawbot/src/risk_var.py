@@ -233,7 +233,22 @@ class VaRMixin:
 
         pnl_list = self._get_pnl_series()
         if len(pnl_list) < 10:
-            return None  # 数据不足，不做限制
+            # HI-524: 新账户保护 — 数据不足时使用保守默认限额
+            capital = self.config.total_capital
+            new_acct_var_pct = getattr(self.config, "new_account_var_daily_pct", 0.02)
+            max_daily_loss = capital * new_acct_var_pct
+            new_acct_risk_pct = new_acct_var_pct / 2  # 单笔风险 = 日限额的一半
+            max_single_trade_risk = capital * new_acct_risk_pct
+            warnings = []
+            warnings.append("新账户保护: 交易历史不足，使用保守风控限额")
+            # 检查拟议损失是否超过保守限额
+            if proposed_loss > max_single_trade_risk:
+                return (
+                    f"新账户VaR保护: 拟议最大损失${proposed_loss:.2f}超过保守单笔限额"
+                    f"${max_single_trade_risk:.2f}(资金的{new_acct_risk_pct * 100}%)，"
+                    f"日损失上限${max_daily_loss:.2f}(资金的{new_acct_var_pct * 100}%)"
+                )
+            return None  # 在保守限额内，通过
 
         var_max_pct = getattr(self.config, "var_max_daily_pct", 0.03)
         cvar_reject_pct = getattr(self.config, "cvar_reject_threshold", 0.05)

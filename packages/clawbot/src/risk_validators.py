@@ -182,6 +182,15 @@ class StopLossValidator(RiskValidator):
             sl_pct = (ctx.entry_price - ctx.stop_loss) / ctx.entry_price
             if sl_pct > 0.10:
                 ctx.warnings.append(f"止损幅度{sl_pct * 100:.1f}%偏大(>10%)，超短线建议2-5%")
+        # HI-523: SELL 方向止损验证 — 做空时止损必须高于入场价
+        if ctx.side == "SELL" and ctx.stop_loss <= 0:
+            return (False, "卖空必须设定止损价（stop_loss > 0）")
+        if ctx.side == "SELL" and ctx.stop_loss > 0:
+            if ctx.stop_loss <= ctx.entry_price:
+                return (False, f"卖空止损价({ctx.stop_loss})必须高于入场价({ctx.entry_price})")
+            sl_pct = (ctx.stop_loss - ctx.entry_price) / ctx.entry_price
+            if sl_pct > 0.10:
+                ctx.warnings.append(f"卖空止损幅度{sl_pct * 100:.1f}%偏大(>10%)，超短线建议2-5%")
         return None
 
 
@@ -206,6 +215,21 @@ class RiskRewardValidator(RiskValidator):
                     )
         elif ctx.side == "BUY" and ctx.take_profit <= 0:
             ctx.warnings.append("未设定止盈价，建议设定以锁定利润")
+        # HI-523: SELL 方向风险收益比 — 做空时风险=止损-入场，收益=入场-止盈
+        if ctx.side == "SELL" and ctx.stop_loss > 0 and ctx.take_profit > 0:
+            risk = ctx.stop_loss - ctx.entry_price
+            reward = ctx.entry_price - ctx.take_profit
+            if risk > 0:
+                rr_ratio = reward / risk
+                if rr_ratio < ctx.config.min_risk_reward_ratio:
+                    return (
+                        False,
+                        f"卖空风险收益比{rr_ratio:.2f}:1 低于最低要求"
+                        f"{ctx.config.min_risk_reward_ratio}:1 "
+                        f"(风险${risk:.2f} vs 收益${reward:.2f})",
+                    )
+        elif ctx.side == "SELL" and ctx.take_profit <= 0:
+            ctx.warnings.append("卖空未设定止盈价，建议设定以锁定利润")
         return None
 
 
@@ -234,6 +258,25 @@ class PositionSizeValidator(RiskValidator):
                 ctx.adjusted_quantity = suggested_qty
                 ctx.warnings.append(
                     f"数量从{ctx.quantity}调整为{suggested_qty}，以控制风险在${max_risk_amount:.2f}以内"
+                )
+                ctx.quantity = suggested_qty
+        # HI-523: SELL 方向单笔风险金额检查 — 做空时风险=止损价-入场价
+        if ctx.side == "SELL" and ctx.stop_loss > 0:
+            risk_per_share = ctx.stop_loss - ctx.entry_price
+            actual_risk = ctx.quantity * risk_per_share
+            if actual_risk > max_risk_amount:
+                suggested_qty = int(max_risk_amount / risk_per_share)
+                if suggested_qty <= 0:
+                    return (
+                        False,
+                        f"卖空单笔风险${actual_risk:.2f}超过上限"
+                        f"${max_risk_amount:.2f}(资金的"
+                        f"{ctx.config.max_risk_per_trade_pct * 100}%)，"
+                        f"且无法调整到合理数量",
+                    )
+                ctx.adjusted_quantity = suggested_qty
+                ctx.warnings.append(
+                    f"卖空数量从{ctx.quantity}调整为{suggested_qty}，以控制风险在${max_risk_amount:.2f}以内"
                 )
                 ctx.quantity = suggested_qty
 
@@ -280,18 +323,17 @@ class ExposureValidator(RiskValidator):
                 f"${max_exposure:.2f}(资金的"
                 f"{ctx.config.max_total_exposure_pct * 100}%)",
             )
-        # 最大持仓数
-        if ctx.side == "BUY":
-            open_count = len(
-                [p for p in ctx.current_positions if p.get("status", "open") == "open" or "status" not in p]
-            )
-            has_existing = any(
-                p.get("symbol", "").upper() == ctx.symbol
-                for p in ctx.current_positions
-                if p.get("status", "open") == "open" or "status" not in p
-            )
-            if not has_existing and open_count >= ctx.config.max_open_positions:
-                return (False, f"已有{open_count}个持仓，达到上限{ctx.config.max_open_positions}个，禁止新开仓")
+        # 最大持仓数 — HI-523: 适用于所有方向（BUY 和 SELL 都受持仓数限制）
+        open_count = len(
+            [p for p in ctx.current_positions if p.get("status", "open") == "open" or "status" not in p]
+        )
+        has_existing = any(
+            p.get("symbol", "").upper() == ctx.symbol
+            for p in ctx.current_positions
+            if p.get("status", "open") == "open" or "status" not in p
+        )
+        if not has_existing and open_count >= ctx.config.max_open_positions:
+            return (False, f"已有{open_count}个持仓，达到上限{ctx.config.max_open_positions}个，禁止新开仓")
         return None
 
 

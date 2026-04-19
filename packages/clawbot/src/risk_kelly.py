@@ -56,7 +56,15 @@ class KellyMixin:
             return self.calc_safe_quantity(entry_price, stop_loss, cap)
 
         if take_profit > 0 and entry_price > 0:
-            expected_reward = take_profit - entry_price
+            # HI-523: 区分 BUY/SELL 方向的预期收益计算
+            # 注意: calc_kelly_quantity 不接收 side 参数，通过止损/止盈位置推断方向
+            # 如果 stop_loss < entry_price → BUY 方向，反之 → SELL 方向
+            if stop_loss < entry_price:
+                # BUY 方向: 收益 = 止盈 - 入场
+                expected_reward = take_profit - entry_price
+            else:
+                # SELL 方向: 收益 = 入场 - 止盈
+                expected_reward = entry_price - take_profit
         else:
             expected_reward = avg_win if avg_win > 0 else abs(entry_price - stop_loss) * 2
 
