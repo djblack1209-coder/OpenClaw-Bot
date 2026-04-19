@@ -1,21 +1,19 @@
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Fish,
-  TrendingUp,
-  Shield,
-  Rocket,
-  Share2,
-  Radar,
-  HeartPulse,
-  MessageCircle,
+  Server,
   Clock,
   Terminal,
-  Plus,
   RotateCcw,
-  Download,
-  FileText,
   Cookie,
+  Play,
+  Square,
+  Loader2,
+  AlertCircle,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
+import { api } from '../../lib/api';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -29,115 +27,110 @@ const cardVariants = {
 };
 
 /* ====== 类型 ====== */
-type BotStatus = 'running' | 'stopped' | 'error';
-type BotType = '客服' | '交易' | '社媒' | '爬虫' | '监控';
-type LogLevel = 'INFO' | 'OK' | 'WARN' | 'ERROR';
-
-/* ====== 模拟数据 ====== */
-
-/** 7 个 Bot */
-const bots: {
+interface ServiceItem {
+  id: string;
   name: string;
-  type: BotType;
-  status: BotStatus;
-  uptime: string;
-  messages: number;
-  icon: typeof Fish;
-}[] = [
-  { name: '闲鱼智能客服',     type: '客服', status: 'running', uptime: '72h 14m', messages: 3842, icon: Fish },
-  { name: '巴菲特分析师',     type: '交易', status: 'running', uptime: '48h 05m', messages: 1256, icon: TrendingUp },
-  { name: '塔勒布风控官',     type: '交易', status: 'running', uptime: '48h 05m', messages: 987,  icon: Shield },
-  { name: '木头姐趋势猎手',   type: '交易', status: 'running', uptime: '48h 05m', messages: 1143, icon: Rocket },
-  { name: '社媒内容生成',     type: '社媒', status: 'running', uptime: '24h 30m', messages: 2156, icon: Share2 },
-  { name: '热点追踪爬虫',     type: '爬虫', status: 'stopped', uptime: '—',       messages: 1890, icon: Radar },
-  { name: '系统健康监控',     type: '监控', status: 'error',   uptime: '12h 45m', messages: 1573, icon: HeartPulse },
-];
+  description: string;
+  status: string;
+  port?: number;
+}
 
-/** 性能指标 */
-const perfMetrics = [
-  { label: '总处理消息',   value: '12,847', accent: 'var(--accent-cyan)' },
-  { label: '平均响应时间', value: '1.8s',   accent: 'var(--accent-green)' },
-  { label: '成功率',       value: '97.3%',  accent: 'var(--accent-green)' },
-  { label: '今日活跃用户', value: '156',    accent: 'var(--accent-purple)' },
-  { label: 'API 调用次数', value: '3,421',  accent: 'var(--accent-amber)' },
-  { label: '错误率',       value: '2.7%',   accent: 'var(--accent-red)' },
-];
-
-/** 交易 Bot 共识投票 */
-const tradingBots = [
-  { name: '巴菲特分析师',   approve: 75, reject: 10, pending: 15 },
-  { name: '塔勒布风控官',   approve: 30, reject: 55, pending: 15 },
-  { name: '木头姐趋势猎手', approve: 85, reject: 5,  pending: 10 },
-  { name: '索罗斯宏观',     approve: 60, reject: 20, pending: 20 },
-  { name: '达里奥全天候',   approve: 50, reject: 25, pending: 25 },
-];
-
-/** 社媒平台 */
-const socialPlatforms = [
-  { name: '小红书', posts: 3, color: 'var(--accent-red)' },
-  { name: 'X',      posts: 5, color: 'var(--accent-cyan)' },
-  { name: '微博',   posts: 2, color: 'var(--accent-amber)' },
-];
-
-/** 活动日志 */
-const logEntries: { time: string; level: LogLevel; bot: string; message: string }[] = [
-  { time: '15:42:08', level: 'OK',    bot: '闲鱼智能客服',   message: '自动回复买家「可以包邮吗」→ 已发送话术模板 #12' },
-  { time: '15:41:55', level: 'INFO',  bot: '巴菲特分析师',   message: 'AAPL 估值分析完成 → 建议: 持有 (内在价值 $198)' },
-  { time: '15:41:32', level: 'WARN',  bot: '塔勒布风控官',   message: 'BTC 尾部风险偏高 → 建议减仓 20%，当前 VaR 超限' },
-  { time: '15:41:10', level: 'OK',    bot: '社媒内容生成',   message: '小红书帖子已发布「AI 投资周报 #47」→ 互动率 4.8%' },
-  { time: '15:40:48', level: 'ERROR', bot: '系统健康监控',   message: 'Redis 连接超时 (>3s)，已触发重连，第 2 次尝试' },
-  { time: '15:40:22', level: 'INFO',  bot: '木头姐趋势猎手', message: 'NVDA 突破趋势线 → 信号: 买入, 置信度 87%' },
-  { time: '15:39:55', level: 'INFO',  bot: '热点追踪爬虫',   message: '抓取完成: 36条新闻 / 12条推文 / 5条研报' },
-  { time: '15:39:30', level: 'OK',    bot: '闲鱼智能客服',   message: '订单 #XY-2847 议价成功 → 最终价 ¥258 (降 ¥42)' },
-];
+interface CookieStatus {
+  enabled: boolean;
+  last_sync_time: string;
+  consecutive_failures: number;
+  last_cookie_available: boolean;
+}
 
 /* ====== 辅助函数 ====== */
 
-/** 状态颜色 */
-const statusColor = (s: BotStatus) =>
+/** 服务状态颜色 */
+const statusColor = (s: string) =>
   s === 'running' ? 'var(--accent-green)' : s === 'stopped' ? 'var(--text-tertiary)' : 'var(--accent-red)';
 
-/** 状态文本 */
-const statusText = (s: BotStatus) =>
+/** 服务状态文本 */
+const statusText = (s: string) =>
   s === 'running' ? '运行中' : s === 'stopped' ? '已停止' : '异常';
-
-/** 类型徽章颜色 */
-const typeColor = (t: BotType) => {
-  const map: Record<BotType, string> = {
-    客服: 'var(--accent-cyan)',
-    交易: 'var(--accent-green)',
-    社媒: 'var(--accent-purple)',
-    爬虫: 'var(--accent-amber)',
-    监控: 'var(--accent-red)',
-  };
-  return map[t];
-};
-
-/** 日志级别颜色 */
-const logColor = (l: LogLevel) =>
-  l === 'OK' ? 'var(--accent-green)' : l === 'WARN' ? 'var(--accent-amber)' : l === 'ERROR' ? 'var(--accent-red)' : 'var(--text-secondary)';
-
-/** 快速操作按钮数据 */
-const quickActions = [
-  { label: '创建新 Bot', icon: Plus,      accent: 'var(--accent-cyan)' },
-  { label: '全部重启',   icon: RotateCcw,  accent: 'var(--accent-green)' },
-  { label: '导出配置',   icon: Download,   accent: 'var(--accent-amber)' },
-  { label: '查看文档',   icon: FileText,   accent: 'var(--accent-purple)' },
-];
-
-/* ====== 统计行数据 ====== */
-const fleetStats = [
-  { label: '总数',   value: 7, color: 'var(--accent-cyan)' },
-  { label: '运行中', value: 5, color: 'var(--accent-green)' },
-  { label: '已停止', value: 1, color: 'var(--text-tertiary)' },
-  { label: '错误',   value: 1, color: 'var(--accent-red)' },
-];
 
 /**
  * Bots 页面 — Sonic Abyss Bento Grid 布局
  * 12 列网格，玻璃卡片 + 终端美学
+ * 使用真实后端 API 数据
  */
 export function Bots() {
+  /* ====== 状态 ====== */
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [cookieStatus, setCookieStatus] = useState<CookieStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
+  /* ====== 数据拉取 ====== */
+  const fetchData = useCallback(async () => {
+    try {
+      const [servicesRes, cookieRes] = await Promise.allSettled([
+        api.services(),
+        api.cookieCloudStatus(),
+      ]);
+
+      if (servicesRes.status === 'fulfilled') {
+        const data = servicesRes.value as any;
+        setServices(data?.services ?? []);
+      }
+      if (cookieRes.status === 'fulfilled') {
+        setCookieStatus(cookieRes.value as any);
+      }
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? '数据加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const timer = setInterval(fetchData, 30_000);
+    return () => clearInterval(timer);
+  }, [fetchData]);
+
+  /* ====== 服务启停 ====== */
+  const handleToggleService = async (serviceId: string, currentStatus: string) => {
+    setActionLoading((prev) => ({ ...prev, [serviceId]: true }));
+    try {
+      if (currentStatus === 'running') {
+        await api.serviceStop(serviceId);
+      } else {
+        await api.serviceStart(serviceId);
+      }
+      // 等一小段时间让后端状态更新
+      await new Promise((r) => setTimeout(r, 800));
+      await fetchData();
+    } catch {
+      // 静默，刷新状态即可
+      await fetchData();
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [serviceId]: false }));
+    }
+  };
+
+  /* ====== 统计数据 ====== */
+  const runningCount = services.filter((s) => s.status === 'running').length;
+  const stoppedCount = services.filter((s) => s.status === 'stopped').length;
+  const errorCount = services.filter((s) => s.status !== 'running' && s.status !== 'stopped').length;
+
+  const fleetStats = [
+    { label: '总数', value: services.length, color: 'var(--accent-cyan)' },
+    { label: '运行中', value: runningCount, color: 'var(--accent-green)' },
+    { label: '已停止', value: stoppedCount, color: 'var(--text-tertiary)' },
+    { label: '错误', value: errorCount, color: 'var(--accent-red)' },
+  ];
+
+  /* ====== Cookie 状态判断 ====== */
+  const cookieValid = cookieStatus?.last_cookie_available && (cookieStatus?.consecutive_failures ?? 0) === 0;
+  const cookieLabel = cookieValid ? 'VALID' : 'INVALID';
+  const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
+
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -147,24 +140,30 @@ export function Bots() {
         animate="visible"
       >
 
-        {/* ====== Row 1 左: Bot 舰队总览 (col-span-8, row-span-2) ====== */}
+        {/* ====== Row 1 左: 服务舰队总览 (col-span-8, row-span-2) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             {/* 标题行 */}
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>BOT FLEET</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>SERVICE FLEET</span>
               <div className="flex items-center gap-1.5">
-                <motion.span
-                  className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ background: 'var(--accent-green)' }}
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                {loading ? (
+                  <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+                ) : (
+                  <>
+                    <motion.span
+                      className="inline-block w-1.5 h-1.5 rounded-full"
+                      style={{ background: 'var(--accent-green)' }}
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                  </>
+                )}
               </div>
             </div>
             <h2 className="font-display text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              智能体舰队 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// BOT FLEET</span>
+              服务舰队 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// SERVICE FLEET</span>
             </h2>
 
             {/* 统计行 */}
@@ -177,69 +176,95 @@ export function Bots() {
               ))}
             </div>
 
-            {/* Bot 列表 */}
+            {/* 服务列表 */}
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
-              {bots.map((bot) => {
-                const Icon = bot.icon;
+              {error && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl"
+                  style={{ background: 'rgba(255,0,0,0.05)', border: '1px solid rgba(255,0,0,0.2)' }}>
+                  <AlertCircle size={14} style={{ color: 'var(--accent-red)' }} />
+                  <span className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</span>
+                </div>
+              )}
+              {services.length === 0 && !loading && !error && (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无服务数据</span>
+                </div>
+              )}
+              {services.map((svc) => {
+                const isLoading = actionLoading[svc.id] ?? false;
+                const isRunning = svc.status === 'running';
                 return (
                   <div
-                    key={bot.name}
+                    key={svc.id}
                     className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors"
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}
                   >
                     {/* 状态圆点 */}
                     <span className="relative flex-shrink-0">
-                      {bot.status === 'running' && (
+                      {isRunning && (
                         <motion.span
                           className="absolute inset-[-3px] rounded-full"
-                          style={{ background: statusColor(bot.status), opacity: 0.3 }}
+                          style={{ background: statusColor(svc.status), opacity: 0.3 }}
                           animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
                           transition={{ duration: 2, repeat: Infinity }}
                         />
                       )}
                       <span
                         className="block w-2 h-2 rounded-full"
-                        style={{ background: statusColor(bot.status) }}
+                        style={{ background: statusColor(svc.status) }}
                       />
                     </span>
 
                     {/* 图标 + 名称 */}
-                    <Icon size={16} style={{ color: typeColor(bot.type), flexShrink: 0 }} />
+                    <Server size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
                     <span className="font-medium text-sm flex-shrink-0" style={{ color: 'var(--text-primary)' }}>
-                      {bot.name}
+                      {svc.name}
                     </span>
 
-                    {/* 类型徽章 */}
-                    <span
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={{
-                        color: typeColor(bot.type),
-                        background: `color-mix(in srgb, ${typeColor(bot.type)} 10%, transparent)`,
-                        border: `1px solid color-mix(in srgb, ${typeColor(bot.type)} 25%, transparent)`,
-                      }}
-                    >
-                      {bot.type}
-                    </span>
+                    {/* 描述 */}
+                    {svc.description && (
+                      <span className="font-mono text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                        {svc.description}
+                      </span>
+                    )}
 
                     <div className="flex-1" />
 
-                    {/* 运行时长 */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Clock size={12} style={{ color: 'var(--text-tertiary)' }} />
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{bot.uptime}</span>
-                    </div>
+                    {/* 端口 */}
+                    {svc.port && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Terminal size={12} style={{ color: 'var(--text-tertiary)' }} />
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>:{svc.port}</span>
+                      </div>
+                    )}
 
-                    {/* 消息数 */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <MessageCircle size={12} style={{ color: 'var(--text-tertiary)' }} />
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        {bot.messages.toLocaleString()}
-                      </span>
-                    </div>
+                    {/* 启停按钮 */}
+                    <motion.button
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer text-[10px] font-mono font-bold"
+                      style={{
+                        background: isRunning ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
+                        border: `1px solid ${isRunning ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
+                        color: isRunning ? 'var(--accent-red)' : 'var(--accent-green)',
+                        opacity: isLoading ? 0.5 : 1,
+                        pointerEvents: isLoading ? 'none' : 'auto',
+                      }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleToggleService(svc.id, svc.status)}
+                    >
+                      {isLoading ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : isRunning ? (
+                        <Square size={10} />
+                      ) : (
+                        <Play size={10} />
+                      )}
+                      {isRunning ? '停止' : '启动'}
+                    </motion.button>
 
                     {/* 状态文本 */}
-                    <span className="font-mono text-[10px] w-12 text-right flex-shrink-0" style={{ color: statusColor(bot.status) }}>
-                      {statusText(bot.status)}
+                    <span className="font-mono text-[10px] w-12 text-right flex-shrink-0" style={{ color: statusColor(svc.status) }}>
+                      {statusText(svc.status)}
                     </span>
                   </div>
                 );
@@ -248,218 +273,102 @@ export function Bots() {
           </div>
         </motion.div>
 
-        {/* ====== Row 1 右: 性能仪表盘 (col-span-4) ====== */}
+        {/* ====== Row 1 右: Cookie 状态 + 连接概览 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full">
-            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>PERFORMANCE</span>
-            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              性能仪表盘
-            </h3>
-            <div className="space-y-4">
-              {perfMetrics.map((m) => (
-                <div key={m.label} className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{m.label}</span>
-                  <span className="font-mono text-lg font-bold" style={{ color: m.accent }}>{m.value}</span>
-                </div>
-              ))}
+            <div className="flex items-center gap-2 mb-5">
+              <Cookie size={16} style={{ color: cookieColor }} />
+              <span className="text-label" style={{ color: cookieColor }}>COOKIE STATUS</span>
             </div>
-          </div>
-        </motion.div>
 
-        {/* ====== Row 2 左: 闲鱼客服 Bot (col-span-4) ====== */}
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>XIANYU CS</span>
-              <span className="relative flex items-center gap-1.5">
-                <motion.span
-                  className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ background: 'var(--accent-green)' }}
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>ACTIVE</span>
+            {/* 大状态指示器 */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="relative">
+                <div className="w-4 h-4 rounded-full animate-pulse" style={{ background: cookieColor }} />
+                <div className="absolute inset-0 w-4 h-4 rounded-full animate-ping opacity-40" style={{ background: cookieColor }} />
+              </div>
+              <span className="font-display text-2xl font-bold tracking-wider" style={{ color: cookieColor }}>
+                {cookieStatus ? cookieLabel : '—'}
               </span>
             </div>
-            <h3 className="font-display text-lg font-bold mb-5" style={{ color: 'var(--text-primary)' }}>
-              闲鱼客服 Bot
+
+            {/* 详细信息 */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>上次同步</span>
+                </div>
+                <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {cookieStatus?.last_sync_time
+                    ? new Date(cookieStatus.last_sync_time).toLocaleTimeString('zh-CN')
+                    : '—'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={13} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>连续失败</span>
+                </div>
+                <span className="font-mono text-xs font-medium" style={{
+                  color: (cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)',
+                }}>
+                  {cookieStatus?.consecutive_failures ?? 0} 次
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {cookieStatus?.enabled ? (
+                    <Wifi size={13} style={{ color: 'var(--accent-green)' }} />
+                  ) : (
+                    <WifiOff size={13} style={{ color: 'var(--text-disabled)' }} />
+                  )}
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>同步功能</span>
+                </div>
+                <span className="font-mono text-xs font-medium" style={{
+                  color: cookieStatus?.enabled ? 'var(--accent-green)' : 'var(--text-disabled)',
+                }}>
+                  {cookieStatus?.enabled ? '已启用' : '未启用'}
+                </span>
+              </div>
+            </div>
+
+            <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
+              CookieCloud 自动同步 · 加密传输
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ====== Row 2: 连接概览 (col-span-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>CONNECTION</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              连接状态
             </h3>
 
             <div className="space-y-4">
-              {/* 活跃会话 */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>活跃会话</span>
-                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-cyan)' }}>8</span>
-              </div>
-              {/* 自动回复率 */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>自动回复率</span>
-                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-green)' }}>95%</span>
-              </div>
-              {/* Cookie 状态 */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
-                  <Cookie size={14} /> Cookie 状态
-                </span>
-                <span
-                  className="font-mono text-xs px-2.5 py-1 rounded-full font-bold"
-                  style={{
-                    color: 'var(--accent-green)',
-                    background: 'rgba(0, 255, 170, 0.1)',
-                    border: '1px solid rgba(0, 255, 170, 0.25)',
-                  }}
-                >
-                  VALID
-                </span>
-              </div>
-              {/* 今日议价成功 */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>今日议价成功</span>
-                <span className="font-mono text-lg font-bold" style={{ color: 'var(--accent-amber)' }}>12 单</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ====== Row 2 中: 交易 Bot 矩阵 (col-span-4) ====== */}
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <span className="text-label" style={{ color: 'var(--accent-green)' }}>TRADING MATRIX</span>
-            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              交易 Bot 矩阵
-            </h3>
-
-            <div className="space-y-3">
-              {tradingBots.map((tb) => (
-                <div key={tb.name}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{tb.name}</span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                      {tb.approve}% 通过
-                    </span>
-                  </div>
-                  {/* 共识条 */}
-                  <div className="flex h-2 rounded-full overflow-hidden gap-px">
-                    <div
-                      className="rounded-l-full transition-all"
-                      style={{ width: `${tb.approve}%`, background: 'var(--accent-green)' }}
-                    />
-                    <div
-                      className="transition-all"
-                      style={{ width: `${tb.reject}%`, background: 'var(--accent-red)' }}
-                    />
-                    <div
-                      className="rounded-r-full transition-all"
-                      style={{ width: `${tb.pending}%`, background: 'var(--accent-amber)', opacity: 0.5 }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* 图例 */}
-            <div className="flex items-center gap-4 mt-4 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
-              {[
-                { label: '通过', color: 'var(--accent-green)' },
-                { label: '拒绝', color: 'var(--accent-red)' },
-                { label: '待定', color: 'var(--accent-amber)' },
-              ].map((l) => (
-                <span key={l.label} className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />
-                  {l.label}
-                </span>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ====== Row 2 右: 社媒发布 Bot (col-span-4) ====== */}
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>SOCIAL MEDIA</span>
-            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              社媒发布 Bot
-            </h3>
-
-            {/* 平台列表 */}
-            <div className="space-y-3 mb-5">
-              {socialPlatforms.map((p) => (
-                <div key={p.name} className="flex items-center justify-between">
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{p.name}</span>
+              {services.filter((s) => s.status === 'running').slice(0, 6).map((svc) => (
+                <div key={svc.id} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex gap-0.5">
-                      {Array.from({ length: p.posts }).map((_, i) => (
-                        <span
-                          key={i}
-                          className="w-1.5 h-4 rounded-sm"
-                          style={{ background: p.color, opacity: 0.7 + (i * 0.1) }}
-                        />
-                      ))}
-                    </div>
-                    <span className="font-mono text-xs" style={{ color: p.color }}>{p.posts}</span>
+                    <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{svc.name}</span>
                   </div>
+                  {svc.port && (
+                    <span className="font-mono text-xs" style={{ color: 'var(--accent-green)' }}>:{svc.port}</span>
+                  )}
                 </div>
               ))}
-            </div>
-
-            {/* 汇总指标 */}
-            <div className="space-y-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>定时发布</span>
-                <span className="font-mono text-lg font-bold" style={{ color: 'var(--accent-amber)' }}>3 篇</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>今日已发</span>
-                <span className="font-mono text-lg font-bold" style={{ color: 'var(--accent-green)' }}>5 篇</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>互动率</span>
-                <span className="font-mono text-lg font-bold" style={{ color: 'var(--accent-cyan)' }}>4.2%</span>
-              </div>
+              {services.filter((s) => s.status === 'running').length === 0 && (
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无运行中的服务</span>
+              )}
             </div>
           </div>
         </motion.div>
 
-        {/* ====== Row 3 左: Bot 活动日志 (col-span-8) ====== */}
-        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
-          <div className="abyss-card p-6">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>ACTIVITY LOG</span>
-              <Terminal size={14} style={{ color: 'var(--text-tertiary)' }} />
-            </div>
-            <h3 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              Bot 活动日志
-            </h3>
-
-            {/* 终端风格日志 */}
-            <div
-              className="rounded-xl p-4 space-y-2 font-mono text-xs overflow-y-auto max-h-[260px]"
-              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)' }}
-            >
-              {logEntries.map((entry, i) => (
-                <div key={i} className="flex gap-2 leading-relaxed">
-                  <span style={{ color: 'var(--text-tertiary)' }}>{entry.time}</span>
-                  <span
-                    className="w-12 text-right flex-shrink-0 font-bold"
-                    style={{ color: logColor(entry.level) }}
-                  >
-                    [{entry.level}]
-                  </span>
-                  <span
-                    className="flex-shrink-0"
-                    style={{ color: 'var(--accent-cyan)' }}
-                  >
-                    {entry.bot}
-                  </span>
-                  <span style={{ color: 'var(--text-secondary)' }}>→</span>
-                  <span style={{ color: 'var(--text-primary)', opacity: 0.85 }}>{entry.message}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ====== Row 3 右: 快速操作 (col-span-4) ====== */}
+        {/* ====== Row 2: 快速操作 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>QUICK ACTIONS</span>
@@ -468,37 +377,58 @@ export function Bots() {
             </h3>
 
             <div className="flex-1 grid grid-cols-1 gap-3">
-              {quickActions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <motion.button
-                    key={action.label}
-                    className="flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition-colors text-left"
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid var(--glass-border)',
-                    }}
-                    whileHover={{
-                      background: 'rgba(255,255,255,0.06)',
-                      borderColor: 'rgba(255,255,255,0.15)',
-                    }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <span
-                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: `color-mix(in srgb, ${action.accent} 10%, transparent)`,
-                        border: `1px solid color-mix(in srgb, ${action.accent} 20%, transparent)`,
-                      }}
-                    >
-                      <Icon size={16} style={{ color: action.accent }} />
-                    </span>
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {action.label}
-                    </span>
-                  </motion.button>
-                );
-              })}
+              {/* 刷新数据 */}
+              <motion.button
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition-colors text-left"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)' }}
+                whileHover={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => { setLoading(true); fetchData(); }}
+              >
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}>
+                  <RotateCcw size={16} style={{ color: 'var(--accent-cyan)' }} />
+                </span>
+                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>刷新数据</span>
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== Row 2: 服务详情 (col-span-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>SUMMARY</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              服务概要
+            </h3>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>总服务数</span>
+                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-cyan)' }}>{services.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>在线率</span>
+                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-green)' }}>
+                  {services.length > 0 ? Math.round((runningCount / services.length) * 100) : 0}%
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  <Cookie size={14} /> Cookie
+                </span>
+                <span
+                  className="font-mono text-xs px-2.5 py-1 rounded-full font-bold"
+                  style={{
+                    color: cookieColor,
+                    background: cookieValid ? 'rgba(0,255,170,0.1)' : 'rgba(255,0,0,0.1)',
+                    border: `1px solid ${cookieValid ? 'rgba(0,255,170,0.25)' : 'rgba(255,0,0,0.25)'}`,
+                  }}
+                >
+                  {cookieStatus ? cookieLabel : '—'}
+                </span>
+              </div>
             </div>
           </div>
         </motion.div>

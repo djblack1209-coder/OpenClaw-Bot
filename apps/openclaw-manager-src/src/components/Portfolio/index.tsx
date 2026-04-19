@@ -1,450 +1,206 @@
 /**
  * Portfolio — 投资组合页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 数据来自后端 API，30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { api } from '../../lib/api';
+
+/* ====== 类型定义 ====== */
+interface Position {
+  symbol: string; name: string; quantity: number; avg_price: number;
+  current_price: number; pnl: number; pnl_pct: number; market_value: number; weight: number;
+}
+interface PortfolioSummary {
+  total_value: number; total_cost: number; total_pnl: number; total_pnl_pct: number;
+  day_change: number; day_change_pct: number; positions: Position[];
+  position_count: number; connected: boolean;
+}
+interface TeamMember { analyst: string; signal: string; confidence: number; reasoning: string; }
+interface TeamResponse { team: TeamMember[]; }
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.06 } },
 };
-
 const cardVariants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
-
-/** 持仓数据 */
-const HOLDINGS = [
-  { symbol: 'NVDA', name: '英伟达', qty: 50, price: 875.30, pnl: 12350, pnlPct: 38.2 },
-  { symbol: 'AAPL', name: '苹果', qty: 120, price: 198.50, pnl: 4280, pnlPct: 21.5 },
-  { symbol: 'TSLA', name: '特斯拉', qty: 30, price: 245.80, pnl: -1520, pnlPct: -6.8 },
-  { symbol: 'BTC', name: '比特币', qty: 0.85, price: 67420, pnl: 8960, pnlPct: 15.6 },
-  { symbol: 'MSFT', name: '微软', qty: 80, price: 415.20, pnl: 3640, pnlPct: 12.3 },
-];
-
-/** AI 建议 */
-const AI_RECOMMENDATIONS = [
-  { text: '建议减持 NVDA — 估值偏高', severity: 'var(--accent-amber)' },
-  { text: '建议增持 AAPL — 技术突破', severity: 'var(--accent-green)' },
-  { text: '关注 BTC — Hurst指数看涨', severity: 'var(--accent-cyan)' },
-];
-
-/** 风险指标 */
-const RISK_METRICS = [
-  { label: '夏普比率', value: '1.82', color: 'var(--accent-green)' },
-  { label: '最大回撤', value: '-8.3%', color: 'var(--accent-red)' },
-  { label: 'Beta', value: '0.95', color: 'var(--accent-cyan)' },
-  { label: 'VaR(95%)', value: '$2,150', color: 'var(--accent-amber)' },
-];
-
-/** Bot 投票 */
-const BOT_VOTES = [
-  { name: '巴菲特', signal: '看多' as const, color: 'var(--accent-green)' },
-  { name: '塔勒布', signal: '中性' as const, color: 'var(--accent-amber)' },
-  { name: '木头姐', signal: '看多' as const, color: 'var(--accent-green)' },
-  { name: 'Burry', signal: '看空' as const, color: 'var(--accent-red)' },
-  { name: '德鲁肯米勒', signal: '看多' as const, color: 'var(--accent-green)' },
-];
-
-/** 持仓分布 */
-const SECTOR_ALLOCATION = [
-  { sector: '科技', pct: 45, color: 'var(--accent-cyan)' },
-  { sector: '金融', pct: 20, color: 'var(--accent-green)' },
-  { sector: '医疗', pct: 15, color: 'var(--accent-purple)' },
-  { sector: '能源', pct: 12, color: 'var(--accent-amber)' },
-  { sector: '其他', pct: 8, color: 'var(--text-tertiary)' },
-];
-
-/** 交易日志 */
-const TRADE_LOG = [
-  { time: '14:32', action: '买入' as const, symbol: 'AAPL', qty: 20, price: 198.50 },
-  { time: '13:15', action: '卖出' as const, symbol: 'TSLA', qty: 10, price: 248.30 },
-  { time: '11:08', action: '买入' as const, symbol: 'BTC', qty: 0.15, price: 67200 },
-  { time: '09:45', action: '卖出' as const, symbol: 'META', qty: 25, price: 512.40 },
-  { time: '09:31', action: '买入' as const, symbol: 'NVDA', qty: 5, price: 870.10 },
-];
-
-/** 30天收益走势数据 (模拟百分比变化) */
-const SPARKLINE_DATA = [
-  0.5, -0.3, 0.8, 1.2, -0.1, 0.4, 0.9, -0.5, 0.2, 1.5,
-  -0.8, 0.3, 0.7, 1.1, 0.6, -0.2, 0.4, 1.3, -0.4, 0.8,
-  0.2, -0.6, 1.0, 0.5, 0.9, -0.1, 1.4, 0.3, 0.7, 1.8,
-];
-
 /* ====== 辅助函数 ====== */
 
-/** 格式化盈亏颜色 */
+/** 盈亏颜色 */
 function pnlColor(value: number): string {
   return value >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
 }
 
-/** 格式化盈亏符号 */
+/** 盈亏符号 */
 function pnlSign(value: number): string {
   return value >= 0 ? '+' : '';
 }
 
-/** 把数值映射到 ASCII 柱状图字符 */
-function sparklineBar(value: number, max: number): string {
-  const blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-  const normalized = Math.max(0, (value + Math.abs(max)) / (max * 2));
-  const idx = Math.min(Math.floor(normalized * blocks.length), blocks.length - 1);
-  return blocks[idx];
+/** 格式化美元金额 */
+function fmtUsd(value: number): string {
+  return '$' + Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/* ====== 子卡片组件 ====== */
+/** 判断信号方向 */
+function isBull(s: string) { const l = s.toLowerCase(); return l.includes('buy') || l.includes('bullish') || l.includes('看多'); }
+function isBear(s: string) { const l = s.toLowerCase(); return l.includes('sell') || l.includes('bearish') || l.includes('看空'); }
 
-/** 总资产概览卡片 */
-function AssetOverviewCard() {
-  const stats = [
-    { label: '总资产', value: '$125,430', color: 'var(--text-primary)' },
-    { label: '今日盈亏', value: '+$1,240', color: 'var(--accent-green)' },
-    { label: '总收益率', value: '+18.5%', color: 'var(--accent-green)' },
-    { label: '持仓数量', value: '12', color: 'var(--accent-cyan)' },
-  ];
-
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      {/* 顶部标签 */}
-      <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-        PORTFOLIO // OVERVIEW
-      </span>
-      <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        投资组合
-      </h2>
-
-      {/* 4列统计数据 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
-        {stats.map((s) => (
-          <div key={s.label}>
-            <span className="text-label">{s.label}</span>
-            <div className="text-metric mt-1" style={{ color: s.color }}>
-              {s.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 持仓列表 */}
-      <div className="mt-5 flex-1">
-        <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
-          TOP HOLDINGS
-        </span>
-        <div className="mt-2 space-y-1">
-          {HOLDINGS.map((h) => (
-            <div
-              key={h.symbol}
-              className="flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer transition-colors"
-              style={{ background: 'rgba(255,255,255,0.02)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
-            >
-              {/* 股票代码 */}
-              <span className="font-mono text-sm font-semibold w-14" style={{ color: 'var(--accent-cyan)' }}>
-                {h.symbol}
-              </span>
-              {/* 名称 */}
-              <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
-                {h.name}
-              </span>
-              {/* 数量 */}
-              <span className="font-mono text-xs w-12 text-right" style={{ color: 'var(--text-tertiary)' }}>
-                {h.qty}
-              </span>
-              {/* 现价 */}
-              <span className="font-mono text-xs w-20 text-right" style={{ color: 'var(--text-secondary)' }}>
-                ${h.price.toLocaleString()}
-              </span>
-              {/* 盈亏额 */}
-              <span className="font-mono text-xs w-20 text-right" style={{ color: pnlColor(h.pnl) }}>
-                {pnlSign(h.pnl)}${Math.abs(h.pnl).toLocaleString()}
-              </span>
-              {/* 盈亏率 */}
-              <span className="font-mono text-xs w-16 text-right font-semibold" style={{ color: pnlColor(h.pnlPct) }}>
-                {pnlSign(h.pnlPct)}{h.pnlPct}%
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+/** 信号 → 颜色 */
+function signalColor(signal: string): string {
+  return isBull(signal) ? 'var(--accent-green)' : isBear(signal) ? 'var(--accent-red)' : 'var(--accent-amber)';
 }
-
-/** AI 投资建议卡片 */
-function AIAdvisorCard() {
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-        AI ADVISOR
-      </span>
-      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        AI 投资顾问
-      </h3>
-      <div className="mt-4 space-y-3 flex-1">
-        {AI_RECOMMENDATIONS.map((rec, i) => (
-          <div
-            key={i}
-            className="flex items-start gap-3 p-3 rounded-lg"
-            style={{ background: 'rgba(255,255,255,0.03)' }}
-          >
-            {/* 严重度圆点 */}
-            <span
-              className="inline-block w-2.5 h-2.5 rounded-full mt-0.5 flex-shrink-0"
-              style={{ background: rec.severity, boxShadow: `0 0 8px ${rec.severity}40` }}
-            />
-            <span className="font-mono text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              {rec.text}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] font-mono mt-3" style={{ color: 'var(--text-disabled)' }}>
-        基于 7-Bot 多智能体共识分析
-      </p>
-    </div>
-  );
+/** 信号 → 分类 */
+function signalCategory(signal: string): 'bull' | 'bear' | 'neutral' {
+  return isBull(signal) ? 'bull' : isBear(signal) ? 'bear' : 'neutral';
 }
-
-/** 风险指标卡片 */
-function RiskMetricsCard() {
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-        RISK METRICS
-      </span>
-      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        风险指标
-      </h3>
-      <div className="mt-4 space-y-4 flex-1">
-        {RISK_METRICS.map((m) => (
-          <div key={m.label} className="flex items-center justify-between">
-            <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {m.label}
-            </span>
-            <span className="text-metric text-base" style={{ color: m.color }}>
-              {m.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** 7-Bot 共识卡片 */
-function BotConsensusCard() {
-  /* 统计各信号数量用于百分比条 */
-  const total = BOT_VOTES.length;
-  const bullCount = BOT_VOTES.filter((b) => b.signal === '看多').length;
-  const bearCount = BOT_VOTES.filter((b) => b.signal === '看空').length;
-  const neutralCount = total - bullCount - bearCount;
-
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-        7-BOT CONSENSUS
-      </span>
-      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        7-Bot 共识
-      </h3>
-
-      {/* 共识进度条 */}
-      <div className="flex h-3 rounded-full overflow-hidden mt-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
-        <div
-          className="h-full transition-all"
-          style={{ width: `${(bullCount / total) * 100}%`, background: 'var(--accent-green)' }}
-        />
-        <div
-          className="h-full transition-all"
-          style={{ width: `${(neutralCount / total) * 100}%`, background: 'var(--accent-amber)' }}
-        />
-        <div
-          className="h-full transition-all"
-          style={{ width: `${(bearCount / total) * 100}%`, background: 'var(--accent-red)' }}
-        />
-      </div>
-
-      {/* Bot 列表 */}
-      <div className="mt-4 space-y-2 flex-1">
-        {BOT_VOTES.map((bot) => (
-          <div key={bot.name} className="flex items-center justify-between">
-            <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {bot.name}
-            </span>
-            <span
-              className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-full"
-              style={{
-                color: bot.color,
-                background: `${bot.color}15`,
-              }}
-            >
-              {bot.signal}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* 统计汇总 */}
-      <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
-          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bullCount} 看多</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-amber)' }} />
-          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{neutralCount} 中性</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-red)' }} />
-          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bearCount} 看空</span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** 持仓分布卡片 */
-function SectorAllocationCard() {
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-        ALLOCATION
-      </span>
-      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        持仓分布
-      </h3>
-      <div className="mt-4 space-y-3 flex-1">
-        {SECTOR_ALLOCATION.map((s) => (
-          <div key={s.sector}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {s.sector}
-              </span>
-              <span className="font-mono text-xs font-semibold" style={{ color: s.color }}>
-                {s.pct}%
-              </span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${s.pct}%`, background: s.color, opacity: 0.8 }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** 交易日志卡片 */
-function TradeLogCard() {
-  return (
-    <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label" style={{ color: 'var(--accent-red)' }}>
-        TRADE LOG
-      </span>
-      <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-        交易日志
-      </h3>
-      <div className="mt-4 space-y-1 flex-1 font-mono text-xs">
-        {TRADE_LOG.map((t, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-2 py-1.5 px-2 rounded"
-            style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}
-          >
-            {/* 时间 */}
-            <span style={{ color: 'var(--text-disabled)' }}>{t.time}</span>
-            {/* 操作 */}
-            <span
-              className="w-8 text-center font-semibold"
-              style={{ color: t.action === '买入' ? 'var(--accent-green)' : 'var(--accent-red)' }}
-            >
-              {t.action}
-            </span>
-            {/* 股票 */}
-            <span style={{ color: 'var(--accent-cyan)' }}>{t.symbol}</span>
-            {/* 数量 */}
-            <span className="ml-auto" style={{ color: 'var(--text-tertiary)' }}>
-              x{t.qty}
-            </span>
-            {/* 价格 */}
-            <span className="w-20 text-right" style={{ color: 'var(--text-secondary)' }}>
-              ${t.price.toLocaleString()}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] font-mono mt-3" style={{ color: 'var(--text-disabled)' }}>
-        最近 5 笔交易记录
-      </p>
-    </div>
-  );
-}
-
-/** 30天收益走势卡片 */
-function SparklineCard() {
-  const max = Math.max(...SPARKLINE_DATA.map(Math.abs));
-
-  return (
-    <div className="abyss-card p-6 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-            PERFORMANCE // 30D
-          </span>
-          <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-            30天收益走势
-          </h3>
-        </div>
-        <div className="text-right">
-          <span className="text-label">累计收益</span>
-          <div className="text-metric mt-1" style={{ color: 'var(--accent-green)' }}>
-            +{SPARKLINE_DATA.reduce((a, b) => a + b, 0).toFixed(1)}%
-          </div>
-        </div>
-      </div>
-
-      {/* ASCII 柱状图 */}
-      <div className="mt-4 flex items-end gap-[3px] h-16 overflow-hidden">
-        {SPARKLINE_DATA.map((val, i) => (
-          <div
-            key={i}
-            className="flex-1 flex flex-col items-center justify-end"
-            title={`Day ${i + 1}: ${val >= 0 ? '+' : ''}${val}%`}
-          >
-            <span
-              className="font-mono text-lg leading-none select-none"
-              style={{ color: val >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', opacity: 0.9 }}
-            >
-              {sparklineBar(val, max)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* 底部日期标注 */}
-      <div className="flex justify-between mt-2">
-        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>30天前</span>
-        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>15天前</span>
-        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>今天</span>
-      </div>
-    </div>
-  );
+/** 信号 → 中文标签 */
+function signalLabel(signal: string): string {
+  const s = signal.toLowerCase();
+  if (s.includes('strong') && isBull(signal)) return '强烈看多';
+  if (isBull(signal)) return '看多';
+  if (s.includes('strong') && isBear(signal)) return '强烈看空';
+  if (isBear(signal)) return '看空';
+  if (s.includes('neutral') || s.includes('hold') || s === '中性') return '中性';
+  return signal;
 }
 
 /* ====== 主组件 ====== */
 
-/**
- * Portfolio — Sonic Abyss Bento Grid 布局
- * 12 列 CSS Grid，全模拟数据，无 API 调用
- */
 export function Portfolio() {
+  /* ---- 状态 ---- */
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sellingSymbol, setSellingSymbol] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ---- 数据拉取 ---- */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      /* 并行请求持仓摘要 + AI 团队 */
+      const [pRes, tRes] = await Promise.allSettled([
+        api.portfolioSummary(),
+        api.omegaInvestmentTeam(),
+      ]);
+
+      if (pRes.status === 'fulfilled' && pRes.value) {
+        setPortfolio(pRes.value as PortfolioSummary);
+      } else if (pRes.status === 'rejected') {
+        console.warn('[Portfolio] 持仓摘要请求失败:', pRes.reason);
+        if (!silent) setError('无法获取持仓数据');
+      }
+
+      if (tRes.status === 'fulfilled' && tRes.value) {
+        const data = tRes.value as unknown as TeamResponse;
+        setTeam(Array.isArray(data.team) ? data.team : []);
+      }
+    } catch (e) {
+      console.error('[Portfolio] 数据拉取异常:', e);
+      if (!silent) setError('网络异常，请检查后端是否运行');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* ---- 挂载 + 30 秒自动刷新 ---- */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(() => fetchData(true), 30_000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ---- 卖出操作 ---- */
+  const handleSell = async (symbol: string, quantity: number) => {
+    setSellingSymbol(symbol);
+    try {
+      await api.tradingSell(symbol, quantity, 'MKT');
+      console.log(`[Portfolio] 卖出成功: ${symbol} x${quantity}`);
+      /* 刷新数据 */
+      fetchData(true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      console.error(`[Portfolio] 卖出失败: ${symbol}`, msg);
+    } finally {
+      setSellingSymbol(null);
+    }
+  };
+
+  /* ---- 加载态 ---- */
+  if (loading && !portfolio) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mb-4"
+               style={{ borderColor: 'var(--accent-cyan)', borderTopColor: 'transparent' }} />
+          <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+            正在加载持仓数据...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- 错误态 ---- */
+  if (error && !portfolio) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="abyss-card p-8 text-center max-w-md">
+          <span className="text-2xl">⚠</span>
+          <p className="font-mono text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{error}</p>
+          <button
+            onClick={() => fetchData()}
+            className="mt-4 px-4 py-2 rounded-lg font-mono text-xs transition-colors"
+            style={{ background: 'var(--accent-cyan)', color: '#000' }}
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- 空数据兜底 ---- */
+  const p = portfolio ?? {
+    total_value: 0, total_cost: 0, total_pnl: 0, total_pnl_pct: 0,
+    day_change: 0, day_change_pct: 0, positions: [], position_count: 0, connected: false,
+  };
+
+  /* ---- 概览统计 ---- */
+  const stats = [
+    { label: '总资产', value: fmtUsd(p.total_value), color: 'var(--text-primary)' },
+    { label: '今日盈亏', value: `${pnlSign(p.day_change)}${fmtUsd(p.day_change)}`, color: pnlColor(p.day_change) },
+    { label: '总收益率', value: `${pnlSign(p.total_pnl_pct)}${p.total_pnl_pct.toFixed(2)}%`, color: pnlColor(p.total_pnl_pct) },
+    { label: '持仓数量', value: String(p.position_count), color: 'var(--accent-cyan)' },
+  ];
+
+  /* ---- Bot 共识统计 ---- */
+  const bullCount = team.filter(m => signalCategory(m.signal) === 'bull').length;
+  const bearCount = team.filter(m => signalCategory(m.signal) === 'bear').length;
+  const neutralCount = team.length - bullCount - bearCount;
+  const totalVotes = team.length || 1; /* 防除零 */
+
+  /* ---- 持仓权重分布 (从真实数据计算) ---- */
+  const allocation = p.positions
+    .filter(pos => pos.weight > 0)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 6);
+  const allocationColors = [
+    'var(--accent-cyan)', 'var(--accent-green)', 'var(--accent-purple)',
+    'var(--accent-amber)', 'var(--accent-red)', 'var(--text-tertiary)',
+  ];
+
+  /* ====== 渲染 ====== */
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -453,36 +209,290 @@ export function Portfolio() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 第一行：总资产概览 (span-8, row-span-2) + AI 建议 (span-4) ====== */}
+        {/* ====== 第一行：总资产概览 (span-8) + AI 团队共识 (span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
-          <AssetOverviewCard />
+          <div className="abyss-card p-6 h-full flex flex-col">
+            {/* 顶部标签 + 连接状态 */}
+            <div className="flex items-center justify-between">
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                PORTFOLIO // OVERVIEW
+              </span>
+              <span
+                className="font-mono text-[10px] px-2 py-0.5 rounded-full"
+                style={{
+                  color: p.connected ? 'var(--accent-green)' : 'var(--accent-amber)',
+                  background: p.connected ? 'rgba(0,255,128,0.1)' : 'rgba(255,180,0,0.1)',
+                  border: `1px solid ${p.connected ? 'rgba(0,255,128,0.25)' : 'rgba(255,180,0,0.25)'}`,
+                }}
+              >
+                {p.connected ? '● 实盘 (IBKR)' : '● 模拟盘'}
+              </span>
+            </div>
+            <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+              投资组合
+            </h2>
+
+            {/* 4 列统计数据 */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
+              {stats.map(s => (
+                <div key={s.label}>
+                  <span className="text-label">{s.label}</span>
+                  <div className="text-metric mt-1" style={{ color: s.color }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 持仓列表 */}
+            <div className="mt-5 flex-1">
+              <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
+                TOP HOLDINGS
+              </span>
+              {p.positions.length === 0 ? (
+                <div className="mt-8 text-center">
+                  <p className="font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
+                    暂无持仓
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-2 space-y-1">
+                  {p.positions.map(h => (
+                    <div
+                      key={h.symbol}
+                      className="flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.02)' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                    >
+                      {/* 股票代码 */}
+                      <span className="font-mono text-sm font-semibold w-14" style={{ color: 'var(--accent-cyan)' }}>
+                        {h.symbol}
+                      </span>
+                      {/* 名称 */}
+                      <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
+                        {h.name}
+                      </span>
+                      {/* 数量 */}
+                      <span className="font-mono text-xs w-12 text-right" style={{ color: 'var(--text-tertiary)' }}>
+                        {h.quantity}
+                      </span>
+                      {/* 现价 */}
+                      <span className="font-mono text-xs w-20 text-right" style={{ color: 'var(--text-secondary)' }}>
+                        ${h.current_price.toLocaleString()}
+                      </span>
+                      {/* 盈亏额 */}
+                      <span className="font-mono text-xs w-20 text-right" style={{ color: pnlColor(h.pnl) }}>
+                        {pnlSign(h.pnl)}{fmtUsd(h.pnl)}
+                      </span>
+                      {/* 盈亏率 */}
+                      <span className="font-mono text-xs w-16 text-right font-semibold" style={{ color: pnlColor(h.pnl_pct) }}>
+                        {pnlSign(h.pnl_pct)}{h.pnl_pct.toFixed(1)}%
+                      </span>
+                      {/* 卖出按钮 */}
+                      <button
+                        disabled={sellingSymbol === h.symbol}
+                        onClick={e => { e.stopPropagation(); handleSell(h.symbol, h.quantity); }}
+                        className="font-mono text-[10px] px-2 py-1 rounded transition-colors flex-shrink-0"
+                        style={{
+                          color: sellingSymbol === h.symbol ? 'var(--text-disabled)' : 'var(--accent-red)',
+                          background: sellingSymbol === h.symbol ? 'rgba(255,255,255,0.03)' : 'rgba(255,60,60,0.1)',
+                          border: '1px solid rgba(255,60,60,0.2)',
+                          cursor: sellingSymbol === h.symbol ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {sellingSymbol === h.symbol ? '...' : '卖出'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </motion.div>
 
+        {/* ====== 7-Bot AI 团队共识 (span-4) ====== */}
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <AIAdvisorCard />
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+              7-BOT CONSENSUS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+              AI 投资团队
+            </h3>
+
+            {team.length === 0 ? (
+              <div className="mt-6 flex-1 flex items-center justify-center">
+                <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  暂无团队投票数据
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* 共识进度条 */}
+                <div className="flex h-3 rounded-full overflow-hidden mt-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <div className="h-full transition-all" style={{ width: `${(bullCount / totalVotes) * 100}%`, background: 'var(--accent-green)' }} />
+                  <div className="h-full transition-all" style={{ width: `${(neutralCount / totalVotes) * 100}%`, background: 'var(--accent-amber)' }} />
+                  <div className="h-full transition-all" style={{ width: `${(bearCount / totalVotes) * 100}%`, background: 'var(--accent-red)' }} />
+                </div>
+
+                {/* 团队成员列表 */}
+                <div className="mt-4 space-y-2 flex-1">
+                  {team.map(m => (
+                    <div key={m.analyst} className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {m.analyst}
+                        </span>
+                        {m.reasoning && (
+                          <p className="font-mono text-[10px] truncate mt-0.5" style={{ color: 'var(--text-disabled)' }}>
+                            {m.reasoning}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                          {Math.round(m.confidence * 100)}%
+                        </span>
+                        <span
+                          className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-full whitespace-nowrap"
+                          style={{ color: signalColor(m.signal), background: `${signalColor(m.signal)}15` }}
+                        >
+                          {signalLabel(m.signal)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 统计汇总 */}
+                <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bullCount} 看多</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-amber)' }} />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{neutralCount} 中性</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-red)' }} />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bearCount} 看空</span>
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         </motion.div>
 
-        {/* 风险指标 (span-4) — 紧跟 AI 建议下方 */}
+        {/* ====== 持仓分布卡片 (span-4) ====== */}
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <RiskMetricsCard />
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+              ALLOCATION
+            </span>
+            <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+              持仓分布
+            </h3>
+            {allocation.length === 0 ? (
+              <div className="mt-6 flex-1 flex items-center justify-center">
+                <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>暂无数据</p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3 flex-1">
+                {allocation.map((pos, i) => (
+                  <div key={pos.symbol}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {pos.symbol} · {pos.name}
+                      </span>
+                      <span className="font-mono text-xs font-semibold" style={{ color: allocationColors[i % allocationColors.length] }}>
+                        {pos.weight.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(pos.weight, 100)}%`, background: allocationColors[i % allocationColors.length], opacity: 0.8 }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </motion.div>
 
-        {/* ====== 第二行：Bot共识 (span-4) + 持仓分布 (span-4) + 交易日志 (span-4) ====== */}
+        {/* ====== 总收益汇总卡片 (span-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+                  PERFORMANCE // SUMMARY
+                </span>
+                <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+                  收益汇总
+                </h3>
+              </div>
+              <div className="text-right">
+                <span className="text-label">总盈亏</span>
+                <div className="text-metric mt-1" style={{ color: pnlColor(p.total_pnl) }}>
+                  {pnlSign(p.total_pnl)}{fmtUsd(p.total_pnl)}
+                </div>
+              </div>
+            </div>
+
+            {/* 明细卡片网格 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+              {[
+                { label: '总成本', value: fmtUsd(p.total_cost), color: 'var(--text-secondary)' },
+                { label: '总市值', value: fmtUsd(p.total_value), color: 'var(--accent-cyan)' },
+                { label: '今日涨跌', value: `${pnlSign(p.day_change_pct)}${p.day_change_pct.toFixed(2)}%`, color: pnlColor(p.day_change_pct) },
+                { label: '总收益率', value: `${pnlSign(p.total_pnl_pct)}${p.total_pnl_pct.toFixed(2)}%`, color: pnlColor(p.total_pnl_pct) },
+              ].map(item => (
+                <div
+                  key={item.label}
+                  className="p-3 rounded-lg"
+                  style={{ background: 'rgba(255,255,255,0.03)' }}
+                >
+                  <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
+                    {item.label}
+                  </span>
+                  <div className="font-mono text-lg font-bold mt-1" style={{ color: item.color }}>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 风险指标卡片 (span-4) ====== */}
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <BotConsensusCard />
-        </motion.div>
-
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <SectorAllocationCard />
-        </motion.div>
-
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <TradeLogCard />
-        </motion.div>
-
-        {/* ====== 第三行：收益走势 (span-12) ====== */}
-        <motion.div className="col-span-12" variants={cardVariants}>
-          <SparklineCard />
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
+              RISK METRICS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
+              风险指标
+            </h3>
+            <div className="mt-4 space-y-4 flex-1">
+              {[
+                { label: '总成本基础', value: fmtUsd(p.total_cost), color: 'var(--text-secondary)' },
+                { label: '未实现盈亏', value: `${pnlSign(p.total_pnl)}${fmtUsd(p.total_pnl)}`, color: pnlColor(p.total_pnl) },
+                { label: '今日波动', value: `${pnlSign(p.day_change_pct)}${p.day_change_pct.toFixed(2)}%`, color: pnlColor(p.day_change_pct) },
+                { label: '持仓集中度', value: p.positions.length > 0 ? `${p.positions[0]?.weight.toFixed(1)}% 最大` : 'N/A', color: 'var(--accent-cyan)' },
+              ].map(m => (
+                <div key={m.label} className="flex items-center justify-between">
+                  <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {m.label}
+                  </span>
+                  <span className="text-metric text-base" style={{ color: m.color }}>
+                    {m.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </motion.div>
       </motion.div>
     </div>
