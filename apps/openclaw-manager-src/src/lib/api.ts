@@ -1,4 +1,4 @@
-import { clawbotFetch } from './tauri-core';
+import { clawbotFetch, clawbotFetchJson } from './tauri-core';
 import * as ipc from './tauri-ipc';
 
 // API 封装（带日志）
@@ -198,7 +198,7 @@ export const api = {
 
   /** 获取首页今日简报数据 — 聚合各模块指标 */
   dailyBrief: () =>
-    clawbotFetch('/api/v1/system/daily-brief').then(r => r.json()),
+    clawbotFetchJson('/api/v1/system/daily-brief'),
 
   // ══════════════════════════════════════════════
   //  通知中心 (Notifications)
@@ -211,20 +211,20 @@ export const api = {
     if (params?.category) sp.set('category', params.category);
     if (params?.unread_only) sp.set('unread_only', 'true');
     const qs = sp.toString();
-    return clawbotFetch(`/api/v1/system/notifications${qs ? '?' + qs : ''}`).then(r => r.json());
+    return clawbotFetchJson(`/api/v1/system/notifications${qs ? '?' + qs : ''}`);
   },
 
   /** 标记单条通知为已读 */
   markNotificationRead: (notificationId: string) =>
-    clawbotFetch(`/api/v1/system/notifications/${notificationId}/read`, {
+    clawbotFetchJson(`/api/v1/system/notifications/${notificationId}/read`, {
       method: 'POST',
-    }).then(r => r.json()),
+    }),
 
   /** 标记所有通知为已读 */
   markAllNotificationsRead: () =>
-    clawbotFetch('/api/v1/system/notifications/read-all', {
+    clawbotFetchJson('/api/v1/system/notifications/read-all', {
       method: 'POST',
-    }).then(r => r.json()),
+    }),
 
   // ══════════════════════════════════════════════
   //  持仓摘要 (Portfolio Summary)
@@ -232,7 +232,7 @@ export const api = {
 
   /** 获取持仓聚合摘要 — 总资产/盈亏/持仓列表/权重 */
   portfolioSummary: () =>
-    clawbotFetch('/api/v1/trading/portfolio-summary').then(r => r.json()),
+    clawbotFetchJson('/api/v1/trading/portfolio-summary'),
 
   // ══════════════════════════════════════════════
   //  服务管理 (Services)
@@ -240,11 +240,11 @@ export const api = {
 
   /** 获取所有服务状态 */
   services: () =>
-    clawbotFetch('/api/v1/system/services').then(r => r.json()),
+    clawbotFetchJson('/api/v1/system/services'),
 
   /** 获取单个服务状态 */
   serviceStatus: (serviceId: string) =>
-    clawbotFetch(`/api/v1/system/services/${serviceId}`).then(r => r.json()),
+    clawbotFetchJson(`/api/v1/system/services/${serviceId}`),
 
   // ══════════════════════════════════════════════
   //  AI 会话 (Conversation)
@@ -252,23 +252,23 @@ export const api = {
 
   /** 获取会话列表 */
   conversationSessions: (limit: number = 50) =>
-    clawbotFetch(`/api/v1/conversation/sessions?limit=${limit}`).then(r => r.json()),
+    clawbotFetchJson(`/api/v1/conversation/sessions?limit=${limit}`),
 
   /** 创建新会话 */
   conversationCreate: (title: string = '新对话') =>
-    clawbotFetch(`/api/v1/conversation/sessions?title=${encodeURIComponent(title)}`, {
+    clawbotFetchJson(`/api/v1/conversation/sessions?title=${encodeURIComponent(title)}`, {
       method: 'POST',
-    }).then(r => r.json()),
+    }),
 
   /** 获取会话详情（含所有消息） */
   conversationGet: (sessionId: string) =>
-    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}`).then(r => r.json()),
+    clawbotFetchJson(`/api/v1/conversation/sessions/${sessionId}`),
 
   /** 删除会话 */
   conversationDelete: (sessionId: string) =>
-    clawbotFetch(`/api/v1/conversation/sessions/${sessionId}`, {
+    clawbotFetchJson(`/api/v1/conversation/sessions/${sessionId}`, {
       method: 'DELETE',
-    }).then(r => r.json()),
+    }),
 
   /** 发送消息（返回 SSE 流式 Response 对象，调用方需自行处理 EventSource） */
   conversationSend: (sessionId: string, message: string) =>
@@ -283,38 +283,28 @@ export const api = {
   // ══════════════════════════════════════════════
 
   /** 生成闲鱼扫码登录二维码 */
-  xianyuGenerateQR: async () => {
-    const resp = await clawbotFetch('/api/v1/xianyu/qr/generate', { method: 'POST' });
-    return resp.json();
-  },
+  xianyuGenerateQR: () =>
+    clawbotFetchJson('/api/v1/xianyu/qr/generate', { method: 'POST' }),
 
   /** 查询闲鱼二维码扫码状态 */
-  xianyuQRStatus: async () => {
-    const resp = await clawbotFetch('/api/v1/xianyu/qr/status');
-    return resp.json();
-  },
+  xianyuQRStatus: () =>
+    clawbotFetchJson('/api/v1/xianyu/qr/status'),
 
   /** 获取闲鱼最近对话列表 */
-  xianyuConversations: async (limit: number = 20) => {
-    const resp = await clawbotFetch(`/api/v1/xianyu/conversations?limit=${limit}`);
-    return resp.json();
-  },
+  xianyuConversations: (limit: number = 20) =>
+    clawbotFetchJson(`/api/v1/xianyu/conversations?limit=${limit}`),
 
   // ══════════════════════════════════════════════
   //  服务控制 (Service Control)
   // ══════════════════════════════════════════════
 
   /** 启动指定服务 */
-  serviceStart: async (serviceId: string) => {
-    const resp = await clawbotFetch(`/api/v1/system/services/${serviceId}/start`, { method: 'POST' });
-    return resp.json();
-  },
+  serviceStart: (serviceId: string) =>
+    clawbotFetchJson(`/api/v1/system/services/${serviceId}/start`, { method: 'POST' }),
 
   /** 停止指定服务 */
-  serviceStop: async (serviceId: string) => {
-    const resp = await clawbotFetch(`/api/v1/system/services/${serviceId}/stop`, { method: 'POST' });
-    return resp.json();
-  },
+  serviceStop: (serviceId: string) =>
+    clawbotFetchJson(`/api/v1/system/services/${serviceId}/stop`, { method: 'POST' }),
 
   // ══════════════════════════════════════════════
   //  交易操作 (Trading Actions)
@@ -338,48 +328,37 @@ export const api = {
   // ══════════════════════════════════════════════
 
   /** 获取自选股列表 */
-  watchlist: async () => {
-    const resp = await clawbotFetch('/api/v1/trading/watchlist');
-    return resp.json();
-  },
+  watchlist: () =>
+    clawbotFetchJson('/api/v1/trading/watchlist'),
 
   /** 添加自选股 */
-  watchlistAdd: async (symbol: string, targetPrice: number, direction: 'above' | 'below') => {
-    const resp = await clawbotFetch('/api/v1/trading/watchlist', {
+  watchlistAdd: (symbol: string, targetPrice: number, direction: 'above' | 'below') =>
+    clawbotFetchJson('/api/v1/trading/watchlist', {
       method: 'POST',
       body: JSON.stringify({ symbol, target_price: targetPrice, direction }),
-    });
-    return resp.json();
-  },
+    }),
 
   /** 删除自选股 */
-  watchlistRemove: async (symbol: string) => {
-    const resp = await clawbotFetch(`/api/v1/trading/watchlist/${symbol}`, { method: 'DELETE' });
-    return resp.json();
-  },
+  watchlistRemove: (symbol: string) =>
+    clawbotFetchJson(`/api/v1/trading/watchlist/${symbol}`, { method: 'DELETE' }),
 
   // ══════════════════════════════════════════════
   //  Evolution 引擎 (HTTP 降级)
   // ══════════════════════════════════════════════
 
   /** 获取进化提案列表（HTTP） */
-  evolutionProposals: async (status?: string, limit?: number) => {
+  evolutionProposals: (status?: string, limit?: number) => {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (limit) params.set('limit', String(limit));
-    const resp = await clawbotFetch(`/api/v1/evolution/proposals?${params}`);
-    return resp.json();
+    return clawbotFetchJson(`/api/v1/evolution/proposals?${params}`);
   },
 
   /** 获取进化统计数据（HTTP） */
-  evolutionStats: async () => {
-    const resp = await clawbotFetch('/api/v1/evolution/stats');
-    return resp.json();
-  },
+  evolutionStats: () =>
+    clawbotFetchJson('/api/v1/evolution/stats'),
 
   /** 触发进化扫描（HTTP） */
-  evolutionScan: async () => {
-    const resp = await clawbotFetch('/api/v1/evolution/scan', { method: 'POST' });
-    return resp.json();
-  },
+  evolutionScan: () =>
+    clawbotFetchJson('/api/v1/evolution/scan', { method: 'POST' }),
 };
