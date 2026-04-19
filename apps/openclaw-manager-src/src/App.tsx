@@ -12,7 +12,10 @@ const Assistant = lazy(() => import('./components/Assistant').then(m => ({ defau
 const Portfolio = lazy(() => import('./components/Portfolio').then(m => ({ default: m.Portfolio })));
 const Bots = lazy(() => import('./components/Bots').then(m => ({ default: m.Bots })));
 const Store = lazy(() => import('./components/Store').then(m => ({ default: m.Store })));
+const NewsFeed = lazy(() => import('./components/NewsFeed').then(m => ({ default: m.NewsFeed })));
 const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })));
+const WorldMonitor = lazy(() => import('./components/WorldMonitor').then(m => ({ default: m.WorldMonitor })));
+const FinRadar = lazy(() => import('./components/FinRadar').then(m => ({ default: m.FinRadar })));
 
 /* ====== 原有页面（开发者模式下显示） ====== */
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -20,6 +23,7 @@ const ControlCenter = lazy(() => import('./components/ControlCenter').then(m => 
 const AIConfig = lazy(() => import('./components/AIConfig').then(m => ({ default: m.AIConfig })));
 const Channels = lazy(() => import('./components/Channels').then(m => ({ default: m.Channels })));
 const Social = lazy(() => import('./components/Social').then(m => ({ default: m.Social })));
+const Xianyu = lazy(() => import('./components/Xianyu').then(m => ({ default: m.Xianyu })));
 const Money = lazy(() => import('./components/Money').then(m => ({ default: m.Money })));
 const Dev = lazy(() => import('./components/Dev').then(m => ({ default: m.Dev })));
 const DevPanel = lazy(() => import('./components/DevPanel'));
@@ -214,15 +218,15 @@ function App() {
       assistant: <PageErrorBoundary pageName="AI 助手"><Assistant /></PageErrorBoundary>,
       notifications: <PageErrorBoundary pageName="通知中心"><PlaceholderPage title="通知中心" description="系统消息、告警与操作通知" /></PageErrorBoundary>,
       /* 全球情报（worldmonitor） */
-      worldmonitor: <PageErrorBoundary pageName="全球监控"><PlaceholderPage title="全球监控" description="地缘政治、国家风险指数与基础设施追踪" /></PageErrorBoundary>,
-      newsfeed: <PageErrorBoundary pageName="新闻中心"><PlaceholderPage title="新闻中心" description="435+ RSS 源 AI 聚合与实时摘要" /></PageErrorBoundary>,
+      worldmonitor: <PageErrorBoundary pageName="全球监控"><WorldMonitor /></PageErrorBoundary>,
+      newsfeed: <PageErrorBoundary pageName="新闻中心"><NewsFeed /></PageErrorBoundary>,
       finradar: <PageErrorBoundary pageName="金融雷达"><PlaceholderPage title="金融雷达" description="全球股市、加密货币、大宗商品实时雷达" /></PageErrorBoundary>,
       portfolio: <PageErrorBoundary pageName="投资组合"><Portfolio /></PageErrorBoundary>,
       trading: <PageErrorBoundary pageName="交易引擎"><PlaceholderPage title="交易引擎" description="量化交易、策略回测与执行" /></PageErrorBoundary>,
       risk: <PageErrorBoundary pageName="风险分析"><PlaceholderPage title="风险分析" description="Hurst 指数、VaR 与风控仪表盘" /></PageErrorBoundary>,
       bots: <PageErrorBoundary pageName="我的机器人"><Bots /></PageErrorBoundary>,
       store: <PageErrorBoundary pageName="Bot 商店"><Store /></PageErrorBoundary>,
-      xianyu: <PageErrorBoundary pageName="闲鱼管理"><PlaceholderPage title="闲鱼管理" description="商品、客服 Bot、Cookie 管理" /></PageErrorBoundary>,
+      xianyu: <PageErrorBoundary pageName="闲鱼管理"><Xianyu /></PageErrorBoundary>,
       onboarding: <PageErrorBoundary pageName="引导"><Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} /></PageErrorBoundary>,
       /* 原有页面 */
       control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
