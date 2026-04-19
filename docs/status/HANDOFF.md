@@ -4,6 +4,33 @@
 
 ---
 
+## [2026-04-19] R12 CI/CD 管道审计 — Workflow 重写+本地验证方案
+
+### 本次完成了什么
+1. **CI 失败根因诊断**: 确认最近 15+ 次 CI 全部因 GitHub Billing 问题失败（付款失败/额度不足），非代码问题
+2. **CI Workflow 重写 (7项)**: 路径过滤(排除 docs/*.md)+并发控制(取消旧 CI)+npm 缓存+uv 缓存 key 修复+Ruff lint 步骤+已知失败排除+pytest 超时控制
+3. **本地 CI 验证**: Makefile 新增 `ci-local` 一键跑全部检查（Ruff+pytest+语法+tsc），与 GitHub Actions 完全一致
+4. **审计方案完善**: AUDIT_PLAN.md 修正 R3/R4 状态(实际已完成但文档未更新) + 新增 R12 CI/DevOps 审计轮(10条目)
+5. **文档同步**: HEALTH.md 新增 HI-597 / CHANGELOG 更新 / R12 审计文档创建
+
+### 未完成的工作
+- **🔴 HI-597**: 用户需去 GitHub Settings > Billing & Plans 处理付款，CI 才能恢复运行
+- **长期遗留**: HI-388(diskcache CVE 等上游) / HI-462(低风险日志脱敏)
+
+### 需要注意的坑
+- CI workflow 新增的 `paths-ignore` 会让纯文档变更不触发 CI。如果你同时改了文档和代码但只推了文档，CI 不会跑
+- `--ignore=tests/test_self_heal.py` 和 `test_api_routes_regression.py` 是有意排除的。修复这两个测试后应移除 ignore
+- `concurrency` 会取消同分支正在跑的旧 CI。如果你频繁推送（连续 3 次），前两次会被取消只跑最后一次
+- `make ci-local` 需要本地有 ruff 和 pytest-timeout。如果 venv 没装，先 `pip install -r requirements-dev.txt`
+
+### 当前系统状态
+- Git: 待提交（6个文件修改）
+- Python 语法: 全部通过
+- TypeScript: 零错误
+- CI: 需用户修复 GitHub Billing 后恢复
+- 审计: 12/12 轮全部完成 (455 条目)
+- 技术债: 累计 67 项 + R12 CI 7 项修复 = 74 项已修复
+
 ## [2026-04-19] 技术债清理第9批 — DevPanel 完整功能化（1项）
 
 ### 本次完成了什么

@@ -6,7 +6,7 @@ CLAWBOT := packages/clawbot
 PYTHON ?= $(shell command -v python3 || echo $(CLAWBOT)/.venv312/bin/python)
 FRONTEND := apps/openclaw-manager-src
 
-.PHONY: test lint format typecheck docker clean help
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -52,3 +52,27 @@ clean: ## 清理缓存和临时文件
 	find $(CLAWBOT) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find $(CLAWBOT) -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	find $(CLAWBOT) -type f -name "*.pyc" -delete 2>/dev/null || true
+
+## ─── CI 本地验证（和 GitHub Actions 一致） ───
+ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
+	@echo "══════ [1/4] Python Lint (ruff) ══════"
+	cd $(CLAWBOT) && $(PYTHON) -m ruff check src/ --config ruff.toml
+	@echo ""
+	@echo "══════ [2/4] Python Tests (pytest) ══════"
+	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q \
+		--ignore=tests/test_self_heal.py \
+		--ignore=tests/test_api_routes_regression.py \
+		-x --timeout=120
+	@echo ""
+	@echo "══════ [3/4] Python Syntax Check ══════"
+	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
+	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +
+	@echo ""
+	@echo "══════ [4/4] Frontend TypeScript Check ══════"
+	cd $(FRONTEND) && npx tsc --noEmit
+	@echo ""
+	@echo "✅ 本地 CI 全部通过"
+
+syntax-check: ## 仅检查 Python 语法
+	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
+	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +

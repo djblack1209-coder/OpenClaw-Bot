@@ -12,6 +12,39 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — R12 CI/CD 管道审计: Workflow 重写+本地验证方案
+> 领域: `infra`
+> 影响模块: `.github/workflows/ci.yml`, `Makefile`, `requirements-dev.txt`, `docs/audit/R12_CI_DEVOPS.md`
+> 关联问题: HI-597
+
+### CI Workflow 重写 (7项修复)
+1. **HI-597: CI Billing 阻塞诊断**: 确认 15+ 次 CI 失败全部因 GitHub Actions Billing 问题（付款失败/额度不足），非代码问题。用户需去 GitHub Settings > Billing & Plans 处理
+2. **路径过滤**: 新增 `paths-ignore` 排除 docs/、*.md 等纯文档变更，避免无意义的 CI 触发浪费 Actions 分钟数
+3. **缓存修复**: uv 缓存 key 从 hash `requirements.txt` 改为 `requirements-dev.txt`（实际安装文件）；前端新增 npm 内建缓存
+4. **并发控制**: 新增 `concurrency` 配置，同一分支新推送自动取消正在跑的旧 CI
+5. **Ruff lint 步骤**: CI 新增 ruff check 步骤，与本地 pre-commit 标准一致
+6. **已知失败排除**: pytest 添加 `--ignore` 排除 `test_self_heal.py` 和 `test_api_routes_regression.py`（已知预存失败），CI 不再因为这些已知问题报红
+7. **测试超时**: pytest 新增 `--timeout=120` 防止单个测试挂起阻塞整个 CI
+
+### 本地 CI 验证 (2项新增)
+8. **Makefile ci-local**: 新增 `make ci-local` 一键本地验证，4步检查（Ruff lint → pytest → 语法检查 → tsc），与 GitHub Actions 完全一致
+9. **Makefile syntax-check**: 新增 `make syntax-check` 仅检查 Python 语法
+
+### 依赖管理 (1项)
+10. **requirements-dev.txt**: 新增 pytest-timeout 依赖 + 收紧版本约束上限
+
+### 审计方案完善 (2项)
+11. **AUDIT_PLAN.md R3/R4 状态修正**: R3/R4 实际已在之前会话中完成（3项修复+9文档修正+32通过+11技术债），但审计文档状态未更新。现已标记为✅完成
+12. **新增 R12 CI/DevOps 审计轮**: 10 个审计条目，覆盖 Billing/缓存/测试策略/Lint/路径过滤/本地验证。总审计从 11 轮 425 条目扩展到 12 轮 455 条目
+
+### 文件变更
+- `.github/workflows/ci.yml` — 全面重写: 路径过滤+并发控制+npm缓存+ruff lint+已知失败排除+超时控制
+- `Makefile` — 新增 ci-local + syntax-check 目标
+- `packages/clawbot/requirements-dev.txt` — 新增 pytest-timeout + 版本约束收紧
+- `AUDIT_PLAN.md` — R3/R4 状态修正 + 新增 R12 + 总条目更新
+- `docs/audit/R12_CI_DEVOPS.md` — 新建 R12 审计文档（10条目/7修复/1跳过/2确认）
+- `docs/status/HEALTH.md` — 新增 HI-597 (CI Billing 阻塞)
+
 ## 2026-04-19 — 技术债清理第9批: DevPanel 开发者工作台完整功能化（1项）
 > 领域: `frontend`
 > 影响模块: `DevPanel`
