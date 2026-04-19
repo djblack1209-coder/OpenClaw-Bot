@@ -12,6 +12,27 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — HI-540: 统一两个比价引擎，消除代码重复
+> 领域: `backend`
+> 影响模块: `shopping/price_engine`, `core/brain_exec_life`, `execution/tracking`
+> 关联问题: HI-540
+
+### 变更内容
+- 新增 `smart_compare_prices()` 统一比价入口，实现 4 级降级链:
+  1. SMZDM+JD 直接爬取（最快，零 API 消耗）
+  2. Tavily 智能搜索（爬取不足时启用）
+  3. crawl4ai 结构化提取（Tavily 失败时）
+  4. Jina Reader + LLM 分析（最终兜底）
+- `fast_mode=True` 参数: 只走 SMZDM+JD，用于批量价格监控（不消耗 API 额度）
+- `brain_exec_life.py` 的 `_exec_smart_shopping` 从 150 行内联降级链精简为调用统一入口
+- `tracking.py` 的 `check_price_watches` 改用 `smart_compare_prices(fast_mode=True)`
+- 原 `compare_prices()` 保持不变，确保向后兼容
+
+### 文件变更
+- `src/shopping/price_engine.py` — 新增 `smart_compare_prices()` + 4 个降级 tier 函数 + 结果去重合并
+- `src/core/brain_exec_life.py` — `_exec_smart_shopping` 重构为委托调用，删除 140 行重复代码
+- `src/execution/tracking.py` — `check_price_watches` 改用统一入口
+
 ## 2026-04-19 — HI-538: 社媒发布适配器模式重构
 > 领域: `backend`
 > 影响模块: `execution/social/platform_adapter`, `execution/social/x_adapter`, `execution/social/xhs_adapter`, `core/brain_exec_social`, `api/rpc`, `execution/social/drafts`, `social_scheduler`, `execution/social/content_pipeline`
