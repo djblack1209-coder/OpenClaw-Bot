@@ -107,6 +107,8 @@ export const getChannelsConfig = () =>
   invokeWithLog<ChannelConfig[]>('get_channels_config');
 export const saveChannelConfig = (channel: ChannelConfig) =>
   invokeWithLog<string>('save_channel_config', { channel });
+export const clearChannelConfig = (channelId: string) =>
+  invokeWithLog<string>('clear_channel_config', { channelId });
 
 // ── 诊断测试 ──
 
