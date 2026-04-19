@@ -87,11 +87,18 @@ export type PageType =
   | 'home'           // 首页 Dashboard
   | 'assistant'      // AI 助手（对话界面）
   | 'notifications'  // 通知中心
+  /* 全球情报（worldmonitor） */
+  | 'worldmonitor'   // 全球监控面板
+  | 'newsfeed'       // 新闻中心
+  | 'finradar'       // 金融雷达
+  /* 资产管理 */
   | 'portfolio'      // 投资组合
   | 'trading'        // 交易引擎
   | 'risk'           // 风险分析
+  /* 智能体 */
   | 'bots'           // 我的机器人
   | 'store'          // Bot 商店
+  /* 运营中心 */
   | 'xianyu'         // 闲鱼管理
   | 'onboarding'     // 引导流程（仅首次启动）
   /* 原有页面（开发者模式） */
@@ -206,6 +213,10 @@ function App() {
       home: <PageErrorBoundary pageName="首页"><HomeDashboard /></PageErrorBoundary>,
       assistant: <PageErrorBoundary pageName="AI 助手"><Assistant /></PageErrorBoundary>,
       notifications: <PageErrorBoundary pageName="通知中心"><PlaceholderPage title="通知中心" description="系统消息、告警与操作通知" /></PageErrorBoundary>,
+      /* 全球情报（worldmonitor） */
+      worldmonitor: <PageErrorBoundary pageName="全球监控"><PlaceholderPage title="全球监控" description="地缘政治、国家风险指数与基础设施追踪" /></PageErrorBoundary>,
+      newsfeed: <PageErrorBoundary pageName="新闻中心"><PlaceholderPage title="新闻中心" description="435+ RSS 源 AI 聚合与实时摘要" /></PageErrorBoundary>,
+      finradar: <PageErrorBoundary pageName="金融雷达"><PlaceholderPage title="金融雷达" description="全球股市、加密货币、大宗商品实时雷达" /></PageErrorBoundary>,
       portfolio: <PageErrorBoundary pageName="投资组合"><Portfolio /></PageErrorBoundary>,
       trading: <PageErrorBoundary pageName="交易引擎"><PlaceholderPage title="交易引擎" description="量化交易、策略回测与执行" /></PageErrorBoundary>,
       risk: <PageErrorBoundary pageName="风险分析"><PlaceholderPage title="风险分析" description="Hurst 指数、VaR 与风控仪表盘" /></PageErrorBoundary>,

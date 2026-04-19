@@ -12,7 +12,7 @@ import {
   ChevronDown,
   Search,
   Bell,
-  /* 新增导航图标 */
+  /* 导航图标 */
   Wallet,
   LineChart,
   ShieldAlert,
@@ -22,6 +22,10 @@ import {
   HelpCircle,
   User,
   Zap,
+  /* worldmonitor 相关图标 */
+  Radar,
+  Newspaper,
+  Landmark,
   /* 开发者模式图标 */
   ShieldCheck,
   LayoutDashboard,
@@ -86,6 +90,17 @@ const consumerGroups: NavGroup[] = [
       { id: 'home', label: '首页总览', icon: Home, description: '系统全局状态概览' },
       { id: 'assistant', label: 'AI 助手', icon: MessageSquare, description: '对话式 AI 开发工作台' },
       { id: 'notifications', label: '通知中心', icon: Bell, description: '系统消息与告警' },
+    ],
+  },
+  {
+    id: 'intelligence',
+    label: '全球情报',
+    icon: Radar,
+    defaultOpen: true,
+    items: [
+      { id: 'worldmonitor', label: '全球监控', icon: Globe, description: '地缘政治与基础设施监控' },
+      { id: 'newsfeed', label: '新闻中心', icon: Newspaper, description: 'AI 新闻聚合与摘要' },
+      { id: 'finradar', label: '金融雷达', icon: Landmark, description: '股市、加密货币、大宗商品' },
     ],
   },
   {
@@ -222,10 +237,10 @@ function CollapsibleGroup({
           e.currentTarget.style.color = 'var(--text-disabled)';
         }}
       >
-        {GroupIcon && <GroupIcon size={11} className="flex-shrink-0 opacity-60" />}
+        {GroupIcon && <GroupIcon size={13} className="flex-shrink-0 opacity-60" />}
         <span
           className="font-mono uppercase flex-1 text-left"
-          style={{ fontSize: '10px', letterSpacing: '1.2px' }}
+          style={{ fontSize: '11px', letterSpacing: '1.2px' }}
         >
           {group.label}
         </span>
@@ -289,11 +304,11 @@ function NavItem({
         title={collapsed ? item.label : item.description}
         className={clsx(
           'group w-full flex items-center gap-2.5 rounded-lg transition-all duration-200 relative',
-          collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-[7px]',
+          collapsed ? 'px-0 py-2.5 justify-center' : 'px-3 py-2',
         )}
         style={{
           fontFamily: 'var(--font-body)',
-          fontSize: '13px',
+          fontSize: '14px',
           fontWeight: isActive ? 500 : 400,
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           background: isActive ? 'rgba(0, 212, 255, 0.08)' : 'transparent',
@@ -321,7 +336,7 @@ function NavItem({
           />
         )}
         <Icon
-          size={16}
+          size={18}
           className="flex-shrink-0 transition-colors duration-200"
           style={{
             color: isActive ? 'var(--accent-cyan)' : undefined,
@@ -521,7 +536,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
     <aside
       className={clsx(
         'transition-all duration-300 flex flex-col relative z-10',
-        sidebarCollapsed ? 'w-[52px]' : 'w-[260px]',
+        sidebarCollapsed ? 'w-[52px]' : 'w-[280px]',
       )}
       style={{
         background: 'var(--sidebar)',
@@ -688,7 +703,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             style={{
               color: currentPage === 'settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
               background: currentPage === 'settings' ? 'rgba(0, 212, 255, 0.08)' : 'transparent',
-              fontSize: '13px',
+              fontSize: '14px',
             }}
             onMouseEnter={(e) => {
               if (currentPage !== 'settings') {
