@@ -79,7 +79,8 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-597 | `infra` | `.github/workflows/ci.yml` | GitHub Actions Billing 问题导致所有 CI 运行失败(15+ 次连续 failure) — 错误信息 "recent account payments have failed or your spending limit needs to be increased"。代码层已优化(路径过滤/缓存/Makefile ci-local)，**需用户去 GitHub Settings > Billing & Plans 处理付款或提高限额** | 2026-04-19 |
+| HI-597 | `infra` | `.github/workflows/ci.yml` | ~~GitHub Actions Billing 问题导致所有 CI 运行失败(15+ 次连续 failure)~~ → **已修复 2026-04-19**: 仓库从私有改为公开（公开仓库 Actions 免费无限）+ git filter-repo 彻底清除历史密钥后安全公开 | 2026-04-19 |
+| HI-598 | `security` | `.openclaw/.env` (git历史) | 🔴 **安全事件**: 仓库公开后 OpenRouter 扫描到历史提交 `a4900753` 中的 API Key (sk-or-v1-...7e33)。OpenRouter 已自动禁用该 Key。**根因**: 之前的 git filter-repo 未彻底清理 6 个含 .env 的历史提交。**已修复**: 重新执行 git filter-repo 清除 .openclaw/.env + config/.env + .openclaw/agents/ + delivery-queue/ 等全部敏感路径，force push 覆盖远端历史。**需要轮换**: TAVILY_API_KEY + 所有可能泄露的密钥 | 2026-04-19 |
 
 ### 🟠 重要
 
