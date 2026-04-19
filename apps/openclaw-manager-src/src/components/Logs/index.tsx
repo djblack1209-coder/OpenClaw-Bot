@@ -4,15 +4,9 @@
  */
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import clsx from 'clsx';
 import {
   Terminal,
-  Info,
-  AlertTriangle,
-  XCircle,
-  CheckCircle2,
   HardDrive,
-  BarChart3,
 } from 'lucide-react';
 
 /* ====== 入场动画 ====== */
