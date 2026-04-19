@@ -1,419 +1,306 @@
-import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import {
-  Blocks, Search, Plus, Settings2, Trash2,
-  GitBranch, Database, Globe, HardDrive,
-  RefreshCw, AlertCircle, User, Loader2,
-  type LucideIcon,
-} from 'lucide-react';
+/**
+ * Plugins — MCP 插件管理页面 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { toast } from 'sonner';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { PromptDialog } from '@/components/ui/prompt-dialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { isTauri } from '../../lib/tauri';
-import { createLogger } from '@/lib/logger';
+import {
+  Blocks, Wifi, WifiOff, Power,
+  Terminal, Radio,
+} from 'lucide-react';
 
-// 插件管理模块日志实例
-const pluginsLogger = createLogger('Plugins');
-
-interface MCPPlugin {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  author: string;
-  type: 'stdio' | 'sse';
-  status: 'running' | 'configured' | 'stopped' | 'error';
-  icon: LucideIcon;
-  tags: string[];
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-}
-
-const fallbackIcon = Blocks;
-
-const getIconForPlugin = (id: string) => {
-  if (id.includes('github')) return GitBranch;
-  if (id.includes('sqlite') || id.includes('db')) return Database;
-  if (id.includes('browser')) return Globe;
-  if (id.includes('file') || id.includes('fs')) return HardDrive;
-  return fallbackIcon;
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+/** 插件信息 */
+interface Plugin {
+  name: string;
+  version: string;
+  status: 'running' | 'stopped';
+  protocol: 'stdio' | 'sse' | 'ws';
+}
+
+const PLUGINS: Plugin[] = [
+  { name: '@mcp/server-filesystem', version: '1.2.0', status: 'running', protocol: 'stdio' },
+  { name: '@mcp/server-github', version: '0.9.3', status: 'running', protocol: 'stdio' },
+  { name: '@mcp/server-sqlite', version: '2.0.1', status: 'running', protocol: 'stdio' },
+  { name: 'browser-use-mcp', version: '0.4.7', status: 'running', protocol: 'sse' },
+  { name: 'crawl4ai-server', version: '1.1.0', status: 'stopped', protocol: 'sse' },
+  { name: 'custom-memory-mcp', version: '0.2.0', status: 'stopped', protocol: 'ws' },
+];
+
+/** 协议状态 */
+interface ProtocolStatus {
+  name: string;
+  label: string;
+  connections: number;
+  status: 'active' | 'idle';
+  color: string;
+}
+
+const PROTOCOLS: ProtocolStatus[] = [
+  { name: 'MCP / stdio', label: 'STDIO', connections: 3, status: 'active', color: 'var(--accent-green)' },
+  { name: 'MCP / SSE', label: 'SSE', connections: 1, status: 'active', color: 'var(--accent-cyan)' },
+  { name: 'WebSocket', label: 'WS', connections: 0, status: 'idle', color: 'var(--text-disabled)' },
+];
+
+/** 最近事件日志 */
+const LOGS = [
+  { ts: '14:28:05', msg: '[PLUGIN] server-filesystem 重连成功 — PID 42851' },
+  { ts: '13:45:12', msg: '[PLUGIN] browser-use-mcp SSE 心跳正常 — 延迟 23ms' },
+  { ts: '12:30:00', msg: '[PLUGIN] crawl4ai-server 已停用 — 手动关闭' },
+  { ts: '11:15:33', msg: '[PLUGIN] server-github 接收 12 个工具调用' },
+  { ts: '09:00:01', msg: '[SYSTEM] 插件守护进程启动 — 监控 6 个实例' },
+];
+
+/* ====== 工具函数 ====== */
+
+/** 协议标签颜色 */
+function protocolColor(p: string) {
+  if (p === 'stdio') return 'var(--accent-green)';
+  if (p === 'sse') return 'var(--accent-cyan)';
+  return 'var(--accent-purple)';
+}
+
+/* ====== 主组件 ====== */
+
 export function Plugins() {
-  const [plugins, setPlugins] = useState<MCPPlugin[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  // 卸载确认对话框状态
-  const [uninstallTarget, setUninstallTarget] = useState<MCPPlugin | null>(null);
-  // 安装新插件对话框
-  const [showInstallDialog, setShowInstallDialog] = useState(false);
-  // 配置插件对话框
-  const [configTarget, setConfigTarget] = useState<MCPPlugin | null>(null);
-
-  const fetchPlugins = useCallback(async () => {
-    if (!isTauri()) {
-      // 非 Tauri 环境显示空列表
-      setPlugins([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const data = await invoke<MCPPlugin[]>('get_mcp_plugins');
-      if (data && data.length > 0) {
-        // 字符串图标名映射为 Lucide 组件
-        const mapped = data.map(p => ({
-          ...p,
-          icon: getIconForPlugin(p.id)
-        }));
-        setPlugins(mapped);
-      } else {
-        // 无已安装插件，显示空状态
-        setPlugins([]);
-      }
-    } catch (e) {
-      pluginsLogger.error('获取插件列表失败', e);
-      setPlugins([]);
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPlugins();
-  }, [fetchPlugins]);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchPlugins();
-  };
-
-  const togglePlugin = async (id: string, currentStatus: string) => {
-    const isActive = currentStatus === 'running' || currentStatus === 'configured';
-    // 乐观更新：开启时预设为 running，关闭时预设为 stopped
-    const targetStatus: MCPPlugin['status'] = isActive ? 'stopped' : 'running';
-
-    setPlugins(prev => prev.map(p => {
-      if (p.id === id) return { ...p, status: targetStatus };
-      return p;
-    }));
-
-    if (isTauri()) {
-      try {
-        if (isActive) {
-          // 停止插件进程
-          await invoke('stop_mcp_plugin', { id });
-          toast.success('插件已停止');
-        } else {
-          // 启动插件进程
-          await invoke('start_mcp_plugin', { id });
-          toast.success('插件已启动');
-        }
-      } catch (e) {
-        const errMsg = typeof e === 'string' ? e : (e instanceof Error ? e.message : '未知错误');
-        pluginsLogger.error('切换插件状态失败', e);
-        toast.error(`操作失败: ${errMsg}`);
-        // 失败时回滚到服务端真实状态
-        fetchPlugins();
-      }
-    }
-  };
-
-  // 安装新 MCP 插件 — 通过名称和命令创建插件配置
-  const handleInstallPlugin = async (input: string) => {
-    if (!input.trim()) return;
-    const name = input.trim();
-    // 生成插件 ID（npm 包名或自定义名称）
-    const id = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
-
-    const newPlugin = {
-      id,
-      name,
-      description: `通过 MCP 协议接入的 ${name} 服务`,
-      version: '1.0.0',
-      author: 'custom',
-      type: 'stdio',
-      status: 'configured',
-      icon: 'blocks',
-      tags: ['custom'],
-      command: 'npx',
-      args: ['-y', name],
-      env: {},
-    };
-
-    try {
-      if (isTauri()) {
-        await invoke('save_mcp_plugin', { plugin: newPlugin });
-      }
-      toast.success(`插件 ${name} 已添加，请在列表中开启`);
-      fetchPlugins();
-    } catch (e) {
-      pluginsLogger.error('安装插件失败', e);
-      toast.error('插件安装失败，请检查名称是否正确');
-    }
-  };
-
-  // 更新插件配置（命令、参数、环境变量）
-  const handleConfigPlugin = async (input: string) => {
-    if (!configTarget || !input.trim()) return;
-    try {
-      const updated = { ...configTarget, command: input.trim(), icon: 'blocks' };
-      if (isTauri()) {
-        await invoke('save_mcp_plugin', { plugin: updated });
-      }
-      toast.success(`插件 ${configTarget.name} 配置已更新`);
-      setConfigTarget(null);
-      fetchPlugins();
-    } catch (e) {
-      pluginsLogger.error('配置插件失败', e);
-      toast.error('配置更新失败');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-      </div>
-    );
-  }
-
-  const filteredPlugins = plugins.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const activeCount = plugins.filter(p => p.status === 'running' || p.status === 'configured').length;
+  const running = PLUGINS.filter((p) => p.status === 'running').length;
+  const stopped = PLUGINS.filter((p) => p.status === 'stopped').length;
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2 pb-10">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-dark-800/40 p-6 rounded-2xl border border-dark-600/50 backdrop-blur-sm">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Blocks className="text-purple-400 h-6 w-6" />
-              MCP 插件市场 (Model Context Protocol)
-            </h2>
-            <p className="text-gray-400 text-sm mt-2 max-w-2xl leading-relaxed">
-              彻底告别硬编码工具链。通过 Anthropic 标准的 MCP 协议，为 OpenClaw 接入本地文件、数据库、GitHub 等无限外部能力。
-            </p>
-          </div>
-          
-          <div className="flex gap-3">
-            <div className="flex flex-col items-end justify-center px-4 py-2 rounded-xl bg-dark-900/80 border border-dark-700 shadow-inner">
-              <span className="text-2xl font-bold text-white leading-none">{activeCount}<span className="text-sm text-gray-500 font-normal ml-1">/ {plugins.length}</span></span>
-              <span className="text-xs text-green-400 font-medium flex items-center gap-1 mt-1">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
-                </span>
-                活跃服务
-              </span>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 插件列表 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            {/* 标题行 */}
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(167,139,250,0.12)' }}
+              >
+                <Blocks size={20} style={{ color: 'var(--accent-purple)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  PROTOCOL BRIDGE
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  MCP 插件管理 // MODEL CONTEXT PROTOCOL
+                </p>
+              </div>
             </div>
-            <button onClick={() => setShowInstallDialog(true)} className="btn-primary shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 flex items-center gap-2 h-auto px-5 transition-transform hover:scale-105 active:scale-95">
-              <Plus size={18} /> 安装新插件
-            </button>
-          </div>
-        </div>
 
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            <input
-              type="text"
-              placeholder="搜索 MCP 插件..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-dark-800 border border-dark-600 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-gray-600"
-              aria-label="搜索插件"
-            />
-          </div>
-          <button 
-            onClick={handleRefresh}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors bg-dark-800 px-4 py-2.5 rounded-xl border border-dark-600 hover:border-dark-500"
-          >
-            <RefreshCw size={16} className={clsx(isRefreshing && "animate-spin")} />
-            刷新状态
-          </button>
-        </div>
-
-        {/* Plugin Grid */}
-        {plugins.length === 0 ? (
-          /* 无已安装插件时的空状态提示 */
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-dark-800/30 rounded-2xl border border-dashed border-dark-600">
-            <Blocks className="w-12 h-12 text-dark-500 mb-4" />
-            <p className="text-base font-medium text-gray-300 mb-1">暂无已安装的 MCP 插件</p>
-            <p className="text-sm text-gray-500">点击「安装新插件」添加。</p>
-          </div>
-        ) : filteredPlugins.length === 0 ? (
-          /* 搜索无结果时的占位提示 */
-          <div className="flex flex-col items-center justify-center h-32 text-dark-500">
-            <p className="text-sm">未找到匹配的插件</p>
-            <p className="text-xs mt-1">试试其他关键词</p>
-          </div>
-        ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {filteredPlugins.map((plugin) => (
-            <Card 
-              key={plugin.id} 
-              className={clsx(
-                "bg-dark-800/60 border-dark-600 shadow-lg hover:border-dark-500 transition-all overflow-hidden group",
-                plugin.status === 'running' && "border-l-2 border-l-green-500",
-                plugin.status === 'configured' && "border-l-2 border-l-yellow-500"
-              )}
+            {/* 表头 */}
+            <div
+              className="grid grid-cols-12 gap-2 px-4 py-2 rounded-lg mb-1"
+              style={{ background: 'var(--bg-tertiary)' }}
             >
-              <CardHeader className="pb-3 pt-5 px-5 flex flex-row items-start justify-between space-y-0 border-b border-dark-700/50">
-                <div className="flex gap-3">
-                  <div className={clsx(
-                    "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm transition-colors",
-                    (plugin.status === 'running' || plugin.status === 'configured') ? "bg-dark-900 border-dark-700" : "bg-dark-900/50 border-dark-800 opacity-60"
-                  )}>
-                    {plugin.icon && <plugin.icon size={24} className={clsx(
-                      plugin.status === 'running' ? "text-purple-400" : plugin.status === 'configured' ? "text-yellow-400" : "text-gray-500"
-                    )} />}
-                  </div>
-                  <div className="space-y-1 min-w-0">
-                    <CardTitle className="text-base font-bold text-white truncate group-hover:text-purple-400 transition-colors" title={plugin.name}>
-                      {plugin.name}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 font-mono">{plugin.version}</span>
-                      <span className="text-gray-700 text-xs">•</span>
-                      <span className="text-xs text-gray-500 flex items-center gap-1 truncate">
-                        <User size={10} /> {plugin.author}
+              <span className="text-label col-span-5" style={{ fontSize: '10px' }}>名称</span>
+              <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>版本</span>
+              <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>协议</span>
+              <span className="text-label col-span-1 text-center" style={{ fontSize: '10px' }}>状态</span>
+              <span className="text-label col-span-2 text-right" style={{ fontSize: '10px' }}>开关</span>
+            </div>
+
+            {/* 插件行 */}
+            <div className="flex-1 space-y-1">
+              {PLUGINS.map((pl) => {
+                const isOn = pl.status === 'running';
+                const pc = protocolColor(pl.protocol);
+                return (
+                  <div
+                    key={pl.name}
+                    className="grid grid-cols-12 gap-2 items-center py-3 px-4 rounded-lg"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    {/* 名称 */}
+                    <span className="font-mono text-xs col-span-5 truncate" style={{ color: 'var(--text-primary)' }}>
+                      {pl.name}
+                    </span>
+                    {/* 版本 */}
+                    <span className="font-mono text-[10px] col-span-2 text-center" style={{ color: 'var(--text-disabled)' }}>
+                      v{pl.version}
+                    </span>
+                    {/* 协议类型 */}
+                    <div className="col-span-2 flex justify-center">
+                      <span
+                        className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider"
+                        style={{ background: `${pc}15`, color: pc }}
+                      >
+                        {pl.protocol.toUpperCase()}
                       </span>
                     </div>
+                    {/* 状态点 */}
+                    <div className="col-span-1 flex justify-center">
+                      <span
+                        className={clsx('w-2 h-2 rounded-full', isOn && 'animate-pulse')}
+                        style={{ background: isOn ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                      />
+                    </div>
+                    {/* 开关按钮 */}
+                    <div className="col-span-2 flex justify-end">
+                      <button
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-[10px] tracking-wider transition-colors"
+                        style={{
+                          background: isOn ? 'rgba(0,255,170,0.1)' : 'rgba(255,255,255,0.04)',
+                          color: isOn ? 'var(--accent-green)' : 'var(--text-disabled)',
+                        }}
+                      >
+                        <Power size={10} />
+                        {isOn ? '运行中' : '已停用'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <Switch 
-                  checked={plugin.status === 'running' || plugin.status === 'configured'} 
-                  onCheckedChange={() => togglePlugin(plugin.id, plugin.status)}
-                  className="data-[state=checked]:bg-green-500"
-                />
-              </CardHeader>
-              
-              <CardContent className="p-5">
-                <p className="text-sm text-gray-400 h-10 line-clamp-2 mb-4 leading-relaxed">
-                  {plugin.description}
-                </p>
-                
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex flex-wrap gap-1.5">
-                    {plugin.tags.map(tag => (
-                      <Badge key={tag} variant="outline" className="bg-dark-900/50 border-dark-700 text-gray-400 text-[10px] py-0 font-medium">
-                        #{tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  <Badge variant="secondary" className="bg-dark-900 text-gray-300 font-mono text-[10px]">
-                    {plugin.type.toUpperCase()}
-                  </Badge>
-                </div>
-
-                <div className="flex items-center justify-between pt-4 border-t border-dark-700/50 mt-auto">
-                  <div className="flex items-center gap-1.5">
-                    {plugin.status === 'running' ? (
-                      <Badge className="bg-green-500/10 text-green-400 hover:bg-green-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 已连接
-                      </Badge>
-                    ) : plugin.status === 'configured' ? (
-                      <Badge className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span> 已配置
-                      </Badge>
-                    ) : plugin.status === 'error' ? (
-                      <Badge className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border-none px-2 shadow-none gap-1.5">
-                        <AlertCircle size={10} /> 已失败
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 border-none px-2 shadow-none gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span> 已停用
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <button onClick={() => setConfigTarget(plugin)} className="p-1.5 text-gray-500 hover:text-white hover:bg-dark-700 rounded-md transition-colors" title="配置" aria-label="配置插件">
-                      <Settings2 size={16} />
-                    </button>
-                    <button onClick={() => setUninstallTarget(plugin)} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="卸载" aria-label="卸载插件">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          
-          {/* Add Custom Plugin Card */}
-          <button onClick={() => setShowInstallDialog(true)} className="flex flex-col items-center justify-center gap-3 bg-dark-900/30 border-2 border-dashed border-dark-600 hover:border-purple-500/50 hover:bg-dark-800/50 transition-all rounded-xl h-[260px] text-gray-500 hover:text-purple-400 group">
-            <div className="w-14 h-14 rounded-full bg-dark-800 border border-dark-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-              <Plus size={24} />
+                );
+              })}
             </div>
-            <div className="text-center">
-              <p className="font-semibold text-white group-hover:text-purple-400 transition-colors mb-1">自定义 MCP Server</p>
-              <p className="text-xs text-gray-500 max-w-[200px]">通过 NPM, NPX, PIP 或 Docker 镜像挂载外部插件</p>
+          </div>
+        </motion.div>
+
+        {/* ====== 插件统计 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+              PLUGIN STATS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              插件统计
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4 flex-1">
+              {[
+                { label: '已安装', value: PLUGINS.length, color: 'var(--accent-cyan)' },
+                { label: '运行中', value: running, color: 'var(--accent-green)' },
+                { label: '已停用', value: stopped, color: 'var(--accent-red)' },
+                { label: '可用市场', value: 18, color: 'var(--accent-amber)' },
+              ].map((s) => (
+                <div key={s.label}>
+                  <span className="text-label">{s.label}</span>
+                  <div className="text-metric mt-1" style={{ color: s.color }}>
+                    {s.value}
+                  </div>
+                </div>
+              ))}
             </div>
-          </button>
-        </div>
-        )}
-      </div>
 
-      {/* 卸载确认对话框 */}
-      <ConfirmDialog
-        open={!!uninstallTarget}
-        onClose={() => setUninstallTarget(null)}
-        onConfirm={() => {
-          if (!uninstallTarget) return;
-          setPlugins(prev => prev.filter(p => p.id !== uninstallTarget.id));
-          toast.success(`已卸载 ${uninstallTarget.name}`);
-          if (isTauri()) {
-            // 如果插件正在运行，先停止进程再删除配置
-            const stopFirst = uninstallTarget.status === 'running'
-              ? invoke('stop_mcp_plugin', { id: uninstallTarget.id }).catch(() => {})
-              : Promise.resolve();
-            stopFirst.then(() =>
-              invoke('remove_mcp_plugin', { id: uninstallTarget.id })
-            ).catch((err: unknown) => pluginsLogger.error('卸载插件失败', err));
-          }
-          setUninstallTarget(null);
-        }}
-        title="卸载插件"
-        description={`确定要卸载插件「${uninstallTarget?.name ?? ''}」吗？`}
-        confirmText="卸载"
-        destructive
-      />
+            {/* 连接总览条 */}
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <span className="text-label">CONNECTION HEALTH</span>
+              <div className="flex items-center gap-2 mt-2">
+                <Wifi size={14} style={{ color: 'var(--accent-green)' }} />
+                <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                  {running} 连接活跃
+                </span>
+                <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--text-disabled)' }}>
+                  延迟 &lt;50ms
+                </span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
-      {/* 安装新插件对话框 */}
-      <PromptDialog
-        open={showInstallDialog}
-        onClose={() => setShowInstallDialog(false)}
-        onConfirm={handleInstallPlugin}
-        title="安装 MCP 插件"
-        description="输入 NPM 包名（如 @modelcontextprotocol/server-filesystem）或自定义服务名称。安装后可在列表中配置启动命令和环境变量。"
-        placeholder="例: @modelcontextprotocol/server-github"
-        confirmText="安装"
-      />
+        {/* ====== 协议状态 (col-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+              PROTOCOL STATUS
+            </span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+              协议状态
+            </h3>
 
-      {/* 配置插件对话框 */}
-      <PromptDialog
-        open={!!configTarget}
-        onClose={() => setConfigTarget(null)}
-        onConfirm={handleConfigPlugin}
-        title={`配置插件: ${configTarget?.name ?? ''}`}
-        description={`当前启动命令: ${configTarget?.command ?? '未设置'} ${(configTarget?.args ?? []).join(' ')}\n请输入新的启动命令（如 npx -y @mcp/server-xxx）`}
-        placeholder={configTarget?.command ?? 'npx -y @mcp/server-xxx'}
-        confirmText="保存配置"
-      />
+            <div className="flex-1 space-y-3">
+              {PROTOCOLS.map((pr) => {
+                const isActive = pr.status === 'active';
+                return (
+                  <div
+                    key={pr.name}
+                    className="flex items-center justify-between py-3 px-4 rounded-lg"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isActive ? (
+                        <Radio size={14} style={{ color: pr.color }} />
+                      ) : (
+                        <WifiOff size={14} style={{ color: pr.color }} />
+                      )}
+                      <div>
+                        <p className="font-mono text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {pr.name}
+                        </p>
+                        <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                          {isActive ? '连接正常' : '无活跃连接'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-sm font-bold" style={{ color: pr.color }}>
+                        {pr.connections}
+                      </p>
+                      <span className="text-label" style={{ fontSize: '9px' }}>连接数</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 最近事件 (col-6) ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
+                  RECENT EVENTS
+                </span>
+                <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
+                  最近事件
+                </h3>
+              </div>
+              <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
+                <Terminal size={12} className="inline mr-1" />LIVE
+              </span>
+            </div>
+
+            <div
+              className="flex-1 rounded-lg p-4 space-y-1.5 overflow-hidden"
+              style={{ background: 'var(--bg-base)' }}
+            >
+              {LOGS.map((l, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="font-mono text-[10px] shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                    {l.ts}
+                  </span>
+                  <span className="font-mono text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    {l.msg}
+                  </span>
+                </div>
+              ))}
+              <span className="font-mono text-[10px] animate-pulse" style={{ color: 'var(--accent-purple)' }}>
+                █
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

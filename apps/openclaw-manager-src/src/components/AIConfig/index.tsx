@@ -1,377 +1,310 @@
-import { useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { invoke } from '@tauri-apps/api/core';
-import {
-  Loader2,
-  Plus,
-  Star,
-  Sparkles,
-  Zap,
-  CheckCircle,
-  XCircle,
-  Cpu,
-  Server,
-} from 'lucide-react';
+/**
+ * AIConfig — AI 模型配置 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { toast } from 'sonner';
-import { aiLogger } from '../../lib/logger';
-import { api, isTauri, type ProjectContext } from '../../lib/tauri';
-import ProviderDialog from './ProviderDialog';
-import ProviderCard from './ProviderCard';
-import type {
-  OfficialProvider,
-  ConfiguredProvider,
-  AIConfigOverview,
-  AITestResult,
-} from './types';
+import {
+  Cpu,
+  Zap,
+  DollarSign,
+  BarChart3,
+  Terminal,
+  CheckCircle2,
+} from 'lucide-react';
 
-// 重新导出类型，方便外部使用
-export type {
-  SuggestedModel,
-  OfficialProvider,
-  ConfiguredModel,
-  ConfiguredProvider,
-  AIConfigOverview,
-  ModelConfig,
-  AITestResult,
-} from './types';
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
+};
 
-// ============ 主组件 ============
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
+/* ====== 模拟数据 ====== */
+
+interface Model {
+  name: string;
+  provider: string;
+  status: 'online' | 'offline' | 'degraded';
+  latency: string;
+  callsToday: number;
+  cost: string;
+}
+
+const MODELS: Model[] = [
+  { name: 'GPT-4o', provider: 'OpenAI', status: 'online', latency: '320ms', callsToday: 2847, cost: '$4.20' },
+  { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', status: 'online', latency: '450ms', callsToday: 1256, cost: '$3.80' },
+  { name: 'DeepSeek V3', provider: 'DeepSeek', status: 'degraded', latency: '890ms', callsToday: 3421, cost: '$0.60' },
+  { name: 'Qwen 72B', provider: 'SiliconFlow', status: 'online', latency: '280ms', callsToday: 1890, cost: '$1.20' },
+  { name: 'Gemini 2.0', provider: 'Google', status: 'online', latency: '210ms', callsToday: 956, cost: '$1.80' },
+  { name: 'Llama 3.1', provider: 'Groq', status: 'offline', latency: '—', callsToday: 0, cost: '$0.00' },
+];
+
+const STRATEGIES = ['智能路由', '成本优先', '质量优先', '速度优先'];
+
+const COST_STATS = [
+  { label: '今日费用', value: '$12.40', color: 'var(--accent-cyan)' },
+  { label: '本周', value: '$68.20', color: 'var(--accent-green)' },
+  { label: '本月', value: '$245.80', color: 'var(--accent-amber)' },
+  { label: '预算', value: '$500', color: 'var(--text-disabled)' },
+];
+
+interface PerfBar { name: string; ms: number; color: string }
+const PERF_BARS: PerfBar[] = [
+  { name: 'Gemini 2.0', ms: 210, color: 'var(--accent-green)' },
+  { name: 'Qwen 72B', ms: 280, color: 'var(--accent-green)' },
+  { name: 'GPT-4o', ms: 320, color: 'var(--accent-cyan)' },
+  { name: 'Claude 3.5', ms: 450, color: 'var(--accent-amber)' },
+  { name: 'DeepSeek V3', ms: 890, color: 'var(--accent-red)' },
+];
+
+const CALL_LOGS = [
+  { time: '14:48:22', model: 'GPT-4o', duration: '1.2s', tokens: 847 },
+  { time: '14:47:55', model: 'DeepSeek V3', duration: '3.4s', tokens: 2100 },
+  { time: '14:47:30', model: 'Qwen 72B', duration: '0.8s', tokens: 560 },
+  { time: '14:46:12', model: 'Claude 3.5', duration: '2.1s', tokens: 1340 },
+  { time: '14:45:58', model: 'Gemini 2.0', duration: '0.6s', tokens: 420 },
+];
+
+/* ====== 工具函数 ====== */
+
+function statusDot(status: Model['status']) {
+  if (status === 'online') return 'var(--accent-green)';
+  if (status === 'degraded') return 'var(--accent-amber)';
+  return 'var(--accent-red)';
+}
+
+function statusLabel(status: Model['status']) {
+  if (status === 'online') return '在线';
+  if (status === 'degraded') return '降级';
+  return '离线';
+}
+
+function renderBar(value: number, max: number, width: number = 20): string {
+  const ratio = value / max;
+  const filled = Math.round(ratio * width);
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/* ====== 主组件 ====== */
 
 export function AIConfig() {
-  const [loading, setLoading] = useState(true);
-  const [officialProviders, setOfficialProviders] = useState<OfficialProvider[]>([]);
-  const [aiConfig, setAiConfig] = useState<AIConfigOverview | null>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [editingProvider, setEditingProvider] = useState<ConfiguredProvider | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<AITestResult | null>(null);
-  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
-
-  const handleEditProvider = (provider: ConfiguredProvider) => {
-    setEditingProvider(provider);
-    setShowAddDialog(true);
-  };
-
-  const handleCloseDialog = () => {
-    setShowAddDialog(false);
-    setEditingProvider(null);
-  };
-
-  const runAITest = async () => {
-    aiLogger.action('测试 AI 连接');
-    if (!isTauri()) {
-      toast.error('请通过 OpenClaw 桌面应用启动后使用此功能');
-      return;
-    }
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await invoke<AITestResult>('test_ai_connection');
-      setTestResult(result);
-      if (result.success) {
-        aiLogger.info(`✅ AI 连接测试成功，延迟: ${result.latency_ms}ms`);
-      } else {
-        aiLogger.warn(`❌ AI 连接测试失败: ${result.error}`);
-      }
-    } catch (e) {
-      aiLogger.error('AI 测试失败', e);
-      setTestResult({
-        success: false,
-        provider: 'unknown',
-        model: 'unknown',
-        response: null,
-        error: String(e),
-        latency_ms: null,
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const loadData = useCallback(async () => {
-    aiLogger.info('AIConfig 组件加载数据...');
-    setError(null);
-    
-    // 非 Tauri 环境下优雅降级：显示空状态而非错误
-    if (!isTauri()) {
-      aiLogger.warn('不在 Tauri 环境中，AI 配置使用离线模式');
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      const [officials, config] = await Promise.all([
-        invoke<OfficialProvider[]>('get_official_providers'),
-        invoke<AIConfigOverview>('get_ai_config'),
-      ]);
-      setOfficialProviders(officials);
-      setAiConfig(config);
-      try {
-        const context = await api.getProjectContext();
-        setProjectContext(context);
-      } catch (e) {
-        aiLogger.debug('[AIConfig] 获取项目上下文失败:', e);
-      }
-      aiLogger.info(`加载完成: ${officials.length} 个官方服务商, ${config.configured_providers.length} 个已配置`);
-    } catch (e) {
-      aiLogger.error('加载 AI 配置失败', e);
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleSetPrimary = async (modelId: string) => {
-    try {
-      await invoke('set_primary_model', { modelId });
-      aiLogger.info(`主模型已设置为: ${modelId}`);
-      toast.success('主模型已切换，重启后端服务后生效');
-      loadData();
-    } catch (e) {
-      aiLogger.error('设置主模型失败', e);
-      toast.error('设置失败: ' + e);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-claw-500" />
-      </div>
-    );
-  }
+  const [strategy, setStrategy] = useState('智能路由');
+  const maxMs = Math.max(...PERF_BARS.map((p) => p.ms));
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2">
-      <div className="max-w-4xl space-y-6">
-        {/* 错误提示 */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 text-red-300">
-            <p className="font-medium mb-1">加载配置失败</p>
-            <p className="text-sm text-red-400">{error}</p>
-            <button 
-              onClick={loadData}
-              className="mt-2 text-sm text-red-300 hover:text-white underline"
-            >
-              重试
-            </button>
-          </div>
-        )}
-
-        {/* 概览卡片 */}
-        <div className="bg-gradient-to-br from-dark-700 to-dark-800 rounded-2xl p-6 border border-dark-500">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <Sparkles size={22} className="text-claw-400" />
-                AI 模型配置
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                管理 OpenClaw 使用的 AI 服务商、主模型和统一号池接入
-              </p>
-            </div>
-            <button
-              onClick={() => setShowAddDialog(true)}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus size={16} />
-              添加服务商
-            </button>
-          </div>
-
-          {/* 主模型显示 */}
-          <div className="bg-dark-600/50 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-claw-500/20 flex items-center justify-center">
-              <Star size={24} className="text-claw-400" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-gray-400">当前主模型</p>
-              {aiConfig?.primary_model ? (
-                <p className="text-lg font-medium text-white">{aiConfig.primary_model}</p>
-              ) : (
-                <p className="text-lg text-gray-500">未设置</p>
-              )}
-            </div>
-            <div className="text-right mr-4">
-              <p className="text-sm text-gray-500">
-                {aiConfig?.configured_providers.length || 0} 个服务商配置
-              </p>
-              <p className="text-sm text-gray-500">
-                {aiConfig?.available_models.length || 0} 个可用模型
-              </p>
-            </div>
-            <button
-              onClick={runAITest}
-              disabled={testing || !aiConfig?.primary_model}
-              className="btn-secondary flex items-center gap-2"
-            >
-              {testing ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                <Zap size={16} />
-              )}
-              测试连接
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-dark-500 bg-dark-800/40 p-4 text-sm text-gray-400 space-y-1.5">
-            <p className="text-white font-medium">当前项目号池口径</p>
-            <p>主链：SiliconFlow / iflow / Groq / Gemini</p>
-            <p>补位：Cerebras / OpenRouter / NVIDIA / Volcengine</p>
-            <p>兜底：Mistral / Cohere / GPT_API_Free / g4f</p>
-            <p>付费 Claude 不再自动兜底，只有显式 <code className="text-claw-400">/claude</code> 才会走。</p>
-          </div>
-
-          {/* AI 测试结果 */}
-          {testResult && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={clsx(
-                'mt-4 p-4 rounded-xl',
-                testResult.success ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
-              )}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                {testResult.success ? (
-                  <CheckCircle size={20} className="text-green-400" />
-                ) : (
-                  <XCircle size={20} className="text-red-400" />
-                )}
-                <div className="flex-1">
-                  <p className={clsx('font-medium', testResult.success ? 'text-green-400' : 'text-red-400')}>
-                    {testResult.success ? '连接成功' : '连接失败'}
-                  </p>
-                  {testResult.latency_ms && (
-                    <p className="text-xs text-gray-400">响应时间: {testResult.latency_ms}ms</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setTestResult(null)}
-                  className="text-gray-500 hover:text-white text-sm"
-                >
-                  关闭
-                </button>
-              </div>
-              
-              {testResult.response && (
-                <div className="mt-2 p-3 bg-dark-700 rounded-lg">
-                  <p className="text-xs text-gray-400 mb-1">AI 响应:</p>
-                  <p className="text-sm text-white whitespace-pre-wrap">{testResult.response}</p>
-                </div>
-              )}
-              
-              {testResult.error && (
-                <div className="mt-2 p-3 bg-red-500/10 rounded-lg">
-                  <p className="text-xs text-red-400 mb-1">错误信息:</p>
-                  <p className="text-sm text-red-300 whitespace-pre-wrap">{testResult.error}</p>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </div>
-
-        {/* 已配置的服务商列表 */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white flex items-center gap-2">
-            <Server size={18} className="text-gray-500" />
-            已配置的服务商
-          </h3>
-
-          {aiConfig?.configured_providers.length === 0 ? (
-            <div className="bg-dark-700 rounded-xl border border-dark-500 p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-dark-600 flex items-center justify-center">
-                <Plus size={24} className="text-gray-500" />
-              </div>
-              <p className="text-gray-400 mb-4">还没有配置任何 AI 服务商</p>
-              <button
-                onClick={() => setShowAddDialog(true)}
-                className="btn-primary"
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 模型池总览 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(6,182,212,0.15)' }}
               >
-                添加第一个服务商
-              </button>
+                <Cpu size={20} style={{ color: 'var(--accent-cyan)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  LLM ROUTER
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  AI 模型配置 // MODEL POOL
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {aiConfig?.configured_providers.map(provider => (
-                <ProviderCard
-                  key={provider.name}
-                  provider={provider}
-                  officialProviders={officialProviders}
-                  onSetPrimary={handleSetPrimary}
-                  onRefresh={loadData}
-                  onEdit={handleEditProvider}
-                />
+
+            {/* 模型表头 */}
+            <div
+              className="grid gap-2 px-3 py-1.5 mb-1 font-mono text-[9px] tracking-wider"
+              style={{ gridTemplateColumns: '2fr 1fr 60px 70px 80px 60px', color: 'var(--text-disabled)' }}
+            >
+              <span>模型</span>
+              <span>提供商</span>
+              <span>状态</span>
+              <span>延迟</span>
+              <span>今日调用</span>
+              <span className="text-right">费用</span>
+            </div>
+
+            {/* 模型列表 */}
+            <div className="flex-1 space-y-1.5">
+              {MODELS.map((m) => (
+                <div
+                  key={m.name}
+                  className={clsx(
+                    'grid gap-2 items-center px-3 py-2.5 rounded-lg transition-colors',
+                    m.status === 'offline' && 'opacity-40',
+                  )}
+                  style={{ gridTemplateColumns: '2fr 1fr 60px 70px 80px 60px', background: 'var(--bg-secondary)' }}
+                >
+                  <span className="font-display text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                    {m.name}
+                  </span>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    {m.provider}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: statusDot(m.status) }} />
+                    <span className="font-mono text-[10px]" style={{ color: statusDot(m.status) }}>
+                      {statusLabel(m.status)}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    {m.latency}
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold" style={{ color: 'var(--accent-cyan)' }}>
+                    {m.callsToday.toLocaleString()}
+                  </span>
+                  <span className="font-mono text-[11px] text-right" style={{ color: 'var(--accent-green)' }}>
+                    {m.cost}
+                  </span>
+                </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        </motion.div>
 
-        {/* 可用模型列表 */}
-        {aiConfig && aiConfig.available_models.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white flex items-center gap-2">
-              <Cpu size={18} className="text-gray-500" />
-              可用模型列表
-              <span className="text-sm font-normal text-gray-500">
-                ({aiConfig.available_models.length} 个)
-              </span>
+        {/* ====== 路由策略 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>STRATEGY</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              路由策略
             </h3>
-            <div className="bg-dark-700 rounded-xl border border-dark-500 p-4">
-              <div className="flex flex-wrap gap-2">
-                {aiConfig.available_models.map(modelId => (
-                  <span
-                    key={modelId}
-                    className={clsx(
-                      'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm',
-                      modelId === aiConfig.primary_model
-                        ? 'bg-claw-500/20 text-claw-300 border border-claw-500/30'
-                        : 'bg-dark-600 text-gray-300'
-                    )}
+            <div className="flex-1 space-y-2">
+              {STRATEGIES.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStrategy(s)}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-left',
+                  )}
+                  style={{
+                    background: strategy === s ? 'rgba(6,182,212,0.12)' : 'var(--bg-secondary)',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderColor: strategy === s ? 'var(--accent-cyan)' : 'transparent',
+                  }}
+                >
+                  <div
+                    className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                    style={{
+                      borderColor: strategy === s ? 'var(--accent-cyan)' : 'var(--text-disabled)',
+                    }}
                   >
-                    {modelId === aiConfig.primary_model && <Star size={12} />}
-                    {modelId}
+                    {strategy === s && (
+                      <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-cyan)' }} />
+                    )}
+                  </div>
+                  <span
+                    className="font-display text-sm font-semibold"
+                    style={{ color: strategy === s ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}
+                  >
+                    {s}
                   </span>
-                ))}
+                </button>
+              ))}
+            </div>
+            <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
+              当前: {strategy} — 根据任务类型自动选择最优模型
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ====== 费用统计 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>COST</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              费用统计
+            </h3>
+            <div className="space-y-4 flex-1">
+              {COST_STATS.map((c) => (
+                <div key={c.label}>
+                  <span className="text-label">{c.label}</span>
+                  <p className="text-metric mt-0.5" style={{ color: c.color, fontSize: '22px' }}>{c.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-label">预算使用</span>
+                <span className="font-mono text-[11px]" style={{ color: 'var(--accent-amber)' }}>49.2%</span>
+              </div>
+              <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--accent-amber)' }}>
+                {renderBar(0.492, 1)}
               </div>
             </div>
           </div>
-        )}
+        </motion.div>
 
-        {/* 配置说明 */}
-        <div className="bg-dark-700/50 rounded-xl p-4 border border-dark-500">
-          <h4 className="text-sm font-medium text-gray-400 mb-2">配置说明</h4>
-          <ul className="text-sm text-gray-500 space-y-1">
-            <li>• 服务商配置保存在 <code className="text-claw-400">~/.openclaw/openclaw.json</code></li>
-            <li>• 当前项目: <code className="text-claw-400">{projectContext?.project_base_dir ?? '加载中...'}</code></li>
-            <li>• 当前工作区: <code className="text-claw-400">{projectContext?.workspace_dir ?? '加载中...'}</code></li>
-            <li>• 支持官方服务商（Anthropic、OpenAI、Kimi 等）和自定义 OpenAI/Anthropic 兼容接口</li>
-            <li>• 主模型用于 Agent 的默认推理，可随时切换</li>
-            <li>• 修改配置后需要重启服务生效</li>
-          </ul>
-        </div>
-      </div>
+        {/* ====== 模型性能对比 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>PERFORMANCE</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              响应时间对比
+            </h3>
+            <div className="flex-1 space-y-3">
+              {PERF_BARS.map((p) => (
+                <div key={p.name}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-display text-xs" style={{ color: 'var(--text-primary)' }}>{p.name}</span>
+                    <span className="font-mono text-[10px]" style={{ color: p.color }}>{p.ms}ms</span>
+                  </div>
+                  <div className="font-mono text-[10px] leading-none" style={{ color: p.color }}>
+                    {renderBar(p.ms, maxMs)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
 
-      {/* 添加/编辑服务商对话框 */}
-      <AnimatePresence>
-        {showAddDialog && (
-          <ProviderDialog
-            officialProviders={officialProviders}
-            onClose={handleCloseDialog}
-            onSave={() => {
-              loadData();
-              toast.success('服务商配置已保存，重启后端服务后生效');
-            }}
-            editingProvider={editingProvider}
-          />
-        )}
-      </AnimatePresence>
+        {/* ====== 调用日志 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <Terminal size={14} style={{ color: 'var(--accent-green)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>CALL LOG</span>
+            </div>
+            <div className="flex-1 space-y-2">
+              {CALL_LOGS.map((log, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <div>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{log.time}</span>
+                    <p className="font-display text-xs font-semibold mt-0.5" style={{ color: 'var(--text-primary)' }}>
+                      {log.model}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>{log.duration}</span>
+                    <p className="font-mono text-[10px] mt-0.5" style={{ color: 'var(--text-disabled)' }}>
+                      {log.tokens} tok
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

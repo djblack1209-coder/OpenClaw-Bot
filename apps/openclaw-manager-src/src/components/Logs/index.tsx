@@ -1,317 +1,291 @@
-import { useEffect, useState, useRef } from 'react';
-import { toast } from 'sonner';
-import { 
-  Trash2, 
-  RefreshCw, 
-  Download,
-  Filter,
-  Terminal,
-} from 'lucide-react';
+/**
+ * Logs — 应用日志 (Sonic Abyss Bento Grid 风格)
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ */
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { logStore, LogEntry } from '../../lib/logger';
+import {
+  Terminal,
+  Info,
+  AlertTriangle,
+  XCircle,
+  CheckCircle2,
+  HardDrive,
+  BarChart3,
+} from 'lucide-react';
 
-type FilterLevel = 'all' | 'debug' | 'info' | 'warn' | 'error';
-
-const LEVEL_COLORS: Record<string, string> = {
-  debug: 'text-gray-400',
-  info: 'text-green-400',
-  warn: 'text-yellow-400',
-  error: 'text-red-400',
+/* ====== 入场动画 ====== */
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
-const LEVEL_BG: Record<string, string> = {
-  debug: 'bg-gray-500/10',
-  info: 'bg-green-500/10',
-  warn: 'bg-yellow-500/10',
-  error: 'bg-red-500/10',
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-const MODULE_COLORS: Record<string, string> = {
-  App: 'text-purple-400',
-  Service: 'text-blue-400',
-  Config: 'text-emerald-400',
-  AI: 'text-pink-400',
-  Channel: 'text-orange-400',
-  Setup: 'text-cyan-400',
-  Dashboard: 'text-lime-400',
-  Testing: 'text-fuchsia-400',
-  API: 'text-amber-400',
-  Evolution: 'text-purple-400',
-  Memory: 'text-cyan-400',
-  Plugins: 'text-amber-400',
-  Settings: 'text-gray-300',
-  Social: 'text-pink-400',
-  Money: 'text-emerald-400',
-  Flow: 'text-sky-400',
-  Channels: 'text-lime-400',
+/* ====== 模拟数据 ====== */
+
+type LogLevel = 'INFO' | 'OK' | 'WARN' | 'ERROR';
+
+interface LogLine {
+  time: string;
+  level: LogLevel;
+  module: string;
+  msg: string;
+}
+
+const LEVEL_STYLE: Record<LogLevel, { color: string; bg: string }> = {
+  INFO: { color: 'var(--accent-cyan)', bg: 'rgba(6,182,212,0.12)' },
+  OK: { color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.12)' },
+  WARN: { color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.12)' },
+  ERROR: { color: 'var(--accent-red)', bg: 'rgba(239,68,68,0.12)' },
 };
+
+const ALL_LOGS: LogLine[] = [
+  { time: '14:48:22.341', level: 'INFO', module: 'gateway', msg: '收到 Telegram 消息 — 用户 @alice — 文本消息' },
+  { time: '14:48:22.445', level: 'OK', module: 'auto_trader', msg: '交易信号扫描完成 — 发现 BTC/USDT 做多信号' },
+  { time: '14:48:21.002', level: 'INFO', module: 'scheduler', msg: '[交易信号扫描] 任务开始执行' },
+  { time: '14:48:20.887', level: 'WARN', module: 'xianyu', msg: '闲鱼商品刷新超时 — 商品ID: 78234 — 重试 2/3' },
+  { time: '14:48:19.556', level: 'ERROR', module: 'social', msg: 'Twitter API 速率限制 — 429 Too Many Requests' },
+  { time: '14:48:18.123', level: 'INFO', module: 'gateway', msg: '收到 Discord 消息 — 用户 Bob — /help 命令' },
+  { time: '14:48:17.001', level: 'OK', module: 'scheduler', msg: '[社媒内容采集] 任务完成 — 采集 47 条' },
+  { time: '14:48:15.234', level: 'INFO', module: 'auto_trader', msg: 'K线数据更新 — BTC $67,234 — ETH $3,456' },
+  { time: '14:48:14.098', level: 'WARN', module: 'gateway', msg: 'Telegram 消息延迟 > 500ms — 当前 623ms' },
+  { time: '14:48:12.567', level: 'INFO', module: 'social', msg: '微博热搜抓取完成 — 50 条热点' },
+  { time: '14:48:11.890', level: 'ERROR', module: 'auto_trader', msg: '订单提交失败 — 余额不足 — USDT: 0.34' },
+  { time: '14:48:10.445', level: 'OK', module: 'xianyu', msg: '闲鱼消息回复成功 — 买家: 小明 — 自动议价' },
+  { time: '14:48:09.112', level: 'INFO', module: 'gateway', msg: 'WebSocket 心跳 — Telegram — 延迟 120ms' },
+  { time: '14:48:08.001', level: 'INFO', module: 'scheduler', msg: '[模型健康检查] 任务开始执行' },
+  { time: '14:48:07.234', level: 'WARN', module: 'auto_trader', msg: '深度数据异常 — BTC/USDT 买一挂单量突增 300%' },
+  { time: '14:48:06.556', level: 'OK', module: 'social', msg: '推文发布成功 — 每日市场简报 — 互动: 12' },
+  { time: '14:48:05.890', level: 'ERROR', module: 'scheduler', msg: '[模型健康检查] DeepSeek V3 连接超时 — 5000ms' },
+  { time: '14:48:04.123', level: 'INFO', module: 'xianyu', msg: '商品上架监控 — 新增 3 个竞品' },
+  { time: '14:48:03.001', level: 'INFO', module: 'gateway', msg: '用户 @charlie 加入 Telegram 群组' },
+  { time: '14:48:01.445', level: 'OK', module: 'auto_trader', msg: '仓位同步完成 — BTC 0.5 — ETH 2.3 — SOL 45' },
+];
+
+const LOG_STATS = [
+  { label: '今日总量', value: '2,847', color: 'var(--text-primary)' },
+  { label: 'INFO', value: '2,340', color: 'var(--accent-cyan)' },
+  { label: 'WARN', value: '412', color: 'var(--accent-amber)' },
+  { label: 'ERROR', value: '95', color: 'var(--accent-red)' },
+];
+
+const FILTER_CHIPS: { label: string; value: LogLevel | 'ALL' }[] = [
+  { label: '全部', value: 'ALL' },
+  { label: 'INFO', value: 'INFO' },
+  { label: 'WARN', value: 'WARN' },
+  { label: 'ERROR', value: 'ERROR' },
+];
+
+interface ModuleHeat { name: string; count: number; color: string }
+const MODULE_HEAT: ModuleHeat[] = [
+  { name: 'auto_trader', count: 847, color: 'var(--accent-green)' },
+  { name: 'xianyu', count: 623, color: 'var(--accent-cyan)' },
+  { name: 'social', count: 534, color: 'var(--accent-purple)' },
+  { name: 'scheduler', count: 445, color: 'var(--accent-amber)' },
+  { name: 'gateway', count: 398, color: 'var(--accent-red)' },
+];
+
+const STORAGE = [
+  { label: '日志文件大小', value: '234 MB' },
+  { label: '保留天数', value: '30 天' },
+  { label: '自动清理', value: '已开启' },
+];
+
+/* ====== 工具函数 ====== */
+
+function renderBar(value: number, max: number, width: number = 20): string {
+  const ratio = value / max;
+  const filled = Math.round(ratio * width);
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/* ====== 主组件 ====== */
 
 export function Logs() {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filter, setFilter] = useState<FilterLevel>('all');
-  const [moduleFilter, setModuleFilter] = useState<string>('all');
-  const [searchText, setSearchText] = useState('');
-  const [autoScroll, setAutoScroll] = useState(true);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<LogLevel | 'ALL'>('ALL');
+  const maxModuleCount = Math.max(...MODULE_HEAT.map((m) => m.count));
 
-  // 订阅日志更新
-  useEffect(() => {
-    const updateLogs = () => {
-      setLogs(logStore.getAll());
-    };
-    
-    updateLogs(); // 初始加载
-    return logStore.subscribe(updateLogs);
-  }, []);
-
-  // 自动滚动
-  useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs, autoScroll]);
-
-  // 过滤日志
-  const filteredLogs = logs.filter(log => {
-    if (filter !== 'all' && log.level !== filter) return false;
-    if (moduleFilter !== 'all' && log.module !== moduleFilter) return false;
-    if (searchText && !log.message.toLowerCase().includes(searchText.toLowerCase())) return false;
-    return true;
-  });
-
-  // 获取所有模块
-  const modules = [...new Set(logs.map(log => log.module))];
-
-  // 清除日志
-  const handleClear = () => {
-    logStore.clear();
-  };
-
-  // 导出日志
-  const handleExport = async () => {
-    const content = filteredLogs.map(log => {
-      const time = log.timestamp.toLocaleTimeString('zh-CN', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
-      const args = log.args.length > 0 ? ' ' + JSON.stringify(log.args) : '';
-      return `[${time}] [${log.level.toUpperCase()}] [${log.module}] ${log.message}${args}`;
-    }).join('\n');
-
-    try {
-      // Tauri 环境: 使用文件对话框
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-      const filePath = await save({
-        defaultPath: `openclaw-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`,
-        filters: [{ name: 'Log Files', extensions: ['txt', 'log'] }]
-      });
-      if (filePath) {
-        await writeTextFile(filePath, content);
-        toast.success('日志已导出');
-      }
-    } catch {
-      // 降级: 浏览器方式
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `openclaw-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('日志已导出');
-    }
-  };
-
-  // 格式化时间
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('zh-CN', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    }) + '.' + String(date.getMilliseconds()).padStart(3, '0');
-  };
-
-  // 格式化参数
-  const formatArgs = (args: unknown[]): string => {
-    if (args.length === 0) return '';
-    try {
-      return args.map(arg => {
-        if (typeof arg === 'object') {
-          return JSON.stringify(arg, null, 2);
-        }
-        return String(arg);
-      }).join(' ');
-    } catch {
-      return '[无法序列化]';
-    }
-  };
-
-  // 搜索关键词高亮：将匹配文字用 <mark> 包裹
-  const highlightText = (text: string): React.ReactNode => {
-    if (!searchText) return text;
-    const regex = new RegExp(`(${searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
-    if (parts.length <= 1) return text;
-    return parts.map((part, i) =>
-      regex.test(part)
-        ? <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">{part}</mark>
-        : part
-    );
-  };
+  const filteredLogs = filter === 'ALL'
+    ? ALL_LOGS
+    : ALL_LOGS.filter((l) => l.level === filter || (filter === 'INFO' && l.level === 'OK'));
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* 工具栏 */}
-      <div className="flex items-center gap-4 mb-4 flex-wrap">
-        {/* 级别过滤 */}
-        <div className="flex items-center gap-2">
-          <Filter size={14} className="text-gray-500" />
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as FilterLevel)}
-            className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
-            aria-label="按日志级别过滤"
-          >
-            <option value="all">所有级别</option>
-            <option value="debug">调试</option>
-            <option value="info">信息</option>
-            <option value="warn">警告</option>
-            <option value="error">错误</option>
-          </select>
-        </div>
-
-        {/* 模块过滤 */}
-        <select
-          value={moduleFilter}
-          onChange={(e) => setModuleFilter(e.target.value)}
-          className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
-          aria-label="按模块过滤"
-        >
-          <option value="all">所有模块</option>
-          {modules.map(module => (
-            <option key={module} value={module}>{module}</option>
-          ))}
-        </select>
-
-        {/* 文本搜索 */}
-        <input
-          type="text"
-          placeholder="搜索日志内容..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          className="px-3 py-1.5 rounded-lg bg-dark-700 text-white/80 text-sm border border-dark-500 placeholder-white/30 w-48"
-        />
-
-        <div className="flex-1" />
-
-        {/* 统计 */}
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>{filteredLogs.length} / {logs.length} 条</span>
-          <span className="text-red-400">{logs.filter(l => l.level === 'error').length} 错误</span>
-          <span className="text-yellow-400">{logs.filter(l => l.level === 'warn').length} 警告</span>
-        </div>
-
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs text-gray-400">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
-              className="w-3 h-3 rounded"
-            />
-            自动滚动
-          </label>
-          <button
-            onClick={handleExport}
-            className="icon-button text-gray-400 hover:text-white"
-            title="导出日志"
-            aria-label="导出日志"
-          >
-            <Download size={16} />
-          </button>
-          <button
-            onClick={() => setLogs(logStore.getAll())}
-            className="icon-button text-gray-400 hover:text-white"
-            title="刷新"
-            aria-label="刷新日志"
-          >
-            <RefreshCw size={16} />
-          </button>
-          <button
-            onClick={handleClear}
-            className="icon-button text-gray-400 hover:text-red-400"
-            title="清除日志"
-            aria-label="清除日志"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* 日志列表 */}
-      <div className="flex-1 bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col">
-        {/* 标题栏 */}
-        <div className="flex items-center gap-2 px-4 py-2 bg-dark-700 border-b border-dark-600">
-          <Terminal size={14} className="text-gray-500" />
-          <span className="text-xs text-gray-400 font-medium">应用日志</span>
-        </div>
-
-        {/* 日志内容 */}
-        <div className="flex-1 overflow-y-auto p-2 font-mono text-xs">
-          {filteredLogs.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <Terminal size={32} className="mx-auto mb-2 opacity-50" />
-                <p>暂无日志</p>
+    <div className="h-full overflow-y-auto scroll-container">
+      <motion.div
+        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* ====== 日志终端 (col-8, row-span-2) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8 lg:row-span-2" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(34,197,94,0.15)' }}
+              >
+                <Terminal size={20} style={{ color: 'var(--accent-green)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  SYSTEM LOGS
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  应用日志 // RUNTIME OUTPUT
+                </p>
               </div>
             </div>
-          ) : (
-            <>
-              {filteredLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className={clsx(
-                    'py-1.5 px-2 rounded mb-1',
-                    LEVEL_BG[log.level]
-                  )}
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="text-gray-600 flex-shrink-0">
-                      {formatTime(log.timestamp)}
-                    </span>
-                    <span className={clsx(
-                      'px-1.5 py-0.5 rounded text-[10px] uppercase flex-shrink-0',
-                      LEVEL_COLORS[log.level]
-                    )}>
+
+            {/* 终端区域 */}
+            <div
+              className="flex-1 rounded-lg p-3 font-mono text-[11px] leading-[1.7] overflow-y-auto"
+              style={{ background: 'var(--bg-primary)' }}
+            >
+              {filteredLogs.map((log, i) => {
+                const ls = LEVEL_STYLE[log.level];
+                return (
+                  <div key={i} className="flex items-start gap-2 py-0.5">
+                    <span style={{ color: 'var(--text-disabled)' }}>{log.time}</span>
+                    <span
+                      className="px-1.5 py-0 rounded text-[9px] tracking-wider font-bold flex-shrink-0"
+                      style={{ color: ls.color, background: ls.bg }}
+                    >
                       {log.level}
                     </span>
-                    <span className={clsx(
-                      'flex-shrink-0',
-                      MODULE_COLORS[log.module] || 'text-gray-400'
-                    )}>
+                    <span className="flex-shrink-0" style={{ color: 'var(--accent-purple)' }}>
                       [{log.module}]
                     </span>
-                    <span className="text-gray-300 break-all">
-                      {highlightText(log.message)}
-                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{log.msg}</span>
                   </div>
-                  {log.args.length > 0 && (
-                    <div className="mt-1 ml-20 text-gray-500 break-all whitespace-pre-wrap">
-                      {formatArgs(log.args)}
-                    </div>
-                  )}
+                );
+              })}
+              {/* 闪烁光标 */}
+              <div className="flex items-center gap-1 mt-1">
+                <span style={{ color: 'var(--accent-green)' }}>▊</span>
+                <span className="animate-pulse" style={{ color: 'var(--text-disabled)' }}>_</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 日志统计 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>STATISTICS</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              日志统计
+            </h3>
+            <div className="space-y-4 flex-1">
+              {LOG_STATS.map((s) => (
+                <div key={s.label}>
+                  <span className="text-label">{s.label}</span>
+                  <p className="text-metric mt-0.5" style={{ color: s.color, fontSize: '22px' }}>{s.value}</p>
                 </div>
               ))}
-              <div ref={logsEndRef} />
-            </>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 日志筛选 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>FILTER</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              日志筛选
+            </h3>
+            <div className="flex flex-wrap gap-2 flex-1">
+              {FILTER_CHIPS.map((chip) => {
+                const active = filter === chip.value;
+                const chipColor = chip.value === 'ALL'
+                  ? 'var(--accent-cyan)'
+                  : chip.value === 'INFO'
+                    ? 'var(--accent-cyan)'
+                    : chip.value === 'WARN'
+                      ? 'var(--accent-amber)'
+                      : 'var(--accent-red)';
+                return (
+                  <button
+                    key={chip.value}
+                    onClick={() => setFilter(chip.value)}
+                    className="px-4 py-2 rounded-lg font-mono text-xs tracking-wider transition-all"
+                    style={{
+                      background: active ? chipColor : 'var(--bg-secondary)',
+                      color: active ? 'var(--bg-primary)' : chipColor,
+                      fontWeight: active ? 700 : 500,
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
+              当前显示: {filteredLogs.length} 条 / 共 {ALL_LOGS.length} 条
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ====== 模块热度 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>MODULE HEATMAP</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              模块日志量排行
+            </h3>
+            <div className="flex-1 space-y-3">
+              {MODULE_HEAT.map((m) => (
+                <div key={m.name}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-display text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {m.name}
+                    </span>
+                    <span className="font-mono text-[11px] font-bold" style={{ color: m.color }}>
+                      {m.count.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="font-mono text-[10px] leading-none" style={{ color: m.color }}>
+                    {renderBar(m.count, maxModuleCount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 存储信息 (col-4) ====== */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>STORAGE</span>
+            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
+              存储信息
+            </h3>
+            <div className="flex-1 space-y-4">
+              {STORAGE.map((s) => (
+                <div key={s.label} className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+                  <span className="text-label">{s.label}</span>
+                  <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {s.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
+              <div className="flex items-center gap-2">
+                <HardDrive size={12} style={{ color: 'var(--text-disabled)' }} />
+                <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                  磁盘占用 234 MB / 10 GB (2.3%)
+                </span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
