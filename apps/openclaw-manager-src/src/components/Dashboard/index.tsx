@@ -8,7 +8,6 @@ import {
   Activity,
   Server,
   Cpu,
-  MessageSquare,
   Zap,
   Clock,
   CheckCircle2,

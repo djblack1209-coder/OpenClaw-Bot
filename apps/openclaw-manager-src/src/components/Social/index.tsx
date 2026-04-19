@@ -35,18 +35,7 @@ const platformConfig: Record<string, { label: string; color: string; bg: string 
   weibo: { label: '微博', color: '#ff8200', bg: 'rgba(255,130,0,0.12)' },
 };
 
-/** 最近发帖 */
-interface RecentPost {
-  id: string;
-  platform: string;
-  title: string;
-  time: string;
-  likes: number;
-  comments: number;
-  shares: number;
-}
-
-const mockRecentPosts: RecentPost[] = [
+const mockRecentPosts = [
   { id: '1', platform: 'xhs', title: 'AI 时代的个人效率提升指南', time: '10:32', likes: 234, comments: 18, shares: 42 },
   { id: '2', platform: 'x', title: 'Why autonomous agents will reshape SaaS', time: '09:15', likes: 89, comments: 12, shares: 31 },
   { id: '3', platform: 'xhs', title: '一个人如何运营 7 个 Bot', time: '08:40', likes: 567, comments: 45, shares: 128 },
@@ -54,44 +43,19 @@ const mockRecentPosts: RecentPost[] = [
   { id: '5', platform: 'x', title: 'Building in public: week 12 update', time: '昨天', likes: 45, comments: 8, shares: 15 },
 ];
 
-/** 平台状态 */
-interface PlatformStatus {
-  id: string;
-  name: string;
-  connected: boolean;
-  followers: string;
-  color: string;
-}
-
-const mockPlatforms: PlatformStatus[] = [
+const mockPlatforms = [
   { id: 'xhs', name: '小红书', connected: true, followers: '3,204', color: '#ff2442' },
   { id: 'x', name: 'X / Twitter', connected: true, followers: '8.9K', color: 'var(--accent-cyan)' },
   { id: 'weibo', name: '微博', connected: false, followers: '—', color: '#ff8200' },
 ];
 
-/** 定时发布 */
-interface ScheduledPost {
-  id: string;
-  time: string;
-  platform: string;
-  title: string;
-}
-
-const mockScheduled: ScheduledPost[] = [
+const mockScheduled = [
   { id: '1', time: '14:00', platform: 'xhs', title: '如何用 AI 自动化社媒运营' },
   { id: '2', time: '16:30', platform: 'x', title: 'Thread: Multi-agent architecture patterns' },
   { id: '3', time: '明天 09:00', platform: 'weibo', title: '2026 AI 应用趋势预测' },
 ];
 
-/** 热点话题 */
-interface TrendingTopic {
-  id: string;
-  name: string;
-  heat: number;
-  platform: string;
-}
-
-const mockTrending: TrendingTopic[] = [
+const mockTrending = [
   { id: '1', name: 'AI Agent 自动化', heat: 98, platform: '全网' },
   { id: '2', name: '大模型降价潮', heat: 87, platform: '微博' },
   { id: '3', name: 'Claude 4 发布', heat: 82, platform: 'X' },

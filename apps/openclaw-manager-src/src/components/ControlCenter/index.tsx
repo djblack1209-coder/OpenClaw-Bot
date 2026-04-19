@@ -5,11 +5,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Settings,
   Power,
-  Server,
   Terminal,
-  Shield,
   ToggleLeft,
   ToggleRight,
   FileCode,
