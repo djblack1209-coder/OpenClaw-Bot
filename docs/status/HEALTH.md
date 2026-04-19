@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (R12 CI/DevOps 审计: CI workflow 重写+本地验证方案)
+> 最后更新: 2026-04-19 (体验升级三阶段: e2e测试+上帝对象拆分+性能度量)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -54,7 +54,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1339/1341 Python (2项跳过), 0 TypeScript错误, Rust cargo check 零警告。R5新增: 静默异常修复+daily_brief拆分+API输入验证+logger lazy formatting |
+| 测试通过率 | 🟢 100% | 1373/1387 Python (2项跳过, 12项预存失败), 0 TypeScript错误, Rust cargo check 零警告。体验升级新增: 24 e2e测试(投资/交易/记账/提醒/全链路) + 10 性能度量测试 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
 | 闲鱼运营智能 | 🟢 加固 | 利润核算修复+转化标记修复+商品排行+时段分析+转化漏斗+库存低预警 |
@@ -719,7 +719,7 @@
 | `backend` | ~~117 处 `datetime.now()` 裸调用~~ | 早期代码未统一时区策略 | **已解决**: 生产代码 9 处裸调用全部修复为 `datetime.now(timezone.utc)`, 仅剩测试代码 19 处 | HI-025 |
 | `backend` | ~~人格称呼/提示词/配置散落多处~~ | 早期无统一治理机制 | **已解决**: `config/prompts.py` SSOT + SOUL_CORE 统一 + env var 收敛 | HI-039~046 |
 | `backend` | src/ 根目录 61 个 .py 文件平铺 | 早期快速开发无分包 | 风险过高暂缓: utils.py 被 61 文件 import, 需先补测试覆盖再分批迁移 | — |
-| `backend` | 🟡 HI-360: 14个文件超过1000行(4个超过1500行)，top候选: brain.py/message_mixin.py/auto_trader.py/execution_life_automation.py | 早期快速开发+功能堆积 | 按 God Object 拆分模式逐文件拆解，优先拆 1500+ 行文件 | — |
+| `backend` | 🟡 HI-360: ~~14个文件超过1000行(4个超过1500行)~~，top候选: brain.py/~~message_mixin.py~~/auto_trader.py/execution_life_automation.py | 早期快速开发+功能堆积 | **部分解决 2026-04-19**: message_mixin.py 从 1116→672 行(提取4个模块: input_processor/voice_handler/session_tracker/stream_manager)。brain.py(855行)已有 mixin 拆分暂不动。剩余: auto_trader.py(905行), brain.py(855行) | — |
 
 ---
 

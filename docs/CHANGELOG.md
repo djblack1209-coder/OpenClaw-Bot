@@ -12,6 +12,48 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 体验升级三阶段：e2e 测试 + 上帝对象拆分 + 性能度量
+> 领域: `backend`
+> 影响模块: `src/bot/message_mixin.py`, `src/bot/input_processor.py`, `src/bot/voice_handler.py`, `src/bot/session_tracker.py`, `src/bot/stream_manager.py`, `src/perf_metrics.py`, `src/api/routers/system.py`, `src/bot/cmd_ops_mixin.py`, `tests/e2e/`
+> 关联问题: HI-360 (部分解决)
+
+### Phase 1: 端到端测试覆盖 (5 条核心路径)
+1. **e2e 测试基础设施**: `tests/e2e/conftest.py` — FakeUpdate/FakeContext 工厂 + mock_env/mock_llm/mock_yfinance fixtures
+2. **投资分析路径**: "AAPL能买吗" → NLP 匹配 → signal 分发 → Brain 处理 → TaskResult (6 测试)
+3. **交易执行路径**: "买100股AAPL" → 风控 → broker 下单 → journal 记录 (6 测试)
+4. **生活自动化路径**: 记账 + 提醒创建/查询 (8 测试)
+5. **handle_message 全链路**: 授权检查 → NLP分发 → 多轮对话 → 澄清存储 (4 测试)
+- **共 24 个 e2e 测试，全部通过**
+
+### Phase 2: 上帝对象拆分 (message_mixin.py 1116→672 行)
+6. **input_processor.py (172行)**: `_detect_correction()` + `_build_smart_reply_keyboard()` 提取
+7. **voice_handler.py (140行)**: `VoiceHandlerMixin` — STT 3-provider fallback (Groq/OpenAI/Deepgram)
+8. **session_tracker.py (134行)**: `SessionTrackerMixin` — 会话恢复 + 建议更新
+9. **stream_manager.py (52行)**: `StreamManagerMixin` — 流式编辑频率控制 + typing 动画
+- **message_mixin.py 从 1116 行降至 672 行 (40% 减少)**，向后兼容
+
+### Phase 3: 性能度量基线
+10. **perf_metrics.py (205行)**: PerfTracker (线程安全环形缓冲) + perf_timer 装饰器 (10 测试)
+11. **关键路径埋点**: brain.process_message + bot.handle_message + trader.run_cycle + llm.acompletion
+12. **/perf 命令**: FastAPI `/perf` 端点 + Telegram `/perf` 命令查看性能报告
+
+### 文件变更
+- `src/bot/message_mixin.py` — 拆分瘦身 (1116→672行)
+- `src/bot/input_processor.py` — 新增 (172行)
+- `src/bot/voice_handler.py` — 新增 (140行)
+- `src/bot/session_tracker.py` — 新增 (134行)
+- `src/bot/stream_manager.py` — 新增 (52行)
+- `src/perf_metrics.py` — 新增 (205行)
+- `src/api/routers/system.py` — 新增 /perf 端点
+- `src/bot/cmd_ops_mixin.py` — 新增 cmd_perf 命令
+- `src/bot/multi_bot.py` — 注册 /perf 命令
+- `src/core/brain.py` — 添加 perf_timer 装饰器
+- `src/auto_trader.py` — 添加 perf_timer 装饰器
+- `src/litellm_router.py` — 添加 perf_timer 装饰器
+- `tests/e2e/` — 新增 5 文件 (24 测试)
+- `tests/test_perf_metrics.py` — 新增 (10 测试)
+- **总测试: 1373 通过 (+34 新增)，12 预存失败，0 回归**
+
 ## 2026-04-19 — R12 CI/CD 管道审计: Workflow 重写+本地验证方案
 > 领域: `infra`
 > 影响模块: `.github/workflows/ci.yml`, `Makefile`, `requirements-dev.txt`, `docs/audit/R12_CI_DEVOPS.md`

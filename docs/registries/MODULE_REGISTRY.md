@@ -1,6 +1,73 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-19 | 新增 3 个社媒适配器模块 (277→280)
+> 最后更新: 2026-04-19 | 新增 5 个模块 (280→285): 体验升级拆分 + 性能度量
+
+---
+
+## 新增模块 (2026-04-19) — 体验升级三阶段
+
+### input_processor.py — 输入清洗 + 智能键盘
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/input_processor.py` |
+| 行数 | 172 |
+| 导入方 | `message_mixin`, `callback_mixin`, `test_ai_assistant_features` |
+| 依赖 | 标准库 (`re`, `logging`) |
+
+**Public API:**
+- `_detect_correction(text)` — 检测用户纠正意图
+- `_build_smart_reply_keyboard(text, ...)` — 构建上下文感知的智能回复键盘
+
+### voice_handler.py — 语音消息处理
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/voice_handler.py` |
+| 行数 | 140 |
+| 导入方 | `message_mixin` (mixin 继承) |
+| 依赖 | `litellm_router` (STT 调用) |
+
+**Public API:**
+- `VoiceHandlerMixin` — 语音消息处理 mixin（Groq/OpenAI/Deepgram 三级降级）
+
+### session_tracker.py — 会话恢复追踪
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/session_tracker.py` |
+| 行数 | 134 |
+| 导入方 | `message_mixin` (mixin 继承) |
+| 依赖 | `smart_memory`, `litellm_router` |
+
+**Public API:**
+- `SessionTrackerMixin` — 会话恢复检测 + 异步建议更新
+
+### stream_manager.py — 流式输出管理
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/bot/stream_manager.py` |
+| 行数 | 52 |
+| 导入方 | `message_mixin` (mixin 继承) |
+| 依赖 | 标准库 (`asyncio`) |
+
+**Public API:**
+- `StreamManagerMixin` — 流式编辑频率控制 + typing 动画
+
+### perf_metrics.py — 性能度量
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/perf_metrics.py` |
+| 行数 | 205 |
+| 导入方 | `brain`, `message_mixin`, `auto_trader`, `litellm_router`, `api/routers/system`, `cmd_ops_mixin` |
+| 依赖 | 标准库 (`time`, `threading`, `statistics`, `functools`) |
+
+**Public API:**
+- `PerfTracker` — 线程安全性能指标追踪器（环形缓冲区，最多 1000 条/指标）
+- `get_tracker()` — 获取全局单例
+- `perf_timer(name)` — 装饰器，自动记录函数耗时（支持 sync/async）
 
 ---
 
