@@ -900,13 +900,35 @@ function MarkdownContent({ content }: { content: string }) {
       // 代码块开始/结束
       if (line.startsWith('```')) {
         if (inCodeBlock) {
-          // 结束代码块
+          // 结束代码块，附带复制按钮
+          const codeText = codeBlockContent.join('\n');
           elements.push(
-            <pre key={`code-${index}`} className="bg-dark-900 rounded-lg p-3 my-2 overflow-x-auto">
-              <code className="text-xs text-gray-300 font-mono">
-                {codeBlockContent.join('\n')}
-              </code>
-            </pre>
+            <div key={`code-${index}`} style={{ position: 'relative' }}>
+              <button
+                onClick={() => navigator.clipboard.writeText(codeText)}
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  color: '#9CA3AF',
+                  zIndex: 1,
+                }}
+                title="复制代码"
+              >
+                📋
+              </button>
+              <pre className="bg-dark-900 rounded-lg p-3 my-2 overflow-x-auto">
+                <code className="text-xs text-gray-300 font-mono">
+                  {codeText}
+                </code>
+              </pre>
+            </div>
           );
           codeBlockContent = [];
           inCodeBlock = false;
@@ -973,12 +995,51 @@ function MarkdownContent({ content }: { content: string }) {
         return;
       }
 
-      // 列表项
+      // 水平分隔线 --- / *** / ___（三个以上相同字符）
+      if (line.match(/^(\-{3,}|\*{3,}|_{3,})$/)) {
+        elements.push(
+          <hr key={`hr-${index}`} style={{ borderColor: '#374151', margin: '8px 0' }} />
+        );
+        return;
+      }
+
+      // 无序列表项
       if (line.match(/^[\-\*\+]\s/)) {
         elements.push(
           <div key={`list-${index}`} className="flex gap-2 my-1">
             <span className="text-gray-500">•</span>
             <span>{parseInlineMarkdown(line.replace(/^[\-\*\+]\s/, ''))}</span>
+          </div>
+        );
+        return;
+      }
+
+      // 有序列表项（数字+点+空格）
+      const orderedMatch = line.match(/^(\d+)\.\s+(.+)/);
+      if (orderedMatch) {
+        elements.push(
+          <div key={`olist-${index}`} className="flex gap-2 my-1">
+            <span className="text-gray-500" style={{ minWidth: '1.2em', textAlign: 'right' }}>{orderedMatch[1]}.</span>
+            <span>{parseInlineMarkdown(orderedMatch[2])}</span>
+          </div>
+        );
+        return;
+      }
+
+      // 引用块（以 > 开头）
+      if (line.match(/^>\s/)) {
+        elements.push(
+          <div
+            key={`quote-${index}`}
+            style={{
+              borderLeft: '3px solid #4B5563',
+              paddingLeft: 12,
+              color: '#9CA3AF',
+              margin: '4px 0',
+              fontStyle: 'italic',
+            }}
+          >
+            {parseInlineMarkdown(line.replace(/^>\s/, ''))}
           </div>
         );
         return;
@@ -1015,6 +1076,21 @@ function MarkdownContent({ content }: { content: string }) {
           </code>
         );
         remaining = remaining.slice(codeMatch[0].length);
+        continue;
+      }
+
+      // 图片 ![alt](url) — 必须在链接 [text](url) 之前检测
+      const imgMatch = remaining.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+      if (imgMatch) {
+        parts.push(
+          <img
+            key={key++}
+            src={imgMatch[2]}
+            alt={imgMatch[1]}
+            style={{ maxWidth: '100%', borderRadius: 8, margin: '4px 0' }}
+          />
+        );
+        remaining = remaining.slice(imgMatch[0].length);
         continue;
       }
 
@@ -1060,11 +1136,15 @@ function MarkdownContent({ content }: { content: string }) {
         continue;
       }
 
-      // 普通文本
-      const nextSpecial = remaining.search(/[`*\[]/);
+      // 普通文本（遇到可能的 Markdown 标记时停下来）
+      const nextSpecial = remaining.search(/[`!*\[]/);
       if (nextSpecial === -1) {
         parts.push(remaining);
         break;
+      } else if (nextSpecial === 0) {
+        // 特殊字符开头但没匹配到任何模式，当普通文本消费一个字符
+        parts.push(remaining[0]);
+        remaining = remaining.slice(1);
       } else {
         parts.push(remaining.slice(0, nextSpecial));
         remaining = remaining.slice(nextSpecial);

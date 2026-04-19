@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Database, Loader2, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
+import { Database, Filter, Loader2, Search, BrainCircuit, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { api, isTauri, clawbotFetch, type MemorySearchResponse, type MemoryEntryRaw } from '@/lib/tauri';
@@ -24,6 +24,8 @@ export function Memory() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  // 分类筛选：全部 | 用户画像 | 事实 | 高优先级
+  const [filter, setFilter] = useState<'all' | 'profile' | 'fact' | 'important'>('all');
   const [searchLoading, setSearchLoading] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -134,6 +136,17 @@ export function Memory() {
               vector_dim: (stats as Record<string, number>).vector_dim ?? 0,
             });
           }
+        } else {
+          // HTTP 降级: 浏览器环境直接调用后端 API
+          const resp = await clawbotFetch('/api/v1/memory/stats');
+          if (resp.ok) {
+            const stats = await resp.json();
+            setMemoryStats({
+              total: stats.total_count ?? 0,
+              extraction_rounds: stats.extraction_rounds ?? 0,
+              vector_dim: stats.vector_dim ?? 0,
+            });
+          }
         }
       } catch {
         // 统计接口不可用不影响核心功能
@@ -218,6 +231,23 @@ export function Memory() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
+  // 根据分类筛选过滤记忆条目（与文本搜索叠加使用）
+  const filteredEntries = useMemo(() => {
+    if (filter === 'all') return entries;
+    return entries.filter(entry => {
+      switch (filter) {
+        case 'profile':
+          return entry.key.includes('profile');
+        case 'fact':
+          return !entry.key.includes('profile');
+        case 'important':
+          return entry.importance >= 4;
+        default:
+          return true;
+      }
+    });
+  }, [entries, filter]);
+
   return (
     <div className="h-full flex flex-col gap-6 max-w-6xl mx-auto overflow-y-auto scroll-container pr-2 pb-10">
       <div className="flex items-center justify-between">
@@ -258,8 +288,32 @@ export function Memory() {
             />
           </div>
 
+          {/* 分类筛选按钮组 */}
+          <div className="flex items-center gap-2">
+            <Filter size={14} className="text-gray-500 shrink-0" />
+            {([
+              { value: 'all', label: '全部' },
+              { value: 'profile', label: '用户画像' },
+              { value: 'fact', label: '事实' },
+              { value: 'important', label: '高优先级' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setFilter(opt.value)}
+                className={clsx(
+                  "px-3 py-1.5 text-xs rounded-lg border transition-colors",
+                  filter === opt.value
+                    ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+                    : "bg-dark-800 text-gray-400 border-dark-600 hover:bg-dark-700 hover:text-gray-300"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-3">
-            {entries.map(entry => {
+            {filteredEntries.map(entry => {
                 const isProfile = entry.key.includes('profile');
                 return (
                   <Card key={entry.key} className={clsx(
@@ -337,14 +391,14 @@ export function Memory() {
                 );
             })}
             
-            {!searchLoading && entries.length === 0 && (
+            {!searchLoading && filteredEntries.length === 0 && (
                 <div className="text-center py-12 text-gray-500 bg-dark-800/50 rounded-xl border border-dark-700 border-dashed">
-                    {searchQuery ? '没有找到匹配的记忆记录' : '记忆库为空。与 Bot 对话后会自动记录。'}
+                    {searchQuery ? '没有找到匹配的记忆记录' : filter !== 'all' ? '当前筛选条件下没有记忆记录' : '记忆库为空。与 Bot 对话后会自动记录。'}
                 </div>
             )}
 
             {/* 加载更多按钮 */}
-            {!searchQuery && entries.length > 0 && hasMore && (
+            {!searchQuery && filteredEntries.length > 0 && hasMore && (
                 <button
                   onClick={() => {
                     const newLimit = limit + 50;
