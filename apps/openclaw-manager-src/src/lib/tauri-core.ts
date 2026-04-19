@@ -424,3 +424,25 @@ export async function clawbotFetchSafe(path: string, init?: RequestInit): Promis
     throw Object.assign(new Error(friendly.title), { friendly });
   }
 }
+
+/**
+ * fetch + JSON 解析 + 错误检查 — 最常用的 API 调用模式
+ * 自动检查 resp.ok，非 2xx 时抛出含 HTTP 状态码和响应体的 Error
+ *
+ * @param path  API 路径（如 /api/v1/system/status）
+ * @param init  fetch 选项
+ * @param timeoutMs  超时时间（毫秒），默认 30 秒。传 0 表示不限时
+ * @returns 解析后的 JSON 对象
+ */
+export async function clawbotFetchJson<T = any>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs?: number,
+): Promise<T> {
+  const resp = await clawbotFetch(path, init, timeoutMs);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status}: ${body || resp.statusText || '请求失败'}`);
+  }
+  return resp.json();
+}
