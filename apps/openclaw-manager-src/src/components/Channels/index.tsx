@@ -1,14 +1,19 @@
 /**
  * Channels — 消息渠道页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 数据来自 IPC api.getChannelsConfig()，30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   MessageCircle,
   CheckCircle2,
   XCircle,
   Clock,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
+import { api } from '../../lib/api';
+import type { ChannelConfig } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -21,86 +26,99 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 常量 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 渠道信息 */
-interface Channel {
-  id: string;
-  name: string;
-  type: string;
-  status: 'connected' | 'disconnected' | 'configuring';
-  color: string;
-  icon: string;
-  msgToday: number;
-  msgTotal: number;
-  users: number;
-  latency: string;
+/** 渠道类型 → 图标 & 颜色 映射 */
+const CHANNEL_META: Record<string, { icon: string; color: string; label: string }> = {
+  telegram:  { icon: '✈', color: 'var(--accent-cyan)',   label: 'Telegram' },
+  discord:   { icon: '🎮', color: 'var(--accent-purple)', label: 'Discord' },
+  feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: '飞书' },
+  wechat:    { icon: '💬', color: 'var(--accent-green)',  label: '微信' },
+  whatsapp:  { icon: '📱', color: 'var(--accent-green)',  label: 'WhatsApp' },
+  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: '闲鱼' },
+  email:     { icon: '📧', color: 'var(--accent-purple)', label: '邮件' },
+  slack:     { icon: '💼', color: 'var(--accent-amber)',  label: 'Slack' },
+  web:       { icon: '🌐', color: 'var(--accent-cyan)',   label: 'Web' },
+};
+
+/** 获取渠道显示信息 */
+function getChannelMeta(ch: ChannelConfig) {
+  const type = ch.channel_type?.toLowerCase() || ch.id?.toLowerCase() || '';
+  const meta = CHANNEL_META[type] || { icon: '📡', color: 'var(--text-secondary)', label: type || ch.id };
+  return meta;
 }
-
-const CHANNELS: Channel[] = [
-  { id: 'tg', name: 'Telegram', type: 'telegram', status: 'connected', color: 'var(--accent-cyan)', icon: '✈', msgToday: 847, msgTotal: 125600, users: 38, latency: '120ms' },
-  { id: 'dc', name: 'Discord', type: 'discord', status: 'connected', color: 'var(--accent-purple)', icon: '🎮', msgToday: 234, msgTotal: 45200, users: 156, latency: '85ms' },
-  { id: 'fs', name: '飞书', type: 'feishu', status: 'configuring', color: 'var(--accent-cyan)', icon: '🪶', msgToday: 0, msgTotal: 0, users: 0, latency: '—' },
-  { id: 'wx', name: '微信', type: 'wechat', status: 'disconnected', color: 'var(--accent-green)', icon: '💬', msgToday: 0, msgTotal: 8900, users: 12, latency: '—' },
-  { id: 'wa', name: 'WhatsApp', type: 'whatsapp', status: 'disconnected', color: 'var(--accent-green)', icon: '📱', msgToday: 0, msgTotal: 0, users: 0, latency: '—' },
-];
-
-/** 消息统计 */
-const MSG_STATS = [
-  { label: '今日消息', value: '1,081', color: 'var(--accent-cyan)' },
-  { label: '活跃渠道', value: '2/5', color: 'var(--accent-green)' },
-  { label: '总用户数', value: '206', color: 'var(--accent-purple)' },
-  { label: '平均延迟', value: '103ms', color: 'var(--accent-amber)' },
-];
-
-/** Webhook 配置 */
-interface WebhookConfig {
-  name: string;
-  url: string;
-  events: string;
-  status: 'active' | 'inactive';
-  lastTriggered: string;
-}
-
-const WEBHOOKS: WebhookConfig[] = [
-  { name: 'Telegram 通知', url: 'https://api.tg.bot/webhook', events: 'message,command', status: 'active', lastTriggered: '2分钟前' },
-  { name: 'Discord 同步', url: 'https://discord.com/api/webhooks/...', events: 'message', status: 'active', lastTriggered: '8分钟前' },
-  { name: '监控告警', url: 'https://monitor.internal/alert', events: 'error,warning', status: 'active', lastTriggered: '1小时前' },
-  { name: '飞书集成', url: 'https://open.feishu.cn/...', events: 'all', status: 'inactive', lastTriggered: '—' },
-];
-
-/** 每小时消息量 */
-const HOURLY_DATA = [
-  { hour: '08:00', count: 45 },
-  { hour: '10:00', count: 120 },
-  { hour: '12:00', count: 89 },
-  { hour: '14:00', count: 156 },
-  { hour: '16:00', count: 203 },
-  { hour: '18:00', count: 178 },
-  { hour: '20:00', count: 134 },
-  { hour: '22:00', count: 67 },
-];
 
 /* ====== 工具函数 ====== */
 
-function statusInfo(status: Channel['status']) {
-  switch (status) {
-    case 'connected': return { label: '已连接', color: 'var(--accent-green)', Icon: CheckCircle2 };
-    case 'disconnected': return { label: '未连接', color: 'var(--text-disabled)', Icon: XCircle };
-    case 'configuring': return { label: '配置中', color: 'var(--accent-amber)', Icon: Clock };
+function statusInfo(enabled: boolean, hasConfig: boolean) {
+  if (enabled && hasConfig) {
+    return { label: '已连接', color: 'var(--accent-green)', Icon: CheckCircle2 };
   }
+  if (hasConfig) {
+    return { label: '已配置', color: 'var(--accent-amber)', Icon: Clock };
+  }
+  return { label: '未配置', color: 'var(--text-disabled)', Icon: XCircle };
 }
 
-function renderBar(value: number, maxValue: number, width: number = 20): string {
-  const ratio = value / maxValue;
-  const filled = Math.round(ratio * width);
-  return '█'.repeat(filled) + '░'.repeat(width - filled);
+/** 判断渠道是否有实质性配置（不只是空对象） */
+function hasRealConfig(config: Record<string, unknown>): boolean {
+  if (!config || typeof config !== 'object') return false;
+  const values = Object.values(config);
+  return values.some((v) => v !== null && v !== undefined && v !== '' && v !== false);
 }
 
 /* ====== 主组件 ====== */
 
 export function Channels() {
-  const maxHourly = Math.max(...HOURLY_DATA.map((d) => d.count));
+  const [channels, setChannels] = useState<ChannelConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── 拉取渠道配置 ── */
+  const fetchData = useCallback(async () => {
+    try {
+      const configs = await api.getChannelsConfig();
+      if (Array.isArray(configs)) {
+        setChannels(configs);
+      }
+    } catch {
+      // 静默处理 — 页面显示"暂无数据"
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* ── 首次加载 + 自动刷新 ── */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ── 统计数据（从真实配置计算） ── */
+  const connected = channels.filter((ch) => ch.enabled && hasRealConfig(ch.config)).length;
+  const configured = channels.filter((ch) => hasRealConfig(ch.config)).length;
+  const total = channels.length;
+
+  const msgStats = [
+    { label: '今日消息', value: 'N/A', color: 'var(--accent-cyan)' },
+    { label: '活跃渠道', value: `${connected}/${total}`, color: 'var(--accent-green)' },
+    { label: '已配置', value: String(configured), color: 'var(--accent-purple)' },
+    { label: '平均延迟', value: 'N/A', color: 'var(--accent-amber)' },
+  ];
+
+  /* ── 加载中 ── */
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载渠道配置…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -120,7 +138,7 @@ export function Channels() {
               >
                 <MessageCircle size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   MESSAGE CHANNELS
                 </h2>
@@ -128,56 +146,71 @@ export function Channels() {
                   消息渠道 // MULTI-PLATFORM HUB
                 </p>
               </div>
+              <button
+                onClick={() => { setLoading(true); fetchData(); }}
+                className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+                title="手动刷新"
+              >
+                <RefreshCw size={14} />
+              </button>
             </div>
 
-            {/* 渠道卡片列表 */}
+            {/* 渠道列表 */}
             <div className="flex-1 space-y-2">
-              {CHANNELS.map((ch) => {
-                const si = statusInfo(ch.status);
-                return (
-                  <div
-                    key={ch.id}
-                    className="flex items-center justify-between py-3 px-4 rounded-lg transition-colors"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl w-8 text-center">{ch.icon}</span>
-                      <div>
-                        <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                          {ch.name}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <si.Icon size={10} style={{ color: si.color }} />
-                          <span className="font-mono text-[10px]" style={{ color: si.color }}>
-                            {si.label}
-                          </span>
+              {channels.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-[var(--text-tertiary)] font-mono text-sm">
+                  暂无渠道数据
+                </div>
+              ) : (
+                channels.map((ch) => {
+                  const meta = getChannelMeta(ch);
+                  const hasCfg = hasRealConfig(ch.config);
+                  const si = statusInfo(ch.enabled, hasCfg);
+                  return (
+                    <div
+                      key={ch.id}
+                      className="flex items-center justify-between py-3 px-4 rounded-lg transition-colors"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl w-8 text-center">{meta.icon}</span>
+                        <div>
+                          <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                            {meta.label}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <si.Icon size={10} style={{ color: si.color }} />
+                            <span className="font-mono text-[10px]" style={{ color: si.color }}>
+                              {si.label}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <span className="text-label">类型</span>
+                          <p className="font-mono text-sm" style={{ color: meta.color }}>
+                            {ch.channel_type || '—'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-label">启用</span>
+                          <p className="font-mono text-sm" style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                            {ch.enabled ? '是' : '否'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-label">配置</span>
+                          <p className="font-mono text-sm" style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}>
+                            {hasCfg ? '已配置' : '—'}
+                          </p>
                         </div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-6">
-                      <div className="text-right">
-                        <span className="text-label">今日</span>
-                        <p className="font-mono text-sm font-semibold" style={{ color: ch.color }}>
-                          {ch.msgToday.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-label">用户</span>
-                        <p className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>
-                          {ch.users}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-label">延迟</span>
-                        <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
-                          {ch.latency}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </motion.div>
@@ -193,7 +226,7 @@ export function Channels() {
             </h3>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-              {MSG_STATS.map((s) => (
+              {msgStats.map((s) => (
                 <div key={s.label}>
                   <span className="text-label">{s.label}</span>
                   <div className="text-metric mt-1" style={{ color: s.color }}>
@@ -203,82 +236,109 @@ export function Channels() {
               ))}
             </div>
 
-            {/* 每小时消息量 */}
+            {/* 渠道配置详情 */}
             <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
-              HOURLY THROUGHPUT
+              CHANNEL DETAILS
             </span>
             <div className="mt-2 flex-1 space-y-1">
-              {HOURLY_DATA.map((d) => (
-                <div key={d.hour} className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] w-10 shrink-0" style={{ color: 'var(--text-disabled)' }}>
-                    {d.hour}
-                  </span>
-                  <span
-                    className="font-mono text-[10px] flex-1 tracking-tight"
-                    style={{ color: 'var(--accent-cyan)', opacity: 0.85 }}
-                  >
-                    {renderBar(d.count, maxHourly, 16)}
-                  </span>
-                  <span className="font-mono text-[10px] w-8 text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {d.count}
-                  </span>
-                </div>
-              ))}
+              {channels.length === 0 ? (
+                <span className="font-mono text-[11px] text-[var(--text-tertiary)]">暂无数据</span>
+              ) : (
+                channels.map((ch) => {
+                  const meta = getChannelMeta(ch);
+                  const hasCfg = hasRealConfig(ch.config);
+                  return (
+                    <div key={ch.id} className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] w-16 shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                        {meta.label}
+                      </span>
+                      <span
+                        className="font-mono text-[10px] flex-1"
+                        style={{ color: ch.enabled && hasCfg ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                      >
+                        {ch.enabled && hasCfg ? '●' : '○'} {ch.enabled ? '启用' : '禁用'}
+                      </span>
+                      <span className="font-mono text-[10px] w-12 text-right" style={{ color: 'var(--text-secondary)' }}>
+                        {hasCfg ? '✓' : '—'}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </motion.div>
 
-        {/* ====== Webhook 配置 (col-12) ====== */}
+        {/* ====== 渠道配置概览 (col-12) ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card p-6">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-              WEBHOOK CONFIG
+              CHANNEL CONFIG OVERVIEW
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              Webhook 管理
+              渠道配置概览
             </h3>
 
-            {/* 表头 */}
-            <div
-              className="grid grid-cols-5 gap-3 px-4 py-2 rounded-lg mb-1"
-              style={{ background: 'var(--bg-tertiary)' }}
-            >
-              {['名称', 'URL', '事件', '状态', '最近触发'].map((h) => (
-                <span key={h} className="text-label" style={{ fontSize: '10px' }}>
-                  {h}
-                </span>
-              ))}
-            </div>
-
-            {/* Webhook 列表 */}
-            <div className="space-y-1">
-              {WEBHOOKS.map((wh, i) => (
+            {channels.length === 0 ? (
+              <div className="text-center py-10 text-[var(--text-tertiary)] font-mono text-sm">
+                暂无渠道配置
+              </div>
+            ) : (
+              <>
+                {/* 表头 */}
                 <div
-                  key={i}
-                  className="grid grid-cols-5 gap-3 px-4 py-3 rounded-lg"
-                  style={{ background: 'var(--bg-secondary)' }}
+                  className="grid grid-cols-5 gap-3 px-4 py-2 rounded-lg mb-1"
+                  style={{ background: 'var(--bg-tertiary)' }}
                 >
-                  <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {wh.name}
-                  </span>
-                  <span className="font-mono text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-                    {wh.url}
-                  </span>
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                    {wh.events}
-                  </span>
-                  <span
-                    className="font-mono text-[10px] font-semibold"
-                    style={{ color: wh.status === 'active' ? 'var(--accent-green)' : 'var(--text-disabled)' }}
-                  >
-                    {wh.status === 'active' ? '● 活跃' : '○ 停用'}
-                  </span>
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    {wh.lastTriggered}
-                  </span>
+                  {['渠道', '类型', '启用', '配置状态', '配置项'].map((h) => (
+                    <span key={h} className="text-label" style={{ fontSize: '10px' }}>
+                      {h}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
+
+                {/* 渠道行 */}
+                <div className="space-y-1">
+                  {channels.map((ch) => {
+                    const meta = getChannelMeta(ch);
+                    const hasCfg = hasRealConfig(ch.config);
+                    const configKeys = ch.config ? Object.keys(ch.config).filter((k) => {
+                      const v = ch.config[k];
+                      return v !== null && v !== undefined && v !== '';
+                    }) : [];
+                    return (
+                      <div
+                        key={ch.id}
+                        className="grid grid-cols-5 gap-3 px-4 py-3 rounded-lg"
+                        style={{ background: 'var(--bg-secondary)' }}
+                      >
+                        <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {meta.icon} {meta.label}
+                        </span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                          {ch.channel_type || '—'}
+                        </span>
+                        <span
+                          className="font-mono text-[10px] font-semibold"
+                          style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                        >
+                          {ch.enabled ? '● 启用' : '○ 禁用'}
+                        </span>
+                        <span
+                          className="font-mono text-[10px]"
+                          style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}
+                        >
+                          {hasCfg ? '已配置' : '未配置'}
+                        </span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                          {configKeys.length > 0 ? configKeys.join(', ') : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
       </motion.div>

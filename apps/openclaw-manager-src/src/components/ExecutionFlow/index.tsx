@@ -1,11 +1,14 @@
+/**
+ * ExecutionFlow — 智能流引擎监控页面 (Sonic Abyss Bento Grid 风格)
+ * 数据来自 OMEGA API + 通知系统，30 秒自动刷新
+ */
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import clsx from 'clsx';
 import {
   GitBranch,
   Activity,
   Clock,
   CheckCircle2,
-  XCircle,
   Timer,
   Layers,
   ListChecks,
@@ -14,7 +17,10 @@ import {
   ArrowRight,
   Circle,
   Zap,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -27,63 +33,33 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
+/* ====== 常量 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
+
 /* ====== 类型 ====== */
 type NodeStatus = 'done' | 'running' | 'pending';
 type LogLevel = 'INFO' | 'OK' | 'WARN' | 'ERROR';
 
-/* ====== 模拟数据 ====== */
-// DAG 流水线节点
-const dagNodes: { id: string; label: string; status: NodeStatus }[] = [
-  { id: 'intent',  label: '意图解析', status: 'done' },
-  { id: 'scan',    label: '市场扫描', status: 'done' },
-  { id: 'risk',    label: '风险评估', status: 'done' },
-  { id: 'vote',    label: 'Bot 投票', status: 'running' },
-  { id: 'execute', label: '订单执行', status: 'pending' },
-  { id: 'track',   label: '回报追踪', status: 'pending' },
-];
-// 引擎指标
-const engineMetrics = [
-  { label: '今日任务数', value: '47',    accent: 'var(--accent-cyan)' },
-  { label: '成功率',     value: '94.2%', accent: 'var(--accent-green)' },
-  { label: '平均耗时',   value: '3.1s',  accent: 'var(--accent-amber)' },
-  { label: '活跃管道',   value: '3',     accent: 'var(--accent-purple)' },
-  { label: '排队任务',   value: '2',     accent: 'var(--text-secondary)' },
-  { label: '失败任务',   value: '3',     accent: 'var(--accent-red)' },
-];
-// 活跃管道
-const activePipelines = [
-  { name: 'AAPL 投资分析',     status: '运行中', startTime: '14:32:01', progress: '4/6', elapsed: '2.3s' },
-  { name: '闲鱼客服自动回复',   status: '运行中', startTime: '14:30:15', progress: '3/5', elapsed: '5.8s' },
-  { name: '社媒热点追踪',       status: '排队',   startTime: '14:35:00', progress: '0/4', elapsed: '—' },
-];
-// 最近完成
-const completedTasks = [
-  { name: 'BTC 趋势分析',     duration: '4.2s', result: '成功', time: '14:28:33' },
-  { name: 'ETH 风险评估',     duration: '2.8s', result: '成功', time: '14:25:10' },
-  { name: '小红书发帖调度',   duration: '1.5s', result: '成功', time: '14:22:45' },
-  { name: 'TSLA 情绪分析',    duration: '6.1s', result: '失败', time: '14:20:02' },
-  { name: '闲鱼自动议价',     duration: '3.3s', result: '成功', time: '14:18:30' },
-];
-// 执行日志
-const logEntries: { time: string; level: LogLevel; message: string }[] = [
-  { time: '14:32:05', level: 'INFO', message: '[DAG] 节点「意图解析」完成 → 输出: buy_signal(AAPL)' },
-  { time: '14:32:04', level: 'OK',   message: '[LLM] GPT-4o 返回市场扫描结果, 耗时 0.8s' },
-  { time: '14:32:03', level: 'INFO', message: '[DAG] 节点「市场扫描」启动 → 模型: DeepSeek-V3' },
-  { time: '14:32:02', level: 'WARN', message: '[RISK] AAPL 波动率偏高 (σ=2.4), 建议减仓 15%' },
-  { time: '14:32:01', level: 'OK',   message: '[DAG] 节点「风险评估」完成 → 风险等级: 中' },
-  { time: '14:32:00', level: 'INFO', message: '[VOTE] 7-Bot 投票启动: 已收到 4/7 票' },
-  { time: '14:31:58', level: 'ERROR', message: '[LLM] Qwen 调用超时 (>5s), 自动切换 GPT-4o' },
-  { time: '14:31:55', level: 'INFO', message: '[DAG] 管道「AAPL 投资分析」初始化完成' },
-];
-// 模型调用统计
-const modelStats = [
-  { name: 'GPT-4o',   count: 23, color: 'var(--accent-cyan)' },
-  { name: 'DeepSeek', count: 15, color: 'var(--accent-green)' },
-  { name: 'Qwen',     count: 12, color: 'var(--accent-amber)' },
-  { name: 'Claude',   count: 8,  color: 'var(--accent-purple)' },
-];
+/** 标准化后的任务节点 */
+interface TaskNode {
+  id: string;
+  label: string;
+  status: NodeStatus;
+}
 
-const maxModelCount = Math.max(...modelStats.map((m) => m.count));
+/** 引擎指标 */
+interface EngineMetric {
+  label: string;
+  value: string;
+  accent: string;
+}
+
+/** 日志条目 */
+interface LogEntry {
+  time: string;
+  level: LogLevel;
+  message: string;
+}
 
 /* ====== DAG 节点颜色映射 ====== */
 function nodeStyle(status: NodeStatus) {
@@ -130,11 +106,155 @@ const statusLabel = (s: NodeStatus) => s === 'done' ? '完成' : s === 'running'
 const logColor = (l: LogLevel) =>
   l === 'OK' ? 'var(--accent-green)' : l === 'WARN' ? 'var(--accent-amber)' : l === 'ERROR' ? 'var(--accent-red)' : 'var(--text-secondary)';
 
-/**
- * 智能流监控 — Sonic Abyss DAG 引擎可视化
- * 12 列 Bento Grid，玻璃卡片 + 终端美学
- */
+/** 从 OMEGA 任务数据推导 DAG 节点 */
+function tasksToNodes(tasks: Record<string, unknown>[]): TaskNode[] {
+  if (!tasks || tasks.length === 0) return [];
+  return tasks.map((t, i) => ({
+    id: String(t.id || t.task_id || `task-${i}`),
+    label: String(t.name || t.title || t.description || `任务 ${i + 1}`),
+    status: normalizeTaskStatus(String(t.status || 'pending')),
+  }));
+}
+
+/** 标准化任务状态 */
+function normalizeTaskStatus(raw: string): NodeStatus {
+  const s = raw.toLowerCase();
+  if (['done', 'completed', 'success', 'finished'].includes(s)) return 'done';
+  if (['running', 'active', 'in_progress', 'processing'].includes(s)) return 'running';
+  return 'pending';
+}
+
+/** 通知条目转日志 */
+function notificationsToLogs(items: Record<string, unknown>[]): LogEntry[] {
+  return items.map((n) => {
+    const level = String(n.level || n.category || 'INFO').toUpperCase() as LogLevel;
+    const validLevel = (['INFO', 'OK', 'WARN', 'ERROR'].includes(level) ? level : 'INFO') as LogLevel;
+    return {
+      time: formatTime(n.time || n.created_at || n.timestamp),
+      level: validLevel,
+      message: String(n.msg || n.message || n.title || ''),
+    };
+  });
+}
+
+/** 格式化时间为 HH:MM:SS */
+function formatTime(raw: unknown): string {
+  if (!raw) return '--:--:--';
+  const s = String(raw);
+  // 如果已是 HH:MM:SS 格式
+  if (/^\d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  // 尝试解析为 Date
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map((n) => String(n).padStart(2, '0'))
+      .join(':');
+  }
+  return s.slice(0, 8);
+}
+
+/* ====== 主组件 ====== */
+
 export function ExecutionFlow() {
+  const [dagNodes, setDagNodes] = useState<TaskNode[]>([]);
+  const [metrics, setMetrics] = useState<EngineMetric[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [omegaStatus, setOmegaStatus] = useState<Record<string, unknown> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── 拉取数据 ── */
+  const fetchData = useCallback(async () => {
+    try {
+      const [tasksRes, statusRes, notifRes] = await Promise.allSettled([
+        clawbotFetchJson<Record<string, unknown>>('/api/v1/omega/tasks'),
+        clawbotFetchJson<Record<string, unknown>>('/api/v1/omega/status'),
+        clawbotFetchJson<Record<string, unknown>>('/api/v1/system/notifications?limit=10'),
+      ]);
+
+      // 处理 OMEGA 任务 → DAG 节点
+      if (tasksRes.status === 'fulfilled') {
+        const raw = tasksRes.value;
+        const list: Record<string, unknown>[] = Array.isArray(raw)
+          ? raw
+          : (raw?.tasks || raw?.data || raw?.active_tasks || []) as Record<string, unknown>[];
+        setDagNodes(tasksToNodes(list));
+      }
+
+      // 处理 OMEGA 状态 → 引擎指标
+      if (statusRes.status === 'fulfilled') {
+        const s = statusRes.value;
+        setOmegaStatus(s);
+        const newMetrics: EngineMetric[] = [
+          { label: '今日任务数', value: String(s.today_tasks ?? s.total_tasks ?? s.task_count ?? 'N/A'), accent: 'var(--accent-cyan)' },
+          { label: '成功率', value: s.success_rate ? `${s.success_rate}%` : (s.success_count && s.total_count ? `${((Number(s.success_count) / Number(s.total_count)) * 100).toFixed(1)}%` : 'N/A'), accent: 'var(--accent-green)' },
+          { label: '平均耗时', value: s.avg_duration ? `${s.avg_duration}s` : (s.avg_response_ms ? `${s.avg_response_ms}ms` : 'N/A'), accent: 'var(--accent-amber)' },
+          { label: '活跃管道', value: String(s.active_pipelines ?? s.active_tasks ?? 'N/A'), accent: 'var(--accent-purple)' },
+          { label: '排队任务', value: String(s.queued_tasks ?? s.pending_tasks ?? 'N/A'), accent: 'var(--text-secondary)' },
+          { label: '失败任务', value: String(s.failed_tasks ?? s.error_count ?? 'N/A'), accent: 'var(--accent-red)' },
+        ];
+        setMetrics(newMetrics);
+      } else {
+        // API 不可用时显示空状态
+        setMetrics([
+          { label: '今日任务数', value: 'N/A', accent: 'var(--accent-cyan)' },
+          { label: '成功率', value: 'N/A', accent: 'var(--accent-green)' },
+          { label: '平均耗时', value: 'N/A', accent: 'var(--accent-amber)' },
+          { label: '活跃管道', value: 'N/A', accent: 'var(--accent-purple)' },
+          { label: '排队任务', value: 'N/A', accent: 'var(--text-secondary)' },
+          { label: '失败任务', value: 'N/A', accent: 'var(--accent-red)' },
+        ]);
+      }
+
+      // 处理通知 → 日志
+      if (notifRes.status === 'fulfilled') {
+        const raw = notifRes.value;
+        const items: Record<string, unknown>[] = Array.isArray(raw)
+          ? raw
+          : (raw?.notifications || raw?.data || raw?.items || []) as Record<string, unknown>[];
+        setLogEntries(notificationsToLogs(items));
+      }
+    } catch {
+      // 静默处理
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* ── 首次加载 + 自动刷新 ── */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ── 当前正在执行的任务 ── */
+  const currentTask = useMemo(() => {
+    return dagNodes.find((n) => n.status === 'running');
+  }, [dagNodes]);
+
+  /* ── 已完成的任务 ── */
+  const completedTasks = useMemo(() => {
+    return dagNodes.filter((n) => n.status === 'done');
+  }, [dagNodes]);
+
+  /* ── 活跃管道（running 的任务） ── */
+  const activePipelines = useMemo(() => {
+    return dagNodes.filter((n) => n.status === 'running' || n.status === 'pending');
+  }, [dagNodes]);
+
+  /* ── 加载中 ── */
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载智能流引擎…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -148,9 +268,18 @@ export function ExecutionFlow() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center justify-between mb-1">
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG EXECUTOR</span>
-              <div className="flex items-center gap-1.5">
-                <motion.span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-green)' }} animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setLoading(true); fetchData(); }}
+                  className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+                  title="手动刷新"
+                >
+                  <RefreshCw size={12} />
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <motion.span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-green)' }} animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                </div>
               </div>
             </div>
             <h2 className="font-display text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -159,35 +288,39 @@ export function ExecutionFlow() {
 
             {/* DAG 流水线可视化 */}
             <div className="flex-1 flex items-center justify-center mt-6 mb-4">
-              <div className="flex items-center gap-0 w-full max-w-[720px]">
-                {dagNodes.map((node, i) => {
-                  const s = nodeStyle(node.status);
-                  return (
-                    <div key={node.id} className="flex items-center" style={{ flex: 1 }}>
-                      <motion.div
-                        className="relative flex flex-col items-center justify-center rounded-xl px-3 py-3 w-full min-w-[90px]"
-                        style={{ border: `1px solid ${s.border}`, background: s.bg, boxShadow: s.glow }}
-                        initial={{ scale: 0.85, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: i * 0.08, duration: 0.3 }}
-                      >
-                        <StatusIcon status={node.status} />
-                        <span className="font-mono text-[11px] font-semibold mt-1.5 text-center leading-tight" style={{ color: s.text }}>{node.label}</span>
-                        <span className="font-mono text-[9px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{statusLabel(node.status)}</span>
-                      </motion.div>
+              {dagNodes.length === 0 ? (
+                <div className="text-[var(--text-tertiary)] font-mono text-sm">暂无活跃任务</div>
+              ) : (
+                <div className="flex items-center gap-0 w-full max-w-[720px]">
+                  {dagNodes.slice(0, 6).map((node, i) => {
+                    const s = nodeStyle(node.status);
+                    return (
+                      <div key={node.id} className="flex items-center" style={{ flex: 1 }}>
+                        <motion.div
+                          className="relative flex flex-col items-center justify-center rounded-xl px-3 py-3 w-full min-w-[90px]"
+                          style={{ border: `1px solid ${s.border}`, background: s.bg, boxShadow: s.glow }}
+                          initial={{ scale: 0.85, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: i * 0.08, duration: 0.3 }}
+                        >
+                          <StatusIcon status={node.status} />
+                          <span className="font-mono text-[11px] font-semibold mt-1.5 text-center leading-tight" style={{ color: s.text }}>{node.label}</span>
+                          <span className="font-mono text-[9px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{statusLabel(node.status)}</span>
+                        </motion.div>
 
-                      {/* 连接箭头 */}
-                      {i < dagNodes.length - 1 && (
-                        <div className="flex items-center px-1 shrink-0">
-                          <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: i * 0.08 + 0.15, duration: 0.25 }} style={{ transformOrigin: 'left' }}>
-                            <ArrowRight size={14} style={{ color: node.status === 'done' && dagNodes[i + 1].status !== 'pending' ? 'var(--accent-green)' : 'var(--text-tertiary)' }} />
-                          </motion.div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        {/* 连接箭头 */}
+                        {i < Math.min(dagNodes.length, 6) - 1 && (
+                          <div className="flex items-center px-1 shrink-0">
+                            <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: i * 0.08 + 0.15, duration: 0.25 }} style={{ transformOrigin: 'left' }}>
+                              <ArrowRight size={14} style={{ color: node.status === 'done' && dagNodes[i + 1]?.status !== 'pending' ? 'var(--accent-green)' : 'var(--text-tertiary)' }} />
+                            </motion.div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 当前任务信息 */}
@@ -195,15 +328,15 @@ export function ExecutionFlow() {
               <div className="flex items-center gap-2">
                 <Zap size={13} style={{ color: 'var(--accent-amber)' }} />
                 <span style={{ color: 'var(--text-secondary)' }}>正在执行:</span>
-                <span style={{ color: 'var(--text-primary)' }}>分析 AAPL 技术面</span>
+                <span style={{ color: 'var(--text-primary)' }}>{currentTask?.label || '暂无'}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Timer size={12} style={{ color: 'var(--text-tertiary)' }} />
-                <span style={{ color: 'var(--accent-cyan)' }}>2.3s</span>
+                <span style={{ color: 'var(--accent-cyan)' }}>{String(omegaStatus?.current_duration || 'N/A')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Cpu size={12} style={{ color: 'var(--text-tertiary)' }} />
-                <span style={{ color: 'var(--accent-purple)' }}>GPT-4o</span>
+                <span style={{ color: 'var(--accent-purple)' }}>{String(omegaStatus?.current_model || 'N/A')}</span>
               </div>
             </div>
           </div>
@@ -221,7 +354,7 @@ export function ExecutionFlow() {
               引擎指标
             </h3>
             <div className="grid grid-cols-2 gap-4">
-              {engineMetrics.map((m) => (
+              {metrics.map((m) => (
                 <div key={m.label}>
                   <span className="text-label">{m.label}</span>
                   <div className="text-metric mt-1" style={{ color: m.accent }}>
@@ -246,44 +379,44 @@ export function ExecutionFlow() {
               活跃管道
             </h3>
             <div className="space-y-3">
-              {activePipelines.map((p, i) => (
-                <motion.div
-                  key={p.name}
-                  className="rounded-lg px-4 py-3"
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--glass-border)',
-                  }}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + i * 0.08 }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      {p.name}
-                    </span>
-                    <span
-                      className={clsx(
-                        'px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider',
-                        p.status === '运行中'
-                          ? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]'
-                          : 'bg-[var(--text-tertiary)]/10 text-[var(--text-tertiary)]'
-                      )}
-                      style={{
-                        background: p.status === '运行中' ? 'rgba(0,255,170,0.1)' : 'rgba(255,255,255,0.05)',
-                        color: p.status === '运行中' ? 'var(--accent-green)' : 'var(--text-tertiary)',
-                      }}
-                    >
-                      {p.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4 font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    <span><Clock size={10} className="inline mr-1" />{p.startTime}</span>
-                    <span><GitBranch size={10} className="inline mr-1" />{p.progress} 节点</span>
-                    <span><Timer size={10} className="inline mr-1" />{p.elapsed}</span>
-                  </div>
-                </motion.div>
-              ))}
+              {activePipelines.length === 0 ? (
+                <div className="text-center py-6 text-[var(--text-tertiary)] font-mono text-sm">
+                  暂无活跃管道
+                </div>
+              ) : (
+                activePipelines.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    className="rounded-lg px-4 py-3"
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid var(--glass-border)',
+                    }}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + i * 0.08 }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {p.label}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider"
+                        style={{
+                          background: p.status === 'running' ? 'rgba(0,255,170,0.1)' : 'rgba(255,255,255,0.05)',
+                          color: p.status === 'running' ? 'var(--accent-green)' : 'var(--text-tertiary)',
+                        }}
+                      >
+                        {statusLabel(p.status)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span><Clock size={10} className="inline mr-1" />{statusLabel(p.status)}</span>
+                      <span><GitBranch size={10} className="inline mr-1" />{p.id}</span>
+                    </div>
+                  </motion.div>
+                ))
+              )}
             </div>
           </div>
         </motion.div>
@@ -300,47 +433,41 @@ export function ExecutionFlow() {
               最近完成
             </h3>
             <div className="space-y-2">
-              {completedTasks.map((t, i) => (
-                <motion.div
-                  key={t.name + t.time}
-                  className="flex items-center justify-between rounded-lg px-4 py-2.5"
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--glass-border)',
-                  }}
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + i * 0.06 }}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {t.result === '成功' ? (
+              {completedTasks.length === 0 ? (
+                <div className="text-center py-6 text-[var(--text-tertiary)] font-mono text-sm">
+                  暂无已完成任务
+                </div>
+              ) : (
+                completedTasks.map((t, i) => (
+                  <motion.div
+                    key={t.id}
+                    className="flex items-center justify-between rounded-lg px-4 py-2.5"
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid var(--glass-border)',
+                    }}
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + i * 0.06 }}
+                  >
+                    <div className="flex items-center gap-2.5">
                       <CheckCircle2 size={13} style={{ color: 'var(--accent-green)' }} />
-                    ) : (
-                      <XCircle size={13} style={{ color: 'var(--accent-red)' }} />
-                    )}
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                      {t.name}
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                        {t.label}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
+                      完成
                     </span>
-                  </div>
-                  <div className="flex items-center gap-3 font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    <span>{t.duration}</span>
-                    <span
-                      style={{
-                        color: t.result === '成功' ? 'var(--accent-green)' : 'var(--accent-red)',
-                      }}
-                    >
-                      {t.result}
-                    </span>
-                    <span>{t.time}</span>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))
+              )}
             </div>
           </div>
         </motion.div>
 
-        {/* ====== Row 3: 执行日志 (span-8) + 模型调用统计 (span-4) ====== */}
-        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+        {/* ====== Row 3: 执行日志 (span-12) ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card p-0 overflow-hidden">
             {/* 终端顶栏 */}
             <div
@@ -371,24 +498,28 @@ export function ExecutionFlow() {
 
             {/* 日志内容 */}
             <div className="px-5 py-4 space-y-1 font-mono text-[11px] leading-relaxed max-h-[280px] overflow-y-auto">
-              {logEntries.map((log, i) => (
-                <motion.div
-                  key={i}
-                  className="flex gap-3"
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + i * 0.04 }}
-                >
-                  <span style={{ color: 'var(--text-tertiary)', minWidth: 60 }}>{log.time}</span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: logColor(log.level), minWidth: 36 }}
+              {logEntries.length === 0 ? (
+                <span className="text-[var(--text-tertiary)]">暂无日志数据</span>
+              ) : (
+                logEntries.map((log, i) => (
+                  <motion.div
+                    key={i}
+                    className="flex gap-3"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.5 + i * 0.04 }}
                   >
-                    {log.level}
-                  </span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{log.message}</span>
-                </motion.div>
-              ))}
+                    <span style={{ color: 'var(--text-tertiary)', minWidth: 60 }}>{log.time}</span>
+                    <span
+                      className="font-semibold"
+                      style={{ color: logColor(log.level), minWidth: 36 }}
+                    >
+                      {log.level}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{log.message}</span>
+                  </motion.div>
+                ))
+              )}
               {/* 光标闪烁 */}
               <motion.span
                 className="inline-block w-[6px] h-[13px] ml-[100px] mt-1"
@@ -396,62 +527,6 @@ export function ExecutionFlow() {
                 animate={{ opacity: [1, 0, 1] }}
                 transition={{ duration: 0.9, repeat: Infinity }}
               />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <div className="flex items-center gap-2 mb-4">
-              <Cpu size={14} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                LLM USAGE
-              </span>
-            </div>
-            <h3 className="font-display text-lg font-bold mb-5" style={{ color: 'var(--text-primary)' }}>
-              模型调用统计
-            </h3>
-            <div className="space-y-4">
-              {modelStats.map((m, i) => (
-                <motion.div
-                  key={m.name}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 + i * 0.08 }}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {m.name}
-                    </span>
-                    <span className="font-mono text-xs font-semibold" style={{ color: m.color }}>
-                      {m.count}次
-                    </span>
-                  </div>
-                  <div
-                    className="h-1.5 rounded-full overflow-hidden"
-                    style={{ background: 'rgba(255,255,255,0.04)' }}
-                  >
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: m.color }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(m.count / maxModelCount) * 100}%` }}
-                      transition={{ delay: 0.6 + i * 0.08, duration: 0.5, ease: 'easeOut' }}
-                    />
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* 总计 */}
-            <div
-              className="mt-6 pt-4 flex items-center justify-between font-mono text-xs"
-              style={{ borderTop: '1px solid var(--glass-border)' }}
-            >
-              <span style={{ color: 'var(--text-tertiary)' }}>总调用</span>
-              <span className="text-metric text-base" style={{ color: 'var(--accent-cyan)' }}>
-                {modelStats.reduce((a, b) => a + b.count, 0)}
-              </span>
             </div>
           </div>
         </motion.div>
