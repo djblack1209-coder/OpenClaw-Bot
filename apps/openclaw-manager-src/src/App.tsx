@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { Toaster } from 'sonner';
@@ -34,9 +34,9 @@ const APIGateway = lazy(() => import('./components/APIGateway').then(m => ({ def
 const Scheduler = lazy(() => import('./components/Scheduler').then(m => ({ default: m.Scheduler })));
 const Performance = lazy(() => import('./components/Performance').then(m => ({ default: m.Performance })));
 
-const PageLoader = () => (
+  const PageLoader = () => (
   <div className="h-full flex items-center justify-center">
-    <Loader2 className="w-8 h-8 animate-spin text-claw-500" />
+    <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-cyan)]" />
   </div>
 );
 
@@ -81,18 +81,14 @@ export interface EnvironmentStatus {
 import type { ServiceStatus } from './lib/tauri';
 
 function App() {
-  // 监听 <html> 上的 dark class 变化，让 Toaster 主题跟随系统切换
-  const [toasterTheme, setToasterTheme] = useState<'dark' | 'light'>(() =>
-    document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-  );
+  // Sonic Abyss 主题：强制 dark mode，不做 light mode
+  const toasterTheme = 'dark' as const;
 
+  // 强制 html 元素保持 dark class
   useEffect(() => {
     const html = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setToasterTheme(html.classList.contains('dark') ? 'dark' : 'light');
-    });
-    observer.observe(html, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
+    html.classList.add('dark');
+    html.style.colorScheme = 'dark';
   }, []);
 
   const currentPage = useAppStore((s) => s.currentPage);
@@ -224,13 +220,13 @@ function App() {
   // 正在检查环境
   if (isReady === null) {
     return (
-      <div className="flex h-screen bg-dark-900 items-center justify-center">
+      <div className="flex h-screen items-center justify-center" style={{ background: 'var(--bg-base)' }}>
         <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
         <div className="relative z-10 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 mb-4 animate-pulse">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-purple)] mb-4 animate-pulse">
             <span className="text-3xl">🦞</span>
           </div>
-          <p className="text-dark-400">正在启动...</p>
+          <p className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>正在启动...</p>
         </div>
       </div>
     );
@@ -239,12 +235,13 @@ function App() {
   // 首次运行引导流程（全屏，不显示侧边栏和标题栏）
   if (!onboardingComplete) {
     return (
-      <div className="h-screen bg-dark-900 overflow-hidden">
+      <div className="h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
         <Toaster
           theme={toasterTheme}
           position="top-right"
           toastOptions={{
-            className: 'bg-dark-800 border-dark-700 text-dark-100',
+            className: 'abyss-card !border-[var(--glass-border)]',
+            style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
           }}
         />
         <Suspense fallback={<PageLoader />}>
@@ -261,14 +258,15 @@ function App() {
 
   // 主界面
   return (
-    <div className="flex h-screen bg-dark-900 overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       <CommandPalette />
       {/* 全局通知提示 */}
       <Toaster 
         theme={toasterTheme}
         position="top-right"
         toastOptions={{
-          className: 'bg-dark-800 border-dark-700 text-dark-100',
+          className: 'abyss-card !border-[var(--glass-border)]',
+          style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
         }}
       />
       {/* 背景装饰 */}

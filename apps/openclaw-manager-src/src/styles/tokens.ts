@@ -1,8 +1,9 @@
 /**
- * OpenClaw Design System - Design Tokens
- * 
- * 设计规范：深色主题 + TradingView 风格
- * 主色调：#00D4FF (青色) + #0D0F14 (深色背景)
+ * Sonic Abyss 设计系统 - Design Tokens
+ *
+ * 设计规范：纯黑暗终端美学
+ * 主色调：#00d4ff (Hacker Cyan) + #ff003c (Killer Red) + #00ffaa (Hacker Green)
+ * 背景：#020202 纯黑
  */
 
 export const designTokens = {
@@ -10,98 +11,120 @@ export const designTokens = {
   colors: {
     // 品牌色（青色系）
     brand: {
-      DEFAULT: '#00D4FF',
-      50: '#E5F9FF',
-      100: '#CCF3FF',
-      200: '#99E7FF',
-      300: '#66DBFF',
-      400: '#33CFFF',
-      500: '#00D4FF',  // 主色
-      600: '#00A3CC',
-      700: '#007A99',
-      800: '#005266',
-      900: '#002933',
+      DEFAULT: '#00d4ff',
+      50: '#002933',
+      100: '#005266',
+      200: '#007a99',
+      300: '#00a3cc',
+      400: '#00d4ff',
+      500: '#00d4ff',  // 主色
+      600: '#33dfff',
+      700: '#66e8ff',
+      800: '#99f0ff',
+      900: '#ccf7ff',
     },
-    
-    // 语义色
+
+    // 强调色
+    accent: {
+      red: '#ff003c',       // Killer Red — 危险/亏损
+      green: '#00ffaa',     // Hacker Green — 成功/盈利
+      cyan: '#00d4ff',      // Hacker Cyan — 主色/链接
+      amber: '#fbbf24',     // 警告
+      purple: '#a78bfa',    // 辅助
+    },
+
+    // 语义色（映射到强调色）
     semantic: {
-      success: '#4ADE80',    // 绿色 - 成功/涨
-      danger: '#EF4444',     // 红色 - 危险/跌
-      warning: '#FBBF24',    // 黄色 - 警告
-      info: '#60A5FA',       // 蓝色 - 信息
+      success: '#00ffaa',    // 绿色 — 成功/涨
+      danger: '#ff003c',     // 红色 — 危险/跌
+      warning: '#fbbf24',    // 黄色 — 警告
+      info: '#00d4ff',       // 青色 — 信息
     },
-    
+
     // 深色背景系统
     background: {
-      primary: '#0D0F14',    // 主背景
-      secondary: '#1A1A1D',  // 次级背景
-      tertiary: '#242428',   // 三级背景
-      elevated: '#2E2E33',   // 悬浮层背景
+      base: '#020202',         // 最底层背景
+      elevated: '#0a0a0d',     // 提升层
+      card: 'rgba(15, 15, 18, 0.4)',       // 卡片背景（玻璃态）
+      cardHover: 'rgba(25, 25, 30, 0.5)',  // 卡片 hover
     },
-    
+
     // 文字颜色
     text: {
-      primary: '#FFFFFF',    // 主文字
-      secondary: '#9CA3AF',  // 次要文字
-      tertiary: '#6B7280',   // 三级文字
-      disabled: '#4B5563',   // 禁用文字
-      inverse: '#0D0F14',    // 反色文字（浅色背景上）
+      primary: '#ffffff',                    // 主文字
+      secondary: 'rgba(255, 255, 255, 0.55)', // 次要文字
+      tertiary: 'rgba(255, 255, 255, 0.35)',  // 三级文字
+      disabled: 'rgba(255, 255, 255, 0.2)',   // 禁用文字
     },
-    
-    // 边框颜色
+
+    // 玻璃边框
+    glass: {
+      border: 'rgba(255, 255, 255, 0.08)',
+      borderHover: 'rgba(255, 255, 255, 0.15)',
+    },
+
+    // 边框颜色（兼容旧格式）
     border: {
-      DEFAULT: 'rgba(255, 255, 255, 0.1)',
-      light: 'rgba(255, 255, 255, 0.05)',
-      medium: 'rgba(255, 255, 255, 0.15)',
-      strong: 'rgba(255, 255, 255, 0.2)',
+      DEFAULT: 'rgba(255, 255, 255, 0.08)',
+      light: 'rgba(255, 255, 255, 0.04)',
+      medium: 'rgba(255, 255, 255, 0.12)',
+      strong: 'rgba(255, 255, 255, 0.18)',
     },
-    
+
     // 交易相关颜色
     trading: {
-      buy: '#4ADE80',        // 买入/做多
-      sell: '#EF4444',       // 卖出/做空
-      neutral: '#9CA3AF',    // 中性
+      buy: '#00ffaa',          // 买入/做多（Hacker Green）
+      sell: '#ff003c',         // 卖出/做空（Killer Red）
+      neutral: 'rgba(255, 255, 255, 0.4)', // 中性
+    },
+
+    // 发光效果
+    glow: {
+      red: 'rgba(255, 0, 60, 0.4)',
+      green: 'rgba(0, 255, 170, 0.4)',
+      cyan: 'rgba(0, 212, 255, 0.4)',
     },
   },
-  
+
   // ===== 字体系统 =====
   typography: {
     fontFamily: {
+      display: [
+        'Space Grotesk',
+        'system-ui',
+        'sans-serif',
+      ],
       sans: [
-        'SF Pro Display',
-        '-apple-system',
-        'BlinkMacSystemFont',
-        'PingFang SC',
-        'Hiragino Sans GB',
-        'Microsoft YaHei',
+        'Inter',
+        'system-ui',
         'sans-serif',
       ],
       mono: [
-        'SF Mono',
         'JetBrains Mono',
+        'SF Mono',
         'Fira Code',
-        'Menlo',
         'monospace',
       ],
     },
     fontSize: {
       xs: ['0.75rem', { lineHeight: '1rem' }],      // 12px
-      sm: ['0.875rem', { lineHeight: '1.25rem' }],  // 14px
-      base: ['1rem', { lineHeight: '1.5rem' }],     // 16px
-      lg: ['1.125rem', { lineHeight: '1.75rem' }],  // 18px
-      xl: ['1.25rem', { lineHeight: '1.75rem' }],   // 20px
-      '2xl': ['1.5rem', { lineHeight: '2rem' }],    // 24px
+      sm: ['0.875rem', { lineHeight: '1.25rem' }],   // 14px
+      base: ['1rem', { lineHeight: '1.5rem' }],       // 16px
+      lg: ['1.125rem', { lineHeight: '1.75rem' }],    // 18px
+      xl: ['1.25rem', { lineHeight: '1.75rem' }],     // 20px
+      '2xl': ['1.5rem', { lineHeight: '2rem' }],      // 24px
       '3xl': ['1.875rem', { lineHeight: '2.25rem' }], // 30px
-      '4xl': ['2.25rem', { lineHeight: '2.5rem' }], // 36px
+      '4xl': ['2.25rem', { lineHeight: '2.5rem' }],   // 36px
     },
     fontWeight: {
+      light: '300',
       normal: '400',
       medium: '500',
-      semibold: '600',
       bold: '700',
+      black: '900',
     },
   },
-  
+
   // ===== 间距系统 =====
   spacing: {
     0: '0',
@@ -118,31 +141,32 @@ export const designTokens = {
     20: '5rem',     // 80px
     24: '6rem',     // 96px
   },
-  
+
   // ===== 圆角系统 =====
   borderRadius: {
     none: '0',
-    sm: '0.25rem',   // 4px
-    DEFAULT: '0.5rem',   // 8px
-    md: '0.625rem',  // 10px
-    lg: '0.75rem',   // 12px
-    xl: '1rem',      // 16px
-    '2xl': '1.5rem', // 24px
+    sm: '0.5rem',     // 8px
+    DEFAULT: '0.75rem', // 12px
+    md: '1rem',        // 16px
+    lg: '1.5rem',      // 24px — 玻璃卡片
+    xl: '2rem',        // 32px — 大圆角卡片
     full: '9999px',
   },
-  
+
   // ===== 阴影系统 =====
   boxShadow: {
-    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-    DEFAULT: '0 2px 8px rgba(0, 0, 0, 0.1)',
-    md: '0 4px 12px rgba(0, 0, 0, 0.15)',
-    lg: '0 8px 24px rgba(0, 0, 0, 0.2)',
-    xl: '0 12px 32px rgba(0, 0, 0, 0.25)',
-    '2xl': '0 16px 48px rgba(0, 0, 0, 0.3)',
+    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.3)',
+    DEFAULT: '0 2px 8px rgba(0, 0, 0, 0.4)',
+    md: '0 4px 12px rgba(0, 0, 0, 0.5)',
+    lg: '0 8px 24px rgba(0, 0, 0, 0.6)',
+    xl: '0 12px 32px rgba(0, 0, 0, 0.7)',
+    '2xl': '0 16px 48px rgba(0, 0, 0, 0.8)',
     glow: '0 0 20px rgba(0, 212, 255, 0.3)',
     glowStrong: '0 0 30px rgba(0, 212, 255, 0.5)',
+    glowRed: '0 0 30px rgba(255, 0, 60, 0.4)',
+    glowGreen: '0 0 30px rgba(0, 255, 170, 0.4)',
   },
-  
+
   // ===== 动画系统 =====
   animation: {
     duration: {
@@ -155,9 +179,10 @@ export const designTokens = {
       easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
       easeOut: 'cubic-bezier(0, 0, 0.2, 1)',
       easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      bounce: 'cubic-bezier(0.16, 1, 0.3, 1)',
     },
   },
-  
+
   // ===== Z-Index 系统 =====
   zIndex: {
     base: 0,

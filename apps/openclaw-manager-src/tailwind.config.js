@@ -10,6 +10,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        /* === shadcn 必需映射 === */
         background: 'var(--background)',
         foreground: 'var(--foreground)',
         card: {
@@ -35,10 +36,12 @@ export default {
         accent: {
           DEFAULT: 'var(--accent)',
           foreground: 'var(--accent-foreground)',
-          cyan: '#22d3ee',
-          purple: '#a78bfa',
-          green: '#4ade80',
+          /* Sonic Abyss 强调色 */
+          red: '#ff003c',
+          green: '#00ffaa',
+          cyan: '#00d4ff',
           amber: '#fbbf24',
+          purple: '#a78bfa',
         },
         destructive: {
           DEFAULT: 'var(--destructive)',
@@ -64,21 +67,25 @@ export default {
           border: 'var(--sidebar-border)',
           ring: 'var(--sidebar-ring)'
         },
-        // OpenClaw 品牌色（保留兼容性）
+
+        /* === Sonic Abyss 颜色系统 === */
+
+        /* 兼容旧 claw-* 色（映射到 Killer Red） */
         claw: {
-          50: '#fef3f2',
-          100: '#fee4e2',
-          200: '#ffccc7',
-          300: '#ffa8a0',
-          400: '#ff7a6b',
-          500: '#f94d3a',
-          600: '#e63024',
-          700: '#c1241a',
-          800: '#a02119',
-          900: '#84221c',
-          950: '#480d09',
+          50: '#1a0008',
+          100: '#33000f',
+          200: '#66001f',
+          300: '#99002e',
+          400: '#cc003e',
+          500: '#ff003c',   // Killer Red
+          600: '#ff3363',
+          700: '#ff668a',
+          800: '#ff99b1',
+          900: '#ffccd8',
+          950: '#ffe6ec',
         },
-        // 深色主题背景（通过 CSS 变量实现浅色/深色模式切换）
+
+        /* dark-* 色阶（通过 CSS 变量） */
         dark: {
           950: 'var(--dark-950)',
           900: 'var(--dark-900)',
@@ -91,15 +98,22 @@ export default {
           200: 'var(--dark-200)',
           100: 'var(--dark-100)',
         },
-        // Design Tokens - 品牌色（青色系）
+
+        /* 品牌色（从 tokens） */
         brand: designTokens.colors.brand,
-        // Design Tokens - 语义色
+
+        /* 语义色（从 tokens） */
         success: designTokens.colors.semantic.success,
         danger: designTokens.colors.semantic.danger,
         warning: designTokens.colors.semantic.warning,
         info: designTokens.colors.semantic.info,
       },
-      fontFamily: designTokens.typography.fontFamily,
+
+      fontFamily: {
+        display: designTokens.typography.fontFamily.display,
+        sans: designTokens.typography.fontFamily.sans,
+        mono: designTokens.typography.fontFamily.mono,
+      },
       fontSize: designTokens.typography.fontSize,
       fontWeight: designTokens.typography.fontWeight,
       spacing: designTokens.spacing,
@@ -111,10 +125,12 @@ export default {
       },
       boxShadow: {
         ...designTokens.boxShadow,
-        'glow-claw': '0 0 30px rgba(249, 77, 58, 0.3)',
-        'glow-cyan': '0 0 30px rgba(34, 211, 238, 0.3)',
-        'glow-green': '0 0 30px rgba(74, 222, 128, 0.3)',
-        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+        /* Sonic Abyss 发光阴影 */
+        'glow-red': '0 0 30px rgba(255, 0, 60, 0.4)',
+        'glow-cyan': '0 0 30px rgba(0, 212, 255, 0.4)',
+        'glow-green': '0 0 30px rgba(0, 255, 170, 0.4)',
+        'glow-claw': '0 0 30px rgba(255, 0, 60, 0.3)',
+        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.03)',
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -122,11 +138,12 @@ export default {
         'slide-up': 'slideUp 0.3s ease-out',
         'slide-down': 'slideDown 0.3s ease-out',
         'fade-in': 'fadeIn 0.2s ease-out',
+        'pulse-glow': 'pulseGlow 2s infinite cubic-bezier(0.4, 0, 0.2, 1)',
       },
       keyframes: {
         glow: {
-          '0%': { boxShadow: '0 0 5px rgba(249, 77, 58, 0.5)' },
-          '100%': { boxShadow: '0 0 20px rgba(249, 77, 58, 0.8)' },
+          '0%': { boxShadow: '0 0 5px rgba(0, 212, 255, 0.4)' },
+          '100%': { boxShadow: '0 0 20px rgba(0, 212, 255, 0.7)' },
         },
         slideUp: {
           '0%': { transform: 'translateY(10px)', opacity: '0' },
@@ -140,9 +157,14 @@ export default {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
         },
+        pulseGlow: {
+          '0%': { transform: 'scale(0.5)', opacity: '1' },
+          '100%': { transform: 'scale(2.5)', opacity: '0' },
+        },
       },
       backdropBlur: {
         xs: '2px',
+        glass: '24px',
       },
       zIndex: designTokens.zIndex,
     },
