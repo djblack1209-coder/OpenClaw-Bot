@@ -1,13 +1,19 @@
 /**
  * APIGateway — API 网关页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 真实 API 数据：网关状态 / 渠道列表 / 令牌管理
  */
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import {
   Network, Key, Activity,
-  Terminal, Gauge, ArrowUpRight,
+  Terminal, Loader2, Trash2,
+  ToggleLeft, ToggleRight,
+  Wifi, WifiOff, RefreshCw,
 } from 'lucide-react';
+import { api } from '../../lib/api';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -20,81 +26,257 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 类型定义 ====== */
 
-/** 概览统计 */
-const OVERVIEW_STATS = [
-  { label: '总路由数', value: '24', color: 'var(--accent-cyan)' },
-  { label: '活跃连接', value: '18', color: 'var(--accent-green)' },
-  { label: '今日请求', value: '12,847', color: 'var(--accent-amber)' },
-  { label: '错误率', value: '0.3%', color: 'var(--accent-red)' },
-];
-
-/** 路由表 */
-interface RouteEntry {
-  path: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  status: 'active' | 'degraded' | 'down';
-  latency: string;
-  requests: number;
+/** 网关状态 */
+interface GatewayStatus {
+  running?: boolean;
+  online?: boolean;
+  status?: string;
+  version?: string;
+  uptime?: number | string;
+  channels_count?: number;
+  tokens_count?: number;
+  [key: string]: unknown;
 }
 
-const ROUTES: RouteEntry[] = [
-  { path: '/api/v1/chat/completions', method: 'POST', status: 'active', latency: '142ms', requests: 4820 },
-  { path: '/api/v1/models', method: 'GET', status: 'active', latency: '28ms', requests: 2340 },
-  { path: '/api/v1/embeddings', method: 'POST', status: 'active', latency: '87ms', requests: 1890 },
-  { path: '/api/v1/images/generations', method: 'POST', status: 'degraded', latency: '1.2s', requests: 456 },
-  { path: '/api/v1/audio/transcriptions', method: 'POST', status: 'active', latency: '340ms', requests: 312 },
-  { path: '/api/v1/channels', method: 'GET', status: 'active', latency: '15ms', requests: 1240 },
-  { path: '/api/v1/tokens', method: 'GET', status: 'active', latency: '12ms', requests: 890 },
-  { path: '/api/v1/health', method: 'GET', status: 'active', latency: '3ms', requests: 899 },
-];
-
-/** API 令牌 */
-interface APIToken {
-  name: string;
-  created: string;
-  lastUsed: string;
-  status: 'active' | 'expired';
-  key: string;
+/** 渠道条目 */
+interface ChannelItem {
+  id: number;
+  name?: string;
+  type?: number;
+  key?: string;
+  base_url?: string;
+  models?: string;
+  group?: string;
+  status?: number;            // 1=启用, 2=禁用
+  used_quota?: number;
+  balance?: number;
+  priority?: number;
+  response_time?: number;
+  test_time?: number;
+  created_time?: number;
+  [key: string]: unknown;
 }
 
-const TOKENS: APIToken[] = [
-  { name: '生产环境主令牌', created: '2026-01-15', lastUsed: '2分钟前', status: 'active', key: 'sk-oc-prod-****7f3a' },
-  { name: '测试环境令牌', created: '2026-03-02', lastUsed: '1小时前', status: 'active', key: 'sk-oc-test-****b2e1' },
-  { name: '旧版兼容令牌', created: '2025-11-20', lastUsed: '30天前', status: 'expired', key: 'sk-oc-old-****9d44' },
-];
-
-/** 请求分布 */
-const METHOD_DIST = [
-  { method: 'GET', pct: 60, color: 'var(--accent-cyan)' },
-  { method: 'POST', pct: 30, color: 'var(--accent-green)' },
-  { method: 'PUT', pct: 8, color: 'var(--accent-amber)' },
-  { method: 'DELETE', pct: 2, color: 'var(--accent-red)' },
-];
-
-/** 网关日志 */
-const LOGS = [
-  { ts: '14:35:02', msg: '[GW] POST /chat/completions → 200 (142ms) — Anthropic' },
-  { ts: '14:34:58', msg: '[GW] GET  /models → 200 (28ms) — 缓存命中' },
-  { ts: '14:34:45', msg: '[GW] POST /images/generations → 504 (5.0s) — 超时重试' },
-  { ts: '14:34:30', msg: '[GW] POST /embeddings → 200 (87ms) — SiliconFlow' },
-  { ts: '14:34:12', msg: '[GW] GET  /health → 200 (3ms) — 心跳正常' },
-];
+/** 令牌条目 */
+interface TokenItem {
+  id: number;
+  name?: string;
+  key?: string;
+  status?: number;
+  created_time?: number;
+  accessed_time?: number;
+  expired_time?: number;
+  remain_quota?: number;
+  used_quota?: number;
+  unlimited_quota?: boolean;
+  [key: string]: unknown;
+}
 
 /* ====== 工具函数 ====== */
-const METHOD_COLORS: Record<string, string> = { GET: 'var(--accent-cyan)', POST: 'var(--accent-green)', PUT: 'var(--accent-amber)', DELETE: 'var(--accent-red)' };
-const methodColor = (m: string) => METHOD_COLORS[m] ?? 'var(--text-secondary)';
-const STATUS_DOT: Record<string, string> = { active: 'var(--accent-green)', degraded: 'var(--accent-amber)', down: 'var(--accent-red)' };
-const routeStatusDot = (s: string) => STATUS_DOT[s] ?? 'var(--text-disabled)';
+
+/** 安全解析 API 响应（兼容 Response / JSON 对象 / 数组） */
+async function parseResponse<T>(resp: unknown): Promise<T> {
+  if (resp instanceof Response) {
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  }
+  return resp as T;
+}
+
+/** 渠道类型映射 */
+const CHANNEL_TYPE_LABELS: Record<number, string> = {
+  1: 'OpenAI',
+  3: 'Azure',
+  14: 'Anthropic',
+  15: 'Baidu',
+  17: 'Ali',
+  18: 'Xunfei',
+  19: 'AI360',
+  23: 'Tencent',
+  24: 'Gemini',
+  25: 'Moonshot',
+  26: 'Baichuan',
+  27: 'Minimax',
+  28: 'Mistral',
+  29: 'Groq',
+  31: 'ZeroOne',
+  33: 'SiliconFlow',
+  34: 'DeepSeek',
+  40: 'Custom',
+};
+
+/** 渠道是否启用 */
+function isChannelEnabled(ch: ChannelItem): boolean {
+  return ch.status === 1;
+}
+
+/** 时间戳 → 友好时间 */
+function formatTime(ts?: number): string {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** 响应时间 → 颜色 */
+function latencyColor(ms?: number): string {
+  if (!ms || ms === 0) return 'var(--text-disabled)';
+  if (ms < 500) return 'var(--accent-green)';
+  if (ms < 1500) return 'var(--accent-amber)';
+  return 'var(--accent-red)';
+}
 
 /* ====== 主组件 ====== */
 
 export function APIGateway() {
-  /* 速率限制模拟 */
-  const rateLimit = 1000;
-  const rateCurrent = 342;
-  const ratePct = Math.round((rateCurrent / rateLimit) * 100);
+  /* ── 状态 ── */
+  const [loading, setLoading] = useState(true);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
+  const [channels, setChannels] = useState<ChannelItem[]>([]);
+  const [tokens, setTokens] = useState<TokenItem[]>([]);
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const [deletingTokenIds, setDeletingTokenIds] = useState<Set<number>>(new Set());
+  const [deletingChannelIds, setDeletingChannelIds] = useState<Set<number>>(new Set());
+
+  /* ── 数据拉取 ── */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [statusResp, channelsResp, tokensResp] = await Promise.allSettled([
+        api.newApiStatus(),
+        api.newApiChannels(),
+        api.newApiTokens(),
+      ]);
+
+      // 解析网关状态
+      if (statusResp.status === 'fulfilled') {
+        const data = await parseResponse<GatewayStatus>(statusResp.value);
+        setGatewayStatus(data);
+      }
+
+      // 解析渠道列表（兼容数组 / { data: [] } / { channels: [] }）
+      if (channelsResp.status === 'fulfilled') {
+        const raw = await parseResponse<any>(channelsResp.value);
+        const list: ChannelItem[] = Array.isArray(raw) ? raw
+          : Array.isArray(raw?.data) ? raw.data
+          : Array.isArray(raw?.channels) ? raw.channels
+          : [];
+        setChannels(list);
+      }
+
+      // 解析令牌列表（兼容数组 / { data: [] } / { tokens: [] }）
+      if (tokensResp.status === 'fulfilled') {
+        const raw = await parseResponse<any>(tokensResp.value);
+        const list: TokenItem[] = Array.isArray(raw) ? raw
+          : Array.isArray(raw?.data) ? raw.data
+          : Array.isArray(raw?.tokens) ? raw.tokens
+          : [];
+        setTokens(list);
+      }
+    } catch (err) {
+      console.error('[APIGateway] 数据加载失败:', err);
+      if (!silent) toast.error('网关数据加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const timer = setInterval(() => fetchData(true), 30_000);
+    return () => clearInterval(timer);
+  }, [fetchData]);
+
+  /* ── 渠道启用/禁用切换 ── */
+  const handleToggleChannel = useCallback(async (channelId: number) => {
+    setTogglingIds((prev) => new Set(prev).add(channelId));
+    try {
+      await parseResponse(await api.newApiToggleChannel(channelId));
+      toast.success('渠道状态已切换');
+      // 局部更新：翻转 status
+      setChannels((prev) =>
+        prev.map((ch) =>
+          ch.id === channelId
+            ? { ...ch, status: ch.status === 1 ? 2 : 1 }
+            : ch,
+        ),
+      );
+    } catch (err) {
+      console.error('[APIGateway] 切换渠道失败:', err);
+      toast.error('切换渠道状态失败');
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(channelId);
+        return next;
+      });
+    }
+  }, []);
+
+  /* ── 删除渠道 ── */
+  const handleDeleteChannel = useCallback(async (channelId: number, name?: string) => {
+    if (!confirm(`确定要删除渠道「${name || channelId}」？`)) return;
+    setDeletingChannelIds((prev) => new Set(prev).add(channelId));
+    try {
+      await parseResponse(await api.newApiDeleteChannel(channelId));
+      toast.success(`渠道「${name || channelId}」已删除`);
+      setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
+    } catch (err) {
+      console.error('[APIGateway] 删除渠道失败:', err);
+      toast.error('删除渠道失败');
+    } finally {
+      setDeletingChannelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(channelId);
+        return next;
+      });
+    }
+  }, []);
+
+  /* ── 删除令牌 ── */
+  const handleDeleteToken = useCallback(async (tokenId: number, name?: string) => {
+    if (!confirm(`确定要删除令牌「${name || tokenId}」？`)) return;
+    setDeletingTokenIds((prev) => new Set(prev).add(tokenId));
+    try {
+      await parseResponse(await api.newApiDeleteToken(tokenId));
+      toast.success(`令牌「${name || tokenId}」已删除`);
+      setTokens((prev) => prev.filter((t) => t.id !== tokenId));
+    } catch (err) {
+      console.error('[APIGateway] 删除令牌失败:', err);
+      toast.error('删除令牌失败');
+    } finally {
+      setDeletingTokenIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tokenId);
+        return next;
+      });
+    }
+  }, []);
+
+  /* ── 派生数据 ── */
+  const isOnline = gatewayStatus?.running || gatewayStatus?.online || gatewayStatus?.status === 'ok';
+  const enabledChannels = channels.filter(isChannelEnabled).length;
+
+  /* ── 概览统计 ── */
+  const overviewStats = [
+    { label: '渠道总数', value: String(channels.length), color: 'var(--accent-cyan)' },
+    { label: '已启用', value: String(enabledChannels), color: 'var(--accent-green)' },
+    { label: '令牌数', value: String(tokens.length), color: 'var(--accent-amber)' },
+    { label: '网关状态', value: isOnline ? '在线' : '离线', color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' },
+  ];
+
+  /* ── 加载态 ── */
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-cyan)' }} />
+        <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+          正在加载网关数据…
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -104,7 +286,7 @@ export function APIGateway() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 网关概览 (col-8, row-span-2) ====== */}
+        {/* ====== 网关概览 + 渠道列表 (col-8, row-span-2) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 lg:row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             {/* 标题行 */}
@@ -115,7 +297,7 @@ export function APIGateway() {
               >
                 <Network size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   GATEWAY CONTROLLER
                 </h2>
@@ -123,11 +305,30 @@ export function APIGateway() {
                   API 网关 // UNIFIED PROXY
                 </p>
               </div>
+              {/* 网关在线/离线指示 + 刷新按钮 */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+                  {isOnline
+                    ? <Wifi size={12} style={{ color: 'var(--accent-green)' }} />
+                    : <WifiOff size={12} style={{ color: 'var(--accent-red)' }} />}
+                  <span className="font-mono text-[10px]" style={{ color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                    {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => fetchData(true)}
+                  className="p-1.5 rounded-lg transition-colors hover:opacity-80"
+                  style={{ background: 'var(--bg-tertiary)' }}
+                  title="刷新数据"
+                >
+                  <RefreshCw size={12} style={{ color: 'var(--text-secondary)' }} />
+                </button>
+              </div>
             </div>
 
             {/* 统计 4 格 */}
             <div className="grid grid-cols-4 gap-3 mb-5">
-              {OVERVIEW_STATS.map((s) => (
+              {overviewStats.map((s) => (
                 <div key={s.label}>
                   <span className="text-label">{s.label}</span>
                   <div className="text-metric mt-1" style={{ color: s.color, fontSize: '20px' }}>
@@ -137,56 +338,103 @@ export function APIGateway() {
               ))}
             </div>
 
-            {/* 路由表 */}
+            {/* 渠道列表 */}
             <span className="text-label mb-2" style={{ color: 'var(--text-tertiary)' }}>
-              ROUTE TABLE
+              CHANNEL LIST · 渠道列表
             </span>
 
             {/* 表头 */}
             <div
-              className="grid grid-cols-12 gap-2 px-4 py-2 rounded-lg mb-1"
-              style={{ background: 'var(--bg-tertiary)' }}
+              className="grid gap-2 px-4 py-2 rounded-lg mb-1"
+              style={{ gridTemplateColumns: '2fr 1fr 70px 70px 60px 70px', background: 'var(--bg-tertiary)' }}
             >
-              <span className="text-label col-span-5" style={{ fontSize: '10px' }}>路径</span>
-              <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>方法</span>
-              <span className="text-label col-span-1 text-center" style={{ fontSize: '10px' }}>状态</span>
-              <span className="text-label col-span-2 text-right" style={{ fontSize: '10px' }}>响应时间</span>
-              <span className="text-label col-span-2 text-right" style={{ fontSize: '10px' }}>请求数</span>
+              <span className="text-label" style={{ fontSize: '10px' }}>渠道名称</span>
+              <span className="text-label" style={{ fontSize: '10px' }}>类型</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>状态</span>
+              <span className="text-label text-right" style={{ fontSize: '10px' }}>响应时间</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>开关</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>操作</span>
             </div>
 
-            {/* 路由行 */}
+            {/* 渠道行 */}
             <div className="flex-1 space-y-1 overflow-y-auto">
-              {ROUTES.map((r) => (
-                <div
-                  key={r.path}
-                  className="grid grid-cols-12 gap-2 items-center py-2.5 px-4 rounded-lg"
-                  style={{ background: 'var(--bg-secondary)' }}
-                >
-                  <span className="font-mono text-xs col-span-5 truncate" style={{ color: 'var(--text-primary)' }}>
-                    {r.path}
-                  </span>
-                  <div className="col-span-2 flex justify-center">
-                    <span
-                      className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider font-bold"
-                      style={{ background: `${methodColor(r.method)}15`, color: methodColor(r.method) }}
-                    >
-                      {r.method}
-                    </span>
-                  </div>
-                  <div className="col-span-1 flex justify-center">
-                    <span
-                      className={clsx('w-2 h-2 rounded-full', r.status === 'active' && 'animate-pulse')}
-                      style={{ background: routeStatusDot(r.status) }}
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] col-span-2 text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {r.latency}
-                  </span>
-                  <span className="font-mono text-[10px] col-span-2 text-right" style={{ color: 'var(--text-disabled)' }}>
-                    {r.requests.toLocaleString()}
-                  </span>
+              {channels.length === 0 ? (
+                <div className="text-center py-8 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  暂无渠道数据
                 </div>
-              ))}
+              ) : (
+                channels.map((ch) => {
+                  const enabled = isChannelEnabled(ch);
+                  const toggling = togglingIds.has(ch.id);
+                  const deleting = deletingChannelIds.has(ch.id);
+                  return (
+                    <div
+                      key={ch.id}
+                      className={clsx(
+                        'grid gap-2 items-center py-2.5 px-4 rounded-lg transition-opacity',
+                        !enabled && 'opacity-50',
+                      )}
+                      style={{ gridTemplateColumns: '2fr 1fr 70px 70px 60px 70px', background: 'var(--bg-secondary)' }}
+                    >
+                      {/* 渠道名称 */}
+                      <span className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>
+                        {ch.name || `渠道 #${ch.id}`}
+                      </span>
+                      {/* 类型 */}
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                        {CHANNEL_TYPE_LABELS[ch.type ?? 0] || `Type ${ch.type}`}
+                      </span>
+                      {/* 状态指示 */}
+                      <div className="flex justify-center items-center gap-1.5">
+                        <span
+                          className={clsx('w-2 h-2 rounded-full', enabled && 'animate-pulse')}
+                          style={{ background: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                        />
+                        <span className="font-mono text-[9px]" style={{ color: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                          {enabled ? '启用' : '禁用'}
+                        </span>
+                      </div>
+                      {/* 响应时间 */}
+                      <span className="font-mono text-[10px] text-right" style={{ color: latencyColor(ch.response_time) }}>
+                        {ch.response_time ? `${ch.response_time}ms` : '—'}
+                      </span>
+                      {/* 开关按钮 */}
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => handleToggleChannel(ch.id)}
+                          disabled={toggling}
+                          className="transition-colors hover:opacity-80 disabled:opacity-50"
+                          title={enabled ? '点击禁用' : '点击启用'}
+                        >
+                          {toggling ? (
+                            <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
+                          ) : enabled ? (
+                            <ToggleRight size={18} style={{ color: 'var(--accent-green)' }} />
+                          ) : (
+                            <ToggleLeft size={18} style={{ color: 'var(--text-disabled)' }} />
+                          )}
+                        </button>
+                      </div>
+                      {/* 删除按钮 */}
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => handleDeleteChannel(ch.id, ch.name)}
+                          disabled={deleting}
+                          className="p-1 rounded transition-colors hover:opacity-80 disabled:opacity-50"
+                          style={{ color: 'var(--accent-red)' }}
+                          title="删除渠道"
+                        >
+                          {deleting ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </motion.div>
@@ -201,187 +449,246 @@ export function APIGateway() {
               令牌管理
             </h3>
 
-            <div className="flex-1 space-y-3">
-              {TOKENS.map((tk) => {
-                const isActive = tk.status === 'active';
-                return (
-                  <div
-                    key={tk.name}
-                    className="py-3 px-4 rounded-lg"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-mono text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {tk.name}
-                      </span>
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ background: isActive ? 'var(--accent-green)' : 'var(--text-disabled)' }}
-                      />
+            <div className="flex-1 space-y-3 overflow-y-auto">
+              {tokens.length === 0 ? (
+                <div className="text-center py-8 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  暂无令牌
+                </div>
+              ) : (
+                tokens.map((tk) => {
+                  const isActive = tk.status === 1;
+                  const deleting = deletingTokenIds.has(tk.id);
+                  return (
+                    <div
+                      key={tk.id}
+                      className="py-3 px-4 rounded-lg"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-mono text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                          {tk.name || `令牌 #${tk.id}`}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ background: isActive ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                          />
+                          {/* 删除按钮 */}
+                          <button
+                            onClick={() => handleDeleteToken(tk.id, tk.name)}
+                            disabled={deleting}
+                            className="p-0.5 rounded transition-colors hover:opacity-80 disabled:opacity-50"
+                            style={{ color: 'var(--accent-red)' }}
+                            title="删除令牌"
+                          >
+                            {deleting ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={10} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      {/* 令牌 Key（脱敏） */}
+                      {tk.key && (
+                        <div className="font-mono text-[10px] py-1.5 px-2 rounded" style={{ background: 'var(--bg-base)', color: 'var(--text-disabled)' }}>
+                          <Key size={10} className="inline mr-1" style={{ color: 'var(--accent-amber)' }} />
+                          {tk.key.length > 12 ? `${tk.key.slice(0, 6)}****${tk.key.slice(-4)}` : tk.key}
+                        </div>
+                      )}
+                      <div className="flex justify-between mt-2">
+                        <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
+                          创建: {formatTime(tk.created_time)}
+                        </span>
+                        <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
+                          最近: {formatTime(tk.accessed_time)}
+                        </span>
+                      </div>
+                      {/* 配额信息 */}
+                      {tk.unlimited_quota ? (
+                        <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--accent-cyan)' }}>
+                          配额: 无限制
+                        </span>
+                      ) : tk.remain_quota != null ? (
+                        <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--text-disabled)' }}>
+                          剩余: {tk.remain_quota.toLocaleString()} · 已用: {(tk.used_quota ?? 0).toLocaleString()}
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="font-mono text-[10px] py-1.5 px-2 rounded" style={{ background: 'var(--bg-base)', color: 'var(--text-disabled)' }}>
-                      <Key size={10} className="inline mr-1" style={{ color: 'var(--accent-amber)' }} />
-                      {tk.key}
-                    </div>
-                    <div className="flex justify-between mt-2">
-                      <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
-                        创建: {tk.created}
-                      </span>
-                      <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
-                        最近: {tk.lastUsed}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </motion.div>
 
-        {/* ====== 流量统计 (col-4) ====== */}
+        {/* ====== 渠道模型分布 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-              TRAFFIC DISTRIBUTION
+              CHANNEL DISTRIBUTION
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              流量统计
+              渠道类型分布
             </h3>
 
             <div className="flex-1 space-y-3">
-              {METHOD_DIST.map((md) => (
-                <div key={md.method}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-xs font-bold" style={{ color: md.color }}>
-                      {md.method}
-                    </span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                      {md.pct}%
-                    </span>
-                  </div>
-                  <div className="w-full h-2 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${md.pct}%`, background: md.color }}
-                    />
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                // 按渠道类型统计数量
+                const typeCount: Record<string, number> = {};
+                channels.forEach((ch) => {
+                  const label = CHANNEL_TYPE_LABELS[ch.type ?? 0] || `Type ${ch.type}`;
+                  typeCount[label] = (typeCount[label] || 0) + 1;
+                });
+                const sorted = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
+                const total = channels.length || 1;
+                const colors = ['var(--accent-cyan)', 'var(--accent-green)', 'var(--accent-amber)', 'var(--accent-red)', 'var(--accent-purple)'];
+
+                if (sorted.length === 0) {
+                  return (
+                    <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                      暂无数据
+                    </div>
+                  );
+                }
+
+                return sorted.map(([label, count], idx) => {
+                  const pct = Math.round((count / total) * 100);
+                  const color = colors[idx % colors.length];
+                  return (
+                    <div key={label}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-xs font-bold" style={{ color }}>
+                          {label}
+                        </span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                          {count}个 · {pct}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
-            {/* 总请求趋势 */}
+            {/* 总渠道数 */}
             <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <Activity size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                12,847 请求
+                {channels.length} 个渠道
               </span>
-              <span className="font-mono text-[10px] flex items-center gap-0.5 ml-auto" style={{ color: 'var(--accent-green)' }}>
-                <ArrowUpRight size={10} /> +8.3%
+              <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--accent-green)' }}>
+                {enabledChannels} 启用
               </span>
             </div>
           </div>
         </motion.div>
 
-        {/* ====== 速率限制 (col-4) ====== */}
+        {/* ====== 渠道模型详情 (col-8) ====== */}
+        <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <Terminal size={14} style={{ color: 'var(--accent-green)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>MODELS BY CHANNEL</span>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-y-auto max-h-[260px]">
+              {channels.length === 0 ? (
+                <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  暂无渠道
+                </div>
+              ) : (
+                channels.map((ch) => {
+                  const models = ch.models ? ch.models.split(',').map((m) => m.trim()).filter(Boolean) : [];
+                  const enabled = isChannelEnabled(ch);
+                  return (
+                    <div
+                      key={ch.id}
+                      className={clsx(
+                        'flex items-start justify-between py-2.5 px-4 rounded-lg transition-opacity',
+                        !enabled && 'opacity-40',
+                      )}
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="font-display text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          {ch.name || `渠道 #${ch.id}`}
+                        </span>
+                        {models.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {models.slice(0, 6).map((m) => (
+                              <span
+                                key={m}
+                                className="px-1.5 py-0.5 rounded font-mono text-[9px]"
+                                style={{ background: 'rgba(6,182,212,0.1)', color: 'var(--accent-cyan)' }}
+                              >
+                                {m}
+                              </span>
+                            ))}
+                            {models.length > 6 && (
+                              <span className="font-mono text-[9px] px-1.5 py-0.5" style={{ color: 'var(--text-disabled)' }}>
+                                +{models.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--text-disabled)' }}>
+                            未配置模型
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono text-[10px] shrink-0 ml-3" style={{ color: latencyColor(ch.response_time) }}>
+                        {ch.response_time ? `${ch.response_time}ms` : ''}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== 网关信息摘要 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
-            <span className="text-label" style={{ color: 'var(--accent-red)' }}>
-              RATE LIMITING
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
+              GATEWAY INFO
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              速率限制
+              网关信息
             </h3>
 
-            <div className="flex-1 flex flex-col justify-center">
-              {/* 全局限制 */}
-              <div className="mb-4">
-                <span className="text-label">全局限制</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-metric" style={{ color: 'var(--accent-cyan)', fontSize: '20px' }}>
-                    {rateLimit.toLocaleString()}
-                  </span>
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    /min
-                  </span>
+            <div className="flex-1 space-y-3">
+              {/* 各种网关字段 — 动态渲染已有数据 */}
+              {gatewayStatus ? (
+                Object.entries(gatewayStatus)
+                  .filter(([k]) => !['running', 'online'].includes(k))
+                  .slice(0, 8)
+                  .map(([key, val]) => (
+                    <div key={key} className="flex items-center justify-between py-1.5">
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        {key}
+                      </span>
+                      <span className="font-mono text-[11px] font-semibold truncate max-w-[60%] text-right" style={{ color: 'var(--text-primary)' }}>
+                        {typeof val === 'object' ? JSON.stringify(val) : String(val ?? '—')}
+                      </span>
+                    </div>
+                  ))
+              ) : (
+                <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  网关未连接
                 </div>
-              </div>
-
-              {/* 当前使用 */}
-              <div className="mb-4">
-                <span className="text-label">当前使用</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-metric" style={{ color: 'var(--accent-green)', fontSize: '20px' }}>
-                    {rateCurrent}
-                  </span>
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    /min
-                  </span>
-                </div>
-              </div>
-
-              {/* 进度条 */}
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-label">使用率</span>
-                  <span className="font-mono text-[10px]" style={{ color: ratePct > 80 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                    {ratePct}%
-                  </span>
-                </div>
-                <div className="w-full h-3 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${ratePct}%`,
-                      background: ratePct > 80 ? 'var(--accent-red)' : ratePct > 50 ? 'var(--accent-amber)' : 'var(--accent-green)',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 mt-3">
-                <Gauge size={12} style={{ color: 'var(--text-disabled)' }} />
-                <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                  容量充足 — 无需扩容
-                </span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ====== 网关日志 (col-4) ====== */}
-        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                  GATEWAY LOG
-                </span>
-                <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                  网关日志
-                </h3>
-              </div>
-              <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                <Terminal size={12} className="inline mr-1" />LIVE
-              </span>
+              )}
             </div>
 
-            <div
-              className="flex-1 rounded-lg p-4 space-y-1.5 overflow-hidden"
-              style={{ background: 'var(--bg-base)' }}
-            >
-              {LOGS.map((l, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="font-mono text-[10px] shrink-0" style={{ color: 'var(--text-disabled)' }}>
-                    {l.ts}
-                  </span>
-                  <span className="font-mono text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                    {l.msg}
-                  </span>
-                </div>
-              ))}
-              <span className="font-mono text-[10px] animate-pulse" style={{ color: 'var(--accent-cyan)' }}>
-                █
-              </span>
+            <div className="mt-3 pt-3 font-mono text-[10px]" style={{ borderTop: '1px solid var(--glass-border)', color: 'var(--text-disabled)' }}>
+              自动刷新: 每 30 秒
             </div>
           </div>
         </motion.div>

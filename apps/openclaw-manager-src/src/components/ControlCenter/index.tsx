@@ -1,8 +1,9 @@
 /**
  * ControlCenter — 总控中心页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 所有数据来自后端 API，30 秒自动刷新
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Power,
@@ -11,8 +12,12 @@ import {
   ToggleRight,
   FileCode,
   AlertTriangle,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
+import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -25,9 +30,62 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔（毫秒） ====== */
+const AUTO_REFRESH_MS = 30_000;
 
-/** 主开关 */
+/* ====== 类型定义 ====== */
+
+/** 交易控制开关（来自 /api/v1/controls/trading） */
+interface TradingControls {
+  auto_trader_enabled: boolean;
+  ibkr_live_mode: boolean;
+  risk_protection_enabled: boolean;
+  allow_short_selling: boolean;
+  max_daily_trades: number;
+  [key: string]: unknown;
+}
+
+/** 社交控制开关（来自 /api/v1/controls/social） */
+interface SocialControls {
+  [key: string]: unknown;
+}
+
+/** 服务状态（来自 /api/v1/system/services） */
+interface ServiceEntry {
+  name: string;
+  status: 'online' | 'offline' | 'degraded' | string;
+  port?: number;
+  cpu?: string;
+  mem?: string;
+  pid?: number | null;
+  uptime?: string;
+  [key: string]: unknown;
+}
+
+/** 全局设置（来自 /api/v1/controls/settings） */
+interface SettingsEntry {
+  key: string;
+  value: string;
+  desc?: string;
+  [k: string]: unknown;
+}
+
+/** 通知/日志条目（来自 /api/v1/system/notifications） */
+interface NotificationEntry {
+  time?: string;
+  timestamp?: string;
+  created_at?: string;
+  src?: string;
+  source?: string;
+  module?: string;
+  msg?: string;
+  message?: string;
+  content?: string;
+  level?: string;
+  [k: string]: unknown;
+}
+
+/** 统一的主开关条目 — 用于 UI 渲染 */
 interface MasterSwitch {
   id: string;
   label: string;
@@ -35,76 +93,271 @@ interface MasterSwitch {
   enabled: boolean;
   color: string;
   locked?: boolean;
+  /** 来源分组，用于确定调用哪个 API */
+  group: 'trading' | 'social';
+  /** 对应 API 中的字段名 */
+  apiKey: string;
 }
 
-const INITIAL_SWITCHES: MasterSwitch[] = [
-  { id: 'core', label: 'ClawBot 核心', desc: '主引擎进程', enabled: true, color: 'var(--accent-green)' },
-  { id: 'trading', label: '自动交易', desc: '量化交易引擎', enabled: false, color: 'var(--accent-cyan)' },
-  { id: 'xianyu', label: '闲鱼客服', desc: 'AI 自动回复', enabled: true, color: 'var(--accent-amber)' },
-  { id: 'risk', label: '风控保护', desc: '不可关闭', enabled: true, color: 'var(--accent-red)', locked: true },
-  { id: 'news', label: '新闻监控', desc: 'RSS + 爬虫', enabled: true, color: 'var(--accent-purple)' },
-  { id: 'memory', label: '记忆引擎', desc: 'Mem0 向量库', enabled: true, color: 'var(--accent-cyan)' },
-];
+/* ====== 开关元数据映射 ====== */
 
-/** 服务矩阵 */
-interface ServiceRow {
-  name: string;
-  status: 'online' | 'offline' | 'degraded';
-  port: number;
-  cpu: string;
-  mem: string;
-}
+/** 交易开关的中文标签和颜色 */
+const TRADING_SWITCH_META: Record<string, { label: string; desc: string; color: string; locked?: boolean }> = {
+  auto_trader_enabled: { label: '自动交易', desc: '量化交易引擎', color: 'var(--accent-cyan)' },
+  ibkr_live_mode: { label: 'IBKR 实盘', desc: '实盘 / 模拟盘', color: 'var(--accent-red)' },
+  risk_protection_enabled: { label: '风控保护', desc: '不可关闭', color: 'var(--accent-red)', locked: true },
+  allow_short_selling: { label: '允许做空', desc: '空头交易权限', color: 'var(--accent-amber)' },
+  max_daily_trades: { label: '每日交易上限', desc: '单日最大下单数', color: 'var(--accent-purple)' },
+};
 
-const SERVICE_MATRIX: ServiceRow[] = [
-  { name: 'clawbot-core', status: 'online', port: 8000, cpu: '12%', mem: '256MB' },
-  { name: 'telegram-bot', status: 'online', port: 8443, cpu: '3%', mem: '128MB' },
-  { name: 'trading-engine', status: 'offline', port: 8001, cpu: '—', mem: '—' },
-  { name: 'memory-engine', status: 'online', port: 6333, cpu: '8%', mem: '384MB' },
-  { name: 'xianyu-agent', status: 'online', port: 8002, cpu: '5%', mem: '192MB' },
-  { name: 'news-monitor', status: 'degraded', port: 8003, cpu: '15%', mem: '96MB' },
-];
+/** 社交开关的中文标签和颜色（通用后备） */
+const SOCIAL_SWITCH_FALLBACK = { desc: '社交模块开关', color: 'var(--accent-green)' };
 
-/** 配置参数 */
-const CONFIG_PARAMS = [
-  { key: 'LLM_MODEL', value: 'gpt-4o', desc: '主模型' },
-  { key: 'MAX_TOKENS', value: '4096', desc: '最大输出长度' },
-  { key: 'TEMPERATURE', value: '0.7', desc: '创造性参数' },
-  { key: 'MEMORY_LIMIT', value: '50', desc: '记忆检索上限' },
-  { key: 'LOG_LEVEL', value: 'INFO', desc: '日志级别' },
-];
-
-/** 日志行 */
-const LOG_LINES = [
-  { time: '14:35:12', src: 'core', msg: '服务启动完成，加载 6 个模块' },
-  { time: '14:35:10', src: 'trading', msg: '交易引擎初始化中...' },
-  { time: '14:34:58', src: 'memory', msg: '向量索引加载完成 dim=1536' },
-  { time: '14:34:45', src: 'telegram', msg: '长轮询连接成功 offset=12847' },
-  { time: '14:34:30', src: 'xianyu', msg: 'Cookie 有效期剩余 18 天' },
-  { time: '14:34:15', src: 'news', msg: 'RSS 源刷新失败: reuters (timeout)' },
-  { time: '14:34:00', src: 'core', msg: '健康检查: 5/6 服务正常' },
-];
+/** 社交开关中文名映射（按需扩展） */
+const SOCIAL_SWITCH_LABELS: Record<string, string> = {
+  xianyu_enabled: '闲鱼客服',
+  twitter_enabled: '推特发布',
+  telegram_enabled: 'Telegram',
+  weibo_enabled: '微博',
+  auto_reply_enabled: '自动回复',
+  content_publish_enabled: '内容发布',
+};
 
 /* ====== 工具函数 ====== */
 
-function statusDot(status: ServiceRow['status']) {
+/** 服务状态指示点 */
+function statusDot(status: string) {
   switch (status) {
     case 'online': return { color: 'var(--accent-green)', label: '在线' };
     case 'offline': return { color: 'var(--text-disabled)', label: '离线' };
     case 'degraded': return { color: 'var(--accent-amber)', label: '降级' };
+    default: return { color: 'var(--text-disabled)', label: status };
   }
+}
+
+/** 提取通知的时间字符串 */
+function extractTime(n: NotificationEntry): string {
+  const raw = n.time || n.timestamp || n.created_at || '';
+  /* 如果是完整 ISO 时间，只取 HH:MM:SS */
+  if (raw.includes('T')) {
+    const parts = raw.split('T')[1];
+    return parts?.slice(0, 8) ?? raw;
+  }
+  return raw;
+}
+
+/** 提取通知的来源 */
+function extractSrc(n: NotificationEntry): string {
+  return n.src || n.source || n.module || 'system';
+}
+
+/** 提取通知的消息内容 */
+function extractMsg(n: NotificationEntry): string {
+  return n.msg || n.message || n.content || '';
+}
+
+/** 根据日志来源返回颜色 */
+function logSrcColor(src: string): string {
+  if (src.includes('trad') || src.includes('ibkr')) return 'var(--accent-cyan)';
+  if (src.includes('news') || src.includes('rss')) return 'var(--accent-amber)';
+  if (src.includes('error') || src.includes('risk')) return 'var(--accent-red)';
+  if (src.includes('xianyu') || src.includes('social')) return 'var(--accent-purple)';
+  return 'var(--accent-green)';
 }
 
 /* ====== 主组件 ====== */
 
 export function ControlCenter() {
-  const [switches, setSwitches] = useState(INITIAL_SWITCHES);
+  /* —— 状态 —— */
+  const [switches, setSwitches] = useState<MasterSwitch[]>([]);
+  const [services, setServices] = useState<ServiceEntry[]>([]);
+  const [settings, setSettings] = useState<SettingsEntry[]>([]);
+  const [logs, setLogs] = useState<NotificationEntry[]>([]);
 
-  /** 切换开关 */
-  const toggleSwitch = (id: string) => {
-    setSwitches((prev) =>
-      prev.map((s) => (s.id === id && !s.locked ? { ...s, enabled: !s.enabled } : s))
-    );
+  const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  /* 用于保存当前完整的 trading/social 控制对象，切换时需要回传 */
+  const tradingRef = useRef<TradingControls | null>(null);
+  const socialRef = useRef<SocialControls | null>(null);
+
+  /* —— 把 API 数据转换成统一的 MasterSwitch 列表 —— */
+  const buildSwitches = useCallback(
+    (trading: TradingControls | null, social: SocialControls | null): MasterSwitch[] => {
+      const result: MasterSwitch[] = [];
+
+      /* 交易开关 */
+      if (trading) {
+        for (const [key, value] of Object.entries(trading)) {
+          /* 只取布尔值字段作为开关 */
+          if (typeof value !== 'boolean') continue;
+          const meta = TRADING_SWITCH_META[key] ?? {
+            label: key,
+            desc: '交易参数',
+            color: 'var(--accent-cyan)',
+          };
+          result.push({
+            id: `trading_${key}`,
+            label: meta.label,
+            desc: meta.desc,
+            enabled: value,
+            color: meta.color,
+            locked: meta.locked,
+            group: 'trading',
+            apiKey: key,
+          });
+        }
+      }
+
+      /* 社交开关 */
+      if (social) {
+        for (const [key, value] of Object.entries(social)) {
+          if (typeof value !== 'boolean') continue;
+          result.push({
+            id: `social_${key}`,
+            label: SOCIAL_SWITCH_LABELS[key] ?? key,
+            desc: SOCIAL_SWITCH_FALLBACK.desc,
+            enabled: value,
+            color: SOCIAL_SWITCH_FALLBACK.color,
+            group: 'social',
+            apiKey: key,
+          });
+        }
+      }
+
+      return result;
+    },
+    [],
+  );
+
+  /* —— 拉取全部数据 —— */
+  const fetchAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      /* 并发拉取 4 个 API */
+      const [tradingRes, socialRes, servicesRes, settingsRes, logsRes] = await Promise.allSettled([
+        clawbotFetchJson<TradingControls>('/api/v1/controls/trading'),
+        clawbotFetchJson<SocialControls>('/api/v1/controls/social'),
+        clawbotFetchJson<ServiceEntry[]>('/api/v1/system/services'),
+        clawbotFetchJson<SettingsEntry[] | Record<string, string>>('/api/v1/controls/settings'),
+        clawbotFetchJson<NotificationEntry[]>('/api/v1/system/notifications'),
+      ]);
+
+      /* 交易控制 */
+      const trading = tradingRes.status === 'fulfilled' ? tradingRes.value : null;
+      tradingRef.current = trading;
+
+      /* 社交控制 */
+      const social = socialRes.status === 'fulfilled' ? socialRes.value : null;
+      socialRef.current = social;
+
+      /* 开关列表 */
+      setSwitches(buildSwitches(trading, social));
+
+      /* 服务矩阵 */
+      if (servicesRes.status === 'fulfilled') {
+        const raw = servicesRes.value;
+        /* 后端可能返回数组或包装对象 */
+        const list = Array.isArray(raw) ? raw : (raw as any)?.services ?? [];
+        setServices(list);
+      }
+
+      /* 配置参数 — 后端可能返回数组或 key-value 对象 */
+      if (settingsRes.status === 'fulfilled') {
+        const raw = settingsRes.value;
+        if (Array.isArray(raw)) {
+          setSettings(raw);
+        } else if (raw && typeof raw === 'object') {
+          /* 把 { KEY: VALUE } 转成 [{ key, value }] */
+          const arr: SettingsEntry[] = Object.entries(raw).map(([k, v]) => ({
+            key: k,
+            value: String(v),
+          }));
+          setSettings(arr);
+        }
+      }
+
+      /* 日志/通知 */
+      if (logsRes.status === 'fulfilled') {
+        const raw = logsRes.value;
+        const list = Array.isArray(raw) ? raw : (raw as any)?.notifications ?? (raw as any)?.logs ?? [];
+        setLogs(list.slice(0, 50)); // 最多展示 50 条
+      }
+    } catch (err) {
+      console.error('[ControlCenter] 拉取数据失败:', err);
+      if (!silent) toast.error('总控数据加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [buildSwitches]);
+
+  /* —— 初始加载 + 30 秒自动刷新 —— */
+  useEffect(() => {
+    fetchAll();
+    const timer = setInterval(() => fetchAll(true), AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [fetchAll]);
+
+  /* —— 手动刷新 —— */
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchAll(true);
+    setRefreshing(false);
+    toast.success('数据已刷新');
   };
+
+  /* —— 切换开关 —— */
+  const toggleSwitch = async (sw: MasterSwitch) => {
+    if (sw.locked) {
+      toast.warning('该开关已锁定，不允许关闭');
+      return;
+    }
+
+    setTogglingId(sw.id);
+    const newValue = !sw.enabled;
+
+    try {
+      if (sw.group === 'trading' && tradingRef.current) {
+        /* 把完整交易控制对象更新后回传 */
+        const updated = { ...tradingRef.current, [sw.apiKey]: newValue };
+        await clawbotFetch('/api/v1/controls/trading', {
+          method: 'POST',
+          body: JSON.stringify(updated),
+        });
+        tradingRef.current = updated;
+      } else if (sw.group === 'social' && socialRef.current) {
+        const updated = { ...socialRef.current, [sw.apiKey]: newValue };
+        await clawbotFetch('/api/v1/controls/social', {
+          method: 'POST',
+          body: JSON.stringify(updated),
+        });
+        socialRef.current = updated;
+      } else {
+        throw new Error('控制数据尚未加载');
+      }
+
+      /* 乐观更新 UI */
+      setSwitches((prev) =>
+        prev.map((s) => (s.id === sw.id ? { ...s, enabled: newValue } : s)),
+      );
+      toast.success(`${sw.label} 已${newValue ? '开启' : '关闭'}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      toast.error(`切换 ${sw.label} 失败`, { description: msg });
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  /* —— 加载态 —— */
+  if (loading && switches.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -124,7 +377,7 @@ export function ControlCenter() {
               >
                 <Power size={20} style={{ color: 'var(--accent-red)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   MASTER SWITCHES
                 </h2>
@@ -132,31 +385,64 @@ export function ControlCenter() {
                   主控开关 // POWER CONTROL
                 </p>
               </div>
+              {/* 刷新按钮 */}
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+                style={{ background: 'var(--bg-secondary)' }}
+                title="刷新数据"
+              >
+                <RefreshCw
+                  size={14}
+                  className={clsx(refreshing && 'animate-spin')}
+                  style={{ color: 'var(--text-tertiary)' }}
+                />
+              </button>
             </div>
 
             <div className="flex-1 space-y-2">
-              {switches.map((sw) => (
-                <div
-                  key={sw.id}
-                  className="flex items-center justify-between py-3 px-3 rounded-lg cursor-pointer transition-colors"
-                  style={{ background: 'var(--bg-secondary)' }}
-                  onClick={() => toggleSwitch(sw.id)}
-                >
-                  <div>
-                    <p className="font-mono text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {sw.label}
-                    </p>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      {sw.desc}
-                    </p>
-                  </div>
-                  {sw.enabled ? (
-                    <ToggleRight size={28} style={{ color: sw.color }} />
-                  ) : (
-                    <ToggleLeft size={28} style={{ color: 'var(--text-disabled)' }} />
-                  )}
+              {switches.length === 0 && (
+                <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
+                  暂无控制开关
                 </div>
-              ))}
+              )}
+              {switches.map((sw) => {
+                const isToggling = togglingId === sw.id;
+                return (
+                  <div
+                    key={sw.id}
+                    className={clsx(
+                      'flex items-center justify-between py-3 px-3 rounded-lg cursor-pointer transition-colors',
+                      isToggling && 'opacity-50 pointer-events-none',
+                    )}
+                    style={{ background: 'var(--bg-secondary)' }}
+                    onClick={() => toggleSwitch(sw)}
+                  >
+                    <div>
+                      <p className="font-mono text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {sw.label}
+                        {sw.group === 'social' && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded"
+                            style={{ background: 'var(--bg-tertiary)', color: 'var(--text-disabled)' }}>
+                            社交
+                          </span>
+                        )}
+                      </p>
+                      <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        {sw.desc}
+                      </p>
+                    </div>
+                    {isToggling ? (
+                      <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
+                    ) : sw.enabled ? (
+                      <ToggleRight size={28} style={{ color: sw.color }} />
+                    ) : (
+                      <ToggleLeft size={28} style={{ color: 'var(--text-disabled)' }} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </motion.div>
@@ -185,7 +471,12 @@ export function ControlCenter() {
 
             {/* 行列表 */}
             <div className="flex-1 space-y-1">
-              {SERVICE_MATRIX.map((svc) => {
+              {services.length === 0 && (
+                <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
+                  暂无服务数据
+                </div>
+              )}
+              {services.map((svc) => {
                 const dot = statusDot(svc.status);
                 return (
                   <div
@@ -206,13 +497,13 @@ export function ControlCenter() {
                       </span>
                     </span>
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      :{svc.port}
+                      {svc.port ? `:${svc.port}` : '—'}
                     </span>
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {svc.cpu}
+                      {svc.cpu ?? '—'}
                     </span>
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {svc.mem}
+                      {svc.mem ?? '—'}
                     </span>
                   </div>
                 );
@@ -232,7 +523,12 @@ export function ControlCenter() {
             </h3>
 
             <div className="flex-1 space-y-2">
-              {CONFIG_PARAMS.map((p) => (
+              {settings.length === 0 && (
+                <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
+                  暂无配置数据
+                </div>
+              )}
+              {settings.map((p) => (
                 <div
                   key={p.key}
                   className="flex items-center justify-between py-2.5 px-3 rounded-lg"
@@ -243,9 +539,11 @@ export function ControlCenter() {
                     <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
                       {p.key}
                     </span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      ({p.desc})
-                    </span>
+                    {p.desc && (
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        ({p.desc})
+                      </span>
+                    )}
                   </div>
                   <span className="font-mono text-xs font-semibold" style={{ color: 'var(--accent-cyan)' }}>
                     {p.value}
@@ -278,28 +576,34 @@ export function ControlCenter() {
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
                 LOG VIEWER
               </span>
+              <span className="ml-auto font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                自动刷新 30s
+              </span>
             </div>
             <div
               className="flex-1 p-4 space-y-0.5 font-mono text-xs overflow-y-auto"
               style={{ background: 'var(--bg-elevated)' }}
             >
-              {LOG_LINES.map((log, i) => (
-                <div key={i} className={clsx('py-1 px-2 rounded flex gap-3')}>
-                  <span style={{ color: 'var(--text-disabled)' }}>{log.time}</span>
-                  <span
-                    className="w-20 shrink-0"
-                    style={{
-                      color:
-                        log.src === 'news' ? 'var(--accent-amber)' :
-                        log.src === 'trading' ? 'var(--accent-cyan)' :
-                        'var(--accent-green)',
-                    }}
-                  >
-                    [{log.src}]
-                  </span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{log.msg}</span>
+              {logs.length === 0 && (
+                <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
+                  暂无日志
                 </div>
-              ))}
+              )}
+              {logs.map((log, i) => {
+                const src = extractSrc(log);
+                return (
+                  <div key={i} className={clsx('py-1 px-2 rounded flex gap-3')}>
+                    <span style={{ color: 'var(--text-disabled)' }}>{extractTime(log)}</span>
+                    <span
+                      className="w-20 shrink-0"
+                      style={{ color: logSrcColor(src) }}
+                    >
+                      [{src}]
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{extractMsg(log)}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </motion.div>

@@ -1,14 +1,18 @@
 /**
  * Performance — 性能监控页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 数据来自真实后端 API，30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Gauge,
   AlertTriangle,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -21,22 +25,19 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 系统资源 */
+/* ====== 类型定义 ====== */
+
+/** 系统资源仪表 */
 interface ResourceGauge {
   label: string;
-  value: number;
+  value: number | null;
   max: number;
   unit: string;
   color: string;
 }
-
-const RESOURCES: ResourceGauge[] = [
-  { label: 'CPU 使用率', value: 23, max: 100, unit: '%', color: 'var(--accent-cyan)' },
-  { label: '内存占用', value: 1.4, max: 4.0, unit: 'GB', color: 'var(--accent-green)' },
-  { label: '磁盘使用', value: 45, max: 100, unit: '%', color: 'var(--accent-amber)' },
-];
 
 /** API 延迟指标 */
 interface LatencyMetric {
@@ -48,48 +49,71 @@ interface LatencyMetric {
   count: number;
 }
 
-const LATENCY_METRICS: LatencyMetric[] = [
-  { name: '消息处理', avg: 0.85, p50: 0.72, p95: 2.10, max: 4.50, count: 1247 },
-  { name: '大脑决策', avg: 1.20, p50: 1.05, p95: 3.40, max: 6.80, count: 892 },
-  { name: 'LLM 调用', avg: 2.30, p50: 2.10, p95: 5.20, max: 12.00, count: 634 },
-  { name: '交易周期', avg: 0.45, p50: 0.38, p95: 1.20, max: 2.80, count: 156 },
-  { name: '记忆检索', avg: 0.15, p50: 0.12, p95: 0.35, max: 0.80, count: 423 },
-];
+/** 请求吞吐量（每小时） */
+interface ThroughputPoint {
+  hour: string;
+  rpm: number;
+}
 
-/** 请求吞吐量 (每小时) */
-const THROUGHPUT_DATA = [
-  { hour: '00', rpm: 12 },
-  { hour: '04', rpm: 5 },
-  { hour: '08', rpm: 45 },
-  { hour: '10', rpm: 120 },
-  { hour: '12', rpm: 89 },
-  { hour: '14', rpm: 156 },
-  { hour: '16', rpm: 203 },
-  { hour: '18', rpm: 178 },
-  { hour: '20', rpm: 134 },
-  { hour: '22', rpm: 67 },
-];
+/** 错误统计条目 */
+interface ErrorStat {
+  type: string;
+  count: number;
+  pct: string;
+  color: string;
+}
 
-/** 错误率数据 */
-const ERROR_STATS = [
-  { type: '超时 (>10s)', count: 12, pct: '0.96%', color: 'var(--accent-amber)' },
-  { type: '5xx 错误', count: 3, pct: '0.24%', color: 'var(--accent-red)' },
-  { type: 'LLM 限流', count: 7, pct: '1.10%', color: 'var(--accent-purple)' },
-  { type: '连接失败', count: 2, pct: '0.16%', color: 'var(--text-disabled)' },
-];
+/** /api/v1/perf 返回的完整数据结构 */
+interface PerfData {
+  /* 资源相关 */
+  cpu_percent?: number;
+  memory_mb?: number;
+  memory_total_mb?: number;
+  memory_percent?: number;
+  disk_percent?: number;
+
+  /* 延迟指标 */
+  latency_metrics?: LatencyMetric[];
+  latency?: LatencyMetric[];
+
+  /* 吞吐量 */
+  throughput?: ThroughputPoint[];
+  throughput_data?: ThroughputPoint[];
+
+  /* 错误统计 */
+  error_stats?: ErrorStat[];
+  errors?: ErrorStat[];
+  total_error_rate?: string;
+  error_rate?: number;
+
+  /* 趋势 */
+  throughput_trend?: string;
+
+  [key: string]: unknown;
+}
+
+/** /api/v1/status 返回数据（仅取资源相关字段） */
+interface StatusData {
+  cpu_percent?: number;
+  memory_mb?: number;
+  memory_total_mb?: number;
+  disk_percent?: number;
+  [key: string]: unknown;
+}
 
 /* ====== 工具函数 ====== */
 
 /** 渲染 ASCII 仪表盘 */
 function renderGauge(value: number, max: number, width: number = 20): string {
-  const ratio = value / max;
+  const ratio = Math.min(1, Math.max(0, value / max));
   const filled = Math.round(ratio * width);
   return '▓'.repeat(filled) + '░'.repeat(width - filled);
 }
 
 /** 渲染 ASCII 柱状图 */
 function renderBar(value: number, maxValue: number, width: number = 16): string {
-  const ratio = value / maxValue;
+  if (maxValue <= 0) return '░'.repeat(width);
+  const ratio = Math.min(1, Math.max(0, value / maxValue));
   const filled = Math.round(ratio * width);
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
@@ -102,7 +126,8 @@ function latencyColor(avg: number): string {
 }
 
 /** 格式化秒数 */
-function fmtSec(val: number): string {
+function fmtSec(val: number | null | undefined): string {
+  if (val == null) return 'N/A';
   if (val < 0.01) return '<0.01s';
   return `${val.toFixed(2)}s`;
 }
@@ -110,7 +135,84 @@ function fmtSec(val: number): string {
 /* ====== 主组件 ====== */
 
 export function Performance() {
-  const maxRpm = Math.max(...THROUGHPUT_DATA.map((d) => d.rpm));
+  const [perfData, setPerfData] = useState<PerfData | null>(null);
+  const [statusData, setStatusData] = useState<StatusData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* —— 拉取性能数据 —— */
+  const fetchAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [perfRes, statusRes] = await Promise.allSettled([
+        clawbotFetchJson<PerfData>('/api/v1/perf'),
+        clawbotFetchJson<StatusData>('/api/v1/status'),
+      ]);
+
+      if (perfRes.status === 'fulfilled') setPerfData(perfRes.value);
+      if (statusRes.status === 'fulfilled') setStatusData(statusRes.value);
+    } catch (err) {
+      console.error('[Performance] 数据加载失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* —— 首次加载 + 30 秒自动刷新 —— */
+  useEffect(() => {
+    fetchAll();
+    timerRef.current = setInterval(() => fetchAll(true), REFRESH_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchAll]);
+
+  /* —— 加载态 —— */
+  if (loading && !perfData) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+          <span className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            正在加载性能数据...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* —— 派生：资源仪表（优先从 perf 取，回退到 status） —— */
+  const cpuVal = perfData?.cpu_percent ?? statusData?.cpu_percent ?? null;
+  const memMb = perfData?.memory_mb ?? statusData?.memory_mb ?? null;
+  const memMaxMb = perfData?.memory_total_mb ?? statusData?.memory_total_mb ?? 4096;
+  const diskVal = perfData?.disk_percent ?? statusData?.disk_percent ?? null;
+
+  const resources: ResourceGauge[] = [
+    { label: 'CPU 使用率', value: cpuVal, max: 100, unit: '%', color: 'var(--accent-cyan)' },
+    {
+      label: '内存占用',
+      value: memMb != null ? Math.round(memMb * 10) / 10 : null,
+      max: Math.round(memMaxMb / 1024 * 10) / 10,
+      unit: 'GB',
+      color: 'var(--accent-green)',
+    },
+    { label: '磁盘使用', value: diskVal, max: 100, unit: '%', color: 'var(--accent-amber)' },
+  ];
+
+  /* —— 派生：延迟指标 —— */
+  const latencyMetrics: LatencyMetric[] = perfData?.latency_metrics || perfData?.latency || [];
+
+  /* —— 派生：吞吐量 —— */
+  const throughputData: ThroughputPoint[] = perfData?.throughput || perfData?.throughput_data || [];
+  const maxRpm = throughputData.length > 0 ? Math.max(...throughputData.map((d) => d.rpm)) : 1;
+
+  /* —— 派生：错误统计 —— */
+  const errorStats: ErrorStat[] = perfData?.error_stats || perfData?.errors || [];
+  const totalErrorRate = perfData?.total_error_rate
+    ?? (perfData?.error_rate != null ? `${perfData.error_rate}%` : null);
+
+  /* —— 派生：吞吐趋势 —— */
+  const throughputTrend = perfData?.throughput_trend || null;
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -121,7 +223,7 @@ export function Performance() {
         animate="visible"
       >
         {/* ====== 资源仪表盘 (col-4 x3) ====== */}
-        {RESOURCES.map((res) => (
+        {resources.map((res) => (
           <motion.div key={res.label} className="col-span-12 md:col-span-4" variants={cardVariants}>
             <div className="abyss-card p-6 h-full flex flex-col">
               <span className="text-label" style={{ color: res.color }}>
@@ -131,11 +233,13 @@ export function Performance() {
               {/* 大数字 */}
               <div className="flex items-end gap-2 mt-3">
                 <span className="text-metric" style={{ fontSize: '32px', color: res.color }}>
-                  {res.value}
+                  {res.value != null ? res.value : 'N/A'}
                 </span>
-                <span className="font-mono text-sm pb-1" style={{ color: 'var(--text-tertiary)' }}>
-                  {res.unit}
-                </span>
+                {res.value != null && (
+                  <span className="font-mono text-sm pb-1" style={{ color: 'var(--text-tertiary)' }}>
+                    {res.unit}
+                  </span>
+                )}
               </div>
 
               {/* ASCII 仪表条 */}
@@ -144,7 +248,7 @@ export function Performance() {
                   className="font-mono text-xs tracking-tight"
                   style={{ color: res.color, opacity: 0.85 }}
                 >
-                  {renderGauge(res.value, res.max)}
+                  {res.value != null ? renderGauge(res.value, res.max) : '░'.repeat(20)}
                 </span>
               </div>
 
@@ -180,54 +284,62 @@ export function Performance() {
               </div>
             </div>
 
-            {/* 表头 */}
-            <div
-              className="grid grid-cols-6 gap-2 px-3 py-2 rounded-lg mb-1"
-              style={{ background: 'var(--bg-tertiary)' }}
-            >
-              {['指标', '调用数', '平均', 'P50', 'P95', '最大'].map((h) => (
-                <span
-                  key={h}
-                  className={clsx('text-label', h !== '指标' && 'text-right')}
-                  style={{ fontSize: '10px' }}
-                >
-                  {h}
-                </span>
-              ))}
-            </div>
-
-            {/* 数据行 */}
-            <div className="flex-1 space-y-1">
-              {LATENCY_METRICS.map((m) => (
+            {latencyMetrics.length === 0 ? (
+              <p className="font-mono text-xs py-8 text-center" style={{ color: 'var(--text-disabled)' }}>
+                暂无延迟数据
+              </p>
+            ) : (
+              <>
+                {/* 表头 */}
                 <div
-                  key={m.name}
-                  className="grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg"
-                  style={{ background: 'var(--bg-secondary)' }}
+                  className="grid grid-cols-6 gap-2 px-3 py-2 rounded-lg mb-1"
+                  style={{ background: 'var(--bg-tertiary)' }}
                 >
-                  <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {m.name}
-                  </span>
-                  <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {m.count}
-                  </span>
-                  <span
-                    className="font-mono text-xs text-right font-semibold"
-                    style={{ color: latencyColor(m.avg) }}
-                  >
-                    {fmtSec(m.avg)}
-                  </span>
-                  <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {fmtSec(m.p50)}
-                  </span>
-                  <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {fmtSec(m.p95)}
-                  </span>
-                  <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {fmtSec(m.max)}
-                  </span>
+                  {['指标', '调用数', '平均', 'P50', 'P95', '最大'].map((h) => (
+                    <span
+                      key={h}
+                      className={clsx('text-label', h !== '指标' && 'text-right')}
+                      style={{ fontSize: '10px' }}
+                    >
+                      {h}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
+
+                {/* 数据行 */}
+                <div className="flex-1 space-y-1">
+                  {latencyMetrics.map((m) => (
+                    <div
+                      key={m.name}
+                      className="grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {m.name}
+                      </span>
+                      <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
+                        {m.count}
+                      </span>
+                      <span
+                        className="font-mono text-xs text-right font-semibold"
+                        style={{ color: latencyColor(m.avg) }}
+                      >
+                        {fmtSec(m.avg)}
+                      </span>
+                      <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
+                        {fmtSec(m.p50)}
+                      </span>
+                      <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
+                        {fmtSec(m.p95)}
+                      </span>
+                      <span className="font-mono text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
+                        {fmtSec(m.max)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
 
@@ -244,7 +356,7 @@ export function Performance() {
             {/* 总错误率 */}
             <div className="flex items-end gap-2 mt-3 mb-5">
               <span className="text-metric" style={{ color: 'var(--accent-green)' }}>
-                1.5%
+                {totalErrorRate ?? 'N/A'}
               </span>
               <span className="font-mono text-xs pb-0.5" style={{ color: 'var(--text-tertiary)' }}>
                 总错误率
@@ -253,20 +365,25 @@ export function Performance() {
 
             {/* 分类 */}
             <div className="flex-1 space-y-2">
-              {ERROR_STATS.map((err) => (
+              {errorStats.length === 0 && (
+                <p className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
+                  暂无错误数据
+                </p>
+              )}
+              {errorStats.map((err) => (
                 <div
                   key={err.type}
                   className="flex items-center justify-between py-2.5 px-3 rounded-lg"
                   style={{ background: 'var(--bg-secondary)' }}
                 >
                   <div className="flex items-center gap-2">
-                    <AlertTriangle size={12} style={{ color: err.color }} />
+                    <AlertTriangle size={12} style={{ color: err.color || 'var(--accent-amber)' }} />
                     <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
                       {err.type}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-semibold" style={{ color: err.color }}>
+                    <span className="font-mono text-xs font-semibold" style={{ color: err.color || 'var(--accent-amber)' }}>
                       {err.count}
                     </span>
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
@@ -291,41 +408,49 @@ export function Performance() {
                   请求吞吐量
                 </h3>
               </div>
-              <div className="flex items-center gap-1.5">
-                <TrendingUp size={14} style={{ color: 'var(--accent-green)' }} />
-                <span className="font-mono text-xs font-semibold" style={{ color: 'var(--accent-green)' }}>
-                  +12% vs 昨日
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              {THROUGHPUT_DATA.map((d) => (
-                <div key={d.hour} className="flex items-center gap-3">
-                  <span
-                    className="font-mono text-xs w-10 shrink-0 text-right"
-                    style={{ color: 'var(--text-disabled)' }}
-                  >
-                    {d.hour}:00
-                  </span>
-                  <span
-                    className="font-mono text-xs flex-1 tracking-tight"
-                    style={{
-                      color: d.rpm === maxRpm ? 'var(--accent-green)' : 'var(--accent-cyan)',
-                      opacity: 0.85,
-                    }}
-                  >
-                    {renderBar(d.rpm, maxRpm, 40)}
-                  </span>
-                  <span
-                    className="font-mono text-xs w-12 text-right shrink-0"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    {d.rpm} rpm
+              {throughputTrend && (
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp size={14} style={{ color: 'var(--accent-green)' }} />
+                  <span className="font-mono text-xs font-semibold" style={{ color: 'var(--accent-green)' }}>
+                    {throughputTrend}
                   </span>
                 </div>
-              ))}
+              )}
             </div>
+
+            {throughputData.length === 0 ? (
+              <p className="font-mono text-xs py-8 text-center" style={{ color: 'var(--text-disabled)' }}>
+                暂无吞吐量数据
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {throughputData.map((d) => (
+                  <div key={d.hour} className="flex items-center gap-3">
+                    <span
+                      className="font-mono text-xs w-10 shrink-0 text-right"
+                      style={{ color: 'var(--text-disabled)' }}
+                    >
+                      {d.hour}:00
+                    </span>
+                    <span
+                      className="font-mono text-xs flex-1 tracking-tight"
+                      style={{
+                        color: d.rpm === maxRpm ? 'var(--accent-green)' : 'var(--accent-cyan)',
+                        opacity: 0.85,
+                      }}
+                    >
+                      {renderBar(d.rpm, maxRpm, 40)}
+                    </span>
+                    <span
+                      className="font-mono text-xs w-12 text-right shrink-0"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {d.rpm} rpm
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>

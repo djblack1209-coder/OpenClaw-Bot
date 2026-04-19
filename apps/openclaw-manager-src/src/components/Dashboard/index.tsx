@@ -1,8 +1,9 @@
 /**
  * Dashboard — 系统概览页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
- * 保持原有 props 接口: envStatus + onSetupComplete
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 数据来自真实后端 API，30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -14,9 +15,14 @@ import {
   XCircle,
   AlertTriangle,
   Terminal,
+  Loader2,
+  Play,
+  Square,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import { EnvironmentStatus } from '../../App';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -29,10 +35,14 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 服务列表 */
+/* ====== 类型定义 ====== */
+
+/** 服务条目（后端返回） */
 interface ServiceItem {
+  id: string;
   name: string;
   label: string;
   status: 'running' | 'stopped' | 'error';
@@ -40,32 +50,36 @@ interface ServiceItem {
   memory: string;
 }
 
-const SERVICES: ServiceItem[] = [
-  { name: 'ClawBot Core', label: '核心引擎', status: 'running', uptime: '3d 12h', memory: '256MB' },
-  { name: 'Telegram Bot', label: 'TG 机器人', status: 'running', uptime: '3d 12h', memory: '128MB' },
-  { name: 'Trading Engine', label: '交易引擎', status: 'running', uptime: '2d 8h', memory: '512MB' },
-  { name: 'Memory Engine', label: '记忆引擎', status: 'running', uptime: '3d 12h', memory: '384MB' },
-  { name: 'Xianyu Agent', label: '闲鱼客服', status: 'stopped', uptime: '—', memory: '—' },
-  { name: 'News Monitor', label: '新闻监控', status: 'error', uptime: '1h 23m', memory: '96MB' },
-];
+/** 系统状态（/api/v1/status 返回） */
+interface SystemStatus {
+  version?: string;
+  uptime?: string;
+  uptime_seconds?: number;
+  status?: string;
+  [key: string]: unknown;
+}
 
-/** 快捷统计 */
-const QUICK_STATS = [
-  { label: '今日消息', value: '1,247', color: 'var(--accent-cyan)' },
-  { label: '活跃用户', value: '38', color: 'var(--accent-green)' },
-  { label: 'LLM 调用', value: '892', color: 'var(--accent-purple)' },
-  { label: '平均响应', value: '1.2s', color: 'var(--accent-amber)' },
-];
+/** 系统性能（/api/v1/perf 返回） */
+interface SystemPerf {
+  cpu_percent?: number;
+  memory_mb?: number;
+  memory_percent?: number;
+  api_health?: number;
+  today_messages?: number;
+  active_users?: number;
+  llm_calls?: number;
+  avg_response_ms?: number;
+  avg_response?: string;
+  [key: string]: unknown;
+}
 
-/** 最近日志 */
-const RECENT_LOGS = [
-  { level: 'info', time: '14:32:05', msg: '[TelegramBot] 消息处理完成 user=12345' },
-  { level: 'info', time: '14:31:58', msg: '[Trading] NVDA 买入信号触发 price=$875.30' },
-  { level: 'warn', time: '14:31:42', msg: '[NewsMonitor] RSS 源超时 source=reuters' },
-  { level: 'error', time: '14:30:15', msg: '[NewsMonitor] 连接断开 retrying in 30s' },
-  { level: 'info', time: '14:29:50', msg: '[Memory] 记忆提取完成 entries=3 user=admin' },
-  { level: 'info', time: '14:28:33', msg: '[ClawBot] 健康检查通过 services=4/6' },
-];
+/** 通知/日志条目（/api/v1/system/notifications 返回） */
+interface NotificationItem {
+  level: string;
+  time: string;
+  msg: string;
+  message?: string;
+}
 
 /* ====== 工具函数 ====== */
 
@@ -84,8 +98,33 @@ function statusIcon(status: ServiceItem['status']) {
 /** 日志级别颜色 */
 function logColor(level: string): string {
   if (level === 'error') return 'var(--accent-red)';
-  if (level === 'warn') return 'var(--accent-amber)';
+  if (level === 'warn' || level === 'warning') return 'var(--accent-amber)';
   return 'var(--accent-green)';
+}
+
+/** 格式化运行时间（秒 → 人类可读） */
+function formatUptime(seconds?: number): string {
+  if (!seconds || seconds <= 0) return '—';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+/** 格式化内存（MB → 人类可读） */
+function formatMemory(mb?: number): string {
+  if (!mb && mb !== 0) return '—';
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)}GB`;
+  return `${Math.round(mb)}MB`;
+}
+
+/** 格式化平均响应时间 */
+function formatAvgResponse(perf: SystemPerf): string {
+  if (perf.avg_response) return perf.avg_response;
+  if (perf.avg_response_ms != null) return `${(perf.avg_response_ms / 1000).toFixed(1)}s`;
+  return 'N/A';
 }
 
 /* ====== 接口定义 ====== */
@@ -97,7 +136,96 @@ interface DashboardProps {
 /* ====== 主组件 ====== */
 
 export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComplete }: DashboardProps) {
-  const runningCount = SERVICES.filter((s) => s.status === 'running').length;
+  /* —— 状态 —— */
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [perf, setPerf] = useState<SystemPerf | null>(null);
+  const [logs, setLogs] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* —— 拉取所有数据 —— */
+  const fetchAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      /* 并发请求四个接口 */
+      const [svcRes, statusRes, perfRes, logRes] = await Promise.allSettled([
+        clawbotFetchJson<ServiceItem[]>('/api/v1/system/services'),
+        clawbotFetchJson<SystemStatus>('/api/v1/status'),
+        clawbotFetchJson<SystemPerf>('/api/v1/perf'),
+        clawbotFetchJson<NotificationItem[]>('/api/v1/system/notifications?limit=10'),
+      ]);
+
+      if (svcRes.status === 'fulfilled') setServices(Array.isArray(svcRes.value) ? svcRes.value : []);
+      if (statusRes.status === 'fulfilled') setSystemStatus(statusRes.value);
+      if (perfRes.status === 'fulfilled') setPerf(perfRes.value);
+      if (logRes.status === 'fulfilled') setLogs(Array.isArray(logRes.value) ? logRes.value : []);
+    } catch (err) {
+      console.error('[Dashboard] 数据加载失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* —— 首次加载 + 30 秒自动刷新 —— */
+  useEffect(() => {
+    fetchAll();
+    timerRef.current = setInterval(() => fetchAll(true), REFRESH_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchAll]);
+
+  /* —— 启动/停止服务 —— */
+  const handleServiceAction = async (svc: ServiceItem, action: 'start' | 'stop') => {
+    const actionLabel = action === 'start' ? '启动' : '停止';
+    setActionLoading(`${svc.id}-${action}`);
+    try {
+      await clawbotFetchJson(`/api/v1/system/services/${svc.id}/${action}`, { method: 'POST' });
+      toast.success(`${svc.label || svc.name} ${actionLabel}成功`);
+      /* 刷新服务列表 */
+      await fetchAll(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`${actionLabel}失败: ${msg}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  /* —— 派生数据 —— */
+  const runningCount = services.filter((s) => s.status === 'running').length;
+
+  /* —— 加载态 —— */
+  if (loading && services.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+          <span className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            正在连接后端...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* —— 快捷统计（从 perf 接口取真实数据） —— */
+  const quickStats = [
+    { label: '今日消息', value: perf?.today_messages != null ? String(perf.today_messages) : 'N/A', color: 'var(--accent-cyan)' },
+    { label: '活跃用户', value: perf?.active_users != null ? String(perf.active_users) : 'N/A', color: 'var(--accent-green)' },
+    { label: 'LLM 调用', value: perf?.llm_calls != null ? String(perf.llm_calls) : 'N/A', color: 'var(--accent-purple)' },
+    { label: '平均响应', value: perf ? formatAvgResponse(perf) : 'N/A', color: 'var(--accent-amber)' },
+  ];
+
+  /* —— 系统信息摘要（从 perf + status 接口取真实数据） —— */
+  const systemMetrics = [
+    { icon: Cpu, label: 'CPU', value: perf?.cpu_percent != null ? `${Math.round(perf.cpu_percent)}%` : 'N/A' },
+    { icon: Server, label: '内存', value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : 'N/A' },
+    { icon: Clock, label: '运行时间', value: systemStatus?.uptime || formatUptime(systemStatus?.uptime_seconds as number | undefined) || 'N/A' },
+    { icon: Zap, label: 'API 健康', value: perf?.api_health != null ? `${perf.api_health}%` : 'N/A' },
+  ];
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -122,14 +250,15 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                   SYSTEM STATUS
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  系统概览 // {runningCount}/{SERVICES.length} SERVICES ONLINE
+                  系统概览 // {runningCount}/{services.length} SERVICES ONLINE
+                  {systemStatus?.version ? ` // v${systemStatus.version}` : ''}
                 </p>
               </div>
             </div>
 
             {/* 快捷统计 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              {QUICK_STATS.map((s) => (
+              {quickStats.map((s) => (
                 <div key={s.label}>
                   <span className="text-label">{s.label}</span>
                   <div className="text-metric mt-1" style={{ color: s.color }}>
@@ -144,12 +273,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
               className="flex items-center gap-6 py-3 px-4 rounded-lg"
               style={{ background: 'var(--bg-secondary)' }}
             >
-              {[
-                { icon: Cpu, label: 'CPU', value: '23%' },
-                { icon: Server, label: '内存', value: '1.4GB' },
-                { icon: Clock, label: '运行时间', value: '3d 12h' },
-                { icon: Zap, label: 'API 健康', value: '98.5%' },
-              ].map((m) => (
+              {systemMetrics.map((m) => (
                 <div key={m.label} className="flex items-center gap-2">
                   <m.icon size={14} style={{ color: 'var(--text-tertiary)' }} />
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
@@ -175,11 +299,18 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
             </h3>
 
             <div className="flex-1 space-y-1.5">
-              {SERVICES.map((svc) => {
+              {services.length === 0 && (
+                <p className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
+                  暂无服务数据
+                </p>
+              )}
+              {services.map((svc) => {
                 const si = statusIcon(svc.status);
+                const isActionLoading =
+                  actionLoading === `${svc.id}-start` || actionLoading === `${svc.id}-stop`;
                 return (
                   <div
-                    key={svc.name}
+                    key={svc.id || svc.name}
                     className="flex items-center justify-between py-2.5 px-3 rounded-lg"
                     style={{ background: 'var(--bg-secondary)' }}
                   >
@@ -187,23 +318,45 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                       <si.Icon size={14} style={{ color: si.color }} />
                       <div>
                         <p className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {svc.label}
+                          {svc.label || svc.name}
                         </p>
                         <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                           {svc.name}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p
-                        className="font-mono text-[10px] font-semibold"
-                        style={{ color: si.color }}
-                      >
-                        {si.label}
-                      </p>
-                      <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                        {svc.uptime}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      {/* 启动/停止按钮 */}
+                      {isActionLoading ? (
+                        <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+                      ) : svc.status === 'running' ? (
+                        <button
+                          className="p-1 rounded hover:bg-white/5 transition-colors"
+                          title="停止服务"
+                          onClick={() => handleServiceAction(svc, 'stop')}
+                        >
+                          <Square size={12} style={{ color: 'var(--accent-red)' }} />
+                        </button>
+                      ) : (
+                        <button
+                          className="p-1 rounded hover:bg-white/5 transition-colors"
+                          title="启动服务"
+                          onClick={() => handleServiceAction(svc, 'start')}
+                        >
+                          <Play size={12} style={{ color: 'var(--accent-green)' }} />
+                        </button>
+                      )}
+                      <div className="text-right">
+                        <p
+                          className="font-mono text-[10px] font-semibold"
+                          style={{ color: si.color }}
+                        >
+                          {si.label}
+                        </p>
+                        <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                          {svc.uptime || '—'}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -224,11 +377,16 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                 LIVE LOGS
               </span>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                最近 {RECENT_LOGS.length} 条
+                最近 {logs.length} 条
               </span>
             </div>
             <div className="p-4 space-y-0.5 font-mono text-xs" style={{ background: 'var(--bg-elevated)' }}>
-              {RECENT_LOGS.map((log, i) => (
+              {logs.length === 0 && (
+                <p className="py-2 text-center" style={{ color: 'var(--text-disabled)' }}>
+                  暂无日志
+                </p>
+              )}
+              {logs.map((log, i) => (
                 <div
                   key={i}
                   className={clsx('py-1 px-2 rounded flex gap-3 transition-colors')}
@@ -241,7 +399,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                   >
                     {log.level}
                   </span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{log.msg}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{log.msg || log.message}</span>
                 </div>
               ))}
             </div>
