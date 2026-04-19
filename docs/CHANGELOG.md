@@ -12,6 +12,29 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — HI-538: 社媒发布适配器模式重构
+> 领域: `backend`
+> 影响模块: `execution/social/platform_adapter`, `execution/social/x_adapter`, `execution/social/xhs_adapter`, `core/brain_exec_social`, `api/rpc`, `execution/social/drafts`, `social_scheduler`, `execution/social/content_pipeline`
+> 关联问题: HI-538
+
+### 变更内容
+- 新增 `platform_adapter.py` — 平台适配器基类 + 注册表（`get_adapter` / `get_all_adapters` / `register_adapter`）
+- 新增 `x_adapter.py` — X/Twitter 适配器（别名: twitter, tw）
+- 新增 `xhs_adapter.py` — 小红书适配器（别名: xhs, 小红书）
+- 重构 5 处 if/elif 分发链为 `get_adapter(platform)` 统一查找
+- 新增平台只需创建适配器 + 注册，无需修改任何调用方代码
+
+### 文件变更
+- `src/execution/social/platform_adapter.py` — 新增: 适配器基类 + 注册表 + 自动注册
+- `src/execution/social/x_adapter.py` — 新增: X/Twitter 适配器
+- `src/execution/social/xhs_adapter.py` — 新增: 小红书适配器
+- `src/execution/social/__init__.py` — 导出适配器公共 API
+- `src/core/brain_exec_social.py` — if/elif → get_adapter()
+- `src/api/rpc.py` — if/elif → get_adapter() + "both" 走 get_all_adapters()
+- `src/execution/social/drafts.py` — if/elif → adapter.build_worker_payload()
+- `src/social_scheduler.py` — if/elif → adapter.normalize_content() + build_worker_payload()
+- `src/execution/social/content_pipeline.py` — 2 处 if/elif → 适配器循环
+
 ## 2026-04-19 — 技术债清理第7批: 前端架构+安全+体验大升级（7项）
 > 领域: `frontend`, `infra`
 > 影响模块: `src-tauri/models`, `src-tauri/commands/*`, `tauri-core.ts`, `api.ts`, `Assistant`, `Memory`, `Channels`, `Scheduler`, `shell.rs`

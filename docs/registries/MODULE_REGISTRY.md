@@ -1,6 +1,50 @@
 # MODULE_REGISTRY — OpenClaw Bot 模块注册表
 
-> 最后更新: 2026-04-18 | 修正模块总数统计 (254→277, 与 src/ 实际 .py 文件数对齐)
+> 最后更新: 2026-04-19 | 新增 3 个社媒适配器模块 (277→280)
+
+---
+
+## 新增模块 (2026-04-19) — 社媒适配器模式
+
+### platform_adapter.py — 社媒平台适配器基类 + 注册表
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/social/platform_adapter.py` |
+| 行数 | 101 |
+| 导入方 | `brain_exec_social`, `rpc`, `drafts`, `social_scheduler`, `content_pipeline`, `x_adapter`, `xhs_adapter` |
+| 依赖 | 标准库 (`abc`, `logging`, `typing`) |
+
+**Public API:**
+- `SocialPlatformAdapter` — 抽象基类（platform_id / display_name / aliases / publish / normalize_content / build_worker_payload / worker_action）
+- `register_adapter(adapter)` — 注册适配器到全局注册表
+- `get_adapter(platform)` — 按名称/别名查找适配器
+- `get_all_adapters()` — 获取所有已注册适配器（去重）
+- `list_supported_platforms()` — 返回支持的平台 ID 列表
+
+### x_adapter.py — X/Twitter 平台适配器
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/social/x_adapter.py` |
+| 行数 | 58 |
+| 导入方 | `platform_adapter._auto_register()` |
+| 依赖 | `platform_adapter.SocialPlatformAdapter`, `x_platform.publish_x_post` |
+
+**Public API:**
+- `XPlatformAdapter` — platform_id="x", aliases=["twitter","tw"]
+
+### xhs_adapter.py — 小红书平台适配器
+
+| 属性 | 值 |
+|------|-----|
+| 路径 | `packages/clawbot/src/execution/social/xhs_adapter.py` |
+| 行数 | 71 |
+| 导入方 | `platform_adapter._auto_register()` |
+| 依赖 | `platform_adapter.SocialPlatformAdapter`, `xhs_platform.publish_xhs_article` |
+
+**Public API:**
+- `XhsPlatformAdapter` — platform_id="xiaohongshu", aliases=["xhs","小红书"]
 
 ---
 
