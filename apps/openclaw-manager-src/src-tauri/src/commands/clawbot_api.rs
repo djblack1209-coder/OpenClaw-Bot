@@ -29,7 +29,7 @@ fn get_api_token() -> Option<String> {
     }
     // 降级：从 .env 文件中读取
     let home = std::env::var("HOME").ok()?;
-    let env_path = format!("{}/Desktop/OpenClaw Bot/packages/clawbot/config/.env", home);
+    let env_path = format!("{}/Desktop/OpenEverything/packages/clawbot/config/.env", home);
     let content = std::fs::read_to_string(&env_path).ok()?;
     for line in content.lines() {
         let trimmed = line.trim();

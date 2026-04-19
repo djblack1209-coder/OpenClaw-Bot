@@ -1,4 +1,4 @@
-"""闲鱼扫码登录 API endpoints — QR code generation + status polling"""
+"""闲鱼 API endpoints — QR 扫码登录 + CookieCloud 自动同步 + 对话查询"""
 
 import base64
 import logging
@@ -239,4 +239,85 @@ async def get_xianyu_conversations(limit: int = 20):
         return {"conversations": [], "total": 0}
     except Exception as e:
         logger.exception("获取闲鱼对话失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ---------------------------------------------------------------------------
+# CookieCloud 集成 API — Cookie 自动同步管理
+# ---------------------------------------------------------------------------
+
+
+@router.get("/xianyu/cookiecloud/status")
+async def cookiecloud_status():
+    """获取 CookieCloud 同步状态
+
+    返回当前配置、同步状态、最近同步记录等信息。
+    GUI 面板用此接口展示 Cookie 管理面板。
+    """
+    try:
+        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+        manager = get_cookie_cloud_manager()
+        return {"success": True, **manager.status}
+    except Exception as e:
+        logger.exception("获取 CookieCloud 状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.post("/xianyu/cookiecloud/sync")
+async def cookiecloud_sync_now():
+    """立即执行一次 CookieCloud Cookie 同步
+
+    手动触发同步，不等待定时任务。
+    """
+    try:
+        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+        manager = get_cookie_cloud_manager()
+
+        if not manager.enabled:
+            return {
+                "success": False,
+                "message": "CookieCloud 未配置，请先设置 COOKIECLOUD_HOST/UUID/PASSWORD",
+            }
+
+        success = await manager.sync_once()
+        return {
+            "success": success,
+            "message": "Cookie 同步成功" if success else "Cookie 同步失败（浏览器可能离线）",
+            **manager.status,
+        }
+    except Exception as e:
+        logger.exception("CookieCloud 手动同步失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.post("/xianyu/cookiecloud/configure")
+async def cookiecloud_configure(
+    host: str = "",
+    uuid: str = "",
+    password: str = "",
+    interval: int = 300,
+):
+    """配置 CookieCloud 服务端连接信息
+
+    配置成功后会立即执行一次同步测试。
+    参数通过 JSON body 或 form-data 传递。
+    """
+    try:
+        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+        manager = get_cookie_cloud_manager()
+
+        if not host or not uuid or not password:
+            return {
+                "success": False,
+                "message": "缺少必填参数: host, uuid, password",
+            }
+
+        success = await manager.configure(host, uuid, password, interval)
+        return {
+            "success": success,
+            "message": "CookieCloud 配置成功并已完成首次同步" if success else "配置已保存但首次同步失败（请检查参数）",
+            **manager.status,
+        }
+    except Exception as e:
+        logger.exception("CookieCloud 配置失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))

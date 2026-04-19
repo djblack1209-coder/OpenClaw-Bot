@@ -37,11 +37,16 @@ import {
   Terminal,
   Hash,
   Zap,
+  Cookie,
+  CloudCog,
+  History,
+  XCircle,
 } from 'lucide-react';
 
 import { GlassCard, StatusIndicator, ToggleSwitch, AnimatedNumber, ErrorState } from '../shared';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   Dialog,
@@ -290,6 +295,9 @@ function XianyuSection() {
             设置
           </Button>
         </div>
+
+        {/* Cookie 管理 */}
+        <CookieCloudSection />
 
         {/* 最近对话预览 */}
         <XianyuConversationList />

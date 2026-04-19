@@ -288,6 +288,18 @@ async def main():
     except Exception as e:
         logger.debug("  闲鱼监控初始化跳过: %s", e)
 
+    # 7.6 初始化 CookieCloud 自动同步（可选）
+    try:
+        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+        cc_manager = get_cookie_cloud_manager()
+        if cc_manager.enabled:
+            asyncio.ensure_future(cc_manager.run_sync_loop())
+            logger.info("  CookieCloud 自动同步已启动 (间隔 %ds)", cc_manager._sync_interval)
+        else:
+            logger.info("  CookieCloud 未配置，跳过自动同步")
+    except Exception as e:
+        logger.debug("  CookieCloud 初始化跳过: %s", e)
+
     # 8. 挂载交易记忆桥接（自动将交易事件写入共享记忆）
     trading_memory_bridge.attach(shared_memory=shared_memory)
     logger.info("  交易记忆桥接已挂载 (开仓/平仓/复盘 → SharedMemory)")

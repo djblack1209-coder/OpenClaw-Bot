@@ -296,6 +296,30 @@ export const api = {
     clawbotFetchJson(`/api/v1/xianyu/conversations?limit=${limit}`),
 
   // ══════════════════════════════════════════════
+  //  CookieCloud 管理
+  // ══════════════════════════════════════════════
+
+  /** 获取 CookieCloud 同步状态 */
+  cookieCloudStatus: () =>
+    clawbotFetchJson('/api/v1/xianyu/cookiecloud/status'),
+
+  /** 立即触发 CookieCloud 同步 */
+  cookieCloudSync: () =>
+    clawbotFetchJson('/api/v1/xianyu/cookiecloud/sync', { method: 'POST' }),
+
+  /** 配置 CookieCloud 连接参数 */
+  cookieCloudConfigure: (config: {
+    host: string;
+    uuid: string;
+    password: string;
+    interval: number;
+  }) =>
+    clawbotFetchJson('/api/v1/xianyu/cookiecloud/configure', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+
+  // ══════════════════════════════════════════════
   //  服务控制 (Service Control)
   // ══════════════════════════════════════════════
 
