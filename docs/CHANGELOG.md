@@ -12,6 +12,35 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-19 — 技术债清理第7批: 前端架构+安全+体验大升级（7项）
+> 领域: `frontend`, `infra`
+> 影响模块: `src-tauri/models`, `src-tauri/commands/*`, `tauri-core.ts`, `api.ts`, `Assistant`, `Memory`, `Channels`, `Scheduler`, `shell.rs`
+> 关联问题: HI-544, HI-545, HI-546, HI-551, HI-554, HI-563, HI-566
+
+### 架构升级 (2项)
+1. **HI-544: Rust 结构化错误类型**: 新建 `models/error.rs`，定义 `AppError`(kind+message) + `ErrorKind` 枚举(11种分类)；8 个命令文件 97 个 Tauri command 全部从 `Result<T,String>` 迁移到 `AppResult<T>`，前端可通过 `error.kind` 程序化区分错误类型
+2. **HI-546: HTTP API 统一错误检查**: 新增 `clawbotFetchJson()` 封装（fetch+resp.ok检查+JSON解析），api.ts 中 35 处裸 `.then(r=>r.json())` 全部替换，非 2xx 响应自动抛出含 HTTP 状态码的 Error
+
+### 安全加固 (1项)
+3. **HI-545: Shell 命令白名单**: `shell.rs` 新增 `ALLOWED_COMMANDS` 白名单（26 个允许命令）+ `validate_command()` 校验函数；`clawbot.rs` 所有 `Command::new()` 调用点加入校验；IBKR 启停命令从 .env 读取后做程序名白名单检查防 RCE
+
+### 体验增强 (4项)
+4. **HI-551: Markdown 渲染器增强**: 新增有序列表(`1.`)、引用块(`>`)、图片(`![](url)`)、代码块复制按钮、水平分隔线(`---`)支持
+5. **HI-554: 频道完整 CRUD**: 新建频道表单(6种类型)、删除确认对话框、连接状态徽章(🟢已连接/🟡未验证/⚪未配置)
+6. **HI-563: 记忆统计 HTTP 降级+筛选器**: 浏览器环境可获取统计数据；新增四选一分类筛选(全部/用户画像/事实/高优先级)
+7. **HI-566: 调度器完整 CRUD**: 新建任务表单(Cron/固定间隔)、编辑对话框、删除确认、可折叠执行历史(最近5条)
+
+### 文件变更
+- `src-tauri/src/models/error.rs` — 新建：AppError + ErrorKind + AppResult 类型
+- `src-tauri/src/commands/*.rs` — 8 个文件迁移到 AppResult
+- `src-tauri/src/utils/shell.rs` — 命令白名单 + validate_command
+- `src/lib/tauri-core.ts` — 新增 clawbotFetchJson
+- `src/lib/api.ts` — 35 处 HTTP 调用统一错误检查
+- `src/components/Assistant/index.tsx` — Markdown 渲染器增强
+- `src/components/Memory/index.tsx` — HTTP 降级 + 分类筛选
+- `src/components/Channels/index.tsx` — 完整 CRUD + 状态徽章
+- `src/components/Scheduler/index.tsx` — 完整 CRUD + 执行历史
+
 ## 2026-04-18 — 技术债清理第6批: 前端体验+文档偏差修复（6项）
 > 领域: `frontend`, `docs`
 > 影响模块: `Logs`, `Portfolio`, `Social`, `Evolution`, `AIConfig`, `MODULE_REGISTRY`, `DEPENDENCY_MAP`
