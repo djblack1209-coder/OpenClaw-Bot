@@ -128,7 +128,7 @@ async def search_smzdm(keyword: str, limit: int = 10) -> List[PriceResult]:
                     logger.debug("SMZDM parse item error: %s", e)
                     continue
 
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         logger.warning("SMZDM search timed out for '%s'", keyword)
     except Exception as e:
         logger.warning("SMZDM search failed: %s", e)
@@ -206,7 +206,7 @@ async def search_jd(keyword: str, limit: int = 10) -> List[PriceResult]:
                 except Exception as e:  # noqa: F841
                     continue
 
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         logger.warning("JD search timed out for '%s'", keyword)
     except Exception as e:
         logger.warning("JD search failed: %s", e)
@@ -275,7 +275,7 @@ def _extract_price(text: str) -> float:
             parsed = _PriceParser.fromstring(text)
             if parsed.amount is not None:
                 return float(parsed.amount)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
     # 路径2: regex 降级

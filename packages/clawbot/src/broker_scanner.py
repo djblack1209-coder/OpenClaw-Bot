@@ -251,5 +251,5 @@ class BrokerScannerMixin:
             try:
                 if "q_contract" in locals():
                     self.ib.cancelMktData(q_contract)
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)

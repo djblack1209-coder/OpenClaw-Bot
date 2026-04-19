@@ -332,7 +332,7 @@ async def _crawl_platform_css(
             if isinstance(extracted, str):
                 try:
                     extracted = json.loads(extracted)
-                except (json.JSONDecodeError, TypeError) as e:
+                except (json.JSONDecodeError, TypeError):
                     logger.debug(f"[crawl4ai] {platform_key} 解析 JSON 失败")
                     return []
 
@@ -361,7 +361,7 @@ async def _crawl_platform_css(
                     )
                 )
 
-    except asyncio.TimeoutError as e:
+    except asyncio.TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} 超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} CSS 抽取异常: {e}")
@@ -404,7 +404,7 @@ async def _crawl_platform_llm(
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if api_key:
                 llm_provider = "openai/gpt-4o-mini"
-    except Exception as e:
+    except Exception:
         logger.debug("Silenced exception", exc_info=True)
 
     if not llm_provider:
@@ -491,7 +491,7 @@ async def _crawl_platform_llm(
                     )
                 )
 
-    except asyncio.TimeoutError as e:
+    except asyncio.TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {e}")

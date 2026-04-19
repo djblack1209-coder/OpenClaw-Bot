@@ -30,7 +30,7 @@ async def check_g4f_health(
     timeout: float = 5.0,
 ) -> Dict[str, Any]:
     """检查 g4f 服务是否存活
-    
+
     返回: {"alive": bool, "latency_ms": float, "error": str|None}
     """
     try:
@@ -49,7 +49,7 @@ async def check_g4f_health(
 
 class TelegramAlertNotifier:
     """将 AlertManager 告警推送到 Telegram
-    
+
     用法:
         notifier = TelegramAlertNotifier(bot_token="xxx", chat_id=123)
         alert_manager.on_alert(notifier.sync_callback)

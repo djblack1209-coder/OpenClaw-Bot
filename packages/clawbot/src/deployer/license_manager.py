@@ -6,7 +6,6 @@ import json
 import os
 import platform
 import secrets
-import sqlite3
 import time
 import uuid
 import logging

@@ -184,7 +184,7 @@ class InvestCommandsMixin:
                 else:
                     current_price = quote.get("price", pos["avg_price"])
                 market_value = pos["quantity"] * current_price
-                cost = pos["quantity"] * pos["avg_price"]
+                pos["quantity"] * pos["avg_price"]
                 pnl_pct = ((current_price / pos["avg_price"]) - 1) * 100 if pos["avg_price"] else 0
                 enriched.append({
                     "symbol": pos["symbol"],

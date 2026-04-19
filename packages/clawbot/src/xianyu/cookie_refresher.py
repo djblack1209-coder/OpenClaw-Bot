@@ -23,7 +23,7 @@ def parse_h5_tk_timestamp(cookies: dict) -> float:
 
 def is_cookie_expiring(cookies: dict, margin_seconds: int = 300) -> bool:
     """判断 cookie 是否即将过期（默认 5 分钟内）
-    
+
     修复: 无法解析 _m_h5_tk 时返回 False（假定有效），
     因为 httpx CookieJar 的 domain 匹配问题经常导致读不到 _m_h5_tk，
     不代表真正过期。真实过期判断应依赖 has_login() API 验证。
@@ -37,7 +37,7 @@ def is_cookie_expiring(cookies: dict, margin_seconds: int = 300) -> bool:
 
 async def refresh_cookies_via_session(api) -> bool:
     """通过 has_login + get_token 刷新 httpx client 中的 cookie。
-    
+
     has_login 会触发服务端下发新的 Set-Cookie，httpx.AsyncClient 自动存储。
     刷新后立即验证 token 能否获取 — 防止 hasLogin 返回 True 但 cookie 实际无效的"假成功"。
     返回 True 表示刷新成功且 token 验证通过。

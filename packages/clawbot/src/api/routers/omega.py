@@ -179,7 +179,7 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         return result.to_dict()
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         # Pydantic AI 引擎不可用，降级到原有团队
         logger.exception("Pydantic AI 投资分析引擎调用失败，降级到原有团队")
     # 降级: 原有团队

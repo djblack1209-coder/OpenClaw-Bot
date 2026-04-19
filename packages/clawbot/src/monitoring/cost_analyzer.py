@@ -6,7 +6,6 @@ ClawBot 监控 — 成本归因分析器
 """
 
 import time
-import sqlite3
 import logging
 import threading
 from contextlib import contextmanager

@@ -120,7 +120,7 @@ class IntentLLMOutput(BaseModel):
         # 安全地转换 task_type，无效值降级为 UNKNOWN
         try:
             task_type = TaskType(self.task_type)
-        except ValueError as e:
+        except ValueError:
             logger.warning(f"LLM 返回未知 task_type: {self.task_type!r}，降级为 UNKNOWN")
             task_type = TaskType.UNKNOWN
 
@@ -360,7 +360,7 @@ class IntentParser:
                             keywords = jieba.analyse.extract_tags(message, topK=5, withWeight=True)
                             if keywords:
                                 known_params["_keywords"] = [{"word": w, "weight": round(s, 3)} for w, s in keywords]
-                        except Exception as e:
+                        except Exception:
                             logger.debug("Silenced exception", exc_info=True)
 
                     # 投资类: 自动将中文名转为 ticker
@@ -466,7 +466,7 @@ class IntentParser:
                 raw_message=message,
             )
 
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             logger.debug("[IntentParser] LLM 分类超时")
             return None
         except Exception as e:

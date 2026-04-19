@@ -149,7 +149,6 @@ class InvestmentAnalysisCard(ResponseCard):
         return "\n".join(l for l in lines if l)
 
     def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
-        tid = self.task_id or "0"
         buttons = []
 
         if self.recommendation == "buy" and not self.veto:
@@ -482,7 +481,7 @@ class ShoppingCard(ResponseCard):
     def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
         buttons = []
         if self.products:
-            first_name = self.products[0].get("name", "商品")[:10]
+            self.products[0].get("name", "商品")[:10]
             buttons.append([
                 InlineKeyboardButton("🔄 重新比价", callback_data=f"shop:refresh:{self.product[:20]}"),
             ])

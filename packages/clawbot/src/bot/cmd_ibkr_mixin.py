@@ -49,7 +49,7 @@ class IBKRCommandsMixin:
             try:
                 limit_price = float(args[2])
                 order_type = 'LMT'
-            except ValueError as e:
+            except ValueError:
                 await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] BUY限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
@@ -124,7 +124,7 @@ class IBKRCommandsMixin:
             try:
                 limit_price = float(args[2])
                 order_type = 'LMT'
-            except ValueError as e:
+            except ValueError:
                 await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] SELL限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(

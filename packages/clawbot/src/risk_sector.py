@@ -134,7 +134,7 @@ class SectorMixin:
         )
 
         # 日亏损额度
-        remaining_daily = self.config.daily_loss_limit + self._today_pnl
+        self.config.daily_loss_limit + self._today_pnl
 
         return {
             "max_single_symbol": max_single_sym,

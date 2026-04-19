@@ -273,11 +273,11 @@ class TaskGraphExecutor:
                 if self._on_node_complete:
                     try:
                         await self._on_node_complete(node)
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)
                 return
 
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 node.error = f"超时 ({node.timeout_seconds}s)"
                 logger.warning(f"节点超时: {node.name} (尝试 {attempt}/{node.retry_count})")
                 _emit_flow(node.id, "hub", "error", f"超时: {node.name}",

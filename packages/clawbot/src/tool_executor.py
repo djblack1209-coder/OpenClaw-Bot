@@ -700,7 +700,7 @@ class ToolExecutor:
 
                 sys_status = get_system_status()
                 lines.append(f"\n{sys_status}")
-            except Exception as e:
+            except Exception:
                 logger.exception("[ToolExecutor] 交易系统状态获取失败")
             return {"success": True, "content": "\n".join(lines) if lines else "无组合数据"}
         except Exception as e:

@@ -118,14 +118,14 @@ async def send_as_bot(bot_id: str, chat_id: int, text: str, reply_to_message_id:
                 chat_id=chat_id, text=part,
                 parse_mode="Markdown", reply_to_message_id=reply_id,
             )
-        except Exception as e:
+        except Exception:
             logger.debug("[send_as_bot] Markdown failed for %s, falling back to plain text", bot_id)
             try:
                 await bot_telegram.send_message(
                     chat_id=chat_id, text=part,
                     reply_to_message_id=reply_id,
                 )
-            except Exception as e:
+            except Exception:
                 logger.debug("[send_as_bot] reply fallback failed for %s, sending without reply", bot_id)
                 await bot_telegram.send_message(chat_id=chat_id, text=part)
         if i < len(parts) - 1:
@@ -136,7 +136,7 @@ async def safe_edit(msg, text: str, parse_mode: str = "Markdown"):
     """安全编辑消息，Markdown 失败回退纯文本"""
     try:
         await msg.edit_text(text, parse_mode=parse_mode)
-    except Exception as e:
+    except Exception:
         logger.debug("[safe_edit] parse_mode=%s failed, falling back to plain text", parse_mode)
         try:
             await msg.edit_text(text)
@@ -150,7 +150,7 @@ import json as _json
 
 class UserPreferencesManager:
     """Per-user 偏好管理器 — 持久化到 JSON 文件
-    
+
     搬运自 father-bot/chatgpt_telegram_bot 的 user settings 模式。
     每个用户独立的通知/语言/风险/模式偏好。
     """

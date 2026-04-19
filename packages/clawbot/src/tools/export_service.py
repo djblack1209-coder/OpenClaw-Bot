@@ -53,7 +53,7 @@ def _auto_width(ws) -> None:
                 cell_len = len(str(cell.value or ""))
                 if cell_len > max_len:
                     max_len = cell_len
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 10), 40)
 
@@ -523,7 +523,7 @@ def export_portfolio(
     # 汇总区域
     if summary:
         ws.append([])
-        summary_start = ws.max_row + 1
+        ws.max_row + 1
         ws.append(["现金", "", "", summary.get("cash", 0)])
         ws.cell(row=ws.max_row, column=4).number_format = _NUM_FMT_USD
         ws.cell(row=ws.max_row, column=1).font = Font(bold=True)

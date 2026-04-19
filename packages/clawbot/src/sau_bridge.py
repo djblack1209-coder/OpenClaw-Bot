@@ -51,10 +51,10 @@ async def _run_sau_cmd(args: List[str], timeout: int = 120) -> Dict:
         else:
             logger.warning("[SAU] 失败 (rc=%d): %s", proc.returncode, result["stderr"][:200])
         return result
-    except asyncio.TimeoutError as e:
+    except asyncio.TimeoutError:
         logger.error("[SAU] 命令超时 (%ds)", timeout)
         return {"success": False, "error": f"命令超时 ({timeout}s)", "returncode": -1}
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         logger.error("[SAU] sau 命令未找到，请先安装: pip install social-auto-upload")
         return {"success": False, "error": "sau 未安装", "returncode": -1}
     except Exception as e:

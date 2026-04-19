@@ -434,7 +434,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         try:
             loop = asyncio.get_running_loop()
             self._auto_reconnect_task = loop.create_task(_auto_reconnect())
-        except RuntimeError as e:
+        except RuntimeError:
             logger.debug("[IBKR] 无事件循环，跳过自动重连调度")
 
     def _on_disconnect(self):
@@ -781,7 +781,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             try:
                 # ib_insync 有时返回字符串时间
                 return datetime.fromisoformat(str(raw_time)).timestamp()
-            except Exception as e:
+            except Exception:
                 logger.exception("时间戳转换失败")
                 return 0.0
 

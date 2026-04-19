@@ -80,7 +80,7 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
     """
     通过日志流向 Tauri 前端广播执行图状态
     格式规范必须严格遵守前缀 __CLAW_FLOW_EVENT__
-    
+
     参数:
       source: 起始节点 ID (例如 "hub")
       target: 目标节点 ID (例如 "llm")
@@ -90,7 +90,7 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
     """
     event = {
         "source": source,
-        "target": target, 
+        "target": target,
         "status": status,
         "msg": msg,
         "data": data or {}

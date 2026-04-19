@@ -234,7 +234,7 @@ class SkyvernBridge:
         if self._client is not None:
             try:
                 await self._client.aclose()
-            except Exception as e:
+            except Exception:
                 logger.debug("[SkyvernBridge] 关闭客户端异常", exc_info=True)
             self._client = None
             self._available = False

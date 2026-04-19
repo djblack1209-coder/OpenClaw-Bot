@@ -3,7 +3,7 @@ OCR 场景路由器 — 识别图片类型，分发到对应业务处理链
 
 核心逻辑：
   OCR 文字 → 关键词/模式匹配 → 场景分类 → 专属处理器
-  
+
 场景：
   financial  — 财报/K线/持仓截图 → 提取指标 → 对比 → 交易信号
   ecommerce  — 竞品截图/商品页/价格表 → 竞品分析 → 定价建议
@@ -73,7 +73,7 @@ _ECOMMERCE_KEYWORDS = {
     "利润率", "成本", "进货价", "批发价",
     # 商品描述
     "全新", "二手", "9成新", "95新", "99新", "自用",
-    "发货", "快递", "顺丰", "包邮", "运费",
+    "发货", "快递", "顺丰", "运费",
 }
 
 _ECOMMERCE_PATTERNS = [
@@ -91,35 +91,35 @@ def _count_signals(text: str, keywords: set, patterns: list) -> Tuple[int, List[
     """统计命中的信号数量和具体命中项"""
     matched = []
     text_lower = text.lower()
-    
+
     for kw in keywords:
         if kw.lower() in text_lower:
             matched.append(kw)
-    
+
     for pat in patterns:
         if re.search(pat, text):
             matched.append(f"pattern:{pat[:20]}")
-    
+
     return len(matched), matched
 
 
 def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
     """
     根据 OCR 文字内容和用户 caption 判断所属业务场景。
-    
+
     优先级：
     1. caption 中的显式意图（用户说了"分析财报"就是 financial）
     2. OCR 文字中的信号密度
     3. 默认 general
     """
     combined = f"{caption} {ocr_text}"
-    
+
     # 1. Caption 显式意图检测
     caption_lower = caption.lower()
-    
+
     financial_intents = ["财报", "分析", "交易", "持仓", "行情", "K线", "k线", "股票", "基金"]
     ecommerce_intents = ["竞品", "比价", "定价", "闲鱼", "淘宝", "商品", "对标", "同款"]
-    
+
     for intent in financial_intents:
         if intent in caption_lower:
             return SceneMatch(
@@ -128,7 +128,7 @@ def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
                 matched_signals=[f"caption:{intent}"],
                 summary=f"用户明确提到「{intent}」，进入交易分析模式"
             )
-    
+
     for intent in ecommerce_intents:
         if intent in caption_lower:
             return SceneMatch(
@@ -137,14 +137,14 @@ def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
                 matched_signals=[f"caption:{intent}"],
                 summary=f"用户明确提到「{intent}」，进入电商竞品分析模式"
             )
-    
+
     # 2. OCR 文字信号密度
     fin_count, fin_matched = _count_signals(combined, _FINANCIAL_KEYWORDS, _FINANCIAL_PATTERNS)
     eco_count, eco_matched = _count_signals(combined, _ECOMMERCE_KEYWORDS, _ECOMMERCE_PATTERNS)
-    
+
     # 信号密度阈值：至少命中 3 个信号才算匹配
     MIN_SIGNALS = 3
-    
+
     if fin_count >= MIN_SIGNALS and fin_count > eco_count:
         confidence = min(0.5 + fin_count * 0.05, 0.9)
         return SceneMatch(
@@ -153,7 +153,7 @@ def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
             matched_signals=fin_matched[:10],
             summary=f"检测到 {fin_count} 个财务/交易信号，进入交易分析模式"
         )
-    
+
     if eco_count >= MIN_SIGNALS and eco_count > fin_count:
         confidence = min(0.5 + eco_count * 0.05, 0.9)
         return SceneMatch(
@@ -162,7 +162,7 @@ def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
             matched_signals=eco_matched[:10],
             summary=f"检测到 {eco_count} 个电商/竞品信号，进入竞品分析模式"
         )
-    
+
     # 3. 默认
     return SceneMatch(
         scene=OcrScene.GENERAL,

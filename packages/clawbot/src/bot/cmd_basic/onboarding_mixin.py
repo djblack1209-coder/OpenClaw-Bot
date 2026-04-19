@@ -25,7 +25,6 @@ from telegram.ext import (
 )
 
 from src.bot.globals import history_store
-from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 

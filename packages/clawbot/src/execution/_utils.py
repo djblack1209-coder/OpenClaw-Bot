@@ -115,7 +115,7 @@ def extract_json_object(text=None):
             payload = jloads(text[start : end + 1])
             if isinstance(payload, dict):
                 return payload
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
     return None
 

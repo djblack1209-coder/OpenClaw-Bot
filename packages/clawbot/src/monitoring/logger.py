@@ -403,7 +403,7 @@ class TaskObserver:
                     entry["total_latency"] += rec.get("total_latency_ms", 0)
                     if qs > 0:
                         entry["quality_scores"].append(qs)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         # 计算平均值

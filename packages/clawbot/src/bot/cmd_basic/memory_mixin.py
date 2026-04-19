@@ -192,5 +192,5 @@ class _MemoryMixin:
                     text, parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                 )
-            except Exception as e:
+            except Exception:
                 logger.debug("Silenced exception", exc_info=True)

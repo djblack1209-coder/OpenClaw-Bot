@@ -1,6 +1,5 @@
 """System status endpoints — ping, version, full status, daily-brief, notifications, services"""
 
-import asyncio
 import logging
 import os
 import subprocess

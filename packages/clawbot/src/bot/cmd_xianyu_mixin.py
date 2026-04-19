@@ -32,7 +32,6 @@ class XianyuCommandsMixin:
         if action and action not in _VALID_ACTIONS:
             action = "status"  # 未知命令回退到状态查看
 
-        LABEL = "ai.openclaw.xianyu"
         PLIST = os.path.expanduser("~/Library/LaunchAgents/ai.openclaw.xianyu.plist")
 
         # 启动/停止前检查 plist 文件是否存在
@@ -53,7 +52,7 @@ class XianyuCommandsMixin:
                 )
                 stdout, _ = await proc.communicate()
                 status_line = "🟢 运行中" if stdout.decode().strip() else "🔴 未运行"
-            except Exception as e:
+            except Exception:
                 logger.exception("闲鱼客服进程状态检测失败")
                 status_line = "⚪ 状态未知"
             help_msg = (
@@ -194,7 +193,7 @@ class XianyuCommandsMixin:
                     lines.append("  （暂无）")
 
                 await send_long_message(update.effective_chat.id, "\n".join(lines), context)
-            except Exception as e:
+            except Exception:
                 logger.exception("闲鱼回复配置读取失败")
                 await update.message.reply_text("❌ 严总，读取配置失败了，请稍后再试")
             return
@@ -214,7 +213,7 @@ class XianyuCommandsMixin:
             try:
                 xctx.set_reply_style(tone)
                 await update.message.reply_text(f"✅ 回复风格已设置: {tone}")
-            except Exception as e:
+            except Exception:
                 logger.exception("闲鱼回复风格设置失败")
                 await update.message.reply_text("❌ 严总，风格设置失败了，请稍后再试")
             return
@@ -238,7 +237,7 @@ class XianyuCommandsMixin:
                         lines.append(f"{i}. 关键词: 「{faq['key']}」")
                         lines.append(f"   回复: {faq['value']}")
                     await send_long_message(update.effective_chat.id, "\n".join(lines), context)
-                except Exception as e:
+                except Exception:
                     logger.exception("闲鱼 FAQ 列表读取失败")
                     await update.message.reply_text("❌ 严总，FAQ 列表读取失败了，请稍后再试")
                 return
@@ -260,7 +259,7 @@ class XianyuCommandsMixin:
                         await update.message.reply_text(f"✅ FAQ 已添加\n\n关键词: 「{keyword}」\n回复: {answer}")
                     else:
                         await update.message.reply_text(f"❌ FAQ 已达上限 ({xctx._FAQ_LIMIT} 条)")
-                except Exception as e:
+                except Exception:
                     logger.exception("闲鱼 FAQ 添加失败")
                     await update.message.reply_text("❌ 严总，FAQ 添加失败了，请稍后再试")
                 return
@@ -276,7 +275,7 @@ class XianyuCommandsMixin:
                         await update.message.reply_text(f"✅ FAQ 已删除: 「{keyword}」")
                     else:
                         await update.message.reply_text(f"❌ 未找到关键词「{keyword}」")
-                except Exception as e:
+                except Exception:
                     logger.exception("闲鱼 FAQ 删除失败")
                     await update.message.reply_text("❌ 严总，FAQ 删除失败了，请稍后再试")
                 return
@@ -302,7 +301,7 @@ class XianyuCommandsMixin:
                     await update.message.reply_text(f"✅ 商品规则已设置\n\n商品: {item_id}\n规则: {rule}")
                 else:
                     await update.message.reply_text(f"❌ 商品规则已达上限 ({xctx._ITEM_RULE_LIMIT} 条)")
-            except Exception as e:
+            except Exception:
                 logger.exception("闲鱼商品规则设置失败")
                 await update.message.reply_text("❌ 严总，商品规则设置失败了，请稍后再试")
             return
@@ -319,7 +318,7 @@ class XianyuCommandsMixin:
                     await update.message.reply_text(f"✅ 商品规则已删除: {item_id}")
                 else:
                     await update.message.reply_text(f"❌ 未找到商品「{item_id}」的规则")
-            except Exception as e:
+            except Exception:
                 logger.exception("闲鱼商品规则删除失败")
                 await update.message.reply_text("❌ 严总，商品规则删除失败了，请稍后再试")
             return
@@ -465,7 +464,7 @@ class XianyuCommandsMixin:
             msg = "\n".join(lines)
             await update.message.reply_text(msg, parse_mode="HTML")
 
-        except Exception as e:
+        except Exception:
             logger.exception("闲鱼报表生成失败")
             await update.message.reply_text(error_service_failed("闲鱼报表"))
 

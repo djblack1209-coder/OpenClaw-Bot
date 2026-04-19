@@ -192,7 +192,7 @@ class SynergyPipelines:
                 f"交易执行: {json.dumps(data, ensure_ascii=False, default=str)[:300]}",
                 category="trade_record",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── 管道2: 社交热点 → 投资扫描 ──────────────────
@@ -266,7 +266,7 @@ class SynergyPipelines:
                 {"message": message, "level": "normal"},
                 source="synergy:evolution",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
         logger.info(f"[协同] 进化广播: {repo} (score={score})")
@@ -300,7 +300,7 @@ class SynergyPipelines:
                 },
                 source="synergy:strategy",
             )
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
     # ── 管道5: 新闻情感 → 投资风险信号 ──────────────
@@ -348,7 +348,7 @@ class SynergyPipelines:
                         sym = str(t.get("symbol", "")).upper().strip()
                         if sym:
                             held_symbols.add(sym)
-            except Exception as e:
+            except Exception:
                 logger.debug("[协同] 获取持仓失败", exc_info=True)
 
             if not held_symbols:
@@ -426,7 +426,7 @@ class SynergyPipelines:
                                 },
                                 source="synergy:news→risk",
                             )
-                        except Exception as e:
+                        except Exception:
                             logger.debug("RISK_ALERT 发布失败", exc_info=True)
 
                         # 通过通知事件推送给用户
@@ -442,7 +442,7 @@ class SynergyPipelines:
                                 {"message": alert_msg, "level": "important"},
                                 source="synergy:news→risk",
                             )
-                        except Exception as e:
+                        except Exception:
                             logger.debug("风险通知发送失败", exc_info=True)
 
                         logger.warning(
@@ -584,7 +584,7 @@ class SynergyPipelines:
             from src.bot.globals import shared_memory
             if shared_memory:
                 shared_memory.add(content, category=category)
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
 

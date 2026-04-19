@@ -191,7 +191,7 @@ def _fetch_price(symbol: str, period: str):
             close = data.get("Close")
             if close is not None and not close.empty:
                 return close
-        except Exception as e:
+        except Exception:
             logger.debug("Silenced exception", exc_info=True)
     try:
         import yfinance as yf

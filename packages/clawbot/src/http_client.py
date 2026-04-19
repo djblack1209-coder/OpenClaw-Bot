@@ -272,7 +272,7 @@ class ResilientHTTPClient:
                     await asyncio.sleep(delay)
                     continue
 
-            except httpx.HTTPStatusError as e:
+            except httpx.HTTPStatusError:
                 # 非可重试状态码，直接失败
                 latency = (time.time() - start_time) * 1000
                 self.metrics.record(False, latency, retries)

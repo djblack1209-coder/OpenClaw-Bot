@@ -168,7 +168,7 @@ class _CallbackMixin:
             await query.message.reply_text("⚠️ 按钮数据格式异常，请重新提问。")
             return
 
-        tid, param, value = parts[0], parts[1], parts[2]
+        _tid, param, value = parts[0], parts[1], parts[2]
 
         # 取消操作
         if param == "cancel":

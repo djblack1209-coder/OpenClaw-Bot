@@ -115,7 +115,7 @@ class PyBrokerResult:
         ret_emoji = "📈" if self.total_return > 0 else "📉"
         lines = [
             f"{ret_emoji} *{self.symbol} | {self.strategy}* ({self.period})",
-            f"🔬 引擎: PyBroker (Numba加速)",
+            "🔬 引擎: PyBroker (Numba加速)",
             "─" * 28,
             f"💰 总回报: `{self.total_return * 100:+.2f}%`",
             f"📊 年化收益: `{self.annual_return * 100:+.2f}%`",

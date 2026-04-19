@@ -31,7 +31,6 @@ class LifeExecutorMixin:
 
         try:
             from src.shopping.price_engine import smart_compare_prices
-            from dataclasses import asdict
 
             report = await smart_compare_prices(
                 product, use_ai_summary=True

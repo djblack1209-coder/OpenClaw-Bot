@@ -501,7 +501,7 @@ class LifeCommandsMixin:
                                 source="cmd_bill",
                             )
                         )
-                    except Exception as e:
+                    except Exception:
                         logger.debug("Silenced exception", exc_info=True)
                 await update.message.reply_text(msg)
             else:
