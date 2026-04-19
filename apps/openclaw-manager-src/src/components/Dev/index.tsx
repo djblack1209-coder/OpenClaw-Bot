@@ -1,16 +1,24 @@
 /**
  * Dev — 开发总控页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 从 /api/v1/status 获取系统版本和运行时间等真实数据
+ * 其余数据（Git/CI/技术债务/依赖更新）诚实标注"待接入"
+ * 30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
-  GitCommit,
   Code2,
+  GitCommit,
   ShieldCheck,
   AlertTriangle,
-  ArrowUpCircle,
   Package,
+  Loader2,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
+import { toast } from 'sonner';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -23,82 +31,129 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 概览统计 */
-const OVERVIEW_STATS = [
-  { label: 'Git提交(今日)', value: '3', color: 'var(--accent-cyan)' },
-  { label: '活跃分支', value: 'main', color: 'var(--accent-green)' },
-  { label: '代码行数', value: '18.7K', color: 'var(--accent-purple)' },
-  { label: '测试覆盖率', value: '73%', color: 'var(--accent-amber)' },
-];
+/* ====== 类型定义 ====== */
 
-/** 最近 Git 提交 */
-interface GitLog { hash: string; message: string; time: string }
-const GIT_LOGS: GitLog[] = [
-  { hash: 'a3f29b1', message: '修复: AI 路由池权重分配异常', time: '14分钟前' },
-  { hash: 'e7c4d02', message: '新增: Telegram 多账号切换支持', time: '2小时前' },
-  { hash: '1b8a5f3', message: '优化: 日志采集器内存占用降低40%', time: '3小时前' },
-  { hash: 'c92e0a7', message: '重构: 统一命令注册中心接口', time: '昨天 18:30' },
-  { hash: 'f6d1b48', message: '配置: 更新 LiteLLM 模型映射表', time: '昨天 15:22' },
-];
+/** /api/v1/status 返回的系统状态 */
+interface StatusData {
+  version?: string;
+  uptime_seconds?: number;
+  uptime?: number;
+  python_version?: string;
+  hostname?: string;
+  pid?: number;
+  started_at?: string;
+  bot_count?: number;
+  bots_running?: number;
+  modules_loaded?: number;
+  active_services?: number;
+  services_count?: number;
+  [key: string]: unknown;
+}
 
-/** 构建状态 */
-interface BuildItem { name: string; status: 'success' | 'running' | 'error'; detail: string }
-const BUILD_STATUS: BuildItem[] = [
-  { name: '前端', status: 'success', detail: '构建成功' },
-  { name: '后端', status: 'running', detail: '运行中' },
-  { name: '测试', status: 'success', detail: '1461 通过' },
-  { name: 'Docker', status: 'running', detail: '3 容器运行' },
-];
-
-/** 技术债务 */
-interface TechDebt { priority: 'high' | 'medium' | 'low'; desc: string; module: string }
-const TECH_DEBTS: TechDebt[] = [
-  { priority: 'high', desc: '日志系统未做结构化输出，排查效率低', module: 'logger' },
-  { priority: 'high', desc: 'Bot 矩阵轮询间隔硬编码，需配置化', module: 'bot_matrix' },
-  { priority: 'medium', desc: '命令注册表缺少版本号字段', module: 'cmd_registry' },
-  { priority: 'low', desc: '前端 CSS 变量命名不统一', module: 'ui' },
-];
-
-/** 依赖更新 */
-interface DepUpdate { name: string; current: string; latest: string; type: 'major' | 'minor' | 'patch' }
-const DEP_UPDATES: DepUpdate[] = [
-  { name: 'litellm', current: '1.51.0', latest: '1.56.2', type: 'minor' },
-  { name: 'python-telegram-bot', current: '21.6', latest: '21.9', type: 'minor' },
-  { name: 'fastapi', current: '0.115.0', latest: '0.115.6', type: 'patch' },
-  { name: 'crawl4ai', current: '0.4.1', latest: '0.5.0', type: 'major' },
-];
+/** /api/v1/perf 返回的性能数据 */
+interface PerfData {
+  cpu_percent?: number;
+  memory_mb?: number;
+  memory_percent?: number;
+  request_count?: number;
+  requests_total?: number;
+  avg_latency_ms?: number;
+  [key: string]: unknown;
+}
 
 /* ====== 工具函数 ====== */
 
-function priorityInfo(p: TechDebt['priority']) {
-  switch (p) {
-    case 'high': return { label: '高', bg: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)' };
-    case 'medium': return { label: '中', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' };
-    case 'low': return { label: '低', bg: 'rgba(6,182,212,0.15)', color: 'var(--accent-cyan)' };
-  }
+/** 格式化运行时间 */
+function formatUptime(seconds: number | null | undefined): string {
+  if (seconds == null) return '--';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}天 ${h}时 ${m}分`;
+  if (h > 0) return `${h}时 ${m}分`;
+  return `${m}分`;
 }
 
-function depTypeBadge(type: DepUpdate['type']) {
-  switch (type) {
-    case 'major': return { label: '大版本', bg: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)' };
-    case 'minor': return { label: '功能更新', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' };
-    case 'patch': return { label: '补丁', bg: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' };
-  }
-}
-
-function buildStatusStyle(s: BuildItem['status']) {
-  switch (s) {
-    case 'success': return { icon: '✓', color: 'var(--accent-green)' };
-    case 'running': return { icon: '●', color: 'var(--accent-cyan)' };
-    case 'error': return { icon: '✗', color: 'var(--accent-red)' };
-  }
+/* ====== 暂无数据占位组件 ====== */
+function NoDataPlaceholder({ reason, hint }: { reason: string; hint?: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-8 gap-2"
+      style={{ color: 'var(--text-disabled)' }}
+    >
+      <AlertCircle size={20} />
+      <span className="font-mono text-xs text-center">{reason}</span>
+      {hint && (
+        <span className="font-mono text-[10px] text-center" style={{ color: 'var(--text-disabled)' }}>
+          {hint}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /* ====== 主组件 ====== */
 
 export function Dev() {
+  /* 状态 */
+  const [status, setStatus] = useState<StatusData | null>(null);
+  const [perf, setPerf] = useState<PerfData | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  /* 数据拉取 */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [statusRes, perfRes] = await Promise.allSettled([
+        clawbotFetchJson<StatusData>('/api/v1/status'),
+        clawbotFetchJson<PerfData>('/api/v1/perf'),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      if (statusRes.status === 'fulfilled') {
+        setStatus(statusRes.value);
+        setStatusError(null);
+      } else {
+        setStatusError('系统状态不可用 — ClawBot 后端可能未运行');
+      }
+
+      if (perfRes.status === 'fulfilled') {
+        setPerf(perfRes.value);
+      }
+    } catch {
+      if (!mountedRef.current) return;
+      toast.error('开发数据加载失败');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchData();
+    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timer);
+    };
+  }, [fetchData]);
+
+  /* 概览统计 — 来自真实 API */
+  const overviewStats = statusError
+    ? []
+    : [
+        { label: '系统版本', value: status?.version ?? '--', color: 'var(--accent-cyan)' },
+        { label: '运行时间', value: formatUptime(status?.uptime_seconds ?? status?.uptime), color: 'var(--accent-green)' },
+        { label: 'Bot 数量', value: String(status?.bot_count ?? status?.bots_running ?? '--'), color: 'var(--accent-purple)' },
+        { label: '已加载模块', value: String(status?.modules_loaded ?? status?.active_services ?? status?.services_count ?? '--'), color: 'var(--accent-amber)' },
+      ];
+
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -107,7 +162,7 @@ export function Dev() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 开发概览 (col-8) ====== */}
+        {/* ====== 系统概览 (col-8) ====== */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -117,60 +172,77 @@ export function Dev() {
               >
                 <Code2 size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   DEV CONTROL
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  开发总控 // DEV CONTROL
+                  开发总控 // SYSTEM STATUS
                 </p>
               </div>
+              {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            {/* 统计指标 */}
-            <div className="grid grid-cols-4 gap-3 mb-5">
-              {OVERVIEW_STATS.map((s) => (
-                <div
-                  key={s.label}
-                  className="rounded-lg p-3"
-                  style={{ background: 'var(--bg-secondary)' }}
-                >
-                  <span className="text-label">{s.label}</span>
-                  <p className="text-metric mt-1" style={{ color: s.color, fontSize: '22px' }}>
-                    {s.value}
-                  </p>
+            {statusError ? (
+              <NoDataPlaceholder reason={statusError} />
+            ) : (
+              <>
+                {/* 统计指标 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  {overviewStats.map((s) => (
+                    <div
+                      key={s.label}
+                      className="rounded-lg p-3"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <span className="text-label">{s.label}</span>
+                      <p className="text-metric mt-1" style={{ color: s.color, fontSize: '22px' }}>
+                        {s.value}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* 最近 Git 提交 */}
-            <div className="flex-1">
-              <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>最近提交</span>
-              <div className="space-y-1">
-                {GIT_LOGS.map((log) => (
-                  <div
-                    key={log.hash}
-                    className="flex items-center gap-3 py-2 px-3 rounded-lg"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <GitCommit size={14} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
-                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-cyan)', flexShrink: 0 }}>
-                      {log.hash}
-                    </span>
-                    <span className="font-mono text-xs flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                      {log.message}
-                    </span>
-                    <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
-                      {log.time}
+                {/* 运行指标 — 来自 /api/v1/perf */}
+                {perf && (
+                  <div className="mt-2">
+                    <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>运行指标</span>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
+                        { label: 'CPU 使用', value: perf.cpu_percent != null ? `${perf.cpu_percent.toFixed(1)}%` : '--', color: 'var(--accent-cyan)' },
+                        { label: '内存使用', value: perf.memory_mb != null ? `${perf.memory_mb.toFixed(0)} MB` : '--', color: 'var(--accent-amber)' },
+                        { label: '请求总数', value: String(perf.request_count ?? perf.requests_total ?? '--'), color: 'var(--accent-green)' },
+                      ].map((m) => (
+                        <div
+                          key={m.label}
+                          className="rounded-lg p-3"
+                          style={{ background: 'var(--bg-secondary)' }}
+                        >
+                          <span className="text-label">{m.label}</span>
+                          <p className="font-display text-sm font-bold mt-1" style={{ color: m.color }}>
+                            {m.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 附加信息 */}
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--glass-border)' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={12} style={{ color: 'var(--text-disabled)' }} />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                      PID: {status?.pid ?? '--'} | 主机: {status?.hostname ?? '--'} | Python: {status?.python_version ?? '--'}
                     </span>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
 
-        {/* ====== 构建状态 (col-4) ====== */}
+        {/* ====== Git 提交记录 (col-4) — 待接入 ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -178,7 +250,31 @@ export function Dev() {
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
                 style={{ background: 'rgba(34,197,94,0.15)' }}
               >
-                <ShieldCheck size={20} style={{ color: 'var(--accent-green)' }} />
+                <GitCommit size={20} style={{ color: 'var(--accent-green)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  Git 提交
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  GIT COMMITS
+                </p>
+              </div>
+            </div>
+
+            <NoDataPlaceholder reason="暂无数据" hint="需接入 Git 仓库 API 以显示提交历史" />
+          </div>
+        </motion.div>
+
+        {/* ====== 构建状态 (col-6) — 待接入 ====== */}
+        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(6,182,212,0.15)' }}
+              >
+                <ShieldCheck size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -190,32 +286,11 @@ export function Dev() {
               </div>
             </div>
 
-            <div className="flex-1 space-y-3">
-              {BUILD_STATUS.map((b) => {
-                const bs = buildStatusStyle(b.status);
-                return (
-                  <div
-                    key={b.name}
-                    className="flex items-center justify-between py-3 px-4 rounded-lg"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm" style={{ color: bs.color }}>{bs.icon}</span>
-                      <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {b.name}
-                      </span>
-                    </div>
-                    <span className="font-mono text-[11px]" style={{ color: bs.color }}>
-                      {b.detail}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <NoDataPlaceholder reason="暂无数据" hint="需接入 CI/CD 系统（GitHub Actions 等）" />
           </div>
         </motion.div>
 
-        {/* ====== 技术债务 (col-6) ====== */}
+        {/* ====== 技术债务 (col-6) — 待接入 ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -230,44 +305,18 @@ export function Dev() {
                   技术债务
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  TECH DEBT // {TECH_DEBTS.length} 项
+                  TECH DEBT
                 </p>
               </div>
             </div>
 
-            <div className="flex-1 space-y-2">
-              {TECH_DEBTS.map((d, i) => {
-                const pi = priorityInfo(d.priority);
-                return (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 py-3 px-4 rounded-lg"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <span
-                      className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider flex-shrink-0 mt-0.5"
-                      style={{ background: pi.bg, color: pi.color }}
-                    >
-                      {pi.label}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                        {d.desc}
-                      </p>
-                      <p className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-disabled)' }}>
-                        模块: {d.module}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <NoDataPlaceholder reason="暂无数据" hint="需接入 HEALTH.md 解析或专用技术债务 API" />
           </div>
         </motion.div>
 
-        {/* ====== 依赖更新 (col-6) ====== */}
-        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
+        {/* ====== 依赖更新 (col-12) — 待接入 ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <div className="abyss-card p-6 flex flex-col">
             <div className="flex items-center gap-3 mb-5">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -280,41 +329,12 @@ export function Dev() {
                   依赖更新
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  DEPENDENCY UPDATES // {DEP_UPDATES.length} 可用
+                  DEPENDENCY UPDATES
                 </p>
               </div>
             </div>
 
-            <div className="flex-1 space-y-2">
-              {DEP_UPDATES.map((d) => {
-                const badge = depTypeBadge(d.type);
-                return (
-                  <div
-                    key={d.name}
-                    className="flex items-center gap-3 py-3 px-4 rounded-lg"
-                    style={{ background: 'var(--bg-secondary)' }}
-                  >
-                    <ArrowUpCircle size={14} style={{ color: badge.color, flexShrink: 0 }} />
-                    <span className="font-display text-sm font-bold flex-1" style={{ color: 'var(--text-primary)' }}>
-                      {d.name}
-                    </span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      {d.current}
-                    </span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>→</span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                      {d.latest}
-                    </span>
-                    <span
-                      className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider flex-shrink-0"
-                      style={{ background: badge.bg, color: badge.color }}
-                    >
-                      {badge.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <NoDataPlaceholder reason="暂无数据" hint="需接入 pip outdated / npm outdated 扫描结果" />
           </div>
         </motion.div>
       </motion.div>
