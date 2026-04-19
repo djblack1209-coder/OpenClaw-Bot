@@ -22,9 +22,11 @@ from src.bot.callback_mixin import CallbackMixin
 from src.bot.voice_handler import VoiceHandlerMixin
 from src.bot.session_tracker import SessionTrackerMixin
 from src.bot.stream_manager import StreamManagerMixin
+from src.perf_metrics import perf_timer
 
 
 class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, SessionTrackerMixin, StreamManagerMixin):
+    @perf_timer("bot.handle_message")
     async def handle_message(self, update, context):
         """处理文本消息 — 流式输出到 Telegram
 
