@@ -1,7 +1,12 @@
 /**
  * Testing — 测试诊断页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 测试系统暂未通过 API 接入，诚实标注待接入状态
+ * 快速操作按钮提示用户在终端手动执行
+ * 如有 /api/v1/status 返回测试相关信息则展示
+ * 30 秒自动刷新（仅拉取 status）
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   FlaskConical,
@@ -9,8 +14,11 @@ import {
   RefreshCw,
   FileBarChart,
   Stethoscope,
-  CheckCircle2,
+  Terminal,
+  Loader2,
 } from 'lucide-react';
+import { clawbotFetchJson } from '../../lib/tauri-core';
+import { toast } from 'sonner';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -23,73 +31,93 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 概览统计 */
-const TEST_STATS = [
-  { label: '总用例', value: '1,461', color: 'var(--accent-cyan)' },
-  { label: '通过', value: '1,461', color: 'var(--accent-green)' },
-  { label: '失败', value: '0', color: 'var(--accent-red)' },
-  { label: '覆盖率', value: '73%', color: 'var(--accent-amber)' },
-];
+/* ====== 类型定义 ====== */
 
-/** 测试模块 */
-interface TestModule { name: string; total: number; passed: number; status: 'pass' | 'partial' | 'fail' }
-const TEST_MODULES: TestModule[] = [
-  { name: 'core/路由引擎', total: 312, passed: 312, status: 'pass' },
-  { name: 'bots/Bot管理器', total: 245, passed: 245, status: 'pass' },
-  { name: 'handlers/消息处理', total: 398, passed: 398, status: 'pass' },
-  { name: 'services/AI集成', total: 187, passed: 187, status: 'pass' },
-  { name: 'services/渠道适配', total: 156, passed: 156, status: 'pass' },
-  { name: 'utils/工具函数', total: 163, passed: 163, status: 'pass' },
-];
-
-/** 快速操作 */
-interface QuickAction { label: string; desc: string; icon: typeof Play; color: string }
-const QUICK_ACTIONS: QuickAction[] = [
-  { label: '运行全部测试', desc: 'pytest tests/ -x', icon: Play, color: 'var(--accent-green)' },
-  { label: '运行失败测试', desc: 'pytest --lf', icon: RefreshCw, color: 'var(--accent-amber)' },
-  { label: '生成覆盖率报告', desc: 'pytest --cov', icon: FileBarChart, color: 'var(--accent-cyan)' },
-  { label: '系统诊断', desc: 'run_doctor', icon: Stethoscope, color: 'var(--accent-purple)' },
-];
-
-/** 终端输出 */
-const TERMINAL_OUTPUT: { text: string; color?: string }[] = [
-  { text: '$ pytest tests/ -x --tb=short -q', color: 'var(--text-primary)' },
-  { text: '' },
-  { text: 'tests/core/test_router.py ............................ [312/1461]', color: 'var(--accent-green)' },
-  { text: 'tests/bots/test_manager.py .......................... [557/1461]', color: 'var(--accent-green)' },
-  { text: 'tests/handlers/test_message.py ...................... [955/1461]', color: 'var(--accent-green)' },
-  { text: 'tests/services/test_ai.py .......................... [1142/1461]', color: 'var(--accent-green)' },
-  { text: 'tests/services/test_channel.py ..................... [1298/1461]', color: 'var(--accent-green)' },
-  { text: 'tests/utils/test_helpers.py ........................ [1461/1461]', color: 'var(--accent-green)' },
-  { text: '' },
-  { text: '================================ 1461 passed in 23.4s ================================', color: 'var(--accent-green)' },
-  { text: '' },
-  { text: '---------- coverage: 73.2% ----------', color: 'var(--accent-amber)' },
-  { text: 'Name                           Stmts   Miss  Cover', color: 'var(--text-tertiary)' },
-  { text: '-----------------------------------------------', color: 'var(--text-disabled)' },
-  { text: 'src/core/router.py              245     12    95%', color: 'var(--text-tertiary)' },
-  { text: 'src/bots/manager.py             189     38    80%', color: 'var(--text-tertiary)' },
-  { text: 'src/handlers/message.py         312     98    69%', color: 'var(--text-tertiary)' },
-  { text: 'src/services/ai_pool.py         156     51    67%', color: 'var(--text-tertiary)' },
-  { text: '-----------------------------------------------', color: 'var(--text-disabled)' },
-  { text: 'TOTAL                          1847    497    73%', color: 'var(--accent-cyan)' },
-];
-
-/* ====== 工具函数 ====== */
-
-function moduleStatusStyle(s: TestModule['status']) {
-  switch (s) {
-    case 'pass': return { label: '全部通过', bg: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' };
-    case 'partial': return { label: '部分通过', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' };
-    case 'fail': return { label: '失败', bg: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)' };
-  }
+/** /api/v1/status 中可能包含的测试相关字段 */
+interface StatusData {
+  version?: string;
+  tests_passed?: number;
+  tests_failed?: number;
+  tests_total?: number;
+  test_coverage?: number;
+  last_test_run?: string;
+  [key: string]: unknown;
 }
+
+/* ====== 快速操作定义 ====== */
+const QUICK_ACTIONS = [
+  {
+    label: '运行全部测试',
+    desc: 'cd packages/clawbot && pytest tests/ -x',
+    icon: Play,
+    color: 'var(--accent-green)',
+  },
+  {
+    label: '运行失败测试',
+    desc: 'cd packages/clawbot && pytest --lf',
+    icon: RefreshCw,
+    color: 'var(--accent-amber)',
+  },
+  {
+    label: '生成覆盖率报告',
+    desc: 'cd packages/clawbot && pytest --cov',
+    icon: FileBarChart,
+    color: 'var(--accent-cyan)',
+  },
+  {
+    label: '系统诊断',
+    desc: '通过桌面端「诊断」功能执行',
+    icon: Stethoscope,
+    color: 'var(--accent-purple)',
+  },
+];
 
 /* ====== 主组件 ====== */
 
 export function Testing() {
+  /* 状态 */
+  const [status, setStatus] = useState<StatusData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  /* 尝试从 status API 获取测试相关数据 */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await clawbotFetchJson<StatusData>('/api/v1/status');
+      if (!mountedRef.current) return;
+      setStatus(data);
+    } catch {
+      /* status 不可用也正常 — 测试功能本身就标注为待接入 */
+      if (!mountedRef.current) return;
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchData();
+    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timer);
+    };
+  }, [fetchData]);
+
+  /* 判断 status 中是否有测试相关数据 */
+  const hasTestInfo = status && (status.tests_total != null || status.test_coverage != null);
+
+  /* 快速操作点击 — 提示用户在终端执行 */
+  const handleQuickAction = (action: typeof QUICK_ACTIONS[number]) => {
+    toast.info(`请在终端手动执行:\n${action.desc}`, {
+      duration: 5000,
+    });
+  };
+
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
@@ -108,7 +136,7 @@ export function Testing() {
               >
                 <FlaskConical size={20} style={{ color: 'var(--accent-cyan)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   TEST RUNNER
                 </h2>
@@ -116,54 +144,64 @@ export function Testing() {
                   测试诊断 // TEST RUNNER
                 </p>
               </div>
+              {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            {/* 统计指标 */}
-            <div className="grid grid-cols-4 gap-3 mb-5">
-              {TEST_STATS.map((s) => (
-                <div
-                  key={s.label}
-                  className="rounded-lg p-3"
-                  style={{ background: 'var(--bg-secondary)' }}
-                >
-                  <span className="text-label">{s.label}</span>
-                  <p className="text-metric mt-1" style={{ color: s.color, fontSize: '22px' }}>
-                    {s.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* 模块列表 */}
-            <div className="flex-1">
-              <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>测试模块</span>
-              <div className="space-y-1.5">
-                {TEST_MODULES.map((mod) => {
-                  const ms = moduleStatusStyle(mod.status);
-                  return (
+            {/* 如果 status 中有测试数据，展示统计 */}
+            {hasTestInfo ? (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  {[
+                    { label: '总用例', value: status?.tests_total != null ? String(status.tests_total) : '--', color: 'var(--accent-cyan)' },
+                    { label: '通过', value: status?.tests_passed != null ? String(status.tests_passed) : '--', color: 'var(--accent-green)' },
+                    { label: '失败', value: status?.tests_failed != null ? String(status.tests_failed) : '--', color: (status?.tests_failed ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)' },
+                    { label: '覆盖率', value: status?.test_coverage != null ? `${status.test_coverage}%` : '--', color: 'var(--accent-amber)' },
+                  ].map((s) => (
                     <div
-                      key={mod.name}
-                      className="flex items-center gap-3 py-2.5 px-4 rounded-lg"
+                      key={s.label}
+                      className="rounded-lg p-3"
                       style={{ background: 'var(--bg-secondary)' }}
                     >
-                      <CheckCircle2 size={14} style={{ color: ms.color, flexShrink: 0 }} />
-                      <span className="font-mono text-xs font-bold flex-1" style={{ color: 'var(--text-primary)' }}>
-                        {mod.name}
-                      </span>
-                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                        {mod.passed}/{mod.total}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider flex-shrink-0"
-                        style={{ background: ms.bg, color: ms.color }}
-                      >
-                        {ms.label}
-                      </span>
+                      <span className="text-label">{s.label}</span>
+                      <p className="text-metric mt-1" style={{ color: s.color, fontSize: '22px' }}>
+                        {s.value}
+                      </p>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {status?.last_test_run && (
+                  <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    上次运行: {status.last_test_run}
+                  </p>
+                )}
+              </>
+            ) : (
+              /* 没有测试数据 — 诚实说明 */
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 py-6">
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'rgba(6,182,212,0.1)' }}
+                >
+                  <FlaskConical size={32} style={{ color: 'var(--accent-cyan)', opacity: 0.5 }} />
+                </div>
+                <div className="text-center max-w-md">
+                  <p className="font-display text-sm font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    测试系统暂未接入
+                  </p>
+                  <p className="font-mono text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                    当前无法通过界面运行测试。请在终端手动执行：
+                  </p>
+                  <div
+                    className="mt-3 px-4 py-2.5 rounded-lg font-mono text-xs text-left"
+                    style={{ background: 'rgba(5,5,12,0.8)', color: 'var(--accent-green)' }}
+                  >
+                    <span style={{ color: 'var(--text-disabled)' }}>$ </span>
+                    cd packages/clawbot && pytest tests/ -x --tb=short
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </motion.div>
 
@@ -193,8 +231,9 @@ export function Testing() {
                 return (
                   <button
                     key={action.label}
-                    className="w-full flex items-center gap-3 py-3.5 px-4 rounded-lg transition-all"
+                    className="w-full flex items-center gap-3 py-3.5 px-4 rounded-lg transition-all hover:opacity-80"
                     style={{ background: 'var(--bg-secondary)' }}
+                    onClick={() => handleQuickAction(action)}
                   >
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -214,10 +253,18 @@ export function Testing() {
                 );
               })}
             </div>
+
+            {/* 底部说明 */}
+            <p
+              className="font-mono text-[10px] mt-4 pt-3 border-t"
+              style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
+            >
+              点击按钮将提示终端命令，暂不支持在界面内执行
+            </p>
           </div>
         </motion.div>
 
-        {/* ====== 最近测试结果 (col-12) ====== */}
+        {/* ====== 测试输出 (col-12) — 待接入 ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card flex flex-col" style={{ background: 'rgba(5,5,12,0.95)' }}>
             {/* 终端标题栏 */}
@@ -230,6 +277,7 @@ export function Testing() {
                 <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent-amber)' }} />
                 <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent-green)' }} />
               </div>
+              <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                 测试输出
               </span>
@@ -238,18 +286,16 @@ export function Testing() {
               </span>
             </div>
 
-            {/* 终端内容 */}
-            <div className="p-5 max-h-[360px] overflow-y-auto scroll-container">
-              <div className="space-y-0.5">
-                {TERMINAL_OUTPUT.map((line, i) => (
-                  <div key={i} className="font-mono text-[12px] leading-relaxed whitespace-pre">
-                    {line.text ? (
-                      <span style={{ color: line.color || 'var(--text-tertiary)' }}>{line.text}</span>
-                    ) : (
-                      <br />
-                    )}
-                  </div>
-                ))}
+            {/* 待接入提示 */}
+            <div className="p-5">
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <Terminal size={24} style={{ color: 'var(--text-disabled)', opacity: 0.5 }} />
+                <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                  待接入 — 测试输出需通过后端 WebSocket 或 SSE 实时推送
+                </p>
+                <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                  目前请在终端查看 pytest 输出
+                </p>
               </div>
             </div>
           </div>

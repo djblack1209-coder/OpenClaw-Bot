@@ -1,7 +1,10 @@
 /**
  * Money — 盈利总控页面 (Sonic Abyss Bento Grid 风格)
- * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学，全模拟数据
+ * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
+ * 尝试从后端获取真实交易 P&L 和 AI 成本数据，无数据源的模块诚实标注"暂无数据源"
+ * 30 秒自动刷新
  */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign,
@@ -11,8 +14,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
-import clsx from 'clsx';
+import { clawbotFetchJson } from '../../lib/tauri-core';
+import { toast } from 'sonner';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -25,54 +31,127 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== 模拟数据 ====== */
+/* ====== 自动刷新间隔 ====== */
+const REFRESH_INTERVAL_MS = 30_000;
 
-/** 收入明细 */
-interface IncomeItem {
-  label: string;
-  amount: string;
-  trend: 'up' | 'down' | 'flat';
-  pct: string;
+/* ====== 类型定义 ====== */
+
+/** 交易 P&L 后端数据 */
+interface TradingPnlData {
+  total_pnl?: number;
+  daily_pnl?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+  positions_count?: number;
+  win_rate?: number;
+  history?: Array<{ date: string; pnl: number }>;
+  [key: string]: unknown;
 }
 
-const INCOME_ITEMS: IncomeItem[] = [
-  { label: '量化交易', amount: '¥18,600', trend: 'up', pct: '+12.3%' },
-  { label: '套利策略', amount: '¥8,200', trend: 'up', pct: '+5.8%' },
-  { label: 'DeFi 挖矿', amount: '¥5,300', trend: 'down', pct: '-2.1%' },
-  { label: '闲鱼销售', amount: '¥8,430', trend: 'up', pct: '+18.7%' },
-  { label: '闲鱼代购', amount: '¥4,700', trend: 'up', pct: '+9.2%' },
-];
-
-/** 月度趋势数据 */
-const MONTHLY_DATA = [
-  { month: '1月', value: 5200 },
-  { month: '2月', value: 6800 },
-  { month: '3月', value: 4900 },
-  { month: '4月', value: 8100 },
-  { month: '5月', value: 7400 },
-  { month: '6月', value: 8420 },
-];
-
-/** Alpha 研究洞察 */
-const ALPHA_INSIGHTS = [
-  { title: 'BTC 链上活跃度飙升', desc: '大额转账24h内增37%，看涨信号', color: 'var(--accent-green)' },
-  { title: 'NVDA 财报超预期', desc: '数据中心收入同比+154%，AI 需求持续', color: 'var(--accent-cyan)' },
-  { title: '美债收益率倒挂收窄', desc: '10Y-2Y 利差缩至-15bp，衰退概率降低', color: 'var(--accent-amber)' },
-];
+/** AI 成本后端数据 */
+interface OmegaCostData {
+  total_cost?: number;
+  today_cost?: number;
+  by_model?: Array<{ model: string; cost: number; calls: number }>;
+  by_provider?: Array<{ provider: string; cost: number }>;
+  [key: string]: unknown;
+}
 
 /* ====== 工具函数 ====== */
 
+/** 格式化金额为人民币 */
+function formatCNY(val: number | null | undefined): string {
+  if (val == null) return '--';
+  return `¥${val.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** 格式化美元 */
+function formatUSD(val: number | null | undefined): string {
+  if (val == null) return '--';
+  return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 /** 渲染 ASCII 柱状图 */
 function renderBar(value: number, maxValue: number, width: number = 24): string {
+  if (maxValue <= 0) return '░'.repeat(width);
   const ratio = value / maxValue;
   const filled = Math.round(ratio * width);
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
+/* ====== 暂无数据占位组件 ====== */
+function NoDataPlaceholder({ reason }: { reason: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-8 gap-2"
+      style={{ color: 'var(--text-disabled)' }}
+    >
+      <AlertCircle size={20} />
+      <span className="font-mono text-xs text-center">{reason}</span>
+    </div>
+  );
+}
+
 /* ====== 主组件 ====== */
 
 export function Money() {
-  const maxMonthly = Math.max(...MONTHLY_DATA.map((d) => d.value));
+  /* 状态 */
+  const [pnlData, setPnlData] = useState<TradingPnlData | null>(null);
+  const [costData, setCostData] = useState<OmegaCostData | null>(null);
+  const [pnlError, setPnlError] = useState<string | null>(null);
+  const [costError, setCostError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  /* 数据拉取 */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      /* 并行拉取交易 P&L 和 AI 成本 */
+      const [pnlRes, costRes] = await Promise.allSettled([
+        clawbotFetchJson<TradingPnlData>('/api/v1/trading/pnl'),
+        clawbotFetchJson<OmegaCostData>('/api/v1/omega/cost'),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      if (pnlRes.status === 'fulfilled') {
+        setPnlData(pnlRes.value);
+        setPnlError(null);
+      } else {
+        setPnlError('交易 P&L 数据不可用');
+      }
+
+      if (costRes.status === 'fulfilled') {
+        setCostData(costRes.value);
+        setCostError(null);
+      } else {
+        setCostError('AI 成本数据不可用');
+      }
+    } catch {
+      if (!mountedRef.current) return;
+      toast.error('盈利数据加载失败');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchData();
+    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timer);
+    };
+  }, [fetchData]);
+
+  /* P&L 历史图表数据 */
+  const pnlHistory = pnlData?.history ?? [];
+  const maxPnl = pnlHistory.length > 0 ? Math.max(...pnlHistory.map((d) => Math.abs(d.pnl))) : 0;
+
+  /* AI 成本按模型分布 */
+  const costByModel = costData?.by_model ?? [];
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -82,7 +161,7 @@ export function Money() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 收入概览 (col-8) ====== */}
+        {/* ====== 交易收益概览 (col-8) ====== */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             {/* 标题 */}
@@ -93,240 +172,213 @@ export function Money() {
               >
                 <DollarSign size={20} style={{ color: 'var(--accent-green)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  REVENUE OVERVIEW
+                  TRADING P&L
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  盈利总控 // INCOME DASHBOARD
+                  交易损益 // REAL DATA
                 </p>
               </div>
+              {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            {/* 顶部统计 4 列 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              {[
-                { label: '总收入', value: '¥45,230', color: 'var(--accent-green)' },
-                { label: '本月', value: '¥8,420', color: 'var(--accent-cyan)' },
-                { label: '交易收益', value: '¥32,100', color: 'var(--accent-purple)' },
-                { label: '闲鱼收入', value: '¥13,130', color: 'var(--accent-amber)' },
-              ].map((s) => (
-                <div key={s.label}>
-                  <span className="text-label">{s.label}</span>
-                  <div className="text-metric mt-1" style={{ color: s.color }}>
-                    {s.value}
-                  </div>
+            {pnlError ? (
+              <NoDataPlaceholder reason={pnlError} />
+            ) : (
+              <>
+                {/* 顶部统计 4 列 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  {[
+                    { label: '总盈亏', value: formatCNY(pnlData?.total_pnl), color: (pnlData?.total_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
+                    { label: '今日盈亏', value: formatCNY(pnlData?.daily_pnl), color: (pnlData?.daily_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
+                    { label: '已实现', value: formatCNY(pnlData?.realized_pnl), color: 'var(--accent-cyan)' },
+                    { label: '未实现', value: formatCNY(pnlData?.unrealized_pnl), color: 'var(--accent-purple)' },
+                  ].map((s) => (
+                    <div key={s.label}>
+                      <span className="text-label">{s.label}</span>
+                      <div className="text-metric mt-1" style={{ color: s.color }}>
+                        {s.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* 收入明细列表 */}
-            <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
-              INCOME BREAKDOWN
-            </span>
-            <div className="mt-2 flex-1 space-y-1">
-              {INCOME_ITEMS.map((item) => (
+                {/* 底部补充指标 */}
                 <div
-                  key={item.label}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-lg transition-colors"
-                  style={{ background: 'var(--bg-secondary)' }}
+                  className="flex items-center gap-6 pt-4 border-t"
+                  style={{ borderColor: 'var(--glass-border)' }}
                 >
-                  <span className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>
-                    {item.label}
-                  </span>
-                  <div className="flex items-center gap-4">
-                    <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {item.amount}
-                    </span>
-                    <span
-                      className={clsx('flex items-center gap-0.5 font-mono text-xs font-semibold')}
-                      style={{ color: item.trend === 'up' ? 'var(--accent-green)' : item.trend === 'down' ? 'var(--accent-red)' : 'var(--text-tertiary)' }}
-                    >
-                      {item.trend === 'up' && <ArrowUpRight size={12} />}
-                      {item.trend === 'down' && <ArrowDownRight size={12} />}
-                      {item.pct}
+                  <div className="flex items-center gap-2">
+                    <span className="text-label">持仓数</span>
+                    <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
+                      {pnlData?.positions_count ?? '--'}
                     </span>
                   </div>
+                  {pnlData?.win_rate != null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-label">胜率</span>
+                      <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-green)' }}>
+                        {(pnlData.win_rate * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         </motion.div>
 
-        {/* ====== 收入构成 (col-4) ====== */}
+        {/* ====== AI 成本总览 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-              REVENUE MIX
+              AI COST
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              收入构成
+              AI 使用成本
             </h3>
 
-            <div className="mt-6 flex-1 space-y-5">
-              {/* 交易占比 */}
-              <div>
-                <div className="flex justify-between mb-2">
-                  <span className="text-label flex items-center gap-1.5">
-                    <TrendingUp size={12} style={{ color: 'var(--accent-cyan)' }} />
-                    交易收益
-                  </span>
-                  <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
-                    71%
-                  </span>
+            {costError ? (
+              <NoDataPlaceholder reason={costError} />
+            ) : (
+              <div className="mt-6 flex-1 space-y-5">
+                {/* 总成本 */}
+                <div>
+                  <span className="text-label">累计成本</span>
+                  <div className="text-metric mt-1" style={{ color: 'var(--accent-amber)' }}>
+                    {formatUSD(costData?.total_cost)}
+                  </div>
                 </div>
-                <div
-                  className="h-3 rounded-full overflow-hidden"
-                  style={{ background: 'var(--bg-tertiary)' }}
-                >
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: '71%', background: 'var(--accent-cyan)' }}
-                  />
-                </div>
-                <p className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                  ¥32,100 / ¥45,230
-                </p>
-              </div>
 
-              {/* 闲鱼占比 */}
-              <div>
-                <div className="flex justify-between mb-2">
-                  <span className="text-label flex items-center gap-1.5">
-                    <PieChart size={12} style={{ color: 'var(--accent-amber)' }} />
-                    闲鱼收入
-                  </span>
-                  <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
-                    29%
-                  </span>
+                {/* 今日成本 */}
+                <div>
+                  <span className="text-label">今日成本</span>
+                  <div className="text-metric mt-1" style={{ color: 'var(--accent-cyan)' }}>
+                    {formatUSD(costData?.today_cost)}
+                  </div>
                 </div>
-                <div
-                  className="h-3 rounded-full overflow-hidden"
-                  style={{ background: 'var(--bg-tertiary)' }}
-                >
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: '29%', background: 'var(--accent-amber)' }}
-                  />
-                </div>
-                <p className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                  ¥13,130 / ¥45,230
-                </p>
-              </div>
 
-              {/* 分割线 + 小结 */}
-              <div
-                className="border-t pt-4 mt-4"
-                style={{ borderColor: 'var(--glass-border)' }}
-              >
-                <span className="text-label">月度目标进度</span>
-                <div className="flex items-end gap-2 mt-2">
-                  <span className="text-metric" style={{ color: 'var(--accent-green)' }}>
-                    84%
-                  </span>
-                  <span className="font-mono text-[10px] pb-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                    ¥8,420 / ¥10,000
-                  </span>
-                </div>
-                <div
-                  className="h-2 rounded-full overflow-hidden mt-2"
-                  style={{ background: 'var(--bg-tertiary)' }}
-                >
+                {/* 按模型分布 */}
+                {costByModel.length > 0 && (
                   <div
-                    className="h-full rounded-full"
-                    style={{ width: '84%', background: 'var(--accent-green)' }}
-                  />
-                </div>
+                    className="border-t pt-4 mt-4"
+                    style={{ borderColor: 'var(--glass-border)' }}
+                  >
+                    <span className="text-label">模型成本分布</span>
+                    <div className="mt-2 space-y-2">
+                      {costByModel.slice(0, 4).map((m) => (
+                        <div
+                          key={m.model}
+                          className="flex items-center justify-between py-1.5"
+                        >
+                          <span className="font-mono text-[11px] truncate flex-1" style={{ color: 'var(--text-primary)' }}>
+                            {m.model}
+                          </span>
+                          <span className="font-mono text-[11px] ml-2" style={{ color: 'var(--accent-amber)' }}>
+                            {formatUSD(m.cost)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
         </motion.div>
 
-        {/* ====== 月度趋势 ASCII 图 (col-8) ====== */}
+        {/* ====== P&L 历史趋势 ASCII 图 (col-8) ====== */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-              MONTHLY TREND
+              P&L HISTORY
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              月度趋势
+              损益走势
             </h3>
 
-            <div className="flex-1 space-y-2">
-              {MONTHLY_DATA.map((d) => (
-                <div key={d.month} className="flex items-center gap-3">
-                  <span
-                    className="font-mono text-xs w-8 shrink-0 text-right"
-                    style={{ color: 'var(--text-tertiary)' }}
-                  >
-                    {d.month}
-                  </span>
-                  <span
-                    className="font-mono text-xs flex-1 tracking-tight"
-                    style={{ color: d.value === maxMonthly ? 'var(--accent-green)' : 'var(--accent-cyan)', opacity: 0.85 }}
-                  >
-                    {renderBar(d.value, maxMonthly)}
-                  </span>
-                  <span
-                    className="font-mono text-xs w-16 text-right shrink-0"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    ¥{d.value.toLocaleString()}
+            {pnlHistory.length === 0 ? (
+              <NoDataPlaceholder reason="暂无历史损益数据" />
+            ) : (
+              <div className="flex-1 space-y-2">
+                {pnlHistory.slice(-8).map((d) => (
+                  <div key={d.date} className="flex items-center gap-3">
+                    <span
+                      className="font-mono text-xs w-20 shrink-0 text-right"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      {d.date}
+                    </span>
+                    <span
+                      className="font-mono text-xs flex-1 tracking-tight"
+                      style={{ color: d.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', opacity: 0.85 }}
+                    >
+                      {renderBar(Math.abs(d.pnl), maxPnl)}
+                    </span>
+                    <span
+                      className="font-mono text-xs w-20 text-right shrink-0 flex items-center gap-0.5 justify-end"
+                      style={{ color: d.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}
+                    >
+                      {d.pnl >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+                      {formatCNY(d.pnl)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 底部统计行 */}
+            {pnlHistory.length > 0 && (
+              <div
+                className="flex items-center justify-between mt-5 pt-4 border-t"
+                style={{ borderColor: 'var(--glass-border)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={14} style={{ color: 'var(--accent-cyan)' }} />
+                  <span className="text-label">近期均值</span>
+                  <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
+                    {formatCNY(pnlHistory.reduce((a, d) => a + d.pnl, 0) / pnlHistory.length)}
                   </span>
                 </div>
-              ))}
-            </div>
-
-            {/* 趋势统计行 */}
-            <div
-              className="flex items-center justify-between mt-5 pt-4 border-t"
-              style={{ borderColor: 'var(--glass-border)' }}
-            >
-              <div className="flex items-center gap-2">
-                <BarChart3 size={14} style={{ color: 'var(--accent-cyan)' }} />
-                <span className="text-label">6 个月均值</span>
-                <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
-                  ¥{Math.round(MONTHLY_DATA.reduce((a, d) => a + d.value, 0) / MONTHLY_DATA.length).toLocaleString()}
-                </span>
               </div>
-              <div className="flex items-center gap-1">
-                <ArrowUpRight size={14} style={{ color: 'var(--accent-green)' }} />
-                <span className="font-mono text-xs font-semibold" style={{ color: 'var(--accent-green)' }}>
-                  +13.8% MoM
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </motion.div>
 
-        {/* ====== Alpha 研究洞察 (col-4) ====== */}
+        {/* ====== 暂未接入的收入源 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              ALPHA RESEARCH
+              OTHER REVENUE
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              研究洞察
+              其他收入源
             </h3>
 
             <div className="flex-1 space-y-4">
-              {ALPHA_INSIGHTS.map((insight, i) => (
+              {/* 暂未接入的数据源列表 */}
+              {[
+                { name: '闲鱼销售收入', reason: '暂无数据源 — 需接入闲鱼交易 API', icon: PieChart, color: 'var(--accent-amber)' },
+                { name: '套利策略收益', reason: '暂无数据源 — 需接入套利引擎', icon: TrendingUp, color: 'var(--accent-cyan)' },
+                { name: 'DeFi 挖矿收入', reason: '暂无数据源 — 需接入链上数据', icon: Lightbulb, color: 'var(--accent-purple)' },
+              ].map((item) => (
                 <div
-                  key={i}
-                  className="p-4 rounded-xl border transition-colors"
+                  key={item.name}
+                  className="p-4 rounded-xl border"
                   style={{
                     background: 'var(--bg-secondary)',
                     borderColor: 'var(--glass-border)',
                   }}
                 >
                   <div className="flex items-start gap-2.5">
-                    <Lightbulb size={16} className="shrink-0 mt-0.5" style={{ color: insight.color }} />
+                    <item.icon size={16} className="shrink-0 mt-0.5" style={{ color: item.color }} />
                     <div>
                       <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {insight.title}
+                        {item.name}
                       </p>
-                      <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                        {insight.desc}
+                      <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
+                        {item.reason}
                       </p>
                     </div>
                   </div>
@@ -334,12 +386,12 @@ export function Money() {
               ))}
             </div>
 
-            {/* 底部提示 */}
+            {/* 底部说明 */}
             <p
               className="font-mono text-[10px] mt-4 pt-3 border-t"
               style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
             >
-              ⚡ 每 4 小时由 AI 分析引擎自动更新
+              待各数据源 API 就绪后自动显示真实数据
             </p>
           </div>
         </motion.div>
