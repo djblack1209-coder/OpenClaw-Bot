@@ -27,44 +27,13 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ====== DAG 节点类型定义 ====== */
-interface DagNode {
-  id: string;
-  label: string;
-  status: 'done' | 'running' | 'pending';
-}
-
-interface Pipeline {
-  name: string;
-  status: '运行中' | '排队' | '已完成';
-  startTime: string;
-  progress: string;
-  elapsed: string;
-}
-
-interface CompletedTask {
-  name: string;
-  duration: string;
-  result: '成功' | '失败';
-  time: string;
-}
-
-interface LogEntry {
-  time: string;
-  level: 'INFO' | 'OK' | 'WARN' | 'ERROR';
-  message: string;
-}
-
-interface ModelStat {
-  name: string;
-  count: number;
-  color: string;
-}
+/* ====== 类型 ====== */
+type NodeStatus = 'done' | 'running' | 'pending';
+type LogLevel = 'INFO' | 'OK' | 'WARN' | 'ERROR';
 
 /* ====== 模拟数据 ====== */
-
 // DAG 流水线节点
-const dagNodes: DagNode[] = [
+const dagNodes: { id: string; label: string; status: NodeStatus }[] = [
   { id: 'intent',  label: '意图解析', status: 'done' },
   { id: 'scan',    label: '市场扫描', status: 'done' },
   { id: 'risk',    label: '风险评估', status: 'done' },
@@ -72,7 +41,6 @@ const dagNodes: DagNode[] = [
   { id: 'execute', label: '订单执行', status: 'pending' },
   { id: 'track',   label: '回报追踪', status: 'pending' },
 ];
-
 // 引擎指标
 const engineMetrics = [
   { label: '今日任务数', value: '47',    accent: 'var(--accent-cyan)' },
