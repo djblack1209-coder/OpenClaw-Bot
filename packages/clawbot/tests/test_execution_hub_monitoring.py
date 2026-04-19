@@ -132,6 +132,11 @@ class TestExecutionHubMonitoring:
     @pytest.mark.asyncio
     async def test_create_social_draft_for_x_and_xiaohongshu(self, monkeypatch, tmp_path):
         monkeypatch.setattr(execution_hub_module, "DB_PATH", tmp_path / "execution_hub.db")
+
+        # 清空草稿存储，避免与历史草稿重复检测冲突
+        from src.execution.social import drafts as drafts_module
+        monkeypatch.setattr(drafts_module, "_DRAFTS_FILE", tmp_path / "drafts.json")
+
         hub = ExecutionHub()
         hub.add_monitor("WaytoAGI", "x_profile")
         hub.add_monitor("nextify2024", "x_profile")
@@ -153,12 +158,12 @@ class TestExecutionHubMonitoring:
         xhs_draft = await hub.create_social_draft("xiaohongshu", topic="AI 出海", max_items=2)
 
         assert x_draft["success"] is True
-        assert x_draft["draft_id"] > 0
+        assert x_draft["draft_id"]  # draft_id 可能是字符串或整数
         assert "今天筛了 2 条值得看的AI 出海更新" in x_draft["body"]
         assert "AI" in x_draft["body"]
 
         assert xhs_draft["success"] is True
-        assert xhs_draft["draft_id"] > 0
+        assert xhs_draft["draft_id"]  # draft_id 可能是字符串或整数
         assert xhs_draft["title"].startswith("今日AI 出海情报")
         assert "原文：https://x.com/WaytoAGI/status/123" in xhs_draft["body"]
 
