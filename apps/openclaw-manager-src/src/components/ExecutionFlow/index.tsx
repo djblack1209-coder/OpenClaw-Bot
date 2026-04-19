@@ -50,16 +50,14 @@ const engineMetrics = [
   { label: '排队任务',   value: '2',     accent: 'var(--text-secondary)' },
   { label: '失败任务',   value: '3',     accent: 'var(--accent-red)' },
 ];
-
 // 活跃管道
-const activePipelines: Pipeline[] = [
+const activePipelines = [
   { name: 'AAPL 投资分析',     status: '运行中', startTime: '14:32:01', progress: '4/6', elapsed: '2.3s' },
   { name: '闲鱼客服自动回复',   status: '运行中', startTime: '14:30:15', progress: '3/5', elapsed: '5.8s' },
   { name: '社媒热点追踪',       status: '排队',   startTime: '14:35:00', progress: '0/4', elapsed: '—' },
 ];
-
 // 最近完成
-const completedTasks: CompletedTask[] = [
+const completedTasks = [
   { name: 'BTC 趋势分析',     duration: '4.2s', result: '成功', time: '14:28:33' },
   { name: 'ETH 风险评估',     duration: '2.8s', result: '成功', time: '14:25:10' },
   { name: '小红书发帖调度',   duration: '1.5s', result: '成功', time: '14:22:45' },
