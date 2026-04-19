@@ -150,11 +150,11 @@ class TestTradePipelineExecution:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(oversized_proposal)
+        result = await pipeline.execute_proposal(blacklisted_proposal)
 
         # 应被风控拒绝
         assert result["status"] == "rejected", (
-            f"超大仓位应被拒绝，实际状态: {result['status']}"
+            f"黑名单标的应被拒绝，实际状态: {result['status']}"
         )
 
         # broker.buy 不应被调用
