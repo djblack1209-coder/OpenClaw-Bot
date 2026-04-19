@@ -1,5 +1,12 @@
+import { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  ZoomableGroup,
+} from 'react-simple-maps';
 import {
   Shield,
   AlertTriangle,
@@ -19,6 +26,9 @@ import {
   Map,
 } from 'lucide-react';
 
+/* ====== TopoJSON 地图源 — Natural Earth 110m 分辨率 ====== */
+const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+
 /* ====== 入场动画配置（与 Home 一致） ====== */
 const containerVariants = {
   hidden: {},
@@ -35,7 +45,7 @@ const cardVariants = {
 /** 国家风险条目 */
 interface CountryRisk {
   country: string;        // 中文国家名
-  code: string;           // ISO 国家代码
+  code: string;           // ISO alpha-2 国家代码
   score: number;          // 风险分数 0-100
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   change24h: number;      // 24小时变化（正数=上升，负数=下降）
@@ -58,12 +68,13 @@ interface IntelEntry {
   message: string;        // 中文消息
 }
 
-/** 区域态势卡片 */
-interface RegionStatus {
-  name: string;           // 中文区域名
-  risk: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  events: number;         // 关键事件数
-  trend: 'up' | 'down' | 'stable';
+/** 地图悬停提示信息 */
+interface TooltipInfo {
+  name: string;           // 中文国家名
+  score: number;          // 风险分数
+  level: string;          // 中文等级
+  x: number;              // 鼠标 X 坐标
+  y: number;              // 鼠标 Y 坐标
 }
 
 /* ====== 严重度中文映射 ====== */
@@ -82,21 +93,31 @@ const CATEGORY_CN: Record<string, string> = {
   ECONOMIC: '经济',
 };
 
+/** ISO alpha-3 → 中文国家名映射 */
+const ISO3_TO_CN: Record<string, string> = {
+  UKR: '乌克兰', ISR: '以色列', MMR: '缅甸', SDN: '苏丹', YEM: '也门',
+  SOM: '索马里', AFG: '阿富汗', SYR: '叙利亚', RUS: '俄罗斯', CHN: '中国',
+  USA: '美国', IRN: '伊朗', PRK: '朝鲜', PAK: '巴基斯坦', IRQ: '伊拉克',
+  LBY: '利比亚', NGA: '尼日利亚', COD: '刚果(金)', ETH: '埃塞俄比亚', MLI: '马里',
+  MEX: '墨西哥', VEN: '委内瑞拉', COL: '哥伦比亚', IND: '印度', TWN: '台湾',
+  PHL: '菲律宾', EGY: '埃及', LBN: '黎巴嫩', HTI: '海地', BFA: '布基纳法索',
+};
+
+/* ====== 国家风险分数表（ISO alpha-3 → 分数） ====== */
+const COUNTRY_RISK_SCORES: Record<string, number> = {
+  UKR: 94, ISR: 88, MMR: 79, SDN: 76, YEM: 71,
+  SOM: 68, AFG: 65, SYR: 63, RUS: 58, CHN: 42,
+  USA: 28, IRN: 72, PRK: 60, PAK: 55, IRQ: 67,
+  LBY: 62, NGA: 59, COD: 70, ETH: 57, MLI: 66,
+  MEX: 48, VEN: 53, COL: 45, IND: 38, TWN: 35,
+  PHL: 40, EGY: 44, LBN: 61, HTI: 73, BFA: 69,
+};
+
 /* ====== 模拟数据 ====== */
 
 /** 全球综合风险分数 */
 const GLOBAL_RISK_SCORE = 62;
 const GLOBAL_RISK_SEVERITY: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
-
-/** 全球六大区域态势 */
-const REGION_STATUS: RegionStatus[] = [
-  { name: '东亚',   risk: 'MEDIUM',   events: 4,  trend: 'stable' },
-  { name: '中东',   risk: 'CRITICAL', events: 12, trend: 'up' },
-  { name: '欧洲',   risk: 'HIGH',     events: 8,  trend: 'up' },
-  { name: '非洲',   risk: 'HIGH',     events: 9,  trend: 'up' },
-  { name: '北美',   risk: 'LOW',      events: 2,  trend: 'down' },
-  { name: '南美',   risk: 'MEDIUM',   events: 3,  trend: 'stable' },
-];
 
 /** 前 8 高风险国家 */
 const TOP_RISK_COUNTRIES: CountryRisk[] = [
@@ -142,6 +163,24 @@ function severityColor(severity: string): string {
     case 'LOW':      return 'var(--accent-green)';
     default:         return 'var(--text-tertiary)';
   }
+}
+
+/** 根据风险分数返回填充颜色（地图热力色阶） */
+function riskScoreToFill(score: number): string {
+  if (score >= 85) return '#ff003c';                // 危急 — 红色
+  if (score >= 70) return '#ff6b35';                // 高风险 — 橙色
+  if (score >= 50) return '#fbbf24';                // 升高 — 琥珀色
+  if (score >= 30) return '#00d4ff';                // 中等 — 青色
+  return 'rgba(255,255,255,0.08)';                  // 低/无数据 — 暗色
+}
+
+/** 根据风险分数返回中文等级标签 */
+function riskScoreToLevel(score: number): string {
+  if (score >= 85) return '危急';
+  if (score >= 70) return '高';
+  if (score >= 50) return '升高';
+  if (score >= 30) return '中等';
+  return '低';
 }
 
 /** 根据情报类别返回对应颜色和背景色 */
@@ -200,15 +239,234 @@ function ChangeIndicator({ value }: { value: number }) {
   );
 }
 
-/** 趋势箭头指示器 */
-function TrendIndicator({ trend }: { trend: 'up' | 'down' | 'stable' }) {
-  if (trend === 'up') {
-    return <ArrowUp size={10} style={{ color: 'var(--accent-red)' }} />;
-  }
-  if (trend === 'down') {
-    return <ArrowDown size={10} style={{ color: 'var(--accent-green)' }} />;
-  }
-  return <Minus size={10} style={{ color: 'var(--text-disabled)' }} />;
+/* ====== 地图色阶图例组件 ====== */
+function MapLegend() {
+  /* 色阶条目：颜色 + 中文标签 + 分数范围 */
+  const items = [
+    { color: '#ff003c', label: '危急', range: '85+' },
+    { color: '#ff6b35', label: '高',   range: '70-84' },
+    { color: '#fbbf24', label: '升高', range: '50-69' },
+    { color: '#00d4ff', label: '中等', range: '30-49' },
+    { color: 'rgba(255,255,255,0.25)', label: '低', range: '0-29' },
+  ];
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-1.5">
+          <span
+            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+            style={{ background: it.color }}
+          />
+          <span className="font-mono text-[9px]" style={{ color: 'var(--text-tertiary)' }}>
+            {it.label} {it.range}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ====== 地图悬停提示组件 ====== */
+function MapTooltip({ info }: { info: TooltipInfo | null }) {
+  if (!info) return null;
+  const fill = riskScoreToFill(info.score);
+  return (
+    <div
+      className="pointer-events-none fixed z-[9999] px-3 py-2 rounded-lg"
+      style={{
+        left: info.x + 12,
+        top: info.y - 40,
+        background: 'rgba(2,2,2,0.92)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ background: fill }}
+        />
+        <span className="font-display text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+          {info.name}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 mt-1">
+        <span className="font-mono text-[10px]" style={{ color: fill }}>
+          风险分: {info.score}
+        </span>
+        <span
+          className="px-1.5 py-0.5 rounded font-mono text-[8px] tracking-wider"
+          style={{ background: `${fill}20`, color: fill }}
+        >
+          {info.level}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ====== SVG 世界地图热力图组件 ====== */
+function WorldHeatmap() {
+  const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+
+  /**
+   * 从 TopoJSON geography 的 properties 中提取 ISO alpha-3 代码
+   * world-atlas@2 的 countries-110m.json 不直接提供 ISO_A3，
+   * 但提供了 name 字段。我们用一个数字 ID → ISO alpha-3 的映射表来匹配。
+   * 参考：https://github.com/topojson/world-atlas 的 ID 是 ISO 3166-1 数字代码
+   */
+  const numericToIso3: Record<string, string> = useMemo(() => ({
+    '004': 'AFG', '008': 'ALB', '012': 'DZA', '024': 'AGO', '032': 'ARG',
+    '036': 'AUS', '040': 'AUT', '050': 'BGD', '056': 'BEL', '068': 'BOL',
+    '076': 'BRA', '100': 'BGR', '854': 'BFA', '108': 'BDI', '116': 'KHM',
+    '120': 'CMR', '124': 'CAN', '140': 'CAF', '148': 'TCD', '152': 'CHL',
+    '156': 'CHN', '170': 'COL', '178': 'COG', '180': 'COD', '188': 'CRI',
+    '191': 'HRV', '192': 'CUB', '196': 'CYP', '203': 'CZE', '208': 'DNK',
+    '214': 'DOM', '218': 'ECU', '818': 'EGY', '222': 'SLV', '226': 'GNQ',
+    '232': 'ERI', '233': 'EST', '231': 'ETH', '246': 'FIN', '250': 'FRA',
+    '266': 'GAB', '270': 'GMB', '268': 'GEO', '276': 'DEU', '288': 'GHA',
+    '300': 'GRC', '320': 'GTM', '324': 'GIN', '328': 'GUY', '332': 'HTI',
+    '340': 'HND', '348': 'HUN', '356': 'IND', '360': 'IDN', '364': 'IRN',
+    '368': 'IRQ', '372': 'IRL', '376': 'ISR', '380': 'ITA', '384': 'CIV',
+    '388': 'JAM', '392': 'JPN', '400': 'JOR', '398': 'KAZ', '404': 'KEN',
+    '408': 'PRK', '410': 'KOR', '414': 'KWT', '417': 'KGZ', '418': 'LAO',
+    '428': 'LVA', '422': 'LBN', '426': 'LSO', '430': 'LBR', '434': 'LBY',
+    '440': 'LTU', '442': 'LUX', '450': 'MDG', '454': 'MWI', '458': 'MYS',
+    '466': 'MLI', '478': 'MRT', '484': 'MEX', '496': 'MNG', '504': 'MAR',
+    '508': 'MOZ', '104': 'MMR', '516': 'NAM', '524': 'NPL', '528': 'NLD',
+    '554': 'NZL', '558': 'NIC', '562': 'NER', '566': 'NGA', '578': 'NOR',
+    '512': 'OMN', '586': 'PAK', '591': 'PAN', '598': 'PNG', '600': 'PRY',
+    '604': 'PER', '608': 'PHL', '616': 'POL', '620': 'PRT', '634': 'QAT',
+    '642': 'ROU', '643': 'RUS', '646': 'RWA', '682': 'SAU', '686': 'SEN',
+    '694': 'SLE', '702': 'SGP', '703': 'SVK', '705': 'SVN', '706': 'SOM',
+    '710': 'ZAF', '724': 'ESP', '144': 'LKA', '729': 'SDN', '740': 'SUR',
+    '748': 'SWZ', '752': 'SWE', '756': 'CHE', '760': 'SYR', '158': 'TWN',
+    '762': 'TJK', '834': 'TZA', '764': 'THA', '768': 'TGO', '780': 'TTO',
+    '788': 'TUN', '792': 'TUR', '795': 'TKM', '800': 'UGA', '804': 'UKR',
+    '784': 'ARE', '826': 'GBR', '840': 'USA', '858': 'URY', '860': 'UZB',
+    '862': 'VEN', '704': 'VNM', '887': 'YEM', '894': 'ZMB', '716': 'ZWE',
+  }), []);
+
+  /** 鼠标进入国家区域 — 显示提示 */
+  const handleMouseEnter = useCallback(
+    (geo: { properties: { name: string }; id: string }, evt: React.MouseEvent) => {
+      const iso3 = numericToIso3[geo.id] || '';
+      const score = COUNTRY_RISK_SCORES[iso3];
+      if (score !== undefined) {
+        const cnName = ISO3_TO_CN[iso3] || geo.properties.name;
+        setTooltip({
+          name: cnName,
+          score,
+          level: riskScoreToLevel(score),
+          x: evt.clientX,
+          y: evt.clientY,
+        });
+      } else {
+        /* 无数据的国家也显示名称 */
+        setTooltip({
+          name: geo.properties.name,
+          score: 0,
+          level: '无数据',
+          x: evt.clientX,
+          y: evt.clientY,
+        });
+      }
+    },
+    [numericToIso3]
+  );
+
+  /** 鼠标移动 — 跟踪提示位置 */
+  const handleMouseMove = useCallback(
+    (evt: React.MouseEvent) => {
+      setTooltip((prev) =>
+        prev ? { ...prev, x: evt.clientX, y: evt.clientY } : null
+      );
+    },
+    []
+  );
+
+  /** 鼠标离开 — 隐藏提示 */
+  const handleMouseLeave = useCallback(() => {
+    setTooltip(null);
+  }, []);
+
+  /** 点击国家 — 跳转 worldmonitor.app */
+  const handleClick = useCallback(() => {
+    window.open('https://worldmonitor.app', '_blank');
+  }, []);
+
+  return (
+    <div className="relative w-full" style={{ minHeight: 320 }}>
+      {/* 悬停提示浮层 */}
+      <MapTooltip info={tooltip} />
+
+      <ComposableMap
+        projection="geoEqualEarth"
+        projectionConfig={{ scale: 160, center: [0, 0] }}
+        width={800}
+        height={400}
+        style={{
+          width: '100%',
+          height: 'auto',
+          background: 'transparent',
+        }}
+      >
+        <ZoomableGroup center={[10, 20]} zoom={1}>
+          <Geographies geography={GEO_URL}>
+            {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: { name: string } }> }) =>
+              geographies.map((geo) => {
+                /* 通过数字 ID 查找 ISO alpha-3 代码 */
+                const iso3 = numericToIso3[geo.id] || '';
+                const score = COUNTRY_RISK_SCORES[iso3];
+                const fill = score !== undefined
+                  ? riskScoreToFill(score)
+                  : 'rgba(255,255,255,0.04)';
+
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    onMouseEnter={(evt: React.MouseEvent) => handleMouseEnter(geo, evt)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
+                    onClick={handleClick}
+                    style={{
+                      default: {
+                        fill,
+                        stroke: 'rgba(255,255,255,0.15)',
+                        strokeWidth: 0.4,
+                        outline: 'none',
+                        cursor: score !== undefined ? 'pointer' : 'default',
+                        transition: 'fill 0.2s ease',
+                      },
+                      hover: {
+                        fill: score !== undefined
+                          ? riskScoreToFill(score)
+                          : 'rgba(255,255,255,0.1)',
+                        stroke: 'rgba(255,255,255,0.4)',
+                        strokeWidth: 0.8,
+                        outline: 'none',
+                        cursor: 'pointer',
+                        filter: score !== undefined ? 'brightness(1.3)' : 'none',
+                      },
+                      pressed: {
+                        fill: score !== undefined
+                          ? riskScoreToFill(score)
+                          : 'rgba(255,255,255,0.06)',
+                        stroke: 'rgba(255,255,255,0.3)',
+                        strokeWidth: 0.6,
+                        outline: 'none',
+                      },
+                    }}
+                  />
+                );
+              })
+            }
+          </Geographies>
+        </ZoomableGroup>
+      </ComposableMap>
+    </div>
+  );
 }
 
 /* ====== 主组件 ====== */
@@ -217,6 +475,10 @@ function TrendIndicator({ trend }: { trend: 'up' | 'down' | 'stable' }) {
  * 全球监控面板 — Sonic Abyss Bento Grid 布局
  * 12 列 CSS Grid，玻璃卡片 + 终端美学
  * 展示地缘风险、冲突、基础设施状态、气候灾害与情报流
+ * 第一行：全球风险分数 (span-4) + SVG 世界地图热力图 (span-8, row-span-2)
+ * 第二行：活跃冲突 (span-4)（与地图同行）
+ * 第三行：基础设施 + 气候灾害 + 网络安全（各 span-4）
+ * 第四行：情报终端流 (span-12)
  * 所有文本标签使用中文，国家名和区域名可点击跳转外部源
  */
 export function WorldMonitor() {
@@ -228,7 +490,7 @@ export function WorldMonitor() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 第一行：全球风险分数 (span-4) + 全球威胁态势图 (span-8, row-span-2) ====== */}
+        {/* ====== 第一行：全球风险分数 (span-4) + SVG 世界地图热力图 (span-8, row-span-2) ====== */}
 
         {/* 全球综合风险分数卡 */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
@@ -294,9 +556,10 @@ export function WorldMonitor() {
           </div>
         </motion.div>
 
-        {/* ====== 全球威胁态势图 — 大卡片 (col-span-8, row-span-2) ====== */}
+        {/* ====== SVG 世界地图热力图 — 大卡片 (col-span-8, row-span-2) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 lg:row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
+            {/* 标题栏 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Map size={16} style={{ color: 'var(--accent-red)' }} />
@@ -305,7 +568,7 @@ export function WorldMonitor() {
                     全球威胁态势图
                   </span>
                   <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                    区域态势 + 国家风险
+                    国家风险热力图
                   </h3>
                 </div>
               </div>
@@ -314,50 +577,21 @@ export function WorldMonitor() {
               </span>
             </div>
 
-            {/* 六大区域态势网格 */}
-            <div className="grid grid-cols-3 gap-3 mt-4">
-              {REGION_STATUS.map((r) => (
-                <motion.div
-                  key={r.name}
-                  className="rounded-xl p-3 flex flex-col gap-1.5 cursor-default"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}
-                  whileHover={{ scale: 1.02, background: 'rgba(255,255,255,0.04)' }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {r.name}
-                    </span>
-                    <TrendIndicator trend={r.trend} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* 严重度圆点 */}
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ background: severityColor(r.risk) }}
-                    />
-                    <span
-                      className="font-mono text-[10px] tracking-wider"
-                      style={{ color: severityColor(r.risk) }}
-                    >
-                      {SEVERITY_CN[r.risk]}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <AlertTriangle size={10} style={{ color: 'var(--text-disabled)' }} />
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                      {r.events} 项关键事件
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
+            {/* SVG 世界地图 */}
+            <div className="flex-1 mt-3 rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)' }}>
+              <WorldHeatmap />
+            </div>
+
+            {/* 色阶图例 */}
+            <div className="mt-3">
+              <MapLegend />
             </div>
 
             {/* 分隔线 */}
-            <div className="my-4" style={{ borderTop: '1px solid var(--glass-border)' }} />
+            <div className="my-3" style={{ borderTop: '1px solid var(--glass-border)' }} />
 
             {/* 高风险国家表格（前 8 国） */}
-            <div className="flex-1">
+            <div className="flex-shrink-0">
               {/* 表头 */}
               <div
                 className="grid grid-cols-[1fr_80px_100px_80px] gap-2 px-3 py-2 rounded-lg mb-1"
@@ -437,7 +671,7 @@ export function WorldMonitor() {
           </div>
         </motion.div>
 
-        {/* ====== 第二行左侧（与威胁态势图同行）：活跃冲突卡 (span-4) ====== */}
+        {/* ====== 第二行左侧（与地图同行）：活跃冲突卡 (span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-red)' }}>
