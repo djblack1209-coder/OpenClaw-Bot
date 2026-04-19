@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use crate::utils::platform::get_config_dir;
+use crate::models::{AppResult, AppError};
 
 /// 全局进程表：存储正在运行的 MCP 插件子进程
 static RUNNING_PROCESSES: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
@@ -39,7 +40,7 @@ fn get_mcp_config_path() -> PathBuf {
 }
 
 #[tauri::command]
-pub async fn get_mcp_plugins() -> Result<Vec<MCPPlugin>, String> {
+pub async fn get_mcp_plugins() -> AppResult<Vec<MCPPlugin>> {
     let path = get_mcp_config_path();
     
     if !path.exists() {
@@ -47,16 +48,16 @@ pub async fn get_mcp_plugins() -> Result<Vec<MCPPlugin>, String> {
     }
 
     let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read MCP config: {}", e))?;
+        .map_err(|e| AppError::io(format!("读取 MCP 配置失败: {}", e)))?;
         
     let plugins: Vec<MCPPlugin> = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse MCP config: {}", e))?;
+        .map_err(|e| AppError::serialization(format!("解析 MCP 配置失败: {}", e)))?;
         
     Ok(plugins)
 }
 
 #[tauri::command]
-pub async fn save_mcp_plugin(plugin: MCPPlugin) -> Result<(), String> {
+pub async fn save_mcp_plugin(plugin: MCPPlugin) -> AppResult<()> {
     let path = get_mcp_config_path();
     let mut plugins = get_mcp_plugins().await.unwrap_or_default();
     
@@ -68,10 +69,10 @@ pub async fn save_mcp_plugin(plugin: MCPPlugin) -> Result<(), String> {
     }
     
     let content = serde_json::to_string_pretty(&plugins)
-        .map_err(|e| format!("Failed to serialize MCP plugins: {}", e))?;
+        .map_err(|e| AppError::serialization(format!("序列化 MCP 配置失败: {}", e)))?;
         
     fs::write(&path, content)
-        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+        .map_err(|e| AppError::io(format!("写入 MCP 配置失败: {}", e)))?;
         
     Ok(())
 }
@@ -79,11 +80,11 @@ pub async fn save_mcp_plugin(plugin: MCPPlugin) -> Result<(), String> {
 /// 切换 MCP 插件状态 — 仅在 configured / stopped 之间切换
 /// "running" 状态由 Gateway 实际连接后设置，前端 toggle 不会直接设为 running
 #[tauri::command]
-pub async fn toggle_mcp_plugin_status(id: String, target_status: String) -> Result<(), String> {
+pub async fn toggle_mcp_plugin_status(id: String, target_status: String) -> AppResult<()> {
     // 校验目标状态值
     let valid_statuses = ["configured", "stopped", "running", "error"];
     if !valid_statuses.contains(&target_status.as_str()) {
-        return Err(format!("Invalid target status: {}", target_status));
+        return Err(AppError::validation(format!("无效的目标状态: {}", target_status)));
     }
 
     let path = get_mcp_config_path();
@@ -93,20 +94,20 @@ pub async fn toggle_mcp_plugin_status(id: String, target_status: String) -> Resu
         plugin.status = target_status;
         
         let content = serde_json::to_string_pretty(&plugins)
-            .map_err(|e| format!("Failed to serialize MCP plugins: {}", e))?;
+            .map_err(|e| AppError::serialization(format!("序列化 MCP 配置失败: {}", e)))?;
             
         fs::write(&path, content)
-            .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+            .map_err(|e| AppError::io(format!("写入 MCP 配置失败: {}", e)))?;
             
         Ok(())
     } else {
-        Err(format!("Plugin {} not found", id))
+        Err(AppError::not_found(format!("插件 {} 不存在", id)))
     }
 }
 
 /// 删除 MCP 插件 — 从配置文件中移除指定 ID 的插件
 #[tauri::command]
-pub async fn remove_mcp_plugin(id: String) -> Result<(), String> {
+pub async fn remove_mcp_plugin(id: String) -> AppResult<()> {
     let path = get_mcp_config_path();
     let mut plugins = get_mcp_plugins().await.unwrap_or_default();
 
@@ -114,37 +115,37 @@ pub async fn remove_mcp_plugin(id: String) -> Result<(), String> {
     plugins.retain(|p| p.id != id);
 
     if plugins.len() == original_len {
-        return Err(format!("Plugin {} not found", id));
+        return Err(AppError::not_found(format!("插件 {} 不存在", id)));
     }
 
     let content = serde_json::to_string_pretty(&plugins)
-        .map_err(|e| format!("Failed to serialize MCP plugins: {}", e))?;
+        .map_err(|e| AppError::serialization(format!("序列化 MCP 配置失败: {}", e)))?;
 
     fs::write(&path, content)
-        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+        .map_err(|e| AppError::io(format!("写入 MCP 配置失败: {}", e)))?;
 
     Ok(())
 }
 
 /// 启动 MCP 插件进程 — 读取配置、拉起子进程、记录到全局进程表
 #[tauri::command]
-pub async fn start_mcp_plugin(id: String) -> Result<(), String> {
+pub async fn start_mcp_plugin(id: String) -> AppResult<()> {
     // 读取插件配置
     let plugins = get_mcp_plugins().await?;
     let plugin = plugins.iter().find(|p| p.id == id)
-        .ok_or_else(|| format!("插件 {} 不存在", id))?;
+        .ok_or_else(|| AppError::not_found(format!("插件 {} 不存在", id)))?;
 
     // 校验启动命令是否已配置
     let cmd = plugin.command.as_ref()
-        .ok_or_else(|| format!("插件 {} 未配置启动命令，请先在「配置」中设置", id))?;
+        .ok_or_else(|| AppError::config(format!("插件 {} 未配置启动命令，请先在「配置」中设置", id)))?;
     if cmd.is_empty() {
-        return Err(format!("插件 {} 的启动命令为空，请先配置", id));
+        return Err(AppError::config(format!("插件 {} 的启动命令为空，请先配置", id)));
     }
 
     // 如果已有旧进程在运行，先终止它
     {
         let mut map = get_process_map().lock()
-            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("锁定进程表失败: {}", e)))?;
         if let Some(mut old_child) = map.remove(&id) {
             let _ = old_child.kill();
             let _ = old_child.wait();
@@ -167,15 +168,15 @@ pub async fn start_mcp_plugin(id: String) -> Result<(), String> {
 
     // 启动子进程
     let child = command.spawn()
-        .map_err(|e| format!("启动插件 {} 失败: {}（命令: {} {}）",
-            id, e, cmd, plugin.args.as_ref().map_or(String::new(), |a| a.join(" "))))?;
+        .map_err(|e| AppError::process(format!("启动插件 {} 失败: {}（命令: {} {}）",
+            id, e, cmd, plugin.args.as_ref().map_or(String::new(), |a| a.join(" ")))))?;
 
     log::info!("MCP 插件 {} 已启动，PID: {}", id, child.id());
 
     // 存入全局进程表
     {
         let mut map = get_process_map().lock()
-            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("锁定进程表失败: {}", e)))?;
         map.insert(id.clone(), child);
     }
 
@@ -187,18 +188,18 @@ pub async fn start_mcp_plugin(id: String) -> Result<(), String> {
 
 /// 停止 MCP 插件进程 — 终止子进程并更新状态
 #[tauri::command]
-pub async fn stop_mcp_plugin(id: String) -> Result<(), String> {
+pub async fn stop_mcp_plugin(id: String) -> AppResult<()> {
     // 尝试从进程表中取出子进程
     let child = {
         let mut map = get_process_map().lock()
-            .map_err(|e| format!("锁定进程表失败: {}", e))?;
+            .map_err(|e| AppError::process(format!("锁定进程表失败: {}", e)))?;
         map.remove(&id)
     };
 
     // 如果有进程在运行，终止它
     if let Some(mut child) = child {
         let pid = child.id();
-        child.kill().map_err(|e| format!("终止插件 {} 进程(PID {})失败: {}", id, pid, e))?;
+        child.kill().map_err(|e| AppError::process(format!("终止插件 {} 进程(PID {})失败: {}", id, pid, e)))?;
         // 等待进程退出，回收系统资源
         let _ = child.wait();
         log::info!("MCP 插件 {} 已停止，PID: {}", id, pid);
@@ -212,9 +213,9 @@ pub async fn stop_mcp_plugin(id: String) -> Result<(), String> {
 
 /// 查询 MCP 插件进程是否存活
 #[tauri::command]
-pub async fn get_mcp_plugin_status(id: String) -> Result<String, String> {
+pub async fn get_mcp_plugin_status(id: String) -> AppResult<String> {
     let mut map = get_process_map().lock()
-        .map_err(|e| format!("锁定进程表失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("锁定进程表失败: {}", e)))?;
 
     if let Some(child) = map.get_mut(&id) {
         match child.try_wait() {
@@ -230,7 +231,7 @@ pub async fn get_mcp_plugin_status(id: String) -> Result<String, String> {
             Err(e) => {
                 // 无法检查进程状态，视为已停止
                 map.remove(&id);
-                Err(format!("检查插件 {} 进程状态失败: {}", id, e))
+                Err(AppError::process(format!("检查插件 {} 进程状态失败: {}", id, e)))
             }
         }
     } else {

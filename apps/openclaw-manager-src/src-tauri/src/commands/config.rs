@@ -1,6 +1,6 @@
 use crate::models::{
-    AIConfigOverview, ChannelConfig, ConfiguredModel, ConfiguredProvider, ModelConfig,
-    OfficialProvider, SuggestedModel,
+    AIConfigOverview, AppError, AppResult, ChannelConfig, ConfiguredModel, ConfiguredProvider,
+    ModelConfig, OfficialProvider, SuggestedModel,
 };
 use crate::utils::{file, platform, shell};
 use log::{debug, error, info, warn};
@@ -42,7 +42,7 @@ pub struct ProjectContext {
     pub settings_file: String,
 }
 
-pub(crate) fn get_home_dir() -> Result<String, String> {
+pub(crate) fn get_home_dir() -> AppResult<String> {
     if let Ok(home) = std::env::var("HOME") {
         if !home.is_empty() {
             return Ok(home);
@@ -50,10 +50,10 @@ pub(crate) fn get_home_dir() -> Result<String, String> {
     }
     dirs::home_dir()
         .map(|p| p.display().to_string())
-        .ok_or_else(|| "无法获取用户 Home 目录".to_string())
+        .ok_or_else(|| AppError::config("无法获取用户 Home 目录"))
 }
 
-fn get_default_workspace_path() -> Result<String, String> {
+fn get_default_workspace_path() -> AppResult<String> {
     // 优先从环境变量 OPENCLAW_PROJECT_DIR 获取项目根目录，支持部署到任意路径
     if let Ok(dir) = std::env::var("OPENCLAW_PROJECT_DIR") {
         if !dir.is_empty() {
@@ -64,7 +64,7 @@ fn get_default_workspace_path() -> Result<String, String> {
     Ok(format!("{}/Desktop/OpenClaw Bot/apps/openclaw", home))
 }
 
-fn infer_workspace_path(config: &Value) -> Result<String, String> {
+fn infer_workspace_path(config: &Value) -> AppResult<String> {
     if let Some(workspace) = config
         .pointer("/agents/defaults/workspace")
         .and_then(|v| v.as_str())
@@ -90,7 +90,7 @@ fn get_manager_settings_path(project_base_dir: &str) -> String {
     format!("{}/apps/openclaw/.manager/settings.json", project_base_dir)
 }
 
-fn get_project_context_from_config(config: &Value) -> Result<ProjectContext, String> {
+fn get_project_context_from_config(config: &Value) -> AppResult<ProjectContext> {
     let workspace_dir = infer_workspace_path(config)?;
     let project_base_dir = derive_project_base_dir(&workspace_dir);
     let config_dir = platform::get_config_dir();
@@ -113,14 +113,14 @@ fn get_project_context_from_config(config: &Value) -> Result<ProjectContext, Str
     })
 }
 
-fn load_manager_settings(settings_path: &str) -> Result<Value, String> {
+fn load_manager_settings(settings_path: &str) -> AppResult<Value> {
     if !file::file_exists(settings_path) {
         return Ok(json!({}));
     }
 
     let raw = file::read_file(settings_path)
-        .map_err(|e| format!("读取本地设置文件失败: {}", e))?;
-    serde_json::from_str(&raw).map_err(|e| format!("解析本地设置文件失败: {}", e))
+        .map_err(|e| AppError::io(format!("读取本地设置文件失败: {}", e)))?;
+    serde_json::from_str(&raw).map_err(|e| AppError::serialization(format!("解析本地设置文件失败: {}", e)))
 }
 
 fn default_app_settings() -> AppSettings {
@@ -156,10 +156,10 @@ fn update_markdown_field(content: &str, field: &str, value: &str) -> Option<Stri
     }
 }
 
-fn sync_workspace_identity_files(context: &ProjectContext, settings: &AppSettings) -> Result<(), String> {
+fn sync_workspace_identity_files(context: &ProjectContext, settings: &AppSettings) -> AppResult<()> {
     if file::file_exists(&context.identity_file) {
         let content = file::read_file(&context.identity_file)
-            .map_err(|e| format!("读取 IDENTITY.md 失败: {}", e))?;
+            .map_err(|e| AppError::io(format!("读取 IDENTITY.md 失败: {}", e)))?;
         let mut updated = content.clone();
 
         if let Some(next) = update_markdown_field(&updated, "Name", &settings.identity.bot_name) {
@@ -171,13 +171,13 @@ fn sync_workspace_identity_files(context: &ProjectContext, settings: &AppSetting
 
         if updated != content {
             file::write_file(&context.identity_file, &updated)
-                .map_err(|e| format!("写入 IDENTITY.md 失败: {}", e))?;
+                .map_err(|e| AppError::io(format!("写入 IDENTITY.md 失败: {}", e)))?;
         }
     }
 
     if file::file_exists(&context.user_file) {
         let content = file::read_file(&context.user_file)
-            .map_err(|e| format!("读取 USER.md 失败: {}", e))?;
+            .map_err(|e| AppError::io(format!("读取 USER.md 失败: {}", e)))?;
         let mut updated = content.clone();
 
         if let Some(next) = update_markdown_field(&updated, "What to call them", &settings.identity.user_name) {
@@ -189,7 +189,7 @@ fn sync_workspace_identity_files(context: &ProjectContext, settings: &AppSetting
 
         if updated != content {
             file::write_file(&context.user_file, &updated)
-                .map_err(|e| format!("写入 USER.md 失败: {}", e))?;
+                .map_err(|e| AppError::io(format!("写入 USER.md 失败: {}", e)))?;
         }
     }
 
@@ -197,7 +197,7 @@ fn sync_workspace_identity_files(context: &ProjectContext, settings: &AppSetting
 }
 
 /// 获取 openclaw.json 配置
-fn load_openclaw_config() -> Result<Value, String> {
+fn load_openclaw_config() -> AppResult<Value> {
     let config_path = platform::get_config_file_path();
     
     if !file::file_exists(&config_path) {
@@ -205,19 +205,19 @@ fn load_openclaw_config() -> Result<Value, String> {
     }
     
     let content =
-        file::read_file(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
+        file::read_file(&config_path).map_err(|e| AppError::io(format!("读取配置文件失败: {}", e)))?;
     
-    serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))
+    serde_json::from_str(&content).map_err(|e| AppError::serialization(format!("解析配置文件失败: {}", e)))
 }
 
 /// 保存 openclaw.json 配置
-fn save_openclaw_config(config: &Value) -> Result<(), String> {
+fn save_openclaw_config(config: &Value) -> AppResult<()> {
     let config_path = platform::get_config_file_path();
     
     let content =
-        serde_json::to_string_pretty(config).map_err(|e| format!("序列化配置失败: {}", e))?;
+        serde_json::to_string_pretty(config).map_err(|e| AppError::serialization(format!("序列化配置失败: {}", e)))?;
     
-    file::write_file(&config_path, &content).map_err(|e| format!("写入配置文件失败: {}", e))
+    file::write_file(&config_path, &content).map_err(|e| AppError::io(format!("写入配置文件失败: {}", e)))
 }
 
 pub(crate) fn mask_secret(value: &str) -> String {
@@ -370,7 +370,7 @@ fn read_agent_models_providers(config: &Value) -> Option<(serde_json::Map<String
 
 /// 获取完整配置
 #[command]
-pub async fn get_config() -> Result<Value, String> {
+pub async fn get_config() -> AppResult<Value> {
     info!("[获取配置] 读取 openclaw.json 配置...");
     let result = load_openclaw_config();
     match &result {
@@ -382,7 +382,7 @@ pub async fn get_config() -> Result<Value, String> {
 
 /// 保存配置
 #[command]
-pub async fn save_config(config: Value) -> Result<String, String> {
+pub async fn save_config(config: Value) -> AppResult<String> {
     info!("[保存配置] 保存 openclaw.json 配置...");
     debug!(
         "[保存配置] 配置内容: {}",
@@ -402,7 +402,7 @@ pub async fn save_config(config: Value) -> Result<String, String> {
 
 /// 获取环境变量值
 #[command]
-pub async fn get_env_value(key: String) -> Result<Option<String>, String> {
+pub async fn get_env_value(key: String) -> AppResult<Option<String>> {
     info!("[获取环境变量] 读取环境变量: {}", key);
     let env_path = platform::get_env_file_path();
     let value = file::read_env_value(&env_path, &key);
@@ -419,7 +419,7 @@ pub async fn get_env_value(key: String) -> Result<Option<String>, String> {
 
 /// 保存环境变量值
 #[command]
-pub async fn save_env_value(key: String, value: String) -> Result<String, String> {
+pub async fn save_env_value(key: String, value: String) -> AppResult<String> {
     info!("[保存环境变量] 保存环境变量: {}", key);
     let env_path = platform::get_env_file_path();
     debug!("[保存环境变量] 环境文件路径: {}", env_path);
@@ -431,7 +431,7 @@ pub async fn save_env_value(key: String, value: String) -> Result<String, String
         }
         Err(e) => {
             error!("[保存环境变量] ✗ 保存失败: {}", e);
-            Err(format!("保存环境变量失败: {}", e))
+            Err(AppError::io(format!("保存环境变量失败: {}", e)))
         }
     }
 }
@@ -463,7 +463,7 @@ fn generate_token() -> String {
 
 /// 获取或生成 Gateway Token
 #[command]
-pub async fn get_or_create_gateway_token() -> Result<String, String> {
+pub async fn get_or_create_gateway_token() -> AppResult<String> {
     info!("[Gateway Token] 获取或创建 Gateway Token...");
     
     let mut config = load_openclaw_config()?;
@@ -505,7 +505,7 @@ pub async fn get_or_create_gateway_token() -> Result<String, String> {
 
 /// 获取 Dashboard URL（带 token）
 #[command]
-pub async fn get_dashboard_url() -> Result<String, String> {
+pub async fn get_dashboard_url() -> AppResult<String> {
     info!("[Dashboard URL] 获取 Dashboard URL...");
     
     let token = get_or_create_gateway_token().await?;
@@ -516,13 +516,13 @@ pub async fn get_dashboard_url() -> Result<String, String> {
 }
 
 #[command]
-pub async fn get_project_context() -> Result<ProjectContext, String> {
+pub async fn get_project_context() -> AppResult<ProjectContext> {
     let config = load_openclaw_config()?;
     get_project_context_from_config(&config)
 }
 
 #[command]
-pub async fn get_app_settings() -> Result<AppSettings, String> {
+pub async fn get_app_settings() -> AppResult<AppSettings> {
     let config = load_openclaw_config()?;
     let context = get_project_context_from_config(&config)?;
     let local_settings = load_manager_settings(&context.settings_file)?;
@@ -580,7 +580,7 @@ pub async fn get_app_settings() -> Result<AppSettings, String> {
 }
 
 #[command]
-pub async fn save_app_settings(settings: AppSettings) -> Result<String, String> {
+pub async fn save_app_settings(settings: AppSettings) -> AppResult<String> {
     let config = load_openclaw_config()?;
     let context = get_project_context_from_config(&config)?;
 
@@ -597,30 +597,30 @@ pub async fn save_app_settings(settings: AppSettings) -> Result<String, String> 
     });
 
     let local_settings_content = serde_json::to_string_pretty(&local_settings)
-        .map_err(|e| format!("序列化本地设置失败: {}", e))?;
+        .map_err(|e| AppError::serialization(format!("序列化本地设置失败: {}", e)))?;
     file::write_file(&context.settings_file, &local_settings_content)
-        .map_err(|e| format!("写入本地设置失败: {}", e))?;
+        .map_err(|e| AppError::io(format!("写入本地设置失败: {}", e)))?;
 
     sync_workspace_identity_files(&context, &settings)?;
     Ok("设置已保存".to_string())
 }
 
 #[command]
-pub async fn open_macos_full_disk_access_settings() -> Result<String, String> {
+pub async fn open_macos_full_disk_access_settings() -> AppResult<String> {
     if !platform::is_macos() {
-        return Err("该功能仅支持 macOS".to_string());
+        return Err(AppError::validation("该功能仅支持 macOS"));
     }
 
     let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
     let status = Command::new("open")
         .arg(url)
         .status()
-        .map_err(|e| format!("打开系统设置失败: {}", e))?;
+        .map_err(|e| AppError::process(format!("打开系统设置失败: {}", e)))?;
 
     if status.success() {
-        Ok("已打开“完全磁盘访问权限”设置页".to_string())
+        Ok("已打开\u{201c}完全磁盘访问权限\u{201d}设置页".to_string())
     } else {
-        Err("无法打开系统设置，请手动前往“隐私与安全性 -> 完全磁盘访问权限”".to_string())
+        Err(AppError::process("无法打开系统设置，请手动前往\u{201c}隐私与安全性 -> 完全磁盘访问权限\u{201d}"))
     }
 }
 
@@ -628,7 +628,7 @@ pub async fn open_macos_full_disk_access_settings() -> Result<String, String> {
 
 /// 获取官方 Provider 列表（预设模板）
 #[command]
-pub async fn get_official_providers() -> Result<Vec<OfficialProvider>, String> {
+pub async fn get_official_providers() -> AppResult<Vec<OfficialProvider>> {
     info!("[官方 Provider] 获取官方 Provider 预设列表...");
 
     let providers = vec![
@@ -873,7 +873,7 @@ pub async fn get_official_providers() -> Result<Vec<OfficialProvider>, String> {
 
 /// 获取 AI 配置概览
 #[command]
-pub async fn get_ai_config() -> Result<AIConfigOverview, String> {
+pub async fn get_ai_config() -> AppResult<AIConfigOverview> {
     info!("[AI 配置] 获取 AI 配置概览...");
 
     let config_path = platform::get_config_file_path();
@@ -945,7 +945,7 @@ pub async fn save_provider(
     api_key: Option<String>,
     api_type: String,
     models: Vec<ModelConfig>,
-) -> Result<String, String> {
+) -> AppResult<String> {
     info!(
         "[保存 Provider] 保存 Provider: {} ({} 个模型)",
         provider_name,
@@ -1068,7 +1068,7 @@ pub async fn save_provider(
 
 /// 删除 Provider
 #[command]
-pub async fn delete_provider(provider_name: String) -> Result<String, String> {
+pub async fn delete_provider(provider_name: String) -> AppResult<String> {
     info!("[删除 Provider] 删除 Provider: {}", provider_name);
 
     let mut config = load_openclaw_config()?;
@@ -1115,7 +1115,7 @@ pub async fn delete_provider(provider_name: String) -> Result<String, String> {
 
 /// 设置主模型
 #[command]
-pub async fn set_primary_model(model_id: String) -> Result<String, String> {
+pub async fn set_primary_model(model_id: String) -> AppResult<String> {
     info!("[设置主模型] 设置主模型: {}", model_id);
 
     let mut config = load_openclaw_config()?;
@@ -1142,7 +1142,7 @@ pub async fn set_primary_model(model_id: String) -> Result<String, String> {
 
 /// 添加模型到可用列表
 #[command]
-pub async fn add_available_model(model_id: String) -> Result<String, String> {
+pub async fn add_available_model(model_id: String) -> AppResult<String> {
     info!("[添加模型] 添加模型到可用列表: {}", model_id);
 
     let mut config = load_openclaw_config()?;
@@ -1169,7 +1169,7 @@ pub async fn add_available_model(model_id: String) -> Result<String, String> {
 
 /// 从可用列表移除模型
 #[command]
-pub async fn remove_available_model(model_id: String) -> Result<String, String> {
+pub async fn remove_available_model(model_id: String) -> AppResult<String> {
     info!("[移除模型] 从可用列表移除模型: {}", model_id);
 
     let mut config = load_openclaw_config()?;
@@ -1191,7 +1191,7 @@ pub async fn remove_available_model(model_id: String) -> Result<String, String> 
 
 /// 获取所有支持的 AI Provider（旧版兼容）
 #[command]
-pub async fn get_ai_providers() -> Result<Vec<crate::models::AIProviderOption>, String> {
+pub async fn get_ai_providers() -> AppResult<Vec<crate::models::AIProviderOption>> {
     info!("[AI Provider] 获取支持的 AI Provider 列表（旧版）...");
 
     let official = get_official_providers().await?;
@@ -1223,7 +1223,7 @@ pub async fn get_ai_providers() -> Result<Vec<crate::models::AIProviderOption>, 
 
 /// 获取渠道配置 - 从 openclaw.json 和 env 文件读取
 #[command]
-pub async fn get_channels_config() -> Result<Vec<ChannelConfig>, String> {
+pub async fn get_channels_config() -> AppResult<Vec<ChannelConfig>> {
     info!("[渠道配置] 获取渠道配置列表...");
     
     let config = load_openclaw_config()?;
@@ -1331,7 +1331,7 @@ pub async fn get_channels_config() -> Result<Vec<ChannelConfig>, String> {
 
 /// 保存渠道配置 - 保存到 openclaw.json
 #[command]
-pub async fn save_channel_config(channel: ChannelConfig) -> Result<String, String> {
+pub async fn save_channel_config(channel: ChannelConfig) -> AppResult<String> {
     info!(
         "[保存渠道配置] 保存渠道配置: {} ({})",
         channel.id, channel.channel_type
@@ -1470,7 +1470,7 @@ pub async fn save_channel_config(channel: ChannelConfig) -> Result<String, Strin
 
 /// 清空渠道配置 - 从 openclaw.json 中删除指定渠道的配置
 #[command]
-pub async fn clear_channel_config(channel_id: String) -> Result<String, String> {
+pub async fn clear_channel_config(channel_id: String) -> AppResult<String> {
     info!("[清空渠道配置] 清空渠道配置: {}", channel_id);
     
     let mut config = load_openclaw_config()?;
@@ -1529,7 +1529,7 @@ pub struct FeishuPluginStatus {
 
 /// 检查飞书插件是否已安装
 #[command]
-pub async fn check_feishu_plugin() -> Result<FeishuPluginStatus, String> {
+pub async fn check_feishu_plugin() -> AppResult<FeishuPluginStatus> {
     info!("[飞书插件] 检查飞书插件安装状态...");
     
     // 执行 openclaw plugins list 命令
@@ -1585,7 +1585,7 @@ pub async fn check_feishu_plugin() -> Result<FeishuPluginStatus, String> {
 
 /// 安装飞书插件
 #[command]
-pub async fn install_feishu_plugin() -> Result<String, String> {
+pub async fn install_feishu_plugin() -> AppResult<String> {
     info!("[飞书插件] 开始安装飞书插件...");
     
     // 先检查是否已安装
@@ -1609,12 +1609,12 @@ pub async fn install_feishu_plugin() -> Result<String, String> {
                 Ok(format!("飞书插件安装成功: {}", verify_status.plugin_name.unwrap_or_default()))
             } else {
                 warn!("[飞书插件] 安装命令执行成功但插件未找到");
-                Err("安装命令执行成功但插件未找到，请检查 openclaw 版本".to_string())
+                Err(AppError::process("安装命令执行成功但插件未找到，请检查 openclaw 版本"))
             }
         }
         Err(e) => {
             error!("[飞书插件] ✗ 安装失败: {}", e);
-            Err(format!("安装飞书插件失败: {}\n\n请手动执行: openclaw plugins install @m1heng-clawd/feishu", e))
+            Err(AppError::process(format!("安装飞书插件失败: {}\n\n请手动执行: openclaw plugins install @m1heng-clawd/feishu", e)))
         }
     }
 }

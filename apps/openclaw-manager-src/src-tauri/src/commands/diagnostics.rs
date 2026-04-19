@@ -1,3 +1,4 @@
+use crate::models::{AppResult, AppError};
 use crate::models::{AITestResult, ChannelTestResult, DiagnosticResult, SystemInfo};
 use crate::utils::{platform, shell};
 use tauri::command;
@@ -83,7 +84,7 @@ fn extract_json_from_output(output: &str) -> Option<String> {
 
 /// 运行诊断
 #[command]
-pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
+pub async fn run_doctor() -> AppResult<Vec<DiagnosticResult>> {
     info!("[诊断] 开始运行系统诊断...");
     let mut results = Vec::new();
     
@@ -178,7 +179,7 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
 
 /// 测试 AI 连接
 #[command]
-pub async fn test_ai_connection() -> Result<AITestResult, String> {
+pub async fn test_ai_connection() -> AppResult<AITestResult> {
     info!("[AI测试] 开始测试 AI 连接...");
     
     // 获取当前配置的 provider
@@ -288,7 +289,7 @@ fn parse_channel_status_text(output: &str, channel_type: &str) -> Option<(bool, 
 
 /// 测试渠道连接（检查状态并发送测试消息）
 #[command]
-pub async fn test_channel(channel_type: String) -> Result<ChannelTestResult, String> {
+pub async fn test_channel(channel_type: String) -> AppResult<ChannelTestResult> {
     info!("[渠道测试] 测试渠道: {}", channel_type);
     let channel_lower = channel_type.to_lowercase();
     
@@ -486,7 +487,7 @@ pub async fn test_channel(channel_type: String) -> Result<ChannelTestResult, Str
 
 /// 获取系统资源使用情况（CPU/内存/磁盘）
 #[command]
-pub async fn get_system_resources() -> Result<serde_json::Value, String> {
+pub async fn get_system_resources() -> AppResult<serde_json::Value> {
     // 通过跨平台方式获取系统资源
     if platform::is_macos() {
         let cpu = shell::run_bash_output("sysctl -n vm.loadavg | awk '{print $2}'")
@@ -535,7 +536,7 @@ pub async fn get_system_resources() -> Result<serde_json::Value, String> {
 
 /// 获取系统信息
 #[command]
-pub async fn get_system_info() -> Result<SystemInfo, String> {
+pub async fn get_system_info() -> AppResult<SystemInfo> {
     info!("[系统信息] 获取系统信息...");
     let os = platform::get_os();
     let arch = platform::get_arch();
@@ -574,7 +575,7 @@ pub async fn get_system_info() -> Result<SystemInfo, String> {
 
 /// 启动渠道登录（如 WhatsApp 扫码）
 #[command]
-pub async fn start_channel_login(channel_type: String) -> Result<String, String> {
+pub async fn start_channel_login(channel_type: String) -> AppResult<String> {
     info!("[渠道登录] 开始渠道登录流程: {}", channel_type);
     
     match channel_type.as_str() {
@@ -667,19 +668,19 @@ read -p "按回车键关闭此窗口..."
                 
                 let script_path = "/tmp/openclaw_whatsapp_login.command";
                 std::fs::write(script_path, script_content)
-                    .map_err(|e| format!("创建脚本失败: {}", e))?;
+                    .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
                 
                 // 设置可执行权限
                 std::process::Command::new("chmod")
                     .args(["+x", script_path])
                     .output()
-                    .map_err(|e| format!("设置权限失败: {}", e))?;
+                    .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
                 
                 // 使用 open 命令打开 .command 文件（会自动在新终端窗口中执行）
                 std::process::Command::new("open")
                     .arg(script_path)
                     .spawn()
-                    .map_err(|e| format!("启动终端失败: {}", e))?;
+                    .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
             }
             
             #[cfg(target_os = "linux")]
@@ -701,12 +702,12 @@ read -p "按回车键关闭..."
                 
                 let script_path = "/tmp/openclaw_whatsapp_login.sh";
                 std::fs::write(script_path, &script_content)
-                    .map_err(|e| format!("创建脚本失败: {}", e))?;
+                    .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
                 
                 std::process::Command::new("chmod")
                     .args(["+x", script_path])
                     .output()
-                    .map_err(|e| format!("设置权限失败: {}", e))?;
+                    .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
                 
                 // 尝试不同的终端模拟器
                 let terminals = ["gnome-terminal", "xfce4-terminal", "konsole", "xterm"];
@@ -724,17 +725,17 @@ read -p "按回车键关闭..."
                 }
                 
                 if !launched {
-                    return Err("无法启动终端，请手动运行: openclaw channels login --channel whatsapp".to_string());
+                    return Err(AppError::process("无法启动终端，请手动运行: openclaw channels login --channel whatsapp"));
                 }
             }
             
             #[cfg(target_os = "windows")]
             {
-                return Err("Windows 暂不支持自动启动终端，请手动运行: openclaw channels login --channel whatsapp".to_string());
+                return Err(AppError::process("Windows 暂不支持自动启动终端，请手动运行: openclaw channels login --channel whatsapp"));
             }
             
             Ok("已在新终端窗口中启动 WhatsApp 登录，请查看弹出的终端窗口并扫描二维码".to_string())
         }
-        _ => Err(format!("不支持 {} 的登录向导", channel_type)),
+        _ => Err(AppError::validation(format!("不支持 {} 的登录向导", channel_type))),
     }
 }
