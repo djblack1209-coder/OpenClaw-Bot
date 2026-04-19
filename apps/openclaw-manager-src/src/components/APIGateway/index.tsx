@@ -83,26 +83,10 @@ const LOGS = [
 ];
 
 /* ====== 工具函数 ====== */
-
-/** HTTP 方法颜色 */
-function methodColor(m: string) {
-  switch (m) {
-    case 'GET': return 'var(--accent-cyan)';
-    case 'POST': return 'var(--accent-green)';
-    case 'PUT': return 'var(--accent-amber)';
-    case 'DELETE': return 'var(--accent-red)';
-    default: return 'var(--text-secondary)';
-  }
-}
-
-/** 路由状态 */
-function routeStatusDot(s: RouteEntry['status']) {
-  switch (s) {
-    case 'active': return 'var(--accent-green)';
-    case 'degraded': return 'var(--accent-amber)';
-    case 'down': return 'var(--accent-red)';
-  }
-}
+const METHOD_COLORS: Record<string, string> = { GET: 'var(--accent-cyan)', POST: 'var(--accent-green)', PUT: 'var(--accent-amber)', DELETE: 'var(--accent-red)' };
+const methodColor = (m: string) => METHOD_COLORS[m] ?? 'var(--text-secondary)';
+const STATUS_DOT: Record<string, string> = { active: 'var(--accent-green)', degraded: 'var(--accent-amber)', down: 'var(--accent-red)' };
+const routeStatusDot = (s: string) => STATUS_DOT[s] ?? 'var(--text-disabled)';
 
 /* ====== 主组件 ====== */
 
