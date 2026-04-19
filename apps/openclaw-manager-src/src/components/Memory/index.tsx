@@ -8,8 +8,6 @@ import {
   BrainCircuit,
   Database,
   Search,
-  Tag,
-  User,
   Zap,
   Clock,
   Layers,

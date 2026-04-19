@@ -5,18 +5,10 @@
 import { motion } from 'framer-motion';
 import {
   MessageCircle,
-  Send,
-  Hash,
-  Users,
-  Webhook,
-  Globe,
   CheckCircle2,
   XCircle,
   Clock,
-  ArrowUpRight,
-  BarChart3,
 } from 'lucide-react';
-import clsx from 'clsx';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {

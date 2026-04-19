@@ -5,14 +5,7 @@
 import { motion } from 'framer-motion';
 import {
   Gauge,
-  Cpu,
-  HardDrive,
-  MemoryStick,
-  Activity,
-  Zap,
   AlertTriangle,
-  Clock,
-  BarChart3,
   TrendingUp,
 } from 'lucide-react';
 import clsx from 'clsx';
