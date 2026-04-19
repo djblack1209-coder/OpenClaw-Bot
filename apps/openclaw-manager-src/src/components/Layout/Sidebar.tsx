@@ -23,6 +23,7 @@ import {
   DollarSign,
   Dna,
   Network,
+  Gauge,
 } from 'lucide-react';
 import { PageType } from '../../App';
 import { useAppStore } from '@/stores/appStore';
@@ -71,6 +72,7 @@ const devGroups: NavGroup[] = [
       { id: 'dashboard', label: '概览', icon: LayoutDashboard },
       { id: 'gateway', label: 'API 网关', icon: Network },
       { id: 'scheduler', label: '任务调度', icon: Clock },
+      { id: 'perf', label: '性能监控', icon: Gauge },
     ],
   },
   {

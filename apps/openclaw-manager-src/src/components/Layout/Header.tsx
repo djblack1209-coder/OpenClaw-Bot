@@ -37,6 +37,7 @@ const pageTitles: Record<PageType, { title: string; description: string }> = {
   evolution: { title: '进化引擎', description: '追踪 GitHub Trending，自动发现升级机会' },
   gateway: { title: 'API 网关', description: 'New-API 渠道、令牌与网关状态管理' },
   scheduler: { title: '任务调度中心', description: '管理每日自动任务的启停与执行状态' },
+  perf: { title: '性能监控', description: '系统性能指标与资源占用实时分析' },
   onboarding: { title: '欢迎', description: '初始设置向导' },
 };
 

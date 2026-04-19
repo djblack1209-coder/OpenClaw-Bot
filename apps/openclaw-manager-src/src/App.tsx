@@ -32,6 +32,7 @@ const Plugins = lazy(() => import('./components/Plugins').then(m => ({ default: 
 const Evolution = lazy(() => import('./components/Evolution').then(m => ({ default: m.Evolution })));
 const APIGateway = lazy(() => import('./components/APIGateway').then(m => ({ default: m.APIGateway })));
 const Scheduler = lazy(() => import('./components/Scheduler').then(m => ({ default: m.Scheduler })));
+const Performance = lazy(() => import('./components/Performance').then(m => ({ default: m.Performance })));
 
 const PageLoader = () => (
   <div className="h-full flex items-center justify-center">
@@ -64,7 +65,7 @@ export type PageType =
   /* 原有页面（开发者模式） */
   | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
   | 'dev' | 'devpanel' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
-  | 'memory' | 'evolution' | 'gateway' | 'scheduler';
+  | 'memory' | 'evolution' | 'gateway' | 'scheduler' | 'perf';
 
 export interface EnvironmentStatus {
   node_installed: boolean;
@@ -198,6 +199,7 @@ function App() {
       evolution: <PageErrorBoundary pageName="进化"><Evolution /></PageErrorBoundary>,
       gateway: <PageErrorBoundary pageName="API 网关"><APIGateway /></PageErrorBoundary>,
       scheduler: <PageErrorBoundary pageName="任务调度"><Scheduler /></PageErrorBoundary>,
+      perf: <PageErrorBoundary pageName="性能监控"><Performance /></PageErrorBoundary>,
     };
 
     return (

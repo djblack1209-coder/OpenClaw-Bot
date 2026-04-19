@@ -362,4 +362,12 @@ export const api = {
   /** 触发进化扫描（HTTP） */
   evolutionScan: () =>
     clawbotFetchJson('/api/v1/evolution/scan', { method: 'POST' }),
+
+  // ══════════════════════════════════════════════
+  //  性能指标 (Performance Metrics)
+  // ══════════════════════════════════════════════
+
+  /** 获取系统性能指标 */
+  perfMetrics: () =>
+    clawbotFetchJson('/api/v1/perf'),
 };
