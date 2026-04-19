@@ -1,6 +1,6 @@
 # OpenClaw Bot — 依赖清单
 
-> 最后更新: 2026-04-16 | 新增 lib-pybroker (共 80+ 个 Python 包)
+> 最后更新: 2026-04-18 | 修正依赖总数统计 (80+→62, 与 requirements.txt 实际行数对齐)
 
 ## 搬运的高星项目 (38 个, 累计 ~473k Stars)
 
