@@ -1,6 +1,6 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-19 (R3 审计对齐) | 总数 99
+> 最后更新: 2026-04-19 (体验升级: +/perf) | 总数 100
 
 ---
 
@@ -16,6 +16,7 @@
 | 2 | `/help` | `cmd_help` | 帮助菜单（始终展示9分类菜单，不触发向导） | Y |
 | 3 | `/clear` | `cmd_clear` | 清空当前对话历史 | Y |
 | 4 | `/status` | `cmd_status` | Bot 运行状态 + 网关 + 浏览器 | Y |
+| 4.1 | `/perf` | `cmd_perf` | 性能指标报告 (响应时间/LLM耗时/交易周期) | Y |
 | 5 | `/draw` | `cmd_draw` | AI 生图 (flux/sd3/sdxl) | Y |
 | 6 | `/news` | `cmd_news` | 科技早报 | Y |
 | 7 | `/metrics` | `cmd_metrics` | 运行指标 (消息/API/延迟/模型) | N |
