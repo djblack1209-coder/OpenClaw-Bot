@@ -14,7 +14,7 @@ from src.bot.globals import (
     execute_trade_via_pipeline,
     get_stock_quote,
 )
-from src.bot.message_mixin import _build_smart_reply_keyboard
+from src.bot.input_processor import _build_smart_reply_keyboard
 
 logger = logging.getLogger(__name__)
 
