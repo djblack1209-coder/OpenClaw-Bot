@@ -21,9 +21,10 @@ from src.bot.workflow_mixin import WorkflowMixin
 from src.bot.callback_mixin import CallbackMixin
 from src.bot.voice_handler import VoiceHandlerMixin
 from src.bot.session_tracker import SessionTrackerMixin
+from src.bot.stream_manager import StreamManagerMixin
 
 
-class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, SessionTrackerMixin):
+class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, SessionTrackerMixin, StreamManagerMixin):
     async def handle_message(self, update, context):
         """处理文本消息 — 流式输出到 Telegram
 
@@ -667,44 +668,3 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                 await typing_task
             except asyncio.CancelledError as e:  # noqa: F841
                 pass
-
-    @staticmethod
-    def _stream_cutoff(is_group: bool, content: str) -> int:
-        """自适应编辑频率 — 搬运自 n3d1117/chatgpt-telegram-bot
-
-        群聊更保守（Telegram 对群聊有更严格的 flood 限制），
-        私聊更激进（用户体验优先）。
-
-        HI-011 根治: 群聊 cutoff 全面提升，配合时间门控使用。
-        """
-        content_len = len(content)
-        if is_group:
-            if content_len > 1000:
-                return 300  # was 180
-            if content_len > 200:
-                return 200  # was 120
-            if content_len > 50:
-                return 150  # was 90
-            return 80  # was 50
-        else:
-            if content_len > 1000:
-                return 120  # was 90
-            if content_len > 200:
-                return 60  # was 45
-            if content_len > 50:
-                return 30  # was 25
-            return 15
-
-    async def _keep_typing(self, chat_id: int, context):
-        """持续发送 typing 指示器 — 搬运自 n3d1117 的 wrap_with_indicator"""
-        from telegram.constants import ChatAction
-
-        try:
-            while True:
-                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-                await asyncio.sleep(4.5)
-        except asyncio.CancelledError as e:  # noqa: F841
-            raise  # 让 finally 正常处理
-        except Exception as e:
-            # 网络错误等 — 静默退出但记录，不影响主流程
-            logger.debug(f"[typing] chat={chat_id} 停止: {e}")
