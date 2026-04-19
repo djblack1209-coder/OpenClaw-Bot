@@ -131,6 +131,7 @@ export function AIConfig() {
     try {
       await invoke('set_primary_model', { modelId });
       aiLogger.info(`主模型已设置为: ${modelId}`);
+      toast.success('主模型已切换，重启后端服务后生效');
       loadData();
     } catch (e) {
       aiLogger.error('设置主模型失败', e);
@@ -363,7 +364,10 @@ export function AIConfig() {
           <ProviderDialog
             officialProviders={officialProviders}
             onClose={handleCloseDialog}
-            onSave={loadData}
+            onSave={() => {
+              loadData();
+              toast.success('服务商配置已保存，重启后端服务后生效');
+            }}
             editingProvider={editingProvider}
           />
         )}
