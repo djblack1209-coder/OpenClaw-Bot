@@ -4,6 +4,36 @@
 
 ---
 
+## [2026-04-18] 技术债清理第6批 — 前端体验+文档偏差修复（6项）
+
+### 本次完成了什么
+1. **HI-560: 日志搜索关键词高亮**: 新增 highlightText 函数，搜索匹配文字以黄色 `<mark>` 标签高亮
+2. **HI-561: tradingSell 错误检查**: api.tradingSell 在 HTTP 错误时抛出含状态码的异常；风险参数标注"后端配置"
+3. **HI-562: Social Autopilot 确认弹窗**: window.confirm 替换为 ConfirmDialog 组件
+4. **HI-564: Evolution 提案创建时间**: 提案卡片展示"发现于 X月X日 HH:MM"
+5. **HI-565: 模型切换重启提示**: handleSetPrimary 和 ProviderDialog 保存后 toast 提示
+6. **HI-596: 文档数字偏差**: MODULE_REGISTRY 254→277, DEPENDENCY_MAP 80+→62
+
+### 未完成的工作
+- **剩余前端技术债 (~4 项)**: HI-544(Rust错误类型) / HI-545(Shell权限) / HI-546(Fetch统一) / HI-551(Markdown升级)
+- **剩余后端 (~2 项)**: HI-523(SELL风控) / HI-524(新账户VaR) — 需用户确认架构方案
+- **长期遗留**: HI-388(diskcache CVE) / HI-462(低风险日志脱敏) / HI-535(单模型追踪) / HI-538(适配器模式) / HI-540(比价引擎) / HI-552(Bot详情页) / HI-554(频道CRUD) / HI-558(DevPanel空壳) / HI-566(调度器CRUD)
+
+### 需要注意的坑
+- 日志搜索高亮中正则特殊字符已转义，但极端长文本可能有性能问题
+- tradingSell 错误检查新抛出的 Error 会被 handleSell 的 catch 捕获并 toast
+- Social ConfirmDialog 使用 state 暂存操作参数，确认后才执行
+- Evolution created_at 依赖后端返回此字段，如果后端不返回则不显示
+
+### 当前系统状态
+- Git: 6 个修复已提交
+- TypeScript: 零错误
+- Rust cargo check: 零错误
+- 回归测试: 1035 passed / 213 failed / 25 errors（与基线完全一致，零回归）
+- 技术债: 累计 53 项已修复（第1批15 + 第2批11 + 第3批10 + 第4批5 + 第5批6 + 第6批6）
+
+---
+
 ## [2026-04-18] 技术债清理第5批 — 前端安全+体验+架构优化（6项）
 
 ### 本次完成了什么
