@@ -61,7 +61,7 @@ fn get_default_workspace_path() -> AppResult<String> {
         }
     }
     let home = get_home_dir()?;
-    Ok(format!("{}/Desktop/OpenClaw Bot/apps/openclaw", home))
+    Ok(format!("{}/Desktop/OpenEverything/apps/openclaw", home))
 }
 
 fn infer_workspace_path(config: &Value) -> AppResult<String> {

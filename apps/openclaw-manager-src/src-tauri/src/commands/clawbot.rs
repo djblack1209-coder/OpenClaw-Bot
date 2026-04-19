@@ -151,7 +151,7 @@ fn get_base_dir() -> AppResult<String> {
         }
     }
     let home = get_home_dir()?;
-    Ok(format!("{}/Desktop/OpenClaw Bot", home))
+    Ok(format!("{}/Desktop/OpenEverything", home))
 }
 
 fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {

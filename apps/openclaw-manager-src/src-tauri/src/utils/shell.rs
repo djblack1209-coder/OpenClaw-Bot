@@ -338,7 +338,7 @@ fn get_unix_openclaw_paths() -> Vec<String> {
 
         // 项目本地 openclaw-cli（最高优先级），优先从环境变量获取项目路径
         let project_dir = std::env::var("OPENCLAW_PROJECT_DIR")
-            .unwrap_or_else(|_| format!("{}/Desktop/OpenClaw Bot", home_str));
+            .unwrap_or_else(|_| format!("{}/Desktop/OpenEverything", home_str));
         let local_cli = format!("{}/apps/openclaw-cli", project_dir);
         if std::path::Path::new(&local_cli).exists() {
             paths.insert(0, local_cli);
