@@ -6,7 +6,7 @@
 @import "@fontsource/space-grotesk/300.css";
 @import "@fontsource/space-grotesk/500.css";
 @import "@fontsource/space-grotesk/700.css";
-@import "@fontsource/space-grotesk/900.css";
+/* 900 字重不可用，用 700 替代 */
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/700.css";
 @import "@fontsource/inter/300.css";
