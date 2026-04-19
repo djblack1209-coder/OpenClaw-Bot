@@ -1,95 +1,67 @@
-import { useState, useMemo } from 'react';
+/**
+ * Store — 插件商店页面 (Sonic Abyss Bento Grid 风格)
+ * 数据来自 Evolution 自进化系统 API，30 秒自动刷新
+ * 提案 = 可用插件/工具，审批 = 安装
+ */
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import {
   Search,
-  Download,
   Star,
-  Power,
-  PowerOff,
-  Trash2,
   Package,
   TrendingUp,
   Zap,
   Plus,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  ThumbsUp,
+  RefreshCw,
 } from 'lucide-react';
+import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
+import type { EvolutionProposalRaw, EvolutionStatsRaw } from '../../lib/tauri-core';
 
 /* ============================================================
-   模拟数据
+   常量 & 类型
    ============================================================ */
 
-/** 插件类型 */
-interface Plugin {
-  id: string;
-  icon: string;
-  name: string;
-  description: string;
-  author: string;
-  installs: number;
-  rating: number;
-  category: string;
+/** 自动刷新间隔 — 30 秒 */
+const REFRESH_INTERVAL_MS = 30_000;
+
+/** 提案状态 → 中文标签 & 颜色 */
+const STATUS_MAP: Record<string, { label: string; color: string; Icon: typeof CheckCircle2 }> = {
+  approved: { label: '已通过', color: 'var(--accent-green)', Icon: CheckCircle2 },
+  rejected: { label: '已拒绝', color: 'var(--accent-red)', Icon: XCircle },
+  pending:  { label: '待审批', color: 'var(--accent-amber)', Icon: Clock },
+};
+
+/** 标准化单条提案字段（后端字段名不固定） */
+function normalizeProposal(raw: EvolutionProposalRaw) {
+  return {
+    id: raw.id || raw.proposal_id || '',
+    name: raw.repo_name || raw.name || raw.repo || '未命名',
+    url: raw.repo_url || raw.url || '',
+    stars: raw.stars ?? raw.stargazers_count ?? 0,
+    growth: raw.growth_rate ?? raw.weekly_growth ?? 0,
+    module: raw.target_module || raw.module || '通用',
+    score: raw.value_score ?? raw.score ?? 0,
+    difficulty: raw.difficulty_score ?? raw.difficulty ?? 0,
+    risk: raw.risk_level || raw.risk || '—',
+    approach: raw.integration_approach || raw.approach || '',
+    status: raw.status || 'pending',
+    createdAt: raw.created_at || '',
+  };
 }
 
-/** 已安装插件类型 */
-interface InstalledPlugin {
-  id: string;
-  name: string;
-  version: string;
-  status: '运行中' | '已停止';
-  updatedAt: string;
-}
-
-/** 全部可用插件 */
-const MOCK_PLUGINS: Plugin[] = [
-  { id: 'mcp-weather', icon: '🌦️', name: 'MCP 天气服务', description: '实时天气查询与预报推送', author: 'OpenClaw', installs: 3420, rating: 4.8, category: '数据源' },
-  { id: 'binance-api', icon: '📈', name: '币安交易接口', description: '对接币安现货与合约交易', author: 'CryptoLab', installs: 8910, rating: 4.6, category: '交易工具' },
-  { id: 'feishu-push', icon: '🔔', name: '飞书通知推送', description: '消息推送到飞书群组和个人', author: 'OpenClaw', installs: 2150, rating: 4.5, category: '通知推送' },
-  { id: 'notion-sync', icon: '📝', name: 'Notion 同步', description: '双向同步 Notion 数据库', author: 'SyncTeam', installs: 5230, rating: 4.7, category: '数据源' },
-  { id: 'github-issue', icon: '🐛', name: 'GitHub Issue 追踪', description: '自动追踪和管理 GitHub Issue', author: 'DevTools', installs: 4100, rating: 4.4, category: '开发工具' },
-  { id: 'tts-engine', icon: '🗣️', name: '语音合成引擎', description: '多语言高质量语音合成', author: 'VoiceLab', installs: 1870, rating: 4.3, category: 'AI增强' },
-  { id: 'okx-api', icon: '💹', name: 'OKX 交易接口', description: '对接 OKX 全品种交易', author: 'CryptoLab', installs: 6700, rating: 4.5, category: '交易工具' },
-  { id: 'wechat-push', icon: '💬', name: '微信通知推送', description: '通过企业微信推送消息', author: 'OpenClaw', installs: 3800, rating: 4.2, category: '通知推送' },
-  { id: 'redis-cache', icon: '⚡', name: 'Redis 缓存加速', description: '高性能缓存与消息队列', author: 'DevTools', installs: 2900, rating: 4.6, category: '开发工具' },
-  { id: 'image-gen', icon: '🎨', name: 'AI 图片生成', description: '文生图与图生图能力', author: 'VoiceLab', installs: 7200, rating: 4.9, category: 'AI增强' },
-  { id: 'crypto-data', icon: '📊', name: '加密行情数据', description: '实时K线与深度数据', author: 'CryptoLab', installs: 5100, rating: 4.7, category: '数据源' },
-  { id: 'bybit-api', icon: '🏦', name: 'Bybit 交易接口', description: '对接 Bybit 衍生品交易', author: 'CryptoLab', installs: 4300, rating: 4.4, category: '交易工具' },
-  { id: 'dingtalk-push', icon: '📢', name: '钉钉通知推送', description: '消息推送到钉钉群组', author: 'OpenClaw', installs: 1600, rating: 4.1, category: '通知推送' },
-  { id: 'openai-enhance', icon: '🧠', name: 'OpenAI 增强', description: '接入 GPT-4o 与 o1 模型', author: 'OpenClaw', installs: 9500, rating: 4.8, category: 'AI增强' },
-  { id: 'freqtrade', icon: '🤖', name: 'Freqtrade 量化', description: '开源量化交易框架集成', author: 'FreqTeam', installs: 6200, rating: 4.5, category: '交易工具' },
-  { id: 'vectorbt', icon: '📉', name: 'VectorBT 回测', description: '向量化策略回测引擎', author: 'VBT', installs: 3100, rating: 4.3, category: '交易工具' },
-  { id: 'crawl4ai', icon: '🕷️', name: 'Crawl4AI 爬虫', description: 'AI 驱动的智能爬虫', author: 'DevTools', installs: 4800, rating: 4.6, category: '开发工具' },
-  { id: 'mem0-memory', icon: '🧬', name: 'Mem0 记忆系统', description: 'AI 长期记忆管理', author: 'Mem0', installs: 2400, rating: 4.4, category: 'AI增强' },
-  { id: 'yfinance', icon: '📰', name: '雅虎行情数据', description: '全球股票与加密行情', author: 'FinData', installs: 5600, rating: 4.5, category: '数据源' },
-  { id: 'stripe-api', icon: '💳', name: 'Stripe 支付', description: '国际支付接口集成', author: 'PayTeam', installs: 3300, rating: 4.6, category: '交易工具' },
-  { id: 'telegram-push', icon: '✈️', name: 'Telegram 通知', description: '通过 TG Bot 推送消息', author: 'OpenClaw', installs: 4200, rating: 4.7, category: '通知推送' },
-  { id: 'whisper-stt', icon: '🎤', name: 'Whisper 语音识别', description: '高精度语音转文字', author: 'VoiceLab', installs: 5800, rating: 4.8, category: 'AI增强' },
-  { id: 'supabase-db', icon: '🗄️', name: 'Supabase 数据库', description: '实时数据库与认证', author: 'DevTools', installs: 3900, rating: 4.5, category: '数据源' },
-  { id: 'drission', icon: '🌐', name: 'DrissionPage 爬虫', description: '浏览器自动化与爬虫', author: 'DevTools', installs: 2700, rating: 4.3, category: '开发工具' },
-];
-
-/** 分类及计数 */
-const CATEGORIES = [
-  { label: '全部', count: 24 },
-  { label: '交易工具', count: 8 },
-  { label: '数据源', count: 6 },
-  { label: '通知推送', count: 4 },
-  { label: 'AI增强', count: 3 },
-  { label: '开发工具', count: 3 },
-];
-
-/** 已安装插件列表 */
-const INSTALLED_PLUGINS: InstalledPlugin[] = [
-  { id: 'mcp-weather', name: 'MCP 天气服务', version: '1.2.0', status: '运行中', updatedAt: '2026-04-18' },
-  { id: 'binance-api', name: '币安交易接口', version: '3.1.4', status: '运行中', updatedAt: '2026-04-17' },
-  { id: 'feishu-push', name: '飞书通知推送', version: '2.0.1', status: '已停止', updatedAt: '2026-04-15' },
-  { id: 'notion-sync', name: 'Notion 同步', version: '1.0.8', status: '运行中', updatedAt: '2026-04-16' },
-];
+type NormalizedProposal = ReturnType<typeof normalizeProposal>;
 
 /* ============================================================
    动画配置
    ============================================================ */
 
-/** 卡片进场动画 */
 const cardVariants = {
   hidden: { opacity: 0, y: 16 },
   visible: (i: number) => ({
@@ -99,61 +71,132 @@ const cardVariants = {
   }),
 };
 
-/** 渲染星级评分 */
-function RatingStars({ rating }: { rating: number }) {
-  const full = Math.floor(rating);
-  const hasHalf = rating - full >= 0.3;
-  return (
-    <span className="inline-flex items-center gap-0.5">
-      {Array.from({ length: 5 }, (_, i) => (
-        <Star
-          key={i}
-          size={10}
-          className={clsx(
-            i < full
-              ? 'text-[var(--accent-amber)] fill-[var(--accent-amber)]'
-              : i === full && hasHalf
-                ? 'text-[var(--accent-amber)] fill-[var(--accent-amber)]/50'
-                : 'text-[var(--text-disabled)]'
-          )}
-        />
-      ))}
-      <span className="font-mono text-[10px] text-[var(--text-tertiary)] ml-0.5">
-        {rating.toFixed(1)}
-      </span>
-    </span>
-  );
-}
-
 /* ============================================================
    Store 主组件
    ============================================================ */
 
 export function Store() {
-  /* 搜索词和选中分类 */
+  /* ── 状态 ── */
+  const [proposals, setProposals] = useState<NormalizedProposal[]>([]);
+  const [stats, setStats] = useState<EvolutionStatsRaw | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState<string | null>(null); // 正在审批的提案 id
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('全部');
+  const [statusFilter, setStatusFilter] = useState('全部');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* 过滤插件列表 */
+  /* ── 拉取数据 ── */
+  const fetchData = useCallback(async () => {
+    try {
+      // 并发拉取提案列表和统计数据
+      const [proposalsRes, statsRes] = await Promise.allSettled([
+        clawbotFetchJson<{ proposals?: EvolutionProposalRaw[]; data?: EvolutionProposalRaw[] }>(
+          '/api/v1/evolution/proposals'
+        ),
+        clawbotFetchJson<EvolutionStatsRaw>('/api/v1/evolution/stats'),
+      ]);
+
+      // 处理提案列表
+      if (proposalsRes.status === 'fulfilled') {
+        const raw = proposalsRes.value;
+        const list: EvolutionProposalRaw[] = Array.isArray(raw)
+          ? raw
+          : raw?.proposals || raw?.data || [];
+        setProposals(list.map(normalizeProposal));
+      }
+
+      // 处理统计数据
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value);
+      }
+    } catch {
+      // 静默处理 — 页面会显示"暂无数据"
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /* ── 首次加载 + 30 秒自动刷新 ── */
+  useEffect(() => {
+    fetchData();
+    timerRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [fetchData]);
+
+  /* ── 审批提案（相当于"安装"） ── */
+  const handleApprove = useCallback(async (id: string) => {
+    if (!id) return;
+    setApproving(id);
+    try {
+      await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'approved' }),
+      });
+      toast.success('提案已通过 — 相当于"安装"这个工具');
+      // 刷新数据
+      await fetchData();
+    } catch (err) {
+      toast.error(`审批失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setApproving(null);
+    }
+  }, [fetchData]);
+
+  /* ── 搜索 + 状态筛选 ── */
   const filtered = useMemo(() => {
-    let list = MOCK_PLUGINS;
-    if (category !== '全部') {
-      list = list.filter((p) => p.category === category);
+    let list = proposals;
+    if (statusFilter !== '全部') {
+      const key = statusFilter === '待审批' ? 'pending' : statusFilter === '已通过' ? 'approved' : 'rejected';
+      list = list.filter((p) => p.status === key);
     }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.author.toLowerCase().includes(q)
+          p.module.toLowerCase().includes(q) ||
+          p.approach.toLowerCase().includes(q)
       );
     }
     return list;
-  }, [search, category]);
+  }, [proposals, search, statusFilter]);
 
-  /* 精选插件（前 6 个） */
+  /* ── 按状态分组计数 ── */
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { pending: 0, approved: 0, rejected: 0 };
+    proposals.forEach((p) => {
+      const s = p.status || 'pending';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [proposals]);
+
+  /* ── 统计卡片数据 ── */
+  const statsCards = useMemo(() => {
+    const totalProposals = stats?.total_proposals ?? stats?.proposals_count ?? proposals.length;
+    const gaps = stats?.capability_gaps ?? stats?.gaps_count ?? 0;
+    return [
+      { label: '总提案数', value: String(totalProposals), icon: Package, color: 'var(--accent-cyan)' },
+      { label: '已通过', value: String(stats?.approved ?? statusCounts.approved), icon: TrendingUp, color: 'var(--accent-green)' },
+      { label: '待审批', value: String(stats?.pending ?? statusCounts.pending), icon: Zap, color: 'var(--accent-amber)' },
+      { label: '能力缺口', value: String(gaps), icon: Plus, color: 'var(--accent-purple)' },
+    ];
+  }, [stats, proposals, statusCounts]);
+
+  /* ── 精选提案（前 6 个） ── */
   const featured = filtered.slice(0, 6);
+
+  /* ── 加载中 ── */
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载插件商店…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--bg-base)] p-6">
@@ -168,7 +211,7 @@ export function Store() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索插件名称、描述、作者…"
+              placeholder="搜索提案名称、模块、集成方案…"
               className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none font-mono"
             />
             {search && (
@@ -179,10 +222,18 @@ export function Store() {
                 清除
               </button>
             )}
+            {/* 手动刷新按钮 */}
+            <button
+              onClick={() => { setLoading(true); fetchData(); }}
+              className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+              title="手动刷新"
+            >
+              <RefreshCw size={14} />
+            </button>
           </div>
         </div>
 
-        {/* ====== 精选插件 — col-span-8, row-span-2 ====== */}
+        {/* ====== 精选提案 — col-span-8, row-span-2 ====== */}
         <motion.div
           className="col-span-8 row-span-2 abyss-card p-6"
           initial={{ opacity: 0, y: 20 }}
@@ -193,10 +244,10 @@ export function Store() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-lg font-bold text-[var(--text-primary)] tracking-tight">
-                精选插件
+                进化提案
               </h2>
               <p className="text-label mt-1">
-                插件商店 // PLUGIN MARKETPLACE
+                插件商店 // EVOLUTION PROPOSALS
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-[var(--accent-cyan)]">
@@ -205,68 +256,96 @@ export function Store() {
             </div>
           </div>
 
-          {/* 6 个插件卡片网格 — 2 行 × 3 列 */}
-          <div className="grid grid-cols-3 gap-3">
-            {featured.map((plugin, i) => (
-              <motion.div
-                key={plugin.id}
-                custom={i}
-                variants={cardVariants}
-                initial="hidden"
-                animate="visible"
-                className="group relative rounded-2xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-4 hover:border-[var(--accent-cyan)]/30 transition-all duration-300"
-              >
-                {/* 图标 + 名称 */}
-                <div className="flex items-start gap-3 mb-2.5">
-                  <span className="text-2xl leading-none">{plugin.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                      {plugin.name}
-                    </h3>
-                    <p className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">
-                      {plugin.description}
-                    </p>
-                  </div>
-                </div>
+          {/* 提案卡片网格 */}
+          {featured.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-[var(--text-tertiary)] font-mono text-sm">
+              暂无可用插件
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {featured.map((proposal, i) => {
+                const si = STATUS_MAP[proposal.status] || STATUS_MAP.pending;
+                return (
+                  <motion.div
+                    key={proposal.id || i}
+                    custom={i}
+                    variants={cardVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="group relative rounded-2xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-4 hover:border-[var(--accent-cyan)]/30 transition-all duration-300"
+                  >
+                    {/* 名称 + 模块 */}
+                    <div className="flex items-start gap-3 mb-2.5">
+                      <span className="text-2xl leading-none">📦</span>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          {proposal.name}
+                        </h3>
+                        <p className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">
+                          {proposal.approach || `模块: ${proposal.module}`}
+                        </p>
+                      </div>
+                    </div>
 
-                {/* 作者 + 安装数 + 评分 */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] text-[var(--text-tertiary)] font-mono">
-                    {plugin.author}
-                  </span>
-                  <span className="text-[10px] text-[var(--text-tertiary)] font-mono flex items-center gap-1">
-                    <Download size={9} />
-                    {plugin.installs.toLocaleString()}
-                  </span>
-                </div>
+                    {/* 星标 + 分值 */}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[10px] text-[var(--text-tertiary)] font-mono flex items-center gap-1">
+                        <Star size={9} className="text-[var(--accent-amber)]" />
+                        {proposal.stars.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-tertiary)] font-mono">
+                        评分 {proposal.score}
+                      </span>
+                    </div>
 
-                {/* 评分星星 */}
-                <div className="flex items-center justify-between">
-                  <RatingStars rating={plugin.rating} />
-                  <button className="px-3 py-1 rounded-full border border-[var(--accent-cyan)]/40 text-[var(--accent-cyan)] text-[11px] font-mono hover:bg-[var(--accent-cyan)]/10 transition-colors">
-                    安装
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                    {/* 状态 + 操作按钮 */}
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-[10px] font-mono" style={{ color: si.color }}>
+                        <si.Icon size={10} />
+                        {si.label}
+                      </span>
+                      {proposal.status === 'pending' && (
+                        <button
+                          disabled={approving === proposal.id}
+                          onClick={() => handleApprove(proposal.id)}
+                          className="px-3 py-1 rounded-full border border-[var(--accent-cyan)]/40 text-[var(--accent-cyan)] text-[11px] font-mono hover:bg-[var(--accent-cyan)]/10 transition-colors disabled:opacity-50"
+                        >
+                          {approving === proposal.id ? (
+                            <Loader2 size={11} className="animate-spin inline mr-1" />
+                          ) : (
+                            <ThumbsUp size={11} className="inline mr-1" />
+                          )}
+                          通过
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
 
-        {/* ====== 分类筛选 — col-span-4 ====== */}
+        {/* ====== 状态筛选 — col-span-4 ====== */}
         <motion.div
           className="col-span-4 abyss-card p-5"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <h3 className="text-label mb-4">分类筛选 // CATEGORIES</h3>
+          <h3 className="text-label mb-4">状态筛选 // STATUS FILTER</h3>
           <div className="space-y-1">
-            {CATEGORIES.map((cat) => {
-              const active = category === cat.label;
+            {[
+              { label: '全部', count: proposals.length },
+              { label: '待审批', count: statusCounts.pending },
+              { label: '已通过', count: statusCounts.approved },
+              { label: '已拒绝', count: statusCounts.rejected },
+            ].map((cat) => {
+              const active = statusFilter === cat.label;
               return (
                 <button
                   key={cat.label}
-                  onClick={() => setCategory(cat.label)}
+                  onClick={() => setStatusFilter(cat.label)}
                   className={clsx(
                     'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                     active
@@ -300,12 +379,7 @@ export function Store() {
         >
           <h3 className="text-label mb-4">统计概览 // STATS</h3>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: '已安装', value: '6', icon: Package, color: 'var(--accent-cyan)' },
-              { label: '可更新', value: '2', icon: TrendingUp, color: 'var(--accent-amber)' },
-              { label: '总插件数', value: '24', icon: Zap, color: 'var(--accent-green)' },
-              { label: '本周新增', value: '3', icon: Plus, color: 'var(--accent-purple)' },
-            ].map((stat) => (
+            {statsCards.map((stat) => (
               <div
                 key={stat.label}
                 className="rounded-xl bg-white/[0.02] border border-[var(--glass-border)] p-3 text-center"
@@ -316,83 +390,94 @@ export function Store() {
               </div>
             ))}
           </div>
+
+          {/* 最近扫描时间 */}
+          {stats && (stats.last_scan || stats.last_scan_at || stats.last_scan_time) && (
+            <div className="mt-4 pt-3 border-t border-[var(--glass-border)]">
+              <span className="text-label text-[9px]">最近扫描</span>
+              <p className="font-mono text-[10px] text-[var(--text-secondary)] mt-1">
+                {stats.last_scan_time || stats.last_scan_at || stats.last_scan || '—'}
+              </p>
+            </div>
+          )}
         </motion.div>
 
-        {/* ====== 已安装插件 — col-span-12 ====== */}
+        {/* ====== 完整提案列表 — col-span-12 ====== */}
         <motion.div
           className="col-span-12 abyss-card p-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
-          <h3 className="text-label mb-4">已安装插件 // INSTALLED</h3>
+          <h3 className="text-label mb-4">全部提案 // ALL PROPOSALS</h3>
 
-          {/* 表头 */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1.5fr] gap-4 px-4 py-2 text-[10px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest border-b border-[var(--glass-border)]">
-            <span>名称</span>
-            <span>版本</span>
-            <span>状态</span>
-            <span>更新时间</span>
-            <span className="text-right">操作</span>
-          </div>
-
-          {/* 行数据 */}
-          {INSTALLED_PLUGINS.map((p, i) => (
-            <motion.div
-              key={p.id}
-              custom={i}
-              variants={cardVariants}
-              initial="hidden"
-              animate="visible"
-              className="grid grid-cols-[2fr_1fr_1fr_1fr_1.5fr] gap-4 px-4 py-3.5 items-center border-b border-[var(--glass-border)]/50 last:border-b-0 hover:bg-white/[0.02] transition-colors"
-            >
-              {/* 名称 */}
-              <span className="text-sm text-[var(--text-primary)] font-medium">{p.name}</span>
-
-              {/* 版本 */}
-              <span className="font-mono text-xs text-[var(--text-tertiary)]">v{p.version}</span>
-
-              {/* 状态 */}
-              <span className="flex items-center gap-1.5 text-xs">
-                <span
-                  className={clsx(
-                    'w-1.5 h-1.5 rounded-full',
-                    p.status === '运行中' ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
-                  )}
-                />
-                <span
-                  className={clsx(
-                    'font-mono',
-                    p.status === '运行中' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'
-                  )}
-                >
-                  {p.status}
-                </span>
-              </span>
-
-              {/* 更新时间 */}
-              <span className="font-mono text-xs text-[var(--text-tertiary)]">{p.updatedAt}</span>
-
-              {/* 操作按钮组 */}
-              <div className="flex items-center justify-end gap-2">
-                {p.status === '运行中' ? (
-                  <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-amber)]/30 text-[var(--accent-amber)] text-[11px] font-mono hover:bg-[var(--accent-amber)]/10 transition-colors">
-                    <PowerOff size={11} />
-                    禁用
-                  </button>
-                ) : (
-                  <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-green)]/30 text-[var(--accent-green)] text-[11px] font-mono hover:bg-[var(--accent-green)]/10 transition-colors">
-                    <Power size={11} />
-                    启用
-                  </button>
-                )}
-                <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-red)]/30 text-[var(--accent-red)] text-[11px] font-mono hover:bg-[var(--accent-red)]/10 transition-colors">
-                  <Trash2 size={11} />
-                  卸载
-                </button>
+          {filtered.length === 0 ? (
+            <div className="text-center py-10 text-[var(--text-tertiary)] font-mono text-sm">
+              暂无数据
+            </div>
+          ) : (
+            <>
+              {/* 表头 */}
+              <div className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-2 text-[10px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest border-b border-[var(--glass-border)]">
+                <span>名称</span>
+                <span>模块</span>
+                <span>评分</span>
+                <span>风险</span>
+                <span>状态</span>
+                <span className="text-right">操作</span>
               </div>
-            </motion.div>
-          ))}
+
+              {/* 行数据 */}
+              {filtered.map((p, i) => {
+                const si = STATUS_MAP[p.status] || STATUS_MAP.pending;
+                return (
+                  <motion.div
+                    key={p.id || i}
+                    custom={i}
+                    variants={cardVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-3.5 items-center border-b border-[var(--glass-border)]/50 last:border-b-0 hover:bg-white/[0.02] transition-colors"
+                  >
+                    <span className="text-sm text-[var(--text-primary)] font-medium truncate">{p.name}</span>
+                    <span className="font-mono text-xs text-[var(--text-tertiary)]">{p.module}</span>
+                    <span className="font-mono text-xs text-[var(--accent-cyan)]">{p.score}</span>
+                    <span className="font-mono text-xs text-[var(--text-tertiary)]">{p.risk}</span>
+                    <span className="flex items-center gap-1 text-xs font-mono" style={{ color: si.color }}>
+                      <si.Icon size={10} />
+                      {si.label}
+                    </span>
+                    <div className="flex items-center justify-end gap-2">
+                      {p.status === 'pending' && (
+                        <button
+                          disabled={approving === p.id}
+                          onClick={() => handleApprove(p.id)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-green)]/30 text-[var(--accent-green)] text-[11px] font-mono hover:bg-[var(--accent-green)]/10 transition-colors disabled:opacity-50"
+                        >
+                          {approving === p.id ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <ThumbsUp size={11} />
+                          )}
+                          通过
+                        </button>
+                      )}
+                      {p.url && (
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-mono text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+                        >
+                          查看 →
+                        </a>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </>
+          )}
         </motion.div>
       </div>
     </div>
