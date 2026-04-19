@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (技术债清理第8批: SELL风控+新账户VaR+AI单模型追踪+社媒适配器+比价统一+Bot详情页)
+> 最后更新: 2026-04-19 (技术债清理第9批: DevPanel 完整功能化)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -179,7 +179,7 @@
 | HI-553 | `frontend` | `Settings/index.tsx` | ~~TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测~~ → **已修复 2026-04-18**: isDirty 扩展检测 opsSettings 的 7 个字段 + initialOpsSettingsRef 记录初始值 + 保存成功后重置脏状态。LLM 模型列表硬编码问题保留(低优先级) | 2026-04-19 |
 | HI-554 | `frontend` | `Channels/index.tsx` | ~~TECH_DEBT: 频道列表仅支持编辑~~ → **已修复 2026-04-19**: 新增创建频道表单(6种类型)、删除确认对话框、连接状态徽章(🟢已连接/🟡未验证/⚪未配置) | 2026-04-19 |
 | HI-555 | `frontend` | `Onboarding/index.tsx` | ~~TECH_DEBT: 新手引导缺少"跳过引导"按钮~~ → **已修复 2026-04-18**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），点击直接调用 handleFinish 完成引导 | 2026-04-19 |
-| HI-558 | `frontend` | `DevPanel/index.tsx` | TECH_DEBT: 整个 DevPanel 是纯 UI 原型——TODO 未接后端，Bot 状态硬编码，6 个按钮无 onClick，AI 对话框无功能，文件树静态 (R7.23) | 2026-04-19 |
+| HI-558 | `frontend` | `DevPanel/index.tsx` | ~~TECH_DEBT: 整个 DevPanel 是纯 UI 原型~~ → **已修复 2026-04-19**: 全面重写为功能完整的开发者工作台——服务启停接入 controlAllManagedServices API、Bot 状态接入 getClawbotBotMatrix 真实数据、端点健康接入 getManagedEndpointsStatus TCP 检查、实时日志接入 getLogs 带 5s 自动刷新、系统诊断接入 runDoctor、系统资源 CPU/内存/磁盘仪表盘、健康概况聚合展示 | 2026-04-19 |
 | HI-559 | `frontend` | `logger.ts` + `service.rs` | ~~TECH_DEBT: 日志系统无脱敏~~ → **已修复 2026-04-18**: 前端 logger.ts 新增 scrubSecrets/scrubString 函数（8种正则规则），formatMessage 在记录前自动脱敏；Rust get_logs 返回前对每行日志应用正则脱敏。覆盖 API Key/Token/Cookie/密码/Bearer/SSH 等 | 2026-04-19 |
 | HI-560 | `frontend` | `Logs/index.tsx` | ~~TECH_DEBT: 日志搜索无关键词高亮~~ → **已修复 2026-04-18**: 新增 `highlightText` 函数，搜索匹配文字以黄色 `<mark>` 标签高亮展示 | 2026-04-19 |
 | HI-561 | `frontend` | `Portfolio/index.tsx` | ~~TECH_DEBT: tradingSell 不检查 resp.ok~~ → **已修复 2026-04-18**: `api.tradingSell` 在 resp.ok 为 false 时抛出含 HTTP 状态码的错误；风险参数卡片标注"后端配置"说明来源 | 2026-04-19 |
