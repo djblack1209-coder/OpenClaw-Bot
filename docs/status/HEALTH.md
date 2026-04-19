@@ -75,161 +75,22 @@
 
 ## 活跃问题 (OPEN)
 
-### 🔴 阻塞
-
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| HI-597 | `infra` | `.github/workflows/ci.yml` | ~~GitHub Actions Billing 问题导致所有 CI 运行失败(15+ 次连续 failure)~~ → **已修复 2026-04-19**: 仓库从私有改为公开（公开仓库 Actions 免费无限）+ git filter-repo 彻底清除历史密钥后安全公开 | 2026-04-19 |
-| HI-598 | `security` | `.openclaw/.env` (git历史) | 🔴 **安全事件**: 仓库公开后 OpenRouter 扫描到历史提交 `a4900753` 中的 API Key (sk-or-v1-...7e33)。OpenRouter 已自动禁用该 Key。**根因**: 之前的 git filter-repo 未彻底清理 6 个含 .env 的历史提交。**已修复**: 重新执行 git filter-repo 清除 .openclaw/.env + config/.env + .openclaw/agents/ + delivery-queue/ 等全部敏感路径，force push 覆盖远端历史。**需要轮换**: TAVILY_API_KEY + 所有可能泄露的密钥 | 2026-04-19 |
+> 仅列出未解决的活跃问题。已解决条目已移至下方「已解决」区。
+> 2026-04-19 大扫除：146 条已解决条目从活跃区移至已解决区。
 
 ### 🟠 重要
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| ~~HI-486~~ | ~~`infra`~~ | ~~`tools/launchagents/*.plist`~~ | ~~macOS 26.4 Sandbox 策略阻止 launchd 子进程读取 ~/Desktop 路径下的文件，6 个 LaunchAgent 全部启动失败 (exit 78/126, 累计失败 1157+ 次)~~ → **已修复 2026-04-13**: ProgramArguments 改为 bash -c exec 间接调用 + 日志路径迁移到 ~/Library/Logs/OpenClaw/ + launcher 脚本命令内联 + 符号链接替换为真实文件。全部 5 个常驻服务恢复正常运行 | 2026-04-13 |
-| ~~HI-484~~ | ~~`infra`~~ | ~~`apps/openclaw-manager-src/src/lib`~~ | ~~根目录 `.gitignore` 使用过宽规则 `lib/`，误伤前端 `src/lib/` 源码目录~~ → **已修复 2026-04-12**: `.gitignore` 中 `lib/` 已改为 `/lib/`（仅匹配根目录），`utils.ts` / `tauri.ts` / `logger.ts` 已正常被 Git 跟踪 | 2026-04-10 |
-| ~~HI-348~~ | ~~`security`~~ | ~~`.openclaw/agents/`~~ | ~~API密钥曾提交到Git历史~~ → **已修复 2026-04-11**: `git filter-repo` 清理敏感文件历史，.git 从 1.3GB 瘦身到 318MB | 2026-03-28 |
-| ~~HI-387~~ | ~~`security`~~ | ~~`config/.env`~~ | ~~50+ 真实密钥曾提交到 Git 历史~~ → **已修复 2026-04-11**: 同上，config/.env 等敏感路径全部从历史中移除。**仍建议轮换密钥** | 2026-04-01 |
-| HI-388 | `backend` | `diskcache/pygments` | ~~pip-audit 发现 2 个已知漏洞: diskcache 5.6.3 (CVE-2025-69872)、pygments 2.19.2 (CVE-2026-4539, 修复版本 2.20.0)~~ **pygments 已升级到 2.20.0; diskcache 待上游修复** | 2026-04-01 |
-| ~~HI-482~~ | ~~`ai-pool`~~ | ~~`tests/test_litellm_router.py`~~ | ~~本机 Python 3.12 测试环境缺少 `litellm` 依赖~~ → **已解决 2026-04-12**: 创建 `packages/clawbot/.venv` 虚拟环境并安装全部依赖，LiteLLM 路由单测正常运行 | 2026-04-10 |
-| ~~HI-483~~ | ~~`infra`~~ | ~~`config/.env`~~ | ~~历史配置中存在重复 `MEM0_API_KEY` 和未接入主流程的 `CLOUDCONVERT_API_KEY`~~ → **已解决 2026-04-10**: 重复项已清理，未接入项降为仅文档登记 | 2026-04-10 |
-
-### 审计进行中
-
-(无)
-
-### 已完成审计
-
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| ~~HI-485~~ | ~~`audit`~~ | ~~全项目~~ | ~~全量全方位审计~~ → **已完成 2026-04-12**: Phase 1-10 全部完成。后端 1132/1135 通过，前端 tsc 零错误，Rust 零警告。修复 18 处静默吞错 + 安全加固(PIN/SSRF/速率限制/chunked) + 运维加固(Docker网络隔离/非root failover/多阶段构建) + 文档治理(MODULE_REGISTRY 243模块全覆盖/COMMAND_REGISTRY 98命令校准) | 2026-04-10 |
+| HI-388 | `backend` | `diskcache` | diskcache 5.6.3 有 CVE-2025-69872。pygments 已升级到 2.20.0；diskcache 待上游修复版本发布 | 2026-04-01 |
 
 ### 🟡 一般
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| ~~HI-487~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~ARCH_LIMIT: 微信仅支持单向推送通知~~ → **描述修正 2026-04-17**: 微信双向对话由 TypeScript 层 `openclaw-weixin` 插件实现（iLink API getUpdates 长轮询），Python 层 `wechat_bridge.py` 仅负责系统通知推送。微信 Bot 基础设施正常运行：token 有效、Gateway 进程在线、sync 持续更新 | 2026-04-17 |
-| ~~HI-358~~ | ~~`backend`~~ | ~~多文件~~ | ~~7个>1000行大文件待拆~~ → **已修复 2026-04-11**: 全部7个文件拆分完成 — daily_brief(1158→498), proactive_engine(1016→328), trading_journal(1087→464), risk_manager(1191→854), broker_bridge(1091→762), auto_trader(1055→843), chinese_nlp_mixin(1248→705)。共新建 17 个子模块 | 2026-03-29 |
-| ~~HI-381~~ | ~~`backend`~~ | ~~120+文件~~ | ~~内联错误字符串分散~~ → **已解决 2026-04-11**: 重新评估实际为 ~50 处（非 120+），其中 5 条重复消息提取到 `constants.py`（ERR_RISK_NOT_INIT 等 5 个常量），10 处使用点已迁移；其余为上下文相关的唯一消息，保留内联合理 | 2026-03-29 |
-| ~~HI-383~~ | ~~`backend`~~ | ~~多文件~~ | ~~HTTP客户端碎片化~~ → **大部分解决 2026-04-11**: HI-463 迁移 20 个文件 35 处调用点到 ResilientHTTPClient（带自动重试+熔断）；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现合理 | 2026-03-29 |
-| ~~HI-384~~ | ~~`backend`~~ | ~~`test_omega_core.py`~~ | ~~Flaky test: `test_investment_full_pipeline` 依赖外部LLM API状态~~ → **已修复 2026-04-11**: mock 隔离 get_context_collector + get_response_synthesizer，消除 LiteLLM Cooldown 依赖 | 2026-03-30 |
-| ~~HI-390~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~APScheduler job 在线程中通过 `asyncio.run()` 创建临时事件循环，EventBus 事件无法跨循环传播~~ → **已修复 2026-04-11** | 2026-04-01 |
-| ~~HI-391~~ | ~~`frontend`~~ | ~~`Plugins`~~ | ~~"安装新插件"和"配置插件"按钮为占位实现~~ → **已修复 2026-04-11**: Rust 层新增 `start/stop/get_status_mcp_plugin` 3 个 Tauri 命令实现真实进程管理（spawn/kill/健康检查）；前端 toggle 连接真实启停；清理 3 条假数据 | 2026-04-01 |
-| HI-393 | `infra` | `kiro-gateway` | ~~Kiro Gateway 默认 `PROXY_API_KEY` 为弱密码 `kiro-clawbot-2026`~~ → **已修复**: .env 中已替换为 64 位强随机 token | 2026-04-01 |
-| ~~HI-394~~ | ~~`frontend`~~ | ~~`config.rs`~~ | ~~Token 生成函数使用 `/dev/urandom` + 栈地址作为熵源~~ → **已修复 2026-04-11**: 改用 `getrandom` crate 跨平台密码学安全随机源 | 2026-04-01 |
-| ~~HI-410~~ | ~~`backend`~~ | ~~`xianyu_apis.py`~~ | ~~XianyuApis httpx.AsyncClient 无自动关闭机制~~ → **已修复 2026-04-11**: XianyuLive 新增 `close()` 方法 + xianyu_main.py finally 块调用 | 2026-04-03 |
-| ~~HI-411~~ | ~~`docs`~~ | ~~`MODULE_REGISTRY.md`~~ | ~~7 个核心模块未注册~~ → **已修复 2026-04-11**: 行数从近似值更新为精确值，描述补全 | 2026-04-03 |
-| ~~HI-456~~ | ~~`backend`~~ | ~~`brain.py`~~ | ~~`_active_tasks/_pending_callbacks/_pending_clarifications` 共享字典无 asyncio.Lock 保护~~ → **已修复 2026-04-11**: 已有 `self._lock` 现已在所有读写入口加 `async with self._lock` 保护 | 2026-04-03 |
-| ~~HI-457~~ | ~~`backend`~~ | ~~`social_tools.py`~~ | ~~`PostTimeOptimizer._engagement_by_hour` 从APScheduler线程和asyncio主线程同时访问~~ → **已修复 2026-04-11**: `_save()` 改用锁内快照写盘 + 单例工厂加双重检查锁 | 2026-04-03 |
-| ~~HI-458~~ | ~~`backend`~~ | ~~`social_scheduler.py`~~ | ~~`_current_publish_hour` 在APScheduler线程中写入，在asyncio主线程中读取，无锁保护~~ → **已修复 2026-04-11** | 2026-04-03 |
-| ~~HI-459~~ | ~~`backend`~~ | ~~`wechat_bridge.py`~~ | ~~`random.randint` 用于 `X-WECHAT-UIN` 认证header~~ → **已修复 2026-04-11**: 全部替换为 `secrets.randbelow()` | 2026-04-03 |
-| ~~HI-460~~ | ~~`backend`~~ | ~~`invest_tools.py`~~ | ~~`_set_config` 事务独立~~ → **已验证 2026-04-11**: `_set_config` 是死代码（无任何调用方），buy/sell 现金事务已在同一 `with self._conn()` 中完成，无风险 | 2026-04-03 |
-| ~~HI-461~~ | ~~`backend`~~ | ~~`license_manager.py`~~ | ~~`find_by_buyer()` LIKE 模式未转义通配符~~ → **已修复 2026-04-11**: 增加 `\%`/`\_` 转义 + `ESCAPE '\'` | 2026-04-03 |
-| HI-462 | `backend` | 385+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 异常消息可能包含API URL/密钥/连接字符串。**部分修复 2026-04-11**: 8 个文件 20 处高危调用已用 `scrub_secrets()` 包装 + `utils.scrub_secrets()` 共享函数建立，剩余 ~360 处为低风险（非 API/认证相关） | 2026-04-03 |
-| HI-486 | `backend` | `requirements.txt` | stamina 版本约束错误 `~=2.0.0`(PyPI 不存在 2.x 版本, stamina 用 CalVer 从 22.1.0 起) → **已修复**: 改为 `>=24.1.0,<26` | 2026-04-12 |
-| HI-487 | `security` | `core/security.py` | PIN 验证使用 `==` 比较存在理论时序攻击风险 → **已修复**: 改为 `hmac.compare_digest()` | 2026-04-12 |
-| HI-488 | `deploy` | `heartbeat plist` | 心跳 LaunchAgent plist 硬编码 VPS IP `101.43.41.96` 已入 Git → **已修复**: 改为必填环境变量，无默认值 | 2026-04-12 |
-| HI-489 | `deploy` | `kiro-gateway/.env.example` | 示例密码 `my-super-secret-password-123` 可能被用户直接复制使用 → **已修复**: 改为空值 + 强制修改提示 | 2026-04-12 |
-| ~~HI-490~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~FastAPI 无速率限制中间件~~ → **已修复 2026-04-12**: 新增 `RateLimitMiddleware`，基于 IP 滑动窗口限制 60次/分钟，超限返回 429 + Retry-After | 2026-04-12 |
-| ~~HI-491~~ | ~~`security`~~ | ~~`api/server.py`~~ | ~~RequestSizeLimitMiddleware chunked 传输可绕过~~ → **已修复 2026-04-12**: 新增流式读取计数，chunked 传输超 10MB 立即返回 413 | 2026-04-12 |
-| ~~HI-463~~ | ~~`backend`~~ | ~~20+文件~~ | ~~httpx.AsyncClient per-request创建无重试逻辑~~ → **已修复 2026-04-11**: ResilientHTTPClient API 扩展(follow_redirects+files+data) + 20 个文件 35 处 EASY 调用点迁移完成；剩余 28 处为 COMPLEX（需 cookies/persistent session/sync client），保留原实现 | 2026-04-03 |
-| HI-498 | `backend` | `life_automation.py` | 提醒系统 dateparser 时区硬编码为 `America/New_York`，中国用户说"明天下午3点"实际存储为美东时间 → **已修复 2026-04-14**: 改为 `os.environ.get("USER_TIMEZONE", "Asia/Shanghai")`，默认北京时间 | 2026-04-14 |
-| HI-499 | `backend` | `chinese_nlp_mixin.py` | "帮我记住/别忘了/设个提醒/定个闹钟"等中文同义表达完全无法触发提醒，只有"提醒我"可用 → **已修复 2026-04-14**: 新增 8 个同义词正则匹配 + nlp_ticker_map 关键词扩展 | 2026-04-14 |
-| HI-500 | `backend` | `chinese_nlp_mixin.py` | 记账极简模式 `100 AAPL` 被误识别为"花了100块在AAPL上"（纯大写字母 ticker 无过滤） → **已修复 2026-04-14**: 匹配后检查 note 是否为 1-6 位纯大写字母，是则跳过 | 2026-04-14 |
-| HI-501 | `infra` | `run-audit.sh` | 夜间审计 launchd 执行时 `getcwd: Operation not permitted`，0/8 阶段完成 → **已修复 2026-04-14**: SCRIPT_DIR 硬编码项目审计目录，不依赖 launchd 的 WorkingDirectory | 2026-04-14 |
-| HI-502 | `backend` | `notify_style.py` | 日报标题双 emoji 叠加 `📢 📊 每日智能日报` → **已修复 2026-04-14**: format_digest 传 icon="" 不再叠加默认 📢 | 2026-04-14 |
-| HI-503 | `backend` | `daily_brief.py` | 日报空 heading 节显示 `▸ ` 格式错误 → **已修复 2026-04-14**: 改为 `🏆 闲鱼热销` 有意义的标题 | 2026-04-14 |
-| HI-504 | `backend` | `proactive_periodic.py` | ProactiveEngine 凌晨 0-7 点仍推送通知打扰用户 → **已修复 2026-04-14**: 新增 `_is_quiet_hours()` 安静时段过滤 | 2026-04-14 |
-| HI-505 | `backend` | `onboarding_mixin.py` | 新用户检测依赖 `get_messages()` 历史消息，DB 重建后所有老用户被误判 → **已修复 2026-04-14**: 改为 shared_memory 持久化标记 `onboarded_{user_id}` | 2026-04-14 |
-| HI-506 | `ai-pool` | `litellm_router.py` | iflow Key 7天有效期无任何监控/告警，10 个 TIER_S 模型可能静默失效 → **已修复 2026-04-14**: 新增 `~/.openclaw/iflow_key_timestamp.json` 记录首次使用时间，超 6 天告警并跳过 | 2026-04-14 |
-| HI-507 | `backend` | `crawl4ai_engine.py` | 淘宝比价实际不可用（需登录）但没有告知用户 → **已修复 2026-04-14**: 淘宝标记 enabled=False + 比价结果末尾标注实际可用平台 | 2026-04-14 |
-| HI-508 | `backend` | `onboarding_mixin.py` | 引导完成后只有"查看全部功能"按钮，无即时体验引导 → **已修复 2026-04-14**: 根据用户选择的兴趣方向添加"立即试试"操作按钮 | 2026-04-14 |
-| HI-509 | `backend` | `notify_style.py` | `from typing import ...` 缺少 `List` 导入，导致所有测试在 import 阶段失败 → **已修复 2026-04-15**: 添加 `List` 到 typing imports | 2026-04-15 |
-| HI-492 | `infra` | `launchagents/*` | macOS 26.4 Sandbox System Policy 阻止 launchd 读取 ~/Desktop/ 路径下的文件，导致所有 6 个 LaunchAgent 启动失败(exit 78/126) → **已修复 2026-04-13**: ProgramArguments 改为 `/bin/bash -c exec` 间接调用 + 日志路径迁移到 `~/Library/Logs/OpenClaw/` + plist 改为真实文件(非符号链接) | 2026-04-13 |
-| HI-493 | `backend` | `scheduler.py` | 笔笔省领券定时任务使用美东时间 08:30(=北京20:30)，导致中午外卖无券可用；且 auto_claim_coupon 无并发锁，曾出现 7 个 mitmdump 同时启动 → **已修复 2026-04-13**: 改为北京时间 07:00 + fcntl.flock 文件锁 | 2026-04-13 |
-| HI-494 | `infra` | `run-audit.sh` | 夜间审计被 macOS 延迟触发后，get_remaining_minutes() 算出剩余0分钟直接跳过全部8阶段，产生空报告 → **已修复 2026-04-13**: 新增补跑模式，检测到错过窗口时允许执行120分钟 | 2026-04-13 |
-| ~~HI-495~~ | ~~`ai-pool`~~ | ~~`litellm_router.py`~~ | ~~LLM 路由 122 部署中仅 3/14 provider 可用(Groq/Cerebras/Mistral)，SiliconFlow全军覆没(auth_error)、OpenRouter额度耗尽(429)、Gemini/NVIDIA模型名过时、Cohere/iflow/gpt_free/kiro/volcengine 认证或服务异常~~ → **已诊断并修复 2026-04-13**: 重新测试后确认 6/16 正常(含 SF 付费/NVIDIA/Cohere)。g4f 改为读取 G4F_API_KEY。SF 免费/Gemini/iflow/Volc/GPT_API_Free/Kiro 等均为平台侧余额耗尽、模型下线或 token 过期，代码本身逻辑正确。 | 2026-04-13 |
-| ~~HI-496~~ | ~~`infra`~~ | ~~`heartbeat-sender`~~ | ~~心跳发送进程停摆 6 天(自4月7日)，launchd agent 已注册但未活跃，VPS failover 无法检测主节点存活~~ → **已修复 2026-04-13**: HI-492 解决后心跳进程已自动恢复运行（PID 存活），日志显示成功发送心跳；因本地网络问题导致间歇性 SSH 失败，进程机制正常。 | 2026-04-13 |
-| ~~HI-497~~ | ~~`trading`~~ | ~~`_scheduler_daily.py`~~ | ~~IBKR Gateway 未运行(127.0.0.1:4002 连接拒绝)，IBKR_START_CMD 被白名单拦截无法自动启动，交易调度器每3分钟重连失败造成日志洪泛~~ → **已修复 2026-04-13**: 为 `_ibkr_health_check` 引入 `_ibkr_health_fail_count`，将无脑 3 分钟一刷的错误日志降频为第 1 次及每 10 次(约30分钟)提示，并将检测间隔通过 `IBKR_HEALTH_CHECK_INTERVAL_MIN` 暴露为可配置。 | 2026-04-13 |
-| ~~HI-520~~ | ~~`trading`~~ | ~~`freqtrade_bridge.py`~~ | ~~BUG: `confirm_trade_entry()` 传 dict 给 `check_trade()` 而非关键字参数，且用 `.get("approved")` 而非 `.approved` 属性访问 RiskCheckResult~~ → **已修复 2026-04-18**: 改为关键字参数调用 + `.approved` 属性 + 默认 3% 止损 | 2026-04-18 |
-| ~~HI-521~~ | ~~`trading`~~ | ~~`brain_exec_invest.py`~~ | ~~BUG: `_exec_risk_check()` 两处 `check_trade()` 调用不传 `stop_loss`(默认0)，导致 `StopLossValidator` 拒绝所有 BUY 交易~~ → **已修复 2026-04-18**: 补传 `stop_loss=entry_price*0.97`(默认3%止损)，优先读取 params 中用户指定值 | 2026-04-18 |
-| HI-522 | `trading` | `risk_manager.py` | ~~TECH_DEBT: `check_trade()` 读取 `_today_pnl/_today_trade_count` 等共享状态无锁保护~~ → **已确认修复 2026-04-19**: check_trade() 在 `_state_lock` 内刷新+快照共享状态，所有写入方法也在锁内，无竞态 | 2026-04-18 |
-| HI-523 | `trading` | `risk_manager.py` | ~~ARCH_LIMIT: SELL 方向交易几乎不做风控检查~~ → **已修复 2026-04-19**: 9 个缺口全修复——StopLossValidator 做空止损验证、RiskRewardValidator 做空风险收益比、PositionSizeValidator 做空单笔风险量、ExposureValidator 双向一视同仁、3 个软检查移除 BUY-only、max_loss 区分方向、risk_score 区分方向、Kelly 自动推断方向 | 2026-04-18 |
-| HI-524 | `trading` | `risk_manager.py` | ~~ARCH_LIMIT: 新账户首笔交易 VaR 保护完全失效~~ → **已修复 2026-04-19**: check_var_limit() <10笔交易使用保守限额(2%日VaR+1%单笔)、check_trade() 新账户保护模式(单笔min(5%,$500)+总敞口30%)、risk_config 新增5个保护参数 | 2026-04-18 |
-| HI-525 | `ai-pool` | `litellm_router.py` + `config/llm_routing.json` | ~~TECH_DEBT: JSON 配置与硬编码完全漂移 — iflow_unlimited 的 URL 和模型名不一致，需确认统一切换策略 (R2.25/R2.29)~~ → **已修复 2026-04-18**: 12 个 provider 的 base_url/模型名/RPM/prefix/tier/timeout 全面同步到 JSON | 2026-04-18 |
-| HI-526 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 代码库 59 个静默异常 (`except: pass` / `except Exception: pass`)，最危险的 3 个在 `trading_pipeline.py` 已修复，剩余 56 个需逐步改造 (R2.44)~~ → **已修复 2026-04-18**: 28 个文件 65 处静默异常改造（pass→warning 13处，debug→warning 52处），同时修复 15 处 f-string→lazy 格式 | 2026-04-18 |
-| HI-527 | `backend` | `src/` 全目录 | ~~TECH_DEBT: 8 个 `asyncio.create_task()` 未设置 `done_callback`~~ → **已修复 2026-04-19**: litellm_router 启动健康摘要添加 `_log_task_exception` callback；telegram_ux 两处为 context manager 内部使用（cancel 处理），不需要 callback；message_mixin 思考动画为局部变量。实际需修复 1 处已完成 | 2026-04-18 |
-| HI-528 | `backend` | SQLite 全部 6 实例 | ~~TECH_DEBT: 无数据库自动备份策略，6 个 SQLite 文件（shared_memory/trading_journal/xianyu 等）无定期备份 (R2.36)~~ → **已确认存在+补全 2026-04-18**: 每日 04:00 自动备份已在 scheduler.py 中实现，本次补全 novels.db 和 auto_shipper.db 到备份列表（9→11 个数据库） | 2026-04-18 |
-| HI-529 | `backend` | `src/bot/cmd_*.py` | ~~TECH_DEBT: 98 个 `cmd_` 命令处理函数中 72 个(73%)缺少 try/except 错误处理，异常直接抛到全局 error handler (R3.41-R3.45)~~ → **已修复 2026-04-18**: 14 个文件 39 个 cmd_ 函数添加外层 try/except（warning 日志 + 用户友好提示），覆盖率从 27% 提升到 67% | 2026-04-19 |
-| HI-530 | `backend` | `src/bot/workflow_mixin.py` | ~~TECH_DEBT: 25 个方法中 22 个是死代码(从未被任何调用方引用)，8 个标注 "not yet implemented" 的 stub 方法~~ → **已修复 2026-04-18**: 文件从 461 行精简到 122 行，删除 23 个死方法，仅保留 `_cmd_smart_shop` 和 `_extract_json_object` | 2026-04-19 |
-| HI-531 | `backend` | `cmd_basic/help_mixin.py` | ~~TECH_DEBT: /help 菜单有 30 个注册命令未被任何分类覆盖~~ → **已修复 2026-04-18**: 29 个命令按功能归类补入帮助菜单（日常/社媒/投资/IBKR/高级/闲鱼 6 个分类） | 2026-04-19 |
-| HI-535 | `backend` | `src/modules/investment/` | ~~TECH_DEBT: AI 投票系统只追踪共识决策的准确率~~ → **已修复 2026-04-19**: 新增 `vote_records` 表记录每个 AI 分析师独立投票；收盘逐个验证；`get_prediction_accuracy()` 新增 `per_voter` 维度 | 2026-04-19 |
-| HI-536 | `backend` | `invest_tools.py` | ~~TECH_DEBT: yfinance 60s 缓存过期后若新请求失败，返回错误而非降级到过期缓存数据~~ → **已修复 2026-04-18**: `_get_cached_quote` 新增 `allow_stale` 参数，`_sync_get_quote` 失败时返回带 `_stale=True` 标记的过期缓存 | 2026-04-19 |
-| HI-537 | `backend` | `freqtrade_bridge.py` | ~~TECH_DEBT: `inject_clawbot()` 从未在启动时自动调用~~ → **已标记 2026-04-18**: 添加详细注释说明此方法为回测降级路径，未接入主启动流程 | 2026-04-19 |
-| HI-538 | `backend` | `src/execution/social/` | ~~TECH_DEBT: 多平台发布使用 if/elif 链而非适配器模式~~ → **已修复 2026-04-19**: 新建 `platform_adapter.py`(基类+注册表)、`x_adapter.py`、`xhs_adapter.py`；5 个文件 6 处 if/elif 链替换为 `get_adapter()` 分发；新增平台只需写适配器类 | 2026-04-19 |
-| HI-539 | `backend` | `drafts.py` + `social_scheduler.py` | ~~TECH_DEBT: 存在两套平行的草稿系统~~ → **已确认关闭 2026-04-18**: HI-585 已将 drafts.py 改为 JSON 持久化，social_scheduler 和 execution 均通过 drafts 模块操作，不再有两套数据源 | 2026-04-19 |
-| HI-540 | `backend` | `price_engine.py` vs `brain_exec_life.py` | ~~TECH_DEBT: 交互式比价用四级降级链(Tavily→crawl4ai→Jina→LLM)，但定时价格监控 6h 检查用的是完全不同的简单 HTML 爬虫引擎(SMZDM+JD)，两个引擎能力差异大~~ → **已修复 2026-04-19**: 新增 `smart_compare_prices()` 统一入口，4级降级链(SMZDM+JD→Tavily→crawl4ai→Jina+LLM)，`brain_exec_life.py` 和 `tracking.py` 均改为调用统一入口，`fast_mode=True` 用于批量监控 | 2026-04-19 |
-| HI-541 | `backend` | `nlp_ticker_map.py` | ~~TECH_DEBT: 1-5字母 ticker 解析无常见英语单词黑名单~~ → **已修复 2026-04-19**: 新增 `_TICKER_BLACKLIST` frozenset（~120个常见英语单词），匹配后过滤 | 2026-04-19 |
-| HI-542 | `backend` | `notifications.py` + `event_bus.py` | ~~TECH_DEBT: 通知系统无 shutdown flush 机制~~ → **已修复 2026-04-18**: NotificationManager 新增 `shutdown()` 方法；EventBus 新增 `shutdown()` 方法（清理订阅+统计日志） | 2026-04-19 |
-| HI-543 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: `stop_service_via_pid()` 中 2 处 `std::thread::sleep` 阻塞 tokio 工作线程~~ → **已修复 2026-04-18**: 函数改为 async，`std::thread::sleep` 替换为 `tokio::time::sleep`，调用方添加 `.await` | 2026-04-19 |
-| HI-544 | `frontend` | `src-tauri/src/commands/` | ~~TECH_DEBT: 所有 97 个 Tauri command 返回 `Result<T, String>` 而非结构化错误类型~~ → **已修复 2026-04-19**: 新建 `models/error.rs` 定义 `AppError`(kind+message) + `ErrorKind`(11种分类)，8 个命令文件 97 个 command 全部迁移到 `AppResult<T>` | 2026-04-19 |
-| HI-545 | `frontend` | `src-tauri/src/commands/clawbot.rs` | ~~TECH_DEBT: 大量 `std::process::Command` 调用绕过 Tauri 2 shell plugin 权限模型~~ → **已修复 2026-04-19**: `shell.rs` 新增 `ALLOWED_COMMANDS` 白名单(26个) + `validate_command()` 校验函数，所有 `Command::new()` 调用点加入校验，IBKR 启停命令做程序名白名单检查防 RCE | 2026-04-19 |
-| HI-546 | `frontend` | `src/lib/tauri-core.ts` | ~~TECH_DEBT: `clawbotFetchSafe` 几乎未被使用~~ → **已修复 2026-04-19**: 新增 `clawbotFetchJson()` 封装(fetch+resp.ok+JSON)，api.ts 35 处裸 `.then(r=>r.json())` 全部替换，非 2xx 自动抛出含状态码的 Error | 2026-04-19 |
-| HI-547 | `frontend` | `src/components/` | ~~TECH_DEBT: 暗色/亮色模式无"跟随系统"选项~~ → **已修复 2026-04-18**: 新增 `system` 选项，监听 `prefers-color-scheme` 媒体查询自动切换，Settings 页面改为三选一分段按钮组 | 2026-04-19 |
-| HI-550 | `frontend` | `conversationService.ts` | ~~TECH_DEBT: 会话重命名功能完全缺失。删除会话无二次确认弹窗~~ → **已修复 2026-04-18**: 新增 ConfirmDialog 删除确认（红色危险样式）+ 双击标题或铅笔图标重命名 + 后端 PATCH 端点。AI 模式切换仍为前端装饰(低优先级) | 2026-04-19 |
-| HI-551 | `frontend` | `Assistant/index.tsx` | ~~TECH_DEBT: Markdown 渲染器为手写简易版~~ → **已修复 2026-04-19**: 新增有序列表(`1.`)、引用块(`>`)、图片(`![](url)`)、代码块复制按钮(📋)、水平分隔线(`---`) 支持 | 2026-04-19 |
-| HI-552 | `frontend` | `Bots/index.tsx` | ~~TECH_DEBT: 无独立 Bot 详情页~~ → **已修复 2026-04-19**: 点击服务卡片弹出详情弹窗(4个Tab: 概览/配置/日志/统计)；SERVICE_META 改为动态+静态合并；服务卡片展示模型数和 Bot 数 | 2026-04-19 |
-| HI-553 | `frontend` | `Settings/index.tsx` | ~~TECH_DEBT: 运营设置(opsSettings)修改不触发脏状态检测~~ → **已修复 2026-04-18**: isDirty 扩展检测 opsSettings 的 7 个字段 + initialOpsSettingsRef 记录初始值 + 保存成功后重置脏状态。LLM 模型列表硬编码问题保留(低优先级) | 2026-04-19 |
-| HI-554 | `frontend` | `Channels/index.tsx` | ~~TECH_DEBT: 频道列表仅支持编辑~~ → **已修复 2026-04-19**: 新增创建频道表单(6种类型)、删除确认对话框、连接状态徽章(🟢已连接/🟡未验证/⚪未配置) | 2026-04-19 |
-| HI-555 | `frontend` | `Onboarding/index.tsx` | ~~TECH_DEBT: 新手引导缺少"跳过引导"按钮~~ → **已修复 2026-04-18**: 进度条右侧新增"跳过"按钮（除完成页外所有步骤可见），点击直接调用 handleFinish 完成引导 | 2026-04-19 |
-| HI-558 | `frontend` | `DevPanel/index.tsx` | ~~TECH_DEBT: 整个 DevPanel 是纯 UI 原型~~ → **已修复 2026-04-19**: 全面重写为功能完整的开发者工作台——服务启停接入 controlAllManagedServices API、Bot 状态接入 getClawbotBotMatrix 真实数据、端点健康接入 getManagedEndpointsStatus TCP 检查、实时日志接入 getLogs 带 5s 自动刷新、系统诊断接入 runDoctor、系统资源 CPU/内存/磁盘仪表盘、健康概况聚合展示 | 2026-04-19 |
-| HI-559 | `frontend` | `logger.ts` + `service.rs` | ~~TECH_DEBT: 日志系统无脱敏~~ → **已修复 2026-04-18**: 前端 logger.ts 新增 scrubSecrets/scrubString 函数（8种正则规则），formatMessage 在记录前自动脱敏；Rust get_logs 返回前对每行日志应用正则脱敏。覆盖 API Key/Token/Cookie/密码/Bearer/SSH 等 | 2026-04-19 |
-| HI-560 | `frontend` | `Logs/index.tsx` | ~~TECH_DEBT: 日志搜索无关键词高亮~~ → **已修复 2026-04-18**: 新增 `highlightText` 函数，搜索匹配文字以黄色 `<mark>` 标签高亮展示 | 2026-04-19 |
-| HI-561 | `frontend` | `Portfolio/index.tsx` | ~~TECH_DEBT: tradingSell 不检查 resp.ok~~ → **已修复 2026-04-18**: `api.tradingSell` 在 resp.ok 为 false 时抛出含 HTTP 状态码的错误；风险参数卡片标注"后端配置"说明来源 | 2026-04-19 |
-| HI-562 | `frontend` | `Social/index.tsx` | ~~TECH_DEBT: Autopilot 用原生 window.confirm~~ → **已修复 2026-04-18**: 替换为项目统一的 ConfirmDialog 组件，自定义标题和描述，与 UI 风格一致 | 2026-04-19 |
-| HI-563 | `frontend` | `Memory/index.tsx` | ~~TECH_DEBT: 记忆统计 API 仅 Tauri 环境调用(HTTP 降级缺失)~~ → **已修复 2026-04-19**: 新增浏览器环境 HTTP 降级获取统计数据；四选一分类筛选按钮(全部/用户画像/事实/高优先级)，与文本搜索叠加使用 | 2026-04-19 |
-| HI-564 | `frontend` | `Evolution/index.tsx` | ~~TECH_DEBT: 进化历史时间线缺失~~ → **已修复 2026-04-18**: 提案卡片新增"发现于 X月X日 HH:MM"时间展示，使用已映射的 created_at 字段 | 2026-04-19 |
-| HI-565 | `frontend` | `AIConfig/index.tsx` | ~~TECH_DEBT: 模型切换后缺少重启提示~~ → **已修复 2026-04-18**: handleSetPrimary 和 ProviderDialog onSave 成功后 toast 提示"重启后端服务后生效" | 2026-04-19 |
-| HI-566 | `frontend` | `Scheduler/index.tsx` | ~~TECH_DEBT: 定时任务仅有启停切换~~ → **已修复 2026-04-19**: 新增创建任务表单(Cron/固定间隔)、编辑对话框、删除确认、可折叠执行历史(最近5条) | 2026-04-19 |
-| HI-567 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: total_spent/budget 浮点属性在异步环境中 read-modify-write 不原子~~ → **已修复 2026-04-19**: 新增 `self._budget_lock = asyncio.Lock()`，买入预算检查/扣预算/卖出释放/sync_capital 四处加锁 | 2026-04-19 |
-| HI-568 | `trading` | `broker_bridge.py` | ~~TECH_DEBT: market_value 字段实际是 position * avgCost（成本基础），非真实市值~~ → **已修复 2026-04-18**: 添加详细注释提醒下游使用 qty*current_price 计算真实市值，代码提取 cost_basis 变量消除重复计算 | 2026-04-19 |
-| HI-569 | `trading` | `trading_pipeline.py` | ~~TECH_DEBT: IBKR 下单失败时静默回退到模拟组合执行~~ → **已修复 2026-04-19**: 降级执行明确标记 `status="simulated"` + `simulated=True`，无 portfolio 时返回错误而非静默成功 | 2026-04-19 |
-| HI-570 | `trading` | `position_monitor.py` | ~~BUG(低频): 时间止损中 naive/aware datetime 混合比较~~ → **已修复 2026-04-19**: 比较前检测两者 tzinfo 状态，统一为同类型后再做减法 | 2026-04-19 |
-| HI-571 | `trading` | `position_monitor.py` | ~~TECH_DEBT: _check_proximity_alert 只支持 BUY 方向~~ → **已修复 2026-04-18**: 扩展为同时支持 BUY/SELL 两个方向；`_cleanup_stale_cooldowns` 激活——在每次 `_check_all_positions` 末尾调用 | 2026-04-19 |
-| HI-572 | `trading` | `auto_trader.py` | ~~TECH_DEBT: confirm_proposal() 执行交易后不增加 _today_trades 计数~~ → **已修复 2026-04-19**: 执行成功后递增 `_today_trades += 1`，日交易限额正常生效 | 2026-04-19 |
-| HI-573 | `trading` | `_scheduler_daily.py` | ~~TECH_DEBT: _daily_risk_reset 中 ibkr.reset_budget() 硬编码 $2000~~ → **已修复 2026-04-19**: `reset_budget` 默认从 `IBKR_BUDGET` 环境变量读取；调用方传 `_ibkr.budget` 保留当前预算 | 2026-04-19 |
-| HI-574 | `trading` | `_lifecycle.py` | ~~TECH_DEBT: 恢复持仓时 entry_time 解析失败静默回退~~ → **已修复 2026-04-19**: 解析失败时记录 WARNING 日志（含 symbol/id/原始值），修复运算符优先级问题 | 2026-04-19 |
-| HI-575 | `trading` | `cmd_ibkr_mixin.py` | ~~TECH_DEBT: /ibuy 和 /isell 命令直接调用 ibkr.buy()/sell() 绕过 TradingPipeline~~ → **已修复 2026-04-19**: 成功后调用 `TradingJournal.open_trade()` 记录交易历史 | 2026-04-19 |
-| HI-576 | `trading` | `invest_tools.py` | ~~TECH_DEBT: get_earnings_calendar 中 naive/aware datetime 比较 + get_quick_quotes 串行~~ → **已修复 2026-04-19**: datetime 统一为 naive 比较 + get_quick_quotes 改为 asyncio.gather 并行 | 2026-04-19 |
-| HI-577 | `xianyu` | `xianyu_live.py:545` | ~~TECH_DEBT: app-key 硬编码~~ → **已修复 2026-04-19**: 默认值从代码中移除，改为 `XIANYU_APP_KEY` 环境变量读取，未设置时 WARNING | 2026-04-19 |
-| HI-578 | `xianyu` | `xianyu_live.py:826` | ~~TECH_DEBT: _notified_chats 超限时 clear() 粗暴清空~~ → **已修复 2026-04-19**: 改为 OrderedDict + `popitem(last=False)` FIFO 逐出最旧条目 | 2026-04-19 |
-| HI-579 | `xianyu` | `xianyu_live.py:860` | ~~TECH_DEBT: 底价自动接受上限为 floor*10~~ → **已修复 2026-04-18**: 优先使用商品标价(soldPrice)作为上限，无标价时兜底保留 floor*10 | 2026-04-19 |
-| HI-580 | `xianyu` | `xianyu_live.py:730` | ~~TECH_DEBT: 自动发货 sleep(delay) 阻塞消息处理主路径最长 120 秒~~ → **已修复 2026-04-19**: 拆为 `_delayed_auto_ship` 独立 task + done_callback | 2026-04-19 |
-| HI-581 | `xianyu` | `xianyu_live.py:965` | ~~SECURITY: License 凭证直接使用 _conn() 绕过封装层~~ → **已修复 2026-04-18**: 新增 `ctx.get_latest_chat_id()` 封装方法替代直接 SQL 查询；License 明文发送是业务需求（买家需获取激活码），日志已脱敏 | 2026-04-19 |
-| HI-582 | `xianyu` | `api/routers/xianyu.py` | ~~SECURITY: 所有 /xianyu/* API 端点无认证/授权检查~~ → **已修复 2026-04-19**: 路由级别添加 `dependencies=[Depends(verify_api_token)]`，所有端点强制 Token 认证 | 2026-04-19 |
-| HI-583 | `xianyu` | `api/routers/xianyu.py:123` | ~~SECURITY: QR 登录确认后 Cookie 在 API 响应中明文返回给前端~~ → **已修复 2026-04-19**: Cookie 保存到服务端 .env 文件，不再返回给前端 | 2026-04-19 |
-| HI-584 | `xianyu` | `xianyu_agent.py:318` | ~~SECURITY: 对话历史注入 system prompt 存在 prompt injection 风险~~ → **已修复 2026-04-19**: system_prompt 移到最前面 + 用户数据用 XML 标签隔离 + 安全警告加强 | 2026-04-19 |
-| HI-585 | `backend` | `drafts.py:25` | ~~TECH_DEBT: 草稿纯内存存储(重启丢失)~~ → **已修复 2026-04-19**: 改为 `~/.openclaw/drafts.json` 文件持久化，threading.Lock 保护并发读写，uuid4 ID 防碰撞 | 2026-04-19 |
-| HI-586 | `backend` | `wechat_bridge.py:50` | ~~SECURITY: 微信凭证 _cached_token 明文存储在模块级全局变量~~ → **已修复 2026-04-19**: 合并为 `_CredentialStore` 类（`__slots__` + `__repr__` 屏蔽 token 值），凭证懒加载 | 2026-04-19 |
-| HI-587 | `backend` | `wechat_coupon.py:45` | ~~SECURITY: verify_ssl=False 全局禁用 SSL 验证~~ → **已修复 2026-04-19**: 改为 `verify_ssl=True`，遇证书问题通过 `SSL_CERT_FILE` 环境变量解决 | 2026-04-19 |
-| HI-588 | `backend` | `wechat_coupon.py:68` | ~~SECURITY: Token 文件 /tmp/ 全局可读写~~ → **已修复 2026-04-19**: 默认路径改为 `~/.openclaw/wechat_coupon_token.txt`，写入后 `os.chmod 0o600` | 2026-04-19 |
-| HI-589 | `backend` | `wechat_coupon.py:324` | ~~SECURITY: _set_macos_proxy() 修改系统级网络代理~~ → **已加固 2026-04-19**: 操作前 WARNING 日志（含手动恢复命令）+ 失败时自动恢复直连 | 2026-04-19 |
-| HI-590 | `infra` | `tools/launchagents/ai.openclaw.gateway.plist` | ~~SECURITY: OPENCLAW_GATEWAY_TOKEN 硬编码弱 token~~ → **已修复 2026-04-19**: 默认值改为空字符串，gateway-launcher.sh 从 `~/.openclaw/gateway_token` 文件读取 | 2026-04-19 |
-| HI-591 | `infra` | `tools/launchagents/ai.openclaw.heartbeat-sender.plist` | ~~SECURITY: VPS IP + SSH 端口硬编码在 Git 跟踪文件中~~ → **已修复 2026-04-19**: 默认值改为空字符串（需通过 launchctl setenv 或配置文件设置），StrictHostKeyChecking=accept-new→yes | 2026-04-19 |
-| HI-592 | `infra` | `tools/newsyslog.d/openclaw.conf` | ~~CONFIG: 日志路径指向旧位置~~ → **已修复 2026-04-19**: 全部路径更新为 `~/Library/Logs/OpenClaw/`，与 plist 一致 | 2026-04-19 |
-| HI-593 | `infra` | `tools/launchagents/ai.openclaw.browser-bootstrap.plist` | ~~CONFIG: 未使用 /bin/bash -c exec 模式~~ → **已修复 2026-04-19**: 改用 bash -c exec 模式 + 日志路径统一到 ~/Library/Logs/OpenClaw/ | 2026-04-19 |
-| HI-594 | `deploy` | `docker-compose.goofish.yml + kiro-gateway/docker-compose.yml` | ~~CONFIG: 两个服务都绑定 127.0.0.1:8000~~ → **已修复 2026-04-19**: goofish 改为端口 8001 + 镜像版本锁定 | 2026-04-19 |
-| HI-595 | `docs` | `docs/guides/DR_GUIDE.md` | ~~MISSING: 灾难恢复指南不存在——6个 SQLite 数据库、Redis 数据、对话历史等关键数据无备份/恢复文档 (R10.29)~~ → **已创建 2026-04-18**: 涵盖 11 个 SQLite 数据资产清单、4 个恢复场景操作步骤、保留策略说明 | 2026-04-19 |
-| HI-596 | `docs` | `MODULE_REGISTRY + DEPENDENCY_MAP` | ~~CONFIG: 文档声称数字与实际不符~~ → **已修复 2026-04-18**: MODULE_REGISTRY 254→277（对齐 src/ 实际 .py 文件数），DEPENDENCY_MAP 80+→62（对齐 requirements.txt） | 2026-04-19 |
+| HI-462 | `backend` | 360+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 高危 20 处已用 `scrub_secrets()` 修复，剩余 ~360 处为低风险（非 API/认证相关），长期技术债 | 2026-04-03 |
 
-### 🔵 低优先
-
-| ID | 领域 | 模块 | 描述 | 发现日期 |
-|----|------|------|------|----------|
-| ~~HI-464~~ | ~~`backend`~~ | ~~`proactive_engine.py`~~ | ~~`_sent_log/_recent_notifications` 字典无锁~~ → **已修复 2026-04-11**: 新增 `asyncio.Lock`，evaluate/record_sent 加锁保护 | 2026-04-03 |
-| ~~HI-465~~ | ~~`backend`~~ | ~~`news_fetcher.py`~~ | ~~`_seen_titles` 集合无界增长+无锁~~ → **已修复 2026-04-11**: 新增 `asyncio.Lock`；500 上限截取已有注释说明 | 2026-04-03 |
-| ~~HI-466~~ | ~~`backend`~~ | ~~`error_handler.py`~~ | ~~`ErrorThrottler._seen/_counts` + `ErrorHandler._total_errors` 统计计数器无锁~~ → **已修复 2026-04-11**: ErrorThrottler + ErrorHandler 分别新增 `asyncio.Lock`，report() 锁保护计数和去重 | 2026-04-03 |
-| ~~HI-467~~ | ~~`backend`~~ | ~~`multi_bot.py`~~ | ~~`_live_context_cache` TTL检查与写入无锁~~ → **已修复 2026-04-11**: 新增 `threading.Lock`，TTL 检查/缓存写入原子化 | 2026-04-03 |
+> **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
 ---
 
