@@ -287,7 +287,12 @@ def init_trading_system(
 
                 _acc = _tj.get_prediction_accuracy(days=30)
                 if _acc.get("total_predictions", 0) > 0:
-                    vote_history = _acc.get("by_ai", {})
+                    # 优先使用个体投票准确率（HI-535），降级用共识准确率
+                    per_voter = _acc.get("per_voter", {})
+                    if per_voter:
+                        vote_history = per_voter
+                    else:
+                        vote_history = _acc.get("by_ai", {})
             except Exception as e:
                 logger.debug("[TradingSystem] 获取预测准确率失败: %s", e)
 

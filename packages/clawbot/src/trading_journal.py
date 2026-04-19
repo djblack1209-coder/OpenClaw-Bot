@@ -213,6 +213,25 @@ class TradingJournal(
                 )
             """)
 
+            # 个体投票记录表（追踪每个AI分析师的预测准确率）
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS vote_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prediction_id INTEGER,           -- 关联 predictions 表
+                    symbol TEXT NOT NULL,
+                    bot_id TEXT NOT NULL,             -- AI分析师标识，如 "haiku", "qwen235b"
+                    vote TEXT NOT NULL,               -- "BUY", "HOLD", "SKIP"
+                    confidence INTEGER DEFAULT 50,    -- 1-10 信心分
+                    target_price REAL DEFAULT 0,      -- 该分析师给出的目标价
+                    stop_price REAL DEFAULT 0,        -- 该分析师给出的止损价
+                    reasoning TEXT DEFAULT '',        -- 投票理由
+                    abstained INTEGER DEFAULT 0,      -- 1=弃权（超时/失败）
+                    direction_correct INTEGER,        -- NULL=未验证, 0=错, 1=对
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+                )
+            """)
+
     # ============ 配置 ============
 
     def get_config(self, key: str, default: str = "0") -> str:
