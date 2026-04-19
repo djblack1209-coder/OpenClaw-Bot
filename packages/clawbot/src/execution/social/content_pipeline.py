@@ -294,7 +294,7 @@ async def autopost_topic_content(
     save_draft_fn=None,
     worker_fn=None,
 ) -> Dict:
-    """按话题自动发布社媒内容"""
+    """按话题自动发布社媒内容 — 通过适配器统一分发"""
     try:
         package = await create_topic_social_package(
             platform=platform, topic=topic,
@@ -304,29 +304,34 @@ async def autopost_topic_content(
         if not package.get("success"):
             return package
 
+        from src.execution.social.platform_adapter import get_adapter, get_all_adapters
+
         results = {}
         target = platform or "all"
         pkg_results = package.get("results", {})
 
-        if target in ("all", "x") and pkg_results.get("x") and worker_fn:
-            render = worker_fn("render", {"topic": topic, "platform": "x"})
-            published = worker_fn("publish_x", {
-                "text": pkg_results["x"].get("body", ""), "images": [],
-            })
-            results["x"] = {**pkg_results["x"], "rendered": render, "published": published}
-        elif target in ("all", "x") and pkg_results.get("x"):
-            results["x"] = pkg_results["x"]
+        # 确定要发布到哪些平台
+        target_adapters = {}
+        if target == "all":
+            target_adapters = get_all_adapters()
+        else:
+            adapter = get_adapter(target)
+            if adapter:
+                target_adapters = {adapter.platform_id: adapter}
 
-        if target in ("all", "xiaohongshu") and pkg_results.get("xiaohongshu") and worker_fn:
-            render = worker_fn("render", {"topic": topic, "platform": "xiaohongshu"})
-            published = worker_fn("publish_xhs", {
-                "title": pkg_results["xiaohongshu"].get("title", ""),
-                "body": pkg_results["xiaohongshu"].get("body", ""),
-                "images": [],
-            })
-            results["xiaohongshu"] = {**pkg_results["xiaohongshu"], "rendered": render, "published": published}
-        elif target in ("all", "xiaohongshu") and pkg_results.get("xiaohongshu"):
-            results["xiaohongshu"] = pkg_results["xiaohongshu"]
+        for pid, adapter in target_adapters.items():
+            pkg_data = pkg_results.get(pid)
+            if not pkg_data:
+                continue
+            if worker_fn:
+                render = worker_fn("render", {"topic": topic, "platform": pid})
+                body = pkg_data.get("body", "")
+                title = pkg_data.get("title", "")
+                payload = adapter.build_worker_payload(body, title)
+                published = worker_fn(adapter.worker_action, payload)
+                results[pid] = {**pkg_data, "rendered": render, "published": published}
+            else:
+                results[pid] = pkg_data
 
         return {"success": True, "topic": topic, "results": results}
     except Exception as e:
@@ -374,24 +379,36 @@ async def autopost_hot_content(
 
     results = {}
     target = platform or "all"
-    if target in ("all", "x"):
-        x_draft = save_draft_fn("x", "", x_body, topic=hot_topic) if save_draft_fn else {}
-        rendered = worker_fn("render", {"topic": hot_topic, "platform": "x"}) if worker_fn else {}
-        published = worker_fn("publish_x", {"text": x_body, "images": []}) if worker_fn else {}
-        results["x"] = {
-            "body": x_body,
-            "draft": x_draft,
-            "rendered": rendered,
-            "published": published,
-        }
-    if target in ("all", "xiaohongshu"):
-        xhs_draft = save_draft_fn("xiaohongshu", xhs_title, xhs_body, topic=hot_topic) if save_draft_fn else {}
-        rendered = worker_fn("render", {"topic": hot_topic, "platform": "xiaohongshu"}) if worker_fn else {}
-        published = worker_fn("publish_xhs", {"title": xhs_title, "body": xhs_body, "images": []}) if worker_fn else {}
-        results["xiaohongshu"] = {
-            "body": xhs_body,
-            "title": xhs_title,
-            "draft": xhs_draft,
+
+    from src.execution.social.platform_adapter import get_adapter, get_all_adapters
+
+    # 构建各平台的内容映射
+    platform_content = {
+        "x": {"body": x_body, "title": ""},
+        "xiaohongshu": {"body": xhs_body, "title": xhs_title},
+    }
+
+    # 确定要发布到哪些平台
+    target_adapters = {}
+    if target == "all":
+        target_adapters = get_all_adapters()
+    else:
+        adapter = get_adapter(target)
+        if adapter:
+            target_adapters = {adapter.platform_id: adapter}
+
+    for pid, adapter in target_adapters.items():
+        content_data = platform_content.get(pid, {})
+        body = content_data.get("body", "")
+        title = content_data.get("title", "")
+        draft = save_draft_fn(pid, title, body, topic=hot_topic) if save_draft_fn else {}
+        rendered = worker_fn("render", {"topic": hot_topic, "platform": pid}) if worker_fn else {}
+        payload = adapter.build_worker_payload(body, title)
+        published = worker_fn(adapter.worker_action, payload) if worker_fn else {}
+        results[pid] = {
+            "body": body,
+            "title": title,
+            "draft": draft,
             "rendered": rendered,
             "published": published,
         }

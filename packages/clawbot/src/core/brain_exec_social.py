@@ -101,23 +101,20 @@ class SocialExecutorMixin:
         return {"source": "content_gen_fallback", "draft": "", "note": "内容生成模块异常"}
 
     async def _exec_social_publish(self, params: Dict) -> Dict:
-        """社媒发布 — 调用对应平台发布函数"""
+        """社媒发布 — 通过适配器统一分发到对应平台"""
         platform = params.get("platform", "x")
         draft = params.get("draft", params.get("content", ""))
         if not draft:
             return {"source": "publish", "success": False, "note": "无内容可发布"}
         try:
-            if platform in ("x", "twitter"):
-                from src.execution.social.x_platform import publish_x_post
+            from src.execution.social.platform_adapter import get_adapter
 
-                result = await publish_x_post(content=draft)
-                return {"source": "x_platform", "success": True, "result": result}
-            elif platform in ("xhs", "xiaohongshu"):
-                from src.execution.social.xhs_platform import publish_xhs_article
-
-                result = await publish_xhs_article(title=draft[:30], content=draft)
-                return {"source": "xhs_platform", "success": True, "result": result}
+            adapter = get_adapter(platform)
+            if adapter:
+                result = await adapter.publish(content=draft)
+                return {"source": f"{adapter.platform_id}_platform", "success": True, "result": result}
             else:
+                # 未注册的平台 — 降级到 worker_bridge
                 from src.execution.social.worker_bridge import run_social_worker_async
 
                 result = await run_social_worker_async(f"publish_{platform}", {"content": draft})

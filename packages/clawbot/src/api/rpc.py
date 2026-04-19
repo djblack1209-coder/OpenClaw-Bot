@@ -693,40 +693,38 @@ class ClawBotRPC:
         platform: str,
         content: str,
     ) -> dict:
-        """Publish content to a social platform via browser worker.
+        """Publish content to a social platform via adapter pattern.
 
-        Uses the standalone worker_bridge to call social_browser_worker.py,
-        using the native async version to avoid blocking the event loop.
+        通过适配器注册表统一分发，支持 "both" 同时发布到所有平台。
         """
+        from src.execution.social.platform_adapter import get_adapter, get_all_adapters
         from src.execution.social.worker_bridge import run_social_worker_async
 
         try:
-            if platform in ("x", "twitter"):
-                result = await run_social_worker_async("publish_x", {"text": content})
-                return result
+            if platform == "both":
+                # 同时发布到所有已注册平台
+                results = {}
+                any_success = False
+                for pid, adapter in get_all_adapters().items():
+                    try:
+                        title, body = adapter.normalize_content(content)
+                        payload = adapter.build_worker_payload(body, title)
+                        result = await run_social_worker_async(adapter.worker_action, payload)
+                        results[pid] = result
+                        if result.get("success"):
+                            any_success = True
+                    except Exception as e:
+                        logger.warning("发布到 %s 失败: %s", adapter.display_name, e)
+                        results[pid] = {"success": False, "error": str(e)}
+                results["success"] = any_success
+                return results
 
-            elif platform in ("xhs", "xiaohongshu"):
-                # Extract title from first line; remainder is body
-                lines = content.strip().splitlines()
-                title = lines[0].strip() if lines else "无标题"
-                body = "\n".join(lines[1:]).strip() if len(lines) > 1 else content
-                result = await run_social_worker_async("publish_xhs", {"title": title, "body": body})
-                return result
-
-            elif platform == "both":
-                # X
-                x_result = await run_social_worker_async("publish_x", {"text": content})
-                # XHS — extract title from first line
-                lines = content.strip().splitlines()
-                title = lines[0].strip() if lines else "无标题"
-                body = "\n".join(lines[1:]).strip() if len(lines) > 1 else content
-                xhs_result = await run_social_worker_async("publish_xhs", {"title": title, "body": body})
-                return {
-                    "x": x_result,
-                    "xhs": xhs_result,
-                    "success": x_result.get("success") or xhs_result.get("success"),
-                }
-
+            # 单平台发布
+            adapter = get_adapter(platform)
+            if adapter:
+                title, body = adapter.normalize_content(content)
+                payload = adapter.build_worker_payload(body, title)
+                return await run_social_worker_async(adapter.worker_action, payload)
             else:
                 return {"success": False, "error": f"Unknown platform: {platform}"}
         except Exception as e:
