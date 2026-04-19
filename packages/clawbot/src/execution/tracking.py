@@ -311,15 +311,17 @@ async def check_price_watches(notify_func=None, db_path=None) -> int:
 
         logger.info("[PriceWatch] 开始检查 %d 个活跃监控", len(watches))
 
-        # 复用现有比价引擎
-        from src.shopping.price_engine import compare_prices
+        # 使用统一比价引擎，fast_mode=True 只走 SMZDM+JD（不消耗 API 额度）
+        from src.shopping.price_engine import smart_compare_prices
 
         for watch in watches:
             wid, user_id, chat_id, keyword, target, old_price, lowest = watch
             try:
-                # 调用比价引擎获取当前价格
-                report = await compare_prices(keyword, use_ai_summary=False,
-                                              limit_per_platform=3)
+                # 调用统一比价引擎（fast_mode=True: 只用 SMZDM+JD 爬取，速度快不消耗 API）
+                report = await smart_compare_prices(
+                    keyword, use_ai_summary=False, fast_mode=True,
+                    limit_per_platform=3,
+                )
                 # 从结果中提取最低价
                 best = report.best_deal
                 if not best or best.get("price", 0) <= 0:

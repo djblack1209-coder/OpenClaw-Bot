@@ -8,9 +8,7 @@ Core — 生活服务领域执行器 Mixin
 import logging
 from typing import Dict
 
-from config.prompts import SOUL_CORE
-from src.constants import FAMILY_DEEPSEEK, FAMILY_QWEN
-from src.resilience import api_limiter
+from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
 
@@ -19,155 +17,62 @@ class LifeExecutorMixin:
     """生活服务领域执行器"""
 
     async def _exec_smart_shopping(self, params: Dict) -> Dict:
-        """
-        智能购物比价 — 三级降级链:
-          1. crawl4ai 结构化抽取（CSS/LLM，实时爬取真实价格）
-          2. Jina + LLM 分析（网页搜索 + LLM 总结）
-          3. 纯 LLM 知识回答（最终降级）
+        """智能购物比价 — 委托给统一比价引擎 smart_compare_prices()
+
+        降级链由 price_engine.smart_compare_prices() 内部管理:
+          1. SMZDM+JD 直接爬取
+          2. Tavily 智能搜索
+          3. crawl4ai 结构化提取
+          4. Jina+LLM 分析
         """
         product = params.get("product", "")
         if not product:
             return {"source": "error", "note": "未指定商品"}
 
-        # ── 第〇级: Tavily 智能搜索 ──
         try:
-            from src.tools.tavily_search import search_context, _HAS_TAVILY
+            from src.shopping.price_engine import smart_compare_prices
+            from dataclasses import asdict
 
-            if _HAS_TAVILY:
-                logger.info("[比价] 使用 Tavily 搜索: %s", product)
-                tavily_ctx = await search_context(f"{product} 价格对比 京东 淘宝 拼多多", max_results=5)
-                if tavily_ctx and len(tavily_ctx) > 200:
-                    from src.litellm_router import free_pool
+            report = await smart_compare_prices(
+                product, use_ai_summary=True
+            )
 
-                    if free_pool:
-                        async with api_limiter("llm"):
-                            resp = await free_pool.acompletion(
-                                model_family=FAMILY_DEEPSEEK,
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            SOUL_CORE + "\n\n你现在在做购物比价任务。"
-                                            "根据搜索结果提供各平台价格对比和购买建议。"
-                                            '输出JSON格式: {"products":[{"name":"商品名","price":"价格",'
-                                            '"platform":"平台","note":"备注"}],'
-                                            '"recommendation":"购买建议","best_deal":"最佳选择",'
-                                            '"tips":"省钱技巧"}'
-                                        ),
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": (
-                                            f"帮我比较 {product} 的价格。以下是搜索到的信息:\n{tavily_ctx[:3000]}"
-                                        ),
-                                    },
-                                ],
-                                max_tokens=600,
-                                temperature=0.3,
-                            )
-                        content = resp.choices[0].message.content
-                        if content:
-                            try:
-                                import json_repair
+            # 将 ComparisonReport 转为 brain 层期望的 dict 格式
+            data: Dict = {
+                "source": "smart_compare",
+                "product": product,
+                "platforms_searched": report.searched_platforms,
+            }
 
-                                data = json_repair.loads(content)
-                                if isinstance(data, dict):
-                                    data["source"] = "tavily_smart_compare"
-                                    data["product"] = product
-                                    return data
-                            except Exception:
-                                logger.debug("Silenced exception", exc_info=True)
-                            return {
-                                "source": "tavily_smart_compare",
-                                "product": product,
-                                "raw": content,
-                                "recommendation": content[:200],
-                            }
-        except ImportError:
-            logger.debug("[比价] tavily_search 不可用")
-        except Exception as e:
-            logger.warning("[比价] Tavily 搜索异常: %s", e)
-
-        # ── 第一级: crawl4ai 结构化比价 ──
-        try:
-            from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
-
-            if HAS_CRAWL4AI:
-                logger.info("[比价] 使用 crawl4ai 引擎: %s", product)
-                result = await smart_compare(product)
-                if result.products and any(p.price > 0 for p in result.products):
-                    data = result.to_dict()
-                    data["product"] = product
-                    return data
-                else:
-                    logger.info("[比价] crawl4ai 无有效结果，降级到 Jina+LLM")
-        except ImportError:
-            logger.debug("[比价] crawl4ai_engine 不可用")
-        except Exception as e:
-            logger.warning("[比价] crawl4ai 引擎异常: %s", e)
-
-        # ── 第二级: Jina + LLM 分析 ──
-        jina_context = ""
-        try:
-            from src.tools.jina_reader import jina_read
-            import urllib.parse
-
-            q = urllib.parse.quote(f"{product} 价格 对比")
-            raw = await jina_read(f"https://cn.bing.com/shop?q={q}", max_length=3000)
-            if raw and len(raw) > 200:
-                jina_context = f"\n\n以下是网页搜索到的相关信息（用于参考）:\n{raw[:2000]}"
-        except Exception:
-            logger.debug("Silenced exception", exc_info=True)
-
-        try:
-            from src.litellm_router import free_pool
-
-            if free_pool:
-                async with api_limiter("llm"):
-                    resp = await free_pool.acompletion(
-                        model_family=FAMILY_DEEPSEEK,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    SOUL_CORE + "\n\n你现在在做购物比价任务。根据用户需求提供各平台价格对比和购买建议。"
-                                    '输出JSON格式: {"products":[{"name":"商品名","price":"价格",'
-                                    '"platform":"平台","note":"备注"}],'
-                                    '"recommendation":"购买建议","best_deal":"最佳选择",'
-                                    '"tips":"省钱技巧"}'
-                                ),
-                            },
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"帮我比较 {product} 在京东、淘宝、拼多多、苹果/官网等平台的价格。"
-                                    f"给出购买建议和省钱技巧。{jina_context}"
-                                ),
-                            },
-                        ],
-                        max_tokens=600,
-                        temperature=0.3,
-                    )
-                content = resp.choices[0].message.content
-                if content:
-                    try:
-                        import json_repair
-
-                        data = json_repair.loads(content)
-                        if isinstance(data, dict):
-                            data["source"] = "llm_smart_compare"
-                            data["product"] = product
-                            return data
-                    except Exception:
-                        logger.debug("Silenced exception", exc_info=True)
-                    return {
-                        "source": "llm_smart_compare",
-                        "product": product,
-                        "raw": content,
-                        "recommendation": content[:200],
+            if report.results:
+                # 转换为 brain 层的产品列表格式
+                data["products"] = [
+                    {
+                        "name": r.get("title", ""),
+                        "price": str(r.get("price", 0)),
+                        "platform": r.get("platform", ""),
+                        "note": r.get("shop", ""),
                     }
+                    for r in report.results[:10]
+                    if r.get("price", 0) > 0
+                ]
+
+            if report.best_deal:
+                best = report.best_deal
+                data["best_deal"] = (
+                    f"{best.get('title', '')} — ¥{best.get('price', 0)} "
+                    f"({best.get('platform', '')})"
+                )
+
+            if report.ai_summary:
+                data["recommendation"] = report.ai_summary
+
+            return data
+
+        except ImportError:
+            logger.warning("[比价] price_engine.smart_compare_prices 不可用")
         except Exception as e:
-            logger.warning("智能比价失败: %s", e)
+            logger.warning("[比价] 智能比价异常: %s", e)
 
         return {"source": "unavailable", "product": product, "note": "比价服务暂时不可用"}
 
