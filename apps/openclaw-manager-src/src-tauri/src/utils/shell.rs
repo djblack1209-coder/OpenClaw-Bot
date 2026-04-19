@@ -1,3 +1,4 @@
+use crate::models::{AppError, ErrorKind};
 use crate::utils::file;
 use crate::utils::platform;
 use log::{debug, info, warn};
@@ -11,6 +12,46 @@ use std::os::windows::process::CommandExt;
 /// Windows CREATE_NO_WINDOW 标志，用于隐藏控制台窗口
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// 命令白名单 — 只有列表中的可执行程序才允许被 spawn
+/// 安全加固: 防止任意命令注入，所有 shell 调用必须经过白名单校验
+const ALLOWED_COMMANDS: &[&str] = &[
+    "lsof", "netstat", "kill", "taskkill", "tail",
+    "launchctl", "bash", "pgrep", "open", "xdg-open",
+    "cmd", "openclaw", "node", "npx", "npm",
+    "python3", "pip3", "chmod", "uname", "sw_vers",
+    "sysctl", "id", "which", "where", "nohup",
+    "powershell",
+];
+
+/// 校验命令是否在白名单中
+/// 提取 program 的基础文件名（去掉路径前缀），与白名单比对
+pub fn validate_command(cmd: &str) -> Result<(), AppError> {
+    // 提取命令的 basename（支持 /usr/bin/lsof 和 lsof 两种格式）
+    let basename = std::path::Path::new(cmd)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(cmd);
+
+    // Windows 上去掉 .exe / .cmd 后缀再比对
+    let normalized = basename
+        .strip_suffix(".exe")
+        .or_else(|| basename.strip_suffix(".cmd"))
+        .unwrap_or(basename);
+
+    if ALLOWED_COMMANDS.contains(&normalized) {
+        Ok(())
+    } else {
+        warn!(
+            "[Shell] 命令被拒绝（不在白名单中）: {} (basename: {})",
+            cmd, normalized
+        );
+        Err(AppError::new(
+            ErrorKind::Permission,
+            format!("命令 '{}' 不在白名单中，禁止执行", normalized),
+        ))
+    }
+}
 
 /// 获取扩展的 PATH 环境变量
 /// GUI 应用启动时可能没有继承用户 shell 的 PATH，需要手动添加常见路径
@@ -68,7 +109,13 @@ pub fn get_extended_path() -> String {
 }
 
 /// 执行 Shell 命令（带扩展 PATH）
+/// 安全加固: 执行前校验命令是否在白名单中
 pub fn run_command(cmd: &str, args: &[&str]) -> io::Result<Output> {
+    // 白名单校验 — 不在列表中的命令直接拒绝
+    if let Err(e) = validate_command(cmd) {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, e.message));
+    }
+
     let mut command = Command::new(cmd);
     command.args(args);
 
@@ -100,6 +147,8 @@ pub fn run_command_output(cmd: &str, args: &[&str]) -> Result<String, String> {
 }
 
 /// 执行 Bash 命令（带扩展 PATH）
+/// 注意: bash 本身在白名单中，但传入的 script 内容不受白名单约束
+/// 调用方需确保 script 内容不来自用户可控输入
 pub fn run_bash(script: &str) -> io::Result<Output> {
     let mut command = Command::new("bash");
     command.arg("-c").arg(script);

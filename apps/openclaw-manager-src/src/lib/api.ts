@@ -40,6 +40,7 @@ export const api = {
   // ── 渠道 ──
   getChannelsConfig: ipc.getChannelsConfig,
   saveChannelConfig: ipc.saveChannelConfig,
+  clearChannelConfig: ipc.clearChannelConfig,
 
   // ── 诊断测试 ──
   runDoctor: ipc.runDoctor,

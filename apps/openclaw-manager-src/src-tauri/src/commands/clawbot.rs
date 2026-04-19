@@ -219,6 +219,7 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
 }
 
 fn get_uid() -> AppResult<String> {
+    shell::validate_command("id")?;
     let output = Command::new("id")
         .arg("-u")
         .output()
@@ -241,6 +242,7 @@ fn launchctl_domain(uid: &str) -> String {
 }
 
 fn run_launchctl(args: &[&str]) -> AppResult<String> {
+    shell::validate_command("launchctl")?;
     let output = Command::new("launchctl")
         .args(args)
         .output()
@@ -270,6 +272,10 @@ fn parse_pid(launchctl_print_output: &str) -> Option<u32> {
 
 /// 通过 lsof 查找监听指定端口的进程 PID（用于非 launchd 启动的服务）
 fn find_pid_by_port(port: u16) -> Option<u32> {
+    // 白名单校验 — lsof 在允许列表中
+    if shell::validate_command("lsof").is_err() {
+        return None;
+    }
     let output = Command::new("lsof")
         .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
         .output();
@@ -310,10 +316,13 @@ fn start_service_via_script(definition: &ManagedServiceDefinition) -> AppResult<
         stdout_log, stderr_log, adjusted_content
     );
 
-    let output = Command::new("bash")
+    let output = {
+        shell::validate_command("bash")?;
+        Command::new("bash")
         .args(["-c", &wrapper])
         .output()
-        .map_err(|e| AppError::process(format!("执行启动脚本失败: {}", e)))?;
+        .map_err(|e| AppError::process(format!("执行启动脚本失败: {}", e)))?
+    };
 
     if output.status.success() {
         Ok(format!("{} 已通过启动脚本启动", definition.name))
@@ -333,6 +342,7 @@ async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> AppResul
         .ok_or_else(|| AppError::not_found(format!("{} 未找到监听端口 {} 的进程", definition.name, port)))?;
 
     // 先发 SIGTERM（优雅关闭），进程不响应再 SIGKILL
+    shell::validate_command("kill")?;
     let output = Command::new("kill")
         .args(["-TERM", &pid.to_string()])
         .output()
@@ -363,7 +373,13 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
     }
 
     let target = launchctl_target(uid, &definition.label);
-    let output = Command::new("launchctl").args(["print", target.as_str()]).output();
+    // 白名单校验 — launchctl 在允许列表中
+    let output = if shell::validate_command("launchctl").is_ok() {
+        Command::new("launchctl").args(["print", target.as_str()]).output()
+    } else {
+        // 校验失败时直接走 fallback 路径
+        Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "命令不在白名单中"))
+    };
 
     match output {
         Ok(out) if out.status.success() => {
@@ -723,6 +739,19 @@ fn query_ibkr_status(definition: &ManagedServiceDefinition) -> ManagedServiceSta
     }
 }
 
+/// 校验 shell 脚本命令中的程序名是否在白名单中
+/// 提取命令字符串的第一个 token（程序名），交给 shell::validate_command 校验
+/// 用于验证从 .env 配置文件读取的命令（如 IBKR_START_CMD）
+fn validate_script_command(script: &str) -> AppResult<()> {
+    let trimmed = script.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    // 提取第一个 token 作为程序名（按空格分割）
+    let first_token = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    shell::validate_command(first_token)
+}
+
 fn control_ibkr_service(action: &str) -> AppResult<String> {
     let env_map = load_clawbot_env_map()?;
     let (host, port) = get_ibkr_host_port(&env_map);
@@ -745,6 +774,11 @@ fn control_ibkr_service(action: &str) -> AppResult<String> {
     if stop_cmd != stop_cmd_raw {
         info!("[IBKR] 停止命令已自动规范化引号: {} -> {}", stop_cmd_raw, stop_cmd);
     }
+
+    // 安全加固: 校验 IBKR 命令的程序名是否在白名单中
+    // 从 shell 脚本命令中提取第一个 token（即程序名）
+    validate_script_command(&start_cmd)?;
+    validate_script_command(&stop_cmd)?;
 
     match action {
         "start" => {
