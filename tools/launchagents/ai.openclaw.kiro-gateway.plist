@@ -10,7 +10,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway" &amp;&amp; exec "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway/.venv/bin/python" "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway/main.py" --host 127.0.0.1 --port 18793</string>
+    <string>cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway" &amp;&amp; exec "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/.venv/bin/python" "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/main.py" --host 127.0.0.1 --port 18793</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -35,7 +35,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/kiro-gateway/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>LANG</key>
     <string>en_US.UTF-8</string>
     <key>PYTHONUNBUFFERED</key>

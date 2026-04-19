@@ -1,7 +1,7 @@
 #!/bin/bash
 # OpenClaw Gateway 启动脚本
-export OPENCLAW_STATE_DIR="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw"
-export OPENCLAW_CONFIG_PATH="/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json"
+export OPENCLAW_STATE_DIR="/Users/blackdj/Desktop/OpenEverything/.openclaw"
+export OPENCLAW_CONFIG_PATH="/Users/blackdj/Desktop/OpenEverything/.openclaw/openclaw.json"
 export OPENCLAW_GATEWAY_PORT="18789"
 # 安全加固(HI-590): 从配置文件读取 token，不在脚本中硬编码弱默认值
 # 生成方法: openssl rand -hex 32 > ~/.openclaw/gateway_token

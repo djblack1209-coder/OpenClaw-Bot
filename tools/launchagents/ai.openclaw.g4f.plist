@@ -10,7 +10,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/browser-agent" &amp;&amp; exec "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/browser-agent/.venv/bin/python" -m g4f api --port 18891 --g4f-api-key dummy --no-gui</string>
+    <string>cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent" &amp;&amp; exec "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent/.venv/bin/python" -m g4f api --port 18891 --g4f-api-key dummy --no-gui</string>
   </array>
 
   <!-- WorkingDirectory 已移入 -c 的 cd 命令中：避免 Sandbox 拦截 provenance 路径 -->
@@ -37,7 +37,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/browser-agent/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>LANG</key>
     <string>en_US.UTF-8</string>
     <key>PYTHONUNBUFFERED</key>

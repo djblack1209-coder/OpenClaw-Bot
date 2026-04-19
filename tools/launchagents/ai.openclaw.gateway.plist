@@ -48,9 +48,9 @@
     <key>NODE_USE_SYSTEM_CA</key>
     <string>1</string>
     <key>OPENCLAW_STATE_DIR</key>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw</string>
+    <string>/Users/blackdj/Desktop/OpenEverything/.openclaw</string>
     <key>OPENCLAW_CONFIG_PATH</key>
-    <string>/Users/blackdj/Desktop/OpenClaw Bot/.openclaw/openclaw.json</string>
+    <string>/Users/blackdj/Desktop/OpenEverything/.openclaw/openclaw.json</string>
     <key>OPENCLAW_GATEWAY_PORT</key>
     <string>18789</string>
     <!-- 安全加固(HI-590): 必须在加载 LaunchAgent 前设置强随机 token，禁止使用弱默认值 -->
