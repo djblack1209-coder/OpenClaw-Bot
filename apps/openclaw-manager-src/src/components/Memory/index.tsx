@@ -9,7 +9,6 @@ import {
   BrainCircuit, Database, Search, Zap,
   Clock, Layers, Loader2, CheckCircle2,
 } from 'lucide-react';
-import clsx from 'clsx';
 import { api } from '../../lib/api';
 
 /* ====== 入场动画 ====== */
@@ -93,7 +92,7 @@ export function Memory() {
     try {
       const [statsRes, searchRes] = await Promise.allSettled([
         api.clawbotMemoryStats(),
-        api.clawbotMemorySearch({ query: '最近的记忆', limit: 20 }),
+        api.clawbotMemorySearch('最近的记忆', 20),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value as MemStats);
       if (searchRes.status === 'fulfilled') {
@@ -119,7 +118,7 @@ export function Memory() {
     }
     setSearching(true);
     try {
-      const raw = await api.clawbotMemorySearch({ query, limit: 20 }) as any;
+      const raw = await api.clawbotMemorySearch(query, 20) as any;
       const list = Array.isArray(raw) ? raw : raw?.results ?? raw?.memories ?? [];
       setMemories(list);
     } catch (err) {
