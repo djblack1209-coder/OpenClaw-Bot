@@ -16,7 +16,6 @@ import {
   Zap,
   Activity,
   Loader2,
-  AlertCircle,
   RefreshCw,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
@@ -24,6 +23,7 @@ import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { useLanguage } from '../../i18n';
 import type { SystemInfo } from '../../lib/tauri-core';
+import { EmptyState } from '../shared/EmptyState';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -120,19 +120,6 @@ function getLogColor(level?: string): string {
     case 'SUCCESS': return 'var(--accent-green)';
     default: return 'var(--text-tertiary)';
   }
-}
-
-/* ====== 暂无数据占位组件 ====== */
-function NoDataPlaceholder({ reason }: { reason: string }) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center py-8 gap-2"
-      style={{ color: 'var(--text-disabled)' }}
-    >
-      <AlertCircle size={20} />
-      <span className="font-mono text-xs text-center">{reason}</span>
-    </div>
-  );
 }
 
 /* ====== 主组件 ====== */
@@ -315,9 +302,9 @@ export default function DevPanel() {
             {/* 日志内容 */}
             <div className="flex-1 p-5 overflow-y-auto scroll-container">
               {logsError ? (
-                <NoDataPlaceholder reason={logsError} />
+                <EmptyState title={logsError} />
               ) : logs.length === 0 ? (
-                <NoDataPlaceholder reason="{t('devPanel.noSysLogs')}" />
+                <EmptyState title="{t('devPanel.noSysLogs')}" />
               ) : (
                 <div className="space-y-0.5">
                   {logs.map((entry, i) => (
@@ -368,7 +355,7 @@ export default function DevPanel() {
             </div>
 
             {sysInfoError ? (
-              <NoDataPlaceholder reason={sysInfoError} />
+              <EmptyState title={sysInfoError} />
             ) : !sysInfo ? (
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
