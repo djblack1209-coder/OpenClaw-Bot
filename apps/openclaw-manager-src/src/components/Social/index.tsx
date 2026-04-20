@@ -248,7 +248,7 @@ export function Social() {
             {/* 草稿列表 */}
             <div>
               <span className="text-label mb-3 block" style={{ color: 'var(--text-tertiary)' }}>
-                DRAFTS ({drafts.length})
+                草稿箱 ({drafts.length})
               </span>
               <div className="space-y-2">
                 {drafts.length === 0 && (
@@ -286,7 +286,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-5">
               <Globe size={16} style={{ color: 'var(--accent-green)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-green)' }}>PLATFORM STATUS</span>
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>平台状态</span>
             </div>
 
             <div className="space-y-3">
@@ -331,7 +331,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <CalendarDays size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>CONTENT CALENDAR</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>内容日历</span>
             </div>
 
             <div className="space-y-3">
@@ -372,7 +372,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Flame size={16} style={{ color: 'var(--accent-red)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-red)' }}>TRENDING TOPICS</span>
+              <span className="text-label" style={{ color: 'var(--accent-red)' }}>热门话题</span>
             </div>
 
             <div className="space-y-2">
@@ -406,7 +406,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>CONTENT STATS</span>
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>内容统计</span>
             </div>
 
             <div className="space-y-4">
@@ -423,7 +423,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Share2 size={16} style={{ color: 'var(--accent-green)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-green)' }}>POST BREAKDOWN</span>
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>发帖分析</span>
             </div>
 
             <div className="space-y-3">

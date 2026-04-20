@@ -549,7 +549,7 @@ export function WorldMonitor() {
 
       /* 全球综合风险分数 */
       setGlobalRisk({
-        score: globalResp.global_score ?? globalResp.score ?? 0,
+        score: (globalResp.global_score as number | undefined) ?? globalResp.score ?? 0,
         severity: globalResp.severity ?? 'LOW',
       });
 

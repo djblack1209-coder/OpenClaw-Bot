@@ -190,10 +190,10 @@ export function Money() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  TRADING P&L
+                  交易损益
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  交易损益 // REAL DATA
+                  交易损益 // 真实数据
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -249,7 +249,7 @@ export function Money() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-              AI COST
+              AI 费用
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
               {t("money.aiCost")}
@@ -308,7 +308,7 @@ export function Money() {
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-              P&L HISTORY
+              盈亏历史
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t("money.pnlHistory")}
@@ -366,7 +366,7 @@ export function Money() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              OTHER REVENUE
+              其他收入
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t("money.otherRevenue")}
