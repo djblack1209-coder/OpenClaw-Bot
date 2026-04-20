@@ -4,6 +4,48 @@
 
 ---
 
+## [2026-04-20] 全面质量审计：16项Bug修复 + 启停补全 + Mock清理 + 扫码修复
+
+### 本次完成了什么
+
+**第一轮：16项问题修复**
+- 全球监控/新闻中心/金融雷达 404 → 重启后端加载 monitor 路由
+- 投资组合全0 → 添加 IB Gateway 4步引导
+- Toast 弹窗噪音 → 加 closeButton + 缩短 duration + 仅 error/warning 弹出
+- 插件商店审批按钮 → 添加审批+拒绝按钮 + 修复 proposed→pending 状态映射
+- 闲鱼扫码 → 新增扫码卡片（初版）
+- 社交媒体启动 → 添加 toast 错误反馈
+- API网关/AI配置 → 移除加载 toast 噪音 + 策略选择器可点击
+- 性能监控/智能流/记忆/渠道/插件 → 错误反馈 + 真实状态
+
+**第二轮：质量审计**
+- 服务启停补全：闲鱼/API网关页面各加启停按钮，渠道页面加开关，kiro-gateway 注册
+- Mock数据清理：WorldMonitor 12个硬编码占位符标注"暂无" + FinRadar 恐贪指数标注"估算"
+- 6个页面添加"最后更新"时间戳
+- 闲鱼扫码修复：字段名匹配(qr_image) + 状态轮询(2秒) + 过期处理
+- 调度器任务列表从硬编码改为 live 动态读取
+- Dashboard 服务管理说明 + iFlow key 启动提醒
+
+### 未完成的工作
+- 用户需注册 6 个免费 API (GitHub Models / Sambanova / Cloudflare / Baseten / Fireworks / Hyperbolic)
+- 闲鱼 Cookie 需要用户扫码（CookieCloud 或 App 内二维码）
+- NewAPI 需要通过 http://localhost:3000 管理界面配置频道
+- IBKR 需要用户启动 IB Gateway 才能显示交易数据
+- WorldMonitor 三张卡（基础设施/气候/网安）暂无数据源
+- gpt_free 有 1 个模型 inactive（自愈机制，重启可恢复）
+
+### 需要注意的坑
+- 双控制面问题：Dashboard 用 Python API，Sidebar 用 Tauri IPC，两套独立
+- iFlow 无限 key 7天需续期
+- CookieCloud 同步 11 次失败 — 需要在浏览器登录闲鱼
+
+### 当前系统状态
+- 后端：7 Bot 全在线，124/125 API 源活跃
+- 前端：TypeScript 编译通过，生产构建成功
+- 数据库：Redis / MongoDB / MySQL / Ollama 全在线
+
+---
+
 ## [2026-04-20] i18n 深度覆盖：全部 30+ 页面接入中英文双语
 
 ### 本次完成了什么
