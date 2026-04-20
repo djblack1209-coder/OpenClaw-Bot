@@ -490,9 +490,9 @@ class ClawBotRPC:
                 # X 的 Cookie 文件由 twikit 直接管理（非空即可）
                 if platform == "x":
                     return bool(data)
-                # XHS 的 Cookie 文件需要有 cookie 字段
+                # XHS 的 Cookie 文件：支持 {cookie: "..."} 和 {a1: "...", web_session: "..."} 两种格式
                 if platform == "xhs":
-                    return bool(data.get("cookie", ""))
+                    return bool(data.get("cookie", "")) or (isinstance(data, dict) and bool(data.get("a1", "")))
                 return False
             except Exception:
                 return False
@@ -597,7 +597,7 @@ class ClawBotRPC:
                 xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
                 if xhs_path.exists():
                     data = _json.loads(xhs_path.read_text(encoding="utf-8"))
-                    xhs_cookie_ok = bool(data.get("cookie", ""))
+                    xhs_cookie_ok = bool(data.get("cookie", "")) or (isinstance(data, dict) and bool(data.get("a1", "")))
             except Exception:
                 pass
 
