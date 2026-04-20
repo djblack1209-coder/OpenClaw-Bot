@@ -321,3 +321,25 @@ async def cookiecloud_configure(
     except Exception as e:
         logger.exception("CookieCloud 配置失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ---------------------------------------------------------------------------
+# 闲鱼收入统计
+# ---------------------------------------------------------------------------
+
+@router.get("/xianyu/profit")
+async def get_xianyu_profit(days: int = 30):
+    """获取闲鱼利润汇总（近 N 天的营收、成本、佣金、净利润）"""
+    try:
+        from src.xianyu.xianyu_context import XianyuContextManager
+        ctx = XianyuContextManager()
+        summary = ctx.get_profit_summary(days=days)
+        # 补充今日统计
+        today_stats = ctx.daily_stats()
+        return {
+            **summary,
+            "today": today_stats,
+        }
+    except Exception as e:
+        logger.exception("获取闲鱼利润失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))

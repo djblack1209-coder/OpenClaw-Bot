@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { api } from '../../lib/api';
 import { toast } from 'sonner';
 
 /* ====== 入场动画 ====== */
@@ -54,6 +55,24 @@ interface OmegaCostData {
   today_cost?: number;
   by_model?: Array<{ model: string; cost: number; calls: number }>;
   by_provider?: Array<{ provider: string; cost: number }>;
+  [key: string]: unknown;
+}
+
+/** 闲鱼利润后端数据 */
+interface XianyuProfitData {
+  orders?: number;
+  revenue?: number;
+  cost?: number;
+  total_commission?: number;
+  profit?: number;
+  days?: number;
+  today?: {
+    consultations?: number;
+    messages?: number;
+    orders?: number;
+    payments?: number;
+    conversion_rate?: number;
+  };
   [key: string]: unknown;
 }
 
@@ -98,6 +117,7 @@ export function Money() {
   /* 状态 */
   const [pnlData, setPnlData] = useState<TradingPnlData | null>(null);
   const [costData, setCostData] = useState<OmegaCostData | null>(null);
+  const [xianyuData, setXianyuData] = useState<XianyuProfitData | null>(null);
   const [pnlError, setPnlError] = useState<string | null>(null);
   const [costError, setCostError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,10 +127,11 @@ export function Money() {
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      /* 并行拉取交易 P&L 和 AI 成本 */
-      const [pnlRes, costRes] = await Promise.allSettled([
+      /* 并行拉取交易 P&L、AI 成本、闲鱼利润 */
+      const [pnlRes, costRes, xyRes] = await Promise.allSettled([
         clawbotFetchJson<TradingPnlData>('/api/v1/trading/pnl'),
         clawbotFetchJson<OmegaCostData>('/api/v1/omega/cost'),
+        api.xianyuProfit(30) as Promise<XianyuProfitData>,
       ]);
 
       if (!mountedRef.current) return;
@@ -127,6 +148,12 @@ export function Money() {
         setCostError(null);
       } else {
         setCostError('AI 成本数据不可用');
+      }
+
+      if (xyRes.status === 'fulfilled') {
+        setXianyuData(xyRes.value);
+      } else {
+        setXianyuData(null);
       }
     } catch {
       if (!mountedRef.current) return;
@@ -346,7 +373,7 @@ export function Money() {
           </div>
         </motion.div>
 
-        {/* ====== 暂未接入的收入源 (col-4) ====== */}
+        {/* ====== 收入源 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
@@ -357,33 +384,78 @@ export function Money() {
             </h3>
 
             <div className="flex-1 space-y-4">
-              {/* 暂未接入的数据源列表 */}
-              {[
-                { name: '闲鱼销售收入', reason: '暂无数据源 — 需接入闲鱼交易 API', icon: PieChart, color: 'var(--accent-amber)' },
-                { name: '套利策略收益', reason: '暂无数据源 — 需接入套利引擎', icon: TrendingUp, color: 'var(--accent-cyan)' },
-                { name: 'DeFi 挖矿收入', reason: '暂无数据源 — 需接入链上数据', icon: Lightbulb, color: 'var(--accent-purple)' },
-              ].map((item) => (
-                <div
-                  key={item.name}
-                  className="p-4 rounded-xl border"
-                  style={{
-                    background: 'var(--bg-secondary)',
-                    borderColor: 'var(--glass-border)',
-                  }}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <item.icon size={16} className="shrink-0 mt-0.5" style={{ color: item.color }} />
-                    <div>
-                      <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {item.name}
-                      </p>
+              {/* 闲鱼销售收入 — 已接入 */}
+              <div
+                className="p-4 rounded-xl border"
+                style={{ background: 'var(--bg-secondary)', borderColor: xianyuData ? 'rgba(255,170,0,0.3)' : 'var(--glass-border)' }}
+              >
+                <div className="flex items-start gap-2.5">
+                  <PieChart size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-amber)' }} />
+                  <div className="flex-1">
+                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                      闲鱼销售收入
+                    </p>
+                    {xianyuData ? (
+                      <div className="mt-2 space-y-1.5 font-mono text-xs">
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>近 {xianyuData.days ?? 30} 天营收</span>
+                          <span className="font-bold" style={{ color: 'var(--accent-amber)' }}>
+                            {formatCNY(xianyuData.revenue ?? 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>净利润</span>
+                          <span className="font-bold" style={{ color: (xianyuData.profit ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                            {formatCNY(xianyuData.profit ?? 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>订单数</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{xianyuData.orders ?? 0}</span>
+                        </div>
+                        {xianyuData.today && (
+                          <div className="flex justify-between pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <span style={{ color: 'var(--text-disabled)' }}>今日咨询/付款</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              {xianyuData.today.consultations ?? 0} / {xianyuData.today.payments ?? 0}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
                       <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                        {item.reason}
+                        数据加载中或闲鱼服务未运行
                       </p>
-                    </div>
+                    )}
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* 套利策略 — 待接入 */}
+              <div className="p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--glass-border)' }}>
+                <div className="flex items-start gap-2.5">
+                  <TrendingUp size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-cyan)' }} />
+                  <div>
+                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>套利策略收益</p>
+                    <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
+                      待接入 — 需开发套利引擎
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* DeFi — 待接入 */}
+              <div className="p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--glass-border)' }}>
+                <div className="flex items-start gap-2.5">
+                  <Lightbulb size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-purple)' }} />
+                  <div>
+                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>DeFi 挖矿收入</p>
+                    <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
+                      待接入 — 需接入链上数据
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* 底部说明 */}
@@ -391,7 +463,7 @@ export function Money() {
               className="font-mono text-[10px] mt-4 pt-3 border-t"
               style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
             >
-              待各数据源 API 就绪后自动显示真实数据
+              闲鱼收入已接入 · 其余数据源待 API 就绪
             </p>
           </div>
         </motion.div>
