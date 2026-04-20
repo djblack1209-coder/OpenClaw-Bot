@@ -270,6 +270,8 @@ function App() {
           <Toaster
             theme={toasterTheme}
             position="top-right"
+            closeButton
+            duration={4000}
             toastOptions={{
               className: 'abyss-card !border-[var(--glass-border)]',
               style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
@@ -297,6 +299,8 @@ function App() {
         <Toaster
           theme={toasterTheme}
           position="top-right"
+          closeButton
+          duration={4000}
           toastOptions={{
             className: 'abyss-card !border-[var(--glass-border)]',
             style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },

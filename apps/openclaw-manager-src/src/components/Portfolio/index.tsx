@@ -466,6 +466,17 @@ export function Portfolio() {
         <div className="abyss-card p-8 text-center max-w-md">
           <span className="text-2xl">⚠</span>
           <p className="font-mono text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{error}</p>
+          <div className="mt-4 text-left space-y-2">
+            <p className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+              如果数据全为 0，可能是 IB Gateway 未启动：
+            </p>
+            <ol className="font-mono text-xs space-y-1 list-decimal list-inside" style={{ color: 'var(--text-disabled)' }}>
+              <li>打开 IB Gateway / TWS 应用</li>
+              <li>确保 API 端口设为 4002</li>
+              <li>勾选"允许来自本地主机的连接"</li>
+              <li>点击上方"重试"按钮</li>
+            </ol>
+          </div>
           <button
             onClick={() => fetchData()}
             className="mt-4 px-4 py-2 rounded-lg font-mono text-xs transition-colors"
@@ -559,6 +570,7 @@ export function Portfolio() {
                       background: p.connected ? 'rgba(0,255,128,0.1)' : 'rgba(255,180,0,0.1)',
                       border: `1px solid ${p.connected ? 'rgba(0,255,128,0.25)' : 'rgba(255,180,0,0.25)'}`,
                     }}
+                    title={p.connected ? undefined : '请确认 IB Gateway 已启动且 API 端口为 4002'}
                   >
                     {p.connected ? t('portfolio.liveTrading') : t('portfolio.paperTrading')}
                   </span>
