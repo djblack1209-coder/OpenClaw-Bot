@@ -56,6 +56,7 @@ import { PageErrorBoundary } from './components/PageErrorBoundary';
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 import { useAppStore } from './stores/appStore';
+import { LanguageProvider } from './i18n';
 
 /**
  * 页面类型联合类型
@@ -247,22 +248,52 @@ function App() {
   // 正在检查环境
   if (isReady === null) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ background: 'var(--bg-base)' }}>
-        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
-        <div className="relative z-10 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-purple)] mb-4 animate-pulse">
-            <span className="text-3xl">🦞</span>
+      <LanguageProvider>
+        <div className="flex h-screen items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+          <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+          <div className="relative z-10 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-purple)] mb-4 animate-pulse">
+              <span className="text-3xl">🦞</span>
+            </div>
+            <p className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>正在启动...</p>
           </div>
-          <p className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>正在启动...</p>
         </div>
-      </div>
+      </LanguageProvider>
     );
   }
 
   // 首次运行引导流程（全屏，不显示侧边栏和标题栏）
   if (!onboardingComplete) {
     return (
-      <div className="h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+      <LanguageProvider>
+        <div className="h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+          <Toaster
+            theme={toasterTheme}
+            position="top-right"
+            toastOptions={{
+              className: 'abyss-card !border-[var(--glass-border)]',
+              style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
+            }}
+          />
+          <Suspense fallback={<PageLoader />}>
+            <Onboarding
+              onComplete={() => {
+                setOnboardingComplete(true);
+                setCurrentPage('home');
+              }}
+            />
+          </Suspense>
+        </div>
+      </LanguageProvider>
+    );
+  }
+
+  // 主界面
+  return (
+    <LanguageProvider>
+      <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+        <CommandPalette />
+        {/* Toast 全局通知 */}
         <Toaster
           theme={toasterTheme}
           position="top-right"
@@ -271,48 +302,24 @@ function App() {
             style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
           }}
         />
-        <Suspense fallback={<PageLoader />}>
-          <Onboarding
-            onComplete={() => {
-              setOnboardingComplete(true);
-              setCurrentPage('home');
-            }}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  // 主界面
-  return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-      <CommandPalette />
-      {/* Toast 全局通知 */}
-      <Toaster
-        theme={toasterTheme}
-        position="top-right"
-        toastOptions={{
-          className: 'abyss-card !border-[var(--glass-border)]',
-          style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
-        }}
-      />
-      {/* 背景装饰 */}
-      <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
-      
-      {/* 侧边栏 */}
-      <Sidebar currentPage={currentPage} onNavigate={handleNavigate} serviceStatus={serviceStatus} />
-      
-      {/* 主内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* 标题栏（macOS 拖拽区域） */}
-        <Header currentPage={currentPage} />
+        {/* 背景装饰 */}
+        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
         
-        {/* 页面内容 */}
-        <main className="flex-1 overflow-hidden px-5 py-4">
-          {renderPage()}
-        </main>
+        {/* 侧边栏 */}
+        <Sidebar currentPage={currentPage} onNavigate={handleNavigate} serviceStatus={serviceStatus} />
+        
+        {/* 主内容区 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 标题栏（macOS 拖拽区域） */}
+          <Header currentPage={currentPage} />
+          
+          {/* 页面内容 */}
+          <main className="flex-1 overflow-hidden px-5 py-4">
+            {renderPage()}
+          </main>
+        </div>
       </div>
-    </div>
+    </LanguageProvider>
   );
 }
 
