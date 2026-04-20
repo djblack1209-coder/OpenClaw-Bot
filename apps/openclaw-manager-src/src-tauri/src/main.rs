@@ -16,7 +16,7 @@ fn main() {
         env_logger::Env::default().default_filter_or("info")
     ).init();
     
-    log::info!("🦞 OpenClaw 启动");
+    log::info!("🦞 OpenEverything 启动");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -30,7 +30,7 @@ fn main() {
             service::stop_service,
             service::restart_service,
             service::get_logs,
-            // 总控中心（OpenClaw + ClawBot）
+            // 总控中心（OpenEverything）
             clawbot::get_managed_services_status,
             clawbot::control_managed_service,
             clawbot::control_all_managed_services,

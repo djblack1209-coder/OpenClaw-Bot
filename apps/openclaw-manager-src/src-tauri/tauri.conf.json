@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenClaw",
-  "version": "0.0.7",
-  "identifier": "com.openclaw.manager",
+  "productName": "OpenEverything",
+  "version": "0.1.0",
+  "identifier": "com.openeverything.manager",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "OpenClaw",
+        "title": "OpenEverything",
         "label": "main",
         "width": 1200,
         "height": 800,
@@ -42,9 +42,9 @@
       "icons/icon.ico"
     ],
     "category": "Utility",
-    "shortDescription": "OpenClaw AI 助手管理工具",
-    "longDescription": "OpenClaw 是一个跨平台的高性能管理工具，用于配置和管理 OpenClaw 与 ClawBot 服务。",
-    "copyright": "Copyright © 2024 OpenClaw Team",
+    "shortDescription": "OpenEverything AI 多智能体管理工具",
+    "longDescription": "OpenEverything 是一个跨平台的高性能管理工具，用于配置和管理 AI 多智能体系统。",
+    "copyright": "Copyright © 2024-2026 OpenEverything Team",
     "macOS": {
       "minimumSystemVersion": "10.15",
       "entitlements": null,
