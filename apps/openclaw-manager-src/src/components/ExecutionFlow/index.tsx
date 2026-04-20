@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { toast } from 'sonner';
 import { useLanguage } from '@/i18n';
 
 /* ====== 入场动画 ====== */
@@ -173,7 +174,7 @@ export function ExecutionFlow() {
   const statusLabel = useCallback((s: NodeStatus) => t(STATUS_LABEL_KEYS[s]), [t]);
 
   /* ── 拉取数据 ── */
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (userInitiated = false) => {
     try {
       const [tasksRes, statusRes, notifRes] = await Promise.allSettled([
         clawbotFetchJson<Record<string, unknown>>('/api/v1/omega/tasks'),
@@ -204,14 +205,15 @@ export function ExecutionFlow() {
         ];
         setMetrics(newMetrics);
       } else {
-        // API 不可用时显示空状态
+        // OMEGA 引擎不可用时显示明确提示
+        const offlineLabel = t('executionFlow.engineOffline');
         setMetrics([
-          { label: t('executionFlow.metricTodayTasks'), value: 'N/A', accent: 'var(--accent-cyan)' },
-          { label: t('executionFlow.metricSuccessRate'), value: 'N/A', accent: 'var(--accent-green)' },
-          { label: t('executionFlow.metricAvgDuration'), value: 'N/A', accent: 'var(--accent-amber)' },
-          { label: t('executionFlow.metricActivePipelines'), value: 'N/A', accent: 'var(--accent-purple)' },
-          { label: t('executionFlow.metricQueuedTasks'), value: 'N/A', accent: 'var(--text-secondary)' },
-          { label: t('executionFlow.metricFailedTasks'), value: 'N/A', accent: 'var(--accent-red)' },
+          { label: t('executionFlow.metricTodayTasks'), value: offlineLabel, accent: 'var(--text-disabled)' },
+          { label: t('executionFlow.metricSuccessRate'), value: offlineLabel, accent: 'var(--text-disabled)' },
+          { label: t('executionFlow.metricAvgDuration'), value: offlineLabel, accent: 'var(--text-disabled)' },
+          { label: t('executionFlow.metricActivePipelines'), value: offlineLabel, accent: 'var(--text-disabled)' },
+          { label: t('executionFlow.metricQueuedTasks'), value: offlineLabel, accent: 'var(--text-disabled)' },
+          { label: t('executionFlow.metricFailedTasks'), value: offlineLabel, accent: 'var(--text-disabled)' },
         ]);
       }
 
@@ -223,8 +225,14 @@ export function ExecutionFlow() {
           : (raw?.notifications || raw?.data || raw?.items || []) as Record<string, unknown>[];
         setLogEntries(notificationsToLogs(items));
       }
-    } catch {
-      // 静默处理
+
+      // 用户手动刷新时，如果所有请求都失败，弹 toast 提示
+      if (userInitiated && tasksRes.status === 'rejected' && statusRes.status === 'rejected' && notifRes.status === 'rejected') {
+        toast.error(t('executionFlow.refreshFailed'));
+      }
+    } catch (err) {
+      console.error('[ExecutionFlow] 数据加载失败:', err);
+      if (userInitiated) toast.error(t('executionFlow.refreshFailed'));
     } finally {
       setLoading(false);
     }
@@ -279,7 +287,7 @@ export function ExecutionFlow() {
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG EXECUTOR</span>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => { setLoading(true); fetchData(); }}
+                  onClick={() => { setLoading(true); fetchData(true); }}
                   className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
                   title={t('executionFlow.manualRefresh')}
                 >

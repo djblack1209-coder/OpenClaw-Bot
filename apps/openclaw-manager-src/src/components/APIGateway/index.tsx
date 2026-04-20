@@ -186,7 +186,7 @@ export function APIGateway() {
       }
     } catch (err) {
       console.error('[APIGateway] 数据加载失败:', err);
-      if (!silent) toast.error(t('apiGateway.loadFailed'));
+      // 初始加载和自动刷新不弹 toast，避免网关未运行时反复弹错
     } finally {
       setLoading(false);
     }

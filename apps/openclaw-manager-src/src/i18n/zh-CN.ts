@@ -619,6 +619,8 @@ export const zhCN: Record<string, string> = {
   'performance.noErrorData': '暂无错误数据',
   'performance.requestThroughput': '请求吞吐量',
   'performance.noThroughputData': '暂无吞吐量数据',
+  'performance.fetchError': '性能数据加载失败，后端服务可能未运行',
+  'performance.retry': '重试',
 
   // APIGateway API网关
   'apiGateway.loadFailed': '网关数据加载失败',
@@ -1200,4 +1202,6 @@ export const zhCN: Record<string, string> = {
   'executionFlow.metricActivePipelines': '活跃管道',
   'executionFlow.metricQueuedTasks': '排队任务',
   'executionFlow.metricFailedTasks': '失败任务',
+  'executionFlow.engineOffline': '引擎未运行',
+  'executionFlow.refreshFailed': '刷新数据失败，引擎可能未运行',
 };

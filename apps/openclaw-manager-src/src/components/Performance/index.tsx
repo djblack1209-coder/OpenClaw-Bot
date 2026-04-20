@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   TrendingUp,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { clawbotFetchJson } from '../../lib/tauri-core';
@@ -140,6 +141,7 @@ export function Performance() {
   const [perfData, setPerfData] = useState<PerfData | null>(null);
   const [statusData, setStatusData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* —— 拉取性能数据 —— */
@@ -151,10 +153,21 @@ export function Performance() {
         clawbotFetchJson<StatusData>('/api/v1/status'),
       ]);
 
-      if (perfRes.status === 'fulfilled') setPerfData(perfRes.value);
-      if (statusRes.status === 'fulfilled') setStatusData(statusRes.value);
+      // 两个请求都失败时才算错误
+      const perfOk = perfRes.status === 'fulfilled';
+      const statusOk = statusRes.status === 'fulfilled';
+
+      if (perfOk) setPerfData(perfRes.value);
+      if (statusOk) setStatusData(statusRes.value);
+
+      if (!perfOk && !statusOk) {
+        setFetchError(t('performance.fetchError'));
+      } else {
+        setFetchError(null);
+      }
     } catch (err) {
       console.error('[Performance] 数据加载失败:', err);
+      setFetchError(t('performance.fetchError'));
     } finally {
       setLoading(false);
     }
@@ -178,6 +191,28 @@ export function Performance() {
           <span className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
             {t('performance.loading')}
           </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* —— 错误态（无任何数据时显示） —— */
+  if (fetchError && !perfData && !statusData) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <AlertTriangle size={36} style={{ color: 'var(--accent-amber)' }} />
+          <span className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {fetchError}
+          </span>
+          <button
+            onClick={() => fetchAll()}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors hover:opacity-80 font-mono text-xs"
+            style={{ background: 'var(--bg-tertiary)', color: 'var(--accent-cyan)' }}
+          >
+            <RefreshCw size={12} />
+            {t('performance.retry')}
+          </button>
         </div>
       </div>
     );
