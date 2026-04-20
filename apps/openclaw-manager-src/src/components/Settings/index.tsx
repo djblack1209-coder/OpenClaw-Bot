@@ -373,6 +373,10 @@ export function Settings(_props: SettingsProps) {
                   </span>
                   {item.type === 'toggle' ? (
                     <div className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
+                      onClick={() => {
+                        if (item.label === '开发者模式') setConfig(c => ({ ...c, dev_mode: !c.dev_mode }));
+                        else if (item.label === '自动更新') setConfig(c => ({ ...c, auto_update: !c.auto_update }));
+                      }}
                       style={{ background: item.value ? 'var(--accent-cyan)' : 'var(--dark-500)' }}>
                       <div className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
                         style={{
@@ -518,6 +522,70 @@ export function Settings(_props: SettingsProps) {
           </div>
         </motion.div>
 
+        {/* ====== 一键启动/停止所有服务 ====== */}
+        <motion.div className="col-span-12" variants={cardVariants}>
+          <div className="abyss-card p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,255,170,0.15)' }}>
+                <Power size={20} style={{ color: 'var(--accent-green)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  服务管理 // SERVICE CONTROL
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  一键启动或停止所有后台服务
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={async () => {
+                  toast.info('正在启动所有服务...');
+                  try {
+                    const result = await controlAllManagedServices('start');
+                    toast.success('所有服务已启动');
+                    console.log('[Settings] startAll:', result);
+                  } catch (err) {
+                    toast.error(`启动失败: ${err}`);
+                  }
+                }}
+                className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
+                style={{ background: 'var(--accent-green)', color: 'var(--bg-primary)' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.85'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}>
+                <PlayCircle size={16} />
+                一键启动所有服务
+              </button>
+              <button
+                onClick={async () => {
+                  toast.info('正在停止所有服务...');
+                  try {
+                    const result = await controlAllManagedServices('stop');
+                    toast.success('所有服务已停止');
+                    console.log('[Settings] stopAll:', result);
+                  } catch (err) {
+                    toast.error(`停止失败: ${err}`);
+                  }
+                }}
+                className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
+                style={{ background: 'rgba(255,0,0,0.08)', border: '1px solid rgba(255,0,0,0.25)', color: 'var(--accent-red)' }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-red)';
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.12)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,0,0,0.25)';
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.08)';
+                }}>
+                <StopCircle size={16} />
+                停止所有服务
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
         {/* ====== Row 3: 操作区 (span-12) ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card p-6">
@@ -545,7 +613,7 @@ export function Settings(_props: SettingsProps) {
             </div>
             <div className="flex flex-wrap gap-3">
               {ACTION_BUTTONS.map((action) => (
-                <button key={action.id}
+                <button key={action.id} onClick={() => handleAction(action.id)}
                   className="flex items-center gap-2.5 px-5 py-3 rounded-xl transition-all cursor-pointer"
                   style={{
                     background: 'var(--bg-card)',

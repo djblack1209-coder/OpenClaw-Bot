@@ -308,10 +308,10 @@ export function FinRadar() {
     return Math.round(upRatio * 100);
   }, [allEntries]);
 
-  const fgLabel = fearGreedIndex >= 75 ? 'EXTREME GREED' :
-                  fearGreedIndex >= 55 ? 'GREED' :
-                  fearGreedIndex >= 45 ? 'NEUTRAL' :
-                  fearGreedIndex >= 25 ? 'FEAR' : 'EXTREME FEAR';
+  const fgLabel = fearGreedIndex >= 75 ? '极度贪婪' :
+                  fearGreedIndex >= 55 ? '贪婪' :
+                  fearGreedIndex >= 45 ? '中性' :
+                  fearGreedIndex >= 25 ? '恐惧' : '极度恐惧';
 
   const fgColor = fearGreedIndex >= 55 ? 'var(--accent-green)' :
                   fearGreedIndex >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)';
@@ -392,7 +392,7 @@ export function FinRadar() {
                 style={{ background: 'var(--accent-green)' }}
               />
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                LIVE
+                实时
               </span>
               {lastUpdated && (
                 <>
@@ -551,8 +551,8 @@ export function FinRadar() {
           <div className="w-full max-w-[200px] mt-2">
             {/* 刻度标签 */}
             <div className="flex justify-between font-mono text-[9px] mb-1" style={{ color: 'var(--text-disabled)' }}>
-              <span>0 FEAR</span>
-              <span>100 GREED</span>
+              <span>0 恐惧</span>
+              <span>100 贪婪</span>
             </div>
             {/* 进度条背景 */}
             <div
@@ -820,7 +820,7 @@ export function FinRadar() {
               {t('finRadar.dataRefresh30s')}
             </span>
             <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              LIVE
+              实时
             </span>
           </div>
         </motion.div>

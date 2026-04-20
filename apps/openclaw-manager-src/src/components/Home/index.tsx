@@ -439,24 +439,24 @@ export function HomeDashboard() {
                 <div className="flex items-center gap-1.5">
                   <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
                   <span className="font-mono text-[10px]" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {isRunning ? 'ONLINE' : 'OFFLINE'}
+                    {isRunning ? '在线' : '离线'}
                   </span>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>Auto Trader</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>自动交易</span>
                 <span className="font-mono text-[10px]" style={{ color: bots.length > 0 ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {bots.length > 0 ? 'ACTIVE' : 'STANDBY'}
+                  {bots.length > 0 ? '运行中' : '待机'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>Social Engine</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>社媒引擎</span>
                 <span className="font-mono text-[10px]" style={{ color: social.running ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {social.running ? 'RUNNING' : 'IDLE'}
+                  {social.running ? '运行中' : '空闲'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>Xianyu Agent</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>闲鱼客服</span>
                 <span className="font-mono text-[10px]" style={{ color: xianyu.autoReplyActive ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
                   {xianyu.autoReplyActive ? 'ACTIVE' : 'IDLE'}
                 </span>
