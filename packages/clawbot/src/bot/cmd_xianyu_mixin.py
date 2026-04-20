@@ -349,8 +349,8 @@ class XianyuCommandsMixin:
         if args:
             try:
                 days = int(args[0])
-            except ValueError as e:  # noqa: F841
-                pass
+            except ValueError as e:
+                logger.debug("用户输入解析失败: %s", e)
         days = min(max(days, 1), 90)  # 限制 1-90 天
 
         try:
@@ -578,7 +578,7 @@ class XianyuCommandsMixin:
             logger.warning("[cmd_ship] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     # ---- AI 小说工坊 (novel_writer) ----
