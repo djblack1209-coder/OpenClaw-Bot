@@ -355,18 +355,18 @@ def check_budget_alert(user_id, db_path=None) -> tuple:
                 "budget": budget,
             }
             try:
-                loop = asyncio.get_running_loop()
-                # 有事件循环时创建异步任务
-                loop.create_task(
+                from src.core.async_utils import create_monitored_task
+                create_monitored_task(
                     bus.publish(
                         EventType.BUDGET_EXCEEDED,
                         _event_data,
                         source="life_automation",
-                    )
+                    ),
+                    name="budget_exceeded_event",
                 )
             except RuntimeError:
                 # 无事件循环（同步调用场景），跳过事件发射
-                pass
+                logger.debug("[预算] 无事件循环，跳过超支事件发射")
         except Exception as e:
             logger.warning("[预算] 发射超支事件失败: %s", e)
 

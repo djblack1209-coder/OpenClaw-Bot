@@ -16,7 +16,7 @@
     # 手动记录
     tracker = get_tracker()
     tracker.record("custom.metric", 1.23)
-    print(tracker.format_report())
+    logger.info(tracker.format_report())
 """
 
 import asyncio

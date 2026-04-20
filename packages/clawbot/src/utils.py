@@ -97,7 +97,7 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
     }
     # 强制绕过普通日志格式化，直接打入日志管道供前端正则解析
     formatted_event = f"__CLAW_FLOW_EVENT__:{json.dumps(event)}"
-    print(formatted_event, flush=True)
+    logger.debug(formatted_event)
     # 也打入标准日志系统供后台归档
     logging.getLogger("clawbot.flow").info(formatted_event)
 

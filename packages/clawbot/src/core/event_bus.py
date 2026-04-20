@@ -123,7 +123,7 @@ class EventBus:
 
         # 订阅
         async def on_trade(event: Event):
-            print(f"Trade executed: {event.data}")
+            logger.info("Trade executed: %s", event.data)
         bus.subscribe(EventType.TRADE_EXECUTED, on_trade, "trading_logger")
 
         # 发布

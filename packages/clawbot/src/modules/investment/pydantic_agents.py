@@ -12,7 +12,7 @@ OpenClaw — Pydantic AI 投资分析引擎
 用法:
     engine = PydanticInvestmentEngine()
     result = await engine.full_analysis("AAPL")
-    print(result.to_telegram_text())
+    logger.info(result.to_telegram_text())
 """
 import asyncio
 import json

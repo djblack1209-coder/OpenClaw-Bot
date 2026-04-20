@@ -398,10 +398,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     break
 
         try:
-            loop = asyncio.get_running_loop()
-            self._keepalive_task = loop.create_task(_keepalive_loop())
-        except RuntimeError as e:  # noqa: F841
-            pass  # 没有事件循环时跳过
+            from src.core.async_utils import create_monitored_task
+            self._keepalive_task = create_monitored_task(
+                _keepalive_loop(), name="ibkr_keepalive"
+            )
+        except RuntimeError:
+            logger.debug("[IBKR] 无事件循环，跳过心跳保活")
 
     def _schedule_auto_reconnect(self):
         """断连后自动调度重连任务（不阻塞当前流程）"""
@@ -432,8 +434,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     )
 
         try:
-            loop = asyncio.get_running_loop()
-            self._auto_reconnect_task = loop.create_task(_auto_reconnect())
+            from src.core.async_utils import create_monitored_task
+            self._auto_reconnect_task = create_monitored_task(
+                _auto_reconnect(), name="ibkr_auto_reconnect"
+            )
         except RuntimeError:
             logger.debug("[IBKR] 无事件循环，跳过自动重连调度")
 
