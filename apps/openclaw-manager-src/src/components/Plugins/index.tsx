@@ -12,7 +12,7 @@ import {
   Terminal, Radio, Loader2, RefreshCw,
 } from 'lucide-react';
 import { api } from '../../lib/api';
-import { clawbotFetchJson } from '../../lib/tauri-core';
+import { clawbotFetchJson, isTauri } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
@@ -161,6 +161,11 @@ export function Plugins() {
 
   /* ── 切换插件开关 ── */
   const handleToggle = useCallback(async (plugin: PluginItem) => {
+    /* IPC 开关需要 Tauri 环境 */
+    if (!isTauri()) {
+      toast.error(t('plugins.toggleNeedsTauri'));
+      return;
+    }
     setToggling(plugin.id);
     try {
       if (plugin.status === 'running') {
@@ -181,6 +186,27 @@ export function Plugins() {
       setToggling(null);
     }
   }, [fetchData]);
+
+  /* ── 批量启用所有插件 ── */
+  const handleEnableAll = useCallback(async () => {
+    if (!isTauri()) {
+      toast.error(t('plugins.toggleNeedsTauri'));
+      return;
+    }
+    const stopped = plugins.filter((p) => p.status !== 'running');
+    if (stopped.length === 0) return;
+    setToggling('__all__');
+    try {
+      await Promise.allSettled(stopped.map((p) => api.startMcpPlugin(p.id)));
+      toast.success(t('plugins.enableAllSuccess'));
+      setLogs((prev) => [{ ts: nowTs(), msg: `[SYSTEM] 批量启用 ${stopped.length} 个插件` }, ...prev].slice(0, 20));
+      await fetchData();
+    } catch (err) {
+      toast.error(`${t('plugins.enableAllFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`);
+    } finally {
+      setToggling(null);
+    }
+  }, [plugins, fetchData]);
 
   /* ── 统计 ── */
   const running = plugins.filter((p) => p.status === 'running').length;
@@ -242,13 +268,30 @@ export function Plugins() {
                   {t('plugins.subtitle')}
                 </p>
               </div>
-              <button
-                onClick={() => { setLoading(true); fetchData(); }}
-                className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
-                title={t('plugins.manualRefresh')}
-              >
-                <RefreshCw size={14} />
-              </button>
+              <div className="flex items-center gap-2">
+                {stopped > 0 && (
+                  <button
+                    disabled={toggling === '__all__'}
+                    onClick={handleEnableAll}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md font-mono text-[10px] tracking-wider transition-colors disabled:opacity-50"
+                    style={{ background: 'rgba(0,255,170,0.1)', color: 'var(--accent-green)' }}
+                  >
+                    {toggling === '__all__' ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <Power size={10} />
+                    )}
+                    {t('plugins.enableAll')}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setLoading(true); fetchData(); }}
+                  className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+                  title={t('plugins.manualRefresh')}
+                >
+                  <RefreshCw size={14} />
+                </button>
+              </div>
             </div>
 
             {plugins.length === 0 ? (

@@ -11,9 +11,12 @@ import {
   Clock,
   Loader2,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import type { ChannelConfig } from '../../lib/tauri-core';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
@@ -75,20 +78,47 @@ export function Channels() {
   const { t } = useLanguage();
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [botStatus, setBotStatus] = useState<Record<string, string>>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* ── 拉取渠道配置 ── */
+  /* ── 拉取渠道配置 + 后端 Bot 运行状态 ── */
   const fetchData = useCallback(async () => {
     try {
       const configs = await api.getChannelsConfig();
       if (Array.isArray(configs)) {
         setChannels(configs);
       }
-    } catch {
-      // 静默处理 — 页面显示"{t('channels.noData')}"
-    } finally {
-      setLoading(false);
+      setError(null);
+    } catch (err) {
+      console.error('[Channels] 加载失败:', err);
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setError(msg);
+      toast.error(t('channels.loadError'));
     }
+
+    /* 尝试从后端获取各渠道 Bot 运行状态 */
+    try {
+      const status = await clawbotFetchJson<Record<string, unknown>>('/api/v1/status');
+      const bots: Record<string, string> = {};
+      if (status && typeof status === 'object') {
+        /* 后端 /api/v1/status 可能返回 { services: { telegram: { running: true }, wechat: { running: false } } }
+           或顶层 { telegram_running: true, wechat_running: false } — 兼容两种格式 */
+        const services = (status.services ?? status) as Record<string, unknown>;
+        for (const [key, val] of Object.entries(services)) {
+          if (typeof val === 'object' && val !== null && 'running' in val) {
+            bots[key] = (val as Record<string, unknown>).running ? 'running' : 'stopped';
+          } else if (key.endsWith('_running') && typeof val === 'boolean') {
+            bots[key.replace('_running', '')] = val ? 'running' : 'stopped';
+          }
+        }
+      }
+      setBotStatus(bots);
+    } catch {
+      /* Bot 状态获取失败不影响页面展示 */
+    }
+
+    setLoading(false);
   }, []);
 
   /* ── 首次加载 + 自动刷新 ── */
@@ -104,12 +134,13 @@ export function Channels() {
   const connected = channels.filter((ch) => ch.enabled && hasRealConfig(ch.config)).length;
   const configured = channels.filter((ch) => hasRealConfig(ch.config)).length;
   const total = channels.length;
+  const botsRunning = Object.values(botStatus).filter((s) => s === 'running').length;
 
   const msgStats = [
-    { label: t('channels.todayMessages'), value: 'N/A', color: 'var(--accent-cyan)' },
     { label: t('channels.activeChannels'), value: `${connected}/${total}`, color: 'var(--accent-green)' },
     { label: t('channels.configuredCount'), value: String(configured), color: 'var(--accent-purple)' },
-    { label: t('channels.avgLatency'), value: 'N/A', color: 'var(--accent-amber)' },
+    { label: t('channels.botRunning'), value: String(botsRunning), color: 'var(--accent-cyan)' },
+    { label: t('channels.botStopped'), value: String(total - botsRunning), color: 'var(--accent-amber)' },
   ];
 
   /* ── 加载中 ── */
@@ -124,6 +155,13 @@ export function Channels() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {error && (
+        <div className="mx-6 mt-4 px-4 py-3 rounded-lg font-mono text-xs flex items-center gap-2"
+          style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <AlertCircle size={14} />
+          <span>{error}</span>
+        </div>
+      )}
       <motion.div
         className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
         variants={containerVariants}
@@ -168,47 +206,71 @@ export function Channels() {
                   const meta = getChannelMeta(ch);
                   const hasCfg = hasRealConfig(ch.config);
                   const si = statusInfo(ch.enabled, hasCfg);
+                  const chType = ch.channel_type?.toLowerCase() || ch.id?.toLowerCase() || '';
+                  const runStatus = botStatus[chType];
+                  const isWechat = chType === 'wechat';
+                  const wechatDown = isWechat && hasCfg && ch.enabled && runStatus !== 'running';
                   return (
-                    <div
-                      key={ch.id}
-                      className="flex items-center justify-between py-3 px-4 rounded-lg transition-colors"
-                      style={{ background: 'var(--bg-secondary)' }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl w-8 text-center">{meta.icon}</span>
-                        <div>
-                          <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                            {meta.label}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <si.Icon size={10} style={{ color: si.color }} />
-                            <span className="font-mono text-[10px]" style={{ color: si.color }}>
-                              {t(si.label)}
-                            </span>
+                    <div key={ch.id}>
+                      <div
+                        className="flex items-center justify-between py-3 px-4 rounded-lg transition-colors"
+                        style={{ background: 'var(--bg-secondary)' }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl w-8 text-center">{meta.icon}</span>
+                          <div>
+                            <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                              {meta.label}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <si.Icon size={10} style={{ color: si.color }} />
+                              <span className="font-mono text-[10px]" style={{ color: si.color }}>
+                                {t(si.label)}
+                              </span>
+                              {runStatus && (
+                                <>
+                                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>|</span>
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${runStatus === 'running' ? 'animate-pulse' : ''}`}
+                                    style={{ background: runStatus === 'running' ? 'var(--accent-green)' : 'var(--text-disabled)' }}
+                                  />
+                                  <span className="font-mono text-[10px]" style={{ color: runStatus === 'running' ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                                    {runStatus === 'running' ? t('channels.botRunning') : t('channels.botStopped')}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <span className="text-label">{t('channels.colType')}</span>
+                            <p className="font-mono text-sm" style={{ color: meta.color }}>
+                              {ch.channel_type || '—'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-label">{t('channels.colEnabled')}</span>
+                            <p className="font-mono text-sm" style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                              {ch.enabled ? t('channels.yes') : t('channels.no')}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-label">{t('channels.colConfig')}</span>
+                            <p className="font-mono text-sm" style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}>
+                              {hasCfg ? t('channels.configured') : '—'}
+                            </p>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-6">
-                        <div className="text-right">
-                          <span className="text-label">{t('channels.colType')}</span>
-                          <p className="font-mono text-sm" style={{ color: meta.color }}>
-                            {ch.channel_type || '—'}
-                          </p>
+                      {wechatDown && (
+                        <div className="mx-4 mt-1 mb-1 px-3 py-2 rounded font-mono text-[10px] flex items-center gap-1.5"
+                          style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent-amber)' }}>
+                          <AlertCircle size={10} />
+                          <span>{t('channels.wechatReconnectHint')}</span>
                         </div>
-                        <div className="text-right">
-                          <span className="text-label">{t('channels.colEnabled')}</span>
-                          <p className="font-mono text-sm" style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                            {ch.enabled ? t('channels.yes') : t('channels.no')}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-label">{t('channels.colConfig')}</span>
-                          <p className="font-mono text-sm" style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}>
-                            {hasCfg ? t('channels.configured') : '—'}
-                          </p>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })

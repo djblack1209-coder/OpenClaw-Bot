@@ -481,6 +481,8 @@ export const enUS: Record<string, string> = {
   'memory.engineStatus': 'Engine Status',
   'memory.totalMemories': 'Total Memories',
   'memory.conflictHint': 'Mem0 engine auto-detects memory conflicts: when new facts contradict old memories, the engine sends UPDATE/DELETE commands to override outdated knowledge.',
+  'memory.loadError': 'Failed to load memory data',
+  'memory.searchError': 'Memory search failed',
 
   // Logs
   'logs.subtitle': 'App Logs // RUNTIME OUTPUT',
@@ -822,6 +824,11 @@ export const enUS: Record<string, string> = {
   'channels.colChannel': 'Channel',
   'channels.colConfigStatus': 'Config Status',
   'channels.colConfigItems': 'Config Items',
+  'channels.loadError': 'Failed to load channel data',
+  'channels.botRunning': 'Bot running',
+  'channels.botStopped': 'Bot not running',
+  'channels.botStatusUnknown': 'Status unknown',
+  'channels.wechatReconnectHint': 'WeChat bot not connected, please re-scan QR code in terminal',
 
   // Plugins
   'plugins.stopped': 'stopped',
@@ -852,6 +859,10 @@ export const enUS: Record<string, string> = {
   'plugins.activeTotal': 'Active/Total',
   'plugins.recentEvents': 'Recent Events',
   'plugins.noEvents': 'No events',
+  'plugins.enableAll': 'Enable All',
+  'plugins.enableAllSuccess': 'Requested to enable all plugins',
+  'plugins.enableAllFailed': 'Batch enable failed',
+  'plugins.toggleNeedsTauri': 'Plugin toggle requires Tauri desktop app',
 
   // WorldMonitor
   'worldMonitor.severityCritical': 'Critical',
