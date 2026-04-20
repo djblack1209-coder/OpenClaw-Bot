@@ -8,6 +8,7 @@ import {
   ScanSearch,
   RefreshCw,
   Cookie,
+  Clock,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '@/stores/appStore';
@@ -109,6 +110,7 @@ export function HomeDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [briefData, setBriefData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /* WebSocket 实时日志推送 */
   useClawbotWS('notification', useCallback((event) => {
@@ -220,6 +222,7 @@ export function HomeDashboard() {
       logger.error('首页数据拉取失败:', err);
     } finally {
       setLoading(false);
+      setLastUpdated(new Date());
     }
   }, []);
 
@@ -231,6 +234,15 @@ export function HomeDashboard() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {/* 最后更新时间 */}
+      {lastUpdated && (
+        <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
+          <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        </div>
+      )}
       <motion.div
         className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
         variants={containerVariants}

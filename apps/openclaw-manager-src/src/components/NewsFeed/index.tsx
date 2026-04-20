@@ -190,6 +190,7 @@ export function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** 从后端拉取新闻数据 */
   const fetchData = useCallback(async () => {
@@ -210,6 +211,7 @@ export function NewsFeed() {
       }));
 
       setNewsItems(items);
+      setLastUpdated(new Date());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'unknown error';
       setError(msg);
@@ -377,6 +379,14 @@ export function NewsFeed() {
               >
                 AI NEWS AGGREGATOR
               </span>
+              {lastUpdated && (
+                <span className="flex items-center gap-1 ml-auto">
+                  <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </span>
+              )}
             </div>
             <p
               className="font-mono text-[11px] mb-4"

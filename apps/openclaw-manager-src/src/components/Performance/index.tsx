@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Loader2,
   RefreshCw,
+  Clock,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { clawbotFetchJson } from '../../lib/tauri-core';
@@ -143,6 +144,7 @@ export function Performance() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /* —— 拉取性能数据 —— */
   const fetchAll = useCallback(async (silent = false) => {
@@ -164,6 +166,7 @@ export function Performance() {
         setFetchError(t('performance.fetchError'));
       } else {
         setFetchError(null);
+        setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('[Performance] 数据加载失败:', err);
@@ -253,6 +256,15 @@ export function Performance() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {/* 最后更新时间 */}
+      {lastUpdated && (
+        <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
+          <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        </div>
+      )}
       <motion.div
         className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
         variants={containerVariants}
