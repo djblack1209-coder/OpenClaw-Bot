@@ -418,10 +418,10 @@ export function FinRadar() {
 
           {/* 数据表格 */}
           {currentLoading && currentData.length === 0 ? (
-            <LoadingState message="加载中..." />
+            <LoadingState message={t('finRadar.loading')} />
           ) : currentError && currentData.length === 0 ? (
             <ErrorState
-              message={`数据加载失败: ${currentError}`}
+              message={`${t('finRadar.loadFailed')}: ${currentError}`}
               onRetry={() => {
                 const tab = TAB_CONFIG.find((t) => t.key === activeTab);
                 if (tab) fetchTab(tab);
@@ -570,7 +570,7 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <Globe size={14} style={{ color: 'var(--accent-cyan)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              市场总览
+              {t('finRadar.marketOverview')}
             </span>
           </div>
 
@@ -607,17 +607,17 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={14} style={{ color: 'var(--accent-green)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              涨跌排行
+              {t('finRadar.topMovers')}
             </span>
           </div>
 
           {/* 涨幅榜 */}
           <div className="mb-3">
             <span className="font-mono text-[9px] uppercase mb-1.5 block" style={{ color: 'var(--accent-green)' }}>
-              涨幅榜
+              {t('finRadar.topGainers')}
             </span>
             {topGainers.length === 0 && (
-              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>暂无数据</span>
+              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('finRadar.noData')}</span>
             )}
             {topGainers.map((item) => (
               <div
@@ -643,10 +643,10 @@ export function FinRadar() {
           {/* 跌幅榜 */}
           <div>
             <span className="font-mono text-[9px] uppercase mb-1.5 block" style={{ color: 'var(--accent-red)' }}>
-              跌幅榜
+              {t('finRadar.topLosers')}
             </span>
             {topLosers.length === 0 && (
-              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>暂无数据</span>
+              <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('finRadar.noData')}</span>
             )}
             {topLosers.map((item) => (
               <div
@@ -682,7 +682,7 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 size={14} style={{ color: 'var(--accent-purple)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              板块表现
+              {t('finRadar.sectorPerformance')}
             </span>
           </div>
 
@@ -751,7 +751,7 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-3">
             <Layers size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              加密货币占比
+              {t('finRadar.cryptoDominance')}
             </span>
           </div>
 
@@ -795,7 +795,7 @@ export function FinRadar() {
             style={{ borderTop: '1px solid var(--glass-border)' }}
           >
             <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-              数据每 30 秒刷新
+              {t('finRadar.dataRefresh30s')}
             </span>
             <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
               LIVE

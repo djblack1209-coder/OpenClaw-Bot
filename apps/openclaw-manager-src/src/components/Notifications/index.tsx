@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { useLanguage } from '../../i18n';
 
 /* ====== 常量 ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -57,13 +58,13 @@ const cardVariants = {
 };
 
 /* ====== 分类配置 ====== */
-const CATEGORIES: { id: NotificationCategory; label: string }[] = [
-  { id: 'ALL', label: '全部' },
-  { id: 'SYSTEM', label: '系统' },
-  { id: 'TRADE', label: '交易' },
-  { id: 'RISK', label: '风控' },
-  { id: 'SOCIAL', label: '社媒' },
-  { id: 'BOT', label: '机器人' },
+const CATEGORIES: { id: NotificationCategory; labelKey: string }[] = [
+  { id: 'ALL', labelKey: 'notifications.catAll' },
+  { id: 'SYSTEM', labelKey: 'notifications.catSystem' },
+  { id: 'TRADE', labelKey: 'notifications.catTrade' },
+  { id: 'RISK', labelKey: 'notifications.catRisk' },
+  { id: 'SOCIAL', labelKey: 'notifications.catSocial' },
+  { id: 'BOT', labelKey: 'notifications.catBot' },
 ];
 
 /* ====== 级别配色 ====== */
@@ -148,6 +149,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
 /* ====== 主组件 ====== */
 
 export function Notifications() {
+  const { t } = useLanguage();
   /* ---- 状态 ---- */
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ export function Notifications() {
         setItems(list as NotificationItem[]);
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '未知错误';
+      const msg = e instanceof Error ? e.message : 'unknown error';
       if (!silent) setError(msg);
     } finally {
       setLoading(false);
@@ -195,7 +197,7 @@ export function Notifications() {
         if (prev.some((i) => i.id === newItem.id)) return prev;
         return [newItem, ...prev];
       });
-      toast.info(newItem.title || '新通知', {
+      toast.info(newItem.title || t('notifications.newNotification'), {
         description: newItem.body?.slice(0, 80),
       });
     }
@@ -207,9 +209,9 @@ export function Notifications() {
     try {
       await api.markNotificationRead(id);
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
-      toast.success('已标记为已读');
+      toast.success(t('notifications.markedRead'));
     } catch {
-      toast.error('标记已读失败');
+      toast.error(t('notifications.markReadFailed'));
     } finally {
       setMarkingReadId(null);
     }
@@ -221,9 +223,9 @@ export function Notifications() {
     try {
       await api.markAllNotificationsRead();
       setItems((prev) => prev.map((i) => ({ ...i, read: true })));
-      toast.success('已全部标记为已读');
+      toast.success(t('notifications.allMarkedRead'));
     } catch {
-      toast.error('标记全部已读失败');
+      toast.error(t('notifications.markAllReadFailed'));
     } finally {
       setMarkingAllRead(false);
     }
@@ -252,7 +254,7 @@ export function Notifications() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <LoadingState message="正在加载通知数据..." />
+          <LoadingState message={t('notifications.loadingNotifications')} />
         </div>
       </div>
     );
@@ -262,7 +264,7 @@ export function Notifications() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`通知加载失败: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('notifications.loadFailed')}: ${error}`} onRetry={fetchData} />
         </div>
       </div>
     );
@@ -298,7 +300,7 @@ export function Notifications() {
                       color: 'var(--accent-cyan)',
                     }}
                   >
-                    {unreadCount} 未读
+                    {unreadCount} {t('notifications.unread')}
                   </span>
                 )}
               </div>
@@ -320,7 +322,7 @@ export function Notifications() {
                   ) : (
                     <CheckCheck size={12} />
                   )}
-                  全部已读
+                   {t('notifications.markAllRead')}
                 </button>
               )}
             </div>
@@ -328,7 +330,7 @@ export function Notifications() {
               className="font-mono text-[11px] mb-4"
               style={{ color: 'var(--text-tertiary)' }}
             >
-              {items.length} 条通知 // {unreadCount} 未读 // 每 30 秒自动刷新
+              {items.length} {t('notifications.notificationsCount')} // {unreadCount} {t('notifications.unread')} // {t('notifications.autoRefresh30s')}
             </p>
 
             {/* 分类筛选条 */}
@@ -347,7 +349,7 @@ export function Notifications() {
                     }}
                   >
                     <Filter size={10} className="inline mr-1" />
-                    {cat.label}
+                    {t(cat.labelKey)}
                   </button>
                 );
               })}
@@ -453,7 +455,7 @@ export function Notifications() {
                           {markingReadId === item.id ? (
                             <Loader2 size={10} className="inline animate-spin" />
                           ) : (
-                            '已读'
+                            t('notifications.read')
                           )}
                         </button>
                       )}
@@ -467,7 +469,7 @@ export function Notifications() {
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <Inbox size={32} style={{ color: 'var(--text-disabled)', opacity: 0.5 }} />
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                    {activeCategory === 'ALL' ? '暂无通知' : '该分类暂无通知'}
+                    {activeCategory === 'ALL' ? t('notifications.noNotifications') : t('notifications.noCategoryNotifications')}
                   </span>
                 </div>
               )}
@@ -496,7 +498,7 @@ export function Notifications() {
                   {unreadCount}
                 </span>
                 <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                  未读通知
+                  {t('notifications.unreadNotifications')}
                 </p>
               </div>
               {/* 按等级分布 */}
@@ -505,10 +507,10 @@ export function Notifications() {
                   const conf = LEVEL_CONFIG[level];
                   const count = levelStats[level];
                   const labels: Record<NotificationLevel, string> = {
-                    error: '错误',
-                    warning: '警告',
-                    info: '信息',
-                    success: '成功',
+                    error: t('notifications.levelError'),
+                    warning: t('notifications.levelWarning'),
+                    info: t('notifications.levelInfo'),
+                    success: t('notifications.levelSuccess'),
                   };
                   return (
                     <div
@@ -544,7 +546,7 @@ export function Notifications() {
                   /* 统计来源分布 */
                   const sourceCounts: Record<string, number> = {};
                   for (const item of items) {
-                    const src = item.source || '未知';
+                    const src = item.source || t('notifications.unknown');
                     sourceCounts[src] = (sourceCounts[src] || 0) + 1;
                   }
                   const sorted = Object.entries(sourceCounts)
@@ -555,7 +557,7 @@ export function Notifications() {
                   if (sorted.length === 0) {
                     return (
                       <span className="font-mono text-[11px]" style={{ color: 'var(--text-disabled)' }}>
-                        暂无数据
+                        {t('notifications.noData')}
                       </span>
                     );
                   }
@@ -601,7 +603,7 @@ export function Notifications() {
                 }}
               >
                 <RefreshCw size={12} />
-                手动刷新
+                {t('notifications.manualRefresh')}
               </button>
             </div>
           </div>

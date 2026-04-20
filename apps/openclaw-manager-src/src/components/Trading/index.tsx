@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useAppStore } from '../../stores/appStore';
+import { useLanguage } from '../../i18n';
 
 /* ====== 常量 ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -96,15 +97,16 @@ function signalColor(signal: string): string {
   return 'var(--accent-amber)';
 }
 
-/** 信号中文标签 */
-function signalLabel(signal: string): string {
+/** 信号中文标签 — 使用 i18n key */
+
+function signalLabelKey(signal: string): string {
   const s = signal.toLowerCase();
-  if (s.includes('strong') && (s.includes('buy') || s.includes('bullish'))) return '强烈看多';
-  if (s.includes('buy') || s.includes('bullish') || s.includes('看多')) return '看多';
-  if (s.includes('strong') && (s.includes('sell') || s.includes('bearish'))) return '强烈看空';
-  if (s.includes('sell') || s.includes('bearish') || s.includes('看空')) return '看空';
-  if (s.includes('neutral') || s.includes('hold')) return '中性';
-  return signal;
+  if (s.includes('strong') && (s.includes('buy') || s.includes('bullish'))) return 'trading.signalStrongBuy';
+  if (s.includes('buy') || s.includes('bullish') || s.includes('看多')) return 'trading.signalBuy';
+  if (s.includes('strong') && (s.includes('sell') || s.includes('bearish'))) return 'trading.signalStrongSell';
+  if (s.includes('sell') || s.includes('bearish') || s.includes('看空')) return 'trading.signalSell';
+  if (s.includes('neutral') || s.includes('hold')) return 'trading.signalNeutral';
+  return '';
 }
 
 /** 盈亏颜色 */
@@ -147,6 +149,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
 /* ====== 主组件 ====== */
 
 export function Trading() {
+  const { t } = useLanguage();
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
 
   /* ---- 状态 ---- */
@@ -181,7 +184,7 @@ export function Trading() {
         setKlineData(Array.isArray(resp.data) ? resp.data : Array.isArray(resp) ? resp as unknown as KlinePoint[] : []);
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '未知错误';
+      const msg = e instanceof Error ? e.message : 'unknown error';
       if (!silent) setError(msg);
     } finally {
       setLoading(false);
@@ -199,11 +202,11 @@ export function Trading() {
 
   /* ---- 快速跳转按钮 ---- */
   const quickLinks = [
-    { label: '持仓概览', icon: Briefcase, desc: '查看当前持仓和盈亏' },
-    { label: '交易决策', icon: TrendingUp, desc: 'AI 团队投票分析' },
-    { label: '自动交易', icon: Zap, desc: '配置自动交易策略' },
-    { label: '回测分析', icon: LineChart, desc: '策略历史回测' },
-    { label: '交易日志', icon: BarChart3, desc: '查看交易历史记录' },
+    { label: t('trading.portfolioOverview'), icon: Briefcase, desc: t('trading.viewPositionsPnl') },
+    { label: t('trading.tradeDecision'), icon: TrendingUp, desc: t('trading.aiTeamVote') },
+    { label: t('trading.autoTrade'), icon: Zap, desc: t('trading.configAutoStrategy') },
+    { label: t('trading.backtestAnalysis'), icon: LineChart, desc: t('trading.strategyBacktest') },
+    { label: t('trading.tradeLogs'), icon: BarChart3, desc: t('trading.viewTradeHistory') },
   ];
 
   /* ---- 加载/错误状态 ---- */
@@ -211,7 +214,7 @@ export function Trading() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <LoadingState message="正在加载交易系统数据..." />
+          <LoadingState message={t('trading.loadingSystem')} />
         </div>
       </div>
     );
@@ -221,7 +224,7 @@ export function Trading() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`交易系统加载失败: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('trading.systemLoadFailed')}: ${error}`} onRetry={fetchData} />
         </div>
       </div>
     );
@@ -254,7 +257,7 @@ export function Trading() {
                 {/* 引擎状态 */}
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    引擎状态
+                    {t('trading.engineStatus')}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <span
@@ -273,7 +276,7 @@ export function Trading() {
                           : 'var(--accent-red)',
                       }}
                     >
-                      {system.engine_status === 'running' ? '运行中' : '已停止'}
+                      {system.engine_status === 'running' ? t('trading.running') : t('trading.stopped')}
                     </span>
                   </div>
                 </div>
@@ -281,7 +284,7 @@ export function Trading() {
                 {/* IBKR 连接 */}
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    IBKR 连接
+                    {t('trading.ibkrConnection')}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <Power size={12} style={{ color: system.ibkr_connected ? 'var(--accent-green)' : 'var(--accent-red)' }} />
@@ -289,7 +292,7 @@ export function Trading() {
                       className="font-mono text-[11px]"
                       style={{ color: system.ibkr_connected ? 'var(--accent-green)' : 'var(--accent-red)' }}
                     >
-                      {system.ibkr_connected ? '已连接' : '未连接'}
+                      {system.ibkr_connected ? t('trading.connected') : t('trading.disconnected')}
                     </span>
                   </div>
                 </div>
@@ -297,7 +300,7 @@ export function Trading() {
                 {/* 自动交易 */}
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    自动交易
+                    {t('trading.autoTrade')}
                   </span>
                   <span
                     className="px-2 py-0.5 rounded-full font-mono text-[10px]"
@@ -307,14 +310,14 @@ export function Trading() {
                       border: `1px solid ${system.auto_trader_enabled ? 'rgba(52, 211, 153, 0.3)' : 'var(--glass-border)'}`,
                     }}
                   >
-                    {system.auto_trader_enabled ? '已开启' : '已关闭'}
+                    {system.auto_trader_enabled ? t('trading.enabled') : t('trading.disabled')}
                   </span>
                 </div>
 
                 {/* 风控保护 */}
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    风控保护
+                    {t('trading.riskProtection')}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <ShieldCheck size={12} style={{ color: system.risk_protection_enabled ? 'var(--accent-green)' : 'var(--accent-amber)' }} />
@@ -322,7 +325,7 @@ export function Trading() {
                       className="font-mono text-[11px]"
                       style={{ color: system.risk_protection_enabled ? 'var(--accent-green)' : 'var(--accent-amber)' }}
                     >
-                      {system.risk_protection_enabled ? '已开启' : '已关闭'}
+                      {system.risk_protection_enabled ? t('trading.enabled') : t('trading.disabled')}
                     </span>
                   </div>
                 </div>
@@ -334,7 +337,7 @@ export function Trading() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-center p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                      持仓数
+                      {t('trading.positionCount')}
                     </span>
                     <span className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                       {system.total_positions}
@@ -342,7 +345,7 @@ export function Trading() {
                   </div>
                   <div className="text-center p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                      今日盈亏
+                      {t('trading.dailyPnl')}
                     </span>
                     <span className="font-display text-lg font-bold" style={{ color: pnlColor(system.daily_pnl) }}>
                       {system.daily_pnl >= 0 ? '+' : ''}{system.daily_pnl.toFixed(2)}
@@ -350,7 +353,7 @@ export function Trading() {
                   </div>
                   <div className="text-center p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                      今日交易
+                      {t('trading.dailyTrades')}
                     </span>
                     <span className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                       {system.daily_trades}
@@ -358,7 +361,7 @@ export function Trading() {
                   </div>
                   <div className="text-center p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                      日交易上限
+                      {t('trading.maxDailyTrades')}
                     </span>
                     <span className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                       {system.max_daily_trades}
@@ -369,7 +372,7 @@ export function Trading() {
             ) : (
               <div className="flex items-center justify-center py-8">
                 <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  无法获取系统状态
+                  {t('trading.cannotGetStatus')}
                 </span>
               </div>
             )}
@@ -386,7 +389,7 @@ export function Trading() {
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
-              {signals.length} 个活跃信号
+              {signals.length} {t('trading.activeSignalsCount')}
             </p>
 
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 max-h-[380px] scroll-container">
@@ -414,12 +417,12 @@ export function Trading() {
                         border: `1px solid ${signalColor(sig.signal)}30`,
                       }}
                     >
-                      {signalLabel(sig.signal)}
+                      {signalLabelKey(sig.signal) ? t(signalLabelKey(sig.signal)) : sig.signal}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      置信度: {(sig.confidence * 100).toFixed(0)}%
+                      {t('trading.confidence')}: {(sig.confidence * 100).toFixed(0)}%
                     </span>
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                       {sig.source} · {timeAgo(sig.timestamp)}
@@ -441,7 +444,7 @@ export function Trading() {
                 <div className="flex flex-col items-center justify-center py-12 gap-2">
                   <Zap size={24} style={{ color: 'var(--text-disabled)', opacity: 0.4 }} />
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                    暂无活跃信号
+                    {t('trading.noActiveSignals')}
                   </span>
                 </div>
               )}
@@ -459,7 +462,7 @@ export function Trading() {
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
-              最近 {klineData.length} 个交易日
+              {t('trading.recent')} {klineData.length} {t('trading.tradingDays')}
             </p>
 
             {klineData.length > 0 ? (
@@ -508,7 +511,7 @@ export function Trading() {
               <div className="flex flex-col items-center justify-center py-12 gap-2 flex-1">
                 <LineChart size={24} style={{ color: 'var(--text-disabled)', opacity: 0.4 }} />
                 <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无 K 线数据
+                  {t('trading.noKlineData')}
                 </span>
               </div>
             )}
@@ -528,7 +531,7 @@ export function Trading() {
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
-              快速跳转到投资组合页面的各功能模块
+              {t('trading.quickJumpToPortfolio')}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -597,7 +600,7 @@ export function Trading() {
               }}
             >
               <RefreshCw size={12} />
-              刷新交易数据
+                {t('trading.refreshData')}
             </button>
           </div>
         </motion.div>
