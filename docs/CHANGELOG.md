@@ -12,6 +12,58 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — 全站 UI 中文化 + Bug 修复 + 功能补全
+> 领域: `frontend`
+> 影响模块: Home, TradingEngineCard, TelemetryCard, Assistant, WorldMonitor, NewsFeed, FinRadar, Portfolio, Settings, Bots, Social, ExecutionFlow, Money, Dev, DevPanel
+> 关联问题: 用户反馈 9 项 UI/功能问题
+
+### 变更内容
+
+**Bug 修复**
+- `WorldMonitor/index.tsx` 修复综合风险分数永远为 0 的 Bug：后端返回 `global_score`，前端错读 `score`，字段名不匹配
+- `Dev/index.tsx` 修复 `t()` 被引号包裹导致不执行的 Bug（显示原始字符串而非翻译）
+- `DevPanel/index.tsx` 同上 `t()` 引号包裹 Bug
+- `FinRadar/index.tsx` 修复图标容器 `opacity: 0.15` 导致图标本身也变透明的问题，改用 `rgba` 背景色
+
+**全站英文标签中文化（12 个页面组件，60+ 处）**
+- 首页：Trading Engine → 交易引擎，DAILY PNL → 今日盈亏，SYSTEM STATUS → 系统状态 等
+- 系统遥测：TELEMETRY → 系统遥测，ACTIVE BOTS → 活跃 BOT 等
+- 新闻中心：AI NEWS AGGREGATOR → AI 新闻聚合，timeAgo 函数中文化（min ago → 分钟前）等
+- 金融雷达：恐贪指数标签中文化，LIVE → 实时
+- 社媒运营：PLATFORM STATUS → 平台状态，CONTENT CALENDAR → 内容日历 等
+- 执行流程：DAG EXECUTOR → DAG 执行器，ENGINE METRICS → 引擎指标 等
+- 财务中心：TRADING P&L → 交易损益，AI COST → AI 费用 等
+- 开发面板 / DevPanel：系统信息标签中文化
+
+**功能补全**
+- `Settings/index.tsx` 新增"服务管理"卡片：一键启动/停止所有服务（调用 Tauri IPC `controlAllManagedServices`）
+- `Settings/index.tsx` 修复 5 个操作按钮（导出配置/重置设置/清除缓存/查看日志/系统诊断）无 onClick 的问题
+- `Settings/index.tsx` 修复高级设置开关（开发者模式/自动更新）点击无反应的问题
+- `Assistant/index.tsx` 附件和语音按钮加 disabled 样式 + 点击提示"功能开发中"
+
+**数据可用性提示**
+- `FinRadar/index.tsx` 价格为 0 时显示"—"代替 0.0000，并提示"数据源暂时不可用"
+- `Portfolio/index.tsx` IB Gateway 未连接时在概览顶部显示醒目警告："券商未连接，请在智能体页面启动服务"
+- `WorldMonitor/index.tsx` 占位符从 `暂无` 统一为 `—`
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Home/TradingEngineCard.tsx` — 5 处英文标签中文化
+- `apps/openclaw-manager-src/src/components/Home/TelemetryCard.tsx` — 6 处英文标签中文化
+- `apps/openclaw-manager-src/src/components/Home/index.tsx` — 12 处英文标签中文化 + 简报指标 key 中文映射
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 附件/语音按钮 disabled + toast
+- `apps/openclaw-manager-src/src/components/WorldMonitor/index.tsx` — global_score Bug 修复 + 13 处占位符
+- `apps/openclaw-manager-src/src/components/NewsFeed/index.tsx` — timeAgo 中文化 + 8 处标签
+- `apps/openclaw-manager-src/src/components/FinRadar/index.tsx` — 图标修复 + 价格 0 提示 + 标签中文化
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — 券商未连接警告
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 一键启动 + 操作按钮 + 开关修复
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — 6 处标签中文化
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 7 处标签中文化
+- `apps/openclaw-manager-src/src/components/Money/index.tsx` — 5 处标签中文化
+- `apps/openclaw-manager-src/src/components/Dev/index.tsx` — 6 处标签 + t() Bug 修复
+- `apps/openclaw-manager-src/src/components/DevPanel/index.tsx` — 6 处标签 + t() Bug 修复
+
+---
+
 ## 2026-04-20 — Sprint 4 商业级质量加固（P0/P1/P2）
 > 领域: `backend`, `frontend`
 > 影响模块: 45+ 文件，覆盖 core/, bot/, api/, tools/, trading/, xianyu/, execution/, monitoring/, shopping/, 前端 shared/
