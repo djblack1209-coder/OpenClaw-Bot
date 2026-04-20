@@ -93,14 +93,30 @@ interface TradeLogItem {
   hold_duration_hours?: number;
 }
 
+/** 估值分析结果 */
+interface ValuationResult {
+  symbol: string;
+  current_price: number;
+  company_name: string;
+  wacc: number;
+  signal: string;
+  confidence: number;
+  dcf: { bull_value: number; base_value: number; bear_value: number; weighted_value: number; margin_of_safety: number };
+  owner_earnings: number;
+  ev_ebitda: { current_multiple: number; implied_value: number; upside_percent: number };
+  residual_income: number;
+  financial_data: Record<string, number | null | undefined>;
+}
+
 /* ====== 标签页 ID ====== */
-type TabId = 'overview' | 'decision' | 'auto' | 'backtest' | 'logs';
+type TabId = 'overview' | 'decision' | 'auto' | 'backtest' | 'valuation' | 'logs';
 
 const TAB_LIST: { id: TabId; label: string }[] = [
   { id: 'overview', label: '持仓概览' },
   { id: 'decision', label: '交易决策' },
   { id: 'auto',     label: '自动交易' },
   { id: 'backtest', label: '回测分析' },
+  { id: 'valuation', label: '估值分析' },
   { id: 'logs',     label: '交易日志' },
 ];
 
@@ -221,6 +237,11 @@ export function Portfolio() {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalFilter, setJournalFilter] = useState<'all' | 'open' | 'closed'>('all');
   const JOURNAL_PAGE_SIZE = 15;
+
+  /* ---- 估值分析状态 ---- */
+  const [valSymbol, setValSymbol] = useState('');
+  const [valLoading, setValLoading] = useState(false);
+  const [valResult, setValResult] = useState<ValuationResult | null>(null);
 
   /* ====== 数据拉取：持仓概览 ====== */
   const fetchData = useCallback(async (silent = false) => {
@@ -399,6 +420,27 @@ export function Portfolio() {
       fetchJournal(0);
     }
   }, [activeTab, fetchJournal]);
+
+  /* ====== 估值分析 ====== */
+  const handleValuation = async () => {
+    const sym = valSymbol.trim().toUpperCase();
+    if (!sym) {
+      toast.error('请输入股票代码');
+      return;
+    }
+    setValLoading(true);
+    setValResult(null);
+    try {
+      const data = await api.tradingValuation(sym) as ValuationResult;
+      setValResult(data);
+      toast.success('估值分析完成', { description: `${data.company_name || sym}` });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      toast.error('估值分析失败', { description: msg });
+    } finally {
+      setValLoading(false);
+    }
+  };
 
   /* ====== 加载态（仅初始加载时显示） ====== */
   if (loading && !portfolio) {
@@ -1248,7 +1290,159 @@ export function Portfolio() {
           </motion.div>
         )}
 
-        {/* ====== Tab 5: 交易日志 ====== */}
+        {/* ====== Tab 5: 估值分析 ====== */}
+        {activeTab === 'valuation' && (
+          <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-4">
+            {/* 输入区 */}
+            <motion.div variants={cardVariants}>
+              <div className="abyss-card p-6">
+                <span className="text-label" style={{ color: 'var(--accent-purple)' }}>VALUATION ANALYSIS</span>
+                <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>估值分析</h3>
+                <div className="flex items-center gap-3">
+                  <input
+                    className="flex-1 font-mono text-sm rounded-lg px-4 py-2"
+                    style={inputStyle}
+                    placeholder="输入股票代码（如 AAPL、TSLA）"
+                    value={valSymbol}
+                    onChange={(e) => setValSymbol(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === 'Enter' && handleValuation()}
+                  />
+                  <button
+                    className="px-5 py-2 rounded-lg font-display text-sm font-bold transition-all"
+                    style={actionBtnStyle(valLoading, 'var(--accent-purple)')}
+                    disabled={valLoading}
+                    onClick={handleValuation}
+                  >
+                    {valLoading ? '分析中...' : '开始估值'}
+                  </button>
+                </div>
+                <p className="font-mono text-[10px] mt-2" style={{ color: 'var(--text-disabled)' }}>
+                  运行 DCF / 持有人收益 / EV-EBITDA / 残余收入 四大估值模型
+                </p>
+              </div>
+            </motion.div>
+
+            {/* 结果区 */}
+            {valResult && (
+              <motion.div variants={cardVariants}>
+                <div className="abyss-card p-6">
+                  {/* 标题行：公司名 + 综合信号 */}
+                  <div className="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                        {valResult.company_name}
+                        <span className="ml-2 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>{valResult.symbol}</span>
+                      </h3>
+                      <p className="font-mono text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        当前价格: ${valResult.current_price?.toFixed(2)} · WACC: {(valResult.wacc * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="px-3 py-1 rounded-lg font-mono text-sm font-bold"
+                            style={{
+                              background: valResult.signal === 'bullish' ? 'rgba(0,255,136,0.15)' : valResult.signal === 'bearish' ? 'rgba(255,68,68,0.15)' : 'rgba(255,170,0,0.15)',
+                              color: valResult.signal === 'bullish' ? 'var(--accent-green)' : valResult.signal === 'bearish' ? 'var(--accent-red)' : 'var(--accent-amber)',
+                            }}>
+                        {{ bullish: '看多', bearish: '看空', neutral: '中性' }[valResult.signal] || valResult.signal}
+                      </span>
+                      <p className="font-mono text-xs mt-1" style={{ color: 'var(--text-disabled)' }}>
+                        置信度: {(valResult.confidence * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 四大模型结果 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* DCF */}
+                    <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <p className="text-label mb-2" style={{ color: 'var(--accent-cyan)' }}>DCF 折现现金流</p>
+                      <div className="space-y-1 font-mono text-xs">
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>牛市估值</span>
+                          <span style={{ color: 'var(--accent-green)' }}>${valResult.dcf?.bull_value?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>基准估值</span>
+                          <span style={{ color: 'var(--text-primary)' }}>${valResult.dcf?.base_value?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>熊市估值</span>
+                          <span style={{ color: 'var(--accent-red)' }}>${valResult.dcf?.bear_value?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                          <span style={{ color: 'var(--text-disabled)' }}>加权估值</span>
+                          <span className="font-bold" style={{ color: 'var(--accent-cyan)' }}>${valResult.dcf?.weighted_value?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>安全边际</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{((valResult.dcf?.margin_of_safety ?? 0) * 100).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* EV/EBITDA */}
+                    <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <p className="text-label mb-2" style={{ color: 'var(--accent-amber)' }}>EV/EBITDA 倍数估值</p>
+                      <div className="space-y-1 font-mono text-xs">
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>当前倍数</span>
+                          <span style={{ color: 'var(--text-primary)' }}>{valResult.ev_ebitda?.current_multiple?.toFixed(1)}x</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>隐含估值</span>
+                          <span style={{ color: 'var(--accent-amber)' }}>${valResult.ev_ebitda?.implied_value?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>上行空间</span>
+                          <span style={{ color: (valResult.ev_ebitda?.upside_percent ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                            {(valResult.ev_ebitda?.upside_percent ?? 0) >= 0 ? '+' : ''}{valResult.ev_ebitda?.upside_percent?.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 持有人收益 */}
+                    <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <p className="text-label mb-2" style={{ color: 'var(--accent-green)' }}>巴菲特持有人收益</p>
+                      <div className="font-mono text-xs">
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>持有人收益</span>
+                          <span className="font-bold" style={{ color: valResult.owner_earnings > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                            ${(valResult.owner_earnings / 1e9).toFixed(2)}B
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                          净利润 + 折旧 - 资本支出 - 营运资金变动
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 残余收入 */}
+                    <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <p className="text-label mb-2" style={{ color: 'var(--accent-purple)' }}>残余收入模型</p>
+                      <div className="font-mono text-xs">
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--text-disabled)' }}>估计内在价值</span>
+                          <span className="font-bold" style={{ color: 'var(--accent-purple)' }}>
+                            ${valResult.residual_income?.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span style={{ color: 'var(--text-disabled)' }}>vs 当前价格</span>
+                          <span style={{ color: valResult.residual_income > valResult.current_price ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                            {valResult.current_price > 0 ? `${((valResult.residual_income / valResult.current_price - 1) * 100).toFixed(1)}%` : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ====== Tab 6: 交易日志 ====== */}
         {activeTab === 'logs' && (
           <motion.div variants={containerVariants} initial="hidden" animate="visible">
             <motion.div variants={cardVariants}>

@@ -393,6 +393,10 @@ export const api = {
   xianyuProfit: (days = 30) =>
     clawbotFetchJson(`/api/v1/xianyu/profit?days=${days}`),
 
+  /** 估值分析 */
+  tradingValuation: (symbol: string) =>
+    clawbotFetchJson(`/api/v1/trading/valuation?symbol=${encodeURIComponent(symbol)}`),
+
   // ══════════════════════════════════════════════
   //  Evolution 引擎 (HTTP 降级)
   // ══════════════════════════════════════════════
