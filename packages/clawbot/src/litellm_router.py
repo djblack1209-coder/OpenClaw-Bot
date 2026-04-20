@@ -674,6 +674,7 @@ class LiteLLMPool:
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
         iflow_base = _env("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
         if iflow_key:
+            logger.warning("iFlow 无限 key 有效期仅 7 天，请注意定期续期")
             # 检查 iflow key 是否可能已过期（7天有效期，给1天缓冲，超6天告警）
             iflow_expired = _check_iflow_key_expiry()
             if iflow_expired:

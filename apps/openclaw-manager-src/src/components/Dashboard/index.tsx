@@ -296,9 +296,12 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>
               SERVICES
             </span>
-            <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
+            <h3 className="font-display text-lg font-bold mt-1 mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('dashboard.serviceMatrix')}
             </h3>
+            <p className="font-mono text-[10px] mb-4" style={{ color: 'var(--text-disabled)' }}>
+              服务由后端 API 管理。如需操作 LaunchAgent 级服务，请使用桌面端控制面板。
+            </p>
 
             <div className="flex-1 space-y-1.5">
               {services.length === 0 && (
