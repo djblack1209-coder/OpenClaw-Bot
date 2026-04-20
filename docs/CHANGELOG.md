@@ -12,6 +12,48 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — 全面修复前端 16 项问题 + 后端服务重启
+> 领域: `frontend` `backend`
+> 影响模块: WorldMonitor, NewsFeed, FinRadar, Portfolio, Store, Xianyu, Social, APIGateway, AIConfig, Performance, ExecutionFlow, Memory, Channels, Plugins, Notifications, App
+> 关联问题: —
+
+### 变更内容
+
+**后端 (1 项):**
+- 重启后端服务加载 monitor 路由 — 修复全球监控/新闻中心/金融雷达 404 错误（根因: monitor.py 在进程启动后新增，旧进程未加载）
+
+**前端 (15 项):**
+1. **Store 插件商店**: 添加拒绝按钮 + 修复 proposed→pending 状态映射（审批筛选器计数归零问题）
+2. **Xianyu 闲鱼管理**: 新增扫码登录功能（QR 二维码生成弹窗 + API 调用）+ Cookie 同步错误提示
+3. **Social 社交媒体**: 自动驾驶启动/停止添加 toast 错误反馈（之前静默失败）
+4. **Portfolio 投资组合**: 数据加载失败时显示 IB Gateway 连接引导（4 步操作指南）+ 模拟交易 hover 提示
+5. **App 全局**: Toaster 添加 closeButton + duration 缩短至 4 秒减少弹窗打扰
+6. **Notifications 通知中心**: WebSocket 推送改为仅 error/warning 级别弹 toast，info 级别静默入列
+7. **APIGateway API 网关**: 移除初始加载 toast.error 噪音（仅用户操作时提示）
+8. **AIConfig AI 配置**: 路由策略选择器从不可点击 div 改为可交互 button + 移除加载 toast 噪音
+9. **Performance 性能监控**: 新增错误状态页面 + 重试按钮（之前全显示 N/A 无解释）
+10. **ExecutionFlow 智能流引擎**: OMEGA 离线时显示"引擎未运行"取代彩色 N/A + 手动刷新失败 toast
+11. **Memory 记忆脑图**: Vector DB 状态从硬编码"在线"改为真实检测 + 搜索失败 toast 提示
+12. **Channels 消息渠道**: 空 catch 改为错误提示 + 从 /api/v1/status 拉取 Bot 运行状态 + 微信未连接引导
+13. **Plugins MCP 插件**: 新增"全部启用"按钮 + Tauri 环境检测前置拦截
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/Store/index.tsx` — 拒绝按钮 + proposed→pending 映射
+- `apps/openclaw-manager-src/src/components/Xianyu/index.tsx` — QR 扫码登录 + toast 错误提示
+- `apps/openclaw-manager-src/src/components/Social/index.tsx` — toast 错误反馈
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — IB Gateway 引导
+- `apps/openclaw-manager-src/src/App.tsx` — Toaster closeButton + duration
+- `apps/openclaw-manager-src/src/components/Notifications/index.tsx` — toast 级别过滤
+- `apps/openclaw-manager-src/src/components/APIGateway/index.tsx` — 移除初始 toast
+- `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — 策略选择器修复
+- `apps/openclaw-manager-src/src/components/Performance/index.tsx` — 错误页面
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — 引擎离线提示
+- `apps/openclaw-manager-src/src/components/Memory/index.tsx` — 真实 DB 状态 + toast
+- `apps/openclaw-manager-src/src/components/Channels/index.tsx` — Bot 运行状态 + 错误反馈
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — 全部启用 + Tauri 检测
+
+---
+
 ## 2026-04-20 — i18n 深度覆盖：全部 30+ 页面接入中英文双语
 > 领域: `frontend`
 > 影响模块: 全部 30+ 前端页面组件 + `src/i18n/zh-CN.ts` + `src/i18n/en-US.ts`
