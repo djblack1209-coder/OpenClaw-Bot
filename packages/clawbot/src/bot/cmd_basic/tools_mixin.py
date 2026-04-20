@@ -70,8 +70,8 @@ class _ToolsMixin:
             logger.warning("[cmd_draw] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing

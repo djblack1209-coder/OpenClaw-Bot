@@ -226,8 +226,8 @@ class SelfHealEngine:
             return
         try:
             breaker.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("重置熔断器异常: %s", e)
 
     async def heal(
         self,
@@ -684,8 +684,8 @@ class SelfHealEngine:
                         )
                     )
                     _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                except RuntimeError as e:  # noqa: F841
-                    pass
+                except RuntimeError as e:
+                    logger.debug("发布自愈事件时无事件循环: %s", e)
         except Exception as e:
             logger.debug("发布自愈成功事件到 EventBus 失败: %s", e)
 

@@ -591,15 +591,15 @@ class ClawBotRPC:
                 if x_path.exists():
                     data = _json.loads(x_path.read_text(encoding="utf-8"))
                     x_cookie_ok = bool(data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("读取X Cookie文件异常: %s", e)
             try:
                 xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
                 if xhs_path.exists():
                     data = _json.loads(xhs_path.read_text(encoding="utf-8"))
                     xhs_cookie_ok = bool(data.get("cookie", "")) or (isinstance(data, dict) and bool(data.get("a1", "")))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("读取XHS Cookie文件异常: %s", e)
 
             def _map_ready(value, cookie_ok: bool):
                 if value is True or cookie_ok:
@@ -627,8 +627,8 @@ class ClawBotRPC:
                 xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
                 if xhs_path.exists() and bool(_json.loads(xhs_path.read_text(encoding="utf-8")).get("cookie", "")):
                     xhs_cookie = "ready"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("降级读取Cookie文件异常: %s", e)
             return {
                 "browser_running": False,
                 "x": x_cookie,

@@ -295,8 +295,8 @@ class SecurityGate:
                                 "locked_minutes": 5,
                             }))
                             _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                        except RuntimeError as e:  # noqa: F841
-                            pass
+                        except RuntimeError as e:
+                            logger.debug("发布安全警报事件时无事件循环: %s", e)
                 except Exception as e:
                     logger.debug("静默异常: %s", e)
             self._pin_attempts[user_id] = state

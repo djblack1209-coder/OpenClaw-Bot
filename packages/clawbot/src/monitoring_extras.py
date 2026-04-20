@@ -152,8 +152,8 @@ def get_system_resources() -> Dict[str, Any]:
             if "page size of" in first_line:
                 try:
                     page_size = int(first_line.split("page size of")[1].split("bytes")[0].strip())
-                except (ValueError, IndexError) as e:  # noqa: F841
-                    pass
+                except (ValueError, IndexError) as e:
+                    logger.debug("vm_stat页大小解析失败: %s", e)
             for line in out.splitlines():
                 if "Pages free" in line:
                     pages_free = int(line.split(":")[1].strip().rstrip("."))

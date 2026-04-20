@@ -189,8 +189,8 @@ async def run_cli_command(
         # 超时后尝试终止进程
         try:
             proc.kill()  # type: ignore[possibly-undefined]
-        except (ProcessLookupError, OSError):
-            pass
+        except (ProcessLookupError, OSError) as e:
+            logger.debug("终止超时进程时进程已退出: %s", e)
         return {
             "success": False,
             "output": f"命令执行超时（{timeout} 秒）",

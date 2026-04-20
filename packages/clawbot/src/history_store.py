@@ -102,8 +102,8 @@ class HistoryStore:
             content = row["content"]
             try:
                 content = json.loads(content)
-            except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug("历史消息JSON解析失败(使用原始文本): %s", e)
             messages.append({"role": row["role"], "content": content})
         return messages
 
