@@ -661,9 +661,9 @@ class LiteLLMPool:
             sb = "https://api.sambanova.ai/v1"
             for m, fam, t, to in [
                 ("DeepSeek-R1", "deepseek", TIER_S, LLM_TIMEOUT_REASONING),
-                ("DeepSeek-V3.2", "deepseek", TIER_A, LLM_TIMEOUT),
-                ("Meta-Llama-3.3-70B-Instruct", "llama", TIER_A, LLM_TIMEOUT),
-                ("Qwen/Qwen3-235B", "qwen", TIER_S, LLM_TIMEOUT),
+                ("DeepSeek-V3.2", "deepseek", TIER_A, LLM_TIMEOUT_DEFAULT),
+                ("Meta-Llama-3.3-70B-Instruct", "llama", TIER_A, LLM_TIMEOUT_DEFAULT),
+                ("Qwen/Qwen3-235B", "qwen", TIER_S, LLM_TIMEOUT_DEFAULT),
             ]:
                 deps.append(
                     self._dep(
