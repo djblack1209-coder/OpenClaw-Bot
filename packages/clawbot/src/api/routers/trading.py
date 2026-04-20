@@ -459,3 +459,92 @@ def get_trade_journal(
     except Exception as e:
         logger.exception("获取交易日志失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ========== 估值分析 ==========
+
+@router.get("/trading/valuation")
+def get_valuation(
+    symbol: str = Query(..., min_length=1, max_length=10, description="股票代码"),
+):
+    """对指定标的运行 4 大估值模型（DCF/持有人收益/EV-EBITDA/残余收入）"""
+    try:
+        import yfinance as yf
+        from src.trading.valuation_models import (
+            get_valuation_summary,
+            calculate_wacc,
+        )
+
+        symbol = symbol.strip().upper()
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+
+        # 提取财务数据（yfinance 字段名）
+        fcf = info.get("freeCashflow") or info.get("operatingCashflow", 0)
+        revenue_growth = info.get("revenueGrowth", 0.05) or 0.05
+        net_income = info.get("netIncomeToCommon") or info.get("netIncome", 0)
+        depreciation = info.get("totalCashFromDepreciationAndAmortization") or abs(info.get("depreciation", 0))
+        capex = abs(info.get("capitalExpenditures", 0))
+        wc_change = info.get("changeInWorkingCapital", 0)
+        ebitda = info.get("ebitda", 0)
+        ev = info.get("enterpriseValue", 0)
+        bvps = info.get("bookValue", 0)
+        roe = info.get("returnOnEquity", 0.1) or 0.1
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        market_cap = info.get("marketCap", 0)
+        total_debt = info.get("totalDebt", 0)
+        tax_rate = info.get("effectiveTaxRate", 0.21) or 0.21
+
+        # 计算 WACC
+        cost_of_equity = 0.08 + max(0, info.get("beta", 1.0) - 1) * 0.05
+        cost_of_debt = 0.04
+        wacc = calculate_wacc(
+            market_cap=max(market_cap, 1),
+            total_debt=max(total_debt, 0),
+            tax_rate=tax_rate,
+            cost_of_equity=cost_of_equity,
+            cost_of_debt=cost_of_debt,
+        )
+
+        # 综合估值
+        result = get_valuation_summary(
+            free_cash_flow=fcf,
+            revenue_growth_rate=revenue_growth,
+            discount_rate=max(wacc, 0.06),
+            net_income=net_income,
+            depreciation=depreciation,
+            capex=capex,
+            working_capital_change=wc_change,
+            ebitda=max(ebitda, 1),
+            enterprise_value=max(ev, 1),
+            book_value_per_share=max(bvps, 0.01),
+            roe=roe,
+            cost_of_equity=cost_of_equity,
+            current_price=max(current_price, 0.01),
+        )
+
+        return {
+            "symbol": symbol,
+            "current_price": current_price,
+            "company_name": info.get("longName") or info.get("shortName", symbol),
+            "wacc": round(wacc, 4),
+            **result,
+            "financial_data": {
+                "free_cash_flow": fcf,
+                "revenue_growth": revenue_growth,
+                "net_income": net_income,
+                "ebitda": ebitda,
+                "enterprise_value": ev,
+                "book_value_per_share": bvps,
+                "roe": roe,
+                "market_cap": market_cap,
+                "pe_ratio": info.get("trailingPE"),
+                "forward_pe": info.get("forwardPE"),
+                "dividend_yield": info.get("dividendYield"),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("估值分析失败: %s", symbol)
+        raise HTTPException(status_code=500, detail=_safe_error(e))
