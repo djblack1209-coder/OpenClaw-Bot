@@ -2,7 +2,7 @@
 # 触发: push/PR 到 main 分支（排除纯文档变更）
 # 优化: uv 缓存 / npm 缓存 / 路径过滤 / 已知失败排除
 
-name: OpenClaw Bot CI
+name: OpenEverything CI
 
 on:
   push:

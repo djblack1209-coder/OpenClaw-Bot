@@ -43,7 +43,7 @@ _WECHAT_ENABLED = os.getenv("WECHAT_NOTIFY_ENABLED", "").lower() in ("true", "1"
 _ILINK_BASE = "https://ilinkai.weixin.qq.com"
 
 # 凭证路径 (相对于项目根目录)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # → OpenClaw Bot/
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # → OpenEverything/
 _ACCOUNTS_DIR = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts"
 
 

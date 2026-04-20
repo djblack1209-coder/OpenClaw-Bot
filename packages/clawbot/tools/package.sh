@@ -7,7 +7,7 @@ echo "🦞 OpenClaw 部署器打包工具 v4.0"
 echo "================================"
 
 # 项目根目录
-PROJECT_ROOT="/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot"
+PROJECT_ROOT="/Users/blackdj/Desktop/OpenEverything/packages/clawbot"
 DIST_DIR="$PROJECT_ROOT/dist"
 PACKAGE_NAME="OpenClaw-Installer-v4.0"
 

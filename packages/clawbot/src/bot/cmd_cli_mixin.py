@@ -9,7 +9,6 @@
 搬运 HKUDS/CLI-Anything (31K★) — 把任何桌面 GUI 变成命令行。
 """
 
-import asyncio
 import logging
 
 from src.bot.auth import requires_auth
@@ -83,7 +82,7 @@ class CLICommandsMixin:
                     + self._cli_help_text()
                 )
 
-        except Exception as e:
+        except Exception:
             logger.exception("[cmd_cli] 执行异常")
             await update.message.reply_text(
                 "❌ CLI 命令执行出错，请稍后再试"

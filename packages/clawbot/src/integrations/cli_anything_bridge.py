@@ -249,7 +249,7 @@ async def install_cli_tool(tool_name: str) -> Dict[str, Any]:
             proc.communicate(), timeout=120  # pip 安装可能较慢
         )
 
-        output = (stdout or b"").decode("utf-8", errors="replace")
+        _output = (stdout or b"").decode("utf-8", errors="replace")  # noqa: F841 — 保留便于调试
         err_output = (stderr or b"").decode("utf-8", errors="replace")
 
         if proc.returncode == 0:
@@ -282,7 +282,7 @@ async def install_cli_tool(tool_name: str) -> Dict[str, Any]:
         logger.error("[CLIAnything] 安装异常: %s", e)
         return {
             "success": False,
-            "message": f"❌ 安装过程出错",
+            "message": "❌ 安装过程出错",
         }
 
 

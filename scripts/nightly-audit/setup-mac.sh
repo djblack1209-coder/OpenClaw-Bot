@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# OpenClaw Bot 夜间审计 — macOS 定时任务配置
+# OpenEverything 夜间审计 — macOS 定时任务配置
 # 使用 launchd 在每天中国时间 00:00 自动启动审计
 #
 # 用法: ./setup-mac.sh
@@ -16,7 +16,7 @@ RUN_SCRIPT="${SCRIPT_DIR}/run-audit.sh"
 LOG_DIR="${SCRIPT_DIR}/logs"
 
 echo "============================================"
-echo " OpenClaw Bot 夜间审计 — macOS 定时配置"
+echo " OpenEverything 夜间审计 — macOS 定时配置"
 echo "============================================"
 echo ""
 
