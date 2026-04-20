@@ -4,6 +4,35 @@
 
 ---
 
+## [2026-04-20] i18n 深度覆盖：全部 30+ 页面接入中英文双语
+
+### 本次完成了什么
+
+**i18n 5 批改造全部完成，从 170 个翻译 key 增长到 ~1135 个：**
+- 第1批：Home/Portfolio/Bots/Assistant/Money（241 key）
+- 第2批：Social/Memory/Logs/Evolution/Store（114 key）
+- 第3批：WorldMonitor/NewsFeed/FinRadar/Trading/Risk/Notifications（217 key）
+- 第4批：ControlCenter/Dashboard/Performance/APIGateway/AIConfig/Dev/DevPanel/Testing/Channels/Plugins（280 key）
+- 第5批：Onboarding/CommandPalette/Scheduler/ExecutionFlow（113 key）
+
+**所有 30+ 个前端页面已接入 `useLanguage()` + `t()` 翻译函数。**
+
+### 未完成的工作
+- **组件外常量中的中文**：如 `platformColorMap` label、`FILTER_CHIPS`、`STATUS_MAP` 等——这些需要在运行时动态翻译（更复杂）
+- **Testing 页面界面内运行 pytest**：仍只提示终端命令，需 WebSocket 实时输出
+- **Tauri 重编译**：桌面 App 仍使用旧版代码
+
+### 需要注意的坑
+- 翻译文件已超过 1000 行，后续可考虑按模块拆分
+- 某些页面的工具函数（如 `relativeTime()`、`signalLabel()`）中的中文未替换（在组件外部定义，无法直接使用 hook）
+- i18n 切换立即生效（无需刷新），通过 React Context re-render
+
+### 当前系统状态
+- TypeScript: **零错误**
+- Vite 构建: **成功**
+- 翻译 key: **~1135 个**
+- 页面覆盖率: **100%**（30+ 页面全部接入）
+
 ## [2026-04-20] 8 项遗留问题全部清零 + i18n 国际化
 
 ### 本次完成了什么
