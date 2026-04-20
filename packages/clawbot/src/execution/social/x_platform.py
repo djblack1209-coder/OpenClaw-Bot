@@ -1,23 +1,31 @@
 """
-Social — X (Twitter) 集成层 v2.0
+Social — X (Twitter) 集成层 v3.0
+
+v3.0 变更 (2026-04-20):
+  - 新增 twikit (Cookie 持久化登录) — 无需 API Key，用用户名密码登录
+  - Cookie 自动保存到 ~/.openclaw/x_cookies.json，下次启动免登录
+  - 四级降级: twikit Cookie → tweepy API → Jina Reader → browser worker
+  - 新增 twikit_login / twikit_is_authenticated / twikit_post_tweet 函数
 
 v2.0 变更 (2026-03-23):
   - 搬运 tweepy (10.6k⭐, MIT) — X/Twitter 官方 Python SDK
   - 新增 API 直连路径: Bearer Token → tweepy.Client
-  - 发推文 / 获取动态 不再依赖 browser worker
   - 三级降级: tweepy API → Jina Reader → browser worker
 
 支持:
-- 发布推文 (API 或 browser worker)
-- 获取用户动态 (API 或 Jina reader)
+- 发布推文 (twikit Cookie / tweepy API / browser worker)
+- 获取用户动态 (twikit / tweepy API / Jina reader)
+- Cookie 持久化登录（首次登录后免密码）
 - 监控 X 动态
 - 推文分析和转发策略
 """
 import asyncio
+import json
 import logging
 import os
 import hashlib
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from src.http_client import ResilientHTTPClient
 
@@ -25,6 +33,151 @@ logger = logging.getLogger(__name__)
 
 # 模块级别 HTTP 客户端（自动重试 + 熔断）
 _http = ResilientHTTPClient(timeout=20.0, name="x_platform")
+
+# ── Cookie 存储路径 ──────────────────────────────────────────
+_OPENCLAW_DIR = Path.home() / ".openclaw"
+X_COOKIES_PATH = _OPENCLAW_DIR / "x_cookies.json"
+
+
+# ── twikit — Cookie 持久化登录（无需 API Key）────────────────
+_HAS_TWIKIT = False
+_twikit_client = None
+
+def _init_twikit() -> bool:
+    """初始化 twikit 客户端，优先从本地 Cookie 文件加载"""
+    global _HAS_TWIKIT, _twikit_client
+    if _twikit_client is not None:
+        return _HAS_TWIKIT
+    try:
+        from twikit import Client as TwikitClient
+        _twikit_client = TwikitClient("zh-CN")
+        if X_COOKIES_PATH.exists():
+            try:
+                _twikit_client.load_cookies(str(X_COOKIES_PATH))
+                _HAS_TWIKIT = True
+                logger.info("[X] twikit 已加载 (Cookie 持久化: %s)", X_COOKIES_PATH)
+            except Exception as e:
+                logger.warning("[X] twikit Cookie 加载失败，需要重新登录: %s", e)
+                _HAS_TWIKIT = False
+        else:
+            logger.info("[X] twikit 已就绪，但无 Cookie 文件 — 需要调用 twikit_login() 登录")
+            _HAS_TWIKIT = False
+        return _HAS_TWIKIT
+    except ImportError:
+        logger.info("[X] twikit 未安装 (pip install twikit)")
+        _twikit_client = None
+        return False
+
+# 模块加载时尝试初始化 twikit
+_init_twikit()
+
+
+async def twikit_login(
+    username: str,
+    email: str,
+    password: str,
+    totp_secret: Optional[str] = None,
+) -> Dict:
+    """使用用户名/邮箱/密码登录 X，Cookie 自动保存到本地文件
+
+    首次登录后，后续启动会自动加载 Cookie，无需再次输入密码。
+    """
+    global _HAS_TWIKIT, _twikit_client
+    try:
+        from twikit import Client as TwikitClient
+    except ImportError:
+        return {"success": False, "error": "twikit 未安装 (pip install twikit)"}
+
+    if _twikit_client is None:
+        _twikit_client = TwikitClient("zh-CN")
+
+    try:
+        # 确保存储目录存在
+        _OPENCLAW_DIR.mkdir(parents=True, exist_ok=True)
+
+        # 构建登录参数
+        login_kwargs = {
+            "auth_info_1": username,
+            "auth_info_2": email,
+            "password": password,
+        }
+        if totp_secret:
+            login_kwargs["totp_secret"] = totp_secret
+
+        await _twikit_client.login(**login_kwargs)
+
+        # 登录成功 — 保存 Cookie 到本地
+        _twikit_client.save_cookies(str(X_COOKIES_PATH))
+        _HAS_TWIKIT = True
+        logger.info("[X] twikit 登录成功，Cookie 已保存到 %s", X_COOKIES_PATH)
+
+        return {
+            "success": True,
+            "message": f"X 登录成功，Cookie 已保存到 {X_COOKIES_PATH}",
+            "cookies_path": str(X_COOKIES_PATH),
+        }
+    except Exception as e:
+        logger.error("[X] twikit 登录失败: %s", e)
+        return {"success": False, "error": f"X 登录失败: {e}"}
+
+
+def twikit_is_authenticated() -> bool:
+    """检查 twikit 是否已认证（Cookie 文件存在且可加载）"""
+    if _HAS_TWIKIT:
+        return True
+    # 尝试重新初始化（可能 Cookie 文件刚创建）
+    return _init_twikit()
+
+
+async def twikit_post_tweet(
+    text: str,
+    media_paths: Optional[List[str]] = None,
+) -> Dict:
+    """通过 twikit 发布推文（Cookie 认证，无需 API Key）
+
+    如果 Cookie 过期会捕获异常并返回明确错误，不会崩溃。
+    """
+    global _HAS_TWIKIT
+    if not _HAS_TWIKIT or _twikit_client is None:
+        return {"success": False, "error": "twikit 未认证，请先调用 twikit_login()"}
+
+    try:
+        # 上传媒体（如果有）
+        media_ids = []
+        if media_paths:
+            for path in media_paths:
+                if Path(path).exists():
+                    try:
+                        media_id = await _twikit_client.upload_media(path)
+                        media_ids.append(media_id)
+                    except Exception as e:
+                        logger.warning("[X] twikit 媒体上传失败 (%s): %s", path, e)
+
+        # 发布推文
+        tweet = await _twikit_client.create_tweet(
+            text=text,
+            media_ids=media_ids if media_ids else None,
+        )
+        logger.info("[X] twikit 发推成功: %s", tweet.id if hasattr(tweet, "id") else "OK")
+        return {
+            "success": True,
+            "tweet_id": str(tweet.id) if hasattr(tweet, "id") else "",
+            "method": "twikit",
+        }
+    except Exception as e:
+        error_msg = str(e).lower()
+        # 检测常见的 Cookie 过期/认证失败错误
+        if any(kw in error_msg for kw in ["unauthorized", "403", "401", "cookie", "login", "auth"]):
+            _HAS_TWIKIT = False
+            logger.warning("[X] twikit Cookie 可能已过期，需要重新登录: %s", e)
+            return {
+                "success": False,
+                "error": f"X Cookie 已过期，请重新登录: {e}",
+                "needs_relogin": True,
+            }
+        logger.error("[X] twikit 发推失败: %s", e)
+        return {"success": False, "error": f"twikit 发推失败: {e}"}
+
 
 # ── tweepy (10.6k⭐) — X/Twitter 官方 SDK ──────────────────
 _HAS_TWEEPY = False
@@ -50,7 +203,7 @@ try:
             _HAS_TWEEPY = True
             logger.info("[X] tweepy 已加载 (OAuth 1.0a)")
         else:
-            logger.info("[X] X API 凭证未设置，降级到 Jina/browser")
+            logger.info("[X] X API 凭证未设置，降级到 twikit/Jina/browser")
 except ImportError:
     logger.info("[X] tweepy 未安装 (pip install tweepy)")
 
@@ -73,18 +226,24 @@ async def fetch_x_profile_posts(
     if not handle:
         return []
 
-    # 方式0: tweepy API (v2.0 新增)
+    # 方式0: twikit Cookie (v3.0 新增 — 无需 API Key)
+    if _HAS_TWIKIT and _twikit_client:
+        items = await _fetch_via_twikit(handle, count)
+        if items:
+            return items
+
+    # 方式1: tweepy API (v2.0 新增)
     if _HAS_TWEEPY and _tweepy_client:
         items = await _fetch_via_tweepy(handle, count)
         if items:
             return items
 
-    # 方式1: Jina reader (免费)
+    # 方式2: Jina reader (免费)
     items = await _fetch_via_jina(handle, count)
     if items:
         return items
 
-    # 方式2: browser worker
+    # 方式3: browser worker
     if worker_fn:
         try:
             result = worker_fn("research", {
@@ -97,6 +256,32 @@ async def fetch_x_profile_posts(
             logger.debug(f"[X.fetch] worker fallback failed: {e}")
 
     return []
+
+
+async def _fetch_via_twikit(handle: str, count: int) -> List[Dict]:
+    """通过 twikit Cookie 获取用户最近推文（无需 API Key）"""
+    try:
+        user = await _twikit_client.get_user_by_screen_name(handle)
+        if not user:
+            logger.debug("[X.twikit] 找不到用户 @%s", handle)
+            return []
+
+        tweets = await user.get_tweets("Tweets", count=min(count, 20))
+        if not tweets:
+            return []
+
+        items = []
+        for tweet in list(tweets)[:count]:
+            items.append({
+                "title": str(tweet.text)[:200],
+                "source": f"@{handle}",
+                "url": f"https://x.com/{handle}/status/{tweet.id}",
+                "digest_key": str(tweet.id),
+            })
+        return items
+    except Exception as e:
+        logger.debug("[X.twikit] @%s 获取失败: %s", handle, e)
+        return []
 
 
 async def _fetch_via_tweepy(handle: str, count: int) -> List[Dict]:
@@ -189,11 +374,26 @@ async def publish_x_post(
     worker_fn=None,
     image_path: str = None,
 ) -> Dict:
-    """发布推文"""
+    """发布推文
+
+    v3.0 三级降级: twikit Cookie → tweepy API → browser worker
+    """
     if not content:
         return {"success": False, "error": "内容不能为空"}
+
+    # 方式0: twikit Cookie 发布（v3.0 新增）
+    if _HAS_TWIKIT and _twikit_client:
+        media_paths = [image_path] if image_path else None
+        result = await twikit_post_tweet(content, media_paths=media_paths)
+        if result.get("success"):
+            _emit_flow("twikit", "social", "success", "X 推文发布完成 (twikit)", {"platform": "x"})
+            return result
+        # Cookie 过期则降级到下一种方式
+        logger.info("[X] twikit 发布失败，尝试降级: %s", result.get("error"))
+
+    # 方式1: browser worker (现有逻辑)
     if not worker_fn:
-        return {"success": False, "error": "browser worker 未配置"}
+        return {"success": False, "error": "browser worker 未配置，且 twikit 未认证"}
     try:
         payload = {"text": content}
         if image_path:

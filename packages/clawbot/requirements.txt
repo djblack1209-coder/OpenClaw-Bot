@@ -284,6 +284,14 @@ textblob>=0.18.0,<1.0.0  # 可选
 # tweepy — Twitter/X API SDK (src/execution/social/x_platform.py)
 tweepy>=4.14.0,<5.0.0  # 可选
 
+# twikit — X/Twitter Cookie 持久化登录 (src/execution/social/x_platform.py)
+# 搬运: 无需 API Key，用户名密码登录后 Cookie 自动保存到 ~/.openclaw/x_cookies.json
+twikit>=2.0.0  # 可选
+
+# xhs — 小红书 API 客户端 (src/execution/social/xhs_platform.py)
+# 搬运: Cookie 登录后直接调用 API 发布笔记，无需 browser worker
+xhs>=0.2.0  # 可选
+
 # vectorbt — 向量化回测引擎 (src/modules/investment/backtester_vbt.py)
 vectorbt>=0.26.0,<1.0.0  # 可选
 pycryptodomex>=3.20.0
