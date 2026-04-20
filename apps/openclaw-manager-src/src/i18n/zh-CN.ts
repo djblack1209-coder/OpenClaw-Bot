@@ -171,6 +171,8 @@ export const zhCN: Record<string, string> = {
   'home.dailyBrief': '今日简报',
   'home.quickActions': '快捷操作',
   'home.systemStatus': '系统状态',
+  'home.briefDate': '日期',
+  'home.healthy': '正常运行',
 
   // 投资组合
   'portfolio.title': '投资组合',

@@ -173,8 +173,8 @@ export function HomeDashboard() {
       /* 解析持仓盈亏 */
       if (pnlRes.status === 'fulfilled' && pnlRes.value) {
         const p = pnlRes.value as Record<string, unknown>;
-        setDailyPnl(Number(p.daily_pnl ?? p.unrealized_pnl ?? 0));
-        setDailyPnlPct(Number(p.daily_pnl_pct ?? p.pnl_pct ?? 0));
+        setDailyPnl(Number(p.day_change ?? p.daily_pnl ?? p.unrealized_pnl ?? 0));
+        setDailyPnlPct(Number(p.day_change_pct ?? p.daily_pnl_pct ?? p.pnl_pct ?? 0));
       }
 
       /* 解析社媒状态 */
@@ -367,8 +367,32 @@ export function HomeDashboard() {
                 {t('home.dailyBrief')}
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                {/* 简报数据项 — 动态渲染后端返回的指标 */}
-                {Object.entries(briefData).filter(([k]) => k !== 'timestamp' && k !== 'status').slice(0, 8).map(([key, value]) => (
+                {/* 简报头部信息 */}
+                {!!briefData.date && (
+                  <div className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
+                      {t('home.briefDate')}
+                    </span>
+                    <div className="font-mono text-sm font-bold mt-1" style={{ color: 'var(--accent-cyan)' }}>
+                      {String(briefData.date)} {briefData.weekday ? String(briefData.weekday) : ''}
+                    </div>
+                  </div>
+                )}
+                {!!briefData.system_status && (
+                  <div className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
+                      {t('home.systemStatus')}
+                    </span>
+                    <div className="font-mono text-sm font-bold mt-1" style={{ color: briefData.system_status === 'healthy' ? 'var(--accent-green)' : 'var(--accent-amber)' }}>
+                      {briefData.system_status === 'healthy' ? t('home.healthy') : String(briefData.system_status)}
+                    </div>
+                  </div>
+                )}
+                {/* 简报指标 — 从 metrics 子对象渲染 */}
+                {Object.entries((briefData.metrics as Record<string, unknown>) ?? briefData)
+                  .filter(([k, v]) => k !== 'deltas' && typeof v !== 'object')
+                  .slice(0, 6)
+                  .map(([key, value]) => (
                   <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
                       {key.replace(/_/g, ' ')}
