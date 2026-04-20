@@ -12,6 +12,38 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — 集成 twikit + xhs 库实现 X/小红书 Cookie 持久化登录
+> 领域: `backend` `social`
+> 影响模块: `execution/social/x_platform.py`, `execution/social/xhs_platform.py`, `api/rpc.py`
+> 关联问题: —
+
+### 变更内容
+
+**X/Twitter — twikit Cookie 持久化登录:**
+1. 新增 `twikit_login(username, email, password)` — 首次登录后 Cookie 保存到 `~/.openclaw/x_cookies.json`
+2. 新增 `twikit_post_tweet(text, media)` — 通过 Cookie 发推，无需 API Key
+3. 新增 `twikit_is_authenticated()` — 检查认证状态
+4. 发布降级链升级为四级: twikit Cookie → tweepy API → Jina Reader → browser worker
+5. Cookie 过期自动检测并返回 `needs_relogin` 标记，不会崩溃
+
+**小红书 — xhs 库 Cookie 持久化登录:**
+6. 新增 `xhs_login(cookie_str)` — 浏览器 Cookie 导入，保存到 `~/.openclaw/xhs_cookies.json`
+7. 新增 `xhs_create_note(title, content, images)` — API 直发笔记，无需 browser worker
+8. 新增 `xhs_is_authenticated()` — 检查认证状态
+9. 发布降级链升级为二级: xhs API → browser worker
+
+**社媒状态 API 增强:**
+10. `/social/status` 和 `/social/browser-status` 新增 Cookie 文件检测
+11. 即使 browser worker 不可用，Cookie 文件存在也显示"已连接"状态
+
+### 文件变更
+- `packages/clawbot/src/execution/social/x_platform.py` — 新增 twikit 集成 (v3.0)
+- `packages/clawbot/src/execution/social/xhs_platform.py` — 新增 xhs 集成 (v2.0)
+- `packages/clawbot/src/execution/social/__init__.py` — 导出新函数
+- `packages/clawbot/src/api/rpc.py` — 状态检测增加 Cookie 文件检查
+- `packages/clawbot/requirements.txt` — 新增 twikit>=2.0.0, xhs>=0.2.0
+- `docs/registries/DEPENDENCY_MAP.md` — 登记新依赖
+
 ## 2026-04-20 — 全面质量审计：启停按钮补全 + Mock数据清理 + 时间戳
 > 领域: `frontend` `backend`
 > 影响模块: Xianyu, APIGateway, Channels, WorldMonitor, FinRadar, Home, NewsFeed, Performance, Trading, system.py

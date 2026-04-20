@@ -38,6 +38,8 @@
 | tvscreener | — | TradingView 股票筛选 API | universe.py | >=0.5.0 |
 | price-parser | 4.2k | 智能价格提取 (全球货币) | shopping/price_engine.py | >=0.3.0 |
 | tweepy | 10.6k | Twitter/X 官方 SDK | execution/social/x_platform.py | >=4.14.0 |
+| twikit | 2k | X/Twitter Cookie 持久化登录 | execution/social/x_platform.py | >=2.0.0 |
+| xhs | 3k | 小红书 API 客户端 (Cookie 登录) | execution/social/xhs_platform.py | >=0.2.0 |
 | dateparser | 2.5k | 自然语言时间解析 (13种语言) | execution/life_automation.py | >=1.2.0 |
 | humanize | 2.9k | 自然语言时间/大小/数字格式化 | notify_style.py | >=4.9.0 |
 
