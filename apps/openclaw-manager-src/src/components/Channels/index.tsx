@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ChannelConfig } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -53,12 +54,12 @@ function getChannelMeta(ch: ChannelConfig) {
 
 function statusInfo(enabled: boolean, hasConfig: boolean) {
   if (enabled && hasConfig) {
-    return { label: '已连接', color: 'var(--accent-green)', Icon: CheckCircle2 };
+    return { label: 'channels.connected', color: 'var(--accent-green)', Icon: CheckCircle2 };
   }
   if (hasConfig) {
-    return { label: '已配置', color: 'var(--accent-amber)', Icon: Clock };
+    return { label: 'channels.configured', color: 'var(--accent-amber)', Icon: Clock };
   }
-  return { label: '未配置', color: 'var(--text-disabled)', Icon: XCircle };
+  return { label: 'channels.notConfigured', color: 'var(--text-disabled)', Icon: XCircle };
 }
 
 /** 判断渠道是否有实质性配置（不只是空对象） */
@@ -71,6 +72,7 @@ function hasRealConfig(config: Record<string, unknown>): boolean {
 /* ====== 主组件 ====== */
 
 export function Channels() {
+  const { t } = useLanguage();
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -83,7 +85,7 @@ export function Channels() {
         setChannels(configs);
       }
     } catch {
-      // 静默处理 — 页面显示"暂无数据"
+      // 静默处理 — 页面显示"{t('channels.noData')}"
     } finally {
       setLoading(false);
     }
@@ -104,10 +106,10 @@ export function Channels() {
   const total = channels.length;
 
   const msgStats = [
-    { label: '今日消息', value: 'N/A', color: 'var(--accent-cyan)' },
-    { label: '活跃渠道', value: `${connected}/${total}`, color: 'var(--accent-green)' },
-    { label: '已配置', value: String(configured), color: 'var(--accent-purple)' },
-    { label: '平均延迟', value: 'N/A', color: 'var(--accent-amber)' },
+    { label: t('channels.todayMessages'), value: 'N/A', color: 'var(--accent-cyan)' },
+    { label: t('channels.activeChannels'), value: `${connected}/${total}`, color: 'var(--accent-green)' },
+    { label: t('channels.configuredCount'), value: String(configured), color: 'var(--accent-purple)' },
+    { label: t('channels.avgLatency'), value: 'N/A', color: 'var(--accent-amber)' },
   ];
 
   /* ── 加载中 ── */
@@ -115,7 +117,7 @@ export function Channels() {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
-        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载渠道配置…</span>
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">{t('channels.loadingConfig')}</span>
       </div>
     );
   }
@@ -143,13 +145,13 @@ export function Channels() {
                   MESSAGE CHANNELS
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  消息渠道 // MULTI-PLATFORM HUB
+                  {t('channels.subtitle')}
                 </p>
               </div>
               <button
                 onClick={() => { setLoading(true); fetchData(); }}
                 className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
-                title="手动刷新"
+                title={t('channels.manualRefresh')}
               >
                 <RefreshCw size={14} />
               </button>
@@ -159,7 +161,7 @@ export function Channels() {
             <div className="flex-1 space-y-2">
               {channels.length === 0 ? (
                 <div className="flex items-center justify-center py-16 text-[var(--text-tertiary)] font-mono text-sm">
-                  暂无渠道数据
+                  {t('channels.noChannelData')}
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -181,7 +183,7 @@ export function Channels() {
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <si.Icon size={10} style={{ color: si.color }} />
                             <span className="font-mono text-[10px]" style={{ color: si.color }}>
-                              {si.label}
+                              {t(si.label)}
                             </span>
                           </div>
                         </div>
@@ -189,21 +191,21 @@ export function Channels() {
 
                       <div className="flex items-center gap-6">
                         <div className="text-right">
-                          <span className="text-label">类型</span>
+                          <span className="text-label">{t('channels.colType')}</span>
                           <p className="font-mono text-sm" style={{ color: meta.color }}>
                             {ch.channel_type || '—'}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-label">启用</span>
+                          <span className="text-label">{t('channels.colEnabled')}</span>
                           <p className="font-mono text-sm" style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                            {ch.enabled ? '是' : '否'}
+                            {ch.enabled ? t('channels.yes') : t('channels.no')}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-label">配置</span>
+                          <span className="text-label">{t('channels.colConfig')}</span>
                           <p className="font-mono text-sm" style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}>
-                            {hasCfg ? '已配置' : '—'}
+                            {hasCfg ? t('channels.configured') : '—'}
                           </p>
                         </div>
                       </div>
@@ -215,7 +217,7 @@ export function Channels() {
           </div>
         </motion.div>
 
-        {/* ====== 消息统计 (col-4) ====== */}
+        {/* ====== {t('channels.messageStats')} (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>
@@ -256,7 +258,7 @@ export function Channels() {
                         className="font-mono text-[10px] flex-1"
                         style={{ color: ch.enabled && hasCfg ? 'var(--accent-green)' : 'var(--text-disabled)' }}
                       >
-                        {ch.enabled && hasCfg ? '●' : '○'} {ch.enabled ? '启用' : '禁用'}
+                        {ch.enabled && hasCfg ? '●' : '○'} {ch.enabled ? t('channels.enabled') : t('channels.disabled')}
                       </span>
                       <span className="font-mono text-[10px] w-12 text-right" style={{ color: 'var(--text-secondary)' }}>
                         {hasCfg ? '✓' : '—'}
@@ -269,7 +271,7 @@ export function Channels() {
           </div>
         </motion.div>
 
-        {/* ====== 渠道配置概览 (col-12) ====== */}
+        {/* ====== {t('channels.configOverview')} (col-12) ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card p-6">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
@@ -281,7 +283,7 @@ export function Channels() {
 
             {channels.length === 0 ? (
               <div className="text-center py-10 text-[var(--text-tertiary)] font-mono text-sm">
-                暂无渠道配置
+                {t('channels.noChannelConfig')}
               </div>
             ) : (
               <>
@@ -290,7 +292,7 @@ export function Channels() {
                   className="grid grid-cols-5 gap-3 px-4 py-2 rounded-lg mb-1"
                   style={{ background: 'var(--bg-tertiary)' }}
                 >
-                  {['渠道', '类型', '启用', '配置状态', '配置项'].map((h) => (
+                  {[t('channels.colChannel'), t('channels.colType'), t('channels.colEnabled'), t('channels.colConfigStatus'), t('channels.colConfigItems')].map((h) => (
                     <span key={h} className="text-label" style={{ fontSize: '10px' }}>
                       {h}
                     </span>
@@ -322,13 +324,13 @@ export function Channels() {
                           className="font-mono text-[10px] font-semibold"
                           style={{ color: ch.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}
                         >
-                          {ch.enabled ? '● 启用' : '○ 禁用'}
+                          {ch.enabled ? `● ${t('channels.enabled')}` : `○ ${t('channels.disabled')}`}
                         </span>
                         <span
                           className="font-mono text-[10px]"
                           style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}
                         >
-                          {hasCfg ? '已配置' : '未配置'}
+                          {hasCfg ? t('channels.configured') : t('channels.notConfigured')}
                         </span>
                         <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                           {configKeys.length > 0 ? configKeys.join(', ') : '—'}

@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 自动刷新间隔（毫秒） ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -61,11 +62,11 @@ interface SectorEntry {
 }
 
 /* ====== Tab 标签配置 ====== */
-const TAB_CONFIG: { key: TabKey; label: string; endpoint: string }[] = [
-  { key: 'indices', label: '股指', endpoint: '/api/v1/monitor/finance/indices' },
-  { key: 'crypto', label: '加密', endpoint: '/api/v1/monitor/finance/crypto' },
-  { key: 'commodities', label: '商品', endpoint: '/api/v1/monitor/finance/commodities' },
-  { key: 'forex', label: '外汇', endpoint: '/api/v1/monitor/finance/forex' },
+const TAB_CONFIG: { key: TabKey; labelKey: string; endpoint: string }[] = [
+  { key: 'indices', labelKey: 'finRadar.tabIndices', endpoint: '/api/v1/monitor/finance/indices' },
+  { key: 'crypto', labelKey: 'finRadar.tabCrypto', endpoint: '/api/v1/monitor/finance/crypto' },
+  { key: 'commodities', labelKey: 'finRadar.tabCommodities', endpoint: '/api/v1/monitor/finance/commodities' },
+  { key: 'forex', labelKey: 'finRadar.tabForex', endpoint: '/api/v1/monitor/finance/forex' },
 ];
 
 /* ====== 入场动画 ====== */
@@ -150,6 +151,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
 /* ====== 主组件 ====== */
 
 export function FinRadar() {
+  const { t } = useLanguage();
   /* 当前激活的 Tab */
   const [activeTab, setActiveTab] = useState<TabKey>('indices');
 
@@ -185,7 +187,7 @@ export function FinRadar() {
       const entries = (resp.quotes ?? []).map(quoteToEntry);
       setMarketData((prev) => ({ ...prev, [tab.key]: entries }));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : 'unknown error';
       setErrorTabs((prev) => ({ ...prev, [tab.key]: msg }));
     } finally {
       setLoadingTabs((prev) => ({ ...prev, [tab.key]: false }));
@@ -239,10 +241,10 @@ export function FinRadar() {
   /** 按 Tab 分组的板块表现 */
   const sectors = useMemo<SectorEntry[]>(() => {
     const tabLabels: Record<TabKey, string> = {
-      indices: '股指',
-      crypto: '加密货币',
-      commodities: '大宗商品',
-      forex: '外汇',
+      indices: t('finRadar.tabIndices'),
+      crypto: t('finRadar.sectorCrypto'),
+      commodities: t('finRadar.sectorCommodities'),
+      forex: t('finRadar.sectorForex'),
     };
     return TAB_CONFIG.map((tab) => {
       const entries = marketData[tab.key];
@@ -250,7 +252,7 @@ export function FinRadar() {
       const avg = entries.reduce((sum, e) => sum + e.change, 0) / entries.length;
       return { name: tabLabels[tab.key], change: avg };
     });
-  }, [marketData]);
+  }, [marketData, t]);
 
   /** 加密货币市值占比（从 crypto 数据推算） */
   const cryptoDominance = useMemo(() => {
@@ -287,13 +289,13 @@ export function FinRadar() {
     const oil = marketData.commodities.find((c) => c.symbol.toUpperCase().includes('CL') || c.name.toLowerCase().includes('oil') || c.name.toLowerCase().includes('crude'));
 
     return [
-      { label: '上涨', value: String(upCount), color: 'var(--accent-green)' },
-      { label: '下跌', value: String(downCount), color: 'var(--accent-red)' },
+      { label: t('finRadar.up'), value: String(upCount), color: 'var(--accent-green)' },
+      { label: t('finRadar.down'), value: String(downCount), color: 'var(--accent-red)' },
       { label: 'BTC', value: btc ? `$${btc.price}` : '—', color: 'var(--accent-amber)' },
-      { label: '黄金', value: gold ? `$${gold.price}` : '—', color: 'var(--accent-amber)' },
-      { label: '原油', value: oil ? `$${oil.price}` : '—', color: 'var(--text-primary)' },
+      { label: t('finRadar.gold'), value: gold ? `$${gold.price}` : '—', color: 'var(--accent-amber)' },
+      { label: t('finRadar.oil'), value: oil ? `$${oil.price}` : '—', color: 'var(--text-primary)' },
     ];
-  }, [allEntries, marketData]);
+  }, [allEntries, marketData, t]);
 
   /** 恐贪指数 — 从涨跌比例粗略计算 */
   const fearGreedIndex = useMemo(() => {
@@ -318,7 +320,7 @@ export function FinRadar() {
     return (
       <div className="h-full overflow-y-auto pr-1">
         <div className="p-6">
-          <LoadingState message="正在加载金融市场数据..." />
+          <LoadingState message={t('finRadar.loadingMarketData')} />
         </div>
       </div>
     );
@@ -329,7 +331,7 @@ export function FinRadar() {
       <div className="h-full overflow-y-auto pr-1">
         <div className="p-6">
           <ErrorState
-            message="数据加载失败"
+            message={t('finRadar.loadFailed')}
             onRetry={fetchAllData}
           />
         </div>
@@ -372,10 +374,10 @@ export function FinRadar() {
               </div>
               <div>
                 <h2 className="font-display font-bold text-base" style={{ color: 'var(--text-primary)' }}>
-                  金融雷达
+                  {t('finRadar.title')}
                 </h2>
                 <p className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  全球市场 // 每 30 秒自动刷新
+                  {t('finRadar.globalMarket')} // {t('finRadar.autoRefresh30s')}
                 </p>
               </div>
             </div>
@@ -409,7 +411,7 @@ export function FinRadar() {
                   border: activeTab === tab.key ? '1px solid var(--glass-border)' : '1px solid transparent',
                 }}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </button>
             ))}
           </div>
@@ -437,10 +439,10 @@ export function FinRadar() {
                   borderBottom: '1px solid var(--glass-border)',
                 }}
               >
-                <span>代码</span>
-                <span>名称</span>
-                <span className="text-right">价格</span>
-                <span className="text-right">24h 涨跌</span>
+                <span>{t('finRadar.colSymbol')}</span>
+                <span>{t('finRadar.colName')}</span>
+                <span className="text-right">{t('finRadar.colPrice')}</span>
+                <span className="text-right">{t('finRadar.col24hChange')}</span>
               </div>
 
               {/* 数据行 */}
@@ -483,7 +485,7 @@ export function FinRadar() {
               {currentData.length === 0 && (
                 <div className="flex items-center justify-center py-8">
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                    暂无数据
+                    {t('finRadar.noData')}
                   </span>
                 </div>
               )}

@@ -2,7 +2,7 @@
  * Dev — 开发总控页面 (Sonic Abyss Bento Grid 风格)
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
  * 从 /api/v1/status 获取系统版本和运行时间等真实数据
- * Git/技术债务/依赖更新 已接入真实 API
+ * Git/{t('dev.techDebt')}/{t('dev.depUpdates')} 已接入真实 API
  * 30 秒自动刷新
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -22,6 +22,7 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -67,7 +68,7 @@ interface PerfData {
   [key: string]: unknown;
 }
 
-/** Git 提交记录 */
+/** {t('dev.gitCommits')}记录 */
 interface GitLogEntry {
   hash: string;
   author: string;
@@ -100,9 +101,9 @@ function formatUptime(seconds: number | null | undefined): string {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}天 ${h}时 ${m}分`;
-  if (h > 0) return `${h}时 ${m}分`;
-  return `${m}分`;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 /* ====== 暂无数据占位组件 ====== */
@@ -126,6 +127,7 @@ function NoDataPlaceholder({ reason, hint }: { reason: string; hint?: string }) 
 /* ====== 主组件 ====== */
 
 export function Dev() {
+  const { t } = useLanguage();
   /* 状态 — 系统概览 */
   const [status, setStatus] = useState<StatusData | null>(null);
   const [perf, setPerf] = useState<PerfData | null>(null);
@@ -163,7 +165,7 @@ export function Dev() {
         setStatus(statusRes.value);
         setStatusError(null);
       } else {
-        setStatusError('系统状态不可用 — ClawBot 后端可能未运行');
+        setStatusError(t('dev.statusUnavailable'));
       }
 
       if (perfRes.status === 'fulfilled') {
@@ -171,7 +173,7 @@ export function Dev() {
       }
     } catch {
       if (!mountedRef.current) return;
-      toast.error('开发数据加载失败');
+      toast.error(t('dev.loadFailed'));
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -187,7 +189,7 @@ export function Dev() {
       setGitLogError(null);
     } catch {
       if (!mountedRef.current) return;
-      setGitLogError('Git 日志加载失败');
+      setGitLogError(t('dev.gitLogFailed'));
     } finally {
       if (mountedRef.current) setGitLogLoading(false);
     }
@@ -203,7 +205,7 @@ export function Dev() {
       setHealthError(null);
     } catch {
       if (!mountedRef.current) return;
-      setHealthError('健康摘要加载失败');
+      setHealthError(t('dev.healthFailed'));
     } finally {
       if (mountedRef.current) setHealthLoading(false);
     }
@@ -219,7 +221,7 @@ export function Dev() {
       setDepsError(null);
     } catch {
       if (!mountedRef.current) return;
-      setDepsError('依赖检查失败');
+      setDepsError(t('dev.depsFailed'));
     } finally {
       if (mountedRef.current) setDepsLoading(false);
     }
@@ -243,10 +245,10 @@ export function Dev() {
   const overviewStats = statusError
     ? []
     : [
-        { label: '系统版本', value: status?.version ?? '--', color: 'var(--accent-cyan)' },
-        { label: '运行时间', value: formatUptime(status?.uptime_seconds ?? status?.uptime), color: 'var(--accent-green)' },
-        { label: 'Bot 数量', value: String(status?.bot_count ?? status?.bots_running ?? '--'), color: 'var(--accent-purple)' },
-        { label: '已加载模块', value: String(status?.modules_loaded ?? status?.active_services ?? status?.services_count ?? '--'), color: 'var(--accent-amber)' },
+        { label: t('dev.sysVersion'), value: status?.version ?? '--', color: 'var(--accent-cyan)' },
+        { label: t('dev.uptime'), value: formatUptime(status?.uptime_seconds ?? status?.uptime), color: 'var(--accent-green)' },
+        { label: t('dev.botCount'), value: String(status?.bot_count ?? status?.bots_running ?? '--'), color: 'var(--accent-purple)' },
+        { label: t('dev.loadedModules'), value: String(status?.modules_loaded ?? status?.active_services ?? status?.services_count ?? '--'), color: 'var(--accent-amber)' },
       ];
 
   /* 技术债务活跃问题总数 */
@@ -277,7 +279,7 @@ export function Dev() {
                   DEV CONTROL
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  开发总控 // SYSTEM STATUS
+                  {t('dev.subtitle')}
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -306,12 +308,12 @@ export function Dev() {
                 {/* 运行指标 — 来自 /api/v1/perf */}
                 {perf && (
                   <div className="mt-2">
-                    <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>运行指标</span>
+                    <span className="text-label mb-2 block" style={{ color: 'var(--text-tertiary)' }}>{t('dev.runtimeMetrics')}</span>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       {[
-                        { label: 'CPU 使用', value: perf.cpu_percent != null ? `${perf.cpu_percent.toFixed(1)}%` : '--', color: 'var(--accent-cyan)' },
-                        { label: '内存使用', value: perf.memory_mb != null ? `${perf.memory_mb.toFixed(0)} MB` : '--', color: 'var(--accent-amber)' },
-                        { label: '请求总数', value: String(perf.request_count ?? perf.requests_total ?? '--'), color: 'var(--accent-green)' },
+                        { label: t('dev.cpuUsage'), value: perf.cpu_percent != null ? `${perf.cpu_percent.toFixed(1)}%` : '--', color: 'var(--accent-cyan)' },
+                        { label: t('dev.memUsage'), value: perf.memory_mb != null ? `${perf.memory_mb.toFixed(0)} MB` : '--', color: 'var(--accent-amber)' },
+                        { label: t('dev.totalRequests'), value: String(perf.request_count ?? perf.requests_total ?? '--'), color: 'var(--accent-green)' },
                       ].map((m) => (
                         <div
                           key={m.label}
@@ -366,7 +368,7 @@ export function Dev() {
             {gitLogError ? (
               <NoDataPlaceholder reason={gitLogError} />
             ) : gitLog.length === 0 && !gitLogLoading ? (
-              <NoDataPlaceholder reason="暂无提交记录" />
+              <NoDataPlaceholder reason="{t('dev.noCommits')}" />
             ) : (
               <div className="flex-1 overflow-y-auto space-y-2 max-h-[360px]">
                 {gitLog.map((commit) => (
@@ -403,7 +405,7 @@ export function Dev() {
           </div>
         </motion.div>
 
-        {/* ====== 构建状态 (col-6) ====== */}
+        {/* ====== {t('dev.buildStatus')} (col-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -426,10 +428,10 @@ export function Dev() {
             <div className="flex flex-col items-center justify-center py-8 gap-3">
               <ExternalLink size={20} style={{ color: 'var(--accent-cyan)' }} />
               <span className="font-mono text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
-                请使用 GitHub Actions 查看构建状态
+                {t('dev.useBuildActions')}
               </span>
               <span className="font-mono text-[10px] text-center" style={{ color: 'var(--text-disabled)' }}>
-                未配置 GitHub Token，无法直接调用 API
+                {t('dev.noGithubToken')}
               </span>
             </div>
           </div>
@@ -463,10 +465,10 @@ export function Dev() {
                 {/* 活跃问题汇总 */}
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: '阻塞', value: healthSummary.active_critical, icon: '🔴', color: '#ef4444' },
-                    { label: '重要', value: healthSummary.active_high, icon: '🟠', color: '#f97316' },
-                    { label: '一般', value: healthSummary.active_medium, icon: '🟡', color: '#eab308' },
-                    { label: '低优先', value: healthSummary.active_low, icon: '🔵', color: '#3b82f6' },
+                    { label: t('dev.critical'), value: healthSummary.active_critical, icon: '🔴', color: '#ef4444' },
+                    { label: t('dev.high'), value: healthSummary.active_high, icon: '🟠', color: '#f97316' },
+                    { label: t('dev.medium'), value: healthSummary.active_medium, icon: '🟡', color: '#eab308' },
+                    { label: t('dev.low'), value: healthSummary.active_low, icon: '🔵', color: '#3b82f6' },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -492,7 +494,7 @@ export function Dev() {
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={14} style={{ color: 'var(--accent-amber)' }} />
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      活跃问题合计
+                      {t('dev.activeTotal')}
                     </span>
                   </div>
                   <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
@@ -506,7 +508,7 @@ export function Dev() {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} style={{ color: 'var(--accent-green)' }} />
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      已解决
+                      {t('dev.resolved')}
                     </span>
                   </div>
                   <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-green)' }}>
@@ -544,13 +546,13 @@ export function Dev() {
             ) : depsLoading ? (
               <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-disabled)' }}>
                 <Loader2 size={16} className="animate-spin" />
-                <span className="font-mono text-xs">正在检查依赖更新（可能需要 10-30 秒）...</span>
+                <span className="font-mono text-xs">{t('dev.checkingDeps')}</span>
               </div>
             ) : outdatedDeps.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
                 <CheckCircle2 size={20} style={{ color: 'var(--accent-green)' }} />
                 <span className="font-mono text-xs" style={{ color: 'var(--accent-green)' }}>
-                  所有依赖均为最新版本
+                  {t('dev.allDepsUpToDate')}
                 </span>
               </div>
             ) : (
@@ -558,10 +560,10 @@ export function Dev() {
                 <table className="w-full font-mono text-xs">
                   <thead>
                     <tr style={{ color: 'var(--text-tertiary)' }}>
-                      <th className="text-left py-2 px-3 font-normal">包名</th>
-                      <th className="text-left py-2 px-3 font-normal">当前版本</th>
-                      <th className="text-left py-2 px-3 font-normal">最新版本</th>
-                      <th className="text-left py-2 px-3 font-normal">类型</th>
+                      <th className="text-left py-2 px-3 font-normal">{t('dev.colPkgName')}</th>
+                      <th className="text-left py-2 px-3 font-normal">{t('dev.colCurrentVer')}</th>
+                      <th className="text-left py-2 px-3 font-normal">{t('dev.colLatestVer')}</th>
+                      <th className="text-left py-2 px-3 font-normal">{t('dev.colType')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -589,7 +591,7 @@ export function Dev() {
                 </table>
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--glass-border)' }}>
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    共 {outdatedDeps.length} 个包可更新
+                    {outdatedDeps.length} {t('dev.packagesUpdatable')}
                   </span>
                 </div>
               </div>

@@ -23,6 +23,7 @@ import clsx from 'clsx';
 import { toast } from 'sonner';
 import { EnvironmentStatus } from '../../App';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -87,11 +88,11 @@ interface NotificationItem {
 function statusIcon(status: ServiceItem['status']) {
   switch (status) {
     case 'running':
-      return { Icon: CheckCircle2, color: 'var(--accent-green)', label: '运行中' };
+      return { Icon: CheckCircle2, color: 'var(--accent-green)', label: 'dashboard.statusRunning' };
     case 'stopped':
-      return { Icon: XCircle, color: 'var(--text-disabled)', label: '已停止' };
+      return { Icon: XCircle, color: 'var(--text-disabled)', label: 'dashboard.statusStopped' };
     case 'error':
-      return { Icon: AlertTriangle, color: 'var(--accent-red)', label: '异常' };
+      return { Icon: AlertTriangle, color: 'var(--accent-red)', label: 'dashboard.statusError' };
   }
 }
 
@@ -136,6 +137,7 @@ interface DashboardProps {
 /* ====== 主组件 ====== */
 
 export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComplete }: DashboardProps) {
+  const { t } = useLanguage();
   /* —— 状态 —— */
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -179,16 +181,16 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
 
   /* —— 启动/停止服务 —— */
   const handleServiceAction = async (svc: ServiceItem, action: 'start' | 'stop') => {
-    const actionLabel = action === 'start' ? '启动' : '停止';
+    const actionLabel = action === 'start' ? t('dashboard.actionStart') : t('dashboard.actionStop');
     setActionLoading(`${svc.id}-${action}`);
     try {
       await clawbotFetchJson(`/api/v1/system/services/${svc.id}/${action}`, { method: 'POST' });
-      toast.success(`${svc.label || svc.name} ${actionLabel}成功`);
+      toast.success(`${svc.label || svc.name} ${actionLabel}${t('dashboard.actionSuccess')}`);
       /* 刷新服务列表 */
       await fetchAll(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`${actionLabel}失败: ${msg}`);
+      toast.error(`${actionLabel}${t('dashboard.actionFailed')}: ${msg}`);
     } finally {
       setActionLoading(null);
     }
@@ -204,7 +206,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
           <span className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            正在连接后端...
+            {t('dashboard.connectingBackend')}
           </span>
         </div>
       </div>
@@ -213,18 +215,18 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
 
   /* —— 快捷统计（从 perf 接口取真实数据） —— */
   const quickStats = [
-    { label: '今日消息', value: perf?.today_messages != null ? String(perf.today_messages) : 'N/A', color: 'var(--accent-cyan)' },
-    { label: '活跃用户', value: perf?.active_users != null ? String(perf.active_users) : 'N/A', color: 'var(--accent-green)' },
-    { label: 'LLM 调用', value: perf?.llm_calls != null ? String(perf.llm_calls) : 'N/A', color: 'var(--accent-purple)' },
-    { label: '平均响应', value: perf ? formatAvgResponse(perf) : 'N/A', color: 'var(--accent-amber)' },
+    { label: t('dashboard.todayMessages'), value: perf?.today_messages != null ? String(perf.today_messages) : 'N/A', color: 'var(--accent-cyan)' },
+    { label: t('dashboard.activeUsers'), value: perf?.active_users != null ? String(perf.active_users) : 'N/A', color: 'var(--accent-green)' },
+    { label: t('dashboard.llmCalls'), value: perf?.llm_calls != null ? String(perf.llm_calls) : 'N/A', color: 'var(--accent-purple)' },
+    { label: t('dashboard.avgResponse'), value: perf ? formatAvgResponse(perf) : 'N/A', color: 'var(--accent-amber)' },
   ];
 
   /* —— 系统信息摘要（从 perf + status 接口取真实数据） —— */
   const systemMetrics = [
     { icon: Cpu, label: 'CPU', value: perf?.cpu_percent != null ? `${Math.round(perf.cpu_percent)}%` : 'N/A' },
-    { icon: Server, label: '内存', value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : 'N/A' },
-    { icon: Clock, label: '运行时间', value: systemStatus?.uptime || formatUptime(systemStatus?.uptime_seconds as number | undefined) || 'N/A' },
-    { icon: Zap, label: 'API 健康', value: perf?.api_health != null ? `${perf.api_health}%` : 'N/A' },
+    { icon: Server, label: t('dashboard.memory'), value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : 'N/A' },
+    { icon: Clock, label: t('dashboard.uptime'), value: systemStatus?.uptime || formatUptime(systemStatus?.uptime_seconds as number | undefined) || 'N/A' },
+    { icon: Zap, label: t('dashboard.apiHealth'), value: perf?.api_health != null ? `${perf.api_health}%` : 'N/A' },
   ];
 
   return (
@@ -250,7 +252,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                   SYSTEM STATUS
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  系统概览 // {runningCount}/{services.length} SERVICES ONLINE
+                  {t('dashboard.systemOverview')} // {runningCount}/{services.length} SERVICES ONLINE
                   {systemStatus?.version ? ` // v${systemStatus.version}` : ''}
                 </p>
               </div>
@@ -295,13 +297,13 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
               SERVICES
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              服务矩阵
+              {t('dashboard.serviceMatrix')}
             </h3>
 
             <div className="flex-1 space-y-1.5">
               {services.length === 0 && (
                 <p className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
-                  暂无服务数据
+                  {t('dashboard.noServiceData')}
                 </p>
               )}
               {services.map((svc) => {
@@ -332,7 +334,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                       ) : svc.status === 'running' ? (
                         <button
                           className="p-1 rounded hover:bg-white/5 transition-colors"
-                          title="停止服务"
+                          title={t('dashboard.stopService')}
                           onClick={() => handleServiceAction(svc, 'stop')}
                         >
                           <Square size={12} style={{ color: 'var(--accent-red)' }} />
@@ -340,7 +342,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                       ) : (
                         <button
                           className="p-1 rounded hover:bg-white/5 transition-colors"
-                          title="启动服务"
+                          title={t('dashboard.startService')}
                           onClick={() => handleServiceAction(svc, 'start')}
                         >
                           <Play size={12} style={{ color: 'var(--accent-green)' }} />
@@ -351,7 +353,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                           className="font-mono text-[10px] font-semibold"
                           style={{ color: si.color }}
                         >
-                          {si.label}
+                          {t(si.label)}
                         </p>
                         <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                           {svc.uptime || '—'}
@@ -377,13 +379,13 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
                 LIVE LOGS
               </span>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                最近 {logs.length} 条
+                {t('dashboard.recentLogs')} {logs.length} {t('dashboard.logsUnit')}
               </span>
             </div>
             <div className="p-4 space-y-0.5 font-mono text-xs" style={{ background: 'var(--bg-elevated)' }}>
               {logs.length === 0 && (
                 <p className="py-2 text-center" style={{ color: 'var(--text-disabled)' }}>
-                  暂无日志
+                  {t('dashboard.noLogs')}
                 </p>
               )}
               {logs.map((log, i) => (

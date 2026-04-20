@@ -18,6 +18,7 @@ import {
 import clsx from 'clsx';
 import { toast } from 'sonner';
 import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -128,9 +129,9 @@ const SOCIAL_SWITCH_LABELS: Record<string, string> = {
 /** 服务状态指示点 */
 function statusDot(status: string) {
   switch (status) {
-    case 'online': return { color: 'var(--accent-green)', label: '在线' };
-    case 'offline': return { color: 'var(--text-disabled)', label: '离线' };
-    case 'degraded': return { color: 'var(--accent-amber)', label: '降级' };
+    case 'online': return { color: 'var(--accent-green)', label: 'controlCenter.statusOnline' };
+    case 'offline': return { color: 'var(--text-disabled)', label: 'controlCenter.statusOffline' };
+    case 'degraded': return { color: 'var(--accent-amber)', label: 'controlCenter.statusDegraded' };
     default: return { color: 'var(--text-disabled)', label: status };
   }
 }
@@ -168,6 +169,7 @@ function logSrcColor(src: string): string {
 /* ====== 主组件 ====== */
 
 export function ControlCenter() {
+  const { t } = useLanguage();
   /* —— 状态 —— */
   const [switches, setSwitches] = useState<MasterSwitch[]>([]);
   const [services, setServices] = useState<ServiceEntry[]>([]);
@@ -286,7 +288,7 @@ export function ControlCenter() {
       }
     } catch (err) {
       console.error('[ControlCenter] 拉取数据失败:', err);
-      if (!silent) toast.error('总控数据加载失败');
+      if (!silent) toast.error(t('controlCenter.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -304,13 +306,13 @@ export function ControlCenter() {
     setRefreshing(true);
     await fetchAll(true);
     setRefreshing(false);
-    toast.success('数据已刷新');
+    toast.success(t('controlCenter.dataRefreshed'));
   };
 
   /* —— 切换开关 —— */
   const toggleSwitch = async (sw: MasterSwitch) => {
     if (sw.locked) {
-      toast.warning('该开关已锁定，不允许关闭');
+      toast.warning(t('controlCenter.switchLocked'));
       return;
     }
 
@@ -341,10 +343,10 @@ export function ControlCenter() {
       setSwitches((prev) =>
         prev.map((s) => (s.id === sw.id ? { ...s, enabled: newValue } : s)),
       );
-      toast.success(`${sw.label} 已${newValue ? '开启' : '关闭'}`);
+      toast.success(`${sw.label} ${newValue ? t('controlCenter.enabled') : t('controlCenter.disabled')}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '未知错误';
-      toast.error(`切换 ${sw.label} 失败`, { description: msg });
+      const msg = err instanceof Error ? err.message : t('controlCenter.unknownError');
+      toast.error(`${t('controlCenter.toggleFailed')} ${sw.label}`, { description: msg });
     } finally {
       setTogglingId(null);
     }
@@ -382,7 +384,7 @@ export function ControlCenter() {
                   MASTER SWITCHES
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  主控开关 // POWER CONTROL
+                  {t('controlCenter.masterSwitchesSubtitle')}
                 </p>
               </div>
               {/* 刷新按钮 */}
@@ -391,7 +393,7 @@ export function ControlCenter() {
                 disabled={refreshing}
                 className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
                 style={{ background: 'var(--bg-secondary)' }}
-                title="刷新数据"
+                title={t('controlCenter.refreshData')}
               >
                 <RefreshCw
                   size={14}
@@ -404,7 +406,7 @@ export function ControlCenter() {
             <div className="flex-1 space-y-2">
               {switches.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无控制开关
+                  {t('controlCenter.noSwitches')}
                 </div>
               )}
               {switches.map((sw) => {
@@ -425,7 +427,7 @@ export function ControlCenter() {
                         {sw.group === 'social' && (
                           <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded"
                             style={{ background: 'var(--bg-tertiary)', color: 'var(--text-disabled)' }}>
-                            社交
+                            {t('controlCenter.socialTag')}
                           </span>
                         )}
                       </p>
@@ -454,7 +456,7 @@ export function ControlCenter() {
               SERVICE MATRIX
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              服务矩阵
+              {t('controlCenter.serviceMatrix')}
             </h3>
 
             {/* 表头 */}
@@ -462,7 +464,7 @@ export function ControlCenter() {
               className="grid grid-cols-5 gap-2 px-3 py-2 rounded-lg mb-1"
               style={{ background: 'var(--bg-tertiary)' }}
             >
-              {['服务名', '状态', '端口', 'CPU', '内存'].map((h) => (
+              {[t('controlCenter.colServiceName'), t('controlCenter.colStatus'), t('controlCenter.colPort'), 'CPU', t('controlCenter.colMemory')].map((h) => (
                 <span key={h} className="text-label" style={{ fontSize: '10px' }}>
                   {h}
                 </span>
@@ -473,7 +475,7 @@ export function ControlCenter() {
             <div className="flex-1 space-y-1">
               {services.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无服务数据
+                  {t('controlCenter.noServiceData')}
                 </div>
               )}
               {services.map((svc) => {
@@ -493,7 +495,7 @@ export function ControlCenter() {
                         style={{ background: dot.color }}
                       />
                       <span className="font-mono text-xs" style={{ color: dot.color }}>
-                        {dot.label}
+                        {t(dot.label)}
                       </span>
                     </span>
                     <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -519,13 +521,13 @@ export function ControlCenter() {
               RUNTIME CONFIG
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              运行配置
+              {t('controlCenter.runtimeConfig')}
             </h3>
 
             <div className="flex-1 space-y-2">
               {settings.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无配置数据
+                  {t('controlCenter.noConfigData')}
                 </div>
               )}
               {settings.map((p) => (
@@ -559,7 +561,7 @@ export function ControlCenter() {
             >
               <AlertTriangle size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-amber)' }} />
               <p className="font-mono text-[10px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-                修改配置后需要重启 ClawBot 链路才能生效
+                {t('controlCenter.configRestartHint')}
               </p>
             </div>
           </div>
@@ -577,7 +579,7 @@ export function ControlCenter() {
                 LOG VIEWER
               </span>
               <span className="ml-auto font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                自动刷新 30s
+                {t('controlCenter.autoRefresh30s')}
               </span>
             </div>
             <div
@@ -586,7 +588,7 @@ export function ControlCenter() {
             >
               {logs.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无日志
+                  {t('controlCenter.noLogs')}
                 </div>
               )}
               {logs.map((log, i) => {

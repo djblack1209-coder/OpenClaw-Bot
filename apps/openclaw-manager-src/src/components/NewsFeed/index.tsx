@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 自动刷新间隔（毫秒） ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -182,6 +183,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
  * 数据来自 /api/v1/monitor/news
  */
 export function NewsFeed() {
+  const { t } = useLanguage();
   /* ====== 状态 ====== */
   const [activeCategory, setActiveCategory] = useState<NewsCategory>('ALL');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
@@ -209,7 +211,7 @@ export function NewsFeed() {
 
       setNewsItems(items);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : 'unknown error';
       setError(msg);
     } finally {
       setLoading(false);
@@ -285,7 +287,7 @@ export function NewsFeed() {
       .slice(0, 3)
       .map(([topic, count]) => ({
         topic,
-        delta: `${count} 篇`,
+        delta: `${count} ${t('newsFeed.articles')}`,
       }));
   }, [newsItems]);
 
@@ -297,7 +299,7 @@ export function NewsFeed() {
       .map((n) => n.summary);
     return summaries.length > 0
       ? summaries.join(' ')
-      : '暂无摘要数据';
+      : t('newsFeed.noSummary');
   }, [newsItems]);
 
   /** 威胁等级统计 */
@@ -329,7 +331,7 @@ export function NewsFeed() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <LoadingState message="正在加载新闻数据..." />
+          <LoadingState message={t('newsFeed.loadingNews')} />
         </div>
       </div>
     );
@@ -339,7 +341,7 @@ export function NewsFeed() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`数据加载失败: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('newsFeed.loadFailed')}: ${error}`} onRetry={fetchData} />
         </div>
       </div>
     );
@@ -380,7 +382,7 @@ export function NewsFeed() {
               className="font-mono text-[11px] mb-4"
               style={{ color: 'var(--text-tertiary)' }}
             >
-              {newsItems.length} 条新闻 // {topSources.length} 个来源 // 每 30 秒自动刷新
+              {newsItems.length} {t('newsFeed.newsCount')} // {topSources.length} {t('newsFeed.sourcesCount')} // {t('newsFeed.autoRefresh30s')}
             </p>
 
             {/* 分类筛选条 */}
@@ -470,7 +472,7 @@ export function NewsFeed() {
                     className="font-mono text-xs"
                     style={{ color: 'var(--text-disabled)' }}
                   >
-                    该分类暂无文章
+                    {t('newsFeed.noCategoryArticles')}
                   </span>
                 </div>
               )}
@@ -789,7 +791,7 @@ export function NewsFeed() {
                   className="font-mono text-[10px]"
                   style={{ color: 'var(--text-disabled)' }}
                 >
-                  每 30 秒自动刷新
+                  {t('newsFeed.autoRefresh30s')}
                 </span>
               </div>
               <span

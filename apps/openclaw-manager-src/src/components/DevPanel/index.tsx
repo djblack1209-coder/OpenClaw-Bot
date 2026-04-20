@@ -1,9 +1,9 @@
 /**
  * DevPanel — 开发者工作台页面 (Sonic Abyss Bento Grid 风格)
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
- * 系统信息来自 api.getSystemInfo()，日志来自通知 API
- * 环境变量使用 api.getEnvValue() 读取非敏感值
- * API 测试使用真实 fetch 调用
+ * {t('devPanel.sysInfo')}来自 api.getSystemInfo()，日志来自通知 API
+ * {t('devPanel.envVars')}使用 api.getEnvValue() 读取非敏感值
+ * {t('devPanel.apiTest')}使用真实 fetch 调用
  * 30 秒自动刷新
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -22,6 +22,7 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { useLanguage } from '../../i18n';
 import type { SystemInfo } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
@@ -82,20 +83,20 @@ const ENV_KEYS: Array<{ key: string; masked: boolean }> = [
 
 /* ====== API 测试端点配置 ====== */
 const API_TEST_ENDPOINTS = [
-  { name: '系统状态', endpoint: '/api/v1/status' },
-  { name: '性能指标', endpoint: '/api/v1/perf' },
-  { name: '通知列表', endpoint: '/api/v1/system/notifications?limit=1' },
+  { name: 'devPanel.apiStatus', endpoint: '/api/v1/status' },
+  { name: 'devPanel.apiPerf', endpoint: '/api/v1/perf' },
+  { name: 'devPanel.apiNotif', endpoint: '/api/v1/system/notifications?limit=1' },
 ];
 
 /* ====== 工具函数 ====== */
 
 function apiStatusStyle(s: ApiTestResult['status']) {
   switch (s) {
-    case 'ok': return { color: 'var(--accent-green)', label: '正常' };
-    case 'slow': return { color: 'var(--accent-amber)', label: '偏慢' };
-    case 'error': return { color: 'var(--accent-red)', label: '异常' };
-    case 'testing': return { color: 'var(--accent-cyan)', label: '测试中...' };
-    default: return { color: 'var(--text-disabled)', label: '待测试' };
+    case 'ok': return { color: 'var(--accent-green)', label: 'devPanel.statusOk' };
+    case 'slow': return { color: 'var(--accent-amber)', label: 'devPanel.statusSlow' };
+    case 'error': return { color: 'var(--accent-red)', label: 'devPanel.statusError' };
+    case 'testing': return { color: 'var(--accent-cyan)', label: 'devPanel.statusTesting' };
+    default: return { color: 'var(--text-disabled)', label: 'devPanel.statusIdle' };
   }
 }
 
@@ -137,6 +138,7 @@ function NoDataPlaceholder({ reason }: { reason: string }) {
 /* ====== 主组件 ====== */
 
 export default function DevPanel() {
+  const { t } = useLanguage();
   /* 状态 */
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
   const [sysInfoError, setSysInfoError] = useState<string | null>(null);
@@ -168,7 +170,7 @@ export default function DevPanel() {
         setSysInfo(sysRes.value);
         setSysInfoError(null);
       } else {
-        setSysInfoError('系统信息不可用');
+        setSysInfoError(t('devPanel.sysInfoUnavailable'));
       }
 
       if (logsRes.status === 'fulfilled') {
@@ -179,11 +181,11 @@ export default function DevPanel() {
         setLogs(items);
         setLogsError(null);
       } else {
-        setLogsError('通知日志不可用');
+        setLogsError(t('devPanel.logsUnavailable'));
       }
     } catch {
       if (!mountedRef.current) return;
-      toast.error('开发面板数据加载失败');
+      toast.error(t('devPanel.loadFailed'));
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -210,7 +212,7 @@ export default function DevPanel() {
         }
         return {
           key: e.key,
-          value: '未配置',
+          value: t('devPanel.notConfigured'),
           masked: e.masked,
           loading: false,
           error: r.status === 'rejected',
@@ -304,7 +306,7 @@ export default function DevPanel() {
                   SYSTEM LOG
                 </h2>
                 <span className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  系统日志 // 来自通知 API
+                  {t('devPanel.sysLogSubtitle')}
                 </span>
               </div>
               {loading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -315,7 +317,7 @@ export default function DevPanel() {
               {logsError ? (
                 <NoDataPlaceholder reason={logsError} />
               ) : logs.length === 0 ? (
-                <NoDataPlaceholder reason="暂无系统日志" />
+                <NoDataPlaceholder reason="{t('devPanel.noSysLogs')}" />
               ) : (
                 <div className="space-y-0.5">
                   {logs.map((entry, i) => (
@@ -340,7 +342,7 @@ export default function DevPanel() {
               className="px-5 py-2 border-t font-mono text-[10px]"
               style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-disabled)' }}
             >
-              数据来源: /api/v1/system/notifications — 每 30 秒自动刷新
+              {t('devPanel.dataSource')}
             </div>
           </div>
         </motion.div>
@@ -376,9 +378,9 @@ export default function DevPanel() {
                 {[
                   { label: 'OS', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
                   { label: 'Arch', value: sysInfo.arch, color: 'var(--accent-cyan)' },
-                  { label: 'OpenClaw', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? '已安装' : '未安装'), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
+                  { label: 'OpenClaw', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
                   { label: 'Node', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
-                  { label: '配置目录', value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
+                  { label: t('devPanel.configDir'), value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
                 ].map((info) => (
                   <div
                     key={info.label}
@@ -441,7 +443,7 @@ export default function DevPanel() {
                             : 'var(--text-primary)',
                     }}
                   >
-                    {env.loading ? '读取中...' : env.value}
+                    {env.loading ? t('devPanel.reading') : env.value}
                   </p>
                 </div>
               ))}
@@ -464,7 +466,7 @@ export default function DevPanel() {
                   API 测试
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  LIVE API TEST — 点击单个端点或全部测试
+                  {t('devPanel.apiTestSubtitle')}
                 </p>
               </div>
               <button
@@ -473,49 +475,49 @@ export default function DevPanel() {
                 onClick={runAllApiTests}
               >
                 <RefreshCw size={12} />
-                全部测试
+                {t('devPanel.testAll')}
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {apiTests.map((t, i) => {
-                const st = apiStatusStyle(t.status);
+              {apiTests.map((test, i) => {
+                const st = apiStatusStyle(test.status);
                 return (
                   <button
-                    key={t.name}
+                    key={t(test.name)}
                     className="py-4 px-4 rounded-lg text-left transition-all hover:opacity-80"
                     style={{ background: 'var(--bg-secondary)' }}
                     onClick={() => runApiTest(i)}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {t.name}
+                        {t(test.name)}
                       </span>
                       <span
                         className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider"
                         style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}
                       >
-                        {st.label}
+                        {t(st.label)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                        {t.endpoint}
+                        {test.endpoint}
                       </span>
                       <div className="flex items-center gap-1.5">
-                        {t.status === 'testing' ? (
+                        {test.status === 'testing' ? (
                           <Loader2 size={10} className="animate-spin" style={{ color: st.color }} />
                         ) : (
                           <Activity size={10} style={{ color: st.color }} />
                         )}
                         <span className="text-metric" style={{ color: st.color, fontSize: '16px' }}>
-                          {t.latencyMs != null ? `${t.latencyMs}ms` : '--'}
+                          {test.latencyMs != null ? `${test.latencyMs}ms` : '--'}
                         </span>
                       </div>
                     </div>
-                    {t.errorMsg && (
+                    {test.errorMsg && (
                       <p className="font-mono text-[10px] mt-1 truncate" style={{ color: 'var(--accent-red)' }}>
-                        {t.errorMsg}
+                        {test.errorMsg}
                       </p>
                     )}
                   </button>

@@ -1,7 +1,7 @@
 /**
  * APIGateway — API 网关页面 (Sonic Abyss Bento Grid 风格)
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
- * 真实 API 数据：网关状态 / 渠道列表 / 令牌管理
+ * 真实 API 数据：网关状态 / 渠道列表 / {t('apiGateway.tokenManagement')}
  */
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
@@ -14,6 +14,7 @@ import {
   Wifi, WifiOff, RefreshCw,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 
 /* ====== 入场动画 ====== */
@@ -50,7 +51,7 @@ interface ChannelItem {
   base_url?: string;
   models?: string;
   group?: string;
-  status?: number;            // 1=启用, 2=禁用
+  status?: number;            // 1= {t('apiGateway.enabledLabel')}, 2=禁用
   used_quota?: number;
   balance?: number;
   priority?: number;
@@ -131,6 +132,7 @@ function latencyColor(ms?: number): string {
 /* ====== 主组件 ====== */
 
 export function APIGateway() {
+  const { t } = useLanguage();
   /* ── 状态 ── */
   const [loading, setLoading] = useState(true);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -184,7 +186,7 @@ export function APIGateway() {
       }
     } catch (err) {
       console.error('[APIGateway] 数据加载失败:', err);
-      if (!silent) toast.error('网关数据加载失败');
+      if (!silent) toast.error(t('apiGateway.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -201,7 +203,7 @@ export function APIGateway() {
     setTogglingIds((prev) => new Set(prev).add(channelId));
     try {
       await parseResponse(await api.newApiToggleChannel(channelId));
-      toast.success('渠道状态已切换');
+      toast.success(t('apiGateway.channelToggled'));
       // 局部更新：翻转 status
       setChannels((prev) =>
         prev.map((ch) =>
@@ -212,7 +214,7 @@ export function APIGateway() {
       );
     } catch (err) {
       console.error('[APIGateway] 切换渠道失败:', err);
-      toast.error('切换渠道状态失败');
+      toast.error(t('apiGateway.channelToggleFailed'));
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -228,11 +230,11 @@ export function APIGateway() {
       setDeletingChannelIds((prev) => new Set(prev).add(channelId));
       try {
         await parseResponse(await api.newApiDeleteChannel(channelId));
-        toast.success(`渠道「${name || channelId}」已删除`);
+        toast.success(`${t('apiGateway.channelDeleted')}${name || channelId}`);
         setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
       } catch (err) {
         console.error('[APIGateway] 删除渠道失败:', err);
-        toast.error('删除渠道失败');
+        toast.error(t('apiGateway.channelDeleteFailed'));
       } finally {
         setDeletingChannelIds((prev) => {
           const next = new Set(prev);
@@ -243,8 +245,8 @@ export function APIGateway() {
     };
     setConfirmDialog({
       open: true,
-      title: '删除渠道',
-      description: `确定要删除渠道「${name || channelId}」？删除后不可恢复。`,
+      title: t('apiGateway.deleteChannelTitle'),
+      description: `${t('apiGateway.confirmDeleteChannel')}${name || channelId}`,
       onConfirm: doDelete,
     });
   }, []);
@@ -255,11 +257,11 @@ export function APIGateway() {
       setDeletingTokenIds((prev) => new Set(prev).add(tokenId));
       try {
         await parseResponse(await api.newApiDeleteToken(tokenId));
-        toast.success(`令牌「${name || tokenId}」已删除`);
+        toast.success(`${t('apiGateway.tokenDeleted')}${name || tokenId}`);
         setTokens((prev) => prev.filter((t) => t.id !== tokenId));
       } catch (err) {
         console.error('[APIGateway] 删除令牌失败:', err);
-        toast.error('删除令牌失败');
+        toast.error(t('apiGateway.tokenDeleteFailed'));
       } finally {
         setDeletingTokenIds((prev) => {
           const next = new Set(prev);
@@ -270,8 +272,8 @@ export function APIGateway() {
     };
     setConfirmDialog({
       open: true,
-      title: '删除令牌',
-      description: `确定要删除令牌「${name || tokenId}」？删除后不可恢复。`,
+      title: t('apiGateway.deleteTokenTitle'),
+      description: `${t('apiGateway.confirmDeleteToken')}${name || tokenId}`,
       onConfirm: doDelete,
     });
   }, []);
@@ -282,10 +284,10 @@ export function APIGateway() {
 
   /* ── 概览统计 ── */
   const overviewStats = [
-    { label: '渠道总数', value: String(channels.length), color: 'var(--accent-cyan)' },
-    { label: '已启用', value: String(enabledChannels), color: 'var(--accent-green)' },
-    { label: '令牌数', value: String(tokens.length), color: 'var(--accent-amber)' },
-    { label: '网关状态', value: isOnline ? '在线' : '离线', color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' },
+    { label: t('apiGateway.totalChannels'), value: String(channels.length), color: 'var(--accent-cyan)' },
+    { label: t('apiGateway.enabledCount'), value: String(enabledChannels), color: 'var(--accent-green)' },
+    { label: t('apiGateway.tokenCount'), value: String(tokens.length), color: 'var(--accent-amber)' },
+    { label: t('apiGateway.gatewayStatus'), value: isOnline ? t('apiGateway.online') : t('apiGateway.offline'), color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' },
   ];
 
   /* ── 加载态 ── */
@@ -294,7 +296,7 @@ export function APIGateway() {
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-cyan)' }} />
         <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
-          正在加载网关数据…
+          {t('apiGateway.loadingData')}
         </span>
       </div>
     );
@@ -362,7 +364,7 @@ export function APIGateway() {
 
             {/* 渠道列表 */}
             <span className="text-label mb-2" style={{ color: 'var(--text-tertiary)' }}>
-              CHANNEL LIST · 渠道列表
+              {t('apiGateway.channelList')}
             </span>
 
             {/* 表头 */}
@@ -370,19 +372,19 @@ export function APIGateway() {
               className="grid gap-2 px-4 py-2 rounded-lg mb-1"
               style={{ gridTemplateColumns: '2fr 1fr 70px 70px 60px 70px', background: 'var(--bg-tertiary)' }}
             >
-              <span className="text-label" style={{ fontSize: '10px' }}>渠道名称</span>
-              <span className="text-label" style={{ fontSize: '10px' }}>类型</span>
-              <span className="text-label text-center" style={{ fontSize: '10px' }}>状态</span>
-              <span className="text-label text-right" style={{ fontSize: '10px' }}>响应时间</span>
-              <span className="text-label text-center" style={{ fontSize: '10px' }}>开关</span>
-              <span className="text-label text-center" style={{ fontSize: '10px' }}>操作</span>
+              <span className="text-label" style={{ fontSize: '10px' }}>{t('apiGateway.colChannelName')}</span>
+              <span className="text-label" style={{ fontSize: '10px' }}>{t('apiGateway.colType')}</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>{t('apiGateway.colStatus')}</span>
+              <span className="text-label text-right" style={{ fontSize: '10px' }}>{t('apiGateway.colResponseTime')}</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>{t('apiGateway.colSwitch')}</span>
+              <span className="text-label text-center" style={{ fontSize: '10px' }}>{t('apiGateway.colAction')}</span>
             </div>
 
             {/* 渠道行 */}
             <div className="flex-1 space-y-1 overflow-y-auto">
               {channels.length === 0 ? (
                 <div className="text-center py-8 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无渠道数据
+                  {t('apiGateway.noChannelData')}
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -400,7 +402,7 @@ export function APIGateway() {
                     >
                       {/* 渠道名称 */}
                       <span className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>
-                        {ch.name || `渠道 #${ch.id}`}
+                        {ch.name || `${t('apiGateway.channelPrefix')} #${ch.id}`}
                       </span>
                       {/* 类型 */}
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
@@ -413,7 +415,7 @@ export function APIGateway() {
                           style={{ background: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}
                         />
                         <span className="font-mono text-[9px]" style={{ color: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                          {enabled ? '启用' : '禁用'}
+                          {enabled ? t('apiGateway.statusEnabled') : t('apiGateway.statusDisabled')}
                         </span>
                       </div>
                       {/* 响应时间 */}
@@ -426,7 +428,7 @@ export function APIGateway() {
                           onClick={() => handleToggleChannel(ch.id)}
                           disabled={toggling}
                           className="transition-colors hover:opacity-80 disabled:opacity-50"
-                          title={enabled ? '点击禁用' : '点击启用'}
+                          title={enabled ? t('apiGateway.clickToDisable') : t('apiGateway.clickToEnable')}
                         >
                           {toggling ? (
                             <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
@@ -444,7 +446,7 @@ export function APIGateway() {
                           disabled={deleting}
                           className="p-1 rounded transition-colors hover:opacity-80 disabled:opacity-50"
                           style={{ color: 'var(--accent-red)' }}
-                          title="删除渠道"
+                          title={t('apiGateway.deleteChannel')}
                         >
                           {deleting ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -474,7 +476,7 @@ export function APIGateway() {
             <div className="flex-1 space-y-3 overflow-y-auto">
               {tokens.length === 0 ? (
                 <div className="text-center py-8 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无令牌
+                  {t('apiGateway.noTokens')}
                 </div>
               ) : (
                 tokens.map((tk) => {
@@ -488,7 +490,7 @@ export function APIGateway() {
                     >
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-mono text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-                          {tk.name || `令牌 #${tk.id}`}
+                          {tk.name || `${t('apiGateway.tokenPrefix')} #${tk.id}`}
                         </span>
                         <div className="flex items-center gap-2">
                           <span
@@ -501,7 +503,7 @@ export function APIGateway() {
                             disabled={deleting}
                             className="p-0.5 rounded transition-colors hover:opacity-80 disabled:opacity-50"
                             style={{ color: 'var(--accent-red)' }}
-                            title="删除令牌"
+                            title={t('apiGateway.deleteToken')}
                           >
                             {deleting ? (
                               <Loader2 size={10} className="animate-spin" />
@@ -520,20 +522,20 @@ export function APIGateway() {
                       )}
                       <div className="flex justify-between mt-2">
                         <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
-                          创建: {formatTime(tk.created_time)}
+                          {t('apiGateway.created')}: {formatTime(tk.created_time)}
                         </span>
                         <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>
-                          最近: {formatTime(tk.accessed_time)}
+                          {t('apiGateway.lastAccess')}: {formatTime(tk.accessed_time)}
                         </span>
                       </div>
                       {/* 配额信息 */}
                       {tk.unlimited_quota ? (
                         <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--accent-cyan)' }}>
-                          配额: 无限制
+                          {t('apiGateway.quotaUnlimited')}
                         </span>
                       ) : tk.remain_quota != null ? (
                         <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--text-disabled)' }}>
-                          剩余: {tk.remain_quota.toLocaleString()} · 已用: {(tk.used_quota ?? 0).toLocaleString()}
+                          {t('apiGateway.remaining')}: {tk.remain_quota.toLocaleString()} · {t('apiGateway.used')}: {(tk.used_quota ?? 0).toLocaleString()}
                         </span>
                       ) : null}
                     </div>
@@ -551,7 +553,7 @@ export function APIGateway() {
               CHANNEL DISTRIBUTION
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              渠道类型分布
+              {t('apiGateway.channelDistribution')}
             </h3>
 
             <div className="flex-1 space-y-3">
@@ -569,7 +571,7 @@ export function APIGateway() {
                 if (sorted.length === 0) {
                   return (
                     <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                      暂无数据
+                      {t('apiGateway.noData')}
                     </div>
                   );
                 }
@@ -603,7 +605,7 @@ export function APIGateway() {
             <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <Activity size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                {channels.length} 个渠道
+                {channels.length}  {t('apiGateway.channelsUnit')}
               </span>
               <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--accent-green)' }}>
                 {enabledChannels} 启用
@@ -623,7 +625,7 @@ export function APIGateway() {
             <div className="flex-1 space-y-2 overflow-y-auto max-h-[260px]">
               {channels.length === 0 ? (
                 <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无渠道
+                  {t('apiGateway.noChannels')}
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -661,7 +663,7 @@ export function APIGateway() {
                           </div>
                         ) : (
                           <span className="font-mono text-[9px] mt-1 block" style={{ color: 'var(--text-disabled)' }}>
-                            未配置模型
+                            {t('apiGateway.noModelsConfigured')}
                           </span>
                         )}
                       </div>
@@ -676,7 +678,7 @@ export function APIGateway() {
           </div>
         </motion.div>
 
-        {/* ====== 网关信息摘要 (col-4) ====== */}
+        {/* ====== {t('apiGateway.gatewayInfo')}摘要 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
@@ -704,13 +706,13 @@ export function APIGateway() {
                   ))
               ) : (
                 <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  网关未连接
+                  {t('apiGateway.gatewayNotConnected')}
                 </div>
               )}
             </div>
 
             <div className="mt-3 pt-3 font-mono text-[10px]" style={{ borderTop: '1px solid var(--glass-border)', color: 'var(--text-disabled)' }}>
-              自动刷新: 每 30 秒
+              {t('apiGateway.autoRefresh')}
             </div>
           </div>
         </motion.div>
@@ -726,8 +728,8 @@ export function APIGateway() {
         }}
         title={confirmDialog.title}
         description={confirmDialog.description}
-        confirmText="删除"
-        cancelText="取消"
+        confirmText={t('apiGateway.confirmDelete')}
+        cancelText={t('apiGateway.confirmCancel')}
         destructive
       />
     </div>
