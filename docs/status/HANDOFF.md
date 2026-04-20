@@ -1,8 +1,64 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-19
+> 最后更新: 2026-04-20
 
 ---
+
+## [2026-04-20] UI 全面数据接入：31 页面 Mock→真实 API + 验收审计
+
+### 本次完成了什么
+
+**1. 全面侦察（31 个页面摸底）**
+- 9 个页面已接入真实 API（Home/Portfolio/Bots/Assistant/Settings/Memory/Evolution/Logs/Scheduler）
+- 16 个页面 100% Mock 假数据
+- 3 个页面纯占位符（notifications/trading/risk）
+- 1 个后端路由未挂载（monitor.py）
+
+**2. 第 1 批 — 核心 C 端页面增强**
+- App.tsx 主界面挂载 `<Toaster />`（之前只有 Onboarding 有）
+- Portfolio 从单页改为 5 标签页（持仓概览/交易决策/自动交易/回测分析/交易日志）
+- Bots 从纯服务列表升级为运营面板（+闲鱼/社媒/定时任务/通知渠道 4 个卡片）
+- Home 新增今日简报卡片（调用 dailyBrief API）
+
+**3. 第 2 批 — 5 个 dev 页面接入 API**
+- ControlCenter/Dashboard/Performance/APIGateway/AIConfig 全部替换 Mock→真实 API
+
+**4. 第 3 批 — 全球情报模块**
+- 后端：monitor.py 路由前缀改 `/monitor`，注册到 server.py（端点 /api/v1/monitor/*）
+- 前端：WorldMonitor/NewsFeed/FinRadar 接入对应 API
+
+**5. 第 4 批 — 剩余页面 + 3 个新页面**
+- Store/Plugins/Channels/ExecutionFlow 接入可用 API
+- Money/Dev/DevPanel/Testing 接入能用的 API + 诚实标注"待接入"
+- 新建 Notifications（通知中心）、Trading（交易引擎）、Risk（风险分析）三个完整页面
+
+**6. 验收审计 + 修复**
+- 26 项校验标准透查：24 通过 / 2 失败已修复
+- Notifications 单条已读加 toast.success
+- Store fetchData 空 catch 改为展示错误+重试
+- Vite 生产构建通过（2.93s，0 errors）
+
+### 未完成的工作
+- **交易日志 Tab**：Portfolio 第 5 个 Tab 为占位（后端无分页交易日志 API）
+- **Money 页部分数据源缺失**：闲鱼收入/套利收入/DeFi 收入标注"待接入"
+- **Dev/Testing 页**：Git/CI/测试系统未接入（需要后端新增接口）
+- **APIGateway 删除操作用 confirm()**：应替换为自定义确认弹窗（Tauri 下原生 confirm 可能不可靠）
+- **大师 Agent 对接投票系统**：master_analysts.py 未嵌入 auto_trader 投票流程
+- **估值模型 UI**：valuation_models 未接入 GUI 面板
+
+### 需要注意的坑
+- monitor.py 路由前缀从 `/api/monitor` 改成了 `/monitor`（挂载时用 `/api/v1` 前缀），最终路径是 `/api/v1/monitor/*`
+- Portfolio 5 标签页是内联实现（非 shadcn Tab 组件），状态用 useState 管理
+- Bots 页新增的定时任务开关调用 `POST /api/v1/controls/scheduler/task/{task_id}/toggle`
+- 所有 Mock 页面的 `全模拟数据` 注释已移除
+- 构建有一个 >500KB chunk 警告（Recharts+React Flow 大库），不影响功能
+
+### 当前系统状态
+- TypeScript: **零错误**
+- Vite 构建: **成功**（2.93s）
+- Mock 数据残留: **0 个页面**
+- Python 测试: 1461 通过 / 0 失败 / 2 跳过
+- 后端 API: 15 个路由已注册（含新增 monitor）
 
 ## [2026-04-19] CookieCloud + ai-hedge-fund + CLI-anything 三大集成
 
