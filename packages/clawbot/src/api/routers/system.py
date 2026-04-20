@@ -283,6 +283,14 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
         "process_keyword": "new-api",
         "port": 3000,
     },
+    {
+        "id": "kiro-gateway",
+        "name": "Kiro 反向代理",
+        "description": "Node.js 反向代理网关",
+        "process_keyword": "kiro",
+        "port": 18793,
+        "auto_start_cmd": None,
+    },
 ]
 
 
