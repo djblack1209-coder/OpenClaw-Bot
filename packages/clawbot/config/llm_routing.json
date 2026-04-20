@@ -2,8 +2,8 @@
   "_meta": {
     "description": "LLM 路由配置 — 所有 provider/模型/降级链集中管理",
     "version": "1.0.0",
-    "last_updated": "2026-04-18",
-    "note": "修改此文件即可调整路由规则，无需改代码。重启生效（或调用 /pool reload）。HI-525: 已同步硬编码配置"
+    "last_updated": "2026-04-20",
+    "note": "HI-525: 完全同步硬编码配置 — 新增 fireworks/cloudflare/ollama + 补齐 sambanova/github_models 缺失模型"
   },
 
   "providers": {
@@ -108,7 +108,10 @@
       "models": [
         {"id": "gpt-4.1-mini", "family": "gpt", "tier": "A", "rpm": 15},
         {"id": "o4-mini", "family": "gpt", "tier": "S", "rpm": 15},
-        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 15}
+        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 15},
+        {"id": "DeepSeek-V3-0324", "family": "deepseek", "tier": "A", "rpm": 15},
+        {"id": "Llama-3.3-70B-Instruct", "family": "llama", "tier": "A", "rpm": 15},
+        {"id": "Mistral-Small-3.1", "family": "mistral", "tier": "B", "rpm": 15}
       ]
     },
 
@@ -145,7 +148,10 @@
       "stream_timeout": 120,
       "note": "Sambanova free (Reasoning 模型需要长超时)",
       "models": [
-        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 10}
+        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 10},
+        {"id": "DeepSeek-V3.2", "family": "deepseek", "tier": "A", "rpm": 10},
+        {"id": "Meta-Llama-3.3-70B-Instruct", "family": "llama", "tier": "A", "rpm": 10},
+        {"id": "Qwen/Qwen3-235B", "family": "qwen", "tier": "S", "rpm": 10}
       ]
     },
 
@@ -212,6 +218,47 @@
         {"id": "gpt-4o-mini", "family": "gpt", "tier": "A", "rpm": 5},
         {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 2},
         {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 2}
+      ]
+    },
+
+    "fireworks": {
+      "env_key": "FIREWORKS_API_KEY",
+      "base_url": "https://api.fireworks.ai/inference/v1",
+      "prefix": "openai/",
+      "timeout": 15,
+      "stream_timeout": 30,
+      "note": "Fireworks AI (免费 $1 额度, 推理快)",
+      "models": [
+        {"id": "accounts/fireworks/models/llama4-scout-instruct-basic", "family": "llama", "tier": "A", "rpm": 10},
+        {"id": "accounts/fireworks/models/llama-v3p3-70b-instruct", "family": "llama", "tier": "A", "rpm": 10},
+        {"id": "accounts/fireworks/models/deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 10}
+      ]
+    },
+
+    "cloudflare": {
+      "env_key": "CLOUDFLARE_API_TOKEN",
+      "env_vars_required": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+      "base_url_template": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+      "prefix": "openai/",
+      "timeout": 15,
+      "stream_timeout": 30,
+      "note": "Cloudflare Workers AI (永久免费 10000 neurons/天)",
+      "models": [
+        {"id": "@cf/openai/gpt-oss-120b", "family": "gpt", "tier": "S", "rpm": 30},
+        {"id": "@cf/qwen/qwen3-30b-a3b-fp8", "family": "qwen", "tier": "B", "rpm": 30},
+        {"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "family": "llama", "tier": "A", "rpm": 30}
+      ]
+    },
+
+    "ollama_local": {
+      "env_key": "LOCAL_HF_MODEL_ENDPOINT",
+      "env_key_optional": true,
+      "base_url": "http://127.0.0.1:11434",
+      "timeout": 30,
+      "stream_timeout": 60,
+      "note": "本地 Ollama (零成本兜底)",
+      "models": [
+        {"id": "ollama/gemma4:e4b-optimized", "family": "gemma", "tier": "D", "rpm": 999}
       ]
     },
 
