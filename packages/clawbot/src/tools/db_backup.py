@@ -5,7 +5,6 @@
 每天凌晨2点自动执行，保留最近7天的备份。
 """
 
-import asyncio
 import logging
 import shutil
 from datetime import datetime

@@ -115,11 +115,10 @@ class CookieHealthMonitor:
 
     async def check_all_cookies(self) -> dict:
         """检查所有平台 Cookie 健康状态
-        
+
         Returns:
             dict: {platform: {valid: bool, expires_at: str|None, hours_left: float|None, status: str}}
         """
-        import json
         from pathlib import Path
 
         results = {}
