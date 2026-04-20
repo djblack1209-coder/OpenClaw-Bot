@@ -107,7 +107,7 @@ def build_deployments_from_config(
                     prov_id,
                     f"{prefix}{model_id}",
                     api_key,
-                    base_url=base_url,
+                    base=base_url,
                     tier=tier,
                     family=family,
                     note=note,
