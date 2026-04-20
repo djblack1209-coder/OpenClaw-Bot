@@ -979,6 +979,43 @@ class LiteLLMPool:
             logger.error(f"[LiteLLMPool] Router init failed: {_scrub_secrets(str(e))}")
             self._router = None
 
+    def export_config_snapshot(self) -> dict:
+        """导出当前路由配置快照（用于前端展示、审计和备份）
+
+        返回运行时实际加载的所有 deployment 信息，
+        包括模型名、provider、base_url、上下文窗口等。
+        敏感信息（API Key）会被脱敏处理。
+        """
+        from datetime import datetime
+
+        if not self._router or not self._router.model_list:
+            return {
+                "exported_at": datetime.now().isoformat(),
+                "status": "not_initialized",
+                "deployments": [],
+            }
+
+        deployments = []
+        for dep in self._router.model_list:
+            info = dep.get("litellm_params", {})
+            deployments.append({
+                "model_group": dep.get("model_name", "unknown"),
+                "model_id": info.get("model", ""),
+                "base_url": _scrub_secrets(str(info.get("api_base", ""))) if info.get("api_base") else None,
+                "has_api_key": bool(info.get("api_key")),
+                "timeout": info.get("timeout"),
+                "stream_timeout": info.get("stream_timeout"),
+            })
+
+        return {
+            "exported_at": datetime.now().isoformat(),
+            "status": "active",
+            "config_source": getattr(self, "_config_source", "unknown"),
+            "total_deployments": len(deployments),
+            "model_groups": len(set(d["model_group"] for d in deployments)),
+            "deployments": deployments,
+        }
+
     # ---- 核心调用 ----
 
     @perf_timer("llm.acompletion")
