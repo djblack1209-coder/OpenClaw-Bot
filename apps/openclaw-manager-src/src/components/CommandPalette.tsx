@@ -12,6 +12,7 @@ import { api } from '@/lib/tauri'
 import { useAppStore } from '@/stores/appStore'
 import type { PageType } from '@/App'
 import { toast } from 'sonner'
+import { useLanguage } from '@/i18n'
 
 import {
   Bot, Brain, DollarSign, Dna, Globe,
@@ -23,6 +24,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const setCurrentPage = useAppStore((s) => s.setCurrentPage)
+  const { t } = useLanguage()
 
   // Ctrl+K / Cmd+K 切换命令面板
   useEffect(() => {
@@ -53,9 +55,9 @@ export function CommandPalette() {
     try {
       const result = await action()
       const detail = formatResult ? formatResult(result) : ''
-      toast.success(`${label} 完成`, { description: detail || undefined })
+      toast.success(`${label} ${t('commandPalette.actionDone')}`, { description: detail || undefined })
     } catch (e: unknown) {
-      toast.error(`${label} 失败`, { description: e instanceof Error ? e.message : String(e) })
+      toast.error(`${label} ${t('commandPalette.actionFailed')}`, { description: e instanceof Error ? e.message : String(e) })
     }
   }
 
@@ -65,121 +67,121 @@ export function CommandPalette() {
     const trimmed = command.trim()
     setOpen(false)
     toast.promise(api.omegaProcess(trimmed), {
-      loading: `正在执行指令: "${trimmed}"`,
-      success: `指令已发送: ${trimmed}`,
-      error: (e: unknown) => `指令执行失败: ${e instanceof Error ? e.message : String(e)}`,
+      loading: `${t('commandPalette.executing')}: "${trimmed}"`,
+      success: `${t('commandPalette.commandSent')}: ${trimmed}`,
+      error: (e: unknown) => `${t('commandPalette.commandFailed')}: ${e instanceof Error ? e.message : String(e)}`,
     })
   }, [])
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput
-        placeholder="输入命令或搜索... (Ctrl+K)"
+        placeholder={t('commandPalette.placeholder')}
         value={inputValue}
         onValueChange={setInputValue}
       />
       <CommandList>
-        <CommandEmpty>没有找到匹配的命令</CommandEmpty>
+        <CommandEmpty>{t('commandPalette.noResults')}</CommandEmpty>
 
         {/* 动态执行：用户输入任意文本时，显示"执行指令"选项 */}
         {inputValue.trim().length > 0 && (
-          <CommandGroup heading="动态执行">
+          <CommandGroup heading={t('commandPalette.dynamicExec')}>
             <CommandItem
               onSelect={() => executeCommand(inputValue)}
               value={`__execute__${inputValue}`}
               forceMount
             >
               <Send className="mr-2 h-4 w-4" />
-              👉 执行指令: &quot;{inputValue.trim()}&quot;
+              👉 {t('commandPalette.execCommand')}: &quot;{inputValue.trim()}&quot;
             </CommandItem>
           </CommandGroup>
         )}
 
-        <CommandGroup heading="导航">
+        <CommandGroup heading={t('commandPalette.navigation')}>
           <CommandItem onSelect={() => navigate('dashboard')}>
             <Layout className="mr-2 h-4 w-4" />
-            概览
+            {t('commandPalette.nav.dashboard')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('control')}>
             <Zap className="mr-2 h-4 w-4" />
-            总控中心
+            {t('commandPalette.nav.control')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('social')}>
             <Globe className="mr-2 h-4 w-4" />
-            社媒总控
+            {t('commandPalette.nav.social')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('money')}>
             <DollarSign className="mr-2 h-4 w-4" />
-            盈利总控
+            {t('commandPalette.nav.money')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('memory')}>
             <Brain className="mr-2 h-4 w-4" />
-            记忆脑图
+            {t('commandPalette.nav.memory')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('evolution')}>
             <Dna className="mr-2 h-4 w-4" />
-            进化引擎
+            {t('commandPalette.nav.evolution')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('channels')}>
             <MessageSquare className="mr-2 h-4 w-4" />
-            消息渠道
+            {t('commandPalette.nav.channels')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('gateway')}>
             <Network className="mr-2 h-4 w-4" />
-            API 网关
+            {t('commandPalette.nav.gateway')}
           </CommandItem>
           <CommandItem onSelect={() => navigate('settings')}>
             <Settings className="mr-2 h-4 w-4" />
-            设置
+            {t('commandPalette.nav.settings')}
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="快捷操作">
-          <CommandItem onSelect={() => runAction('热点扫描', () => api.clawbotSocialTopics(10), (d: unknown) => {
+        <CommandGroup heading={t('commandPalette.quickActions')}>
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.hotScan'), () => api.clawbotSocialTopics(10), (d: unknown) => {
             const data = d as Record<string, unknown> | undefined;
             const topics = (data?.topics ?? data?.data) as unknown[] | undefined;
-            return topics?.length ? `发现 ${topics.length} 条热点` : '扫描完成';
+            return topics?.length ? `${t('commandPalette.action.foundTopics').replace('{n}', String(topics.length))}` : t('commandPalette.action.scanDone');
           })}>
             <Newspaper className="mr-2 h-4 w-4" />
-            热点扫描
+            {t('commandPalette.action.hotScan')}
           </CommandItem>
-          <CommandItem onSelect={() => runAction('进化扫描', () => api.clawbotEvolutionScan(), (d: unknown) => {
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.evolutionScan'), () => api.clawbotEvolutionScan(), (d: unknown) => {
             const data = d as Record<string, unknown> | undefined;
-            return String(data?.message ?? data?.status ?? '扫描已提交');
+            return String(data?.message ?? data?.status ?? t('commandPalette.action.scanSubmitted'));
           })}>
             <Dna className="mr-2 h-4 w-4" />
-            进化扫描 (GitHub Trending)
+            {t('commandPalette.action.evolutionScan')}
           </CommandItem>
-          <CommandItem onSelect={() => runAction('系统状态', () => api.clawbotStatus(), (d: unknown) => {
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.systemStatus'), () => api.clawbotStatus(), (d: unknown) => {
             const data = d as Record<string, unknown> | undefined;
             const s = data?.status ?? data?.state;
-            return s ? `状态: ${s}` : '系统运行中';
+            return s ? `${t('commandPalette.action.statusLabel')}: ${s}` : t('commandPalette.action.systemRunning');
           })}>
             <Shield className="mr-2 h-4 w-4" />
-            检查系统状态
+            {t('commandPalette.action.checkStatus')}
           </CommandItem>
-          <CommandItem onSelect={() => runAction('交易系统', () => api.clawbotTradingSystem(), (d: unknown) => {
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.tradingSystem'), () => api.clawbotTradingSystem(), (d: unknown) => {
             const data = d as Record<string, unknown> | undefined;
             const s = data?.status ?? data?.state;
-            return s ? `交易系统: ${s}` : '查询完成';
+            return s ? `${t('commandPalette.action.tradingSystemLabel')}: ${s}` : t('commandPalette.action.queryDone');
           })}>
             <TrendingUp className="mr-2 h-4 w-4" />
-            交易系统状态
+            {t('commandPalette.action.tradingStatus')}
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="服务管理">
-          <CommandItem onSelect={() => runAction('启动自动驾驶', () => api.clawbotAutopilotStart())}>
+        <CommandGroup heading={t('commandPalette.serviceManagement')}>
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.startAutopilot'), () => api.clawbotAutopilotStart())}>
             <Bot className="mr-2 h-4 w-4" />
-            启动社交自动驾驶
+            {t('commandPalette.action.startSocialAutopilot')}
           </CommandItem>
-          <CommandItem onSelect={() => runAction('停止自动驾驶', () => api.clawbotAutopilotStop())}>
+          <CommandItem onSelect={() => runAction(t('commandPalette.action.stopAutopilot'), () => api.clawbotAutopilotStop())}>
             <Bot className="mr-2 h-4 w-4" />
-            停止社交自动驾驶
+            {t('commandPalette.action.stopSocialAutopilot')}
           </CommandItem>
         </CommandGroup>
       </CommandList>

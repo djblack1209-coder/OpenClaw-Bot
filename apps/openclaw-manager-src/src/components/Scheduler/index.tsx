@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { Clock, Terminal, Loader2 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '@/i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -59,6 +60,7 @@ export function Scheduler() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SchedulerData | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   /* —— 拉取调度器数据 —— */
   const fetchData = useCallback(async () => {
@@ -119,17 +121,17 @@ export function Scheduler() {
 
   /* 简易指标 */
   const metrics = [
-    { label: '总任务', value: String(totalCount), color: 'var(--accent-cyan)' },
-    { label: '运行中', value: String(runningCount), color: 'var(--accent-green)' },
-    { label: '已暂停', value: String(pausedCount), color: 'var(--accent-amber)' },
-    { label: '已失败', value: String(failedCount), color: 'var(--accent-red)' },
+    { label: t('scheduler.totalTasks'), value: String(totalCount), color: 'var(--accent-cyan)' },
+    { label: t('scheduler.running'), value: String(runningCount), color: 'var(--accent-green)' },
+    { label: t('scheduler.paused'), value: String(pausedCount), color: 'var(--accent-amber)' },
+    { label: t('scheduler.failed'), value: String(failedCount), color: 'var(--accent-red)' },
   ];
 
   /* 资源指标占位（可接入 perfMetrics） */
   const resources = [
-    { label: '并发任务', value: `${runningCount}/${totalCount}`, ratio: totalCount > 0 ? runningCount / totalCount : 0 },
-    { label: '调度器', value: data?.enabled ? '运行中' : '已停止', ratio: data?.enabled ? 1 : 0 },
-    { label: '维护模式', value: data?.maintenance_mode ? '开启' : '关闭', ratio: data?.maintenance_mode ? 1 : 0 },
+    { label: t('scheduler.concurrentTasks'), value: `${runningCount}/${totalCount}`, ratio: totalCount > 0 ? runningCount / totalCount : 0 },
+    { label: t('scheduler.schedulerLabel'), value: data?.enabled ? t('scheduler.statusRunning') : t('scheduler.statusStopped'), ratio: data?.enabled ? 1 : 0 },
+    { label: t('scheduler.maintenanceMode'), value: data?.maintenance_mode ? t('scheduler.modeOn') : t('scheduler.modeOff'), ratio: data?.maintenance_mode ? 1 : 0 },
   ];
 
   return (
@@ -153,7 +155,7 @@ export function Scheduler() {
                   CRON ORCHESTRATOR
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  任务调度中心 // TASK SCHEDULER
+                  {t('scheduler.subtitle')}
                 </p>
               </div>
             </div>
@@ -172,7 +174,7 @@ export function Scheduler() {
             <div className="flex-1 space-y-1.5 overflow-y-auto">
               {tasks.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无调度任务
+                  {t('scheduler.noTasks')}
                 </div>
               )}
               {tasks.map((task) => {
@@ -199,7 +201,7 @@ export function Scheduler() {
                     <div className="flex items-center gap-4 flex-shrink-0">
                       {task.last_run && (
                         <div className="text-right hidden sm:block">
-                          <span className="text-label">上次</span>
+                          <span className="text-label">{t('scheduler.lastRun')}</span>
                           <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                             {task.last_run}
                           </p>
@@ -207,7 +209,7 @@ export function Scheduler() {
                       )}
                       {task.next_run && (
                         <div className="text-right hidden sm:block">
-                          <span className="text-label">下次</span>
+                          <span className="text-label">{t('scheduler.nextRun')}</span>
                           <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                             {task.next_run}
                           </p>
@@ -240,12 +242,12 @@ export function Scheduler() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>QUEUE</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              执行队列
+              {t('scheduler.executionQueue')}
             </h3>
             <div className="flex-1 space-y-2">
               {queue.length === 0 && (
                 <div className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
-                  队列为空
+                  {t('scheduler.queueEmpty')}
                 </div>
               )}
               {queue.map((q, i) => (
@@ -274,7 +276,7 @@ export function Scheduler() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>SCHEDULER STATUS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              调度器状态
+              {t('scheduler.schedulerStatus')}
             </h3>
             <div className="flex-1 space-y-4">
               {resources.map((r) => (
@@ -304,11 +306,11 @@ export function Scheduler() {
             </div>
             <div className="flex-1 rounded-lg p-3 font-mono text-[11px] leading-relaxed space-y-1"
               style={{ background: 'var(--bg-primary)' }}>
-              {tasks.slice(0, 6).map((t) => (
-                <div key={t.id} className="flex gap-2">
-                  <span style={{ color: 'var(--accent-cyan)' }}>{t.cron.padEnd(16)}</span>
-                  <span style={{ color: t.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                    {t.name} — {t.enabled ? '已启用' : '已暂停'}
+              {tasks.slice(0, 6).map((task) => (
+                <div key={task.id} className="flex gap-2">
+                  <span style={{ color: 'var(--accent-cyan)' }}>{task.cron.padEnd(16)}</span>
+                  <span style={{ color: task.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                    {task.name} — {task.enabled ? t('scheduler.enabled') : t('scheduler.disabled')}
                   </span>
                 </div>
               ))}
