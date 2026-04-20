@@ -35,7 +35,7 @@ async def get_news(
     limit: int = Query(50, ge=1, le=200, description="返回条数"),
 ):
     """获取 AI 聚合新闻列表"""
-    from ..monitoring.world_monitor import get_news_fetcher, NewsCategory
+    from src.monitoring.world_monitor import get_news_fetcher, NewsCategory
 
     fetcher = get_news_fetcher()
 
@@ -77,7 +77,7 @@ async def get_risk_scores(
     country: Optional[str] = Query(None, description="ISO 国家代码过滤，如 US/CN/RU"),
 ):
     """获取国家风险指数评分"""
-    from ..monitoring.world_monitor import get_risk_scorer
+    from src.monitoring.world_monitor import get_risk_scorer
 
     scorer = get_risk_scorer()
     risks = scorer.compute_all()
@@ -112,7 +112,7 @@ async def get_risk_scores(
 @router.get("/risk/global")
 async def get_global_risk():
     """获取全球综合风险评分"""
-    from ..monitoring.world_monitor import get_risk_scorer
+    from src.monitoring.world_monitor import get_risk_scorer
 
     scorer = get_risk_scorer()
     return {
@@ -128,7 +128,7 @@ async def get_global_risk():
 @router.get("/finance")
 async def get_finance_all():
     """获取全部金融市场数据"""
-    from ..monitoring.world_monitor import get_finance_radar
+    from src.monitoring.world_monitor import get_finance_radar
 
     radar = get_finance_radar()
     data = await radar.get_all()
@@ -143,7 +143,7 @@ async def get_finance_all():
 @router.get("/finance/indices")
 async def get_indices():
     """获取主要股指报价"""
-    from ..monitoring.world_monitor import get_finance_radar
+    from src.monitoring.world_monitor import get_finance_radar
 
     radar = get_finance_radar()
     quotes = await radar.get_indices()
@@ -158,7 +158,7 @@ async def get_indices():
 @router.get("/finance/crypto")
 async def get_crypto():
     """获取加密货币报价"""
-    from ..monitoring.world_monitor import get_finance_radar
+    from src.monitoring.world_monitor import get_finance_radar
 
     radar = get_finance_radar()
     quotes = await radar.get_crypto()
@@ -173,7 +173,7 @@ async def get_crypto():
 @router.get("/finance/commodities")
 async def get_commodities():
     """获取大宗商品报价"""
-    from ..monitoring.world_monitor import get_finance_radar
+    from src.monitoring.world_monitor import get_finance_radar
 
     radar = get_finance_radar()
     quotes = await radar.get_commodities()
@@ -188,7 +188,7 @@ async def get_commodities():
 @router.get("/finance/forex")
 async def get_forex():
     """获取外汇报价"""
-    from ..monitoring.world_monitor import get_finance_radar
+    from src.monitoring.world_monitor import get_finance_radar
 
     radar = get_finance_radar()
     quotes = await radar.get_forex()

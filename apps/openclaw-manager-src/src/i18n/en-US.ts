@@ -171,6 +171,8 @@ export const enUS: Record<string, string> = {
   'home.dailyBrief': 'Daily Brief',
   'home.quickActions': 'Quick Actions',
   'home.systemStatus': 'System Status',
+  'home.briefDate': 'Date',
+  'home.healthy': 'Healthy',
 
   // 投资组合
   'portfolio.title': 'Portfolio',

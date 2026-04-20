@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GlassCard } from '../shared';
-import { Button } from '../ui/button';
-import { Check, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import {
+  Check, ChevronLeft, ChevronRight, Eye, EyeOff,
+  Zap, TrendingUp, Share2, Bot, Shield,
+} from 'lucide-react';
 import { api } from '@/lib/tauri';
 import { useLanguage } from '@/i18n';
 
@@ -11,11 +12,11 @@ import { useLanguage } from '@/i18n';
 ──────────────────────────────────────────────────────────────── */
 
 /** 功能列表的 i18n key 映射 */
-const FEATURE_KEYS: { id: string; labelKey: string; descKey: string; emoji: string; alwaysOn?: boolean }[] = [
-  { id: 'xianyu', labelKey: 'onboarding.feature.xianyuLabel', descKey: 'onboarding.feature.xianyuDesc', emoji: '🐟' },
-  { id: 'trading', labelKey: 'onboarding.feature.tradingLabel', descKey: 'onboarding.feature.tradingDesc', emoji: '📈' },
-  { id: 'social', labelKey: 'onboarding.feature.socialLabel', descKey: 'onboarding.feature.socialDesc', emoji: '📱' },
-  { id: 'assistant', labelKey: 'onboarding.feature.assistantLabel', descKey: 'onboarding.feature.assistantDesc', emoji: '🤖', alwaysOn: true },
+const FEATURE_KEYS: { id: string; labelKey: string; descKey: string; icon: typeof Zap; color: string; alwaysOn?: boolean }[] = [
+  { id: 'xianyu', labelKey: 'onboarding.feature.xianyuLabel', descKey: 'onboarding.feature.xianyuDesc', icon: Zap, color: 'var(--accent-amber)' },
+  { id: 'trading', labelKey: 'onboarding.feature.tradingLabel', descKey: 'onboarding.feature.tradingDesc', icon: TrendingUp, color: 'var(--accent-green)' },
+  { id: 'social', labelKey: 'onboarding.feature.socialLabel', descKey: 'onboarding.feature.socialDesc', icon: Share2, color: 'var(--accent-cyan)' },
+  { id: 'assistant', labelKey: 'onboarding.feature.assistantLabel', descKey: 'onboarding.feature.assistantDesc', icon: Bot, color: 'var(--accent-purple)', alwaysOn: true },
 ];
 
 /* ────────────────────────────────────────────────────────────────
@@ -38,21 +39,19 @@ const slideVariants = {
 };
 
 /* ────────────────────────────────────────────────────────────────
-   Confetti animation (pure CSS, no deps)
+   Ambient particles (替代 Confetti — Sonic Abyss 风格微粒)
 ──────────────────────────────────────────────────────────────── */
 
-function ConfettiEffect() {
+function AmbientParticles() {
   const particles = useMemo(
     () =>
-      Array.from({ length: 30 }, (_, i) => ({
+      Array.from({ length: 20 }, (_, i) => ({
         id: i,
         x: Math.random() * 100,
-        delay: Math.random() * 0.8,
-        duration: 1.5 + Math.random() * 1.5,
-        color: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF9FF3'][
-          i % 7
-        ],
-        size: 4 + Math.random() * 6,
+        delay: Math.random() * 2,
+        duration: 3 + Math.random() * 3,
+        size: 2 + Math.random() * 3,
+        opacity: 0.1 + Math.random() * 0.2,
       })),
     [],
   );
@@ -62,24 +61,23 @@ function ConfettiEffect() {
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          initial={{ y: -20, x: `${p.x}%`, opacity: 1, scale: 1, rotate: 0 }}
+          initial={{ y: '100%', x: `${p.x}%`, opacity: 0 }}
           animate={{
-            y: '120%',
-            opacity: [1, 1, 0],
-            scale: [1, 0.8, 0.4],
-            rotate: Math.random() > 0.5 ? 360 : -360,
+            y: '-10%',
+            opacity: [0, p.opacity, 0],
           }}
           transition={{
             duration: p.duration,
             delay: p.delay,
-            ease: 'easeIn',
+            repeat: Infinity,
+            ease: 'linear',
           }}
           style={{
             position: 'absolute',
             width: p.size,
             height: p.size,
-            borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-            backgroundColor: p.color,
+            borderRadius: '50%',
+            background: 'var(--accent-cyan)',
           }}
         />
       ))}
@@ -88,54 +86,77 @@ function ConfettiEffect() {
 }
 
 /* ────────────────────────────────────────────────────────────────
-   Step 1: Welcome
+   Step 1: Welcome — Sonic Abyss 风格
 ──────────────────────────────────────────────────────────────── */
 
 function StepWelcome({ onNext }: { onNext: () => void }) {
   const { t } = useLanguage();
   const featureCards = [
-    { emoji: '🐟', titleKey: 'onboarding.welcome.aiCS', descKey: 'onboarding.welcome.aiCSDesc' },
-    { emoji: '📈', titleKey: 'onboarding.welcome.quantTrading', descKey: 'onboarding.welcome.quantTradingDesc' },
-    { emoji: '📱', titleKey: 'onboarding.welcome.socialOps', descKey: 'onboarding.welcome.socialOpsDesc' },
+    { icon: Zap, titleKey: 'onboarding.welcome.aiCS', descKey: 'onboarding.welcome.aiCSDesc', color: 'var(--accent-amber)' },
+    { icon: TrendingUp, titleKey: 'onboarding.welcome.quantTrading', descKey: 'onboarding.welcome.quantTradingDesc', color: 'var(--accent-green)' },
+    { icon: Share2, titleKey: 'onboarding.welcome.socialOps', descKey: 'onboarding.welcome.socialOpsDesc', color: 'var(--accent-cyan)' },
   ];
   return (
     <div className="flex flex-col items-center text-center max-w-md mx-auto">
+      {/* Logo — 用渐变圆形图标替代 emoji */}
       <motion.div
         initial={{ scale: 0.5, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-        className="text-8xl mb-6"
+        className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
+        style={{
+          background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,200,255,0.15))',
+          border: '1px solid rgba(0,255,136,0.2)',
+          boxShadow: '0 0 40px rgba(0,255,136,0.1)',
+        }}
       >
-        🦞
+        <Shield size={36} style={{ color: 'var(--accent-green)' }} />
       </motion.div>
-      <h1 className="text-3xl font-bold text-white mb-2">{t('onboarding.welcome.title')}</h1>
-      <p className="text-lg text-gray-400 mb-8">{t('onboarding.welcome.subtitle')}</p>
+      <h1 className="font-display text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{t('onboarding.welcome.title')}</h1>
+      <p className="font-mono text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.welcome.subtitle')}</p>
 
       <div className="grid grid-cols-1 gap-3 w-full mb-8">
         {featureCards.map((feat) => (
-          <div
+          <motion.div
             key={feat.titleKey}
-            className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: featureCards.indexOf(feat) * 0.1 + 0.2 }}
+            className="flex items-center gap-3 p-3 rounded-xl"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
           >
-            <span className="text-2xl">{feat.emoji}</span>
-            <div className="text-left">
-              <div className="text-sm font-medium text-white">{t(feat.titleKey)}</div>
-              <div className="text-xs text-gray-400">{t(feat.descKey)}</div>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                 style={{ background: `${feat.color}15`, border: `1px solid ${feat.color}30` }}>
+              <feat.icon size={18} style={{ color: feat.color }} />
             </div>
-          </div>
+            <div className="text-left">
+              <div className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t(feat.titleKey)}</div>
+              <div className="font-mono text-[11px]" style={{ color: 'var(--text-disabled)' }}>{t(feat.descKey)}</div>
+            </div>
+          </motion.div>
         ))}
       </div>
 
-      <Button onClick={onNext} className="w-full">
+      <button
+        onClick={onNext}
+        className="w-full px-5 py-3 rounded-xl font-display text-sm font-bold transition-all flex items-center justify-center gap-2"
+        style={{
+          background: 'var(--accent-cyan)',
+          color: '#000',
+        }}
+      >
         {t('onboarding.welcome.startSetup')}
-        <ChevronRight size={16} className="ml-1.5" />
-      </Button>
+        <ChevronRight size={16} />
+      </button>
     </div>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────
-   Step 2: Feature Selection
+   Step 2: Feature Selection — Sonic Abyss 风格
 ──────────────────────────────────────────────────────────────── */
 
 function StepFeatures({
@@ -148,44 +169,54 @@ function StepFeatures({
   const { t } = useLanguage();
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-white text-center mb-2">{t('onboarding.features.title')}</h2>
-      <p className="text-gray-400 text-center mb-6 text-sm">{t('onboarding.features.subtitle')}</p>
+      <h2 className="font-display text-2xl font-bold text-center mb-2" style={{ color: 'var(--text-primary)' }}>{t('onboarding.features.title')}</h2>
+      <p className="font-mono text-sm text-center mb-6" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.features.subtitle')}</p>
 
       <div className="grid grid-cols-1 gap-3">
         {FEATURE_KEYS.map((feat) => {
           const isSelected = selected.has(feat.id);
+          const IconComp = feat.icon;
           return (
-            <GlassCard
+            <motion.div
               key={feat.id}
-              className={`p-4 cursor-pointer transition-all ${
-                isSelected ? 'ring-2 ring-[var(--oc-brand)]' : ''
-              } ${feat.alwaysOn ? 'opacity-80' : ''}`}
+              whileHover={{ scale: feat.alwaysOn ? 1 : 1.02 }}
+              whileTap={{ scale: feat.alwaysOn ? 1 : 0.98 }}
+              className={`p-4 rounded-xl cursor-pointer transition-all ${feat.alwaysOn ? 'opacity-70' : ''}`}
+              style={{
+                background: isSelected ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${isSelected ? feat.color + '50' : 'rgba(255,255,255,0.06)'}`,
+                boxShadow: isSelected ? `0 0 20px ${feat.color}10` : 'none',
+              }}
               onClick={() => !feat.alwaysOn && onToggle(feat.id)}
             >
               <div className="flex items-center gap-4">
-                <span className="text-3xl">{feat.emoji}</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                     style={{ background: `${feat.color}15`, border: `1px solid ${feat.color}30` }}>
+                  <IconComp size={20} style={{ color: feat.color }} />
+                </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold text-white">{t(feat.labelKey)}</h3>
+                    <h3 className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t(feat.labelKey)}</h3>
                     {feat.alwaysOn && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--oc-brand)]/20 text-[var(--oc-brand)]">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                            style={{ background: `${feat.color}20`, color: feat.color }}>
                         {t('onboarding.features.alwaysOn')}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-400 mt-0.5">{t(feat.descKey)}</p>
+                  <p className="font-mono text-[11px] mt-0.5" style={{ color: 'var(--text-disabled)' }}>{t(feat.descKey)}</p>
                 </div>
                 <div
-                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    isSelected
-                      ? 'bg-[var(--oc-brand)] border-[var(--oc-brand)]'
-                      : 'border-gray-500'
-                  }`}
+                  className="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors shrink-0"
+                  style={{
+                    background: isSelected ? feat.color : 'transparent',
+                    borderColor: isSelected ? feat.color : 'rgba(255,255,255,0.2)',
+                  }}
                 >
-                  {isSelected && <Check size={14} className="text-white" />}
+                  {isSelected && <Check size={14} className="text-black" />}
                 </div>
               </div>
-            </GlassCard>
+            </motion.div>
           );
         })}
       </div>
@@ -194,7 +225,7 @@ function StepFeatures({
 }
 
 /* ────────────────────────────────────────────────────────────────
-   Step 3: API Key Config
+   Step 3: API Key Config — Sonic Abyss 风格
 ──────────────────────────────────────────────────────────────── */
 
 function StepAPIConfig({
@@ -211,25 +242,38 @@ function StepAPIConfig({
   const [showKey, setShowKey] = useState(false);
   const { t } = useLanguage();
 
+  const inputStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'var(--text-primary)',
+    borderRadius: 12,
+    padding: '10px 14px',
+    outline: 'none',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '13px',
+  };
+
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-white text-center mb-2">{t('onboarding.apiConfig.title')}</h2>
-      <p className="text-gray-400 text-center mb-6 text-sm">{t('onboarding.apiConfig.subtitle')}</p>
+      <h2 className="font-display text-2xl font-bold text-center mb-2" style={{ color: 'var(--text-primary)' }}>{t('onboarding.apiConfig.title')}</h2>
+      <p className="font-mono text-sm text-center mb-6" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.apiConfig.subtitle')}</p>
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('onboarding.apiConfig.apiKeyLabel')}</label>
+          <label className="block font-mono text-xs mb-1.5" style={{ color: 'var(--text-disabled)' }}>{t('onboarding.apiConfig.apiKeyLabel')}</label>
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
-              className="w-full px-3 py-2.5 pr-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--oc-brand)] transition-all"
+              className="w-full pr-10"
+              style={inputStyle}
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+              style={{ color: 'var(--text-disabled)' }}
               onClick={() => setShowKey(!showKey)}
             >
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -238,18 +282,19 @@ function StepAPIConfig({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('onboarding.apiConfig.baseUrlLabel')}</label>
+          <label className="block font-mono text-xs mb-1.5" style={{ color: 'var(--text-disabled)' }}>{t('onboarding.apiConfig.baseUrlLabel')}</label>
           <input
             type="text"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="https://api.openai.com/v1"
-            className="w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--oc-brand)] transition-all"
+            className="w-full"
+            style={inputStyle}
           />
         </div>
 
-        <p className="text-xs text-gray-500 text-center mt-4">
-          💡 {t('onboarding.apiConfig.hint')}
+        <p className="font-mono text-[10px] text-center mt-4" style={{ color: 'var(--text-disabled)' }}>
+          {t('onboarding.apiConfig.hint')}
         </p>
       </div>
     </div>
@@ -257,7 +302,7 @@ function StepAPIConfig({
 }
 
 /* ────────────────────────────────────────────────────────────────
-   Step 4: Completion
+   Step 4: Completion — Sonic Abyss 风格
 ──────────────────────────────────────────────────────────────── */
 
 function StepComplete({
@@ -272,38 +317,60 @@ function StepComplete({
 
   return (
     <div className="relative flex flex-col items-center text-center max-w-md mx-auto">
-      <ConfettiEffect />
+      <AmbientParticles />
 
+      {/* 完成图标 — 渐变圆形 + Check */}
       <motion.div
         initial={{ scale: 0, rotate: -180 }}
         animate={{ scale: 1, rotate: 0 }}
         transition={{ type: 'spring', stiffness: 200, damping: 12 }}
-        className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center mb-6"
+        className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
+        style={{
+          background: 'linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,200,100,0.1))',
+          border: '1px solid rgba(0,255,136,0.3)',
+          boxShadow: '0 0 40px rgba(0,255,136,0.15)',
+        }}
       >
-        <Check size={40} className="text-white" />
+        <Check size={36} style={{ color: 'var(--accent-green)' }} />
       </motion.div>
 
-      <h2 className="text-2xl font-bold text-white mb-2">{t('onboarding.complete.title')}</h2>
-      <p className="text-gray-400 mb-6">{t('onboarding.complete.subtitle')}</p>
+      <h2 className="font-display text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{t('onboarding.complete.title')}</h2>
+      <p className="font-mono text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.complete.subtitle')}</p>
 
       <div className="flex flex-wrap gap-2 justify-center mb-8">
-        {selectedLabels.map((feat) => (
-          <motion.span
-            key={feat.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + selectedLabels.indexOf(feat) * 0.1 }}
-            className="px-3 py-1.5 rounded-full bg-[var(--oc-brand)]/20 text-[var(--oc-brand)] text-sm font-medium"
-          >
-            {feat.emoji} {t(feat.labelKey)}
-          </motion.span>
-        ))}
+        {selectedLabels.map((feat) => {
+          const IconComp = feat.icon;
+          return (
+            <motion.span
+              key={feat.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + selectedLabels.indexOf(feat) * 0.1 }}
+              className="px-3 py-1.5 rounded-lg font-mono text-xs font-medium flex items-center gap-1.5"
+              style={{
+                background: `${feat.color}15`,
+                color: feat.color,
+                border: `1px solid ${feat.color}30`,
+              }}
+            >
+              <IconComp size={12} />
+              {t(feat.labelKey)}
+            </motion.span>
+          );
+        })}
       </div>
 
-      <Button onClick={onFinish} className="w-full">
+      <button
+        onClick={onFinish}
+        className="w-full px-5 py-3 rounded-xl font-display text-sm font-bold transition-all flex items-center justify-center gap-2"
+        style={{
+          background: 'var(--accent-cyan)',
+          color: '#000',
+        }}
+      >
         {t('onboarding.complete.enterConsole')}
-        <ChevronRight size={16} className="ml-1.5" />
-      </Button>
+        <ChevronRight size={16} />
+      </button>
     </div>
   );
 }
@@ -380,31 +447,35 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   }, [selectedFeatures, apiKey, baseUrl, onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-dark-900 flex flex-col">
-      {/* Background decoration */}
-      <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-primary, #020202)' }}>
+      {/* 背景装饰 — Sonic Abyss 风格 */}
+      <div className="fixed inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse at 50% 20%, rgba(0,200,255,0.04) 0%, transparent 50%)',
+      }} />
 
-      {/* macOS draggable title bar area */}
+      {/* macOS 拖拽区 */}
       <div className="h-12 flex-shrink-0" data-tauri-drag-region="" />
 
-      {/* Progress bar + 跳过按钮 */}
+      {/* 进度条 + 跳过按钮 */}
       <div className="relative z-10 px-8 mb-6">
         <div className="max-w-lg mx-auto flex items-center gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-            <div key={i} className="flex-1 h-1 rounded-full overflow-hidden bg-white/10">
+            <div key={i} className="flex-1 h-[2px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
               <motion.div
-                className="h-full bg-[var(--oc-brand)] rounded-full"
+                className="h-full rounded-full"
+                style={{ background: 'var(--accent-cyan)' }}
                 initial={false}
                 animate={{ width: i <= step ? '100%' : '0%' }}
                 transition={{ duration: 0.3 }}
               />
             </div>
           ))}
-          {/* 跳过引导按钮：所有步骤（除完成页）都可以跳过 */}
+          {/* 跳过按钮 */}
           {step < TOTAL_STEPS - 1 && (
             <button
               onClick={handleFinish}
-              className="ml-2 text-xs text-gray-500 hover:text-gray-300 transition-colors whitespace-nowrap"
+              className="ml-2 font-mono text-[10px] transition-colors whitespace-nowrap"
+              style={{ color: 'var(--text-disabled)' }}
               aria-label={t('onboarding.skipGuide')}
             >
               {t('onboarding.skip')}
@@ -413,7 +484,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         </div>
       </div>
 
-      {/* Step content */}
+      {/* 步骤内容 */}
       <div className="relative z-10 flex-1 flex items-center justify-center px-8 overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
@@ -445,22 +516,37 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         </AnimatePresence>
       </div>
 
-      {/* Navigation footer */}
+      {/* 底部导航 — Sonic Abyss 风格 */}
       <div className="relative z-10 px-8 pb-8">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           {step > 0 && step < TOTAL_STEPS - 1 ? (
-            <Button variant="outline" onClick={goBack}>
-              <ChevronLeft size={16} className="mr-1" />
+            <button
+              onClick={goBack}
+              className="px-4 py-2 rounded-lg font-mono text-xs transition-all flex items-center gap-1"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-secondary)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              <ChevronLeft size={14} />
               {t('onboarding.prevStep')}
-            </Button>
+            </button>
           ) : (
             <div />
           )}
           {step > 0 && step < TOTAL_STEPS - 1 && (
-            <Button onClick={goNext}>
+            <button
+              onClick={goNext}
+              className="px-5 py-2 rounded-lg font-display text-sm font-bold transition-all flex items-center gap-1"
+              style={{
+                background: 'var(--accent-cyan)',
+                color: '#000',
+              }}
+            >
               {t('onboarding.nextStep')}
-              <ChevronRight size={16} className="ml-1" />
-            </Button>
+              <ChevronRight size={14} />
+            </button>
           )}
         </div>
       </div>
