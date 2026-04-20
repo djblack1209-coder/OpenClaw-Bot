@@ -284,7 +284,7 @@ export function ExecutionFlow() {
         <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG EXECUTOR</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG 执行器</span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => { setLoading(true); fetchData(true); }}
@@ -295,12 +295,12 @@ export function ExecutionFlow() {
                 </button>
                 <div className="flex items-center gap-1.5">
                   <motion.span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-green)' }} animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>实时</span>
                 </div>
               </div>
             </div>
             <h2 className="font-display text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              {t('executionFlow.engineTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// DAG EXECUTOR</span>
+              {t('executionFlow.engineTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// 任务执行引擎</span>
             </h2>
 
             {/* DAG 流水线可视化 */}
@@ -364,7 +364,7 @@ export function ExecutionFlow() {
             <div className="flex items-center gap-2 mb-4">
               <Activity size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                ENGINE METRICS
+                引擎指标
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-5" style={{ color: 'var(--text-primary)' }}>
@@ -389,7 +389,7 @@ export function ExecutionFlow() {
             <div className="flex items-center gap-2 mb-4">
               <Layers size={14} style={{ color: 'var(--accent-purple)' }} />
               <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                ACTIVE PIPELINES
+                活跃管道
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
@@ -443,7 +443,7 @@ export function ExecutionFlow() {
             <div className="flex items-center gap-2 mb-4">
               <ListChecks size={14} style={{ color: 'var(--accent-green)' }} />
               <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                RECENTLY COMPLETED
+                最近完成
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
@@ -497,7 +497,7 @@ export function ExecutionFlow() {
               <div className="flex items-center gap-2">
                 <Terminal size={13} style={{ color: 'var(--accent-cyan)' }} />
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  EXECUTION LOG
+                  执行日志
                 </span>
               </div>
               <div className="flex items-center gap-1.5">

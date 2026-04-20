@@ -290,7 +290,7 @@ export default function DevPanel() {
               <div className="flex items-center gap-2 flex-1">
                 <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
                 <h2 className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                  SYSTEM LOG
+                  系统日志
                 </h2>
                 <span className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('devPanel.sysLogSubtitle')}
@@ -304,7 +304,7 @@ export default function DevPanel() {
               {logsError ? (
                 <EmptyState title={logsError} />
               ) : logs.length === 0 ? (
-                <EmptyState title="{t('devPanel.noSysLogs')}" />
+                <EmptyState title={t('devPanel.noSysLogs')} />
               ) : (
                 <div className="space-y-0.5">
                   {logs.map((entry, i) => (
@@ -349,7 +349,7 @@ export default function DevPanel() {
                   系统信息
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  SYSTEM INFO
+                  系统信息
                 </p>
               </div>
             </div>
@@ -363,10 +363,10 @@ export default function DevPanel() {
             ) : (
               <div className="flex-1 space-y-2">
                 {[
-                  { label: 'OS', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
-                  { label: 'Arch', value: sysInfo.arch, color: 'var(--accent-cyan)' },
+                  { label: '操作系统', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
+                  { label: '架构', value: sysInfo.arch, color: 'var(--accent-cyan)' },
                   { label: 'OpenEverything', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
-                  { label: 'Node', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
+                  { label: 'Node 版本', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
                   { label: t('devPanel.configDir'), value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
                 ].map((info) => (
                   <div
@@ -400,7 +400,7 @@ export default function DevPanel() {
                   环境变量
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  ENV VARIABLES
+                  环境变量
                 </p>
               </div>
             </div>

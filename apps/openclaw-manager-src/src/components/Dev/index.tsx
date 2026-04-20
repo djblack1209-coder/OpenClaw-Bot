@@ -258,7 +258,7 @@ export function Dev() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  DEV CONTROL
+                  开发面板
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('dev.subtitle')}
@@ -341,7 +341,7 @@ export function Dev() {
                   Git 提交
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  GIT COMMITS
+                  GIT 提交记录
                 </p>
               </div>
               {gitLogLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -350,7 +350,7 @@ export function Dev() {
             {gitLogError ? (
               <EmptyState title={gitLogError} />
             ) : gitLog.length === 0 && !gitLogLoading ? (
-              <EmptyState title="{t('dev.noCommits')}" />
+              <EmptyState title={t('dev.noCommits')} />
             ) : (
               <div className="flex-1 overflow-y-auto space-y-2 max-h-[360px]">
                 {gitLog.map((commit) => (
@@ -402,7 +402,7 @@ export function Dev() {
                   构建状态
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  BUILD STATUS
+                  构建状态
                 </p>
               </div>
             </div>
@@ -434,7 +434,7 @@ export function Dev() {
                   技术债务
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  TECH DEBT // HEALTH.md
+                  技术债务 // HEALTH.md
                 </p>
               </div>
               {healthLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -517,7 +517,7 @@ export function Dev() {
                   依赖更新
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  PIP OUTDATED PACKAGES
+                  PIP 依赖更新
                 </p>
               </div>
               {depsLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
