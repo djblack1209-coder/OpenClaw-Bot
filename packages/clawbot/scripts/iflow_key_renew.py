@@ -19,6 +19,7 @@ iFlow API Key 自动续期脚本
 import argparse
 import json
 import os
+import random
 import re
 import sqlite3
 import subprocess
@@ -26,6 +27,20 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# 反检测：playwright_stealth（可选）
+try:
+    from playwright_stealth import stealth_sync
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+
+# 滑块验证码识别：ddddocr（可选）
+try:
+    import ddddocr
+    HAS_DDDDOCR = True
+except ImportError:
+    HAS_DDDDOCR = False
 
 
 # ============================================================
@@ -160,6 +175,35 @@ def reset_timestamp():
 
 
 # ============================================================
+# 滑块拖动辅助函数
+# ============================================================
+
+def human_like_drag(page, slider_box, distance):
+    """模拟人类拖动轨迹：加速→匀速→减速+微抖动"""
+    start_x = slider_box["x"] + slider_box["width"] / 2
+    start_y = slider_box["y"] + slider_box["height"] / 2
+
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+
+    # 生成轨迹点
+    steps = random.randint(15, 25)
+    for i in range(steps):
+        progress = (i + 1) / steps
+        # 缓入缓出 easing
+        eased = progress * progress * (3 - 2 * progress)
+        x = start_x + distance * eased + random.uniform(-2, 2)
+        y = start_y + random.uniform(-3, 3)
+        page.mouse.move(x, y)
+        time.sleep(random.uniform(0.01, 0.04))
+
+    # 最后微调到精确位置
+    page.mouse.move(start_x + distance, start_y)
+    time.sleep(random.uniform(0.1, 0.3))
+    page.mouse.up()
+
+
+# ============================================================
 # Playwright 自动化
 # ============================================================
 
@@ -184,6 +228,11 @@ def renew_key_playwright(manual_code: bool = False) -> str | None:
             locale="zh-CN",
         )
         page = context.new_page()
+
+        # 反指纹检测（如果 playwright_stealth 可用）
+        if HAS_STEALTH:
+            stealth_sync(page)
+            print("[iflow]   已启用 playwright_stealth 反检测")
 
         try:
             # 步骤 1: 打开登录页
@@ -213,16 +262,33 @@ def renew_key_playwright(manual_code: bool = False) -> str | None:
                 if slider.count() > 0:
                     box = slider.bounding_box()
                     if box:
-                        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        page.mouse.down()
-                        # 模拟人手拖动 — 分多步移动
-                        for i in range(10):
-                            page.mouse.move(
-                                box["x"] + box["width"] / 2 + (i + 1) * 30,
-                                box["y"] + box["height"] / 2 + (i % 3 - 1) * 2,
-                            )
-                            time.sleep(0.05)
-                        page.mouse.up()
+                        if HAS_DDDDOCR:
+                            # 使用 ddddocr 精确计算滑动距离
+                            print("[iflow]   使用 ddddocr 计算滑动距离...")
+                            try:
+                                # 截取验证码背景图和滑块图
+                                bg_el = page.locator('[class*="bg"], [class*="background"], canvas').first
+                                target_el = page.locator('[class*="target"], [class*="puzzle"], [class*="slice"]').first
+                                bg_bytes = bg_el.screenshot() if bg_el.count() > 0 else page.screenshot()
+                                target_bytes = target_el.screenshot() if target_el.count() > 0 else None
+
+                                if target_bytes:
+                                    ocr = ddddocr.DdddOcr()
+                                    result = ocr.slide_match(target_bytes, bg_bytes)
+                                    distance = result.get("target", [0])[0]
+                                    print(f"[iflow]   ddddocr 计算滑动距离: {distance}px")
+                                    human_like_drag(page, box, distance)
+                                else:
+                                    # 无法获取滑块截图，使用默认距离 + 人类轨迹
+                                    print("[iflow]   未找到滑块元素截图，使用默认距离")
+                                    human_like_drag(page, box, 300)
+                            except Exception as e:
+                                print(f"[iflow]   ddddocr 识别失败: {e}，使用默认距离")
+                                human_like_drag(page, box, 300)
+                        else:
+                            # 无 ddddocr，使用人类轨迹拖动默认距离
+                            print("[iflow]   ddddocr 未安装，使用默认距离拖动")
+                            human_like_drag(page, box, 300)
                         time.sleep(2)
                         print("[iflow]   滑动验证完成")
             else:
