@@ -15,7 +15,6 @@ import {
   ArrowDownRight,
   BarChart3,
   Loader2,
-  AlertCircle,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
@@ -201,7 +200,7 @@ export function Money() {
             </div>
 
             {pnlError ? (
-              <NoDataPlaceholder reason={pnlError} />
+              <EmptyState title={pnlError} />
             ) : (
               <>
                 {/* 顶部统计 4 列 */}
@@ -257,7 +256,7 @@ export function Money() {
             </h3>
 
             {costError ? (
-              <NoDataPlaceholder reason={costError} />
+              <EmptyState title={costError} />
             ) : (
               <div className="mt-6 flex-1 space-y-5">
                 {/* 总成本 */}
@@ -316,7 +315,7 @@ export function Money() {
             </h3>
 
             {pnlHistory.length === 0 ? (
-              <NoDataPlaceholder reason={t("money.noHistoryData")} />
+              <EmptyState title={t("money.noHistoryData")} />
             ) : (
               <div className="flex-1 space-y-2">
                 {pnlHistory.slice(-8).map((d) => (
