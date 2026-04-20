@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import {
@@ -96,10 +96,13 @@ export function Xianyu() {
   const [error, setError] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
-  const [qrUrl, setQrUrl] = useState('');
+  const [qrImage, setQrImage] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
+  const [qrStatus, setQrStatus] = useState<'waiting' | 'scanned' | 'confirmed' | 'expired' | 'error'>('waiting');
   const [serviceRunning, setServiceRunning] = useState(false);
   const [serviceToggling, setServiceToggling] = useState(false);
+  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrExpireRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
@@ -158,15 +161,74 @@ export function Xianyu() {
     }
   };
 
-  /* ====== 扫码登录 ====== */
+  /* ====== 扫码登录 — 清理轮询定时器 ====== */
+  const stopQrPolling = useCallback(() => {
+    if (qrPollRef.current) {
+      clearInterval(qrPollRef.current);
+      qrPollRef.current = null;
+    }
+    if (qrExpireRef.current) {
+      clearTimeout(qrExpireRef.current);
+      qrExpireRef.current = null;
+    }
+  }, []);
+
+  /* ====== 扫码登录 — 关闭弹窗 ====== */
+  const closeQrModal = useCallback(() => {
+    stopQrPolling();
+    setShowQr(false);
+    setQrImage('');
+    setQrStatus('waiting');
+  }, [stopQrPolling]);
+
+  /* ====== 扫码登录 — 开始轮询扫码状态 ====== */
+  const startQrPolling = useCallback(() => {
+    stopQrPolling();
+
+    // 每 2 秒轮询一次扫码状态
+    qrPollRef.current = setInterval(async () => {
+      try {
+        const res = await clawbotFetchJson<{ status?: string; message?: string }>('/api/v1/xianyu/qr/status');
+        const status = res?.status as typeof qrStatus;
+        if (status) {
+          setQrStatus(status);
+        }
+        if (status === 'confirmed') {
+          stopQrPolling();
+          toast.success('扫码登录成功！');
+          setShowQr(false);
+          setQrImage('');
+          setQrStatus('waiting');
+          await fetchData();
+        } else if (status === 'expired' || status === 'error') {
+          stopQrPolling();
+        }
+      } catch {
+        // 轮询失败不中断，等下次再试
+      }
+    }, 2000);
+
+    // 5 分钟后自动过期
+    qrExpireRef.current = setTimeout(() => {
+      setQrStatus('expired');
+      stopQrPolling();
+    }, 300_000);
+  }, [stopQrPolling, fetchData]);
+
+  /* ====== 扫码登录 — 生成二维码 ====== */
   const handleGenerateQR = async () => {
     setQrLoading(true);
+    setQrStatus('waiting');
     try {
-      const res = await clawbotFetchJson<{ qr_url?: string; url?: string }>('/api/v1/xianyu/qr/generate', { method: 'POST' });
-      const url = res?.qr_url ?? res?.url ?? '';
-      if (url) {
-        setQrUrl(url);
+      const res = await clawbotFetchJson<{ qr_image?: string; qr_content?: string; expires_in?: number }>(
+        '/api/v1/xianyu/qr/generate',
+        { method: 'POST' },
+      );
+      const image = res?.qr_image ?? '';
+      if (image) {
+        setQrImage(image);
         setShowQr(true);
+        startQrPolling();
       } else {
         toast.error('获取二维码失败，请稍后重试');
       }
@@ -176,6 +238,11 @@ export function Xianyu() {
       setQrLoading(false);
     }
   };
+
+  /* ====== 组件卸载时清理轮询 ====== */
+  useEffect(() => {
+    return () => stopQrPolling();
+  }, [stopQrPolling]);
 
   /* ====== 服务启停 ====== */
   const handleServiceToggle = async () => {
@@ -378,7 +445,7 @@ export function Xianyu() {
           <div
             className="fixed inset-0 z-50 flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setShowQr(false)}
+            onClick={closeQrModal}
           >
             <motion.div
               className="abyss-card p-6 rounded-2xl flex flex-col items-center gap-4"
@@ -393,23 +460,81 @@ export function Xianyu() {
                   扫码登录闲鱼
                 </span>
               </div>
-              <div className="rounded-xl overflow-hidden bg-white p-3">
-                <img src={qrUrl} alt="闲鱼登录二维码" className="w-48 h-48 object-contain" />
+
+              {/* 二维码图片 — 白色背景保证扫码识别 */}
+              <div className="rounded-xl overflow-hidden bg-white p-4 flex items-center justify-center" style={{ minWidth: 216, minHeight: 216 }}>
+                {qrImage ? (
+                  <img src={`data:image/png;base64,${qrImage}`} alt="闲鱼登录二维码" className="w-48 h-48 object-contain" />
+                ) : (
+                  <Loader2 size={32} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
+                )}
               </div>
-              <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                请使用闲鱼 APP 扫描上方二维码
-              </p>
-              <button
-                className="font-mono text-xs px-4 py-2 rounded-xl"
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'var(--text-secondary)',
-                }}
-                onClick={() => setShowQr(false)}
-              >
-                关闭
-              </button>
+
+              {/* 扫码状态提示 */}
+              <div className="flex items-center gap-2">
+                {qrStatus === 'waiting' && (
+                  <>
+                    <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-purple)' }} />
+                    <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                      请用闲鱼 APP 扫描二维码
+                    </span>
+                  </>
+                )}
+                {qrStatus === 'scanned' && (
+                  <>
+                    <CheckCircle2 size={14} style={{ color: 'var(--accent-green)' }} />
+                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-green)' }}>
+                      已扫码，请在手机上确认登录
+                    </span>
+                  </>
+                )}
+                {qrStatus === 'expired' && (
+                  <>
+                    <XCircle size={14} style={{ color: 'var(--accent-red)' }} />
+                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
+                      二维码已过期
+                    </span>
+                  </>
+                )}
+                {qrStatus === 'error' && (
+                  <>
+                    <AlertCircle size={14} style={{ color: 'var(--accent-red)' }} />
+                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
+                      出错了，请重试
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* 操作按钮 */}
+              <div className="flex items-center gap-3">
+                {(qrStatus === 'expired' || qrStatus === 'error') && (
+                  <motion.button
+                    className="font-mono text-xs px-4 py-2 rounded-xl cursor-pointer font-bold"
+                    style={{
+                      background: 'rgba(168,85,247,0.08)',
+                      border: '1px solid rgba(168,85,247,0.25)',
+                      color: 'var(--accent-purple)',
+                    }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleGenerateQR}
+                  >
+                    重新生成
+                  </motion.button>
+                )}
+                <button
+                  className="font-mono text-xs px-4 py-2 rounded-xl"
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--text-secondary)',
+                  }}
+                  onClick={closeQrModal}
+                >
+                  关闭
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
