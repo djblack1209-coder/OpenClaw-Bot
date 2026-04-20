@@ -9,8 +9,9 @@ import {
   User, Shield, Cpu, HardDrive, Wifi, Key, Bell,
   Settings2, Download, RotateCcw, Trash2, FileText,
   Stethoscope, Check, MemoryStick, Loader2, Save,
-  Languages,
+  Languages, ExternalLink, KeyRound,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
@@ -390,6 +391,92 @@ export function Settings(_props: SettingsProps) {
                 );
               })}
             </div>
+          </div>
+        </motion.div>
+
+        {/* ====== Row 2.6: 账号登录 — 一键打开登录页 (span-8) ====== */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-8" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,255,170,0.15)' }}>
+                <KeyRound size={20} style={{ color: 'var(--accent-green)' }} />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                  账号登录 // ACCOUNT LOGIN
+                </h2>
+                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  一键打开所有需要登录的平台页面
+                </p>
+              </div>
+            </div>
+
+            {/* 主按钮 */}
+            <button
+              onClick={() => {
+                const urls = [
+                  'https://goofish.com',
+                  'https://x.com/login',
+                  'https://www.xiaohongshu.com',
+                ];
+                urls.forEach(url => window.open(url, '_blank'));
+                toast.success('已打开 3 个登录页面，请在浏览器中完成登录');
+              }}
+              className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer w-full justify-center mb-4"
+              style={{
+                background: 'var(--accent-green)',
+                color: 'var(--bg-primary)',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = '0.85';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = '1';
+              }}>
+              <ExternalLink size={16} />
+              打开全部登录页
+            </button>
+
+            {/* 单独平台按钮 */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              {[
+                { name: '闲鱼', url: 'https://goofish.com' },
+                { name: 'X / Twitter', url: 'https://x.com/login' },
+                { name: '小红书', url: 'https://www.xiaohongshu.com' },
+              ].map((platform) => (
+                <button
+                  key={platform.name}
+                  onClick={() => {
+                    window.open(platform.url, '_blank');
+                    toast.success(`已打开 ${platform.name} 登录页`);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--text-secondary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-cyan)';
+                    (e.currentTarget as HTMLElement).style.color = 'var(--accent-cyan)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-border)';
+                    (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)';
+                  }}>
+                  <span className="font-mono text-xs font-medium">{platform.name}</span>
+                  <ExternalLink size={12} />
+                </button>
+              ))}
+            </div>
+
+            {/* 提示信息 */}
+            <p className="font-mono text-[11px] leading-relaxed px-1" style={{ color: 'var(--text-disabled)' }}>
+              登录后 Cookie 自动保存，无需重复操作。闲鱼需保持 Chrome 开启。
+            </p>
           </div>
         </motion.div>
 
