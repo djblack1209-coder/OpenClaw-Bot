@@ -12,6 +12,41 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — 8 项遗留问题全部清零 + i18n 国际化
+> 领域: `frontend` + `backend` + `trading`
+> 影响模块: `Social`, `APIGateway`, `Portfolio`, `Money`, `Dev`, `Settings`, `_init_system.py`, `trading.py`, `xianyu.py`, `system.py`, `i18n/`
+> 关联问题: —
+
+### Bug 修复
+1. **Social 页面 undefined 崩溃**: `getPlatformCfg` 添加 null 防护，修复 `t.toLowerCase` 报错
+2. **APIGateway 删除操作**: 2 处 `browser confirm()` 替换为自定义 `ConfirmDialog` 组件（destructive 风格）
+
+### 新增功能
+3. **Portfolio 交易日志 Tab**: 后端新增 `GET /trading/journal` 分页 API（支持状态/标的/方向筛选），前端完整表格 + 分页 + 筛选
+4. **Money 闲鱼收入接入**: 后端新增 `GET /xianyu/profit` 端点，前端展示近 30 天营收/净利润/订单数/今日咨询
+5. **大师 Agent 嵌入投票**: 5 位投资大师（巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒）圆桌会议分析注入 auto_trader 投票 account_context
+6. **估值模型 GUI**: 后端新增 `GET /trading/valuation` 端点（yfinance + 4 大估值模型），Portfolio 新增第 6 个 Tab「估值分析」
+7. **Dev 页面真实数据**: 后端新增 `GET /system/git-log`、`/health-summary`、`/outdated-deps` 三个 API，Git 提交/技术债务/依赖更新全部从占位替换为真实数据
+8. **中英文双界面切换**: 完整 i18n 基础设施（LanguageProvider + zh-CN/en-US 翻译文件 + 150+ key），Sidebar/Header/Settings 已接入，Settings 新增语言切换卡片
+
+### 文件变更
+- `src/components/Social/index.tsx` — getPlatformCfg null 防护
+- `src/components/APIGateway/index.tsx` — confirm → ConfirmDialog
+- `src/components/Portfolio/index.tsx` — 交易日志 Tab + 估值分析 Tab（新增 ~450 行）
+- `src/components/Money/index.tsx` — 闲鱼收入数据接入
+- `src/components/Dev/index.tsx` — 3 个 API 数据接入
+- `src/components/Settings/index.tsx` — 语言切换卡片
+- `src/components/Layout/Sidebar.tsx` — i18n 接入
+- `src/components/Layout/Header.tsx` — i18n 接入
+- `src/App.tsx` — LanguageProvider 包裹
+- `src/i18n/` — 新建 index.tsx + zh-CN.ts + en-US.ts
+- `src/lib/api.ts` — 新增 tradingJournal/xianyuProfit/tradingValuation/devGitLog/devHealthSummary/devOutdatedDeps
+- `packages/clawbot/src/trading_journal.py` — get_trades_paginated()
+- `packages/clawbot/src/trading/_init_system.py` — 大师 Agent 圆桌注入
+- `packages/clawbot/src/api/routers/trading.py` — /journal + /valuation 端点
+- `packages/clawbot/src/api/routers/xianyu.py` — /profit 端点
+- `packages/clawbot/src/api/routers/system.py` — /git-log + /health-summary + /outdated-deps 端点
+
 ## 2026-04-19 — UI 全面数据接入：31 页面 Mock→真实 API 打通
 > 领域: `frontend` + `backend`
 > 影响模块: `apps/openclaw-manager-src/src/components/*` (22 个页面文件), `packages/clawbot/src/api/routers/monitor.py`, `packages/clawbot/src/api/server.py`
