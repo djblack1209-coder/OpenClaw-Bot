@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 常量 ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -74,12 +75,12 @@ const cardVariants = {
 
 /* ====== 辅助函数 ====== */
 
-/** 风险等级评估 */
-function assessRiskLevel(dayChangePct: number): { level: string; color: string; bg: string } {
+/** 风险等级评估 — 返回 i18n key */
+function assessRiskLevel(dayChangePct: number): { levelKey: string; color: string; bg: string } {
   const abs = Math.abs(dayChangePct);
-  if (abs >= 5) return { level: '高风险', color: 'var(--accent-red)', bg: 'rgba(248, 113, 113, 0.08)' };
-  if (abs >= 2) return { level: '中等风险', color: 'var(--accent-amber)', bg: 'rgba(251, 191, 36, 0.08)' };
-  return { level: '低风险', color: 'var(--accent-green)', bg: 'rgba(52, 211, 153, 0.08)' };
+  if (abs >= 5) return { levelKey: 'risk.highRisk', color: 'var(--accent-red)', bg: 'rgba(248, 113, 113, 0.08)' };
+  if (abs >= 2) return { levelKey: 'risk.mediumRisk', color: 'var(--accent-amber)', bg: 'rgba(251, 191, 36, 0.08)' };
+  return { levelKey: 'risk.lowRisk', color: 'var(--accent-green)', bg: 'rgba(52, 211, 153, 0.08)' };
 }
 
 /** 盈亏颜色 */
@@ -132,6 +133,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
 /* ====== 主组件 ====== */
 
 export function Risk() {
+  const { t } = useLanguage();
   /* ---- 状态 ---- */
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [controls, setControls] = useState<TradingControls | null>(null);
@@ -158,10 +160,10 @@ export function Risk() {
 
       /* 两个接口都失败时才显示错误 */
       if (pRes.status === 'rejected' && cRes.status === 'rejected') {
-        if (!silent) setError('无法获取风控数据');
+        if (!silent) setError('risk_data_unavailable');
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '未知错误';
+      const msg = e instanceof Error ? e.message : 'unknown error';
       if (!silent) setError(msg);
     } finally {
       setLoading(false);
@@ -216,7 +218,7 @@ export function Risk() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <LoadingState message="正在加载风险数据..." />
+          <LoadingState message={t('risk.loadingRiskData')} />
         </div>
       </div>
     );
@@ -226,7 +228,7 @@ export function Risk() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`风险数据加载失败: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('risk.loadFailed')}: ${error}`} onRetry={fetchData} />
         </div>
       </div>
     );
@@ -269,7 +271,7 @@ export function Risk() {
                     className="font-display text-sm font-bold block"
                     style={{ color: riskLevel.color }}
                   >
-                    {riskLevel.level}
+                    {t(riskLevel.levelKey)}
                   </span>
                 </div>
               </div>
@@ -279,7 +281,7 @@ export function Risk() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                 <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  组合总值
+                  {t('risk.portfolioValue')}
                 </span>
                 <span className="font-mono text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
                   {portfolio ? fmtUsd(portfolio.total_value) : 'N/A'}
@@ -287,7 +289,7 @@ export function Risk() {
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                 <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  总盈亏
+                  {t('risk.totalPnl')}
                 </span>
                 <span
                   className="font-mono text-[13px] font-bold"
@@ -298,7 +300,7 @@ export function Risk() {
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                 <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  今日变动
+                  {t('risk.dayChange')}
                 </span>
                 <span
                   className="font-mono text-[13px] font-bold"
@@ -309,7 +311,7 @@ export function Risk() {
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                 <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  持仓数量
+                  {t('risk.positionCount')}
                 </span>
                 <span className="font-mono text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
                   {portfolio?.position_count ?? 'N/A'}
@@ -334,7 +336,7 @@ export function Risk() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    日内波动率
+                    {t('risk.intradayVolatility')}
                   </span>
                   <span
                     className="font-display text-xl font-bold"
@@ -357,7 +359,7 @@ export function Risk() {
                   />
                 </div>
                 <p className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-disabled)' }}>
-                  基于今日持仓价值变动
+                  {t('risk.basedOnDayChange')}
                 </p>
               </div>
 
@@ -368,7 +370,7 @@ export function Risk() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-center p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                   <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                    亏损持仓数
+                    {t('risk.losingPositions')}
                   </span>
                   <span
                     className="font-display text-2xl font-bold"
@@ -377,12 +379,12 @@ export function Risk() {
                     {losingPositions}
                   </span>
                   <span className="font-mono text-[10px] block mt-0.5" style={{ color: 'var(--text-disabled)' }}>
-                    / {portfolio?.position_count ?? 0} 总持仓
+                    / {portfolio?.position_count ?? 0} {t('risk.totalPositions')}
                   </span>
                 </div>
                 <div className="text-center p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                   <span className="font-mono text-[10px] block" style={{ color: 'var(--text-disabled)' }}>
-                    最大单笔亏损
+                    {t('risk.maxSingleLoss')}
                   </span>
                   <span
                     className="font-display text-2xl font-bold"
@@ -400,7 +402,7 @@ export function Risk() {
               <div className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    总盈亏率
+                    {t('risk.totalPnlRate')}
                   </span>
                   <span
                     className="font-display text-lg font-bold"
@@ -439,7 +441,7 @@ export function Risk() {
                 {concentrationHHI.toFixed(1)}
               </span>
               <p className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-disabled)' }}>
-                HHI 集中度指数 (0-100)
+                HHI {t('risk.concentrationIndex')} (0-100)
               </p>
             </div>
 
@@ -447,7 +449,7 @@ export function Risk() {
             <div className="p-3 rounded-lg mb-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  最大单一权重
+                  {t('risk.maxSingleWeight')}
                 </span>
                 <span
                   className="font-mono text-[13px] font-bold"
@@ -510,7 +512,7 @@ export function Risk() {
               ) : (
                 <div className="flex items-center justify-center py-8">
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                    暂无持仓数据
+                    {t('risk.noPositionData')}
                   </span>
                 </div>
               )}
@@ -539,14 +541,14 @@ export function Risk() {
                   <div className="flex items-center gap-2 mb-2">
                     <ShieldAlert size={14} style={{ color: controls.risk_protection_enabled ? 'var(--accent-green)' : 'var(--accent-red)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      风控保护
+                      {t('risk.riskProtection')}
                     </span>
                   </div>
                   <span
                     className="font-display text-lg font-bold"
                     style={{ color: controls.risk_protection_enabled ? 'var(--accent-green)' : 'var(--accent-red)' }}
                   >
-                    {controls.risk_protection_enabled ? '已开启' : '已关闭'}
+                    {controls.risk_protection_enabled ? t('risk.enabled') : t('risk.disabled')}
                   </span>
                 </div>
 
@@ -555,14 +557,14 @@ export function Risk() {
                   <div className="flex items-center gap-2 mb-2">
                     <Activity size={14} style={{ color: controls.auto_trader_enabled ? 'var(--accent-green)' : 'var(--accent-amber)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      自动交易
+                      {t('risk.autoTrade')}
                     </span>
                   </div>
                   <span
                     className="font-display text-lg font-bold"
                     style={{ color: controls.auto_trader_enabled ? 'var(--accent-green)' : 'var(--accent-amber)' }}
                   >
-                    {controls.auto_trader_enabled ? '已开启' : '已关闭'}
+                    {controls.auto_trader_enabled ? t('risk.enabled') : t('risk.disabled')}
                   </span>
                 </div>
 
@@ -571,14 +573,14 @@ export function Risk() {
                   <div className="flex items-center gap-2 mb-2">
                     <Lock size={14} style={{ color: controls.ibkr_live_mode ? 'var(--accent-red)' : 'var(--accent-cyan)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      实盘模式
+                      {t('risk.liveMode')}
                     </span>
                   </div>
                   <span
                     className="font-display text-lg font-bold"
                     style={{ color: controls.ibkr_live_mode ? 'var(--accent-red)' : 'var(--accent-cyan)' }}
                   >
-                    {controls.ibkr_live_mode ? '实盘' : '模拟盘'}
+                    {controls.ibkr_live_mode ? t('risk.live') : t('risk.paper')}
                   </span>
                 </div>
 
@@ -587,7 +589,7 @@ export function Risk() {
                   <div className="flex items-center gap-2 mb-2">
                     <BarChart3 size={14} style={{ color: 'var(--accent-purple)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      日交易上限
+                      {t('risk.maxDailyTrades')}
                     </span>
                   </div>
                   <span
@@ -597,7 +599,7 @@ export function Risk() {
                     {controls.max_daily_trades}
                   </span>
                   <span className="font-mono text-[10px] ml-1" style={{ color: 'var(--text-disabled)' }}>
-                    笔/天
+                    {t('risk.perDay')}
                   </span>
                 </div>
 
@@ -607,7 +609,7 @@ export function Risk() {
                     <div className="flex items-center gap-2">
                       <TrendingDown size={14} style={{ color: controls.allow_short_selling ? 'var(--accent-amber)' : 'var(--text-disabled)' }} />
                       <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                        做空交易
+                        {t('risk.shortSelling')}
                       </span>
                     </div>
                     <span
@@ -618,7 +620,7 @@ export function Risk() {
                         border: `1px solid ${controls.allow_short_selling ? 'rgba(251, 191, 36, 0.3)' : 'var(--glass-border)'}`,
                       }}
                     >
-                      {controls.allow_short_selling ? '已允许' : '已禁止'}
+                      {controls.allow_short_selling ? t('risk.allowed') : t('risk.prohibited')}
                     </span>
                   </div>
                 </div>
@@ -626,7 +628,7 @@ export function Risk() {
             ) : (
               <div className="flex items-center justify-center py-8">
                 <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  无法获取风控参数
+                  {t('risk.cannotGetControls')}
                 </span>
               </div>
             )}
@@ -651,7 +653,7 @@ export function Risk() {
                 /* 高波动 */
                 if (portfolio && Math.abs(portfolio.day_change_pct) > 3) {
                   alerts.push({
-                    msg: `今日组合波动 ${fmtPct(portfolio.day_change_pct)}，超过 3% 阈值`,
+                    msg: `${t('risk.alertHighVolatility')} ${fmtPct(portfolio.day_change_pct)}`,
                     level: 'error',
                   });
                 }
@@ -659,7 +661,7 @@ export function Risk() {
                 /* 高集中度 */
                 if (concentrationHHI > 40) {
                   alerts.push({
-                    msg: `持仓集中度 HHI=${concentrationHHI.toFixed(1)}，建议分散投资`,
+                    msg: `${t('risk.alertHighConcentration')} HHI=${concentrationHHI.toFixed(1)}`,
                     level: 'warning',
                   });
                 }
@@ -667,7 +669,7 @@ export function Risk() {
                 /* 单一持仓过大 */
                 if (maxWeight > 30) {
                   alerts.push({
-                    msg: `单一持仓权重 ${maxWeight.toFixed(1)}% 超过 30%，集中风险较高`,
+                    msg: `${t('risk.alertSingleWeight')} ${maxWeight.toFixed(1)}%`,
                     level: 'warning',
                   });
                 }
@@ -675,7 +677,7 @@ export function Risk() {
                 /* 较多亏损仓 */
                 if (portfolio && losingPositions > portfolio.position_count / 2) {
                   alerts.push({
-                    msg: `${losingPositions}/${portfolio.position_count} 持仓处于亏损状态`,
+                    msg: `${losingPositions}/${portfolio.position_count} ${t('risk.alertLosingPositions')}`,
                     level: 'warning',
                   });
                 }
@@ -683,7 +685,7 @@ export function Risk() {
                 /* 风控未开启 */
                 if (controls && !controls.risk_protection_enabled) {
                   alerts.push({
-                    msg: '风控保护未开启，建议在自动交易时启用',
+                    msg: t('risk.alertRiskNotEnabled'),
                     level: 'error',
                   });
                 }
@@ -691,7 +693,7 @@ export function Risk() {
                 /* 做空已开启 */
                 if (controls && controls.allow_short_selling) {
                   alerts.push({
-                    msg: '做空交易已启用，请注意做空风险',
+                    msg: t('risk.alertShortEnabled'),
                     level: 'info',
                   });
                 }
@@ -699,7 +701,7 @@ export function Risk() {
                 /* 无风险提示 */
                 if (alerts.length === 0) {
                   alerts.push({
-                    msg: '当前无风险告警，系统运行正常',
+                    msg: t('risk.alertNoRisk'),
                     level: 'info',
                   });
                 }
@@ -746,7 +748,7 @@ export function Risk() {
                 }}
               >
                 <RefreshCw size={12} />
-                刷新风险数据
+                {t('risk.refreshRiskData')}
               </button>
             </div>
           </div>
