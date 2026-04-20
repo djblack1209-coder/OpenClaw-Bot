@@ -4,6 +4,46 @@
 
 ---
 
+## [2026-04-20] 8 项遗留问题全部清零 + i18n 国际化
+
+### 本次完成了什么
+
+**1. Bug 修复（2 项）**
+- Social 页面 `getPlatformCfg` undefined 崩溃修复（添加 null 防护）
+- APIGateway 删除操作从 browser confirm() 替换为自定义 ConfirmDialog
+
+**2. 数据接入（3 项）**
+- Portfolio 交易日志 Tab：后端分页 API + 前端完整表格（筛选+分页）
+- Money 页闲鱼收入：后端 `/xianyu/profit` + 前端营收/利润/订单展示
+- Dev 页：Git 提交记录 + 技术债务 + 依赖更新 3 个 API 全部接入
+
+**3. 交易系统增强（2 项）**
+- 大师 Agent 嵌入投票：5 位投资大师圆桌会议分析注入 auto_trader 投票
+- 估值模型 GUI：后端 `/trading/valuation`（yfinance + 4 大估值模型），Portfolio 新增第 6 个 Tab
+
+**4. 国际化（1 项）**
+- 完整 i18n 基础设施：LanguageProvider + zh-CN/en-US 翻译文件（150+ key）
+- Sidebar/Header/Settings 已接入 t() 翻译函数
+- Settings 新增语言切换卡片（中文/English）
+
+### 未完成的工作
+- **i18n 深度覆盖**：目前只有 Sidebar/Header/Settings 接入了 i18n，其余 30+ 个页面的内页文本仍为硬编码中文（基础设施已就绪，后续逐页替换）
+- **Testing 页面测试执行**：Testing 页仍只提示终端命令，未实现在界面内运行 pytest（需 WebSocket 实时输出）
+- **套利/DeFi 收入**：Money 页这两项仍为"待接入"占位
+
+### 需要注意的坑
+- i18n 默认语言 zh-CN，localStorage key `openclaw-language`
+- 估值模型依赖 yfinance，某些股票（如港股/A股）的字段可能不全，会导致部分模型结果为 0
+- 大师 Agent 圆桌分析会增加额外 LLM 调用（每个候选标的 5 次调用），可能增加投票耗时
+- Dev 页的 outdated-deps 会执行 pip list --outdated，首次运行可能较慢（30 秒超时保护）
+
+### 当前系统状态
+- TypeScript: **零错误**
+- Vite 构建: **成功**（2.89s）
+- Python 语法: **全部通过**
+- 遗留问题: **0 项**（全部已解决）
+- 活跃 HEALTH 问题: HI-388（diskcache CVE 等上游）+ HI-462（低风险日志脱敏）
+
 ## [2026-04-20] UI 全面数据接入：31 页面 Mock→真实 API + 验收审计
 
 ### 本次完成了什么
