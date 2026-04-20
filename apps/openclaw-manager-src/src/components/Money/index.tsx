@@ -265,7 +265,7 @@ export function Money() {
               AI COST
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              AI 使用成本
+              {t("money.aiCost")}
             </h3>
 
             {costError ? (
@@ -324,11 +324,11 @@ export function Money() {
               P&L HISTORY
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              损益走势
+              {t("money.pnlHistory")}
             </h3>
 
             {pnlHistory.length === 0 ? (
-              <NoDataPlaceholder reason="暂无历史损益数据" />
+              <NoDataPlaceholder reason={t("money.noHistoryData")} />
             ) : (
               <div className="flex-1 space-y-2">
                 {pnlHistory.slice(-8).map((d) => (
@@ -382,7 +382,7 @@ export function Money() {
               OTHER REVENUE
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              其他收入源
+              {t("money.otherRevenue")}
             </h3>
 
             <div className="flex-1 space-y-4">
@@ -395,7 +395,7 @@ export function Money() {
                   <PieChart size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-amber)' }} />
                   <div className="flex-1">
                     <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                      闲鱼销售收入
+                      {t("money.xianyuRevenue")}
                     </p>
                     {xianyuData ? (
                       <div className="mt-2 space-y-1.5 font-mono text-xs">
@@ -426,7 +426,7 @@ export function Money() {
                       </div>
                     ) : (
                       <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                        数据加载中或闲鱼服务未运行
+                        {t("money.xianyuLoading")}
                       </p>
                     )}
                   </div>
@@ -440,7 +440,7 @@ export function Money() {
                   <div>
                     <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.arbitrageRevenue')}</p>
                     <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                      待接入 — 需开发套利引擎
+                      {t("money.pendingArbitrage")}
                     </p>
                   </div>
                 </div>
@@ -453,7 +453,7 @@ export function Money() {
                   <div>
                     <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.defiRevenue')}</p>
                     <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                      待接入 — 需接入链上数据
+                      {t("money.pendingDefi")}
                     </p>
                   </div>
                 </div>
@@ -465,7 +465,7 @@ export function Money() {
               className="font-mono text-[10px] mt-4 pt-3 border-t"
               style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
             >
-              闲鱼收入已接入 · 其余数据源待 API 就绪
+              {t("money.revenueNote")}
             </p>
           </div>
         </motion.div>

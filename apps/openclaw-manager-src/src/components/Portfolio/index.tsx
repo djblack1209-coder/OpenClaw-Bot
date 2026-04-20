@@ -564,7 +564,7 @@ export function Portfolio() {
                   </span>
                 </div>
                 <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  投资组合
+                  {t("portfolio.title")}
                 </h2>
 
                 {/* 4 列统计数据 */}
@@ -585,7 +585,7 @@ export function Portfolio() {
                   {p.positions.length === 0 ? (
                     <div className="mt-8 text-center">
                       <p className="font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                        暂无持仓
+                        {t("portfolio.noPositions")}
                       </p>
                     </div>
                   ) : (
@@ -651,13 +651,13 @@ export function Portfolio() {
                   7-BOT CONSENSUS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  AI 投资团队
+                  {t("portfolio.aiTeam")}
                 </h3>
 
                 {team.length === 0 ? (
                   <div className="mt-6 flex-1 flex items-center justify-center">
                     <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                      暂无团队投票数据
+                      {t("portfolio.noTeamData")}
                     </p>
                   </div>
                 ) : (
@@ -725,7 +725,7 @@ export function Portfolio() {
                   ALLOCATION
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  持仓分布
+                  {t("portfolio.allocation")}
                 </h3>
                 {allocation.length === 0 ? (
                   <div className="mt-6 flex-1 flex items-center justify-center">
@@ -765,7 +765,7 @@ export function Portfolio() {
                       PERFORMANCE // SUMMARY
                     </span>
                     <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                      收益汇总
+                      {t("portfolio.performanceSummary")}
                     </h3>
                   </div>
                   <div className="text-right">
@@ -808,14 +808,14 @@ export function Portfolio() {
                   RISK METRICS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  风险指标
+                  {t("portfolio.riskMetrics")}
                 </h3>
                 <div className="mt-4 space-y-4 flex-1">
                   {[
                     { label: t('portfolio.costBasis'), value: fmtUsd(p.total_cost), color: 'var(--text-secondary)' },
                     { label: t('portfolio.unrealizedPnl'), value: `${pnlSign(p.total_pnl)}${fmtUsd(p.total_pnl)}`, color: pnlColor(p.total_pnl) },
                     { label: t('portfolio.dayVolatility'), value: `${pnlSign(p.day_change_pct)}${p.day_change_pct.toFixed(2)}%`, color: pnlColor(p.day_change_pct) },
-                    { label: t('portfolio.concentration'), value: p.positions.length > 0 ? `${p.positions[0]?.weight.toFixed(1)}% 最大` : 'N/A', color: 'var(--accent-cyan)' },
+                    { label: t('portfolio.concentration'), value: p.positions.length > 0 ? `${p.positions[0]?.weight.toFixed(1)}% max` : 'N/A', color: 'var(--accent-cyan)' },
                   ].map(m => (
                     <div key={m.label} className="flex items-center justify-between">
                       <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -847,17 +847,17 @@ export function Portfolio() {
                   AI VOTE // TRIGGER
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  发起 AI 投票
+                  {t("portfolio.startVote")}
                 </h3>
                 <p className="font-mono text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
-                  输入股票代码，让 7 个 AI Bot 投票分析
+                  {t("portfolio.voteDesc")}
                 </p>
 
                 <div className="mt-6 space-y-4 flex-1">
                   {/* 股票代码输入 */}
                   <div>
                     <label className="font-mono text-[10px] uppercase block mb-1.5" style={{ color: 'var(--text-disabled)' }}>
-                      股票代码
+                      {t("portfolio.symbolLabel")}
                     </label>
                     <input
                       type="text"
@@ -872,7 +872,7 @@ export function Portfolio() {
                   {/* 时间周期选择 */}
                   <div>
                     <label className="font-mono text-[10px] uppercase block mb-1.5" style={{ color: 'var(--text-disabled)' }}>
-                      分析周期
+                      {t("portfolio.analysisPeriod")}
                     </label>
                     <div className="flex gap-2">
                       {['1d', '1w', '1m', '3m'].map(pd => (
@@ -902,7 +902,7 @@ export function Portfolio() {
                     {voteLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="inline-block w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--text-disabled)', borderTopColor: 'transparent' }} />
-                        分析中...
+                        {t("portfolio.analyzing")}
                       </span>
                     ) : t('portfolio.analyze')}
                   </button>
@@ -917,7 +917,7 @@ export function Portfolio() {
                   VOTE RESULTS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  投票结果
+                  {t("portfolio.voteResults")}
                 </h3>
 
                 {!voteResult ? (
@@ -997,10 +997,10 @@ export function Portfolio() {
                   TRADING CONTROLS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  自动交易控制
+                  {t("portfolio.autoTradeControl")}
                 </h3>
                 <p className="font-mono text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                  管理自动交易开关与风控参数
+                  {t("portfolio.autoTradeDesc")}
                 </p>
 
                 {controlsLoading && !controls ? (
@@ -1011,14 +1011,14 @@ export function Portfolio() {
                 ) : !controls ? (
                   <div className="mt-8 text-center py-12">
                     <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                      无法加载交易控制配置
+                      {t("portfolio.controls.loadFailed")}
                     </p>
                     <button
                       onClick={fetchControls}
                       className="mt-3 px-4 py-1.5 rounded-lg font-mono text-xs"
                       style={{ background: 'var(--accent-cyan)', color: '#000' }}
                     >
-                      重试
+                      {t("common.retry")}
                     </button>
                   </div>
                 ) : (
@@ -1075,10 +1075,10 @@ export function Portfolio() {
                     >
                       <div className="flex-1 min-w-0 mr-4">
                         <span className="font-mono text-sm font-semibold block" style={{ color: 'var(--text-primary)' }}>
-                          最大日交易次数
+                          {t("portfolio.controls.maxDailyTrades")}
                         </span>
                         <span className="font-mono text-[11px] block mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                          单日内允许执行的最大交易次数
+                          {t("portfolio.controls.maxDailyTradesDesc")}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -1121,7 +1121,7 @@ export function Portfolio() {
                   STATUS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  状态说明
+                  {t("portfolio.statusInfo")}
                 </h3>
                 <div className="mt-4 space-y-3 flex-1">
                   <div className="p-3 rounded-lg" style={{ background: 'rgba(255,180,0,0.06)', border: '1px solid rgba(255,180,0,0.15)' }}>
@@ -1155,14 +1155,14 @@ export function Portfolio() {
                   BACKTEST // CONFIG
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  回测参数
+                  {t("portfolio.backtestParams")}
                 </h3>
 
                 <div className="mt-6 space-y-4 flex-1">
                   {/* 股票代码 */}
                   <div>
                     <label className="font-mono text-[10px] uppercase block mb-1.5" style={{ color: 'var(--text-disabled)' }}>
-                      股票代码
+                      {t("portfolio.symbolLabel")}
                     </label>
                     <input
                       type="text"
@@ -1177,7 +1177,7 @@ export function Portfolio() {
                   {/* 策略选择 */}
                   <div>
                     <label className="font-mono text-[10px] uppercase block mb-1.5" style={{ color: 'var(--text-disabled)' }}>
-                      交易策略
+                      {t("portfolio.tradeStrategy")}
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       {([
@@ -1206,7 +1206,7 @@ export function Portfolio() {
                   {/* 回测周期 */}
                   <div>
                     <label className="font-mono text-[10px] uppercase block mb-1.5" style={{ color: 'var(--text-disabled)' }}>
-                      回测周期
+                      {t("portfolio.backtestPeriod")}
                     </label>
                     <div className="flex gap-2">
                       {['3m', '6m', '1y', '2y', '5y'].map(pd => (
@@ -1236,7 +1236,7 @@ export function Portfolio() {
                     {btLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="inline-block w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--text-disabled)', borderTopColor: 'transparent' }} />
-                        回测中...
+                        {t("portfolio.backtesting")}
                       </span>
                     ) : t('portfolio.startBacktest')}
                   </button>
@@ -1251,7 +1251,7 @@ export function Portfolio() {
                   BACKTEST // RESULTS
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  回测结果
+                  {t("portfolio.backtestResults")}
                 </h3>
 
                 {!btResult ? (
@@ -1317,7 +1317,7 @@ export function Portfolio() {
                   </button>
                 </div>
                 <p className="font-mono text-[10px] mt-2" style={{ color: 'var(--text-disabled)' }}>
-                  运行 DCF / 持有人收益 / EV-EBITDA / 残余收入 四大估值模型
+                  {t("portfolio.valuation.modelsDesc")}
                 </p>
               </div>
             </motion.div>
@@ -1334,7 +1334,7 @@ export function Portfolio() {
                         <span className="ml-2 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>{valResult.symbol}</span>
                       </h3>
                       <p className="font-mono text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                        当前价格: ${valResult.current_price?.toFixed(2)} · WACC: {(valResult.wacc * 100).toFixed(1)}%
+                        {t("portfolio.valuation.currentPrice")}: ${valResult.current_price?.toFixed(2)} · WACC: {(valResult.wacc * 100).toFixed(1)}%
                       </p>
                     </div>
                     <div className="text-right">
@@ -1346,7 +1346,7 @@ export function Portfolio() {
                         {valResult.signal === 'bullish' ? t('portfolio.bullish') : valResult.signal === 'bearish' ? t('portfolio.bearish') : valResult.signal === 'neutral' ? t('portfolio.neutral') : valResult.signal}
                       </span>
                       <p className="font-mono text-xs mt-1" style={{ color: 'var(--text-disabled)' }}>
-                        置信度: {(valResult.confidence * 100).toFixed(0)}%
+                        {t("portfolio.valuation.confidence")}: {(valResult.confidence * 100).toFixed(0)}%
                       </p>
                     </div>
                   </div>
@@ -1412,7 +1412,7 @@ export function Portfolio() {
                           </span>
                         </div>
                         <p className="mt-2 text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                          净利润 + 折旧 - 资本支出 - 营运资金变动
+                          {t("portfolio.valuation.ownerEarningsFormula")}
                         </p>
                       </div>
                     </div>
@@ -1454,7 +1454,7 @@ export function Portfolio() {
                       TRADE LOGS
                     </span>
                     <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                      交易日志
+                      {t("portfolio.tradeLogs")}
                       <span className="ml-2 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
                         {journalTotal} {t('portfolio.logs.entries')}
                       </span>
@@ -1480,7 +1480,7 @@ export function Portfolio() {
                       style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.08)' }}
                       onClick={() => fetchJournal(journalPage)}
                     >
-                      刷新
+                      {t("common.refresh")}
                     </button>
                   </div>
                 </div>
@@ -1574,7 +1574,7 @@ export function Portfolio() {
                         disabled={journalPage === 0}
                         onClick={() => fetchJournal(journalPage - 1)}
                       >
-                        上一页
+                        {t("portfolio.logs.prevPage")}
                       </button>
                       <button
                         className="px-3 py-1 rounded font-mono text-xs"
@@ -1582,7 +1582,7 @@ export function Portfolio() {
                         disabled={(journalPage + 1) * JOURNAL_PAGE_SIZE >= journalTotal}
                         onClick={() => fetchJournal(journalPage + 1)}
                       >
-                        下一页
+                        {t("portfolio.logs.nextPage")}
                       </button>
                     </div>
                   </div>

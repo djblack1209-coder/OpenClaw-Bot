@@ -235,10 +235,10 @@ export function Bots() {
       /* 等一小段时间让后端状态更新 */
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
-      toast.success(isStop ? `${serviceName} 服务已停止` : `${serviceName} 服务已启动`);
+      toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`);
     } catch (e: any) {
       await fetchData();
-      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
     } finally {
       setActionLoading((prev) => ({ ...prev, [serviceId]: false }));
     }
@@ -258,7 +258,7 @@ export function Bots() {
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch (e: any) {
-      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
     } finally {
       setAutopilotLoading(false);
     }
@@ -273,11 +273,11 @@ export function Bots() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
-      toast.success(`任务 ${taskId} 已${currentEnabled ? '禁用' : '启用'}`);
+      toast.success(`${taskId} ${currentEnabled ? t('bots.taskDisabled') : t('bots.taskEnabled')}`);
       await new Promise((r) => setTimeout(r, 500));
       await fetchData();
     } catch (e: any) {
-      toast.error(`操作失败: ${e?.message ?? '未知错误'}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
     } finally {
       setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: false }));
     }
@@ -301,7 +301,7 @@ export function Bots() {
   const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
 
   /* 通知服务状态（从 services 列表中查找） */
-  const notifService = services.find((s) => s.id === 'notification' || s.id === 'apprise' || s.name?.includes('通知'));
+  const notifService = services.find((s) => s.id === 'notification' || s.id === 'apprise' || s.name?.includes('notif') || s.name?.includes('通知'));
   const notifRunning = notifService?.status === 'running';
 
   return (
@@ -487,7 +487,7 @@ export function Bots() {
                 <span className="font-mono text-xs font-medium" style={{
                   color: (cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)',
                 }}>
-                  {cookieStatus?.consecutive_failures ?? 0} 次
+                  {cookieStatus?.consecutive_failures ?? 0}
                 </span>
               </div>
 
@@ -503,13 +503,13 @@ export function Bots() {
                 <span className="font-mono text-xs font-medium" style={{
                   color: cookieStatus?.enabled ? 'var(--accent-green)' : 'var(--text-disabled)',
                 }}>
-                  {cookieStatus?.enabled ? '已启用' : '未启用'}
+                  {cookieStatus?.enabled ? t('bots.enabled') : t('bots.disabled')}
                 </span>
               </div>
             </div>
 
             <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
-              CookieCloud 自动同步 · 加密传输
+              {t("bots.cookieDesc")}
             </p>
           </div>
         </motion.div>
@@ -519,7 +519,7 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>CONNECTION</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              连接状态
+              {t("bots.connectionStatus")}
             </h3>
 
             <div className="space-y-4">
@@ -546,7 +546,7 @@ export function Bots() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>QUICK ACTIONS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              快速操作
+              {t("bots.quickActions")}
             </h3>
 
             <div className="flex-1 grid grid-cols-1 gap-3">
@@ -573,7 +573,7 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>SUMMARY</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              服务概要
+              {t("bots.summary")}
             </h3>
 
             <div className="space-y-4">
@@ -673,7 +673,7 @@ export function Bots() {
                 <span className="font-mono text-xs font-bold" style={{
                   color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)',
                 }}>
-                  {xianyuData.autoReplyEnabled ? '已开启' : '未开启'}
+                  {xianyuData.autoReplyEnabled ? t('bots.on') : t('bots.off')}
                 </span>
               </div>
 
@@ -690,7 +690,7 @@ export function Bots() {
             </div>
 
             <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
-              闲鱼 AI 智能客服 · 自动议价 · 30s 刷新
+              {t("bots.xianyuDesc")}
             </p>
           </div>
         </motion.div>
@@ -836,7 +836,7 @@ export function Bots() {
                     {/* 下次执行 */}
                     {task.next_run && (
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                        下次: {new Date(task.next_run).toLocaleTimeString('zh-CN')}
+                        {t('bots.nextRun')}: {new Date(task.next_run).toLocaleTimeString('zh-CN')}
                       </span>
                     )}
 
@@ -939,7 +939,7 @@ export function Bots() {
             </div>
 
             <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
-              Apprise 多渠道通知 · Telegram / Email / Webhook
+              {t("bots.notifDesc")}
             </p>
           </div>
         </motion.div>
