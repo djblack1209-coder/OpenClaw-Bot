@@ -36,7 +36,7 @@ const platformColorMap: Record<string, { label: string; color: string; bg: strin
   weibo: { label: '微博', color: '#ff8200', bg: 'rgba(255,130,0,0.12)' },
 };
 const defaultPlatformCfg = { label: '平台', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.06)' };
-const getPlatformCfg = (p: string) => platformColorMap[p.toLowerCase()] ?? { ...defaultPlatformCfg, label: p };
+const getPlatformCfg = (p: string) => platformColorMap[(p ?? '').toLowerCase()] ?? { ...defaultPlatformCfg, label: p || '未知' };
 
 /* ====== 类型 ====== */
 interface PlatformStatus {
