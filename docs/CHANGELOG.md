@@ -12,6 +12,40 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — 全面质量审计：启停按钮补全 + Mock数据清理 + 时间戳
+> 领域: `frontend` `backend`
+> 影响模块: Xianyu, APIGateway, Channels, WorldMonitor, FinRadar, Home, NewsFeed, Performance, Trading, system.py
+> 关联问题: —
+
+### 变更内容
+
+**服务启停按钮补全 (4项):**
+1. 后端 `_SERVICE_REGISTRY` 新增 `kiro-gateway` (端口18793) — 第6个可管理服务
+2. 闲鱼页面新增服务启停按钮（启动/停止 xianyu 服务）
+3. API网关页面新增服务启停按钮（启动/停止 gateway 服务）
+4. 消息渠道页面新增渠道开关（enable/disable 各渠道，需 Tauri 桌面端）
+
+**Mock数据清理 (2项):**
+5. WorldMonitor 12个硬编码占位符全部标注"暂无"+ "数据源接入中"
+6. FinRadar 恐惧贪婪指数标注"(估算)" + "基于涨跌比例估算"说明
+
+**时间戳添加 (6页面):**
+7. Home/WorldMonitor/NewsFeed/FinRadar/Performance/Trading 六页面新增"最后更新 HH:MM:SS"时间戳
+
+### 文件变更
+- `packages/clawbot/src/api/routers/system.py` — 新增 kiro-gateway
+- `apps/.../Xianyu/index.tsx` — 服务启停按钮
+- `apps/.../APIGateway/index.tsx` — 服务启停按钮
+- `apps/.../Channels/index.tsx` — 渠道开关
+- `apps/.../WorldMonitor/index.tsx` — 占位符标注 + 时间戳
+- `apps/.../FinRadar/index.tsx` — 估算标注 + 时间戳
+- `apps/.../Home/index.tsx` — 时间戳
+- `apps/.../NewsFeed/index.tsx` — 时间戳
+- `apps/.../Performance/index.tsx` — 时间戳
+- `apps/.../Trading/index.tsx` — 时间戳
+
+---
+
 ## 2026-04-20 — 全面修复前端 16 项问题 + 后端服务重启
 > 领域: `frontend` `backend`
 > 影响模块: WorldMonitor, NewsFeed, FinRadar, Portfolio, Store, Xianyu, Social, APIGateway, AIConfig, Performance, ExecutionFlow, Memory, Channels, Plugins, Notifications, App
