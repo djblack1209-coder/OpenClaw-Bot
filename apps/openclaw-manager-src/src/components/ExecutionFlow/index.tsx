@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '@/i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -99,19 +100,23 @@ function StatusIcon({ status }: { status: NodeStatus }) {
   return <Circle size={12} style={{ color: 'var(--text-tertiary)' }} />;
 }
 
-/* 状态文本 */
-const statusLabel = (s: NodeStatus) => s === 'done' ? '完成' : s === 'running' ? '运行中' : '待执行';
+/* 状态文本 — 需要在组件内通过 t() 翻译 */
+const STATUS_LABEL_KEYS: Record<NodeStatus, string> = {
+  done: 'executionFlow.statusDone',
+  running: 'executionFlow.statusRunning',
+  pending: 'executionFlow.statusPending',
+};
 
 /* 日志级别颜色 */
 const logColor = (l: LogLevel) =>
   l === 'OK' ? 'var(--accent-green)' : l === 'WARN' ? 'var(--accent-amber)' : l === 'ERROR' ? 'var(--accent-red)' : 'var(--text-secondary)';
 
 /** 从 OMEGA 任务数据推导 DAG 节点 */
-function tasksToNodes(tasks: Record<string, unknown>[]): TaskNode[] {
+function tasksToNodes(tasks: Record<string, unknown>[], tFn: (key: string) => string): TaskNode[] {
   if (!tasks || tasks.length === 0) return [];
   return tasks.map((t, i) => ({
     id: String(t.id || t.task_id || `task-${i}`),
-    label: String(t.name || t.title || t.description || `任务 ${i + 1}`),
+    label: String(t.name || t.title || t.description || `${tFn('executionFlow.taskPrefix')} ${i + 1}`),
     status: normalizeTaskStatus(String(t.status || 'pending')),
   }));
 }
@@ -162,6 +167,10 @@ export function ExecutionFlow() {
   const [loading, setLoading] = useState(true);
   const [omegaStatus, setOmegaStatus] = useState<Record<string, unknown> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { t } = useLanguage();
+
+  /* 状态文本翻译 */
+  const statusLabel = useCallback((s: NodeStatus) => t(STATUS_LABEL_KEYS[s]), [t]);
 
   /* ── 拉取数据 ── */
   const fetchData = useCallback(async () => {
@@ -178,7 +187,7 @@ export function ExecutionFlow() {
         const list: Record<string, unknown>[] = Array.isArray(raw)
           ? raw
           : (raw?.tasks || raw?.data || raw?.active_tasks || []) as Record<string, unknown>[];
-        setDagNodes(tasksToNodes(list));
+        setDagNodes(tasksToNodes(list, t));
       }
 
       // 处理 OMEGA 状态 → 引擎指标
@@ -186,23 +195,23 @@ export function ExecutionFlow() {
         const s = statusRes.value;
         setOmegaStatus(s);
         const newMetrics: EngineMetric[] = [
-          { label: '今日任务数', value: String(s.today_tasks ?? s.total_tasks ?? s.task_count ?? 'N/A'), accent: 'var(--accent-cyan)' },
-          { label: '成功率', value: s.success_rate ? `${s.success_rate}%` : (s.success_count && s.total_count ? `${((Number(s.success_count) / Number(s.total_count)) * 100).toFixed(1)}%` : 'N/A'), accent: 'var(--accent-green)' },
-          { label: '平均耗时', value: s.avg_duration ? `${s.avg_duration}s` : (s.avg_response_ms ? `${s.avg_response_ms}ms` : 'N/A'), accent: 'var(--accent-amber)' },
-          { label: '活跃管道', value: String(s.active_pipelines ?? s.active_tasks ?? 'N/A'), accent: 'var(--accent-purple)' },
-          { label: '排队任务', value: String(s.queued_tasks ?? s.pending_tasks ?? 'N/A'), accent: 'var(--text-secondary)' },
-          { label: '失败任务', value: String(s.failed_tasks ?? s.error_count ?? 'N/A'), accent: 'var(--accent-red)' },
+          { label: t('executionFlow.metricTodayTasks'), value: String(s.today_tasks ?? s.total_tasks ?? s.task_count ?? 'N/A'), accent: 'var(--accent-cyan)' },
+          { label: t('executionFlow.metricSuccessRate'), value: s.success_rate ? `${s.success_rate}%` : (s.success_count && s.total_count ? `${((Number(s.success_count) / Number(s.total_count)) * 100).toFixed(1)}%` : 'N/A'), accent: 'var(--accent-green)' },
+          { label: t('executionFlow.metricAvgDuration'), value: s.avg_duration ? `${s.avg_duration}s` : (s.avg_response_ms ? `${s.avg_response_ms}ms` : 'N/A'), accent: 'var(--accent-amber)' },
+          { label: t('executionFlow.metricActivePipelines'), value: String(s.active_pipelines ?? s.active_tasks ?? 'N/A'), accent: 'var(--accent-purple)' },
+          { label: t('executionFlow.metricQueuedTasks'), value: String(s.queued_tasks ?? s.pending_tasks ?? 'N/A'), accent: 'var(--text-secondary)' },
+          { label: t('executionFlow.metricFailedTasks'), value: String(s.failed_tasks ?? s.error_count ?? 'N/A'), accent: 'var(--accent-red)' },
         ];
         setMetrics(newMetrics);
       } else {
         // API 不可用时显示空状态
         setMetrics([
-          { label: '今日任务数', value: 'N/A', accent: 'var(--accent-cyan)' },
-          { label: '成功率', value: 'N/A', accent: 'var(--accent-green)' },
-          { label: '平均耗时', value: 'N/A', accent: 'var(--accent-amber)' },
-          { label: '活跃管道', value: 'N/A', accent: 'var(--accent-purple)' },
-          { label: '排队任务', value: 'N/A', accent: 'var(--text-secondary)' },
-          { label: '失败任务', value: 'N/A', accent: 'var(--accent-red)' },
+          { label: t('executionFlow.metricTodayTasks'), value: 'N/A', accent: 'var(--accent-cyan)' },
+          { label: t('executionFlow.metricSuccessRate'), value: 'N/A', accent: 'var(--accent-green)' },
+          { label: t('executionFlow.metricAvgDuration'), value: 'N/A', accent: 'var(--accent-amber)' },
+          { label: t('executionFlow.metricActivePipelines'), value: 'N/A', accent: 'var(--accent-purple)' },
+          { label: t('executionFlow.metricQueuedTasks'), value: 'N/A', accent: 'var(--text-secondary)' },
+          { label: t('executionFlow.metricFailedTasks'), value: 'N/A', accent: 'var(--accent-red)' },
         ]);
       }
 
@@ -219,7 +228,7 @@ export function ExecutionFlow() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* ── 首次加载 + 自动刷新 ── */
   useEffect(() => {
@@ -250,7 +259,7 @@ export function ExecutionFlow() {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
-        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载智能流引擎…</span>
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">{t('executionFlow.loadingEngine')}</span>
       </div>
     );
   }
@@ -272,7 +281,7 @@ export function ExecutionFlow() {
                 <button
                   onClick={() => { setLoading(true); fetchData(); }}
                   className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
-                  title="手动刷新"
+                  title={t('executionFlow.manualRefresh')}
                 >
                   <RefreshCw size={12} />
                 </button>
@@ -283,13 +292,13 @@ export function ExecutionFlow() {
               </div>
             </div>
             <h2 className="font-display text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              智能流引擎 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// DAG EXECUTOR</span>
+              {t('executionFlow.engineTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// DAG EXECUTOR</span>
             </h2>
 
             {/* DAG 流水线可视化 */}
             <div className="flex-1 flex items-center justify-center mt-6 mb-4">
               {dagNodes.length === 0 ? (
-                <div className="text-[var(--text-tertiary)] font-mono text-sm">暂无活跃任务</div>
+                <div className="text-[var(--text-tertiary)] font-mono text-sm">{t('executionFlow.noActiveTasks')}</div>
               ) : (
                 <div className="flex items-center gap-0 w-full max-w-[720px]">
                   {dagNodes.slice(0, 6).map((node, i) => {
@@ -327,8 +336,8 @@ export function ExecutionFlow() {
             <div className="rounded-lg px-4 py-3 flex items-center gap-6 font-mono text-xs" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}>
               <div className="flex items-center gap-2">
                 <Zap size={13} style={{ color: 'var(--accent-amber)' }} />
-                <span style={{ color: 'var(--text-secondary)' }}>正在执行:</span>
-                <span style={{ color: 'var(--text-primary)' }}>{currentTask?.label || '暂无'}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{t('executionFlow.currentlyExecuting')}:</span>
+                <span style={{ color: 'var(--text-primary)' }}>{currentTask?.label || t('executionFlow.none')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Timer size={12} style={{ color: 'var(--text-tertiary)' }} />
@@ -351,7 +360,7 @@ export function ExecutionFlow() {
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-5" style={{ color: 'var(--text-primary)' }}>
-              引擎指标
+              {t('executionFlow.engineMetrics')}
             </h3>
             <div className="grid grid-cols-2 gap-4">
               {metrics.map((m) => (
@@ -376,12 +385,12 @@ export function ExecutionFlow() {
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              活跃管道
+              {t('executionFlow.activePipelines')}
             </h3>
             <div className="space-y-3">
               {activePipelines.length === 0 ? (
                 <div className="text-center py-6 text-[var(--text-tertiary)] font-mono text-sm">
-                  暂无活跃管道
+                  {t('executionFlow.noActivePipelines')}
                 </div>
               ) : (
                 activePipelines.map((p, i) => (
@@ -430,17 +439,17 @@ export function ExecutionFlow() {
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              最近完成
+              {t('executionFlow.recentlyCompleted')}
             </h3>
             <div className="space-y-2">
               {completedTasks.length === 0 ? (
                 <div className="text-center py-6 text-[var(--text-tertiary)] font-mono text-sm">
-                  暂无已完成任务
+                  {t('executionFlow.noCompletedTasks')}
                 </div>
               ) : (
-                completedTasks.map((t, i) => (
+                completedTasks.map((task, i) => (
                   <motion.div
-                    key={t.id}
+                    key={task.id}
                     className="flex items-center justify-between rounded-lg px-4 py-2.5"
                     style={{
                       background: 'rgba(255,255,255,0.02)',
@@ -453,11 +462,11 @@ export function ExecutionFlow() {
                     <div className="flex items-center gap-2.5">
                       <CheckCircle2 size={13} style={{ color: 'var(--accent-green)' }} />
                       <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                        {t.label}
+                        {task.label}
                       </span>
                     </div>
                     <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                      完成
+                      {t('executionFlow.statusDone')}
                     </span>
                   </motion.div>
                 ))
@@ -491,7 +500,7 @@ export function ExecutionFlow() {
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
                 <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  实时
+                  {t('executionFlow.realtime')}
                 </span>
               </div>
             </div>
@@ -499,7 +508,7 @@ export function ExecutionFlow() {
             {/* 日志内容 */}
             <div className="px-5 py-4 space-y-1 font-mono text-[11px] leading-relaxed max-h-[280px] overflow-y-auto">
               {logEntries.length === 0 ? (
-                <span className="text-[var(--text-tertiary)]">暂无日志数据</span>
+                <span className="text-[var(--text-tertiary)]">{t('executionFlow.noLogData')}</span>
               ) : (
                 logEntries.map((log, i) => (
                   <motion.div

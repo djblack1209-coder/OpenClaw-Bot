@@ -4,24 +4,18 @@ import { GlassCard } from '../shared';
 import { Button } from '../ui/button';
 import { Check, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { api } from '@/lib/tauri';
+import { useLanguage } from '@/i18n';
 
 /* ────────────────────────────────────────────────────────────────
    Types
 ──────────────────────────────────────────────────────────────── */
 
-interface FeatureOption {
-  id: string;
-  label: string;
-  description: string;
-  emoji: string;
-  alwaysOn?: boolean;
-}
-
-const FEATURES: FeatureOption[] = [
-  { id: 'xianyu', label: '闲鱼AI客服', description: '自动回复买家消息，智能议价与成交', emoji: '🐟' },
-  { id: 'trading', label: '自动交易', description: '量化策略执行，自动化投资组合管理', emoji: '📈' },
-  { id: 'social', label: '社媒运营', description: '多平台内容自动生成与定时发布', emoji: '📱' },
-  { id: 'assistant', label: 'AI助手', description: '你的私人智能助手，随时待命', emoji: '🤖', alwaysOn: true },
+/** 功能列表的 i18n key 映射 */
+const FEATURE_KEYS: { id: string; labelKey: string; descKey: string; emoji: string; alwaysOn?: boolean }[] = [
+  { id: 'xianyu', labelKey: 'onboarding.feature.xianyuLabel', descKey: 'onboarding.feature.xianyuDesc', emoji: '🐟' },
+  { id: 'trading', labelKey: 'onboarding.feature.tradingLabel', descKey: 'onboarding.feature.tradingDesc', emoji: '📈' },
+  { id: 'social', labelKey: 'onboarding.feature.socialLabel', descKey: 'onboarding.feature.socialDesc', emoji: '📱' },
+  { id: 'assistant', labelKey: 'onboarding.feature.assistantLabel', descKey: 'onboarding.feature.assistantDesc', emoji: '🤖', alwaysOn: true },
 ];
 
 /* ────────────────────────────────────────────────────────────────
@@ -98,6 +92,12 @@ function ConfettiEffect() {
 ──────────────────────────────────────────────────────────────── */
 
 function StepWelcome({ onNext }: { onNext: () => void }) {
+  const { t } = useLanguage();
+  const featureCards = [
+    { emoji: '🐟', titleKey: 'onboarding.welcome.aiCS', descKey: 'onboarding.welcome.aiCSDesc' },
+    { emoji: '📈', titleKey: 'onboarding.welcome.quantTrading', descKey: 'onboarding.welcome.quantTradingDesc' },
+    { emoji: '📱', titleKey: 'onboarding.welcome.socialOps', descKey: 'onboarding.welcome.socialOpsDesc' },
+  ];
   return (
     <div className="flex flex-col items-center text-center max-w-md mx-auto">
       <motion.div
@@ -108,30 +108,26 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
       >
         🦞
       </motion.div>
-      <h1 className="text-3xl font-bold text-white mb-2">欢迎使用 OpenClaw</h1>
-      <p className="text-lg text-gray-400 mb-8">你的智能生活控制台</p>
+      <h1 className="text-3xl font-bold text-white mb-2">{t('onboarding.welcome.title')}</h1>
+      <p className="text-lg text-gray-400 mb-8">{t('onboarding.welcome.subtitle')}</p>
 
       <div className="grid grid-cols-1 gap-3 w-full mb-8">
-        {[
-          { emoji: '🐟', title: 'AI客服', desc: '闲鱼自动回复，智能议价' },
-          { emoji: '📈', title: '量化交易', desc: '自动化投资策略执行' },
-          { emoji: '📱', title: '社媒运营', desc: '多平台内容自动发布' },
-        ].map((feat) => (
+        {featureCards.map((feat) => (
           <div
-            key={feat.title}
+            key={feat.titleKey}
             className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
           >
             <span className="text-2xl">{feat.emoji}</span>
             <div className="text-left">
-              <div className="text-sm font-medium text-white">{feat.title}</div>
-              <div className="text-xs text-gray-400">{feat.desc}</div>
+              <div className="text-sm font-medium text-white">{t(feat.titleKey)}</div>
+              <div className="text-xs text-gray-400">{t(feat.descKey)}</div>
             </div>
           </div>
         ))}
       </div>
 
       <Button onClick={onNext} className="w-full">
-        开始设置
+        {t('onboarding.welcome.startSetup')}
         <ChevronRight size={16} className="ml-1.5" />
       </Button>
     </div>
@@ -149,13 +145,14 @@ function StepFeatures({
   selected: Set<string>;
   onToggle: (id: string) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-white text-center mb-2">选择你需要的功能</h2>
-      <p className="text-gray-400 text-center mb-6 text-sm">稍后可以在设置中修改</p>
+      <h2 className="text-2xl font-bold text-white text-center mb-2">{t('onboarding.features.title')}</h2>
+      <p className="text-gray-400 text-center mb-6 text-sm">{t('onboarding.features.subtitle')}</p>
 
       <div className="grid grid-cols-1 gap-3">
-        {FEATURES.map((feat) => {
+        {FEATURE_KEYS.map((feat) => {
           const isSelected = selected.has(feat.id);
           return (
             <GlassCard
@@ -169,14 +166,14 @@ function StepFeatures({
                 <span className="text-3xl">{feat.emoji}</span>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold text-white">{feat.label}</h3>
+                    <h3 className="text-base font-semibold text-white">{t(feat.labelKey)}</h3>
                     {feat.alwaysOn && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--oc-brand)]/20 text-[var(--oc-brand)]">
-                        默认开启
+                        {t('onboarding.features.alwaysOn')}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-400 mt-0.5">{feat.description}</p>
+                  <p className="text-sm text-gray-400 mt-0.5">{t(feat.descKey)}</p>
                 </div>
                 <div
                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
@@ -212,15 +209,16 @@ function StepAPIConfig({
   setBaseUrl: (v: string) => void;
 }) {
   const [showKey, setShowKey] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-white text-center mb-2">配置核心服务</h2>
-      <p className="text-gray-400 text-center mb-6 text-sm">连接 AI 服务以启用智能功能</p>
+      <h2 className="text-2xl font-bold text-white text-center mb-2">{t('onboarding.apiConfig.title')}</h2>
+      <p className="text-gray-400 text-center mb-6 text-sm">{t('onboarding.apiConfig.subtitle')}</p>
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">API Key</label>
+          <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('onboarding.apiConfig.apiKeyLabel')}</label>
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
@@ -240,7 +238,7 @@ function StepAPIConfig({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">Base URL</label>
+          <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('onboarding.apiConfig.baseUrlLabel')}</label>
           <input
             type="text"
             value={baseUrl}
@@ -251,7 +249,7 @@ function StepAPIConfig({
         </div>
 
         <p className="text-xs text-gray-500 text-center mt-4">
-          💡 你可以稍后在设置中修改这些配置
+          💡 {t('onboarding.apiConfig.hint')}
         </p>
       </div>
     </div>
@@ -269,7 +267,8 @@ function StepComplete({
   selectedFeatures: Set<string>;
   onFinish: () => void;
 }) {
-  const selectedLabels = FEATURES.filter((f) => selectedFeatures.has(f.id));
+  const { t } = useLanguage();
+  const selectedLabels = FEATURE_KEYS.filter((f) => selectedFeatures.has(f.id));
 
   return (
     <div className="relative flex flex-col items-center text-center max-w-md mx-auto">
@@ -284,8 +283,8 @@ function StepComplete({
         <Check size={40} className="text-white" />
       </motion.div>
 
-      <h2 className="text-2xl font-bold text-white mb-2">一切就绪！</h2>
-      <p className="text-gray-400 mb-6">以下功能已为你开启</p>
+      <h2 className="text-2xl font-bold text-white mb-2">{t('onboarding.complete.title')}</h2>
+      <p className="text-gray-400 mb-6">{t('onboarding.complete.subtitle')}</p>
 
       <div className="flex flex-wrap gap-2 justify-center mb-8">
         {selectedLabels.map((feat) => (
@@ -296,13 +295,13 @@ function StepComplete({
             transition={{ delay: 0.2 + selectedLabels.indexOf(feat) * 0.1 }}
             className="px-3 py-1.5 rounded-full bg-[var(--oc-brand)]/20 text-[var(--oc-brand)] text-sm font-medium"
           >
-            {feat.emoji} {feat.label}
+            {feat.emoji} {t(feat.labelKey)}
           </motion.span>
         ))}
       </div>
 
       <Button onClick={onFinish} className="w-full">
-        进入控制台
+        {t('onboarding.complete.enterConsole')}
         <ChevronRight size={16} className="ml-1.5" />
       </Button>
     </div>
@@ -318,6 +317,7 @@ const TOTAL_STEPS = 4;
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
+  const { t } = useLanguage();
 
   // Step 2 state — feature selection
   const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(
@@ -405,9 +405,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             <button
               onClick={handleFinish}
               className="ml-2 text-xs text-gray-500 hover:text-gray-300 transition-colors whitespace-nowrap"
-              aria-label="跳过引导"
+              aria-label={t('onboarding.skipGuide')}
             >
-              跳过
+              {t('onboarding.skip')}
             </button>
           )}
         </div>
@@ -451,14 +451,14 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           {step > 0 && step < TOTAL_STEPS - 1 ? (
             <Button variant="outline" onClick={goBack}>
               <ChevronLeft size={16} className="mr-1" />
-              上一步
+              {t('onboarding.prevStep')}
             </Button>
           ) : (
             <div />
           )}
           {step > 0 && step < TOTAL_STEPS - 1 && (
             <Button onClick={goNext}>
-              下一步
+              {t('onboarding.nextStep')}
               <ChevronRight size={16} className="ml-1" />
             </Button>
           )}
