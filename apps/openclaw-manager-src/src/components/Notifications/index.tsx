@@ -197,9 +197,12 @@ export function Notifications() {
         if (prev.some((i) => i.id === newItem.id)) return prev;
         return [newItem, ...prev];
       });
-      toast.info(newItem.title || t('notifications.newNotification'), {
-        description: newItem.body?.slice(0, 80),
-      });
+      /* 只对 error / warning 级别弹 Toast，info 级别静默入列 */
+      if (newItem.level === 'error' || newItem.level === 'warning') {
+        toast.info(newItem.title || t('notifications.newNotification'), {
+          description: newItem.body?.slice(0, 80),
+        });
+      }
     }
   });
 
