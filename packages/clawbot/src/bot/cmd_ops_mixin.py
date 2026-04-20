@@ -161,8 +161,8 @@ class OpsCommandsMixin:
             logger.warning("[cmd_ops] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     async def cmd_dev(self, update, context):
@@ -174,8 +174,8 @@ class OpsCommandsMixin:
             logger.warning("[cmd_dev] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing
@@ -188,8 +188,8 @@ class OpsCommandsMixin:
             logger.warning("[cmd_brief] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     async def cmd_lane(self, update, context):
@@ -216,8 +216,8 @@ class OpsCommandsMixin:
             logger.warning("[cmd_cost] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing
@@ -257,8 +257,8 @@ class OpsCommandsMixin:
             logger.warning("[cmd_config] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     async def _ops_docs(self, update, context, args):
         if not args:

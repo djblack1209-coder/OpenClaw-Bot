@@ -693,8 +693,8 @@ async def bulkhead(service: str = "generic", timeout: float = 30.0):
         # 确保释放 semaphore（即使 yield 内部抛异常）
         try:
             sem.release()
-        except ValueError:
-            pass  # 防止重复 release
+        except ValueError as e:
+            logger.debug("[Bulkhead] %s semaphore 重复释放(已忽略): %s", service, e)
 
 
 def configure_bulkhead(service: str, max_concurrent: int):

@@ -91,8 +91,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_social_persona] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -212,8 +212,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_topic] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
