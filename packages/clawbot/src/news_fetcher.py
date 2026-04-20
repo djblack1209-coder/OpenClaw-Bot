@@ -361,6 +361,6 @@ if __name__ == "__main__":
     async def test():
         fetcher = NewsFetcher()
         report = await fetcher.generate_morning_report()
-        print(report)
+        logger.info(report)
 
     asyncio.run(test())

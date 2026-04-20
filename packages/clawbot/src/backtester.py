@@ -415,7 +415,7 @@ def run_backtest(
     用法:
         from src.backtester import run_backtest
         report = run_backtest("AAPL", period="1y")
-        print(report.format())
+        logger.info(report.format())
     """
     if config is None:
         config = BacktestConfig(initial_capital=initial_capital)
@@ -442,7 +442,7 @@ def run_multi_backtest(
     用法:
         reports = run_multi_backtest(["AAPL", "MSFT", "NVDA"])
         for sym, r in reports.items():
-            print("%s: PnL=$%+.2f WR=%.0f%%" % (sym, r.total_pnl, r.win_rate))
+            logger.info("%s: PnL=$%+.2f WR=%.0f%%", sym, r.total_pnl, r.win_rate)
     """
     results = {}
     for sym in symbols:

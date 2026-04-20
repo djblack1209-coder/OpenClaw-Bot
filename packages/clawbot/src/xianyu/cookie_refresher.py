@@ -16,8 +16,8 @@ def parse_h5_tk_timestamp(cookies: dict) -> float:
     if "_" in tk:
         try:
             return float(tk.split("_")[1]) / 1000.0
-        except (ValueError, IndexError) as e:  # noqa: F841
-            pass
+        except (ValueError, IndexError) as e:
+            logger.debug("解析 _m_h5_tk 时间戳失败: %s", e)
     return 0.0
 
 
@@ -96,9 +96,117 @@ def update_env_file(cookie_str: str):
             except Exception as e:  # noqa: F841
                 try:
                     os.unlink(tmp)
-                except OSError as e:  # noqa: F841
-                    pass
+                except OSError as e:
+                    logger.debug("清理临时文件失败: %s", e)
                 raise
             logger.info("Cookie 已写回 .env")
     except Exception as e:
         logger.error(f"写回 .env 失败: {scrub_secrets(str(e))}")
+
+
+class CookieHealthMonitor:
+    """Cookie 健康监控器 — 定期检查所有平台 Cookie 状态并推送告警"""
+
+    CHECK_INTERVAL = 3600  # 每小时检查一次
+    WARN_THRESHOLD = 43200  # 12小时预警阈值（秒）
+
+    def __init__(self):
+        self._last_check: dict[str, float] = {}
+
+    async def check_all_cookies(self) -> dict:
+        """检查所有平台 Cookie 健康状态
+        
+        Returns:
+            dict: {platform: {valid: bool, expires_at: str|None, hours_left: float|None, status: str}}
+        """
+        import json
+        from pathlib import Path
+
+        results = {}
+        cookie_dir = Path.home() / ".openclaw"
+
+        # 闲鱼 Cookie — 从环境变量和 .env 检查
+        xianyu_status = await self._check_xianyu_cookie()
+        results["xianyu"] = xianyu_status
+
+        # X (Twitter) Cookie
+        x_cookie_file = cookie_dir / "x_cookies.json"
+        results["x"] = self._check_file_cookie(x_cookie_file, "x")
+
+        # 小红书 Cookie
+        xhs_cookie_file = cookie_dir / "xhs_cookies.json"
+        results["xhs"] = self._check_file_cookie(xhs_cookie_file, "xhs")
+
+        return results
+
+    async def _check_xianyu_cookie(self) -> dict:
+        """检查闲鱼 Cookie 状态"""
+        import os
+        cookie_str = os.environ.get("XIANYU_COOKIES", "")
+        if not cookie_str:
+            return {"valid": False, "expires_at": None, "hours_left": None, "status": "missing"}
+
+        # 解析 cookie 字符串为 dict
+        cookies = {}
+        for pair in cookie_str.split(";"):
+            pair = pair.strip()
+            if "=" in pair:
+                key, val = pair.split("=", 1)
+                cookies[key.strip()] = val.strip()
+
+        expires_at_ts = parse_h5_tk_timestamp(cookies)
+        if expires_at_ts <= 0:
+            # 无法解析过期时间，尝试验证
+            return {"valid": True, "expires_at": None, "hours_left": None, "status": "unknown_expiry"}
+
+        import time
+        from datetime import datetime
+        hours_left = (expires_at_ts - time.time()) / 3600
+        expires_at_str = datetime.fromtimestamp(expires_at_ts).isoformat()
+
+        if hours_left <= 0:
+            return {"valid": False, "expires_at": expires_at_str, "hours_left": 0, "status": "expired"}
+        elif hours_left < self.WARN_THRESHOLD / 3600:
+            return {"valid": True, "expires_at": expires_at_str, "hours_left": round(hours_left, 1), "status": "expiring_soon"}
+        else:
+            return {"valid": True, "expires_at": expires_at_str, "hours_left": round(hours_left, 1), "status": "valid"}
+
+    def _check_file_cookie(self, cookie_file, platform: str) -> dict:
+        """检查文件形式存储的 Cookie"""
+        import json
+        import time
+        from datetime import datetime
+
+        if not cookie_file.exists():
+            return {"valid": False, "expires_at": None, "hours_left": None, "status": "missing"}
+
+        try:
+            data = json.loads(cookie_file.read_text(encoding="utf-8"))
+            # 检查文件修改时间作为最后更新参考
+            mtime = cookie_file.stat().st_mtime
+            age_hours = (time.time() - mtime) / 3600
+
+            # 大多数 Cookie 文件有 expires_at 或 updated_at 字段
+            expires_at = data.get("expires_at") or data.get("expiry")
+            if expires_at:
+                if isinstance(expires_at, (int, float)):
+                    hours_left = (expires_at - time.time()) / 3600
+                    expires_str = datetime.fromtimestamp(expires_at).isoformat()
+                else:
+                    hours_left = None
+                    expires_str = str(expires_at)
+                if hours_left is not None and hours_left <= 0:
+                    return {"valid": False, "expires_at": expires_str, "hours_left": 0, "status": "expired"}
+                elif hours_left is not None and hours_left < self.WARN_THRESHOLD / 3600:
+                    return {"valid": True, "expires_at": expires_str, "hours_left": round(hours_left, 1), "status": "expiring_soon"}
+                else:
+                    return {"valid": True, "expires_at": expires_str, "hours_left": round(hours_left, 1) if hours_left else None, "status": "valid"}
+
+            # 没有过期时间字段 — 用文件修改时间估算（超过48小时视为可能过期）
+            if age_hours > 48:
+                return {"valid": True, "expires_at": None, "hours_left": None, "status": "possibly_stale"}
+            return {"valid": True, "expires_at": None, "hours_left": None, "status": "valid"}
+
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug("检查 %s Cookie 文件失败: %s", platform, e)
+            return {"valid": False, "expires_at": None, "hours_left": None, "status": "error"}

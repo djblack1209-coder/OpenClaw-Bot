@@ -43,7 +43,10 @@ class TypingIndicator:
             logger.debug(f"[TypingIndicator] stopped: {e}")
 
     async def __aenter__(self):
-        self._task = asyncio.create_task(self._keep_typing())
+        from src.core.async_utils import create_monitored_task
+        self._task = create_monitored_task(
+            self._keep_typing(), name="typing_indicator"
+        )
         return self
 
     async def __aexit__(self, *exc):
@@ -94,7 +97,10 @@ class ProgressTracker:
             )
         except Exception as e:
             logger.debug(f"[ProgressTracker] send failed: {e}")
-        self._task = asyncio.create_task(self._animate())
+        from src.core.async_utils import create_monitored_task
+        self._task = create_monitored_task(
+            self._animate(), name="progress_animate"
+        )
         return self
 
     async def __aexit__(self, exc_type, *exc):

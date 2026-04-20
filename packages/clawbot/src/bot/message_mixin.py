@@ -412,7 +412,10 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                 except asyncio.CancelledError as e:  # noqa: F841
                     pass
 
-            _thinking_task = asyncio.create_task(_animate_thinking())
+            from src.core.async_utils import create_monitored_task
+            _thinking_task = create_monitored_task(
+                _animate_thinking(), name="thinking_animation"
+            )
 
             async for content, status in self._call_api_stream(chat_id, text, save_history=True, chat_type=chat_type):
                 if not content:

@@ -198,7 +198,7 @@ class InvestmentTeam:
     用法:
         team = InvestmentTeam()
         analysis = await team.analyze("600519.SS")
-        print(analysis.to_telegram_text())
+        logger.info(analysis.to_telegram_text())
     """
 
     def __init__(self):
