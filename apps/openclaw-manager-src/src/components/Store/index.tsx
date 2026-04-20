@@ -52,7 +52,7 @@ function normalizeProposal(raw: EvolutionProposalRaw) {
     difficulty: raw.difficulty_score ?? raw.difficulty ?? 0,
     risk: raw.risk_level || raw.risk || '—',
     approach: raw.integration_approach || raw.approach || '',
-    status: raw.status || 'pending',
+    status: raw.status === 'proposed' ? 'pending' : (raw.status || 'pending'),
     createdAt: raw.created_at || '',
   };
 }
