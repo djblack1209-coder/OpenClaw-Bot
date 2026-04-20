@@ -470,22 +470,47 @@ class ClawBotRPC:
 
         Calls the social_browser_worker "status" action to retrieve real
         browser/cookie connection status for each platform.  Falls back
-        to placeholder data if the worker is unavailable.
+        to cookie-file detection, then placeholder data if the worker
+        is unavailable.
         """
+        # 辅助函数: 检查 Cookie 文件是否存在且有效
+        def _check_cookie_file(platform: str) -> bool:
+            """检查 ~/.openclaw/ 下对应平台的 Cookie 文件"""
+            from pathlib import Path
+            import json as _json
+            cookie_files = {
+                "x": Path.home() / ".openclaw" / "x_cookies.json",
+                "xhs": Path.home() / ".openclaw" / "xhs_cookies.json",
+            }
+            path = cookie_files.get(platform)
+            if not path or not path.exists():
+                return False
+            try:
+                data = _json.loads(path.read_text(encoding="utf-8"))
+                # X 的 Cookie 文件由 twikit 直接管理（非空即可）
+                if platform == "x":
+                    return bool(data)
+                # XHS 的 Cookie 文件需要有 cookie 字段
+                if platform == "xhs":
+                    return bool(data.get("cookie", ""))
+                return False
+            except Exception:
+                return False
+
         _placeholder = {
             "autopilot_running": False,
             "running": False,
             "platforms": [
                 {
                     "platform": "x",
-                    "connected": False,
+                    "connected": _check_cookie_file("x"),
                     "last_post_time": "",
                     "posts_today": 0,
                     "total_posts": 0,
                 },
                 {
                     "platform": "xhs",
-                    "connected": False,
+                    "connected": _check_cookie_file("xhs"),
                     "last_post_time": "",
                     "posts_today": 0,
                     "total_posts": 0,
@@ -494,8 +519,7 @@ class ClawBotRPC:
             "next_scheduled_action": "",
             "next_scheduled_time": "",
             "content_queue_size": 0,
-            "source": "placeholder",
-            "error": "social_worker_unavailable",
+            "source": "cookie_file",
         }
         try:
             from src.execution.social.worker_bridge import run_social_worker
@@ -503,11 +527,17 @@ class ClawBotRPC:
             result = run_social_worker("status", {})
             if not result.get("success"):
                 logger.warning("Social status worker failed: %s", result.get("error"))
+                # Worker 不可用时，用 Cookie 文件状态兜底
                 return _placeholder
 
             # Map worker response to API schema
             x_status = result.get("x", {})
             xhs_status = result.get("xhs", {})
+
+            # Worker 返回的 connected 和 Cookie 文件检测 取 OR（任一为真即认为已连接）
+            x_connected = x_status.get("connected", False) or _check_cookie_file("x")
+            xhs_connected = xhs_status.get("connected", False) or _check_cookie_file("xhs")
+
             # 同时提供 running 字段，兼容前端读取 r.running ?? r.active
             _autopilot_running = result.get("autopilot_running", False)
             return {
@@ -516,14 +546,14 @@ class ClawBotRPC:
                 "platforms": [
                     {
                         "platform": "x",
-                        "connected": x_status.get("connected", False),
+                        "connected": x_connected,
                         "last_post_time": x_status.get("last_post_time", ""),
                         "posts_today": x_status.get("posts_today", 0),
                         "total_posts": x_status.get("total_posts", 0),
                     },
                     {
                         "platform": "xhs",
-                        "connected": xhs_status.get("connected", False),
+                        "connected": xhs_connected,
                         "last_post_time": xhs_status.get("last_post_time", ""),
                         "posts_today": xhs_status.get("posts_today", 0),
                         "total_posts": xhs_status.get("total_posts", 0),
@@ -534,21 +564,45 @@ class ClawBotRPC:
                 "content_queue_size": result.get("content_queue_size", 0),
             }
         except Exception as e:
-            logger.warning("Social status check failed, using placeholder: %s", e)
+            logger.warning("Social status check failed, using cookie-file fallback: %s", e)
             return _placeholder
 
     @staticmethod
     def _rpc_social_browser_status() -> dict:
-        """Get browser session readiness for X / 小红书."""
+        """Get browser session readiness for X / 小红书.
+
+        综合检查: browser worker 状态 + Cookie 文件状态。
+        任一路径可用即视为 ready。
+        """
         try:
             from src.execution import execution_hub
+            from pathlib import Path
+            import json as _json
 
             status = execution_hub.get_social_browser_status() or {}
             x_ready = status.get("x_ready")
             xhs_ready = status.get("xiaohongshu_ready")
 
-            def _map_ready(value):
-                if value is True:
+            # 额外检查 Cookie 文件（twikit / xhs 持久化登录）
+            x_cookie_ok = False
+            xhs_cookie_ok = False
+            try:
+                x_path = Path.home() / ".openclaw" / "x_cookies.json"
+                if x_path.exists():
+                    data = _json.loads(x_path.read_text(encoding="utf-8"))
+                    x_cookie_ok = bool(data)
+            except Exception:
+                pass
+            try:
+                xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
+                if xhs_path.exists():
+                    data = _json.loads(xhs_path.read_text(encoding="utf-8"))
+                    xhs_cookie_ok = bool(data.get("cookie", ""))
+            except Exception:
+                pass
+
+            def _map_ready(value, cookie_ok: bool):
+                if value is True or cookie_ok:
                     return "ready"
                 if value is False:
                     return "login_needed"
@@ -556,15 +610,29 @@ class ClawBotRPC:
 
             return {
                 "browser_running": bool(status.get("browser_running", False)),
-                "x": _map_ready(x_ready),
-                "xhs": _map_ready(xhs_ready),
+                "x": _map_ready(x_ready, x_cookie_ok),
+                "xhs": _map_ready(xhs_ready, xhs_cookie_ok),
             }
         except Exception as e:
             logger.warning("Social browser status failed: %s", e)
+            # 即使主逻辑失败，也检查 Cookie 文件
+            x_cookie = "unknown"
+            xhs_cookie = "unknown"
+            try:
+                from pathlib import Path
+                import json as _json
+                x_path = Path.home() / ".openclaw" / "x_cookies.json"
+                if x_path.exists() and bool(_json.loads(x_path.read_text(encoding="utf-8"))):
+                    x_cookie = "ready"
+                xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
+                if xhs_path.exists() and bool(_json.loads(xhs_path.read_text(encoding="utf-8")).get("cookie", "")):
+                    xhs_cookie = "ready"
+            except Exception:
+                pass
             return {
                 "browser_running": False,
-                "x": "unknown",
-                "xhs": "unknown",
+                "x": x_cookie,
+                "xhs": xhs_cookie,
                 "error": _safe_error(e),
             }
 
