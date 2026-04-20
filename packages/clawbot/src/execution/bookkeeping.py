@@ -345,7 +345,6 @@ def check_budget_alert(user_id, db_path=None) -> tuple:
     if pct > 100:
         # 发射预算超支事件到 EventBus — 触发主动通知引擎
         try:
-            import asyncio
             from src.core.event_bus import get_event_bus, EventType
 
             bus = get_event_bus()
