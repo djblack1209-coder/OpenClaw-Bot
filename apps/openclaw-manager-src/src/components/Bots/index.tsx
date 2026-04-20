@@ -25,6 +25,7 @@ import {
   Send,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
@@ -91,7 +92,7 @@ const statusColor = (s: string) =>
 
 /** 服务状态文本 */
 const statusText = (s: string) =>
-  s === 'running' ? '运行中' : s === 'stopped' ? '已停止' : '异常';
+  s === 'running' ? 'RUNNING' : s === 'stopped' ? 'STOPPED' : 'ERROR';
 
 /** 查找服务名称（用于 toast 显示） */
 const findServiceName = (services: ServiceItem[], id: string) =>
@@ -103,6 +104,7 @@ const findServiceName = (services: ServiceItem[], id: string) =>
  * 使用真实后端 API 数据
  */
 export function Bots() {
+  const { t } = useLanguage();
   /* ====== 状态 ====== */
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [cookieStatus, setCookieStatus] = useState<CookieStatus | null>(null);
@@ -193,7 +195,7 @@ export function Bots() {
         const taskList: SchedulerTask[] = Array.isArray(sc?.tasks)
           ? sc.tasks.map((t: any) => ({
               id: String(t.id ?? t.name ?? ''),
-              name: String(t.name ?? t.id ?? '未知任务'),
+              name: String(t.name ?? t.id ?? 'unknown'),
               enabled: Boolean(t.enabled ?? t.active ?? true),
               next_run: t.next_run ? String(t.next_run) : undefined,
               interval: t.interval ? String(t.interval) : t.cron ? String(t.cron) : undefined,
@@ -207,7 +209,7 @@ export function Bots() {
 
       setError(null);
     } catch (e: any) {
-      setError(e?.message ?? '数据加载失败');
+      setError(e?.message ?? t('bots.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -248,10 +250,10 @@ export function Bots() {
     try {
       if (autopilotData.running) {
         await api.clawbotAutopilotStop();
-        toast.success('社媒自动驾驶已停止');
+        toast.success(t('bots.autopilotStopped'));
       } else {
         await api.clawbotAutopilotStart();
-        toast.success('社媒自动驾驶已启动');
+        toast.success(t('bots.autopilotStarted'));
       }
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
@@ -287,10 +289,10 @@ export function Bots() {
   const errorCount = services.filter((s) => s.status !== 'running' && s.status !== 'stopped').length;
 
   const fleetStats = [
-    { label: '总数', value: services.length, color: 'var(--accent-cyan)' },
-    { label: '运行中', value: runningCount, color: 'var(--accent-green)' },
-    { label: '已停止', value: stoppedCount, color: 'var(--text-tertiary)' },
-    { label: '错误', value: errorCount, color: 'var(--accent-red)' },
+    { label: t('bots.total'), value: services.length, color: 'var(--accent-cyan)' },
+    { label: t('bots.running'), value: runningCount, color: 'var(--accent-green)' },
+    { label: t('bots.stopped'), value: stoppedCount, color: 'var(--text-tertiary)' },
+    { label: t('bots.error'), value: errorCount, color: 'var(--accent-red)' },
   ];
 
   /* ====== Cookie 状态判断 ====== */
@@ -358,7 +360,7 @@ export function Bots() {
               )}
               {services.length === 0 && !loading && !error && (
                 <div className="flex items-center justify-center py-8">
-                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无服务数据</span>
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{t('bots.noServiceData')}</span>
                 </div>
               )}
               {services.map((svc) => {
@@ -430,7 +432,7 @@ export function Bots() {
                       ) : (
                         <Play size={10} />
                       )}
-                      {isRunning ? '停止' : '启动'}
+                      {isRunning ? t('bots.stop') : t('bots.start')}
                     </motion.button>
 
                     {/* 状态文本 */}
@@ -468,7 +470,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>上次同步</span>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.lastSync')}</span>
                 </div>
                 <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                   {cookieStatus?.last_sync_time
@@ -480,7 +482,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <AlertCircle size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>连续失败</span>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.consecutiveFailures')}</span>
                 </div>
                 <span className="font-mono text-xs font-medium" style={{
                   color: (cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)',
@@ -496,7 +498,7 @@ export function Bots() {
                   ) : (
                     <WifiOff size={13} style={{ color: 'var(--text-disabled)' }} />
                   )}
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>同步功能</span>
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.syncFeature')}</span>
                 </div>
                 <span className="font-mono text-xs font-medium" style={{
                   color: cookieStatus?.enabled ? 'var(--accent-green)' : 'var(--text-disabled)',
@@ -533,7 +535,7 @@ export function Bots() {
                 </div>
               ))}
               {services.filter((s) => s.status === 'running').length === 0 && (
-                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无运行中的服务</span>
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{t('bots.noRunningServices')}</span>
               )}
             </div>
           </div>
@@ -560,7 +562,7 @@ export function Bots() {
                   style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}>
                   <RotateCcw size={16} style={{ color: 'var(--accent-cyan)' }} />
                 </span>
-                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>刷新数据</span>
+                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{t('bots.refreshData')}</span>
               </motion.button>
             </div>
           </div>
@@ -576,11 +578,11 @@ export function Bots() {
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>总服务数</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.totalServices')}</span>
                 <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-cyan)' }}>{services.length}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>在线率</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.onlineRate')}</span>
                 <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-green)' }}>
                   {services.length > 0 ? Math.round((runningCount / services.length) * 100) : 0}%
                 </span>
@@ -635,7 +637,7 @@ export function Bots() {
                     <span className="block w-2.5 h-2.5 rounded-full"
                       style={{ background: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
                   </span>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>客服状态</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.serviceStatus')}</span>
                 </div>
                 <span className="font-mono text-xs font-bold" style={{
                   color: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)',
@@ -648,7 +650,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Cookie size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Cookie 状态</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.cookieStatus')}</span>
                 </div>
                 <span
                   className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold"
@@ -666,7 +668,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Zap size={13} style={{ color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>自动回复</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.autoReply')}</span>
                 </div>
                 <span className="font-mono text-xs font-bold" style={{
                   color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)',
@@ -679,7 +681,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <MessageSquare size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>最近对话</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.recentChats')}</span>
                 </div>
                 <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-amber)' }}>
                   {xianyuData.conversationCount}
@@ -720,7 +722,7 @@ export function Bots() {
                     <span className="block w-2.5 h-2.5 rounded-full"
                       style={{ background: autopilotData.running ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
                   </span>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>驾驶状态</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.pilotStatus')}</span>
                 </div>
                 <span className="font-mono text-xs font-bold" style={{
                   color: autopilotData.running ? 'var(--accent-green)' : 'var(--text-disabled)',
@@ -733,7 +735,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Timer size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>下次发布</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.nextPublish')}</span>
                 </div>
                 <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                   {autopilotData.nextPublishTime
@@ -746,7 +748,7 @@ export function Bots() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Send size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>今日发布</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.postsToday')}</span>
                 </div>
                 <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-purple)' }}>
                   {autopilotData.postsToday}
@@ -774,7 +776,7 @@ export function Bots() {
                 ) : (
                   <Play size={14} />
                 )}
-                {autopilotData.running ? '停止自动驾驶' : '启动自动驾驶'}
+                {autopilotData.running ? t('bots.stopAutopilot') : t('bots.startAutopilot')}
               </motion.button>
             </div>
           </div>
@@ -802,7 +804,7 @@ export function Bots() {
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
               {schedulerData.tasks.length === 0 && (
                 <div className="flex items-center justify-center py-6">
-                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>暂无定时任务</span>
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{t('bots.noSchedulerTasks')}</span>
                 </div>
               )}
               {schedulerData.tasks.map((task) => {
@@ -894,7 +896,7 @@ export function Bots() {
                     <span className="block w-2.5 h-2.5 rounded-full"
                       style={{ background: notifRunning ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
                   </span>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>通知服务</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.notifService')}</span>
                 </div>
                 <span className="font-mono text-xs font-bold" style={{
                   color: notifRunning ? 'var(--accent-green)' : 'var(--text-disabled)',
@@ -908,7 +910,7 @@ export function Bots() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Server size={13} style={{ color: 'var(--text-disabled)' }} />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>服务名</span>
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.serviceName')}</span>
                   </div>
                   <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
                     {notifService.name}
@@ -921,7 +923,7 @@ export function Bots() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Terminal size={13} style={{ color: 'var(--text-disabled)' }} />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>端口</span>
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.port')}</span>
                   </div>
                   <span className="font-mono text-xs" style={{ color: 'var(--accent-cyan)' }}>
                     :{notifService.port}
@@ -931,7 +933,7 @@ export function Bots() {
 
               {!notifService && (
                 <div className="flex items-center justify-center py-4">
-                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>未检测到通知服务</span>
+                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{t('bots.noNotifService')}</span>
                 </div>
               )}
             </div>

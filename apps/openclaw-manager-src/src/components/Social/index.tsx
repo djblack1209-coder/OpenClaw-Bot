@@ -15,6 +15,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -79,6 +80,7 @@ interface TopicItem {
  * 使用真实后端 API 数据
  */
 export function Social() {
+  const { t } = useLanguage();
   const [socialStatus, setSocialStatus] = useState<SocialStatusData | null>(null);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
@@ -112,7 +114,7 @@ export function Social() {
       }
       setError(null);
     } catch (e: any) {
-      setError(e?.message ?? '数据加载失败');
+      setError(e?.message ?? t('social.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -169,10 +171,10 @@ export function Social() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  社媒运营中心 // SOCIAL ENGINE
+                  {t('social.title')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  MULTI-PLATFORM // AUTO-DISTRIBUTE // AI-POWERED
+                  {t('social.subtitle')}
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />}
@@ -188,10 +190,10 @@ export function Social() {
 
             {/* 关键指标 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <StatBlock icon={FileText} label="今日发帖" value={String(totalPostsToday)} accent="var(--accent-cyan)" />
-              <StatBlock icon={Users} label="已连接平台" value={String(connectedCount)} accent="var(--accent-purple)" />
-              <StatBlock icon={Sparkles} label="草稿数" value={String(drafts.length)} accent="var(--accent-amber)" />
-              <StatBlock icon={CalendarDays} label="待发布" value={String(calendar.length)} accent="var(--accent-green)" />
+              <StatBlock icon={FileText} label={t('social.postsToday')} value={String(totalPostsToday)} accent="var(--accent-cyan)" />
+              <StatBlock icon={Users} label={t('social.connectedPlatforms')} value={String(connectedCount)} accent="var(--accent-purple)" />
+              <StatBlock icon={Sparkles} label={t('social.draftsCount')} value={String(drafts.length)} accent="var(--accent-amber)" />
+              <StatBlock icon={CalendarDays} label={t('social.pendingPublish')} value={String(calendar.length)} accent="var(--accent-green)" />
             </div>
 
             {/* 自动驾驶控制 */}
@@ -207,10 +209,10 @@ export function Social() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="font-mono text-xs font-medium block" style={{ color: 'var(--text-primary)' }}>
-                  自动驾驶 Autopilot
+                  {t('social.autopilot')}
                 </span>
                 <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                  {autopilotRunning ? '运行中 — 自动生成、发布内容' : '已停止'}
+                  {autopilotRunning ? t('social.autopilotRunning') : t('social.autopilotStopped')}
                 </span>
               </div>
               <motion.button
@@ -227,7 +229,7 @@ export function Social() {
                 onClick={handleAutopilotToggle}
               >
                 {autopilotLoading ? <Loader2 size={10} className="animate-spin" /> : autopilotRunning ? <Square size={10} /> : <Play size={10} />}
-                {autopilotRunning ? '停止' : '启动'}
+                {autopilotRunning ? t('social.stop') : t('social.start')}
               </motion.button>
             </div>
 
@@ -236,7 +238,7 @@ export function Social() {
               <div className="flex items-center gap-2 mb-4">
                 <Clock size={12} style={{ color: 'var(--text-tertiary)' }} />
                 <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                  下次: {socialStatus.next_scheduled_action ?? '—'} · {socialStatus.next_scheduled_time}
+                  {t('social.nextSchedule')}: {socialStatus.next_scheduled_action ?? '—'} · {socialStatus.next_scheduled_time}
                 </span>
               </div>
             )}
@@ -248,7 +250,7 @@ export function Social() {
               </span>
               <div className="space-y-2">
                 {drafts.length === 0 && (
-                  <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无草稿</span>
+                  <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noDrafts')}</span>
                 )}
                 {drafts.slice(0, 5).map((draft, i) => {
                   const pConfig = draft.platform ? getPlatformCfg(draft.platform) : null;
@@ -287,7 +289,7 @@ export function Social() {
 
             <div className="space-y-3">
               {platforms.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无平台数据</span>
+                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noPlatformData')}</span>
               )}
               {platforms.map((p, i) => {
                 const cfg = getPlatformCfg(p.platform);
@@ -306,14 +308,14 @@ export function Social() {
                         {cfg.label}
                       </span>
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                        {p.connected ? '已连接' : '未连接'}
+                        {p.connected ? t('social.connected') : t('social.disconnected')}
                       </span>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <span className="font-display text-sm font-bold block" style={{ color: cfg.color }}>
                         {p.posts_today ?? 0}
                       </span>
-                      <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>今日发帖</span>
+                      <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>{t('social.postsToday')}</span>
                     </div>
                   </div>
                 );
@@ -332,7 +334,7 @@ export function Social() {
 
             <div className="space-y-3">
               {calendar.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无定时发布</span>
+                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noScheduledPosts')}</span>
               )}
               {calendar.slice(0, 5).map((item, i) => {
                 const pConfig = getPlatformCfg(item.platform);
@@ -356,7 +358,7 @@ export function Social() {
             </div>
 
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              定时任务自动发布 · 支持多平台同步
+              {t('social.calendarHint')}
             </p>
           </div>
         </motion.div>
@@ -373,7 +375,7 @@ export function Social() {
 
             <div className="space-y-2">
               {topics.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无热点数据</span>
+                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noTopics')}</span>
               )}
               {topics.slice(0, 6).map((topic, i) => (
                 <div key={topic.id ?? i} className="flex items-center gap-3 px-3 py-2 rounded-xl"
@@ -406,10 +408,10 @@ export function Social() {
             </div>
 
             <div className="space-y-4">
-              <ContentStat label="今日发帖" value={String(totalPostsToday)} unit="篇" accent="var(--accent-cyan)" />
-              <ContentStat label="草稿" value={String(drafts.length)} unit="篇" accent="var(--accent-amber)" />
-              <ContentStat label="已连接平台" value={String(connectedCount)} unit="个" accent="var(--accent-green)" />
-              <ContentStat label="待发布" value={String(calendar.length)} unit="篇" accent="var(--accent-purple)" />
+              <ContentStat label={t('social.postsToday')} value={String(totalPostsToday)} unit={t('social.unitPost')} accent="var(--accent-cyan)" />
+              <ContentStat label={t('social.drafts')} value={String(drafts.length)} unit={t('social.unitPost')} accent="var(--accent-amber)" />
+              <ContentStat label={t('social.connectedPlatforms')} value={String(connectedCount)} unit={t('social.unitPlatform')} accent="var(--accent-green)" />
+              <ContentStat label={t('social.pendingPublish')} value={String(calendar.length)} unit={t('social.unitPost')} accent="var(--accent-purple)" />
             </div>
           </div>
         </motion.div>
@@ -431,10 +433,10 @@ export function Social() {
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <span className="font-mono text-xs block" style={{ color: cfg.color }}>
-                          今日 {p.posts_today ?? 0}
+                          {t('social.today')} {p.posts_today ?? 0}
                         </span>
                         <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                          累计 {p.total_posts ?? 0}
+                          {t('social.total')} {p.total_posts ?? 0}
                         </span>
                       </div>
                     </div>
@@ -442,7 +444,7 @@ export function Social() {
                 );
               })}
               {platforms.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无数据</span>
+                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('common.noData')}</span>
               )}
             </div>
           </div>

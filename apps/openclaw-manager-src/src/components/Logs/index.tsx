@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { Terminal, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -86,6 +87,7 @@ function renderBar(value: number, max: number, width: number = 20): string {
 /* ====== 主组件 ====== */
 
 export function Logs() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [filter, setFilter] = useState<LogLevel | 'ALL'>('ALL');
@@ -165,7 +167,7 @@ export function Logs() {
                   SYSTEM LOGS
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  应用日志 // RUNTIME OUTPUT
+                  {t('logs.subtitle')}
                 </p>
               </div>
               {/* 实时指示灯 */}
@@ -184,7 +186,7 @@ export function Logs() {
               style={{ background: 'var(--bg-primary)' }}>
               {filteredLogs.length === 0 && (
                 <div className="text-center py-8" style={{ color: 'var(--text-disabled)' }}>
-                  暂无日志记录
+                  {t('logs.noLogs')}
                 </div>
               )}
               {filteredLogs.map((log, i) => {
@@ -217,11 +219,11 @@ export function Logs() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>STATISTICS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              日志统计
+              {t('logs.statsTitle')}
             </h3>
             <div className="space-y-4 flex-1">
               {[
-                { label: '总条数', value: String(logs.length), color: 'var(--text-primary)' },
+                { label: t('logs.totalCount'), value: String(logs.length), color: 'var(--text-primary)' },
                 { label: 'INFO / OK', value: String(countInfo), color: 'var(--accent-cyan)' },
                 { label: 'WARN', value: String(countWarn), color: 'var(--accent-amber)' },
                 { label: 'ERROR', value: String(countError), color: 'var(--accent-red)' },
@@ -240,7 +242,7 @@ export function Logs() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>FILTER</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              日志筛选
+              {t('logs.filterTitle')}
             </h3>
             <div className="flex flex-wrap gap-2 flex-1">
               {FILTER_CHIPS.map((chip) => {
@@ -265,7 +267,7 @@ export function Logs() {
               })}
             </div>
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              当前显示: {filteredLogs.length} 条 / 共 {logs.length} 条
+              {t('logs.showing')}: {filteredLogs.length} {t('logs.countUnit')} / {t('logs.totalPrefix')} {logs.length} {t('logs.countUnit')}
             </p>
           </div>
         </motion.div>
@@ -275,12 +277,12 @@ export function Logs() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>MODULE HEATMAP</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              模块日志量排行
+              {t('logs.moduleHeatTitle')}
             </h3>
             <div className="flex-1 space-y-3">
               {moduleHeat.length === 0 && (
                 <div className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
-                  暂无数据
+                  {t('common.noData')}
                 </div>
               )}
               {moduleHeat.map((m, i) => {
@@ -310,13 +312,13 @@ export function Logs() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>CONNECTION</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              数据源
+              {t('logs.dataSourceTitle')}
             </h3>
             <div className="flex-1 space-y-4">
               {[
-                { label: 'API 通知', value: '已连接' },
-                { label: 'WebSocket', value: '实时推送' },
-                { label: '最大缓存', value: '200 条' },
+                { label: t('logs.apiNotif'), value: t('logs.connectedValue') },
+                { label: 'WebSocket', value: t('logs.realtimePush') },
+                { label: t('logs.maxCache'), value: t('logs.maxCacheValue') },
               ].map((s) => (
                 <div key={s.label} className="flex items-center justify-between py-2 px-3 rounded-lg"
                   style={{ background: 'var(--bg-secondary)' }}>

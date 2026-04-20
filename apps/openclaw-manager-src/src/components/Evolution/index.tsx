@@ -11,6 +11,7 @@ import {
   Clock, ArrowUpRight, Sparkles, Loader2, RefreshCw,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -89,6 +90,7 @@ function fmtTime(iso: string): string {
 /* ====== 主组件 ====== */
 
 export function Evolution() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -174,7 +176,7 @@ export function Evolution() {
                     AUTO-EVOLUTION
                   </h2>
                   <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                    进化引擎 // SELF-OPTIMIZATION
+                    {t('evolution.subtitle')}
                   </p>
                 </div>
               </div>
@@ -189,17 +191,17 @@ export function Evolution() {
                   cursor: scanning ? 'not-allowed' : 'pointer',
                 }}>
                 {scanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                {scanning ? '扫描中...' : '触发扫描'}
+                {scanning ? t('evolution.scanning') : t('evolution.triggerScan')}
               </button>
             </div>
 
             {/* 进化周期指标 */}
             <div className="grid grid-cols-4 gap-3 mb-5">
               {[
-                { label: '当前周期', value: `第 ${cycle} 轮`, color: 'var(--accent-cyan)' },
-                { label: '总提案数', value: String(totalP), color: 'var(--accent-amber)' },
-                { label: '已执行', value: String(executed), color: 'var(--accent-green)' },
-                { label: '成功率', value: successRate, color: 'var(--accent-green)' },
+                { label: t('evolution.currentCycle'), value: `${t('evolution.cyclePrefix')} ${cycle} ${t('evolution.cycleSuffix')}`, color: 'var(--accent-cyan)' },
+                { label: t('evolution.totalProposals'), value: String(totalP), color: 'var(--accent-amber)' },
+                { label: t('evolution.executed'), value: String(executed), color: 'var(--accent-green)' },
+                { label: t('evolution.successRate'), value: successRate, color: 'var(--accent-green)' },
               ].map((m) => (
                 <div key={m.label}>
                   <span className="text-label">{m.label}</span>
@@ -217,7 +219,7 @@ export function Evolution() {
             <div className="flex-1 space-y-1.5">
               {proposals.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  暂无进化提案 — 点击"触发扫描"开始分析
+                  {t('evolution.noProposals')}
                 </div>
               )}
               {proposals.slice(0, 8).map((p) => {
@@ -254,12 +256,12 @@ export function Evolution() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>EVOLUTION METRICS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              进化指标
+              {t('evolution.metricsTitle')}
             </h3>
             <div className="space-y-5 flex-1">
               {/* 系统评分 */}
               <div>
-                <span className="text-label">系统评分</span>
+                <span className="text-label">{t('evolution.systemScore')}</span>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className="text-metric" style={{ color: 'var(--accent-green)' }}>
                     {stats.score ?? '—'}
@@ -276,20 +278,20 @@ export function Evolution() {
 
               {/* 本周优化 */}
               <div>
-                <span className="text-label">本周优化</span>
+                <span className="text-label">{t('evolution.weeklyOpt')}</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-metric" style={{ color: 'var(--accent-cyan)' }}>
                     {stats.weekly_optimizations ?? executed}
                   </span>
                   <span className="font-mono text-[10px] flex items-center gap-0.5" style={{ color: 'var(--accent-green)' }}>
-                    <ArrowUpRight size={10} /> 提案
+                    <ArrowUpRight size={10} /> {t('evolution.proposalUnit')}
                   </span>
                 </div>
               </div>
 
               {/* 性能提升 */}
               <div>
-                <span className="text-label">性能提升</span>
+                <span className="text-label">{t('evolution.perfImprovement')}</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-metric" style={{ color: 'var(--accent-amber)' }}>
                     {stats.performance_improvement ?? '—'}
@@ -299,7 +301,7 @@ export function Evolution() {
 
               {/* 资源节省 */}
               <div>
-                <span className="text-label">资源节省</span>
+                <span className="text-label">{t('evolution.costSaved')}</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-metric" style={{ color: 'var(--accent-purple)' }}>
                     {stats.cost_saved ?? '—'}
@@ -315,12 +317,12 @@ export function Evolution() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>PENDING OPTIMIZATIONS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              待执行优化
+              {t('evolution.pendingOptTitle')}
             </h3>
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {pending.length === 0 && (
                 <div className="col-span-full text-center py-6 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  当前没有待执行的优化提案
+                  {t('evolution.noPendingOpt')}
                 </div>
               )}
               {pending.map((p) => (

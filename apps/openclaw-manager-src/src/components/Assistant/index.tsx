@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 import { clawbotFetch } from '../../lib/tauri-core';
 
 /* ========== 类型 ========== */
@@ -20,37 +21,37 @@ const MODE_CONFIG: Record<AssistantMode, {
   label: string; colorHex: string;
   commands: { label: string; prefix: string; icon: React.ReactNode }[];
 }> = {
-  chat:    { label: '闲聊', colorHex: '#00d4ff', commands: [
-    { label: '今日简报', prefix: '今日简报 ', icon: <BookOpen size={I}/> },
-    { label: '天气查询', prefix: '天气查询 ', icon: <Sparkles size={I}/> },
-    { label: '翻译文本', prefix: '翻译文本: ', icon: <PenTool size={I}/> },
-    { label: '写周报', prefix: '帮我写周报 ', icon: <Palette size={I}/> },
-    { label: '知识问答', prefix: '知识问答: ', icon: <Brain size={I}/> },
-    { label: '日程安排', prefix: '日程安排 ', icon: <Clock size={I}/> },
+  chat:    { label: 'Chat', colorHex: '#00d4ff', commands: [
+    { label: 'Brief', prefix: '今日简报 ', icon: <BookOpen size={I}/> },
+    { label: 'Weather', prefix: '天气查询 ', icon: <Sparkles size={I}/> },
+    { label: 'Translate', prefix: '翻译文本: ', icon: <PenTool size={I}/> },
+    { label: 'Report', prefix: '帮我写周报 ', icon: <Palette size={I}/> },
+    { label: 'Q\u0026A', prefix: '知识问答: ', icon: <Brain size={I}/> },
+    { label: 'Schedule', prefix: '日程安排 ', icon: <Clock size={I}/> },
   ]},
-  invest:  { label: '投资', colorHex: '#00ffaa', commands: [
-    { label: '分析AAPL', prefix: '分析AAPL ', icon: <TrendingUp size={I}/> },
-    { label: '查看持仓', prefix: '查看持仓 ', icon: <BarChart3 size={I}/> },
-    { label: '回测策略', prefix: '回测策略 ', icon: <Target size={I}/> },
-    { label: '大师投票', prefix: '大师投票 ', icon: <Brain size={I}/> },
-    { label: '风控报告', prefix: '风控报告 ', icon: <Shield size={I}/> },
-    { label: '市场扫描', prefix: '市场扫描 ', icon: <ScanSearch size={I}/> },
+  invest:  { label: 'Invest', colorHex: '#00ffaa', commands: [
+    { label: 'AAPL', prefix: '分析AAPL ', icon: <TrendingUp size={I}/> },
+    { label: 'Holdings', prefix: '查看持仓 ', icon: <BarChart3 size={I}/> },
+    { label: 'Backtest', prefix: '回测策略 ', icon: <Target size={I}/> },
+    { label: 'Vote', prefix: '大师投票 ', icon: <Brain size={I}/> },
+    { label: 'Risk', prefix: '风控报告 ', icon: <Shield size={I}/> },
+    { label: 'Scan', prefix: '市场扫描 ', icon: <ScanSearch size={I}/> },
   ]},
-  execute: { label: '执行', colorHex: '#fbbf24', commands: [
-    { label: '发布推文', prefix: '发布推文 ', icon: <Send size={I}/> },
-    { label: '批量操作', prefix: '批量操作 ', icon: <Zap size={I}/> },
-    { label: '定时任务', prefix: '定时任务 ', icon: <Clock size={I}/> },
-    { label: '数据导出', prefix: '数据导出 ', icon: <BarChart3 size={I}/> },
-    { label: '系统检查', prefix: '系统检查 ', icon: <Cpu size={I}/> },
-    { label: '日志查看', prefix: '查看日志 ', icon: <History size={I}/> },
+  execute: { label: 'Execute', colorHex: '#fbbf24', commands: [
+    { label: 'Tweet', prefix: '发布推文 ', icon: <Send size={I}/> },
+    { label: 'Batch', prefix: '批量操作 ', icon: <Zap size={I}/> },
+    { label: 'Cron', prefix: '定时任务 ', icon: <Clock size={I}/> },
+    { label: 'Export', prefix: '数据导出 ', icon: <BarChart3 size={I}/> },
+    { label: 'Check', prefix: '系统检查 ', icon: <Cpu size={I}/> },
+    { label: 'Logs', prefix: '查看日志 ', icon: <History size={I}/> },
   ]},
-  create:  { label: '创作', colorHex: '#a78bfa', commands: [
-    { label: '写文章', prefix: '帮我写文章: ', icon: <PenTool size={I}/> },
-    { label: '生成图片', prefix: '生成图片: ', icon: <Palette size={I}/> },
-    { label: '视频脚本', prefix: '视频脚本: ', icon: <Sparkles size={I}/> },
-    { label: '营销文案', prefix: '营销文案: ', icon: <BookOpen size={I}/> },
-    { label: '代码生成', prefix: '代码生成: ', icon: <Cpu size={I}/> },
-    { label: '头脑风暴', prefix: '头脑风暴: ', icon: <Brain size={I}/> },
+  create:  { label: 'Create', colorHex: '#a78bfa', commands: [
+    { label: 'Article', prefix: '帮我写文章: ', icon: <PenTool size={I}/> },
+    { label: 'Image', prefix: '生成图片: ', icon: <Palette size={I}/> },
+    { label: 'Video', prefix: '视频脚本: ', icon: <Sparkles size={I}/> },
+    { label: 'Copy', prefix: '营销文案: ', icon: <BookOpen size={I}/> },
+    { label: 'Code', prefix: '代码生成: ', icon: <Cpu size={I}/> },
+    { label: 'Brain', prefix: '头脑风暴: ', icon: <Brain size={I}/> },
   ]},
 };
 
@@ -119,6 +120,7 @@ async function readSSE(
 /* ========== 组件 ========== */
 
 export function Assistant() {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<AssistantMode>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -155,7 +157,7 @@ export function Assistant() {
   // 新建对话
   const createSession = useCallback(async () => {
     try {
-      const d = await api.conversationCreate('新对话');
+      const d = await api.conversationCreate(t('assistant.newChat'));
       if (d?.session_id) { setActiveId(d.session_id); setMessages([]); await loadSessions(); }
     } catch (e) { console.error('创建会话失败:', e); }
   }, [loadSessions]);
@@ -231,7 +233,7 @@ export function Assistant() {
           })}
           <div className="ml-auto flex items-center gap-1.5">
             <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cfg.colorHex }} />
-            <span className="text-[10px] font-mono text-[var(--text-tertiary)]">在线</span>
+            <span className="text-[10px] font-mono text-[var(--text-tertiary)]">{t('common.online')}</span>
           </div>
         </div>
 
@@ -240,7 +242,7 @@ export function Assistant() {
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center h-full text-center opacity-40">
               <Bot size={40} className="mb-3 text-[var(--text-tertiary)]" />
-              <p className="text-sm text-[var(--text-tertiary)]">{activeId ? '发送一条消息开始对话' : '选择会话或新建对话'}</p>
+              <p className="text-sm text-[var(--text-tertiary)]">{activeId ? t('assistant.sendToStart') : t('assistant.selectOrCreate')}</p>
             </div>
           )}
           <AnimatePresence initial>
@@ -276,7 +278,7 @@ export function Assistant() {
                 style={{ background: `${cfg.colorHex}18`, border: `1px solid ${cfg.colorHex}30` }}>
                 <Loader2 size={14} className="animate-spin" style={{ color: cfg.colorHex }} />
               </div>
-              <div className="abyss-card px-4 py-3 text-sm text-[var(--text-tertiary)]">思考中...</div>
+              <div className="abyss-card px-4 py-3 text-sm text-[var(--text-tertiary)]">{t('assistant.thinking')}</div>
             </div>
           )}
         </div>
@@ -288,7 +290,7 @@ export function Assistant() {
             onBlur={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}>
             <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><Paperclip size={16} /></button>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-              placeholder={loading ? 'AI 正在回复...' : '输入消息...'} disabled={loading}
+              placeholder={loading ? t('assistant.aiReplying') : t('assistant.inputMessage')} disabled={loading}
               className={clsx('flex-1 bg-transparent text-sm text-[var(--text-primary)] font-body placeholder:text-[var(--text-tertiary)] outline-none disabled:opacity-50')} />
             <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><Mic size={16} /></button>
             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSend} disabled={loading || !input.trim()}
@@ -327,7 +329,7 @@ export function Assistant() {
               <History size={12} className="text-[var(--text-tertiary)]" /> 会话记录
             </h3>
             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={createSession}
-              className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/[0.05] hover:bg-white/[0.1] transition-colors" title="新建对话">
+              className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/[0.05] hover:bg-white/[0.1] transition-colors" title={t('assistant.newChat')}>
               <Plus size={12} className="text-[var(--text-secondary)]" />
             </motion.button>
           </div>
@@ -336,7 +338,7 @@ export function Assistant() {
               <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-[var(--text-tertiary)]" /></div>
             )}
             {!loadingSessions && sessions.length === 0 && (
-              <div className="text-center py-4 text-[10px] text-[var(--text-tertiary)]">暂无会话记录</div>
+              <div className="text-center py-4 text-[10px] text-[var(--text-tertiary)]">{t('assistant.noSessions')}</div>
             )}
             {sessions.map((s, i) => (
               <motion.div key={s.session_id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
@@ -350,7 +352,7 @@ export function Assistant() {
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                   <MessageSquare size={10} className="text-[var(--text-tertiary)]" />
                   <span className="text-[10px] font-mono text-[var(--text-tertiary)]">{s.message_count}</span>
-                  <button onClick={e => deleteSession(s.session_id, e)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-[var(--text-tertiary)] hover:text-red-400" title="删除会话">
+                  <button onClick={e => deleteSession(s.session_id, e)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-[var(--text-tertiary)] hover:text-red-400" title={t('assistant.deleteSession')}>
                     <Trash2 size={10} />
                   </button>
                 </div>
@@ -366,10 +368,10 @@ export function Assistant() {
           </h3>
           <div className="space-y-2.5">
             {[
-              { label: '当前模式', value: cfg.label, color: cfg.colorHex },
-              { label: '会话数', value: String(sessions.length), color: '#00ffaa' },
-              { label: '当前消息', value: String(messages.length), color: '#fbbf24' },
-              { label: '状态', value: loading ? '回复中...' : '空闲', color: loading ? '#fbbf24' : '#00ffaa' },
+              { label: t('assistant.currentMode'), value: cfg.label, color: cfg.colorHex },
+              { label: t('assistant.sessionCount'), value: String(sessions.length), color: '#00ffaa' },
+              { label: t('assistant.currentMessages'), value: String(messages.length), color: '#fbbf24' },
+              { label: t('assistant.status'), value: loading ? t('assistant.replying') : t('assistant.idle'), color: loading ? '#fbbf24' : '#00ffaa' },
             ].map(it => (
               <div key={it.label} className="flex items-center justify-between">
                 <span className="text-[11px] text-[var(--text-tertiary)]">{it.label}</span>

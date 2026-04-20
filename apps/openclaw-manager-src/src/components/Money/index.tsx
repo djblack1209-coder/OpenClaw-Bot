@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
 
@@ -114,6 +115,7 @@ function NoDataPlaceholder({ reason }: { reason: string }) {
 /* ====== 主组件 ====== */
 
 export function Money() {
+  const { t } = useLanguage();
   /* 状态 */
   const [pnlData, setPnlData] = useState<TradingPnlData | null>(null);
   const [costData, setCostData] = useState<OmegaCostData | null>(null);
@@ -140,14 +142,14 @@ export function Money() {
         setPnlData(pnlRes.value);
         setPnlError(null);
       } else {
-        setPnlError('交易 P&L 数据不可用');
+        setPnlError(t('money.pnlUnavailable'));
       }
 
       if (costRes.status === 'fulfilled') {
         setCostData(costRes.value);
         setCostError(null);
       } else {
-        setCostError('AI 成本数据不可用');
+        setCostError(t('money.costUnavailable'));
       }
 
       if (xyRes.status === 'fulfilled') {
@@ -157,7 +159,7 @@ export function Money() {
       }
     } catch {
       if (!mountedRef.current) return;
-      toast.error('盈利数据加载失败');
+      toast.error(t('money.loadFailed'));
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -217,10 +219,10 @@ export function Money() {
                 {/* 顶部统计 4 列 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   {[
-                    { label: '总盈亏', value: formatCNY(pnlData?.total_pnl), color: (pnlData?.total_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
-                    { label: '今日盈亏', value: formatCNY(pnlData?.daily_pnl), color: (pnlData?.daily_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
-                    { label: '已实现', value: formatCNY(pnlData?.realized_pnl), color: 'var(--accent-cyan)' },
-                    { label: '未实现', value: formatCNY(pnlData?.unrealized_pnl), color: 'var(--accent-purple)' },
+                    { label: t('money.totalPnl'), value: formatCNY(pnlData?.total_pnl), color: (pnlData?.total_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
+                    { label: t('money.dailyPnl'), value: formatCNY(pnlData?.daily_pnl), color: (pnlData?.daily_pnl ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' },
+                    { label: t('money.realized'), value: formatCNY(pnlData?.realized_pnl), color: 'var(--accent-cyan)' },
+                    { label: t('money.unrealized'), value: formatCNY(pnlData?.unrealized_pnl), color: 'var(--accent-purple)' },
                   ].map((s) => (
                     <div key={s.label}>
                       <span className="text-label">{s.label}</span>
@@ -237,14 +239,14 @@ export function Money() {
                   style={{ borderColor: 'var(--glass-border)' }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-label">持仓数</span>
+                    <span className="text-label">{t('money.positionCount')}</span>
                     <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
                       {pnlData?.positions_count ?? '--'}
                     </span>
                   </div>
                   {pnlData?.win_rate != null && (
                     <div className="flex items-center gap-2">
-                      <span className="text-label">胜率</span>
+                      <span className="text-label">{t('money.winRate')}</span>
                       <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-green)' }}>
                         {(pnlData.win_rate * 100).toFixed(1)}%
                       </span>
@@ -272,7 +274,7 @@ export function Money() {
               <div className="mt-6 flex-1 space-y-5">
                 {/* 总成本 */}
                 <div>
-                  <span className="text-label">累计成本</span>
+                  <span className="text-label">{t('money.totalCost')}</span>
                   <div className="text-metric mt-1" style={{ color: 'var(--accent-amber)' }}>
                     {formatUSD(costData?.total_cost)}
                   </div>
@@ -280,7 +282,7 @@ export function Money() {
 
                 {/* 今日成本 */}
                 <div>
-                  <span className="text-label">今日成本</span>
+                  <span className="text-label">{t('money.todayCost')}</span>
                   <div className="text-metric mt-1" style={{ color: 'var(--accent-cyan)' }}>
                     {formatUSD(costData?.today_cost)}
                   </div>
@@ -292,7 +294,7 @@ export function Money() {
                     className="border-t pt-4 mt-4"
                     style={{ borderColor: 'var(--glass-border)' }}
                   >
-                    <span className="text-label">模型成本分布</span>
+                    <span className="text-label">{t('money.costByModel')}</span>
                     <div className="mt-2 space-y-2">
                       {costByModel.slice(0, 4).map((m) => (
                         <div
@@ -363,7 +365,7 @@ export function Money() {
               >
                 <div className="flex items-center gap-2">
                   <BarChart3 size={14} style={{ color: 'var(--accent-cyan)' }} />
-                  <span className="text-label">近期均值</span>
+                  <span className="text-label">{t('money.recentAvg')}</span>
                   <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
                     {formatCNY(pnlHistory.reduce((a, d) => a + d.pnl, 0) / pnlHistory.length)}
                   </span>
@@ -398,24 +400,24 @@ export function Money() {
                     {xianyuData ? (
                       <div className="mt-2 space-y-1.5 font-mono text-xs">
                         <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>近 {xianyuData.days ?? 30} 天营收</span>
+                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.revenueLastDays', )}</span>
                           <span className="font-bold" style={{ color: 'var(--accent-amber)' }}>
                             {formatCNY(xianyuData.revenue ?? 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>净利润</span>
+                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.netProfit')}</span>
                           <span className="font-bold" style={{ color: (xianyuData.profit ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                             {formatCNY(xianyuData.profit ?? 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>订单数</span>
+                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.orderCount')}</span>
                           <span style={{ color: 'var(--text-secondary)' }}>{xianyuData.orders ?? 0}</span>
                         </div>
                         {xianyuData.today && (
                           <div className="flex justify-between pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                            <span style={{ color: 'var(--text-disabled)' }}>今日咨询/付款</span>
+                            <span style={{ color: 'var(--text-disabled)' }}>{t('money.todayConsultPayment')}</span>
                             <span style={{ color: 'var(--text-secondary)' }}>
                               {xianyuData.today.consultations ?? 0} / {xianyuData.today.payments ?? 0}
                             </span>
@@ -436,7 +438,7 @@ export function Money() {
                 <div className="flex items-start gap-2.5">
                   <TrendingUp size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-cyan)' }} />
                   <div>
-                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>套利策略收益</p>
+                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.arbitrageRevenue')}</p>
                     <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
                       待接入 — 需开发套利引擎
                     </p>
@@ -449,7 +451,7 @@ export function Money() {
                 <div className="flex items-start gap-2.5">
                   <Lightbulb size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-purple)' }} />
                   <div>
-                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>DeFi 挖矿收入</p>
+                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.defiRevenue')}</p>
                     <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
                       待接入 — 需接入链上数据
                     </p>

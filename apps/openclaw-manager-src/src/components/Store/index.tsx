@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
 import type { EvolutionProposalRaw, EvolutionStatsRaw } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ============================================================
    常量 & 类型
@@ -76,6 +77,7 @@ const cardVariants = {
    ============================================================ */
 
 export function Store() {
+  const { t } = useLanguage();
   /* ── 状态 ── */
   const [proposals, setProposals] = useState<NormalizedProposal[]>([]);
   const [stats, setStats] = useState<EvolutionStatsRaw | null>(null);
@@ -112,7 +114,7 @@ export function Store() {
         setStats(statsRes.value);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '数据加载失败';
+      const msg = e instanceof Error ? e.message : t('store.loadFailed');
       console.error('[Store] 数据拉取失败:', msg);
       if (!proposals.length) {
         setError(msg);
@@ -140,11 +142,11 @@ export function Store() {
         method: 'PATCH',
         body: JSON.stringify({ status: 'approved' }),
       });
-      toast.success('提案已通过 — 相当于"安装"这个工具');
+      toast.success(t('store.approveSuccess'));
       // 刷新数据
       await fetchData();
     } catch (err) {
-      toast.error(`审批失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      toast.error(`${t('store.approveFailed')}: ${err instanceof Error ? err.message : t('store.unknownError')}`);
     } finally {
       setApproving(null);
     }
@@ -184,10 +186,10 @@ export function Store() {
     const totalProposals = stats?.total_proposals ?? stats?.proposals_count ?? proposals.length;
     const gaps = stats?.capability_gaps ?? stats?.gaps_count ?? 0;
     return [
-      { label: '总提案数', value: String(totalProposals), icon: Package, color: 'var(--accent-cyan)' },
-      { label: '已通过', value: String(stats?.approved ?? statusCounts.approved), icon: TrendingUp, color: 'var(--accent-green)' },
-      { label: '待审批', value: String(stats?.pending ?? statusCounts.pending), icon: Zap, color: 'var(--accent-amber)' },
-      { label: '能力缺口', value: String(gaps), icon: Plus, color: 'var(--accent-purple)' },
+      { label: t('store.totalProposals'), value: String(totalProposals), icon: Package, color: 'var(--accent-cyan)' },
+      { label: t('store.approved'), value: String(stats?.approved ?? statusCounts.approved), icon: TrendingUp, color: 'var(--accent-green)' },
+      { label: t('store.pending'), value: String(stats?.pending ?? statusCounts.pending), icon: Zap, color: 'var(--accent-amber)' },
+      { label: t('store.capabilityGaps'), value: String(gaps), icon: Plus, color: 'var(--accent-purple)' },
     ];
   }, [stats, proposals, statusCounts]);
 
@@ -199,7 +201,7 @@ export function Store() {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin text-[var(--accent-cyan)]" size={32} />
-        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载插件商店…</span>
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">{t('store.loading')}</span>
       </div>
     );
   }
@@ -217,7 +219,7 @@ export function Store() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索提案名称、模块、集成方案…"
+              placeholder={t('store.searchPlaceholder')}
               className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none font-mono"
             />
             {search && (
@@ -225,14 +227,14 @@ export function Store() {
                 onClick={() => setSearch('')}
                 className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-xs"
               >
-                清除
+                {t('store.clear')}
               </button>
             )}
             {/* 手动刷新按钮 */}
             <button
               onClick={() => { setLoading(true); fetchData(); }}
               className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
-              title="手动刷新"
+              title={t('store.manualRefresh')}
             >
               <RefreshCw size={14} />
             </button>
@@ -250,15 +252,15 @@ export function Store() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-lg font-bold text-[var(--text-primary)] tracking-tight">
-                进化提案
+                {t('store.featuredTitle')}
               </h2>
               <p className="text-label mt-1">
-                插件商店 // EVOLUTION PROPOSALS
+                {t('store.featuredSubtitle')}
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-[var(--accent-cyan)]">
               <Package size={16} />
-              <span className="font-mono text-xs">{filtered.length} 个结果</span>
+              <span className="font-mono text-xs">{filtered.length} {t('store.resultsCount')}</span>
             </div>
           </div>
 
@@ -266,19 +268,19 @@ export function Store() {
           {error && !proposals.length ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <span className="font-mono text-sm" style={{ color: 'var(--accent-red)' }}>
-                数据加载失败：{error}
+                {t('store.loadFailedPrefix')}：{error}
               </span>
               <button
                 onClick={() => { setError(null); setLoading(true); fetchData(); }}
                 className="font-mono text-xs px-4 py-2 rounded-lg"
                 style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(0,212,255,0.25)' }}
               >
-                重试
+                {t('common.retry')}
               </button>
             </div>
           ) : featured.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-[var(--text-tertiary)] font-mono text-sm">
-              暂无可用插件
+              {t('store.noPlugins')}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
@@ -312,8 +314,8 @@ export function Store() {
                         <Star size={9} className="text-[var(--accent-amber)]" />
                         {proposal.stars.toLocaleString()}
                       </span>
-                      <span className="text-[10px] text-[var(--text-tertiary)] font-mono">
-                        评分 {proposal.score}
+                        <span className="text-[10px] text-[var(--text-tertiary)] font-mono">
+                          {t('store.score')} {proposal.score}
                       </span>
                     </div>
 
@@ -334,7 +336,7 @@ export function Store() {
                           ) : (
                             <ThumbsUp size={11} className="inline mr-1" />
                           )}
-                          通过
+                          {t('store.approve')}
                         </button>
                       )}
                     </div>
@@ -352,7 +354,7 @@ export function Store() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <h3 className="text-label mb-4">状态筛选 // STATUS FILTER</h3>
+          <h3 className="text-label mb-4">{t('store.statusFilterTitle')}</h3>
           <div className="space-y-1">
             {[
               { label: '全部', count: proposals.length },
@@ -396,7 +398,7 @@ export function Store() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
         >
-          <h3 className="text-label mb-4">统计概览 // STATS</h3>
+          <h3 className="text-label mb-4">{t('store.statsOverview')}</h3>
           <div className="grid grid-cols-2 gap-3">
             {statsCards.map((stat) => (
               <div
@@ -413,7 +415,7 @@ export function Store() {
           {/* 最近扫描时间 */}
           {stats && (stats.last_scan || stats.last_scan_at || stats.last_scan_time) && (
             <div className="mt-4 pt-3 border-t border-[var(--glass-border)]">
-              <span className="text-label text-[9px]">最近扫描</span>
+              <span className="text-label text-[9px]">{t('store.lastScan')}</span>
               <p className="font-mono text-[10px] text-[var(--text-secondary)] mt-1">
                 {stats.last_scan_time || stats.last_scan_at || stats.last_scan || '—'}
               </p>
@@ -428,22 +430,22 @@ export function Store() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
-          <h3 className="text-label mb-4">全部提案 // ALL PROPOSALS</h3>
+          <h3 className="text-label mb-4">{t('store.allProposalsTitle')}</h3>
 
           {filtered.length === 0 ? (
             <div className="text-center py-10 text-[var(--text-tertiary)] font-mono text-sm">
-              暂无数据
+              {t('common.noData')}
             </div>
           ) : (
             <>
               {/* 表头 */}
               <div className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-2 text-[10px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest border-b border-[var(--glass-border)]">
-                <span>名称</span>
-                <span>模块</span>
-                <span>评分</span>
-                <span>风险</span>
-                <span>状态</span>
-                <span className="text-right">操作</span>
+                <span>{t('store.colName')}</span>
+                <span>{t('store.colModule')}</span>
+                <span>{t('store.colScore')}</span>
+                <span>{t('store.colRisk')}</span>
+                <span>{t('store.colStatus')}</span>
+                <span className="text-right">{t('store.colAction')}</span>
               </div>
 
               {/* 行数据 */}
@@ -478,7 +480,7 @@ export function Store() {
                           ) : (
                             <ThumbsUp size={11} />
                           )}
-                          通过
+                          {t('store.approve')}
                         </button>
                       )}
                       {p.url && (
@@ -488,7 +490,7 @@ export function Store() {
                           rel="noreferrer"
                           className="text-[11px] font-mono text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
                         >
-                          查看 →
+                          {t('store.view')} →
                         </a>
                       )}
                     </div>
