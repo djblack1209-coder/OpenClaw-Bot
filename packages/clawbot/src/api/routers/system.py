@@ -489,3 +489,146 @@ def stop_service(service_id: str = Path(...)):
     except Exception as e:
         logger.exception("停止服务 %s 失败", service_id)
         raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ============ 开发者面板辅助端点 ============
+
+# 项目根目录（packages/clawbot 的上两级 = OpenEverything/）
+_PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir)
+)
+
+import re as _re  # noqa: E402  — 仅此处使用
+
+
+@router.get("/system/git-log")
+def git_log():
+    """获取最近 15 条 Git 提交记录"""
+    try:
+        result = subprocess.run(
+            ["git", "log", "--pretty=format:%h|%an|%ad|%s", "--date=short", "-15"],
+            capture_output=True,
+            text=True,
+            cwd=_PROJECT_ROOT,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "git log 执行失败")
+
+        commits: List[Dict[str, str]] = []
+        for line in result.stdout.strip().splitlines():
+            parts = line.split("|", 3)
+            if len(parts) == 4:
+                commits.append({
+                    "hash": parts[0],
+                    "author": parts[1],
+                    "date": parts[2],
+                    "message": parts[3],
+                })
+        return commits
+    except Exception as e:
+        logger.exception("获取 Git 日志失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.get("/system/health-summary")
+def health_summary():
+    """解析 HEALTH.md 统计活跃问题数量和已解决数量"""
+    try:
+        health_path = os.path.join(_PROJECT_ROOT, "docs", "status", "HEALTH.md")
+        if not os.path.exists(health_path):
+            return {
+                "active_critical": 0,
+                "active_high": 0,
+                "active_medium": 0,
+                "active_low": 0,
+                "resolved_count": 0,
+            }
+
+        with open(health_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # 分割「活跃问题」和「已解决」两个区域
+        active_section = ""
+        resolved_section = ""
+
+        # 查找活跃问题区域（从 "## 活跃问题" 到 "## 已解决"）
+        active_match = _re.search(r"## 活跃问题.*?\n(.*?)(?=\n## 已解决|\Z)", content, _re.DOTALL)
+        if active_match:
+            active_section = active_match.group(1)
+
+        # 查找已解决区域
+        resolved_match = _re.search(r"## 已解决.*?\n(.*)", content, _re.DOTALL)
+        if resolved_match:
+            resolved_section = resolved_match.group(1)
+
+        # 在活跃区域中统计各严重度的表格数据行（以 | HI- 开头的行）
+        active_critical = 0
+        active_high = 0
+        active_medium = 0
+        active_low = 0
+
+        # 按子节标题分割活跃区域
+        current_level = ""
+        for line in active_section.splitlines():
+            stripped = line.strip()
+            if "🔴" in stripped and stripped.startswith("###"):
+                current_level = "critical"
+            elif "🟠" in stripped and stripped.startswith("###"):
+                current_level = "high"
+            elif "🟡" in stripped and stripped.startswith("###"):
+                current_level = "medium"
+            elif "🔵" in stripped and stripped.startswith("###"):
+                current_level = "low"
+            elif stripped.startswith("| HI-"):
+                # 这是一条问题记录
+                if current_level == "critical":
+                    active_critical += 1
+                elif current_level == "high":
+                    active_high += 1
+                elif current_level == "medium":
+                    active_medium += 1
+                elif current_level == "low":
+                    active_low += 1
+
+        # 已解决区域统计：数 | HI- 开头的行
+        resolved_count = sum(
+            1 for line in resolved_section.splitlines()
+            if line.strip().startswith("| HI-")
+        )
+
+        return {
+            "active_critical": active_critical,
+            "active_high": active_high,
+            "active_medium": active_medium,
+            "active_low": active_low,
+            "resolved_count": resolved_count,
+        }
+    except Exception as e:
+        logger.exception("解析 HEALTH.md 失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+@router.get("/system/outdated-deps")
+def outdated_deps():
+    """检查过时的 pip 依赖（优先使用项目 .venv312 的 pip）"""
+    try:
+        # 优先使用项目虚拟环境的 pip
+        venv_pip = os.path.join(_PROJECT_ROOT, ".venv312", "bin", "pip")
+        pip_cmd = venv_pip if os.path.isfile(venv_pip) else "pip3"
+
+        result = subprocess.run(
+            [pip_cmd, "list", "--outdated", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "pip list --outdated 执行失败")
+
+        import json as _json
+        packages = _json.loads(result.stdout)
+        return packages
+    except Exception as e:
+        logger.exception("检查过时依赖失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))

@@ -2,7 +2,7 @@
  * Dev — 开发总控页面 (Sonic Abyss Bento Grid 风格)
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
  * 从 /api/v1/status 获取系统版本和运行时间等真实数据
- * 其余数据（Git/CI/技术债务/依赖更新）诚实标注"待接入"
+ * Git/技术债务/依赖更新 已接入真实 API
  * 30 秒自动刷新
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -16,8 +16,11 @@ import {
   Loader2,
   AlertCircle,
   Clock,
+  ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { api } from '../../lib/api';
 import { toast } from 'sonner';
 
 /* ====== 入场动画 ====== */
@@ -64,6 +67,31 @@ interface PerfData {
   [key: string]: unknown;
 }
 
+/** Git 提交记录 */
+interface GitLogEntry {
+  hash: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
+/** HEALTH.md 摘要 */
+interface HealthSummary {
+  active_critical: number;
+  active_high: number;
+  active_medium: number;
+  active_low: number;
+  resolved_count: number;
+}
+
+/** 过时依赖项 */
+interface OutdatedDep {
+  name: string;
+  version: string;
+  latest_version: string;
+  latest_filetype?: string;
+}
+
 /* ====== 工具函数 ====== */
 
 /** 格式化运行时间 */
@@ -98,14 +126,29 @@ function NoDataPlaceholder({ reason, hint }: { reason: string; hint?: string }) 
 /* ====== 主组件 ====== */
 
 export function Dev() {
-  /* 状态 */
+  /* 状态 — 系统概览 */
   const [status, setStatus] = useState<StatusData | null>(null);
   const [perf, setPerf] = useState<PerfData | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
-  /* 数据拉取 */
+  /* 状态 — Git 提交 */
+  const [gitLog, setGitLog] = useState<GitLogEntry[]>([]);
+  const [gitLogLoading, setGitLogLoading] = useState(true);
+  const [gitLogError, setGitLogError] = useState<string | null>(null);
+
+  /* 状态 — 技术债务 */
+  const [healthSummary, setHealthSummary] = useState<HealthSummary | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState<string | null>(null);
+
+  /* 状态 — 依赖更新 */
+  const [outdatedDeps, setOutdatedDeps] = useState<OutdatedDep[]>([]);
+  const [depsLoading, setDepsLoading] = useState(true);
+  const [depsError, setDepsError] = useState<string | null>(null);
+
+  /* 数据拉取 — 系统概览 */
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -134,15 +177,67 @@ export function Dev() {
     }
   }, []);
 
+  /* 数据拉取 — Git 提交记录 */
+  const fetchGitLog = useCallback(async () => {
+    setGitLogLoading(true);
+    try {
+      const data = await api.devGitLog() as GitLogEntry[];
+      if (!mountedRef.current) return;
+      setGitLog(Array.isArray(data) ? data : []);
+      setGitLogError(null);
+    } catch {
+      if (!mountedRef.current) return;
+      setGitLogError('Git 日志加载失败');
+    } finally {
+      if (mountedRef.current) setGitLogLoading(false);
+    }
+  }, []);
+
+  /* 数据拉取 — 技术债务 */
+  const fetchHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const data = await api.devHealthSummary() as HealthSummary;
+      if (!mountedRef.current) return;
+      setHealthSummary(data);
+      setHealthError(null);
+    } catch {
+      if (!mountedRef.current) return;
+      setHealthError('健康摘要加载失败');
+    } finally {
+      if (mountedRef.current) setHealthLoading(false);
+    }
+  }, []);
+
+  /* 数据拉取 — 过时依赖 */
+  const fetchDeps = useCallback(async () => {
+    setDepsLoading(true);
+    try {
+      const data = await api.devOutdatedDeps() as OutdatedDep[];
+      if (!mountedRef.current) return;
+      setOutdatedDeps(Array.isArray(data) ? data : []);
+      setDepsError(null);
+    } catch {
+      if (!mountedRef.current) return;
+      setDepsError('依赖检查失败');
+    } finally {
+      if (mountedRef.current) setDepsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
+    // 并行拉取所有数据
     fetchData();
+    fetchGitLog();
+    fetchHealth();
+    fetchDeps();
     const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(timer);
     };
-  }, [fetchData]);
+  }, [fetchData, fetchGitLog, fetchHealth, fetchDeps]);
 
   /* 概览统计 — 来自真实 API */
   const overviewStats = statusError
@@ -153,6 +248,11 @@ export function Dev() {
         { label: 'Bot 数量', value: String(status?.bot_count ?? status?.bots_running ?? '--'), color: 'var(--accent-purple)' },
         { label: '已加载模块', value: String(status?.modules_loaded ?? status?.active_services ?? status?.services_count ?? '--'), color: 'var(--accent-amber)' },
       ];
+
+  /* 技术债务活跃问题总数 */
+  const activeTotal = healthSummary
+    ? healthSummary.active_critical + healthSummary.active_high + healthSummary.active_medium + healthSummary.active_low
+    : 0;
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
@@ -242,7 +342,7 @@ export function Dev() {
           </div>
         </motion.div>
 
-        {/* ====== Git 提交记录 (col-4) — 待接入 ====== */}
+        {/* ====== Git 提交记录 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -252,7 +352,7 @@ export function Dev() {
               >
                 <GitCommit size={20} style={{ color: 'var(--accent-green)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   Git 提交
                 </h2>
@@ -260,13 +360,50 @@ export function Dev() {
                   GIT COMMITS
                 </p>
               </div>
+              {gitLogLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            <NoDataPlaceholder reason="暂无数据" hint="需接入 Git 仓库 API 以显示提交历史" />
+            {gitLogError ? (
+              <NoDataPlaceholder reason={gitLogError} />
+            ) : gitLog.length === 0 && !gitLogLoading ? (
+              <NoDataPlaceholder reason="暂无提交记录" />
+            ) : (
+              <div className="flex-1 overflow-y-auto space-y-2 max-h-[360px]">
+                {gitLog.map((commit) => (
+                  <div
+                    key={commit.hash}
+                    className="rounded-lg p-3"
+                    style={{ background: 'var(--bg-secondary)' }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <code
+                        className="font-mono text-[11px] px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' }}
+                      >
+                        {commit.hash}
+                      </code>
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                        {commit.date}
+                      </span>
+                    </div>
+                    <p
+                      className="font-mono text-xs leading-relaxed truncate"
+                      style={{ color: 'var(--text-secondary)' }}
+                      title={commit.message}
+                    >
+                      {commit.message}
+                    </p>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      {commit.author}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
 
-        {/* ====== 构建状态 (col-6) — 待接入 ====== */}
+        {/* ====== 构建状态 (col-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -286,11 +423,19 @@ export function Dev() {
               </div>
             </div>
 
-            <NoDataPlaceholder reason="暂无数据" hint="需接入 CI/CD 系统（GitHub Actions 等）" />
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
+              <ExternalLink size={20} style={{ color: 'var(--accent-cyan)' }} />
+              <span className="font-mono text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
+                请使用 GitHub Actions 查看构建状态
+              </span>
+              <span className="font-mono text-[10px] text-center" style={{ color: 'var(--text-disabled)' }}>
+                未配置 GitHub Token，无法直接调用 API
+              </span>
+            </div>
           </div>
         </motion.div>
 
-        {/* ====== 技术债务 (col-6) — 待接入 ====== */}
+        {/* ====== 技术债务 (col-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -300,21 +445,80 @@ export function Dev() {
               >
                 <AlertTriangle size={20} style={{ color: 'var(--accent-amber)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   技术债务
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  TECH DEBT
+                  TECH DEBT // HEALTH.md
                 </p>
               </div>
+              {healthLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            <NoDataPlaceholder reason="暂无数据" hint="需接入 HEALTH.md 解析或专用技术债务 API" />
+            {healthError ? (
+              <NoDataPlaceholder reason={healthError} />
+            ) : healthSummary ? (
+              <div className="space-y-4">
+                {/* 活跃问题汇总 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: '阻塞', value: healthSummary.active_critical, icon: '🔴', color: '#ef4444' },
+                    { label: '重要', value: healthSummary.active_high, icon: '🟠', color: '#f97316' },
+                    { label: '一般', value: healthSummary.active_medium, icon: '🟡', color: '#eab308' },
+                    { label: '低优先', value: healthSummary.active_low, icon: '🔵', color: '#3b82f6' },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-lg p-3 flex items-center gap-3"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
+                      <span className="text-base">{item.icon}</span>
+                      <div>
+                        <span className="text-label">{item.label}</span>
+                        <p className="font-display text-lg font-bold" style={{ color: item.color }}>
+                          {item.value}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 汇总行 */}
+                <div
+                  className="rounded-lg p-3 flex items-center justify-between"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={14} style={{ color: 'var(--accent-amber)' }} />
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      活跃问题合计
+                    </span>
+                  </div>
+                  <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
+                    {activeTotal}
+                  </span>
+                </div>
+                <div
+                  className="rounded-lg p-3 flex items-center justify-between"
+                  style={{ background: 'var(--bg-secondary)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} style={{ color: 'var(--accent-green)' }} />
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      已解决
+                    </span>
+                  </div>
+                  <span className="font-display text-sm font-bold" style={{ color: 'var(--accent-green)' }}>
+                    {healthSummary.resolved_count}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
         </motion.div>
 
-        {/* ====== 依赖更新 (col-12) — 待接入 ====== */}
+        {/* ====== 依赖更新 (col-12) ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card p-6 flex flex-col">
             <div className="flex items-center gap-3 mb-5">
@@ -324,17 +528,72 @@ export function Dev() {
               >
                 <Package size={20} style={{ color: 'var(--accent-purple)' }} />
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                   依赖更新
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  DEPENDENCY UPDATES
+                  PIP OUTDATED PACKAGES
                 </p>
               </div>
+              {depsLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
             </div>
 
-            <NoDataPlaceholder reason="暂无数据" hint="需接入 pip outdated / npm outdated 扫描结果" />
+            {depsError ? (
+              <NoDataPlaceholder reason={depsError} />
+            ) : depsLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-disabled)' }}>
+                <Loader2 size={16} className="animate-spin" />
+                <span className="font-mono text-xs">正在检查依赖更新（可能需要 10-30 秒）...</span>
+              </div>
+            ) : outdatedDeps.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <CheckCircle2 size={20} style={{ color: 'var(--accent-green)' }} />
+                <span className="font-mono text-xs" style={{ color: 'var(--accent-green)' }}>
+                  所有依赖均为最新版本
+                </span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full font-mono text-xs">
+                  <thead>
+                    <tr style={{ color: 'var(--text-tertiary)' }}>
+                      <th className="text-left py-2 px-3 font-normal">包名</th>
+                      <th className="text-left py-2 px-3 font-normal">当前版本</th>
+                      <th className="text-left py-2 px-3 font-normal">最新版本</th>
+                      <th className="text-left py-2 px-3 font-normal">类型</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outdatedDeps.map((dep) => (
+                      <tr
+                        key={dep.name}
+                        className="border-t"
+                        style={{ borderColor: 'var(--glass-border)' }}
+                      >
+                        <td className="py-2 px-3" style={{ color: 'var(--text-primary)' }}>
+                          {dep.name}
+                        </td>
+                        <td className="py-2 px-3" style={{ color: 'var(--accent-amber)' }}>
+                          {dep.version}
+                        </td>
+                        <td className="py-2 px-3" style={{ color: 'var(--accent-green)' }}>
+                          {dep.latest_version}
+                        </td>
+                        <td className="py-2 px-3" style={{ color: 'var(--text-disabled)' }}>
+                          {dep.latest_filetype ?? '--'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--glass-border)' }}>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    共 {outdatedDeps.length} 个包可更新
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>
