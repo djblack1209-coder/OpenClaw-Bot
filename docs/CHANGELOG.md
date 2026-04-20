@@ -12,6 +12,51 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — Sprint 4 商业级质量加固（P0/P1/P2）
+> 领域: `backend`, `frontend`
+> 影响模块: 45+ 文件，覆盖 core/, bot/, api/, tools/, trading/, xianyu/, execution/, monitoring/, shopping/, 前端 shared/
+> 关联问题: P0-1, P0-3, P0-4, P1-UX, P2-R2.36, R2.44, R2.45
+
+### 变更内容
+
+**P0-1: Cookie 健康监控增强**
+- `xianyu/cookie_refresher.py` 新增 `CookieHealthMonitor` 类，支持检查闲鱼/X/小红书三平台 Cookie 状态
+- 新增 `GET /xianyu/cookie-status` 和 `GET /social/cookie-status` API 端点
+- 修复 2 处静默异常（parse_h5_tk_timestamp / 临时文件清理）
+
+**P0-3: 静默异常消除（技术债 R2.44）**
+- 扫描并修复 45+ 个 `except: pass` 模式，覆盖 30+ 文件
+- 交易路径、Bot 命令、API 层、工具层全面添加 logger 日志
+- 仅保留 2 处正确行为（code_tool 沙箱 + WebSocket 断连）
+
+**P0-4: 幽灵任务修复（技术债 R2.45）**
+- 新增 `src/core/async_utils.py` — `create_monitored_task()` 工具函数
+- 修复 6 处无 done_callback 的 `create_task` 调用（broker_bridge, telegram_ux, bookkeeping, message_mixin）
+
+**P0-misc: 生产代码 print() 清除**
+- 替换 8 处 `print()` 为 `logger.info/debug`（event_bus, utils, backtester, team, pydantic_agents 等）
+
+**P1-UX: 前端共享组件**
+- 新增 `shared/EmptyState.tsx` — 统一空数据占位组件
+- 新增 `shared/Skeleton.tsx` — 骨架屏加载组件集（StatCard/Table/List/CardGrid）
+- 去除 Money/DevPanel/Dev 三处重复的 NoDataPlaceholder
+
+**P1: 错误人话化**
+- 新增 `src/core/user_error.py` — 50+ 条中英文错误模式映射
+- FastAPI 全局异常处理器集成 `humanize_error()`
+
+**P2: 数据库自动备份（技术债 R2.36）**
+- 新增 `src/tools/db_backup.py` — SQLite VACUUM INTO 热备份
+- 支持自动清理过期备份（默认保留7天）、备份状态查询
+
+### 测试结果
+- Python: 1484 passed, 2 skipped, 0 new failures (2 pre-existing)
+- TypeScript: tsc --noEmit 零报错
+- 静默异常: 从 94 → 2（仅正确行为保留）
+- 幽灵任务: 从 6 → 0
+
+---
+
 ## 2026-04-20 — 集成 twikit + xhs 库实现 X/小红书 Cookie 持久化登录
 > 领域: `backend` `social`
 > 影响模块: `execution/social/x_platform.py`, `execution/social/xhs_platform.py`, `api/rpc.py`
