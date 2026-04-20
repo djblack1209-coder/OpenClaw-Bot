@@ -608,7 +608,7 @@ class LiteLLMPool:
             for m, t in [("command-a-reasoning-08-2025", TIER_A), ("command-a-vision-07-2025", TIER_B)]:
                 deps.append(self._dep("cohere", f"cohere/{m}", cok, rpm=20, tier=t, family="cohere", note="Cohere"))
 
-        # GitHub Models
+        # GitHub Models (免费, 限制严格但模型丰富)
         ght = _env("GITHUB_MODELS_TOKEN")
         if ght:
             ghb = "https://models.github.ai/inference"
@@ -616,6 +616,9 @@ class LiteLLMPool:
                 ("gpt-4.1-mini", "gpt", TIER_A),
                 ("o4-mini", "gpt", TIER_S),
                 ("DeepSeek-R1", "deepseek", TIER_S),
+                ("DeepSeek-V3-0324", "deepseek", TIER_A),
+                ("Llama-3.3-70B-Instruct", "llama", TIER_A),
+                ("Mistral-Small-3.1", "mistral", TIER_B),
             ]:
                 deps.append(
                     self._dep("github", f"openai/{m}", ght, ghb, rpm=15, tier=t, family=fam, note="GitHub Models")
@@ -652,24 +655,53 @@ class LiteLLMPool:
             ]:
                 deps.append(self._dep("nvidia", f"nvidia_nim/{m}", nk, rpm=60, tier=t, family=fam, note="NVIDIA NIM"))
 
-        # Sambanova
+        # Sambanova (免费 $5 额度, 推理极快)
         sk = _env("SAMBANOVA_API_KEY")
         if sk:
-            deps.append(
-                self._dep(
-                    "sambanova",
-                    "openai/DeepSeek-R1",
-                    sk,
-                    "https://api.sambanova.ai/v1",
-                    rpm=10,
-                    tier=TIER_S,
-                    family="deepseek",
-                    timeout=LLM_TIMEOUT_REASONING,
-                    stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
+            sb = "https://api.sambanova.ai/v1"
+            for m, fam, t, to in [
+                ("DeepSeek-R1", "deepseek", TIER_S, LLM_TIMEOUT_REASONING),
+                ("DeepSeek-V3.2", "deepseek", TIER_A, LLM_TIMEOUT),
+                ("Meta-Llama-3.3-70B-Instruct", "llama", TIER_A, LLM_TIMEOUT),
+                ("Qwen/Qwen3-235B", "qwen", TIER_S, LLM_TIMEOUT),
+            ]:
+                deps.append(
+                    self._dep(
+                        "sambanova", f"openai/{m}", sk, sb,
+                        rpm=10, tier=t, family=fam,
+                        timeout=to, stream_timeout=to + 30,
+                        note="Sambanova Cloud",
+                    )
                 )
-            )  # Reasoning 模型需要极长超时
 
         # iflow 无限 API（硅基流分配，14个顶级模型，无限使用）
+        # Fireworks AI (免费 $1 额度, 推理快, Llama-4 系列)
+        fwk = _env("FIREWORKS_API_KEY")
+        if fwk:
+            fwb = "https://api.fireworks.ai/inference/v1"
+            for m, fam, t in [
+                ("accounts/fireworks/models/llama4-scout-instruct-basic", "llama", TIER_A),
+                ("accounts/fireworks/models/llama-v3p3-70b-instruct", "llama", TIER_A),
+                ("accounts/fireworks/models/deepseek-v3", "deepseek", TIER_A),
+            ]:
+                deps.append(
+                    self._dep("fireworks", f"openai/{m}", fwk, fwb, rpm=10, tier=t, family=fam, note="Fireworks AI")
+                )
+
+        # Cloudflare Workers AI (永久免费 10000 neurons/天)
+        cfk = _env("CLOUDFLARE_API_TOKEN")
+        cf_acct = _env("CLOUDFLARE_ACCOUNT_ID")
+        if cfk and cf_acct:
+            cfb = f"https://api.cloudflare.com/client/v4/accounts/{cf_acct}/ai/v1"
+            for m, fam, t in [
+                ("@cf/openai/gpt-oss-120b", "gpt", TIER_S),
+                ("@cf/qwen/qwen3-30b-a3b-fp8", "qwen", TIER_B),
+                ("@cf/meta/llama-3.3-70b-instruct-fp8-fast", "llama", TIER_A),
+            ]:
+                deps.append(
+                    self._dep("cloudflare", f"openai/{m}", cfk, cfb, rpm=30, tier=t, family=fam, note="Cloudflare Workers AI")
+                )
+
         # ⚠️ iflow Token 有效期仅 7 天，过期需去 https://platform.iflow.cn/docs/api-key-management 重置
         iflow_key = _env("SILICONFLOW_UNLIMITED_KEY")
         iflow_base = _env("SILICONFLOW_UNLIMITED_URL", "https://apis.iflow.cn/v1")
