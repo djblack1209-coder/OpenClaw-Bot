@@ -12,8 +12,10 @@ import {
   Terminal, Loader2, Trash2,
   ToggleLeft, ToggleRight,
   Wifi, WifiOff, RefreshCw,
+  Play, Square,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 
@@ -141,6 +143,8 @@ export function APIGateway() {
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [deletingTokenIds, setDeletingTokenIds] = useState<Set<number>>(new Set());
   const [deletingChannelIds, setDeletingChannelIds] = useState<Set<number>>(new Set());
+  const [gatewayServiceRunning, setGatewayServiceRunning] = useState(false);
+  const [gatewayServiceToggling, setGatewayServiceToggling] = useState(false);
   /* 确认弹窗状态 */
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -153,10 +157,11 @@ export function APIGateway() {
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [statusResp, channelsResp, tokensResp] = await Promise.allSettled([
+      const [statusResp, channelsResp, tokensResp, servicesResp] = await Promise.allSettled([
         api.newApiStatus(),
         api.newApiChannels(),
         api.newApiTokens(),
+        clawbotFetchJson<{ services?: Array<{ id: string; running?: boolean }> }>('/api/v1/system/services'),
       ]);
 
       // 解析网关状态
@@ -183,6 +188,14 @@ export function APIGateway() {
           : Array.isArray(raw?.tokens) ? raw.tokens
           : [];
         setTokens(list);
+      }
+
+      // 解析网关服务运行状态
+      if (servicesResp.status === 'fulfilled') {
+        const svcData = servicesResp.value as any;
+        const services: Array<{ id: string; running?: boolean }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
+        const gwSvc = services.find((s) => s.id === 'gateway');
+        setGatewayServiceRunning(gwSvc?.running ?? false);
       }
     } catch (err) {
       console.error('[APIGateway] 数据加载失败:', err);
@@ -278,6 +291,23 @@ export function APIGateway() {
     });
   }, []);
 
+  /* ── 网关服务启停 ── */
+  const handleGatewayServiceToggle = useCallback(async () => {
+    setGatewayServiceToggling(true);
+    try {
+      const action = gatewayServiceRunning ? 'stop' : 'start';
+      await clawbotFetchJson(`/api/v1/system/services/gateway/${action}`, { method: 'POST' });
+      toast.success(gatewayServiceRunning ? '网关服务已停止' : '网关服务已启动');
+      await new Promise((r) => setTimeout(r, 800));
+      await fetchData(true);
+    } catch {
+      toast.error('操作失败，请稍后重试');
+      await fetchData(true);
+    } finally {
+      setGatewayServiceToggling(false);
+    }
+  }, [gatewayServiceRunning, fetchData]);
+
   /* ── 派生数据 ── */
   const isOnline = gatewayStatus?.running || gatewayStatus?.online || gatewayStatus?.status === 'ok';
   const enabledChannels = channels.filter(isChannelEnabled).length;
@@ -329,7 +359,7 @@ export function APIGateway() {
                   API 网关 // UNIFIED PROXY
                 </p>
               </div>
-              {/* 网关在线/离线指示 + 刷新按钮 */}
+              {/* 网关在线/离线指示 + 启停按钮 + 刷新按钮 */}
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
                   {isOnline
@@ -339,6 +369,22 @@ export function APIGateway() {
                     {isOnline ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
+                <motion.button
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer text-[10px] font-mono font-bold"
+                  style={{
+                    background: gatewayServiceRunning ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
+                    border: `1px solid ${gatewayServiceRunning ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
+                    color: gatewayServiceRunning ? 'var(--accent-red)' : 'var(--accent-green)',
+                    opacity: gatewayServiceToggling ? 0.5 : 1,
+                    pointerEvents: gatewayServiceToggling ? 'none' : 'auto',
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleGatewayServiceToggle}
+                >
+                  {gatewayServiceToggling ? <Loader2 size={10} className="animate-spin" /> : gatewayServiceRunning ? <Square size={10} /> : <Play size={10} />}
+                  {gatewayServiceRunning ? '停止服务' : '启动服务'}
+                </motion.button>
                 <button
                   onClick={() => fetchData(true)}
                   className="p-1.5 rounded-lg transition-colors hover:opacity-80"

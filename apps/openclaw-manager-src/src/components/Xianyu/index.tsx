@@ -15,6 +15,8 @@ import {
   Wifi,
   WifiOff,
   QrCode,
+  Play,
+  Square,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { clawbotFetchJson } from '../../lib/tauri-core';
@@ -96,14 +98,17 @@ export function Xianyu() {
   const [showQr, setShowQr] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
+  const [serviceRunning, setServiceRunning] = useState(false);
+  const [serviceToggling, setServiceToggling] = useState(false);
 
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
     try {
-      const [convRes, cookieRes, statusRes] = await Promise.allSettled([
+      const [convRes, cookieRes, statusRes, servicesRes] = await Promise.allSettled([
         api.xianyuConversations(20),
         api.cookieCloudStatus(),
         api.clawbotStatus(),
+        clawbotFetchJson<{ services?: Array<{ id: string; running?: boolean }> }>('/api/v1/system/services'),
       ]);
 
       if (convRes.status === 'fulfilled') {
@@ -117,6 +122,12 @@ export function Xianyu() {
         const sData = statusRes.value as any;
         // 从系统状态中提取闲鱼自动回复状态
         setAutoReplyEnabled(sData?.xianyu?.auto_reply_enabled ?? sData?.xianyu_auto_reply ?? false);
+      }
+      if (servicesRes.status === 'fulfilled') {
+        const svcData = servicesRes.value as any;
+        const services: Array<{ id: string; running?: boolean }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
+        const xySvc = services.find((s) => s.id === 'xianyu');
+        setServiceRunning(xySvc?.running ?? false);
       }
       setError(null);
     } catch (e: any) {
@@ -166,6 +177,23 @@ export function Xianyu() {
     }
   };
 
+  /* ====== 服务启停 ====== */
+  const handleServiceToggle = async () => {
+    setServiceToggling(true);
+    try {
+      const action = serviceRunning ? 'stop' : 'start';
+      await clawbotFetchJson(`/api/v1/system/services/xianyu/${action}`, { method: 'POST' });
+      toast.success(serviceRunning ? '闲鱼服务已停止' : '闲鱼服务已启动');
+      await new Promise((r) => setTimeout(r, 800));
+      await fetchData();
+    } catch {
+      toast.error('操作失败，请稍后重试');
+      await fetchData();
+    } finally {
+      setServiceToggling(false);
+    }
+  };
+
   /* ====== 派生数据 ====== */
   const cookieValid = cookieStatus?.last_cookie_available && (cookieStatus?.consecutive_failures ?? 0) === 0;
   const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
@@ -200,6 +228,39 @@ export function Xianyu() {
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />}
+
+              {/* 服务启停按钮 */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'var(--bg-base)' }}>
+                  <div className="relative">
+                    <div className="w-2 h-2 rounded-full"
+                      style={{ background: serviceRunning ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                    {serviceRunning && (
+                      <div className="absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-30"
+                        style={{ background: 'var(--accent-green)' }} />
+                    )}
+                  </div>
+                  <span className="font-mono text-[10px]" style={{ color: serviceRunning ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                    {serviceRunning ? '运行中' : '已停止'}
+                  </span>
+                </div>
+                <motion.button
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer text-[10px] font-mono font-bold"
+                  style={{
+                    background: serviceRunning ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
+                    border: `1px solid ${serviceRunning ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
+                    color: serviceRunning ? 'var(--accent-red)' : 'var(--accent-green)',
+                    opacity: serviceToggling ? 0.5 : 1,
+                    pointerEvents: serviceToggling ? 'none' : 'auto',
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleServiceToggle}
+                >
+                  {serviceToggling ? <Loader2 size={10} className="animate-spin" /> : serviceRunning ? <Square size={10} /> : <Play size={10} />}
+                  {serviceRunning ? '停止服务' : '启动服务'}
+                </motion.button>
+              </div>
             </div>
 
             {error && (

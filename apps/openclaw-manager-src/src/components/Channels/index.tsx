@@ -12,11 +12,13 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import type { ChannelConfig } from '../../lib/tauri-core';
-import { clawbotFetchJson } from '../../lib/tauri-core';
+import { clawbotFetchJson, isTauri } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
@@ -80,6 +82,7 @@ export function Channels() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [botStatus, setBotStatus] = useState<Record<string, string>>({});
+  const [togglingChannelIds, setTogglingChannelIds] = useState<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ── 拉取渠道配置 + 后端 Bot 运行状态 ── */
@@ -128,6 +131,32 @@ export function Channels() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
+  }, [fetchData]);
+
+  /* ── 渠道启停切换 ── */
+  const handleToggleChannel = useCallback(async (ch: ChannelConfig) => {
+    if (!isTauri()) {
+      toast.error('渠道配置切换需要在桌面客户端中操作');
+      return;
+    }
+    setTogglingChannelIds((prev) => new Set(prev).add(ch.id));
+    try {
+      await api.saveChannelConfig({ ...ch, enabled: !ch.enabled });
+      toast.success(`${ch.channel_type || ch.id} 已${ch.enabled ? '禁用' : '启用'}`);
+      // 局部更新状态
+      setChannels((prev) =>
+        prev.map((c) => c.id === ch.id ? { ...c, enabled: !c.enabled } : c),
+      );
+    } catch {
+      toast.error('切换失败，请稍后重试');
+      await fetchData();
+    } finally {
+      setTogglingChannelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ch.id);
+        return next;
+      });
+    }
   }, [fetchData]);
 
   /* ── 统计数据（从真实配置计算） ── */
@@ -261,6 +290,23 @@ export function Channels() {
                             <p className="font-mono text-sm" style={{ color: hasCfg ? 'var(--accent-cyan)' : 'var(--text-disabled)' }}>
                               {hasCfg ? t('channels.configured') : '—'}
                             </p>
+                          </div>
+                          {/* 启停开关 */}
+                          <div className="flex items-center">
+                            <button
+                              onClick={() => handleToggleChannel(ch)}
+                              disabled={togglingChannelIds.has(ch.id)}
+                              className="transition-colors hover:opacity-80 disabled:opacity-50"
+                              title={ch.enabled ? '点击禁用' : '点击启用'}
+                            >
+                              {togglingChannelIds.has(ch.id) ? (
+                                <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
+                              ) : ch.enabled ? (
+                                <ToggleRight size={22} style={{ color: 'var(--accent-green)' }} />
+                              ) : (
+                                <ToggleLeft size={22} style={{ color: 'var(--text-disabled)' }} />
+                              )}
+                            </button>
                           </div>
                         </div>
                       </div>
