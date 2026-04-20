@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { PageType } from '../../App';
 import { useAppStore } from '@/stores/appStore';
+import { useLanguage } from '@/i18n';
 import clsx from 'clsx';
 
 /* ===== 类型定义 ===== */
@@ -50,43 +51,44 @@ interface SidebarProps {
 
 interface NavItem {
   id: PageType;
-  label: string;
+  /** i18n 翻译 key，如 'sidebar.home' */
+  labelKey: string;
   icon: React.ElementType;
 }
 
 /* ===== 10 个一级导航 — 扁平、大字体、占满侧边栏 ===== */
 const mainNavItems: NavItem[] = [
-  { id: 'home', label: '首页', icon: Home },
-  { id: 'assistant', label: 'AI 助手', icon: MessageSquare },
-  { id: 'worldmonitor', label: '全球监控', icon: Globe },
-  { id: 'newsfeed', label: '新闻中心', icon: Newspaper },
-  { id: 'finradar', label: '金融雷达', icon: Landmark },
-  { id: 'portfolio', label: '投资组合', icon: TrendingUp },
-  { id: 'bots', label: '智能体', icon: Bot },
-  { id: 'store', label: '插件商店', icon: ShoppingBag },
-  { id: 'xianyu', label: '闲鱼管理', icon: Fish },
-  { id: 'social', label: '社交媒体', icon: Share2 },
-  { id: 'settings', label: '设置', icon: Settings },
+  { id: 'home', labelKey: 'sidebar.home', icon: Home },
+  { id: 'assistant', labelKey: 'sidebar.assistant', icon: MessageSquare },
+  { id: 'worldmonitor', labelKey: 'sidebar.worldmonitor', icon: Globe },
+  { id: 'newsfeed', labelKey: 'sidebar.newsfeed', icon: Newspaper },
+  { id: 'finradar', labelKey: 'sidebar.finradar', icon: Landmark },
+  { id: 'portfolio', labelKey: 'sidebar.portfolio', icon: TrendingUp },
+  { id: 'bots', labelKey: 'sidebar.bots', icon: Bot },
+  { id: 'store', labelKey: 'sidebar.store', icon: ShoppingBag },
+  { id: 'xianyu', labelKey: 'sidebar.xianyu', icon: Fish },
+  { id: 'social', labelKey: 'sidebar.social', icon: Share2 },
+  { id: 'settings', labelKey: 'sidebar.settings', icon: Settings },
 ];
 
 /* ===== 开发者模式额外导航 ===== */
 const devNavItems: NavItem[] = [
-  { id: 'control', label: '总控中心', icon: ShieldCheck },
-  { id: 'dashboard', label: '概览', icon: LayoutDashboard },
-  { id: 'gateway', label: 'API 网关', icon: Network },
-  { id: 'scheduler', label: '任务调度', icon: Clock },
-  { id: 'perf', label: '性能监控', icon: Gauge },
-  { id: 'channels', label: '消息渠道', icon: MessageSquare },
-  { id: 'ai', label: 'AI 配置', icon: Bot },
-  { id: 'plugins', label: 'MCP 插件', icon: Blocks },
-  { id: 'memory', label: '记忆脑图', icon: BrainCircuit },
-  { id: 'flow', label: '智能流', icon: Workflow },
-  { id: 'evolution', label: '进化引擎', icon: Dna },
-  { id: 'dev', label: '开发总控', icon: Code2 },
-  { id: 'devpanel', label: '开发者工作台', icon: Terminal },
-  { id: 'testing', label: '测试诊断', icon: FlaskConical },
-  { id: 'logs', label: '日志', icon: ScrollText },
-  { id: 'money', label: '收益统计', icon: DollarSign },
+  { id: 'control', labelKey: 'sidebar.control', icon: ShieldCheck },
+  { id: 'dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard },
+  { id: 'gateway', labelKey: 'sidebar.gateway', icon: Network },
+  { id: 'scheduler', labelKey: 'sidebar.scheduler', icon: Clock },
+  { id: 'perf', labelKey: 'sidebar.perf', icon: Gauge },
+  { id: 'channels', labelKey: 'sidebar.channels', icon: MessageSquare },
+  { id: 'ai', labelKey: 'sidebar.ai', icon: Bot },
+  { id: 'plugins', labelKey: 'sidebar.plugins', icon: Blocks },
+  { id: 'memory', labelKey: 'sidebar.memory', icon: BrainCircuit },
+  { id: 'flow', labelKey: 'sidebar.flow', icon: Workflow },
+  { id: 'evolution', labelKey: 'sidebar.evolution', icon: Dna },
+  { id: 'dev', labelKey: 'sidebar.dev', icon: Code2 },
+  { id: 'devpanel', labelKey: 'sidebar.devpanel', icon: Terminal },
+  { id: 'testing', labelKey: 'sidebar.testing', icon: FlaskConical },
+  { id: 'logs', labelKey: 'sidebar.logs', icon: ScrollText },
+  { id: 'money', labelKey: 'sidebar.money', icon: DollarSign },
 ];
 
 /* ===== 导航按钮组件 ===== */
@@ -102,12 +104,14 @@ function SidebarButton({
   onNavigate: (page: PageType) => void;
 }) {
   const Icon = item.icon;
+  const { t } = useLanguage();
+  const label = t(item.labelKey);
 
   return (
     <li>
       <button
         onClick={() => onNavigate(item.id)}
-        title={collapsed ? item.label : undefined}
+        title={collapsed ? label : undefined}
         className={clsx(
           'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative',
           collapsed ? 'px-0 py-3 justify-center' : 'px-4 py-3',
@@ -149,7 +153,7 @@ function SidebarButton({
             color: isActive ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.5)',
           }}
         />
-        {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && <span className="truncate">{label}</span>}
       </button>
     </li>
   );
@@ -162,6 +166,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleDevMode = useAppStore((s) => s.toggleDevMode);
   const isRunning = serviceStatus?.running ?? false;
+  const { t } = useLanguage();
 
   /* 三击版本号开启开发者模式 */
   const [versionClicks, setVersionClicks] = useState(0);
@@ -245,7 +250,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
                   className="font-mono uppercase"
                   style={{ fontSize: '10px', letterSpacing: '1.5px', color: 'var(--accent-cyan)', opacity: 0.5 }}
                 >
-                  DEV TOOLS
+                  {t('sidebar.devTools')}
                 </span>
               </div>
             )}
