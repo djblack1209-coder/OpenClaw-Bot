@@ -9,6 +9,7 @@ import {
   BrainCircuit, Database, Search, Zap,
   Clock, Layers, Loader2, CheckCircle2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
 
@@ -87,6 +88,8 @@ export function Memory() {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [stats, setStats] = useState<MemStats>({});
   const [activeCategory, setActiveCategory] = useState('all');
+  const [error, setError] = useState<string | null>(null);
+  const [dbOnline, setDbOnline] = useState<boolean | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   /* —— 加载统计 + 初始记忆 —— */
@@ -96,14 +99,24 @@ export function Memory() {
         api.clawbotMemoryStats(),
         api.clawbotMemorySearch('最近的记忆', 20),
       ]);
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value as MemStats);
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value as MemStats);
+        setDbOnline(true);
+      } else {
+        setDbOnline(false);
+      }
       if (searchRes.status === 'fulfilled') {
         const raw = searchRes.value as any;
         const list = Array.isArray(raw) ? raw : raw?.results ?? raw?.memories ?? [];
         setMemories(list);
       }
+      setError(null);
     } catch (err) {
       console.error('[Memory] 加载失败:', err);
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setError(msg);
+      setDbOnline(false);
+      toast.error(t('memory.loadError'));
     } finally {
       setLoading(false);
     }
@@ -125,6 +138,7 @@ export function Memory() {
       setMemories(list);
     } catch (err) {
       console.error('[Memory] 搜索失败:', err);
+      toast.error(t('memory.searchError'));
     } finally {
       setSearching(false);
     }
@@ -162,6 +176,13 @@ export function Memory() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {error && (
+        <div className="mx-6 mt-4 px-4 py-3 rounded-lg font-mono text-xs flex items-center gap-2"
+          style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--accent-red)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <span>⚠</span>
+          <span>{error}</span>
+        </div>
+      )}
       <motion.div
         className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
         variants={containerVariants}
@@ -308,7 +329,7 @@ export function Memory() {
             </h3>
             <div className="space-y-3">
               {[
-                { label: t('memory.engineStatus'), value: t('common.online'), color: 'var(--accent-green)', icon: CheckCircle2 },
+                { label: t('memory.engineStatus'), value: dbOnline === null ? '—' : dbOnline ? t('common.online') : t('common.offline'), color: dbOnline ? 'var(--accent-green)' : 'var(--text-disabled)', icon: CheckCircle2 },
                 { label: t('memory.totalMemories'), value: String(totalCount), color: 'var(--accent-cyan)', icon: Database },
                 { label: t('memory.vectorDim'), value: String(stats.vector_dim ?? '—'), color: 'var(--accent-purple)', icon: Zap },
                 { label: t('memory.todayAdded'), value: String(stats.today_added ?? '—'), color: 'var(--accent-amber)', icon: Layers },

@@ -481,6 +481,8 @@ export const zhCN: Record<string, string> = {
   'memory.engineStatus': '引擎状态',
   'memory.totalMemories': '总记忆数',
   'memory.conflictHint': 'Mem0 引擎自动检测记忆冲突：当新事实与旧记忆矛盾时，引擎会发送 UPDATE/DELETE 指令覆盖过时认知。',
+  'memory.loadError': '记忆数据加载失败',
+  'memory.searchError': '搜索记忆失败',
 
   // Logs 日志页面
   'logs.subtitle': '应用日志 // RUNTIME OUTPUT',
@@ -822,6 +824,11 @@ export const zhCN: Record<string, string> = {
   'channels.colChannel': '渠道',
   'channels.colConfigStatus': '配置状态',
   'channels.colConfigItems': '配置项',
+  'channels.loadError': '渠道数据加载失败',
+  'channels.botRunning': 'Bot 运行中',
+  'channels.botStopped': 'Bot 未运行',
+  'channels.botStatusUnknown': '状态未知',
+  'channels.wechatReconnectHint': '微信 Bot 未连接，请在终端重新扫码登录',
 
   // Plugins 插件管理
   'plugins.stopped': '已停止',
@@ -852,6 +859,10 @@ export const zhCN: Record<string, string> = {
   'plugins.activeTotal': '活跃/总数',
   'plugins.recentEvents': '最近事件',
   'plugins.noEvents': '暂无事件',
+  'plugins.enableAll': '全部启用',
+  'plugins.enableAllSuccess': '已请求启用所有插件',
+  'plugins.enableAllFailed': '批量启用失败',
+  'plugins.toggleNeedsTauri': '插件开关需要在 Tauri 桌面端运行',
 
   // WorldMonitor 全球监控
   'worldMonitor.severityCritical': '危急',
