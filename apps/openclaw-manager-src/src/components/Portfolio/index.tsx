@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { AlertTriangle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { clawbotFetch, clawbotFetchJson, LONG_TIMEOUT_MS } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
