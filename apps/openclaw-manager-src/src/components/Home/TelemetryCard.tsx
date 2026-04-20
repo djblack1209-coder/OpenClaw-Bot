@@ -21,22 +21,22 @@ interface MetricConfig {
 
 const metrics: MetricConfig[] = [
   {
-    label: 'LLM COST (DAILY)',
+    label: 'LLM 日费用',
     getValue: (d) => `$${d.llmCostDaily.toFixed(2)}`,
     accent: 'var(--accent-cyan)',
   },
   {
-    label: 'ACTIVE BOTS',
+    label: '活跃 BOT',
     getValue: (d) => String(d.activeBots),
     accent: 'var(--accent-green)',
   },
   {
-    label: 'LITELLM POOL',
+    label: '模型池',
     getValue: (d) => `${d.poolActive}/${d.poolTotal}`,
     accent: 'var(--accent-purple)',
   },
   {
-    label: 'MEMORY',
+    label: '记忆条目',
     getValue: (d) => d.memoryEntries > 0 ? d.memoryEntries.toLocaleString() : '--',
     accent: 'var(--accent-amber)',
   },
@@ -49,7 +49,7 @@ const metrics: MetricConfig[] = [
 export function TelemetryCard({ data, isRunning }: Props) {
   return (
     <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label">TELEMETRY</span>
+      <span className="text-label">系统遥测</span>
 
       <div className="grid grid-cols-2 gap-4 mt-4 flex-1">
         {metrics.map((m) => (
@@ -67,7 +67,7 @@ export function TelemetryCard({ data, isRunning }: Props) {
         <div className="flex items-center gap-2">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           <span className="font-mono text-[10px] uppercase" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {isRunning ? 'ALL SYSTEMS NOMINAL' : 'SERVICE OFFLINE'}
+            {isRunning ? '系统正常' : '服务离线'}
           </span>
         </div>
       </div>

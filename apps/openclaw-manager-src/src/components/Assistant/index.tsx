@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../../lib/api';
+import { toast } from 'sonner';
 import { useLanguage } from '../../i18n';
 import { clawbotFetch } from '../../lib/tauri-core';
 
@@ -288,11 +289,11 @@ export function Assistant() {
           <div className={clsx('flex items-center gap-2 rounded-2xl px-4 py-2.5', 'bg-[var(--bg-card)] border border-[var(--glass-border)]', 'backdrop-blur-xl transition-all duration-300 focus-within:border-opacity-100')}
             onFocus={e => { e.currentTarget.style.borderColor = `${cfg.colorHex}55`; e.currentTarget.style.boxShadow = `0 0 20px ${cfg.colorHex}15`; }}
             onBlur={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}>
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><Paperclip size={16} /></button>
+            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors opacity-40 cursor-not-allowed" title="附件功能开发中" onClick={() => toast.info('附件功能正在开发中，敬请期待')}><Paperclip size={16} /></button>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               placeholder={loading ? t('assistant.aiReplying') : t('assistant.inputMessage')} disabled={loading}
               className={clsx('flex-1 bg-transparent text-sm text-[var(--text-primary)] font-body placeholder:text-[var(--text-tertiary)] outline-none disabled:opacity-50')} />
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><Mic size={16} /></button>
+            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors opacity-40 cursor-not-allowed" title="语音输入开发中" onClick={() => toast.info('语音输入功能正在开发中，敬请期待')}><Mic size={16} /></button>
             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSend} disabled={loading || !input.trim()}
               className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors disabled:opacity-40"
               style={{ background: input.trim() && !loading ? cfg.colorHex : 'rgba(255,255,255,0.06)', color: input.trim() && !loading ? 'var(--bg-base)' : 'var(--text-tertiary)' }}>
