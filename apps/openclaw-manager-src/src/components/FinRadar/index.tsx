@@ -505,7 +505,7 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-1">
             <Zap size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              恐惧&贪婪指数
+              {t('finRadar.fearGreedIndex')}
             </span>
           </div>
 
