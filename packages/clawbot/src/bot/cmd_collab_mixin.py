@@ -585,8 +585,8 @@ class CollabCommandsMixin:
             logger.warning("[cmd_stop_discuss] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     async def _run_discuss_loop(self, chat_id, context, reply_to):
         """驱动讨论循环：依次让每个Bot用自己的Telegram账号发言"""
