@@ -12,6 +12,32 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — i18n 深度覆盖：全部 30+ 页面接入中英文双语
+> 领域: `frontend`
+> 影响模块: 全部 30+ 前端页面组件 + `src/i18n/zh-CN.ts` + `src/i18n/en-US.ts`
+> 关联问题: —
+
+### 变更内容
+
+**5 批 i18n 改造，全部页面接入 `t()` 翻译函数：**
+
+| 批次 | 页面 | 新增 key | 替换处数 |
+|------|------|---------|---------|
+| 第1批 | Home/Portfolio/Bots/Assistant/Money | 241 | ~192 |
+| 第2批 | Social/Memory/Logs/Evolution/Store | 114 | ~88 |
+| 第3批 | WorldMonitor/NewsFeed/FinRadar/Trading/Risk/Notifications | 217 | ~217 |
+| 第4批 | ControlCenter/Dashboard/Performance/APIGateway/AIConfig/Dev/DevPanel/Testing/Channels/Plugins | 280 | ~280 |
+| 第5批 | Onboarding/CommandPalette/Scheduler/ExecutionFlow | 113 | ~93 |
+| **合计** | **30+ 页面** | **~965** | **~870** |
+
+**翻译 key 总计：从 170 个增长到 ~1135 个**
+
+### 覆盖范围
+- 所有页面标题、按钮文本、标签、提示语、placeholder、toast 消息
+- Sidebar 导航项、Header 页面标题、Settings 语言切换
+- 新手引导流程（Onboarding）、命令面板（CommandPalette）
+- 保留不替换：console 日志、API 路径、CSS 类名、组件外常量 label
+
 ## 2026-04-20 — 8 项遗留问题全部清零 + i18n 国际化
 > 领域: `frontend` + `backend` + `trading`
 > 影响模块: `Social`, `APIGateway`, `Portfolio`, `Money`, `Dev`, `Settings`, `_init_system.py`, `trading.py`, `xianyu.py`, `system.py`, `i18n/`
