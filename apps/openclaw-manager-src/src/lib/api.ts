@@ -424,4 +424,20 @@ export const api = {
   /** 获取系统性能指标 */
   perfMetrics: () =>
     clawbotFetchJson('/api/v1/perf'),
+
+  // ══════════════════════════════════════════════
+  //  开发者面板 (Dev Panel)
+  // ══════════════════════════════════════════════
+
+  /** 获取最近 15 条 Git 提交记录 */
+  devGitLog: () =>
+    clawbotFetchJson('/api/v1/system/git-log'),
+
+  /** 获取 HEALTH.md 健康摘要统计 */
+  devHealthSummary: () =>
+    clawbotFetchJson('/api/v1/system/health-summary'),
+
+  /** 获取过时 pip 依赖列表 */
+  devOutdatedDeps: () =>
+    clawbotFetchJson('/api/v1/system/outdated-deps'),
 };
