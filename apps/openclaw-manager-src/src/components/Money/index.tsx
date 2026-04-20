@@ -21,6 +21,7 @@ import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { EmptyState } from '../shared/EmptyState';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -97,19 +98,6 @@ function renderBar(value: number, maxValue: number, width: number = 24): string 
   const ratio = value / maxValue;
   const filled = Math.round(ratio * width);
   return '█'.repeat(filled) + '░'.repeat(width - filled);
-}
-
-/* ====== 暂无数据占位组件 ====== */
-function NoDataPlaceholder({ reason }: { reason: string }) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center py-8 gap-2"
-      style={{ color: 'var(--text-disabled)' }}
-    >
-      <AlertCircle size={20} />
-      <span className="font-mono text-xs text-center">{reason}</span>
-    </div>
-  );
 }
 
 /* ====== 主组件 ====== */
