@@ -378,7 +378,7 @@ export default function DevPanel() {
                 {[
                   { label: 'OS', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
                   { label: 'Arch', value: sysInfo.arch, color: 'var(--accent-cyan)' },
-                  { label: 'OpenClaw', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
+                  { label: 'OpenEverything', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
                   { label: 'Node', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
                   { label: t('devPanel.configDir'), value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
                 ].map((info) => (

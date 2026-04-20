@@ -41,18 +41,18 @@ function renderFatalScreen(title: string, detail: string) {
 window.addEventListener('error', (event) => {
   const message = event.error instanceof Error ? event.error.message : event.message;
   const stack = event.error instanceof Error ? event.error.stack || '' : '';
-  console.error('[OpenClaw Manager] 全局错误已捕获', event.error || event.message);
-  renderFatalScreen('OpenClaw Manager 遇到全局错误', `${message || '未知错误'}${stack ? `\n\n${stack}` : ''}`);
+  console.error('[OpenEverything] 全局错误已捕获', event.error || event.message);
+  renderFatalScreen('OpenEverything 遇到全局错误', `${message || '未知错误'}${stack ? `\n\n${stack}` : ''}`);
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason instanceof Error ? `${event.reason.message}\n\n${event.reason.stack || ''}` : String(event.reason || '未知 Promise 错误');
-  console.error('[OpenClaw Manager] 未处理 Promise 错误', event.reason);
-  renderFatalScreen('OpenClaw Manager 遇到未处理异常', reason);
+  console.error('[OpenEverything] 未处理 Promise 错误', event.reason);
+  renderFatalScreen('OpenEverything 遇到未处理异常', reason);
 });
 
 console.log(
-  '%c🦞 OpenClaw 启动',
+  '%c🦞 OpenEverything 启动',
   'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 16px; padding: 8px 16px; border-radius: 4px; font-weight: bold;'
 );
 console.log(

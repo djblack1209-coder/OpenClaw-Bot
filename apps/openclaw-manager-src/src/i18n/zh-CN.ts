@@ -1079,7 +1079,7 @@ export const zhCN: Record<string, string> = {
   'notifications.newNotification': '新通知',
 
   // Onboarding 新手引导
-  'onboarding.welcome.title': '欢迎使用 OpenClaw',
+  'onboarding.welcome.title': '欢迎使用 OpenEverything',
   'onboarding.welcome.subtitle': '你的智能生活控制台',
   'onboarding.welcome.aiCS': 'AI客服',
   'onboarding.welcome.aiCSDesc': '闲鱼自动回复，智能议价',
