@@ -148,8 +148,8 @@ if os.getenv("LANGFUSE_SECRET_KEY") and os.getenv("LANGFUSE_PUBLIC_KEY"):
 ROUTE_BALANCED = "balanced"
 
 # ---- 模型强度分级 ----
-TIER_S, TIER_A, TIER_B, TIER_C = "S", "A", "B", "C"
-_TIER_ORDER = {TIER_S: 0, TIER_A: 1, TIER_B: 2, TIER_C: 3}
+TIER_S, TIER_A, TIER_B, TIER_C, TIER_D = "S", "A", "B", "C", "D"
+_TIER_ORDER = {TIER_S: 0, TIER_A: 1, TIER_B: 2, TIER_C: 3, TIER_D: 4}
 
 
 @dataclass
@@ -871,6 +871,22 @@ class LiteLLMPool:
                 note="g4f fallback (TIER_C)",
                 timeout=LLM_TIMEOUT_REASONING,
                 stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
+            )
+        )
+
+        # Ollama 本地模型（零成本兜底，仅在所有远程模型不可用时使用）
+        ollama_base = _env("LOCAL_HF_MODEL_ENDPOINT", "http://127.0.0.1:11434")
+        deps.append(
+            self._dep(
+                "ollama_local",
+                "ollama/gemma4:e4b-optimized",
+                "ollama",  # ollama 不需要真实 key
+                ollama_base,
+                rpm=999,  # 本地无限制
+                tier=TIER_D,
+                family="gemma",
+                timeout=60,
+                note="本地 Ollama (零成本)",
             )
         )
 

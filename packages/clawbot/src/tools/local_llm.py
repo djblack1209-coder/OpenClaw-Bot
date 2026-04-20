@@ -134,7 +134,7 @@ async def local_complete(
                 resp = await client.post(
                     _BACKENDS["ollama"]["generate"],
                     json={
-                        "model": model_name or "qwen2.5:1.5b",
+                        "model": model_name or "gemma4:e4b-optimized",
                         "prompt": f"{system}\n\n{prompt}",
                         "stream": False,
                         "options": {"num_predict": max_tokens},

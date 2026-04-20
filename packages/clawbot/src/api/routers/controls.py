@@ -47,7 +47,7 @@ class GlobalSettings(BaseModel):
 
     daily_budget_usd: float = 50.0
     default_llm_model: str = "claude-sonnet-4-20250514"
-    local_hf_model_enabled: bool = False
+    local_hf_model_enabled: bool = True
     local_hf_model_endpoint: str = "http://localhost:11434"
     auto_heal_enabled: bool = True
     scheduler_enabled: bool = True
