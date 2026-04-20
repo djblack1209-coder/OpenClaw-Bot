@@ -14,6 +14,7 @@ import {
   Wifi, WifiOff, RefreshCw,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -138,6 +139,13 @@ export function APIGateway() {
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [deletingTokenIds, setDeletingTokenIds] = useState<Set<number>>(new Set());
   const [deletingChannelIds, setDeletingChannelIds] = useState<Set<number>>(new Set());
+  /* 确认弹窗状态 */
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: '', description: '', onConfirm: () => {} });
 
   /* ── 数据拉取 ── */
   const fetchData = useCallback(async (silent = false) => {
@@ -216,42 +224,56 @@ export function APIGateway() {
 
   /* ── 删除渠道 ── */
   const handleDeleteChannel = useCallback(async (channelId: number, name?: string) => {
-    if (!confirm(`确定要删除渠道「${name || channelId}」？`)) return;
-    setDeletingChannelIds((prev) => new Set(prev).add(channelId));
-    try {
-      await parseResponse(await api.newApiDeleteChannel(channelId));
-      toast.success(`渠道「${name || channelId}」已删除`);
-      setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
-    } catch (err) {
-      console.error('[APIGateway] 删除渠道失败:', err);
-      toast.error('删除渠道失败');
-    } finally {
-      setDeletingChannelIds((prev) => {
-        const next = new Set(prev);
-        next.delete(channelId);
-        return next;
-      });
-    }
+    const doDelete = async () => {
+      setDeletingChannelIds((prev) => new Set(prev).add(channelId));
+      try {
+        await parseResponse(await api.newApiDeleteChannel(channelId));
+        toast.success(`渠道「${name || channelId}」已删除`);
+        setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
+      } catch (err) {
+        console.error('[APIGateway] 删除渠道失败:', err);
+        toast.error('删除渠道失败');
+      } finally {
+        setDeletingChannelIds((prev) => {
+          const next = new Set(prev);
+          next.delete(channelId);
+          return next;
+        });
+      }
+    };
+    setConfirmDialog({
+      open: true,
+      title: '删除渠道',
+      description: `确定要删除渠道「${name || channelId}」？删除后不可恢复。`,
+      onConfirm: doDelete,
+    });
   }, []);
 
   /* ── 删除令牌 ── */
   const handleDeleteToken = useCallback(async (tokenId: number, name?: string) => {
-    if (!confirm(`确定要删除令牌「${name || tokenId}」？`)) return;
-    setDeletingTokenIds((prev) => new Set(prev).add(tokenId));
-    try {
-      await parseResponse(await api.newApiDeleteToken(tokenId));
-      toast.success(`令牌「${name || tokenId}」已删除`);
-      setTokens((prev) => prev.filter((t) => t.id !== tokenId));
-    } catch (err) {
-      console.error('[APIGateway] 删除令牌失败:', err);
-      toast.error('删除令牌失败');
-    } finally {
-      setDeletingTokenIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tokenId);
-        return next;
-      });
-    }
+    const doDelete = async () => {
+      setDeletingTokenIds((prev) => new Set(prev).add(tokenId));
+      try {
+        await parseResponse(await api.newApiDeleteToken(tokenId));
+        toast.success(`令牌「${name || tokenId}」已删除`);
+        setTokens((prev) => prev.filter((t) => t.id !== tokenId));
+      } catch (err) {
+        console.error('[APIGateway] 删除令牌失败:', err);
+        toast.error('删除令牌失败');
+      } finally {
+        setDeletingTokenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(tokenId);
+          return next;
+        });
+      }
+    };
+    setConfirmDialog({
+      open: true,
+      title: '删除令牌',
+      description: `确定要删除令牌「${name || tokenId}」？删除后不可恢复。`,
+      onConfirm: doDelete,
+    });
   }, []);
 
   /* ── 派生数据 ── */
@@ -693,6 +715,21 @@ export function APIGateway() {
           </div>
         </motion.div>
       </motion.div>
+
+      {/* 删除确认弹窗 */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, open: false }))}
+        onConfirm={() => {
+          confirmDialog.onConfirm();
+          setConfirmDialog((prev) => ({ ...prev, open: false }));
+        }}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmText="删除"
+        cancelText="取消"
+        destructive
+      />
     </div>
   );
 }
