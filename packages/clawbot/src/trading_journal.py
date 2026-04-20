@@ -494,6 +494,45 @@ class TradingJournal(
             row = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
         return dict(row) if row else None
 
+    def get_trades_paginated(
+        self,
+        offset: int = 0,
+        limit: int = 20,
+        status: Optional[str] = None,
+        symbol: Optional[str] = None,
+        side: Optional[str] = None,
+    ) -> Dict:
+        """分页查询交易记录，支持状态/标的/方向筛选，返回 {items, total, offset, limit}"""
+        conditions = []
+        params: list = []
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        if symbol:
+            conditions.append("symbol = ?")
+            params.append(symbol.upper())
+        if side:
+            conditions.append("side = ?")
+            params.append(side.upper())
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        with self._conn() as conn:
+            # 总数
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM trades WHERE {where_clause}", params
+            ).fetchone()[0]
+            # 分页数据
+            rows = conn.execute(
+                f"SELECT * FROM trades WHERE {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
+        return {
+            "items": [dict(r) for r in rows],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
+
     # ============ 数据清理 ============
 
     def cleanup(self, days: int = 365) -> int:

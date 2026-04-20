@@ -74,6 +74,25 @@ interface BacktestResult {
   [key: string]: unknown;
 }
 
+/** 交易日志条目 */
+interface TradeLogItem {
+  id: number;
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  entry_time: string;
+  exit_price?: number;
+  exit_time?: string;
+  pnl?: number;
+  pnl_pct?: number;
+  status: string;
+  entry_reason?: string;
+  exit_reason?: string;
+  decided_by?: string;
+  hold_duration_hours?: number;
+}
+
 /* ====== 标签页 ID ====== */
 type TabId = 'overview' | 'decision' | 'auto' | 'backtest' | 'logs';
 
@@ -194,6 +213,14 @@ export function Portfolio() {
   const [btPeriod, setBtPeriod] = useState('1y');
   const [btLoading, setBtLoading] = useState(false);
   const [btResult, setBtResult] = useState<BacktestResult | null>(null);
+
+  /* ---- 交易日志状态 ---- */
+  const [journalItems, setJournalItems] = useState<TradeLogItem[]>([]);
+  const [journalTotal, setJournalTotal] = useState(0);
+  const [journalPage, setJournalPage] = useState(0);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalFilter, setJournalFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const JOURNAL_PAGE_SIZE = 15;
 
   /* ====== 数据拉取：持仓概览 ====== */
   const fetchData = useCallback(async (silent = false) => {
@@ -344,6 +371,34 @@ export function Portfolio() {
       setBtLoading(false);
     }
   };
+
+  /* ====== 交易日志数据拉取 ====== */
+  const fetchJournal = useCallback(async (page = 0, filter: 'all' | 'open' | 'closed' = journalFilter) => {
+    setJournalLoading(true);
+    try {
+      const data = await api.tradingJournal({
+        offset: page * JOURNAL_PAGE_SIZE,
+        limit: JOURNAL_PAGE_SIZE,
+        status: filter === 'all' ? '' : filter,
+      }) as { items: TradeLogItem[]; total: number };
+      setJournalItems(data.items || []);
+      setJournalTotal(data.total || 0);
+      setJournalPage(page);
+    } catch (e) {
+      console.error('[Portfolio] 交易日志请求失败:', e);
+      setJournalItems([]);
+      setJournalTotal(0);
+    } finally {
+      setJournalLoading(false);
+    }
+  }, [journalFilter]);
+
+  /* 切换到日志 Tab 时自动加载 */
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchJournal(0);
+    }
+  }, [activeTab, fetchJournal]);
 
   /* ====== 加载态（仅初始加载时显示） ====== */
   if (loading && !portfolio) {
@@ -1195,33 +1250,149 @@ export function Portfolio() {
 
         {/* ====== Tab 5: 交易日志 ====== */}
         {activeTab === 'logs' && (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
+          <motion.div variants={containerVariants} initial="hidden" animate="visible">
             <motion.div variants={cardVariants}>
               <div className="abyss-card p-6">
-                <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  TRADE LOGS
-                </span>
-                <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-                  交易日志
-                </h3>
-                <div className="mt-12 flex flex-col items-center justify-center py-16">
-                  <div
-                    className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  >
-                    <span className="text-2xl" style={{ opacity: 0.4 }}>📋</span>
+                {/* 标题 + 筛选 */}
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                      TRADE LOGS
+                    </span>
+                    <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
+                      交易日志
+                      <span className="ml-2 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                        共 {journalTotal} 条
+                      </span>
+                    </h3>
                   </div>
-                  <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    交易日志功能开发中
-                  </p>
-                  <p className="font-mono text-xs mt-2" style={{ color: 'var(--text-disabled)' }}>
-                    后续版本将支持分页查看历史交易记录、筛选和导出
-                  </p>
+                  <div className="flex items-center gap-2">
+                    {(['all', 'open', 'closed'] as const).map((f) => (
+                      <button
+                        key={f}
+                        className="px-3 py-1 rounded-lg font-mono text-xs transition-colors"
+                        style={{
+                          background: journalFilter === f ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.04)',
+                          color: journalFilter === f ? '#000' : 'var(--text-secondary)',
+                          border: '1px solid ' + (journalFilter === f ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.08)'),
+                        }}
+                        onClick={() => { setJournalFilter(f); fetchJournal(0, f); }}
+                      >
+                        {{ all: '全部', open: '持仓中', closed: '已平仓' }[f]}
+                      </button>
+                    ))}
+                    <button
+                      className="px-3 py-1 rounded-lg font-mono text-xs"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.08)' }}
+                      onClick={() => fetchJournal(journalPage)}
+                    >
+                      刷新
+                    </button>
+                  </div>
                 </div>
+
+                {/* 表格 */}
+                {journalLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
+                         style={{ borderColor: 'var(--accent-cyan)', borderTopColor: 'transparent' }} />
+                    <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>加载中...</span>
+                  </div>
+                ) : journalItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <span className="text-2xl mb-2" style={{ opacity: 0.3 }}>📋</span>
+                    <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>暂无交易记录</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full font-mono text-xs" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
+                      <thead>
+                        <tr style={{ color: 'var(--text-disabled)' }}>
+                          <th className="text-left px-3 py-2">标的</th>
+                          <th className="text-left px-3 py-2">方向</th>
+                          <th className="text-right px-3 py-2">数量</th>
+                          <th className="text-right px-3 py-2">入场价</th>
+                          <th className="text-right px-3 py-2">出场价</th>
+                          <th className="text-right px-3 py-2">盈亏</th>
+                          <th className="text-right px-3 py-2">盈亏%</th>
+                          <th className="text-center px-3 py-2">状态</th>
+                          <th className="text-left px-3 py-2">入场时间</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {journalItems.map((t) => (
+                          <tr key={t.id} className="hover:brightness-125 transition-all"
+                              style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                            <td className="px-3 py-2 font-bold" style={{ color: 'var(--text-primary)' }}>{t.symbol}</td>
+                            <td className="px-3 py-2">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold"
+                                    style={{
+                                      background: t.side === 'BUY' ? 'rgba(0,255,136,0.12)' : 'rgba(255,68,68,0.12)',
+                                      color: t.side === 'BUY' ? 'var(--accent-green)' : 'var(--accent-red)',
+                                    }}>
+                                {t.side === 'BUY' ? '买入' : '卖出'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right" style={{ color: 'var(--text-secondary)' }}>{t.quantity}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: 'var(--text-primary)' }}>
+                              ${t.entry_price?.toFixed(2) ?? '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right" style={{ color: 'var(--text-primary)' }}>
+                              {t.exit_price ? `$${t.exit_price.toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold"
+                                style={{ color: t.pnl != null ? pnlColor(t.pnl) : 'var(--text-disabled)' }}>
+                              {t.pnl != null ? `${pnlSign(t.pnl)}${fmtUsd(t.pnl)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right"
+                                style={{ color: t.pnl_pct != null ? pnlColor(t.pnl_pct) : 'var(--text-disabled)' }}>
+                              {t.pnl_pct != null ? `${pnlSign(t.pnl_pct)}${(t.pnl_pct * 100).toFixed(2)}%` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className="px-2 py-0.5 rounded text-[10px]"
+                                    style={{
+                                      background: t.status === 'open' ? 'rgba(0,255,136,0.1)' : t.status === 'closed' ? 'rgba(255,255,255,0.06)' : 'rgba(255,170,0,0.1)',
+                                      color: t.status === 'open' ? 'var(--accent-green)' : t.status === 'closed' ? 'var(--text-secondary)' : 'var(--accent-amber)',
+                                    }}>
+                                {{ open: '持仓中', closed: '已平仓', pending: '待成交' }[t.status] || t.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2" style={{ color: 'var(--text-disabled)' }}>
+                              {t.entry_time ? new Date(t.entry_time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* 分页 */}
+                {journalTotal > JOURNAL_PAGE_SIZE && (
+                  <div className="flex items-center justify-between mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                      第 {journalPage + 1} / {Math.ceil(journalTotal / JOURNAL_PAGE_SIZE)} 页
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1 rounded font-mono text-xs"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: journalPage === 0 ? 'var(--text-disabled)' : 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.08)', cursor: journalPage === 0 ? 'not-allowed' : 'pointer' }}
+                        disabled={journalPage === 0}
+                        onClick={() => fetchJournal(journalPage - 1)}
+                      >
+                        上一页
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded font-mono text-xs"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: (journalPage + 1) * JOURNAL_PAGE_SIZE >= journalTotal ? 'var(--text-disabled)' : 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.08)', cursor: (journalPage + 1) * JOURNAL_PAGE_SIZE >= journalTotal ? 'not-allowed' : 'pointer' }}
+                        disabled={(journalPage + 1) * JOURNAL_PAGE_SIZE >= journalTotal}
+                        onClick={() => fetchJournal(journalPage + 1)}
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

@@ -367,6 +367,24 @@ export const api = {
   watchlistRemove: (symbol: string) =>
     clawbotFetchJson(`/api/v1/trading/watchlist/${symbol}`, { method: 'DELETE' }),
 
+  /** 分页获取交易日志 */
+  tradingJournal: (params?: {
+    offset?: number;
+    limit?: number;
+    status?: string;
+    symbol?: string;
+    side?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.offset) qs.set('offset', String(params.offset));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.status) qs.set('status', params.status);
+    if (params?.symbol) qs.set('symbol', params.symbol);
+    if (params?.side) qs.set('side', params.side);
+    const q = qs.toString();
+    return clawbotFetchJson(`/api/v1/trading/journal${q ? '?' + q : ''}`);
+  },
+
   // ══════════════════════════════════════════════
   //  Evolution 引擎 (HTTP 降级)
   // ══════════════════════════════════════════════
