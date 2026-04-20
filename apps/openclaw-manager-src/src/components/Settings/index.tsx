@@ -9,8 +9,11 @@ import {
   User, Shield, Cpu, HardDrive, Wifi, Key, Bell,
   Settings2, Download, RotateCcw, Trash2, FileText,
   Stethoscope, Check, MemoryStick, Loader2, Save,
+  Languages,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '@/i18n';
+import type { Language } from '@/i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -53,6 +56,9 @@ interface SettingsProps {
 }
 
 export function Settings(_props: SettingsProps) {
+  /* —— i18n —— */
+  const { t, lang, setLang } = useLanguage();
+
   /* —— 状态 —— */
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -342,6 +348,47 @@ export function Settings(_props: SettingsProps) {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ====== Row 2.5: 语言切换 (span-12) ====== */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-4">
+              <Languages size={16} style={{ color: 'var(--accent-cyan)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                {t('settings.language').toUpperCase()}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {([
+                { value: 'zh-CN' as Language, label: t('settings.langZh') },
+                { value: 'en-US' as Language, label: t('settings.langEn') },
+              ]).map((option) => {
+                const isSelected = lang === option.value;
+                return (
+                  <div
+                    key={option.value}
+                    className="flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all"
+                    style={{
+                      background: isSelected ? 'rgba(0,212,255,0.08)' : 'var(--bg-base)',
+                      border: isSelected ? '1px solid rgba(0,212,255,0.2)' : '1px solid transparent',
+                    }}
+                    onClick={() => setLang(option.value)}
+                  >
+                    <span className="font-mono text-xs" style={{ color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                      {option.label}
+                    </span>
+                    {isSelected && (
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,212,255,0.15)' }}>
+                        <Check size={12} style={{ color: 'var(--accent-cyan)' }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </motion.div>

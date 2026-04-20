@@ -301,7 +301,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           {/* DEV 开关 */}
           <button
             onClick={toggleDevMode}
-            title={devMode ? '关闭开发者模式' : '开启开发者模式'}
+            title={devMode ? t('sidebar.devModeOn') : t('sidebar.devModeOff')}
             className="flex items-center justify-center rounded-lg transition-all duration-200"
             style={{
               width: sidebarCollapsed ? 32 : 'auto',
@@ -368,7 +368,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
               e.currentTarget.style.background = 'transparent';
               e.currentTarget.style.color = 'var(--text-tertiary)';
             }}
-            title={sidebarCollapsed ? '展开' : '折叠'}
+            title={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           >
             {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
