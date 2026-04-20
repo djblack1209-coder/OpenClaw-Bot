@@ -556,6 +556,25 @@ export function Portfolio() {
             initial="hidden"
             animate="visible"
           >
+            {/* 券商未连接警告 */}
+            {!p.connected && p.total_value === 0 && (
+              <div className="col-span-12 mb-4">
+                <div className="abyss-card p-4 border border-[var(--accent-amber)]/20" style={{ background: 'rgba(255,170,0,0.05)' }}>
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle size={18} style={{ color: 'var(--accent-amber)' }} />
+                    <div>
+                      <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
+                        券商未连接
+                      </p>
+                      <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                        IB Gateway 未启动或未连接，所有数据显示为 0。请在「智能体」页面启动 IBKR Gateway 服务。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 总资产概览 (span-8) */}
             <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
