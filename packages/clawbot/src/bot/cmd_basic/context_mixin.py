@@ -36,8 +36,8 @@ class _ContextMixin:
             logger.warning("[cmd_lanes] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     async def cmd_clear(self, update, context):
@@ -49,8 +49,8 @@ class _ContextMixin:
             logger.warning("[cmd_clear] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     async def cmd_voice(self, update, context):
@@ -64,8 +64,8 @@ class _ContextMixin:
             logger.warning("[cmd_voice] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing
@@ -101,8 +101,8 @@ class _ContextMixin:
             logger.warning("[cmd_context] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing
@@ -138,5 +138,5 @@ class _ContextMixin:
             logger.warning("[cmd_compact] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)

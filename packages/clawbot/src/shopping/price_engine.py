@@ -229,8 +229,8 @@ def _parse_jd_item(item) -> Optional[PriceResult]:
     if price_el:
         try:
             price = float(price_el.text.strip())
-        except (ValueError, AttributeError) as e:  # noqa: F841
-            pass
+        except (ValueError, AttributeError) as e:
+            logger.debug("价格解析失败: %s", e)
 
     if price <= 0:
         return None
@@ -284,8 +284,8 @@ def _extract_price(text: str) -> float:
     if match:
         try:
             return float(match.group())
-        except ValueError as e:  # noqa: F841
-            pass
+        except ValueError as e:
+            logger.debug("价格正则匹配结果转换失败: %s", e)
     return 0.0
 
 

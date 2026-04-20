@@ -245,8 +245,8 @@ def _extract_price(text: str) -> float:
             val = float(match.group())
             if 0.01 <= val <= 999999:  # 合理价格范围
                 return val
-        except ValueError as e:  # noqa: F841
-            pass
+        except ValueError as e:
+            logger.debug("价格解析失败: %s", e)
     return 0.0
 
 

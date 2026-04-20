@@ -445,13 +445,13 @@ def _kill_mitmdump(proc: Optional[subprocess.Popen]) -> None:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         proc.wait(timeout=5)
         logger.info("mitmdump 已终止 (PID %d)", proc.pid)
-    except (ProcessLookupError, ChildProcessError):
-        pass
+    except (ProcessLookupError, ChildProcessError) as e:
+        logger.debug("mitmdump进程已退出: %s", e)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, ChildProcessError):
-            pass
+        except (ProcessLookupError, ChildProcessError) as e:
+            logger.debug("强杀mitmdump时进程已退出: %s", e)
     except Exception as e:
         logger.debug("清理 mitmdump 进程异常: %s", e)
 
@@ -955,6 +955,6 @@ async def auto_claim_coupon() -> str:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 lock_fd.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("释放文件锁异常: %s", e)
         logger.info("领券流程清理完毕")

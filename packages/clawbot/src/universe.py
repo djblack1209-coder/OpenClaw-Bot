@@ -292,8 +292,8 @@ async def full_market_scan(
     if env_top_n:
         try:
             final_top_n = min(max(5, int(env_top_n)), 200)  # 上限200防止返回过多
-        except ValueError as e:  # noqa: F841
-            pass
+        except ValueError as e:
+            logger.debug("MAX_SCAN_CANDIDATES环境变量解析失败: %s", e)
 
     top_candidates = layer2_results[:final_top_n]
 

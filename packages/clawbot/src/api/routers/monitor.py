@@ -44,8 +44,8 @@ async def get_news(
     if category:
         try:
             categories = [NewsCategory(category)]
-        except ValueError:
-            pass
+        except ValueError as e:
+            logger.debug("新闻分类解析失败: %s", e)
 
     items = await fetcher.fetch_all(categories=categories)
 

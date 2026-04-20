@@ -175,8 +175,8 @@ async def _build_today_agenda(db_path=None) -> List[str]:
                     if remind_time <= today_end:
                         time_str = remind_time.strftime("%H:%M")
                         agenda.append((1, f"⏰ {time_str} {r['message']}"))
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug("提醒时间解析失败: %s", e)
     except Exception as e:
         logger.debug("[TodayAgenda] 提醒: %s", e)
 
@@ -453,8 +453,8 @@ async def _brief_reminders(sections: list, *, db_path=None) -> None:
                     if remind_time <= today_end:
                         time_str = remind_time.strftime("%H:%M")
                         today_reminders.append(f"⏰ {time_str} — {r['message']}")
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug("提醒时间解析失败: %s", e)
                 # 重复提醒也列出（不论时间）
                 recurrence = r.get("recurrence_rule", "")
                 if recurrence:

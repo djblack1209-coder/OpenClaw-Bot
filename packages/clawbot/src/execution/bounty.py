@@ -55,8 +55,8 @@ def _upsert_lead(conn, lead: Dict):
              json.dumps(lead.get("keywords", []), ensure_ascii=False),
              now, now, now)
         )
-    except sqlite3.IntegrityError as e:  # noqa: F841
-        pass
+    except sqlite3.IntegrityError as e:
+        logger.debug("记录已存在(重复忽略): %s", e)
     except Exception as e:
         logger.warning(f"[Bounty] upsert failed: {e}")
 

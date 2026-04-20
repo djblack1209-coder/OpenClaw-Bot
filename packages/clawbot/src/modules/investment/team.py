@@ -770,8 +770,8 @@ class StrategyHealthMonitor:
                             )
                         )
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError as e:  # noqa: F841
-                        pass
+                    except RuntimeError as e:
+                        logger.debug("发布策略暂停事件时无事件循环: %s", e)
             except Exception as e:
                 logger.debug("静默异常: %s", e)
             return reason
