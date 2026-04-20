@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -66,6 +67,7 @@ function nowTs(): string {
 /* ====== 主组件 ====== */
 
 export function Plugins() {
+  const { t } = useLanguage();
   const [plugins, setPlugins] = useState<PluginItem[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,17 +165,17 @@ export function Plugins() {
     try {
       if (plugin.status === 'running') {
         await api.stopMcpPlugin(plugin.id);
-        toast.success(`${plugin.name} 已停止`);
+        toast.success(`${plugin.name} ${t('plugins.stopped')}`);
         setLogs((prev) => [{ ts: nowTs(), msg: `[PLUGIN] ${plugin.name} 已停用 — 手动关闭` }, ...prev].slice(0, 20));
       } else {
         await api.startMcpPlugin(plugin.id);
-        toast.success(`${plugin.name} 已启动`);
+        toast.success(`${plugin.name} ${t('plugins.started')}`);
         setLogs((prev) => [{ ts: nowTs(), msg: `[PLUGIN] ${plugin.name} 已启动 — 手动开启` }, ...prev].slice(0, 20));
       }
       // 刷新数据
       await fetchData();
     } catch (err) {
-      toast.error(`操作失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      toast.error(`${t('plugins.operationFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`);
       setLogs((prev) => [{ ts: nowTs(), msg: `[ERROR] ${plugin.name} 切换失败: ${err instanceof Error ? err.message : '未知错误'}` }, ...prev].slice(0, 20));
     } finally {
       setToggling(null);
@@ -208,7 +210,7 @@ export function Plugins() {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin text-[var(--accent-purple)]" size={32} />
-        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">正在加载插件…</span>
+        <span className="ml-3 text-[var(--text-secondary)] font-mono text-sm">{t('plugins.loading')}</span>
       </div>
     );
   }
@@ -237,13 +239,13 @@ export function Plugins() {
                   PROTOCOL BRIDGE
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  MCP 插件管理 // MODEL CONTEXT PROTOCOL
+                  {t('plugins.subtitle')}
                 </p>
               </div>
               <button
                 onClick={() => { setLoading(true); fetchData(); }}
                 className="text-[var(--text-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
-                title="手动刷新"
+                title={t('plugins.manualRefresh')}
               >
                 <RefreshCw size={14} />
               </button>
@@ -251,7 +253,7 @@ export function Plugins() {
 
             {plugins.length === 0 ? (
               <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] font-mono text-sm">
-                暂无插件数据
+                {t('plugins.noPluginData')}
               </div>
             ) : (
               <>
@@ -260,11 +262,11 @@ export function Plugins() {
                   className="grid grid-cols-12 gap-2 px-4 py-2 rounded-lg mb-1"
                   style={{ background: 'var(--bg-tertiary)' }}
                 >
-                  <span className="text-label col-span-5" style={{ fontSize: '10px' }}>名称</span>
-                  <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>版本</span>
-                  <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>协议</span>
-                  <span className="text-label col-span-1 text-center" style={{ fontSize: '10px' }}>状态</span>
-                  <span className="text-label col-span-2 text-right" style={{ fontSize: '10px' }}>开关</span>
+                  <span className="text-label col-span-5" style={{ fontSize: '10px' }}>{t('plugins.colName')}</span>
+                  <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>{t('plugins.colVersion')}</span>
+                  <span className="text-label col-span-2 text-center" style={{ fontSize: '10px' }}>{t('plugins.colProtocol')}</span>
+                  <span className="text-label col-span-1 text-center" style={{ fontSize: '10px' }}>{t('plugins.colStatus')}</span>
+                  <span className="text-label col-span-2 text-right" style={{ fontSize: '10px' }}>{t('plugins.colSwitch')}</span>
                 </div>
 
                 {/* 插件行 */}
@@ -314,7 +316,7 @@ export function Plugins() {
                             ) : (
                               <Power size={10} />
                             )}
-                            {isOn ? '运行中' : '已停用'}
+                            {isOn ? t('plugins.running') : t('plugins.disabled')}
                           </button>
                         </div>
                       </div>
@@ -326,7 +328,7 @@ export function Plugins() {
           </div>
         </motion.div>
 
-        {/* ====== 插件统计 (col-4) ====== */}
+        {/* ====== {t('plugins.pluginStats')} (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
@@ -338,10 +340,10 @@ export function Plugins() {
 
             <div className="grid grid-cols-2 gap-4 flex-1">
               {[
-                { label: '已安装', value: plugins.length, color: 'var(--accent-cyan)' },
-                { label: '运行中', value: running, color: 'var(--accent-green)' },
-                { label: '已停用', value: stopped, color: 'var(--accent-red)' },
-                { label: '协议类型', value: protocolStats.length, color: 'var(--accent-amber)' },
+                { label: t('plugins.installed'), value: plugins.length, color: 'var(--accent-cyan)' },
+                { label: t('plugins.runningCount'), value: running, color: 'var(--accent-green)' },
+                { label: t('plugins.stoppedCount'), value: stopped, color: 'var(--accent-red)' },
+                { label: t('plugins.protocolTypes'), value: protocolStats.length, color: 'var(--accent-amber)' },
               ].map((s) => (
                 <div key={s.label}>
                   <span className="text-label">{s.label}</span>
@@ -358,7 +360,7 @@ export function Plugins() {
               <div className="flex items-center gap-2 mt-2">
                 <Wifi size={14} style={{ color: running > 0 ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
                 <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
-                  {running} 连接活跃
+                  {running} {t('plugins.activeConnections')}
                 </span>
                 <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--text-disabled)' }}>
                   {plugins.length > 0 ? '实时' : 'N/A'}
@@ -368,7 +370,7 @@ export function Plugins() {
           </div>
         </motion.div>
 
-        {/* ====== 协议状态 (col-6) ====== */}
+        {/* ====== {t('plugins.protocolStatus')} (col-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>
@@ -381,7 +383,7 @@ export function Plugins() {
             <div className="flex-1 space-y-3">
               {protocolStats.length === 0 ? (
                 <div className="text-center py-6 text-[var(--text-tertiary)] font-mono text-sm">
-                  暂无数据
+                  {t('plugins.noData')}
                 </div>
               ) : (
                 protocolStats.map((pr) => {
@@ -403,7 +405,7 @@ export function Plugins() {
                             {pr.name.toUpperCase()}
                           </p>
                           <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                            {isActive ? '连接正常' : '无活跃连接'}
+                            {isActive ? t('plugins.connectionOk') : t('plugins.noActiveConn')}
                           </p>
                         </div>
                       </div>
@@ -411,7 +413,7 @@ export function Plugins() {
                         <p className="font-mono text-sm font-bold" style={{ color: pr.color }}>
                           {pr.connections}/{pr.total}
                         </p>
-                        <span className="text-label" style={{ fontSize: '9px' }}>活跃/总数</span>
+                        <span className="text-label" style={{ fontSize: '9px' }}>{t('plugins.activeTotal')}</span>
                       </div>
                     </div>
                   );
@@ -421,7 +423,7 @@ export function Plugins() {
           </div>
         </motion.div>
 
-        {/* ====== 最近事件 (col-6) ====== */}
+        {/* ====== {t('plugins.recentEvents')} (col-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center justify-between mb-4">
@@ -443,7 +445,7 @@ export function Plugins() {
               style={{ background: 'var(--bg-base)' }}
             >
               {logs.length === 0 ? (
-                <span className="font-mono text-[11px] text-[var(--text-tertiary)]">暂无事件</span>
+                <span className="font-mono text-[11px] text-[var(--text-tertiary)]">{t('plugins.noEvents')}</span>
               ) : (
                 logs.map((l, i) => (
                   <div key={i} className="flex gap-2">

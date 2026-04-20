@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -49,13 +50,13 @@ interface LatencyMetric {
   count: number;
 }
 
-/** 请求吞吐量（每小时） */
+/** {t('performance.requestThroughput')}（每小时） */
 interface ThroughputPoint {
   hour: string;
   rpm: number;
 }
 
-/** 错误统计条目 */
+/** {t('performance.errorStats')}条目 */
 interface ErrorStat {
   type: string;
   count: number;
@@ -135,6 +136,7 @@ function fmtSec(val: number | null | undefined): string {
 /* ====== 主组件 ====== */
 
 export function Performance() {
+  const { t } = useLanguage();
   const [perfData, setPerfData] = useState<PerfData | null>(null);
   const [statusData, setStatusData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,7 +176,7 @@ export function Performance() {
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
           <span className="font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            正在加载性能数据...
+            {t('performance.loading')}
           </span>
         </div>
       </div>
@@ -188,15 +190,15 @@ export function Performance() {
   const diskVal = perfData?.disk_percent ?? statusData?.disk_percent ?? null;
 
   const resources: ResourceGauge[] = [
-    { label: 'CPU 使用率', value: cpuVal, max: 100, unit: '%', color: 'var(--accent-cyan)' },
+    { label: t('performance.cpuUsage'), value: cpuVal, max: 100, unit: '%', color: 'var(--accent-cyan)' },
     {
-      label: '内存占用',
+      label: t('performance.memoryUsage'),
       value: memMb != null ? Math.round(memMb * 10) / 10 : null,
       max: Math.round(memMaxMb / 1024 * 10) / 10,
       unit: 'GB',
       color: 'var(--accent-green)',
     },
-    { label: '磁盘使用', value: diskVal, max: 100, unit: '%', color: 'var(--accent-amber)' },
+    { label: t('performance.diskUsage'), value: diskVal, max: 100, unit: '%', color: 'var(--accent-amber)' },
   ];
 
   /* —— 派生：延迟指标 —— */
@@ -279,14 +281,14 @@ export function Performance() {
                   API LATENCY
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  接口延迟 // RESPONSE TIME METRICS
+                  {t('performance.apiLatencySubtitle')}
                 </p>
               </div>
             </div>
 
             {latencyMetrics.length === 0 ? (
               <p className="font-mono text-xs py-8 text-center" style={{ color: 'var(--text-disabled)' }}>
-                暂无延迟数据
+                {t('performance.noLatencyData')}
               </p>
             ) : (
               <>
@@ -295,7 +297,7 @@ export function Performance() {
                   className="grid grid-cols-6 gap-2 px-3 py-2 rounded-lg mb-1"
                   style={{ background: 'var(--bg-tertiary)' }}
                 >
-                  {['指标', '调用数', '平均', 'P50', 'P95', '最大'].map((h) => (
+                  {[t('performance.colMetric'), t('performance.colCalls'), t('performance.colAvg'), 'P50', 'P95', t('performance.colMax')].map((h) => (
                     <span
                       key={h}
                       className={clsx('text-label', h !== '指标' && 'text-right')}
@@ -353,7 +355,7 @@ export function Performance() {
               错误统计
             </h3>
 
-            {/* 总错误率 */}
+            {/* {t('performance.totalErrorRate')} */}
             <div className="flex items-end gap-2 mt-3 mb-5">
               <span className="text-metric" style={{ color: 'var(--accent-green)' }}>
                 {totalErrorRate ?? 'N/A'}
@@ -367,7 +369,7 @@ export function Performance() {
             <div className="flex-1 space-y-2">
               {errorStats.length === 0 && (
                 <p className="font-mono text-xs py-4 text-center" style={{ color: 'var(--text-disabled)' }}>
-                  暂无错误数据
+                  {t('performance.noErrorData')}
                 </p>
               )}
               {errorStats.map((err) => (
@@ -420,7 +422,7 @@ export function Performance() {
 
             {throughputData.length === 0 ? (
               <p className="font-mono text-xs py-8 text-center" style={{ color: 'var(--text-disabled)' }}>
-                暂无吞吐量数据
+                {t('performance.noThroughputData')}
               </p>
             ) : (
               <div className="space-y-1.5">

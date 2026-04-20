@@ -28,6 +28,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useLanguage } from '../../i18n';
 
 /* ====== TopoJSON 地图源 — 本地打包，避免 Tauri CSP 拦截 ====== */
 const GEO_URL = '/countries-110m.json';
@@ -104,20 +105,20 @@ interface TooltipInfo {
   y: number;
 }
 
-/* ====== 严重度中文映射 ====== */
-const SEVERITY_CN: Record<string, string> = {
-  CRITICAL: '危急',
-  HIGH: '高',
-  MEDIUM: '中',
-  LOW: '低',
+/* ====== 严重度 key 映射 ====== */
+const SEVERITY_I18N_KEY: Record<string, string> = {
+  CRITICAL: 'worldMonitor.severityCritical',
+  HIGH: 'worldMonitor.severityHigh',
+  MEDIUM: 'worldMonitor.severityMedium',
+  LOW: 'worldMonitor.severityLow',
 };
 
-/** 情报类别中文映射 */
-const CATEGORY_CN: Record<string, string> = {
-  CONFLICT: '冲突',
-  CYBER: '网络',
-  CLIMATE: '气候',
-  ECONOMIC: '经济',
+/** 情报类别 key 映射 */
+const CATEGORY_I18N_KEY: Record<string, string> = {
+  CONFLICT: 'worldMonitor.catConflict',
+  CYBER: 'worldMonitor.catCyber',
+  CLIMATE: 'worldMonitor.catClimate',
+  ECONOMIC: 'worldMonitor.catEconomic',
 };
 
 /** ISO alpha-2 → alpha-3 映射（用于地图着色） */
@@ -167,13 +168,13 @@ function riskScoreToFill(score: number): string {
   return 'rgba(255,255,255,0.08)';
 }
 
-/** 根据风险分数返回中文等级标签 */
+/** 根据风险分数返回等级 i18n key */
 function riskScoreToLevel(score: number): string {
-  if (score >= 85) return '危急';
-  if (score >= 70) return '高';
-  if (score >= 50) return '升高';
-  if (score >= 30) return '中等';
-  return '低';
+  if (score >= 85) return 'worldMonitor.levelCritical';
+  if (score >= 70) return 'worldMonitor.levelHigh';
+  if (score >= 50) return 'worldMonitor.levelElevated';
+  if (score >= 30) return 'worldMonitor.levelModerate';
+  return 'worldMonitor.levelLow';
 }
 
 /** 根据情报类别返回对应颜色和背景色 */
@@ -262,23 +263,24 @@ function ChangeIndicator({ value }: { value: number }) {
 
 /* ====== 地图色阶图例组件 ====== */
 function MapLegend() {
+  const { t } = useLanguage();
   const items = [
-    { color: '#ff003c', label: '危急', range: '85+' },
-    { color: '#ff6b35', label: '高',   range: '70-84' },
-    { color: '#fbbf24', label: '升高', range: '50-69' },
-    { color: '#00d4ff', label: '中等', range: '30-49' },
-    { color: 'rgba(255,255,255,0.25)', label: '低', range: '0-29' },
+    { color: '#ff003c', labelKey: 'worldMonitor.levelCritical', range: '85+' },
+    { color: '#ff6b35', labelKey: 'worldMonitor.levelHigh',     range: '70-84' },
+    { color: '#fbbf24', labelKey: 'worldMonitor.levelElevated', range: '50-69' },
+    { color: '#00d4ff', labelKey: 'worldMonitor.levelModerate', range: '30-49' },
+    { color: 'rgba(255,255,255,0.25)', labelKey: 'worldMonitor.levelLow', range: '0-29' },
   ];
   return (
     <div className="flex items-center gap-3 flex-wrap">
       {items.map((it) => (
-        <div key={it.label} className="flex items-center gap-1.5">
+        <div key={it.labelKey} className="flex items-center gap-1.5">
           <span
             className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
             style={{ background: it.color }}
           />
           <span className="font-mono text-[9px]" style={{ color: 'var(--text-tertiary)' }}>
-            {it.label} {it.range}
+            {t(it.labelKey)} {it.range}
           </span>
         </div>
       ))}
@@ -288,6 +290,7 @@ function MapLegend() {
 
 /* ====== 地图悬停提示组件 ====== */
 function MapTooltip({ info }: { info: TooltipInfo | null }) {
+  const { t } = useLanguage();
   if (!info) return null;
   const fill = riskScoreToFill(info.score);
   return (
@@ -312,13 +315,13 @@ function MapTooltip({ info }: { info: TooltipInfo | null }) {
       </div>
       <div className="flex items-center gap-3 mt-1">
         <span className="font-mono text-[10px]" style={{ color: fill }}>
-          风险分: {info.score}
+          {t('worldMonitor.riskScore')}: {info.score}
         </span>
         <span
           className="px-1.5 py-0.5 rounded font-mono text-[8px] tracking-wider"
           style={{ background: `${fill}20`, color: fill }}
         >
-          {info.level}
+          {t(info.level)}
         </span>
       </div>
     </div>
@@ -410,7 +413,7 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
         setTooltip({
           name: geo.properties.name,
           score: 0,
-          level: '无数据',
+          level: 'worldMonitor.noData',
           x: evt.clientX,
           y: evt.clientY,
         });
@@ -520,6 +523,7 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
  * 每 30 秒自动刷新
  */
 export function WorldMonitor() {
+  const { t } = useLanguage();
   /* ====== 状态 ====== */
   const [riskList, setRiskList] = useState<RiskApiItem[]>([]);
   const [globalRisk, setGlobalRisk] = useState<{ score: number; severity: string } | null>(null);
@@ -556,7 +560,7 @@ export function WorldMonitor() {
       }));
       setIntelFeed(entries);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : 'unknown error';
       setError(msg);
     } finally {
       setLoading(false);
@@ -610,7 +614,7 @@ export function WorldMonitor() {
       .map((r) => ({
         region: r.country_name,
         severity: (r.composite_score >= 85 ? 'CRITICAL' : 'HIGH') as 'CRITICAL' | 'HIGH',
-        description: `风险评分 ${r.composite_score}，24h变化 ${r.change_24h > 0 ? '+' : ''}${(r.change_24h ?? 0).toFixed(1)}`,
+        description: `${t('worldMonitor.riskScore')} ${r.composite_score}，24h ${r.change_24h > 0 ? '+' : ''}${(r.change_24h ?? 0).toFixed(1)}`,
         link: 'https://worldmonitor.app',
       }));
   }, [riskList]);
@@ -625,7 +629,7 @@ export function WorldMonitor() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <LoadingState message="正在加载全球风险数据..." />
+          <LoadingState message={t('worldMonitor.loadingRiskData')} />
         </div>
       </div>
     );
@@ -635,7 +639,7 @@ export function WorldMonitor() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`数据加载失败: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('worldMonitor.loadFailed')}: ${error}`} onRetry={fetchData} />
         </div>
       </div>
     );
@@ -655,10 +659,10 @@ export function WorldMonitor() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-              全球风险指数
+              {t('worldMonitor.globalRiskIndex')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              综合风险评估
+              {t('worldMonitor.compositeRiskAssessment')}
             </h3>
 
             {/* 大数字展示区 */}
@@ -699,7 +703,7 @@ export function WorldMonitor() {
                   border: `1px solid ${severityColor(globalSeverity)}30`,
                 }}
               >
-                {SEVERITY_CN[globalSeverity] ?? globalSeverity} 风险
+                {t(SEVERITY_I18N_KEY[globalSeverity] ?? 'worldMonitor.severityLow')} {t('worldMonitor.risk')}
               </span>
               <div className="flex items-center gap-1.5">
                 <motion.span
@@ -708,7 +712,7 @@ export function WorldMonitor() {
                   transition={{ duration: 2, repeat: Infinity }}
                 />
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                  实时
+                  {t('worldMonitor.realtime')}
                 </span>
               </div>
             </div>
@@ -724,15 +728,15 @@ export function WorldMonitor() {
                 <Map size={16} style={{ color: 'var(--accent-red)' }} />
                 <div>
                   <span className="text-label" style={{ color: 'var(--accent-red)' }}>
-                    全球威胁态势图
+                    {t('worldMonitor.globalThreatMap')}
                   </span>
                   <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                    国家风险热力图
+                    {t('worldMonitor.countryRiskHeatmap')}
                   </h3>
                 </div>
               </div>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                风险叠加 · 覆盖 {coveredCountries} 国
+                {t('worldMonitor.riskOverlay')} · {t('worldMonitor.covering')} {coveredCountries} {t('worldMonitor.countries')}
               </span>
             </div>
 
@@ -756,10 +760,10 @@ export function WorldMonitor() {
                 className="grid grid-cols-[1fr_80px_100px_80px] gap-2 px-3 py-2 rounded-lg mb-1"
                 style={{ background: 'rgba(255,255,255,0.02)' }}
               >
-                <span className="text-label" style={{ fontSize: '10px' }}>国家</span>
-                <span className="text-label text-right" style={{ fontSize: '10px' }}>分数</span>
-                <span className="text-label text-center" style={{ fontSize: '10px' }}>严重度</span>
-                <span className="text-label text-right" style={{ fontSize: '10px' }}>24小时</span>
+                <span className="text-label" style={{ fontSize: '10px' }}>{t('worldMonitor.country')}</span>
+                <span className="text-label text-right" style={{ fontSize: '10px' }}>{t('worldMonitor.score')}</span>
+                <span className="text-label text-center" style={{ fontSize: '10px' }}>{t('worldMonitor.severity')}</span>
+                <span className="text-label text-right" style={{ fontSize: '10px' }}>{t('worldMonitor.24h')}</span>
               </div>
 
               {/* 数据行 */}
@@ -804,7 +808,7 @@ export function WorldMonitor() {
                         border: `1px solid ${severityColor(c.severity)}25`,
                       }}
                     >
-                      {SEVERITY_CN[c.severity]}
+                      {t(SEVERITY_I18N_KEY[c.severity] ?? 'worldMonitor.severityLow')}
                     </span>
                   </div>
 
@@ -820,7 +824,7 @@ export function WorldMonitor() {
             <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <Radio size={12} style={{ color: 'var(--text-disabled)' }} />
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                每 30 秒自动刷新 · 来源:{' '}
+                {t('worldMonitor.autoRefreshNote')} · {t('worldMonitor.source')}:{' '}
                 <ExtLink href="https://acleddata.com" className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>ACLED</ExtLink>
                 {' / '}
                 <ExtLink href="https://worldmonitor.app" className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>WorldMonitor</ExtLink>
@@ -834,10 +838,10 @@ export function WorldMonitor() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-red)' }}>
-              活跃冲突
+              {t('worldMonitor.activeConflicts')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              冲突区监控
+              {t('worldMonitor.conflictZoneMonitor')}
             </h3>
 
             {/* 冲突数量大数字 */}
@@ -845,14 +849,14 @@ export function WorldMonitor() {
               <span className="text-metric" style={{ color: 'var(--accent-red)' }}>
                 {conflictZones.length}
               </span>
-              <span className="text-label">活跃区域</span>
+              <span className="text-label">{t('worldMonitor.activeZones')}</span>
             </div>
 
             {/* 冲突列表 */}
             <div className="flex flex-col gap-2.5 mt-4 flex-1">
               {conflictZones.length === 0 && (
                 <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无高风险区域
+                  {t('worldMonitor.noHighRisk')}
                 </span>
               )}
               {conflictZones.map((zone) => (
@@ -880,7 +884,7 @@ export function WorldMonitor() {
                           color: severityColor(zone.severity),
                         }}
                       >
-                        {SEVERITY_CN[zone.severity]}
+                        {t(SEVERITY_I18N_KEY[zone.severity] ?? 'worldMonitor.severityLow')}
                       </span>
                     </div>
                     <p className="font-mono text-[10px] mt-1 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
@@ -899,10 +903,10 @@ export function WorldMonitor() {
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-              基础设施
+              {t('worldMonitor.infrastructure')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              关键设施状态
+              {t('worldMonitor.criticalInfraStatus')}
             </h3>
 
             <div className="flex flex-col gap-4 mt-5 flex-1">
@@ -913,8 +917,8 @@ export function WorldMonitor() {
                     <WifiOff size={15} style={{ color: 'var(--accent-red)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>互联网中断</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>全球断网事件</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.internetOutage')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.globalOutageEvents')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
@@ -927,8 +931,8 @@ export function WorldMonitor() {
                     <AlertTriangle size={15} style={{ color: 'var(--accent-amber)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>GPS 干扰</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>导航信号异常区域</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>GPS {t('worldMonitor.jamming')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.navSignalAnomaly')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
@@ -941,13 +945,13 @@ export function WorldMonitor() {
                     <Zap size={15} style={{ color: 'var(--accent-green)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>电力网络</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>电网运行状态</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.powerGrid')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.gridStatus')}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="status-dot-green" />
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>稳定</span>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('worldMonitor.stable')}</span>
                 </div>
               </div>
 
@@ -958,8 +962,8 @@ export function WorldMonitor() {
                     <Wifi size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>海底光缆</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>跨洋通信链路</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.submarineCable')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.transoceanicLink')}</p>
                   </div>
                 </div>
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>—</span>
@@ -972,10 +976,10 @@ export function WorldMonitor() {
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              气候与灾害
+              {t('worldMonitor.climateDisaster')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              自然灾害监测
+              {t('worldMonitor.naturalDisasterMonitor')}
             </h3>
 
             <div className="flex flex-col gap-4 mt-5 flex-1">
@@ -986,9 +990,9 @@ export function WorldMonitor() {
                   </div>
                   <div>
                     <ExtLink href="https://earthquake.usgs.gov">
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>地震活动</span>
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.seismicActivity')}</span>
                     </ExtLink>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>M5.0+ / 24小时</p>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>M5.0+ / 24h</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
@@ -1000,8 +1004,8 @@ export function WorldMonitor() {
                     <Flame size={15} style={{ color: 'var(--accent-red)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>山火告警</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>全球活跃山火</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.wildfire')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.globalActiveWildfires')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
@@ -1013,8 +1017,8 @@ export function WorldMonitor() {
                     <CloudLightning size={15} style={{ color: 'var(--accent-purple)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>气候异常</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>检测到的异常数</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.climateAnomaly')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.anomaliesDetected')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
@@ -1026,8 +1030,8 @@ export function WorldMonitor() {
                     <AlertTriangle size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>极端天气</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>恶劣天气预警</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.extremeWeather')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.severeWeatherAlert')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
@@ -1040,10 +1044,10 @@ export function WorldMonitor() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-              网络安全
+              {t('worldMonitor.cybersecurity')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-              赛博威胁态势
+              {t('worldMonitor.cyberThreatPosture')}
             </h3>
 
             <div className="flex flex-col gap-4 mt-5 flex-1">
@@ -1054,9 +1058,9 @@ export function WorldMonitor() {
                   </div>
                   <div>
                     <ExtLink href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">
-                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>活跃漏洞利用</span>
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.activeExploits')}</span>
                     </ExtLink>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>CISA 已知利用漏洞</p>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.cisaKev')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
@@ -1068,8 +1072,8 @@ export function WorldMonitor() {
                     <Zap size={15} style={{ color: 'var(--accent-amber)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>大规模 DDoS</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>24小时内检测</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.massiveDdos')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.detected24h')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
@@ -1081,8 +1085,8 @@ export function WorldMonitor() {
                     <AlertTriangle size={15} style={{ color: 'var(--accent-purple)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>勒索软件事件</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>本周公开披露</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.ransomware')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.weeklyDisclosed')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
@@ -1094,8 +1098,8 @@ export function WorldMonitor() {
                     <Terminal size={15} style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                   <div>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>供应链攻击</span>
-                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>包管理器 / CI 投毒</p>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{t('worldMonitor.supplyChainAttack')}</span>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.pkgCiPoisoning')}</p>
                   </div>
                 </div>
                 <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
@@ -1112,7 +1116,7 @@ export function WorldMonitor() {
               <div className="flex items-center gap-2">
                 <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  情报终端
+                  {t('worldMonitor.intelTerminal')}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1122,7 +1126,7 @@ export function WorldMonitor() {
                   transition={{ duration: 2, repeat: Infinity }}
                 />
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
-                  实时流
+                  {t('worldMonitor.liveStream')}
                 </span>
               </div>
             </div>
@@ -1135,7 +1139,7 @@ export function WorldMonitor() {
               {intelFeed.length === 0 && (
                 <div className="flex items-center justify-center py-6">
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                    暂无情报数据
+                    {t('worldMonitor.noIntelData')}
                   </span>
                 </div>
               )}
@@ -1178,7 +1182,7 @@ export function WorldMonitor() {
                           display: 'inline-block',
                         }}
                       >
-                        {CATEGORY_CN[entry.category] ?? entry.category}
+                        {t(CATEGORY_I18N_KEY[entry.category] ?? '') || entry.category}
                       </span>
                     </ExtLink>
 
@@ -1197,10 +1201,10 @@ export function WorldMonitor() {
             {/* 底部信息 */}
             <div className="flex items-center justify-between mt-3">
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                显示最近 {intelFeed.length} 条 · 来源: 开源情报 / GDELT / ACLED / CVE
+                {t('worldMonitor.showingRecent')} {intelFeed.length} {t('worldMonitor.entries')} · {t('worldMonitor.sourceOsint')}
               </span>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                自动刷新 30秒
+                {t('worldMonitor.autoRefresh30s')}
               </span>
             </div>
           </div>

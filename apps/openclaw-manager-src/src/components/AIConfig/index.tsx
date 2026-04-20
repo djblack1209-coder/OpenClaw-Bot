@@ -18,6 +18,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -149,6 +150,7 @@ function formatCost(val?: number): string {
 /* ====== 主组件 ====== */
 
 export function AIConfig() {
+  const { t } = useLanguage();
   /* ── 状态 ── */
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState<ChannelItem[]>([]);
@@ -181,7 +183,7 @@ export function AIConfig() {
       }
     } catch (err) {
       console.error('[AIConfig] 数据加载失败:', err);
-      if (!silent) toast.error('AI 配置数据加载失败');
+      if (!silent) toast.error(t('aiConfig.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -198,7 +200,7 @@ export function AIConfig() {
     setTogglingIds((prev) => new Set(prev).add(channelId));
     try {
       await parseResponse(await api.newApiToggleChannel(channelId));
-      toast.success('模型渠道状态已切换');
+      toast.success(t('aiConfig.channelToggled'));
       setChannels((prev) =>
         prev.map((ch) =>
           ch.id === channelId
@@ -208,7 +210,7 @@ export function AIConfig() {
       );
     } catch (err) {
       console.error('[AIConfig] 切换渠道失败:', err);
-      toast.error('切换渠道状态失败');
+      toast.error(t('aiConfig.channelToggleFailed'));
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -237,7 +239,7 @@ export function AIConfig() {
     (providerGroups[label] ??= []).push(ch);
   });
 
-  // 费用统计（从 poolStats 或渠道 used_quota 聚合）
+  // {t('aiConfig.costStats')}（从 poolStats 或渠道 used_quota 聚合）
   const todayCost = poolStats?.today_cost;
   const weekCost = poolStats?.week_cost;
   const monthCost = poolStats?.month_cost;
@@ -263,15 +265,15 @@ export function AIConfig() {
       .sort((a, b) => (a.response_time ?? 0) - (b.response_time ?? 0))
       .slice(0, 6)
       .map((ch) => ({
-        name: ch.name || `渠道 #${ch.id}`,
+        name: ch.name || `${t('aiConfig.channelPrefix')} #${ch.id}`,
         ms: ch.response_time ?? 0,
       }));
   })();
   const maxMs = perfBars.length > 0 ? Math.max(...perfBars.map((p) => p.ms)) : 1;
 
-  /* ── 路由策略 — 只读展示（无 API） ── */
-  const STRATEGIES = ['智能路由', '成本优先', '质量优先', '速度优先'];
-  const [strategy] = useState('智能路由');
+  /* ── {t('aiConfig.routeStrategy')} — 只读展示（无 API） ── */
+  const STRATEGIES_KEYS = ['aiConfig.strategyAuto', 'aiConfig.strategyCost', 'aiConfig.strategyQuality', 'aiConfig.strategySpeed'];
+  const [strategy] = useState('aiConfig.strategyAuto');
 
   /* ── 加载态 ── */
   if (loading) {
@@ -279,7 +281,7 @@ export function AIConfig() {
       <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-cyan)' }} />
         <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
-          正在加载 AI 配置…
+          {t('aiConfig.loadingData')}
         </span>
       </div>
     );
@@ -308,7 +310,7 @@ export function AIConfig() {
                   LLM ROUTER
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  AI 模型配置 // MODEL POOL
+                  {t('aiConfig.subtitle')}
                 </p>
               </div>
               {/* 统计指标 + 刷新 */}
@@ -320,7 +322,7 @@ export function AIConfig() {
                   onClick={() => fetchData(true)}
                   className="p-1.5 rounded-lg transition-colors hover:opacity-80"
                   style={{ background: 'var(--bg-tertiary)' }}
-                  title="刷新数据"
+                  title={t('aiConfig.refreshData')}
                 >
                   <RefreshCw size={12} style={{ color: 'var(--text-secondary)' }} />
                 </button>
@@ -332,19 +334,19 @@ export function AIConfig() {
               className="grid gap-2 px-3 py-1.5 mb-1 font-mono text-[9px] tracking-wider"
               style={{ gridTemplateColumns: '2fr 1fr 60px 70px 80px 50px', color: 'var(--text-disabled)' }}
             >
-              <span>渠道/模型</span>
-              <span>提供商</span>
-              <span>状态</span>
-              <span>延迟</span>
-              <span>配额使用</span>
-              <span className="text-center">开关</span>
+              <span>{t('aiConfig.colChannelModel')}</span>
+              <span>{t('aiConfig.colProvider')}</span>
+              <span>{t('aiConfig.colStatus')}</span>
+              <span>{t('aiConfig.colLatency')}</span>
+              <span>{t('aiConfig.colQuota')}</span>
+              <span className="text-center">{t('aiConfig.colSwitch')}</span>
             </div>
 
             {/* 渠道列表 */}
             <div className="flex-1 space-y-1.5 overflow-y-auto">
               {channels.length === 0 ? (
                 <div className="text-center py-8 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无渠道/模型数据
+                  {t('aiConfig.noChannelData')}
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -392,14 +394,14 @@ export function AIConfig() {
                       <div className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
                         <span className="font-mono text-[10px]" style={{ color: enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                          {enabled ? '启用' : '禁用'}
+                          {enabled ? t('aiConfig.statusEnabled') : t('aiConfig.statusDisabled')}
                         </span>
                       </div>
                       {/* 延迟 */}
                       <span className="font-mono text-[11px]" style={{ color: latencyColor(ch.response_time) }}>
                         {ch.response_time ? `${ch.response_time}ms` : '—'}
                       </span>
-                      {/* 配额 */}
+                      {/* {t('aiConfig.quota')} */}
                       <span className="font-mono text-[11px] font-semibold" style={{ color: 'var(--accent-cyan)' }}>
                         {ch.used_quota != null ? ch.used_quota.toLocaleString() : '—'}
                       </span>
@@ -409,7 +411,7 @@ export function AIConfig() {
                           onClick={() => handleToggle(ch.id)}
                           disabled={toggling}
                           className="transition-colors hover:opacity-80 disabled:opacity-50"
-                          title={enabled ? '点击禁用' : '点击启用'}
+                          title={enabled ? t('aiConfig.clickToDisable') : t('aiConfig.clickToEnable')}
                         >
                           {toggling ? (
                             <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
@@ -436,7 +438,7 @@ export function AIConfig() {
               路由策略
             </h3>
             <div className="flex-1 space-y-2">
-              {STRATEGIES.map((s) => (
+              {STRATEGIES_KEYS.map((s) => (
                 <div
                   key={s}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg"
@@ -461,13 +463,13 @@ export function AIConfig() {
                     className="font-display text-sm font-semibold"
                     style={{ color: strategy === s ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}
                   >
-                    {s}
+                    {t(s)}
                   </span>
                 </div>
               ))}
             </div>
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              当前: {strategy} — 由后端自动选择最优模型（只读）
+              {t('aiConfig.currentStrategy')}
             </p>
           </div>
         </motion.div>
@@ -484,10 +486,10 @@ export function AIConfig() {
             </h3>
             <div className="space-y-4 flex-1">
               {[
-                { label: '今日费用', value: formatCost(todayCost), color: 'var(--accent-cyan)' },
-                { label: '本周', value: formatCost(weekCost), color: 'var(--accent-green)' },
-                { label: '本月', value: formatCost(monthCost), color: 'var(--accent-amber)' },
-                { label: '预算', value: budget != null ? formatCost(budget) : '—', color: 'var(--text-disabled)' },
+                { label: t('aiConfig.todayCost'), value: formatCost(todayCost), color: 'var(--accent-cyan)' },
+                { label: t('aiConfig.weekCost'), value: formatCost(weekCost), color: 'var(--accent-green)' },
+                { label: t('aiConfig.monthCost'), value: formatCost(monthCost), color: 'var(--accent-amber)' },
+                { label: t('aiConfig.budget'), value: budget != null ? formatCost(budget) : '—', color: 'var(--text-disabled)' },
               ].map((c) => (
                 <div key={c.label}>
                   <span className="text-label">{c.label}</span>
@@ -499,7 +501,7 @@ export function AIConfig() {
             {budget != null && budget > 0 && monthCost != null && (
               <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-label">预算使用</span>
+                  <span className="text-label">{t('aiConfig.budgetUsage')}</span>
                   <span className="font-mono text-[11px]" style={{ color: 'var(--accent-amber)' }}>
                     {Math.round((monthCost / budget) * 100)}%
                   </span>
@@ -514,7 +516,7 @@ export function AIConfig() {
               <div className="mt-2 flex items-center gap-1.5">
                 <Zap size={10} style={{ color: latencyColor(avgLatency) }} />
                 <span className="font-mono text-[10px]" style={{ color: latencyColor(avgLatency) }}>
-                  平均延迟: {Math.round(avgLatency)}ms
+                  {t('aiConfig.avgLatency')}: {Math.round(avgLatency)}ms
                 </span>
               </div>
             )}
@@ -526,12 +528,12 @@ export function AIConfig() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>PERFORMANCE</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              响应时间对比
+              {t('aiConfig.responseComparison')}
             </h3>
             <div className="flex-1 space-y-3">
               {perfBars.length === 0 ? (
                 <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无性能数据
+                  {t('aiConfig.noPerfData')}
                 </div>
               ) : (
                 perfBars.map((p) => (
@@ -560,7 +562,7 @@ export function AIConfig() {
             <div className="flex-1 space-y-2">
               {Object.keys(providerGroups).length === 0 ? (
                 <div className="text-center py-4 font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  暂无数据
+                  {t('aiConfig.noData')}
                 </div>
               ) : (
                 Object.entries(providerGroups)
@@ -598,7 +600,7 @@ export function AIConfig() {
             </div>
 
             <div className="mt-3 pt-3 font-mono text-[10px]" style={{ borderTop: '1px solid var(--glass-border)', color: 'var(--text-disabled)' }}>
-              自动刷新: 每 30 秒
+              {t('aiConfig.autoRefresh')}
             </div>
           </div>
         </motion.div>

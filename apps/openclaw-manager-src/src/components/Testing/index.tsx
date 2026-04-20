@@ -2,7 +2,7 @@
  * Testing — 测试诊断页面 (Sonic Abyss Bento Grid 风格)
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
  * 测试系统暂未通过 API 接入，诚实标注待接入状态
- * 快速操作按钮提示用户在终端手动执行
+ * {t('testing.quickActions')}按钮提示用户在终端手动执行
  * 如有 /api/v1/status 返回测试相关信息则展示
  * 30 秒自动刷新（仅拉取 status）
  */
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { toast } from 'sonner';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -50,26 +51,26 @@ interface StatusData {
 /* ====== 快速操作定义 ====== */
 const QUICK_ACTIONS = [
   {
-    label: '运行全部测试',
+    label: 'testing.runAll',
     desc: 'cd packages/clawbot && pytest tests/ -x',
     icon: Play,
     color: 'var(--accent-green)',
   },
   {
-    label: '运行失败测试',
+    label: 'testing.runFailed',
     desc: 'cd packages/clawbot && pytest --lf',
     icon: RefreshCw,
     color: 'var(--accent-amber)',
   },
   {
-    label: '生成覆盖率报告',
+    label: 'testing.genCoverage',
     desc: 'cd packages/clawbot && pytest --cov',
     icon: FileBarChart,
     color: 'var(--accent-cyan)',
   },
   {
-    label: '系统诊断',
-    desc: '通过桌面端「诊断」功能执行',
+    label: 'testing.sysDiag',
+    desc: 'testing.sysDiagDesc',
     icon: Stethoscope,
     color: 'var(--accent-purple)',
   },
@@ -78,6 +79,7 @@ const QUICK_ACTIONS = [
 /* ====== 主组件 ====== */
 
 export function Testing() {
+  const { t } = useLanguage();
   /* 状态 */
   const [status, setStatus] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,7 +115,7 @@ export function Testing() {
 
   /* 快速操作点击 — 提示用户在终端执行 */
   const handleQuickAction = (action: typeof QUICK_ACTIONS[number]) => {
-    toast.info(`请在终端手动执行:\n${action.desc}`, {
+    toast.info(`请在终端手动执行:\n${action.desc.startsWith('testing.') ? t(action.desc) : action.desc}`, {
       duration: 5000,
     });
   };
@@ -141,7 +143,7 @@ export function Testing() {
                   TEST RUNNER
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  测试诊断 // TEST RUNNER
+                  {t('testing.subtitle')}
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -152,10 +154,10 @@ export function Testing() {
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                   {[
-                    { label: '总用例', value: status?.tests_total != null ? String(status.tests_total) : '--', color: 'var(--accent-cyan)' },
-                    { label: '通过', value: status?.tests_passed != null ? String(status.tests_passed) : '--', color: 'var(--accent-green)' },
-                    { label: '失败', value: status?.tests_failed != null ? String(status.tests_failed) : '--', color: (status?.tests_failed ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)' },
-                    { label: '覆盖率', value: status?.test_coverage != null ? `${status.test_coverage}%` : '--', color: 'var(--accent-amber)' },
+                    { label: t('testing.totalCases'), value: status?.tests_total != null ? String(status.tests_total) : '--', color: 'var(--accent-cyan)' },
+                    { label: t('testing.passed'), value: status?.tests_passed != null ? String(status.tests_passed) : '--', color: 'var(--accent-green)' },
+                    { label: t('testing.failed'), value: status?.tests_failed != null ? String(status.tests_failed) : '--', color: (status?.tests_failed ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)' },
+                    { label: t('testing.coverage'), value: status?.test_coverage != null ? `${status.test_coverage}%` : '--', color: 'var(--accent-amber)' },
                   ].map((s) => (
                     <div
                       key={s.label}
@@ -172,7 +174,7 @@ export function Testing() {
 
                 {status?.last_test_run && (
                   <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    上次运行: {status.last_test_run}
+                    {t('testing.lastRun')}: {status.last_test_run}
                   </p>
                 )}
               </>
@@ -187,10 +189,10 @@ export function Testing() {
                 </div>
                 <div className="text-center max-w-md">
                   <p className="font-display text-sm font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-                    测试系统暂未接入
+                    {t('testing.notConnected')}
                   </p>
                   <p className="font-mono text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-                    当前无法通过界面运行测试。请在终端手动执行：
+                    {t('testing.runInTerminal')}
                   </p>
                   <div
                     className="mt-3 px-4 py-2.5 rounded-lg font-mono text-xs text-left"
@@ -230,7 +232,7 @@ export function Testing() {
                 const Icon = action.icon;
                 return (
                   <button
-                    key={action.label}
+                    key={t(action.label)}
                     className="w-full flex items-center gap-3 py-3.5 px-4 rounded-lg transition-all hover:opacity-80"
                     style={{ background: 'var(--bg-secondary)' }}
                     onClick={() => handleQuickAction(action)}
@@ -259,12 +261,12 @@ export function Testing() {
               className="font-mono text-[10px] mt-4 pt-3 border-t"
               style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
             >
-              点击按钮将提示终端命令，暂不支持在界面内执行
+              {t('testing.buttonHint')}
             </p>
           </div>
         </motion.div>
 
-        {/* ====== 测试输出 (col-12) — 待接入 ====== */}
+        {/* ====== {t('testing.testOutput')} (col-12) — 待接入 ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
           <div className="abyss-card flex flex-col" style={{ background: 'rgba(5,5,12,0.95)' }}>
             {/* 终端标题栏 */}
@@ -291,10 +293,10 @@ export function Testing() {
               <div className="flex flex-col items-center justify-center py-8 gap-3">
                 <Terminal size={24} style={{ color: 'var(--text-disabled)', opacity: 0.5 }} />
                 <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                  待接入 — 测试输出需通过后端 WebSocket 或 SSE 实时推送
+                  {t('testing.pendingConnection')}
                 </p>
                 <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                  目前请在终端查看 pytest 输出
+                  {t('testing.viewInTerminal')}
                 </p>
               </div>
             </div>
