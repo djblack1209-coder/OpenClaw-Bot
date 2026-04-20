@@ -433,3 +433,29 @@ def remove_from_watchlist(symbol: str = Path(..., description="要删除的标�
     except Exception as e:
         logger.exception("删除自选股失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ========== 交易日志 ==========
+
+@router.get("/trading/journal")
+def get_trade_journal(
+    offset: int = Query(default=0, ge=0, description="偏移量"),
+    limit: int = Query(default=20, ge=1, le=100, description="每页条数"),
+    status: str = Query(default="", description="状态筛选: open/closed/pending，空=全部"),
+    symbol: str = Query(default="", description="标的筛选"),
+    side: str = Query(default="", description="方向筛选: BUY/SELL"),
+):
+    """分页获取交易日志"""
+    try:
+        from src.trading_journal import journal
+        result = journal.get_trades_paginated(
+            offset=offset,
+            limit=limit,
+            status=status or None,
+            symbol=symbol or None,
+            side=side or None,
+        )
+        return result
+    except Exception as e:
+        logger.exception("获取交易日志失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
