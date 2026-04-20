@@ -111,8 +111,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   };
 
   const handleInstallOpenclaw = async () => {
-    setupLogger.action('安装 OpenClaw');
-    setupLogger.info('开始安装 OpenClaw...');
+    setupLogger.action('安装 OpenEverything');
+    setupLogger.info('开始安装 OpenEverything...');
     setInstalling('openclaw');
     setError(null);
 
@@ -120,7 +120,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
       const result = await invoke<InstallResult>('install_openclaw');
 
       if (result.success) {
-        setupLogger.info('✅ OpenClaw 安装成功，初始化配置...');
+        setupLogger.info('✅ OpenEverything 安装成功，初始化配置...');
         // 初始化配置
         await invoke<InstallResult>('init_openclaw_config');
         setupLogger.info('✅ 配置初始化完成');
@@ -231,7 +231,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
               )}
             </div>
 
-            {/* OpenClaw 状态 */}
+            {/* OpenEverything 状态 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${envStatus.openclaw_installed
@@ -241,7 +241,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-white font-medium">OpenClaw</p>
+                  <p className="text-white font-medium">OpenEverything</p>
                   <p className="text-sm text-dark-400">
                     {envStatus.openclaw_version || '未安装'}
                   </p>
@@ -338,7 +338,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             </motion.div>
             <h3 className="text-lg font-bold text-white mb-1">环境就绪！</h3>
             <p className="text-dark-400 text-sm">
-              Node.js 和 OpenClaw 已正确安装
+              Node.js 和 OpenEverything 已正确安装
             </p>
           </motion.div>
         )}
@@ -390,7 +390,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
           >
             <span className="text-4xl">🦞</span>
           </motion.div>
-           <h1 className="text-2xl font-bold text-white mb-2">OpenClaw</h1>
+           <h1 className="text-2xl font-bold text-white mb-2">OpenEverything</h1>
           <p className="text-dark-400">环境检测与安装向导</p>
         </div>
 
@@ -404,7 +404,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
 
         {/* 版本信息 */}
         <p className="text-center text-dark-500 text-xs mt-6">
-          OpenClaw v{__APP_VERSION__}
+          OpenEverything v{__APP_VERSION__}
         </p>
       </motion.div>
     </div>

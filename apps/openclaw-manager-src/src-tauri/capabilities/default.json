@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "OpenClaw Bot 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
+  "description": "OpenEverything 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -17,7 +17,7 @@
     {
       "identifier": "fs:allow-read",
       "allow": [
-        { "path": "$HOME/Desktop/OpenClaw Bot/**" },
+        { "path": "$HOME/Desktop/OpenEverything/**" },
         { "path": "$HOME/.openclaw/**" },
         { "path": "$APPCONFIG/**" }
       ]
@@ -25,7 +25,7 @@
     {
       "identifier": "fs:allow-write",
       "allow": [
-        { "path": "$HOME/Desktop/OpenClaw Bot/**" },
+        { "path": "$HOME/Desktop/OpenEverything/**" },
         { "path": "$HOME/.openclaw/**" },
         { "path": "$APPCONFIG/**" }
       ]
