@@ -40,7 +40,7 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
       {/* 头部标签行 */}
       <div className="flex items-center justify-between">
         <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-          IBKR LIVE // AUTO_TRADER.PY
+          IBKR 实盘 // 自动交易引擎
         </span>
         <div className="status-live">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
@@ -52,14 +52,14 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
 
       {/* 标题 */}
       <h2 className="text-hero text-[32px] mt-3" style={{ color: 'var(--text-primary)' }}>
-        Trading Engine
+        交易引擎
       </h2>
 
       {/* 中间区域：共识条 + PnL */}
       <div className="flex-1 flex flex-col lg:flex-row lg:items-end gap-6 mt-6">
         {/* 左侧：共识可视化 */}
         <div className="flex-1">
-          <span className="text-label text-[10px]">7-BOT CONSENSUS PIPELINE</span>
+          <span className="text-label text-[10px]">7-BOT 投票共识</span>
 
           {/* 投票进度条组 */}
           <div className="space-y-2 mt-3">
@@ -86,7 +86,7 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
                     className="font-mono text-[9px] uppercase w-14 text-right"
                     style={{ color: signalColors[bot.signal] }}
                   >
-                    {bot.signal}
+                    {{ approve: '买入', reject: '卖出', pending: '待定', abstain: '弃权' }[bot.signal]}
                   </span>
                 </div>
               ))
@@ -126,7 +126,7 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
 
         {/* 右侧：Daily PnL */}
         <div className="lg:text-right flex-shrink-0">
-          <span className="text-label">DAILY PNL</span>
+          <span className="text-label">今日盈亏</span>
           <div
             className="text-hero text-[42px] mt-1 font-mono tabular-nums"
             style={{ color: pnlColor }}

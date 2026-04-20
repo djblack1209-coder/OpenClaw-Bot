@@ -270,10 +270,10 @@ export function HomeDashboard() {
             onClick={() => setCurrentPage('social')}
           >
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-              SOCIAL DRIVE
+              社媒运营
             </span>
             <h3 className="font-display text-xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-              X / XHS Drive
+              X / 小红书 运营
             </h3>
             <div className="flex items-center gap-2 mt-3">
               <span
@@ -373,7 +373,7 @@ export function HomeDashboard() {
           <motion.div className="col-span-12" variants={cardVariants}>
             <div className="abyss-card p-5">
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                DAILY BRIEF
+                今日简报
               </span>
               <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                 {t('home.dailyBrief')}
@@ -407,7 +407,7 @@ export function HomeDashboard() {
                   .map(([key, value]) => (
                   <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
-                      {key.replace(/_/g, ' ')}
+                      {{ portfolio_pnl: '持仓盈亏', positions_count: '持仓数量', xianyu_consultations: '闲鱼咨询', xianyu_orders: '闲鱼订单', social_posts: '社媒发帖', api_daily_cost: 'API日费用', market_sentiment: '市场情绪' }[key] || key.replace(/_/g, ' ')}
                     </span>
                     <div className="font-mono text-lg font-bold mt-1" style={{ color: 'var(--accent-cyan)' }}>
                       {typeof value === 'number' ? value.toLocaleString() : String(value ?? '—')}
@@ -431,11 +431,11 @@ export function HomeDashboard() {
 
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-5 h-full flex flex-col">
-            <span className="text-label">SYSTEM STATUS</span>
+            <span className="text-label">系统状态</span>
             <div className="flex-1 flex flex-col justify-center gap-3 mt-3">
               {/* 服务状态行 */}
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>ClawBot Core</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>核心引擎</span>
                 <div className="flex items-center gap-1.5">
                   <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
                   <span className="font-mono text-[10px]" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>

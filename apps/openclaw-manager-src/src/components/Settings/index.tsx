@@ -10,9 +10,11 @@ import {
   Settings2, Download, RotateCcw, Trash2, FileText,
   Stethoscope, Check, MemoryStick, Loader2, Save,
   Languages, ExternalLink, KeyRound,
+  Power, PlayCircle, StopCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { controlAllManagedServices } from '@/lib/tauri-ipc';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
 
@@ -127,6 +129,42 @@ export function Settings(_props: SettingsProps) {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  /* —— 操作按钮处理 —— */
+  const handleAction = useCallback(async (actionId: string) => {
+    switch (actionId) {
+      case 'export':
+        try {
+          const cfg = await api.getConfig();
+          const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'openclaw-config.json'; a.click();
+          URL.revokeObjectURL(url);
+          toast.success('配置已导出');
+        } catch { toast.error('导出配置失败'); }
+        break;
+      case 'reset':
+        toast.info('重置设置功能开发中');
+        break;
+      case 'cache':
+        try {
+          localStorage.clear();
+          toast.success('缓存已清除，页面将刷新');
+          setTimeout(() => window.location.reload(), 1000);
+        } catch { toast.error('清除缓存失败'); }
+        break;
+      case 'logs':
+        toast.info('日志查看功能开发中，请通过终端查看');
+        break;
+      case 'diag':
+        try {
+          const perf = await api.perfMetrics();
+          toast.success(`系统诊断完成 — CPU: ${(perf as any).cpu_percent ?? 0}%, 内存: ${(perf as any).memory_used_mb ?? 0}MB`);
+        } catch { toast.error('系统诊断失败，后端可能未运行'); }
+        break;
+    }
+  }, []);
 
   /* —— 保存配置 —— */
   const handleSave = async () => {

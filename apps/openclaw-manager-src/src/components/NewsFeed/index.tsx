@@ -97,17 +97,17 @@ function mapCategory(cat: string): NewsCategory {
   return 'GEOPOLITICS'; // 默认归类
 }
 
-/** 把 ISO 时间转为 "X min ago / X hr ago" */
+/** 把 ISO 时间转为中文相对时间 */
 function timeAgo(isoStr: string): string {
   try {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins} min ago`;
+    if (mins < 1) return '刚刚';
+    if (mins < 60) return `${mins} 分钟前`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} hr ago`;
+    if (hrs < 24) return `${hrs} 小时前`;
     const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
+    return `${days} 天前`;
   } catch {
     return '—';
   }
@@ -377,7 +377,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-cyan)' }}
               >
-                AI NEWS AGGREGATOR
+                AI 新闻聚合
               </span>
               {lastUpdated && (
                 <span className="flex items-center gap-1 ml-auto">
@@ -506,7 +506,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-amber)' }}
               >
-                THREAT RADAR
+                威胁雷达
               </span>
             </div>
 
@@ -533,7 +533,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px] mt-1"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                CURRENT ASSESSMENT
+                当前评估
               </p>
             </div>
 
@@ -624,7 +624,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-cyan)' }}
               >
-                TOP SOURCES
+                热门来源
               </span>
             </div>
 
@@ -669,7 +669,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--text-disabled)' }}
               >
-                TOTAL SOURCES ACTIVE
+                活跃来源总数
               </span>
               <span
                 className="font-mono text-xs font-semibold"
@@ -696,7 +696,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-green)' }}
               >
-                CATEGORY BREAKDOWN
+                分类统计
               </span>
             </div>
 
@@ -745,7 +745,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--text-disabled)' }}
               >
-                TOTAL ARTICLES
+                文章总数
               </span>
               <span
                 className="font-mono text-xs font-semibold"
@@ -772,7 +772,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-purple)' }}
               >
-                AI DAILY BRIEF
+                AI 每日摘要
               </span>
             </div>
 

@@ -99,6 +99,7 @@ function formatChange(val: number): string {
 
 /** 格式化价格数字为带逗号的字符串 */
 function formatPrice(price: number): string {
+  if (price === 0 || price == null) return '—';
   if (price >= 1000) {
     return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -371,7 +372,7 @@ export function FinRadar() {
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'var(--accent-cyan)', opacity: 0.15 }}
+                style={{ background: 'rgba(0,212,255,0.15)' }}
               >
                 <Activity size={16} style={{ color: 'var(--accent-cyan)' }} />
               </div>
@@ -498,6 +499,14 @@ export function FinRadar() {
                 <div className="flex items-center justify-center py-8">
                   <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
                     {t('finRadar.noData')}
+                  </span>
+                </div>
+              )}
+
+              {currentData.length > 0 && currentData.every(q => q.price === '—') && (
+                <div className="text-center py-3">
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--accent-amber)' }}>
+                    数据源暂时不可用，正在重试...
                   </span>
                 </div>
               )}
