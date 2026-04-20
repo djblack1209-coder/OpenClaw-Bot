@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Loader2,
+  Clock,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
@@ -178,6 +179,7 @@ export function FinRadar() {
   });
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** 拉取单个 Tab 的数据 */
   const fetchTab = useCallback(async (tab: typeof TAB_CONFIG[number]) => {
@@ -197,6 +199,7 @@ export function FinRadar() {
   /** 拉取所有 Tab 数据 */
   const fetchAllData = useCallback(async () => {
     await Promise.all(TAB_CONFIG.map(fetchTab));
+    setLastUpdated(new Date());
   }, [fetchTab]);
 
   /* 首次加载 + 定时刷新 */
@@ -390,6 +393,15 @@ export function FinRadar() {
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                 LIVE
               </span>
+              {lastUpdated && (
+                <>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>·</span>
+                  <Clock size={9} style={{ color: 'var(--text-disabled)' }} />
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                    最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -505,9 +517,10 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-1">
             <Zap size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              {t('finRadar.fearGreedIndex')}
+              {t('finRadar.fearGreedIndex')}(估算)
             </span>
           </div>
+          <p className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>基于涨跌比例估算</p>
 
           {/* 大数字 */}
           <span

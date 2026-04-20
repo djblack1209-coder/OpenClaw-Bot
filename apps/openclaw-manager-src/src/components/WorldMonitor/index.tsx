@@ -26,6 +26,7 @@ import {
   Map,
   RefreshCw,
   Loader2,
+  Clock,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
@@ -531,6 +532,7 @@ export function WorldMonitor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** 从后端拉取所有数据 */
   const fetchData = useCallback(async () => {
@@ -559,6 +561,7 @@ export function WorldMonitor() {
         message: `[${item.source}] ${item.title}`,
       }));
       setIntelFeed(entries);
+      setLastUpdated(new Date());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'unknown error';
       setError(msg);
@@ -714,6 +717,15 @@ export function WorldMonitor() {
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>
                   {t('worldMonitor.realtime')}
                 </span>
+                {lastUpdated && (
+                  <>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>·</span>
+                    <Clock size={9} style={{ color: 'var(--text-disabled)' }} />
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                      最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -909,6 +921,8 @@ export function WorldMonitor() {
               {t('worldMonitor.criticalInfraStatus')}
             </h3>
 
+            <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>数据源接入中</span>
+
             <div className="flex flex-col gap-4 mt-5 flex-1">
               {/* 互联网中断 */}
               <div className="flex items-center justify-between">
@@ -921,7 +935,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.globalOutageEvents')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>暂无</span>
               </div>
 
               {/* GPS 干扰 */}
@@ -935,7 +949,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.navSignalAnomaly')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>暂无</span>
               </div>
 
               {/* 电力网络 */}
@@ -949,10 +963,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.gridStatus')}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="status-dot-green" />
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('worldMonitor.stable')}</span>
-                </div>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-green)' }}>暂无</span>
               </div>
 
               {/* 海底光缆 */}
@@ -966,7 +977,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.transoceanicLink')}</p>
                   </div>
                 </div>
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>—</span>
+                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>暂无</span>
               </div>
             </div>
           </div>
@@ -982,6 +993,8 @@ export function WorldMonitor() {
               {t('worldMonitor.naturalDisasterMonitor')}
             </h3>
 
+            <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>数据源接入中</span>
+
             <div className="flex flex-col gap-4 mt-5 flex-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -995,7 +1008,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>M5.0+ / 24h</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1008,7 +1021,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.globalActiveWildfires')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1021,7 +1034,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.anomaliesDetected')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1034,7 +1047,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.severeWeatherAlert')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>暂无</span>
               </div>
             </div>
           </div>
@@ -1050,6 +1063,8 @@ export function WorldMonitor() {
               {t('worldMonitor.cyberThreatPosture')}
             </h3>
 
+            <span className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>数据源接入中</span>
+
             <div className="flex flex-col gap-4 mt-5 flex-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1063,7 +1078,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.cisaKev')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-red)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1076,7 +1091,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.detected24h')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-amber)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1089,7 +1104,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.weeklyDisclosed')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-purple)' }}>暂无</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1102,7 +1117,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.pkgCiPoisoning')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>—</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: 'var(--accent-cyan)' }}>暂无</span>
               </div>
             </div>
           </div>

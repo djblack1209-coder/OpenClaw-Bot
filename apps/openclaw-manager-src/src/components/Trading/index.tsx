@@ -20,6 +20,7 @@ import {
   LineChart,
   Briefcase,
   CandlestickChart,
+  Clock,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useAppStore } from '../../stores/appStore';
@@ -159,6 +160,7 @@ export function Trading() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /* ---- 数据拉取 ---- */
   const fetchData = useCallback(async (silent = false) => {
@@ -188,6 +190,7 @@ export function Trading() {
       if (!silent) setError(msg);
     } finally {
       setLoading(false);
+      setLastUpdated(new Date());
     }
   }, []);
 
@@ -232,6 +235,15 @@ export function Trading() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {/* 最后更新时间 */}
+      {lastUpdated && (
+        <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
+          <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        </div>
+      )}
       <motion.div
         className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
         variants={containerVariants}
