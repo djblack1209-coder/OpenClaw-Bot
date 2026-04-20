@@ -207,6 +207,7 @@ export function Notifications() {
     try {
       await api.markNotificationRead(id);
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
+      toast.success('已标记为已读');
     } catch {
       toast.error('标记已读失败');
     } finally {

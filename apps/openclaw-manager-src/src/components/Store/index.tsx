@@ -80,6 +80,7 @@ export function Store() {
   const [proposals, setProposals] = useState<NormalizedProposal[]>([]);
   const [stats, setStats] = useState<EvolutionStatsRaw | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState<string | null>(null); // 正在审批的提案 id
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('全部');
@@ -103,14 +104,19 @@ export function Store() {
           ? raw
           : raw?.proposals || raw?.data || [];
         setProposals(list.map(normalizeProposal));
+        setError(null);
       }
 
       // 处理统计数据
       if (statsRes.status === 'fulfilled') {
         setStats(statsRes.value);
       }
-    } catch {
-      // 静默处理 — 页面会显示"暂无数据"
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '数据加载失败';
+      console.error('[Store] 数据拉取失败:', msg);
+      if (!proposals.length) {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -257,7 +263,20 @@ export function Store() {
           </div>
 
           {/* 提案卡片网格 */}
-          {featured.length === 0 ? (
+          {error && !proposals.length ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <span className="font-mono text-sm" style={{ color: 'var(--accent-red)' }}>
+                数据加载失败：{error}
+              </span>
+              <button
+                onClick={() => { setError(null); setLoading(true); fetchData(); }}
+                className="font-mono text-xs px-4 py-2 rounded-lg"
+                style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(0,212,255,0.25)' }}
+              >
+                重试
+              </button>
+            </div>
+          ) : featured.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-[var(--text-tertiary)] font-mono text-sm">
               暂无可用插件
             </div>
