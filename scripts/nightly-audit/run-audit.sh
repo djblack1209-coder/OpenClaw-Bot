@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# OpenClaw Bot 夜间自动审计系统 — 主执行脚本
+# OpenEverything 夜间自动审计系统 — 主执行脚本
 # 在中国时间 00:00-08:00 自动调度 Claude Code 进行全面审计
 #
 # 用法:
@@ -16,7 +16,7 @@ set -euo pipefail
 # 当通过 ~/Library/Scripts/OpenClaw/ 下的副本执行时，
 # BASH_SOURCE 指向副本位置而非项目目录，导致找不到 config.env 和 phases/。
 # 硬编码项目审计目录作为 SCRIPT_DIR，确保 launchd 和手动执行都能正常工作。
-SCRIPT_DIR="/Users/blackdj/Desktop/OpenClaw Bot/scripts/nightly-audit"
+SCRIPT_DIR="/Users/blackdj/Desktop/OpenEverything/scripts/nightly-audit"
 if [[ ! -d "$SCRIPT_DIR" ]]; then
     # 降级：尝试用 BASH_SOURCE 定位（手动执行场景）
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -565,7 +565,7 @@ generate_health_score() {
     "score": ${score},
     "grade": "${grade}",
     "max_score": 100,
-    "project": "OpenClaw Bot",
+    "project": "OpenEverything",
     "phases_completed": ${phases_completed},
     "phases_total": ${phases_total},
     "commits": ${total_commits},
@@ -640,7 +640,7 @@ generate_rich_summary() {
     local rich_summary="${LOG_DIR}/${DATE}.summary.md"
 
     {
-        echo "# OpenClaw Bot 夜间审计报告"
+        echo "# OpenEverything 夜间审计报告"
         echo ""
         echo "> 这是 AI 工程师昨晚值班的工作汇报，打开即可了解项目状态。"
         echo ""
@@ -695,7 +695,7 @@ generate_rich_summary() {
         echo "- 其他技术问题 → AI 已经全部处理了"
         echo ""
         echo "---"
-        echo "*本报告由 OpenClaw Bot 夜间审计系统 v2.0 自动生成*"
+        echo "*本报告由 OpenEverything 夜间审计系统 v2.0 自动生成*"
     } > "$rich_summary"
 
     log INFO "富格式摘要已生成: ${rich_summary}"
@@ -957,7 +957,7 @@ main() {
 
     # 开始
     log INFO "========================================="
-    log INFO " OpenClaw Bot 夜间自动审计"
+    log INFO " OpenEverything 夜间自动审计"
     log INFO " 日期: ${DATE}"
     log INFO " 本地时间: $(date)"
     log INFO " 中国时间: $(TZ=Asia/Shanghai date)"
@@ -1151,7 +1151,7 @@ main() {
     log INFO "========================================="
 
     # === 构建通知内容 ===
-    local notify_body="🤖 *OpenClaw Bot 夜间审计完成*
+    local notify_body="🤖 *OpenEverything 夜间审计完成*
 
 📅 日期: ${DATE}
 🏥 健康评分: ${health_score}/100（${health_grade}）"

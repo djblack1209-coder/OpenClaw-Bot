@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# OpenClaw Bot — Install newsyslog log rotation config
+# OpenEverything — Install newsyslog log rotation config
 # Rotates all LaunchAgent stdout/stderr logs to prevent unbounded growth.
 #
 # Usage: sudo bash scripts/setup_log_rotation.sh

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# OpenClaw Bot 夜间审计 — Ubuntu 服务器安装脚本
+# OpenEverything 夜间审计 — Ubuntu 服务器安装脚本
 # 在腾讯云 Ubuntu 22.04 服务器上部署自动审计环境
 #
 # 用法: ssh root@your-server 'bash -s' < install-server.sh
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 echo "============================================"
-echo " OpenClaw Bot 夜间审计 — 服务器环境安装"
+echo " OpenEverything 夜间审计 — 服务器环境安装"
 echo "============================================"
 
 # === 系统依赖 ===

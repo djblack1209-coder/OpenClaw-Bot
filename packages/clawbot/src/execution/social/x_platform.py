@@ -20,7 +20,6 @@ v2.0 变更 (2026-03-23):
 - 推文分析和转发策略
 """
 import asyncio
-import json
 import logging
 import os
 import hashlib

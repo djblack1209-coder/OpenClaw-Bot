@@ -7,7 +7,7 @@
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -64,7 +64,7 @@ def list_cli_tools():
         mgr = CLIAnythingManager.get_instance()
         tools = mgr.discover()
         return [CLIToolInfo(**t) for t in tools]
-    except Exception as e:
+    except Exception:
         logger.exception("列出 CLI 工具失败")
         raise HTTPException(status_code=500, detail="获取工具列表失败")
 
@@ -83,7 +83,7 @@ async def run_cli_command(req: CLIRunRequest):
             timeout=req.timeout,
         )
         return CLIRunResponse(**result)
-    except Exception as e:
+    except Exception:
         logger.exception("执行 CLI 命令失败: tool=%s", req.tool)
         raise HTTPException(status_code=500, detail="命令执行失败")
 
@@ -98,6 +98,6 @@ async def install_cli_tool(req: CLIInstallRequest):
         mgr = CLIAnythingManager.get_instance()
         result = await mgr.install(req.tool)
         return CLIInstallResponse(**result)
-    except Exception as e:
+    except Exception:
         logger.exception("安装 CLI 工具失败: tool=%s", req.tool)
         raise HTTPException(status_code=500, detail="安装失败")

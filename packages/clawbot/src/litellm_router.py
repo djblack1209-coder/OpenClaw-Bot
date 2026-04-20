@@ -393,9 +393,10 @@ def _trigger_iflow_auto_renew() -> None:
 
     def _run():
         try:
+            import sys as _sys  # 仅此函数内使用
             logger.info("[iflow] 🔄 后台启动自动续期脚本...")
             _sp.Popen(
-                [sys.executable, str(renew_script), "--restart"],
+                [_sys.executable, str(renew_script), "--restart"],
                 stdout=open("/tmp/iflow_renew.log", "w"),
                 stderr=_sp.STDOUT,
                 start_new_session=True,
