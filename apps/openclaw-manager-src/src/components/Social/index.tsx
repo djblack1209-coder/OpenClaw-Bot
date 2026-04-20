@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import {
   Share2,
@@ -138,6 +139,7 @@ export function Social() {
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch {
+      toast.error('操作失败，请稍后重试');
       await fetchData();
     } finally {
       setAutopilotLoading(false);

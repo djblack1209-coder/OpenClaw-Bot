@@ -152,6 +152,24 @@ export function Store() {
     }
   }, [fetchData]);
 
+  /* ── 拒绝提案 ── */
+  const handleReject = useCallback(async (id: string) => {
+    if (!id) return;
+    setApproving(id);
+    try {
+      await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'rejected' }),
+      });
+      toast.success(t('store.rejectSuccess') || '已拒绝');
+      await fetchData();
+    } catch (err) {
+      toast.error(`${t('store.rejectFailed') || '拒绝失败'}: ${err instanceof Error ? err.message : t('store.unknownError')}`);
+    } finally {
+      setApproving(null);
+    }
+  }, [fetchData]);
+
   /* ── 搜索 + 状态筛选 ── */
   const filtered = useMemo(() => {
     let list = proposals;
@@ -326,18 +344,32 @@ export function Store() {
                         {si.label}
                       </span>
                       {proposal.status === 'pending' && (
-                        <button
-                          disabled={approving === proposal.id}
-                          onClick={() => handleApprove(proposal.id)}
-                          className="px-3 py-1 rounded-full border border-[var(--accent-cyan)]/40 text-[var(--accent-cyan)] text-[11px] font-mono hover:bg-[var(--accent-cyan)]/10 transition-colors disabled:opacity-50"
-                        >
-                          {approving === proposal.id ? (
-                            <Loader2 size={11} className="animate-spin inline mr-1" />
-                          ) : (
-                            <ThumbsUp size={11} className="inline mr-1" />
-                          )}
-                          {t('store.approve')}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            disabled={approving === proposal.id}
+                            onClick={() => handleApprove(proposal.id)}
+                            className="px-3 py-1 rounded-full border border-[var(--accent-cyan)]/40 text-[var(--accent-cyan)] text-[11px] font-mono hover:bg-[var(--accent-cyan)]/10 transition-colors disabled:opacity-50"
+                          >
+                            {approving === proposal.id ? (
+                              <Loader2 size={11} className="animate-spin inline mr-1" />
+                            ) : (
+                              <ThumbsUp size={11} className="inline mr-1" />
+                            )}
+                            {t('store.approve')}
+                          </button>
+                          <button
+                            disabled={approving === proposal.id}
+                            onClick={() => handleReject(proposal.id)}
+                            className="px-3 py-1 rounded-full border border-[var(--accent-red)]/40 text-[var(--accent-red)] text-[11px] font-mono hover:bg-[var(--accent-red)]/10 transition-colors disabled:opacity-50"
+                          >
+                            {approving === proposal.id ? (
+                              <Loader2 size={11} className="animate-spin inline mr-1" />
+                            ) : (
+                              <XCircle size={11} className="inline mr-1" />
+                            )}
+                            {t('store.reject') || '拒绝'}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </motion.div>
@@ -470,18 +502,32 @@ export function Store() {
                     </span>
                     <div className="flex items-center justify-end gap-2">
                       {p.status === 'pending' && (
-                        <button
-                          disabled={approving === p.id}
-                          onClick={() => handleApprove(p.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-green)]/30 text-[var(--accent-green)] text-[11px] font-mono hover:bg-[var(--accent-green)]/10 transition-colors disabled:opacity-50"
-                        >
-                          {approving === p.id ? (
-                            <Loader2 size={11} className="animate-spin" />
-                          ) : (
-                            <ThumbsUp size={11} />
-                          )}
-                          {t('store.approve')}
-                        </button>
+                        <>
+                          <button
+                            disabled={approving === p.id}
+                            onClick={() => handleApprove(p.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-green)]/30 text-[var(--accent-green)] text-[11px] font-mono hover:bg-[var(--accent-green)]/10 transition-colors disabled:opacity-50"
+                          >
+                            {approving === p.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <ThumbsUp size={11} />
+                            )}
+                            {t('store.approve')}
+                          </button>
+                          <button
+                            disabled={approving === p.id}
+                            onClick={() => handleReject(p.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--accent-red)]/30 text-[var(--accent-red)] text-[11px] font-mono hover:bg-[var(--accent-red)]/10 transition-colors disabled:opacity-50"
+                          >
+                            {approving === p.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <XCircle size={11} />
+                            )}
+                            {t('store.reject') || '拒绝'}
+                          </button>
+                        </>
                       )}
                       {p.url && (
                         <a
