@@ -307,6 +307,52 @@ def init_trading_system(
             except Exception as e:
                 logger.warning("静默异常: %s", e)
 
+            # 注入投资大师圆桌会议分析（5 位大师的共识作为投票参考）
+            try:
+                from src.trading.master_analysts import run_master_panel
+                from src.litellm_router import get_litellm_router
+
+                _router = get_litellm_router()
+
+                async def _master_llm_call(system_prompt: str, user_prompt: str) -> str:
+                    """适配 master_analysts 所需的 LLM 调用接口"""
+                    combined = f"[System]\n{system_prompt}\n\n[User]\n{user_prompt}"
+                    resp = await _router.acompletion(
+                        model="auto",
+                        messages=[{"role": "user", "content": combined}],
+                        max_tokens=1024,
+                        temperature=0.3,
+                    )
+                    return resp.choices[0].message.content or ""
+
+                master_insights = []
+                for cand in candidates[:max_candidates]:
+                    sym = cand.get("symbol", "")
+                    analysis = analyses.get(sym, {})
+                    if sym and analysis:
+                        try:
+                            panel = await run_master_panel(sym, analysis, _master_llm_call)
+                            consensus = panel.get("consensus", {})
+                            sig = consensus.get("consensus_signal", "neutral")
+                            conf = consensus.get("consensus_confidence", 0)
+                            breakdown = consensus.get("signal_breakdown", {})
+                            master_insights.append(
+                                f"{sym}: 大师共识={sig} 置信度={conf:.0%} "
+                                f"(看多:{breakdown.get('bullish', 0):.1f} "
+                                f"看空:{breakdown.get('bearish', 0):.1f} "
+                                f"中性:{breakdown.get('neutral', 0):.1f})"
+                            )
+                        except Exception as master_err:
+                            logger.debug("[TradingSystem] %s 大师分析失败: %s", sym, master_err)
+
+                if master_insights:
+                    account_context += "\n\n[投资大师圆桌会议 — 5位大师(巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒)的共识]\n" + "\n".join(master_insights)
+                    logger.info("[TradingSystem] 大师圆桌分析已注入: %d 个标的", len(master_insights))
+            except ImportError:
+                logger.debug("[TradingSystem] master_analysts 模块不可用，跳过大师分析")
+            except Exception as e:
+                logger.debug("[TradingSystem] 大师分析注入失败(非致命): %s", e)
+
             # 尝试 CrewAI 多 Agent 协作
             if _crewai:
                 try:
