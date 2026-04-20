@@ -63,8 +63,8 @@ def _atomic_json_write(path: Path, data: dict) -> None:
     except Exception as e:  # noqa: F841
         try:
             os.unlink(tmp)
-        except OSError as e:  # noqa: F841
-            pass
+        except OSError as e:
+            logger.debug("文件操作失败: %s", e)
         raise
 
 
@@ -739,8 +739,8 @@ class TieredContextManager:
                                     )
                                 if chat_id != 0:
                                     self._core_dirty[chat_id] = True
-                    except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
-                        pass
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.debug("JSON解析失败: %s", e)
             except Exception:
                 logger.debug("[TieredCtx] user_profile 同步失败", exc_info=True)
 

@@ -431,8 +431,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                                 message_id=sent_message.message_id,
                                 text=prev_text[:TG_MSG_LIMIT],
                             )
-                        except BadRequest as e:  # noqa: F841
-                            pass
+                        except BadRequest as e:
+                            logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
                     # P1-A: 溢出分段保留格式化渲染
                     remaining = content[TG_MSG_LIMIT:]
                     while remaining:
@@ -547,8 +547,8 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                                 )
                                 prev_text = content
                                 last_edit_time = _time.monotonic()
-                            except BadRequest as e:  # noqa: F841
-                                pass
+                            except BadRequest as e:
+                                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
                         else:
                             backoff_multiplier = min(backoff_multiplier * 2, 16.0)
                             logger.debug(f"[{self.bot_id}] edit_message BadRequest: {err_msg}")

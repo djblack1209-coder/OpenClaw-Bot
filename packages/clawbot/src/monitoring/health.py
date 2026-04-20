@@ -58,8 +58,8 @@ class HealthChecker:
                             "last_error": error,
                         }))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError as e:  # noqa: F841
-                        pass
+                    except RuntimeError as e:
+                        logger.debug("运行时检查失败: %s", e)
             except Exception as e:
                 logger.debug("静默异常: %s", e)
 

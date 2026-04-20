@@ -273,8 +273,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xhs] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -302,8 +302,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_post] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -480,8 +480,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_social_plan] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -515,8 +515,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_social_repost] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
 
     @requires_auth
@@ -542,8 +542,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xbrief] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -565,8 +565,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xdraft] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -599,8 +599,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xpost] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -622,8 +622,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xhsdraft] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -656,8 +656,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_xhspost] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     @requires_auth
     @with_typing
@@ -705,8 +705,8 @@ class SocialCommandsMixin:
             logger.warning("[cmd_publish] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("消息发送失败: %s", e)
 
     # ---- 闲鱼 AI 客服控制 ----
 
@@ -723,7 +723,7 @@ class SocialCommandsMixin:
                 try:
                     day_offset = int(args[1])
                 except ValueError as e:  # noqa: F841
-                    pass
+                    logger.debug("用户输入解析失败: %s", e)
             result = execution_hub.mark_calendar_done(day_offset=day_offset)
             if result.get("success"):
                 await update.message.reply_text(
@@ -739,7 +739,7 @@ class SocialCommandsMixin:
             try:
                 days = int(args[0])
             except ValueError as e:  # noqa: F841
-                pass
+                logger.debug("用户输入解析失败: %s", e)
 
         # 先查DB已有计划
         result = await execution_hub.generate_content_calendar(days=days)
@@ -792,7 +792,7 @@ class SocialCommandsMixin:
             try:
                 days = int(context.args[0])
             except ValueError as e:  # noqa: F841
-                pass
+                logger.debug("用户输入解析失败: %s", e)
         result = execution_hub.get_post_performance_report(days=days)
         if not result.get("success"):
             await update.message.reply_text(f"❌ 报告生成失败: {result.get('error', '暂无数据')}")

@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any, Callable, Coroutine
+
+logger = logging.getLogger(__name__)
 
 # LLM 调用函数类型: async def call(system_prompt, user_prompt) -> str
 LLMCallFn = Callable[[str, str], Coroutine[Any, Any, str]]
@@ -171,8 +174,8 @@ def _parse_llm_response(raw: str) -> dict[str, Any]:
             data["confidence"] = max(0.0, min(1.0, float(conf)))
             data.setdefault("reasoning", "")
             return data
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        logger.debug("trading数据JSON解析失败: %s", e)
 
     # 尝试从文本中提取 JSON 块
     import re
@@ -186,8 +189,8 @@ def _parse_llm_response(raw: str) -> dict[str, Any]:
             data["confidence"] = max(0.0, min(1.0, float(conf)))
             data.setdefault("reasoning", "")
             return data
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            logger.debug("trading数据JSON解析失败: %s", e)
 
     # 完全无法解析 → 中性信号
     return {

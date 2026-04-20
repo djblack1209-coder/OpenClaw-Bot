@@ -45,8 +45,8 @@ def parse_feedback_data(data: str) -> Optional[dict]:
                 "model": parts[3],
                 "chat_id": int(parts[4]),
             }
-    except (ValueError, IndexError) as e:  # noqa: F841
-        pass
+    except (ValueError, IndexError) as e:
+        logger.debug("值解析失败: %s", e)
     return None
 
 
