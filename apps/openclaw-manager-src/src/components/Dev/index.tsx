@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   Package,
   Loader2,
-  AlertCircle,
   Clock,
   ExternalLink,
   CheckCircle2,
@@ -23,6 +22,7 @@ import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { useLanguage } from '../../i18n';
+import { EmptyState } from '../shared/EmptyState';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -104,24 +104,6 @@ function formatUptime(seconds: number | null | undefined): string {
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
-}
-
-/* ====== 暂无数据占位组件 ====== */
-function NoDataPlaceholder({ reason, hint }: { reason: string; hint?: string }) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center py-8 gap-2"
-      style={{ color: 'var(--text-disabled)' }}
-    >
-      <AlertCircle size={20} />
-      <span className="font-mono text-xs text-center">{reason}</span>
-      {hint && (
-        <span className="font-mono text-[10px] text-center" style={{ color: 'var(--text-disabled)' }}>
-          {hint}
-        </span>
-      )}
-    </div>
-  );
 }
 
 /* ====== 主组件 ====== */
@@ -286,7 +268,7 @@ export function Dev() {
             </div>
 
             {statusError ? (
-              <NoDataPlaceholder reason={statusError} />
+              <EmptyState title={statusError} />
             ) : (
               <>
                 {/* 统计指标 */}
@@ -366,9 +348,9 @@ export function Dev() {
             </div>
 
             {gitLogError ? (
-              <NoDataPlaceholder reason={gitLogError} />
+              <EmptyState title={gitLogError} />
             ) : gitLog.length === 0 && !gitLogLoading ? (
-              <NoDataPlaceholder reason="{t('dev.noCommits')}" />
+              <EmptyState title="{t('dev.noCommits')}" />
             ) : (
               <div className="flex-1 overflow-y-auto space-y-2 max-h-[360px]">
                 {gitLog.map((commit) => (
@@ -459,7 +441,7 @@ export function Dev() {
             </div>
 
             {healthError ? (
-              <NoDataPlaceholder reason={healthError} />
+              <EmptyState title={healthError} />
             ) : healthSummary ? (
               <div className="space-y-4">
                 {/* 活跃问题汇总 */}
@@ -542,7 +524,7 @@ export function Dev() {
             </div>
 
             {depsError ? (
-              <NoDataPlaceholder reason={depsError} />
+              <EmptyState title={depsError} />
             ) : depsLoading ? (
               <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-disabled)' }}>
                 <Loader2 size={16} className="animate-spin" />
