@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import {
   Fish,
@@ -13,8 +14,10 @@ import {
   XCircle,
   Wifi,
   WifiOff,
+  QrCode,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { clawbotFetchJson } from '../../lib/tauri-core';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -90,6 +93,9 @@ export function Xianyu() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [qrUrl, setQrUrl] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
 
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
@@ -134,9 +140,29 @@ export function Xianyu() {
       await new Promise((r) => setTimeout(r, 1000));
       await fetchData();
     } catch {
+      toast.error('Cookie 同步失败，请检查 CookieCloud 服务');
       await fetchData();
     } finally {
       setSyncLoading(false);
+    }
+  };
+
+  /* ====== 扫码登录 ====== */
+  const handleGenerateQR = async () => {
+    setQrLoading(true);
+    try {
+      const res = await clawbotFetchJson<{ qr_url?: string; url?: string }>('/api/v1/xianyu/qr/generate', { method: 'POST' });
+      const url = res?.qr_url ?? res?.url ?? '';
+      if (url) {
+        setQrUrl(url);
+        setShowQr(true);
+      } else {
+        toast.error('获取二维码失败，请稍后重试');
+      }
+    } catch {
+      toast.error('获取二维码失败，请稍后重试');
+    } finally {
+      setQrLoading(false);
     }
   };
 
@@ -154,7 +180,7 @@ export function Xianyu() {
         initial="hidden"
         animate="visible"
       >
-        {/* ====== 第一行：闲鱼概览 (span-8) + Cookie 状态 (span-4) ====== */}
+        {/* ====== 第一行：闲鱼概览 (span-8) + 扫码登录 + Cookie 状态 (span-4) ====== */}
 
         {/* 闲鱼概览 */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
@@ -246,6 +272,86 @@ export function Xianyu() {
             </div>
           </div>
         </motion.div>
+
+        {/* 扫码登录卡片 */}
+        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-5">
+              <QrCode size={16} style={{ color: 'var(--accent-purple)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>扫码登录</span>
+            </div>
+
+            <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-secondary)' }}>
+              使用闲鱼 APP 扫码登录，自动获取 Cookie
+            </p>
+
+            <motion.button
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl cursor-pointer font-mono text-xs font-bold"
+              style={{
+                background: 'rgba(168,85,247,0.08)',
+                border: '1px solid rgba(168,85,247,0.25)',
+                color: 'var(--accent-purple)',
+                opacity: qrLoading ? 0.5 : 1,
+                pointerEvents: qrLoading ? 'none' : 'auto',
+              }}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleGenerateQR}
+            >
+              {qrLoading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <QrCode size={14} />
+              )}
+              {qrLoading ? '生成中…' : '扫码登录闲鱼'}
+            </motion.button>
+
+            <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
+              扫码后 Cookie 自动更新，无需手动同步
+            </p>
+          </div>
+        </motion.div>
+
+        {/* 二维码弹窗 */}
+        {showQr && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setShowQr(false)}
+          >
+            <motion.div
+              className="abyss-card p-6 rounded-2xl flex flex-col items-center gap-4"
+              style={{ minWidth: 300 }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <QrCode size={18} style={{ color: 'var(--accent-purple)' }} />
+                <span className="font-display text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                  扫码登录闲鱼
+                </span>
+              </div>
+              <div className="rounded-xl overflow-hidden bg-white p-3">
+                <img src={qrUrl} alt="闲鱼登录二维码" className="w-48 h-48 object-contain" />
+              </div>
+              <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                请使用闲鱼 APP 扫描上方二维码
+              </p>
+              <button
+                className="font-mono text-xs px-4 py-2 rounded-xl"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--text-secondary)',
+                }}
+                onClick={() => setShowQr(false)}
+              >
+                关闭
+              </button>
+            </motion.div>
+          </div>
+        )}
 
         {/* Cookie 状态卡片 */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
