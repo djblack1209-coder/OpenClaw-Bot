@@ -343,3 +343,21 @@ async def get_xianyu_profit(days: int = 30):
     except Exception as e:
         logger.exception("获取闲鱼利润失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
+
+
+# ---------------------------------------------------------------------------
+# GET /xianyu/cookie-status
+# ---------------------------------------------------------------------------
+
+
+@router.get("/xianyu/cookie-status")
+async def get_cookie_status():
+    """获取闲鱼 Cookie 健康状态"""
+    from src.xianyu.cookie_refresher import CookieHealthMonitor
+    monitor = CookieHealthMonitor()
+    try:
+        result = await monitor._check_xianyu_cookie()
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error("检查闲鱼 Cookie 状态失败: %s", e)
+        return {"success": False, "error": str(e)}

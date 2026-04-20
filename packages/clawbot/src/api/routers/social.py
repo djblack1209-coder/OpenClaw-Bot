@@ -310,3 +310,27 @@ async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
     except Exception as e:
         logger.exception("发布草稿失败 (index=%d)", index)
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
+
+
+# ──────────────────────────────────────────────
+#  Cookie 健康状态
+# ──────────────────────────────────────────────
+
+
+@router.get("/social/cookie-status")
+async def get_social_cookie_status():
+    """获取社媒平台 Cookie 健康状态"""
+    from src.xianyu.cookie_refresher import CookieHealthMonitor
+    monitor = CookieHealthMonitor()
+    try:
+        all_status = await monitor.check_all_cookies()
+        return {
+            "success": True,
+            "data": {
+                "x": all_status.get("x", {}),
+                "xhs": all_status.get("xhs", {}),
+            }
+        }
+    except Exception as e:
+        logger.error("检查社媒 Cookie 状态失败: %s", e)
+        return {"success": False, "error": str(e)}
