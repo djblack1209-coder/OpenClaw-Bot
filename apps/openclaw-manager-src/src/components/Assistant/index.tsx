@@ -202,7 +202,7 @@ export function Assistant() {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }) },
         0, // 不限超时
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().catch(() => '请求失败')}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().catch(() => 'Request failed')}`);
       await readSSE(resp,
         (chunk) => setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content + chunk } : m)),
         () => { finish(); loadSessions(); },
@@ -307,7 +307,7 @@ export function Assistant() {
         {/* 快捷指令 */}
         <div className="abyss-card p-4">
           <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">
-            <Zap size={12} style={{ color: cfg.colorHex }} /> 快捷指令
+            <Zap size={12} style={{ color: cfg.colorHex }} /> {t('assistant.shortcuts')}
           </h3>
           <div className="grid grid-cols-2 gap-2">
             {cfg.commands.map(cmd => (
@@ -326,7 +326,7 @@ export function Assistant() {
         <div className="abyss-card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-label text-xs font-display flex items-center gap-1.5">
-              <History size={12} className="text-[var(--text-tertiary)]" /> 会话记录
+              <History size={12} className="text-[var(--text-tertiary)]" /> {t('assistant.sessionHistory')}
             </h3>
             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={createSession}
               className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/[0.05] hover:bg-white/[0.1] transition-colors" title={t('assistant.newChat')}>
@@ -364,7 +364,7 @@ export function Assistant() {
         {/* 系统信息 */}
         <div className="abyss-card p-4">
           <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">
-            <Cpu size={12} className="text-[var(--text-tertiary)]" /> 系统信息
+            <Cpu size={12} className="text-[var(--text-tertiary)]" /> {t('assistant.systemInfo')}
           </h3>
           <div className="space-y-2.5">
             {[
