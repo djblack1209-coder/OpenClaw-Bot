@@ -619,6 +619,8 @@ export const enUS: Record<string, string> = {
   'performance.noErrorData': 'No error data',
   'performance.requestThroughput': 'Request Throughput',
   'performance.noThroughputData': 'No throughput data',
+  'performance.fetchError': 'Failed to load performance data, backend may not be running',
+  'performance.retry': 'Retry',
 
   // APIGateway
   'apiGateway.loadFailed': 'Failed to load gateway data',
@@ -1200,4 +1202,6 @@ export const enUS: Record<string, string> = {
   'executionFlow.metricActivePipelines': 'Active Pipelines',
   'executionFlow.metricQueuedTasks': 'Queued Tasks',
   'executionFlow.metricFailedTasks': 'Failed Tasks',
+  'executionFlow.engineOffline': 'Engine Offline',
+  'executionFlow.refreshFailed': 'Failed to refresh, engine may not be running',
 };

@@ -183,7 +183,7 @@ export function AIConfig() {
       }
     } catch (err) {
       console.error('[AIConfig] 数据加载失败:', err);
-      if (!silent) toast.error(t('aiConfig.loadFailed'));
+      // 初始加载和自动刷新不弹 toast，避免服务未运行时反复弹错
     } finally {
       setLoading(false);
     }
@@ -273,7 +273,7 @@ export function AIConfig() {
 
   /* ── {t('aiConfig.routeStrategy')} — 只读展示（无 API） ── */
   const STRATEGIES_KEYS = ['aiConfig.strategyAuto', 'aiConfig.strategyCost', 'aiConfig.strategyQuality', 'aiConfig.strategySpeed'];
-  const [strategy] = useState('aiConfig.strategyAuto');
+  const [strategy, setStrategy] = useState('aiConfig.strategyAuto');
 
   /* ── 加载态 ── */
   if (loading) {
@@ -439,9 +439,11 @@ export function AIConfig() {
             </h3>
             <div className="flex-1 space-y-2">
               {STRATEGIES_KEYS.map((s) => (
-                <div
+                <button
                   key={s}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                  type="button"
+                  onClick={() => setStrategy(s)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left cursor-pointer transition-colors"
                   style={{
                     background: strategy === s ? 'rgba(6,182,212,0.12)' : 'var(--bg-secondary)',
                     borderWidth: '1px',
@@ -465,7 +467,7 @@ export function AIConfig() {
                   >
                     {t(s)}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
