@@ -325,8 +325,8 @@ class CookieCloudManager:
             now = datetime.now(tz)
             if now.hour >= 23 or now.hour < 7:
                 return False
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Cookie/会话操作失败: %s", e)
 
         # 只在刚好达到阈值时通知一次，之后每 12 次（1 小时）再通知
         return (

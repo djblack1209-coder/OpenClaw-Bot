@@ -214,8 +214,8 @@ class NewsFetcher:
                 try:
                     from email.utils import parsedate_to_datetime
                     published_at = parsedate_to_datetime(pub_el.text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("值解析失败: %s", e)
 
             # 摘要
             summary = ""

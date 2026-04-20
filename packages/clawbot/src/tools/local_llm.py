@@ -76,8 +76,8 @@ async def detect_backend(custom_endpoint: Optional[str] = None) -> Optional[str]
                     _cache_time = time.monotonic()
                     logger.info("[LocalLLM] 检测到自定义后端: {}", custom_endpoint)
                     return "custom"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("网络请求失败: %s", e)
 
         # 按优先级检测标准后端
         for name, urls in _BACKENDS.items():

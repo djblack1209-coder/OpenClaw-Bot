@@ -1,9 +1,12 @@
 """
 ClawBot - 文件操作工具
 """
+import logging
 import re
 from pathlib import Path
 from typing import Optional, Any, Dict
+
+logger = logging.getLogger(__name__)
 
 class FileTool:
     """文件读写操作"""
@@ -186,8 +189,8 @@ class FileTool:
                         if found:
                             match_info["content_matches"] = len(found)
                             matches.append(match_info)
-                    except (UnicodeDecodeError, OSError) as e:  # noqa: F841
-                        pass
+                    except (UnicodeDecodeError, OSError) as e:
+                        logger.debug("文件操作失败: %s", e)
                 else:
                     matches.append(match_info)
 

@@ -569,16 +569,16 @@ class EvolutionEngine:
         # 尝试直接解析
         try:
             return json.loads(text.strip())
-        except json.JSONDecodeError as e:  # noqa: F841
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug("JSON解析失败: %s", e)
 
         # 尝试从 markdown 代码块中提取
         json_match = re.search(r'```(?:json)?\s*\n?(.*?)```', text, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(1).strip())
-            except json.JSONDecodeError as e:  # noqa: F841
-                pass
+            except json.JSONDecodeError as e:
+                logger.debug("JSON解析失败: %s", e)
 
         # 尝试找到第一个 { 和最后一个 }
         start = text.find("{")
@@ -586,8 +586,8 @@ class EvolutionEngine:
         if start != -1 and end != -1 and end > start:
             try:
                 return json.loads(text[start:end + 1])
-            except json.JSONDecodeError as e:  # noqa: F841
-                pass
+            except json.JSONDecodeError as e:
+                logger.debug("JSON解析失败: %s", e)
 
         return None
 

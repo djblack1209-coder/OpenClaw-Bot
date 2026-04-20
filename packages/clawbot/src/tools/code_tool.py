@@ -324,8 +324,8 @@ class CodeTool:
                 if os.name != "nt":
                     try:
                         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                    except ProcessLookupError as e:
+                        logger.debug("进程已退出: %s", e)
                 else:
                     proc.kill()
                 proc.wait()

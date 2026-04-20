@@ -132,8 +132,8 @@ class AnalysisCommandsMixin:
             logger.warning("[cmd_performance] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
     @with_typing
@@ -263,8 +263,8 @@ class AnalysisCommandsMixin:
             logger.warning("[cmd_journal] 执行失败: %s", e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     # ============ 新增: AI预测准确率 / 权益曲线 / 盈利目标进度 ============
 
@@ -413,7 +413,7 @@ class AnalysisCommandsMixin:
             try:
                 limit = int(context.args[0])
             except ValueError as e:  # noqa: F841
-                pass
+                logger.debug("用户输入格式错误: %s", e)
 
         try:
             records = journal.get_review_history(limit)
