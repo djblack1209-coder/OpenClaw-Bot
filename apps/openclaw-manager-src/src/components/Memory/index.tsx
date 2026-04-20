@@ -10,6 +10,7 @@ import {
   Clock, Layers, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../i18n';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -79,6 +80,7 @@ function relativeTime(iso?: string): string {
 /* ====== 主组件 ====== */
 
 export function Memory() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -143,10 +145,10 @@ export function Memory() {
   /* —— 统计数字 —— */
   const totalCount = stats.total_memories ?? stats.total ?? memories.length;
   const categories = [
-    { key: 'all', label: '全部', count: totalCount, color: 'var(--text-primary)' },
-    { key: 'profile', label: '用户画像', count: stats.categories?.profile ?? 0, color: 'var(--accent-purple)' },
-    { key: 'fact', label: '事实记录', count: stats.categories?.fact ?? 0, color: 'var(--accent-cyan)' },
-    { key: 'preference', label: '偏好设定', count: stats.categories?.preference ?? 0, color: 'var(--accent-amber)' },
+    { key: 'all', label: t('memory.catAll'), count: totalCount, color: 'var(--text-primary)' },
+    { key: 'profile', label: t('memory.catProfile'), count: stats.categories?.profile ?? 0, color: 'var(--accent-purple)' },
+    { key: 'fact', label: t('memory.catFact'), count: stats.categories?.fact ?? 0, color: 'var(--accent-cyan)' },
+    { key: 'preference', label: t('memory.catPreference'), count: stats.categories?.preference ?? 0, color: 'var(--accent-amber)' },
   ];
 
   /* —— 加载态 —— */
@@ -179,7 +181,7 @@ export function Memory() {
                   MEMORY BRAIN
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  记忆库 // MEM0 VECTOR ENGINE
+                  {t('memory.subtitle')}
                 </p>
               </div>
             </div>
@@ -187,10 +189,10 @@ export function Memory() {
             {/* 统计数据 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {[
-                { label: '总条目', value: String(totalCount), icon: Layers, color: 'var(--accent-cyan)' },
-                { label: '提取轮次', value: String(stats.extraction_rounds ?? '—'), icon: Zap, color: 'var(--accent-green)' },
-                { label: '向量维度', value: String(stats.vector_dim ?? '—'), icon: Database, color: 'var(--accent-purple)' },
-                { label: '今日新增', value: String(stats.today_added ?? '—'), icon: Clock, color: 'var(--accent-amber)' },
+                { label: t('memory.totalEntries'), value: String(totalCount), icon: Layers, color: 'var(--accent-cyan)' },
+                { label: t('memory.extractionRounds'), value: String(stats.extraction_rounds ?? '—'), icon: Zap, color: 'var(--accent-green)' },
+                { label: t('memory.vectorDim'), value: String(stats.vector_dim ?? '—'), icon: Database, color: 'var(--accent-purple)' },
+                { label: t('memory.todayAdded'), value: String(stats.today_added ?? '—'), icon: Clock, color: 'var(--accent-amber)' },
               ].map((s) => (
                 <div key={s.label}>
                   <span className="text-label flex items-center gap-1">
@@ -224,7 +226,7 @@ export function Memory() {
             <div className="flex-1 space-y-1.5">
               {filtered.length === 0 && (
                 <div className="text-center py-8 font-mono text-sm" style={{ color: 'var(--text-disabled)' }}>
-                  {searchQuery ? '没有找到匹配的记忆' : '暂无记忆数据'}
+                  {searchQuery ? t('memory.noSearchResult') : t('memory.noMemoryData')}
                 </div>
               )}
               {filtered.map((mem) => {
@@ -253,7 +255,7 @@ export function Memory() {
                         </p>
                         <div className="flex gap-3 mt-2">
                           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                            来源: {source}
+                            {t('memory.source')}: {source}
                           </span>
                           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                             {relativeTime(mem.updated_at ?? mem.created_at)}
@@ -274,7 +276,7 @@ export function Memory() {
           <div className="abyss-card p-6">
             <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>MEMORY SEARCH</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              记忆检索
+              {t('memory.searchTitle')}
             </h3>
             <div className="relative">
               {searching
@@ -283,7 +285,7 @@ export function Memory() {
                 : <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2"
                     style={{ color: 'var(--text-disabled)' }} />}
               <input type="text"
-                placeholder="搜索记忆片段..."
+                placeholder={t('memory.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="w-full py-2.5 pl-10 pr-4 rounded-lg font-mono text-sm outline-none transition-colors"
@@ -294,7 +296,7 @@ export function Memory() {
                 }} />
             </div>
             <p className="font-mono text-[10px] mt-2" style={{ color: 'var(--text-disabled)' }}>
-              支持语义搜索：输入自然语言即可匹配相关记忆
+              {t('memory.searchHint')}
             </p>
           </div>
 
@@ -302,14 +304,14 @@ export function Memory() {
           <div className="abyss-card p-6">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>VECTOR DB</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              向量引擎状态
+              {t('memory.vectorDbTitle')}
             </h3>
             <div className="space-y-3">
               {[
-                { label: '引擎状态', value: '在线', color: 'var(--accent-green)', icon: CheckCircle2 },
-                { label: '总记忆数', value: String(totalCount), color: 'var(--accent-cyan)', icon: Database },
-                { label: '向量维度', value: String(stats.vector_dim ?? '—'), color: 'var(--accent-purple)', icon: Zap },
-                { label: '今日新增', value: String(stats.today_added ?? '—'), color: 'var(--accent-amber)', icon: Layers },
+                { label: t('memory.engineStatus'), value: t('common.online'), color: 'var(--accent-green)', icon: CheckCircle2 },
+                { label: t('memory.totalMemories'), value: String(totalCount), color: 'var(--accent-cyan)', icon: Database },
+                { label: t('memory.vectorDim'), value: String(stats.vector_dim ?? '—'), color: 'var(--accent-purple)', icon: Zap },
+                { label: t('memory.todayAdded'), value: String(stats.today_added ?? '—'), color: 'var(--accent-amber)', icon: Layers },
               ].map((item) => (
                 <div key={item.label}
                   className="flex items-center justify-between py-2 px-3 rounded-lg"
@@ -328,7 +330,7 @@ export function Memory() {
             </div>
             <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--glass-border)' }}>
               <p className="font-mono text-[10px] leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                Mem0 引擎自动检测记忆冲突：当新事实与旧记忆矛盾时，引擎会发送 UPDATE/DELETE 指令覆盖过时认知。
+                {t('memory.conflictHint')}
               </p>
             </div>
           </div>

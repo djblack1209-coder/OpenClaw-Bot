@@ -16,6 +16,7 @@ import { createLogger } from '@/lib/logger';
 import type { PageType } from '../../App';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { useLanguage } from '../../i18n';
 
 /* 模块子组件 */
 import { TradingEngineCard } from './TradingEngineCard';
@@ -66,13 +67,13 @@ export interface LogEntry {
 }
 
 /* ====== 快捷操作配置 ====== */
-const quickActions: { label: string; icon: React.ElementType; page: PageType; accent: string }[] = [
-  { label: '投资分析', icon: TrendingUp, page: 'portfolio', accent: 'var(--accent-green)' },
-  { label: '社交发帖', icon: Share2, page: 'social', accent: 'var(--accent-purple)' },
-  { label: '闲鱼管理', icon: Fish, page: 'bots', accent: 'var(--accent-amber)' },
-  { label: 'AI 对话', icon: MessageSquare, page: 'assistant', accent: 'var(--accent-cyan)' },
-  { label: '市场扫描', icon: ScanSearch, page: 'portfolio', accent: 'var(--accent-red)' },
-  { label: '系统设置', icon: Settings, page: 'settings', accent: 'var(--text-secondary)' },
+const quickActions: { labelKey: string; icon: React.ElementType; page: PageType; accent: string }[] = [
+  { labelKey: 'home.action.investAnalysis', icon: TrendingUp, page: 'portfolio', accent: 'var(--accent-green)' },
+  { labelKey: 'home.action.socialPost', icon: Share2, page: 'social', accent: 'var(--accent-purple)' },
+  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'bots', accent: 'var(--accent-amber)' },
+  { labelKey: 'home.action.aiChat', icon: MessageSquare, page: 'assistant', accent: 'var(--accent-cyan)' },
+  { labelKey: 'home.action.marketScan', icon: ScanSearch, page: 'portfolio', accent: 'var(--accent-red)' },
+  { labelKey: 'home.action.settings', icon: Settings, page: 'settings', accent: 'var(--text-secondary)' },
 ];
 
 /* ====== 入场动画 ====== */
@@ -94,6 +95,7 @@ export function HomeDashboard() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const serviceStatus = useAppStore((s) => s.serviceStatus);
   const isRunning = serviceStatus?.running ?? false;
+  const { t } = useLanguage();
 
   /* ====== 数据状态 ====== */
   const [bots, setBots] = useState<BotVote[]>([]);
@@ -270,15 +272,15 @@ export function HomeDashboard() {
                     : 'bg-[var(--text-disabled)]/10 text-[var(--text-tertiary)]'
                 )}
               >
-                {social.mode === 'autopilot' ? '自动驾驶' : '手动'}
+                {social.mode === 'autopilot' ? t('home.social.autopilot') : t('home.social.manual')}
               </span>
             </div>
             <div className="flex items-baseline gap-2 mt-4">
               <span className="text-metric">{social.postsToday}</span>
-              <span className="text-label">今日发布</span>
+              <span className="text-label">{t('home.social.postsToday')}</span>
             </div>
             <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
-              小红书 · X (Twitter) · 自动热点追踪
+              {t('home.social.desc')}
             </p>
           </div>
         </motion.div>
@@ -292,11 +294,11 @@ export function HomeDashboard() {
               XIANYU AI
             </span>
             <h3 className="font-display text-xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-              闲鱼 AI 客服
+              {t('home.xianyu.title')}
             </h3>
             <div className="flex items-center gap-3 mt-4">
               <div>
-                <span className="text-label">未读对话</span>
+                <span className="text-label">{t('home.xianyu.unread')}</span>
                 <div className="text-metric mt-1">{xianyu.unreadChats}</div>
               </div>
               <div className="ml-auto">
@@ -318,7 +320,7 @@ export function HomeDashboard() {
               </div>
             </div>
             <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
-              {xianyu.autoReplyActive ? '自动回复运行中' : '自动回复未启动'} · CookieCloud 同步
+              {xianyu.autoReplyActive ? t('home.xianyu.autoReplyRunning') : t('home.xianyu.autoReplyStopped')} · CookieCloud {t('home.xianyu.sync')}
             </p>
           </div>
         </motion.div>
@@ -332,7 +334,7 @@ export function HomeDashboard() {
                 const Icon = action.icon;
                 return (
                   <button
-                    key={action.label}
+                    key={action.labelKey}
                     onClick={() => setCurrentPage(action.page)}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all duration-200 group"
                     style={{ background: 'rgba(255,255,255,0.02)' }}
@@ -345,7 +347,7 @@ export function HomeDashboard() {
                   >
                     <Icon size={18} style={{ color: action.accent }} />
                     <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
-                      {action.label}
+                      {t(action.labelKey)}
                     </span>
                   </button>
                 );
@@ -362,7 +364,7 @@ export function HomeDashboard() {
                 DAILY BRIEF
               </span>
               <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                今日简报
+                {t('home.dailyBrief')}
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                 {/* 简报数据项 — 动态渲染后端返回的指标 */}
