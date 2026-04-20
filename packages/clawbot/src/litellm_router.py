@@ -337,6 +337,8 @@ def _check_iflow_key_expiry() -> bool:
                 elapsed_days,
                 _IFLOW_WARN_DAYS,
             )
+            # 尝试自动续期（后台异步触发，不阻塞启动）
+            _trigger_iflow_auto_renew()
             return True
         logger.info("[iflow] Key 已使用 %.1f 天，剩余约 %.1f 天", elapsed_days, 7 - elapsed_days)
         return False
@@ -377,6 +379,31 @@ def _record_iflow_key_usage() -> None:
         logger.info("[iflow] 已记录 key 首次使用时间")
     except Exception as e:
         logger.debug("[iflow] 记录 key 时间戳失败（不影响功能）: %s", e)
+
+
+def _trigger_iflow_auto_renew() -> None:
+    """后台触发 iFlow key 自动续期脚本（不阻塞主进程）"""
+    import subprocess as _sp
+    import threading as _th
+
+    renew_script = Path(__file__).parent.parent / "scripts" / "iflow_key_renew.py"
+    if not renew_script.exists():
+        logger.warning("[iflow] 续期脚本不存在: %s", renew_script)
+        return
+
+    def _run():
+        try:
+            logger.info("[iflow] 🔄 后台启动自动续期脚本...")
+            _sp.Popen(
+                [sys.executable, str(renew_script), "--restart"],
+                stdout=open("/tmp/iflow_renew.log", "w"),
+                stderr=_sp.STDOUT,
+                start_new_session=True,
+            )
+        except Exception as e:
+            logger.error("[iflow] 启动续期脚本失败: %s", e)
+
+    _th.Thread(target=_run, daemon=True, name="iflow-auto-renew").start()
 
 
 # ============================================================
