@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
+from ..core.user_error import humanize_error
 from .auth import verify_api_token, log_token_status
 from .routers import (
     router_system,
@@ -223,11 +224,15 @@ class APIServer:
 
         @self.app.exception_handler(Exception)
         async def catch_all_handler(request, exc):
-            # 兜底异常处理器，防止未捕获异常返回含堆栈的默认 500
-            logger.error("未处理的 API 异常: %s", exc, exc_info=True)
+            # 兜底异常处理器 — 用 humanize_error 将技术异常转为中文人话
+            user_msg = humanize_error(exc)
+            logger.error(
+                "API请求异常 %s %s: %s",
+                request.method, request.url.path, exc, exc_info=True,
+            )
             return JSONResponse(
                 status_code=500,
-                content={"detail": "内部服务错误"},
+                content={"success": False, "detail": user_msg},
             )
 
     def _configure_app(self):
