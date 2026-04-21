@@ -406,7 +406,7 @@ export function Plugins() {
                   {running} {t('plugins.activeConnections')}
                 </span>
                 <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--text-disabled)' }}>
-                  {plugins.length > 0 ? '实时' : 'N/A'}
+                  {plugins.length > 0 ? '实时' : '暂无'}
                 </span>
               </div>
             </div>

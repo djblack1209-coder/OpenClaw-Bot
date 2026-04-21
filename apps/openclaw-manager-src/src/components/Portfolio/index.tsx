@@ -151,7 +151,7 @@ function fmtUsd(value: number): string {
 
 /** 格式化百分比 */
 function fmtPct(value: number | undefined): string {
-  if (value === undefined || value === null) return 'N/A';
+  if (value === undefined || value === null) return '--';
   return `${(value * 100).toFixed(2)}%`;
 }
 
