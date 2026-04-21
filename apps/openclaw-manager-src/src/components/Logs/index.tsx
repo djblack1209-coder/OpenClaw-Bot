@@ -207,7 +207,7 @@ export function Logs() {
                   )}
                 </div>
                 <span className="font-mono text-[10px]" style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                  {wsConnected ? 'LIVE' : 'OFFLINE'}
+                  {wsConnected ? '实时' : '离线'}
                 </span>
               </div>
             </div>

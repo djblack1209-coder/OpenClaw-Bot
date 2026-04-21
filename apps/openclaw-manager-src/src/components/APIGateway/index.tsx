@@ -366,7 +366,7 @@ export function APIGateway() {
                     ? <Wifi size={12} style={{ color: 'var(--accent-green)' }} />
                     : <WifiOff size={12} style={{ color: 'var(--accent-red)' }} />}
                   <span className="font-mono text-[10px]" style={{ color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {isOnline ? 'ONLINE' : 'OFFLINE'}
+                    {isOnline ? '在线' : '离线'}
                   </span>
                 </div>
                 <motion.button
