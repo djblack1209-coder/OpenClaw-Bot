@@ -235,10 +235,10 @@ export function Bots() {
       /* 等一小段时间让后端状态更新 */
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
-      toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`);
+      toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`, { channel: 'log' });
     } catch (e: any) {
       await fetchData();
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setActionLoading((prev) => ({ ...prev, [serviceId]: false }));
     }
@@ -250,15 +250,15 @@ export function Bots() {
     try {
       if (autopilotData.running) {
         await api.clawbotAutopilotStop();
-        toast.success(t('bots.autopilotStopped'));
+        toast.success(t('bots.autopilotStopped'), { channel: 'log' });
       } else {
         await api.clawbotAutopilotStart();
-        toast.success(t('bots.autopilotStarted'));
+        toast.success(t('bots.autopilotStarted'), { channel: 'log' });
       }
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch (e: any) {
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setAutopilotLoading(false);
     }
@@ -273,11 +273,11 @@ export function Bots() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
-      toast.success(`${taskId} ${currentEnabled ? t('bots.taskDisabled') : t('bots.taskEnabled')}`);
+      toast.success(`${taskId} ${currentEnabled ? t('bots.taskDisabled') : t('bots.taskEnabled')}`, { channel: 'log' });
       await new Promise((r) => setTimeout(r, 500));
       await fetchData();
     } catch (e: any) {
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`);
+      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: false }));
     }

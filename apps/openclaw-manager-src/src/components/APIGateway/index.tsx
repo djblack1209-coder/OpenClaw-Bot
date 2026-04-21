@@ -216,7 +216,7 @@ export function APIGateway() {
     setTogglingIds((prev) => new Set(prev).add(channelId));
     try {
       await parseResponse(await api.newApiToggleChannel(channelId));
-      toast.success(t('apiGateway.channelToggled'));
+      toast.success(t('apiGateway.channelToggled'), { channel: 'log' });
       // 局部更新：翻转 status
       setChannels((prev) =>
         prev.map((ch) =>
@@ -227,7 +227,7 @@ export function APIGateway() {
       );
     } catch (err) {
       console.error('[APIGateway] 切换渠道失败:', err);
-      toast.error(t('apiGateway.channelToggleFailed'));
+      toast.error(t('apiGateway.channelToggleFailed'), { channel: 'notification' });
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -243,11 +243,11 @@ export function APIGateway() {
       setDeletingChannelIds((prev) => new Set(prev).add(channelId));
       try {
         await parseResponse(await api.newApiDeleteChannel(channelId));
-        toast.success(`${t('apiGateway.channelDeleted')}${name || channelId}`);
+        toast.success(`${t('apiGateway.channelDeleted')}${name || channelId}`, { channel: 'log' });
         setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
       } catch (err) {
         console.error('[APIGateway] 删除渠道失败:', err);
-        toast.error(t('apiGateway.channelDeleteFailed'));
+        toast.error(t('apiGateway.channelDeleteFailed'), { channel: 'notification' });
       } finally {
         setDeletingChannelIds((prev) => {
           const next = new Set(prev);
@@ -270,11 +270,11 @@ export function APIGateway() {
       setDeletingTokenIds((prev) => new Set(prev).add(tokenId));
       try {
         await parseResponse(await api.newApiDeleteToken(tokenId));
-        toast.success(`${t('apiGateway.tokenDeleted')}${name || tokenId}`);
+        toast.success(`${t('apiGateway.tokenDeleted')}${name || tokenId}`, { channel: 'log' });
         setTokens((prev) => prev.filter((t) => t.id !== tokenId));
       } catch (err) {
         console.error('[APIGateway] 删除令牌失败:', err);
-        toast.error(t('apiGateway.tokenDeleteFailed'));
+        toast.error(t('apiGateway.tokenDeleteFailed'), { channel: 'notification' });
       } finally {
         setDeletingTokenIds((prev) => {
           const next = new Set(prev);
@@ -297,11 +297,11 @@ export function APIGateway() {
     try {
       const action = gatewayServiceRunning ? 'stop' : 'start';
       await clawbotFetchJson(`/api/v1/system/services/gateway/${action}`, { method: 'POST' });
-      toast.success(gatewayServiceRunning ? '网关服务已停止' : '网关服务已启动');
+      toast.success(gatewayServiceRunning ? '网关服务已停止' : '网关服务已启动', { channel: 'log' });
       await new Promise((r) => setTimeout(r, 800));
       await fetchData(true);
     } catch {
-      toast.error('操作失败，请稍后重试');
+      toast.error('操作失败，请稍后重试', { channel: 'notification' });
       await fetchData(true);
     } finally {
       setGatewayServiceToggling(false);
