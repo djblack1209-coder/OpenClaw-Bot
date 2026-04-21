@@ -540,10 +540,10 @@ export function NewsFeed() {
             {/* 严重性分布 */}
             <div className="space-y-2.5 mb-5">
               {[
-                { label: 'CRITICAL', count: threatCounts.critical, color: 'var(--accent-red)' },
-                { label: 'HIGH', count: threatCounts.high, color: 'var(--accent-amber)' },
-                { label: 'MEDIUM', count: threatCounts.medium, color: 'var(--accent-cyan)' },
-                { label: 'LOW', count: threatCounts.low, color: 'var(--accent-green)' },
+                { label: t('newsFeed.severityCritical'), count: threatCounts.critical, color: 'var(--accent-red)' },
+                { label: t('newsFeed.severityHigh'), count: threatCounts.high, color: 'var(--accent-amber)' },
+                { label: t('newsFeed.severityMedium'), count: threatCounts.medium, color: 'var(--accent-cyan)' },
+                { label: t('newsFeed.severityLow'), count: threatCounts.low, color: 'var(--accent-green)' },
               ].map((s) => (
                 <div key={s.label} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
