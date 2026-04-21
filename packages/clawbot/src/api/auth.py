@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import HTTPException, Depends, WebSocket, Request
 from fastapi.security import APIKeyHeader
+from starlette.requests import HTTPConnection
 
 logger = logging.getLogger(__name__)
 
@@ -56,20 +57,21 @@ def log_token_status() -> None:
 
 
 async def verify_api_token(
-    request: Request,
+    conn: HTTPConnection,
 ) -> None:
     """FastAPI dependency: 验证 X-API-Token header。
 
+    使用 HTTPConnection 而非 Request，因为 HTTPConnection 同时支持 HTTP 和 WebSocket scope。
     - WebSocket scope: 直接跳过（WS 有独立的 verify_ws_token 验证）
     - Token 未配置: 所有请求放行 (开发模式), 首次打印 warning
     - Token 已配置但请求缺失/不匹配: 返回 401
     """
     # WebSocket 请求跳过 HTTP header 认证（WS 有自己的 query param token 验证）
-    if request.scope.get("type") == "websocket":
+    if conn.scope.get("type") == "websocket":
         return
 
     # 手动从 header 读取 API key（避免 APIKeyHeader scheme 在 WS scope 下崩溃）
-    api_key = request.headers.get("x-api-token")
+    api_key = conn.headers.get("x-api-token")
 
     global _warned_no_token
 
