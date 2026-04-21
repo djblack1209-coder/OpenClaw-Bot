@@ -12,6 +12,56 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-20 — Sprint 终极修复：零 Mock 全栈闭环 + 构建 SOP 升级
+> 领域: `frontend` `backend` `infra` `docs`
+> 影响模块: Makefile, tauri.conf.json, AGENTS.md, Assistant, TradingEngineCard, WorldMonitor, Portfolio, Settings, Bots, Home, NewsFeed, FinRadar, Sidebar, zh-CN.ts, en-US.ts, conversation.py, monitor.py, api.ts, tauri-core.ts
+> 关联问题: Sprint 终极修复指令 (零 Mock + 全栈闭环 + 构建 SOP)
+
+### 变更内容
+
+**阶段一：构建流程与 SOP 升级**
+- `Makefile` — 新增 `make tauri-build` 命令，构建前自动清理 `/Applications/OpenEverything.app` 和 `/Applications/OpenClaw.app`，防止双版本残留
+- `tauri.conf.json` — productName 从 `OpenEverything` 改为 `OpenClaw`，统一品牌标识
+- `package.json` — 名称和描述同步更新为 OpenClaw
+- `AGENTS.md` — 新增 §1.5 构建铁律：禁止手动 `tauri build`，必须走 `make tauri-build` 入口
+
+**阶段二：核心功能全栈闭环**
+- `conversation.py` — 新增 `POST /conversation/upload`（附件上传 → Docling 文本提取）和 `POST /conversation/voice`（语音 → Deepgram STT 转文字）两个端点
+- `Assistant/index.tsx` — 附件按钮改为真实文件上传（隐藏 input + FormData），语音按钮改为 MediaRecorder 录音 + 红色脉冲动画，移除 `opacity-40` 和 `cursor-not-allowed`
+- `tauri-core.ts` — 修复 `clawbotFetch` 的 Content-Type 自动设置逻辑，FormData 时跳过强制 `application/json`
+- `api.ts` — 新增 `conversationUpload()`、`conversationVoice()`、`monitorExtended()` 三个 API 方法
+- `monitor.py` — 新增 `GET /monitor/extended` 端点，聚合 USGS 地震、NASA EONET 山火/风暴、CISA KEV 漏洞目录 + 内部新闻分类推算
+- `WorldMonitor/index.tsx` — 基础设施/气候/网络安全三张死卡接入真实数据，12 个指标全部动态渲染，30 秒自动刷新，三态指示器（实时/加载中/离线）
+- `TradingEngineCard.tsx` — 删除 5 行假 BOT_1..BOT_5 骨架占位，换为干净的空状态提示
+- `Portfolio/index.tsx` — IB Gateway 未连接时自动切换「演示模式」，展示 AAPL/TSLA/NVDA 模拟持仓，醒目 DEMO 横幅标记
+- `Settings/index.tsx` — 「重置设置」改为真实清除 localStorage + 后端配置；「查看日志」改为跳转日志页面
+
+**阶段三：事件冒泡与全站 i18n**
+- `Bots/index.tsx` — 4 个按钮添加 `e.stopPropagation()` 防止事件冒泡到侧边栏
+- `zh-CN.ts` / `en-US.ts` — 新增约 200 个翻译 key
+- 9 个页面组件（Home、TradingEngineCard、Assistant、NewsFeed、FinRadar、Portfolio、Bots、Settings、Sidebar）全部硬编码文本接入 `t()` 翻译
+
+### 文件变更
+- `Makefile` — 新增 tauri-clean + tauri-build 目标
+- `apps/openclaw-manager-src/src-tauri/tauri.conf.json` — productName/identifier/title 改为 OpenClaw
+- `apps/openclaw-manager-src/package.json` — name/description/author 改为 OpenClaw
+- `AGENTS.md` — 新增 §1.5 构建铁律
+- `packages/clawbot/src/api/routers/conversation.py` — 新增上传和语音端点
+- `packages/clawbot/src/api/routers/monitor.py` — 新增扩展监控端点
+- `apps/openclaw-manager-src/src/lib/api.ts` — 新增 3 个 API 方法
+- `apps/openclaw-manager-src/src/lib/tauri-core.ts` — 修复 FormData Content-Type
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 附件+语音功能实装
+- `apps/openclaw-manager-src/src/components/Home/TradingEngineCard.tsx` — 空状态重构
+- `apps/openclaw-manager-src/src/components/WorldMonitor/index.tsx` — 三卡真实数据接入
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — 演示模式兜底
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 占位按钮功能化
+- `apps/openclaw-manager-src/src/components/Bots/index.tsx` — 事件冒泡修复
+- `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/NewsFeed/index.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/FinRadar/index.tsx` — i18n
+- `apps/openclaw-manager-src/src/i18n/zh-CN.ts` — ~200 新 key
+- `apps/openclaw-manager-src/src/i18n/en-US.ts` — ~200 新 key
+
 ## 2026-04-20 — 全站 UI 中文化 + Bug 修复 + 功能补全
 > 领域: `frontend`
 > 影响模块: Home, TradingEngineCard, TelemetryCard, Assistant, WorldMonitor, NewsFeed, FinRadar, Portfolio, Settings, Bots, Social, ExecutionFlow, Money, Dev, DevPanel
