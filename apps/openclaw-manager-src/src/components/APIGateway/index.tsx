@@ -738,7 +738,7 @@ export function APIGateway() {
               {/* 各种网关字段 — 动态渲染已有数据 */}
               {gatewayStatus ? (
                 Object.entries(gatewayStatus)
-                  .filter(([k]) => !['running', 'online'].includes(k))
+                  .filter(([k, v]) => !['running', 'online'].includes(k) && typeof v !== 'object')
                   .slice(0, 8)
                   .map(([key, val]) => (
                     <div key={key} className="flex items-center justify-between py-1.5">
@@ -746,7 +746,7 @@ export function APIGateway() {
                         {key}
                       </span>
                       <span className="font-mono text-[11px] font-semibold truncate max-w-[60%] text-right" style={{ color: 'var(--text-primary)' }}>
-                        {typeof val === 'object' ? JSON.stringify(val) : String(val ?? '—')}
+                        {String(val ?? '—')}
                       </span>
                     </div>
                   ))
