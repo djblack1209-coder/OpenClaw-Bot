@@ -12,6 +12,21 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 闲聊/LLM查询 fallback 多族降级
+> 领域: `backend`
+> 影响模块: brain.py, brain_exec_tools.py
+> 关联问题: 闲聊 LLM 调用失败时返回降级回复
+
+### 变更内容
+
+- `brain.py` 闲聊 fallback: 先尝试 `FAMILY_QWEN`，失败后自动降级到 `model_family=None`（让 Router 智能选路到任意可用模型族），两次都失败才走最终降级
+- `brain_exec_tools.py` `_exec_llm_query`: 同样改为双层 fallback，先 qwen 再 auto，避免 qwen providers 不可用时直接返回 `error_ai_busy()`
+- 每次失败都带 `family=xxx` 标签的 warning 日志，方便排查哪个模型族出了问题
+
+### 文件变更
+- `src/core/brain.py` — 闲聊路径改为 for 循环尝试 [qwen, None] 两个 family
+- `src/core/brain_exec_tools.py` — LLM 查询路径同样改为双层 fallback
+
 ## 2026-04-21 — 审计修复第五轮：安全脱敏 + 新闻摘要修复 + AI 降级回复修正
 > 领域: `backend`
 > 影响模块: telegram_gateway.py, alpaca_bridge.py, qr_login.py, security.py, xianyu_apis.py, llm_routing_config.py, world_monitor.py, conversation.py, brain.py
