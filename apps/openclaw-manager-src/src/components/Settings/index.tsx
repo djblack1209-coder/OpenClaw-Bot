@@ -475,7 +475,7 @@ export function Settings(_props: SettingsProps) {
                   'https://www.xiaohongshu.com',
                 ];
                 urls.forEach(url => window.open(url, '_blank'));
-                toast.success(t('settings.openedLoginPages'));
+                toast.success(t('settings.openedLoginPages'), { channel: 'log' });
               }}
               className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer w-full justify-center mb-4"
               style={{
@@ -503,7 +503,7 @@ export function Settings(_props: SettingsProps) {
                   key={platform.name}
                   onClick={() => {
                     window.open(platform.url, '_blank');
-                    toast.success(`${t('settings.openedPlatformLogin')}: ${platform.name}`);
+                    toast.success(`${t('settings.openedPlatformLogin')}: ${platform.name}`, { channel: 'log' });
                   }}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
                   style={{
@@ -554,13 +554,13 @@ export function Settings(_props: SettingsProps) {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={async () => {
-                  toast.info(t('settings.startingAllServices'));
+                  toast.info(t('settings.startingAllServices'), { channel: 'log' });
                   try {
                     const result = await controlAllManagedServices('start');
-                    toast.success(t('settings.allServicesStarted'));
+                    toast.success(t('settings.allServicesStarted'), { channel: 'log' });
                     console.log('[Settings] startAll:', result);
                   } catch (err) {
-                    toast.error(`${t('settings.startFailed')}: ${err}`);
+                    toast.error(`${t('settings.startFailed')}: ${err}`, { channel: 'notification' });
                   }
                 }}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
@@ -572,13 +572,13 @@ export function Settings(_props: SettingsProps) {
               </button>
               <button
                 onClick={async () => {
-                  toast.info(t('settings.stoppingAllServices'));
+                  toast.info(t('settings.stoppingAllServices'), { channel: 'log' });
                   try {
                     const result = await controlAllManagedServices('stop');
-                    toast.success(t('settings.allServicesStopped'));
+                    toast.success(t('settings.allServicesStopped'), { channel: 'log' });
                     console.log('[Settings] stopAll:', result);
                   } catch (err) {
-                    toast.error(`${t('settings.stopFailed')}: ${err}`);
+                    toast.error(`${t('settings.stopFailed')}: ${err}`, { channel: 'notification' });
                   }
                 }}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
