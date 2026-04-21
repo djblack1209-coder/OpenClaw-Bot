@@ -821,15 +821,15 @@ Read-Host "按回车键关闭此窗口"
         let script_content = r#"#!/bin/bash
 clear
 echo "========================================"
-echo "    OpenEverything 安装向导"
-echo "========================================"
+echo \"    OpenClaw 安装向导\"
+echo \"========================================\"
 echo ""
 
-echo "正在安装 OpenEverything..."
+echo \"正在安装 OpenClaw...\"
 npm install -g openclaw@latest
 
 echo ""
-echo "初始化配置..."
+echo \"初始化配置...\"
 openclaw config set gateway.mode local 2>/dev/null || true
 
 mkdir -p ~/.openclaw/agents/main/sessions
@@ -837,10 +837,10 @@ mkdir -p ~/.openclaw/agents/main/agent
 mkdir -p ~/.openclaw/credentials
 
 echo ""
-echo "安装完成！"
+echo \"安装完成！\"
 openclaw --version
 echo ""
-read -p "按回车键关闭此窗口..."
+read -p \"按回车键关闭此窗口...\"
 "#;
         
         let script_path = "/tmp/openclaw_install_openclaw.command";
@@ -863,15 +863,15 @@ read -p "按回车键关闭此窗口..."
         let script_content = r#"#!/bin/bash
 clear
 echo "========================================"
-echo "    OpenEverything 安装向导"
-echo "========================================"
+echo \"    OpenClaw 安装向导\"
+echo \"========================================\"
 echo ""
 
-echo "正在安装 OpenEverything..."
+echo \"正在安装 OpenClaw...\"
 npm install -g openclaw@latest
 
 echo ""
-echo "初始化配置..."
+echo \"初始化配置...\"
 openclaw config set gateway.mode local 2>/dev/null || true
 
 mkdir -p ~/.openclaw/agents/main/sessions
@@ -879,10 +879,10 @@ mkdir -p ~/.openclaw/agents/main/agent
 mkdir -p ~/.openclaw/credentials
 
 echo ""
-echo "安装完成！"
+echo \"安装完成！\"
 openclaw --version
 echo ""
-read -p "按回车键关闭..."
+read -p \"按回车键关闭...\"
 "#;
         
         let script_path = "/tmp/openclaw_install_openclaw.sh";
@@ -910,47 +910,47 @@ read -p "按回车键关闭..."
     }
 }
 
-/// 卸载 OpenEverything
+/// 卸载 OpenClaw
 #[command]
 pub async fn uninstall_openclaw() -> AppResult<InstallResult> {
-    info!("[卸载OpenEverything] 开始卸载 OpenEverything...");
+    info!("[卸载OpenClaw] 开始卸载 OpenClaw...");
     let os = platform::get_os();
-    info!("[卸载OpenEverything] 检测到操作系统: {}", os);
+    info!("[卸载OpenClaw] 检测到操作系统: {}", os);
     
     // 先停止服务
-    info!("[卸载OpenEverything] 尝试停止服务...");
+    info!("[卸载OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
     // 异步等待服务停止完成，避免阻塞 tokio 线程池
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     let result = match os.as_str() {
         "windows" => {
-            info!("[卸载OpenEverything] 使用 Windows 卸载方式...");
+            info!("[卸载OpenClaw] 使用 Windows 卸载方式...");
             uninstall_openclaw_windows().await
         },
         _ => {
-            info!("[卸载OpenEverything] 使用 Unix 卸载方式 (npm)...");
+            info!("[卸载OpenClaw] 使用 Unix 卸载方式 (npm)...");
             uninstall_openclaw_unix().await
         },
     };
     
     match &result {
-        Ok(r) if r.success => info!("[卸载OpenEverything] ✓ 卸载成功"),
-        Ok(r) => warn!("[卸载OpenEverything] ✗ 卸载失败: {}", r.message),
-        Err(e) => error!("[卸载OpenEverything] ✗ 卸载错误: {}", e),
+        Ok(r) if r.success => info!("[卸载OpenClaw] ✓ 卸载成功"),
+        Ok(r) => warn!("[卸载OpenClaw] ✗ 卸载失败: {}", r.message),
+        Err(e) => error!("[卸载OpenClaw] ✗ 卸载错误: {}", e),
     }
     
     result
 }
 
-/// Windows 卸载 OpenEverything
+/// Windows 卸载 OpenClaw
 async fn uninstall_openclaw_windows() -> AppResult<InstallResult> {
     // 使用 cmd.exe 执行 npm uninstall，避免 PowerShell 执行策略问题
-    info!("[卸载OpenEverything] 执行 npm uninstall -g openclaw...");
+    info!("[卸载OpenClaw] 执行 npm uninstall -g openclaw...");
     
     match shell::run_cmd_output("npm uninstall -g openclaw") {
         Ok(output) => {
-            info!("[卸载OpenEverything] npm 输出: {}", output);
+            info!("[卸载OpenClaw] npm 输出: {}", output);
             
             // 验证卸载是否成功
             // 异步等待卸载完成后再验证，避免阻塞 tokio 线程池
@@ -958,32 +958,32 @@ async fn uninstall_openclaw_windows() -> AppResult<InstallResult> {
             if get_openclaw_version().is_none() {
                 Ok(InstallResult {
                     success: true,
-                    message: "OpenEverything 已成功卸载！".to_string(),
+                    message: "OpenClaw 已成功卸载！".to_string(),
                     error: None,
                 })
             } else {
                 Ok(InstallResult {
                     success: false,
-                    message: "卸载命令已执行，但 OpenEverything 仍然存在，请尝试手动卸载".to_string(),
+                    message: "卸载命令已执行，但 OpenClaw 仍然存在，请尝试手动卸载".to_string(),
                     error: Some(output),
                 })
             }
         }
         Err(e) => {
-            warn!("[卸载OpenEverything] npm uninstall 失败: {}", e);
+            warn!("[卸载OpenClaw] npm uninstall 失败: {}", e);
             Ok(InstallResult {
                 success: false,
-                message: "OpenEverything 卸载失败".to_string(),
+                message: "OpenClaw 卸载失败".to_string(),
                 error: Some(e),
             })
         }
     }
 }
 
-/// Unix 系统卸载 OpenEverything
+/// Unix 系统卸载 OpenClaw
 async fn uninstall_openclaw_unix() -> AppResult<InstallResult> {
     let script = r#"
-echo "卸载 OpenEverything..."
+echo "卸载 OpenClaw..."
 npm uninstall -g openclaw
 
 # 验证卸载
@@ -991,7 +991,7 @@ if command -v openclaw &> /dev/null; then
     echo "警告：openclaw 命令仍然存在"
     exit 1
 else
-    echo "OpenEverything 已成功卸载"
+    echo "OpenClaw 已成功卸载"
     exit 0
 fi
 "#;
@@ -999,12 +999,12 @@ fi
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
-            message: format!("OpenEverything 已成功卸载！{}", output),
+            message: format!("OpenClaw 已成功卸载！{}", output),
             error: None,
         }),
         Err(e) => Ok(InstallResult {
             success: false,
-            message: "OpenEverything 卸载失败".to_string(),
+            message: "OpenClaw 卸载失败".to_string(),
             error: Some(e),
         }),
     }
@@ -1023,22 +1023,22 @@ pub struct UpdateInfo {
     pub error: Option<String>,
 }
 
-/// 检查 OpenEverything 更新
+/// 检查 OpenClaw 更新
 #[command]
 pub async fn check_openclaw_update() -> AppResult<UpdateInfo> {
-    info!("[版本检查] 开始检查 OpenEverything 更新...");
+    info!("[版本检查] 开始检查 OpenClaw 更新...");
     
     // 获取当前版本
     let current_version = get_openclaw_version();
     info!("[版本检查] 当前版本: {:?}", current_version);
     
     if current_version.is_none() {
-        info!("[版本检查] OpenEverything 未安装");
+        info!("[版本检查] OpenClaw 未安装");
         return Ok(UpdateInfo {
             update_available: false,
             current_version: None,
             latest_version: None,
-            error: Some("OpenEverything 未安装".to_string()),
+            error: Some("OpenClaw 未安装".to_string()),
         });
     }
     
@@ -1127,67 +1127,67 @@ fn compare_versions(current: &str, latest: &str) -> bool {
     false
 }
 
-/// 更新 OpenEverything
+/// 更新 OpenClaw
 #[command]
 pub async fn update_openclaw() -> AppResult<InstallResult> {
-    info!("[更新OpenEverything] 开始更新 OpenEverything...");
+    info!("[更新OpenClaw] 开始更新 OpenClaw...");
     let os = platform::get_os();
     
     // 先停止服务
-    info!("[更新OpenEverything] 尝试停止服务...");
+    info!("[更新OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
     // 异步等待服务停止完成，避免阻塞 tokio 线程池
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     let result = match os.as_str() {
         "windows" => {
-            info!("[更新OpenEverything] 使用 Windows 更新方式...");
+            info!("[更新OpenClaw] 使用 Windows 更新方式...");
             update_openclaw_windows().await
         },
         _ => {
-            info!("[更新OpenEverything] 使用 Unix 更新方式 (npm)...");
+            info!("[更新OpenClaw] 使用 Unix 更新方式 (npm)...");
             update_openclaw_unix().await
         },
     };
     
     match &result {
-        Ok(r) if r.success => info!("[更新OpenEverything] ✓ 更新成功"),
-        Ok(r) => warn!("[更新OpenEverything] ✗ 更新失败: {}", r.message),
-        Err(e) => error!("[更新OpenEverything] ✗ 更新错误: {}", e),
+        Ok(r) if r.success => info!("[更新OpenClaw] ✓ 更新成功"),
+        Ok(r) => warn!("[更新OpenClaw] ✗ 更新失败: {}", r.message),
+        Err(e) => error!("[更新OpenClaw] ✗ 更新错误: {}", e),
     }
     
     result
 }
 
-/// Windows 更新 OpenEverything
+/// Windows 更新 OpenClaw
 async fn update_openclaw_windows() -> AppResult<InstallResult> {
-    info!("[更新OpenEverything] 执行 npm install -g openclaw@latest --force...");
+    info!("[更新OpenClaw] 执行 npm install -g openclaw@latest --force...");
     
     match shell::run_cmd_output("npm install -g openclaw@latest --force") {
         Ok(output) => {
-            info!("[更新OpenEverything] npm 输出: {}", output);
+            info!("[更新OpenClaw] npm 输出: {}", output);
             
             // 获取新版本
             let new_version = get_openclaw_version();
             
             Ok(InstallResult {
                 success: true,
-                message: format!("OpenEverything 已更新到 {}", new_version.unwrap_or("最新版本".to_string())),
+                message: format!("OpenClaw 已更新到 {}", new_version.unwrap_or("最新版本".to_string())),
                 error: None,
             })
         }
         Err(e) => {
-            warn!("[更新OpenEverything] npm install 失败: {}", e);
+            warn!("[更新OpenClaw] npm install 失败: {}", e);
             Ok(InstallResult {
                 success: false,
-                message: "OpenEverything 更新失败".to_string(),
+                message: "OpenClaw 更新失败".to_string(),
                 error: Some(e),
             })
         }
     }
 }
 
-/// Unix 系统更新 OpenEverything
+/// Unix 系统更新 OpenClaw
 async fn update_openclaw_unix() -> AppResult<InstallResult> {
     let restore_wrapper = get_custom_openclaw_symlink()
         .map(|(link_path, target_path)| {
@@ -1207,7 +1207,7 @@ fi
     let script = format!(r#"
 set -e
 
-echo "更新 OpenEverything..."
+echo "更新 OpenClaw..."
 npm install -g openclaw@latest --force
 
 {restore_wrapper}
@@ -1224,7 +1224,7 @@ openclaw --version
             Ok(InstallResult {
                 success: true,
                 message: format!(
-                    "OpenEverything 已更新到 {}！{}",
+                    "OpenClaw 已更新到 {}！{}",
                     new_version.unwrap_or_else(|| "最新版本".to_string()),
                     output
                 ),
@@ -1233,7 +1233,7 @@ openclaw --version
         }
         Err(e) => Ok(InstallResult {
             success: false,
-            message: "OpenEverything 更新失败".to_string(),
+            message: "OpenClaw 更新失败".to_string(),
             error: Some(e),
         }),
     }
