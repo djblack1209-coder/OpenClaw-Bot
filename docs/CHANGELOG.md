@@ -12,6 +12,55 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 复审第二轮：全栈品牌统一 + 安全加固 + i18n 深度清理 + 桌面端重构建
+> 领域: `frontend` `backend` `infra`
+> 影响模块: zh-CN.ts, Assistant, NewsFeed, FinRadar, Home, Setup, dialog, ErrorBoundary, DevPanel, main.tsx, index.html, Cargo.toml, main.rs, clawbot.rs, clawbot_api.rs, config.rs, diagnostics.rs, installer.rs, mcp.rs, capabilities/default.json
+> 关联问题: 开发者页全量点透复审 + 桌面 App 真机复扫
+
+### 变更内容
+
+**P0 — 安全加固**
+- `mcp.rs` MCP 插件启动命令新增白名单校验（`shell::validate_command`），堵住命令注入漏洞
+- `clawbot_api.rs` HTTP 客户端初始化从 `.expect()` 改为 `.unwrap_or_else(|_| Client::new())`，消除 TLS 初始化失败时的 panic 风险
+
+**P1 — 品牌名全栈统一 (OpenEverything → OpenClaw)**
+- **前端 (6 文件)**: index.html title、main.tsx (5处)、Setup (8处)、ErrorBoundary (2处)、DevPanel (1处)、Sidebar
+- **Tauri Rust (6 文件)**: Cargo.toml (name/desc/authors)、main.rs (启动日志+注释)、clawbot.rs (4处)、config.rs (2处)、diagnostics.rs (6处)、installer.rs (~50处)
+- **capabilities/default.json**: 描述文字（保留 FS scope 目录路径不变）
+
+**P2 — i18n 深度清理**
+- `zh-CN.ts` 27 个 assistant.* key 值从英文改中文（对话/投资/执行/创作/简报/天气/翻译/周报/问答/日程/持仓/回测/投票/风控/扫描/发帖/批量/定时/导出/检查/日志/文章/图片/视频/文案/代码/脑暴）
+- `Assistant/index.tsx` MODE_CONFIG 从硬编码英文改为 `t()` 国际化调用
+- `NewsFeed/index.tsx` 威胁雷达严重性标签 CRITICAL/HIGH/MEDIUM/LOW → t() 国际化调用 + zh-CN 值改为 严重/高/中/低
+- `Home/index.tsx` LiteLLM Pool → LiteLLM 模型池
+- `FinRadar/index.tsx` Others → 其他 (2处)
+- `dialog.tsx` sr-only Close → 关闭
+
+**P3 — 构建修复**
+- `installer.rs` 修复品牌名替换时误生成的重复字段 `node_version_ok`
+
+### 文件变更
+- `apps/.../src/i18n/zh-CN.ts` — 27 个翻译值中文化 + 严重性标签中文化
+- `apps/.../src/components/Assistant/index.tsx` — MODE_CONFIG 改用 t() 国际化
+- `apps/.../src/components/NewsFeed/index.tsx` — 严重性标签 i18n
+- `apps/.../src/components/FinRadar/index.tsx` — Others → 其他
+- `apps/.../src/components/Home/index.tsx` — LiteLLM 模型池
+- `apps/.../src/components/Setup/index.tsx` — 品牌名统一
+- `apps/.../src/components/ErrorBoundary.tsx` — 品牌名统一
+- `apps/.../src/components/DevPanel/index.tsx` — 品牌名统一
+- `apps/.../src/components/ui/dialog.tsx` — sr-only 中文化
+- `apps/.../index.html` — title 品牌名（已确认无变化）
+- `apps/.../src/main.tsx` — 品牌名（已确认无变化）
+- `src-tauri/Cargo.toml` — name/desc/authors
+- `src-tauri/src/main.rs` — 启动日志 + 注释
+- `src-tauri/src/commands/mcp.rs` — 命令白名单校验
+- `src-tauri/src/commands/clawbot.rs` — 品牌名 (4处)
+- `src-tauri/src/commands/clawbot_api.rs` — panic 修复
+- `src-tauri/src/commands/config.rs` — 品牌名 (2处)
+- `src-tauri/src/commands/diagnostics.rs` — 品牌名 (6处)
+- `src-tauri/src/commands/installer.rs` — 品牌名 (~50处) + 重复字段修复
+- `src-tauri/capabilities/default.json` — 描述文字
+
 ## 2026-04-21 — 全量双模审计修复：CORS + 错误中文化 + 状态诚实 + i18n 清理
 > 领域: `backend` `frontend`
 > 影响模块: server.py, errorMessages.ts, WorldMonitor, NewsFeed, FinRadar, Home, Settings, Bots/Xianyu/Social(i18n), Store, TerminalLogsCard, Sidebar, TelemetryCard
