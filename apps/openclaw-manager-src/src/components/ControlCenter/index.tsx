@@ -111,6 +111,19 @@ const TRADING_SWITCH_META: Record<string, { label: string; desc: string; color: 
   max_daily_trades: { label: '每日交易上限', desc: '单日最大下单数', color: 'var(--accent-purple)' },
 };
 
+/** 运行配置项中文名映射 */
+const SETTINGS_KEY_LABELS: Record<string, string> = {
+  default_llm_model: '默认 LLM 模型',
+  default_llm_mode: '默认 LLM 模式',
+  local_hf_model_enabled: '本地模型启用',
+  local_hf_model_endpoint: '本地模型地址',
+  local_hf_mode: '本地模型模式',
+  auto_heal_enabled: '自动修复',
+  scheduler_enabled: '调度器启用',
+  maintenance_mode: '维护模式',
+  daily_budget_usd: '每日预算(USD)',
+};
+
 /** 社交开关的中文标签和颜色（通用后备） */
 const SOCIAL_SWITCH_FALLBACK = { desc: '社交模块开关', color: 'var(--accent-green)' };
 
@@ -279,9 +292,9 @@ export function ControlCenter() {
         if (Array.isArray(raw)) {
           setSettings(raw);
         } else if (raw && typeof raw === 'object') {
-          /* 把 { KEY: VALUE } 转成 [{ key, value }] */
+          /* 把 { KEY: VALUE } 转成 [{ key, value }]，key 翻译成中文 */
           const arr: SettingsEntry[] = Object.entries(raw).map(([k, v]) => ({
-            key: k,
+            key: SETTINGS_KEY_LABELS[k] ?? k,
             value: String(v),
           }));
           setSettings(arr);
