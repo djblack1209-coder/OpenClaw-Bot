@@ -16,8 +16,6 @@ pub struct EnvironmentStatus {
     /// Node.js 版本是否满足要求 (>=22)
     pub node_version_ok: bool,
     /// OpenClaw 是否安装
-    pub node_version_ok: bool,
-    /// OpenClaw 是否安装
     pub openclaw_installed: bool,
     /// OpenClaw 版本
     pub openclaw_version: Option<String>,
