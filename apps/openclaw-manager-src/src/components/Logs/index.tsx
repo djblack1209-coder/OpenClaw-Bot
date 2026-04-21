@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Terminal, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
-import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { useClawbotWS, useWSConnectionStatus } from '@/hooks/useClawbotWS';
 import { useLanguage } from '../../i18n';
 import { getFrontendNotifications, subscribeFrontendNotifications } from '@/lib/notify';
 
@@ -89,6 +89,7 @@ function renderBar(value: number, max: number, width: number = 20): string {
 
 export function Logs() {
   const { t } = useLanguage();
+  const wsConnected = useWSConnectionStatus();
   const [loading, setLoading] = useState(true);
   const [backendLogs, setBackendLogs] = useState<LogLine[]>([]);
   const [frontendLogs, setFrontendLogs] = useState<LogLine[]>(() => getFrontendNotifications().map(notifToLog));
@@ -199,11 +200,15 @@ export function Logs() {
               {/* 实时指示灯 */}
               <div className="ml-auto flex items-center gap-1.5">
                 <div className="relative">
-                  <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
-                  <div className="absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-40"
-                    style={{ background: 'var(--accent-green)' }} />
+                  <div className="w-2 h-2 rounded-full" style={{ background: wsConnected ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
+                  {wsConnected && (
+                    <div className="absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-40"
+                      style={{ background: 'var(--accent-green)' }} />
+                  )}
                 </div>
-                <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                <span className="font-mono text-[10px]" style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                  {wsConnected ? 'LIVE' : 'OFFLINE'}
+                </span>
               </div>
             </div>
 
@@ -343,7 +348,7 @@ export function Logs() {
             <div className="flex-1 space-y-4">
               {[
                 { label: t('logs.apiNotif'), value: t('logs.connectedValue') },
-                { label: 'WebSocket', value: t('logs.realtimePush') },
+                { label: 'WebSocket', value: wsConnected ? t('logs.realtimePush') : '离线 / 重连中' },
                 { label: t('logs.maxCache'), value: t('logs.maxCacheValue') },
               ].map((s) => (
                 <div key={s.label} className="flex items-center justify-between py-2 px-3 rounded-lg"
