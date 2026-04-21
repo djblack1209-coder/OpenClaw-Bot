@@ -86,6 +86,7 @@ async function readSSE(
   onChunk: (t: string) => void,
   onDone: () => void,
   onError: (e: string) => void,
+  onStatus?: (t: string) => void,
 ) {
   if (!resp.body) {
     // 无流式 body，降级整体读取
@@ -110,6 +111,7 @@ async function readSSE(
         try {
           const p = JSON.parse(dataMatch[1]);
           if (eventType === 'chunk' && p.text) onChunk(p.text);
+          else if (eventType === 'status' && p.text && onStatus) onStatus(p.text);
           else if (eventType === 'done') { onDone(); return; }
           else if (eventType === 'error') { onError(p.text || '未知错误'); return; }
           else if (p.type === 'chunk' && p.content) onChunk(p.content);
@@ -232,9 +234,10 @@ export function Assistant() {
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().catch(() => 'Request failed')}`);
       await readSSE(resp,
-        (chunk) => setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content + chunk } : m)),
+        (chunk) => setMessages(p => p.map(m => m.id === aiId ? { ...m, content: (m.content.startsWith('💭') ? '' : m.content) + chunk } : m)),
         () => { finish(); if (sid) selectSession(sid); loadSessions(); },
         (err) => { setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content || `⚠️ ${err}` } : m)); finish(); },
+        (status) => setMessages(p => p.map(m => m.id === aiId && (!m.content || m.content.startsWith('💭')) ? { ...m, content: `💭 ${status}` } : m)),
       );
     } catch (e) {
       setMessages(p => p.map(m => m.id === aiId ? { ...m, content: `⚠️ ${e instanceof Error ? e.message : e}` } : m));
