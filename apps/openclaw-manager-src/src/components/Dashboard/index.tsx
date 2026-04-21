@@ -125,7 +125,7 @@ function formatMemory(mb?: number): string {
 function formatAvgResponse(perf: SystemPerf): string {
   if (perf.avg_response) return perf.avg_response;
   if (perf.avg_response_ms != null) return `${(perf.avg_response_ms / 1000).toFixed(1)}s`;
-  return 'N/A';
+  return '--';
 }
 
 /* ====== 接口定义 ====== */
@@ -215,18 +215,18 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
 
   /* —— 快捷统计（从 perf 接口取真实数据） —— */
   const quickStats = [
-    { label: t('dashboard.todayMessages'), value: perf?.today_messages != null ? String(perf.today_messages) : 'N/A', color: 'var(--accent-cyan)' },
-    { label: t('dashboard.activeUsers'), value: perf?.active_users != null ? String(perf.active_users) : 'N/A', color: 'var(--accent-green)' },
-    { label: t('dashboard.llmCalls'), value: perf?.llm_calls != null ? String(perf.llm_calls) : 'N/A', color: 'var(--accent-purple)' },
-    { label: t('dashboard.avgResponse'), value: perf ? formatAvgResponse(perf) : 'N/A', color: 'var(--accent-amber)' },
+    { label: t('dashboard.todayMessages'), value: perf?.today_messages != null ? String(perf.today_messages) : '--', color: 'var(--accent-cyan)' },
+    { label: t('dashboard.activeUsers'), value: perf?.active_users != null ? String(perf.active_users) : '--', color: 'var(--accent-green)' },
+    { label: t('dashboard.llmCalls'), value: perf?.llm_calls != null ? String(perf.llm_calls) : '--', color: 'var(--accent-purple)' },
+    { label: t('dashboard.avgResponse'), value: perf ? formatAvgResponse(perf) : '--', color: 'var(--accent-amber)' },
   ];
 
   /* —— 系统信息摘要（从 perf + status 接口取真实数据） —— */
   const systemMetrics = [
-    { icon: Cpu, label: 'CPU', value: perf?.cpu_percent != null ? `${Math.round(perf.cpu_percent)}%` : 'N/A' },
-    { icon: Server, label: t('dashboard.memory'), value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : 'N/A' },
-    { icon: Clock, label: t('dashboard.uptime'), value: systemStatus?.uptime || formatUptime(systemStatus?.uptime_seconds as number | undefined) || 'N/A' },
-    { icon: Zap, label: t('dashboard.apiHealth'), value: perf?.api_health != null ? `${perf.api_health}%` : 'N/A' },
+    { icon: Cpu, label: 'CPU', value: perf?.cpu_percent != null ? `${Math.round(perf.cpu_percent)}%` : '--' },
+    { icon: Server, label: t('dashboard.memory'), value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : '--' },
+    { icon: Clock, label: t('dashboard.uptime'), value: systemStatus?.uptime || formatUptime(systemStatus?.uptime_seconds as number | undefined) || '--' },
+    { icon: Zap, label: t('dashboard.apiHealth'), value: perf?.api_health != null ? `${perf.api_health}%` : '--' },
   ];
 
   return (
