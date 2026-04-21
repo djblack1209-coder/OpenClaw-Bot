@@ -16,7 +16,7 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import HTTPException, Depends, WebSocket
+from fastapi import HTTPException, Depends, WebSocket, Request
 from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
@@ -56,13 +56,19 @@ def log_token_status() -> None:
 
 
 async def verify_api_token(
+    request: Request,
     api_key: Optional[str] = Depends(_header_scheme),
 ) -> None:
     """FastAPI dependency: 验证 X-API-Token header。
 
+    - WebSocket scope: 直接跳过（WS 有独立的 verify_ws_token 验证）
     - Token 未配置: 所有请求放行 (开发模式), 首次打印 warning
     - Token 已配置但请求缺失/不匹配: 返回 401
     """
+    # WebSocket 请求跳过 HTTP header 认证（WS 有自己的 query param token 验证）
+    if request.scope.get("type") == "websocket":
+        return
+
     global _warned_no_token
 
     # 未配置 Token 时：仅允许 localhost 请求通过（开发模式安全降级）
