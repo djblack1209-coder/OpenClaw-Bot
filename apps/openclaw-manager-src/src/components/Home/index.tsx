@@ -239,7 +239,7 @@ export function HomeDashboard() {
         <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
           <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {t('home.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
       )}
@@ -270,10 +270,10 @@ export function HomeDashboard() {
             onClick={() => setCurrentPage('social')}
           >
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-              社媒运营
+              {t('home.socialOps')}
             </span>
             <h3 className="font-display text-xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-              X / 小红书 运营
+              {t('home.socialXRedbook')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
               <span
@@ -303,7 +303,7 @@ export function HomeDashboard() {
             onClick={() => setCurrentPage('bots')}
           >
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              XIANYU AI
+              {t('home.xianyuAiLabel')}
             </span>
             <h3 className="font-display text-xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
               {t('home.xianyu.title')}

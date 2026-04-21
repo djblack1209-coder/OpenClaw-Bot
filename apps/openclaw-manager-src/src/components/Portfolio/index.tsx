@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+
 import { api } from '../../lib/api';
 import { clawbotFetch, clawbotFetchJson, LONG_TIMEOUT_MS } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
@@ -491,10 +491,28 @@ export function Portfolio() {
   }
 
   /* ====== 空数据兜底 ====== */
-  const p = portfolio ?? {
+  const rawPortfolio = portfolio ?? {
     total_value: 0, total_cost: 0, total_pnl: 0, total_pnl_pct: 0,
     day_change: 0, day_change_pct: 0, positions: [], position_count: 0, connected: false,
   };
+
+  /* ====== 演示模式：券商未连接且无真实数据时，展示模拟数据 ====== */
+  const demoMode = !rawPortfolio.connected && rawPortfolio.total_value === 0;
+  const p: PortfolioSummary = demoMode ? {
+    total_value: 125680.50,
+    total_cost: 100000,
+    total_pnl: 25680.50,
+    total_pnl_pct: 25.68,
+    day_change: 1234.56,
+    day_change_pct: 0.99,
+    position_count: 3,
+    connected: false,
+    positions: [
+      { symbol: 'AAPL', name: 'Apple Inc.', quantity: 50, avg_price: 178.50, current_price: 195.20, pnl: 835.00, pnl_pct: 9.36, market_value: 9760, weight: 38.8 },
+      { symbol: 'TSLA', name: 'Tesla Inc.', quantity: 20, avg_price: 245.00, current_price: 268.30, pnl: 466.00, pnl_pct: 9.51, market_value: 5366, weight: 21.3 },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', quantity: 30, avg_price: 120.00, current_price: 145.80, pnl: 774.00, pnl_pct: 21.50, market_value: 4374, weight: 17.4 },
+    ],
+  } : rawPortfolio;
 
   /* ====== 概览统计数据 ====== */
   const stats = [
@@ -556,19 +574,58 @@ export function Portfolio() {
             initial="hidden"
             animate="visible"
           >
-            {/* 券商未连接警告 */}
-            {!p.connected && p.total_value === 0 && (
+            {/* 演示模式横幅：券商未连接时展示模拟数据预览 */}
+            {demoMode && (
               <div className="col-span-12 mb-4">
-                <div className="abyss-card p-4 border border-[var(--accent-amber)]/20" style={{ background: 'rgba(255,170,0,0.05)' }}>
+                <div
+                  className="abyss-card p-4 relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(0,212,255,0.08), rgba(0,255,170,0.05))',
+                    border: '1px solid rgba(0,212,255,0.25)',
+                  }}
+                >
+                  {/* 右上角 DEMO 标记 */}
+                  <div
+                    className="absolute top-0 right-0 px-3 py-1 font-mono text-[10px] font-bold tracking-widest"
+                    style={{
+                      background: 'rgba(0,212,255,0.15)',
+                      color: 'var(--accent-cyan)',
+                      borderBottomLeftRadius: 8,
+                      border: '1px solid rgba(0,212,255,0.2)',
+                      borderTop: 'none',
+                      borderRight: 'none',
+                    }}
+                  >
+                    DEMO
+                  </div>
                   <div className="flex items-center gap-3">
-                    <AlertTriangle size={18} style={{ color: 'var(--accent-amber)' }} />
-                    <div>
-                      <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
-                        券商未连接
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: 'rgba(0,212,255,0.12)',
+                        border: '1px solid rgba(0,212,255,0.2)',
+                        fontSize: '18px',
+                      }}
+                    >
+                      🎯
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
+                        演示模式 — 以下为模拟数据
                       </p>
-                      <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                        IB Gateway 未启动或未连接，所有数据显示为 0。请在「智能体」页面启动 IBKR Gateway 服务。
+                      <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        IB Gateway 未连接，当前展示模拟持仓数据供预览页面效果。连接 IB Gateway 后将自动显示真实持仓。
                       </p>
+                    </div>
+                    <div
+                      className="flex-shrink-0 px-3 py-1.5 rounded-lg font-mono text-[11px] font-bold"
+                      style={{
+                        background: 'rgba(255,170,0,0.1)',
+                        color: 'var(--accent-amber)',
+                        border: '1px solid rgba(255,170,0,0.2)',
+                      }}
+                    >
+                      请启动 IBKR Gateway
                     </div>
                   </div>
                 </div>
@@ -586,13 +643,13 @@ export function Portfolio() {
                   <span
                     className="font-mono text-[10px] px-2 py-0.5 rounded-full"
                     style={{
-                      color: p.connected ? 'var(--accent-green)' : 'var(--accent-amber)',
-                      background: p.connected ? 'rgba(0,255,128,0.1)' : 'rgba(255,180,0,0.1)',
-                      border: `1px solid ${p.connected ? 'rgba(0,255,128,0.25)' : 'rgba(255,180,0,0.25)'}`,
+                      color: demoMode ? 'var(--accent-cyan)' : p.connected ? 'var(--accent-green)' : 'var(--accent-amber)',
+                      background: demoMode ? 'rgba(0,212,255,0.1)' : p.connected ? 'rgba(0,255,128,0.1)' : 'rgba(255,180,0,0.1)',
+                      border: `1px solid ${demoMode ? 'rgba(0,212,255,0.25)' : p.connected ? 'rgba(0,255,128,0.25)' : 'rgba(255,180,0,0.25)'}`,
                     }}
-                    title={p.connected ? undefined : '请确认 IB Gateway 已启动且 API 端口为 4002'}
+                    title={demoMode ? '当前为演示数据，连接 IB Gateway 后显示真实持仓' : p.connected ? undefined : '请确认 IB Gateway 已启动且 API 端口为 4002'}
                   >
-                    {p.connected ? t('portfolio.liveTrading') : t('portfolio.paperTrading')}
+                    {demoMode ? 'DEMO MODE' : p.connected ? t('portfolio.liveTrading') : t('portfolio.paperTrading')}
                   </span>
                 </div>
                 <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
@@ -654,19 +711,20 @@ export function Portfolio() {
                           <span className="font-mono text-xs w-16 text-right font-semibold" style={{ color: pnlColor(h.pnl_pct) }}>
                             {pnlSign(h.pnl_pct)}{h.pnl_pct.toFixed(1)}%
                           </span>
-                          {/* 卖出按钮 */}
+                          {/* 卖出按钮（演示模式下禁用） */}
                           <button
-                            disabled={sellingSymbol === h.symbol}
+                            disabled={demoMode || sellingSymbol === h.symbol}
                             onClick={e => { e.stopPropagation(); handleSell(h.symbol, h.quantity); }}
                             className="font-mono text-[10px] px-2 py-1 rounded transition-colors flex-shrink-0"
                             style={{
-                              color: sellingSymbol === h.symbol ? 'var(--text-disabled)' : 'var(--accent-red)',
-                              background: sellingSymbol === h.symbol ? 'rgba(255,255,255,0.03)' : 'rgba(255,60,60,0.1)',
+                              color: demoMode || sellingSymbol === h.symbol ? 'var(--text-disabled)' : 'var(--accent-red)',
+                              background: demoMode || sellingSymbol === h.symbol ? 'rgba(255,255,255,0.03)' : 'rgba(255,60,60,0.1)',
                               border: '1px solid rgba(255,60,60,0.2)',
-                              cursor: sellingSymbol === h.symbol ? 'not-allowed' : 'pointer',
+                              cursor: demoMode || sellingSymbol === h.symbol ? 'not-allowed' : 'pointer',
                             }}
+                            title={demoMode ? '演示模式下不可操作' : undefined}
                           >
-                            {sellingSymbol === h.symbol ? '...' : t('portfolio.sell')}
+                            {sellingSymbol === h.symbol ? '...' : demoMode ? 'DEMO' : t('portfolio.sell')}
                           </button>
                         </div>
                       ))}
