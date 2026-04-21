@@ -1,7 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
-import { Toaster } from 'sonner';
 
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -101,9 +100,6 @@ export interface EnvironmentStatus {
 import type { ServiceStatus } from './lib/tauri';
 
 function App() {
-  // Sonic Abyss 主题：强制 dark mode，不做 light mode
-  const toasterTheme = 'dark' as const;
-
   // 强制 html 元素保持 dark class
   useEffect(() => {
     const html = document.documentElement;
@@ -267,16 +263,6 @@ function App() {
     return (
       <LanguageProvider>
         <div className="h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-          <Toaster
-            theme={toasterTheme}
-            position="top-right"
-            closeButton
-            duration={4000}
-            toastOptions={{
-              className: 'abyss-card !border-[var(--glass-border)]',
-              style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
-            }}
-          />
           <Suspense fallback={<PageLoader />}>
             <Onboarding
               onComplete={() => {
@@ -295,17 +281,6 @@ function App() {
     <LanguageProvider>
       <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
         <CommandPalette />
-        {/* Toast 全局通知 */}
-        <Toaster
-          theme={toasterTheme}
-          position="top-right"
-          closeButton
-          duration={4000}
-          toastOptions={{
-            className: 'abyss-card !border-[var(--glass-border)]',
-            style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--glass-border)' },
-          }}
-        />
         {/* 背景装饰 */}
         <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
         
