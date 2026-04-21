@@ -12,6 +12,32 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 审计修复第四轮：AI 助手回复修正 + 商店翻译补齐 + 设置页无障碍修复
+> 领域: `backend` `frontend`
+> 影响模块: conversation.py, prompts.py, Store/index.tsx, Settings/index.tsx, zh-CN.ts, en-US.ts
+> 关联问题: HI-706, HI-707, HI-708
+
+### 变更内容
+
+**HI-707 — AI 助手回复偏题修复（P0）**
+- `conversation.py` 文本提取链前置 `synthesized_reply` 和 `answer` 两个键，匹配 Brain 实际输出
+- `prompts.py` 意图分类 prompt 新增第 6 条规则：日常问候/闲聊归类为 unknown，防止误路由到系统模块
+
+**HI-706 — Bot 商店拒绝按钮翻译补齐（P1）**
+- zh-CN.ts / en-US.ts 新增 `store.reject` / `store.rejectSuccess` / `store.rejectFailed` 3 个翻译 key
+- Store/index.tsx 清理了 2 处硬编码 `|| '拒绝'` 回退
+
+**HI-708 — 设置页语言切换无障碍修复（P2）**
+- Settings/index.tsx 语言选项从 `<div>` 改为 `<button>`，保持视觉不变但可被无障碍工具识别
+
+### 文件变更
+- `packages/clawbot/src/api/routers/conversation.py` — 响应文本提取键修正
+- `packages/clawbot/config/prompts.py` — 意图分类闲聊规则
+- `apps/openclaw-manager-src/src/components/Store/index.tsx` — 清理回退文案
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — div→button
+- `apps/openclaw-manager-src/src/i18n/zh-CN.ts` — 3 个翻译 key
+- `apps/openclaw-manager-src/src/i18n/en-US.ts` — 3 个翻译 key
+
 ## 2026-04-21 — 审计修复第三轮：金融数据恢复 + 异常透传 + N/A 清理 + API 方法修正 + 服务检测修正
 > 领域: `backend` `frontend` `infra`
 > 影响模块: world_monitor.py, newapi.py, social.py, system.py, clawbot_api.rs, Makefile, ExecutionFlow, Dashboard, Plugins, Portfolio, Performance, Risk
