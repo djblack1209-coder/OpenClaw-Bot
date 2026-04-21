@@ -131,6 +131,11 @@ export function Assistant() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);       // 附件文件选择器
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null); // 语音录制器
+  const audioChunksRef = useRef<Blob[]>([]);                 // 录音数据块缓冲
+  const [isRecording, setIsRecording] = useState(false);     // 是否正在录音
+  const [uploadingFile, setUploadingFile] = useState(false); // 是否正在上传附件
   const cfg = MODE_CONFIG[mode];
 
   // 自动滚动到底部
@@ -215,6 +220,103 @@ export function Assistant() {
     }
   }, [input, loading, activeId, loadSessions]);
 
+  // 附件上传处理：选择文件 → 上传到后端 → 提取文本 → 追加到输入框
+  const handleFileUpload = useCallback(async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    // 重置 input 以便同一文件可重复选择
+    ev.target.value = '';
+
+    setUploadingFile(true);
+    toast.info(`正在处理: ${file.name}...`);
+
+    try {
+      const result = await api.conversationUpload(file);
+      const text = result?.text || '';
+      if (text) {
+        // 将提取的文本追加到输入框
+        const prefix = `[附件: ${file.name}]\n提取内容：${text}\n\n`;
+        setInput(prev => prefix + prev);
+        toast.success(`${file.name} 解析完成`);
+      } else {
+        toast.warning(`${file.name} 未提取到有效内容`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      toast.error(`附件处理失败: ${msg}`);
+    } finally {
+      setUploadingFile(false);
+    }
+  }, []);
+
+  // 语音录制切换：点击开始/停止录音
+  const toggleRecording = useCallback(async () => {
+    if (isRecording) {
+      // 停止录音
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    // 开始录音：请求麦克风权限
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm',
+      });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        // 停止所有音轨，释放麦克风
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecording(false);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size === 0) {
+          toast.warning('录音内容为空');
+          return;
+        }
+
+        toast.info('正在识别语音...');
+        try {
+          const result = await api.conversationVoice(audioBlob);
+          const text = result?.text || '';
+          if (text) {
+            setInput(prev => prev + text);
+            toast.success('语音识别完成');
+          } else {
+            toast.warning('语音识别未返回有效内容');
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '未知错误';
+          toast.error(`语音识别失败: ${msg}`);
+        }
+      };
+
+      recorder.onerror = () => {
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecording(false);
+        toast.error('录音出错，请重试');
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      toast.info('正在录音，再次点击停止...');
+    } catch (err) {
+      // 用户拒绝麦克风权限或浏览器不支持
+      const msg = err instanceof Error ? err.message : '未知错误';
+      toast.error(`无法启动录音: ${msg}`);
+    }
+  }, [isRecording]);
+
   /* ========== 渲染 ========== */
   return (
     <div className="flex h-full gap-4 p-1">
@@ -289,11 +391,40 @@ export function Assistant() {
           <div className={clsx('flex items-center gap-2 rounded-2xl px-4 py-2.5', 'bg-[var(--bg-card)] border border-[var(--glass-border)]', 'backdrop-blur-xl transition-all duration-300 focus-within:border-opacity-100')}
             onFocus={e => { e.currentTarget.style.borderColor = `${cfg.colorHex}55`; e.currentTarget.style.boxShadow = `0 0 20px ${cfg.colorHex}15`; }}
             onBlur={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}>
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors opacity-40 cursor-not-allowed" title="附件功能开发中" onClick={() => toast.info('附件功能正在开发中，敬请期待')}><Paperclip size={16} /></button>
+            {/* 隐藏的文件选择器 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.docx,.doc,.pptx,.xlsx,.png,.jpg,.jpeg,.tiff,.bmp,.gif,.ogg,.wav,.mp3,.m4a,.webm"
+              onChange={handleFileUpload}
+            />
+            <button
+              className={clsx(
+                'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors',
+                uploadingFile && 'animate-pulse'
+              )}
+              title="上传附件"
+              disabled={uploadingFile}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadingFile ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+            </button>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               placeholder={loading ? t('assistant.aiReplying') : t('assistant.inputMessage')} disabled={loading}
               className={clsx('flex-1 bg-transparent text-sm text-[var(--text-primary)] font-body placeholder:text-[var(--text-tertiary)] outline-none disabled:opacity-50')} />
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors opacity-40 cursor-not-allowed" title="语音输入开发中" onClick={() => toast.info('语音输入功能正在开发中，敬请期待')}><Mic size={16} /></button>
+            <button
+              className={clsx(
+                'transition-colors',
+                isRecording
+                  ? 'text-red-400 animate-pulse'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+              )}
+              title={isRecording ? '停止录音' : '语音输入'}
+              onClick={toggleRecording}
+            >
+              <Mic size={16} />
+            </button>
             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSend} disabled={loading || !input.trim()}
               className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors disabled:opacity-40"
               style={{ background: input.trim() && !loading ? cfg.colorHex : 'rgba(255,255,255,0.06)', color: input.trim() && !loading ? 'var(--bg-base)' : 'var(--text-tertiary)' }}>

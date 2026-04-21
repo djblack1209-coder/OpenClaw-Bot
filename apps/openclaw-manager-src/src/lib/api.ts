@@ -440,4 +440,12 @@ export const api = {
   /** 获取过时 pip 依赖列表 */
   devOutdatedDeps: () =>
     clawbotFetchJson('/api/v1/system/outdated-deps'),
+
+  // ══════════════════════════════════════════════
+  //  扩展监控 (Extended Monitoring)
+  // ══════════════════════════════════════════════
+
+  /** 获取扩展监控数据（基础设施/气候/网络安全） */
+  monitorExtended: () =>
+    clawbotFetchJson('/api/v1/monitor/extended'),
 };

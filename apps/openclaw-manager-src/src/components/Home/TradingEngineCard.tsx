@@ -91,18 +91,11 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
                 </div>
               ))
             ) : (
-              /* 无数据时的占位 */
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="font-mono text-[10px] w-20" style={{ color: 'var(--text-disabled)' }}>
-                    BOT_{i + 1}
-                  </span>
-                  <div className="flex-1 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }} />
-                  <span className="font-mono text-[9px] w-14 text-right" style={{ color: 'var(--text-disabled)' }}>
-                    --
-                  </span>
-                </div>
-              ))
+              /* 无 Bot 数据时的空状态提示 */
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                <span className="text-[11px] text-[var(--text-tertiary)] font-mono">等待 Bot 投票数据...</span>
+                <span className="text-[10px] text-[var(--text-disabled)] mt-1">启动交易引擎后自动加载</span>
+              </div>
             )}
           </div>
 

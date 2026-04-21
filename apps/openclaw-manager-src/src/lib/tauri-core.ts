@@ -374,7 +374,8 @@ export async function clawbotFetch(
   if (CLAWBOT_API_TOKEN) {
     headers.set('X-API-Token', CLAWBOT_API_TOKEN);
   }
-  if (!headers.has('Content-Type') && init?.body) {
+  // FormData 需要浏览器自动设置 Content-Type（含 boundary），不能覆盖
+  if (!headers.has('Content-Type') && init?.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
