@@ -4,6 +4,7 @@
  */
 
 export type FrontendNotificationLevel = 'info' | 'warning' | 'error' | 'success';
+export type FrontendNotificationChannel = 'log' | 'notification';
 
 export interface FrontendNotificationItem {
   id: string;
@@ -12,6 +13,7 @@ export interface FrontendNotificationItem {
   level: FrontendNotificationLevel;
   source: string;
   category: string;
+  channel: FrontendNotificationChannel;
   read: boolean;
   created_at: string;
 }
@@ -19,6 +21,7 @@ export interface FrontendNotificationItem {
 interface NotifyOptions {
   description?: string;
   duration?: number;
+  channel?: FrontendNotificationChannel;
 }
 
 interface PromiseMessages<T> {
@@ -45,6 +48,7 @@ function buildNotification(
   level: FrontendNotificationLevel,
   title: string,
   body?: string,
+  channel: FrontendNotificationChannel = 'log',
 ): FrontendNotificationItem {
   sequence += 1;
   return {
@@ -54,13 +58,15 @@ function buildNotification(
     level,
     source: SOURCE,
     category: CATEGORY,
+    channel,
     read: false,
     created_at: new Date().toISOString(),
   };
 }
 
 function pushNotification(level: FrontendNotificationLevel, title: string, options?: NotifyOptions): string {
-  const entry = buildNotification(level, title, options?.description);
+  const channel = options?.channel ?? (level === 'warning' || level === 'error' ? 'notification' : 'log');
+  const entry = buildNotification(level, title, options?.description, channel);
   notifications.unshift(entry);
   if (notifications.length > MAX_FRONTEND_NOTIFICATIONS) {
     notifications.length = MAX_FRONTEND_NOTIFICATIONS;

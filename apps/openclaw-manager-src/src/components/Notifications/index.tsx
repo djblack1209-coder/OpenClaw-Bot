@@ -58,7 +58,7 @@ function mergeNotifications(
   backendItems: NotificationItem[],
   frontendItems: FrontendNotificationItem[],
 ): NotificationItem[] {
-  return [...frontendItems, ...backendItems]
+  return [...frontendItems.filter((item) => item.channel === 'notification'), ...backendItems]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
