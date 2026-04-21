@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-19 (HEALTH.md 大扫除 + 12项测试修复)
+> 最后更新: 2026-04-20 (Sprint 终极修复：零 Mock 全栈闭环 + 构建 SOP 升级)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -99,6 +99,14 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-600 | `infra` | `Makefile` | 🟠 HIGH: `/Applications` 下 OpenEverything + OpenClaw 双版本残留 | Makefile 新增 `tauri-clean` + `tauri-build` 目标，构建前自动清理；tauri.conf.json productName 改为 OpenClaw | 2026-04-20 | Sprint 终极修复 |
+| HI-601 | `frontend` | `Assistant` | 🟠 HIGH: 附件和语音按钮显示 `功能开发中` 占位 | 后端新增 upload/voice 端点 + 前端 MediaRecorder 录音 + FormData 上传全链路打通 | 2026-04-20 | Sprint 终极修复 |
+| HI-602 | `frontend` | `WorldMonitor` | 🟠 HIGH: 基础设施/气候/网络安全三张卡 12 个指标永远显示 `—` | 后端新增 /monitor/extended 聚合 USGS/NASA EONET/CISA KEV 免费 API + 前端动态渲染 | 2026-04-20 | Sprint 终极修复 |
+| HI-603 | `frontend` | `TradingEngineCard` | 🟡 MEDIUM: 无 Bot 数据时显示 5 行假 BOT_1..BOT_5 骨架占位 | 替换为干净的空状态提示 | 2026-04-20 | Sprint 终极修复 |
+| HI-604 | `frontend` | `Portfolio` | 🟡 MEDIUM: 券商未连接时全页面数据显示 $0.00 | 新增演示模式，自动填充 AAPL/TSLA/NVDA 模拟持仓 + 醒目 DEMO 横幅 | 2026-04-20 | Sprint 终极修复 |
+| HI-605 | `frontend` | `Settings` | 🟡 MEDIUM: 重置设置和查看日志按钮显示 `功能开发中` 占位 | 重置改为真实 localStorage + 后端清除；日志改为跳转日志页面 | 2026-04-20 | Sprint 终极修复 |
+| HI-606 | `frontend` | `Bots` | 🟡 MEDIUM: 点击服务舰队按钮事件冒泡到侧边栏 | 4 个按钮添加 `e.stopPropagation()` | 2026-04-20 | Sprint 终极修复 |
+| HI-607 | `frontend` | 9 个组件 | 🟡 MEDIUM: ~200 处硬编码中英文未接入 i18n | 新增 ~200 翻译 key，9 个组件全量接入 `t()` | 2026-04-20 | Sprint 终极修复 |
 | HI-550a | `frontend` | `conversationService.ts` | 🔴 CRITICAL: SSE 流式请求使用 30s 默认超时，AI 任务（搜索/回测/生成）经常被中断 | `clawbotFetch` 调用传 `timeoutMs: 0` 禁用超时 | 2026-04-19 | R6 核心页面审计 |
 | HI-567a | `trading` | `broker_bridge.py` | 🔴 CRITICAL: connect() 方法在 asyncio.Lock 内部递归调用自身，asyncio.Lock 不可重入导致死锁——Gateway 自动启动后永远挂起 | 消除递归调用，Gateway 启动后在锁内直接重试连接逻辑 | 2026-04-19 | R8 交易系统审计 |
 | HI-577a | `xianyu` | `xianyu_live.py` | 🔴 CRITICAL: _auto_revoke_license() 使用 `LIKE '%buyer_id%'` 模糊匹配查找 License，短 buyer_id 可能匹配其他用户的 License 并错误吊销 | 改为精确匹配 `WHERE xianyu_order_id = ?`，并添加 xianyu_buyer_id 字段兼容查询 | 2026-04-19 | R9 闲鱼+社媒审计 |
