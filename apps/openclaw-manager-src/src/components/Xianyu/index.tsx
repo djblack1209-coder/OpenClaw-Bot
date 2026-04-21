@@ -154,7 +154,7 @@ export function Xianyu() {
       await new Promise((r) => setTimeout(r, 1000));
       await fetchData();
     } catch {
-      toast.error('Cookie 同步失败，请检查 CookieCloud 服务');
+      toast.error('Cookie 同步失败，请检查 CookieCloud 服务', { channel: 'notification' });
       await fetchData();
     } finally {
       setSyncLoading(false);
@@ -195,7 +195,7 @@ export function Xianyu() {
         }
         if (status === 'confirmed') {
           stopQrPolling();
-          toast.success('扫码登录成功！');
+          toast.success('扫码登录成功！', { channel: 'log' });
           setShowQr(false);
           setQrImage('');
           setQrStatus('waiting');
@@ -230,10 +230,10 @@ export function Xianyu() {
         setShowQr(true);
         startQrPolling();
       } else {
-        toast.error('获取二维码失败，请稍后重试');
+        toast.error('获取二维码失败，请稍后重试', { channel: 'notification' });
       }
     } catch {
-      toast.error('获取二维码失败，请稍后重试');
+      toast.error('获取二维码失败，请稍后重试', { channel: 'notification' });
     } finally {
       setQrLoading(false);
     }
@@ -250,11 +250,11 @@ export function Xianyu() {
     try {
       const action = serviceRunning ? 'stop' : 'start';
       await clawbotFetchJson(`/api/v1/system/services/xianyu/${action}`, { method: 'POST' });
-      toast.success(serviceRunning ? '闲鱼服务已停止' : '闲鱼服务已启动');
+      toast.success(serviceRunning ? '闲鱼服务已停止' : '闲鱼服务已启动', { channel: 'log' });
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch {
-      toast.error('操作失败，请稍后重试');
+      toast.error('操作失败，请稍后重试', { channel: 'notification' });
       await fetchData();
     } finally {
       setServiceToggling(false);
