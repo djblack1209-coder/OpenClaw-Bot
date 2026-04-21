@@ -527,7 +527,8 @@ INTENT_PARSER_PROMPT = """\
 2. 能通过常识推断的参数放到 known_params（如"附近"→用户当前位置）
 3. 投资相关的 requires_confirmation 始终为 true
 4. 涉及资金流出的 reversible 为 false
-5. 尽量少放 missing_critical，让系统能先执行再补充"""
+5. 尽量少放 missing_critical，让系统能先执行再补充
+6. 日常问候（你好、嗨、早上好）、闲聊、情感表达、不涉及具体系统操作的消息 → 分类为 unknown"""
 
 INTENT_PARSER_USER_TEMPLATE = """\
 解析以下用户指令：
