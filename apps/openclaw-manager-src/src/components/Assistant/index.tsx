@@ -228,7 +228,7 @@ export function Assistant() {
     ev.target.value = '';
 
     setUploadingFile(true);
-    toast.info(`正在处理: ${file.name}...`);
+    toast.info(`正在处理: ${file.name}...`, { channel: 'log' });
 
     try {
       const result = await api.conversationUpload(file);
@@ -237,13 +237,13 @@ export function Assistant() {
         // 将提取的文本追加到输入框
         const prefix = `[附件: ${file.name}]\n提取内容：${text}\n\n`;
         setInput(prev => prefix + prev);
-        toast.success(`${file.name} 解析完成`);
+        toast.success(`${file.name} 解析完成`, { channel: 'log' });
       } else {
-        toast.warning(`${file.name} 未提取到有效内容`);
+        toast.warning(`${file.name} 未提取到有效内容`, { channel: 'notification' });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '未知错误';
-      toast.error(`附件处理失败: ${msg}`);
+      toast.error(`附件处理失败: ${msg}`, { channel: 'notification' });
     } finally {
       setUploadingFile(false);
     }
@@ -280,40 +280,40 @@ export function Assistant() {
 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         if (audioBlob.size === 0) {
-          toast.warning('录音内容为空');
+          toast.warning('录音内容为空', { channel: 'notification' });
           return;
         }
 
-        toast.info('正在识别语音...');
+        toast.info('正在识别语音...', { channel: 'log' });
         try {
           const result = await api.conversationVoice(audioBlob);
           const text = result?.text || '';
           if (text) {
             setInput(prev => prev + text);
-            toast.success('语音识别完成');
+            toast.success('语音识别完成', { channel: 'log' });
           } else {
-            toast.warning('语音识别未返回有效内容');
+            toast.warning('语音识别未返回有效内容', { channel: 'notification' });
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : '未知错误';
-          toast.error(`语音识别失败: ${msg}`);
+          toast.error(`语音识别失败: ${msg}`, { channel: 'notification' });
         }
       };
 
       recorder.onerror = () => {
         stream.getTracks().forEach(track => track.stop());
         setIsRecording(false);
-        toast.error('录音出错，请重试');
+        toast.error('录音出错，请重试', { channel: 'notification' });
       };
 
       recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
-      toast.info('正在录音，再次点击停止...');
+      toast.info('正在录音，再次点击停止...', { channel: 'log' });
     } catch (err) {
       // 用户拒绝麦克风权限或浏览器不支持
       const msg = err instanceof Error ? err.message : '未知错误';
-      toast.error(`无法启动录音: ${msg}`);
+      toast.error(`无法启动录音: ${msg}`, { channel: 'notification' });
     }
   }, [isRecording]);
 

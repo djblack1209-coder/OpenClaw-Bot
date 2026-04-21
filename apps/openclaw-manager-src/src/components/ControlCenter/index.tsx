@@ -288,7 +288,7 @@ export function ControlCenter() {
       }
     } catch (err) {
       console.error('[ControlCenter] 拉取数据失败:', err);
-      if (!silent) toast.error(t('controlCenter.loadFailed'));
+      if (!silent) toast.error(t('controlCenter.loadFailed'), { channel: 'notification' });
     } finally {
       setLoading(false);
     }
@@ -306,13 +306,13 @@ export function ControlCenter() {
     setRefreshing(true);
     await fetchAll(true);
     setRefreshing(false);
-    toast.success(t('controlCenter.dataRefreshed'));
+    toast.success(t('controlCenter.dataRefreshed'), { channel: 'log' });
   };
 
   /* —— 切换开关 —— */
   const toggleSwitch = async (sw: MasterSwitch) => {
     if (sw.locked) {
-      toast.warning(t('controlCenter.switchLocked'));
+      toast.warning(t('controlCenter.switchLocked'), { channel: 'notification' });
       return;
     }
 
@@ -343,10 +343,10 @@ export function ControlCenter() {
       setSwitches((prev) =>
         prev.map((s) => (s.id === sw.id ? { ...s, enabled: newValue } : s)),
       );
-      toast.success(`${sw.label} ${newValue ? t('controlCenter.enabled') : t('controlCenter.disabled')}`);
+      toast.success(`${sw.label} ${newValue ? t('controlCenter.enabled') : t('controlCenter.disabled')}`, { channel: 'log' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('controlCenter.unknownError');
-      toast.error(`${t('controlCenter.toggleFailed')} ${sw.label}`, { description: msg });
+      toast.error(`${t('controlCenter.toggleFailed')} ${sw.label}`, { description: msg, channel: 'notification' });
     } finally {
       setTogglingId(null);
     }

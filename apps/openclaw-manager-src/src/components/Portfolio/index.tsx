@@ -290,12 +290,12 @@ export function Portfolio() {
     setSellingSymbol(symbol);
     try {
       await api.tradingSell(symbol, quantity, 'MKT');
-      toast.success(`${symbol} ${t('portfolio.sell.success')}`, { description: `${t('portfolio.sell.quantity')}: ${quantity}` });
+      toast.success(`${symbol} ${t('portfolio.sell.success')}`, { description: `${t('portfolio.sell.quantity')}: ${quantity}`, channel: 'log' });
       /* 刷新数据 */
       fetchData(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(`${symbol} ${t('portfolio.sell.failed')}`, { description: msg });
+      toast.error(`${symbol} ${t('portfolio.sell.failed')}`, { description: msg, channel: 'notification' });
       console.error(`[Portfolio] 卖出失败: ${symbol}`, msg);
     } finally {
       setSellingSymbol(null);
@@ -306,7 +306,7 @@ export function Portfolio() {
   const handleVote = async () => {
     const sym = voteSymbol.trim().toUpperCase();
     if (!sym) {
-      toast.error(t('portfolio.vote.enterSymbol'));
+      toast.info(t('portfolio.vote.enterSymbol'), { channel: 'log' });
       return;
     }
     setVoteLoading(true);
@@ -322,10 +322,10 @@ export function Portfolio() {
       }
       const data: VoteResult = await resp.json();
       setVoteResult(data);
-      toast.success(t('portfolio.vote.complete'), { description: `${sym} · ${votePeriod}` });
+      toast.success(t('portfolio.vote.complete'), { description: `${sym} · ${votePeriod}`, channel: 'log' });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(t('portfolio.vote.failed'), { description: msg });
+      toast.error(t('portfolio.vote.failed'), { description: msg, channel: 'notification' });
     } finally {
       setVoteLoading(false);
     }
@@ -339,7 +339,7 @@ export function Portfolio() {
       setControls(data);
     } catch (e) {
       console.warn('[Portfolio] 拉取交易控制失败:', e);
-      toast.error(t('portfolio.controls.fetchFailed'));
+      toast.error(t('portfolio.controls.fetchFailed'), { channel: 'notification' });
     } finally {
       setControlsLoading(false);
     }
@@ -362,10 +362,10 @@ export function Portfolio() {
         body: JSON.stringify({ ...controls, [key]: value }),
       });
       setControls(prev => prev ? { ...prev, [key]: value } : prev);
-      toast.success(t('portfolio.controls.updated'));
+      toast.success(t('portfolio.controls.updated'), { channel: 'log' });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(t('portfolio.controls.updateFailed'), { description: msg });
+      toast.error(t('portfolio.controls.updateFailed'), { description: msg, channel: 'notification' });
     } finally {
       setTogglingKey(null);
     }
@@ -375,7 +375,7 @@ export function Portfolio() {
   const handleBacktest = async () => {
     const sym = btSymbol.trim().toUpperCase();
     if (!sym) {
-      toast.error(t('portfolio.vote.enterSymbol'));
+      toast.info(t('portfolio.vote.enterSymbol'), { channel: 'log' });
       return;
     }
     setBtLoading(true);
@@ -387,10 +387,10 @@ export function Portfolio() {
         LONG_TIMEOUT_MS,
       );
       setBtResult(data);
-      toast.success(t('portfolio.backtest.complete'), { description: `${sym} · ${btStrategy}` });
+      toast.success(t('portfolio.backtest.complete'), { description: `${sym} · ${btStrategy}`, channel: 'log' });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(t('portfolio.backtest.failed'), { description: msg });
+      toast.error(t('portfolio.backtest.failed'), { description: msg, channel: 'notification' });
     } finally {
       setBtLoading(false);
     }
@@ -428,7 +428,7 @@ export function Portfolio() {
   const handleValuation = async () => {
     const sym = valSymbol.trim().toUpperCase();
     if (!sym) {
-      toast.error(t('portfolio.vote.enterSymbol'));
+      toast.info(t('portfolio.vote.enterSymbol'), { channel: 'log' });
       return;
     }
     setValLoading(true);
@@ -436,10 +436,10 @@ export function Portfolio() {
     try {
       const data = await api.tradingValuation(sym) as ValuationResult;
       setValResult(data);
-      toast.success(t('portfolio.valuation.complete'), { description: `${data.company_name || sym}` });
+      toast.success(t('portfolio.valuation.complete'), { description: `${data.company_name || sym}`, channel: 'log' });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(t('portfolio.valuation.failed'), { description: msg });
+      toast.error(t('portfolio.valuation.failed'), { description: msg, channel: 'notification' });
     } finally {
       setValLoading(false);
     }
