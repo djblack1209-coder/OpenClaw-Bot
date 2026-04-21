@@ -1,8 +1,8 @@
 [package]
-name = "openeverything-manager"
+name = "openclaw-manager"
 version = "0.1.0"
-description = "OpenEverything 跨平台管理工具"
-authors = ["OpenEverything Team"]
+description = "OpenClaw 跨平台管理工具"
+authors = ["OpenClaw Team"]
 edition = "2021"
 
 [build-dependencies]

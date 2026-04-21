@@ -28,7 +28,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: unknown, errorInfo: React.ErrorInfo): void {
-    console.error('[OpenEverything] 前端崩溃已捕获', error, errorInfo);
+    console.error('[OpenClaw] 前端崩溃已捕获', error, errorInfo);
   }
 
   handleReload = () => {
@@ -43,7 +43,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     return (
       <div className="min-h-screen bg-dark-900 text-gray-100 flex items-center justify-center p-6">
         <div className="w-full max-w-3xl rounded-2xl border border-red-500/30 bg-dark-800 p-6">
-          <h1 className="text-xl font-semibold text-red-300">OpenEverything 发生错误</h1>
+          <h1 className="text-xl font-semibold text-red-300">OpenClaw 发生错误</h1>
           <p className="mt-2 text-sm text-gray-300">
             页面没有真正退出，已被错误边界接管。请先点击“刷新界面”，若仍复现，再把下面错误信息发给我。
           </p>

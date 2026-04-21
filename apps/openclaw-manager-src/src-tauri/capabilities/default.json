@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "OpenEverything 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
+  "description": "OpenClaw 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
   "windows": ["main"],
   "permissions": [
     "core:default",
