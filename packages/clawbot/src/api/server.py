@@ -281,8 +281,7 @@ class APIServer:
         self.app.include_router(router_social, prefix="/api/v1", tags=["Social"])
         self.app.include_router(router_memory, prefix="/api/v1", tags=["Memory"])
         self.app.include_router(router_pool, prefix="/api/v1", tags=["API Pool"])
-        # WebSocket 路由单独挂载，不继承全局 verify_api_token（WS 有自己的 verify_ws_token）
-        self.app.include_router(router_ws, prefix="/api/v1", tags=["WebSocket"], dependencies=[])
+        self.app.include_router(router_ws, prefix="/api/v1", tags=["WebSocket"])
         self.app.include_router(router_evolution, prefix="/api/v1", tags=["Evolution"])
         self.app.include_router(router_shopping, prefix="/api/v1", tags=["Shopping"])
         self.app.include_router(router_omega, prefix="/api/v1", tags=["OMEGA"])
