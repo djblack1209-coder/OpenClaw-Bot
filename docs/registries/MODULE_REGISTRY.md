@@ -1104,7 +1104,7 @@
 | message_format.py | `src/message_format.py` | 528 | OMEGA 结构化响应 + 格式化 |
 | message_sender.py | `src/message_sender.py` | 135 | Telegram 消息清洗 + 分割 |
 | social_scheduler.py | `src/social_scheduler.py` | 542 | APScheduler 社交自动驾驶 |
-| quote_cache.py | `src/quote_cache.py` | 220 | diskcache 行情缓存 |
+| quote_cache.py | `src/quote_cache.py` | 220 | 行情缓存 |
 | llm_cache.py | `src/llm_cache.py` | 273 | LLM 响应缓存 |
 | structured_llm.py | `src/structured_llm.py` | 273 | instructor 结构化 LLM 输出 |
 | observability.py | `src/observability.py` | 243 | OTEL + Phoenix 可观测 |
