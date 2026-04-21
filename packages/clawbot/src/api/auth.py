@@ -57,7 +57,6 @@ def log_token_status() -> None:
 
 async def verify_api_token(
     request: Request,
-    api_key: Optional[str] = Depends(_header_scheme),
 ) -> None:
     """FastAPI dependency: 验证 X-API-Token header。
 
@@ -68,6 +67,9 @@ async def verify_api_token(
     # WebSocket 请求跳过 HTTP header 认证（WS 有自己的 query param token 验证）
     if request.scope.get("type") == "websocket":
         return
+
+    # 手动从 header 读取 API key（避免 APIKeyHeader scheme 在 WS scope 下崩溃）
+    api_key = request.headers.get("x-api-token")
 
     global _warned_no_token
 
