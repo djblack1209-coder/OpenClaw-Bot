@@ -57,7 +57,7 @@ def _scrub_secrets(msg: str) -> str:
     return scrub_secrets(msg)
 
 
-# ---- LLM 缓存层 (diskcache, graceful degradation) ----
+# ---- LLM 缓存层 (sqlite3 自研缓存, graceful degradation) ----
 try:
     from src.llm_cache import _make_cache_key, _get_cache
 
@@ -83,28 +83,28 @@ try:
 
 except ImportError:
     _HAS_LLM_CACHE = False
-    # llm_cache 模块不可用时，尝试直接使用 diskcache 作为降级方案
+    # llm_cache 模块不可用时，尝试直接使用 utils_cache 作为降级方案
     _fallback_cache = None
     try:
-        import diskcache as _dc
+        from src.utils_cache import DiskCache as _DiskCache
         from pathlib import Path as _Path
         import hashlib as _hashlib
         import json as _json_cache
 
         _fallback_cache_dir = _Path(__file__).resolve().parent.parent / "data" / "llm_cache"
         _fallback_cache_dir.mkdir(parents=True, exist_ok=True)
-        _fallback_cache = _dc.Cache(
+        _fallback_cache = _DiskCache(
             str(_fallback_cache_dir),
             size_limit=512 * 1024 * 1024,
             eviction_policy="least-recently-used",
         )
-        _HAS_LLM_CACHE = True  # diskcache 可用，启用缓存
-        logger.info("[LLM Cache] llm_cache 模块不可用，已降级为 diskcache 直连")
+        _HAS_LLM_CACHE = True  # utils_cache 可用，启用缓存
+        logger.info("[LLM Cache] llm_cache 模块不可用，已降级为 utils_cache 直连")
     except ImportError:
-        logger.info("[LLM Cache] diskcache 未安装，缓存功能禁用")
+        logger.info("[LLM Cache] utils_cache 未找到，缓存功能禁用")
 
     def _llm_cache_get(key: str):  # type: ignore[misc]
-        # 从降级的 diskcache 中读取缓存
+        # 从降级的缓存中读取
         if _fallback_cache is None:
             return None
         try:
@@ -113,7 +113,7 @@ except ImportError:
             return None
 
     def _llm_cache_set(key: str, value, ttl: int):  # type: ignore[misc]
-        # 写入降级的 diskcache 缓存
+        # 写入降级缓存
         if _fallback_cache is None:
             return
         try:

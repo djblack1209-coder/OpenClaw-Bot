@@ -1025,14 +1025,14 @@ async def main():
     metrics.shutdown()
     history_store.close()
     shared_memory.close()
-    # 关闭 LLM 缓存（diskcache 需要显式 close 才能刷盘）
+    # 关闭 LLM 缓存（sqlite3 缓存需要显式 close 才能刷盘）
     try:
         from src.litellm_router import _fallback_cache
         if _fallback_cache:
             _fallback_cache.close()
-            logger.info("  LLM diskcache 已关闭")
+            logger.info("  LLM 缓存已关闭")
     except Exception as e:
-        logger.debug("关闭LLM diskcache时异常(可忽略): %s", e)
+        logger.debug("关闭LLM缓存时异常(可忽略): %s", e)
     # 关闭 httpx 长生命周期客户端（防止 TCP 连接泄漏）
     try:
         from src.xianyu.goofish_monitor import _monitor as _gm
