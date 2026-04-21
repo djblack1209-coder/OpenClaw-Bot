@@ -10,12 +10,13 @@ import {
   Settings2, Download, RotateCcw, Trash2, FileText,
   Stethoscope, Check, MemoryStick, Loader2, Save,
   Languages, ExternalLink, KeyRound,
-  Power, PlayCircle, StopCircle,
+  Power, PlayCircle, StopCircle, AlertTriangle,
 } from 'lucide-react';
 import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { controlAllManagedServices } from '@/lib/tauri-ipc';
+import { isTauri } from '@/lib/tauri-core';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
 
