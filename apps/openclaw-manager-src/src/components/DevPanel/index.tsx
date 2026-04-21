@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { useLanguage } from '../../i18n';
 import type { SystemInfo } from '../../lib/tauri-core';
 import { EmptyState } from '../shared/EmptyState';

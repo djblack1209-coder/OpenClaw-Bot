@@ -16,7 +16,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 

@@ -7,7 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../../lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { useLanguage } from '../../i18n';
 import { clawbotFetch } from '../../lib/tauri-core';
 

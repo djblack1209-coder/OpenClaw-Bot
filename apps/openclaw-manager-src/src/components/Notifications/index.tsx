@@ -5,7 +5,14 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { toast } from 'sonner';
+import {
+  getFrontendNotifications,
+  markAllFrontendNotificationsRead,
+  markFrontendNotificationRead,
+  subscribeFrontendNotifications,
+  toast,
+  type FrontendNotificationItem,
+} from '@/lib/notify';
 import {
   Bell,
   BellOff,
@@ -45,6 +52,14 @@ interface NotificationItem {
   category: string;
   read: boolean;
   created_at: string;
+}
+
+function mergeNotifications(
+  backendItems: NotificationItem[],
+  frontendItems: FrontendNotificationItem[],
+): NotificationItem[] {
+  return [...frontendItems, ...backendItems]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 /* ====== 入场动画 ====== */
@@ -151,7 +166,8 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
 export function Notifications() {
   const { t } = useLanguage();
   /* ---- 状态 ---- */
-  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [backendItems, setBackendItems] = useState<NotificationItem[]>([]);
+  const [frontendItems, setFrontendItems] = useState<FrontendNotificationItem[]>(() => getFrontendNotifications());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<NotificationCategory>('ALL');
@@ -168,7 +184,7 @@ export function Notifications() {
       /* 后端可能返回 { notifications: [...] } 或直接返回数组 */
       const list = Array.isArray(resp) ? resp : (resp as Record<string, unknown>)?.notifications;
       if (Array.isArray(list)) {
-        setItems(list as NotificationItem[]);
+        setBackendItems(list as NotificationItem[]);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'unknown error';
@@ -187,25 +203,35 @@ export function Notifications() {
     };
   }, [fetchData]);
 
+  useEffect(() => {
+    return subscribeFrontendNotifications(() => {
+      setFrontendItems(getFrontendNotifications());
+    });
+  }, []);
+
   /* ---- WebSocket 实时推送 ---- */
   useClawbotWS('notification', (event) => {
     /* 收到新通知时，插入到列表头部（不弹 Toast，避免干扰用户操作） */
-    const newItem = event.data as unknown as NotificationItem;
-    if (newItem && newItem.id) {
-      setItems((prev) => {
-        /* 去重 */
-        if (prev.some((i) => i.id === newItem.id)) return prev;
-        return [newItem, ...prev];
+      const newItem = event.data as unknown as NotificationItem;
+      if (newItem && newItem.id) {
+       setBackendItems((prev) => {
+         /* 去重 */
+         if (prev.some((i) => i.id === newItem.id)) return prev;
+         return [newItem, ...prev];
       });
     }
   });
 
   /* ---- 标记单条已读 ---- */
   const handleMarkRead = async (id: string) => {
+    if (markFrontendNotificationRead(id)) {
+      setFrontendItems(getFrontendNotifications());
+      return;
+    }
     setMarkingReadId(id);
     try {
       await api.markNotificationRead(id);
-      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
+      setBackendItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
       toast.success(t('notifications.markedRead'));
     } catch {
       toast.error(t('notifications.markReadFailed'));
@@ -218,8 +244,10 @@ export function Notifications() {
   const handleMarkAllRead = async () => {
     setMarkingAllRead(true);
     try {
+      markAllFrontendNotificationsRead();
+      setFrontendItems(getFrontendNotifications());
       await api.markAllNotificationsRead();
-      setItems((prev) => prev.map((i) => ({ ...i, read: true })));
+      setBackendItems((prev) => prev.map((i) => ({ ...i, read: true })));
       toast.success(t('notifications.allMarkedRead'));
     } catch {
       toast.error(t('notifications.markAllReadFailed'));
@@ -227,6 +255,8 @@ export function Notifications() {
       setMarkingAllRead(false);
     }
   };
+
+  const items = useMemo(() => mergeNotifications(backendItems, frontendItems), [backendItems, frontendItems]);
 
   /* ---- 衍生数据 ---- */
   const filteredItems = useMemo(() => {

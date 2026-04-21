@@ -9,7 +9,7 @@ import {
   BrainCircuit, Database, Search, Zap,
   Clock, Layers, Loader2, CheckCircle2,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
 
