@@ -343,10 +343,14 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                             result.elapsed_seconds = time.time() - start_time
                             return result
                 except Exception as e:
-                    logger.debug("闲聊 LLM 失败: %s", e)
+                    logger.warning("闲聊 LLM 降级失败: %s", e)
 
-                # 最终降级：转发给现有 MultiBot
-                result.final_result = {"action": "forward_to_chat", "message": message}
+                # 最终降级：转发给现有 MultiBot（用下划线前缀键避免被文本提取链捡走）
+                result.final_result = {
+                    "action": "forward_to_chat",
+                    "_original_input": message,
+                    "answer": "抱歉，我暂时无法处理这个请求，请稍后再试。",
+                }
                 result.elapsed_seconds = time.time() - start_time
                 return result
 
