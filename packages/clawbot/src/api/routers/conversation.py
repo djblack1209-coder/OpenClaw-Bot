@@ -257,16 +257,20 @@ async def send_message(
                 if isinstance(result_dict["result"], str):
                     response_text = result_dict["result"]
                 elif isinstance(result_dict["result"], dict):
-                    # 从 Brain 结果字典中提取友好文本
-                    # 优先取 synthesized_reply / answer（Brain 实际使用的键）
-                    response_text = (
-                        result_dict["result"].get("synthesized_reply")
-                        or result_dict["result"].get("answer")
-                        or result_dict["result"].get("response")
-                        or result_dict["result"].get("text")
-                        or result_dict["result"].get("message")
-                        or json.dumps(result_dict["result"], ensure_ascii=False, indent=2)
-                    )
+                    # 如果是 forward_to_chat 降级结果，提供友好回复而非回显用户消息
+                    if result_dict["result"].get("action") == "forward_to_chat":
+                        response_text = "抱歉，我暂时无法处理这个请求，请稍后再试。"
+                    else:
+                        # 从 Brain 结果字典中提取友好文本
+                        # 优先取 synthesized_reply / answer（Brain 实际使用的键）
+                        response_text = (
+                            result_dict["result"].get("synthesized_reply")
+                            or result_dict["result"].get("answer")
+                            or result_dict["result"].get("response")
+                            or result_dict["result"].get("text")
+                            or result_dict["result"].get("message")
+                            or json.dumps(result_dict["result"], ensure_ascii=False, indent=2)
+                        )
                 else:
                     response_text = str(result_dict["result"])
             elif result_dict.get("error"):
