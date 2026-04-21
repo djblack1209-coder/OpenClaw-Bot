@@ -353,7 +353,7 @@ CREW          # CrewAI 多智能体
 | `src/structured_llm.py` | — | instructor 结构化输出 |
 | `src/chat_router.py` | 1,415 | 群聊意图路由 + 协作编排 |
 | `src/context_manager.py` | 751 | 上下文窗口管理 |
-| `src/llm_cache.py` | — | diskcache LLM 缓存 |
+| `src/llm_cache.py` | — | SQLite3 LLM 缓存 (utils_cache) |
 
 ### 投资/交易系统
 | 路径 | 行数 | 说明 |
@@ -473,7 +473,7 @@ CREW          # CrewAI 多智能体
 | 25 | json-repair | 4.6k⭐ | JSON容错解析 | json.loads |
 | 26 | qrcode | 4.5k⭐ | 二维码生成 | — |
 | 27 | openpyxl | 3.7k⭐ | Excel读写 | — |
-| 28 | diskcache | 2.8k⭐ | SQLite缓存 | — |
+| 28 | ~~diskcache~~ | 2.8k⭐ | ~~SQLite缓存~~ | ❌ 已移除(CVE)，替换为自研 utils_cache |
 | 29 | stamina | 1.4k⭐ | 声明式重试 | — |
 | 30 | fpdf2 | 1.1k⭐ | PDF生成 | — |
 | 31 | mistletoe | 1k⭐ | Markdown AST | regex 清理 |
