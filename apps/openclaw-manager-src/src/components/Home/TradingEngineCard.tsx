@@ -1,4 +1,6 @@
 /* Bot 投票数据 */
+import { useLanguage } from '../../i18n';
+
 interface BotVote {
   name: string;
   signal: 'approve' | 'reject' | 'pending' | 'abstain';
@@ -25,6 +27,7 @@ const signalColors: Record<BotVote['signal'], string> = {
  * 展示 7-Bot 投票共识条 + 每日盈亏
  */
 export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Props) {
+  const { t } = useLanguage();
   /* 计算各信号计数 */
   const counts = bots.reduce(
     (acc, b) => { acc[b.signal] = (acc[b.signal] || 0) + 1; return acc; },
@@ -40,26 +43,26 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
       {/* 头部标签行 */}
       <div className="flex items-center justify-between">
         <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-          IBKR 实盘 // 自动交易引擎
+          {t('trading.ibkrLive')}
         </span>
         <div className="status-live">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           <span style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {isRunning ? 'LIVE' : 'OFFLINE'}
+            {isRunning ? t('trading.live') : t('trading.offline')}
           </span>
         </div>
       </div>
 
       {/* 标题 */}
       <h2 className="text-hero text-[32px] mt-3" style={{ color: 'var(--text-primary)' }}>
-        交易引擎
+        {t('trading.engineTitle')}
       </h2>
 
       {/* 中间区域：共识条 + PnL */}
       <div className="flex-1 flex flex-col lg:flex-row lg:items-end gap-6 mt-6">
         {/* 左侧：共识可视化 */}
         <div className="flex-1">
-          <span className="text-label text-[10px]">7-BOT 投票共识</span>
+          <span className="text-label text-[10px]">{t('trading.consensusLabel')}</span>
 
           {/* 投票进度条组 */}
           <div className="space-y-2 mt-3">
@@ -86,15 +89,15 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
                     className="font-mono text-[9px] uppercase w-14 text-right"
                     style={{ color: signalColors[bot.signal] }}
                   >
-                    {{ approve: '买入', reject: '卖出', pending: '待定', abstain: '弃权' }[bot.signal]}
+                    {{ approve: t('trading.signalApprove'), reject: t('trading.signalReject'), pending: t('trading.signalPending'), abstain: t('trading.signalAbstain') }[bot.signal]}
                   </span>
                 </div>
               ))
             ) : (
               /* 无 Bot 数据时的空状态提示 */
               <div className="flex flex-col items-center justify-center py-6 text-center">
-                <span className="text-[11px] text-[var(--text-tertiary)] font-mono">等待 Bot 投票数据...</span>
-                <span className="text-[10px] text-[var(--text-disabled)] mt-1">启动交易引擎后自动加载</span>
+                <span className="text-[11px] text-[var(--text-tertiary)] font-mono">{t('trading.waitingBotData')}</span>
+                <span className="text-[10px] text-[var(--text-disabled)] mt-1">{t('trading.autoLoadAfterStart')}</span>
               </div>
             )}
           </div>
@@ -119,7 +122,7 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
 
         {/* 右侧：Daily PnL */}
         <div className="lg:text-right flex-shrink-0">
-          <span className="text-label">今日盈亏</span>
+          <span className="text-label">{t('trading.dailyPnlLabel')}</span>
           <div
             className="text-hero text-[42px] mt-1 font-mono tabular-nums"
             style={{ color: pnlColor }}

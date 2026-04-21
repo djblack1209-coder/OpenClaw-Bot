@@ -340,7 +340,7 @@ export function HomeDashboard() {
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           {/* 快捷操作 */}
           <div className="abyss-card p-5 h-full">
-            <span className="text-label">QUICK ACTIONS</span>
+            <span className="text-label">{t('home.quickActionsLabel')}</span>
             <div className="grid grid-cols-3 gap-2 mt-3">
               {quickActions.map((action) => {
                 const Icon = action.icon;
@@ -373,7 +373,7 @@ export function HomeDashboard() {
           <motion.div className="col-span-12" variants={cardVariants}>
             <div className="abyss-card p-5">
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                今日简报
+                {t('home.dailyBriefLabel')}
               </span>
               <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                 {t('home.dailyBrief')}
@@ -407,7 +407,7 @@ export function HomeDashboard() {
                   .map(([key, value]) => (
                   <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
-                      {{ portfolio_pnl: '持仓盈亏', positions_count: '持仓数量', xianyu_consultations: '闲鱼咨询', xianyu_orders: '闲鱼订单', social_posts: '社媒发帖', api_daily_cost: 'API日费用', market_sentiment: '市场情绪' }[key] || key.replace(/_/g, ' ')}
+                      {{ portfolio_pnl: t('home.briefMetrics.portfolioPnl'), positions_count: t('home.briefMetrics.positionsCount'), xianyu_consultations: t('home.briefMetrics.xianyuConsultations'), xianyu_orders: t('home.briefMetrics.xianyuOrders'), social_posts: t('home.briefMetrics.socialPosts'), api_daily_cost: t('home.briefMetrics.apiDailyCost'), market_sentiment: t('home.briefMetrics.marketSentiment') }[key] || key.replace(/_/g, ' ')}
                     </span>
                     <div className="font-mono text-lg font-bold mt-1" style={{ color: 'var(--accent-cyan)' }}>
                       {typeof value === 'number' ? value.toLocaleString() : String(value ?? '—')}
@@ -431,34 +431,34 @@ export function HomeDashboard() {
 
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-5 h-full flex flex-col">
-            <span className="text-label">系统状态</span>
+            <span className="text-label">{t('home.systemStatusLabel')}</span>
             <div className="flex-1 flex flex-col justify-center gap-3 mt-3">
               {/* 服务状态行 */}
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>核心引擎</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.coreEngine')}</span>
                 <div className="flex items-center gap-1.5">
                   <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
                   <span className="font-mono text-[10px]" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {isRunning ? '在线' : '离线'}
+                    {isRunning ? t('home.online') : t('home.offline')}
                   </span>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>自动交易</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.autoTrading')}</span>
                 <span className="font-mono text-[10px]" style={{ color: bots.length > 0 ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {bots.length > 0 ? '运行中' : '待机'}
+                  {bots.length > 0 ? t('home.tradingRunning') : t('home.tradingStandby')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>社媒引擎</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.socialEngine')}</span>
                 <span className="font-mono text-[10px]" style={{ color: social.running ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {social.running ? '运行中' : '空闲'}
+                  {social.running ? t('home.socialRunning') : t('home.socialIdle')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>闲鱼客服</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.xianyuCS')}</span>
                 <span className="font-mono text-[10px]" style={{ color: xianyu.autoReplyActive ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {xianyu.autoReplyActive ? 'ACTIVE' : 'IDLE'}
+                  {xianyu.autoReplyActive ? t('home.xianyuActive') : t('home.xianyuIdle')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -477,7 +477,7 @@ export function HomeDashboard() {
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
             >
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              REFRESH
+              {t('home.refreshBtn')}
             </button>
           </div>
         </motion.div>

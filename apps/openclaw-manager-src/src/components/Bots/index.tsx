@@ -318,7 +318,7 @@ export function Bots() {
           <div className="abyss-card p-6 h-full flex flex-col">
             {/* 标题行 */}
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>SERVICE FLEET</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>{t('bots.serviceFleetLabel')}</span>
               <div className="flex items-center gap-1.5">
                 {loading ? (
                   <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
@@ -330,13 +330,13 @@ export function Bots() {
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 1.5, repeat: Infinity }}
                     />
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>LIVE</span>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('bots.liveLabel')}</span>
                   </>
                 )}
               </div>
             </div>
             <h2 className="font-display text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              服务舰队 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// SERVICE FLEET</span>
+              {t('bots.serviceFleetTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.serviceFleetSuffix')}</span>
             </h2>
 
             {/* 统计行 */}
@@ -451,7 +451,7 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-5">
               <Cookie size={16} style={{ color: cookieColor }} />
-              <span className="text-label" style={{ color: cookieColor }}>COOKIE STATUS</span>
+              <span className="text-label" style={{ color: cookieColor }}>{t('bots.cookieStatusLabel')}</span>
             </div>
 
             {/* 大状态指示器 */}
@@ -517,7 +517,7 @@ export function Bots() {
         {/* ====== Row 2: 连接概览 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full">
-            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>CONNECTION</span>
+            <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('bots.connectionLabel')}</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t("bots.connectionStatus")}
             </h3>
@@ -544,7 +544,7 @@ export function Bots() {
         {/* ====== Row 2: 快速操作 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
-            <span className="text-label" style={{ color: 'var(--accent-green)' }}>QUICK ACTIONS</span>
+            <span className="text-label" style={{ color: 'var(--accent-green)' }}>{t('bots.quickActionsLabel')}</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t("bots.quickActions")}
             </h3>
@@ -571,7 +571,7 @@ export function Bots() {
         {/* ====== Row 2: 服务详情 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full">
-            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>SUMMARY</span>
+            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>{t('bots.summaryLabel')}</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t("bots.summary")}
             </h3>
@@ -615,10 +615,10 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-1">
               <Fish size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>XIANYU AI</span>
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>{t('bots.xianyuAiLabel')}</span>
             </div>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              闲鱼 AI 客服 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// XIANYU</span>
+              {t('bots.xianyuTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.xianyuSuffix')}</span>
             </h3>
 
             <div className="space-y-4">
@@ -642,7 +642,7 @@ export function Bots() {
                 <span className="font-mono text-xs font-bold" style={{
                   color: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)',
                 }}>
-                  {xianyuData.online ? 'ONLINE' : 'OFFLINE'}
+                  {xianyuData.online ? t('bots.statusOnline') : t('bots.statusOffline')}
                 </span>
               </div>
 
@@ -700,10 +700,10 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-1">
               <Navigation size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>SOCIAL AUTOPILOT</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('bots.socialAutopilotLabel')}</span>
             </div>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              社媒自动驾驶 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// AUTOPILOT</span>
+              {t('bots.socialAutopilotTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.socialAutopilotSuffix')}</span>
             </h3>
 
             <div className="space-y-4">
@@ -727,7 +727,7 @@ export function Bots() {
                 <span className="font-mono text-xs font-bold" style={{
                   color: autopilotData.running ? 'var(--accent-green)' : 'var(--text-disabled)',
                 }}>
-                  {autopilotData.running ? 'ACTIVE' : 'IDLE'}
+                  {autopilotData.running ? t('bots.statusActive') : t('bots.statusIdle')}
                 </span>
               </div>
 
@@ -787,18 +787,18 @@ export function Bots() {
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center gap-2 mb-1">
               <CalendarClock size={16} style={{ color: 'var(--accent-cyan)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>SCHEDULER</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>{t('bots.schedulerLabel')}</span>
               <div className="flex-1" />
               <span className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold" style={{
                 color: schedulerData.running ? 'var(--accent-green)' : 'var(--text-disabled)',
                 background: schedulerData.running ? 'rgba(0,255,170,0.1)' : 'rgba(255,255,255,0.05)',
                 border: `1px solid ${schedulerData.running ? 'rgba(0,255,170,0.25)' : 'var(--glass-border)'}`,
               }}>
-                {schedulerData.running ? 'ACTIVE' : 'IDLE'}
+                {schedulerData.running ? t('bots.statusActive') : t('bots.statusIdle')}
               </span>
             </div>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              定时任务 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// SCHEDULER</span>
+              {t('bots.schedulerTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.schedulerSuffix')}</span>
             </h3>
 
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
@@ -874,10 +874,10 @@ export function Bots() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-1">
               <Bell size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>NOTIFICATIONS</span>
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>{t('bots.notificationsLabel')}</span>
             </div>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              通知渠道 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>// APPRISE</span>
+              {t('bots.notificationsTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.notificationsSuffix')}</span>
             </h3>
 
             <div className="space-y-4">
@@ -901,7 +901,7 @@ export function Bots() {
                 <span className="font-mono text-xs font-bold" style={{
                   color: notifRunning ? 'var(--accent-green)' : 'var(--text-disabled)',
                 }}>
-                  {notifRunning ? 'ONLINE' : 'OFFLINE'}
+                  {notifRunning ? t('bots.statusOnline') : t('bots.statusOffline')}
                 </span>
               </div>
 

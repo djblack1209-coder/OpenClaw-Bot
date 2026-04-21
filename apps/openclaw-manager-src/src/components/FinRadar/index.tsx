@@ -120,7 +120,7 @@ function quoteToEntry(item: QuoteApiItem): MarketEntry {
 }
 
 /* ====== 错误/加载状态组件 ====== */
-function LoadingState({ message = '数据加载中...' }: { message?: string }) {
+function LoadingState({ message }: { message?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-8">
       <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
@@ -129,7 +129,7 @@ function LoadingState({ message = '数据加载中...' }: { message?: string }) 
   );
 }
 
-function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
+function ErrorState({ message, onRetry, retryLabel = 'Retry' }: { message?: string; onRetry: () => void; retryLabel?: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-8">
       <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
@@ -144,7 +144,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
         }}
       >
         <RefreshCw size={12} className="inline mr-1.5" />
-        重试
+        {retryLabel}
       </button>
     </div>
   );
@@ -308,10 +308,10 @@ export function FinRadar() {
     return Math.round(upRatio * 100);
   }, [allEntries]);
 
-  const fgLabel = fearGreedIndex >= 75 ? '极度贪婪' :
-                  fearGreedIndex >= 55 ? '贪婪' :
-                  fearGreedIndex >= 45 ? '中性' :
-                  fearGreedIndex >= 25 ? '恐惧' : '极度恐惧';
+  const fgLabel = fearGreedIndex >= 75 ? t('finRadar.fgExtremeGreed') :
+                  fearGreedIndex >= 55 ? t('finRadar.fgGreed') :
+                  fearGreedIndex >= 45 ? t('finRadar.fgNeutral') :
+                  fearGreedIndex >= 25 ? t('finRadar.fgFear') : t('finRadar.fgExtremeFear');
 
   const fgColor = fearGreedIndex >= 55 ? 'var(--accent-green)' :
                   fearGreedIndex >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)';
@@ -337,6 +337,7 @@ export function FinRadar() {
           <ErrorState
             message={t('finRadar.loadFailed')}
             onRetry={fetchAllData}
+            retryLabel={t('common.retry')}
           />
         </div>
       </div>
@@ -392,14 +393,14 @@ export function FinRadar() {
                 style={{ background: 'var(--accent-green)' }}
               />
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                实时
+                {t('finRadar.realtime')}
               </span>
               {lastUpdated && (
                 <>
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>·</span>
                   <Clock size={9} style={{ color: 'var(--text-disabled)' }} />
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {t('finRadar.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </>
               )}
@@ -439,6 +440,7 @@ export function FinRadar() {
                 const tab = TAB_CONFIG.find((t) => t.key === activeTab);
                 if (tab) fetchTab(tab);
               }}
+              retryLabel={t('common.retry')}
             />
           ) : (
             <div className="overflow-hidden rounded-lg" style={{ border: '1px solid var(--glass-border)' }}>
@@ -506,7 +508,7 @@ export function FinRadar() {
               {currentData.length > 0 && currentData.every(q => q.price === '—') && (
                 <div className="text-center py-3">
                   <span className="font-mono text-[11px]" style={{ color: 'var(--accent-amber)' }}>
-                    数据源暂时不可用，正在重试...
+                    {t('finRadar.dataSourceUnavailable')}
                   </span>
                 </div>
               )}
@@ -526,10 +528,10 @@ export function FinRadar() {
           <div className="flex items-center gap-2 mb-1">
             <Zap size={14} style={{ color: 'var(--accent-amber)' }} />
             <span className="text-label font-mono text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              {t('finRadar.fearGreedIndex')}(估算)
+              {t('finRadar.fearGreedIndex')}{t('finRadar.estimated')}
             </span>
           </div>
-          <p className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>基于涨跌比例估算</p>
+          <p className="font-mono text-[9px]" style={{ color: 'var(--text-disabled)' }}>{t('finRadar.basedOnRatio')}</p>
 
           {/* 大数字 */}
           <span
@@ -551,8 +553,8 @@ export function FinRadar() {
           <div className="w-full max-w-[200px] mt-2">
             {/* 刻度标签 */}
             <div className="flex justify-between font-mono text-[9px] mb-1" style={{ color: 'var(--text-disabled)' }}>
-              <span>0 恐惧</span>
-              <span>100 贪婪</span>
+              <span>{t('finRadar.fearLabel')}</span>
+              <span>{t('finRadar.greedLabel')}</span>
             </div>
             {/* 进度条背景 */}
             <div
@@ -820,7 +822,7 @@ export function FinRadar() {
               {t('finRadar.dataRefresh30s')}
             </span>
             <span className="font-mono text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              实时
+              {t('finRadar.realtime')}
             </span>
           </div>
         </motion.div>
