@@ -90,9 +90,7 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | HI-462 | `backend` | 360+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 高危 20 处已用 `scrub_secrets()` 修复，剩余 ~360 处为低风险（非 API/认证相关），长期技术债 | 2026-04-03 |
-| HI-701 | `backend` | monitor/finance | `/api/v1/monitor/finance` 返回 23 项股指/商品/外汇价格全部为零（仅加密货币正常），yfinance 数据源疑似失效 | 2026-04-21 |
-| HI-702 | `backend` | newapi | `/api/v1/newapi/channels` 和 `/tokens` 返回 HTTP 500 — `NEWAPI_ADMIN_TOKEN` 未配置；错误信息写 "503" 但实际 HTTP 状态码是 500 | 2026-04-21 |
-| HI-703 | `frontend` | 30处 | 多组件使用 `'N/A'` 作为数据不可用占位符，应改为中文 `'暂无'` 或 `'--'` | 2026-04-21 |
+| (已移至已解决) | | | HI-701/702/703 + 704/705 已修复，见下方已解决区 | |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
@@ -102,7 +100,12 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
-| HI-600 | `infra` | `Makefile` | 🟠 HIGH: `/Applications` 下 OpenEverything + OpenClaw 双版本残留 | Makefile 新增 `tauri-clean` + `tauri-build` 目标，构建前自动清理；tauri.conf.json productName 改为 OpenClaw | 2026-04-20 | Sprint 终极修复 |
+| HI-701 | `backend` | `world_monitor.py` | 🟠 HIGH: `/api/v1/monitor/finance` 返回 23 项股指/商品/外汇价格全部为零 — Yahoo Finance v8 Spark API 已废弃被封 | 替换为 yfinance 库 `Tickers` + `fast_info` 获取报价，异步兼容 `run_in_executor`，15秒超时保护 | 2026-04-21 | 审计修复第三轮 |
+| HI-702 | `backend` | `newapi.py` | 🟠 HIGH: newapi 8个端点 `_headers()` 的 HTTPException(503) 被 except Exception 吞掉变成 500 | 所有 8 个端点增加 `except HTTPException: raise` 透传 | 2026-04-21 | 审计修复第三轮 |
+| HI-703 | `frontend` | 6个组件 | 🟡 MEDIUM: 31 处 `'N/A'` 英文占位符 | 全部替换为中文 `'暂无'` 或 `'--'` | 2026-04-21 | 审计修复第三轮 |
+| HI-704 | `backend` | `social.py` | 🟡 MEDIUM: `/social/topics` 定义为 POST 但语义应为 GET，浏览器/curl 用 GET 调用返回 405 | `@router.post` 改为 `@router.get`；Tauri Rust 端同步改为 `api_get` | 2026-04-21 | 审计修复第三轮 |
+| HI-705 | `backend` | `system.py` | 🟡 MEDIUM: gateway 服务 process_keyword `"kiro"` 无法匹配真实 Node.js openclaw 进程 | gateway 改为 `"openclaw/dist/index.js gateway"`，kiro-gateway 改为 `"kiro-gateway/main.py"` | 2026-04-21 | 审计修复第三轮 |
+| HI-600 | `infra` | `Makefile` | 🟠 HIGH: `/Applications` 下 OpenEverything + OpenClaw 双版本残留 | Makefile 新增 `tauri-clean` + `tauri-build` 目标，构建前自动清理；tauri.conf.json productName 改为 OpenClaw；新增构建后自动 cp 到 /Applications | 2026-04-20 | Sprint 终极修复 + 审计修复第三轮 |
 | HI-601 | `frontend` | `Assistant` | 🟠 HIGH: 附件和语音按钮显示 `功能开发中` 占位 | 后端新增 upload/voice 端点 + 前端 MediaRecorder 录音 + FormData 上传全链路打通 | 2026-04-20 | Sprint 终极修复 |
 | HI-602 | `frontend` | `WorldMonitor` | 🟠 HIGH: 基础设施/气候/网络安全三张卡 12 个指标永远显示 `—` | 后端新增 /monitor/extended 聚合 USGS/NASA EONET/CISA KEV 免费 API + 前端动态渲染 | 2026-04-20 | Sprint 终极修复 |
 | HI-603 | `frontend` | `TradingEngineCard` | 🟡 MEDIUM: 无 Bot 数据时显示 5 行假 BOT_1..BOT_5 骨架占位 | 替换为干净的空状态提示 | 2026-04-20 | Sprint 终极修复 |

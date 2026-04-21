@@ -12,6 +12,49 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 审计修复第三轮：金融数据恢复 + 异常透传 + N/A 清理 + API 方法修正 + 服务检测修正
+> 领域: `backend` `frontend` `infra`
+> 影响模块: world_monitor.py, newapi.py, social.py, system.py, clawbot_api.rs, Makefile, ExecutionFlow, Dashboard, Plugins, Portfolio, Performance, Risk
+> 关联问题: HI-701, HI-702, HI-703, HI-704, HI-705, HI-600(补充)
+
+### 变更内容
+
+**HI-701 — 金融数据全 0 修复（P0）**
+- `world_monitor.py` `_fetch_yahoo_quotes()` 从已废弃的 Yahoo Finance v8 Spark API 替换为 yfinance 库
+- 用 `yfinance.Tickers` + `fast_info` 批量获取报价，`run_in_executor` 异步兼容
+- 15 秒超时保护防卡死
+
+**HI-702 — NewAPI 500→503 修复（P1）**
+- `newapi.py` 8 个端点全部增加 `except HTTPException: raise`，让 `_headers()` 的 503 原样透传而非被 `except Exception` 吞成 500
+
+**HI-703 — 前端 N/A 占位符清理（P1）**
+- 6 个组件共 31 处 `'N/A'` 替换为 `'暂无'` 或 `'--'`
+
+**HI-704 — social/topics 方法修正（P2）**
+- `social.py` 第 46 行 `@router.post` 改为 `@router.get`
+- `clawbot_api.rs` 第 186 行 `api_post` 改为 `api_get`
+
+**HI-705 — 服务状态检测修正（P2）**
+- `system.py` gateway 进程关键词从 `"kiro"` 改为 `"openclaw/dist/index.js gateway"`
+- kiro-gateway 进程关键词从 `"kiro"` 改为 `"kiro-gateway/main.py"`
+
+**HI-600 补充 — 桌面构建自动安装（P2）**
+- `Makefile` `tauri-build` 目标新增构建完成后自动 `cp -R ... /Applications/` 步骤
+
+### 文件变更
+- `packages/clawbot/src/monitoring/world_monitor.py` — yfinance 替换 Yahoo v8 API
+- `packages/clawbot/src/api/routers/newapi.py` — HTTPException 透传
+- `packages/clawbot/src/api/routers/social.py` — POST→GET
+- `packages/clawbot/src/api/routers/system.py` — 进程关键词修正
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — api_post→api_get
+- `apps/openclaw-manager-src/src/components/ExecutionFlow/index.tsx` — N/A→暂无/--
+- `apps/openclaw-manager-src/src/components/Dashboard/index.tsx` — N/A→暂无/--
+- `apps/openclaw-manager-src/src/components/Plugins/index.tsx` — N/A→暂无
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx` — N/A→暂无/--
+- `apps/openclaw-manager-src/src/components/Performance/index.tsx` — N/A→暂无/--
+- `apps/openclaw-manager-src/src/components/Risk/index.tsx` — N/A→暂无/--
+- `Makefile` — 构建后自动安装
+
 ## 2026-04-21 — 复审第二轮：全栈品牌统一 + 安全加固 + i18n 深度清理 + 桌面端重构建
 > 领域: `frontend` `backend` `infra`
 > 影响模块: zh-CN.ts, Assistant, NewsFeed, FinRadar, Home, Setup, dialog, ErrorBoundary, DevPanel, main.tsx, index.html, Cargo.toml, main.rs, clawbot.rs, clawbot_api.rs, config.rs, diagnostics.rs, installer.rs, mcp.rs, capabilities/default.json
