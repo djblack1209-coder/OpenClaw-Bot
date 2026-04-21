@@ -218,8 +218,17 @@ class NewsFetcher:
                 except Exception as e:
                     logger.debug("值解析失败: %s", e)
 
-            # 摘要
+            # 从 RSS description 或 Atom summary/content 提取摘要
             summary = ""
+            if desc_el is None or not desc_el.text:
+                # Atom 格式: 尝试 <summary> 和 <content>
+                atom_ns = "http://www.w3.org/2005/Atom"
+                for atom_tag in ["summary", "content"]:
+                    desc_el = entry.find(atom_tag)
+                    if desc_el is None:
+                        desc_el = entry.find(f"{{{atom_ns}}}{atom_tag}")
+                    if desc_el is not None and desc_el.text:
+                        break
             if desc_el is not None and desc_el.text:
                 # 去除 HTML 标签
                 import re
