@@ -423,7 +423,7 @@ export function Bots() {
                       }}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={() => handleToggleService(svc.id, svc.status)}
+                      onClick={(e) => { e.stopPropagation(); handleToggleService(svc.id, svc.status); }}
                     >
                       {isLoading ? (
                         <Loader2 size={10} className="animate-spin" />
@@ -556,7 +556,7 @@ export function Bots() {
                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)' }}
                 whileHover={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => { setLoading(true); fetchData(); }}
+                onClick={(e) => { e.stopPropagation(); setLoading(true); fetchData(); }}
               >
                 <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}>
@@ -767,7 +767,7 @@ export function Bots() {
                 }}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={handleAutopilotToggle}
+                onClick={(e) => { e.stopPropagation(); handleAutopilotToggle(); }}
               >
                 {autopilotLoading ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -852,7 +852,7 @@ export function Bots() {
                       }}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleSchedulerTaskToggle(task.id, task.enabled)}
+                      onClick={(e) => { e.stopPropagation(); handleSchedulerTaskToggle(task.id, task.enabled); }}
                     >
                       {isTaskLoading ? (
                         <Loader2 size={14} className="animate-spin" />
