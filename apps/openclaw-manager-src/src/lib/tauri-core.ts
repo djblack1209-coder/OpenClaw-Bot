@@ -346,7 +346,7 @@ export interface OmegaProcessResponse {
 
 // WebSocket 和 HTTP 地址从环境变量读取，不硬编码 localhost
 const CLAWBOT_API_HOST = import.meta.env.VITE_API_HOST || '127.0.0.1';
-export const CLAWBOT_WS_URL = `ws://${CLAWBOT_API_HOST}:${import.meta.env.VITE_API_PORT || '18790'}/ws/events`;
+export const CLAWBOT_WS_URL = `ws://${CLAWBOT_API_HOST}:${import.meta.env.VITE_API_PORT || '18790'}/api/v1/events`;
 
 // ── API Token 认证 ──
 // 浏览器降级模式下的 HTTP 请求需要携带 X-API-Token
