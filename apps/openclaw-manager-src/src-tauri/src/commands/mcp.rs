@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use crate::utils::platform::get_config_dir;
+use crate::utils::shell;
 use crate::models::{AppResult, AppError};
 
 /// 全局进程表：存储正在运行的 MCP 插件子进程
@@ -151,6 +152,10 @@ pub async fn start_mcp_plugin(id: String) -> AppResult<()> {
             let _ = old_child.wait();
         }
     }
+
+    // 安全加固: 校验启动命令是否在白名单中，防止命令注入
+    shell::validate_command(cmd)
+        .map_err(|_| AppError::config(format!("不允许执行该命令：{}", cmd)))?;
 
     // 构建子进程命令
     let mut command = Command::new(cmd);

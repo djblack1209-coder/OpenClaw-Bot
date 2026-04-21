@@ -15,7 +15,7 @@ static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .timeout(std::time::Duration::from_secs(30))
         .pool_max_idle_per_host(5)
         .build()
-        .expect("无法初始化 HTTP 客户端")
+        .unwrap_or_else(|_| reqwest::Client::new())
 });
 
 /// 读取 API Token：优先从环境变量 OPENCLAW_API_TOKEN 获取，
