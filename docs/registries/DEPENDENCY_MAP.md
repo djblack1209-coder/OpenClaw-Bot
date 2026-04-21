@@ -22,7 +22,7 @@
 | quantstats | 4.8k | 回测报告+VaR/CVaR风控 | backtester_vbt.py, risk_var.py | >=0.0.62 |
 | qrcode | 4.9k | 二维码生成 | tools/qr_service.py | >=7.0 |
 | **PyBroker** | **3.3k** | **Numba加速回测+Bootstrap验证** | **modules/investment/backtester_pybroker.py** | **>=1.2.12** |
-| diskcache | 2.8k | LLM 响应缓存 | llm_cache.py | >=5.6.0 |
+| ~~diskcache~~ | 2.8k | ~~LLM 响应缓存~~ | ~~llm_cache.py~~ | ~~>=5.6.0~~ | ❌ 已移除 (CVE-2025-69872)，替换为自研 `src/utils_cache.py` (sqlite3 标准库) |
 | fpdf2 | 1.5k | PDF 报告 | tools/pdf_report.py | ==2.7.9 | ⚠️ 已注释 (HI-366) |
 | stamina | 1.4k | 声明式重试 | resilience.py | >=24.1.0,<26 |
 | kaleido | 1.2k | Plotly 静态导出 | charts.py | >=0.2.0 |

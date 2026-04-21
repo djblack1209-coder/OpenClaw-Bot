@@ -42,15 +42,23 @@ class ToolsExecutorMixin:
                     )
                 messages.append({"role": "user", "content": question})
 
-                async with api_limiter("llm"):
-                    resp = await free_pool.acompletion(
-                        model_family=FAMILY_QWEN,
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=1000,
-                    )
-                answer = resp.choices[0].message.content
-                return {"source": "llm", "answer": answer}
+                # 先尝试 qwen 族，失败后降级到任意可用模型
+                for _family in [FAMILY_QWEN, None]:
+                    try:
+                        async with api_limiter("llm"):
+                            resp = await free_pool.acompletion(
+                                model_family=_family,
+                                messages=messages,
+                                temperature=0.7,
+                                max_tokens=1000,
+                            )
+                        answer = resp.choices[0].message.content
+                        if answer:
+                            return {"source": "llm", "answer": answer}
+                    except Exception as e:
+                        _fam_label = _family or "auto"
+                        logger.warning("LLM查询失败 (family=%s): %s", _fam_label, scrub_secrets(str(e)))
+                        continue
         except Exception as e:
             logger.warning(f"LLM查询失败: {scrub_secrets(str(e))}")
         return {"source": "llm_fallback", "answer": error_ai_busy()}

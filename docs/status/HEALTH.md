@@ -83,7 +83,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-388 | `backend` | `diskcache` | diskcache 5.6.3 有 CVE-2025-69872。pygments 已升级到 2.20.0；diskcache 待上游修复版本发布 | 2026-04-01 |
+| (已移至已解决) | | | HI-388 已修复，见下方已解决区 | |
 
 ### 🟡 一般
 
@@ -100,6 +100,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-388 | `backend` | `diskcache` | 🟠 SECURITY: diskcache 5.6.3 有 CVE-2025-69872，无修复版本 | 完全移除 diskcache 依赖，替换为基于 sqlite3 标准库的自研 `src/utils_cache.py`，接口兼容，零外部依赖 | 2026-04-21 | 安全修复 |
 | HI-701 | `backend` | `world_monitor.py` | 🟠 HIGH: `/api/v1/monitor/finance` 返回 23 项股指/商品/外汇价格全部为零 — Yahoo Finance v8 Spark API 已废弃被封 | 替换为 yfinance 库 `Tickers` + `fast_info` 获取报价，异步兼容 `run_in_executor`，15秒超时保护 | 2026-04-21 | 审计修复第三轮 |
 | HI-702 | `backend` | `newapi.py` | 🟠 HIGH: newapi 8个端点 `_headers()` 的 HTTPException(503) 被 except Exception 吞掉变成 500 | 所有 8 个端点增加 `except HTTPException: raise` 透传 | 2026-04-21 | 审计修复第三轮 |
 | HI-703 | `frontend` | 6个组件 | 🟡 MEDIUM: 31 处 `'N/A'` 英文占位符 | 全部替换为中文 `'暂无'` 或 `'--'` | 2026-04-21 | 审计修复第三轮 |

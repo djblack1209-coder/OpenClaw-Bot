@@ -330,16 +330,26 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                             )
                         messages.append({"role": "user", "content": message})
 
-                        async with api_limiter("llm"):
-                            resp = await free_pool.acompletion(
-                                model_family=FAMILY_QWEN,
-                                messages=messages,
-                                temperature=0.7,
-                                max_tokens=1000,
-                            )
-                        answer = resp.choices[0].message.content
-                        if answer:
-                            result.final_result = {"answer": answer}
+                        # 先尝试 qwen 族，失败后降级到任意可用模型
+                        _chat_answer = None
+                        for _family in [FAMILY_QWEN, None]:
+                            try:
+                                async with api_limiter("llm"):
+                                    resp = await free_pool.acompletion(
+                                        model_family=_family,
+                                        messages=messages,
+                                        temperature=0.7,
+                                        max_tokens=1000,
+                                    )
+                                _chat_answer = resp.choices[0].message.content
+                                if _chat_answer:
+                                    break
+                            except Exception as e:
+                                _fam_label = _family or "auto"
+                                logger.warning("闲聊 LLM 调用失败 (family=%s): %s", _fam_label, e)
+                                continue
+                        if _chat_answer:
+                            result.final_result = {"answer": _chat_answer}
                             result.elapsed_seconds = time.time() - start_time
                             return result
                 except Exception as e:
