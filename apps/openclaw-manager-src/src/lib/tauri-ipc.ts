@@ -119,7 +119,7 @@ export const testAIConnection = () =>
 export const testChannel = (channelType: string) =>
   invokeWithLog<unknown>('test_channel', { channelType });
 
-// ── 总控中心（OpenEverything） ──
+// ── 总控中心（OpenClaw） ──
 
 export const getManagedServicesStatus = () =>
   invokeWithLog<ManagedServiceStatus[]>('get_managed_services_status');

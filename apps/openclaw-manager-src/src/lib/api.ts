@@ -47,7 +47,7 @@ export const api = {
   testAIConnection: ipc.testAIConnection,
   testChannel: ipc.testChannel,
 
-  // ── 总控中心（OpenEverything） ──
+  // ── 总控中心（OpenClaw） ──
   getManagedServicesStatus: ipc.getManagedServicesStatus,
   controlManagedService: ipc.controlManagedService,
   controlAllManagedServices: ipc.controlAllManagedServices,

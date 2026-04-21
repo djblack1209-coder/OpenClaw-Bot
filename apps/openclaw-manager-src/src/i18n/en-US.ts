@@ -1097,7 +1097,7 @@ export const enUS: Record<string, string> = {
   'notifications.newNotification': 'New Notification',
 
   // Onboarding
-  'onboarding.welcome.title': 'Welcome to OpenEverything',
+  'onboarding.welcome.title': 'Welcome to OpenClaw',
   'onboarding.welcome.subtitle': 'Your Smart Life Console',
   'onboarding.welcome.aiCS': 'AI Customer Service',
   'onboarding.welcome.aiCSDesc': 'Xianyu auto-reply, smart bargaining',
