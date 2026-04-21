@@ -31,6 +31,8 @@ import logging
 import os
 from typing import Dict, List, Optional
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 # ── Alpaca SDK 导入 (graceful degradation) ──────────────────
@@ -86,7 +88,7 @@ class AlpacaBridge:
             mode = "纸盘" if is_paper else "实盘"
             logger.info(f"[AlpacaBridge] 已连接 Alpaca ({mode})")
         except Exception as e:
-            logger.error(f"[AlpacaBridge] 连接失败: {e}")
+            logger.error(f"[AlpacaBridge] 连接失败: {scrub_secrets(str(e))}")
 
     @property
     def connected(self) -> bool:
@@ -117,8 +119,8 @@ class AlpacaBridge:
                 }
             return await asyncio.to_thread(_get)
         except Exception as e:
-            logger.error(f"[AlpacaBridge] 账户查询失败: {e}")
-            return {"error": str(e), "source": "alpaca"}
+            logger.error(f"[AlpacaBridge] 账户查询失败: {scrub_secrets(str(e))}")
+            return {"error": scrub_secrets(str(e)), "source": "alpaca"}
 
     # ── 持仓 ────────────────────────────────────────────────
 
@@ -256,8 +258,8 @@ class AlpacaBridge:
                 "source": "alpaca",
             }
         except Exception as e:
-            logger.error(f"[AlpacaBridge] 下单失败: {e}")
-            return {"status": "error", "error": str(e), "source": "alpaca"}
+            logger.error(f"[AlpacaBridge] 下单失败: {scrub_secrets(str(e))}")
+            return {"status": "error", "error": scrub_secrets(str(e)), "source": "alpaca"}
 
     # ── 订单管理 ────────────────────────────────────────────
 
@@ -359,7 +361,7 @@ class AlpacaBridge:
                 self._connected = True
                 return True
         except Exception as e:
-            logger.error(f"[AlpacaBridge] 重连失败: {e}")
+            logger.error(f"[AlpacaBridge] 重连失败: {scrub_secrets(str(e))}")
         return False
 
     async def get_recent_fills(self, lookback_hours: int = 48) -> list:

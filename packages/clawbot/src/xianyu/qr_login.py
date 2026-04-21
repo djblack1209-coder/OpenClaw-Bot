@@ -32,6 +32,7 @@ from typing import Any, Dict
 
 import httpx
 from loguru import logger
+from src.utils import scrub_secrets
 
 
 # 闲鱼护照 API 地址
@@ -192,8 +193,8 @@ class QRLoginManager:
             }
 
         except Exception as e:
-            logger.error(f"闲鱼 QR 登录: 生成二维码失败: {e}")
-            return {"success": False, "message": str(e)}
+            logger.error(f"闲鱼 QR 登录: 生成二维码失败: {scrub_secrets(str(e))}")
+            return {"success": False, "message": scrub_secrets(str(e))}
 
     async def poll_login_status(
         self, timeout: int = 300, interval: float = 1.5
@@ -299,7 +300,7 @@ class QRLoginManager:
             update_env_file(cookies_str)
             logger.info("闲鱼 QR 登录: Cookie 已写入 .env")
         except Exception as e:
-            logger.error(f"闲鱼 QR 登录: 写入 .env 失败: {e}")
+            logger.error(f"闲鱼 QR 登录: 写入 .env 失败: {scrub_secrets(str(e))}")
 
         # 通知闲鱼进程热更新
         try:

@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -241,7 +243,7 @@ class SecurityGate:
             logger.info("PIN 已设置")
             return True
         except Exception as e:
-            logger.error(f"PIN 设置失败: {e}")
+            logger.error(f"PIN 设置失败: {scrub_secrets(str(e))}")
             return False
 
     def verify_pin(self, pin: str, user_id: int = 0) -> bool:

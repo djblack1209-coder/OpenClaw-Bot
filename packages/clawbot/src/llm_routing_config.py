@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 # 配置文件路径
@@ -56,7 +58,7 @@ def load_routing_config(config_path: Optional[str] = None) -> Dict:
         logger.info(f"[RoutingConfig] 加载成功: {len(config.get('providers', {}))} 个 provider")
         return config
     except Exception as e:
-        logger.error(f"[RoutingConfig] 配置文件解析失败: {e}")
+        logger.error(f"[RoutingConfig] 配置文件解析失败: {scrub_secrets(str(e))}")
         return {}
 
 

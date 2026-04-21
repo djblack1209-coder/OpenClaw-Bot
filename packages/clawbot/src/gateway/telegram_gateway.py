@@ -20,6 +20,8 @@ from telegram.ext import (
     CallbackQueryHandler, filters,
 )
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 
@@ -341,8 +343,9 @@ class OpenClawGateway:
                     await progress_msg.edit_text(f"执行失败: {result.error}")
 
         except Exception as e:
-            logger.error(f"Gateway 消息处理失败: {e}", exc_info=True)
-            await progress_msg.edit_text(f"处理异常: {e}")
+            logger.error(f"Gateway 消息处理失败: {scrub_secrets(str(e))}", exc_info=True)
+            # 用户侧不暴露原始异常，防止泄露敏感信息
+            await progress_msg.edit_text("处理异常，请稍后重试")
 
     async def _on_callback(self, update: Update, context) -> None:
         """处理 Inline Keyboard 回调"""
