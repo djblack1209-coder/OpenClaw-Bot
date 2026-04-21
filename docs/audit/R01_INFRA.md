@@ -47,7 +47,7 @@
 
 | # | 分类 | 位置 | 审计内容 | 结果 | 置信度 | 状态 |
 |---|------|------|---------|------|--------|------|
-| R1.22 | 安全 | `requirements.txt` | diskcache CVE (HI-388) 待上游修复，利用面窄 | 📋 持续监控 | ✅确认 | ⏭️ |
+| R1.22 | 安全 | `requirements.txt` | diskcache CVE (HI-388) — 已移除 diskcache，替换为自研 utils_cache (sqlite3) | ✅ 已修复 | ✅确认 | ✅ |
 | R1.23 | 依赖 | `requirements.txt` | 0个==精确锁定，16个>=无上限 | **RestrictedPython 已加上限** | ✅确认 | ✅ |
 | R1.24 | 冗余 | `requirements.txt` | 未使用依赖检查需 venv 环境 | 📋 延后到环境修复 | 🔍需验证 | ⏭️ |
 | R1.25 | 依赖 | `package.json` | Node.js 18 过低需升级到 20 | 📋 记录建议 | ✅确认 | ⏭️ |

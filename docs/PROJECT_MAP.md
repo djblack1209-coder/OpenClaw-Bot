@@ -655,7 +655,7 @@ CREW          # CrewAI 多智能体
 **Tier 5 — 韧性与可观测**
 - 自愈引擎: tenacity 真实重试 + 熔断器
 - 限流: PyrateLimiter 令牌桶
-- LLM 缓存: diskcache 持久化
+- LLM 缓存: sqlite3 自研持久化 (utils_cache)
 - 可观测: Langfuse + Phoenix OTEL 双栈
 
 ### Manager 桌面端
