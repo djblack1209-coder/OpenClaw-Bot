@@ -920,7 +920,7 @@ class LiteLLMPool:
                     fallbacks = build_fallbacks_from_config(self._routing_config, families)
                     logger.info(f"[LiteLLMPool] JSON Config 加载成功: {len(deps)} deployments")
         except Exception as e:
-            logger.warning(f"[LiteLLMPool] JSON Config 加载失败，回退到硬编码: {scrub_secrets(str(e))}")
+            logger.warning(f"[LiteLLMPool] JSON Config 加载失败，回退到硬编码: {_scrub_secrets(str(e))}")
             deps = []
 
         # 回退: 硬编码的 _build_all_deployments()

@@ -519,7 +519,7 @@ class ClawBotRPC:
             "next_scheduled_action": "",
             "next_scheduled_time": "",
             "content_queue_size": 0,
-            "source": "cookie_file",
+            "source": "placeholder",
         }
         try:
             from src.execution.social.worker_bridge import run_social_worker
