@@ -142,11 +142,11 @@ export function Store() {
         method: 'PATCH',
         body: JSON.stringify({ status: 'approved' }),
       });
-      toast.success(t('store.approveSuccess'));
+      toast.success(t('store.approveSuccess'), { channel: 'log' });
       // 刷新数据
       await fetchData();
     } catch (err) {
-      toast.error(`${t('store.approveFailed')}: ${err instanceof Error ? err.message : t('store.unknownError')}`);
+      toast.error(`${t('store.approveFailed')}: ${err instanceof Error ? err.message : t('store.unknownError')}`, { channel: 'notification' });
     } finally {
       setApproving(null);
     }
@@ -161,10 +161,10 @@ export function Store() {
         method: 'PATCH',
         body: JSON.stringify({ status: 'rejected' }),
       });
-      toast.success(t('store.rejectSuccess') || '已拒绝');
+      toast.success(t('store.rejectSuccess') || '已拒绝', { channel: 'log' });
       await fetchData();
     } catch (err) {
-      toast.error(`${t('store.rejectFailed') || '拒绝失败'}: ${err instanceof Error ? err.message : t('store.unknownError')}`);
+      toast.error(`${t('store.rejectFailed') || '拒绝失败'}: ${err instanceof Error ? err.message : t('store.unknownError')}`, { channel: 'notification' });
     } finally {
       setApproving(null);
     }
