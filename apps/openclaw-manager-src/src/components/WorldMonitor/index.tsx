@@ -535,6 +535,10 @@ export function WorldMonitor() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  /* 扩展监控数据（基础设施/气候/网络安全） */
+  const [extData, setExtData] = useState<any>(null);
+  const [extLoading, setExtLoading] = useState(true);
+
   /** 从后端拉取所有数据 */
   const fetchData = useCallback(async () => {
     try {

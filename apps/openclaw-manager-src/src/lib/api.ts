@@ -448,4 +448,32 @@ export const api = {
   /** 获取扩展监控数据（基础设施/气候/网络安全） */
   monitorExtended: () =>
     clawbotFetchJson('/api/v1/monitor/extended'),
+
+  // ══════════════════════════════════════════════
+  //  文件上传 & 语音转文字
+  // ══════════════════════════════════════════════
+
+  /** 上传附件并提取文本 */
+  conversationUpload: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const resp = await clawbotFetch('/api/v1/conversation/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!resp.ok) throw new Error(`上传失败: HTTP ${resp.status}`);
+    return resp.json();
+  },
+
+  /** 语音转文字 */
+  conversationVoice: async (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'voice.webm');
+    const resp = await clawbotFetch('/api/v1/conversation/voice', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!resp.ok) throw new Error(`语音识别失败: HTTP ${resp.status}`);
+    return resp.json();
+  },
 };
