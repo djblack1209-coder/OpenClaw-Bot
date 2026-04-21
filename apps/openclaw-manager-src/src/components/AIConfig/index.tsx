@@ -256,6 +256,12 @@ export function AIConfig() {
       ),
     ),
   );
+  const totalModelsDisplay = allModels.length > 0
+    ? allModels.length
+    : Object.values(((poolStats as any)?.by_provider ?? {}) as Record<string, { models?: number }>).reduce(
+        (sum, item) => sum + Number(item?.models ?? 0),
+        0,
+      );
 
   // 按提供商分组
   const providerGroups: Record<string, ChannelItem[]> = {};
@@ -341,7 +347,7 @@ export function AIConfig() {
               {/* 统计指标 + 刷新 */}
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                  {totalChannelsDisplay} 渠道 · {enabledChannelsDisplay} 启用 · {allModels.length} 模型
+                  {totalChannelsDisplay} 渠道 · {enabledChannelsDisplay} 启用 · {totalModelsDisplay} 模型
                 </span>
                 <button
                   onClick={() => fetchData(true)}
