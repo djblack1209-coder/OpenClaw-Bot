@@ -89,8 +89,7 @@
 
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
-| HI-462 | `backend` | 360+处 | 广泛使用 `logger.error(f"...失败: {e}")` 模式 — 高危 30 处已用 `scrub_secrets()` 修复（含第五轮新增 10 处），剩余 ~174 处为低风险（内部业务逻辑），长期技术债 | 2026-04-03 |
-| (已移至已解决) | | | HI-701~711 已修复，见下方已解决区 | |
+| (已移至已解决) | | | HI-462/701~714 全部已修复，见下方已解决区 | |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
@@ -106,6 +105,10 @@
 | HI-703 | `frontend` | 6个组件 | 🟡 MEDIUM: 31 处 `'N/A'` 英文占位符 | 全部替换为中文 `'暂无'` 或 `'--'` | 2026-04-21 | 审计修复第三轮 |
 | HI-709 | `backend` | 6 个文件 10 处 | 🟠 HIGH: 高危 logger.error 未脱敏，涉及 Alpaca 证券连接/Telegram 用户消息/闲鱼登录/PIN 安全/LLM 配置 | 10 处全部加 `scrub_secrets(str(e))`，Telegram 用户侧改为固定文案 | 2026-04-21 | 审计修复第五轮 |
 | HI-710 | `backend` | `world_monitor.py` | 🟡 MEDIUM: 新闻摘要为空，Atom 格式 RSS 的 `<summary>`/`<content>` 未解析 | `_parse_rss()` 增加 Atom 命名空间 summary/content 回退解析 | 2026-04-21 | 审计修复第五轮 |
+| HI-462 | `backend` | 60 个文件 | 🟡→✅: 全部 197 处 `logger.error/warning(f"...{e}")` 已加 `scrub_secrets()` 脱敏（含批量修复 167 处） | 批量 codemod + 手动修正 2 个导入位置错误 | 2026-04-21 | 审计修复第六轮 |
+| HI-712 | `backend` | `brain.py`+`brain_exec_tools.py` | 🟠 HIGH: 闲聊/LLM 查询硬编码 qwen 族，qwen 全挂时不降级到其他可用模型 | 双层 fallback: 先 qwen，失败后 model_family=None 让 Router 自动选最佳可用族 | 2026-04-21 | 审计修复第六轮 |
+| HI-713 | `backend` | `world_monitor.py` | 🟡 MEDIUM: 新闻 AI 摘要功能未实现，docstring 声称支持但代码为空 | 新增 `_enrich_summaries()` 方法，用 free_pool LLM 生成中文摘要，10 条/批，10 秒超时 | 2026-04-21 | 审计修复第六轮 |
+| HI-388 | `backend` | `diskcache→utils_cache` | 🟠 HIGH: diskcache 5.6.3 有 CVE-2025-69872 且无修复版 | 用 sqlite3 自研 `utils_cache.DiskCache` 替代，移除 diskcache 依赖，8 项单元测试通过 | 2026-04-21 | 审计修复第六轮 |
 | HI-711 | `backend` | `brain.py` + `conversation.py` | 🟠 HIGH: AI 助手闲聊降级时回显用户原始消息 | brain.py 降级键名改为 `_original_input` + 提供友好回复；conversation.py 前置拦截 `forward_to_chat` | 2026-04-21 | 审计修复第五轮 |
 | HI-706 | `frontend` | `Store/index.tsx` | 🟡 MEDIUM: Bot 商店拒绝按钮显示 `store.reject` 原始 i18n key，3 个翻译 key 缺失 | zh-CN/en-US 补齐 `store.reject`/`store.rejectSuccess`/`store.rejectFailed`，清理硬编码回退 | 2026-04-21 | 审计修复第四轮 |
 | HI-707 | `backend` | `conversation.py` | 🟠 HIGH: AI 助手回复偏题，返回原始系统状态 JSON 而非自然语言回复 | conversation.py 文本提取链前置 `synthesized_reply`/`answer` 键；prompts.py 意图分类新增闲聊规则 | 2026-04-21 | 审计修复第四轮 |

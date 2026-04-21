@@ -12,20 +12,42 @@
 
 ## 最近更新（2026-04）
 
-## 2026-04-21 — 闲聊/LLM查询 fallback 多族降级
+## 2026-04-21 — 审计修复第六轮：全量日志脱敏 + 闲聊降级多族 + AI 新闻摘要 + diskcache CVE 替换
 > 领域: `backend`
-> 影响模块: brain.py, brain_exec_tools.py
-> 关联问题: 闲聊 LLM 调用失败时返回降级回复
+> 影响模块: 60 个 Python 文件, brain.py, brain_exec_tools.py, world_monitor.py, utils_cache.py(新增), llm_cache.py, litellm_router.py, requirements.txt
+> 关联问题: HI-462, HI-712, HI-713, HI-388
 
 ### 变更内容
 
-- `brain.py` 闲聊 fallback: 先尝试 `FAMILY_QWEN`，失败后自动降级到 `model_family=None`（让 Router 智能选路到任意可用模型族），两次都失败才走最终降级
-- `brain_exec_tools.py` `_exec_llm_query`: 同样改为双层 fallback，先 qwen 再 auto，避免 qwen providers 不可用时直接返回 `error_ai_busy()`
-- 每次失败都带 `family=xxx` 标签的 warning 日志，方便排查哪个模型族出了问题
+**HI-462 — 全量日志脱敏收口（P0 安全）**
+- 60 个文件共 167 处 `logger.error/warning(f"...{e}")` 批量加上 `scrub_secrets(str(e))`
+- 加上之前的 30 处，全部 197 处高中低风险日志调用已脱敏
+- 手动修正 2 个文件的 import 插入位置问题
+
+**HI-712 — 闲聊 LLM 多族降级（P1）**
+- `brain.py` 和 `brain_exec_tools.py` 闲聊/LLM 查询路径改为双层 fallback
+- 先试 qwen 族，qwen 全挂后自动降级到任意可用模型族（groq/gemini/cohere 等）
+
+**HI-713 — 新闻 AI 摘要功能实现（P2）**
+- `world_monitor.py` 新增 `_enrich_summaries()` 方法
+- 对 summary 为空的新闻条目用 free_pool LLM 生成一句话中文摘要
+- 10 条/批，10 秒超时，失败静默跳过不影响新闻返回
+
+**HI-388 — diskcache CVE 替换（P0 安全）**
+- 新增 `src/utils_cache.py`：sqlite3 实现的磁盘缓存，API 兼容 diskcache
+- 支持 TTL 过期、LRU 淘汰、pickle 序列化，8 项单元测试通过
+- `llm_cache.py` 和 `litellm_router.py` 改用新缓存
+- `requirements.txt` 移除 `diskcache~=5.6.0`
 
 ### 文件变更
-- `src/core/brain.py` — 闲聊路径改为 for 循环尝试 [qwen, None] 两个 family
-- `src/core/brain_exec_tools.py` — LLM 查询路径同样改为双层 fallback
+- `packages/clawbot/src/` 下 60 个文件 — 批量日志脱敏
+- `packages/clawbot/src/core/brain.py` — 闲聊双层 fallback
+- `packages/clawbot/src/core/brain_exec_tools.py` — LLM 查询双层 fallback
+- `packages/clawbot/src/monitoring/world_monitor.py` — AI 摘要后处理
+- `packages/clawbot/src/utils_cache.py` — 新增 sqlite3 磁盘缓存
+- `packages/clawbot/src/llm_cache.py` — diskcache→utils_cache
+- `packages/clawbot/src/litellm_router.py` — diskcache→utils_cache
+- `packages/clawbot/requirements.txt` — 移除 diskcache
 
 ## 2026-04-21 — 审计修复第五轮：安全脱敏 + 新闻摘要修复 + AI 降级回复修正
 > 领域: `backend`
