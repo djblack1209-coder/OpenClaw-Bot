@@ -142,8 +142,8 @@ export function Settings(_props: SettingsProps) {
           const a = document.createElement('a');
           a.href = url; a.download = 'openclaw-config.json'; a.click();
           URL.revokeObjectURL(url);
-          toast.success(t('settings.configExported'));
-        } catch { toast.error(t('settings.configExportFailed')); }
+          toast.success(t('settings.configExported'), { channel: 'log' });
+        } catch { toast.error(t('settings.configExportFailed'), { channel: 'notification' }); }
         break;
       case 'reset':
         /* 重置所有设置：清除本地缓存 + 后端配置，刷新页面 */
@@ -151,19 +151,19 @@ export function Settings(_props: SettingsProps) {
           try {
             localStorage.clear();
             await api.saveConfig({});
-            toast.success(t('settings.resetSuccess'));
+            toast.success(t('settings.resetSuccess'), { channel: 'log' });
             setTimeout(() => window.location.reload(), 1000);
           } catch (e) {
-            toast.error(t('settings.resetFailed') + ': ' + String(e));
+            toast.error(t('settings.resetFailed') + ': ' + String(e), { channel: 'notification' });
           }
         }
         break;
       case 'cache':
         try {
           localStorage.clear();
-          toast.success(t('settings.cacheCleared'));
+          toast.success(t('settings.cacheCleared'), { channel: 'log' });
           setTimeout(() => window.location.reload(), 1000);
-        } catch { toast.error(t('settings.cacheClearFailed')); }
+        } catch { toast.error(t('settings.cacheClearFailed'), { channel: 'notification' }); }
         break;
       case 'logs':
         /* 跳转到日志页面 */
@@ -172,8 +172,8 @@ export function Settings(_props: SettingsProps) {
       case 'diag':
         try {
           const perf = await api.perfMetrics();
-          toast.success(`${t('settings.diagComplete')} — CPU: ${(perf as any).cpu_percent ?? 0}%, ${t('settings.memLabel')}: ${(perf as any).memory_used_mb ?? 0}MB`);
-        } catch { toast.error(t('settings.diagFailed')); }
+          toast.success(`${t('settings.diagComplete')} — CPU: ${(perf as any).cpu_percent ?? 0}%, ${t('settings.memLabel')}: ${(perf as any).memory_used_mb ?? 0}MB`, { channel: 'log' });
+        } catch { toast.error(t('settings.diagFailed'), { channel: 'notification' }); }
         break;
     }
   }, []);
