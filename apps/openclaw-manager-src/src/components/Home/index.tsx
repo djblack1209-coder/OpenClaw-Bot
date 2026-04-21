@@ -112,6 +112,8 @@ export function HomeDashboard() {
   const [briefData, setBriefData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  /* API 连通性状态: null=未检测, true=可达, false=全部失败 */
+  const [apiReachable, setApiReachable] = useState<boolean | null>(null);
 
   /* WebSocket 实时日志推送 */
   useClawbotWS('notification', useCallback((event) => {
@@ -145,6 +147,11 @@ export function HomeDashboard() {
         api.clawbotPoolStats(),
         api.dailyBrief(),
       ]);
+
+      /* 检查所有 API 是否全部失败 — 用于区分"服务离线"和"数据为空" */
+      const allResults = [statusRes, pnlRes, socialRes, notifsRes, poolRes, briefRes];
+      const allRejected = allResults.every((r) => r.status === 'rejected');
+      setApiReachable(!allRejected);
 
       /* 解析系统状态 */
       if (statusRes.status === 'fulfilled' && statusRes.value) {
@@ -235,6 +242,13 @@ export function HomeDashboard() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {/* 后端不可达时显示连接状态提示条 */}
+      {apiReachable === false && (
+        <div className="mx-4 mt-4 mb-0 px-4 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.2)' }}>
+          <AlertTriangle size={16} style={{ color: 'var(--accent-amber)' }} />
+          <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>后端服务未连通 — 请确认 ClawBot 服务已启动</span>
+        </div>
+      )}
       {/* 最后更新时间 */}
       {lastUpdated && (
         <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">

@@ -213,7 +213,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
                 className="font-display font-bold leading-tight"
                 style={{ fontSize: '14px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
               >
-                OpenEverything
+                OpenClaw
               </span>
               <span
                 className="font-mono leading-none"

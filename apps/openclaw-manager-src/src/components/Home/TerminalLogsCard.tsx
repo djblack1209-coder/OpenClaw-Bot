@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { LogEntry } from './index';
+import { isTauri } from '../../lib/tauri-core';
 
 interface Props {
   logs: LogEntry[];
@@ -70,10 +71,12 @@ export function TerminalLogsCard({ logs }: Props) {
             </div>
           ))
         ) : (
-          /* 空状态 */
+          /* 空状态 — 根据运行环境给出不同提示 */
           <div className="flex items-center justify-center h-full">
             <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-              等待日志输出...
+              {isTauri()
+                ? '等待日志输出...'
+                : '浏览器模式无法读取本地日志 — 请使用桌面客户端查看'}
             </span>
           </div>
         )}
