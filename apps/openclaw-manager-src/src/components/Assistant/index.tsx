@@ -169,7 +169,7 @@ export function Assistant() {
   const createSession = useCallback(async () => {
     try {
       const d = await api.conversationCreate(t('assistant.newChat'));
-      if (d?.session_id) { setActiveId(d.session_id); setMessages([]); await loadSessions(); }
+      if (d?.id) { setActiveId(d.id); setMessages([]); await loadSessions(); }
     } catch (e) { console.error('创建会话失败:', e); }
   }, [loadSessions]);
 
@@ -193,7 +193,7 @@ export function Assistant() {
     if (!sid) {
       try {
         const d = await api.conversationCreate(text.slice(0, 30));
-        sid = d?.session_id; if (!sid) return;
+        sid = d?.id; if (!sid) return;
         setActiveId(sid); loadSessions();
       } catch { return; }
     }
