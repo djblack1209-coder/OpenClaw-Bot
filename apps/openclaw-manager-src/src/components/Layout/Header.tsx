@@ -19,7 +19,23 @@ export function Header({ currentPage }: HeaderProps) {
   const [opening, setOpening] = useState(false);
   const [clock, setClock] = useState('');
   const serviceStatus = useAppStore((s) => s.serviceStatus);
-  const isRunning = serviceStatus?.running ?? false;
+  const isTauriRunning = serviceStatus?.running ?? false;
+
+  /* 浏览器模式下 API 探活 fallback */
+  const [apiAlive, setApiAlive] = useState(false);
+  useEffect(() => {
+    if (isTauriRunning) return;
+    let cancelled = false;
+    const check = () => {
+      fetch('http://127.0.0.1:18790/api/v1/status', { signal: AbortSignal.timeout(3000) })
+        .then(r => { if (!cancelled && r.ok) setApiAlive(true); })
+        .catch(() => { if (!cancelled) setApiAlive(false); });
+    };
+    check();
+    const timer = setInterval(check, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [isTauriRunning]);
+  const isRunning = isTauriRunning || apiAlive;
 
   /* 实时时钟 — 每秒更新 */
   useEffect(() => {

@@ -168,6 +168,22 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
   const isRunning = serviceStatus?.running ?? false;
   const { t } = useLanguage();
 
+  /* 浏览器模式下用 API 可达性判断在线状态（Tauri 环境用 serviceStatus） */
+  const [apiAlive, setApiAlive] = useState(false);
+  useEffect(() => {
+    if (isRunning) return; // Tauri 已经知道在线，不用再查
+    let cancelled = false;
+    const check = () => {
+      fetch('http://127.0.0.1:18790/api/v1/status', { signal: AbortSignal.timeout(3000) })
+        .then(r => { if (!cancelled && r.ok) setApiAlive(true); })
+        .catch(() => { if (!cancelled) setApiAlive(false); });
+    };
+    check();
+    const timer = setInterval(check, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [isRunning]);
+  const isOnline = isRunning || apiAlive;
+
   /* 三击版本号开启开发者模式 */
   const [versionClicks, setVersionClicks] = useState(0);
   useEffect(() => {
@@ -279,20 +295,22 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           <div className="flex items-center gap-2 px-2 py-1.5 mb-2 rounded-lg"
             style={{ background: 'rgba(255,255,255,0.02)' }}
           >
-            <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
+            <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
             <span
               className="font-mono text-[10px] tracking-wider flex-1"
-              style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
+              style={{ color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' }}
             >
-              {isRunning ? t('sidebar.statusOnline') : t('sidebar.statusOffline')}
+              {isOnline ? t('sidebar.statusOnline') : t('sidebar.statusOffline')}
             </span>
+            {serviceStatus?.port != null && (
             <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-              :{serviceStatus?.port ?? '—'}
+              :{serviceStatus.port}
             </span>
+            )}
           </div>
         ) : (
           <div className="flex justify-center py-2 mb-1">
-            <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
+            <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
           </div>
         )}
 

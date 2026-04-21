@@ -37,7 +37,7 @@ const metrics: MetricConfig[] = [
   },
   {
     label: '记忆条目',
-    getValue: (d) => d.memoryEntries > 0 ? d.memoryEntries.toLocaleString() : '--',
+    getValue: (d) => d.memoryEntries > 0 ? d.memoryEntries.toLocaleString() : '0',
     accent: 'var(--accent-amber)',
   },
 ];

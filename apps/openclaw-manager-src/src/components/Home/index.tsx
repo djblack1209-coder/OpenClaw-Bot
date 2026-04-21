@@ -417,7 +417,11 @@ export function HomeDashboard() {
                       {t('home.systemStatus')}
                     </span>
                     <div className="font-mono text-sm font-bold mt-1" style={{ color: briefData.system_status === 'healthy' ? 'var(--accent-green)' : 'var(--accent-amber)' }}>
-                      {briefData.system_status === 'healthy' ? t('home.healthy') : String(briefData.system_status)}
+                      {briefData.system_status === 'healthy' ? t('home.healthy')
+                        : briefData.system_status === 'degraded' ? '部分降级'
+                        : briefData.system_status === 'critical' ? '严重异常'
+                        : briefData.system_status === 'maintenance' ? '维护中'
+                        : String(briefData.system_status)}
                     </div>
                   </div>
                 )}
