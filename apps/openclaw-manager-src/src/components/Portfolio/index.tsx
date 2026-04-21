@@ -168,13 +168,13 @@ function signalCategory(signal: string): 'bull' | 'bear' | 'neutral' {
   return isBull(signal) ? 'bull' : isBear(signal) ? 'bear' : 'neutral';
 }
 /** 信号 → 中文标签 */
-function signalLabel(signal: string): string {
+function signalLabel(signal: string, t: (key: string) => string): string {
   const s = signal.toLowerCase();
-  if (s.includes('strong') && isBull(signal)) return '强烈看多';
-  if (isBull(signal)) return '看多';
-  if (s.includes('strong') && isBear(signal)) return '强烈看空';
-  if (isBear(signal)) return '看空';
-  if (s.includes('neutral') || s.includes('hold') || s === '中性') return '中性';
+  if (s.includes('strong') && isBull(signal)) return t('portfolio.signalStrongBullish');
+  if (isBull(signal)) return t('portfolio.signalBullish');
+  if (s.includes('strong') && isBear(signal)) return t('portfolio.signalStrongBearish');
+  if (isBear(signal)) return t('portfolio.signalBearish');
+  if (s.includes('neutral') || s.includes('hold') || s === '中性') return t('portfolio.signalNeutral');
   return signal;
 }
 
@@ -469,13 +469,13 @@ export function Portfolio() {
           <p className="font-mono text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{error}</p>
           <div className="mt-4 text-left space-y-2">
             <p className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-              如果数据全为 0，可能是 IB Gateway 未启动：
+              {t('portfolio.ibGatewayHint')}
             </p>
             <ol className="font-mono text-xs space-y-1 list-decimal list-inside" style={{ color: 'var(--text-disabled)' }}>
-              <li>打开 IB Gateway / TWS 应用</li>
-              <li>确保 API 端口设为 4002</li>
-              <li>勾选"允许来自本地主机的连接"</li>
-              <li>点击上方"重试"按钮</li>
+              <li>{t('portfolio.ibGatewayStep1')}</li>
+              <li>{t('portfolio.ibGatewayStep2')}</li>
+              <li>{t('portfolio.ibGatewayStep3')}</li>
+              <li>{t('portfolio.ibGatewayStep4')}</li>
             </ol>
           </div>
           <button
@@ -638,7 +638,7 @@ export function Portfolio() {
                 {/* 顶部标签 + 连接状态 */}
                 <div className="flex items-center justify-between">
                   <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                    PORTFOLIO // OVERVIEW
+                    {t('portfolio.portfolioOverviewLabel')}
                   </span>
                   <span
                     className="font-mono text-[10px] px-2 py-0.5 rounded-full"
@@ -669,7 +669,7 @@ export function Portfolio() {
                 {/* 持仓列表 */}
                 <div className="mt-5 flex-1">
                   <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
-                    TOP HOLDINGS
+                    {t('portfolio.topHoldings')}
                   </span>
                   {p.positions.length === 0 ? (
                     <div className="mt-8 text-center">
@@ -738,7 +738,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  7-BOT CONSENSUS
+                  {t('portfolio.botConsensusLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.aiTeam")}
@@ -781,7 +781,7 @@ export function Portfolio() {
                               className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-full whitespace-nowrap"
                               style={{ color: signalColor(m.signal), background: `${signalColor(m.signal)}15` }}
                             >
-                              {signalLabel(m.signal)}
+                              {signalLabel(m.signal, t)}
                             </span>
                           </div>
                         </div>
@@ -812,7 +812,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                  ALLOCATION
+                  {t('portfolio.allocationLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.allocation")}
@@ -852,7 +852,7 @@ export function Portfolio() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                      PERFORMANCE // SUMMARY
+                      {t('portfolio.performanceSummaryLabel')}
                     </span>
                     <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                       {t("portfolio.performanceSummary")}
@@ -895,7 +895,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                  RISK METRICS
+                  {t('portfolio.riskMetricsLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.riskMetrics")}
@@ -934,7 +934,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-5" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  AI VOTE // TRIGGER
+                  {t('portfolio.aiVoteTrigger')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.startVote")}
@@ -1004,7 +1004,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-7" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                  VOTE RESULTS
+                  {t('portfolio.voteResultsLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.voteResults")}
@@ -1053,7 +1053,7 @@ export function Portfolio() {
                                   className="font-mono text-[10px] px-2 py-0.5 rounded-full"
                                   style={{ color: signalColor(sig), background: `${signalColor(sig)}15` }}
                                 >
-                                  {signalLabel(sig)}
+                                  {signalLabel(sig, t)}
                                 </span>
                               </div>
                             </div>
@@ -1084,7 +1084,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
               <div className="abyss-card p-6">
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  TRADING CONTROLS
+                  {t('portfolio.tradingControlsLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.autoTradeControl")}
@@ -1208,7 +1208,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                  STATUS
+                  {t('portfolio.statusLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.statusInfo")}
@@ -1242,7 +1242,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-5" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  BACKTEST // CONFIG
+                  {t('portfolio.backtestConfigLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.backtestParams")}
@@ -1338,7 +1338,7 @@ export function Portfolio() {
             <motion.div className="col-span-12 lg:col-span-7" variants={cardVariants}>
               <div className="abyss-card p-6 h-full flex flex-col">
                 <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                  BACKTEST // RESULTS
+                  {t('portfolio.backtestResultsLabel')}
                 </span>
                 <h3 className="font-display text-lg font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
                   {t("portfolio.backtestResults")}
@@ -1386,7 +1386,7 @@ export function Portfolio() {
             {/* 输入区 */}
             <motion.div variants={cardVariants}>
               <div className="abyss-card p-6">
-                <span className="text-label" style={{ color: 'var(--accent-purple)' }}>VALUATION ANALYSIS</span>
+                <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('portfolio.valuationAnalysisLabel')}</span>
                 <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>{t('portfolio.valuationAnalysis')}</h3>
                 <div className="flex items-center gap-3">
                   <input
@@ -1541,7 +1541,7 @@ export function Portfolio() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                      TRADE LOGS
+                      {t('portfolio.tradeLogsLabel')}
                     </span>
                     <h3 className="font-display text-lg font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                       {t("portfolio.tradeLogs")}

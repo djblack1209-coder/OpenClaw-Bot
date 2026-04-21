@@ -284,7 +284,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
               className="font-mono text-[10px] tracking-wider flex-1"
               style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
             >
-              {isRunning ? 'ONLINE' : 'OFFLINE'}
+              {isRunning ? t('sidebar.statusOnline') : t('sidebar.statusOffline')}
             </span>
             <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
               :{serviceStatus?.port ?? '—'}
@@ -351,7 +351,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
               >
                 <User size={10} style={{ color: '#000' }} />
               </div>
-              <span className="font-mono text-[10px] truncate">v2.0</span>
+              <span className="font-mono text-[10px] truncate">{t('sidebar.version')}</span>
             </button>
           )}
 

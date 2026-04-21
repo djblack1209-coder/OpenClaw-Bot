@@ -147,7 +147,7 @@ const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string }> = {
 };
 
 /* ====== 错误/加载状态组件 ====== */
-function LoadingState({ message = '数据加载中...' }: { message?: string }) {
+function LoadingState({ message }: { message?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-8">
       <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
@@ -156,7 +156,7 @@ function LoadingState({ message = '数据加载中...' }: { message?: string }) 
   );
 }
 
-function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
+function ErrorState({ message, onRetry, retryLabel = 'Retry' }: { message?: string; onRetry: () => void; retryLabel?: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-8">
       <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
@@ -171,7 +171,7 @@ function ErrorState({ message = '数据加载失败', onRetry }: { message?: str
         }}
       >
         <RefreshCw size={12} className="inline mr-1.5" />
-        重试
+        {retryLabel}
       </button>
     </div>
   );
@@ -343,7 +343,7 @@ export function NewsFeed() {
     return (
       <div className="h-full overflow-y-auto scroll-container">
         <div className="p-6 max-w-[1440px] mx-auto">
-          <ErrorState message={`${t('newsFeed.loadFailed')}: ${error}`} onRetry={fetchData} />
+          <ErrorState message={`${t('newsFeed.loadFailed')}: ${error}`} onRetry={fetchData} retryLabel={t('common.retry')} />
         </div>
       </div>
     );
@@ -377,13 +377,13 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-cyan)' }}
               >
-                AI 新闻聚合
+                {t('newsFeed.aiNewsAggregation')}
               </span>
               {lastUpdated && (
                 <span className="flex items-center gap-1 ml-auto">
                   <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {t('newsFeed.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </span>
               )}
@@ -506,7 +506,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-amber)' }}
               >
-                威胁雷达
+                {t('newsFeed.threatRadar')}
               </span>
             </div>
 
@@ -533,7 +533,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px] mt-1"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                当前评估
+                {t('newsFeed.currentAssessment')}
               </p>
             </div>
 
@@ -571,7 +571,7 @@ export function NewsFeed() {
                 className="text-label mb-2 block"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                TRENDING TOPICS
+                {t('newsFeed.trendingTopics')}
               </span>
               <div className="space-y-2">
                 {trending.map((t, i) => (
@@ -624,7 +624,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-cyan)' }}
               >
-                热门来源
+                {t('newsFeed.topSources')}
               </span>
             </div>
 
@@ -669,7 +669,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--text-disabled)' }}
               >
-                活跃来源总数
+                {t('newsFeed.activeSourcesTotal')}
               </span>
               <span
                 className="font-mono text-xs font-semibold"
@@ -696,7 +696,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-green)' }}
               >
-                分类统计
+                {t('newsFeed.categoryStats')}
               </span>
             </div>
 
@@ -745,7 +745,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--text-disabled)' }}
               >
-                文章总数
+                {t('newsFeed.totalArticles')}
               </span>
               <span
                 className="font-mono text-xs font-semibold"
@@ -772,7 +772,7 @@ export function NewsFeed() {
                 className="text-label"
                 style={{ color: 'var(--accent-purple)' }}
               >
-                AI 每日摘要
+                {t('newsFeed.aiDailySummary')}
               </span>
             </div>
 
@@ -808,7 +808,7 @@ export function NewsFeed() {
                 className="font-mono text-[10px]"
                 style={{ color: 'var(--accent-purple)' }}
               >
-                AI 摘要
+                {t('newsFeed.aiSummaryLabel')}
               </span>
             </div>
           </div>

@@ -40,16 +40,16 @@ const ENV_KEYS = [
 
 /* ====== 操作按钮定义 ====== */
 const ACTION_BUTTONS = [
-  { id: 'export', label: '导出配置', icon: Download, accent: 'var(--accent-cyan)' },
-  { id: 'reset', label: '重置设置', icon: RotateCcw, accent: 'var(--accent-amber)' },
-  { id: 'cache', label: '清除缓存', icon: Trash2, accent: 'var(--accent-red)' },
-  { id: 'logs', label: '查看日志', icon: FileText, accent: 'var(--accent-purple)' },
-  { id: 'diag', label: '系统诊断', icon: Stethoscope, accent: 'var(--accent-green)' },
+  { id: 'export', labelKey: 'settings.exportConfigBtn', icon: Download, accent: 'var(--accent-cyan)' },
+  { id: 'reset', labelKey: 'settings.resetSettingsBtn', icon: RotateCcw, accent: 'var(--accent-amber)' },
+  { id: 'cache', labelKey: 'settings.clearCacheBtn', icon: Trash2, accent: 'var(--accent-red)' },
+  { id: 'logs', labelKey: 'settings.viewLogsBtn', icon: FileText, accent: 'var(--accent-purple)' },
+  { id: 'diag', labelKey: 'settings.systemDiagBtn', icon: Stethoscope, accent: 'var(--accent-green)' },
 ];
 
 /* ====== 辅助：遮蔽密钥显示 ====== */
 function maskKey(val: string | null | undefined): string {
-  if (!val) return '未配置';
+  if (!val) return '—';
   if (val.length <= 8) return '****';
   return val.slice(0, 4) + '...' + val.slice(-4);
 }
@@ -70,11 +70,11 @@ export function Settings(_props: SettingsProps) {
   const [envKeys, setEnvKeys] = useState<{ key: string; name: string; value: string }[]>([]);
   const [sysInfo, setSysInfo] = useState<Record<string, any> | null>(null);
   const [perf, setPerf] = useState<{ cpu: number; memUsed: number; memTotal: number; diskUsed: number; diskTotal: number } | null>(null);
-  const [notifications, setNotifications] = useState<{ id: string; label: string; enabled: boolean }[]>([
-    { id: 'telegram', label: 'Telegram 通知', enabled: true },
-    { id: 'email', label: '邮件通知', enabled: false },
-    { id: 'trade', label: '交易提醒', enabled: true },
-    { id: 'error', label: '错误告警', enabled: true },
+  const [notifications, setNotifications] = useState<{ id: string; labelKey: string; enabled: boolean }[]>([
+    { id: 'telegram', labelKey: 'settings.telegramNotifLabel', enabled: true },
+    { id: 'email', labelKey: 'settings.emailNotifLabel', enabled: false },
+    { id: 'trade', labelKey: 'settings.tradeAlertLabel', enabled: true },
+    { id: 'error', labelKey: 'settings.errorAlertLabel', enabled: true },
   ]);
 
   /* —— 首次加载 —— */
@@ -142,28 +142,28 @@ export function Settings(_props: SettingsProps) {
           const a = document.createElement('a');
           a.href = url; a.download = 'openclaw-config.json'; a.click();
           URL.revokeObjectURL(url);
-          toast.success('配置已导出');
-        } catch { toast.error('导出配置失败'); }
+          toast.success(t('settings.configExported'));
+        } catch { toast.error(t('settings.configExportFailed')); }
         break;
       case 'reset':
         /* 重置所有设置：清除本地缓存 + 后端配置，刷新页面 */
-        if (window.confirm('确定要重置所有设置吗？此操作不可撤销。')) {
+        if (window.confirm(t('settings.confirmReset'))) {
           try {
             localStorage.clear();
             await api.saveConfig({});
-            toast.success('设置已重置，页面即将刷新');
+            toast.success(t('settings.resetSuccess'));
             setTimeout(() => window.location.reload(), 1000);
           } catch (e) {
-            toast.error('重置设置失败: ' + String(e));
+            toast.error(t('settings.resetFailed') + ': ' + String(e));
           }
         }
         break;
       case 'cache':
         try {
           localStorage.clear();
-          toast.success('缓存已清除，页面将刷新');
+          toast.success(t('settings.cacheCleared'));
           setTimeout(() => window.location.reload(), 1000);
-        } catch { toast.error('清除缓存失败'); }
+        } catch { toast.error(t('settings.cacheClearFailed')); }
         break;
       case 'logs':
         /* 跳转到日志页面 */
@@ -172,8 +172,8 @@ export function Settings(_props: SettingsProps) {
       case 'diag':
         try {
           const perf = await api.perfMetrics();
-          toast.success(`系统诊断完成 — CPU: ${(perf as any).cpu_percent ?? 0}%, 内存: ${(perf as any).memory_used_mb ?? 0}MB`);
-        } catch { toast.error('系统诊断失败，后端可能未运行'); }
+          toast.success(`${t('settings.diagComplete')} — CPU: ${(perf as any).cpu_percent ?? 0}%, ${t('settings.memLabel')}: ${(perf as any).memory_used_mb ?? 0}MB`);
+        } catch { toast.error(t('settings.diagFailed')); }
         break;
     }
   }, []);
@@ -233,20 +233,20 @@ export function Settings(_props: SettingsProps) {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  账户信息 // ACCOUNT
+                  {t('settings.accountTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  IDENTITY // SYSTEM // PROFILE
+                  {t('settings.accountSubtitle')}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <InfoBlock label="操作系统" value={osLabel} accent="var(--accent-cyan)" />
-              <InfoBlock label="Node" value={nodeVer} accent="var(--accent-purple)" />
-              <InfoBlock label="Python / 版本" value={pyVer} accent="var(--accent-green)" />
-              <InfoBlock label="运行时间" value={String(uptime)} accent="var(--accent-amber)" />
-              <InfoBlock label="架构" value={sysInfo?.arch ?? '—'} accent="var(--text-secondary)" />
-              <InfoBlock label="配置目录" value={sysInfo?.config_dir ?? '—'} accent="var(--accent-cyan)" />
+              <InfoBlock label={t('settings.osLabel')} value={osLabel} accent="var(--accent-cyan)" />
+              <InfoBlock label={t('settings.nodeLabel')} value={nodeVer} accent="var(--accent-purple)" />
+              <InfoBlock label={t('settings.pythonLabel')} value={pyVer} accent="var(--accent-green)" />
+              <InfoBlock label={t('settings.uptimeLabel')} value={String(uptime)} accent="var(--accent-amber)" />
+              <InfoBlock label={t('settings.archLabel')} value={sysInfo?.arch ?? '—'} accent="var(--text-secondary)" />
+              <InfoBlock label={t('settings.configDirLabel')} value={sysInfo?.config_dir ?? '—'} accent="var(--accent-cyan)" />
             </div>
           </div>
         </motion.div>
@@ -257,24 +257,24 @@ export function Settings(_props: SettingsProps) {
             <div className="flex items-center gap-2 mb-5">
               <Cpu size={16} style={{ color: 'var(--accent-green)' }} />
               <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                SYSTEM STATUS
+                {t('settings.systemStatusLabel')}
               </span>
             </div>
             <div className="space-y-4">
-              <ResourceBar icon={Cpu} label="CPU 使用率"
+              <ResourceBar icon={Cpu} label={t('settings.cpuUsageLabel')}
                 value={perf?.cpu ?? 0} max={100} unit="%" accent="var(--accent-cyan)" />
-              <ResourceBar icon={MemoryStick} label="内存"
+              <ResourceBar icon={MemoryStick} label={t('settings.memLabel')}
                 value={+(((perf?.memUsed ?? 0) / 1024).toFixed(1))}
                 max={+(((perf?.memTotal ?? 8192) / 1024).toFixed(1))}
                 unit="GB" accent="var(--accent-purple)" />
-              <ResourceBar icon={HardDrive} label="磁盘"
+              <ResourceBar icon={HardDrive} label={t('settings.diskLabel')}
                 value={perf?.diskUsed ?? 0} max={perf?.diskTotal ?? 256} unit="GB" accent="var(--accent-amber)" />
 
               {/* 网络状态 */}
               <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
                 <Wifi size={14} style={{ color: 'var(--accent-green)' }} />
                 <span className="font-mono text-[11px] flex-1" style={{ color: 'var(--text-secondary)' }}>
-                  网络状态
+                  {t('settings.networkStatus')}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <div className="relative">
@@ -283,7 +283,7 @@ export function Settings(_props: SettingsProps) {
                       style={{ background: 'var(--accent-green)' }} />
                   </div>
                   <span className="font-mono text-xs font-bold" style={{ color: 'var(--accent-green)' }}>
-                    在线
+                    {t('settings.networkOnline')}
                   </span>
                 </div>
               </div>
@@ -299,7 +299,7 @@ export function Settings(_props: SettingsProps) {
             <div className="flex items-center gap-2 mb-4">
               <Key size={16} style={{ color: 'var(--accent-amber)' }} />
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                API KEYS
+                {t('settings.apiKeysLabel')}
               </span>
             </div>
             <div className="space-y-3">
@@ -334,7 +334,7 @@ export function Settings(_props: SettingsProps) {
             <div className="flex items-center gap-2 mb-4">
               <Bell size={16} style={{ color: 'var(--accent-purple)' }} />
               <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                NOTIFICATIONS
+                {t('settings.notificationsLabel')}
               </span>
             </div>
             <div className="space-y-3">
@@ -343,7 +343,7 @@ export function Settings(_props: SettingsProps) {
                   className="flex items-center justify-between p-3 rounded-xl"
                   style={{ background: 'var(--bg-base)' }}>
                   <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                   <div
                     className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
@@ -367,15 +367,15 @@ export function Settings(_props: SettingsProps) {
             <div className="flex items-center gap-2 mb-4">
               <Settings2 size={16} style={{ color: 'var(--accent-cyan)' }} />
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                ADVANCED
+                {t('settings.advancedLabel')}
               </span>
             </div>
             <div className="space-y-3">
               {[
-                { label: '开发者模式', value: config.dev_mode ?? false, type: 'toggle' as const },
-                { label: '日志级别', value: config.log_level ?? 'INFO', type: 'text' as const },
-                { label: '自动更新', value: config.auto_update ?? true, type: 'toggle' as const },
-                { label: '数据备份', value: config.backup_interval ?? '每日', type: 'text' as const },
+                { label: t('settings.devModeLabel'), value: config.dev_mode ?? false, type: 'toggle' as const },
+                { label: t('settings.logLevelLabel'), value: config.log_level ?? 'INFO', type: 'text' as const },
+                { label: t('settings.autoUpdateLabel'), value: config.auto_update ?? true, type: 'toggle' as const },
+                { label: t('settings.dataBackupLabel'), value: config.backup_interval ?? t('settings.backupDaily'), type: 'text' as const },
               ].map((item) => (
                 <div key={item.label}
                   className="flex items-center justify-between p-3 rounded-xl"
@@ -386,8 +386,8 @@ export function Settings(_props: SettingsProps) {
                   {item.type === 'toggle' ? (
                     <div className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
                       onClick={() => {
-                        if (item.label === '开发者模式') setConfig(c => ({ ...c, dev_mode: !c.dev_mode }));
-                        else if (item.label === '自动更新') setConfig(c => ({ ...c, auto_update: !c.auto_update }));
+                        if (item.label === t('settings.devModeLabel')) setConfig(c => ({ ...c, dev_mode: !c.dev_mode }));
+                        else if (item.label === t('settings.autoUpdateLabel')) setConfig(c => ({ ...c, auto_update: !c.auto_update }));
                       }}
                       style={{ background: item.value ? 'var(--accent-cyan)' : 'var(--dark-500)' }}>
                       <div className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
@@ -458,10 +458,10 @@ export function Settings(_props: SettingsProps) {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  账号登录 // ACCOUNT LOGIN
+                  {t('settings.accountLoginTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  一键打开所有需要登录的平台页面
+                  {t('settings.accountLoginDesc')}
                 </p>
               </div>
             </div>
@@ -475,7 +475,7 @@ export function Settings(_props: SettingsProps) {
                   'https://www.xiaohongshu.com',
                 ];
                 urls.forEach(url => window.open(url, '_blank'));
-                toast.success('已打开 3 个登录页面，请在浏览器中完成登录');
+                toast.success(t('settings.openedLoginPages'));
               }}
               className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer w-full justify-center mb-4"
               style={{
@@ -489,21 +489,21 @@ export function Settings(_props: SettingsProps) {
                 (e.currentTarget as HTMLElement).style.opacity = '1';
               }}>
               <ExternalLink size={16} />
-              打开全部登录页
+              {t('settings.openAllLoginPages')}
             </button>
 
             {/* 单独平台按钮 */}
             <div className="flex flex-wrap gap-3 mb-4">
               {[
-                { name: '闲鱼', url: 'https://goofish.com' },
-                { name: 'X / Twitter', url: 'https://x.com/login' },
-                { name: '小红书', url: 'https://www.xiaohongshu.com' },
+                { name: t('settings.platformXianyu'), url: 'https://goofish.com' },
+                { name: t('settings.platformX'), url: 'https://x.com/login' },
+                { name: t('settings.platformXiaohongshu'), url: 'https://www.xiaohongshu.com' },
               ].map((platform) => (
                 <button
                   key={platform.name}
                   onClick={() => {
                     window.open(platform.url, '_blank');
-                    toast.success(`已打开 ${platform.name} 登录页`);
+                    toast.success(`${t('settings.openedPlatformLogin')}: ${platform.name}`);
                   }}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
                   style={{
@@ -529,7 +529,7 @@ export function Settings(_props: SettingsProps) {
 
             {/* 提示信息 */}
             <p className="font-mono text-[11px] leading-relaxed px-1" style={{ color: 'var(--text-disabled)' }}>
-              登录后 Cookie 自动保存，无需重复操作。闲鱼需保持 Chrome 开启。
+              {t('settings.loginCookieHint')}
             </p>
           </div>
         </motion.div>
@@ -544,23 +544,23 @@ export function Settings(_props: SettingsProps) {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  服务管理 // SERVICE CONTROL
+                  {t('settings.serviceControlTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  一键启动或停止所有后台服务
+                  {t('settings.serviceControlDesc')}
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={async () => {
-                  toast.info('正在启动所有服务...');
+                  toast.info(t('settings.startingAllServices'));
                   try {
                     const result = await controlAllManagedServices('start');
-                    toast.success('所有服务已启动');
+                    toast.success(t('settings.allServicesStarted'));
                     console.log('[Settings] startAll:', result);
                   } catch (err) {
-                    toast.error(`启动失败: ${err}`);
+                    toast.error(`${t('settings.startFailed')}: ${err}`);
                   }
                 }}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
@@ -568,17 +568,17 @@ export function Settings(_props: SettingsProps) {
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.85'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}>
                 <PlayCircle size={16} />
-                一键启动所有服务
+                {t('settings.startAllServices')}
               </button>
               <button
                 onClick={async () => {
-                  toast.info('正在停止所有服务...');
+                  toast.info(t('settings.stoppingAllServices'));
                   try {
                     const result = await controlAllManagedServices('stop');
-                    toast.success('所有服务已停止');
+                    toast.success(t('settings.allServicesStopped'));
                     console.log('[Settings] stopAll:', result);
                   } catch (err) {
-                    toast.error(`停止失败: ${err}`);
+                    toast.error(`${t('settings.stopFailed')}: ${err}`);
                   }
                 }}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
@@ -592,7 +592,7 @@ export function Settings(_props: SettingsProps) {
                   (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.08)';
                 }}>
                 <StopCircle size={16} />
-                停止所有服务
+                {t('settings.stopAllServices')}
               </button>
             </div>
           </div>
@@ -604,8 +604,8 @@ export function Settings(_props: SettingsProps) {
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <Shield size={16} style={{ color: 'var(--text-tertiary)' }} />
-                <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
-                  ACTIONS
+              <span className="text-label" style={{ color: 'var(--text-tertiary)' }}>
+                {t('settings.actionsLabel')}
                 </span>
               </div>
               {/* 保存按钮 */}
@@ -620,7 +620,7 @@ export function Settings(_props: SettingsProps) {
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                {saving ? '保存中...' : '保存设置'}
+                {saving ? t('settings.savingBtn') : t('settings.saveSettingsBtn')}
               </button>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -641,7 +641,7 @@ export function Settings(_props: SettingsProps) {
                     (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)';
                   }}>
                   <action.icon size={16} />
-                  <span className="font-mono text-xs font-medium">{action.label}</span>
+                  <span className="font-mono text-xs font-medium">{t(action.labelKey)}</span>
                 </button>
               ))}
             </div>
