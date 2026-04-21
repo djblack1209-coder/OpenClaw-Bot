@@ -67,7 +67,7 @@ export function TelemetryCard({ data, isRunning }: Props) {
         <div className="flex items-center gap-2">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           <span className="font-mono text-[10px] uppercase" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {isRunning ? '系统正常' : '服务离线'}
+            {isRunning ? '系统正常' : '数据未获取'}
           </span>
         </div>
       </div>
