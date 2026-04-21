@@ -910,6 +910,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """检查IBKR是否已连接"""
         return bool(self.ib and self.ib.isConnected())
 
+    @property
+    def connected(self) -> bool:
+        """连接状态属性（与 AlpacaBridge 接口一致）"""
+        return self.is_connected()
+
     def get_connection_status(self) -> str:
         """获取连接状态摘要（含健康度指标）"""
         if not HAS_IB:

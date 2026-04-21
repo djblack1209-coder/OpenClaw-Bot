@@ -1264,7 +1264,8 @@ export const zhCN: Record<string, string> = {
   'trading.signalAbstain': '弃权',
   'trading.dailyPnlLabel': '今日盈亏',
   'trading.live': '实盘',
-  'trading.offline': '离线',
+  'trading.paper': '模拟盘',
+  'trading.offline': '未连接',
   'trading.waitingBotData': '等待 Bot 投票数据...',
   'trading.autoLoadAfterStart': '启动交易引擎后自动加载',
 
