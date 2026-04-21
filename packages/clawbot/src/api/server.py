@@ -271,7 +271,7 @@ class APIServer:
                 "https://tauri.localhost",    # Tauri 生产（Windows）
             ],
             allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
             allow_headers=["X-API-Token", "Content-Type", "Authorization"],
         )
 

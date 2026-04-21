@@ -41,7 +41,7 @@ const Scheduler = lazy(() => import('./components/Scheduler').then(m => ({ defau
 const Performance = lazy(() => import('./components/Performance').then(m => ({ default: m.Performance })));
 
   const PageLoader = () => (
-  <div className="h-full flex items-center justify-center">
+  <div className="h-full min-h-[200px] flex items-center justify-center" style={{ background: 'var(--bg-primary, #0a0a0a)' }}>
     <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-cyan)]" />
   </div>
 );

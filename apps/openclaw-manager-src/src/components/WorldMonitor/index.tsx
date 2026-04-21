@@ -621,7 +621,7 @@ export function WorldMonitor() {
         country: r.country_name,
         code: r.country_code.toUpperCase(),
         score: r.composite_score,
-        severity: r.severity ?? severityFromScore(r.composite_score),
+        severity: severityFromScore(r.composite_score),
         change24h: r.change_24h ?? 0,
         link: 'https://worldmonitor.app',
       }));
