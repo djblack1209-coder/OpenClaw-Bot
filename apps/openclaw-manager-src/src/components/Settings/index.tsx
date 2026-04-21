@@ -64,6 +64,9 @@ export function Settings(_props: SettingsProps) {
   /* —— i18n —— */
   const { t, lang, setLang } = useLanguage();
 
+  /* —— 是否为 Tauri 桌面端环境 —— */
+  const inTauri = isTauri();
+
   /* —— 状态 —— */
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -223,6 +226,16 @@ export function Settings(_props: SettingsProps) {
         animate="visible"
       >
         {/* ====== Row 1: 账户信息 (span-8) + 系统状态 (span-4) ====== */}
+
+        {/* 浏览器模式提示条 */}
+        {!inTauri && (
+          <motion.div className="col-span-12" variants={cardVariants}>
+            <div className="px-4 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.2)' }}>
+              <AlertTriangle size={16} style={{ color: 'var(--accent-amber)' }} />
+              <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>当前为浏览器模式 — 系统信息和服务控制仅在桌面客户端可用</span>
+            </div>
+          </motion.div>
+        )}
 
         {/* 账户信息 */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
@@ -564,10 +577,12 @@ export function Settings(_props: SettingsProps) {
                     toast.error(`${t('settings.startFailed')}: ${err}`, { channel: 'notification' });
                   }
                 }}
+                disabled={!inTauri}
+                title={!inTauri ? '仅桌面客户端可用' : ''}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
-                style={{ background: 'var(--accent-green)', color: 'var(--bg-primary)' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.85'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}>
+                style={{ background: 'var(--accent-green)', color: 'var(--bg-primary)', opacity: !inTauri ? 0.4 : 1, cursor: !inTauri ? 'not-allowed' : 'pointer' }}
+                onMouseEnter={(e) => { if (inTauri) (e.currentTarget as HTMLElement).style.opacity = '0.85'; }}
+                onMouseLeave={(e) => { if (inTauri) (e.currentTarget as HTMLElement).style.opacity = '1'; }}>
                 <PlayCircle size={16} />
                 {t('settings.startAllServices')}
               </button>
@@ -582,15 +597,21 @@ export function Settings(_props: SettingsProps) {
                     toast.error(`${t('settings.stopFailed')}: ${err}`, { channel: 'notification' });
                   }
                 }}
+                disabled={!inTauri}
+                title={!inTauri ? '仅桌面客户端可用' : ''}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
-                style={{ background: 'rgba(255,0,0,0.08)', border: '1px solid rgba(255,0,0,0.25)', color: 'var(--accent-red)' }}
+                style={{ background: 'rgba(255,0,0,0.08)', border: '1px solid rgba(255,0,0,0.25)', color: 'var(--accent-red)', opacity: !inTauri ? 0.4 : 1, cursor: !inTauri ? 'not-allowed' : 'pointer' }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-red)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.12)';
+                  if (inTauri) {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-red)';
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.12)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,0,0,0.25)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.08)';
+                  if (inTauri) {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,0,0,0.25)';
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,0,0,0.08)';
+                  }
                 }}>
                 <StopCircle size={16} />
                 {t('settings.stopAllServices')}
