@@ -213,8 +213,8 @@ export function NewsFeed() {
       setNewsItems(items);
       setLastUpdated(new Date());
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      setError(msg);
+      const friendly = (await import('../../lib/errorMessages')).toFriendlyError(err);
+      setError(`${friendly.title}: ${friendly.message}`);
     } finally {
       setLoading(false);
     }

@@ -190,8 +190,8 @@ export function FinRadar() {
       const entries = (resp.quotes ?? []).map(quoteToEntry);
       setMarketData((prev) => ({ ...prev, [tab.key]: entries }));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      setErrorTabs((prev) => ({ ...prev, [tab.key]: msg }));
+      const friendly = (await import('../../lib/errorMessages')).toFriendlyError(err);
+      setErrorTabs((prev) => ({ ...prev, [tab.key]: `${friendly.title}: ${friendly.message}` }));
     } finally {
       setLoadingTabs((prev) => ({ ...prev, [tab.key]: false }));
     }
