@@ -10,6 +10,7 @@ from src.bot.error_messages import error_ai_busy, error_rate_limit, error_networ
 from src.telegram_markdown import md_to_html
 from src.bot.chinese_nlp_mixin import _match_chinese_command
 from src.constants import TG_MSG_LIMIT
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +446,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                             try:
                                 sent_message = await update.message.reply_text(chunk)
                             except Exception as e:
-                                logger.warning(f"[{self.bot_id}] 发送溢出消息失败: {e}")
+                                logger.warning(f"[{self.bot_id}] 发送溢出消息失败: {scrub_secrets(str(e))}")
                                 break
                         prev_text = chunk
                     continue
@@ -467,7 +468,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                         last_edit_time = _time.monotonic()
                         chunk_idx += 1
                     except Exception as e:
-                        logger.warning(f"[{self.bot_id}] 替换占位符失败: {e}")
+                        logger.warning(f"[{self.bot_id}] 替换占位符失败: {scrub_secrets(str(e))}")
                         break
 
                 elif abs(len(content) - len(prev_text)) > cutoff or status == "finished":
@@ -631,7 +632,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                 logger.debug("语音回复生成失败 (不影响文字回复): %s", e)
 
         except Exception as e:
-            logger.error(f"[{self.bot_id}] handle_message 异常: {e}", exc_info=True)
+            logger.error(f"[{self.bot_id}] handle_message 异常: {scrub_secrets(str(e))}", exc_info=True)
 
             # 清理流式光标 ▌ — 防止异常时光标永久残留
             if sent_message and prev_text:

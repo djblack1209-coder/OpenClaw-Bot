@@ -27,7 +27,7 @@ import os
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import logging
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -405,7 +405,7 @@ class ContextManager:
 
             logger.info(f"已更新 HistoryStore: bot={bot_id}, chat={chat_id}, messages={len(compressed_messages)}")
         except Exception as e:
-            logger.error(f"更新 HistoryStore 失败: {e}")
+            logger.error(f"更新 HistoryStore 失败: {scrub_secrets(str(e))}")
 
     # ============ 辅助方法 ============
 
@@ -421,7 +421,7 @@ class ContextManager:
         try:
             _atomic_json_write(filepath, data)
         except Exception as e:
-            logger.error(f"保存摘要失败: {e}")
+            logger.error(f"保存摘要失败: {scrub_secrets(str(e))}")
 
     def get_context_status(self, messages: List[Dict]) -> Dict[str, Any]:
         """获取上下文状态信息"""
@@ -579,7 +579,7 @@ class TieredContextManager:
                 merged.update(data)
                 return merged
             except Exception as e:
-                logger.warning(f"[TieredCtx] 加载 core memory 失败 chat={chat_id}: {e}")
+                logger.warning(f"[TieredCtx] 加载 core memory 失败 chat={chat_id}: {scrub_secrets(str(e))}")
         return dict(self._default_core)
 
     def _save_core(self, chat_id: int):
@@ -593,7 +593,7 @@ class TieredContextManager:
             self._core_dirty[chat_id] = False
             logger.debug(f"[TieredCtx] 持久化 core memory: chat={chat_id}")
         except Exception as e:
-            logger.warning(f"[TieredCtx] 持久化失败 chat={chat_id}: {e}")
+            logger.warning(f"[TieredCtx] 持久化失败 chat={chat_id}: {scrub_secrets(str(e))}")
 
     def _flush_dirty(self):
         """保存所有脏 core memory"""

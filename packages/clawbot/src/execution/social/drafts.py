@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ async def create_social_draft(
                             post["handle"] = keyword
                         all_items.extend(posts)
                 except Exception as e:
-                    logger.warning(f"[CreateDraft] fetch {keyword} failed: {e}")
+                    logger.warning(f"[CreateDraft] fetch {keyword} failed: {scrub_secrets(str(e))}")
         all_items = all_items[:max_items]
 
     # 路径2: 从新闻源收集 (回退)
@@ -278,7 +278,7 @@ async def create_social_draft(
             if items:
                 all_items = items[:max_items]
         except Exception as e:
-            logger.warning(f"[CreateDraft] news fetch failed: {e}")
+            logger.warning(f"[CreateDraft] news fetch failed: {scrub_secrets(str(e))}")
 
     if not all_items:
         return {"success": False, "error": "没有找到相关内容"}
@@ -380,5 +380,5 @@ def publish_social_draft(
 
         return {"success": True, "platform": platform, "draft_id": draft_id, "result": result}
     except Exception as e:
-        logger.error(f"[PublishDraft] failed: {e}")
+        logger.error(f"[PublishDraft] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}

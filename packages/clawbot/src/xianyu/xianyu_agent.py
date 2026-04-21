@@ -114,7 +114,7 @@ class ContentSafetyFilter:
                     (name, re.compile(pattern, re.IGNORECASE))
                 )
             except re.error as e:
-                logger.warning(f"[ContentSafetyFilter] 正则编译失败 [{name}]: {e}")
+                logger.warning(f"[ContentSafetyFilter] 正则编译失败 [{name}]: {scrub_secrets(str(e))}")
 
     # ── 文本规范化 (抗绕过) ──
 

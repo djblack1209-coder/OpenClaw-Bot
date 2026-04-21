@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, TYPE_CHECKING
 from datetime import datetime
 
 from src.notify_style import format_ibkr_connectivity
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 from src.broker_scanner import BrokerScannerMixin
 from src.broker_slippage import BrokerSlippageMixin, SlippageEstimate  # noqa: F401 — 向后兼容重导出
 
@@ -554,7 +554,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 )
             return result
         except Exception as e:
-            logger.error(f"[IBKR] 获取持仓失败: {e}")
+            logger.error(f"[IBKR] 获取持仓失败: {scrub_secrets(str(e))}")
             return []
 
     async def get_positions_text(self) -> str:
@@ -740,7 +740,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 )
             return result
         except Exception as e:
-            logger.error(f"[IBKR] 获取订单失败: {e}")
+            logger.error(f"[IBKR] 获取订单失败: {scrub_secrets(str(e))}")
             return []
 
     async def get_trade_snapshots(self) -> List[Dict]:

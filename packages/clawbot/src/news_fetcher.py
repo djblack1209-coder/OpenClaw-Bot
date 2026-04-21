@@ -24,7 +24,7 @@ except ImportError:
     feedparser = None  # type: ignore[assignment]
 
 import logging
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class NewsFetcher:
                     items.append(item)
             return items
         except Exception as e:
-            logger.warning(f"[news_fetcher] feedparser RSS 失败 ({feed_url}): {e}")
+            logger.warning(f"[news_fetcher] feedparser RSS 失败 ({feed_url}): {scrub_secrets(str(e))}")
             return []
 
     async def fetch_by_category(self, category: str, count: int = 5) -> List[Dict[str, str]]:

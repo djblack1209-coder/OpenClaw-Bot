@@ -4,6 +4,7 @@ OpenClaw 图片理解 — 利用 LiteLLM 已有的 Vision 模型支持
 
 Usage:
     from src.tools.vision import analyze_image
+from src.utils import scrub_secrets
     result = await analyze_image(image_bytes, "这张图里有什么？")
 """
 import base64
@@ -63,5 +64,5 @@ async def analyze_image(
             return content.strip()
         return None
     except Exception as e:
-        logger.warning(f"Vision 分析失败: {e}")
+        logger.warning(f"Vision 分析失败: {scrub_secrets(str(e))}")
         return None

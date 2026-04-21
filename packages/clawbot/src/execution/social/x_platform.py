@@ -206,7 +206,7 @@ try:
 except ImportError:
     logger.info("[X] tweepy 未安装 (pip install tweepy)")
 
-from src.utils import emit_flow_event as _emit_flow
+from src.utils import emit_flow_event as _emit_flow, scrub_secrets
 
 
 async def fetch_x_profile_posts(
@@ -404,7 +404,7 @@ async def publish_x_post(
         return {"success": True, "result": result}
     except Exception as e:
         _emit_flow("browser", "social", "error", f"X 发布失败: {e}", {"platform": "x"})
-        logger.error(f"[X.publish] failed: {e}")
+        logger.error(f"[X.publish] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -430,7 +430,7 @@ async def reply_to_x_post(
         return {"success": True, "result": result}
     except Exception as e:
         _emit_flow("browser", "social", "error", f"X 回复失败: {e}", {"platform": "x"})
-        logger.error(f"[X.reply] failed: {e}")
+        logger.error(f"[X.reply] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 

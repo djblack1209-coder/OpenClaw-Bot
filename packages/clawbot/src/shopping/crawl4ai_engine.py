@@ -9,6 +9,7 @@ crawl4ai-powered Shopping Price Engine
 
 用法:
     from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
+from src.utils import scrub_secrets
     if HAS_CRAWL4AI:
         result = await smart_compare("iPhone 16 128GB")
 
@@ -55,7 +56,7 @@ try:
 except ImportError:
     logger.info("crawl4ai 未安装 — 将降级到 Jina+LLM 比价方案")
 except Exception as e:
-    logger.warning(f"crawl4ai 加载异常: {e} — 将降级到 Jina+LLM 比价方案")
+    logger.warning(f"crawl4ai 加载异常: {scrub_secrets(str(e))} — 将降级到 Jina+LLM 比价方案")
 
 
 # ── 数据模型 ──────────────────────────────────────────────
@@ -364,7 +365,7 @@ async def _crawl_platform_css(
     except asyncio.TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} 超时")
     except Exception as e:
-        logger.warning(f"[crawl4ai] {platform_key} CSS 抽取异常: {e}")
+        logger.warning(f"[crawl4ai] {platform_key} CSS 抽取异常: {scrub_secrets(str(e))}")
 
     return results
 
@@ -494,7 +495,7 @@ async def _crawl_platform_llm(
     except asyncio.TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
     except Exception as e:
-        logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {e}")
+        logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {scrub_secrets(str(e))}")
 
     return results
 

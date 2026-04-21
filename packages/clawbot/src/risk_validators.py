@@ -20,7 +20,7 @@ from datetime import timedelta
 from typing import Dict, List, Optional, Tuple
 
 from src.risk_config import RiskCheckResult
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +437,7 @@ class ValidatorChain:
                     if not approved:
                         return RiskCheckResult(approved=False, reason=reason)
             except Exception as e:
-                logger.error(f"[ValidatorChain] {validator.name} 异常: {e}")
+                logger.error(f"[ValidatorChain] {validator.name} 异常: {scrub_secrets(str(e))}")
                 # Validator 异常不应阻止交易（fail-open for individual validators）
                 ctx.warnings.append(f"风控检查 '{validator.name}' 异常: {str(e)[:100]}")
 

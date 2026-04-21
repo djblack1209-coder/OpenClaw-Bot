@@ -11,6 +11,7 @@ from typing import Dict
 from config.prompts import INVEST_DIRECTOR_DECISION_PROMPT
 from src.constants import FAMILY_DEEPSEEK
 from src.resilience import api_limiter
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class InvestExecutorMixin:
         except ImportError:
             pass
         except Exception as e:
-            logger.warning(f"Pydantic 分析引擎失败: {e}")
+            logger.warning(f"Pydantic 分析引擎失败: {scrub_secrets(str(e))}")
 
         # 降级: 原有投资团队
         try:
@@ -52,7 +53,7 @@ class InvestExecutorMixin:
                 analysis = await team.analyze(symbol)
                 return {"source": "team", "data": analysis.to_dict()}
         except Exception as e:
-            logger.warning(f"投资团队分析失败: {e}")
+            logger.warning(f"投资团队分析失败: {scrub_secrets(str(e))}")
 
         return {"source": "unavailable", "note": "投资分析模块未就绪"}
 
@@ -66,7 +67,7 @@ class InvestExecutorMixin:
                 result = await get_full_analysis(symbol)
                 return {"source": "ta_engine", "data": result}
         except Exception as e:
-            logger.warning(f"技术分析失败: {e}")
+            logger.warning(f"技术分析失败: {scrub_secrets(str(e))}")
         return {"source": "ta_unavailable", "note": "技术分析暂不可用"}
 
     async def _exec_quant_analysis(self, params: Dict) -> Dict:
@@ -104,7 +105,7 @@ class InvestExecutorMixin:
                 approved = check.approved if hasattr(check, "approved") else True
                 return {"source": "risk_manager", "approved": approved, "details": str(check)}
         except Exception as e:
-            logger.warning(f"风控检查失败: {e}")
+            logger.warning(f"风控检查失败: {scrub_secrets(str(e))}")
         # 降级：使用模块级单例
         try:
             from src.risk_manager import risk_manager
@@ -157,7 +158,7 @@ class InvestExecutorMixin:
                     logger.debug("Silenced exception", exc_info=True)
                 return {"source": "director_llm", "decision": "hold", "confidence": 0.5, "reasoning": content[:200]}
         except Exception as e:
-            logger.warning(f"总监决策失败: {e}")
+            logger.warning(f"总监决策失败: {scrub_secrets(str(e))}")
         return {
             "source": "director_fallback",
             "decision": "hold",
@@ -181,5 +182,5 @@ class InvestExecutorMixin:
             summary = await ibkr.get_account_summary()
             return {"source": "ibkr", "positions": positions, "summary": summary, "card_type": "portfolio"}
         except Exception as e:
-            logger.warning(f"持仓查询失败: {e}")
+            logger.warning(f"持仓查询失败: {scrub_secrets(str(e))}")
         return {"source": "portfolio", "positions": [], "note": "券商未连接", "card_type": "portfolio"}

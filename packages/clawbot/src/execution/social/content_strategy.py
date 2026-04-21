@@ -15,6 +15,7 @@ from json_repair import loads as jloads
 
 from src.execution._ai import ai_pool
 from src.execution._utils import extract_json_object
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ async def discover_hot_topics(count: int = 5) -> List[Dict]:
                 return parsed["topics"][:count]
         return []
     except Exception as e:
-        logger.error(f"[ContentStrategy] discover topics failed: {e}")
+        logger.error(f"[ContentStrategy] discover topics failed: {scrub_secrets(str(e))}")
         return []
 
 

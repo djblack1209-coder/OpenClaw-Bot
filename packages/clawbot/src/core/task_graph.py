@@ -15,7 +15,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-from src.utils import emit_flow_event as _emit_flow
+from src.utils import emit_flow_event as _emit_flow, scrub_secrets
 
 
 # ── 节点状态 ──────────────────────────────────────────
@@ -235,7 +235,7 @@ class TaskGraphExecutor:
                 try:
                     await self._on_progress(graph.get_progress())
                 except Exception as e:
-                    logger.warning(f"进度推送失败: {e}")
+                    logger.warning(f"进度推送失败: {scrub_secrets(str(e))}")
 
         status = "success" if graph.is_success else "error"
         progress = graph.get_progress()

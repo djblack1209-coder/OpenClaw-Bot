@@ -29,7 +29,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 try:
     import pandas_ta as ta
@@ -542,7 +542,7 @@ class StrategyEngine:
                 sig = strategy.analyze(data)
                 signals.append(sig)
             except Exception as e:
-                logger.warning(f"[StrategyEngine] {strategy.name} 分析失败: {e}")
+                logger.warning(f"[StrategyEngine] {strategy.name} 分析失败: {scrub_secrets(str(e))}")
 
         if not signals:
             return {"symbol": data.symbol, "consensus_signal": SignalType.HOLD,

@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from src.strategy_engine import BaseStrategy, MarketData, SignalType, TradeSignal
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,7 @@ class FactorMLModel:
             return True
 
         except Exception as e:
-            logger.error(f"[Factor ML] {self.symbol} 训练失败: {e}")
+            logger.error(f"[Factor ML] {self.symbol} 训练失败: {scrub_secrets(str(e))}")
             return False
 
     def load(self) -> bool:
@@ -296,7 +296,7 @@ class FactorMLModel:
             logger.info(f"[Factor ML] 加载缓存模型: {self.model_path}")
             return True
         except Exception as e:
-            logger.warning(f"[Factor ML] 加载失败: {e}")
+            logger.warning(f"[Factor ML] 加载失败: {scrub_secrets(str(e))}")
             return False
 
     def predict(self, factors: pd.DataFrame) -> float:
@@ -319,7 +319,7 @@ class FactorMLModel:
             score = (prob - 0.5) * 2
             return float(np.clip(score, -1, 1))
         except Exception as e:
-            logger.error(f"[Factor ML] 预测失败: {e}")
+            logger.error(f"[Factor ML] 预测失败: {scrub_secrets(str(e))}")
             return 0.0
 
 

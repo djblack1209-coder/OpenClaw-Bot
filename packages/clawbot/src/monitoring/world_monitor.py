@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 import yfinance as yf
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,12 @@ DEFAULT_FEEDS: list[RSSFeed] = [
 
 
 class NewsFetcher:
-    """新闻聚合引擎 — RSS 多源并发抓取 + 去重"""
+    """新闻聚合引擎 — RSS 多源并发抓取 + AI 摘要补全 + 去重"""
+
+    # AI 摘要的系统提示词
+    _SUMMARY_SYSTEM_PROMPT = (
+        "你是新闻摘要助手。用一句简洁的中文概括以下新闻标题的内容，不超过50字。"
+    )
 
     def __init__(
         self,
@@ -151,6 +157,9 @@ class NewsFetcher:
                         self._seen_urls.add(url_hash)
                         results.append(item)
 
+        # AI 摘要补全 — 对缺少摘要的新闻调用 LLM 生成中文概括
+        results = await self._enrich_summaries(results)
+
         # 更新缓存
         self._cache.clear()
         for item in results:
@@ -158,6 +167,78 @@ class NewsFetcher:
         self._cache_time = now
 
         return sorted(results, key=lambda x: x.published_at, reverse=True)
+
+    async def _enrich_summaries(self, items: list[NewsItem]) -> list[NewsItem]:
+        """为缺少摘要的新闻条目生成 AI 中文摘要
+
+        使用 free_pool (LiteLLM Router) 批量调用 LLM，每批最多 10 条，
+        超时 10 秒。任何失败都静默跳过，不影响新闻正常返回。
+        """
+        # 筛选需要补全摘要的条目（有标题但无摘要）
+        need_summary: list[tuple[int, NewsItem]] = [
+            (idx, item) for idx, item in enumerate(items)
+            if not item.summary and item.title
+        ]
+        if not need_summary:
+            return items
+
+        # 延迟导入，避免循环依赖或模块未初始化时炸掉
+        try:
+            from src.litellm_router import free_pool
+        except Exception:
+            logger.debug("[WorldMonitor] litellm_router 不可用，跳过 AI 摘要补全")
+            return items
+
+        if not free_pool or not getattr(free_pool, "_router", None):
+            logger.debug("[WorldMonitor] free_pool 未初始化，跳过 AI 摘要补全")
+            return items
+
+        # 分批处理，每批最多 10 条
+        batch_size = 10
+        for batch_start in range(0, len(need_summary), batch_size):
+            batch = need_summary[batch_start: batch_start + batch_size]
+
+            async def _generate_one(idx: int, item: NewsItem) -> tuple[int, str]:
+                """为单条新闻生成摘要，返回 (索引, 摘要文本)"""
+                try:
+                    resp = await free_pool.acompletion(
+                        model_family=None,  # 自动路由选择最优模型
+                        messages=[{"role": "user", "content": item.title}],
+                        system_prompt=self._SUMMARY_SYSTEM_PROMPT,
+                        temperature=0.3,
+                        max_tokens=100,
+                        cache_ttl=3600,  # 相同标题命中缓存
+                    )
+                    text = resp.choices[0].message.content.strip()
+                    return (idx, text)
+                except Exception as e:
+                    logger.warning(f"[WorldMonitor] AI 摘要生成失败: {item.title[:30]}… — {scrub_secrets(str(e))}")
+                    return (idx, "")
+
+            try:
+                # 批量并发调用，整批 10 秒超时
+                coros = [_generate_one(idx, item) for idx, item in batch]
+                batch_results = await asyncio.wait_for(
+                    asyncio.gather(*coros, return_exceptions=True),
+                    timeout=10.0,
+                )
+                # 回填摘要
+                for result in batch_results:
+                    if isinstance(result, Exception):
+                        continue
+                    idx, summary_text = result
+                    if summary_text:
+                        items[idx].summary = summary_text
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[WorldMonitor] AI 摘要批次超时 (batch_start={batch_start}), 跳过剩余"
+                )
+                break
+            except Exception as e:
+                logger.warning(f"[WorldMonitor] AI 摘要批次异常: {scrub_secrets(str(e))}")
+                continue
+
+        return items
 
     async def _fetch_feed(self, client: httpx.AsyncClient, feed: RSSFeed) -> list[NewsItem]:
         """抓取单个 RSS 源并解析"""
@@ -508,7 +589,7 @@ class FinanceRadar:
                     for coin in data
                 ]
         except Exception as e:
-            logger.warning(f"[WorldMonitor] CoinGecko 请求失败: {e}")
+            logger.warning(f"[WorldMonitor] CoinGecko 请求失败: {scrub_secrets(str(e))}")
             return []
 
     async def get_commodities(self) -> list[MarketQuote]:
@@ -603,7 +684,7 @@ class FinanceRadar:
                     except Exception as e:
                         logger.debug(f"[WorldMonitor] yfinance 获取 {sym} 失败: {e}")
             except Exception as e:
-                logger.warning(f"[WorldMonitor] yfinance 批量请求失败: {e}")
+                logger.warning(f"[WorldMonitor] yfinance 批量请求失败: {scrub_secrets(str(e))}")
             return result
 
         try:
@@ -648,7 +729,7 @@ class FinanceRadar:
                 for sym, (name, exchange) in symbols.items()
             ]
         except Exception as e:
-            logger.warning(f"[WorldMonitor] yfinance 请求失败: {e}")
+            logger.warning(f"[WorldMonitor] yfinance 请求失败: {scrub_secrets(str(e))}")
             # 返回空占位
             return [
                 MarketQuote(

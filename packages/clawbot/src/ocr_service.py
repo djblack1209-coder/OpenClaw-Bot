@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker, CircuitOpenError
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ async def ocr_image(
     except CircuitOpenError as e:  # noqa: F841
         return OcrResult(ok=False, error="OCR 服务暂时不可用（熔断保护），请稍后重试")
     except Exception as e:
-        logger.error(f"[OCR] 异常: {e}", exc_info=True)
+        logger.error(f"[OCR] 异常: {scrub_secrets(str(e))}", exc_info=True)
         return OcrResult(ok=False, error=f"OCR 请求异常: {type(e).__name__}")
 
 

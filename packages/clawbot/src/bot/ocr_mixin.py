@@ -9,6 +9,7 @@ from src.ocr_service import ocr_image, OcrResult
 from src.ocr_router import classify_ocr_scene, OcrScene
 from src.ocr_processors import process_financial_scene, process_ecommerce_scene
 from src.telegram_markdown import md_to_html
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class OCRHandlerMixin:
                                 getattr(self, 'bot_id', 'system'), chat_id,
                                 "assistant", f"[图片分析结果] {vision_result[:1500]}")
                         except Exception as e:
-                            logger.warning(f"[Photo] Vision 上下文注入失败: {e}")
+                            logger.warning(f"[Photo] Vision 上下文注入失败: {scrub_secrets(str(e))}")
                         return
                     # Vision 返回空 → 降级到 OCR 流程
                     logger.info("[Photo] Vision 返回空，降级到 OCR 流程")
@@ -169,7 +170,7 @@ class OCRHandlerMixin:
                             getattr(self, 'bot_id', 'system'), chat_id,
                             "assistant", proc_result.context_injection)
                     except Exception as e:
-                        logger.warning(f"[OCR] 交易场景上下文注入失败: {e}")
+                        logger.warning(f"[OCR] 交易场景上下文注入失败: {scrub_secrets(str(e))}")
                 if proc_result.auto_invest_topic and not is_group:
                     try:
                         await send_long_message(chat_id,
@@ -179,7 +180,7 @@ class OCRHandlerMixin:
                         context.args = proc_result.auto_invest_topic.split()
                         await self.cmd_invest(update, context)
                     except Exception as e:
-                        logger.error(f"[OCR] 自动触发 /invest 失败: {e}")
+                        logger.error(f"[OCR] 自动触发 /invest 失败: {scrub_secrets(str(e))}")
 
             elif scene_match.scene == OcrScene.ECOMMERCE:
                 # 电商/竞品场景
@@ -205,7 +206,7 @@ class OCRHandlerMixin:
                             getattr(self, 'bot_id', 'system'), chat_id,
                             "assistant", proc_result.context_injection)
                     except Exception as e:
-                        logger.warning(f"[OCR] 电商场景上下文注入失败: {e}")
+                        logger.warning(f"[OCR] 电商场景上下文注入失败: {scrub_secrets(str(e))}")
 
             else:
                 # 通用场景: OCR 文字 + Vision 补充分析
@@ -231,7 +232,7 @@ class OCRHandlerMixin:
                                         reply_to_message_id=update.message.message_id)
 
         except Exception as e:
-            logger.error(f"[OCR] handle_photo 异常: {e}", exc_info=True)
+            logger.error(f"[OCR] handle_photo 异常: {scrub_secrets(str(e))}", exc_info=True)
             try:
                 await send_long_message(
                     update.effective_chat.id, f"⚠️ 图片处理异常: {e}", context,
@@ -369,7 +370,7 @@ class OCRHandlerMixin:
                 await send_long_message(chat_id, f"⚠️ {fname} OCR 失败: {result.error}", context,
                                         reply_to_message_id=update.message.message_id)
         except Exception as e:
-            logger.error(f"[DOC] handle_document_ocr 异常: {e}", exc_info=True)
+            logger.error(f"[DOC] handle_document_ocr 异常: {scrub_secrets(str(e))}", exc_info=True)
             try:
                 await send_long_message(
                     update.effective_chat.id, f"⚠️ 文档处理异常: {e}", context,

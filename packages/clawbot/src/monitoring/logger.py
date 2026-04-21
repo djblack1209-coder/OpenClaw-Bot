@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from datetime import timedelta
 from pathlib import Path
 
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 from src.monitoring.metrics import prom
 
 logger = logging.getLogger(__name__)
@@ -184,7 +184,7 @@ class StructuredLogger:
             with open(self._jsonl_path, "a") as f:
                 f.write(json.dumps(data, ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.warning(f"[Metrics] JSONL 写入失败 ({self._jsonl_path}): {e}")
+            logger.warning(f"[Metrics] JSONL 写入失败 ({self._jsonl_path}): {scrub_secrets(str(e))}")
 
     @staticmethod
     def _rotate_jsonl(path, max_bytes: int, max_backups: int):
@@ -357,7 +357,7 @@ class TaskObserver:
             with open(self._task_log_path, "a") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.warning(f"[TaskObserver] JSONL 写入失败: {e}")
+            logger.warning(f"[TaskObserver] JSONL 写入失败: {scrub_secrets(str(e))}")
 
         return record
 

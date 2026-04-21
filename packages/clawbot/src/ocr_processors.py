@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 from src.constants import FAMILY_QWEN
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ async def _llm_extract(prompt: str, ocr_text: str) -> Optional[Dict]:
             return jloads(content)
         return None
     except Exception as e:
-        logger.warning(f"[OCR LLM] 提取失败: {e}")
+        logger.warning(f"[OCR LLM] 提取失败: {scrub_secrets(str(e))}")
         return None
 
 
@@ -192,7 +193,7 @@ async def process_financial_scene(
             chat_id=chat_id, importance=2, ttl_hours=48)
         action = "已保存到记忆"
     except Exception as e:
-        logger.error(f"[OCR Financial] SharedMemory: {e}")
+        logger.error(f"[OCR Financial] SharedMemory: {scrub_secrets(str(e))}")
 
     # 自动触发 /invest
     auto_topic = None
@@ -272,7 +273,7 @@ async def process_ecommerce_scene(
             chat_id=chat_id, importance=2, ttl_hours=48)
         action = "已保存到记忆"
     except Exception as e:
-        logger.error(f"[OCR Ecommerce] SharedMemory: {e}")
+        logger.error(f"[OCR Ecommerce] SharedMemory: {scrub_secrets(str(e))}")
 
     context_text = f"[OCR竞品分析] {summary}\n定价建议: {pricing}\n原文摘要: {ocr_text[:500]}"
 

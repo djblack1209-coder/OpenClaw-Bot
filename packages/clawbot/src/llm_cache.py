@@ -1,5 +1,6 @@
 """
-OpenClaw LLM 响应缓存 — 搬运 diskcache (2.8k⭐)
+OpenClaw LLM 响应缓存 — 基于 sqlite3 的自研磁盘缓存
+(原 diskcache 因 CVE-2025-69872 已替换为 src.utils_cache.DiskCache)
 SQLite 持久化缓存，重启不丢失，按 TTL 自动过期。
 
 策略:
@@ -29,14 +30,14 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# ---- Graceful degradation ----
+# ---- 导入自研缓存模块（替代有 CVE 的 diskcache）----
 try:
-    import diskcache
+    from src.utils_cache import DiskCache
 
     HAS_DISKCACHE = True
 except ImportError:
     HAS_DISKCACHE = False
-    logger.warning("[LLM Cache] diskcache 未安装, 缓存功能禁用. pip install diskcache>=5.6.0")
+    logger.warning("[LLM Cache] utils_cache 模块不可用, 缓存功能禁用")
 
 # ---- Cache directory ----
 # Resolve project root: clawbot/ is the package root, data/ lives alongside src/
@@ -44,11 +45,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CACHE_DIR = _PROJECT_ROOT / "data" / "llm_cache"
 
 # ---- Singleton cache instance ----
-_cache: Optional["diskcache.Cache"] = None
+_cache: Optional["DiskCache"] = None
 # _stats 计数器存在轻微竞态（并发 += 非原子操作），但仅用于监控报告，
 # 偶尔丢失一次计数不影响业务，不加锁以避免热路径开销
 _stats = {"hits": 0, "misses": 0, "errors": 0, "bypassed": 0}
-# 保护 _cache 单例创建，防止并发线程重复初始化 diskcache
+# 保护 _cache 单例创建，防止并发线程重复初始化缓存
 _cache_lock = threading.Lock()
 
 # ---- Default TTLs ----
@@ -76,7 +77,7 @@ def _get_cache() -> Optional["diskcache.Cache"]:
                     )
                     logger.info(f"[LLM Cache] 初始化完成: {_CACHE_DIR} (limit=512MB, LRU)")
                 except Exception as e:
-                    logger.error(f"[LLM Cache] 初始化失败: {e}")
+                    logger.error(f"[LLM Cache] 初始化失败: {scrub_secrets(str(e))}")
                     return None
     return _cache
 
@@ -177,7 +178,7 @@ async def cached_completion(
             return cached
     except Exception as e:
         _stats["errors"] += 1
-        logger.warning(f"[LLM Cache] 读取失败: {e}")
+        logger.warning(f"[LLM Cache] 读取失败: {scrub_secrets(str(e))}")
 
     # ---- Cache miss → call LLM ----
     _stats["misses"] += 1
@@ -199,7 +200,7 @@ async def cached_completion(
         logger.debug(f"[LLM Cache] SET  key={cache_key[:16]}… ttl={cache_ttl}s")
     except Exception as e:
         _stats["errors"] += 1
-        logger.warning(f"[LLM Cache] 写入失败: {e}")
+        logger.warning(f"[LLM Cache] 写入失败: {scrub_secrets(str(e))}")
 
     return response
 

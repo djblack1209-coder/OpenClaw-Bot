@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
+from src.utils import scrub_secrets
 
 try:
     import jieba
@@ -319,7 +320,7 @@ class IntentParser:
             logger.info(f"LLM解析完成: {llm_result.task_type} — {llm_result.goal}")
             return llm_result
         except Exception as e:
-            logger.warning(f"LLM解析失败: {e}, 降级到快速解析")
+            logger.warning(f"LLM解析失败: {scrub_secrets(str(e))}, 降级到快速解析")
             # 降级：返回快速解析的结果（即使置信度低）
             if fast_result:
                 fast_result.raw_message = message
@@ -579,7 +580,7 @@ class IntentParser:
         except ImportError:
             logger.debug("structured_llm 模块不可用，使用 legacy 解析")
         except Exception as e:
-            logger.warning(f"structured_completion 失败 ({type(e).__name__}: {e})，降级到 legacy JSON 解析")
+            logger.warning(f"structured_completion 失败 ({type(e).__name__}: {scrub_secrets(str(e))})，降级到 legacy JSON 解析")
 
         # ── 路径 2: legacy 降级 (free_pool + json_repair) ──────────
         return await self._llm_parse_legacy(message, message_type, context)

@@ -20,7 +20,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +287,7 @@ class PyBrokerBacktester:
             )
 
         except Exception as e:
-            logger.error(f"[PyBroker] {symbol} 回测失败: {e}")
+            logger.error(f"[PyBroker] {symbol} 回测失败: {scrub_secrets(str(e))}")
             return PyBrokerResult(
                 symbol=symbol,
                 strategy=display_name,
@@ -379,7 +379,7 @@ class PyBrokerBacktester:
             )
 
         except Exception as e:
-            logger.error(f"[PyBroker] 结果提取失败: {e}")
+            logger.error(f"[PyBroker] 结果提取失败: {scrub_secrets(str(e))}")
             return PyBrokerResult(
                 symbol=symbol,
                 strategy=display_name,

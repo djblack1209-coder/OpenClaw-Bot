@@ -65,7 +65,7 @@ async def transcribe_audio(
     except ImportError:
         pass
     except Exception as e:
-        logger.warning(f"Deepgram SDK 失败: {e}")
+        logger.warning(f"Deepgram SDK 失败: {scrub_secrets(str(e))}")
 
     # 降级: 直接 HTTP 调用
     try:
@@ -91,7 +91,7 @@ async def transcribe_audio(
         else:
             logger.warning(f"Deepgram HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
     except Exception as e:
-        logger.warning(f"Deepgram HTTP 失败: {e}")
+        logger.warning(f"Deepgram HTTP 失败: {scrub_secrets(str(e))}")
 
     return None
 

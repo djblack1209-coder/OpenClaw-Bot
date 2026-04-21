@@ -8,6 +8,7 @@ import logging
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
 from src.telegram_ux import with_typing
+from src.utils import scrub_secrets
 from src.bot.globals import (
     chat_router, collab_orchestrator, bot_registry,
     send_long_message, safe_edit,
@@ -202,7 +203,7 @@ class AnalysisCommandsMixin:
                         await asyncio.sleep(0.3)
                 await asyncio.sleep(1)
             except Exception as e:
-                logger.error(f"[Review] {bot_id} 复盘失败: {e}")
+                logger.error(f"[Review] {bot_id} 复盘失败: {scrub_secrets(str(e))}")
 
         await chat_router.stop_discuss(chat_id)
 
@@ -217,7 +218,7 @@ class AnalysisCommandsMixin:
                 participants=",".join(review_order),
             )
         except Exception as e:
-            logger.warning(f"[Review] 保存复盘记录失败: {e}")
+            logger.warning(f"[Review] 保存复盘记录失败: {scrub_secrets(str(e))}")
 
         await context.bot.send_message(
             chat_id=chat_id,

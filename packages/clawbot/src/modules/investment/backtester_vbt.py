@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 from src.execution._utils import safe_float
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ def _fetch_price(symbol: str, period: str):
         if not df.empty:
             return df["Close"].squeeze()
     except Exception as e:
-        logger.warning(f"[backtester] 数据下载失败 {symbol}: {e}")
+        logger.warning(f"[backtester] 数据下载失败 {symbol}: {scrub_secrets(str(e))}")
     return None
 
 
@@ -211,7 +211,7 @@ def _fetch_ohlcv(symbol: str, period: str):
         if not df.empty:
             return df
     except Exception as e:
-        logger.warning(f"[backtester] OHLCV下载失败 {symbol}: {e}")
+        logger.warning(f"[backtester] OHLCV下载失败 {symbol}: {scrub_secrets(str(e))}")
     return None
 
 
@@ -264,7 +264,7 @@ def _extract_stats(
             details={k: str(v) for k, v in list(s.items())[:30]},
         )
     except Exception as e:
-        logger.warning(f"[backtester] stats 提取失败: {e}")
+        logger.warning(f"[backtester] stats 提取失败: {scrub_secrets(str(e))}")
         return BacktestResult(
             symbol=symbol, strategy=strategy, period=period,
             details={"error": str(e)}
@@ -617,7 +617,7 @@ class VectorbtBacktester:
                 )
 
             except Exception as e:
-                logger.warning(f"[backtester] DRL 回测失败: {e}")
+                logger.warning(f"[backtester] DRL 回测失败: {scrub_secrets(str(e))}")
                 return BacktestResult(symbol=symbol, strategy=strategy_name,
                                       period=period, details={"error": str(e)})
 
@@ -706,7 +706,7 @@ class VectorbtBacktester:
                 return _extract_stats(pf, symbol, strategy_name, period,
                                       benchmark_close=price)
             except Exception as e:
-                logger.warning(f"[backtester] Factor 回测 Portfolio 构建失败: {e}")
+                logger.warning(f"[backtester] Factor 回测 Portfolio 构建失败: {scrub_secrets(str(e))}")
                 return BacktestResult(symbol=symbol, strategy=strategy_name,
                                       period=period, details={"error": str(e)})
 
@@ -1007,7 +1007,7 @@ async def quick_signal_validation(symbol: str, period: str = "6mo") -> Dict:
         }
 
     except Exception as e:
-        logger.warning(f"[QuickBacktest] {symbol} 信号验证失败: {e}")
+        logger.warning(f"[QuickBacktest] {symbol} 信号验证失败: {scrub_secrets(str(e))}")
         return {
             "symbol": symbol, "period": period, "available": False,
             "strategies": [], "avg_win_rate": 0, "best_strategy": "",

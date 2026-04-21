@@ -17,6 +17,7 @@ from pathlib import Path
 
 from src.execution._db import DB_PATH, ensure_db_dir, init_db, get_conn
 from src.execution._ai import ai_pool
+from src.utils import scrub_secrets
 from src.execution._utils import (
     extract_json_object, topic_slug, normalize_monitor_text,
     safe_int as safe_int, safe_float as safe_float, parse_hhmm as parse_hhmm,
@@ -362,7 +363,7 @@ class ExecutionHub:
                                           "rendered": render, "published": published}
             return {"success": True, "topic": topic, "results": results}
         except Exception as e:
-            logger.error(f"[AutopostTopic] failed: {e}")
+            logger.error(f"[AutopostTopic] failed: {scrub_secrets(str(e))}")
             return {"success": False, "error": str(e)}
 
     def publish_social_draft(self, platform=None, draft_id=None):
