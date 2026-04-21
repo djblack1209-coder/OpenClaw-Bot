@@ -11,7 +11,7 @@ import {
 import { api } from '@/lib/tauri'
 import { useAppStore } from '@/stores/appStore'
 import type { PageType } from '@/App'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notify'
 import { useLanguage } from '@/i18n'
 
 import {
@@ -55,9 +55,9 @@ export function CommandPalette() {
     try {
       const result = await action()
       const detail = formatResult ? formatResult(result) : ''
-      toast.success(`${label} ${t('commandPalette.actionDone')}`, { description: detail || undefined })
+      toast.success(`${label} ${t('commandPalette.actionDone')}`, { description: detail || undefined, channel: 'log' })
     } catch (e: unknown) {
-      toast.error(`${label} ${t('commandPalette.actionFailed')}`, { description: e instanceof Error ? e.message : String(e) })
+      toast.error(`${label} ${t('commandPalette.actionFailed')}`, { description: e instanceof Error ? e.message : String(e), channel: 'notification' })
     }
   }
 
