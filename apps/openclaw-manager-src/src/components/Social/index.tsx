@@ -139,7 +139,7 @@ export function Social() {
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch {
-      toast.error('操作失败，请稍后重试');
+      toast.error('操作失败，请稍后重试', { channel: 'notification' });
       await fetchData();
     } finally {
       setAutopilotLoading(false);
