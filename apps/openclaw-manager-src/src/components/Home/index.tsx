@@ -112,6 +112,8 @@ export function HomeDashboard() {
   const [xianyu, setXianyu] = useState<XianyuData>({ unreadChats: 0, cookieStatus: 'unknown', autoReplyActive: false });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [briefData, setBriefData] = useState<Record<string, unknown> | null>(null);
+  const [ibkrConnected, setIbkrConnected] = useState(false);
+  const [ibkrAccount, setIbkrAccount] = useState('');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   /* API 连通性状态: null=未检测, true=可达, false=全部失败 */
@@ -184,6 +186,10 @@ export function HomeDashboard() {
             autoReplyActive: Boolean(xy.auto_reply_active ?? xy.running),
           });
         }
+
+        /* IBKR 连接状态 */
+        setIbkrConnected(Boolean(s.ibkr_connected));
+        setIbkrAccount(String(s.ibkr_account ?? ''));
       }
 
       /* 解析持仓盈亏 */
@@ -277,6 +283,8 @@ export function HomeDashboard() {
             dailyPnl={dailyPnl}
             dailyPnlPct={dailyPnlPct}
             isRunning={isRunning}
+            ibkrConnected={ibkrConnected}
+            ibkrAccount={ibkrAccount}
           />
         </motion.div>
 

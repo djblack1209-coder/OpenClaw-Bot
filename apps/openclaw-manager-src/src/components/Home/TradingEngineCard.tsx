@@ -12,6 +12,10 @@ interface Props {
   dailyPnl: number;
   dailyPnlPct: number;
   isRunning: boolean;
+  /** IBKR 是否真正连接 */
+  ibkrConnected?: boolean;
+  /** IBKR 账户号（DU/DUP 开头=模拟盘） */
+  ibkrAccount?: string;
 }
 
 /* 信号对应的颜色 */
@@ -26,8 +30,13 @@ const signalColors: Record<BotVote['signal'], string> = {
  * 交易引擎卡片 — 首页 hero 区域
  * 展示 7-Bot 投票共识条 + 每日盈亏
  */
-export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Props) {
+export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, ibkrConnected, ibkrAccount }: Props) {
   const { t } = useLanguage();
+  /* 判断实盘/模拟盘：DU 或 DUP 开头的账户是模拟盘 */
+  const isPaper = ibkrAccount ? /^DU/i.test(ibkrAccount) : true;
+  const modeLabel = ibkrConnected
+    ? (isPaper ? t('trading.paper') : t('trading.live'))
+    : t('trading.offline');
   /* 计算各信号计数 */
   const counts = bots.reduce(
     (acc, b) => { acc[b.signal] = (acc[b.signal] || 0) + 1; return acc; },
@@ -43,12 +52,12 @@ export function TradingEngineCard({ bots, dailyPnl, dailyPnlPct, isRunning }: Pr
       {/* 头部标签行 */}
       <div className="flex items-center justify-between">
         <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-          {t('trading.ibkrLive')}
+          {ibkrConnected ? (isPaper ? 'IBKR 模拟盘 // 自动交易引擎' : t('trading.ibkrLive')) : t('trading.ibkrLive')}
         </span>
         <div className="status-live">
-          <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
-          <span style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {isRunning ? t('trading.live') : t('trading.offline')}
+          <span className={ibkrConnected ? 'status-dot-green' : 'status-dot-red'} />
+          <span style={{ color: ibkrConnected ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+            {modeLabel}
           </span>
         </div>
       </div>

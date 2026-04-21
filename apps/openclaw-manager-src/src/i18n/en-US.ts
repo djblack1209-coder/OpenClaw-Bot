@@ -1264,7 +1264,8 @@ export const enUS: Record<string, string> = {
   'trading.signalAbstain': 'ABSTAIN',
   'trading.dailyPnlLabel': 'Daily PnL',
   'trading.live': 'LIVE',
-  'trading.offline': 'OFFLINE',
+  'trading.paper': 'PAPER',
+  'trading.offline': 'DISCONNECTED',
   'trading.waitingBotData': 'Waiting for Bot vote data...',
   'trading.autoLoadAfterStart': 'Auto-loads after starting trading engine',
 
