@@ -8,7 +8,7 @@
  * 4. 离线时自动降级回轮询（保持向后兼容）
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { CLAWBOT_WS_URL } from '@/lib/tauri';
 
 // Event types matching backend WSMessageType
@@ -41,6 +41,7 @@ type WSEventHandler = (event: WSEvent) => void;
 class ClawbotWSManager {
   private ws: WebSocket | null = null;
   private listeners = new Map<string, Set<WSEventHandler>>();
+  private statusListeners = new Set<() => void>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
   private maxReconnectDelay = 30000;
@@ -49,6 +50,23 @@ class ClawbotWSManager {
   private _refCount = 0;
 
   get connected() { return this._connected; }
+
+  subscribeStatus(listener: () => void) {
+    this.statusListeners.add(listener);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
+  private setConnected(next: boolean) {
+    if (this._connected === next) {
+      return;
+    }
+    this._connected = next;
+    for (const listener of this.statusListeners) {
+      listener();
+    }
+  }
 
   subscribe(eventType: string, handler: WSEventHandler) {
     if (!this.listeners.has(eventType)) {
@@ -89,7 +107,7 @@ class ClawbotWSManager {
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
-        this._connected = true;
+        this.setConnected(true);
         this.reconnectDelay = 1000; // Reset backoff on success
         console.log('[WS] Connected to ClawBot');
 
@@ -128,7 +146,7 @@ class ClawbotWSManager {
       };
 
       this.ws.onclose = () => {
-        this._connected = false;
+        this.setConnected(false);
         this.cleanupTimers();
         this.scheduleReconnect();
       };
@@ -152,7 +170,7 @@ class ClawbotWSManager {
       this.ws.close();
       this.ws = null;
     }
-    this._connected = false;
+    this.setConnected(false);
   }
 
   private cleanupTimers() {
@@ -215,8 +233,11 @@ export function useClawbotWS(eventType: WSEventType, handler: WSEventHandler) {
  * For reactive connection status, use useClawbotWS('heartbeat', handler).
  */
 export function useWSConnectionStatus(): boolean {
-  // This is a simplified version - in production you'd use useSyncExternalStore
-  return wsManager.connected;
+  return useSyncExternalStore(
+    (listener) => wsManager.subscribeStatus(listener),
+    () => wsManager.connected,
+    () => false,
+  );
 }
 
 // Export manager for direct access in non-React contexts
