@@ -18,43 +18,47 @@ interface SessionRecord { session_id: string; title: string; created_at: string;
 
 /* ========== 模式配置（4 模式 × 6 快捷指令） ========== */
 const I = 14; // 图标尺寸
-const MODE_CONFIG: Record<AssistantMode, {
+
+/** 构建模式配置，接受 t() 以支持国际化 */
+function getModeConfig(t: (key: string) => string): Record<AssistantMode, {
   label: string; colorHex: string;
   commands: { label: string; prefix: string; icon: React.ReactNode }[];
-}> = {
-  chat:    { label: 'Chat', colorHex: '#00d4ff', commands: [
-    { label: 'Brief', prefix: '今日简报 ', icon: <BookOpen size={I}/> },
-    { label: 'Weather', prefix: '天气查询 ', icon: <Sparkles size={I}/> },
-    { label: 'Translate', prefix: '翻译文本: ', icon: <PenTool size={I}/> },
-    { label: 'Report', prefix: '帮我写周报 ', icon: <Palette size={I}/> },
-    { label: 'Q\u0026A', prefix: '知识问答: ', icon: <Brain size={I}/> },
-    { label: 'Schedule', prefix: '日程安排 ', icon: <Clock size={I}/> },
-  ]},
-  invest:  { label: 'Invest', colorHex: '#00ffaa', commands: [
-    { label: 'AAPL', prefix: '分析AAPL ', icon: <TrendingUp size={I}/> },
-    { label: 'Holdings', prefix: '查看持仓 ', icon: <BarChart3 size={I}/> },
-    { label: 'Backtest', prefix: '回测策略 ', icon: <Target size={I}/> },
-    { label: 'Vote', prefix: '大师投票 ', icon: <Brain size={I}/> },
-    { label: 'Risk', prefix: '风控报告 ', icon: <Shield size={I}/> },
-    { label: 'Scan', prefix: '市场扫描 ', icon: <ScanSearch size={I}/> },
-  ]},
-  execute: { label: 'Execute', colorHex: '#fbbf24', commands: [
-    { label: 'Tweet', prefix: '发布推文 ', icon: <Send size={I}/> },
-    { label: 'Batch', prefix: '批量操作 ', icon: <Zap size={I}/> },
-    { label: 'Cron', prefix: '定时任务 ', icon: <Clock size={I}/> },
-    { label: 'Export', prefix: '数据导出 ', icon: <BarChart3 size={I}/> },
-    { label: 'Check', prefix: '系统检查 ', icon: <Cpu size={I}/> },
-    { label: 'Logs', prefix: '查看日志 ', icon: <History size={I}/> },
-  ]},
-  create:  { label: 'Create', colorHex: '#a78bfa', commands: [
-    { label: 'Article', prefix: '帮我写文章: ', icon: <PenTool size={I}/> },
-    { label: 'Image', prefix: '生成图片: ', icon: <Palette size={I}/> },
-    { label: 'Video', prefix: '视频脚本: ', icon: <Sparkles size={I}/> },
-    { label: 'Copy', prefix: '营销文案: ', icon: <BookOpen size={I}/> },
-    { label: 'Code', prefix: '代码生成: ', icon: <Cpu size={I}/> },
-    { label: 'Brain', prefix: '头脑风暴: ', icon: <Brain size={I}/> },
-  ]},
-};
+}> {
+  return {
+    chat:    { label: t('assistant.mode.chat'), colorHex: '#00d4ff', commands: [
+      { label: t('assistant.cmd.brief'), prefix: '今日简报 ', icon: <BookOpen size={I}/> },
+      { label: t('assistant.cmd.weather'), prefix: '天气查询 ', icon: <Sparkles size={I}/> },
+      { label: t('assistant.cmd.translate'), prefix: '翻译文本: ', icon: <PenTool size={I}/> },
+      { label: t('assistant.cmd.report'), prefix: '帮我写周报 ', icon: <Palette size={I}/> },
+      { label: t('assistant.cmd.qa'), prefix: '知识问答: ', icon: <Brain size={I}/> },
+      { label: t('assistant.cmd.schedule'), prefix: '日程安排 ', icon: <Clock size={I}/> },
+    ]},
+    invest:  { label: t('assistant.mode.invest'), colorHex: '#00ffaa', commands: [
+      { label: t('assistant.cmd.aapl'), prefix: '分析AAPL ', icon: <TrendingUp size={I}/> },
+      { label: t('assistant.cmd.holdings'), prefix: '查看持仓 ', icon: <BarChart3 size={I}/> },
+      { label: t('assistant.cmd.backtest'), prefix: '回测策略 ', icon: <Target size={I}/> },
+      { label: t('assistant.cmd.vote'), prefix: '大师投票 ', icon: <Brain size={I}/> },
+      { label: t('assistant.cmd.risk'), prefix: '风控报告 ', icon: <Shield size={I}/> },
+      { label: t('assistant.cmd.scan'), prefix: '市场扫描 ', icon: <ScanSearch size={I}/> },
+    ]},
+    execute: { label: t('assistant.mode.execute'), colorHex: '#fbbf24', commands: [
+      { label: t('assistant.cmd.tweet'), prefix: '发布推文 ', icon: <Send size={I}/> },
+      { label: t('assistant.cmd.batch'), prefix: '批量操作 ', icon: <Zap size={I}/> },
+      { label: t('assistant.cmd.cron'), prefix: '定时任务 ', icon: <Clock size={I}/> },
+      { label: t('assistant.cmd.export'), prefix: '数据导出 ', icon: <BarChart3 size={I}/> },
+      { label: t('assistant.cmd.check'), prefix: '系统检查 ', icon: <Cpu size={I}/> },
+      { label: t('assistant.cmd.logs'), prefix: '查看日志 ', icon: <History size={I}/> },
+    ]},
+    create:  { label: t('assistant.mode.create'), colorHex: '#a78bfa', commands: [
+      { label: t('assistant.cmd.article'), prefix: '帮我写文章: ', icon: <PenTool size={I}/> },
+      { label: t('assistant.cmd.image'), prefix: '生成图片: ', icon: <Palette size={I}/> },
+      { label: t('assistant.cmd.video'), prefix: '视频脚本: ', icon: <Sparkles size={I}/> },
+      { label: t('assistant.cmd.copy'), prefix: '营销文案: ', icon: <BookOpen size={I}/> },
+      { label: t('assistant.cmd.code'), prefix: '代码生成: ', icon: <Cpu size={I}/> },
+      { label: t('assistant.cmd.brain'), prefix: '头脑风暴: ', icon: <Brain size={I}/> },
+    ]},
+  };
+}
 
 /* ========== 工具函数 ========== */
 
@@ -122,6 +126,7 @@ async function readSSE(
 
 export function Assistant() {
   const { t } = useLanguage();
+  const MODE_CONFIG = getModeConfig(t);
   const [mode, setMode] = useState<AssistantMode>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');

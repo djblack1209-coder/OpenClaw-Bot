@@ -477,7 +477,7 @@ export function HomeDashboard() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>LiteLLM Pool</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>LiteLLM 模型池</span>
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-cyan)' }}>
                   {telemetry.poolActive}/{telemetry.poolTotal}
                 </span>

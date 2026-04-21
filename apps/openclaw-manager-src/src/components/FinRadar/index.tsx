@@ -265,7 +265,7 @@ export function FinRadar() {
       return [
         { name: 'BTC', pct: 0, color: 'var(--accent-amber)' },
         { name: 'ETH', pct: 0, color: 'var(--accent-purple)' },
-        { name: 'Others', pct: 0, color: 'var(--text-tertiary)' },
+        { name: '其他', pct: 0, color: 'var(--text-tertiary)' },
       ];
     }
     /* 用价格作为粗略权重参考 */
@@ -280,7 +280,7 @@ export function FinRadar() {
     return [
       { name: 'BTC', pct: Math.round(btcPct * 10) / 10, color: 'var(--accent-amber)' },
       { name: 'ETH', pct: Math.round(ethPct * 10) / 10, color: 'var(--accent-purple)' },
-      { name: 'Others', pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
+      { name: '其他', pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
     ];
   }, [marketData]);
 
