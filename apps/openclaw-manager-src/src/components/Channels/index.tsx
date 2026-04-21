@@ -97,7 +97,7 @@ export function Channels() {
       console.error('[Channels] 加载失败:', err);
       const msg = err instanceof Error ? err.message : '未知错误';
       setError(msg);
-      toast.error(t('channels.loadError'));
+      toast.error(t('channels.loadError'), { channel: 'notification' });
     }
 
     /* 尝试从后端获取各渠道 Bot 运行状态 */
@@ -136,19 +136,19 @@ export function Channels() {
   /* ── 渠道启停切换 ── */
   const handleToggleChannel = useCallback(async (ch: ChannelConfig) => {
     if (!isTauri()) {
-      toast.error('渠道配置切换需要在桌面客户端中操作');
+      toast.error('渠道配置切换需要在桌面客户端中操作', { channel: 'notification' });
       return;
     }
     setTogglingChannelIds((prev) => new Set(prev).add(ch.id));
     try {
       await api.saveChannelConfig({ ...ch, enabled: !ch.enabled });
-      toast.success(`${ch.channel_type || ch.id} 已${ch.enabled ? '禁用' : '启用'}`);
+      toast.success(`${ch.channel_type || ch.id} 已${ch.enabled ? '禁用' : '启用'}`, { channel: 'log' });
       // 局部更新状态
       setChannels((prev) =>
         prev.map((c) => c.id === ch.id ? { ...c, enabled: !c.enabled } : c),
       );
     } catch {
-      toast.error('切换失败，请稍后重试');
+      toast.error('切换失败，请稍后重试', { channel: 'notification' });
       await fetchData();
     } finally {
       setTogglingChannelIds((prev) => {

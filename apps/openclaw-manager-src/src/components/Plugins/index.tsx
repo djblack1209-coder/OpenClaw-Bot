@@ -163,24 +163,24 @@ export function Plugins() {
   const handleToggle = useCallback(async (plugin: PluginItem) => {
     /* IPC 开关需要 Tauri 环境 */
     if (!isTauri()) {
-      toast.error(t('plugins.toggleNeedsTauri'));
+      toast.error(t('plugins.toggleNeedsTauri'), { channel: 'notification' });
       return;
     }
     setToggling(plugin.id);
     try {
       if (plugin.status === 'running') {
         await api.stopMcpPlugin(plugin.id);
-        toast.success(`${plugin.name} ${t('plugins.stopped')}`);
+        toast.success(`${plugin.name} ${t('plugins.stopped')}`, { channel: 'log' });
         setLogs((prev) => [{ ts: nowTs(), msg: `[PLUGIN] ${plugin.name} 已停用 — 手动关闭` }, ...prev].slice(0, 20));
       } else {
         await api.startMcpPlugin(plugin.id);
-        toast.success(`${plugin.name} ${t('plugins.started')}`);
+        toast.success(`${plugin.name} ${t('plugins.started')}`, { channel: 'log' });
         setLogs((prev) => [{ ts: nowTs(), msg: `[PLUGIN] ${plugin.name} 已启动 — 手动开启` }, ...prev].slice(0, 20));
       }
       // 刷新数据
       await fetchData();
     } catch (err) {
-      toast.error(`${t('plugins.operationFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`);
+      toast.error(`${t('plugins.operationFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`, { channel: 'notification' });
       setLogs((prev) => [{ ts: nowTs(), msg: `[ERROR] ${plugin.name} 切换失败: ${err instanceof Error ? err.message : '未知错误'}` }, ...prev].slice(0, 20));
     } finally {
       setToggling(null);
@@ -190,7 +190,7 @@ export function Plugins() {
   /* ── 批量启用所有插件 ── */
   const handleEnableAll = useCallback(async () => {
     if (!isTauri()) {
-      toast.error(t('plugins.toggleNeedsTauri'));
+      toast.error(t('plugins.toggleNeedsTauri'), { channel: 'notification' });
       return;
     }
     const stopped = plugins.filter((p) => p.status !== 'running');
@@ -198,11 +198,11 @@ export function Plugins() {
     setToggling('__all__');
     try {
       await Promise.allSettled(stopped.map((p) => api.startMcpPlugin(p.id)));
-      toast.success(t('plugins.enableAllSuccess'));
+      toast.success(t('plugins.enableAllSuccess'), { channel: 'log' });
       setLogs((prev) => [{ ts: nowTs(), msg: `[SYSTEM] 批量启用 ${stopped.length} 个插件` }, ...prev].slice(0, 20));
       await fetchData();
     } catch (err) {
-      toast.error(`${t('plugins.enableAllFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`);
+      toast.error(`${t('plugins.enableAllFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`, { channel: 'notification' });
     } finally {
       setToggling(null);
     }
