@@ -7,6 +7,7 @@
 
 使用示例:
     from src.tools.login_helper import LoginHelper
+from src.utils import scrub_secrets
     helper = LoginHelper("闲鱼")
     helper.alert_and_open("https://login.taobao.com/...")
     ok = await helper.wait_for_condition(lambda: check_cookie(), timeout=600)
@@ -79,7 +80,7 @@ class LoginHelper:
                 subprocess.Popen(["python", "-m", "webbrowser", url])
             return True
         except Exception as e:
-            logger.error(f"打开浏览器失败: {e}")
+            logger.error(f"打开浏览器失败: {scrub_secrets(str(e))}")
             return False
 
     def _activate_browser(self) -> None:
@@ -215,5 +216,5 @@ class LoginHelper:
             subprocess.Popen(cmd)
             return True
         except Exception as e:
-            logger.error(f"打开浏览器 Profile 失败: {e}")
+            logger.error(f"打开浏览器 Profile 失败: {scrub_secrets(str(e))}")
             return False

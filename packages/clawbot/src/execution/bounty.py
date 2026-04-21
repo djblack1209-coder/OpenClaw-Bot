@@ -13,7 +13,7 @@ from json_repair import loads as jloads
 from src.execution._db import get_conn
 from src.execution._ai import ai_pool
 from src.execution._utils import extract_json_object
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def _ensure_bounty_table(db_path: str):
                 updated_at TEXT
             )""")
     except Exception as e:
-        logger.error(f"[Bounty] 表创建失败: {e}")
+        logger.error(f"[Bounty] 表创建失败: {scrub_secrets(str(e))}")
 
 
 def _upsert_lead(conn, lead: Dict):
@@ -58,7 +58,7 @@ def _upsert_lead(conn, lead: Dict):
     except sqlite3.IntegrityError as e:
         logger.debug("记录已存在(重复忽略): %s", e)
     except Exception as e:
-        logger.warning(f"[Bounty] upsert failed: {e}")
+        logger.warning(f"[Bounty] upsert failed: {scrub_secrets(str(e))}")
 
 
 async def _scan_github_bounties(keywords: List[str]) -> List[Dict]:
@@ -82,7 +82,7 @@ async def _scan_github_bounties(keywords: List[str]) -> List[Dict]:
                         item["source"] = "github"
                     return items
     except Exception as e:
-        logger.error(f"[Bounty] GitHub scan failed: {e}")
+        logger.error(f"[Bounty] GitHub scan failed: {scrub_secrets(str(e))}")
     return []
 
 
@@ -105,7 +105,7 @@ async def _scan_web_bounties(keywords: List[str]) -> List[Dict]:
                 if isinstance(items, list):
                     return items
     except Exception as e:
-        logger.error(f"[Bounty] Web scan failed: {e}")
+        logger.error(f"[Bounty] Web scan failed: {scrub_secrets(str(e))}")
     return []
 
 
@@ -131,7 +131,7 @@ async def scan_bounties(
                 _upsert_lead(conn, lead)
                 saved += 1
     except Exception as e:
-        logger.error(f"[Bounty] batch save failed: {e}")
+        logger.error(f"[Bounty] batch save failed: {scrub_secrets(str(e))}")
 
     return {
         "scanned": len(all_leads),
@@ -163,7 +163,7 @@ def list_bounty_leads(
             cols = [d[0] for d in conn.execute("SELECT * FROM bounty_leads LIMIT 0").description]
             return [dict(zip(cols, row)) for row in rows]
     except Exception as e:
-        logger.error(f"[Bounty] list failed: {e}")
+        logger.error(f"[Bounty] list failed: {scrub_secrets(str(e))}")
         return []
 
 
@@ -201,7 +201,7 @@ async def evaluate_bounty_lead(lead_id: int, db_path: str = "") -> Dict:
                 return parsed
         return {"error": "AI evaluation failed"}
     except Exception as e:
-        logger.error(f"[Bounty] evaluate failed: {e}")
+        logger.error(f"[Bounty] evaluate failed: {scrub_secrets(str(e))}")
         return {"error": str(e)}
 
 

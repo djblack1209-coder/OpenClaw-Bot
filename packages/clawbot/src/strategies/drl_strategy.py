@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from src.strategy_engine import BaseStrategy, MarketData, SignalType, TradeSignal
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +305,7 @@ class DRLStrategy(BaseStrategy):
             return True
 
         except Exception as e:
-            logger.error(f"[DRL] {symbol} 训练失败: {e}")
+            logger.error(f"[DRL] {symbol} 训练失败: {scrub_secrets(str(e))}")
             return False
 
     def _load_or_train(self, data: MarketData) -> bool:
@@ -332,7 +332,7 @@ class DRLStrategy(BaseStrategy):
                 else:
                     logger.info(f"[DRL] 模型已过期 ({age_days:.0f}d), 重新训练")
             except Exception as e:
-                logger.warning(f"[DRL] 加载模型失败: {e}, 重新训练")
+                logger.warning(f"[DRL] 加载模型失败: {scrub_secrets(str(e))}, 重新训练")
 
         # 训练新模型
         df = self._prepare_dataframe(data)
@@ -372,7 +372,7 @@ class DRLStrategy(BaseStrategy):
             return act_val, confidence
 
         except Exception as e:
-            logger.error(f"[DRL] 预测失败: {e}")
+            logger.error(f"[DRL] 预测失败: {scrub_secrets(str(e))}")
             return 0.0, 0.0
 
     def analyze(self, data: MarketData) -> TradeSignal:

@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from src.execution._ai import ai_pool
 from src.execution._utils import extract_json_object
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +205,7 @@ async def research_social_topic(
             google_items = await news_fetcher.fetch_from_google_news_rss(topic, count=limit)
             bing_items = await news_fetcher.fetch_from_bing(topic, count=limit)
         except Exception as e:
-            logger.error(f"[ResearchTopic] fetch failed: {e}")
+            logger.error(f"[ResearchTopic] fetch failed: {scrub_secrets(str(e))}")
 
     all_items_raw = (google_items or []) + (bing_items or [])
     if curate_fn:
@@ -280,7 +281,7 @@ async def create_topic_social_package(
             },
         }
     except Exception as e:
-        logger.error(f"[CreateTopicPackage] failed: {e}")
+        logger.error(f"[CreateTopicPackage] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -335,7 +336,7 @@ async def autopost_topic_content(
 
         return {"success": True, "topic": topic, "results": results}
     except Exception as e:
-        logger.error(f"[AutopostTopic] failed: {e}")
+        logger.error(f"[AutopostTopic] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -524,7 +525,7 @@ async def generate_content_ideas(keyword: str = "AI 工具", count: int = 5) -> 
             return {"success": True, "ideas": ideas[:count]}
         return {"success": False, "ideas": [], "error": result.get("error", "AI 调用失败")}
     except Exception as e:
-        logger.error(f"[ContentIdeas] failed: {e}")
+        logger.error(f"[ContentIdeas] failed: {scrub_secrets(str(e))}")
         return {"success": False, "ideas": [], "error": str(e)}
 
 
@@ -649,7 +650,7 @@ async def generate_content_calendar(days: int = 7) -> Dict:
                 return {"success": True, **parsed}
         return {"success": False, "error": "日历生成失败"}
     except Exception as e:
-        logger.error(f"[ContentCalendar] failed: {e}")
+        logger.error(f"[ContentCalendar] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 

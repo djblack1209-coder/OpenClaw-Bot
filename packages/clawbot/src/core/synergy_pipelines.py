@@ -23,7 +23,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Set
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ class SynergyPipelines:
             logger.info(f"SynergyPipelines 已注册 {sum(self._pipeline_config.values())} 条管道（含盈利庆祝）")
 
         except Exception as e:
-            logger.warning(f"SynergyPipelines 注册失败: {e}")
+            logger.warning(f"SynergyPipelines 注册失败: {scrub_secrets(str(e))}")
 
     # ── 管道1: 交易信号 → 社媒草稿 ──────────────────
 
@@ -182,7 +182,7 @@ class SynergyPipelines:
             logger.info(f"[协同] 交易信号→社媒草稿: {symbol} ({direction})")
 
         except Exception as e:
-            logger.warning(f"[协同] 交易→社媒管道失败: {e}")
+            logger.warning(f"[协同] 交易→社媒管道失败: {scrub_secrets(str(e))}")
 
     async def _on_trade_executed(self, event) -> None:
         """交易执行后记录到记忆，供复盘用"""
@@ -316,7 +316,7 @@ class SynergyPipelines:
             try:
                 await self.run_news_sentiment_scan()
             except Exception as e:
-                logger.warning(f"[协同] 新闻情感循环异常: {e}")
+                logger.warning(f"[协同] 新闻情感循环异常: {scrub_secrets(str(e))}")
             await asyncio.sleep(4 * 3600)  # 每4小时
 
     async def run_news_sentiment_scan(self) -> int:
@@ -461,7 +461,7 @@ class SynergyPipelines:
             return risk_count
 
         except Exception as e:
-            logger.warning(f"[协同] 新闻情感扫描异常: {e}")
+            logger.warning(f"[协同] 新闻情感扫描异常: {scrub_secrets(str(e))}")
             return 0
 
     # ── 管道6: 盈利庆祝 → 社媒草稿 ──────────────────
@@ -502,7 +502,7 @@ class SynergyPipelines:
             logger.info(f"[协同] 盈利庆祝→社媒草稿: {symbol} +{pnl_pct:.1f}%")
 
         except Exception as e:
-            logger.warning(f"[协同] 盈利庆祝管道失败: {e}")
+            logger.warning(f"[协同] 盈利庆祝管道失败: {scrub_secrets(str(e))}")
 
     # ── 查询接口 ──────────────────────────────────
 

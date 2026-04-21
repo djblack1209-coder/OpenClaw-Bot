@@ -7,6 +7,7 @@ import time
 import logging
 import asyncio
 from typing import List, Callable
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -101,22 +102,22 @@ async def stream_llm_to_telegram(
                     last_edit_time = now
                     pending_chars = 0
                 except Exception as e:
-                    logger.warning(f"[Streaming] Telegram edit failed (mid-stream): {e}")
+                    logger.warning(f"[Streaming] Telegram edit failed (mid-stream): {scrub_secrets(str(e))}")
 
         # 最终更新（去掉光标）
         if message_id and full_text:
             try:
                 await send_func(chat_id, full_text, edit_message_id=message_id)
             except Exception as e:
-                logger.warning(f"[Streaming] Final Telegram edit failed: {e}")
+                logger.warning(f"[Streaming] Final Telegram edit failed: {scrub_secrets(str(e))}")
 
     except Exception as e:
-        logger.error(f"[Streaming] 流式传输失败: {e}")
+        logger.error(f"[Streaming] 流式传输失败: {scrub_secrets(str(e))}")
         if full_text and message_id:
             try:
                 await send_func(chat_id, full_text + "\n\n⚠️ 流式传输中断",
                                 edit_message_id=message_id)
             except Exception as e:
-                logger.warning(f"[Streaming] Failed to send interruption notice: {e}")
+                logger.warning(f"[Streaming] Failed to send interruption notice: {scrub_secrets(str(e))}")
 
     return full_text

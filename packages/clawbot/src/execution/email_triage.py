@@ -6,6 +6,7 @@ import logging
 
 from src.execution._utils import extract_json_object
 from src.execution._ai import ai_pool
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ async def triage_email(max_messages=20, only_unread=True) -> dict:
             }
         return {"success": False, "error": result.get("error", "AI 调用失败")}
     except Exception as e:
-        logger.error(f"[TriageEmail] failed: {e}")
+        logger.error(f"[TriageEmail] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 

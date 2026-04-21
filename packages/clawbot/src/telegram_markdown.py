@@ -14,6 +14,7 @@ Telegram HTML 模式（推荐，更少转义问题）:
 
 Usage:
     from src.telegram_markdown import md_to_telegram, md_to_html
+from src.utils import scrub_secrets
 
     # MarkdownV2 模式 — 完整格式但转义复杂
     safe_v2 = md_to_telegram("**bold** and `code` and [link](url)")
@@ -580,7 +581,7 @@ def md_to_telegram(text: str) -> str:
                 result = renderer.render(doc)
             return result.strip()
         except Exception as e:
-            logger.warning(f"[telegram_markdown] mistletoe 渲染失败，降级到 regex: {e}")
+            logger.warning(f"[telegram_markdown] mistletoe 渲染失败，降级到 regex: {scrub_secrets(str(e))}")
             return _regex_md_to_v2(text)
     else:
         return _regex_md_to_v2(text)
@@ -609,7 +610,7 @@ def md_to_html(text: str) -> str:
                 result = renderer.render(doc)
             return result.strip()
         except Exception as e:
-            logger.warning(f"[telegram_markdown] mistletoe HTML 渲染失败，降级到 regex: {e}")
+            logger.warning(f"[telegram_markdown] mistletoe HTML 渲染失败，降级到 regex: {scrub_secrets(str(e))}")
             return _regex_md_to_html(text)
     else:
         return _regex_md_to_html(text)

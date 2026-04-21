@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.execution._utils import extract_json_object
 from src.execution._ai import ai_pool
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -41,5 +42,5 @@ async def summarize_meeting(text=None, file_path=None) -> dict:
             return {"success": True, "summary": raw, "action_items": [], "decisions": []}
         return {"success": False, "error": result.get("error", "AI 调用失败")}
     except Exception as e:
-        logger.error(f"[SummarizeMeeting] failed: {e}")
+        logger.error(f"[SummarizeMeeting] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}

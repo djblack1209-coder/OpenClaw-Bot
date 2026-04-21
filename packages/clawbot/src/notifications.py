@@ -38,6 +38,7 @@ import os
 from enum import IntEnum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,7 @@ def _load_yaml_config(path: Path) -> Dict[str, Any]:
         logger.debug("PyYAML 未安装，跳过 YAML 配置加载")
         return {}
     except Exception as e:
-        logger.warning(f"加载通知配置失败 {path}: {e}")
+        logger.warning(f"加载通知配置失败 {path}: {scrub_secrets(str(e))}")
         return {}
 
 
@@ -283,7 +284,7 @@ class NotificationManager:
                 else:
                     logger.warning(f"通知渠道 URL 无效: {url[:40]}...")
             except Exception as e:
-                logger.warning(f"通知渠道注册失败: {url[:40]}... → {e}")
+                logger.warning(f"通知渠道注册失败: {url[:40]}... → {scrub_secrets(str(e))}")
 
         # ── 标签路由（YAML 配置） ──
         tag_routes_cfg = yaml_cfg.get("tag_routes", {})
@@ -296,7 +297,7 @@ class NotificationManager:
                     try:
                         tag_ap.add(str(url), tag=tag)
                     except Exception as e:
-                        logger.warning(f"标签路由 [{tag}] 渠道注册失败: {e}")
+                        logger.warning(f"标签路由 [{tag}] 渠道注册失败: {scrub_secrets(str(e))}")
                 if len(tag_ap) > 0:
                     self._tag_routes[tag] = tag_ap
                     logger.debug(f"标签路由 [{tag}]: {len(tag_ap)} 个渠道")
@@ -479,7 +480,7 @@ class NotificationManager:
         except ImportError:
             logger.warning("无法导入 EventBus，通知系统不订阅事件")
         except Exception as e:
-            logger.error(f"通知系统订阅事件失败: {e}")
+            logger.error(f"通知系统订阅事件失败: {scrub_secrets(str(e))}")
 
     async def _on_event(self, event: Any) -> None:
         """处理已映射的 EventBus 事件"""
@@ -578,13 +579,13 @@ class NotificationManager:
             try:
                 return bool(self._tag_routes[tag].add(url, tag=tag))
             except Exception as e:
-                logger.error(f"添加标签渠道失败 [{tag}]: {e}")
+                logger.error(f"添加标签渠道失败 [{tag}]: {scrub_secrets(str(e))}")
                 return False
         else:
             try:
                 return bool(self._ap.add(url)) if self._ap else False
             except Exception as e:
-                logger.error(f"添加渠道失败: {e}")
+                logger.error(f"添加渠道失败: {scrub_secrets(str(e))}")
                 return False
 
     def clear_channels(self) -> None:

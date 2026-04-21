@@ -19,7 +19,7 @@ from src.constants import (
     BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_FREE_LLM,
     FAMILY_QWEN,
 )
-from src.utils import emit_flow_event as _emit_flow
+from src.utils import emit_flow_event as _emit_flow, scrub_secrets
 
 
 class AICallerPool:
@@ -59,7 +59,7 @@ class AICallerPool:
                     _emit_flow("llm", "hub", "success", f"AI 响应: {bot_id}", {"resp_len": len(text)})
                     return {"success": True, "raw": text, "bot_id": bot_id}
             except Exception as e:
-                logger.warning(f"[AICallerPool] {bot_id} failed: {e}")
+                logger.warning(f"[AICallerPool] {bot_id} failed: {scrub_secrets(str(e))}")
                 _emit_flow("llm", "hub", "error", f"AI 失败: {bot_id}", {"error": str(e)[:100]})
         return await self.call_via_litellm(prompt, system_prompt)
 
@@ -100,7 +100,7 @@ class AICallerPool:
                     logger.debug("Silenced exception", exc_info=True)
             return {"success": True, "raw": text, "bot_id": "litellm/qwen", "provider": "litellm"}
         except Exception as e:
-            logger.warning(f"[AICallerPool] LiteLLM call failed: {e}")
+            logger.warning(f"[AICallerPool] LiteLLM call failed: {scrub_secrets(str(e))}")
             return {"success": False, "error": str(e)}
 
     # 保留旧方法名兼容

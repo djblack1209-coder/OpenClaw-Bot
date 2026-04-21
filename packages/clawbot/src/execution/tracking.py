@@ -8,6 +8,7 @@ Execution — 社交分析与价格追踪
 import logging
 
 from src.execution._db import get_conn
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def record_post_engagement(draft_id: int, platform: str, likes: int = 0,
             )
         return True
     except Exception as e:
-        logger.error(f"[Engagement] 记录失败: {e}")
+        logger.error(f"[Engagement] 记录失败: {scrub_secrets(str(e))}")
         return False
 
 

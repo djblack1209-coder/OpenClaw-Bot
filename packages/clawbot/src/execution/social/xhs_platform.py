@@ -22,6 +22,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ async def publish_xhs_article(
         result = await asyncio.to_thread(worker_fn, "publish_xhs", payload)
         return {"success": True, "result": result}
     except Exception as e:
-        logger.error(f"[XHS.publish] failed: {e}")
+        logger.error(f"[XHS.publish] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -284,7 +285,7 @@ async def reply_to_xhs_comment(
         result = await asyncio.to_thread(worker_fn, "reply_xhs", reply_payload)
         return {"success": True, "result": result}
     except Exception as e:
-        logger.error(f"[XHS.reply] failed: {e}")
+        logger.error(f"[XHS.reply] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -303,5 +304,5 @@ async def update_xhs_profile(
         result = await asyncio.to_thread(worker_fn, "update_xhs_profile", payload)
         return {"success": True, "result": result}
     except Exception as e:
-        logger.error(f"[XHS.profile] failed: {e}")
+        logger.error(f"[XHS.profile] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}

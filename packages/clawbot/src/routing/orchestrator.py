@@ -10,6 +10,7 @@ from typing import Dict, Optional, Callable, Awaitable
 
 from src.routing.models import CollabPhase, CollabTask
 from src.routing.router import ChatRouter
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ class CollabOrchestrator:
             return result
         except Exception as e:
             task.error = f"规划失败: {e}"
-            logger.error(f"[Collab] {task.task_id} 规划失败: {e}")
+            logger.error(f"[Collab] {task.task_id} 规划失败: {scrub_secrets(str(e))}")
             return task.error
 
     async def run_execution(self, task: CollabTask) -> str:
@@ -158,7 +159,7 @@ class CollabOrchestrator:
             return result
         except Exception as e:
             task.error = f"执行失败: {e}"
-            logger.error(f"[Collab] {task.task_id} 执行失败: {e}")
+            logger.error(f"[Collab] {task.task_id} 执行失败: {scrub_secrets(str(e))}")
             return task.error
 
     async def run_review(self, task: CollabTask) -> str:
@@ -233,7 +234,7 @@ class CollabOrchestrator:
             # 审查失败不阻塞流程，默认通过
             task.review_passed = True
             task.review_result = f"审查异常（自动通过）: {e}"
-            logger.warning(f"[Collab] {task.task_id} 审查失败: {e}")
+            logger.warning(f"[Collab] {task.task_id} 审查失败: {scrub_secrets(str(e))}")
             return task.review_result
 
     async def run_revised_execution(self, task: CollabTask) -> str:
@@ -271,7 +272,7 @@ class CollabOrchestrator:
             return result
         except Exception as e:
             task.error = f"修订执行失败: {e}"
-            logger.error(f"[Collab] {task.task_id} 修订执行失败: {e}")
+            logger.error(f"[Collab] {task.task_id} 修订执行失败: {scrub_secrets(str(e))}")
             return task.error
 
     async def run_summary(self, task: CollabTask) -> str:
@@ -322,7 +323,7 @@ class CollabOrchestrator:
             return result
         except Exception as e:
             task.error = f"汇总失败: {e}"
-            logger.error(f"[Collab] {task.task_id} 汇总失败: {e}")
+            logger.error(f"[Collab] {task.task_id} 汇总失败: {scrub_secrets(str(e))}")
             return task.error
 
     async def run_full_pipeline(self, task: CollabTask) -> CollabTask:

@@ -5,7 +5,7 @@ Execution Hub — 智能任务管理
 import logging
 
 from src.execution._db import get_conn
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def add_task(title=None, priority="medium", db_path=None) -> dict:
             )
             return {"success": True, "task_id": cursor.lastrowid, "title": t, "priority": p}
     except Exception as e:
-        logger.error(f"[AddTask] failed: {e}")
+        logger.error(f"[AddTask] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -58,7 +58,7 @@ def update_task_status(task_id=None, status=None, db_path=None) -> dict:
             )
             return {"success": True, "task_id": task_id, "status": st}
     except Exception as e:
-        logger.error(f"[UpdateTask] failed: {e}")
+        logger.error(f"[UpdateTask] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -83,7 +83,7 @@ def list_tasks(status=None, db_path=None) -> list:
                 for r in cursor.fetchall()
             ]
     except Exception as e:
-        logger.error(f"[ListTasks] failed: {e}")
+        logger.error(f"[ListTasks] failed: {scrub_secrets(str(e))}")
         return []
 
 
@@ -104,5 +104,5 @@ def top_tasks(limit=10, db_path=None) -> list:
                 for r in cursor.fetchall()
             ]
     except Exception as e:
-        logger.error(f"[TopTasks] failed: {e}")
+        logger.error(f"[TopTasks] failed: {scrub_secrets(str(e))}")
         return []

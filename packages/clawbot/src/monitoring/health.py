@@ -8,6 +8,7 @@ import time
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List, Callable
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class AutoRecovery:
                         self._last_healthy_since.pop(bot_id, None)
                         await self._try_restart(bot_id)
             except Exception as e:
-                logger.error(f"健康检查循环错误: {e}")
+                logger.error(f"健康检查循环错误: {scrub_secrets(str(e))}")
 
             await asyncio.sleep(30)  # 每30秒检查一次
 
@@ -252,7 +253,7 @@ class AutoRecovery:
             logger.info(f"[{bot_id}] 自动恢复成功")
         except Exception as e:
             status["restart_count"] = restart_count + 1
-            logger.error(f"[{bot_id}] 自动恢复失败: {e}")
+            logger.error(f"[{bot_id}] 自动恢复失败: {scrub_secrets(str(e))}")
 
     def start(self):
         """启动自动恢复"""

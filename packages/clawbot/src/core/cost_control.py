@@ -12,7 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class CostController:
                         self._by_model[record.get("model", "unknown")] += cost
                         self._by_task[record.get("task_type", "unknown")] += cost
         except Exception as e:
-            logger.warning(f"加载成本记录失败: {e}")
+            logger.warning(f"加载成本记录失败: {scrub_secrets(str(e))}")
 
     def _check_date_rollover(self) -> None:
         """日期切换时重置"""

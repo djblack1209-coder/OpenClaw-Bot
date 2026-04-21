@@ -35,7 +35,7 @@ import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 from collections import deque
 
 # 风控配置和检查结果类型已提取到 risk_config.py
@@ -584,7 +584,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
                 self._today_pnl = today_data.get("pnl", 0)
                 self._today_trades = today_data.get("trades", 0)
             except Exception as e:
-                logger.error(f"[RiskManager] 刷新今日PnL失败: {e}")
+                logger.error(f"[RiskManager] 刷新今日PnL失败: {scrub_secrets(str(e))}")
 
         self._last_pnl_update = today
         self._last_refresh_ts = now

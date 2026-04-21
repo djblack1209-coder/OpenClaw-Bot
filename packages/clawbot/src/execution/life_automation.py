@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 from src.execution._db import get_conn
 from src.execution._utils import safe_int
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ async def create_reminder(
                 "recurrence_rule": recurrence_rule,
             }
     except Exception as e:
-        logger.error(f"[CreateReminder] failed: {e}")
+        logger.error(f"[CreateReminder] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -153,7 +153,7 @@ def cancel_reminder(reminder_id: int, db_path=None) -> bool:
             )
             return cursor.rowcount > 0
     except Exception as e:
-        logger.error(f"[CancelReminder] failed for id={reminder_id}: {e}")
+        logger.error(f"[CancelReminder] failed for id={reminder_id}: {scrub_secrets(str(e))}")
         return False
 
 
@@ -212,7 +212,7 @@ def fire_due_reminders(db_path=None) -> list:
                             (rid,),
                         )
     except Exception as e:
-        logger.error(f"[Reminders] fire_due_reminders 失败: {e}")
+        logger.error(f"[Reminders] fire_due_reminders 失败: {scrub_secrets(str(e))}")
     return fired
 
 
@@ -517,7 +517,7 @@ async def trigger_home_action(action: str = "", payload: dict = None) -> dict:
         # 使用 to_thread 避免 subprocess.run 阻塞事件循环
         return await asyncio.to_thread(_run_local_home_action, action, payload)
     except Exception as e:
-        logger.error(f"[TriggerHome] failed: {e}")
+        logger.error(f"[TriggerHome] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 

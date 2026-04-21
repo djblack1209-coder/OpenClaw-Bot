@@ -5,6 +5,7 @@ OpenClaw 文档理解 — 搬运 Docling (56.3k⭐)
 
 Usage:
     from src.tools.docling_service import convert_document, summarize_document
+from src.utils import scrub_secrets
     markdown, tables = await convert_document("/path/to/file.pdf")
     summary = await summarize_document("/path/to/file.pdf", question="这份合同的关键条款是什么？")
 """
@@ -122,7 +123,7 @@ async def convert_document(
     try:
         markdown, tables = await loop.run_in_executor(None, _sync_convert)
     except Exception as e:
-        logger.error(f"[Docling] 转换失败 {path.name}: {e}")
+        logger.error(f"[Docling] 转换失败 {path.name}: {scrub_secrets(str(e))}")
         raise
 
     # 截断到 Telegram 安全长度
@@ -207,7 +208,7 @@ async def summarize_document(
             return _truncate(result.strip())
         return "LLM 未能生成有效摘要。"
     except Exception as e:
-        logger.warning(f"[Docling] LLM 摘要失败: {e}")
+        logger.warning(f"[Docling] LLM 摘要失败: {scrub_secrets(str(e))}")
         # 降级: 直接返回截断的 Markdown
         fallback = f"📄 文档内容 (LLM 摘要不可用):\n\n{markdown}"
         if table_summary:

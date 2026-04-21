@@ -8,6 +8,7 @@ Core — 社媒运营领域执行器 Mixin
 import asyncio
 import logging
 from typing import Dict
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class SocialExecutorMixin:
             topics = await fetch_real_trending()
             return {"source": "real_trending", "topics": topics[:10]}
         except Exception as e:
-            logger.warning(f"热点扫描失败: {e}")
+            logger.warning(f"热点扫描失败: {scrub_secrets(str(e))}")
             return {"source": "trending_fallback", "topics": []}
 
     async def _exec_social_intel(self, params: Dict) -> Dict:
@@ -59,7 +60,7 @@ class SocialExecutorMixin:
             results["platform"] = platform
             return results
         except Exception as e:
-            logger.warning(f"社交数据采集失败: {e}")
+            logger.warning(f"社交数据采集失败: {scrub_secrets(str(e))}")
         return {"source": "social_intel_unavailable", "trending": [], "related_posts": []}
 
     async def _exec_content_strategy(self, params: Dict) -> Dict:
@@ -71,7 +72,7 @@ class SocialExecutorMixin:
             result = await derive_content_strategy(topic=topic)
             return {"source": "content_strategy", "strategy": result}
         except Exception as e:
-            logger.warning(f"内容策划失败: {e}")
+            logger.warning(f"内容策划失败: {scrub_secrets(str(e))}")
             return {"source": "strategy_fallback", "strategy": {}}
 
     async def _exec_content_generate(self, params: Dict) -> Dict:
@@ -97,7 +98,7 @@ class SocialExecutorMixin:
                     logger.debug("Silenced exception", exc_info=True)
                 return result_dict
         except Exception as e:
-            logger.warning(f"内容生成失败: {e}")
+            logger.warning(f"内容生成失败: {scrub_secrets(str(e))}")
         return {"source": "content_gen_fallback", "draft": "", "note": "内容生成模块异常"}
 
     async def _exec_social_publish(self, params: Dict) -> Dict:
@@ -120,5 +121,5 @@ class SocialExecutorMixin:
                 result = await run_social_worker_async(f"publish_{platform}", {"content": draft})
                 return {"source": "worker_bridge", "success": True, "result": result}
         except Exception as e:
-            logger.warning(f"社媒发布失败 ({platform}): {e}")
+            logger.warning(f"社媒发布失败 ({platform}): {scrub_secrets(str(e))}")
         return {"source": "publish_fallback", "success": False, "note": f"{platform} 发布失败"}

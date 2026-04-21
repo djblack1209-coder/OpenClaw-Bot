@@ -19,7 +19,7 @@ import time as _time
 from contextlib import contextmanager
 from typing import Optional, Dict, Tuple
 
-from src.utils import now_et, env_bool
+from src.utils import now_et, env_bool, scrub_secrets
 from src.http_client import ResilientHTTPClient
 from src.db_utils import get_conn as _get_db_conn
 
@@ -232,7 +232,7 @@ async def warmup():
         await asyncio.to_thread(_ensure_yf)
         logger.info("[invest_tools] yfinance 预热完成")
     except Exception as e:
-        logger.warning(f"[invest_tools] yfinance 预热失败: {e}")
+        logger.warning(f"[invest_tools] yfinance 预热失败: {scrub_secrets(str(e))}")
 
 
 async def get_crypto_quote(symbol: str) -> dict:
@@ -709,7 +709,7 @@ async def get_fear_greed_index() -> Dict:
         return result
 
     except Exception as e:
-        logger.warning(f"[invest_tools] Fear & Greed 获取失败: {e}")
+        logger.warning(f"[invest_tools] Fear & Greed 获取失败: {scrub_secrets(str(e))}")
         return {
             "value": 50,
             "label": "Neutral",

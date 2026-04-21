@@ -11,6 +11,7 @@ OpenClaw 智能搜索 — 搬运 Tavily Python SDK (1.1k⭐)
 
 Usage:
     from src.tools.tavily_search import quick_answer, search_context
+from src.utils import scrub_secrets
     answer = await quick_answer("iPhone 16 Pro 价格对比")
     context = await search_context("茅台2024年财报", max_results=5)
 """
@@ -114,7 +115,7 @@ async def quick_answer(query: str) -> str:
                 logger.debug(f"[Tavily] QnA 成功: {query[:50]}...")
                 return result.strip()
         except Exception as e:
-            logger.warning(f"[Tavily] QnA 失败，降级 Jina: {e}")
+            logger.warning(f"[Tavily] QnA 失败，降级 Jina: {scrub_secrets(str(e))}")
 
     return await _jina_fallback_answer(query)
 
@@ -144,7 +145,7 @@ async def search_context(query: str, max_results: int = 5) -> str:
                 logger.debug(f"[Tavily] 上下文搜索成功: {query[:50]}...")
                 return result.strip()
         except Exception as e:
-            logger.warning(f"[Tavily] 上下文搜索失败，降级 Jina: {e}")
+            logger.warning(f"[Tavily] 上下文搜索失败，降级 Jina: {scrub_secrets(str(e))}")
 
     return await _jina_fallback_context(query, max_results)
 
@@ -202,5 +203,5 @@ async def deep_research(topic: str) -> str:
         return report
 
     except Exception as e:
-        logger.warning(f"[Tavily] 深度研究失败，降级 Jina: {e}")
+        logger.warning(f"[Tavily] 深度研究失败，降级 Jina: {scrub_secrets(str(e))}")
         return await _jina_fallback_answer(topic)

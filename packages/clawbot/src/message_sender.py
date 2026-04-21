@@ -11,6 +11,7 @@ from typing import Optional
 from telegram.ext import ContextTypes
 
 from src.constants import TG_SAFE_LENGTH
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -136,4 +137,4 @@ async def _send_safe(
                     text=text,
                 )
             except Exception as e:
-                logger.error(f"发送消息失败 (chat_id={chat_id}): {e}")
+                logger.error(f"发送消息失败 (chat_id={chat_id}): {scrub_secrets(str(e))}")

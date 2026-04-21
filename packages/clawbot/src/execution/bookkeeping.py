@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 
 from src.execution._db import get_conn
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ def add_expense(
             )
         return {"success": True, "amount": amount, "category": category, "note": note}
     except Exception as e:
-        logger.error(f"[Expense] 记账失败: {e}")
+        logger.error(f"[Expense] 记账失败: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -178,7 +178,7 @@ def add_income(
             )
         return {"success": True, "amount": amount, "category": category, "note": note}
     except Exception as e:
-        logger.error(f"[Income] 收入记录失败: {e}")
+        logger.error(f"[Income] 收入记录失败: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -196,7 +196,7 @@ def set_monthly_budget(user_id, budget: float, db_path=None) -> dict:
             )
         return {"success": True, "budget": round(budget, 2)}
     except Exception as e:
-        logger.error(f"[Budget] 设定预算失败: {e}")
+        logger.error(f"[Budget] 设定预算失败: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -316,7 +316,7 @@ def get_monthly_summary(user_id: int, year_month: str = None, db_path=None) -> d
             "top_expenses": top_expenses,
         }
     except Exception as e:
-        logger.error(f"[MonthlySummary] 月度汇总失败: {e}")
+        logger.error(f"[MonthlySummary] 月度汇总失败: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 
@@ -434,7 +434,7 @@ def get_expense_summary(user_id: int, days: int = 30, db_path=None) -> dict:
             "recent": recent_list,
         }
     except Exception as e:
-        logger.error(f"[Expense] 汇总失败: {e}")
+        logger.error(f"[Expense] 汇总失败: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}
 
 

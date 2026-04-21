@@ -116,7 +116,7 @@ class APIMixin:
                 )
                 was_compressed = meta.get("compressed", False)
             except Exception as e:
-                logger.warning(f"[{self.name}] TieredContext fallback: {e}")
+                logger.warning(f"[{self.name}] TieredContext fallback: {scrub_secrets(str(e))}")
                 messages, was_compressed = context_manager.prepare_messages_for_api(messages)
         else:
             messages, was_compressed = context_manager.prepare_messages_for_api(messages)

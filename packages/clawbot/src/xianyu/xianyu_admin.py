@@ -23,7 +23,7 @@ from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 from src.api.auth import verify_api_token, log_token_status
 from src.api.error_utils import safe_error as _safe_error
 
@@ -74,7 +74,7 @@ def dashboard(date: str = ""):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/dashboard 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/dashboard 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -103,7 +103,7 @@ def list_chats(limit: int = Query(50, le=200)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/chats 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/chats 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -127,7 +127,7 @@ def get_chat(chat_id: str, limit: int = Query(100, le=500)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/chats/{chat_id} 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/chats/{chat_id} 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -152,7 +152,7 @@ def list_items():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/items 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/items 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -183,7 +183,7 @@ def list_orders(date: str = "", limit: int = Query(50, le=200)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/orders 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/orders 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -217,7 +217,7 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/consultations 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/consultations 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -239,7 +239,7 @@ def system_status():
             status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
         return status
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/status 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/status 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -258,7 +258,7 @@ def list_prompts():
             prompts[f.stem] = f.read_text(encoding="utf-8")
         return prompts
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/prompts GET 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/prompts GET 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
@@ -284,7 +284,7 @@ def update_prompt(req: PromptUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/prompts POST 出错: {e}", exc_info=True)
+        logger.error(f"[XianyuAdmin] /api/prompts POST 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 

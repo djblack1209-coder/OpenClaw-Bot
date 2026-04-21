@@ -7,6 +7,7 @@ import asyncio
 from datetime import datetime, time, timedelta
 from typing import Callable, Dict, Any, Optional, List
 import logging
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class Task:
             self._calculate_next_run()
             return result
         except Exception as e:
-            logger.error(f"任务 {self.name} 执行失败: {e}")
+            logger.error(f"任务 {self.name} 执行失败: {scrub_secrets(str(e))}")
             self._calculate_next_run()
             raise
 
@@ -145,7 +146,7 @@ class Scheduler:
                         _t = asyncio.create_task(self._safe_run_task(task))
                         _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                     except Exception as e:
-                        logger.error(f"任务调度错误: {e}")
+                        logger.error(f"任务调度错误: {scrub_secrets(str(e))}")
 
             # 每分钟检查一次
             await asyncio.sleep(60)
@@ -155,7 +156,7 @@ class Scheduler:
         try:
             await task.run()
         except Exception as e:
-            logger.error(f"任务执行错误 [{task.name}]: {e}")
+            logger.error(f"任务执行错误 [{task.name}]: {scrub_secrets(str(e))}")
 
     def start(self):
         """启动调度器"""

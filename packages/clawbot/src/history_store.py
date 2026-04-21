@@ -8,7 +8,7 @@ import threading
 import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ class HistoryStore:
                     count += 1
 
             except Exception as e:
-                logger.warning(f"迁移 {f.name} 失败: {e}")
+                logger.warning(f"迁移 {f.name} 失败: {scrub_secrets(str(e))}")
 
         logger.info(f"从 JSON 迁移 {count} 条消息 (bot: {bot_id})")
         return count

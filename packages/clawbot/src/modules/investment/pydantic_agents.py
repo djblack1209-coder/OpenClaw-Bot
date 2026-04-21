@@ -25,6 +25,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 from src.http_client import ResilientHTTPClient
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ class PydanticInvestmentEngine:
                 result.risk = risk_out
                 result.models_used["risk_officer"] = risk_model
         except Exception as e:
-            logger.warning(f"风控失败: {e}")
+            logger.warning(f"风控失败: {scrub_secrets(str(e))}")
             result.risk = RiskOutput(approved=False, veto_reason=f"风控系统异常: {e}")
 
         # 3. 串行: 总监决策（如果未被否决）
@@ -278,7 +279,7 @@ class PydanticInvestmentEngine:
                     result.director = dir_out
                     result.models_used["director"] = dir_model
             except Exception as e:
-                logger.warning(f"总监决策失败: {e}")
+                logger.warning(f"总监决策失败: {scrub_secrets(str(e))}")
 
         result.elapsed_seconds = time.time() - t0
         logger.info(f"[PydanticInvestment] {symbol} 分析完成: {result.final_recommendation} ({result.elapsed_seconds:.1f}s)")

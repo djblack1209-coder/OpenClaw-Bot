@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx
-from src.utils import now_et
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,7 @@ class MultiPathExecutor:
                 result.attempts.append({
                     "type": exec_type, "success": False, "error": str(e)
                 })
-                logger.warning(f"执行路径 {exec_type} 失败: {e}")
+                logger.warning(f"执行路径 {exec_type} 失败: {scrub_secrets(str(e))}")
 
         result.elapsed_seconds = time.time() - start
         if not result.success:
@@ -396,7 +396,7 @@ class MultiPathExecutor:
         except ImportError:
             logger.info("Retell AI 未安装，尝试 Twilio")
         except Exception as e:
-            logger.warning(f"Retell 拨号失败: {e}")
+            logger.warning(f"Retell 拨号失败: {scrub_secrets(str(e))}")
 
         # 降级到 Twilio
         try:
@@ -511,7 +511,7 @@ class MultiPathExecutor:
                 source="executor",
             )
         except Exception as e:
-            logger.warning(f"人工通知推送失败: {e}")
+            logger.warning(f"人工通知推送失败: {scrub_secrets(str(e))}")
 
     def get_stats(self) -> Dict:
         """获取执行统计"""

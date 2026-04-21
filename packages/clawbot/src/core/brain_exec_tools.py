@@ -12,6 +12,7 @@ from config.prompts import SOUL_CORE, INFO_QUERY_PROMPT
 from src.bot.error_messages import error_ai_busy
 from src.constants import FAMILY_DEEPSEEK, FAMILY_QWEN
 from src.resilience import api_limiter
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class ToolsExecutorMixin:
                 answer = resp.choices[0].message.content
                 return {"source": "llm", "answer": answer}
         except Exception as e:
-            logger.warning(f"LLM查询失败: {e}")
+            logger.warning(f"LLM查询失败: {scrub_secrets(str(e))}")
         return {"source": "llm_fallback", "answer": error_ai_busy()}
 
     async def _exec_system_status(self, params: Dict) -> Dict:
@@ -62,7 +63,7 @@ class ToolsExecutorMixin:
             status = ClawBotRPC._rpc_system_status()
             return {"source": "rpc", "status": status}
         except Exception as e:
-            logger.warning(f"获取系统状态失败: {e}")
+            logger.warning(f"获取系统状态失败: {scrub_secrets(str(e))}")
             return {"source": "status_error", "error": str(e)}
 
     async def _exec_evolution_scan(self, params: Dict) -> Dict:
@@ -78,7 +79,7 @@ class ToolsExecutorMixin:
                 "proposals": [p.to_dict() for p in proposals[:5]],
             }
         except Exception as e:
-            logger.warning(f"进化扫描失败: {e}")
+            logger.warning(f"进化扫描失败: {scrub_secrets(str(e))}")
             return {"source": "evolution_error", "error": str(e)}
 
     async def _exec_code_task(self, params: Dict) -> Dict:
@@ -113,5 +114,5 @@ class ToolsExecutorMixin:
                     result = await tool.execute_python(code)
                     return {"source": "code_tool_llm", "code": code[:500], "output": result}
         except Exception as e:
-            logger.warning(f"代码任务失败: {e}")
+            logger.warning(f"代码任务失败: {scrub_secrets(str(e))}")
         return {"source": "code_fallback", "note": "代码执行模块异常"}
