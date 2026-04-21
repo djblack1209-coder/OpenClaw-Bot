@@ -149,10 +149,14 @@ export function Store() {
     if (!id) return;
     setApproving(id);
     try {
-      await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
+      const resp = await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'approved' }),
       });
+      if (!resp.ok) {
+        const detail = await resp.text().catch(() => '');
+        throw new Error(detail || `HTTP ${resp.status}`);
+      }
       toast.success(t('store.approveSuccess'), { channel: 'log' });
       // 刷新数据
       await fetchData();
@@ -161,17 +165,21 @@ export function Store() {
     } finally {
       setApproving(null);
     }
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   /* ── 拒绝提案 ── */
   const handleReject = useCallback(async (id: string) => {
     if (!id) return;
     setApproving(id);
     try {
-      await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
+      const resp = await clawbotFetch(`/api/v1/evolution/proposals/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'rejected' }),
       });
+      if (!resp.ok) {
+        const detail = await resp.text().catch(() => '');
+        throw new Error(detail || `HTTP ${resp.status}`);
+      }
       toast.success(t('store.rejectSuccess'), { channel: 'log' });
       await fetchData();
     } catch (err) {
@@ -179,7 +187,7 @@ export function Store() {
     } finally {
       setApproving(null);
     }
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   /* ── 搜索 + 状态筛选 ── */
   const filtered = useMemo(() => {

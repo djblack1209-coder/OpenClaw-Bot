@@ -34,13 +34,54 @@ def ping():
 
 @router.get("/perf")
 def perf_metrics():
-    """获取性能度量指标 — 返回所有已记录指标的统计数据和格式化报告"""
+    """获取性能度量指标 — 系统资源 + API 延迟统计（同时返回前端期望的扁平字段）"""
     try:
         from src.perf_metrics import get_tracker
+        from src.monitoring_extras import get_system_resources
 
         tracker = get_tracker()
+        all_stats = tracker.get_all_stats()
+        resources = get_system_resources()
+
+        # 把 perf_timer 记录的延迟数据转为前端需要的 latency_metrics 列表
+        latency_metrics = [
+            {"name": name, **stats}
+            for name, stats in all_stats.items()
+        ]
+
+        # 聚合指标
+        total_calls = sum(s.get("count", 0) for s in all_stats.values())
+        all_avgs = [s["avg"] for s in all_stats.values() if s.get("count", 0) > 0]
+        avg_response_ms = (sum(all_avgs) / len(all_avgs) * 1000) if all_avgs else 0
+
+        # 系统资源（转为前端期望的字段名）
+        cpu_count = os.cpu_count() or 1
+        cpu_load = resources.get("cpu_load_1m", 0)
+        mem_total_gb = resources.get("memory_total_gb", 0)
+        mem_used_gb = resources.get("memory_used_gb", 0)
+        disk_total_gb = resources.get("disk_total_gb", 0)
+        disk_free_gb = resources.get("disk_free_gb", 0)
+
         return {
-            "metrics": tracker.get_all_stats(),
+            # 系统资源 — 前端各组件统一字段
+            "cpu_percent": round(min(cpu_load / cpu_count * 100, 100), 1),
+            "memory_mb": round(mem_used_gb * 1024),
+            "memory_total_mb": round(mem_total_gb * 1024),
+            "memory_used_mb": round(mem_used_gb * 1024),
+            "memory_percent": resources.get("memory_percent", 0),
+            "disk_percent": resources.get("disk_used_percent", 0),
+            "disk_used_gb": round(disk_total_gb - disk_free_gb, 1),
+            "disk_total_gb": disk_total_gb,
+
+            # API 延迟
+            "latency_metrics": latency_metrics,
+
+            # 聚合
+            "llm_calls": total_calls,
+            "avg_response_ms": round(avg_response_ms, 1),
+
+            # 兼容旧字段
+            "metrics": all_stats,
             "report": tracker.format_report(),
         }
     except Exception as e:
