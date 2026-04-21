@@ -20,6 +20,21 @@ import { isTauri } from '@/lib/tauri-core';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
 
+/** 在系统默认浏览器中打开 URL（Tauri 用 shell plugin，非 Tauri 用 window.open） */
+async function openExternal(url: string): Promise<void> {
+  if (isTauri()) {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open(url);
+    } catch {
+      // shell plugin 加载失败，降级
+      window.open(url, '_blank');
+    }
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 /* ====== 入场动画 ====== */
 const containerVariants = {
   hidden: {},
@@ -488,13 +503,15 @@ export function Settings(_props: SettingsProps) {
 
             {/* 主按钮 */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 const urls = [
                   'https://goofish.com',
                   'https://x.com/login',
                   'https://www.xiaohongshu.com',
                 ];
-                urls.forEach(url => window.open(url, '_blank'));
+                for (const url of urls) {
+                  await openExternal(url);
+                }
                 toast.success(t('settings.openedLoginPages'), { channel: 'log' });
               }}
               className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer w-full justify-center mb-4"
@@ -521,8 +538,8 @@ export function Settings(_props: SettingsProps) {
               ].map((platform) => (
                 <button
                   key={platform.name}
-                  onClick={() => {
-                    window.open(platform.url, '_blank');
+                  onClick={async () => {
+                    await openExternal(platform.url);
                     toast.success(`${t('settings.openedPlatformLogin')}: ${platform.name}`, { channel: 'log' });
                   }}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
