@@ -235,6 +235,12 @@ export function AIConfig() {
 
   /* ── 派生数据 ── */
   const enabledCount = channels.filter(isChannelEnabled).length;
+  const totalChannelsDisplay = channels.length > 0
+    ? channels.length
+    : Number((poolStats as any)?.total_sources ?? (poolStats as any)?.pool_total_sources ?? 0);
+  const enabledChannelsDisplay = enabledCount > 0
+    ? enabledCount
+    : Number((poolStats as any)?.active_sources ?? (poolStats as any)?.pool_active_sources ?? 0);
 
   // 从渠道提取所有唯一模型
   const allModels = Array.from(
@@ -329,7 +335,7 @@ export function AIConfig() {
               {/* 统计指标 + 刷新 */}
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                  {channels.length} 渠道 · {enabledCount} 启用 · {allModels.length} 模型
+                  {totalChannelsDisplay} 渠道 · {enabledChannelsDisplay} 启用 · {allModels.length} 模型
                 </span>
                 <button
                   onClick={() => fetchData(true)}
