@@ -242,14 +242,16 @@ class APIServer:
         # 请求体大小限制 — 防止超大请求消耗资源（含 chunked 传输防绕过 HI-491）
         self.app.add_middleware(RequestSizeLimitMiddleware)
 
-        # CORS — only localhost (Tauri Manager)
+        # CORS — 允许本地开发和 Tauri 生产环境访问
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=[
-                "http://localhost:1420",  # Tauri dev
+                "http://localhost:1420",      # Vite dev（localhost）
+                "http://127.0.0.1:1420",      # Vite dev（IP 地址，浏览器调试模式）
                 f"http://localhost:{os.environ.get('GATEWAY_PORT', '18789')}",  # OpenClaw gateway
-                "tauri://localhost",  # Tauri production
-                "https://tauri.localhost",  # Tauri production (Windows)
+                f"http://127.0.0.1:{os.environ.get('GATEWAY_PORT', '18789')}",  # OpenClaw gateway（IP）
+                "tauri://localhost",          # Tauri 生产（macOS/Linux）
+                "https://tauri.localhost",    # Tauri 生产（Windows）
             ],
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "DELETE"],
