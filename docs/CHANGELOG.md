@@ -12,6 +12,40 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 审计修复第五轮：安全脱敏 + 新闻摘要修复 + AI 降级回复修正
+> 领域: `backend`
+> 影响模块: telegram_gateway.py, alpaca_bridge.py, qr_login.py, security.py, xianyu_apis.py, llm_routing_config.py, world_monitor.py, conversation.py, brain.py
+> 关联问题: HI-709, HI-710, HI-711
+
+### 变更内容
+
+**HI-709 — 10 处高危日志脱敏（P0 安全）**
+- 6 个文件 10 处 `logger.error(f"...{e}")` 加上 `scrub_secrets(str(e))` 包裹
+- `telegram_gateway.py` 用户侧消息改为固定文案，不再暴露原始异常
+- `alpaca_bridge.py` 4 处连接/查询/下单错误的 logger + return dict 同步脱敏
+- `qr_login.py` 2 处、`security.py` 1 处、`xianyu_apis.py` 1 处、`llm_routing_config.py` 1 处
+
+**HI-710 — 新闻摘要 Atom 格式解析（P2）**
+- `world_monitor.py` `_parse_rss()` 增加 Atom `<summary>`/`<content>` 回退解析
+- 先查 RSS `<description>`，为空则尝试 Atom 命名空间的 `summary` 和 `content`
+
+**HI-711 — AI 助手降级回复修正（P1）**
+- `brain.py` LLM 闲聊失败时返回键名从 `message` 改为 `_original_input`，避免被提取链捡走
+- `brain.py` 降级结果新增 `answer: "抱歉，我暂时无法处理这个请求，请稍后再试。"` 友好文案
+- `brain.py` 闲聊 LLM 失败日志从 `debug` 提升到 `warning`
+- `conversation.py` 文本提取链前置 `forward_to_chat` 拦截，双重防护
+
+### 文件变更
+- `packages/clawbot/src/gateway/telegram_gateway.py` — 用户侧异常脱敏
+- `packages/clawbot/src/alpaca_bridge.py` — 4 处 logger + return 脱敏
+- `packages/clawbot/src/xianyu/qr_login.py` — 2 处 logger + return 脱敏
+- `packages/clawbot/src/core/security.py` — PIN 日志脱敏
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — 商品查询日志脱敏
+- `packages/clawbot/src/llm_routing_config.py` — 配置解析日志脱敏
+- `packages/clawbot/src/monitoring/world_monitor.py` — Atom 摘要解析
+- `packages/clawbot/src/api/routers/conversation.py` — forward_to_chat 拦截
+- `packages/clawbot/src/core/brain.py` — 降级键名修正 + 友好文案
+
 ## 2026-04-21 — 审计修复第四轮：AI 助手回复修正 + 商店翻译补齐 + 设置页无障碍修复
 > 领域: `backend` `frontend`
 > 影响模块: conversation.py, prompts.py, Store/index.tsx, Settings/index.tsx, zh-CN.ts, en-US.ts
