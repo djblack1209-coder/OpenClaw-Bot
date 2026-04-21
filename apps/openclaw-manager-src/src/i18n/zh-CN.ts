@@ -903,7 +903,7 @@ export const zhCN: Record<string, string> = {
   'worldMonitor.activeConflicts': '活跃冲突',
   'worldMonitor.conflictZoneMonitor': '冲突区监控',
   'worldMonitor.activeZones': '活跃区域',
-  'worldMonitor.noHighRisk': '暂无高风险区域',
+  'worldMonitor.noHighRisk': '当前无危急/高风险区域（分数 ≥ 70 时触发）',
   'worldMonitor.infrastructure': '基础设施',
   'worldMonitor.criticalInfraStatus': '关键设施状态',
   'worldMonitor.internetOutage': '互联网中断',

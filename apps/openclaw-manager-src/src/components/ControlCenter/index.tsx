@@ -117,11 +117,19 @@ const SOCIAL_SWITCH_FALLBACK = { desc: '社交模块开关', color: 'var(--accen
 /** 社交开关中文名映射（按需扩展） */
 const SOCIAL_SWITCH_LABELS: Record<string, string> = {
   xianyu_enabled: '闲鱼客服',
+  xhs_enabled: '小红书',
   twitter_enabled: '推特发布',
+  x_twitter_enabled: 'X / 推特',
   telegram_enabled: 'Telegram',
   weibo_enabled: '微博',
   auto_reply_enabled: '自动回复',
   content_publish_enabled: '内容发布',
+  social_enabled: '社交总开关',
+  douyin_enabled: '抖音',
+  bilibili_enabled: '哔哩哔哩',
+  auto_hotspot_post: '热点自动发帖',
+  content_review_mode: '内容审核模式',
+  scheduler_paused: '调度器暂停',
 };
 
 /* ====== 工具函数 ====== */

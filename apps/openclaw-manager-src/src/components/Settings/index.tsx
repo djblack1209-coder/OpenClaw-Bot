@@ -184,13 +184,19 @@ export function Settings(_props: SettingsProps) {
 
   /* —— 保存配置 —— */
   const handleSave = async () => {
+    if (!inTauri) {
+      toast.warning(t('settings.browserModeCannotSave') || '浏览器模式下无法保存设置，请通过桌面客户端操作', { channel: 'notification' });
+      return;
+    }
     setSaving(true);
     try {
       const notifConfig: Record<string, boolean> = {};
       notifications.forEach((n) => { notifConfig[n.id] = n.enabled; });
       await api.saveConfig({ ...config, notifications: notifConfig });
+      toast.success(t('settings.saveSuccess') || '设置已保存', { channel: 'notification' });
     } catch (err) {
       console.error('[Settings] 保存失败:', err);
+      toast.error(`${t('settings.saveFailed') || '保存失败'}: ${err instanceof Error ? err.message : '未知错误'}`, { channel: 'notification' });
     } finally {
       setSaving(false);
     }

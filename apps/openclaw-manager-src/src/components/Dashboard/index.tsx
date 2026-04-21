@@ -159,7 +159,12 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
         clawbotFetchJson<NotificationItem[]>('/api/v1/system/notifications?limit=10'),
       ]);
 
-      if (svcRes.status === 'fulfilled') setServices(Array.isArray(svcRes.value) ? svcRes.value : []);
+      if (svcRes.status === 'fulfilled') {
+        // 后端返回 { services: [...] } 或直接数组，兼容两种格式
+        const raw = svcRes.value;
+        const list = Array.isArray(raw) ? raw : (Array.isArray((raw as Record<string, unknown>)?.services) ? (raw as Record<string, unknown>).services as ServiceItem[] : []);
+        setServices(list);
+      }
       if (statusRes.status === 'fulfilled') setSystemStatus(statusRes.value);
       if (perfRes.status === 'fulfilled') setPerf(perfRes.value);
       if (logRes.status === 'fulfilled') setLogs(Array.isArray(logRes.value) ? logRes.value : []);
