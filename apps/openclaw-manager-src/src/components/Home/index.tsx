@@ -96,7 +96,9 @@ const cardVariants = {
 export function HomeDashboard() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const serviceStatus = useAppStore((s) => s.serviceStatus);
-  const isRunning = serviceStatus?.running ?? false;
+  // 浏览器模式下 Tauri IPC 不可用，serviceStatus 始终为 null
+  // 此时用 apiReachable（HTTP API 是否可达）作为 fallback 判断核心引擎状态
+  const isTauriRunning = serviceStatus?.running ?? false;
   const { t } = useLanguage();
 
   /* ====== 数据状态 ====== */
@@ -114,6 +116,8 @@ export function HomeDashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   /* API 连通性状态: null=未检测, true=可达, false=全部失败 */
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+  // 核心引擎是否运行：Tauri 用 IPC 结果，浏览器用 API 可达性 fallback
+  const isRunning = isTauriRunning || (apiReachable === true);
 
   /* WebSocket 实时日志推送 */
   useClawbotWS('notification', useCallback((event) => {
@@ -462,8 +466,8 @@ export function HomeDashboard() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.autoTrading')}</span>
-                <span className="font-mono text-[10px]" style={{ color: bots.length > 0 ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {bots.length > 0 ? t('home.tradingRunning') : t('home.tradingStandby')}
+                <span className="font-mono text-[10px]" style={{ color: isRunning && bots.length > 0 ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
+                  {isRunning && bots.length > 0 ? t('home.tradingRunning') : t('home.tradingStandby')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
