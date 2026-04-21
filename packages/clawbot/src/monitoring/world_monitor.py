@@ -580,8 +580,8 @@ class FinanceRadar:
                             continue
                         # fast_info 比 info 快得多，优先使用
                         fi = ticker.fast_info
-                        price = float(fi.get("lastPrice", 0) or fi.get("last_price", 0) or 0)
-                        prev_close = float(fi.get("previousClose", 0) or fi.get("previous_close", 0) or 0)
+                        price = float(fi.get("lastPrice", 0) or 0)
+                        prev_close = float(fi.get("previousClose", 0) or 0)
                         change_pct = (
                             ((price - prev_close) / prev_close * 100)
                             if prev_close
