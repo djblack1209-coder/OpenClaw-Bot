@@ -22,7 +22,7 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
     return sessions;
   } catch (e) {
     console.error('获取会话列表失败:', e);
-    toast.error('获取会话列表失败');
+    toast.error('获取会话列表失败', { channel: 'notification' });
     return [];
   } finally {
     store.setLoadingSessions(false);
@@ -46,7 +46,7 @@ export async function createSession(title?: string): Promise<string | null> {
     return session.id;
   } catch (e) {
     console.error('创建会话失败:', e);
-    toast.error('创建会话失败');
+    toast.error('创建会话失败', { channel: 'notification' });
     return null;
   }
 }
@@ -62,7 +62,7 @@ export async function loadSession(sessionId: string): Promise<void> {
     store.setMessages(session.messages ?? []);
   } catch (e) {
     console.error('加载会话详情失败:', e);
-    toast.error('加载会话详情失败');
+    toast.error('加载会话详情失败', { channel: 'notification' });
   }
 }
 
@@ -77,7 +77,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
     await fetchSessions();
   } catch (e) {
     console.error('删除会话失败:', e);
-    toast.error('删除会话失败');
+    toast.error('删除会话失败', { channel: 'notification' });
   }
 }
 

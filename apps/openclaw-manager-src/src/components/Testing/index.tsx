@@ -117,6 +117,7 @@ export function Testing() {
   const handleQuickAction = (action: typeof QUICK_ACTIONS[number]) => {
     toast.info(`请在终端手动执行:\n${action.desc.startsWith('testing.') ? t(action.desc) : action.desc}`, {
       duration: 5000,
+      channel: 'log',
     });
   };
 

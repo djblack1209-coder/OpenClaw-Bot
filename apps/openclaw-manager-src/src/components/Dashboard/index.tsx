@@ -185,12 +185,12 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
     setActionLoading(`${svc.id}-${action}`);
     try {
       await clawbotFetchJson(`/api/v1/system/services/${svc.id}/${action}`, { method: 'POST' });
-      toast.success(`${svc.label || svc.name} ${actionLabel}${t('dashboard.actionSuccess')}`);
+      toast.success(`${svc.label || svc.name} ${actionLabel}${t('dashboard.actionSuccess')}`, { channel: 'log' });
       /* 刷新服务列表 */
       await fetchAll(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`${actionLabel}${t('dashboard.actionFailed')}: ${msg}`);
+      toast.error(`${actionLabel}${t('dashboard.actionFailed')}: ${msg}`, { channel: 'notification' });
     } finally {
       setActionLoading(null);
     }

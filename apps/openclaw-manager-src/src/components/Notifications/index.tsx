@@ -232,9 +232,9 @@ export function Notifications() {
     try {
       await api.markNotificationRead(id);
       setBackendItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
-      toast.success(t('notifications.markedRead'));
+      toast.success(t('notifications.markedRead'), { channel: 'log' });
     } catch {
-      toast.error(t('notifications.markReadFailed'));
+      toast.error(t('notifications.markReadFailed'), { channel: 'notification' });
     } finally {
       setMarkingReadId(null);
     }
@@ -248,9 +248,9 @@ export function Notifications() {
       setFrontendItems(getFrontendNotifications());
       await api.markAllNotificationsRead();
       setBackendItems((prev) => prev.map((i) => ({ ...i, read: true })));
-      toast.success(t('notifications.allMarkedRead'));
+      toast.success(t('notifications.allMarkedRead'), { channel: 'log' });
     } catch {
-      toast.error(t('notifications.markAllReadFailed'));
+      toast.error(t('notifications.markAllReadFailed'), { channel: 'notification' });
     } finally {
       setMarkingAllRead(false);
     }

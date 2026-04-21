@@ -200,7 +200,7 @@ export function AIConfig() {
     setTogglingIds((prev) => new Set(prev).add(channelId));
     try {
       await parseResponse(await api.newApiToggleChannel(channelId));
-      toast.success(t('aiConfig.channelToggled'));
+      toast.success(t('aiConfig.channelToggled'), { channel: 'log' });
       setChannels((prev) =>
         prev.map((ch) =>
           ch.id === channelId
@@ -210,7 +210,7 @@ export function AIConfig() {
       );
     } catch (err) {
       console.error('[AIConfig] 切换渠道失败:', err);
-      toast.error(t('aiConfig.channelToggleFailed'));
+      toast.error(t('aiConfig.channelToggleFailed'), { channel: 'notification' });
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
