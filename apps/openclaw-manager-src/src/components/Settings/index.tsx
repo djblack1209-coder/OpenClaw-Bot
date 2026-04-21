@@ -437,9 +437,9 @@ export function Settings(_props: SettingsProps) {
               ]).map((option) => {
                 const isSelected = lang === option.value;
                 return (
-                  <div
+                  <button
                     key={option.value}
-                    className="flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all"
+                    className="flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all w-full text-left"
                     style={{
                       background: isSelected ? 'rgba(0,212,255,0.08)' : 'var(--bg-base)',
                       border: isSelected ? '1px solid rgba(0,212,255,0.2)' : '1px solid transparent',
@@ -455,7 +455,7 @@ export function Settings(_props: SettingsProps) {
                         <Check size={12} style={{ color: 'var(--accent-cyan)' }} />
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
