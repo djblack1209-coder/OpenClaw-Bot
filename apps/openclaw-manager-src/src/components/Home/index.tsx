@@ -314,7 +314,7 @@ export function HomeDashboard() {
                 <div className="text-metric mt-1">{xianyu.unreadChats}</div>
               </div>
               <div className="ml-auto">
-                <span className="text-label">Cookie</span>
+                <span className="text-label">{t('home.cookieLabel')}</span>
                 <div className="flex items-center gap-1.5 mt-1">
                   <Cookie size={14} style={{
                     color: xianyu.cookieStatus === 'ok' ? 'var(--accent-green)'
@@ -326,7 +326,7 @@ export function HomeDashboard() {
                          : xianyu.cookieStatus === 'expired' ? 'var(--accent-red)'
                          : 'var(--text-tertiary)',
                   }}>
-                    {xianyu.cookieStatus === 'ok' ? 'VALID' : xianyu.cookieStatus === 'expired' ? 'EXPIRED' : 'N/A'}
+                    {xianyu.cookieStatus === 'ok' ? t('home.cookieValid') : xianyu.cookieStatus === 'expired' ? t('home.cookieExpired') : t('home.cookieNA')}
                   </span>
                 </div>
               </div>
