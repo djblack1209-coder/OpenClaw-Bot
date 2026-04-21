@@ -387,7 +387,7 @@ export function Money() {
                     {xianyuData ? (
                       <div className="mt-2 space-y-1.5 font-mono text-xs">
                         <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.revenueLastDays', )}</span>
+                          <span style={{ color: 'var(--text-disabled)' }}>{`${xianyuData.days ?? 30}${t('money.daysRevenue')}`}</span>
                           <span className="font-bold" style={{ color: 'var(--accent-amber)' }}>
                             {formatCNY(xianyuData.revenue ?? 0)}
                           </span>

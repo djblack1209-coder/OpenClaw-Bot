@@ -243,8 +243,8 @@ async def get_extended_monitoring():
             )
             if r.status_code == 200:
                 result["climate"]["seismic"]["value"] = r.json().get("count", 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[monitor/extended] USGS 地震数据拉取失败: {e}")
 
         # 2. NASA EONET 自然事件（山火/风暴等，免费公开 API）
         try:
@@ -266,8 +266,8 @@ async def get_extended_monitoring():
                 result["climate"]["extreme_weather"]["value"] = storms
                 # 其余事件归类为气候异常
                 result["climate"]["climate_anomaly"]["value"] = len(events) - wildfires - storms
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[monitor/extended] NASA EONET 数据拉取失败: {e}")
 
         # 3. CISA KEV 已知利用漏洞目录（免费公开 JSON）
         try:
@@ -280,8 +280,8 @@ async def get_extended_monitoring():
                 week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
                 recent = sum(1 for v in vulns if v.get("dateAdded", "") >= week_ago)
                 result["cyber"]["active_exploits"]["value"] = recent
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[monitor/extended] CISA KEV 数据拉取失败: {e}")
 
         # 4. 基于内部新闻分类的推算（从自己的 RSS 新闻源中统计）
         try:
@@ -295,8 +295,8 @@ async def get_extended_monitoring():
             result["cyber"]["ransomware"]["value"] = max(cyber_news // 3, 0)
             result["cyber"]["ddos"]["value"] = max(cyber_news // 4, 0)
             result["cyber"]["supply_chain"]["value"] = max(cyber_news // 6, 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[monitor/extended] 内部新闻统计失败: {e}")
 
         # 5. 基础设施状态基于全球风险指数推断
         try:
@@ -310,7 +310,7 @@ async def get_extended_monitoring():
                 result["infrastructure"]["gps_jamming"]["value"] = max(int(risk_level / 10), 3)
             elif risk_level > 50:
                 result["infrastructure"]["gps_jamming"]["value"] = max(int(risk_level / 20), 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[monitor/extended] 风险指数推断失败: {e}")
 
     return result

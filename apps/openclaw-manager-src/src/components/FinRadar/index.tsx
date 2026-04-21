@@ -289,8 +289,18 @@ export function FinRadar() {
     const upCount = allEntries.filter((e) => e.change > 0).length;
     const downCount = allEntries.filter((e) => e.change < 0).length;
     const btc = marketData.crypto.find((c) => c.symbol.toUpperCase() === 'BTC');
-    const gold = marketData.commodities.find((c) => c.symbol.toUpperCase().includes('XAU') || c.name.toLowerCase().includes('gold'));
-    const oil = marketData.commodities.find((c) => c.symbol.toUpperCase().includes('CL') || c.name.toLowerCase().includes('oil') || c.name.toLowerCase().includes('crude'));
+    const gold = marketData.commodities.find((c) =>
+      c.symbol.toUpperCase().includes('XAU')
+      || c.symbol.toUpperCase().includes('GC=')
+      || c.name.toLowerCase().includes('gold')
+      || c.name.includes('黄金')
+    );
+    const oil = marketData.commodities.find((c) =>
+      c.symbol.toUpperCase().includes('CL')
+      || c.name.toLowerCase().includes('oil')
+      || c.name.toLowerCase().includes('crude')
+      || c.name.includes('原油')
+    );
 
     return [
       { label: t('finRadar.up'), value: String(upCount), color: 'var(--accent-green)' },

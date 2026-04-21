@@ -246,10 +246,10 @@ export function Testing() {
                     </div>
                     <div className="flex-1 text-left">
                       <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {action.label}
+                        {t(action.label)}
                       </p>
                       <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                        {action.desc}
+                        {action.desc.startsWith('testing.') ? t(action.desc) : action.desc}
                       </p>
                     </div>
                   </button>

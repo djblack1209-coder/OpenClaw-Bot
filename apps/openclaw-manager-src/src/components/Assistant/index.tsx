@@ -14,7 +14,7 @@ import { clawbotFetch } from '../../lib/tauri-core';
 /* ========== 类型 ========== */
 type AssistantMode = 'chat' | 'invest' | 'execute' | 'create';
 interface ChatMessage { id: string; role: 'user' | 'ai'; content: string; timestamp: string }
-interface SessionRecord { session_id: string; title: string; created_at: string; message_count: number }
+interface SessionRecord { id: string; title: string; created_at: string; message_count: number }
 
 /* ========== 模式配置（4 模式 × 6 快捷指令） ========== */
 const I = 14; // 图标尺寸
@@ -80,7 +80,7 @@ function fmtSessionTime(ts: string): string {
   return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${t}`;
 }
 
-/** 解析 SSE 流：data: {"type":"chunk","content":"..."}\n\n */
+/** 解析 SSE 流：兼容标准 SSE event/data 与旧格式 JSON */
 async function readSSE(
   resp: Response,
   onChunk: (t: string) => void,
@@ -103,20 +103,37 @@ async function readSSE(
       const parts = buf.split('\n\n');
       buf = parts.pop() || '';
       for (const part of parts) {
-        const m = part.trim().match(/^data:\s*(.+)$/m);
-        if (!m) continue;
+        const eventMatch = part.match(/^event:\s*(.+)$/m);
+        const dataMatch = part.match(/^data:\s*(.+)$/m);
+        if (!dataMatch) continue;
+        const eventType = eventMatch?.[1]?.trim() || '';
         try {
-          const p = JSON.parse(m[1]);
-          if (p.type === 'chunk' && p.content) onChunk(p.content);
+          const p = JSON.parse(dataMatch[1]);
+          if (eventType === 'chunk' && p.text) onChunk(p.text);
+          else if (eventType === 'done') { onDone(); return; }
+          else if (eventType === 'error') { onError(p.text || '未知错误'); return; }
+          else if (p.type === 'chunk' && p.content) onChunk(p.content);
           else if (p.type === 'done') { onDone(); return; }
           else if (p.type === 'error') { onError(p.content || '未知错误'); return; }
-        } catch { onChunk(m[1]); }
+        } catch {
+          if (eventType === 'chunk') onChunk(dataMatch[1]);
+        }
       }
     }
     // 处理残余 buffer
     if (buf.trim()) {
-      const m = buf.trim().match(/^data:\s*(.+)$/m);
-      if (m) try { const p = JSON.parse(m[1]); if (p.type === 'chunk') onChunk(p.content); } catch { onChunk(m[1]); }
+      const eventMatch = buf.trim().match(/^event:\s*(.+)$/m);
+      const dataMatch = buf.trim().match(/^data:\s*(.+)$/m);
+      const eventType = eventMatch?.[1]?.trim() || '';
+      if (dataMatch) {
+        try {
+          const p = JSON.parse(dataMatch[1]);
+          if (eventType === 'chunk' && p.text) onChunk(p.text);
+          else if (p.type === 'chunk' && p.content) onChunk(p.content);
+        } catch {
+          if (eventType === 'chunk') onChunk(dataMatch[1]);
+        }
+      }
     }
     onDone();
   } catch (e) { onError(String(e)); }
@@ -216,14 +233,14 @@ export function Assistant() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().catch(() => 'Request failed')}`);
       await readSSE(resp,
         (chunk) => setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content + chunk } : m)),
-        () => { finish(); loadSessions(); },
+        () => { finish(); if (sid) selectSession(sid); loadSessions(); },
         (err) => { setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content || `⚠️ ${err}` } : m)); finish(); },
       );
     } catch (e) {
       setMessages(p => p.map(m => m.id === aiId ? { ...m, content: `⚠️ ${e instanceof Error ? e.message : e}` } : m));
       finish();
     }
-  }, [input, loading, activeId, loadSessions]);
+  }, [input, loading, activeId, loadSessions, selectSession]);
 
   // 附件上传处理：选择文件 → 上传到后端 → 提取文本 → 追加到输入框
   const handleFileUpload = useCallback(async (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -478,10 +495,10 @@ export function Assistant() {
               <div className="text-center py-4 text-[10px] text-[var(--text-tertiary)]">{t('assistant.noSessions')}</div>
             )}
             {sessions.map((s, i) => (
-              <motion.div key={s.session_id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                onClick={() => selectSession(s.session_id)}
+              <motion.div key={s.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
+                onClick={() => selectSession(s.id)}
                 className={clsx('group flex items-start justify-between gap-2 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-white/[0.03] transition-colors duration-200',
-                  s.session_id === activeId && 'bg-white/[0.05] border border-white/[0.06]')}>
+                  s.id === activeId && 'bg-white/[0.05] border border-white/[0.06]')}>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-[var(--text-primary)] truncate">{s.title}</div>
                   <div className="text-[10px] font-mono text-[var(--text-tertiary)] mt-0.5">{fmtSessionTime(s.created_at)}</div>
@@ -489,7 +506,7 @@ export function Assistant() {
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                   <MessageSquare size={10} className="text-[var(--text-tertiary)]" />
                   <span className="text-[10px] font-mono text-[var(--text-tertiary)]">{s.message_count}</span>
-                  <button onClick={e => deleteSession(s.session_id, e)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-[var(--text-tertiary)] hover:text-red-400" title={t('assistant.deleteSession')}>
+                  <button onClick={e => deleteSession(s.id, e)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-[var(--text-tertiary)] hover:text-red-400" title={t('assistant.deleteSession')}>
                     <Trash2 size={10} />
                   </button>
                 </div>

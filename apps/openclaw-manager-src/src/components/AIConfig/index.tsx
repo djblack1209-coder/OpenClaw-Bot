@@ -180,6 +180,19 @@ export function AIConfig() {
       if (poolResp.status === 'fulfilled') {
         const data = poolResp.value as PoolStats;
         setPoolStats(data);
+        if (channelsResp.status !== 'fulfilled') {
+          const total = Number((data as any)?.total_sources ?? (data as any)?.pool_total_sources ?? 0);
+          if (total > 0) {
+            setChannels(Array.from({ length: total }, (_, i) => ({
+              id: -(i + 1),
+              name: `${t('aiConfig.channelPrefix')} #${i + 1}`,
+              type: 0,
+              status: 1,
+              models: '',
+              response_time: 0,
+            })) as ChannelItem[]);
+          }
+        }
       }
     } catch (err) {
       console.error('[AIConfig] 数据加载失败:', err);

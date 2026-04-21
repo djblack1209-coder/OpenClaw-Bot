@@ -167,6 +167,8 @@ export function HomeDashboard() {
           llmCostDaily: Number(s.total_cost_usd ?? s.cost_today_usd ?? 0),
           activeBots: botsArr.length,
           memoryEntries: Number(s.memory_entries ?? 0),
+          poolActive: Number(s.pool_active_sources ?? prev.poolActive ?? 0),
+          poolTotal: Number(s.pool_total_sources ?? prev.poolTotal ?? 0),
         }));
 
         /* 闲鱼数据 */
