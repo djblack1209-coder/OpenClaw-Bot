@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Cookie,
   Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '@/stores/appStore';

@@ -288,10 +288,10 @@ export function Xianyu() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  XIANYU AI AGENT
+                  闲鱼 AI 客服
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  CUSTOMER SERVICE // AUTO-REPLY ENGINE
+                  智能客服 // 自动回复引擎
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />}
@@ -349,7 +349,7 @@ export function Xianyu() {
             {/* 最近对话列表 */}
             <div>
               <span className="text-label mb-3 block" style={{ color: 'var(--text-tertiary)' }}>
-                RECENT CONVERSATIONS ({conversations.length})
+                最近对话 ({conversations.length})
               </span>
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {conversations.length === 0 && !loading && (
@@ -545,7 +545,7 @@ export function Xianyu() {
             {/* 标题 */}
             <div className="flex items-center gap-2 mb-5">
               <Cookie size={16} style={{ color: cookieColor }} />
-              <span className="text-label" style={{ color: cookieColor }}>COOKIE STATUS</span>
+              <span className="text-label" style={{ color: cookieColor }}>Cookie 状态</span>
             </div>
 
             {/* 大状态指示器 */}
@@ -606,7 +606,7 @@ export function Xianyu() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <RefreshCw size={16} style={{ color: 'var(--accent-cyan)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>SYNC HISTORY</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>同步记录</span>
             </div>
 
             <div className="space-y-2 max-h-[240px] overflow-y-auto">
@@ -642,7 +642,7 @@ export function Xianyu() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Zap size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>AUTO-REPLY</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>自动回复</span>
             </div>
 
             <div className="flex items-center gap-3 mb-6">
