@@ -20,6 +20,7 @@ from enum import Enum
 from typing import Any
 
 import httpx
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 

@@ -58,6 +58,9 @@ tauri-build: tauri-clean ## 构建 Tauri 桌面端 (含自动清理历史残留)
 	@echo "══════ 构建 Tauri 桌面端 ══════"
 	cd $(FRONTEND) && npm run tauri:build
 	@echo "✅ Tauri 构建完成"
+	@echo "══════ 安装到 /Applications ══════"
+	cp -R apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app /Applications/
+	@echo "✅ OpenClaw.app 已安装到 /Applications"
 
 ## ─── 清理 ───
 clean: ## 清理缓存和临时文件

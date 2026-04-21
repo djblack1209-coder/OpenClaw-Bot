@@ -183,11 +183,7 @@ pub async fn clawbot_api_social_status() -> AppResult<Value> {
 #[command]
 pub async fn clawbot_api_social_topics(count: Option<u32>) -> AppResult<Value> {
     let c = count.unwrap_or(10);
-    api_post(
-        &format!("/social/topics?count={}", c),
-        serde_json::json!({}),
-    )
-    .await
+    api_get(&format!("/social/topics?count={}", c)).await
 }
 
 #[command]

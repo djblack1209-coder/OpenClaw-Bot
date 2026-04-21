@@ -62,6 +62,9 @@ async def newapi_status() -> dict[str, Any]:
     except httpx.ConnectError:
         # New-API 服务未启动或无法连接
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 FastAPI 原样处理 HTTPException（如 502/503），不要被下面的通用异常吞掉
+        raise
     except Exception as e:
         logger.exception("检查 New-API 状态失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
@@ -83,6 +86,9 @@ async def list_channels() -> dict[str, Any]:
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("获取 New-API 通道列表失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
@@ -104,6 +110,9 @@ async def list_tokens() -> dict[str, Any]:
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("获取 New-API 令牌列表失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
