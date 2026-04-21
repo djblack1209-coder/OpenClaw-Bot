@@ -294,8 +294,8 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
 ]
 
 
-def _check_process_alive(keyword: str) -> bool:
-    """通过 pgrep 检测进程是否存活"""
+def _check_process_alive(keyword: str, port: int | None = None) -> bool:
+    """检测进程/服务是否存活 — 优先 pgrep，失败则 TCP 端口探活（兼容 Docker 容器）"""
     try:
         result = subprocess.run(
             ["pgrep", "-f", keyword],
@@ -303,9 +303,19 @@ def _check_process_alive(keyword: str) -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
     except Exception:
-        return False
+        pass
+    # pgrep 没找到（可能在 Docker 里），尝试端口探活
+    if port:
+        import socket
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                return True
+        except (OSError, ConnectionRefusedError):
+            pass
+    return False
 
 
 @router.get("/system/services")
@@ -314,7 +324,7 @@ def list_services():
     try:
         services = []
         for svc in _SERVICE_REGISTRY:
-            alive = _check_process_alive(svc["process_keyword"])
+            alive = _check_process_alive(svc["process_keyword"], svc.get("port"))
             services.append(
                 {
                     "id": svc["id"],
@@ -337,7 +347,7 @@ def get_service_status(service_id: str = Path(...)):
     if not svc:
         raise HTTPException(status_code=404, detail="服务不存在")
 
-    alive = _check_process_alive(svc["process_keyword"])
+    alive = _check_process_alive(svc["process_keyword"], svc.get("port"))
     return {
         "id": svc["id"],
         "name": svc["name"],
