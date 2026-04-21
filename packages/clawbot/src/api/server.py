@@ -55,6 +55,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     - 每次请求时清除窗口外的旧时间戳，再判断窗口内请求数是否超限
     - 使用线程锁保证并发安全（uvicorn 可能多线程）
     - 不依赖任何第三方库，纯标准库实现
+    - WebSocket 升级请求直接跳过（BaseHTTPMiddleware 不支持 WS scope）
     """
 
     # 默认限制：每个 IP 每分钟 300 次请求
@@ -71,6 +72,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._request_log: dict[str, list[float]] = defaultdict(list)
         # 线程锁，防止并发写入时数据竞争
         self._lock = threading.Lock()
+
+    async def __call__(self, scope, receive, send):
+        # WebSocket 请求跳过速率限制（BaseHTTPMiddleware 不支持 WS scope，直接 passthrough）
+        if scope["type"] == "websocket":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
     def _get_client_ip(self, request) -> str:
         """提取客户端真实 IP，优先取反代转发头"""
@@ -146,9 +154,18 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     防护两种场景（HI-491 修复）：
     1. 有 Content-Length 头：直接比较数值，快速拒绝
     2. chunked 传输编码（无 Content-Length）：流式读取时累计字节数，超限立即中断
+
+    WebSocket 升级请求直接跳过（BaseHTTPMiddleware 不支持 WS scope）
     """
 
     MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
+
+    async def __call__(self, scope, receive, send):
+        # WebSocket 请求跳过体积限制（BaseHTTPMiddleware 不支持 WS scope，直接 passthrough）
+        if scope["type"] == "websocket":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
     async def dispatch(self, request, call_next):
         content_length = request.headers.get("content-length")
