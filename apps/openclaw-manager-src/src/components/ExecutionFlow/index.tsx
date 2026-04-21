@@ -196,12 +196,12 @@ export function ExecutionFlow() {
         const s = statusRes.value;
         setOmegaStatus(s);
         const newMetrics: EngineMetric[] = [
-          { label: t('executionFlow.metricTodayTasks'), value: String(s.today_tasks ?? s.total_tasks ?? s.task_count ?? 'N/A'), accent: 'var(--accent-cyan)' },
-          { label: t('executionFlow.metricSuccessRate'), value: s.success_rate ? `${s.success_rate}%` : (s.success_count && s.total_count ? `${((Number(s.success_count) / Number(s.total_count)) * 100).toFixed(1)}%` : 'N/A'), accent: 'var(--accent-green)' },
-          { label: t('executionFlow.metricAvgDuration'), value: s.avg_duration ? `${s.avg_duration}s` : (s.avg_response_ms ? `${s.avg_response_ms}ms` : 'N/A'), accent: 'var(--accent-amber)' },
-          { label: t('executionFlow.metricActivePipelines'), value: String(s.active_pipelines ?? s.active_tasks ?? 'N/A'), accent: 'var(--accent-purple)' },
-          { label: t('executionFlow.metricQueuedTasks'), value: String(s.queued_tasks ?? s.pending_tasks ?? 'N/A'), accent: 'var(--text-secondary)' },
-          { label: t('executionFlow.metricFailedTasks'), value: String(s.failed_tasks ?? s.error_count ?? 'N/A'), accent: 'var(--accent-red)' },
+          { label: t('executionFlow.metricTodayTasks'), value: String(s.today_tasks ?? s.total_tasks ?? s.task_count ?? '--'), accent: 'var(--accent-cyan)' },
+          { label: t('executionFlow.metricSuccessRate'), value: s.success_rate ? `${s.success_rate}%` : (s.success_count && s.total_count ? `${((Number(s.success_count) / Number(s.total_count)) * 100).toFixed(1)}%` : '--'), accent: 'var(--accent-green)' },
+          { label: t('executionFlow.metricAvgDuration'), value: s.avg_duration ? `${s.avg_duration}s` : (s.avg_response_ms ? `${s.avg_response_ms}ms` : '--'), accent: 'var(--accent-amber)' },
+          { label: t('executionFlow.metricActivePipelines'), value: String(s.active_pipelines ?? s.active_tasks ?? '--'), accent: 'var(--accent-purple)' },
+          { label: t('executionFlow.metricQueuedTasks'), value: String(s.queued_tasks ?? s.pending_tasks ?? '--'), accent: 'var(--text-secondary)' },
+          { label: t('executionFlow.metricFailedTasks'), value: String(s.failed_tasks ?? s.error_count ?? '--'), accent: 'var(--accent-red)' },
         ];
         setMetrics(newMetrics);
       } else {
@@ -349,11 +349,11 @@ export function ExecutionFlow() {
               </div>
               <div className="flex items-center gap-1.5">
                 <Timer size={12} style={{ color: 'var(--text-tertiary)' }} />
-                <span style={{ color: 'var(--accent-cyan)' }}>{String(omegaStatus?.current_duration || 'N/A')}</span>
+                <span style={{ color: 'var(--accent-cyan)' }}>{String(omegaStatus?.current_duration || '--')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Cpu size={12} style={{ color: 'var(--text-tertiary)' }} />
-                <span style={{ color: 'var(--accent-purple)' }}>{String(omegaStatus?.current_model || 'N/A')}</span>
+                <span style={{ color: 'var(--accent-purple)' }}>{String(omegaStatus?.current_model || '--')}</span>
               </div>
             </div>
           </div>

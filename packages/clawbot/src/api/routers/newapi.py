@@ -134,6 +134,9 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("创建 New-API 通道失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
@@ -157,6 +160,9 @@ async def update_channel(payload: ChannelCreate, channel_id: int = Path(ge=1, de
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("更新 New-API 通道失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
