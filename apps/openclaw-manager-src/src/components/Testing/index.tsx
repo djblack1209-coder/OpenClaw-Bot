@@ -223,7 +223,7 @@ export function Testing() {
                   快速操作
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  QUICK ACTIONS
+                  快捷操作
                 </p>
               </div>
             </div>

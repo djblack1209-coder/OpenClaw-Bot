@@ -90,7 +90,7 @@ export function Header({ currentPage }: HeaderProps) {
             className="font-mono text-[10px] uppercase tracking-wider"
             style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
           >
-            {isRunning ? 'CONNECTED' : 'OFFLINE'}
+            {isRunning ? '已连接' : '离线'}
           </span>
         </div>
 

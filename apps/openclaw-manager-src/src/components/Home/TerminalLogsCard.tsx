@@ -31,9 +31,9 @@ export function TerminalLogsCard({ logs }: Props) {
   return (
     <div className="abyss-card p-5 h-full flex flex-col" style={{ minHeight: '280px' }}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-label">TERMINAL LOGS</span>
+        <span className="text-label">终端日志</span>
         <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-          {logs.length} entries
+          {logs.length} 条
         </span>
       </div>
 
