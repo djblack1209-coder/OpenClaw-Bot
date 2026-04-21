@@ -476,8 +476,27 @@ export function Store() {
           <h3 className="text-label mb-4">{t('store.allProposalsTitle')}</h3>
 
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-[var(--text-tertiary)] font-mono text-sm">
-              {t('common.noData')}
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              {fetchError ? (
+                <>
+                  {/* 加载失败态 — 提示用户检查连接 */}
+                  <span className="font-mono text-sm" style={{ color: 'var(--accent-red)' }}>
+                    无法加载插件数据 — 请检查服务连接
+                  </span>
+                  <button
+                    onClick={() => { setError(null); setFetchError(false); setLoading(true); fetchData(); }}
+                    className="font-mono text-xs px-4 py-2 rounded-lg"
+                    style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(0,212,255,0.25)' }}
+                  >
+                    {t('common.retry')}
+                  </button>
+                </>
+              ) : (
+                /* 正常空态 — 数据确实为空 */
+                <span className="text-[var(--text-tertiary)] font-mono text-sm">
+                  {t('common.noData')}
+                </span>
+              )}
             </div>
           ) : (
             <>
