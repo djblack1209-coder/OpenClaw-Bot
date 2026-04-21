@@ -43,7 +43,7 @@ def get_social_analytics(days: int = Query(default=7, ge=1, le=30)):
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/topics", response_model=Dict[str, Any])
+@router.get("/social/topics", response_model=Dict[str, Any])
 async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
     """发现热门话题"""
     try:

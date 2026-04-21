@@ -266,7 +266,7 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
         "id": "gateway",
         "name": "API 网关",
         "description": "Kiro 反向代理网关",
-        "process_keyword": "kiro",
+        "process_keyword": "openclaw/dist/index.js gateway",
         "port": 18789,
     },
     {
@@ -287,7 +287,7 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
         "id": "kiro-gateway",
         "name": "Kiro 反向代理",
         "description": "Node.js 反向代理网关",
-        "process_keyword": "kiro",
+        "process_keyword": "kiro-gateway/main.py",
         "port": 18793,
         "auto_start_cmd": None,
     },
