@@ -15,7 +15,7 @@ import {
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import type { ChannelConfig } from '../../lib/tauri-core';
 import { clawbotFetchJson, isTauri } from '../../lib/tauri-core';

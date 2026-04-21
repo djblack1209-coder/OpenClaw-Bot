@@ -20,7 +20,7 @@ import {
   Square,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { EnvironmentStatus } from '../../App';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';

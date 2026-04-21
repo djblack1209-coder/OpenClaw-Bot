@@ -19,7 +19,7 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 import { api } from '../../lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { EmptyState } from '../shared/EmptyState';
 
 /* ====== 入场动画 ====== */

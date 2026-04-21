@@ -12,7 +12,7 @@ import {
   Languages, ExternalLink, KeyRound,
   Power, PlayCircle, StopCircle,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { controlAllManagedServices } from '@/lib/tauri-ipc';

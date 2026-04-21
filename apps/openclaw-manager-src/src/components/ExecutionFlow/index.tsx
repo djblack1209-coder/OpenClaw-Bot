@@ -21,7 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { useLanguage } from '@/i18n';
 
 /* ====== 入场动画 ====== */

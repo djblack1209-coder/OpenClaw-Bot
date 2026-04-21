@@ -6,7 +6,7 @@
  */
 
 import { clawbotFetch } from '../lib/tauri';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import { useConversationStore, type SessionSummary, type Session, type Message } from '../stores/conversationStore';
 
 /** 拉取会话列表 */

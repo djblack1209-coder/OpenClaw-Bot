@@ -9,6 +9,7 @@ import { Terminal, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useClawbotWS } from '@/hooks/useClawbotWS';
 import { useLanguage } from '../../i18n';
+import { getFrontendNotifications, subscribeFrontendNotifications } from '@/lib/notify';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -89,7 +90,8 @@ function renderBar(value: number, max: number, width: number = 20): string {
 export function Logs() {
   const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [backendLogs, setBackendLogs] = useState<LogLine[]>([]);
+  const [frontendLogs, setFrontendLogs] = useState<LogLine[]>(() => getFrontendNotifications().map(notifToLog));
   const [filter, setFilter] = useState<LogLevel | 'ALL'>('ALL');
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -98,7 +100,7 @@ export function Logs() {
     try {
       const raw = await api.notifications({ limit: 50 }) as any;
       const list: any[] = Array.isArray(raw) ? raw : raw?.notifications ?? raw?.items ?? [];
-      setLogs(list.map(notifToLog));
+      setBackendLogs(list.map(notifToLog));
     } catch (err) {
       console.error('[Logs] 加载失败:', err);
     } finally {
@@ -108,11 +110,27 @@ export function Logs() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
+  useEffect(() => {
+    return subscribeFrontendNotifications(() => {
+      setFrontendLogs(getFrontendNotifications().map(notifToLog));
+    });
+  }, []);
+
   /* —— WebSocket 实时推送 —— */
   useClawbotWS('notification', (event) => {
     const newLog = notifToLog(event.data);
-    setLogs((prev) => [newLog, ...prev].slice(0, 200));
+    setBackendLogs((prev) => [newLog, ...prev].slice(0, 200));
   });
+
+  const logs = [...frontendLogs, ...backendLogs]
+    .sort((a, b) => {
+      const [ah = '00', am = '00', as = '00.000'] = a.time.split(':');
+      const [bh = '00', bm = '00', bs = '00.000'] = b.time.split(':');
+      const an = Number(ah) * 3600000 + Number(am) * 60000 + Number(as.replace('.', ''));
+      const bn = Number(bh) * 3600000 + Number(bm) * 60000 + Number(bs.replace('.', ''));
+      return bn - an;
+    })
+    .slice(0, 200);
 
   /* —— 统计计算 —— */
   const countInfo = logs.filter((l) => l.level === 'INFO' || l.level === 'OK').length;

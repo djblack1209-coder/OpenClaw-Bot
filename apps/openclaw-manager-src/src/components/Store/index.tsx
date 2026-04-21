@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notify';
 import {
   Search,
   Star,
