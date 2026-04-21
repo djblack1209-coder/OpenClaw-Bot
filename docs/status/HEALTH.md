@@ -104,7 +104,7 @@
 | HI-702 | `backend` | `newapi.py` | 🟠 HIGH: newapi 8个端点 `_headers()` 的 HTTPException(503) 被 except Exception 吞掉变成 500 | 所有 8 个端点增加 `except HTTPException: raise` 透传 | 2026-04-21 | 审计修复第三轮 |
 | HI-703 | `frontend` | 6个组件 | 🟡 MEDIUM: 31 处 `'N/A'` 英文占位符 | 全部替换为中文 `'暂无'` 或 `'--'` | 2026-04-21 | 审计修复第三轮 |
 | HI-704 | `backend` | `social.py` | 🟡 MEDIUM: `/social/topics` 定义为 POST 但语义应为 GET，浏览器/curl 用 GET 调用返回 405 | `@router.post` 改为 `@router.get`；Tauri Rust 端同步改为 `api_get` | 2026-04-21 | 审计修复第三轮 |
-| HI-705 | `backend` | `system.py` | 🟡 MEDIUM: gateway 服务 process_keyword `"kiro"` 无法匹配真实 Node.js openclaw 进程 | gateway 改为 `"openclaw/dist/index.js gateway"`，kiro-gateway 改为 `"kiro-gateway/main.py"` | 2026-04-21 | 审计修复第三轮 |
+| HI-705 | `backend` | `system.py` | 🟡 MEDIUM: gateway 服务 process_keyword `"kiro"` 无法匹配真实 Node.js openclaw 进程 | gateway 改为 `"openclaw-gateway"`，kiro-gateway 改为 `"kiro-gateway/main.py"` | 2026-04-21 | 审计修复第三轮 |
 | HI-600 | `infra` | `Makefile` | 🟠 HIGH: `/Applications` 下 OpenEverything + OpenClaw 双版本残留 | Makefile 新增 `tauri-clean` + `tauri-build` 目标，构建前自动清理；tauri.conf.json productName 改为 OpenClaw；新增构建后自动 cp 到 /Applications | 2026-04-20 | Sprint 终极修复 + 审计修复第三轮 |
 | HI-601 | `frontend` | `Assistant` | 🟠 HIGH: 附件和语音按钮显示 `功能开发中` 占位 | 后端新增 upload/voice 端点 + 前端 MediaRecorder 录音 + FormData 上传全链路打通 | 2026-04-20 | Sprint 终极修复 |
 | HI-602 | `frontend` | `WorldMonitor` | 🟠 HIGH: 基础设施/气候/网络安全三张卡 12 个指标永远显示 `—` | 后端新增 /monitor/extended 聚合 USGS/NASA EONET/CISA KEV 免费 API + 前端动态渲染 | 2026-04-20 | Sprint 终极修复 |

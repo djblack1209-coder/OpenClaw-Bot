@@ -35,7 +35,7 @@
 - `clawbot_api.rs` 第 186 行 `api_post` 改为 `api_get`
 
 **HI-705 — 服务状态检测修正（P2）**
-- `system.py` gateway 进程关键词从 `"kiro"` 改为 `"openclaw/dist/index.js gateway"`
+- `system.py` gateway 进程关键词从 `"kiro"` 改为 `"openclaw-gateway"`
 - kiro-gateway 进程关键词从 `"kiro"` 改为 `"kiro-gateway/main.py"`
 
 **HI-600 补充 — 桌面构建自动安装（P2）**
