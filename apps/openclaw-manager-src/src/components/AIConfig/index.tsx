@@ -167,20 +167,26 @@ export function AIConfig() {
       ]);
 
       // 解析渠道列表
+      let channelsLoaded = false;
       if (channelsResp.status === 'fulfilled') {
-        const raw = await parseResponse<any>(channelsResp.value);
-        const list: ChannelItem[] = Array.isArray(raw) ? raw
-          : Array.isArray(raw?.data) ? raw.data
-          : Array.isArray(raw?.channels) ? raw.channels
-          : [];
-        setChannels(list);
+        try {
+          const raw = await parseResponse<any>(channelsResp.value);
+          const list: ChannelItem[] = Array.isArray(raw) ? raw
+            : Array.isArray(raw?.data) ? raw.data
+            : Array.isArray(raw?.channels) ? raw.channels
+            : [];
+          setChannels(list);
+          channelsLoaded = list.length > 0;
+        } catch (err) {
+          console.warn('[AIConfig] 渠道列表加载失败，回退到 API 池统计:', err);
+        }
       }
 
       // 解析 API 池统计
       if (poolResp.status === 'fulfilled') {
         const data = poolResp.value as PoolStats;
         setPoolStats(data);
-        if (channelsResp.status !== 'fulfilled') {
+        if (!channelsLoaded) {
           const total = Number((data as any)?.total_sources ?? (data as any)?.pool_total_sources ?? 0);
           if (total > 0) {
             setChannels(Array.from({ length: total }, (_, i) => ({
