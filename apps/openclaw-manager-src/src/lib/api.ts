@@ -1,4 +1,4 @@
-import { clawbotFetch, clawbotFetchJson } from './tauri-core';
+import { clawbotFetch, clawbotFetchJson, isTauri } from './tauri-core';
 import * as ipc from './tauri-ipc';
 
 // API 封装（带日志）
@@ -61,7 +61,8 @@ export const api = {
 
   // ── ClawBot 系统 ──
   clawbotPing: ipc.clawbotPing,
-  clawbotStatus: ipc.clawbotStatus,
+  clawbotStatus: () =>
+    isTauri() ? ipc.clawbotStatus() : clawbotFetchJson('/api/v1/status'),
 
   // ── 交易系统 ──
   clawbotTradingSystem: ipc.clawbotTradingSystem,
@@ -77,7 +78,8 @@ export const api = {
   clawbotTradingStatus: ipc.clawbotTradingStatus,
 
   // ── 社媒运营 ──
-  clawbotSocialStatus: ipc.clawbotSocialStatus,
+  clawbotSocialStatus: () =>
+    isTauri() ? ipc.clawbotSocialStatus() : clawbotFetchJson('/api/v1/social/status'),
   clawbotSocialTopics: ipc.clawbotSocialTopics,
   clawbotSocialCompose: ipc.clawbotSocialCompose,
   clawbotSocialPublish: ipc.clawbotSocialPublish,
@@ -109,7 +111,8 @@ export const api = {
   clawbotMemoryStats: ipc.clawbotMemoryStats,
 
   // ── API 池 ──
-  clawbotPoolStats: ipc.clawbotPoolStats,
+  clawbotPoolStats: () =>
+    isTauri() ? ipc.clawbotPoolStats() : clawbotFetchJson('/api/v1/pool/stats'),
 
   // ── 自进化系统 ──
   clawbotEvolutionScan: ipc.clawbotEvolutionScan,
