@@ -48,12 +48,17 @@ docker-down: ## 停止 Docker 容器
 	docker compose down
 
 ## ─── Tauri 桌面端构建 ───
-tauri-clean: ## 构建前清理 /Applications 下的历史残留应用 (防止双版本共存)
+tauri-clean: ## 构建前清理所有历史残留应用 (防止 Launchpad 出现重复图标)
 	@echo "══════ 清理历史残留应用 ══════"
+	@# /Applications 下的旧版本
 	rm -rf /Applications/OpenEverything.app 2>/dev/null || true
 	rm -rf /Applications/OpenClaw.app 2>/dev/null || true
 	rm -rf /Applications/OpenClaw-Gateway.app 2>/dev/null || true
+	@# 主分支构建目录里的旧 .app (Spotlight 会索引导致 Launchpad 重复)
 	rm -rf apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenEverything.app 2>/dev/null || true
+	rm -rf apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app 2>/dev/null || true
+	@# worktree 分支构建目录里的旧 .app
+	find .worktrees -path "*/bundle/macos/*.app" -type d -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ 历史残留已清理"
 
 tauri-build: tauri-clean ## 构建 Tauri 桌面端 (含自动清理历史残留)
@@ -62,7 +67,11 @@ tauri-build: tauri-clean ## 构建 Tauri 桌面端 (含自动清理历史残留)
 	@echo "✅ Tauri 构建完成"
 	@echo "══════ 安装到 /Applications ══════"
 	cp -R apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app /Applications/
-	@echo "✅ OpenClaw.app 已安装到 /Applications"
+	@# 安装完毕后删除构建目录的 .app 副本，防止 Spotlight 索引出重复
+	rm -rf apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app
+	@# 刷新 Launchpad 缓存
+	defaults write com.apple.dock ResetLaunchPad -bool true && killall Dock 2>/dev/null || true
+	@echo "✅ OpenClaw.app 已安装到 /Applications (构建副本已清理, Launchpad 已刷新)"
 
 ## ─── 清理 ───
 clean: ## 清理缓存和临时文件
