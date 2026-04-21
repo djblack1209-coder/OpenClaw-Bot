@@ -172,10 +172,10 @@ export function Store() {
         method: 'PATCH',
         body: JSON.stringify({ status: 'rejected' }),
       });
-      toast.success(t('store.rejectSuccess') || '已拒绝', { channel: 'log' });
+      toast.success(t('store.rejectSuccess'), { channel: 'log' });
       await fetchData();
     } catch (err) {
-      toast.error(`${t('store.rejectFailed') || '拒绝失败'}: ${err instanceof Error ? err.message : t('store.unknownError')}`, { channel: 'notification' });
+      toast.error(`${t('store.rejectFailed')}: ${err instanceof Error ? err.message : t('store.unknownError')}`, { channel: 'notification' });
     } finally {
       setApproving(null);
     }
