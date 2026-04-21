@@ -365,7 +365,7 @@ export default function DevPanel() {
                 {[
                   { label: '操作系统', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
                   { label: '架构', value: sysInfo.arch, color: 'var(--accent-cyan)' },
-                  { label: 'OpenEverything', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
+                  { label: 'OpenClaw', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
                   { label: 'Node 版本', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
                   { label: t('devPanel.configDir'), value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
                 ].map((info) => (
