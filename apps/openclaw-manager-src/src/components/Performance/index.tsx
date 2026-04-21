@@ -130,7 +130,7 @@ function latencyColor(avg: number): string {
 
 /** 格式化秒数 */
 function fmtSec(val: number | null | undefined): string {
-  if (val == null) return 'N/A';
+  if (val == null) return '--';
   if (val < 0.01) return '<0.01s';
   return `${val.toFixed(2)}s`;
 }
@@ -282,7 +282,7 @@ export function Performance() {
               {/* 大数字 */}
               <div className="flex items-end gap-2 mt-3">
                 <span className="text-metric" style={{ fontSize: '32px', color: res.color }}>
-                  {res.value != null ? res.value : 'N/A'}
+                  {res.value != null ? res.value : '--'}
                 </span>
                 {res.value != null && (
                   <span className="font-mono text-sm pb-1" style={{ color: 'var(--text-tertiary)' }}>
@@ -405,7 +405,7 @@ export function Performance() {
             {/* {t('performance.totalErrorRate')} */}
             <div className="flex items-end gap-2 mt-3 mb-5">
               <span className="text-metric" style={{ color: 'var(--accent-green)' }}>
-                {totalErrorRate ?? 'N/A'}
+                {totalErrorRate ?? '--'}
               </span>
               <span className="font-mono text-xs pb-0.5" style={{ color: 'var(--text-tertiary)' }}>
                 总错误率

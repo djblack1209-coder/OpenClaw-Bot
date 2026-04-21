@@ -284,7 +284,7 @@ export function Risk() {
                   {t('risk.portfolioValue')}
                 </span>
                 <span className="font-mono text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {portfolio ? fmtUsd(portfolio.total_value) : 'N/A'}
+                  {portfolio ? fmtUsd(portfolio.total_value) : '--'}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -295,7 +295,7 @@ export function Risk() {
                   className="font-mono text-[13px] font-bold"
                   style={{ color: portfolio ? pnlColor(portfolio.total_pnl) : 'var(--text-disabled)' }}
                 >
-                  {portfolio ? `${portfolio.total_pnl >= 0 ? '+' : '-'}${fmtUsd(portfolio.total_pnl)}` : 'N/A'}
+                  {portfolio ? `${portfolio.total_pnl >= 0 ? '+' : '-'}${fmtUsd(portfolio.total_pnl)}` : '--'}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -306,7 +306,7 @@ export function Risk() {
                   className="font-mono text-[13px] font-bold"
                   style={{ color: portfolio ? pnlColor(portfolio.day_change_pct) : 'var(--text-disabled)' }}
                 >
-                  {portfolio ? fmtPct(portfolio.day_change_pct) : 'N/A'}
+                  {portfolio ? fmtPct(portfolio.day_change_pct) : '--'}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -314,7 +314,7 @@ export function Risk() {
                   {t('risk.positionCount')}
                 </span>
                 <span className="font-mono text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {portfolio?.position_count ?? 'N/A'}
+                  {portfolio?.position_count ?? '--'}
                 </span>
               </div>
             </div>
@@ -408,7 +408,7 @@ export function Risk() {
                     className="font-display text-lg font-bold"
                     style={{ color: portfolio ? pnlColor(portfolio.total_pnl_pct) : 'var(--text-disabled)' }}
                   >
-                    {portfolio ? fmtPct(portfolio.total_pnl_pct) : 'N/A'}
+                    {portfolio ? fmtPct(portfolio.total_pnl_pct) : '--'}
                   </span>
                 </div>
               </div>

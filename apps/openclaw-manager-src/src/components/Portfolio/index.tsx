@@ -905,7 +905,7 @@ export function Portfolio() {
                     { label: t('portfolio.costBasis'), value: fmtUsd(p.total_cost), color: 'var(--text-secondary)' },
                     { label: t('portfolio.unrealizedPnl'), value: `${pnlSign(p.total_pnl)}${fmtUsd(p.total_pnl)}`, color: pnlColor(p.total_pnl) },
                     { label: t('portfolio.dayVolatility'), value: `${pnlSign(p.day_change_pct)}${p.day_change_pct.toFixed(2)}%`, color: pnlColor(p.day_change_pct) },
-                    { label: t('portfolio.concentration'), value: p.positions.length > 0 ? `${p.positions[0]?.weight.toFixed(1)}% max` : 'N/A', color: 'var(--accent-cyan)' },
+                    { label: t('portfolio.concentration'), value: p.positions.length > 0 ? `${p.positions[0]?.weight.toFixed(1)}% max` : '--', color: 'var(--accent-cyan)' },
                   ].map(m => (
                     <div key={m.label} className="flex items-center justify-between">
                       <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -1356,9 +1356,9 @@ export function Portfolio() {
                       { label: t('portfolio.totalReturn'), value: fmtPct(btResult.total_return), color: pnlColor(btResult.total_return ?? 0) },
                       { label: t('portfolio.annualReturn'), value: fmtPct(btResult.annual_return), color: pnlColor(btResult.annual_return ?? 0) },
                       { label: t('portfolio.maxDrawdown'), value: fmtPct(btResult.max_drawdown), color: 'var(--accent-red)' },
-                      { label: t('portfolio.sharpeRatio'), value: btResult.sharpe_ratio?.toFixed(2) ?? 'N/A', color: 'var(--accent-cyan)' },
+                      { label: t('portfolio.sharpeRatio'), value: btResult.sharpe_ratio?.toFixed(2) ?? '--', color: 'var(--accent-cyan)' },
                       { label: t('portfolio.winRate'), value: fmtPct(btResult.win_rate), color: 'var(--accent-green)' },
-                      { label: t('portfolio.totalTrades'), value: btResult.total_trades?.toString() ?? 'N/A', color: 'var(--text-primary)' },
+                      { label: t('portfolio.totalTrades'), value: btResult.total_trades?.toString() ?? '--', color: 'var(--text-primary)' },
                     ]).map(item => (
                       <div
                         key={item.label}

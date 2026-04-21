@@ -182,6 +182,9 @@ async def delete_channel(channel_id: int = Path(ge=1, description="通道ID")) -
         return {"success": body.get("success", True)}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("删除 New-API 通道失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
@@ -214,6 +217,9 @@ async def toggle_channel_status(channel_id: int = Path(ge=1, description="通道
         return {"success": True, "status": new_status}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("切换 New-API 通道状态失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
@@ -233,6 +239,9 @@ async def delete_token(token_id: int = Path(ge=1, description="令牌ID")) -> di
         return {"success": body.get("success", True)}
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+    except HTTPException:
+        # 让 _headers() 抛出的 503 等 HTTPException 原样透传
+        raise
     except Exception as e:
         logger.exception("删除 New-API 令牌失败")
         raise HTTPException(status_code=500, detail=_safe_error(e))
