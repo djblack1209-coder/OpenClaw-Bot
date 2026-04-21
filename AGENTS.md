@@ -51,7 +51,17 @@
 
 **没有以上证据的"完成" = 没完成。**
 
-### 1.5 决策分类（什么时候自己做，什么时候问用户）
+### 1.5 构建铁律（macOS 桌面端打包）
+
+> 防止 /Applications 下出现双版本残留（如旧名 OpenEverything + 新名 OpenClaw 共存）
+
+| 规则 | 做法 |
+|------|------|
+| **构建前必须清理** | 执行 `make tauri-build`，会自动先删除 `/Applications/OpenEverything.app` 和 `/Applications/OpenClaw.app` |
+| **禁止手动 `tauri build`** | 必须走 `make tauri-build` 入口，保证清理步骤不被跳过 |
+| **构建后验证** | 确认 `/Applications/` 下只有一个 `OpenClaw.app`，没有 `OpenEverything.app` |
+
+### 1.6 决策分类（什么时候自己做，什么时候问用户）
 
 > 借鉴 gstack /autoplan 的三级决策机制
 
@@ -64,7 +74,7 @@
 
 **判断不了分类时 → 当作"架构决策"处理（先提方案）。**
 
-### 1.6 代码规范
+### 1.7 代码规范
 - Google 风格，模块化，强类型，默认值
 - **禁止** `pass` / `TODO` / `...` 占位符
 - **所有注释用中文**，解释"做了什么"

@@ -47,6 +47,18 @@ docker-up: ## 启动 Docker 容器
 docker-down: ## 停止 Docker 容器
 	docker compose down
 
+## ─── Tauri 桌面端构建 ───
+tauri-clean: ## 构建前清理 /Applications 下的历史残留应用 (防止双版本共存)
+	@echo "══════ 清理历史残留应用 ══════"
+	rm -rf /Applications/OpenEverything.app 2>/dev/null || true
+	rm -rf /Applications/OpenClaw.app 2>/dev/null || true
+	@echo "✅ 历史残留已清理"
+
+tauri-build: tauri-clean ## 构建 Tauri 桌面端 (含自动清理历史残留)
+	@echo "══════ 构建 Tauri 桌面端 ══════"
+	cd $(FRONTEND) && npm run tauri:build
+	@echo "✅ Tauri 构建完成"
+
 ## ─── 清理 ───
 clean: ## 清理缓存和临时文件
 	find $(CLAWBOT) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
