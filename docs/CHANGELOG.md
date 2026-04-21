@@ -12,6 +12,55 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-21 — 全量双模审计修复：CORS + 错误中文化 + 状态诚实 + i18n 清理
+> 领域: `backend` `frontend`
+> 影响模块: server.py, errorMessages.ts, WorldMonitor, NewsFeed, FinRadar, Home, Settings, Bots/Xianyu/Social(i18n), Store, TerminalLogsCard, Sidebar, TelemetryCard
+> 关联问题: 全量双模审计 12 项发现
+
+### 变更内容
+
+**P0 — 后端 CORS 跨域修复**
+- `server.py` CORS 白名单新增 `http://127.0.0.1:1420` 和 `http://127.0.0.1:18789`，解决浏览器调试模式下 API 请求被 CORS 策略拦截的阻塞问题（根因：浏览器访问 127.0.0.1 而白名单只有 localhost）
+- WebSocket `ws://127.0.0.1:18790/ws/events` 连接同步恢复（同 CORS origin 修复）
+
+**P1 — 错误提示中文化**
+- `errorMessages.ts` 新增 CORS 错误模式匹配（`Access-Control`/`CORS`），返回中文提示
+- `errorMessages.ts` 品牌名从 OpenEverything 修正为 OpenClaw
+- `WorldMonitor/index.tsx` 错误展示改用 `toFriendlyError()` 替代原始英文 err.message
+- `NewsFeed/index.tsx` 同上
+- `FinRadar/index.tsx` 同上
+
+**P1 — 状态诚实化**
+- `Home/index.tsx` 新增 `apiReachable` 状态检测，所有 API 失败时显示琥珀色提示条"后端服务未连通"
+- `Settings/index.tsx` 浏览器模式下显示"当前为浏览器模式"提示条，服务控制按钮变灰禁用
+- `TelemetryCard.tsx` 状态文案从"服务离线"改为"数据未获取"
+
+**P2 — 快捷操作跳转修复**
+- `Home/index.tsx` 闲鱼管理快捷按钮从错误的 `'bots'` 修正为 `'xianyu'`
+- `Home/index.tsx` 市场扫描从错误的 `'portfolio'` 修正为 `'finradar'`
+
+**P2 — i18n 英文残留清理**
+- `Xianyu/index.tsx` 6 处英文标签替换为中文
+- `Sidebar.tsx` 品牌名从 OpenEverything 改为 OpenClaw
+
+**P3 — 空态/环境提示**
+- `Store/index.tsx` 插件商店区分 API 失败态和数据为空态
+- `TerminalLogsCard.tsx` 浏览器模式下提示"请使用桌面客户端查看"
+
+### 文件变更
+- `packages/clawbot/src/api/server.py` — CORS 白名单扩展
+- `apps/.../src/lib/errorMessages.ts` — CORS 模式 + 品牌名修正
+- `apps/.../src/components/WorldMonitor/index.tsx` — toFriendlyError
+- `apps/.../src/components/NewsFeed/index.tsx` — toFriendlyError
+- `apps/.../src/components/FinRadar/index.tsx` — toFriendlyError
+- `apps/.../src/components/Home/index.tsx` — apiReachable + 快捷操作修正
+- `apps/.../src/components/Settings/index.tsx` — 浏览器模式标注
+- `apps/.../src/components/Home/TelemetryCard.tsx` — 状态文案修正
+- `apps/.../src/components/Store/index.tsx` — 空态/失败态区分
+- `apps/.../src/components/Home/TerminalLogsCard.tsx` — 浏览器限制提示
+- `apps/.../src/components/Layout/Sidebar.tsx` — 品牌名统一
+- `apps/.../src/components/Xianyu/index.tsx` — i18n 中文化
+
 ## 2026-04-20 — Sprint 终极修复：零 Mock 全栈闭环 + 构建 SOP 升级
 > 领域: `frontend` `backend` `infra` `docs`
 > 影响模块: Makefile, tauri.conf.json, AGENTS.md, Assistant, TradingEngineCard, WorldMonitor, Portfolio, Settings, Bots, Home, NewsFeed, FinRadar, Sidebar, zh-CN.ts, en-US.ts, conversation.py, monitor.py, api.ts, tauri-core.ts
