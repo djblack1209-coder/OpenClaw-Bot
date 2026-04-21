@@ -58,7 +58,7 @@ TTL_MARKET = 300  # 市场数据: 5 minutes
 TTL_STATUS = 30  # 系统状态: 30 seconds
 
 
-def _get_cache() -> Optional["diskcache.Cache"]:
+def _get_cache() -> Optional["DiskCache"]:
     """Lazy-init singleton cache. 双重检查锁保证线程安全。"""
     global _cache
     if not HAS_DISKCACHE:
@@ -69,7 +69,7 @@ def _get_cache() -> Optional["diskcache.Cache"]:
             if _cache is None:
                 try:
                     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                    _cache = diskcache.Cache(
+                    _cache = DiskCache(
                         str(_CACHE_DIR),
                         size_limit=512 * 1024 * 1024,  # 512 MB max
                         eviction_policy="least-recently-used",
@@ -77,7 +77,7 @@ def _get_cache() -> Optional["diskcache.Cache"]:
                     )
                     logger.info(f"[LLM Cache] 初始化完成: {_CACHE_DIR} (limit=512MB, LRU)")
                 except Exception as e:
-                    logger.error(f"[LLM Cache] 初始化失败: {scrub_secrets(str(e))}")
+                    logger.error(f"[LLM Cache] 初始化失败: {e}")
                     return None
     return _cache
 
