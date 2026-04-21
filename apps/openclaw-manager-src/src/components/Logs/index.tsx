@@ -50,10 +50,10 @@ const FILTER_CHIPS: { label: string; value: LogLevel | 'ALL' }[] = [
 
 /* ====== 工具函数 ====== */
 
-/** 将后端通知转为 LogLine */
+/** 将 WS/通知事件统一转为日志行 */
 function notifToLog(n: any): LogLine {
   /* 从通知的 category/level 推断日志级别 */
-  const rawLevel = (n.level ?? n.category ?? 'info').toUpperCase();
+  const rawLevel = (n.level ?? n.category ?? n.type ?? 'info').toUpperCase();
   let level: LogLevel = 'INFO';
   if (rawLevel.includes('ERR') || rawLevel.includes('FAIL') || rawLevel.includes('CRITICAL')) level = 'ERROR';
   else if (rawLevel.includes('WARN') || rawLevel.includes('ALERT')) level = 'WARN';
@@ -73,8 +73,8 @@ function notifToLog(n: any): LogLine {
     id: n.id ?? n.notification_id,
     time,
     level,
-    module: n.source ?? n.module ?? n.category ?? 'system',
-    msg: n.message ?? n.title ?? n.content ?? '(无内容)',
+    module: n.source ?? n.module ?? n.category ?? n.type ?? 'system',
+    msg: n.message ?? n.title ?? n.content ?? n.msg ?? JSON.stringify(n.data ?? n).slice(0, 240) ?? '(无内容)',
   };
 }
 
@@ -116,9 +116,17 @@ export function Logs() {
     });
   }, []);
 
-  /* —— WebSocket 实时推送 —— */
-  useClawbotWS('notification', (event) => {
-    const newLog = notifToLog(event.data);
+  /* —— WebSocket 实时推送：日志页接收所有事件，不只通知 —— */
+  useClawbotWS('*', (event) => {
+    if (event.type === 'heartbeat') {
+      return;
+    }
+    const payload = {
+      ...event.data,
+      type: event.type,
+      timestamp: event.timestamp,
+    };
+    const newLog = notifToLog(payload);
     setBackendLogs((prev) => [newLog, ...prev].slice(0, 200));
   });
 
