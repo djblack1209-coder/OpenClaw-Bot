@@ -228,11 +228,11 @@ export function ExecutionFlow() {
 
       // 用户手动刷新时，如果所有请求都失败，弹 toast 提示
       if (userInitiated && tasksRes.status === 'rejected' && statusRes.status === 'rejected' && notifRes.status === 'rejected') {
-        toast.error(t('executionFlow.refreshFailed'));
+        toast.error(t('executionFlow.refreshFailed'), { channel: 'notification' });
       }
     } catch (err) {
       console.error('[ExecutionFlow] 数据加载失败:', err);
-      if (userInitiated) toast.error(t('executionFlow.refreshFailed'));
+      if (userInitiated) toast.error(t('executionFlow.refreshFailed'), { channel: 'notification' });
     } finally {
       setLoading(false);
     }

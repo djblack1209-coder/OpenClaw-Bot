@@ -155,7 +155,7 @@ export function Dev() {
       }
     } catch {
       if (!mountedRef.current) return;
-      toast.error(t('dev.loadFailed'));
+      toast.info(t('dev.loadFailed'), { channel: 'log' });
     } finally {
       if (mountedRef.current) setLoading(false);
     }

@@ -172,7 +172,7 @@ export default function DevPanel() {
       }
     } catch {
       if (!mountedRef.current) return;
-      toast.error(t('devPanel.loadFailed'));
+      toast.info(t('devPanel.loadFailed'), { channel: 'log' });
     } finally {
       if (mountedRef.current) setLoading(false);
     }
