@@ -83,6 +83,8 @@ export function Store() {
   const [stats, setStats] = useState<EvolutionStatsRaw | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** 标记是否是 API 加载失败（区分"没数据"和"连不上服务"） */
+  const [fetchError, setFetchError] = useState(false);
   const [approving, setApproving] = useState<string | null>(null); // 正在审批的提案 id
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('全部');
@@ -99,7 +101,7 @@ export function Store() {
         clawbotFetchJson<EvolutionStatsRaw>('/api/v1/evolution/stats'),
       ]);
 
-      // 处理提案列表
+      // 处理提案列表 — 区分请求成功和失败
       if (proposalsRes.status === 'fulfilled') {
         const raw = proposalsRes.value;
         const list: EvolutionProposalRaw[] = Array.isArray(raw)
@@ -107,6 +109,15 @@ export function Store() {
           : raw?.proposals || raw?.data || [];
         setProposals(list.map(normalizeProposal));
         setError(null);
+        setFetchError(false);
+      } else {
+        // 请求失败 — 标记为加载错误，与"数据为空"区分
+        const msg = proposalsRes.reason instanceof Error
+          ? proposalsRes.reason.message
+          : t('store.loadFailed');
+        console.error('[Store] 提案列表拉取失败:', msg);
+        setError(msg);
+        setFetchError(true);
       }
 
       // 处理统计数据
@@ -114,11 +125,11 @@ export function Store() {
         setStats(statsRes.value);
       }
     } catch (e) {
+      // 兜底异常处理
       const msg = e instanceof Error ? e.message : t('store.loadFailed');
       console.error('[Store] 数据拉取失败:', msg);
-      if (!proposals.length) {
-        setError(msg);
-      }
+      setError(msg);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }

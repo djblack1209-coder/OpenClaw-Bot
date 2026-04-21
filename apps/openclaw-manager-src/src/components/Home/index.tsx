@@ -72,9 +72,9 @@ export interface LogEntry {
 const quickActions: { labelKey: string; icon: React.ElementType; page: PageType; accent: string }[] = [
   { labelKey: 'home.action.investAnalysis', icon: TrendingUp, page: 'portfolio', accent: 'var(--accent-green)' },
   { labelKey: 'home.action.socialPost', icon: Share2, page: 'social', accent: 'var(--accent-purple)' },
-  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'bots', accent: 'var(--accent-amber)' },
+  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'xianyu', accent: 'var(--accent-amber)' },
   { labelKey: 'home.action.aiChat', icon: MessageSquare, page: 'assistant', accent: 'var(--accent-cyan)' },
-  { labelKey: 'home.action.marketScan', icon: ScanSearch, page: 'portfolio', accent: 'var(--accent-red)' },
+  { labelKey: 'home.action.marketScan', icon: ScanSearch, page: 'finradar', accent: 'var(--accent-red)' },
   { labelKey: 'home.action.settings', icon: Settings, page: 'settings', accent: 'var(--text-secondary)' },
 ];
 
