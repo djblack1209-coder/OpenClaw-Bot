@@ -32,7 +32,7 @@
 | 图表 | Plotly (18.4k⭐) + Kaleido | 交互式图表 → PNG 导出 |
 | TTS | edge-tts (10.3k⭐) | 零成本文本转语音 |
 | 中文NLP | jieba (34.8k⭐) | TF-IDF 关键词提取 |
-| 缓存 | diskcache (2.8k⭐) | LLM 响应 SQLite 持久化缓存 |
+| 缓存 | utils_cache (自研, sqlite3) | LLM 响应 SQLite 持久化缓存 (替代有 CVE 的 diskcache) |
 | 定时任务 | APScheduler (6.3k⭐) | 社交自动驾驶日程 |
 | PDF | fpdf2 (1.1k⭐) | CJK 报告导出 |
 | 二维码 | qrcode (4.5k⭐) | 邀请链接/URL 二维码 |
