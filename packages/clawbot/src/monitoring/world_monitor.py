@@ -565,59 +565,81 @@ class FinanceRadar:
         symbols: dict[str, tuple[str, str]],
         category: str,
     ) -> list[MarketQuote]:
-        """通过 Yahoo Finance v8 API 获取报价"""
+        """通过 yfinance 库获取报价（替代已废弃的 v8 Spark API）"""
         symbol_list = list(symbols.keys())
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    "https://query1.finance.yahoo.com/v8/finance/spark",
-                    params={
-                        "symbols": ",".join(symbol_list),
-                        "range": "1d",
-                        "interval": "1d",
-                    },
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
 
-                quotes: list[MarketQuote] = []
-                for sym, (name, exchange) in symbols.items():
-                    spark = data.get("spark", {}).get("result", [])
-                    match = next((s for s in spark if s.get("symbol") == sym), None)
-                    if match and match.get("response"):
-                        meta = match["response"][0].get("meta", {})
-                        price = meta.get("regularMarketPrice", 0)
-                        prev_close = meta.get("previousClose", price)
+        def _sync_fetch() -> dict[str, dict]:
+            """在线程中同步调用 yfinance，避免阻塞事件循环"""
+            result: dict[str, dict] = {}
+            try:
+                tickers = yf.Tickers(" ".join(symbol_list))
+                for sym in symbol_list:
+                    try:
+                        ticker = tickers.tickers.get(sym)
+                        if ticker is None:
+                            continue
+                        # fast_info 比 info 快得多，优先使用
+                        fi = ticker.fast_info
+                        price = float(fi.get("lastPrice", 0) or fi.get("last_price", 0) or 0)
+                        prev_close = float(fi.get("previousClose", 0) or fi.get("previous_close", 0) or 0)
                         change_pct = (
                             ((price - prev_close) / prev_close * 100)
                             if prev_close
                             else 0
                         )
-                        quotes.append(MarketQuote(
-                            symbol=sym,
-                            name=name,
-                            price=round(price, 2),
-                            change_pct=round(change_pct, 2),
-                            category=category,
-                            exchange=exchange,
-                        ))
-                    else:
-                        # 无数据时返回占位
-                        quotes.append(MarketQuote(
-                            symbol=sym,
-                            name=name,
-                            price=0,
-                            change_pct=0,
-                            category=category,
-                            exchange=exchange,
-                        ))
+                        result[sym] = {
+                            "price": round(price, 2),
+                            "change_pct": round(change_pct, 2),
+                        }
+                    except Exception as e:
+                        logger.debug(f"[WorldMonitor] yfinance 获取 {sym} 失败: {e}")
+            except Exception as e:
+                logger.warning(f"[WorldMonitor] yfinance 批量请求失败: {e}")
+            return result
 
-                return quotes
+        try:
+            # 在线程池中运行同步的 yfinance 调用，设置 15 秒超时
+            loop = asyncio.get_running_loop()
+            fetched = await asyncio.wait_for(
+                loop.run_in_executor(None, _sync_fetch),
+                timeout=15,
+            )
+
+            quotes: list[MarketQuote] = []
+            for sym, (name, exchange) in symbols.items():
+                info = fetched.get(sym)
+                if info and info["price"] > 0:
+                    quotes.append(MarketQuote(
+                        symbol=sym,
+                        name=name,
+                        price=info["price"],
+                        change_pct=info["change_pct"],
+                        category=category,
+                        exchange=exchange,
+                    ))
+                else:
+                    # 无数据时返回占位
+                    quotes.append(MarketQuote(
+                        symbol=sym,
+                        name=name,
+                        price=0,
+                        change_pct=0,
+                        category=category,
+                        exchange=exchange,
+                    ))
+
+            return quotes
+        except asyncio.TimeoutError:
+            logger.warning("[WorldMonitor] yfinance 请求超时 (15s)")
+            return [
+                MarketQuote(
+                    symbol=sym, name=name, price=0, change_pct=0,
+                    category=category, exchange=exchange,
+                )
+                for sym, (name, exchange) in symbols.items()
+            ]
         except Exception as e:
-            logger.warning(f"[WorldMonitor] Yahoo Finance 请求失败: {e}")
+            logger.warning(f"[WorldMonitor] yfinance 请求失败: {e}")
             # 返回空占位
             return [
                 MarketQuote(
