@@ -101,7 +101,7 @@ fn get_project_context_from_config(config: &Value) -> AppResult<ProjectContext> 
     let settings_file = get_manager_settings_path(&project_base_dir);
 
     Ok(ProjectContext {
-        project_name: "OpenEverything".to_string(),
+        project_name: "OpenClaw".to_string(),
         project_base_dir,
         workspace_dir,
         config_dir,
@@ -126,7 +126,7 @@ fn load_manager_settings(settings_path: &str) -> AppResult<Value> {
 fn default_app_settings() -> AppSettings {
     AppSettings {
         identity: IdentitySettings {
-            bot_name: "OpenEverything Bot".to_string(),
+            bot_name: "OpenClaw Bot".to_string(),
             user_name: "Boss".to_string(),
             timezone: "Asia/Shanghai".to_string(),
         },

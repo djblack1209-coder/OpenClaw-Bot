@@ -163,7 +163,7 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
     Ok(vec![
         ManagedServiceDefinition {
             label: "ai.openclaw.gateway".to_string(),
-            name: "OpenEverything Gateway".to_string(),
+            name: "OpenClaw Gateway".to_string(),
             plist_path: format!("{}/ai.openclaw.gateway.plist", launchagents_dir),
             port: Some(18789),
             launcher_script: Some(format!("{}/gateway-launcher.sh", launchagents_dir)),
@@ -627,8 +627,8 @@ fn get_openclaw_config_path() -> AppResult<String> {
 fn load_openclaw_config() -> AppResult<Value> {
     let cfg_path = get_openclaw_config_path()?;
     let content = fs::read_to_string(&cfg_path)
-        .map_err(|e| AppError::config(format!("读取 OpenEverything 配置失败: {}", e)))?;
-    serde_json::from_str(&content).map_err(|e| AppError::serialization(format!("解析 OpenEverything 配置失败: {}", e)))
+        .map_err(|e| AppError::config(format!("读取 OpenClaw 配置失败: {}", e)))?;
+    serde_json::from_str(&content).map_err(|e| AppError::serialization(format!("解析 OpenClaw 配置失败: {}", e)))
 }
 
 fn get_openclaw_main_matrix_entry() -> AppResult<Option<ClawbotBotMatrixEntry>> {
@@ -676,7 +676,7 @@ fn get_openclaw_main_matrix_entry() -> AppResult<Option<ClawbotBotMatrixEntry>> 
 
     Ok(Some(ClawbotBotMatrixEntry {
         id: "openclaw-main".to_string(),
-        name: "OpenEverything Brain".to_string(),
+        name: "OpenClaw Brain".to_string(),
         token_key: "OPENCLAW_MAIN_MODEL".to_string(),
         username_key: "OPENCLAW_MAIN_AGENT".to_string(),
         username: "@carven_OpenClaw_Bot".to_string(),
@@ -1119,7 +1119,7 @@ pub async fn get_managed_endpoints_status() -> AppResult<Vec<ManagedEndpointStat
     let targets = vec![
         (
             "openclaw-gateway".to_string(),
-            "OpenEverything Gateway".to_string(),
+            "OpenClaw Gateway".to_string(),
             "127.0.0.1".to_string(),
             "18789".to_string(),
         ),

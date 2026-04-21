@@ -88,17 +88,17 @@ pub async fn run_doctor() -> AppResult<Vec<DiagnosticResult>> {
     info!("[诊断] 开始运行系统诊断...");
     let mut results = Vec::new();
     
-    // 检查 OpenEverything 是否安装
-    info!("[诊断] 检查 OpenEverything 安装状态...");
+    // 检查 OpenClaw 是否安装
+    info!("[诊断] 检查 OpenClaw 安装状态...");
     let openclaw_installed = shell::get_openclaw_path().is_some();
-    info!("[诊断] OpenEverything 安装: {}", if openclaw_installed { "✓" } else { "✗" });
+    info!("[诊断] OpenClaw 安装: {}", if openclaw_installed { "✓" } else { "✗" });
     results.push(DiagnosticResult {
-        name: "OpenEverything 安装".to_string(),
+        name: "OpenClaw 安装".to_string(),
         passed: openclaw_installed,
         message: if openclaw_installed {
-            "OpenEverything 已安装".to_string()
+            "OpenClaw 已安装".to_string()
         } else {
-            "OpenEverything 未安装".to_string()
+            "OpenClaw 未安装".to_string()
         },
         suggestion: if openclaw_installed {
             None
@@ -167,7 +167,7 @@ pub async fn run_doctor() -> AppResult<Vec<DiagnosticResult>> {
             Err(e) => (false, e),
         };
         results.push(DiagnosticResult {
-            name: "OpenEverything Doctor".to_string(),
+            name: "OpenClaw Doctor".to_string(),
             passed,
             message,
             suggestion: None,
@@ -392,7 +392,7 @@ pub async fn test_channel(channel_type: String) -> AppResult<ChannelTestResult> 
     if let Some(target) = test_target {
         info!("[渠道测试] 步骤3: 发送测试消息到 {}...", target);
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-        let message = format!("🤖 OpenEverything 测试消息\n\n✅ 连接成功！\n⏰ {}", timestamp);
+        let message = format!("🤖 OpenClaw 测试消息\n\n✅ 连接成功！\n⏰ {}", timestamp);
         
         // 使用 openclaw message send 发送测试消息
         info!("[渠道测试] 执行: openclaw message send --channel {} --target {} ...", channel_lower, target);

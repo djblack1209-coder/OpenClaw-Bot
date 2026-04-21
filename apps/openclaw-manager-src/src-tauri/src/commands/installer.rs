@@ -15,9 +15,11 @@ pub struct EnvironmentStatus {
     pub node_version: Option<String>,
     /// Node.js 版本是否满足要求 (>=22)
     pub node_version_ok: bool,
-    /// OpenEverything 是否安装
+    /// OpenClaw 是否安装
+    pub node_version_ok: bool,
+    /// OpenClaw 是否安装
     pub openclaw_installed: bool,
-    /// OpenEverything 版本
+    /// OpenClaw 版本
     pub openclaw_version: Option<String>,
     /// 配置目录是否存在
     pub config_dir_exists: bool,
@@ -61,11 +63,11 @@ pub async fn check_environment() -> AppResult<EnvironmentStatus> {
     info!("[环境检查] Node.js: installed={}, version={:?}, version_ok={}", 
         node_installed, node_version, node_version_ok);
     
-    // 检查 OpenEverything
-    info!("[环境检查] 检查 OpenEverything...");
+    // 检查 OpenClaw
+    info!("[环境检查] 检查 OpenClaw...");
     let openclaw_version = get_openclaw_version();
     let openclaw_installed = openclaw_version.is_some();
-    info!("[环境检查] OpenEverything: installed={}, version={:?}", 
+    info!("[环境检查] OpenClaw: installed={}, version={:?}", 
         openclaw_installed, openclaw_version);
     
     // 检查配置目录
@@ -264,7 +266,7 @@ fn get_windows_node_paths() -> Vec<String> {
     paths
 }
 
-/// 获取 OpenEverything 版本
+/// 获取 OpenClaw 版本
 fn get_openclaw_version() -> Option<String> {
     // 使用 run_openclaw 统一处理各平台
     shell::run_openclaw(&["--version"])
@@ -513,34 +515,34 @@ node --version
     }
 }
 
-/// 安装 OpenEverything
+/// 安装 OpenClaw
 #[command]
 pub async fn install_openclaw() -> AppResult<InstallResult> {
-    info!("[安装OpenEverything] 开始安装 OpenEverything...");
+    info!("[安装OpenClaw] 开始安装 OpenClaw...");
     let os = platform::get_os();
-    info!("[安装OpenEverything] 检测到操作系统: {}", os);
+    info!("[安装OpenClaw] 检测到操作系统: {}", os);
     
     let result = match os.as_str() {
         "windows" => {
-            info!("[安装OpenEverything] 使用 Windows 安装方式...");
+            info!("[安装OpenClaw] 使用 Windows 安装方式...");
             install_openclaw_windows().await
         },
         _ => {
-            info!("[安装OpenEverything] 使用 Unix 安装方式 (npm)...");
+            info!("[安装OpenClaw] 使用 Unix 安装方式 (npm)...");
             install_openclaw_unix().await
         },
     };
     
     match &result {
-        Ok(r) if r.success => info!("[安装OpenEverything] ✓ 安装成功"),
-        Ok(r) => warn!("[安装OpenEverything] ✗ 安装失败: {}", r.message),
-        Err(e) => error!("[安装OpenEverything] ✗ 安装错误: {}", e),
+        Ok(r) if r.success => info!("[安装OpenClaw] ✓ 安装成功"),
+        Ok(r) => warn!("[安装OpenClaw] ✗ 安装失败: {}", r.message),
+        Err(e) => error!("[安装OpenClaw] ✗ 安装错误: {}", e),
     }
     
     result
 }
 
-/// Windows 安装 OpenEverything
+/// Windows 安装 OpenClaw
 async fn install_openclaw_windows() -> AppResult<InstallResult> {
     let script = r#"
 $ErrorActionPreference = 'Stop'
@@ -552,16 +554,16 @@ if (-not $nodeVersion) {
     exit 1
 }
 
-Write-Host "使用 npm 安装 OpenEverything..."
+Write-Host "使用 npm 安装 OpenClaw..."
 npm install -g openclaw@latest --unsafe-perm
 
 # 验证安装
 $openclawVersion = openclaw --version 2>$null
 if ($openclawVersion) {
-    Write-Host "OpenEverything 安装成功: $openclawVersion"
+    Write-Host "OpenClaw 安装成功: $openclawVersion"
     exit 0
 } else {
-    Write-Host "OpenEverything 安装失败"
+    Write-Host "OpenClaw 安装失败"
     exit 1
 }
 "#;
@@ -571,7 +573,7 @@ if ($openclawVersion) {
             if get_openclaw_version().is_some() {
                 Ok(InstallResult {
                     success: true,
-                    message: "OpenEverything 安装成功！".to_string(),
+                    message: "OpenClaw 安装成功！".to_string(),
                     error: None,
                 })
             } else {
@@ -584,13 +586,13 @@ if ($openclawVersion) {
         }
         Err(e) => Ok(InstallResult {
             success: false,
-            message: "OpenEverything 安装失败".to_string(),
+            message: "OpenClaw 安装失败".to_string(),
             error: Some(e),
         }),
     }
 }
 
-/// Unix 系统安装 OpenEverything
+/// Unix 系统安装 OpenClaw
 async fn install_openclaw_unix() -> AppResult<InstallResult> {
     let script = r#"
 # 检查 Node.js
@@ -599,7 +601,7 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-echo "使用 npm 安装 OpenEverything..."
+echo "使用 npm 安装 OpenClaw..."
 npm install -g openclaw@latest --unsafe-perm
 
 # 验证安装
@@ -609,21 +611,21 @@ openclaw --version
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
-            message: format!("OpenEverything 安装成功！{}", output),
+            message: format!("OpenClaw 安装成功！{}", output),
             error: None,
         }),
         Err(e) => Ok(InstallResult {
             success: false,
-            message: "OpenEverything 安装失败".to_string(),
+            message: "OpenClaw 安装失败".to_string(),
             error: Some(e),
         }),
     }
 }
 
-/// 初始化 OpenEverything 配置
+/// 初始化 OpenClaw 配置
 #[command]
 pub async fn init_openclaw_config() -> AppResult<InstallResult> {
-    info!("[初始化配置] 开始初始化 OpenEverything 配置...");
+    info!("[初始化配置] 开始初始化 OpenClaw 配置...");
     
     let config_dir = platform::get_config_dir();
     info!("[初始化配置] 配置目录: {}", config_dir);
@@ -730,7 +732,7 @@ if ($hasWinget) {
 }
 
 Write-Host ""
-Write-Host "安装完成后请重启 OpenEverything" -ForegroundColor Green
+Write-Host \"安装完成后请重启 OpenClaw\" -ForegroundColor Green
 Write-Host ""
 Read-Host "按回车键关闭此窗口"
 ' -Verb RunAs
@@ -789,17 +791,17 @@ read -p "按回车键关闭此窗口..."
     }
 }
 
-/// 打开终端安装 OpenEverything
+/// 打开终端安装 OpenClaw
 async fn open_openclaw_install_terminal() -> AppResult<String> {
     if platform::is_windows() {
         let script = r#"
 Start-Process powershell -ArgumentList '-NoExit', '-Command', '
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "    OpenEverything 安装向导" -ForegroundColor White
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host \"    OpenClaw 安装向导\" -ForegroundColor White
+Write-Host \"========================================\" -ForegroundColor Cyan
+Write-Host \"\"
 
-Write-Host "正在安装 OpenEverything..." -ForegroundColor Yellow
+Write-Host \"正在安装 OpenClaw...\" -ForegroundColor Yellow
 npm install -g openclaw@latest
 
 Write-Host ""
