@@ -1229,7 +1229,7 @@ export const zhCN: Record<string, string> = {
   'home.cookieLabel': 'Cookie',
   'home.cookieValid': '正常',
   'home.cookieExpired': '已过期',
-  'home.cookieNA': '未知',
+  'home.cookieNA': '待检测',
   'home.quickActionsLabel': '快捷操作',
   'home.dailyBriefLabel': '今日简报',
   'home.systemStatusLabel': '系统状态',

@@ -257,20 +257,41 @@ async def send_message(
                 if isinstance(result_dict["result"], str):
                     response_text = result_dict["result"]
                 elif isinstance(result_dict["result"], dict):
-                    # 如果是 forward_to_chat 降级结果，提供友好回复而非回显用户消息
-                    if result_dict["result"].get("action") == "forward_to_chat":
-                        response_text = "抱歉，我暂时无法处理这个请求，请稍后再试。"
-                    else:
-                        # 从 Brain 结果字典中提取友好文本
-                        # 优先取 synthesized_reply / answer（Brain 实际使用的键）
-                        response_text = (
-                            result_dict["result"].get("synthesized_reply")
-                            or result_dict["result"].get("answer")
-                            or result_dict["result"].get("response")
-                            or result_dict["result"].get("text")
-                            or result_dict["result"].get("message")
-                            or json.dumps(result_dict["result"], ensure_ascii=False, indent=2)
-                        )
+                    # 从 Brain 结果字典中提取友好文本
+                    # 优先取 synthesized_reply / answer（Brain 实际使用的键）
+                    response_text = (
+                        result_dict["result"].get("synthesized_reply")
+                        or result_dict["result"].get("answer")
+                        or result_dict["result"].get("response")
+                        or result_dict["result"].get("text")
+                        or result_dict["result"].get("message")
+                        or ""
+                    )
+                    # 如果 brain 返回的是"抱歉"兜底文案，尝试用 LLM 直接回答
+                    if (not response_text.strip()
+                        or "暂时无法处理" in response_text
+                        or result_dict["result"].get("action") == "forward_to_chat"):
+                        try:
+                            import litellm
+                            # 直接调用 litellm 绕过 Router 的 bucket 问题
+                            llm_model = os.environ.get("DEFAULT_LLM_MODEL", "ollama/qwen2.5:1.5b")
+                            llm_resp = await litellm.acompletion(
+                                model=llm_model,
+                                messages=[
+                                    {"role": "system", "content": "你是 OpenClaw AI 助手。简洁友好地回答用户的问题。如果用户只是打招呼，热情回复即可。用中文回答。"},
+                                    {"role": "user", "content": message},
+                                ],
+                                max_tokens=500,
+                                temperature=0.7,
+                            )
+                            llm_text = llm_resp.choices[0].message.content or ""
+                            if llm_text.strip():
+                                response_text = llm_text.strip()
+                        except Exception as llm_err:
+                            logger.warning("conversation 层 LLM 兜底失败: %s", llm_err)
+                    # 最终兜底
+                    if not response_text.strip():
+                        response_text = "我暂时没有找到合适的回答，你可以换个方式问问看。"
                 else:
                     response_text = str(result_dict["result"])
             elif result_dict.get("error"):

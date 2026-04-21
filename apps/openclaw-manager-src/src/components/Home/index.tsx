@@ -434,8 +434,8 @@ export function HomeDashboard() {
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
                       {{ portfolio_pnl: t('home.briefMetrics.portfolioPnl'), positions_count: t('home.briefMetrics.positionsCount'), xianyu_consultations: t('home.briefMetrics.xianyuConsultations'), xianyu_orders: t('home.briefMetrics.xianyuOrders'), social_posts: t('home.briefMetrics.socialPosts'), api_daily_cost: t('home.briefMetrics.apiDailyCost'), market_sentiment: t('home.briefMetrics.marketSentiment') }[key] || key.replace(/_/g, ' ')}
                     </span>
-                    <div className="font-mono text-lg font-bold mt-1" style={{ color: 'var(--accent-cyan)' }}>
-                      {typeof value === 'number' ? value.toLocaleString() : String(value ?? '—')}
+                    <div className="font-mono text-lg font-bold mt-1" style={{ color: value === 0 ? 'var(--text-disabled)' : 'var(--accent-cyan)' }}>
+                      {typeof value === 'number' ? (value === 0 ? '暂无' : value.toLocaleString()) : String(value ?? '—')}
                     </div>
                   </div>
                 ))}

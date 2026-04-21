@@ -162,7 +162,7 @@ async def daily_brief():
                 },
                 {
                     "name": "闲鱼客服",
-                    "status": "online" if status_data.get("xianyu", {}).get("running") else "offline",
+                    "status": "online" if status_data.get("xianyu", {}).get("running") else "idle",
                     "summary": f"今日 {result['metrics'].get('xianyu_consultations', 0)} 咨询",
                 },
                 {
