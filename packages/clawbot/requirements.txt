@@ -129,9 +129,8 @@ pybreaker>=1.4.0
 # 替换 strategy_engine.py 手写 RSI/MA: 200+ 标准指标，与交易平台数值一致
 pandas-ta>=0.3.14b1
 
-# diskcache — SQLite 持久化缓存 (2.8k⭐, Apache 2.0)
-# LLM 响应缓存: 相同请求直接返回，按 TTL 自动过期，线程安全
-diskcache~=5.6.0
+# diskcache — 已移除 (CVE-2025-69872)
+# 替换为 src/utils_cache.py (基于 sqlite3 标准库，零外部依赖)
 
 # ── Phase 5 新增: 统一通知系统 ──────────────────────────────
 
