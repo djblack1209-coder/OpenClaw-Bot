@@ -11,13 +11,15 @@
 import asyncio
 import json
 import logging
+import os
 import re
+import tempfile
 import time
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 
@@ -352,3 +354,177 @@ def _split_text(text: str) -> List[str]:
             chunks.append(buffer)
 
     return chunks if chunks else [text]
+
+
+# ============ 文件上传 & 语音转文字 ============
+
+# 文档类型扩展名（由 docling_service 处理）
+_DOCUMENT_EXTENSIONS = frozenset({
+    ".pdf", ".docx", ".doc", ".pptx", ".xlsx",
+})
+
+# 图片类型扩展名（由 docling_service 处理 OCR）
+_IMAGE_EXTENSIONS = frozenset({
+    ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif",
+})
+
+# 音频类型扩展名（由 deepgram_stt 处理）
+_AUDIO_EXTENSIONS = frozenset({
+    ".ogg", ".wav", ".mp3", ".m4a", ".webm", ".flac",
+})
+
+
+def _detect_file_type(filename: str) -> str:
+    """根据文件扩展名判断文件类型：document / image / audio / unknown"""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in _DOCUMENT_EXTENSIONS:
+        return "document"
+    if ext in _IMAGE_EXTENSIONS:
+        return "image"
+    if ext in _AUDIO_EXTENSIONS:
+        return "audio"
+    return "unknown"
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    上传附件并提取文本内容。
+
+    支持的文件类型:
+    - 文档: PDF/DOCX/PPTX/XLSX → 通过 Docling 提取结构化文本
+    - 图片: PNG/JPG/TIFF/BMP/GIF → 通过 Docling OCR 识别文字
+    - 音频: OGG/WAV/MP3/M4A/WEBM → 通过 Deepgram 语音转文字
+
+    返回: {"text": 提取的文本, "filename": 原始文件名, "type": 文件类型}
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+
+    # 判断文件类型
+    file_type = _detect_file_type(file.filename)
+    if file_type == "unknown":
+        raise HTTPException(
+            status_code=422,
+            detail=f"不支持的文件类型: {os.path.splitext(file.filename)[1]}。"
+            f"支持: PDF/DOCX/PPTX/XLSX/PNG/JPG/OGG/WAV/MP3/M4A",
+        )
+
+    # 保存到临时文件
+    tmp_dir = tempfile.mkdtemp(prefix="openclaw_upload_")
+    # 保留原始扩展名，确保下游服务正确识别格式
+    ext = os.path.splitext(file.filename)[1].lower()
+    tmp_path = os.path.join(tmp_dir, f"upload{ext}")
+
+    try:
+        # 读取上传内容并写入临时文件
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传的文件内容为空")
+
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+
+        extracted_text = ""
+
+        if file_type in ("document", "image"):
+            # 文档和图片：使用 Docling 提取文本
+            try:
+                from src.tools.docling_service import convert_document
+
+                markdown, tables = await convert_document(tmp_path)
+                extracted_text = markdown
+                # 如果有表格数据，附加简要信息
+                if tables:
+                    table_info = f"\n\n[包含 {len(tables)} 个表格]"
+                    extracted_text += table_info
+            except RuntimeError as e:
+                # Docling 未安装的情况
+                logger.warning("Docling 未安装，无法提取文档内容: %s", e)
+                extracted_text = f"[文档已上传: {file.filename}，但文档解析服务不可用]"
+            except Exception as e:
+                logger.error("文档提取失败 %s: %s", file.filename, e)
+                extracted_text = f"[文档提取失败: {file.filename}]"
+
+        elif file_type == "audio":
+            # 音频：使用 Deepgram 语音转文字
+            try:
+                from src.tools.deepgram_stt import transcribe_file
+
+                result = await transcribe_file(tmp_path)
+                if result:
+                    extracted_text = result
+                else:
+                    extracted_text = "[语音识别未返回有效内容，请检查音频质量]"
+            except Exception as e:
+                logger.error("语音转文字失败 %s: %s", file.filename, e)
+                extracted_text = f"[语音识别失败: {file.filename}]"
+
+        return {
+            "text": extracted_text,
+            "filename": file.filename,
+            "type": file_type,
+        }
+
+    finally:
+        # 清理临时文件
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if os.path.exists(tmp_dir):
+                os.rmdir(tmp_dir)
+        except OSError as e:
+            logger.debug("清理临时文件失败: %s", e)
+
+
+@router.post("/voice")
+async def voice_transcribe(file: UploadFile = File(...)):
+    """
+    语音转文字接口。
+
+    接受音频文件（OGG/WAV/MP3/M4A/WEBM），通过 Deepgram 转录为文字。
+    返回: {"text": 转录的文字}
+    """
+    # 保存到临时文件
+    tmp_dir = tempfile.mkdtemp(prefix="openclaw_voice_")
+    # 默认使用 .webm 扩展名（浏览器 MediaRecorder 通常输出 webm）
+    ext = os.path.splitext(file.filename or "voice.webm")[1].lower() or ".webm"
+    tmp_path = os.path.join(tmp_dir, f"voice{ext}")
+
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="音频内容为空")
+
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+
+        try:
+            from src.tools.deepgram_stt import transcribe_file
+
+            result = await transcribe_file(tmp_path)
+            if result:
+                return {"text": result}
+            else:
+                raise HTTPException(
+                    status_code=422,
+                    detail="语音识别未返回有效内容，请检查音频质量或 DEEPGRAM_API_KEY 配置",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("语音转文字失败: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"语音识别服务异常: {e}",
+            )
+
+    finally:
+        # 清理临时文件
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if os.path.exists(tmp_dir):
+                os.rmdir(tmp_dir)
+        except OSError as e:
+            logger.debug("清理临时文件失败: %s", e)

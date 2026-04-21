@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { useAppStore } from '../../stores/appStore';
 import { controlAllManagedServices } from '@/lib/tauri-ipc';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
@@ -145,7 +146,17 @@ export function Settings(_props: SettingsProps) {
         } catch { toast.error('导出配置失败'); }
         break;
       case 'reset':
-        toast.info('重置设置功能开发中');
+        /* 重置所有设置：清除本地缓存 + 后端配置，刷新页面 */
+        if (window.confirm('确定要重置所有设置吗？此操作不可撤销。')) {
+          try {
+            localStorage.clear();
+            await api.saveConfig({});
+            toast.success('设置已重置，页面即将刷新');
+            setTimeout(() => window.location.reload(), 1000);
+          } catch (e) {
+            toast.error('重置设置失败: ' + String(e));
+          }
+        }
         break;
       case 'cache':
         try {
@@ -155,7 +166,8 @@ export function Settings(_props: SettingsProps) {
         } catch { toast.error('清除缓存失败'); }
         break;
       case 'logs':
-        toast.info('日志查看功能开发中，请通过终端查看');
+        /* 跳转到日志页面 */
+        useAppStore.getState().setCurrentPage('logs');
         break;
       case 'diag':
         try {

@@ -29,6 +29,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
 
 /* ====== TopoJSON 地图源 — 本地打包，避免 Tauri CSP 拦截 ====== */
