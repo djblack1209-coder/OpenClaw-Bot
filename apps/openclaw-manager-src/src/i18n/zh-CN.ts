@@ -122,7 +122,7 @@ export const zhCN: Record<string, string> = {
   'header.onboarding.desc': '初始设置向导',
   'header.controlPanel': '控制面板',
   'header.openDashboard': '打开 Web Dashboard',
-  'header.connected': 'CONNECTED',
+  'header.connected': '已连接',
 
   // 设置页面
   'settings.title': '设置',
@@ -1370,7 +1370,7 @@ export const zhCN: Record<string, string> = {
 
   // Bots 补全
   'bots.serviceFleetLabel': 'SERVICE FLEET',
-  'bots.liveLabel': 'LIVE',
+  'bots.liveLabel': '实盘',
   'bots.serviceFleetTitle': '服务舰队',
   'bots.serviceFleetSuffix': '// SERVICE FLEET',
   'bots.cookieStatusLabel': 'COOKIE STATUS',
