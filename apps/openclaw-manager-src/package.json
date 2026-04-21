@@ -1,8 +1,8 @@
 {
-  "name": "openeverything-manager",
+  "name": "openclaw-manager",
   "version": "0.1.0",
-  "description": "OpenEverything 跨平台管理工具 - 高性能 AI 多智能体配置与服务管理",
-  "author": "OpenEverything Team",
+  "description": "OpenClaw 跨平台管理工具 - 高性能 AI 多智能体配置与服务管理",
+  "author": "OpenClaw Team",
   "license": "MIT",
   "type": "module",
   "scripts": {
