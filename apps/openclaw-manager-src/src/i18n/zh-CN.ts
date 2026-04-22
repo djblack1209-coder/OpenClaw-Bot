@@ -1749,4 +1749,79 @@ export const zhCN: Record<string, string> = {
   // 全球监控
   'worldMonitor.lastUpdate': '最后更新',
   'worldMonitor.loading': '数据加载中...',
+
+  // ====== Sprint 5 终局续：新增 key (2026-04-22) ======
+
+  // 环境配置页面
+  'setup.checkFailed': '检查环境失败',
+  'setup.installFailed': '安装失败',
+  'setup.checkingEnv': '正在检测系统环境...',
+  'setup.osLabel': '操作系统',
+  'setup.installing': '安装中...',
+  'setup.install': '安装',
+  'setup.recheck': '重新检查',
+  'setup.startUsing': '开始使用',
+  'setup.manualDownloadNode': '手动下载 Node.js',
+  'setup.envReady': '环境就绪！',
+  'setup.envReadyDesc': 'Node.js 和 OpenClaw 已正确安装',
+  'setup.envConfig': '环境配置',
+  'setup.missingDepsDesc': '检测到缺少必要的依赖，请完成以下安装',
+  'setup.wizardSubtitle': '环境检测与安装向导',
+
+  // 开发面板
+  'dev.title': '开发面板',
+  'dev.gitCommitsTitle': 'Git 提交',
+  'dev.gitCommitsSubtitle': 'GIT 提交记录',
+  'dev.buildStatusTitle': '构建状态',
+  'dev.buildStatusSubtitle': '构建状态',
+  'dev.techDebtTitle': '技术债务',
+  'dev.techDebtSubtitle': '技术债务 // HEALTH.md',
+  'dev.depUpdatesTitle': '依赖更新',
+  'dev.depUpdatesSubtitle': 'PIP 依赖更新',
+  'dev.hostLabel': '主机',
+
+  // 开发者工作台
+  'devPanel.requestFailed': '请求失败',
+  'devPanel.sysLogTitle': '系统日志',
+  'devPanel.sysInfoTitle': '系统信息',
+  'devPanel.sysInfoSubtitle': '系统信息',
+  'devPanel.osLabel': '操作系统',
+  'devPanel.archLabel': '架构',
+  'devPanel.nodeVersion': 'Node 版本',
+  'devPanel.envVarsTitle': '环境变量',
+  'devPanel.envVarsSubtitle': '环境变量',
+  'devPanel.apiTestTitle': 'API 测试',
+
+  // 测试页面补充
+  'testing.copiedToClipboard': '已复制命令到剪贴板',
+  'testing.quickActionsSubtitle': '快捷操作',
+
+  // 财务页面补充
+  'money.tradingPnlSubtitle': '交易损益 // 真实数据',
+
+  // 调度器错误反馈
+  'scheduler.loadFailed': '调度器加载失败',
+  'scheduler.toggleFailed': '任务切换失败',
+
+  // 日志页面补充
+  'logs.loadFailed': '日志加载失败',
+  'logs.filterAll': '全部',
+  'logs.noContent': '(无内容)',
+  'logs.realtime': '实时',
+  'logs.offline': '离线',
+  'logs.wsOffline': '离线 / 重连中',
+
+  // 进化引擎补充
+  'evolution.loadFailed': '进化数据加载失败',
+  'evolution.scanFailed': '扫描失败',
+  'evolution.priorityHigh': '高',
+  'evolution.priorityMedium': '中',
+  'evolution.priorityLow': '低',
+  'evolution.statusSuccess': '成功',
+  'evolution.statusRunning': '执行中',
+  'evolution.statusSkipped': '已跳过',
+
+  // 新手引导补充
+  'onboarding.apiKeySaveFailed': 'API Key 保存失败，请稍后在设置中重新配置',
+  'onboarding.baseUrlSaveFailed': 'Base URL 保存失败，请稍后在设置中重新配置',
 };
