@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-21 (复审第二轮：全栈品牌统一 + 安全加固 + i18n 深度清理)
+> 最后更新: 2026-04-22 (Sprint 5 全量生产审计)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -54,7 +54,7 @@
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1385/1387 Python (2项跳过, 0 失败), 0 TypeScript错误 |
+| 测试通过率 | 🟢 100% | 1431/1431 Python (2项跳过, 0 失败), 0 TypeScript错误 |
 | 前端数据接入 | 🟢 完成 | 31 页面全部接入真实 API (原 16 个 Mock + 3 个占位符)。0 页面展示假数据。monitor.py 路由已挂载。 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
@@ -90,12 +90,23 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | (已移至已解决) | | | HI-462/701~714 全部已修复，见下方已解决区 | |
+| HI-715 | `backend` | `omega.py` | 🟡 `omega_investment_analyze` 中 `result` 变量在 `engine.available=False` 时未定义，触发 UnboundLocalError | 2026-04-22 |
+| HI-716 | `backend` | `test_broker_bridge.py` | 🟡 测试 mock 不完整 — `qualifyContractsAsync` 需要 AsyncMock 而非 MagicMock | 2026-04-22 |
+| HI-717 | `docs` | `PROJECT_MAP.md` | 🟡 Python 文件计数过时: 文档记录 189 实际 298 (+57.7%) | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
 ---
 
 ## 已解决 (RESOLVED)
+
+| ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
+|----|------|------|------|----------|----------|-----------|
+| HI-715 | `backend` | `omega.py` | 🟡 omega_investment_analyze UnboundLocalError | `return result.to_dict()` 移入 `if engine.available` 块内 | 2026-04-22 | Sprint 5 审计 |
+| HI-716 | `backend` | `test_broker_bridge.py` | 🟡 测试 mock 不完整导致 market_value 断言失败 | qualifyContractsAsync 改用 AsyncMock + reqTickers 返回带价格的 mock | 2026-04-22 | Sprint 5 审计 |
+| HI-718 | `security` | `kiro-gateway/.env` | 🟠 文件权限 644 过宽 | chmod 600 | 2026-04-22 | Sprint 5 审计 |
+| HI-719 | `security` | `diskcache` | 🟠 CVE 包仍在 venv 中 | pip uninstall diskcache | 2026-04-22 | Sprint 5 审计 |
+| HI-720 | `frontend` | `npm 依赖` | 🟠 10 个 HIGH 漏洞(vite/rollup/hono/lodash/path-to-regexp/d3-color) | npm update 修复 | 2026-04-22 | Sprint 5 审计 |
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|

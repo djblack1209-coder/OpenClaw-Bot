@@ -12,6 +12,42 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — Sprint 5 全量生产审计：安全修复 + 测试修复 + API Bug 修复 + 依赖清理
+> 领域: `backend` `frontend` `security` `infra`
+> 影响模块: omega.py, test_broker_bridge.py, kiro-gateway/.env, venv diskcache, npm dependencies
+> 关联问题: HI-715, HI-716, HI-718, HI-719, HI-720
+
+### 变更内容
+
+**P0 安全修复 (3项)**
+- `kiro-gateway/.env` 权限从 644 修复为 600（HI-718）
+- `diskcache 5.6.3` 从 venv 彻底卸载（HI-719，Sprint 4 仅移除了 requirements 条目未实际 pip uninstall）
+- 前端 npm 10 个 HIGH 漏洞修复: vite/rollup/hono/@hono/node-server 升级（HI-720）
+
+**P1 功能修复 (2项)**
+- `omega.py:179` UnboundLocalError 修复: `return result.to_dict()` 移入 `if engine.available` 块内（HI-715）
+- `test_broker_bridge.py` mock 修复: qualifyContractsAsync 改用 AsyncMock + reqTickers 返回带价格的 ticker（HI-716）
+
+**审计验证通过项 (Sprint 4 修复回归验证)**
+- HI-701: yfinance 替换 Yahoo v8 — 43 标的全部返回非零价格 ✅
+- HI-702: newapi HTTPException 透传 — 全部 8 端点确认 ✅
+- HI-704: social/topics GET — curl 验证 200 ✅
+- HI-711: conversation forward_to_chat 拦截 — 代码确认 ✅
+- HI-712: brain 双层 fallback — [FAMILY_QWEN, None] 循环确认 ✅
+- mcp.rs 命令白名单 — 24 个允许命令 + validate_command 确认 ✅
+- deploy_server hmac.compare_digest — 确认 ✅
+- utils_cache 替代 diskcache — 无残留引用 ✅
+
+**测试结果: 1431 passed, 2 skipped, 0 failed**
+
+### 文件变更
+- `packages/clawbot/src/api/routers/omega.py` — UnboundLocalError 修复
+- `packages/clawbot/tests/test_broker_bridge.py` — AsyncMock 修复
+- `packages/clawbot/kiro-gateway/.env` — 权限收紧
+- `apps/openclaw-manager-src/package-lock.json` — npm 漏洞包升级
+- `docs/status/HEALTH.md` — Sprint 5 审计条目
+- `docs/CHANGELOG.md` — 本条目
+
 ## 2026-04-21 — 审计修复第六轮：全量日志脱敏 + 闲聊降级多族 + AI 新闻摘要 + diskcache CVE 替换
 > 领域: `backend`
 > 影响模块: 60 个 Python 文件, brain.py, brain_exec_tools.py, world_monitor.py, utils_cache.py(新增), llm_cache.py, litellm_router.py, requirements.txt
