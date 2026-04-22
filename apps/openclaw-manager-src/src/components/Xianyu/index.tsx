@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '@/lib/notify';
 import { motion } from 'framer-motion';
+import { useLanguage } from '@/i18n';
 import {
   Fish,
   MessageSquare,
@@ -60,15 +61,15 @@ interface SyncHistoryItem {
 
 /* ====== 辅助函数 ====== */
 
-/** 对话状态颜色映射 */
-function statusBadge(status?: string) {
+/** 对话状态颜色映射，接受翻译函数 t */
+function statusBadge(status: string | undefined, t: (key: string) => string) {
   switch (status) {
     case 'replied':
-      return { label: '已回复', color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.1)' };
+      return { label: t('xianyu.status.replied'), color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.1)' };
     case 'pending':
-      return { label: '待回复', color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.1)' };
+      return { label: t('xianyu.status.pending'), color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.1)' };
     case 'closed':
-      return { label: '已关闭', color: 'var(--text-disabled)', bg: 'rgba(100,116,139,0.1)' };
+      return { label: t('xianyu.status.closed'), color: 'var(--text-disabled)', bg: 'rgba(100,116,139,0.1)' };
     default:
       return { label: status ?? '—', color: 'var(--text-secondary)', bg: 'rgba(100,116,139,0.1)' };
   }
@@ -89,6 +90,7 @@ const getAvatarColor = (name: string) => avatarColors[Math.abs([...name].reduce(
  * 使用真实后端 API 数据
  */
 export function Xianyu() {
+  const { t } = useLanguage();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [cookieStatus, setCookieStatus] = useState<CookieStatusData | null>(null);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -134,7 +136,7 @@ export function Xianyu() {
       }
       setError(null);
     } catch (e: any) {
-      setError(e?.message ?? '数据加载失败');
+      setError(e?.message ?? t('xianyu.error.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -154,7 +156,7 @@ export function Xianyu() {
       await new Promise((r) => setTimeout(r, 1000));
       await fetchData();
     } catch {
-      toast.error('Cookie 同步失败，请检查 CookieCloud 服务', { channel: 'notification' });
+      toast.error(t('xianyu.error.cookieSyncFailed'), { channel: 'notification' });
       await fetchData();
     } finally {
       setSyncLoading(false);
@@ -195,7 +197,7 @@ export function Xianyu() {
         }
         if (status === 'confirmed') {
           stopQrPolling();
-          toast.success('扫码登录成功！', { channel: 'log' });
+          toast.success(t('xianyu.qr.loginSuccess'), { channel: 'log' });
           setShowQr(false);
           setQrImage('');
           setQrStatus('waiting');
@@ -230,14 +232,24 @@ export function Xianyu() {
         setShowQr(true);
         startQrPolling();
       } else {
-        toast.error('获取二维码失败，请稍后重试', { channel: 'notification' });
+        toast.error(t('xianyu.error.qrFailed'), { channel: 'notification' });
       }
     } catch {
-      toast.error('获取二维码失败，请稍后重试', { channel: 'notification' });
+      toast.error(t('xianyu.error.qrFailed'), { channel: 'notification' });
     } finally {
       setQrLoading(false);
     }
   };
+
+  /* ====== 扫码弹窗 ESC 键关闭 ====== */
+  useEffect(() => {
+    if (!showQr) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeQrModal();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showQr, closeQrModal]);
 
   /* ====== 组件卸载时清理轮询 ====== */
   useEffect(() => {
@@ -250,11 +262,11 @@ export function Xianyu() {
     try {
       const action = serviceRunning ? 'stop' : 'start';
       await clawbotFetchJson(`/api/v1/system/services/xianyu/${action}`, { method: 'POST' });
-      toast.success(serviceRunning ? '闲鱼服务已停止' : '闲鱼服务已启动', { channel: 'log' });
+      toast.success(serviceRunning ? t('xianyu.toast.serviceStopped') : t('xianyu.toast.serviceStarted'), { channel: 'log' });
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch {
-      toast.error('操作失败，请稍后重试', { channel: 'notification' });
+      toast.error(t('xianyu.error.operationFailed'), { channel: 'notification' });
       await fetchData();
     } finally {
       setServiceToggling(false);
@@ -288,10 +300,10 @@ export function Xianyu() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  闲鱼 AI 客服
+                  {t('xianyu.title')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  智能客服 // 自动回复引擎
+                  {t('xianyu.subtitle')}
                 </p>
               </div>
               {loading && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />}
@@ -308,7 +320,7 @@ export function Xianyu() {
                     )}
                   </div>
                   <span className="font-mono text-[10px]" style={{ color: serviceRunning ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                    {serviceRunning ? '运行中' : '已停止'}
+                    {serviceRunning ? t('xianyu.status.running') : t('xianyu.status.stopped')}
                   </span>
                 </div>
                 <motion.button
@@ -325,7 +337,7 @@ export function Xianyu() {
                   onClick={handleServiceToggle}
                 >
                   {serviceToggling ? <Loader2 size={10} className="animate-spin" /> : serviceRunning ? <Square size={10} /> : <Play size={10} />}
-                  {serviceRunning ? '停止服务' : '启动服务'}
+                  {serviceRunning ? t('xianyu.btn.stopService') : t('xianyu.btn.startService')}
                 </motion.button>
               </div>
             </div>
@@ -340,26 +352,26 @@ export function Xianyu() {
 
             {/* 关键指标 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <StatBlock icon={MessageSquare} label="对话数" value={String(conversations.length)} accent="var(--accent-purple)" />
-              <StatBlock icon={Zap} label="自动回复" value={autoReplyEnabled ? '开启' : '关闭'} accent={autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)'} />
+              <StatBlock icon={MessageSquare} label={t('xianyu.stats.conversations')} value={String(conversations.length)} accent="var(--accent-purple)" />
+              <StatBlock icon={Zap} label={t('xianyu.stats.autoReply')} value={autoReplyEnabled ? t('xianyu.stats.enabled') : t('xianyu.stats.disabled')} accent={autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)'} />
               <StatBlock icon={Cookie} label="Cookie" value={cookieStatus ? cookieLabel : '—'} accent={cookieColor} />
-              <StatBlock icon={AlertCircle} label="连续失败" value={String(cookieStatus?.consecutive_failures ?? 0)} accent={(cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)'} />
+              <StatBlock icon={AlertCircle} label={t('xianyu.stats.consecutiveFailures')} value={String(cookieStatus?.consecutive_failures ?? 0)} accent={(cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)'} />
             </div>
 
             {/* 最近对话列表 */}
             <div>
               <span className="text-label mb-3 block" style={{ color: 'var(--text-tertiary)' }}>
-                最近对话 ({conversations.length})
+                {t('xianyu.recentConversations')} ({conversations.length})
               </span>
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {conversations.length === 0 && !loading && (
-                  <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无对话记录</span>
+                  <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('xianyu.noConversations')}</span>
                 )}
                 {conversations.slice(0, 10).map((conv, i) => {
-                  const name = conv.buyer_name ?? conv.buyerName ?? '买家';
+                  const name = conv.buyer_name ?? conv.buyerName ?? t('xianyu.defaultBuyerName');
                   const msg = conv.last_message ?? conv.lastMessage ?? '';
                   const time = conv.time ?? (conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '');
-                  const badge = statusBadge(conv.status);
+                  const badge = statusBadge(conv.status, t);
                   return (
                     <div key={conv.id ?? i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
                       style={{ background: 'var(--bg-base)' }}>
@@ -406,11 +418,11 @@ export function Xianyu() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-5">
               <QrCode size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>扫码登录</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('xianyu.qr.title')}</span>
             </div>
 
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-secondary)' }}>
-              使用闲鱼 APP 扫码登录，自动获取 Cookie
+              {t('xianyu.qr.desc')}
             </p>
 
             <motion.button
@@ -431,11 +443,11 @@ export function Xianyu() {
               ) : (
                 <QrCode size={14} />
               )}
-              {qrLoading ? '生成中…' : '扫码登录闲鱼'}
+              {qrLoading ? t('xianyu.qr.generating') : t('xianyu.qr.loginBtn')}
             </motion.button>
 
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              扫码后 Cookie 自动更新，无需手动同步
+              {t('xianyu.qr.autoUpdateHint')}
             </p>
           </div>
         </motion.div>
@@ -446,6 +458,9 @@ export function Xianyu() {
             className="fixed inset-0 z-50 flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
             onClick={closeQrModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('xianyu.qr.loginBtn')}
           >
             <motion.div
               className="abyss-card p-6 rounded-2xl flex flex-col items-center gap-4"
@@ -457,14 +472,14 @@ export function Xianyu() {
               <div className="flex items-center gap-2">
                 <QrCode size={18} style={{ color: 'var(--accent-purple)' }} />
                 <span className="font-display text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                  扫码登录闲鱼
+                  {t('xianyu.qr.loginBtn')}
                 </span>
               </div>
 
               {/* 二维码图片 — 白色背景保证扫码识别 */}
               <div className="rounded-xl overflow-hidden bg-white p-4 flex items-center justify-center" style={{ minWidth: 216, minHeight: 216 }}>
                 {qrImage ? (
-                  <img src={`data:image/png;base64,${qrImage}`} alt="闲鱼登录二维码" className="w-48 h-48 object-contain" />
+                  <img src={`data:image/png;base64,${qrImage}`} alt="Xianyu QR Code" className="w-48 h-48 object-contain" />
                 ) : (
                   <Loader2 size={32} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
                 )}
@@ -476,7 +491,7 @@ export function Xianyu() {
                   <>
                     <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-purple)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      请用闲鱼 APP 扫描二维码
+                      {t('xianyu.qr.waitingScan')}
                     </span>
                   </>
                 )}
@@ -484,7 +499,7 @@ export function Xianyu() {
                   <>
                     <CheckCircle2 size={14} style={{ color: 'var(--accent-green)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--accent-green)' }}>
-                      已扫码，请在手机上确认登录
+                      {t('xianyu.qr.scannedConfirm')}
                     </span>
                   </>
                 )}
@@ -492,7 +507,7 @@ export function Xianyu() {
                   <>
                     <XCircle size={14} style={{ color: 'var(--accent-red)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
-                      二维码已过期
+                      {t('xianyu.qr.expired')}
                     </span>
                   </>
                 )}
@@ -500,7 +515,7 @@ export function Xianyu() {
                   <>
                     <AlertCircle size={14} style={{ color: 'var(--accent-red)' }} />
                     <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
-                      出错了，请重试
+                      {t('xianyu.qr.error')}
                     </span>
                   </>
                 )}
@@ -520,7 +535,7 @@ export function Xianyu() {
                     whileTap={{ scale: 0.97 }}
                     onClick={handleGenerateQR}
                   >
-                    重新生成
+                    {t('xianyu.qr.regenerate')}
                   </motion.button>
                 )}
                 <button
@@ -532,7 +547,7 @@ export function Xianyu() {
                   }}
                   onClick={closeQrModal}
                 >
-                  关闭
+                  {t('xianyu.btn.close')}
                 </button>
               </div>
             </motion.div>
@@ -545,7 +560,7 @@ export function Xianyu() {
             {/* 标题 */}
             <div className="flex items-center gap-2 mb-5">
               <Cookie size={16} style={{ color: cookieColor }} />
-              <span className="text-label" style={{ color: cookieColor }}>Cookie 状态</span>
+              <span className="text-label" style={{ color: cookieColor }}>{t('xianyu.cookie.title')}</span>
             </div>
 
             {/* 大状态指示器 */}
@@ -561,14 +576,14 @@ export function Xianyu() {
 
             {/* 详细信息 */}
             <div className="space-y-4">
-              <InfoRow icon={Clock} label="上次同步"
+              <InfoRow icon={Clock} label={t('xianyu.cookie.lastSync')}
                 value={cookieStatus?.last_sync_time
                   ? new Date(cookieStatus.last_sync_time).toLocaleTimeString('zh-CN')
                   : '—'} />
-              <InfoRow icon={AlertCircle} label="连续失败"
-                value={`${cookieStatus?.consecutive_failures ?? 0} 次`} />
-              <InfoRow icon={cookieStatus?.enabled ? Wifi : WifiOff} label="同步功能"
-                value={cookieStatus?.enabled ? '已启用' : '未启用'} />
+              <InfoRow icon={AlertCircle} label={t('xianyu.cookie.consecutiveFailures')}
+                value={`${cookieStatus?.consecutive_failures ?? 0} ${t('xianyu.cookie.times')}`} />
+              <InfoRow icon={cookieStatus?.enabled ? Wifi : WifiOff} label={t('xianyu.cookie.syncFeature')}
+                value={cookieStatus?.enabled ? t('xianyu.cookie.syncEnabled') : t('xianyu.cookie.syncDisabled')} />
             </div>
 
             {/* 手动同步按钮 */}
@@ -590,11 +605,11 @@ export function Xianyu() {
               ) : (
                 <RefreshCw size={14} />
               )}
-              {syncLoading ? '同步中…' : '立即同步 Cookie'}
+              {syncLoading ? t('xianyu.btn.syncing') : t('xianyu.btn.syncNow')}
             </motion.button>
 
             <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              CookieCloud 自动同步 · 加密传输
+              {t('xianyu.cookie.autoSyncHint')}
             </p>
           </div>
         </motion.div>
@@ -606,12 +621,12 @@ export function Xianyu() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <RefreshCw size={16} style={{ color: 'var(--accent-cyan)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>同步记录</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>{t('xianyu.syncHistory.title')}</span>
             </div>
 
             <div className="space-y-2 max-h-[240px] overflow-y-auto">
               {syncHistory.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>暂无同步记录</span>
+                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('xianyu.syncHistory.noRecords')}</span>
               )}
               {syncHistory.slice(0, 10).map((entry, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
@@ -629,7 +644,7 @@ export function Xianyu() {
                   <span className="font-mono text-[11px] flex-1 truncate" style={{
                     color: entry.success ? 'var(--accent-green)' : 'var(--accent-red)',
                   }}>
-                    {entry.success ? '同步成功' : (entry.message ?? '同步失败')}
+                    {entry.success ? t('xianyu.syncHistory.success') : (entry.message ?? t('xianyu.syncHistory.failed'))}
                   </span>
                 </div>
               ))}
@@ -642,7 +657,7 @@ export function Xianyu() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Zap size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>自动回复</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('xianyu.autoReply.title')}</span>
             </div>
 
             <div className="flex items-center gap-3 mb-6">
@@ -656,19 +671,19 @@ export function Xianyu() {
               </div>
               <span className="font-display text-xl font-bold tracking-wider"
                 style={{ color: autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                {autoReplyEnabled ? '已启用' : '未启用'}
+                {autoReplyEnabled ? t('xianyu.autoReply.enabled') : t('xianyu.autoReply.disabled')}
               </span>
             </div>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>对话数量</span>
+                <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('xianyu.autoReply.conversationCount')}</span>
                 <span className="font-display text-lg font-bold" style={{ color: 'var(--accent-cyan)' }}>
                   {conversations.length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Cookie 状态</span>
+                <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('xianyu.autoReply.cookieStatus')}</span>
                 <span className="font-mono text-xs font-bold" style={{ color: cookieColor }}>
                   {cookieStatus ? cookieLabel : '—'}
                 </span>

@@ -130,13 +130,13 @@ function formatAvgResponse(perf: SystemPerf): string {
 
 /* ====== 接口定义 ====== */
 interface DashboardProps {
-  envStatus: EnvironmentStatus | null;
-  onSetupComplete: () => void;
+  envStatus?: EnvironmentStatus | null;
+  onSetupComplete?: () => void;
 }
 
 /* ====== 主组件 ====== */
 
-export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComplete }: DashboardProps) {
+export function Dashboard(_props: DashboardProps) {
   const { t } = useLanguage();
   /* —— 状态 —— */
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -254,7 +254,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  SYSTEM STATUS
+                  {t('dashboard.systemStatus')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('dashboard.systemOverview')} // {runningCount}/{services.length} SERVICES ONLINE
@@ -299,13 +299,13 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-              SERVICES
+              {t('dashboard.services')}
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-1" style={{ color: 'var(--text-primary)' }}>
               {t('dashboard.serviceMatrix')}
             </h3>
             <p className="font-mono text-[10px] mb-4" style={{ color: 'var(--text-disabled)' }}>
-              服务由后端 API 管理。如需操作 LaunchAgent 级服务，请使用桌面端控制面板。
+              {t('dashboard.serviceDesc')}
             </p>
 
             <div className="flex-1 space-y-1.5">
@@ -384,7 +384,7 @@ export function Dashboard({ envStatus: _envStatus, onSetupComplete: _onSetupComp
             >
               <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                LIVE LOGS
+                {t('dashboard.liveLogs')}
               </span>
               <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                 {t('dashboard.recentLogs')} {logs.length} {t('dashboard.logsUnit')}

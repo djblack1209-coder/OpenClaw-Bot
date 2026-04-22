@@ -13,8 +13,6 @@ import {
   BarChart3,
   ArrowRight,
   RefreshCw,
-  Loader2,
-  AlertTriangle,
   Power,
   ShieldCheck,
   LineChart,
@@ -25,6 +23,8 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useAppStore } from '../../stores/appStore';
 import { useLanguage } from '../../i18n';
+import { LoadingState } from '../shared/LoadingState';
+import { SimpleErrorState as ErrorState } from '../shared/ErrorState';
 
 /* ====== 常量 ====== */
 const REFRESH_INTERVAL = 30_000;
@@ -113,38 +113,6 @@ function signalLabelKey(signal: string): string {
 /** 盈亏颜色 */
 function pnlColor(value: number): string {
   return value >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-}
-
-/* ====== 加载/错误状态组件 ====== */
-
-function LoadingState({ message = '数据加载中...' }: { message?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-8">
-      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
-      <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{message}</span>
-    </div>
-  );
-}
-
-function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8">
-      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
-      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
-      <button
-        onClick={onRetry}
-        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
-        style={{
-          background: 'rgba(255, 0, 60, 0.1)',
-          color: 'var(--accent-red)',
-          border: '1px solid rgba(255, 0, 60, 0.25)',
-        }}
-      >
-        <RefreshCw size={12} className="inline mr-1.5" />
-        重试
-      </button>
-    </div>
-  );
 }
 
 /* ====== 主组件 ====== */

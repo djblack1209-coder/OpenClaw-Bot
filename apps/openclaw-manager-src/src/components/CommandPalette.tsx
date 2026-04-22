@@ -92,7 +92,7 @@ export function CommandPalette() {
               forceMount
             >
               <Send className="mr-2 h-4 w-4" />
-              👉 {t('commandPalette.execCommand')}: &quot;{inputValue.trim()}&quot;
+              {t('commandPalette.execCommand')}: &quot;{inputValue.trim()}&quot;
             </CommandItem>
           </CommandGroup>
         )}
