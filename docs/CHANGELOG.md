@@ -12,6 +12,48 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — Sprint 5 续：微信接入 + 闲鱼可靠性升级 + 前端 P0 体验修复
+> 领域: `frontend` `xianyu` `infra` `docs`
+> 影响模块: cookie_cloud.py, xianyu_live.py, xianyu_agent.py, TelemetryCard, Header, TerminalLogsCard, Home, Settings, Assistant, .zshrc, openclaw.json
+> 关联问题: HI-733~738
+
+### 变更内容
+
+**微信接入完成**
+- `.zshrc` fnm 硬编码 v20 路径 → 动态 `eval "$(fnm env --use-on-cd)"`，默认 Node 22.22.2
+- 全局 `~/.openclaw/openclaw.json` 补 `plugins.allow: ["openclaw-weixin"]` 消除警告
+- 用户成功扫码登录微信，Gateway 已重启
+
+**闲鱼可靠性升级 (HI-733~736)**
+- HI-733: `XIANYU_APP_KEY` 空值警告 → 回退到公共默认值 `34839810`（与 xianyu_apis.py 一致）
+- HI-734: CookieCloud 同步后新增 `hasLogin()` API 验证，防止过期 cookie 写入 .env
+- HI-735: 安全消毒 fail-close 时给买家兜底回复 `亲，消息没收到呢，麻烦重新发一下哦～`
+- HI-736: LLM 调用失败加 1 次重试（间隔 2 秒），减少买家看到错误信息的概率
+
+**前端 P0 体验修复 (HI-737~738)**
+- TelemetryCard 全组件接入 i18n（7 个硬编码字符串）
+- Header 连接状态 `已连接`/`离线` 接入 i18n
+- TerminalLogsCard 4 个硬编码字符串接入 i18n
+- Home 页面 4 个状态文本接入 i18n
+- Settings 通知/高级设置开关改用 `<button role="switch" aria-checked>` 符合无障碍标准
+- Assistant 会话操作失败加 `toast.error()` 反馈（之前只 console.error 用户无感）
+- 新增 20 个 i18n key（zh-CN + en-US 双语）
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — APP_KEY 默认值 + 安全拦截兜底
+- `packages/clawbot/src/xianyu/cookie_cloud.py` — 新增 `_validate_cookie()` 方法
+- `packages/clawbot/src/xianyu/xianyu_agent.py` — LLM 调用重试
+- `apps/openclaw-manager-src/src/components/Home/TelemetryCard.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/Home/TerminalLogsCard.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/Home/index.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/Layout/Header.tsx` — i18n
+- `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 无障碍
+- `apps/openclaw-manager-src/src/components/Assistant/index.tsx` — 错误反馈
+- `apps/openclaw-manager-src/src/i18n/zh-CN.ts` — 新增 key
+- `apps/openclaw-manager-src/src/i18n/en-US.ts` — 新增 key
+- `~/.zshrc` — fnm 动态加载
+- `~/.openclaw/openclaw.json` — plugins.allow
+
 ## 2026-04-22 — Sprint 5 用户体验修复：闲鱼P0 + 新闻跳转 + 微信插件 + 桌面端重构建
 > 领域: `xianyu` `frontend` `backend` `infra`
 > 影响模块: xianyu_live.py, NewsFeed, WorldMonitor, Bots, AIVoteCard, openclaw-weixin, world_monitor.py

@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (P0 闲鱼 WebSocket 参数名修复)
+> 最后更新: 2026-04-22 (微信接入完成 + 闲鱼可靠性升级 + 前端 P0 修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -101,7 +101,13 @@
 | HI-729 | `frontend` | `Bots/index.tsx` | 🟡 ✅已修 停止按钮布局挤压 + 刷新无反馈 | 2026-04-22 |
 | HI-730 | `frontend` | `WorldMonitor/index.tsx` | 🟡 ✅已修 电网/光缆"正常"字号不一致 | 2026-04-22 |
 | HI-731 | `backend` | `world_monitor.py` | 🟡 ✅已修 新增3个中文RSS源(澎湃/界面/知乎) | 2026-04-22 |
-| HI-732 | `infra` | `openclaw-weixin` | 🟠 微信插件 zod 依赖缺失 + plugins.allow 未配置 → 已修复，待用户扫码 | 2026-04-22 |
+| HI-732 | `infra` | `openclaw-weixin` | 🟡 ✅已修 微信插件 zod 依赖 + plugins.allow + 用户已扫码连接成功 | 2026-04-22 |
+| HI-733 | `xianyu` | `xianyu_live.py` | 🟡 ✅已修 XIANYU_APP_KEY 空值警告 → 回退公共默认值 34839810 | 2026-04-22 |
+| HI-734 | `xianyu` | `cookie_cloud.py` | 🟠 ✅已修 CookieCloud 同步后无验证 → 新增 hasLogin() API 校验防止过期 cookie 覆写 | 2026-04-22 |
+| HI-735 | `xianyu` | `xianyu_live.py` | 🟡 ✅已修 安全消毒 fail-close 时买家无回复 → 兜底消息 | 2026-04-22 |
+| HI-736 | `xianyu` | `xianyu_agent.py` | 🟡 ✅已修 LLM 调用失败无重试 → 加 1 次重试(间隔 2s) | 2026-04-22 |
+| HI-737 | `frontend` | 6 组件 | 🟠 ✅已修 6 个 P0 i18n/无障碍/错误反馈修复（TelemetryCard/Header/TerminalLogs/Home/Settings/Assistant）| 2026-04-22 |
+| HI-738 | `frontend` | 20+ 组件 | 🟡 TECH_DEBT: 前端体验审计发现 72 个 UX 问题(9P0已修/36P1/24P2/3P3)，剩余 63 个待修 | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
