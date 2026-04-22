@@ -79,6 +79,31 @@ clean: ## 清理缓存和临时文件
 	find $(CLAWBOT) -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	find $(CLAWBOT) -type f -name "*.pyc" -delete 2>/dev/null || true
 
+deep-clean: clean ## 深度清理（释放 GB 级空间，不影响代码）
+	@echo "══════ 深度清理开始 ══════"
+	@echo "[1/5] 清理 Tauri 编译缓存..."
+	rm -rf $(FRONTEND)/src-tauri/target/ 2>/dev/null || true
+	@echo "[2/5] 清理 worktrees..."
+	@# 先正确注销 git worktree，再删目录
+	@for wt in $$(git worktree list --porcelain 2>/dev/null | grep '^worktree ' | grep '.worktrees/' | sed 's/^worktree //'); do \
+		git worktree remove "$$wt" --force 2>/dev/null || true; \
+	done
+	rm -rf .worktrees/ 2>/dev/null || true
+	@echo "[3/5] 压缩 git 历史..."
+	git gc --prune=now 2>/dev/null || true
+	@echo "[4/5] 清理 Python 构建缓存..."
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	@echo "[5/5] 清理 Playwright 临时文件..."
+	rm -rf .playwright-cli/ .playwright-mcp/ 2>/dev/null || true
+	@echo ""
+	@echo "✅ 深度清理完成。项目当前大小:"
+	@du -sh . 2>/dev/null
+	@echo "提示: 如果 OpenCode 仍然卡顿，请重启 OpenCode 应用"
+
 ## ─── CI 本地验证（和 GitHub Actions 一致） ───
 ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
 	@echo "══════ [1/4] Python Lint (ruff) ══════"

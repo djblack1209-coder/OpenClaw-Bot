@@ -145,6 +145,22 @@ apps/OpenClaw.app/
 # === 本地 Git worktrees ===
 .worktrees/
 
+# === Rust/Tauri 编译产物（占 GB 级空间，必须忽略）===
+**/src-tauri/target/
+
+# === 浏览器数据目录（含 Wasm、缓存、Safe Browsing 等大文件）===
+**/browser_profiles/
+
+# === 二进制 native 模块（不该进 git）===
+*.node
+*.abi3.so
+*.dylib
+*.wasm
+
+# === 大文件兜底（超过限制的不该进 git）===
+*.bundle
+*.tflite
+
 # === 浏览器代理密钥池（含真实 API Key）===
 packages/clawbot/browser-agent/keypool.json
 packages/clawbot/browser-agent/*.json
