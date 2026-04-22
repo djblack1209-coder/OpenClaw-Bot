@@ -24,7 +24,6 @@ import {
   Terminal,
   ExternalLink,
   Map,
-  RefreshCw,
   Loader2,
   Clock,
 } from 'lucide-react';
