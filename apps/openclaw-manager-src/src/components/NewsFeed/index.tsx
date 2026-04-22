@@ -193,7 +193,7 @@ function ErrorState({ message, onRetry, retryLabel = 'Retry' }: { message?: stri
  * 数据来自 /api/v1/monitor/news
  */
 export function NewsFeed() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   /* ====== 状态 ====== */
   const [activeCategory, setActiveCategory] = useState<NewsCategory>('ALL');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
@@ -394,7 +394,7 @@ export function NewsFeed() {
                 <span className="flex items-center gap-1 ml-auto">
                   <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    {t('newsFeed.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {t('newsFeed.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </span>
               )}

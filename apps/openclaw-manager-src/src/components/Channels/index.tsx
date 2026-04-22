@@ -39,11 +39,11 @@ const REFRESH_INTERVAL_MS = 30_000;
 const CHANNEL_META: Record<string, { icon: string; color: string; label: string }> = {
   telegram:  { icon: '✈', color: 'var(--accent-cyan)',   label: 'Telegram' },
   discord:   { icon: '🎮', color: 'var(--accent-purple)', label: 'Discord' },
-  feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: '飞书' },
-  wechat:    { icon: '💬', color: 'var(--accent-green)',  label: '微信' },
+  feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: 'channels.feishu' },
+  wechat:    { icon: '💬', color: 'var(--accent-green)',  label: 'channels.wechat' },
   whatsapp:  { icon: '📱', color: 'var(--accent-green)',  label: 'WhatsApp' },
-  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: '闲鱼' },
-  email:     { icon: '📧', color: 'var(--accent-purple)', label: '邮件' },
+  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: 'channels.xianyu' },
+  email:     { icon: '📧', color: 'var(--accent-purple)', label: 'channels.email' },
   slack:     { icon: '💼', color: 'var(--accent-amber)',  label: 'Slack' },
   web:       { icon: '🌐', color: 'var(--accent-cyan)',   label: 'Web' },
 };
@@ -95,7 +95,7 @@ export function Channels() {
       setError(null);
     } catch (err) {
       console.error('[Channels] 加载失败:', err);
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : t('channels.unknownError');
       setError(msg);
       toast.error(t('channels.loadError'), { channel: 'notification' });
     }
@@ -136,19 +136,19 @@ export function Channels() {
   /* ── 渠道启停切换 ── */
   const handleToggleChannel = useCallback(async (ch: ChannelConfig) => {
     if (!isTauri()) {
-      toast.error('渠道配置切换需要在桌面客户端中操作', { channel: 'notification' });
+      toast.error(t('channels.toggleNeedsTauri'), { channel: 'notification' });
       return;
     }
     setTogglingChannelIds((prev) => new Set(prev).add(ch.id));
     try {
       await api.saveChannelConfig({ ...ch, enabled: !ch.enabled });
-      toast.success(`${ch.channel_type || ch.id} 已${ch.enabled ? '禁用' : '启用'}`, { channel: 'log' });
+      toast.success(`${ch.channel_type || ch.id} ${ch.enabled ? t('channels.channelDisabled') : t('channels.channelEnabled')}`, { channel: 'log' });
       // 局部更新状态
       setChannels((prev) =>
         prev.map((c) => c.id === ch.id ? { ...c, enabled: !c.enabled } : c),
       );
     } catch {
-      toast.error('切换失败，请稍后重试', { channel: 'notification' });
+      toast.error(t('channels.toggleFailed'), { channel: 'notification' });
       await fetchData();
     } finally {
       setTogglingChannelIds((prev) => {
@@ -249,7 +249,7 @@ export function Channels() {
                           <span className="text-xl w-8 text-center">{meta.icon}</span>
                           <div>
                             <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                              {meta.label}
+                              {t(meta.label)}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <si.Icon size={10} style={{ color: si.color }} />
@@ -360,7 +360,7 @@ export function Channels() {
                   return (
                     <div key={ch.id} className="flex items-center gap-2">
                       <span className="font-mono text-[10px] w-16 shrink-0" style={{ color: 'var(--text-disabled)' }}>
-                        {meta.label}
+                        {t(meta.label)}
                       </span>
                       <span
                         className="font-mono text-[10px] flex-1"
@@ -423,7 +423,7 @@ export function Channels() {
                         style={{ background: 'var(--bg-secondary)' }}
                       >
                         <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {meta.icon} {meta.label}
+                          {meta.icon} {t(meta.label)}
                         </span>
                         <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                           {ch.channel_type || '—'}

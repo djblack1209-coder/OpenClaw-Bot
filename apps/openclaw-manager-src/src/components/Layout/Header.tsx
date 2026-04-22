@@ -14,7 +14,7 @@ interface HeaderProps {
 }
 
 export function Header({ currentPage }: HeaderProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const title = t(`header.${currentPage}.title`);
   const [opening, setOpening] = useState(false);
   const [clock, setClock] = useState('');
@@ -41,7 +41,7 @@ export function Header({ currentPage }: HeaderProps) {
   useEffect(() => {
     const tick = () => {
       setClock(
-        new Date().toLocaleTimeString('zh-CN', {
+        new Date().toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', {
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',

@@ -104,7 +104,7 @@ const findServiceName = (services: ServiceItem[], id: string) =>
  * 使用真实后端 API 数据
  */
 export function Bots() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   /* ====== 状态 ====== */
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [cookieStatus, setCookieStatus] = useState<CookieStatus | null>(null);
@@ -301,6 +301,7 @@ export function Bots() {
   const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
 
   /* 通知服务状态（从 services 列表中查找） */
+  // 运行时服务名匹配，非 UI 文本
   const notifService = services.find((s) => s.id === 'notification' || s.id === 'apprise' || s.name?.includes('notif') || s.name?.includes('通知'));
   const notifRunning = notifService?.status === 'running';
 
@@ -474,7 +475,7 @@ export function Bots() {
                 </div>
                 <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                   {cookieStatus?.last_sync_time
-                    ? new Date(cookieStatus.last_sync_time).toLocaleTimeString('zh-CN')
+                    ? new Date(cookieStatus.last_sync_time).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')
                     : '—'}
                 </span>
               </div>
@@ -739,7 +740,7 @@ export function Bots() {
                 </div>
                 <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                   {autopilotData.nextPublishTime
-                    ? new Date(autopilotData.nextPublishTime).toLocaleTimeString('zh-CN')
+                    ? new Date(autopilotData.nextPublishTime).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')
                     : '—'}
                 </span>
               </div>
@@ -836,7 +837,7 @@ export function Bots() {
                     {/* 下次执行 */}
                     {task.next_run && (
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                        {t('bots.nextRun')}: {new Date(task.next_run).toLocaleTimeString('zh-CN')}
+                        {t('bots.nextRun')}: {new Date(task.next_run).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')}
                       </span>
                     )}
 

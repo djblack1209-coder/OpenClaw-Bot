@@ -1598,4 +1598,19 @@ export const enUS: Record<string, string> = {
   'controlCenter.social.schedulerPaused': 'Scheduler Paused',
   // ControlCenter — Other
   'controlCenter.controlDataNotLoaded': 'Control data not loaded yet',
+
+  // i18n final cleanup — hardcoded Chinese removal
+  'common.unknownError': 'Unknown error',
+  'common.empty': '(empty)',
+  'assistant.recordingEmpty': 'Recording is empty',
+  'assistant.voiceRecognized': 'Voice recognition complete',
+  'assistant.voiceNoContent': 'Voice recognition returned no valid content',
+  'plugins.unknownTool': 'Unknown tool',
+  'plugins.cliUnavailable': '[SYSTEM] CLI tool endpoint unavailable, trying skills list',
+  'plugins.skillsUnavailable': '[SYSTEM] Skills list unavailable',
+  'plugins.noPluginDataLog': '[SYSTEM] No plugin data available',
+  'apiGateway.refreshData': 'Refresh data',
+  'setup.terminalOpened': 'Install terminal opened. Please complete installation then click "Re-check"',
+  'ui.commandPanelTitle': 'Command Palette',
+  'ui.commandPanelDesc': 'Search for a command...',
 };

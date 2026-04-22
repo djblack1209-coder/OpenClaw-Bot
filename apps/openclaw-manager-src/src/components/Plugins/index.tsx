@@ -99,13 +99,13 @@ export function Plugins() {
                 }));
 
           if (Array.isArray(toolsList)) {
-            toolsList.forEach((t: Record<string, unknown>) => {
+            toolsList.forEach((tool: Record<string, unknown>) => {
               items.push({
-                id: String(t.id || t.name || ''),
-                name: String(t.name || t.id || '未知工具'),
-                version: String(t.version || '—'),
-                status: t.status === 'running' || t.enabled ? 'running' : 'stopped',
-                protocol: String(t.protocol || t.type || '—'),
+                id: String(tool.id || tool.name || ''),
+                name: String(tool.name || tool.id || t('plugins.unknownTool')),
+                version: String(tool.version || '—'),
+                status: tool.status === 'running' || tool.enabled ? 'running' : 'stopped',
+                protocol: String(tool.protocol || tool.type || '—'),
               });
             });
           }
@@ -113,7 +113,7 @@ export function Plugins() {
         }
       } catch {
         // CLI 工具接口不存在，继续尝试其他方式
-        newLogs.push({ ts: nowTs(), msg: '[SYSTEM] CLI 工具接口不可用，尝试技能列表' });
+        newLogs.push({ ts: nowTs(), msg: t('plugins.cliUnavailable') });
       }
 
       // 如果 CLI 工具为空，尝试 Skills 列表
@@ -133,13 +133,13 @@ export function Plugins() {
             newLogs.push({ ts: nowTs(), msg: `[SYSTEM] 加载了 ${skills.total} 个技能，${skills.enabled} 个已启用` });
           }
         } catch {
-          newLogs.push({ ts: nowTs(), msg: '[SYSTEM] 技能列表不可用' });
+          newLogs.push({ ts: nowTs(), msg: t('plugins.skillsUnavailable') });
         }
       }
 
       // 如果仍然没有数据
       if (items.length === 0) {
-        newLogs.push({ ts: nowTs(), msg: '[SYSTEM] 暂无可用插件数据' });
+        newLogs.push({ ts: nowTs(), msg: t('plugins.noPluginDataLog') });
       }
     } catch {
       newLogs.push({ ts: nowTs(), msg: '[ERROR] 获取插件数据失败' });
@@ -148,7 +148,7 @@ export function Plugins() {
       setLogs((prev) => [...newLogs, ...prev].slice(0, 20)); // 保留最新 20 条
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* ── 首次加载 + 自动刷新 ── */
   useEffect(() => {
@@ -406,7 +406,7 @@ export function Plugins() {
                   {running} {t('plugins.activeConnections')}
                 </span>
                 <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--text-disabled)' }}>
-                  {plugins.length > 0 ? '实时' : '暂无'}
+                  {plugins.length > 0 ? t('plugins.realtime') : t('plugins.noPlugins')}
                 </span>
               </div>
             </div>
@@ -420,7 +420,7 @@ export function Plugins() {
               PROTOCOL STATUS
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              协议状态
+              {t('plugins.protocolStatusTitle')}
             </h3>
 
             <div className="flex-1 space-y-3">

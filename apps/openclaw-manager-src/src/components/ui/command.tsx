@@ -34,7 +34,9 @@ function Command({
 }
 
 function CommandDialog({
+  /** 对话框标题，调用者应传入 t('ui.commandPanelTitle') */
   title = "命令面板",
+  /** 对话框描述，调用者应传入 t('ui.commandPanelDesc') */
   description = "搜索要执行的命令...",
   children,
   className,

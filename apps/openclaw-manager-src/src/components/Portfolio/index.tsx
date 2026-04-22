@@ -583,10 +583,10 @@ export function Portfolio() {
                     </div>
                     <div className="flex-1">
                       <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
-                        IB Gateway 未连接
+                        {t('portfolio.ibNotConnected')}
                       </p>
                       <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
-                        请启动 IB Gateway 或 TWS 并登录，OpenClaw 会自动检测连接。
+                        {t('portfolio.ibNotConnectedDesc')}
                       </p>
                     </div>
                   </div>

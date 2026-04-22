@@ -25,14 +25,14 @@ import { GlassCard } from '../shared';
 import type { BotVote, VoteResult } from '../../hooks/usePortfolioAPI';
 import clsx from 'clsx';
 
-/* ── AI 角色配置 ── */
-const AI_ROLES: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  haiku:    { label: '雷达哨兵',   icon: Target,      color: 'text-sky-400' },
-  qwen:    { label: '宏观分析',   icon: Globe,        color: 'text-violet-400' },
-  gpt:     { label: '图表技术',   icon: BarChart3,    color: 'text-emerald-400' },
-  deepseek: { label: '风控审计',  icon: Shield,       color: 'text-amber-400' },
-  sonnet:  { label: '战术指挥',   icon: TrendingUp,   color: 'text-blue-400' },
-  opus:    { label: '首席策略',   icon: Brain,        color: 'text-purple-400' },
+/* ── AI 角色配置（使用 i18n key） ── */
+const AI_ROLES: Record<string, { labelKey: string; icon: React.ElementType; color: string }> = {
+  haiku:    { labelKey: 'portfolio.vote.aiRoleRadar',   icon: Target,      color: 'text-sky-400' },
+  qwen:    { labelKey: 'portfolio.vote.aiRoleMacro',   icon: Globe,        color: 'text-violet-400' },
+  gpt:     { labelKey: 'portfolio.vote.aiRoleChart',   icon: BarChart3,    color: 'text-emerald-400' },
+  deepseek: { labelKey: 'portfolio.vote.aiRoleRisk',  icon: Shield,       color: 'text-amber-400' },
+  sonnet:  { labelKey: 'portfolio.vote.aiRoleTactical',   icon: TrendingUp,   color: 'text-blue-400' },
+  opus:    { labelKey: 'portfolio.vote.aiRoleChief',   icon: Brain,        color: 'text-purple-400' },
 };
 
 /* 根据 bot_id 匹配角色（后端 bot_id 可能带前缀/后缀） */
@@ -41,23 +41,24 @@ function matchRole(botId: string) {
   for (const key of Object.keys(AI_ROLES)) {
     if (lower.includes(key)) return AI_ROLES[key];
   }
-  return { label: botId, icon: Brain, color: 'text-gray-400' };
+  return { labelKey: botId, icon: Brain, color: 'text-gray-400' };
 }
 
-/* 投票颜色/图标映射 */
+/* 投票颜色/图标映射（使用 i18n key） */
 function voteStyle(vote: string) {
   switch (vote.toUpperCase()) {
-    case 'BUY':  return { bg: 'bg-[var(--oc-success)]/15', text: 'text-[var(--oc-success)]', label: '买入', Icon: ThumbsUp };
-    case 'HOLD': return { bg: 'bg-[var(--oc-warning)]/15', text: 'text-[var(--oc-warning)]', label: '持有', Icon: Minus };
+    case 'BUY':  return { bg: 'bg-[var(--oc-success)]/15', text: 'text-[var(--oc-success)]', labelKey: 'portfolio.vote.buy', Icon: ThumbsUp };
+    case 'HOLD': return { bg: 'bg-[var(--oc-warning)]/15', text: 'text-[var(--oc-warning)]', labelKey: 'portfolio.vote.hold', Icon: Minus };
     case 'SKIP':
     case 'SELL':
-    default:     return { bg: 'bg-[var(--oc-danger)]/15', text: 'text-[var(--oc-danger)]', label: '跳过', Icon: ThumbsDown };
+    default:     return { bg: 'bg-[var(--oc-danger)]/15', text: 'text-[var(--oc-danger)]', labelKey: 'portfolio.vote.skip', Icon: ThumbsDown };
   }
 }
 
 /* ── 单个 AI 投票行 ── */
 function VoteRow({ vote, index }: { vote: BotVote; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
   const role = matchRole(vote.bot_id);
   const RoleIcon = role.icon;
   const style = voteStyle(vote.vote);
@@ -81,7 +82,7 @@ function VoteRow({ vote, index }: { vote: BotVote; index: number }) {
 
           {/* 角色名 */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-200 truncate">{role.label}</p>
+            <p className="text-sm font-medium text-gray-200 truncate">{t(role.labelKey)}</p>
           </div>
 
           {/* 置信度条 */}
@@ -100,7 +101,7 @@ function VoteRow({ vote, index }: { vote: BotVote; index: number }) {
           {/* 投票标签 */}
           <span className={clsx('px-2 py-0.5 rounded-md text-xs font-semibold', style.bg, style.text)}>
             <VoteIcon size={10} className="inline mr-1" />
-            {style.label}
+            {t(style.labelKey)}
           </span>
 
           {/* 展开箭头 */}
@@ -119,23 +120,23 @@ function VoteRow({ vote, index }: { vote: BotVote; index: number }) {
             className="overflow-hidden"
           >
             <div className="ml-11 mr-3 mb-2 p-3 rounded-lg bg-dark-700/50 border border-dark-500/50">
-              <p className="text-xs text-gray-300 leading-relaxed">{vote.reasoning || '暂无分析理由'}</p>
+              <p className="text-xs text-gray-300 leading-relaxed">{vote.reasoning || t('portfolio.vote.noReasoning')}</p>
               {/* 价格建议 */}
               {(vote.entry_price || vote.stop_loss || vote.take_profit) && (
                 <div className="flex gap-4 mt-2 pt-2 border-t border-dark-500/50">
                   {vote.entry_price && (
                     <span className="text-xs text-gray-400">
-                      入场 <span className="text-white font-medium">${vote.entry_price.toFixed(2)}</span>
+                      {t('portfolio.vote.entry')} <span className="text-white font-medium">${vote.entry_price.toFixed(2)}</span>
                     </span>
                   )}
                   {vote.stop_loss && (
                     <span className="text-xs text-gray-400">
-                      止损 <span className="text-[var(--oc-danger)] font-medium">${vote.stop_loss.toFixed(2)}</span>
+                      {t('portfolio.vote.stopLoss')} <span className="text-[var(--oc-danger)] font-medium">${vote.stop_loss.toFixed(2)}</span>
                     </span>
                   )}
                   {vote.take_profit && (
                     <span className="text-xs text-gray-400">
-                      止盈 <span className="text-[var(--oc-success)] font-medium">${vote.take_profit.toFixed(2)}</span>
+                      {t('portfolio.vote.takeProfit')} <span className="text-[var(--oc-success)] font-medium">${vote.take_profit.toFixed(2)}</span>
                     </span>
                   )}
                 </div>
@@ -150,6 +151,7 @@ function VoteRow({ vote, index }: { vote: BotVote; index: number }) {
 
 /* ── 共识信号大标牌 ── */
 function ConsensusHeader({ result }: { result: VoteResult }) {
+  const { t } = useLanguage();
   const buyCount = result.votes.filter((v) => v.vote.toUpperCase() === 'BUY').length;
   const holdCount = result.votes.filter((v) => v.vote.toUpperCase() === 'HOLD').length;
   const skipCount = result.votes.length - buyCount - holdCount;
@@ -167,12 +169,12 @@ function ConsensusHeader({ result }: { result: VoteResult }) {
       ? 'bg-[var(--oc-danger)]/10'
       : 'bg-[var(--oc-warning)]/10';
 
-  /* 共识文字 */
+  /* 共识文字（国际化） */
   const signalText = result.passed
-    ? '建议买入'
+    ? t('portfolio.vote.suggestBuy')
     : result.veto_triggered
-      ? '被否决'
-      : '暂不操作';
+      ? t('portfolio.vote.vetoed')
+      : t('portfolio.vote.noAction');
 
   return (
     <div className="flex items-center justify-between mb-4">
@@ -185,7 +187,7 @@ function ConsensusHeader({ result }: { result: VoteResult }) {
         </h3>
         {result.veto_triggered && (
           <p className="text-xs text-[var(--oc-danger)] mt-1 flex items-center gap-1">
-            <AlertTriangle size={12} /> 风控否决：不建议操作
+            <AlertTriangle size={12} /> {t('portfolio.vote.vetoWarning')}
           </p>
         )}
       </div>
@@ -194,15 +196,15 @@ function ConsensusHeader({ result }: { result: VoteResult }) {
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 text-xs">
           <span className="text-[var(--oc-success)] font-bold">{buyCount}</span>
-          <span className="text-gray-500">买</span>
+          <span className="text-gray-500">{t('portfolio.vote.buyLabel')}</span>
         </div>
         <div className="flex items-center gap-1 text-xs">
           <span className="text-[var(--oc-warning)] font-bold">{holdCount}</span>
-          <span className="text-gray-500">持</span>
+          <span className="text-gray-500">{t('portfolio.vote.holdLabel')}</span>
         </div>
         <div className="flex items-center gap-1 text-xs">
           <span className="text-[var(--oc-danger)] font-bold">{skipCount}</span>
-          <span className="text-gray-500">过</span>
+          <span className="text-gray-500">{t('portfolio.vote.skipLabel')}</span>
         </div>
       </div>
     </div>
@@ -235,7 +237,7 @@ export function AIVoteCard({ result, loading, error, onTriggerVote, className }:
       <GlassCard className={className} hoverable={false}>
         <h3 className="text-sm font-semibold text-gray-300 mb-3">{t('portfolio.vote.title')}</h3>
         <p className="text-xs text-gray-500 mb-4">
-          输入股票代码，6 个 AI 分析师会分别给出买入/持有/跳过建议
+          {t('assistant.vote.desc')}
         </p>
         <div className="flex gap-2">
           <input
@@ -255,7 +257,7 @@ export function AIVoteCard({ result, loading, error, onTriggerVote, className }:
             disabled={!inputSymbol.trim()}
             className="btn-primary px-4 text-sm disabled:opacity-40"
           >
-            分析
+            {t('portfolio.vote.analyzeBtn')}
           </button>
         </div>
         {error && (
@@ -287,7 +289,7 @@ export function AIVoteCard({ result, loading, error, onTriggerVote, className }:
       {result!.divergence !== undefined && result!.divergence > 2 && (
         <div className="mb-3 px-3 py-2 rounded-lg bg-[var(--oc-warning)]/10 border border-[var(--oc-warning)]/20">
           <p className="text-xs text-[var(--oc-warning)]">
-            分歧较大（σ={result!.divergence.toFixed(1)}），各 AI 意见不一致，建议谨慎
+            {t('portfolio.vote.divergenceWarning').replace('{val}', result!.divergence.toFixed(1))}
           </p>
         </div>
       )}
@@ -302,13 +304,13 @@ export function AIVoteCard({ result, loading, error, onTriggerVote, className }:
       {/* 底部：再次投票 */}
       <div className="mt-4 pt-3 border-t border-dark-600 flex items-center justify-between">
         <span className="text-xs text-gray-500">
-          {new Date(result!.timestamp).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          {new Date(result!.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
         </span>
         <button
           onClick={() => onTriggerVote?.(result!.symbol)}
           className="text-xs text-[var(--oc-brand)] hover:underline"
         >
-          重新分析
+          {t('portfolio.vote.reAnalyze')}
         </button>
       </div>
     </GlassCard>

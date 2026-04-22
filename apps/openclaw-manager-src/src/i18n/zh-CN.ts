@@ -1598,4 +1598,19 @@ export const zhCN: Record<string, string> = {
   'controlCenter.social.schedulerPaused': '调度器暂停',
   // ControlCenter 补全 — 其他
   'controlCenter.controlDataNotLoaded': '控制数据尚未加载',
+
+  // i18n 最终补全 — 硬编码中文清理
+  'common.unknownError': '未知错误',
+  'common.empty': '(空)',
+  'assistant.recordingEmpty': '录音内容为空',
+  'assistant.voiceRecognized': '语音识别完成',
+  'assistant.voiceNoContent': '语音识别未返回有效内容',
+  'plugins.unknownTool': '未知工具',
+  'plugins.cliUnavailable': '[SYSTEM] CLI 工具接口不可用，尝试技能列表',
+  'plugins.skillsUnavailable': '[SYSTEM] 技能列表不可用',
+  'plugins.noPluginDataLog': '[SYSTEM] 暂无可用插件数据',
+  'apiGateway.refreshData': '刷新数据',
+  'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击"重新检查"',
+  'ui.commandPanelTitle': '命令面板',
+  'ui.commandPanelDesc': '搜索要执行的命令...',
 };
