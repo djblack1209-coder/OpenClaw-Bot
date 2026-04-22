@@ -12,6 +12,41 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — Sprint 5 体验深化：数据矛盾修复 + i18n 全覆盖收尾
+> 领域: `frontend`
+> 影响模块: Dashboard, APIGateway, Setup, Dev, DevPanel, Testing, Money, Scheduler, Logs, Evolution, Onboarding, i18n/zh-CN.ts, i18n/en-US.ts
+> 关联问题: HI-739~741
+
+### 变更内容
+
+**P0 数据矛盾修复 (3 项)**
+- Dashboard 实时日志：后端返回 `created_at/title/body`，前端读 `time/msg` → 新增字段映射层兼容两种格式
+- APIGateway 服务状态：检查 `gwSvc?.running`（不存在的字段）→ 改为 `gwSvc?.status === 'running'`
+- APIGateway 4 处硬编码中文（令牌管理/启用/渠道/网关信息）→ `t()` 调用
+
+**P1 错误反馈补全 (5 处)**
+- Scheduler 加载/切换失败：仅 console.error → 加 `toast.error`
+- Logs 加载失败：仅 console.error → 加 `toast.error`
+- Evolution 加载/扫描失败：仅 console.error → 加 `toast.error`
+- Onboarding API Key/Base URL 保存失败：动态 `import('sonner')` → 静态导入 `@/lib/notify`
+
+**P2 i18n 全覆盖收尾 (52 处硬编码中文)**
+- Setup 页面 14 处（安装向导全流程文案）
+- Dev 页面 8 处（Git/构建/技术债/依赖标题）
+- DevPanel 页面 8 处（系统日志/信息/环境变量/API 测试标题）
+- Testing 页面 4 处（剪贴板提示/快速操作标题）
+- Money 页面 5 处（交易损益/AI 费用/盈亏历史/其他收入）
+- Logs 页面 4 处（全部/无内容/实时/离线）
+- Evolution 页面 6 处（优先级高中低/状态成功执行中已跳过）
+- Onboarding 页面 2 处（保存失败提示）
+- 新增 ~40 个 i18n key（zh-CN + en-US 双语对齐）
+
+### 文件变更
+- 10+ 组件文件修改
+- `src/i18n/zh-CN.ts` — 新增 ~40 key（总计 ~1830 key）
+- `src/i18n/en-US.ts` — 同步新增
+- 桌面端已重新构建并安装到 `/Applications/OpenClaw.app`
+
 ## 2026-04-22 — Sprint 5 终局：72 个 UX 问题全量清零
 > 领域: `frontend`
 > 影响模块: 全部 30+ 前端组件, i18n/zh-CN.ts, i18n/en-US.ts, shared/LoadingState.tsx
