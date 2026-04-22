@@ -1399,6 +1399,7 @@ export const zhCN: Record<string, string> = {
   'bots.statusOffline': '离线',
   'bots.statusActive': '运行中',
   'bots.statusIdle': '待机',
+  'bots.dataRefreshed': '数据已刷新',
 
   // Settings 补全
   'settings.accountTitle': '账户信息 // ACCOUNT',

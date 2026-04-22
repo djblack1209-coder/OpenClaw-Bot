@@ -1399,6 +1399,7 @@ export const enUS: Record<string, string> = {
   'bots.statusOffline': 'OFFLINE',
   'bots.statusActive': 'ACTIVE',
   'bots.statusIdle': 'IDLE',
+  'bots.dataRefreshed': 'Data refreshed',
 
   // Settings 补全
   'settings.accountTitle': 'Account // ACCOUNT',
