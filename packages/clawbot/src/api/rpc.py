@@ -518,6 +518,8 @@ class ClawBotRPC:
         browser/cookie connection status for each platform.  Falls back
         to cookie-file detection, then placeholder data if the worker
         is unavailable.
+
+        使用线程超时保护（2秒），防止 worker 子进程启动慢导致前端超时。
         """
         # 辅助函数: 检查 Cookie 文件是否存在且有效
         def _check_cookie_file(platform: str) -> bool:
@@ -567,10 +569,24 @@ class ClawBotRPC:
             "content_queue_size": 0,
             "source": "placeholder",
         }
-        try:
-            from src.execution.social.worker_bridge import run_social_worker
 
-            result = run_social_worker("status", {})
+        # 使用线程超时保护：最多等 2 秒，超时直接返回 placeholder
+        import concurrent.futures
+
+        def _fetch_worker_status():
+            """在子线程中调用 worker，防止阻塞主线程过久"""
+            from src.execution.social.worker_bridge import run_social_worker
+            return run_social_worker("status", {})
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_fetch_worker_status)
+                try:
+                    result = future.result(timeout=2.0)
+                except concurrent.futures.TimeoutError:
+                    logger.warning("Social status worker 超时(2s)，返回 Cookie 文件状态兜底")
+                    _placeholder["source"] = "timeout_fallback"
+                    return _placeholder
             if not result.get("success"):
                 logger.warning("Social status worker failed: %s", result.get("error"))
                 # Worker 不可用时，用 Cookie 文件状态兜底
@@ -1232,14 +1248,53 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_pool_stats() -> dict:
-        """Get free API pool (LiteLLM router) statistics."""
+        """Get free API pool (LiteLLM router) statistics.
+
+        额外注入 today_cost / week_cost / month_cost / budget 字段，
+        供前端 AIConfig 面板展示成本统计。
+        """
         from src.litellm_router import free_pool
 
         try:
-            return free_pool.get_stats()
+            stats = free_pool.get_stats()
         except Exception as e:
             logger.warning("Failed to get pool stats: %s", e)
-            return {}
+            stats = {}
+
+        # 注入成本统计字段（从 CostAnalyzer 读取）
+        try:
+            from src.monitoring import cost_analyzer
+            # 今日成本：最近 24 小时
+            daily_data = cost_analyzer.analyze_by_bot(hours=24)
+            stats["today_cost"] = round(
+                sum(v.get("cost_usd", 0) for v in daily_data.values()), 4
+            )
+            # 本周成本：最近 7 天
+            weekly_data = cost_analyzer.analyze_by_bot(hours=168)
+            stats["week_cost"] = round(
+                sum(v.get("cost_usd", 0) for v in weekly_data.values()), 4
+            )
+            # 本月成本：最近 30 天
+            monthly_data = cost_analyzer.analyze_by_bot(hours=720)
+            stats["month_cost"] = round(
+                sum(v.get("cost_usd", 0) for v in monthly_data.values()), 4
+            )
+        except Exception as e:
+            logger.warning("注入成本统计失败，使用默认值: %s", e)
+            stats.setdefault("today_cost", 0.0)
+            stats.setdefault("week_cost", 0.0)
+            stats.setdefault("month_cost", 0.0)
+
+        # 注入预算字段（从环境变量或 CostController 读取）
+        try:
+            import os
+            # 日预算 * 30 = 月预算估算
+            daily_budget = float(os.environ.get("OMEGA_DAILY_BUDGET", "50.0"))
+            stats["budget"] = round(daily_budget * 30, 2)
+        except Exception:
+            stats.setdefault("budget", 0.0)
+
+        return stats
 
     # ──────────────────────────────────────────────
     #  Metrics

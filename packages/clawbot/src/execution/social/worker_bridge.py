@@ -45,6 +45,8 @@ def run_social_worker(
 
     for attempt in range(max_retries):
         try:
+            # 状态查询用短超时（5秒），发布等操作用长超时（300秒）
+            timeout_sec = 5 if action == "status" else 300
             cp = subprocess.run(
                 [
                     "python3",
@@ -55,7 +57,7 @@ def run_social_worker(
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=timeout_sec,
             )
 
             if cp.returncode != 0:
