@@ -489,11 +489,41 @@ export function HomeDashboard() {
                   ));
                 })()}
               </div>
-              {typeof briefData.summary === 'string' && briefData.summary && (
-                <p className="font-mono text-xs mt-3" style={{ color: 'var(--text-secondary)' }}>
-                  {briefData.summary}
-                </p>
-              )}
+              {/* 简报摘要 — 优先显示中文(summary_zh)，否则显示英文并标注来源 */}
+              {(() => {
+                /* 尝试获取中文摘要字段 */
+                const summaryZh = briefData.summary_zh ?? briefData.summary_cn;
+                const summaryEn = briefData.summary;
+                /* 决定显示内容：中文优先 */
+                const displaySummary = (typeof summaryZh === 'string' && summaryZh)
+                  ? summaryZh
+                  : (typeof summaryEn === 'string' && summaryEn) ? summaryEn : null;
+                const isEnglish = !(typeof summaryZh === 'string' && summaryZh) && typeof summaryEn === 'string' && !!summaryEn;
+                if (!displaySummary) return null;
+                return (
+                  <div className="mt-3">
+                    {/* 摘要标签 + 英文标注 */}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
+                        {t('home.briefSummaryLabel')}
+                      </span>
+                      {isEnglish && lang === 'zh-CN' && (
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                          {t('home.briefSummaryEnglish')}
+                        </span>
+                      )}
+                    </div>
+                    {/* 按换行符分段渲染，避免大段文字挤在一起 */}
+                    <div className="space-y-1.5">
+                      {displaySummary.split(/\n+/).filter(Boolean).map((paragraph, idx) => (
+                        <p key={idx} className="font-mono text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                          {paragraph.trim()}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </motion.div>
         )}

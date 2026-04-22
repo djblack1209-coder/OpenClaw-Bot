@@ -215,6 +215,8 @@ export function Portfolio() {
   const [error, setError] = useState<string | null>(null);
   const [sellingSymbol, setSellingSymbol] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /* IBKR 连接状态 — 独立于 portfolioSummary，由 /api/v1/status 实时更新 */
+  const [ibkrConnected, setIbkrConnected] = useState(false);
 
   /* ---- 交易决策状态 ---- */
   const [voteSymbol, setVoteSymbol] = useState('');
@@ -247,15 +249,16 @@ export function Portfolio() {
   const [valLoading, setValLoading] = useState(false);
   const [valResult, setValResult] = useState<ValuationResult | null>(null);
 
-  /* ====== 数据拉取：持仓概览 ====== */
+  /* ====== 数据拉取：持仓概览 + IBKR 连接状态 ====== */
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      /* 并行请求持仓摘要 + AI 团队 */
-      const [pRes, tRes] = await Promise.allSettled([
+      /* 并行请求持仓摘要 + AI 团队 + 系统状态(IBKR 连接) */
+      const [pRes, tRes, statusRes] = await Promise.allSettled([
         api.portfolioSummary(),
         api.omegaInvestmentTeam(),
+        api.clawbotStatus(),
       ]);
 
       if (pRes.status === 'fulfilled' && pRes.value) {
@@ -268,6 +271,12 @@ export function Portfolio() {
       if (tRes.status === 'fulfilled' && tRes.value) {
         const data = tRes.value as unknown as TeamResponse;
         setTeam(Array.isArray(data.team) ? data.team : []);
+      }
+
+      /* 从系统状态中提取 IBKR 连接标志，每次刷新都更新 */
+      if (statusRes.status === 'fulfilled' && statusRes.value) {
+        const s = statusRes.value as Record<string, unknown>;
+        setIbkrConnected(Boolean(s.ibkr_connected));
       }
     } catch (e) {
       console.error('[Portfolio] 数据拉取异常:', e);
@@ -364,6 +373,10 @@ export function Portfolio() {
       });
       setControls(prev => prev ? { ...prev, [key]: value } : prev);
       toast.success(t('portfolio.controls.updated'), { channel: 'log' });
+      /* IBKR 相关设置变更后，延迟刷新状态以检测连接变化 */
+      if (key === 'ibkr_live_mode' || key === 'auto_trader_enabled') {
+        setTimeout(() => fetchData(true), 2000);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
       toast.error(t('portfolio.controls.updateFailed'), { description: msg, channel: 'notification' });
@@ -496,9 +509,12 @@ export function Portfolio() {
     day_change: 0, day_change_pct: 0, positions: [], position_count: 0, connected: false,
   };
 
-  /* ====== 券商未连接状态 ====== */
-  const demoMode = !rawPortfolio.connected && rawPortfolio.total_value === 0;
-  const p: PortfolioSummary = rawPortfolio;
+  /* ====== 券商未连接状态 — 综合 portfolioSummary 和系统状态两个来源判断 ====== */
+  const actuallyConnected = rawPortfolio.connected || ibkrConnected;
+  const demoMode = !actuallyConnected && rawPortfolio.total_value === 0;
+  const p: PortfolioSummary = actuallyConnected
+    ? { ...rawPortfolio, connected: true }
+    : rawPortfolio;
 
   /* ====== 概览统计数据 ====== */
   const stats = [

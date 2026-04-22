@@ -1257,6 +1257,8 @@ export const enUS: Record<string, string> = {
   'home.briefMetrics.socialPosts': 'Social Posts',
   'home.briefMetrics.apiDailyCost': 'API Daily Cost',
   'home.briefMetrics.marketSentiment': 'Market Sentiment',
+  'home.briefSummaryEnglish': '// AI Summary (English RSS source)',
+  'home.briefSummaryLabel': 'AI SUMMARY',
 
   // TradingEngineCard 补全
   'trading.ibkrLive': 'IBKR LIVE // AUTO TRADING ENGINE',
