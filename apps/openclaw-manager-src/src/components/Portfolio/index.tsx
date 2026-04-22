@@ -496,23 +496,9 @@ export function Portfolio() {
     day_change: 0, day_change_pct: 0, positions: [], position_count: 0, connected: false,
   };
 
-  /* ====== 演示模式：券商未连接且无真实数据时，展示模拟数据 ====== */
+  /* ====== 券商未连接状态 ====== */
   const demoMode = !rawPortfolio.connected && rawPortfolio.total_value === 0;
-  const p: PortfolioSummary = demoMode ? {
-    total_value: 125680.50,
-    total_cost: 100000,
-    total_pnl: 25680.50,
-    total_pnl_pct: 25.68,
-    day_change: 1234.56,
-    day_change_pct: 0.99,
-    position_count: 3,
-    connected: false,
-    positions: [
-      { symbol: 'AAPL', name: 'Apple Inc.', quantity: 50, avg_price: 178.50, current_price: 195.20, pnl: 835.00, pnl_pct: 9.36, market_value: 9760, weight: 38.8 },
-      { symbol: 'TSLA', name: 'Tesla Inc.', quantity: 20, avg_price: 245.00, current_price: 268.30, pnl: 466.00, pnl_pct: 9.51, market_value: 5366, weight: 21.3 },
-      { symbol: 'NVDA', name: 'NVIDIA Corp.', quantity: 30, avg_price: 120.00, current_price: 145.80, pnl: 774.00, pnl_pct: 21.50, market_value: 4374, weight: 17.4 },
-    ],
-  } : rawPortfolio;
+  const p: PortfolioSummary = rawPortfolio;
 
   /* ====== 概览统计数据 ====== */
   const stats = [
@@ -574,58 +560,34 @@ export function Portfolio() {
             initial="hidden"
             animate="visible"
           >
-            {/* 演示模式横幅：券商未连接时展示模拟数据预览 */}
+            {/* 券商未连接提示：引导用户启动 IB Gateway */}
             {demoMode && (
               <div className="col-span-12 mb-4">
                 <div
-                  className="abyss-card p-4 relative overflow-hidden"
+                  className="abyss-card p-5 relative overflow-hidden"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(0,212,255,0.08), rgba(0,255,170,0.05))',
-                    border: '1px solid rgba(0,212,255,0.25)',
+                    background: 'linear-gradient(135deg, rgba(251,191,36,0.06), rgba(255,255,255,0.02))',
+                    border: '1px solid rgba(251,191,36,0.2)',
                   }}
                 >
-                  {/* 右上角 DEMO 标记 */}
-                  <div
-                    className="absolute top-0 right-0 px-3 py-1 font-mono text-[10px] font-bold tracking-widest"
-                    style={{
-                      background: 'rgba(0,212,255,0.15)',
-                      color: 'var(--accent-cyan)',
-                      borderBottomLeftRadius: 8,
-                      border: '1px solid rgba(0,212,255,0.2)',
-                      borderTop: 'none',
-                      borderRight: 'none',
-                    }}
-                  >
-                    DEMO
-                  </div>
                   <div className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{
-                        background: 'rgba(0,212,255,0.12)',
-                        border: '1px solid rgba(0,212,255,0.2)',
+                        background: 'rgba(251,191,36,0.12)',
+                        border: '1px solid rgba(251,191,36,0.2)',
                         fontSize: '18px',
                       }}
                     >
-                      🎯
+                      🔌
                     </div>
                     <div className="flex-1">
-                      <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-cyan)' }}>
-                        演示模式 — 以下为模拟数据
+                      <p className="font-mono text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>
+                        IB Gateway 未连接
                       </p>
                       <p className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
-                        IB Gateway 未连接，当前展示模拟持仓数据供预览页面效果。连接 IB Gateway 后将自动显示真实持仓。
+                        请启动 IB Gateway 或 TWS 并登录，OpenClaw 会自动检测连接。
                       </p>
-                    </div>
-                    <div
-                      className="flex-shrink-0 px-3 py-1.5 rounded-lg font-mono text-[11px] font-bold"
-                      style={{
-                        background: 'rgba(255,170,0,0.1)',
-                        color: 'var(--accent-amber)',
-                        border: '1px solid rgba(255,170,0,0.2)',
-                      }}
-                    >
-                      请启动 IBKR Gateway
                     </div>
                   </div>
                 </div>
@@ -722,7 +684,7 @@ export function Portfolio() {
                               border: '1px solid rgba(255,60,60,0.2)',
                               cursor: demoMode || sellingSymbol === h.symbol ? 'not-allowed' : 'pointer',
                             }}
-                            title={demoMode ? '演示模式下不可操作' : undefined}
+                            title={demoMode ? 'IB Gateway 未连接' : undefined}
                           >
                             {sellingSymbol === h.symbol ? '...' : demoMode ? 'DEMO' : t('portfolio.sell')}
                           </button>
