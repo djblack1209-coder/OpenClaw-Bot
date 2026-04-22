@@ -21,9 +21,9 @@ interface PromptDialogProps {
   placeholder?: string;
   /** 输入框初始值 */
   defaultValue?: string;
-  /** 确认按钮文字，默认"确认" */
+  /** 确认按钮文字，默认"确认"。调用者应使用 t('common.confirm') 覆盖 */
   confirmText?: string;
-  /** 取消按钮文字，默认"取消" */
+  /** 取消按钮文字，默认"取消"。调用者应使用 t('common.cancel') 覆盖 */
   cancelText?: string;
 }
 

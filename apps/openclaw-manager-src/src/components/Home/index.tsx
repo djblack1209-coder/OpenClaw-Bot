@@ -100,7 +100,7 @@ export function HomeDashboard() {
   // 浏览器模式下 Tauri IPC 不可用，serviceStatus 始终为 null
   // 此时用 apiReachable（HTTP API 是否可达）作为 fallback 判断核心引擎状态
   const isTauriRunning = serviceStatus?.running ?? false;
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   /* ====== 数据状态 ====== */
   const [bots, setBots] = useState<BotVote[]>([]);
@@ -127,7 +127,7 @@ export function HomeDashboard() {
     const d = event.data as Record<string, unknown>;
     const entry: LogEntry = {
       id: String(d.id || Date.now()),
-      timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       level: d.level === 'error' ? 'ERROR' : d.level === 'warning' ? 'WARN' : d.level === 'success' ? 'OK' : 'INFO',
       module: String(d.source || d.category || 'system'),
       message: String(d.title || d.message || ''),
@@ -218,7 +218,7 @@ export function HomeDashboard() {
         setLogs(items.slice(0, 20).map((n, i) => ({
           id: String(n.id || i),
           timestamp: n.created_at
-            ? new Date(String(n.created_at)).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            ? new Date(String(n.created_at)).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             : '--:--:--',
           level: n.level === 'error' ? 'ERROR' : n.level === 'warning' ? 'WARN' : n.level === 'success' ? 'OK' : 'INFO',
           module: String(n.source || n.category || 'system'),
@@ -269,7 +269,7 @@ export function HomeDashboard() {
         <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
           <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-            {t('home.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {t('home.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
       )}

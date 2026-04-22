@@ -153,7 +153,7 @@ function ErrorState({ message, onRetry, retryLabel = 'Retry' }: { message?: stri
 /* ====== 主组件 ====== */
 
 export function FinRadar() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   /* 当前激活的 Tab */
   const [activeTab, setActiveTab] = useState<TabKey>('indices');
 
@@ -265,7 +265,7 @@ export function FinRadar() {
       return [
         { name: 'BTC', pct: 0, color: 'var(--accent-amber)' },
         { name: 'ETH', pct: 0, color: 'var(--accent-purple)' },
-        { name: '其他', pct: 0, color: 'var(--text-tertiary)' },
+        { name: t('finRadar.others'), pct: 0, color: 'var(--text-tertiary)' },
       ];
     }
     /* 用价格作为粗略权重参考 */
@@ -280,7 +280,7 @@ export function FinRadar() {
     return [
       { name: 'BTC', pct: Math.round(btcPct * 10) / 10, color: 'var(--accent-amber)' },
       { name: 'ETH', pct: Math.round(ethPct * 10) / 10, color: 'var(--accent-purple)' },
-      { name: '其他', pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
+      { name: t('finRadar.others'), pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
     ];
   }, [marketData]);
 
@@ -410,7 +410,7 @@ export function FinRadar() {
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>·</span>
                   <Clock size={9} style={{ color: 'var(--text-disabled)' }} />
                   <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                    {t('finRadar.lastUpdate')} {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {t('finRadar.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </>
               )}

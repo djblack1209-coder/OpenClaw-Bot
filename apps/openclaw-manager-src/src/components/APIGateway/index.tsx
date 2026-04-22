@@ -120,7 +120,7 @@ function isChannelEnabled(ch: ChannelItem): boolean {
 function formatTime(ts?: number): string {
   if (!ts) return '—';
   const d = new Date(ts * 1000);
-  return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString(undefined) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 /** 响应时间 → 颜色 */
@@ -297,11 +297,11 @@ export function APIGateway() {
     try {
       const action = gatewayServiceRunning ? 'stop' : 'start';
       await clawbotFetchJson(`/api/v1/system/services/gateway/${action}`, { method: 'POST' });
-      toast.success(gatewayServiceRunning ? '网关服务已停止' : '网关服务已启动', { channel: 'log' });
+      toast.success(gatewayServiceRunning ? t('apiGateway.gatewayStopped') : t('apiGateway.gatewayStarted'), { channel: 'log' });
       await new Promise((r) => setTimeout(r, 800));
       await fetchData(true);
     } catch {
-      toast.error('操作失败，请稍后重试', { channel: 'notification' });
+      toast.error(t('apiGateway.operationFailed'), { channel: 'notification' });
       await fetchData(true);
     } finally {
       setGatewayServiceToggling(false);
@@ -366,7 +366,7 @@ export function APIGateway() {
                     ? <Wifi size={12} style={{ color: 'var(--accent-green)' }} />
                     : <WifiOff size={12} style={{ color: 'var(--accent-red)' }} />}
                   <span className="font-mono text-[10px]" style={{ color: isOnline ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {isOnline ? '在线' : '离线'}
+                    {isOnline ? t('apiGateway.onlineLabel') : t('apiGateway.offlineLabel')}
                   </span>
                 </div>
                 <motion.button
@@ -383,13 +383,13 @@ export function APIGateway() {
                   onClick={handleGatewayServiceToggle}
                 >
                   {gatewayServiceToggling ? <Loader2 size={10} className="animate-spin" /> : gatewayServiceRunning ? <Square size={10} /> : <Play size={10} />}
-                  {gatewayServiceRunning ? '停止服务' : '启动服务'}
+                  {gatewayServiceRunning ? t('apiGateway.stopService') : t('apiGateway.startService')}
                 </motion.button>
                 <button
                   onClick={() => fetchData(true)}
                   className="p-1.5 rounded-lg transition-colors hover:opacity-80"
                   style={{ background: 'var(--bg-tertiary)' }}
-                  title="刷新数据"
+                  title={t('apiGateway.refreshData')}
                 >
                   <RefreshCw size={12} style={{ color: 'var(--text-secondary)' }} />
                 </button>

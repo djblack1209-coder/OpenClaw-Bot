@@ -69,15 +69,15 @@ function fmtTime(ts?: string): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-/** 格式化会话创建时间（右侧列表用） */
-function fmtSessionTime(ts: string): string {
+/** 格式化会话创建时间（右侧列表用），接受翻译函数 */
+function fmtSessionTime(ts: string, t: (key: string) => string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts;
   const days = Math.floor((Date.now() - d.getTime()) / 86400000);
-  const t = fmtTime(ts);
-  if (days === 0) return `今天 ${t}`;
-  if (days === 1) return `昨天 ${t}`;
-  return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${t}`;
+  const time = fmtTime(ts);
+  if (days === 0) return `${t('assistant.today')} ${time}`;
+  if (days === 1) return `${t('assistant.yesterday')} ${time}`;
+  return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${time}`;
 }
 
 /** 解析 SSE 流：兼容标准 SSE event/data 与旧格式 JSON */
@@ -113,10 +113,10 @@ async function readSSE(
           if (eventType === 'chunk' && p.text) onChunk(p.text);
           else if (eventType === 'status' && p.text && onStatus) onStatus(p.text);
           else if (eventType === 'done') { onDone(); return; }
-          else if (eventType === 'error') { onError(p.text || '未知错误'); return; }
+          else if (eventType === 'error') { onError(p.text || 'Unknown error'); return; }
           else if (p.type === 'chunk' && p.content) onChunk(p.content);
           else if (p.type === 'done') { onDone(); return; }
-          else if (p.type === 'error') { onError(p.content || '未知错误'); return; }
+          else if (p.type === 'error') { onError(p.content || 'Unknown error'); return; }
         } catch {
           if (eventType === 'chunk') onChunk(dataMatch[1]);
         }
@@ -267,7 +267,7 @@ export function Assistant() {
         toast.warning(`${file.name} 未提取到有效内容`, { channel: 'notification' });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : t('common.unknownError');
       toast.error(`附件处理失败: ${msg}`, { channel: 'notification' });
     } finally {
       setUploadingFile(false);
@@ -305,7 +305,7 @@ export function Assistant() {
 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         if (audioBlob.size === 0) {
-          toast.warning('录音内容为空', { channel: 'notification' });
+          toast.warning(t('assistant.recordingEmpty'), { channel: 'notification' });
           return;
         }
 
@@ -315,12 +315,12 @@ export function Assistant() {
           const text = result?.text || '';
           if (text) {
             setInput(prev => prev + text);
-            toast.success('语音识别完成', { channel: 'log' });
+            toast.success(t('assistant.voiceRecognized'), { channel: 'log' });
           } else {
-            toast.warning('语音识别未返回有效内容', { channel: 'notification' });
+            toast.warning(t('assistant.voiceNoContent'), { channel: 'notification' });
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : '未知错误';
+          const msg = err instanceof Error ? err.message : t('common.unknownError');
           toast.error(`语音识别失败: ${msg}`, { channel: 'notification' });
         }
       };
@@ -337,7 +337,7 @@ export function Assistant() {
       toast.info('正在录音，再次点击停止...', { channel: 'log' });
     } catch (err) {
       // 用户拒绝麦克风权限或浏览器不支持
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : t('common.unknownError');
       toast.error(`无法启动录音: ${msg}`, { channel: 'notification' });
     }
   }, [isRecording]);
@@ -429,7 +429,7 @@ export function Assistant() {
                 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors',
                 uploadingFile && 'animate-pulse'
               )}
-              title="上传附件"
+              title={t('assistant.uploadAttachment')}
               disabled={uploadingFile}
               onClick={() => fileInputRef.current?.click()}
             >
@@ -445,7 +445,7 @@ export function Assistant() {
                   ? 'text-red-400 animate-pulse'
                   : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
               )}
-              title={isRecording ? '停止录音' : '语音输入'}
+              title={isRecording ? t('assistant.stopRecording') : t('assistant.voiceInput')}
               onClick={toggleRecording}
             >
               <Mic size={16} />
@@ -504,7 +504,7 @@ export function Assistant() {
                   s.id === activeId && 'bg-white/[0.05] border border-white/[0.06]')}>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-[var(--text-primary)] truncate">{s.title}</div>
-                  <div className="text-[10px] font-mono text-[var(--text-tertiary)] mt-0.5">{fmtSessionTime(s.created_at)}</div>
+                  <div className="text-[10px] font-mono text-[var(--text-tertiary)] mt-0.5">{fmtSessionTime(s.created_at, t)}</div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                   <MessageSquare size={10} className="text-[var(--text-tertiary)]" />

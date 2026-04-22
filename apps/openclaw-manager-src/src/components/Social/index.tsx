@@ -349,7 +349,7 @@ export function Social() {
                     </span>
                     <span className="flex-shrink-0 px-1.5 py-0.5 rounded font-mono text-[9px] tracking-wider"
                       style={{ background: pConfig.bg, color: pConfig.color }}>
-                      {pConfig.label}
+                      {t(pConfig.labelKey)}
                     </span>
                     <span className="font-mono text-[11px] truncate" style={{ color: 'var(--text-secondary)' }}>
                       {item.title}
@@ -431,7 +431,7 @@ export function Social() {
                 const cfg = getPlatformCfg(p.platform);
                 return (
                   <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{cfg.label}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{t(cfg.labelKey)}</span>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <span className="font-mono text-xs block" style={{ color: cfg.color }}>

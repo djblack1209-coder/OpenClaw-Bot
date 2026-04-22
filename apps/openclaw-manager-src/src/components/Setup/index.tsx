@@ -12,6 +12,7 @@ import {
   Package
 } from 'lucide-react';
 import { setupLogger } from '../../lib/logger';
+import { useLanguage } from '../../i18n';
 
 interface EnvironmentStatus {
   node_installed: boolean;
@@ -37,6 +38,7 @@ interface SetupProps {
 }
 
 export function Setup({ onComplete, embedded = false }: SetupProps) {
+  const { t } = useLanguage();
   const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
   const [checking, setChecking] = useState(true);
   const [installing, setInstalling] = useState<'nodejs' | 'openclaw' | null>(null);
@@ -95,13 +97,13 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
       } else {
         // 打开终端手动安装
         await invoke<string>('open_install_terminal', { installType: 'nodejs' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
+        setError(t('setup.terminalOpened'));
       }
     } catch (e) {
       // 如果自动安装失败，打开终端
       try {
         await invoke<string>('open_install_terminal', { installType: 'nodejs' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
+        setError(t('setup.terminalOpened'));
       } catch (termErr) {
         setError(`安装失败: ${e}。${termErr}`);
       }
@@ -130,13 +132,13 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         setupLogger.warn('自动安装失败，打开终端手动安装');
         // 打开终端手动安装
         await invoke<string>('open_install_terminal', { installType: 'openclaw' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
+        setError(t('setup.terminalOpened'));
       }
     } catch (e) {
       setupLogger.error('安装失败，尝试打开终端', e);
       try {
         await invoke<string>('open_install_terminal', { installType: 'openclaw' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
+        setError(t('setup.terminalOpened'));
       } catch (termErr) {
         setError(`安装失败: ${e}。${termErr}`);
       }

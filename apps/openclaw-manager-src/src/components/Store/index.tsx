@@ -537,7 +537,7 @@ export function Store() {
                     <span className="font-mono text-xs text-[var(--text-tertiary)]">{p.risk}</span>
                     <span className="flex items-center gap-1 text-xs font-mono" style={{ color: si.color }}>
                       <si.Icon size={10} />
-                      {si.label}
+                      {t(si.labelKey)}
                     </span>
                     <div className="flex items-center justify-end gap-2">
                       {p.status === 'pending' && (

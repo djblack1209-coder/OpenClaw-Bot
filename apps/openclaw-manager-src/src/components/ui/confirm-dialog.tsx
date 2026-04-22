@@ -17,9 +17,9 @@ interface ConfirmDialogProps {
   title: string;
   /** 对话框描述内容 */
   description?: string;
-  /** 确认按钮文字，默认"确认" */
+  /** 确认按钮文字，默认"确认"。调用者应使用 t('common.confirm') 覆盖 */
   confirmText?: string;
-  /** 取消按钮文字，默认"取消" */
+  /** 取消按钮文字，默认"取消"。调用者应使用 t('common.cancel') 覆盖 */
   cancelText?: string;
   /** 确认按钮是否为危险样式（红色），默认 false */
   destructive?: boolean;

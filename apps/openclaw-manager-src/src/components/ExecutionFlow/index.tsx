@@ -284,7 +284,7 @@ export function ExecutionFlow() {
         <motion.div className="col-span-12 lg:col-span-8 row-span-2" variants={cardVariants}>
           <div className="abyss-card p-6 h-full flex flex-col">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>DAG 执行器</span>
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>{t('executionFlow.dagExecutor')}</span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => { setLoading(true); fetchData(true); }}

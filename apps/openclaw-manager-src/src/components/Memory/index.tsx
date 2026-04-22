@@ -113,14 +113,14 @@ export function Memory() {
       setError(null);
     } catch (err) {
       console.error('[Memory] 加载失败:', err);
-      const msg = err instanceof Error ? err.message : '未知错误';
+      const msg = err instanceof Error ? err.message : t('common.unknownError');
       setError(msg);
       setDbOnline(false);
       toast.error(t('memory.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
@@ -253,7 +253,7 @@ export function Memory() {
               {filtered.map((mem) => {
                 const cat = mem.category ?? mem.metadata?.category ?? '';
                 const badge = categoryBadge(cat);
-                const text = mem.memory ?? mem.content ?? '(空)';
+                const text = mem.memory ?? mem.content ?? t('common.empty');
                 const source = mem.metadata?.source ?? '—';
                 const importance = mem.score != null ? Math.round(mem.score * 5) : 3;
                 return (
@@ -265,7 +265,7 @@ export function Memory() {
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="px-2 py-0.5 rounded font-mono text-[10px] font-semibold"
                             style={{ background: badge.bg, color: badge.color }}>
-                            {badge.label}
+                            {t(badge.labelKey)}
                           </span>
                           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                             {importanceDots(importance)}
