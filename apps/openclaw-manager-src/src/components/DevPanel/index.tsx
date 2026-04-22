@@ -450,7 +450,7 @@ export default function DevPanel() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  API 测试
+                  {t('devPanel.apiTestTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('devPanel.apiTestSubtitle')}

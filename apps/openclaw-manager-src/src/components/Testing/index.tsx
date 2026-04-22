@@ -117,9 +117,9 @@ export function Testing() {
   const handleQuickAction = (action: typeof QUICK_ACTIONS[number]) => {
     const cmd = action.desc.startsWith('testing.') ? t(action.desc) : action.desc;
     navigator.clipboard.writeText(cmd).then(() => {
-      toast.success(`已复制命令到剪贴板：${cmd}`, { duration: 3000 });
+      toast.success(`${t('testing.copiedToClipboard')}${cmd}`, { duration: 3000 });
     }).catch(() => {
-      toast.info(`请在终端执行：${cmd}`, { duration: 5000 });
+      toast.info(`${t('testing.runInTerminal')}${cmd}`, { duration: 5000 });
     });
   };
 
