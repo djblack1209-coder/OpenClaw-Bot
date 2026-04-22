@@ -1416,6 +1416,7 @@ export const zhCN: Record<string, string> = {
   'settings.diskLabel': '磁盘',
   'settings.networkStatus': '网络状态',
   'settings.networkOnline': '在线',
+  'settings.networkOffline': '离线',
   'settings.apiKeysLabel': 'API KEYS',
   'settings.notificationsLabel': 'NOTIFICATIONS',
   'settings.advancedLabel': 'ADVANCED',
