@@ -31,6 +31,8 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
+import { LoadingState } from '../shared/LoadingState';
+import { SimpleErrorState as ErrorState } from '../shared/ErrorState';
 
 /* ====== TopoJSON 地图源 — 本地打包，避免 Tauri CSP 拦截 ====== */
 const GEO_URL = '/countries-110m.json';
@@ -281,7 +283,7 @@ function MapLegend() {
             className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
             style={{ background: it.color }}
           />
-          <span className="font-mono text-[9px]" style={{ color: 'var(--text-tertiary)' }}>
+          <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
             {t(it.labelKey)} {it.range}
           </span>
         </div>
@@ -326,37 +328,6 @@ function MapTooltip({ info }: { info: TooltipInfo | null }) {
           {t(info.level)}
         </span>
       </div>
-    </div>
-  );
-}
-
-/* ====== 错误/加载状态组件 ====== */
-function LoadingState({ message = '数据加载中...' }: { message?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-8">
-      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
-      <span className="font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{message}</span>
-    </div>
-  );
-}
-
-function ErrorState({ message = '数据加载失败', onRetry }: { message?: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8">
-      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
-      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
-      <button
-        onClick={onRetry}
-        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
-        style={{
-          background: 'rgba(255, 0, 60, 0.1)',
-          color: 'var(--accent-red)',
-          border: '1px solid rgba(255, 0, 60, 0.25)',
-        }}
-      >
-        <RefreshCw size={12} className="inline mr-1.5" />
-        重试
-      </button>
     </div>
   );
 }
@@ -525,7 +496,7 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
  * 每 30 秒自动刷新
  */
 export function WorldMonitor() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   /* ====== 状态 ====== */
   const [riskList, setRiskList] = useState<RiskApiItem[]>([]);
   const [globalRisk, setGlobalRisk] = useState<{ score: number; severity: string } | null>(null);
@@ -743,7 +714,7 @@ export function WorldMonitor() {
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>·</span>
                     <Clock size={9} style={{ color: 'var(--text-disabled)' }} />
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      {t('worldMonitor.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                   </>
                 )}
@@ -834,7 +805,7 @@ export function WorldMonitor() {
                   {/* 严重度徽章 — 中文 */}
                   <div className="flex justify-center">
                     <span
-                      className="px-2 py-0.5 rounded-full font-mono text-[9px] tracking-wider"
+                      className="px-2 py-0.5 rounded-full font-mono text-[10px] tracking-wider"
                       style={{
                         background: `${severityColor(c.severity)}12`,
                         color: severityColor(c.severity),
@@ -947,7 +918,7 @@ export function WorldMonitor() {
               {extLoading ? (
                 <>
                   <Loader2 size={9} className="animate-spin" style={{ color: 'var(--accent-amber)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-amber)' }}>加载中</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>{t('worldMonitor.loading')}</span>
                 </>
               ) : extData ? (
                 <>
@@ -957,12 +928,12 @@ export function WorldMonitor() {
                     animate={{ opacity: [1, 0.4, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-green)' }}>实时</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('worldMonitor.realtime')}</span>
                 </>
               ) : (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-red)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-red)' }}>离线</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-red)' }}>{t('common.offline')}</span>
                 </>
               )}
             </div>
@@ -1042,7 +1013,7 @@ export function WorldMonitor() {
               {extLoading ? (
                 <>
                   <Loader2 size={9} className="animate-spin" style={{ color: 'var(--accent-amber)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-amber)' }}>加载中</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>{t('worldMonitor.loading')}</span>
                 </>
               ) : extData ? (
                 <>
@@ -1052,12 +1023,12 @@ export function WorldMonitor() {
                     animate={{ opacity: [1, 0.4, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-green)' }}>实时</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('worldMonitor.realtime')}</span>
                 </>
               ) : (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-red)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-red)' }}>离线</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-red)' }}>{t('common.offline')}</span>
                 </>
               )}
             </div>
@@ -1135,7 +1106,7 @@ export function WorldMonitor() {
               {extLoading ? (
                 <>
                   <Loader2 size={9} className="animate-spin" style={{ color: 'var(--accent-amber)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-amber)' }}>加载中</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-amber)' }}>{t('worldMonitor.loading')}</span>
                 </>
               ) : extData ? (
                 <>
@@ -1145,12 +1116,12 @@ export function WorldMonitor() {
                     animate={{ opacity: [1, 0.4, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-green)' }}>实时</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-green)' }}>{t('worldMonitor.realtime')}</span>
                 </>
               ) : (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-red)' }} />
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--accent-red)' }}>离线</span>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--accent-red)' }}>{t('common.offline')}</span>
                 </>
               )}
             </div>
@@ -1278,7 +1249,7 @@ export function WorldMonitor() {
                     {/* 类别徽章 — 中文 + 可点击 */}
                     <ExtLink href={categoryLink[entry.category] || '#'} className="flex-shrink-0 mt-0.5">
                       <span
-                        className="px-1.5 py-0.5 rounded font-mono text-[9px] tracking-wider"
+                        className="px-1.5 py-0.5 rounded font-mono text-[10px] tracking-wider"
                         style={{
                           background: meta.bg,
                           color: meta.color,

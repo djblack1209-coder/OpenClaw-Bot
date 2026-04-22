@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from '@/lib/notify';
+import { Loader2 } from 'lucide-react';
 
 import { api } from '../../lib/api';
 import { clawbotFetch, clawbotFetchJson, LONG_TIMEOUT_MS } from '../../lib/tauri-core';
@@ -450,8 +451,7 @@ export function Portfolio() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mb-4"
-               style={{ borderColor: 'var(--accent-cyan)', borderTopColor: 'transparent' }} />
+          <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: 'var(--accent-cyan)' }} />
           <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
             {t('portfolio.loading')}
           </p>
@@ -640,7 +640,7 @@ export function Portfolio() {
                       </p>
                     </div>
                   ) : (
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-1 overflow-x-auto">
                       {p.positions.map(h => (
                         <div
                           key={h.symbol}
@@ -684,7 +684,7 @@ export function Portfolio() {
                               border: '1px solid rgba(255,60,60,0.2)',
                               cursor: demoMode || sellingSymbol === h.symbol ? 'not-allowed' : 'pointer',
                             }}
-                            title={demoMode ? 'IB Gateway 未连接' : undefined}
+                            title={demoMode ? 'IB Gateway 未连接，连接后可进行实盘交易' : undefined}
                           >
                             {sellingSymbol === h.symbol ? '...' : demoMode ? 'DEMO' : t('portfolio.sell')}
                           </button>
@@ -953,7 +953,7 @@ export function Portfolio() {
                   >
                     {voteLoading ? (
                       <span className="flex items-center justify-center gap-2">
-                        <span className="inline-block w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--text-disabled)', borderTopColor: 'transparent' }} />
+                        <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
                         {t("portfolio.analyzing")}
                       </span>
                     ) : t('portfolio.analyze')}
@@ -1057,8 +1057,7 @@ export function Portfolio() {
 
                 {controlsLoading && !controls ? (
                   <div className="mt-8 flex items-center justify-center py-12">
-                    <div className="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                         style={{ borderColor: 'var(--accent-cyan)', borderTopColor: 'transparent' }} />
+                    <Loader2 size={24} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
                   </div>
                 ) : !controls ? (
                   <div className="mt-8 text-center py-12">

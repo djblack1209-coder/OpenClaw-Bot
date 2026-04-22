@@ -113,7 +113,7 @@ function SidebarButton({
         onClick={() => onNavigate(item.id)}
         title={collapsed ? label : undefined}
         className={clsx(
-          'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative',
+          'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none',
           collapsed ? 'px-0 py-3 justify-center' : 'px-4 py-3',
         )}
         style={{
@@ -320,7 +320,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           <button
             onClick={toggleDevMode}
             title={devMode ? t('sidebar.devModeOn') : t('sidebar.devModeOff')}
-            className="flex items-center justify-center rounded-lg transition-all duration-200"
+            className="flex items-center justify-center rounded-lg transition-all duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
             style={{
               width: sidebarCollapsed ? 32 : 'auto',
               height: 32,
@@ -351,7 +351,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           {/* 用户头像区域（三击解锁 dev） */}
           {!sidebarCollapsed && (
             <button
-              className="flex items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200"
+              className="flex items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
               style={{ color: 'var(--text-tertiary)' }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -376,7 +376,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           {/* 折叠按钮 */}
           <button
             onClick={toggleSidebar}
-            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0"
+            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
             style={{ color: 'var(--text-tertiary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255,255,255,0.06)';

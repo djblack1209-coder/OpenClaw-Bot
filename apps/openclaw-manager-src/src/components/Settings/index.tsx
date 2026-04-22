@@ -143,6 +143,7 @@ export function Settings(_props: SettingsProps) {
       }
     } catch (err) {
       console.error('[Settings] 加载失败:', err);
+      toast.error(t('settings.loadFailed') || '设置加载失败，请检查后端连接', { channel: 'notification' });
     } finally {
       setLoading(false);
     }

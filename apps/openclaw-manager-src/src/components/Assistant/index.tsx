@@ -459,8 +459,8 @@ export function Assistant() {
         </div>
       </div>
 
-      {/* 右侧面板 */}
-      <div className="w-[280px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+      {/* 右侧面板 — 窄屏隐藏 */}
+      <div className="w-[280px] flex-shrink-0 hidden lg:flex flex-col gap-3 overflow-y-auto">
         {/* 快捷指令 */}
         <div className="abyss-card p-4">
           <h3 className="text-label text-xs font-display mb-3 flex items-center gap-1.5">

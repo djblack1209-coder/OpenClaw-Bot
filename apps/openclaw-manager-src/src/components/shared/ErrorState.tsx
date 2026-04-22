@@ -1,4 +1,4 @@
-import { AlertCircle, RefreshCw, Settings } from 'lucide-react';
+import { AlertCircle, AlertTriangle, RefreshCw, Settings } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import type { FriendlyError } from '@/lib/errorMessages';
@@ -58,5 +58,34 @@ export function ErrorState({ error, onRetry, onSettings, compact = false }: Erro
         )}
       </div>
     </motion.div>
+  );
+}
+
+/** 简化版错误状态 — 用于各页面内联错误展示，接受纯字符串消息 */
+interface SimpleErrorStateProps {
+  /** 错误提示文字 */
+  message?: string;
+  /** 重试回调 */
+  onRetry: () => void;
+}
+
+export function SimpleErrorState({ message = '数据加载失败', onRetry }: SimpleErrorStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-8">
+      <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
+      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
+      <button
+        onClick={onRetry}
+        className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
+        style={{
+          background: 'rgba(255, 0, 60, 0.1)',
+          color: 'var(--accent-red)',
+          border: '1px solid rgba(255, 0, 60, 0.25)',
+        }}
+      >
+        <RefreshCw size={12} className="inline mr-1.5" />
+        重试
+      </button>
+    </div>
   );
 }

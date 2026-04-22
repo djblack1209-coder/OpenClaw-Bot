@@ -100,50 +100,58 @@ interface MasterSwitch {
   apiKey: string;
 }
 
-/* ====== 开关元数据映射 ====== */
+/* ====== 开关元数据映射（接受翻译函数 t） ====== */
 
-/** 交易开关的中文标签和颜色 */
-const TRADING_SWITCH_META: Record<string, { label: string; desc: string; color: string; locked?: boolean }> = {
-  auto_trader_enabled: { label: '自动交易', desc: '量化交易引擎', color: 'var(--accent-cyan)' },
-  ibkr_live_mode: { label: 'IBKR 实盘', desc: '实盘 / 模拟盘', color: 'var(--accent-red)' },
-  risk_protection_enabled: { label: '风控保护', desc: '不可关闭', color: 'var(--accent-red)', locked: true },
-  allow_short_selling: { label: '允许做空', desc: '空头交易权限', color: 'var(--accent-amber)' },
-  max_daily_trades: { label: '每日交易上限', desc: '单日最大下单数', color: 'var(--accent-purple)' },
-};
+/** 交易开关的标签和颜色 */
+function getTradingSwitchMeta(t: (key: string) => string): Record<string, { label: string; desc: string; color: string; locked?: boolean }> {
+  return {
+    auto_trader_enabled: { label: t('controlCenter.trading.autoTrader'), desc: t('controlCenter.trading.autoTraderDesc'), color: 'var(--accent-cyan)' },
+    ibkr_live_mode: { label: t('controlCenter.trading.ibkrLive'), desc: t('controlCenter.trading.ibkrLiveDesc'), color: 'var(--accent-red)' },
+    risk_protection_enabled: { label: t('controlCenter.trading.riskProtection'), desc: t('controlCenter.trading.riskProtectionDesc'), color: 'var(--accent-red)', locked: true },
+    allow_short_selling: { label: t('controlCenter.trading.allowShort'), desc: t('controlCenter.trading.allowShortDesc'), color: 'var(--accent-amber)' },
+    max_daily_trades: { label: t('controlCenter.trading.maxDailyTrades'), desc: t('controlCenter.trading.maxDailyTradesDesc'), color: 'var(--accent-purple)' },
+  };
+}
 
-/** 运行配置项中文名映射 */
-const SETTINGS_KEY_LABELS: Record<string, string> = {
-  default_llm_model: '默认 LLM 模型',
-  default_llm_mode: '默认 LLM 模式',
-  local_hf_model_enabled: '本地模型启用',
-  local_hf_model_endpoint: '本地模型地址',
-  local_hf_mode: '本地模型模式',
-  auto_heal_enabled: '自动修复',
-  scheduler_enabled: '调度器启用',
-  maintenance_mode: '维护模式',
-  daily_budget_usd: '每日预算(USD)',
-};
+/** 运行配置项名称映射 */
+function getSettingsKeyLabels(t: (key: string) => string): Record<string, string> {
+  return {
+    default_llm_model: t('controlCenter.settings.defaultLlmModel'),
+    default_llm_mode: t('controlCenter.settings.defaultLlmMode'),
+    local_hf_model_enabled: t('controlCenter.settings.localModelEnabled'),
+    local_hf_model_endpoint: t('controlCenter.settings.localModelEndpoint'),
+    local_hf_mode: t('controlCenter.settings.localModelMode'),
+    auto_heal_enabled: t('controlCenter.settings.autoHeal'),
+    scheduler_enabled: t('controlCenter.settings.schedulerEnabled'),
+    maintenance_mode: t('controlCenter.settings.maintenanceMode'),
+    daily_budget_usd: t('controlCenter.settings.dailyBudget'),
+  };
+}
 
-/** 社交开关的中文标签和颜色（通用后备） */
-const SOCIAL_SWITCH_FALLBACK = { desc: '社交模块开关', color: 'var(--accent-green)' };
+/** 社交开关的标签和颜色（通用后备） */
+function getSocialSwitchFallback(t: (key: string) => string) {
+  return { desc: t('controlCenter.social.fallbackDesc'), color: 'var(--accent-green)' };
+}
 
-/** 社交开关中文名映射（按需扩展） */
-const SOCIAL_SWITCH_LABELS: Record<string, string> = {
-  xianyu_enabled: '闲鱼客服',
-  xhs_enabled: '小红书',
-  twitter_enabled: '推特发布',
-  x_twitter_enabled: 'X / 推特',
-  telegram_enabled: 'Telegram',
-  weibo_enabled: '微博',
-  auto_reply_enabled: '自动回复',
-  content_publish_enabled: '内容发布',
-  social_enabled: '社交总开关',
-  douyin_enabled: '抖音',
-  bilibili_enabled: '哔哩哔哩',
-  auto_hotspot_post: '热点自动发帖',
-  content_review_mode: '内容审核模式',
-  scheduler_paused: '调度器暂停',
-};
+/** 社交开关名称映射 */
+function getSocialSwitchLabels(t: (key: string) => string): Record<string, string> {
+  return {
+    xianyu_enabled: t('controlCenter.social.xianyu'),
+    xhs_enabled: t('controlCenter.social.xhs'),
+    twitter_enabled: t('controlCenter.social.twitter'),
+    x_twitter_enabled: t('controlCenter.social.xTwitter'),
+    telegram_enabled: 'Telegram',
+    weibo_enabled: t('controlCenter.social.weibo'),
+    auto_reply_enabled: t('controlCenter.social.autoReply'),
+    content_publish_enabled: t('controlCenter.social.contentPublish'),
+    social_enabled: t('controlCenter.social.masterSwitch'),
+    douyin_enabled: t('controlCenter.social.douyin'),
+    bilibili_enabled: t('controlCenter.social.bilibili'),
+    auto_hotspot_post: t('controlCenter.social.autoHotspotPost'),
+    content_review_mode: t('controlCenter.social.contentReviewMode'),
+    scheduler_paused: t('controlCenter.social.schedulerPaused'),
+  };
+}
 
 /* ====== 工具函数 ====== */
 
@@ -208,6 +216,9 @@ export function ControlCenter() {
   /* —— 把 API 数据转换成统一的 MasterSwitch 列表 —— */
   const buildSwitches = useCallback(
     (trading: TradingControls | null, social: SocialControls | null): MasterSwitch[] => {
+      const TRADING_SWITCH_META = getTradingSwitchMeta(t);
+      const SOCIAL_SWITCH_LABELS = getSocialSwitchLabels(t);
+      const SOCIAL_SWITCH_FALLBACK = getSocialSwitchFallback(t);
       const result: MasterSwitch[] = [];
 
       /* 交易开关 */
@@ -217,7 +228,7 @@ export function ControlCenter() {
           if (typeof value !== 'boolean') continue;
           const meta = TRADING_SWITCH_META[key] ?? {
             label: key,
-            desc: '交易参数',
+            desc: t('controlCenter.trading.fallbackDesc'),
             color: 'var(--accent-cyan)',
           };
           result.push({
@@ -251,7 +262,7 @@ export function ControlCenter() {
 
       return result;
     },
-    [],
+    [t],
   );
 
   /* —— 拉取全部数据 —— */
@@ -292,9 +303,10 @@ export function ControlCenter() {
         if (Array.isArray(raw)) {
           setSettings(raw);
         } else if (raw && typeof raw === 'object') {
-          /* 把 { KEY: VALUE } 转成 [{ key, value }]，key 翻译成中文 */
+          /* 把 { KEY: VALUE } 转成 [{ key, value }]，key 翻译为对应语言 */
+          const settingsLabels = getSettingsKeyLabels(t);
           const arr: SettingsEntry[] = Object.entries(raw).map(([k, v]) => ({
-            key: SETTINGS_KEY_LABELS[k] ?? k,
+            key: settingsLabels[k] ?? k,
             value: String(v),
           }));
           setSettings(arr);
@@ -313,7 +325,7 @@ export function ControlCenter() {
     } finally {
       setLoading(false);
     }
-  }, [buildSwitches]);
+  }, [buildSwitches, t]);
 
   /* —— 初始加载 + 30 秒自动刷新 —— */
   useEffect(() => {
@@ -357,7 +369,7 @@ export function ControlCenter() {
         });
         socialRef.current = updated;
       } else {
-        throw new Error('控制数据尚未加载');
+        throw new Error(t('controlCenter.controlDataNotLoaded'));
       }
 
       /* 乐观更新 UI */
@@ -433,10 +445,12 @@ export function ControlCenter() {
               {switches.map((sw) => {
                 const isToggling = togglingId === sw.id;
                 return (
-                  <div
+                  <button
                     key={sw.id}
+                    role="switch"
+                    aria-checked={sw.enabled}
                     className={clsx(
-                      'flex items-center justify-between py-3 px-3 rounded-lg cursor-pointer transition-colors',
+                      'flex items-center justify-between py-3 px-3 rounded-lg cursor-pointer transition-colors w-full text-left focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none',
                       isToggling && 'opacity-50 pointer-events-none',
                     )}
                     style={{ background: 'var(--bg-secondary)' }}
@@ -446,7 +460,7 @@ export function ControlCenter() {
                       <p className="font-mono text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                         {sw.label}
                         {sw.group === 'social' && (
-                          <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded"
+                          <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded"
                             style={{ background: 'var(--bg-tertiary)', color: 'var(--text-disabled)' }}>
                             {t('controlCenter.socialTag')}
                           </span>
@@ -463,7 +477,7 @@ export function ControlCenter() {
                     ) : (
                       <ToggleLeft size={28} style={{ color: 'var(--text-disabled)' }} />
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

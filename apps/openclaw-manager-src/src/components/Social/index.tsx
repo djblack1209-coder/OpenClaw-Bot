@@ -30,15 +30,15 @@ const cardVariants = {
 };
 
 /* ====== 平台徽标颜色 ====== */
-const platformColorMap: Record<string, { label: string; color: string; bg: string }> = {
-  xhs: { label: '小红书', color: '#ff2442', bg: 'rgba(255,36,66,0.12)' },
-  xiaohongshu: { label: '小红书', color: '#ff2442', bg: 'rgba(255,36,66,0.12)' },
-  x: { label: 'X', color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.08)' },
-  twitter: { label: 'X', color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.08)' },
-  weibo: { label: '微博', color: '#ff8200', bg: 'rgba(255,130,0,0.12)' },
+const platformColorMap: Record<string, { labelKey: string; color: string; bg: string }> = {
+  xhs: { labelKey: 'social.platform.xhs', color: '#ff2442', bg: 'rgba(255,36,66,0.12)' },
+  xiaohongshu: { labelKey: 'social.platform.xhs', color: '#ff2442', bg: 'rgba(255,36,66,0.12)' },
+  x: { labelKey: 'social.platform.x', color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.08)' },
+  twitter: { labelKey: 'social.platform.x', color: 'var(--text-primary)', bg: 'rgba(255,255,255,0.08)' },
+  weibo: { labelKey: 'social.platform.weibo', color: '#ff8200', bg: 'rgba(255,130,0,0.12)' },
 };
-const defaultPlatformCfg = { label: '平台', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.06)' };
-const getPlatformCfg = (p: string) => platformColorMap[(p ?? '').toLowerCase()] ?? { ...defaultPlatformCfg, label: p || '未知' };
+const defaultPlatformCfg = { labelKey: 'social.platform.default', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.06)' };
+const getPlatformCfg = (p: string) => platformColorMap[(p ?? '').toLowerCase()] ?? { ...defaultPlatformCfg, labelKey: p || 'social.platform.unknown' };
 
 /* ====== 类型 ====== */
 interface PlatformStatus {
@@ -139,7 +139,7 @@ export function Social() {
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch {
-      toast.error('操作失败，请稍后重试', { channel: 'notification' });
+      toast.error(t('social.operationFailed'), { channel: 'notification' });
       await fetchData();
     } finally {
       setAutopilotLoading(false);
@@ -248,7 +248,7 @@ export function Social() {
             {/* 草稿列表 */}
             <div>
               <span className="text-label mb-3 block" style={{ color: 'var(--text-tertiary)' }}>
-                草稿箱 ({drafts.length})
+                {t('social.draftBox')} ({drafts.length})
               </span>
               <div className="space-y-2">
                 {drafts.length === 0 && (
@@ -262,7 +262,7 @@ export function Social() {
                       {pConfig && (
                         <span className="flex-shrink-0 px-2 py-0.5 rounded-full font-mono text-[10px] tracking-wider"
                           style={{ background: pConfig.bg, color: pConfig.color }}>
-                          {pConfig.label}
+                          {t(pConfig.labelKey)}
                         </span>
                       )}
                       <span className="font-mono text-xs truncate flex-1" style={{ color: 'var(--text-primary)' }}>
@@ -286,7 +286,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-5">
               <Globe size={16} style={{ color: 'var(--accent-green)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-green)' }}>平台状态</span>
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>{t('social.platformStatus')}</span>
             </div>
 
             <div className="space-y-3">
@@ -307,7 +307,7 @@ export function Social() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className="font-mono text-xs font-medium block" style={{ color: 'var(--text-primary)' }}>
-                        {cfg.label}
+                        {t(cfg.labelKey)}
                       </span>
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
                         {p.connected ? t('social.connected') : t('social.disconnected')}
@@ -331,7 +331,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <CalendarDays size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>内容日历</span>
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('social.contentCalendar')}</span>
             </div>
 
             <div className="space-y-3">
@@ -372,7 +372,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Flame size={16} style={{ color: 'var(--accent-red)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-red)' }}>热门话题</span>
+              <span className="text-label" style={{ color: 'var(--accent-red)' }}>{t('social.trendingTopics')}</span>
             </div>
 
             <div className="space-y-2">
@@ -406,7 +406,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>内容统计</span>
+              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>{t('social.contentStats')}</span>
             </div>
 
             <div className="space-y-4">
@@ -423,7 +423,7 @@ export function Social() {
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-4">
               <Share2 size={16} style={{ color: 'var(--accent-green)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-green)' }}>发帖分析</span>
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>{t('social.postAnalysis')}</span>
             </div>
 
             <div className="space-y-3">

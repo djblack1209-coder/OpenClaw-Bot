@@ -15,6 +15,7 @@ import { api } from '../../lib/api';
 import { useAppStore } from '@/stores/appStore';
 import { useClawbotWS } from '@/hooks/useClawbotWS';
 import { createLogger } from '@/lib/logger';
+import { toast } from '@/lib/notify';
 import type { PageType } from '../../App';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
@@ -241,6 +242,7 @@ export function HomeDashboard() {
       }
     } catch (err) {
       logger.error('首页数据拉取失败:', err);
+      toast.error(t('home.fetchFailed') || '数据加载失败，请检查后端连接', { channel: 'notification' });
     } finally {
       setLoading(false);
       setLastUpdated(new Date());
@@ -378,7 +380,7 @@ export function HomeDashboard() {
                   <button
                     key={action.labelKey}
                     onClick={() => setCurrentPage(action.page)}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all duration-200 group"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all duration-200 group focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
                     style={{ background: 'rgba(255,255,255,0.02)' }}
                     onMouseEnter={(e) => {
                       (e.currentTarget.style.background = 'rgba(255,255,255,0.06)');
@@ -517,10 +519,11 @@ export function HomeDashboard() {
             {/* 刷新按钮 */}
             <button
               onClick={() => { setLoading(true); fetchAll(); }}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg font-mono text-[10px] uppercase tracking-wider transition-colors"
+              disabled={loading}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg font-mono text-[10px] uppercase tracking-wider transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
               style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-tertiary)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+              onMouseEnter={(e) => { if (!loading) e.currentTarget.style.color = 'var(--text-primary)'; }}
+              onMouseLeave={(e) => { if (!loading) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
             >
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               {t('home.refreshBtn')}

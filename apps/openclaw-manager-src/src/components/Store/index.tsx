@@ -32,11 +32,11 @@ import { useLanguage } from '../../i18n';
 /** 自动刷新间隔 — 30 秒 */
 const REFRESH_INTERVAL_MS = 30_000;
 
-/** 提案状态 → 中文标签 & 颜色 */
-const STATUS_MAP: Record<string, { label: string; color: string; Icon: typeof CheckCircle2 }> = {
-  approved: { label: '已通过', color: 'var(--accent-green)', Icon: CheckCircle2 },
-  rejected: { label: '已拒绝', color: 'var(--accent-red)', Icon: XCircle },
-  pending:  { label: '待审批', color: 'var(--accent-amber)', Icon: Clock },
+/** 提案状态 → 标签 i18n key & 颜色 */
+const STATUS_MAP: Record<string, { labelKey: string; color: string; Icon: typeof CheckCircle2 }> = {
+  approved: { labelKey: 'store.statusApproved', color: 'var(--accent-green)', Icon: CheckCircle2 },
+  rejected: { labelKey: 'store.statusRejected', color: 'var(--accent-red)', Icon: XCircle },
+  pending:  { labelKey: 'store.statusPending', color: 'var(--accent-amber)', Icon: Clock },
 };
 
 /** 标准化单条提案字段（后端字段名不固定） */
@@ -87,7 +87,7 @@ export function Store() {
   const [fetchError, setFetchError] = useState(false);
   const [approving, setApproving] = useState<string | null>(null); // 正在审批的提案 id
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('全部');
+  const [statusFilter, setStatusFilter] = useState('all');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ── 拉取数据 ── */
@@ -192,8 +192,8 @@ export function Store() {
   /* ── 搜索 + 状态筛选 ── */
   const filtered = useMemo(() => {
     let list = proposals;
-    if (statusFilter !== '全部') {
-      const key = statusFilter === '待审批' ? 'pending' : statusFilter === '已通过' ? 'approved' : 'rejected';
+    if (statusFilter !== 'all') {
+      const key = statusFilter;
       list = list.filter((p) => p.status === key);
     }
     if (search.trim()) {
@@ -280,7 +280,7 @@ export function Store() {
 
         {/* ====== 精选提案 — col-span-8, row-span-2 ====== */}
         <motion.div
-          className="col-span-8 row-span-2 abyss-card p-6"
+          className="col-span-12 lg:col-span-8 row-span-2 abyss-card p-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
@@ -360,7 +360,7 @@ export function Store() {
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1 text-[10px] font-mono" style={{ color: si.color }}>
                         <si.Icon size={10} />
-                        {si.label}
+                        {t(si.labelKey)}
                       </span>
                       {proposal.status === 'pending' && (
                         <div className="flex items-center gap-1.5">
@@ -400,7 +400,7 @@ export function Store() {
 
         {/* ====== 状态筛选 — col-span-4 ====== */}
         <motion.div
-          className="col-span-4 abyss-card p-5"
+          className="col-span-12 md:col-span-6 lg:col-span-4 abyss-card p-5"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
@@ -408,16 +408,16 @@ export function Store() {
           <h3 className="text-label mb-4">{t('store.statusFilterTitle')}</h3>
           <div className="space-y-1">
             {[
-              { label: '全部', count: proposals.length },
-              { label: '待审批', count: statusCounts.pending },
-              { label: '已通过', count: statusCounts.approved },
-              { label: '已拒绝', count: statusCounts.rejected },
+              { key: 'all', labelKey: 'store.statusAll', count: proposals.length },
+              { key: 'pending', labelKey: 'store.statusPending', count: statusCounts.pending },
+              { key: 'approved', labelKey: 'store.statusApproved', count: statusCounts.approved },
+              { key: 'rejected', labelKey: 'store.statusRejected', count: statusCounts.rejected },
             ].map((cat) => {
-              const active = statusFilter === cat.label;
+              const active = statusFilter === cat.key;
               return (
                 <button
-                  key={cat.label}
-                  onClick={() => setStatusFilter(cat.label)}
+                  key={cat.key}
+                  onClick={() => setStatusFilter(cat.key)}
                   className={clsx(
                     'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                     active
@@ -425,7 +425,7 @@ export function Store() {
                       : 'text-[var(--text-secondary)] hover:bg-white/[0.03] hover:text-[var(--text-primary)] border border-transparent'
                   )}
                 >
-                  <span className="font-medium">{cat.label}</span>
+                  <span className="font-medium">{t(cat.labelKey)}</span>
                   <span
                     className={clsx(
                       'font-mono text-xs px-2 py-0.5 rounded-full',
@@ -444,7 +444,7 @@ export function Store() {
 
         {/* ====== 统计 — col-span-4（分类下方） ====== */}
         <motion.div
-          className="col-span-4 abyss-card p-5"
+          className="col-span-12 md:col-span-6 lg:col-span-4 abyss-card p-5"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
@@ -458,7 +458,7 @@ export function Store() {
               >
                 <stat.icon size={16} className="mx-auto mb-2" style={{ color: stat.color }} />
                 <div className="text-metric text-xl">{stat.value}</div>
-                <div className="text-label text-[9px] mt-1">{stat.label}</div>
+                <div className="text-label text-[10px] mt-1">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -466,7 +466,7 @@ export function Store() {
           {/* 最近扫描时间 */}
           {stats && (stats.last_scan || stats.last_scan_at || stats.last_scan_time) && (
             <div className="mt-4 pt-3 border-t border-[var(--glass-border)]">
-              <span className="text-label text-[9px]">{t('store.lastScan')}</span>
+              <span className="text-label text-[10px]">{t('store.lastScan')}</span>
               <p className="font-mono text-[10px] text-[var(--text-secondary)] mt-1">
                 {stats.last_scan_time || stats.last_scan_at || stats.last_scan || '—'}
               </p>
@@ -488,8 +488,8 @@ export function Store() {
               {fetchError ? (
                 <>
                   {/* 加载失败态 — 提示用户检查连接 */}
-                  <span className="font-mono text-sm" style={{ color: 'var(--accent-red)' }}>
-                    无法加载插件数据 — 请检查服务连接
+                   <span className="font-mono text-sm" style={{ color: 'var(--accent-red)' }}>
+                    {t('store.cannotLoadPlugins')}
                   </span>
                   <button
                     onClick={() => { setError(null); setFetchError(false); setLoading(true); fetchData(); }}
@@ -508,8 +508,9 @@ export function Store() {
             </div>
           ) : (
             <>
-              {/* 表头 */}
-              <div className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-2 text-[10px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest border-b border-[var(--glass-border)]">
+              {/* 表头 — 可横向滚动 */}
+              <div className="overflow-x-auto">
+              <div className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-2 text-[10px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest border-b border-[var(--glass-border)] min-w-[600px]">
                 <span>{t('store.colName')}</span>
                 <span>{t('store.colModule')}</span>
                 <span>{t('store.colScore')}</span>
@@ -528,7 +529,7 @@ export function Store() {
                     variants={cardVariants}
                     initial="hidden"
                     animate="visible"
-                    className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-3.5 items-center border-b border-[var(--glass-border)]/50 last:border-b-0 hover:bg-white/[0.02] transition-colors"
+                    className="grid grid-cols-[2fr_1fr_0.8fr_0.8fr_0.8fr_1.5fr] gap-4 px-4 py-3.5 items-center border-b border-[var(--glass-border)]/50 last:border-b-0 hover:bg-white/[0.02] transition-colors min-w-[600px]"
                   >
                     <span className="text-sm text-[var(--text-primary)] font-medium truncate">{p.name}</span>
                     <span className="font-mono text-xs text-[var(--text-tertiary)]">{p.module}</span>
@@ -581,6 +582,7 @@ export function Store() {
                   </motion.div>
                 );
               })}
+              </div>
             </>
           )}
         </motion.div>

@@ -114,7 +114,7 @@ export function Header({ currentPage }: HeaderProps) {
         <button
           onClick={handleOpenDashboard}
           disabled={opening}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono text-[11px] transition-all duration-200 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono text-[11px] transition-all duration-200 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
           style={{
             background: 'rgba(255,255,255,0.04)',
             color: 'var(--text-secondary)',

@@ -1,5 +1,18 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { zhCN } from '../i18n/zh-CN';
+import { enUS } from '../i18n/en-US';
+
+/**
+ * 类组件无法使用 Hook，直接读取 localStorage 获取语言并手动查表
+ */
+function getTranslations(): Record<string, string> {
+  try {
+    const lang = localStorage.getItem('openclaw-language');
+    if (lang === 'en-US') return enUS;
+  } catch { /* 静默降级 */ }
+  return zhCN;
+}
 
 /**
  * 页面级错误边界状态
@@ -47,6 +60,9 @@ export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, P
       return this.props.children;
     }
 
+    const dict = getTranslations();
+    const t = (key: string) => dict[key] ?? key;
+
     // 内联恢复卡片 — 不占满整屏，侧边栏/顶栏仍可用
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -56,18 +72,18 @@ export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, P
           </div>
 
           <h2 className="text-lg font-semibold text-red-300 mb-2">
-            {this.props.pageName ? `「${this.props.pageName}」页面出错了` : '当前页面出错了'}
+            {this.props.pageName ? t('error.boundary.pageErrorNamed').replace('{name}', this.props.pageName) : t('error.boundary.pageError')}
           </h2>
           <p className="text-sm text-gray-400 mb-4">
-            这个页面遇到了问题，但其他页面不受影响。你可以点击下方按钮重试，或切换到其他页面继续使用。
+            {t('error.boundary.pageErrorDesc')}
           </p>
 
           <details className="text-left mb-4">
             <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 transition-colors">
-              查看错误详情
+              {t('error.boundary.viewDetails')}
             </summary>
             <pre className="mt-2 text-xs font-mono text-gray-500 bg-dark-900 rounded-lg p-3 whitespace-pre-wrap break-all border border-dark-600">
-              {this.state.message || '未知错误'}
+              {this.state.message || t('error.boundary.unknownError')}
             </pre>
           </details>
 
@@ -76,7 +92,7 @@ export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, P
             className="btn-primary inline-flex items-center gap-2 px-4 py-2"
           >
             <RefreshCw size={16} />
-            重试
+            {t('common.retry')}
           </button>
         </div>
       </div>
