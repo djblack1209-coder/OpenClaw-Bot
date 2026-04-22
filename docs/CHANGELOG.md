@@ -12,6 +12,40 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — 后端 API 字段补全：让前端 '--' 变成真实数据
+> 领域: `backend`
+> 影响模块: rpc.py, system.py
+> 关联问题: HI-751~753
+
+### 变更内容
+
+**核心理念**: 前端界面上大量 `--` 和空白不是因为系统没有数据，而是后端 API 没把已有数据返回给前端。本轮把后端"知道但没说"的数据全部补上。
+
+**`/api/v1/status` → xianyu 子对象 (HI-751)**
+- 原来只返回 `{online: true, service: "xianyu_live"}` — 两个字段
+- 现在通过 HTTP 调闲鱼 admin (127.0.0.1:18800) 拉取完整状态：
+  - `auto_reply_active` — WS 连接 + Cookie 有效 = 自动回复活跃
+  - `cookie_ok` — Cookie 是否有效
+  - `conversations_today` — 今日处理的咨询数
+  - `unread_chats` — 未处理的对话数
+- 3 秒超时，失败静默降级到基础状态
+
+**`/api/v1/perf` 补 today_messages + active_users (HI-752)**
+- `today_messages`: 从 `StructuredLogger.get_stats()` 读取（进程内内存，零 I/O）
+- `active_users`: 从 `bot_registry` 读取活跃 Bot 数
+
+**`/api/v1/system/services` 补 uptime (HI-753)**
+- 新增 `_get_process_uptime_seconds()` 函数
+- 通过 `ps -o etime= -p <pid>` 读取进程运行时长
+- 解析 `DD-HH:MM:SS` / `HH:MM:SS` / `MM:SS` 三种格式
+- 返回 `uptime_seconds` (数字) + `uptime` (人类可读: "2d 3h")
+
+### 文件变更
+- `packages/clawbot/src/api/rpc.py` — xianyu 详情补全
+- `packages/clawbot/src/api/routers/system.py` — perf 消息统计 + services uptime
+- 后端测试: 1486 passed, 0 failed (零回归)
+- 桌面端已构建: `/Applications/OpenClaw.app`
+
 ## 2026-04-22 — 数据真实性审计：20 个 API 字段矛盾修复
 > 领域: `frontend`
 > 影响模块: Home, Dashboard, ControlCenter, Xianyu, Bots
