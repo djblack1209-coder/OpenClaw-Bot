@@ -12,6 +12,37 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — 数据真实性审计：20 个 API 字段矛盾修复
+> 领域: `frontend`
+> 影响模块: Home, Dashboard, ControlCenter, Xianyu, Bots
+> 关联问题: HI-742~750
+
+### 变更内容
+
+**方法论**: 用 curl 逐个命中真实后端 API，对比每个字段和前端组件的期望值，找出所有数据矛盾。
+
+**P0 数据矛盾修复 (8 项)**
+- Home: 闲鱼卡片导航 `'bots'` → `'xianyu'`（用户点闲鱼卡片被带到服务舰队页）
+- Home: 首次加载加 Loader2 spinner（原来 0.5-2 秒内所有指标显示零值）
+- ControlCenter: `statusDot()` 加 `case 'running'`（API 返回 `running`，前端只匹配 `online`，所有服务显灰色）
+- ControlCenter: 日志 `extractMsg`/`extractSrc` 加 `title`/`body`/`category` 回退（日志条目空白）
+- Xianyu: 服务状态 `running` 布尔 → `status === 'running'`（闲鱼永远显示"已停止"）
+- Xianyu: `last_sync_time` 秒级时间戳加 `< 1e12` 判断（显示 1970 年日期）
+- Bots: 社媒下次发布时间加 `next_time` 字段回退（永远空白）
+- Bots: 调度器状态加 `scheduler_running` 字段回退（永远显示 IDLE）
+
+**P1 体验优化 (2 项)**
+- Dashboard: quickStats 4 个指标中 3 个永远 `--`（today_messages/active_users/api_health 字段不存在）→ 替换为 CPU 使用率 + 内存占用
+- Dashboard: 新增手动刷新按钮（原来只有 30 秒自动刷新，服务启停后需等 30 秒看到变化）
+
+### 文件变更
+- `src/components/Home/index.tsx` — 导航修复 + 加载态
+- `src/components/Dashboard/index.tsx` — quickStats + 刷新按钮
+- `src/components/ControlCenter/index.tsx` — statusDot + 日志字段
+- `src/components/Xianyu/index.tsx` — 服务状态 + 时间戳
+- `src/components/Bots/index.tsx` — next_time + scheduler_running
+- 桌面端已重新构建并安装到 `/Applications/OpenClaw.app`
+
 ## 2026-04-22 — Sprint 5 体验深化：数据矛盾修复 + i18n 全覆盖收尾
 > 领域: `frontend`
 > 影响模块: Dashboard, APIGateway, Setup, Dev, DevPanel, Testing, Money, Scheduler, Logs, Evolution, Onboarding, i18n/zh-CN.ts, i18n/en-US.ts
