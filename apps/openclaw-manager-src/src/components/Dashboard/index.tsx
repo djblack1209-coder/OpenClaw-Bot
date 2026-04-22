@@ -80,6 +80,10 @@ interface NotificationItem {
   time: string;
   msg: string;
   message?: string;
+  // 后端可能返回的备选字段名
+  created_at?: string;
+  title?: string;
+  body?: string;
 }
 
 /* ====== 工具函数 ====== */
@@ -167,7 +171,17 @@ export function Dashboard(_props: DashboardProps) {
       }
       if (statusRes.status === 'fulfilled') setSystemStatus(statusRes.value);
       if (perfRes.status === 'fulfilled') setPerf(perfRes.value);
-      if (logRes.status === 'fulfilled') setLogs(Array.isArray(logRes.value) ? logRes.value : []);
+      if (logRes.status === 'fulfilled') {
+        const raw = Array.isArray(logRes.value) ? logRes.value : [];
+        // 映射后端字段名到前端接口（后端可能返回 created_at/title/body 而非 time/msg/message）
+        const mapped = raw.map((item: any) => ({
+          level: item.level || 'info',
+          time: item.time || item.created_at || '',
+          msg: item.msg || item.message || item.body || item.title || '',
+          message: item.message || item.body || '',
+        }));
+        setLogs(mapped);
+      }
     } catch (err) {
       console.error('[Dashboard] 数据加载失败:', err);
     } finally {

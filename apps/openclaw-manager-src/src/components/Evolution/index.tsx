@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
+import { toast } from '@/lib/notify';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -57,24 +58,25 @@ function priorityColor(p: string): string {
   return 'var(--accent-green)';
 }
 
-/** 优先级标签 */
-function priorityLabel(p: string): string {
+/** 优先级标签（需要传入翻译函数） */
+function priorityLabel(p: string, t: (key: string) => string): string {
   const lower = (p ?? '').toLowerCase();
-  if (lower === 'high') return '高';
-  if (lower === 'medium') return '中';
-  if (lower === 'low') return '低';
+  if (lower === 'high') return t('evolution.priorityHigh');
+  if (lower === 'medium') return t('evolution.priorityMedium');
+  if (lower === 'low') return t('evolution.priorityLow');
   return p || '—';
 }
 
-/** 状态显示 */
-function statusStyle(s: string) {
+/** 状态显示（需要传入翻译函数） */
+function statusStyle(s: string, t?: (key: string) => string) {
+  const tr = t ?? ((k: string) => k);
   const lower = (s ?? '').toLowerCase();
   if (lower === 'executed' || lower === 'success' || lower === '成功' || lower === 'completed')
-    return { color: 'var(--accent-green)', Icon: CheckCircle2, label: '成功' };
+    return { color: 'var(--accent-green)', Icon: CheckCircle2, label: tr('evolution.statusSuccess') };
   if (lower === 'running' || lower === 'pending' || lower === '执行中' || lower === 'in_progress')
-    return { color: 'var(--accent-cyan)', Icon: Zap, label: '执行中' };
+    return { color: 'var(--accent-cyan)', Icon: Zap, label: tr('evolution.statusRunning') };
   if (lower === 'skipped' || lower === '已跳过')
-    return { color: 'var(--text-disabled)', Icon: Clock, label: '已跳过' };
+    return { color: 'var(--text-disabled)', Icon: Clock, label: tr('evolution.statusSkipped') };
   return { color: 'var(--text-secondary)', Icon: Clock, label: s || '—' };
 }
 
@@ -110,6 +112,7 @@ export function Evolution() {
       }
     } catch (err) {
       console.error('[Evolution] 加载失败:', err);
+      toast.error(t('evolution.loadFailed'), { channel: 'notification' });
     } finally {
       setLoading(false);
     }
@@ -126,6 +129,7 @@ export function Evolution() {
       await fetchAll();
     } catch (err) {
       console.error('[Evolution] 扫描失败:', err);
+      toast.error(t('evolution.scanFailed'), { channel: 'notification' });
     } finally {
       setScanning(false);
     }
@@ -143,15 +147,15 @@ export function Evolution() {
   /* 从 stats 中提取关键指标 */
   const cycle = stats.current_cycle ?? '—';
   const totalP = stats.total_proposals ?? proposals.length;
-  const executed = stats.executed ?? proposals.filter((p) => statusStyle(p.status).label === '成功').length;
+  const executed = stats.executed ?? proposals.filter((p) => statusStyle(p.status, t).label === t('evolution.statusSuccess')).length;
   const successRate = stats.success_rate != null
     ? `${(stats.success_rate * 100).toFixed(1)}%`
     : totalP > 0 ? `${((executed / totalP) * 100).toFixed(1)}%` : '—';
 
   /* 区分待执行和已完成 */
   const pending = proposals.filter((p) => {
-    const s = statusStyle(p.status);
-    return s.label === '执行中' || s.label !== '成功';
+    const s = statusStyle(p.status, t);
+    return s.label === t('evolution.statusRunning') || s.label !== t('evolution.statusSuccess');
   }).slice(0, 5);
 
   return (

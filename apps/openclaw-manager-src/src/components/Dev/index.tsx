@@ -258,7 +258,7 @@ export function Dev() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  开发面板
+                  {t('dev.title')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('dev.subtitle')}
@@ -338,10 +338,10 @@ export function Dev() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  Git 提交
+                  {t('dev.gitCommitsTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  GIT 提交记录
+                  {t('dev.gitCommitsSubtitle')}
                 </p>
               </div>
               {gitLogLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
