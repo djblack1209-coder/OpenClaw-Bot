@@ -122,11 +122,35 @@ class ClawBotRPC:
 
         # ── 闲鱼客服状态检测 ──
         xianyu_online = False
+        xianyu_detail: dict = {"online": False, "service": "xianyu_live"}
         try:
             import subprocess
 
             result = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True, timeout=3)
             xianyu_online = result.returncode == 0 and bool(result.stdout.strip())
+            xianyu_detail["online"] = xianyu_online
+
+            # 如果闲鱼进程在线，通过内部 admin API 拉取详细状态
+            if xianyu_online:
+                try:
+                    import httpx
+                    _xy_headers = {"X-API-Token": os.environ.get("OPENCLAW_API_TOKEN", "")}
+                    # 拉取 WS 连接 + Cookie 状态
+                    _xy_r = httpx.get("http://127.0.0.1:18800/api/status", timeout=3, headers=_xy_headers)
+                    if _xy_r.status_code == 200:
+                        _xs = _xy_r.json()
+                        xianyu_detail["cookie_ok"] = _xs.get("cookie_ok", False)
+                        xianyu_detail["auto_reply_active"] = _xs.get("ws_connected", False) and _xs.get("cookie_ok", False)
+                    # 拉取今日咨询数
+                    _xy_r2 = httpx.get("http://127.0.0.1:18800/api/dashboard", timeout=3, headers=_xy_headers)
+                    if _xy_r2.status_code == 200:
+                        _xy_dash = _xy_r2.json()
+                        _xy_today = _xy_dash.get("today", {})
+                        xianyu_detail["conversations_today"] = _xy_today.get("consultations", 0)
+                        xianyu_detail["unread_chats"] = _xy_today.get("consultations", 0)
+                except Exception:
+                    # 闲鱼 admin 不可用时静默降级
+                    logger.debug("闲鱼 admin API 不可用，使用基础状态")
         except Exception as e:
             logger.debug("闲鱼状态检测失败: %s", e)
 
@@ -156,7 +180,7 @@ class ClawBotRPC:
             "total_cost_usd": pool_stats.get("total_cost_usd", 0.0),
             "avg_latency_ms": pool_stats.get("avg_latency_ms", 0.0),
             "memory_entries": mem_entries,
-            "xianyu": {"online": xianyu_online, "service": "xianyu_live"},
+            "xianyu": xianyu_detail,
             "wechat": {"connected": wechat_connected, "service": "coupon_auto"},
         }
 
