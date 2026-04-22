@@ -26,7 +26,7 @@ from src.bot.config import (  # noqa: F401 — 向后兼容 re-export
 
 from src.constants import TG_SAFE_LENGTH
 from src.history_store import HistoryStore
-from src.chat_router import ChatRouter, CollabOrchestrator
+from src.routing import ChatRouter, CollabOrchestrator
 from src.monitoring import StructuredLogger, HealthChecker
 from src.news_fetcher import NewsFetcher
 from src.tools.image_tool import ImageTool
