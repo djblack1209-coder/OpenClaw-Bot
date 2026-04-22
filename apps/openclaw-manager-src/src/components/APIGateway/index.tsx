@@ -161,7 +161,7 @@ export function APIGateway() {
         api.newApiStatus(),
         api.newApiChannels(),
         api.newApiTokens(),
-        clawbotFetchJson<{ services?: Array<{ id: string; running?: boolean }> }>('/api/v1/system/services'),
+        clawbotFetchJson<{ services?: Array<{ id: string; status?: string; running?: boolean }> }>('/api/v1/system/services'),
       ]);
 
       // 解析网关状态
@@ -193,9 +193,10 @@ export function APIGateway() {
       // 解析网关服务运行状态
       if (servicesResp.status === 'fulfilled') {
         const svcData = servicesResp.value as any;
-        const services: Array<{ id: string; running?: boolean }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
+        const services: Array<{ id: string; status?: string; running?: boolean }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
         const gwSvc = services.find((s) => s.id === 'gateway');
-        setGatewayServiceRunning(gwSvc?.running ?? false);
+        // 兼容两种后端格式：status === 'running' 或 running === true
+        setGatewayServiceRunning(gwSvc?.status === 'running' || gwSvc?.running === true);
       }
     } catch (err) {
       console.error('[APIGateway] 数据加载失败:', err);
@@ -516,7 +517,7 @@ export function APIGateway() {
               TOKEN MANAGEMENT
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              令牌管理
+              {t('apiGateway.tokenManagement')}
             </h3>
 
             <div className="flex-1 space-y-3 overflow-y-auto">
@@ -654,7 +655,7 @@ export function APIGateway() {
                 {channels.length}  {t('apiGateway.channelsUnit')}
               </span>
               <span className="font-mono text-[10px] ml-auto" style={{ color: 'var(--accent-green)' }}>
-                {enabledChannels} 启用
+                {enabledChannels} {t('apiGateway.enabledLabel')}
               </span>
             </div>
           </div>
@@ -688,7 +689,7 @@ export function APIGateway() {
                     >
                       <div className="flex-1 min-w-0">
                         <span className="font-display text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-                          {ch.name || `渠道 #${ch.id}`}
+                          {ch.name || `${t('apiGateway.channelPrefix')} #${ch.id}`}
                         </span>
                         {models.length > 0 ? (
                           <div className="flex flex-wrap gap-1 mt-1.5">
@@ -731,7 +732,7 @@ export function APIGateway() {
               GATEWAY INFO
             </span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
-              网关信息
+              {t('apiGateway.gatewayInfo')}
             </h3>
 
             <div className="flex-1 space-y-3">

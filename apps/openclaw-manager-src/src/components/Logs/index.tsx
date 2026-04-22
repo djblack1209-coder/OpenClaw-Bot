@@ -9,7 +9,7 @@ import { Terminal, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useClawbotWS, useWSConnectionStatus } from '@/hooks/useClawbotWS';
 import { useLanguage } from '../../i18n';
-import { getFrontendNotifications, subscribeFrontendNotifications } from '@/lib/notify';
+import { getFrontendNotifications, subscribeFrontendNotifications, toast } from '@/lib/notify';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -41,14 +41,17 @@ const LEVEL_STYLE: Record<LogLevel, { color: string; bg: string }> = {
   ERROR: { color: 'var(--accent-red)',   bg: 'rgba(239,68,68,0.12)' },
 };
 
-const FILTER_CHIPS: { label: string; value: LogLevel | 'ALL' }[] = [
-  { label: '全部', value: 'ALL' },
-  { label: 'INFO', value: 'INFO' },
-  { label: 'WARN', value: 'WARN' },
-  { label: 'ERROR', value: 'ERROR' },
+const FILTER_CHIPS: { labelKey: string | null; label?: string; value: LogLevel | 'ALL' }[] = [
+  { labelKey: 'logs.filterAll', value: 'ALL' },
+  { labelKey: null, label: 'INFO', value: 'INFO' },
+  { labelKey: null, label: 'WARN', value: 'WARN' },
+  { labelKey: null, label: 'ERROR', value: 'ERROR' },
 ];
 
 /* ====== 工具函数 ====== */
+
+/** 无内容时的占位符常量，在渲染时会被 t() 替换 */
+const NO_CONTENT_PLACEHOLDER = '__NO_CONTENT__';
 
 /** 将 WS/通知事件统一转为日志行 */
 function notifToLog(n: any): LogLine {
@@ -74,7 +77,7 @@ function notifToLog(n: any): LogLine {
     time,
     level,
     module: n.source ?? n.module ?? n.category ?? n.type ?? 'system',
-    msg: n.message ?? n.title ?? n.content ?? n.msg ?? JSON.stringify(n.data ?? n).slice(0, 240) ?? '(无内容)',
+    msg: n.message ?? n.title ?? n.content ?? n.msg ?? JSON.stringify(n.data ?? n).slice(0, 240) ?? NO_CONTENT_PLACEHOLDER,
   };
 }
 
@@ -104,6 +107,7 @@ export function Logs() {
       setBackendLogs(list.map(notifToLog));
     } catch (err) {
       console.error('[Logs] 加载失败:', err);
+      toast.error(t('logs.loadFailed'), { channel: 'notification' });
     } finally {
       setLoading(false);
     }
@@ -207,7 +211,7 @@ export function Logs() {
                   )}
                 </div>
                 <span className="font-mono text-[10px]" style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
-                  {wsConnected ? '实时' : '离线'}
+                  {wsConnected ? t('logs.realtime') : t('logs.offline')}
                 </span>
               </div>
             </div>
@@ -232,7 +236,7 @@ export function Logs() {
                     <span className="flex-shrink-0" style={{ color: 'var(--accent-purple)' }}>
                       [{log.module}]
                     </span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{log.msg}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{log.msg === NO_CONTENT_PLACEHOLDER ? t('logs.noContent') : log.msg}</span>
                   </div>
                 );
               })}
@@ -292,7 +296,7 @@ export function Logs() {
                       color: active ? 'var(--bg-primary)' : chipColor,
                       fontWeight: active ? 700 : 500,
                     }}>
-                    {chip.label}
+                    {chip.labelKey ? t(chip.labelKey) : chip.label}
                   </button>
                 );
               })}
@@ -348,7 +352,7 @@ export function Logs() {
             <div className="flex-1 space-y-4">
               {[
                 { label: t('logs.apiNotif'), value: t('logs.connectedValue') },
-                { label: 'WebSocket', value: wsConnected ? t('logs.realtimePush') : '离线 / 重连中' },
+                { label: 'WebSocket', value: wsConnected ? t('logs.realtimePush') : t('logs.wsOffline') },
                 { label: t('logs.maxCache'), value: t('logs.maxCacheValue') },
               ].map((s) => (
                 <div key={s.label} className="flex items-center justify-between py-2 px-3 rounded-lg"

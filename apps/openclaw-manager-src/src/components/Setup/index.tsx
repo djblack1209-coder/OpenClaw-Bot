@@ -66,7 +66,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
       }
     } catch (e) {
       setupLogger.error('检查环境失败', e);
-      setError(`检查环境失败: ${e}`);
+      setError(`${t('setup.checkFailed')} ${e}`);
     } finally {
       setChecking(false);
     }
@@ -105,7 +105,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         await invoke<string>('open_install_terminal', { installType: 'nodejs' });
         setError(t('setup.terminalOpened'));
       } catch (termErr) {
-        setError(`安装失败: ${e}。${termErr}`);
+        setError(`${t('setup.installFailed')} ${e}。${termErr}`);
       }
     } finally {
       setInstalling(null);
@@ -140,7 +140,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         await invoke<string>('open_install_terminal', { installType: 'openclaw' });
         setError(t('setup.terminalOpened'));
       } catch (termErr) {
-        setError(`安装失败: ${e}。${termErr}`);
+        setError(`${t('setup.installFailed')} ${e}。${termErr}`);
       }
     } finally {
       setInstalling(null);
@@ -170,7 +170,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             className="text-center py-6"
           >
             <Loader2 className="w-10 h-10 text-brand-500 animate-spin mx-auto mb-3" />
-            <p className="text-dark-300">正在检测系统环境...</p>
+            <p className="text-dark-300">{t('setup.checkingEnv')}</p>
           </motion.div>
         )}
 
@@ -186,7 +186,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             {/* 系统信息（仅非嵌入模式） */}
             {!embedded && (
               <div className="flex items-center justify-between text-sm text-dark-400 pb-4 border-b border-dark-700">
-                <span>操作系统</span>
+                <span>{t('setup.osLabel')}</span>
                 <span className="text-dark-200">{getOsName(envStatus.os)}</span>
               </div>
             )}
@@ -221,12 +221,12 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   {installing === 'nodejs' ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      安装中...
+                      {t('setup.installing')}
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4" />
-                      安装
+                      {t('setup.install')}
                     </>
                   )}
                 </button>
@@ -263,12 +263,12 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   {installing === 'openclaw' ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      安装中...
+                      {t('setup.installing')}
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4" />
-                      安装
+                      {t('setup.install')}
                     </>
                   )}
                 </button>
@@ -294,7 +294,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 className="flex-1 btn-secondary py-2.5 flex items-center justify-center gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
-                重新检查
+                {t('setup.recheck')}
               </button>
 
               {envStatus.ready && (
@@ -302,7 +302,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   onClick={onComplete}
                   className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2"
                 >
-                  开始使用
+                  {t('setup.startUsing')}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
@@ -316,7 +316,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 rel="noopener noreferrer"
                 className="text-sm text-dark-400 hover:text-brand-400 transition-colors inline-flex items-center gap-1"
               >
-                手动下载 Node.js
+                {t('setup.manualDownloadNode')}
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -338,9 +338,9 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             >
               <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
             </motion.div>
-            <h3 className="text-lg font-bold text-white mb-1">环境就绪！</h3>
+            <h3 className="text-lg font-bold text-white mb-1">{t('setup.envReady')}</h3>
             <p className="text-dark-400 text-sm">
-              Node.js 和 OpenClaw 已正确安装
+              {t('setup.envReadyDesc')}
             </p>
           </motion.div>
         )}
@@ -357,8 +357,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             <span className="text-2xl">⚠️</span>
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white mb-1">环境配置</h2>
-            <p className="text-dark-400 text-sm">检测到缺少必要的依赖，请完成以下安装</p>
+            <h2 className="text-lg font-bold text-white mb-1">{t('setup.envConfig')}</h2>
+            <p className="text-dark-400 text-sm">{t('setup.missingDepsDesc')}</p>
           </div>
         </div>
 
@@ -393,7 +393,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             <span className="text-4xl">🦞</span>
           </motion.div>
            <h1 className="text-2xl font-bold text-white mb-2">OpenClaw</h1>
-          <p className="text-dark-400">环境检测与安装向导</p>
+          <p className="text-dark-400">{t('setup.wizardSubtitle')}</p>
         </div>
 
         {/* 主卡片 */}

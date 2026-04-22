@@ -9,6 +9,7 @@ import clsx from 'clsx';
 import { Clock, Terminal, Loader2 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '@/i18n';
+import { toast } from '@/lib/notify';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -69,6 +70,7 @@ export function Scheduler() {
       setData(res);
     } catch (err) {
       console.error('[Scheduler] 加载失败:', err);
+      toast.error(t('scheduler.loadFailed'), { channel: 'notification' });
     } finally {
       setLoading(false);
     }
@@ -93,6 +95,7 @@ export function Scheduler() {
       });
     } catch (err) {
       console.error('[Scheduler] 切换失败:', err);
+      toast.error(t('scheduler.toggleFailed'), { channel: 'notification' });
     } finally {
       setTogglingId(null);
     }
