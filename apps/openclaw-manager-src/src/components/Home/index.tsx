@@ -123,6 +123,19 @@ export function HomeDashboard() {
   // 核心引擎是否运行：Tauri 用 IPC 结果，浏览器用 API 可达性 fallback
   const isRunning = isTauriRunning || (apiReachable === true);
 
+  /* 安全超时：防止 API 全部超时导致 loading 永远卡住，最多等 8 秒就强制渲染 */
+  useEffect(() => {
+    if (!loading) return;
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        logger.warn('首页加载安全超时(8s)，强制渲染页面');
+        setLoading(false);
+        if (!lastUpdated) setLastUpdated(new Date());
+      }
+    }, 8_000);
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
+
   /* 初次加载时显示 loading 状态，防止数据全为零时闪烁 */
   if (loading && !lastUpdated) {
     return (

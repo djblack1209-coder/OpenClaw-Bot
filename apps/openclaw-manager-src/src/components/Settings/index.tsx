@@ -96,6 +96,18 @@ export function Settings(_props: SettingsProps) {
     { id: 'error', labelKey: 'settings.errorAlertLabel', enabled: true },
   ]);
 
+  /* 安全超时：防止某个 API 超时导致设置页转圈太久，最多等 8 秒强制渲染 */
+  useEffect(() => {
+    if (!loading) return;
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('[Settings] 加载安全超时(8s)，强制渲染页面');
+        setLoading(false);
+      }
+    }, 8_000);
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
+
   /* —— 首次加载 —— */
   const fetchAll = useCallback(async () => {
     setLoading(true);
