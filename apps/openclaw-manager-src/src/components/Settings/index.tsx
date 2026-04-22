@@ -254,7 +254,7 @@ export function Settings(_props: SettingsProps) {
           <motion.div className="col-span-12" variants={cardVariants}>
             <div className="px-4 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.2)' }}>
               <AlertTriangle size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>当前为浏览器模式 — 系统信息和服务控制仅在桌面客户端可用</span>
+              <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>{t('settings.browserModeHint')}</span>
             </div>
           </motion.div>
         )}
@@ -607,7 +607,7 @@ export function Settings(_props: SettingsProps) {
                   }
                 }}
                 disabled={!inTauri}
-                title={!inTauri ? '仅桌面客户端可用' : ''}
+                title={!inTauri ? t('settings.desktopOnly') : ''}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
                 style={{ background: 'var(--accent-green)', color: 'var(--bg-primary)', opacity: !inTauri ? 0.4 : 1, cursor: !inTauri ? 'not-allowed' : 'pointer' }}
                 onMouseEnter={(e) => { if (inTauri) (e.currentTarget as HTMLElement).style.opacity = '0.85'; }}
@@ -627,7 +627,7 @@ export function Settings(_props: SettingsProps) {
                   }
                 }}
                 disabled={!inTauri}
-                title={!inTauri ? '仅桌面客户端可用' : ''}
+                title={!inTauri ? t('settings.desktopOnly') : ''}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
                 style={{ background: 'rgba(255,0,0,0.08)', border: '1px solid rgba(255,0,0,0.25)', color: 'var(--accent-red)', opacity: !inTauri ? 0.4 : 1, cursor: !inTauri ? 'not-allowed' : 'pointer' }}
                 onMouseEnter={(e) => {

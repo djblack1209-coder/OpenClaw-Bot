@@ -2,6 +2,7 @@ import { AlertCircle, AlertTriangle, RefreshCw, Settings } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import type { FriendlyError } from '@/lib/errorMessages';
+import { useLanguage } from '../../i18n';
 
 interface ErrorStateProps {
   error: FriendlyError;
@@ -11,6 +12,7 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({ error, onRetry, onSettings, compact = false }: ErrorStateProps) {
+  const { t } = useLanguage();
   if (compact) {
     return (
       <div className="flex items-center gap-2 p-3 rounded-lg bg-[var(--oc-danger)]/10 border border-[var(--oc-danger)]/20">
@@ -22,7 +24,7 @@ export function ErrorState({ error, onRetry, onSettings, compact = false }: Erro
         {error.retryable && onRetry && (
           <Button variant="outline" size="sm" onClick={onRetry}>
             <RefreshCw size={12} className="mr-1" />
-            重试
+            {t('shared.retry')}
           </Button>
         )}
       </div>
@@ -47,13 +49,13 @@ export function ErrorState({ error, onRetry, onSettings, compact = false }: Erro
         {error.retryable && onRetry && (
           <Button variant="outline" onClick={onRetry}>
             <RefreshCw size={14} className="mr-2" />
-            重试
+            {t('shared.retry')}
           </Button>
         )}
         {onSettings && (
           <Button variant="outline" onClick={onSettings}>
             <Settings size={14} className="mr-2" />
-            前往设置
+            {t('shared.goToSettings')}
           </Button>
         )}
       </div>
@@ -69,11 +71,12 @@ interface SimpleErrorStateProps {
   onRetry: () => void;
 }
 
-export function SimpleErrorState({ message = '数据加载失败', onRetry }: SimpleErrorStateProps) {
+export function SimpleErrorState({ message, onRetry }: SimpleErrorStateProps) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-8">
       <AlertTriangle size={20} style={{ color: 'var(--accent-red)' }} />
-      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message}</span>
+      <span className="font-mono text-xs" style={{ color: 'var(--accent-red)' }}>{message ?? t('common.error')}</span>
       <button
         onClick={onRetry}
         className="px-4 py-1.5 rounded-lg font-mono text-[11px] transition-all duration-200"
@@ -84,7 +87,7 @@ export function SimpleErrorState({ message = '数据加载失败', onRetry }: Si
         }}
       >
         <RefreshCw size={12} className="inline mr-1.5" />
-        重试
+        {t('common.retry')}
       </button>
     </div>
   );
