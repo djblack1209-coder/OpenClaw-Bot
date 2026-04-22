@@ -111,6 +111,8 @@
 | HI-718 | `security` | `kiro-gateway/.env` | 🟠 文件权限 644 过宽 | chmod 600 | 2026-04-22 | Sprint 5 审计 |
 | HI-719 | `security` | `diskcache` | 🟠 CVE 包仍在 venv 中 | pip uninstall diskcache | 2026-04-22 | Sprint 5 审计 |
 | HI-720 | `frontend` | `npm 依赖` | 🟠 10 个 HIGH 漏洞(vite/rollup/hono/lodash/path-to-regexp/d3-color) | npm update 修复 | 2026-04-22 | Sprint 5 审计 |
+| HI-725 | `frontend` | `Home/index.tsx` | 🟠 首页 BOT_1~BOT_7 假名 — bot_id 字段未映射 | bot_id 加入字段读取链 | 2026-04-22 | Sprint 5 UX |
+| HI-726 | `backend` | `world_monitor.py` | 🟡 RSS 标题/摘要 HTML 实体未解码（&#039; 原始显示）| html.unescape() 加入解析链 | 2026-04-22 | Sprint 5 UX |
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|

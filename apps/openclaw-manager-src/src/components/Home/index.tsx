@@ -164,7 +164,7 @@ export function HomeDashboard() {
         const s = statusRes.value as Record<string, unknown>;
         const botsArr = (s.bots as Record<string, unknown>[]) ?? [];
         setBots(botsArr.map((b) => ({
-          name: String(b.name || b.bot_name || ''),
+          name: String(b.bot_id || b.name || b.bot_name || b.username || ''),
           // alive 但没 signal → 空闲(abstain)，不是待定(pending)
           signal: String(b.signal || b.status || (b.alive ? 'abstain' : 'pending')) as BotVote['signal'],
           confidence: Number(b.confidence ?? 0.5),
