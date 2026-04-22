@@ -1,3 +1,5 @@
+import { useLanguage } from '@/i18n';
+
 /* 遥测数据类型 */
 interface TelemetryData {
   llmCostDaily: number;
@@ -12,31 +14,31 @@ interface Props {
   isRunning: boolean;
 }
 
-/* 遥测指标配置 */
+/* 遥测指标配置 — labelKey 用于 i18n 查找 */
 interface MetricConfig {
-  label: string;
+  labelKey: string;
   getValue: (d: TelemetryData) => string;
   accent: string;
 }
 
 const metrics: MetricConfig[] = [
   {
-    label: 'LLM 日费用',
+    labelKey: 'telemetry.llmDailyCost',
     getValue: (d) => `$${d.llmCostDaily.toFixed(2)}`,
     accent: 'var(--accent-cyan)',
   },
   {
-    label: '活跃 BOT',
+    labelKey: 'telemetry.activeBots',
     getValue: (d) => String(d.activeBots),
     accent: 'var(--accent-green)',
   },
   {
-    label: '模型池',
+    labelKey: 'telemetry.modelPool',
     getValue: (d) => `${d.poolActive}/${d.poolTotal}`,
     accent: 'var(--accent-purple)',
   },
   {
-    label: '记忆条目',
+    labelKey: 'telemetry.memoryEntries',
     getValue: (d) => d.memoryEntries > 0 ? d.memoryEntries.toLocaleString() : '0',
     accent: 'var(--accent-amber)',
   },
@@ -47,15 +49,17 @@ const metrics: MetricConfig[] = [
  * 展示 LLM 费用、Bot 数量、API 池、记忆条目
  */
 export function TelemetryCard({ data, isRunning }: Props) {
+  const { t } = useLanguage();
+
   return (
     <div className="abyss-card p-6 h-full flex flex-col">
-      <span className="text-label">系统遥测</span>
+      <span className="text-label">{t('telemetry.title')}</span>
 
       <div className="grid grid-cols-2 gap-4 mt-4 flex-1">
         {metrics.map((m) => (
-          <div key={m.label} className="flex flex-col justify-center">
+          <div key={m.labelKey} className="flex flex-col justify-center">
             <span className="text-label text-[10px]" style={{ color: m.accent }}>
-              {m.label}
+              {t(m.labelKey)}
             </span>
             <span className="text-metric mt-1">{m.getValue(data)}</span>
           </div>
@@ -67,7 +71,7 @@ export function TelemetryCard({ data, isRunning }: Props) {
         <div className="flex items-center gap-2">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           <span className="font-mono text-[10px] uppercase" style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {isRunning ? '系统正常' : '数据未获取'}
+            {isRunning ? t('telemetry.systemOk') : t('telemetry.noData')}
           </span>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import type { LogEntry } from './index';
 import { isTauri } from '../../lib/tauri-core';
+import { useLanguage } from '@/i18n';
 
 interface Props {
   logs: LogEntry[];
@@ -19,6 +20,7 @@ const levelColors: Record<string, string> = {
  * 彩色时间戳 + 级别标签 + 模块名 + 消息
  */
 export function TerminalLogsCard({ logs }: Props) {
+  const { t } = useLanguage();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /* 新日志到达时自动滚动到底部 */
@@ -31,9 +33,9 @@ export function TerminalLogsCard({ logs }: Props) {
   return (
     <div className="abyss-card p-5 h-full flex flex-col" style={{ minHeight: '280px' }}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-label">终端日志</span>
+        <span className="text-label">{t('terminalLogs.title')}</span>
         <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-          {logs.length} 条
+          {logs.length} {t('terminalLogs.count')}
         </span>
       </div>
 
@@ -75,8 +77,8 @@ export function TerminalLogsCard({ logs }: Props) {
           <div className="flex items-center justify-center h-full">
             <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
               {isTauri()
-                ? '等待日志输出...'
-                : '浏览器模式无法读取本地日志 — 请使用桌面客户端查看'}
+                ? t('terminalLogs.waiting')
+                : t('terminalLogs.browserMode')}
             </span>
           </div>
         )}

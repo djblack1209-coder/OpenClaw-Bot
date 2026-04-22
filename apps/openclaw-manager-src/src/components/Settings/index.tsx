@@ -380,7 +380,9 @@ export function Settings(_props: SettingsProps) {
                   <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {t(item.labelKey)}
                   </span>
-                  <div
+                  <button
+                    role="switch"
+                    aria-checked={item.enabled}
                     className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
                     onClick={() => toggleNotification(item.id)}
                     style={{ background: item.enabled ? 'var(--accent-cyan)' : 'var(--dark-500)' }}>
@@ -389,7 +391,7 @@ export function Settings(_props: SettingsProps) {
                         background: 'var(--text-primary)',
                         left: item.enabled ? '18px' : '2px',
                       }} />
-                  </div>
+                  </button>
                 </div>
               ))}
             </div>
@@ -419,7 +421,10 @@ export function Settings(_props: SettingsProps) {
                     {item.label}
                   </span>
                   {item.type === 'toggle' ? (
-                    <div className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
+                    <button
+                      role="switch"
+                      aria-checked={!!item.value}
+                      className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
                       onClick={() => {
                         if (item.label === t('settings.devModeLabel')) setConfig(c => ({ ...c, dev_mode: !c.dev_mode }));
                         else if (item.label === t('settings.autoUpdateLabel')) setConfig(c => ({ ...c, auto_update: !c.auto_update }));
@@ -430,7 +435,7 @@ export function Settings(_props: SettingsProps) {
                           background: 'var(--text-primary)',
                           left: item.value ? '18px' : '2px',
                         }} />
-                    </div>
+                    </button>
                   ) : (
                     <span className="font-mono text-xs font-bold" style={{ color: 'var(--accent-cyan)' }}>
                       {String(item.value)}

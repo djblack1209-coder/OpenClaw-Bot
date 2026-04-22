@@ -106,7 +106,7 @@ export function Header({ currentPage }: HeaderProps) {
             className="font-mono text-[10px] uppercase tracking-wider"
             style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
           >
-            {isRunning ? '已连接' : '离线'}
+            {isRunning ? t('header.connected') : t('header.offline')}
           </span>
         </div>
 
