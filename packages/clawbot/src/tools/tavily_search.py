@@ -11,10 +11,10 @@ OpenClaw 智能搜索 — 搬运 Tavily Python SDK (1.1k⭐)
 
 Usage:
     from src.tools.tavily_search import quick_answer, search_context
-from src.utils import scrub_secrets
     answer = await quick_answer("iPhone 16 Pro 价格对比")
     context = await search_context("茅台2024年财报", max_results=5)
 """
+from src.utils import scrub_secrets
 import asyncio
 import logging
 import os

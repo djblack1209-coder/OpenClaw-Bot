@@ -7,9 +7,7 @@
 线程安全: 内部使用 threading.Lock 保护所有写操作。
 """
 
-import json
 import logging
-import os
 import sqlite3
 import threading
 import time

@@ -14,9 +14,8 @@ FastAPI API 认证中间件 — 共享密钥 Token 验证。
 import hmac
 import os
 import logging
-from typing import Optional
 
-from fastapi import HTTPException, Depends, WebSocket, Request
+from fastapi import HTTPException, WebSocket
 from fastapi.security import APIKeyHeader
 from starlette.requests import HTTPConnection
 

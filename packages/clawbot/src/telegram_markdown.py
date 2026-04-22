@@ -14,7 +14,6 @@ Telegram HTML 模式（推荐，更少转义问题）:
 
 Usage:
     from src.telegram_markdown import md_to_telegram, md_to_html
-from src.utils import scrub_secrets
 
     # MarkdownV2 模式 — 完整格式但转义复杂
     safe_v2 = md_to_telegram("**bold** and `code` and [link](url)")
@@ -22,6 +21,7 @@ from src.utils import scrub_secrets
     # HTML 模式（推荐）— 兼容性更好
     safe_html = md_to_html("**bold** and `code` and [link](url)")
 """
+from src.utils import scrub_secrets
 import html
 import logging
 import re

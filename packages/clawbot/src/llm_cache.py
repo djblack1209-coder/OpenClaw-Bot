@@ -26,6 +26,7 @@ import logging
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
+from src.utils import scrub_secrets
 
 
 logger = logging.getLogger(__name__)

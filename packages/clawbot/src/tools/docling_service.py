@@ -5,10 +5,10 @@ OpenClaw 文档理解 — 搬运 Docling (56.3k⭐)
 
 Usage:
     from src.tools.docling_service import convert_document, summarize_document
-from src.utils import scrub_secrets
     markdown, tables = await convert_document("/path/to/file.pdf")
     summary = await summarize_document("/path/to/file.pdf", question="这份合同的关键条款是什么？")
 """
+from src.utils import scrub_secrets
 import asyncio
 import logging
 from pathlib import Path
