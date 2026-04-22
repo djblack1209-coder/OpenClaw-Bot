@@ -1611,7 +1611,6 @@ export const enUS: Record<string, string> = {
   'plugins.noPluginDataLog': '[SYSTEM] No plugin data available',
   'plugins.fetchFailed': 'Failed to fetch plugin data',
   'plugins.toggleFailed': 'Toggle failed',
-  'apiGateway.refreshData': 'Refresh data',
   'setup.terminalOpened': 'Install terminal opened. Please complete installation then click \"Re-check\"',
   'setup.nodeRestartRequired': 'Node.js installation complete. Please restart the app for environment variables to take effect',
   'setup.needsV22': '(requires v22+)',
@@ -1627,4 +1626,127 @@ export const enUS: Record<string, string> = {
   'status.warning': 'Warning',
   'status.starting': 'Starting',
   'status.stopping': 'Stopping',
+
+  // ---- Sprint 5 Final: Missing keys from interrupted Agent B ----
+  // API Gateway
+  'apiGateway.gatewayStarted': 'Gateway started',
+  'apiGateway.gatewayStopped': 'Gateway stopped',
+  'apiGateway.offlineLabel': 'Offline',
+  'apiGateway.onlineLabel': 'Online',
+  'apiGateway.operationFailed': 'Operation failed',
+  'apiGateway.startService': 'Start service',
+  'apiGateway.stopService': 'Stop service',
+  'apiGateway.refreshData': 'Refresh data',
+
+  // AI Assistant
+  'assistant.vote.desc': 'AI vote analysis',
+
+  // Channels
+  'channels.channelDisabled': 'Channel disabled',
+  'channels.channelEnabled': 'Channel enabled',
+  'channels.toggleFailed': 'Toggle failed',
+  'channels.toggleNeedsTauri': 'Requires desktop client',
+  'channels.unknownError': 'Unknown error',
+
+  // Dashboard
+  'dashboard.liveLogs': 'Live Logs',
+  'dashboard.serviceDesc': 'Service description',
+  'dashboard.services': 'Services',
+  'dashboard.systemStatus': 'System Status',
+
+  // Error Boundary
+  'error.boundary.desc': 'The page has been caught by the error boundary. Please click "Reload" first. If the issue persists, send the error info below.',
+  'error.boundary.pageError': 'Page Error',
+  'error.boundary.pageErrorDesc': 'An error occurred on this page. Please retry or go back to home.',
+  'error.boundary.pageErrorNamed': 'Page crashed',
+  'error.boundary.reload': 'Reload',
+  'error.boundary.title': 'OpenClaw Error',
+  'error.boundary.unknownError': 'Unknown error',
+  'error.boundary.viewDetails': 'View error details',
+
+  // Execution Flow
+  'executionFlow.dagExecutor': 'DAG Executor',
+
+  // Financial Radar
+  'finRadar.others': 'Others',
+
+  // Home
+  'home.fetchFailed': 'Failed to fetch data',
+
+  // Memory
+  'memory.daysAgo': 'd ago',
+  'memory.hoursAgo': 'h ago',
+  'memory.justNow': 'Just now',
+  'memory.minutesAgo': 'm ago',
+
+  // Notifications
+  'notifications.daysAgo': 'd ago',
+  'notifications.hoursAgo': 'h ago',
+  'notifications.justNow': 'Just now',
+  'notifications.minutesAgo': 'm ago',
+
+  // Performance
+  'performance.lastUpdate': 'Last updated',
+
+  // Plugins
+  'plugins.noPlugins': 'No plugins',
+  'plugins.protocolStatusTitle': 'Protocol Status',
+  'plugins.realtime': 'Realtime',
+
+  // Portfolio
+  'portfolio.ibNotConnected': 'IB Gateway not connected',
+  'portfolio.ibNotConnectedDesc': 'Holdings will appear after connecting IB Gateway',
+  'portfolio.vote.analyzeBtn': 'Analyze',
+  'portfolio.vote.buyLabel': 'Buy',
+  'portfolio.vote.divergenceWarning': 'Divergence',
+  'portfolio.vote.entry': 'Entry',
+  'portfolio.vote.holdLabel': 'Hold',
+  'portfolio.vote.noAction': 'No action',
+  'portfolio.vote.noReasoning': 'No analysis reasoning',
+  'portfolio.vote.reAnalyze': 'Re-analyze',
+  'portfolio.vote.skipLabel': 'Skip',
+  'portfolio.vote.stopLoss': 'Stop loss',
+  'portfolio.vote.suggestBuy': 'Suggest buy',
+  'portfolio.vote.takeProfit': 'Take profit',
+  'portfolio.vote.vetoWarning': 'Vetoed',
+  'portfolio.vote.vetoed': 'Vetoed',
+
+  // Settings
+  'settings.browserModeCannotSave': 'Cannot save in browser mode',
+  'settings.browserModeHint': 'Browser mode — system info and service controls only available in desktop client',
+  'settings.desktopOnly': 'Desktop only',
+  'settings.loadFailed': 'Failed to load settings',
+  'settings.saveFailed': 'Save failed',
+  'settings.saveSuccess': 'Saved successfully',
+
+  // Shared
+  'shared.goToSettings': 'Go to Settings',
+  'shared.retry': 'Retry',
+
+  // Social
+  'social.contentCalendar': 'Content Calendar',
+  'social.contentStats': 'Content Stats',
+  'social.draftBox': 'Drafts',
+  'social.operationFailed': 'Operation failed, please try again',
+  'social.platformStatus': 'Platform Status',
+  'social.postAnalysis': 'Post Analysis',
+  'social.trendingTopics': 'Trending Topics',
+
+  // Store
+  'store.cannotLoadPlugins': 'Cannot load plugins',
+  'store.statusAll': 'All',
+  'store.statusApproved': 'Approved',
+  'store.statusPending': 'Pending',
+  'store.statusRejected': 'Rejected',
+
+  // Trading
+  'trading.daysAgo': 'd ago',
+  'trading.hoursAgo': 'h ago',
+  'trading.justNow': 'Just now',
+  'trading.lastUpdate': 'Last updated',
+  'trading.minutesAgo': 'm ago',
+
+  // World Monitor
+  'worldMonitor.lastUpdate': 'Last updated',
+  'worldMonitor.loading': 'Loading data...',
 };
