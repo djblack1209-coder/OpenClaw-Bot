@@ -113,11 +113,13 @@ export function Testing() {
   /* 判断 status 中是否有测试相关数据 */
   const hasTestInfo = status && (status.tests_total != null || status.test_coverage != null);
 
-  /* 快速操作点击 — 提示用户在终端执行 */
+  /* 快速操作点击 — 复制命令到剪贴板 */
   const handleQuickAction = (action: typeof QUICK_ACTIONS[number]) => {
-    toast.info(`请在终端手动执行:\n${action.desc.startsWith('testing.') ? t(action.desc) : action.desc}`, {
-      duration: 5000,
-      channel: 'log',
+    const cmd = action.desc.startsWith('testing.') ? t(action.desc) : action.desc;
+    navigator.clipboard.writeText(cmd).then(() => {
+      toast.success(`已复制命令到剪贴板：${cmd}`, { duration: 3000 });
+    }).catch(() => {
+      toast.info(`请在终端执行：${cmd}`, { duration: 5000 });
     });
   };
 
