@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (全量 UX 修复完成 — 72 个问题全部清零)
+> 最后更新: 2026-04-22 (体验深化 — 数据矛盾修复 + i18n 收尾 + 错误反馈补全)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -108,6 +108,9 @@
 | HI-736 | `xianyu` | `xianyu_agent.py` | 🟡 ✅已修 LLM 调用失败无重试 → 加 1 次重试(间隔 2s) | 2026-04-22 |
 | HI-737 | `frontend` | 6 组件 | 🟠 ✅已修 6 个 P0 i18n/无障碍/错误反馈修复（TelemetryCard/Header/TerminalLogs/Home/Settings/Assistant）| 2026-04-22 |
 | HI-738 | `frontend` | 全部组件 | 🟡 ✅已修 前端 72 个 UX 问题全部清零：i18n 全覆盖(1510 key) + 无障碍 + 响应式 + 一致性 + 错误处理 | 2026-04-22 |
+| HI-739 | `frontend` | Dashboard+APIGateway | 🟠 ✅已修 Dashboard 通知字段不匹配(created_at vs time) + APIGateway 服务状态用不存在的 running 字段 | 2026-04-22 |
+| HI-740 | `frontend` | Scheduler+Logs+Evolution | 🟡 ✅已修 3 个组件 API 调用失败仅 console.error 无用户反馈 → 加 toast.error | 2026-04-22 |
+| HI-741 | `frontend` | Setup+Dev+DevPanel+Testing+Money+Logs+Evolution+Onboarding | 🟡 ✅已修 52 处硬编码中文 → t() 国际化 + 40 个新增 key | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
