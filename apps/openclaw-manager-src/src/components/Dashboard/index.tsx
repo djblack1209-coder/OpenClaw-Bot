@@ -330,9 +330,11 @@ export function Dashboard(_props: DashboardProps) {
                         <p className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                           {svc.label || svc.name}
                         </p>
-                        <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                          {svc.name}
-                        </p>
+                        {svc.label && svc.name && svc.label !== svc.name && (
+                          <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                            {svc.name}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

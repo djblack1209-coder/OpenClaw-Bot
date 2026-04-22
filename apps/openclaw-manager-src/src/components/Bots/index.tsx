@@ -475,7 +475,12 @@ export function Bots() {
                 </div>
                 <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                   {cookieStatus?.last_sync_time
-                    ? new Date(cookieStatus.last_sync_time).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')
+                    ? new Date(
+                        /* API 返回 Unix 秒级时间戳，Date 需要毫秒 */
+                        typeof cookieStatus.last_sync_time === 'number' && cookieStatus.last_sync_time < 1e12
+                          ? cookieStatus.last_sync_time * 1000
+                          : cookieStatus.last_sync_time
+                      ).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')
                     : '—'}
                 </span>
               </div>

@@ -39,13 +39,15 @@ const REFRESH_INTERVAL_MS = 30_000;
 const CHANNEL_META: Record<string, { icon: string; color: string; label: string }> = {
   telegram:  { icon: '✈', color: 'var(--accent-cyan)',   label: 'Telegram' },
   discord:   { icon: '🎮', color: 'var(--accent-purple)', label: 'Discord' },
-  feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: 'channels.feishu' },
-  wechat:    { icon: '💬', color: 'var(--accent-green)',  label: 'channels.wechat' },
+  feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: '飞书' },
+  wechat:    { icon: '💬', color: 'var(--accent-green)',  label: '微信' },
   whatsapp:  { icon: '📱', color: 'var(--accent-green)',  label: 'WhatsApp' },
-  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: 'channels.xianyu' },
-  email:     { icon: '📧', color: 'var(--accent-purple)', label: 'channels.email' },
+  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: '闲鱼' },
+  email:     { icon: '📧', color: 'var(--accent-purple)', label: 'Email' },
   slack:     { icon: '💼', color: 'var(--accent-amber)',  label: 'Slack' },
   web:       { icon: '🌐', color: 'var(--accent-cyan)',   label: 'Web' },
+  imessage:  { icon: '📱', color: 'var(--accent-blue)',   label: 'iMessage' },
+  dingtalk:  { icon: '📡', color: 'var(--accent-cyan)',   label: '钉钉' },
 };
 
 /** 获取渠道显示信息 */
