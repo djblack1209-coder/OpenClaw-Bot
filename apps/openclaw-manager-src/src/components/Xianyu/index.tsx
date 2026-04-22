@@ -130,9 +130,10 @@ export function Xianyu() {
       }
       if (servicesRes.status === 'fulfilled') {
         const svcData = servicesRes.value as any;
-        const services: Array<{ id: string; running?: boolean }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
+        const services: Array<{ id: string; running?: boolean; status?: string }> = Array.isArray(svcData) ? svcData : svcData?.services ?? [];
         const xySvc = services.find((s) => s.id === 'xianyu');
-        setServiceRunning(xySvc?.running ?? false);
+        // API 可能返回 status: 'running' 或 running: true，两种都兼容
+        setServiceRunning(xySvc?.status === 'running' || xySvc?.running === true);
       }
       setError(null);
     } catch (e: any) {
@@ -578,7 +579,13 @@ export function Xianyu() {
             <div className="space-y-4">
               <InfoRow icon={Clock} label={t('xianyu.cookie.lastSync')}
                 value={cookieStatus?.last_sync_time
-                  ? new Date(cookieStatus.last_sync_time).toLocaleTimeString('zh-CN')
+                  ? (() => {
+                      /* API 返回 Unix 秒级时间戳，Date 需要毫秒 */
+                      const ts = cookieStatus.last_sync_time as unknown as number | string;
+                      const numTs = typeof ts === 'number' ? ts : Number(ts);
+                      const date = new Date(!isNaN(numTs) && numTs < 1e12 ? numTs * 1000 : ts);
+                      return date.toLocaleTimeString('zh-CN');
+                    })()
                   : '—'} />
               <InfoRow icon={AlertCircle} label={t('xianyu.cookie.consecutiveFailures')}
                 value={`${cookieStatus?.consecutive_failures ?? 0} ${t('xianyu.cookie.times')}`} />
