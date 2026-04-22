@@ -184,7 +184,7 @@ export function Bots() {
         setAutopilotData({
           running: Boolean(ap.running ?? ap.active ?? false),
           mode: String(ap.mode ?? 'manual'),
-          nextPublishTime: ap.next_publish_time ? String(ap.next_publish_time) : ap.next_run ? String(ap.next_run) : null,
+          nextPublishTime: ap.next_publish_time ? String(ap.next_publish_time) : ap.next_run ? String(ap.next_run) : ap.next_time ? String(ap.next_time) : null,
           postsToday: Number(ap.posts_today ?? ap.published_today ?? 0),
         });
       }
@@ -202,7 +202,7 @@ export function Bots() {
             }))
           : [];
         setSchedulerData({
-          running: Boolean(sc?.running ?? sc?.active ?? taskList.length > 0),
+          running: Boolean(sc?.scheduler_running ?? sc?.running ?? sc?.active ?? taskList.length > 0),
           tasks: taskList,
         });
       }

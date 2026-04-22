@@ -158,7 +158,9 @@ function getSocialSwitchLabels(t: (key: string) => string): Record<string, strin
 /** 服务状态指示点 */
 function statusDot(status: string) {
   switch (status) {
-    case 'online': return { color: 'var(--accent-green)', label: 'controlCenter.statusOnline' };
+    case 'online':
+    case 'running': // API 返回 'running' 而非 'online'
+      return { color: 'var(--accent-green)', label: 'controlCenter.statusOnline' };
     case 'offline': return { color: 'var(--text-disabled)', label: 'controlCenter.statusOffline' };
     case 'degraded': return { color: 'var(--accent-amber)', label: 'controlCenter.statusDegraded' };
     default: return { color: 'var(--text-disabled)', label: status };
@@ -178,12 +180,12 @@ function extractTime(n: NotificationEntry): string {
 
 /** 提取通知的来源 */
 function extractSrc(n: NotificationEntry): string {
-  return n.src || n.source || n.module || 'system';
+  return n.src || n.source || n.module || (n as any).category || 'system';
 }
 
 /** 提取通知的消息内容 */
 function extractMsg(n: NotificationEntry): string {
-  return n.msg || n.message || n.content || '';
+  return n.msg || n.message || n.content || (n as any).title || (n as any).body || '';
 }
 
 /** 根据日志来源返回颜色 */
