@@ -10,6 +10,7 @@ import {
   Cookie,
   Clock,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '@/stores/appStore';
@@ -121,6 +122,18 @@ export function HomeDashboard() {
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
   // 核心引擎是否运行：Tauri 用 IPC 结果，浏览器用 API 可达性 fallback
   const isRunning = isTauriRunning || (apiReachable === true);
+
+  /* 初次加载时显示 loading 状态，防止数据全为零时闪烁 */
+  if (loading && !lastUpdated) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+        <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          {t('home.loading') || '加载中...'}
+        </span>
+      </div>
+    );
+  }
 
   /* WebSocket 实时日志推送 */
   useClawbotWS('notification', useCallback((event) => {
@@ -332,7 +345,7 @@ export function HomeDashboard() {
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
           <div
             className="abyss-card p-6 h-full cursor-pointer"
-            onClick={() => setCurrentPage('bots')}
+            onClick={() => setCurrentPage('xianyu')}
           >
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
               {t('home.xianyuAiLabel')}

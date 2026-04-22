@@ -18,6 +18,7 @@ import {
   Loader2,
   Play,
   Square,
+  RefreshCw,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { toast } from '@/lib/notify';
@@ -232,12 +233,12 @@ export function Dashboard(_props: DashboardProps) {
     );
   }
 
-  /* —— 快捷统计（从 perf 接口取真实数据） —— */
+  /* —— 快捷统计（从 perf 接口取真实数据，替换掉后端不返回的 today_messages / active_users） —— */
   const quickStats = [
-    { label: t('dashboard.todayMessages'), value: perf?.today_messages != null ? String(perf.today_messages) : '--', color: 'var(--accent-cyan)' },
-    { label: t('dashboard.activeUsers'), value: perf?.active_users != null ? String(perf.active_users) : '--', color: 'var(--accent-green)' },
     { label: t('dashboard.llmCalls'), value: perf?.llm_calls != null ? String(perf.llm_calls) : '--', color: 'var(--accent-purple)' },
     { label: t('dashboard.avgResponse'), value: perf ? formatAvgResponse(perf) : '--', color: 'var(--accent-amber)' },
+    { label: 'CPU', value: perf?.cpu_percent != null ? `${Math.round(perf.cpu_percent)}%` : '--', color: 'var(--accent-cyan)' },
+    { label: t('dashboard.memory'), value: perf?.memory_mb != null ? formatMemory(perf.memory_mb) : '--', color: 'var(--accent-green)' },
   ];
 
   /* —— 系统信息摘要（从 perf + status 接口取真实数据） —— */
@@ -275,6 +276,16 @@ export function Dashboard(_props: DashboardProps) {
                   {systemStatus?.version ? ` // v${systemStatus.version}` : ''}
                 </p>
               </div>
+              {/* 手动刷新按钮 */}
+              <button
+                onClick={() => fetchAll(true)}
+                className="ml-auto p-1.5 rounded-lg transition-colors hover:opacity-80"
+                style={{ background: 'var(--bg-tertiary)' }}
+                title={t('dashboard.refresh') || '刷新'}
+                disabled={loading}
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} style={{ color: 'var(--text-secondary)' }} />
+              </button>
             </div>
 
             {/* 快捷统计 */}
