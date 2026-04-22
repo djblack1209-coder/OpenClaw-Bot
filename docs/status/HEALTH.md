@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (体验深化 — 数据矛盾修复 + i18n 收尾 + 错误反馈补全)
+> 最后更新: 2026-04-22 (数据真实性审计 — 20 个 API 字段矛盾修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -111,6 +111,15 @@
 | HI-739 | `frontend` | Dashboard+APIGateway | 🟠 ✅已修 Dashboard 通知字段不匹配(created_at vs time) + APIGateway 服务状态用不存在的 running 字段 | 2026-04-22 |
 | HI-740 | `frontend` | Scheduler+Logs+Evolution | 🟡 ✅已修 3 个组件 API 调用失败仅 console.error 无用户反馈 → 加 toast.error | 2026-04-22 |
 | HI-741 | `frontend` | Setup+Dev+DevPanel+Testing+Money+Logs+Evolution+Onboarding | 🟡 ✅已修 52 处硬编码中文 → t() 国际化 + 40 个新增 key | 2026-04-22 |
+| HI-742 | `frontend` | ControlCenter | 🟠 ✅已修 statusDot 匹配 'online' 但 API 返回 'running' → 所有服务显示灰色 | 2026-04-22 |
+| HI-743 | `frontend` | Xianyu | 🟠 ✅已修 服务状态检查 running 布尔字段(不存在) → status==='running' | 2026-04-22 |
+| HI-744 | `frontend` | Xianyu | 🟠 ✅已修 last_sync_time 秒时间戳被当毫秒解析显示 1970 年 | 2026-04-22 |
+| HI-745 | `frontend` | ControlCenter | 🟠 ✅已修 日志 extractMsg/extractSrc 字段名不匹配 → 加 title/body/category 回退 | 2026-04-22 |
+| HI-746 | `frontend` | Bots | 🟡 ✅已修 社媒下次发布时间字段名 next_publish_time → 加 next_time 回退 | 2026-04-22 |
+| HI-747 | `frontend` | Bots | 🟡 ✅已修 调度器状态字段 running → 加 scheduler_running 回退 | 2026-04-22 |
+| HI-748 | `frontend` | Home | 🟠 ✅已修 首页闲鱼卡片导航到 bots 而非 xianyu | 2026-04-22 |
+| HI-749 | `frontend` | Home | 🟡 ✅已修 首次加载无 spinner → 加 Loader2 防闪零 | 2026-04-22 |
+| HI-750 | `frontend` | Dashboard | 🟡 ✅已修 quickStats 3/4 指标永远 '--' → 替换为 CPU/内存真实数据 + 加手动刷新按钮 | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
