@@ -204,6 +204,11 @@ class PoolStats(BaseModel):
     total_cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
     by_provider: dict = {}
+    # 前端 AIConfig 面板所需的成本统计字段
+    today_cost: Optional[float] = None
+    week_cost: Optional[float] = None
+    month_cost: Optional[float] = None
+    budget: Optional[float] = None
 
 
 # ============================================================
