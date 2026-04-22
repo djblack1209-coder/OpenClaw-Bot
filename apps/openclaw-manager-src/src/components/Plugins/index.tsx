@@ -142,7 +142,7 @@ export function Plugins() {
         newLogs.push({ ts: nowTs(), msg: t('plugins.noPluginDataLog') });
       }
     } catch {
-      newLogs.push({ ts: nowTs(), msg: '[ERROR] 获取插件数据失败' });
+      newLogs.push({ ts: nowTs(), msg: `[ERROR] ${t('plugins.fetchFailed')}` });
     } finally {
       setPlugins(items);
       setLogs((prev) => [...newLogs, ...prev].slice(0, 20)); // 保留最新 20 条
@@ -180,12 +180,12 @@ export function Plugins() {
       // 刷新数据
       await fetchData();
     } catch (err) {
-      toast.error(`${t('plugins.operationFailed')}: ${err instanceof Error ? err.message : t('plugins.unknownError')}`, { channel: 'notification' });
-      setLogs((prev) => [{ ts: nowTs(), msg: `[ERROR] ${plugin.name} 切换失败: ${err instanceof Error ? err.message : '未知错误'}` }, ...prev].slice(0, 20));
+      toast.error(`${t('plugins.operationFailed')}: ${err instanceof Error ? err.message : t('common.unknownError')}`, { channel: 'notification' });
+      setLogs((prev) => [{ ts: nowTs(), msg: `[ERROR] ${plugin.name} ${t('plugins.toggleFailed')}: ${err instanceof Error ? err.message : t('common.unknownError')}` }, ...prev].slice(0, 20));
     } finally {
       setToggling(null);
     }
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   /* ── 批量启用所有插件 ── */
   const handleEnableAll = useCallback(async () => {

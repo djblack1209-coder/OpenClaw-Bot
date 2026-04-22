@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useLanguage } from '@/i18n';
 
 /**
  * 带文本输入的对话框组件
@@ -21,9 +22,9 @@ interface PromptDialogProps {
   placeholder?: string;
   /** 输入框初始值 */
   defaultValue?: string;
-  /** 确认按钮文字，默认"确认"。调用者应使用 t('common.confirm') 覆盖 */
+  /** 确认按钮文字，默认使用 i18n common.confirm */
   confirmText?: string;
-  /** 取消按钮文字，默认"取消"。调用者应使用 t('common.cancel') 覆盖 */
+  /** 取消按钮文字，默认使用 i18n common.cancel */
   cancelText?: string;
 }
 
@@ -35,9 +36,12 @@ export function PromptDialog({
   description,
   placeholder = '',
   defaultValue = '',
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
 }: PromptDialogProps) {
+  const { t } = useLanguage();
+  const resolvedConfirmText = confirmText ?? t('common.confirm');
+  const resolvedCancelText = cancelText ?? t('common.cancel');
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -113,14 +117,14 @@ export function PromptDialog({
                 onClick={onClose}
                 className="px-4 py-2 text-sm text-gray-300 bg-dark-700 hover:bg-dark-600 rounded-lg border border-dark-500 transition-colors"
               >
-                {cancelText}
+                {resolvedCancelText}
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!value.trim()}
                 className="px-4 py-2 text-sm text-white bg-claw-600 hover:bg-claw-500 rounded-lg border border-claw-500/50 transition-colors disabled:opacity-50"
               >
-                {confirmText}
+                {resolvedConfirmText}
               </button>
             </div>
           </motion.div>

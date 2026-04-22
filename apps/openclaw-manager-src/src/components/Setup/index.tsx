@@ -93,7 +93,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         await checkEnvironment();
       } else if (result.message.includes('重启')) {
         // 需要重启应用
-        setError('Node.js 安装完成，请重启应用以使环境变量生效');
+        setError(t('setup.nodeRestartRequired'));
       } else {
         // 打开终端手动安装
         await invoke<string>('open_install_terminal', { installType: 'nodejs' });
@@ -204,8 +204,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   <p className="text-white font-medium">Node.js</p>
                   <p className="text-sm text-dark-400">
                     {envStatus.node_version
-                      ? `${envStatus.node_version} ${envStatus.node_version_ok ? '✓' : '(需要 v22+)'}`
-                      : '未安装'}
+                      ? `${envStatus.node_version} ${envStatus.node_version_ok ? '✓' : t('setup.needsV22')}`
+                      : t('setup.notInstalled')}
                   </p>
                 </div>
               </div>
@@ -245,7 +245,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 <div>
                   <p className="text-white font-medium">OpenClaw</p>
                   <p className="text-sm text-dark-400">
-                    {envStatus.openclaw_version || '未安装'}
+                    {envStatus.openclaw_version || t('setup.notInstalled')}
                   </p>
                 </div>
               </div>
@@ -258,7 +258,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   disabled={installing !== null || !envStatus.node_version_ok}
                   className={`btn-primary text-sm px-4 py-2 flex items-center gap-2 ${!envStatus.node_version_ok ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
-                  title={!envStatus.node_version_ok ? '请先安装 Node.js' : ''}
+                  title={!envStatus.node_version_ok ? t('setup.installNodeFirst') : ''}
                 >
                   {installing === 'openclaw' ? (
                     <>

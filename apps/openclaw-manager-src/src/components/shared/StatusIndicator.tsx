@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useLanguage } from '@/i18n';
 
 type StatusType = 'running' | 'stopped' | 'error' | 'warning' | 'starting' | 'stopping';
 
@@ -9,16 +10,6 @@ interface StatusIndicatorProps {
   /** 尺寸：sm(6px) / md(8px) / lg(10px) */
   size?: 'sm' | 'md' | 'lg';
 }
-
-/** 状态文本映射 */
-const statusLabels: Record<StatusType, string> = {
-  running: '运行中',
-  stopped: '已停止',
-  error: '异常',
-  warning: '警告',
-  starting: '启动中',
-  stopping: '停止中',
-};
 
 /** 状态颜色映射 */
 const statusColors: Record<StatusType, string> = {
@@ -36,12 +27,23 @@ const glowStatuses = new Set<StatusType>(['running', 'error']);
 /** 尺寸映射 */
 const sizeMap = { sm: 'w-1.5 h-1.5', md: 'w-2 h-2', lg: 'w-2.5 h-2.5' };
 
+/** i18n key 映射 */
+const statusLabelKeys: Record<StatusType, string> = {
+  running: 'status.running',
+  stopped: 'status.stopped',
+  error: 'status.error',
+  warning: 'status.warning',
+  starting: 'status.starting',
+  stopping: 'status.stopping',
+};
+
 /**
  * 状态指示器 —— 圆点 + 可选文本标签
  * 支持 6 种状态，运行中和异常状态带发光脉冲动画
  */
 export function StatusIndicator({ status, label, size = 'md' }: StatusIndicatorProps) {
-  const displayLabel = label ?? statusLabels[status];
+  const { t } = useLanguage();
+  const displayLabel = label ?? t(statusLabelKeys[status]);
   const hasGlow = glowStatuses.has(status);
   const isAnimating = status === 'starting' || status === 'stopping';
   
