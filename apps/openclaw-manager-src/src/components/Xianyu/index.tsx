@@ -637,7 +637,10 @@ export function Xianyu() {
                     <XCircle size={14} style={{ color: 'var(--accent-red)' }} />
                   )}
                   <span className="font-mono text-[11px] flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
-                    {entry.time ? new Date(entry.time).toLocaleString('zh-CN', {
+                    {entry.time ? new Date(
+                      /* API 返回 Unix 秒级时间戳，Date 构造器需要毫秒 */
+                      typeof entry.time === 'number' && entry.time < 1e12 ? entry.time * 1000 : entry.time
+                    ).toLocaleString('zh-CN', {
                       month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
                     }) : '—'}
                   </span>

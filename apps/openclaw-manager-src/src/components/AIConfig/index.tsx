@@ -100,10 +100,13 @@ async function parseResponse<T>(resp: unknown): Promise<T> {
   return resp as T;
 }
 
-/** 渠道类型映射 */
+/** 渠道类型映射 — New-API/One-API 标准类型编号 */
 const CHANNEL_TYPE_LABELS: Record<number, string> = {
+  0: 'OpenAI',       // New-API 默认类型（部分分支用 0 代替 1）
   1: 'OpenAI',
+  2: 'API2D',
   3: 'Azure',
+  8: 'Custom',
   14: 'Anthropic',
   15: 'Baidu',
   17: 'Ali',
@@ -119,6 +122,9 @@ const CHANNEL_TYPE_LABELS: Record<number, string> = {
   31: 'ZeroOne',
   33: 'SiliconFlow',
   34: 'DeepSeek',
+  36: 'Cohere',
+  37: 'StabilityAI',
+  38: 'Coze',
   40: 'Custom',
 };
 

@@ -231,7 +231,7 @@ export function Performance() {
     { label: t('performance.cpuUsage'), value: cpuVal, max: 100, unit: '%', color: 'var(--accent-cyan)' },
     {
       label: t('performance.memoryUsage'),
-      value: memMb != null ? Math.round(memMb * 10) / 10 : null,
+      value: memMb != null ? Math.round(memMb / 1024 * 10) / 10 : null,
       max: Math.round(memMaxMb / 1024 * 10) / 10,
       unit: 'GB',
       color: 'var(--accent-green)',
