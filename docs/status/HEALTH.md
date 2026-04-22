@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (Sprint 5 全量生产审计)
+> 最后更新: 2026-04-22 (P0 闲鱼 WebSocket 参数名修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -51,7 +51,7 @@
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 + 安静时段过滤(0-7点不推送) |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 + 沟通风格偏好确定性注入(onboarding→profile链路修复) |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 + 提醒同义词扩展(帮我记住/别忘了/设个闹钟等) |
-| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化 |
+| 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化+WS参数名修复(additional→extra_headers)+渐进式告警(5/15/30/50次后静默) |
 | 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
 | 测试通过率 | 🟢 100% | 1431/1431 Python (2项跳过, 0 失败), 0 TypeScript错误 |
@@ -106,6 +106,7 @@
 
 | ID | 领域 | 模块 | 描述 | 解决方案 | 解决日期 | CHANGELOG |
 |----|------|------|------|----------|----------|-----------|
+| HI-727 | `xianyu` | `xianyu_live.py` | 🔴 P0: websockets.connect() 参数名 additional_headers 错误导致 WS 完全无法连接，从 4/19 起无限重连 2280+ 次 | additional_headers→extra_headers (websockets 13.x API) + 渐进式通知(5/15/30/50次) + 熔断不重置 | 2026-04-22 | P0 WS参数名修复 |
 | HI-715 | `backend` | `omega.py` | 🟡 omega_investment_analyze UnboundLocalError | `return result.to_dict()` 移入 `if engine.available` 块内 | 2026-04-22 | Sprint 5 审计 |
 | HI-716 | `backend` | `test_broker_bridge.py` | 🟡 测试 mock 不完整导致 market_value 断言失败 | qualifyContractsAsync 改用 AsyncMock + reqTickers 返回带价格的 mock | 2026-04-22 | Sprint 5 审计 |
 | HI-718 | `security` | `kiro-gateway/.env` | 🟠 文件权限 644 过宽 | chmod 600 | 2026-04-22 | Sprint 5 审计 |

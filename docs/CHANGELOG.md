@@ -12,6 +12,25 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — P0: 闲鱼 WebSocket 参数名错误导致无限重连 + 通知轰炸修复
+> 领域: `xianyu` `backend`
+> 影响模块: xianyu_live.py
+> 关联问题: HI-725
+
+### 变更内容
+
+**P0 根因修复**
+- `xianyu_live.py:1082` websockets.connect() 参数名 `additional_headers` → `extra_headers`（websockets 13.x API 变更）
+  - 根因：websockets 13.x 的正确参数名是 `extra_headers`，旧参数名被 `**kwargs` 吞掉后传到 asyncio `create_connection()` 时抛 TypeError
+  - 影响：从 4/19 起闲鱼客服完全瘫痪，WebSocket 无法连接，累计重连 2280+ 次
+
+**P1 通知轰炸修复**
+- 重连告警改为渐进式通知：仅在第 5/15/30/50 次推送 Telegram，之后只写日志
+- 熔断后不再重置 reconnect_count，防止无限循环（50次→冷却→重置→又50次→...）
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 修复 WS 参数名 + 渐进式通知 + 熔断逻辑优化
+
 ## 2026-04-22 — Sprint 5 全量生产审计：安全修复 + 测试修复 + API Bug 修复 + 依赖清理
 > 领域: `backend` `frontend` `security` `infra`
 > 影响模块: omega.py, test_broker_bridge.py, kiro-gateway/.env, venv diskcache, npm dependencies, chat_router.py(删除), PROJECT_MAP.md, ci.yml, 20+ 前端组件(审计)
