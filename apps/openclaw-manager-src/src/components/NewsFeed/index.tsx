@@ -97,15 +97,28 @@ const CATEGORY_COLORS: Record<NewsCategory, string> = {
 
 /* ====== 分类映射：API category 字符串 → 内部 NewsCategory ====== */
 function mapCategory(cat: string): NewsCategory {
+  if (!cat || !cat.trim()) return 'ALL';
   const upper = cat.toUpperCase();
-  if (upper.includes('FINANCE') || upper.includes('ECON')) return 'FINANCE';
-  if (upper.includes('TECH') || upper.includes('AI') || upper.includes('CYBER')) return 'TECH';
-  if (upper.includes('GEOPOLIT') || upper.includes('POLITIC')) return 'GEOPOLITICS';
-  if (upper.includes('CRYPTO') || upper.includes('BITCOIN') || upper.includes('BLOCKCHAIN')) return 'CRYPTO';
-  if (upper.includes('MILIT') || upper.includes('DEFENSE') || upper.includes('WAR')) return 'MILITARY';
-  if (upper.includes('ENERGY') || upper.includes('OIL') || upper.includes('GAS')) return 'ENERGY';
-  return 'GEOPOLITICS'; // 默认归类
+  if (upper.includes('FINANCE') || upper.includes('ECON') || upper.includes('MARKET') || upper.includes('STOCK')) return 'FINANCE';
+  if (upper.includes('TECH') || upper.includes('AI') || upper.includes('CYBER') || upper.includes('SCIENCE')) return 'TECH';
+  if (upper.includes('GEOPOLIT') || upper.includes('POLITIC') || upper.includes('DIPLOMACY')) return 'GEOPOLITICS';
+  if (upper.includes('CRYPTO') || upper.includes('BITCOIN') || upper.includes('BLOCKCHAIN') || upper.includes('WEB3')) return 'CRYPTO';
+  if (upper.includes('MILIT') || upper.includes('DEFENSE') || upper.includes('WAR') || upper.includes('ARMY')) return 'MILITARY';
+  if (upper.includes('ENERGY') || upper.includes('OIL') || upper.includes('GAS') || upper.includes('SOLAR')) return 'ENERGY';
+  /* 尝试从新闻标题/内容关键词做二次分类（避免全部落到默认分类） */
+  return 'ALL';
 }
+
+/* ====== 分类中文标签映射 ====== */
+const CATEGORY_LABELS: Record<NewsCategory, string> = {
+  ALL: '全部',
+  FINANCE: '财经',
+  TECH: '科技',
+  GEOPOLITICS: '地缘政治',
+  CRYPTO: '加密货币',
+  MILITARY: '军事',
+  ENERGY: '能源',
+};
 
 /** 把 ISO 时间转为中文相对时间 */
 function timeAgo(isoStr: string): string {
