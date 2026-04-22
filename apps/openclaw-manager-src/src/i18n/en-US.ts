@@ -1470,4 +1470,36 @@ export const enUS: Record<string, string> = {
   'sidebar.statusOffline': 'OFFLINE',
   'sidebar.liveLabel': 'LIVE',
   'sidebar.version': 'v2.0',
+
+  // 遥测卡片
+  'telemetry.title': 'System Telemetry',
+  'telemetry.llmDailyCost': 'LLM Daily Cost',
+  'telemetry.activeBots': 'Active Bots',
+  'telemetry.modelPool': 'Model Pool',
+  'telemetry.memoryEntries': 'Memory Entries',
+  'telemetry.systemOk': 'System OK',
+  'telemetry.noData': 'No Data',
+
+  // Header 补全
+  'header.offline': 'OFFLINE',
+
+  // 终端日志卡片
+  'terminalLogs.title': 'Terminal Logs',
+  'terminalLogs.count': 'entries',
+  'terminalLogs.waiting': 'Waiting for log output...',
+  'terminalLogs.browserMode': 'Browser mode cannot read local logs — please use the desktop client',
+
+  // 首页补全（状态/提示）
+  'home.backendDown': 'Backend not reachable — please confirm ClawBot service is running',
+  'home.noActivities': 'No new activities today',
+  'home.modelPool': 'LiteLLM Model Pool',
+  'home.statusDegraded': 'Degraded',
+  'home.statusCritical': 'Critical',
+  'home.statusMaintenance': 'Maintenance',
+
+  // Assistant 错误反馈
+  'assistant.loadFailed': 'Failed to load sessions',
+  'assistant.selectFailed': 'Failed to load session messages',
+  'assistant.createFailed': 'Failed to create session',
+  'assistant.deleteFailed': 'Failed to delete session',
 };

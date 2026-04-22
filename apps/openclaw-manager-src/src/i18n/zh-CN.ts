@@ -1470,4 +1470,36 @@ export const zhCN: Record<string, string> = {
   'sidebar.statusOffline': '离线',
   'sidebar.liveLabel': '实盘',
   'sidebar.version': 'v2.0',
+
+  // 遥测卡片
+  'telemetry.title': '系统遥测',
+  'telemetry.llmDailyCost': 'LLM 日费用',
+  'telemetry.activeBots': '活跃 BOT',
+  'telemetry.modelPool': '模型池',
+  'telemetry.memoryEntries': '记忆条目',
+  'telemetry.systemOk': '系统正常',
+  'telemetry.noData': '数据未获取',
+
+  // Header 补全
+  'header.offline': '离线',
+
+  // 终端日志卡片
+  'terminalLogs.title': '终端日志',
+  'terminalLogs.count': '条',
+  'terminalLogs.waiting': '等待日志输出...',
+  'terminalLogs.browserMode': '浏览器模式无法读取本地日志 — 请使用桌面客户端查看',
+
+  // 首页补全（状态/提示）
+  'home.backendDown': '后端服务未连通 — 请确认 ClawBot 服务已启动',
+  'home.noActivities': '今日暂无新活动',
+  'home.modelPool': 'LiteLLM 模型池',
+  'home.statusDegraded': '部分降级',
+  'home.statusCritical': '严重异常',
+  'home.statusMaintenance': '维护中',
+
+  // Assistant 错误反馈
+  'assistant.loadFailed': '加载会话列表失败',
+  'assistant.selectFailed': '加载会话消息失败',
+  'assistant.createFailed': '创建会话失败',
+  'assistant.deleteFailed': '删除会话失败',
 };

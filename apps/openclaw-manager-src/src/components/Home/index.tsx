@@ -259,7 +259,7 @@ export function HomeDashboard() {
       {apiReachable === false && (
         <div className="mx-4 mt-4 mb-0 px-4 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.2)' }}>
           <AlertTriangle size={16} style={{ color: 'var(--accent-amber)' }} />
-          <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>后端服务未连通 — 请确认 ClawBot 服务已启动</span>
+          <span className="text-sm" style={{ color: 'var(--accent-amber)' }}>{t('home.backendDown')}</span>
         </div>
       )}
       {/* 最后更新时间 */}
@@ -427,9 +427,9 @@ export function HomeDashboard() {
                     </span>
                     <div className="font-mono text-sm font-bold mt-1" style={{ color: briefData.system_status === 'healthy' ? 'var(--accent-green)' : 'var(--accent-amber)' }}>
                       {briefData.system_status === 'healthy' ? t('home.healthy')
-                        : briefData.system_status === 'degraded' ? '部分降级'
-                        : briefData.system_status === 'critical' ? '严重异常'
-                        : briefData.system_status === 'maintenance' ? '维护中'
+                        : briefData.system_status === 'degraded' ? t('home.statusDegraded')
+                        : briefData.system_status === 'critical' ? t('home.statusCritical')
+                        : briefData.system_status === 'maintenance' ? t('home.statusMaintenance')
                         : String(briefData.system_status)}
                     </div>
                   </div>
@@ -444,7 +444,7 @@ export function HomeDashboard() {
                     return (
                       <div className="col-span-full p-3 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
                         <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
-                          今日暂无新活动
+                          {t('home.noActivities')}
                         </span>
                       </div>
                     );
@@ -508,7 +508,7 @@ export function HomeDashboard() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>LiteLLM 模型池</span>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.modelPool')}</span>
                 <span className="font-mono text-[10px]" style={{ color: 'var(--accent-cyan)' }}>
                   {telemetry.poolActive}/{telemetry.poolTotal}
                 </span>
