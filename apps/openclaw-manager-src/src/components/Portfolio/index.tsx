@@ -621,9 +621,9 @@ export function Portfolio() {
                 {/* 4 列统计数据 */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
                   {stats.map(s => (
-                    <div key={s.label}>
+                    <div key={s.label} className="min-w-0">
                       <span className="text-label">{s.label}</span>
-                      <div className="text-metric mt-1" style={{ color: s.color }}>{s.value}</div>
+                      <div className="font-mono text-lg lg:text-2xl font-bold mt-1 truncate" style={{ color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
                     </div>
                   ))}
                 </div>
