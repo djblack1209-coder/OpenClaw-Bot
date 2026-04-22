@@ -1416,6 +1416,7 @@ export const enUS: Record<string, string> = {
   'settings.diskLabel': 'Disk',
   'settings.networkStatus': 'Network',
   'settings.networkOnline': 'Online',
+  'settings.networkOffline': 'Offline',
   'settings.apiKeysLabel': 'API KEYS',
   'settings.notificationsLabel': 'NOTIFICATIONS',
   'settings.advancedLabel': 'ADVANCED',

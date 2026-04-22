@@ -234,6 +234,9 @@ export function Settings(_props: SettingsProps) {
     );
   }
 
+  /* 网络状态：根据 API 是否可达判断（sysInfo 有数据说明后端在线） */
+  const networkOnline = !!sysInfo;
+
   const osLabel = sysInfo?.os ?? '—';
   const nodeVer = sysInfo?.node_version ?? '—';
   const pyVer = (sysInfo as any)?.python_version ?? (sysInfo as any)?.openclaw_version ?? '—';
@@ -306,20 +309,22 @@ export function Settings(_props: SettingsProps) {
               <ResourceBar icon={HardDrive} label={t('settings.diskLabel')}
                 value={perf?.diskUsed ?? 0} max={perf?.diskTotal ?? 256} unit="GB" accent="var(--accent-amber)" />
 
-              {/* 网络状态 */}
+              {/* 网络状态：根据后端 API 是否可达动态显示 */}
               <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-base)' }}>
-                <Wifi size={14} style={{ color: 'var(--accent-green)' }} />
+                <Wifi size={14} style={{ color: networkOnline ? 'var(--accent-green)' : 'var(--accent-red)' }} />
                 <span className="font-mono text-[11px] flex-1" style={{ color: 'var(--text-secondary)' }}>
                   {t('settings.networkStatus')}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <div className="relative">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent-green)' }} />
-                    <div className="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping opacity-30"
-                      style={{ background: 'var(--accent-green)' }} />
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: networkOnline ? 'var(--accent-green)' : 'var(--accent-red)' }} />
+                    {networkOnline && (
+                      <div className="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping opacity-30"
+                        style={{ background: 'var(--accent-green)' }} />
+                    )}
                   </div>
-                  <span className="font-mono text-xs font-bold" style={{ color: 'var(--accent-green)' }}>
-                    {t('settings.networkOnline')}
+                  <span className="font-mono text-xs font-bold" style={{ color: networkOnline ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                    {networkOnline ? t('settings.networkOnline') : t('settings.networkOffline')}
                   </span>
                 </div>
               </div>
