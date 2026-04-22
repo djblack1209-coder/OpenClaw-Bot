@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (最终体验打磨 — AIConfig 费用/社媒超时/Settings 网络状态)
+> 最后更新: 2026-04-22 (用户反馈 7 个真实体验问题修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -126,6 +126,12 @@
 | HI-754 | `backend` | rpc.py+schemas.py | 🟠 ✅已修 /pool/stats 缺 today_cost/week_cost/month_cost/budget → 从 CostAnalyzer 注入 | 2026-04-22 |
 | HI-755 | `backend` | rpc.py+worker_bridge.py | 🟠 ✅已修 /social/status 超时(300s) → worker 5s + 外层 2s 双保险 + 兜底数据 | 2026-04-22 |
 | HI-756 | `frontend` | Settings | 🟡 ✅已修 网络状态硬编码 ONLINE → 根据 API 可达性动态显示绿/红 | 2026-04-22 |
+| HI-757 | `frontend` | Home+Settings | 🔴 ✅已修 加载卡死(API 超时时 spinner 永不消失) → 8 秒安全超时强制渲染 | 2026-04-22 |
+| HI-758 | `frontend` | NewsFeed | 🟠 ✅已修 新闻全英文+点击不跳转+分类全 GEOPOLITICS → 中文标签+外部浏览器打开+多关键词分类 | 2026-04-22 |
+| HI-759 | `frontend` | Bots | 🟡 ✅已修 服务停止按钮竖排 → flex-nowrap 保持水平 | 2026-04-22 |
+| HI-760 | `frontend` | Bots | 🟡 ✅已修 闲鱼自动回复永远显示'未开启' → 降级以进程在线判断 | 2026-04-22 |
+| HI-761 | `frontend` | Home | 🟡 ✅已修 每日摘要英文无格式 → 分段渲染+中文界面加提示标签 | 2026-04-22 |
+| HI-762 | `frontend` | Portfolio | 🟠 ✅已修 IBKR 登录后仍显示未连接 → 每次刷新重检+操作后延迟刷新 | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
