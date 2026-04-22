@@ -249,6 +249,14 @@ async def test_get_positions_returns_formatted():
     mock_pos.avgCost = 150.0
     bridge.ib.positions.return_value = [mock_pos]
 
+    # qualifyContractsAsync 是异步方法，需要 AsyncMock
+    bridge.ib.qualifyContractsAsync = AsyncMock(return_value=[mock_pos.contract])
+    # reqTickers 返回带实时价格的 ticker mock
+    mock_ticker = MagicMock()
+    mock_ticker.contract = mock_pos.contract
+    mock_ticker.marketPrice.return_value = 150.0  # 当前价 = 成本价
+    bridge.ib.reqTickers.return_value = [mock_ticker]
+
     positions = await bridge.get_positions()
     assert len(positions) == 1
     p = positions[0]
