@@ -12,6 +12,52 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — Sprint 5 终局：72 个 UX 问题全量清零
+> 领域: `frontend`
+> 影响模块: 全部 30+ 前端组件, i18n/zh-CN.ts, i18n/en-US.ts, shared/LoadingState.tsx
+> 关联问题: HI-738
+
+### 变更内容
+
+**i18n 全覆盖 (1510 key, 双语)**
+- 闲鱼页面 50+ 处硬编码 → `xianyu.*` 命名空间 (61 key)
+- 控制中心常量对象 → 工厂函数 `getTradingSwitchMeta(t)` 等 (36 key)
+- 其余 20+ 组件全部接入：Social, Store, Dashboard, WorldMonitor, Memory, Channels, APIGateway, Portfolio, Risk, Trading, Notifications, Performance, Plugins, FinRadar, ExecutionFlow, Assistant, Setup, ErrorBoundary, PageErrorBoundary, StatusIndicator
+- UI 基础组件 confirm-dialog/prompt-dialog 默认文案走 i18n
+- `toLocaleTimeString('zh-CN')` 硬编码改为跟随 i18n locale
+
+**无障碍 (8 项)**
+- Home/Sidebar/Header 快捷按钮加 `focus-visible:ring-2` 键盘焦点指示
+- ControlCenter 主开关 `div→button` + `role="switch"` + `aria-checked`
+- 闲鱼 QR 弹窗加 ESC 关闭 + `aria-modal`
+- 全局 `text-[9px]` → `text-[10px]` 最小字号保障
+
+**响应式 (5 项)**
+- Store 页面 `col-span-8` → `col-span-12 lg:col-span-8` + 表格 `overflow-x-auto`
+- Assistant 右侧面板 `hidden lg:flex` 窄屏自动折叠
+- Portfolio 持仓列表 `overflow-x-auto`
+
+**一致性 (5 项)**
+- 新建 `shared/LoadingState.tsx` 统一加载组件
+- Trading/WorldMonitor/Notifications/Risk 4 处内联 LoadingState/ErrorState → 统一共享组件
+- Portfolio 3 处 border spinner → Loader2
+
+**错误处理 (4 项)**
+- Home fetchAll、Settings 加载失败加 toast.error()
+- Home 刷新按钮 disabled={loading} 防重复点击
+- Portfolio 演示模式卖出按钮加 tooltip
+
+**其他 (3 项)**
+- CommandPalette 去掉 emoji
+- Dashboard 清理未用 props
+- Bots 运行时匹配加注释
+
+### 文件变更
+- 30+ 组件文件修改
+- `src/i18n/zh-CN.ts` — 从 ~200 key 增至 1510 key
+- `src/i18n/en-US.ts` — 同步 1510 key
+- 新增 `src/components/shared/LoadingState.tsx`
+
 ## 2026-04-22 — Sprint 5 续：微信接入 + 闲鱼可靠性升级 + 前端 P0 体验修复
 > 领域: `frontend` `xianyu` `infra` `docs`
 > 影响模块: cookie_cloud.py, xianyu_live.py, xianyu_agent.py, TelemetryCard, Header, TerminalLogsCard, Home, Settings, Assistant, .zshrc, openclaw.json
