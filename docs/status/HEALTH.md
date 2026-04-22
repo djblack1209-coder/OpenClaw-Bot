@@ -97,6 +97,11 @@
 | HI-722 | `frontend` | `Onboarding/index.tsx` | 🟡 ✅已修 保存失败给 toast 反馈 | 2026-04-22 |
 | HI-723 | `frontend` | `Testing/index.tsx` | 🟡 ✅已修 按钮改为复制命令到剪贴板 | 2026-04-22 |
 | HI-724 | `frontend` | `AIVoteCard.tsx` | 🟡 ✅已修 4 处中文接入 t() | 2026-04-22 |
+| HI-728 | `frontend` | `NewsFeed/index.tsx` | 🟡 ✅已修 HTML实体解码 + 标题点击跳转源站 | 2026-04-22 |
+| HI-729 | `frontend` | `Bots/index.tsx` | 🟡 ✅已修 停止按钮布局挤压 + 刷新无反馈 | 2026-04-22 |
+| HI-730 | `frontend` | `WorldMonitor/index.tsx` | 🟡 ✅已修 电网/光缆"正常"字号不一致 | 2026-04-22 |
+| HI-731 | `backend` | `world_monitor.py` | 🟡 ✅已修 新增3个中文RSS源(澎湃/界面/知乎) | 2026-04-22 |
+| HI-732 | `infra` | `openclaw-weixin` | 🟠 微信插件 zod 依赖缺失 + plugins.allow 未配置 → 已修复，待用户扫码 | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 

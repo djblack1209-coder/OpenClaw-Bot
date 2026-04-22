@@ -12,6 +12,41 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-22 — Sprint 5 用户体验修复：闲鱼P0 + 新闻跳转 + 微信插件 + 桌面端重构建
+> 领域: `xianyu` `frontend` `backend` `infra`
+> 影响模块: xianyu_live.py, NewsFeed, WorldMonitor, Bots, AIVoteCard, openclaw-weixin, world_monitor.py
+> 关联问题: HI-725~732
+
+### 变更内容
+
+**P0 — 闲鱼客服瘫痪修复 (HI-727)**
+- `xianyu_live.py:1082` websockets 参数名 `additional_headers` → `extra_headers`（根因：websockets 13.x 改名，导致 4/19 起 2280 次无限重连）
+- 通知轰炸改为渐进式告警：第 5/15/30/50 次推送，之后只写日志
+- 熔断后不重置计数器，防止 50→冷却→重置→0 的循环
+
+**P1 — 新闻中心体验升级 (HI-728)**
+- 标题 HTML 实体解码（`&#8217;` → `'`）：前端 `decodeHtmlEntities()` + 后端 `html.unescape()` 双层防护
+- 标题点击可跳转源网站（新增 `<a target="_blank">` 链接）
+- 全球监控情报流同步加 HTML 解码
+
+**P1 — 中文新闻源扩充 (HI-731)**
+- 新增 3 个中文 RSS 源：澎湃新闻、界面新闻、知乎热榜
+- 解决全球监控和新闻中心只显示英文新闻的问题
+
+**P1 — 微信插件修复 (HI-732)**
+- `openclaw-weixin` 缺 `zod` 依赖导致加载失败 → `npm install` 修复
+- `openclaw.json` 新增 `plugins.allow: ["openclaw-weixin"]` 配置
+- 微信登录待用户扫码完成
+
+**P2 — UI 修复 (HI-725/729/730)**
+- 首页 Bot 名称 `BOT_1~7` → 真实 ID `qwen235b/claude_sonnet` 等
+- 智能体页服务名 `truncate max-w-[140px]` 防止停止按钮被挤成竖排
+- 刷新数据按钮加 toast 反馈
+- 全球监控电网/光缆"正常"字号统一
+
+**桌面端重构建**
+- `make tauri-build` 成功，v0.1.0 已安装至 `/Applications/OpenClaw.app`
+
 ## 2026-04-22 — P0: 闲鱼 WebSocket 参数名错误导致无限重连 + 通知轰炸修复
 > 领域: `xianyu` `backend`
 > 影响模块: xianyu_live.py
