@@ -1,6 +1,5 @@
 /**
- * 前端通知总线：保留 toast 风格调用方式，但不再弹全局提示。
- * 所有前端通知统一写入通知中心和日志页使用的本地内存队列。
+ * 前端通知总线：写入内存队列 + 弹出可见 toast 浮层。
  */
 
 export type FrontendNotificationLevel = 'info' | 'warning' | 'error' | 'success';
@@ -72,7 +71,54 @@ function pushNotification(level: FrontendNotificationLevel, title: string, optio
     notifications.length = MAX_FRONTEND_NOTIFICATIONS;
   }
   notifyListeners();
+  // 可见 toast 浮层
+  showVisualToast(level, title, options?.duration);
   return entry.id;
+}
+
+/** 在页面右上角弹出一个 3 秒自动消失的 toast */
+function showVisualToast(level: FrontendNotificationLevel, text: string, duration?: number) {
+  if (typeof document === 'undefined') return;
+  const COLORS: Record<string, string> = {
+    success: '#00ffaa',
+    error: '#ff4d4f',
+    warning: '#fbbf24',
+    info: '#00d4ff',
+  };
+  const color = COLORS[level] || COLORS.info;
+  const el = document.createElement('div');
+  el.textContent = text;
+  Object.assign(el.style, {
+    position: 'fixed',
+    top: '16px',
+    right: '16px',
+    zIndex: '99999',
+    padding: '10px 18px',
+    borderRadius: '10px',
+    fontFamily: 'monospace',
+    fontSize: '12px',
+    fontWeight: '600',
+    color,
+    background: 'rgba(10,10,10,0.92)',
+    border: `1px solid ${color}33`,
+    boxShadow: `0 4px 24px ${color}22`,
+    backdropFilter: 'blur(12px)',
+    transform: 'translateX(120%)',
+    transition: 'transform 0.3s ease, opacity 0.3s ease',
+    opacity: '0',
+    maxWidth: '360px',
+    pointerEvents: 'none' as const,
+  });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.transform = 'translateX(0)';
+    el.style.opacity = '1';
+  });
+  setTimeout(() => {
+    el.style.transform = 'translateX(120%)';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 400);
+  }, duration ?? 3000);
 }
 
 function resolveMessage<T>(value: string | ((arg: T) => string), arg: T): string {
