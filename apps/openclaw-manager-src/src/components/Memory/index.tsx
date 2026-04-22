@@ -64,17 +64,17 @@ function importanceDots(level: number): string {
   return '●'.repeat(clamped) + '○'.repeat(5 - clamped);
 }
 
-/** 相对时间 */
-function relativeTime(iso?: string): string {
+/** 相对时间（接受翻译函数以支持国际化） */
+function relativeTime(iso: string | undefined, t: (key: string) => string): string {
   if (!iso) return '—';
   try {
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return `${mins}分钟前`;
+    if (mins < 1) return t('memory.justNow');
+    if (mins < 60) return `${mins}${t('memory.minutesAgo')}`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}小时前`;
-    return `${Math.floor(hrs / 24)}天前`;
+    if (hrs < 24) return `${hrs}${t('memory.hoursAgo')}`;
+    return `${Math.floor(hrs / 24)}${t('memory.daysAgo')}`;
   } catch { return iso; }
 }
 
@@ -97,7 +97,7 @@ export function Memory() {
     try {
       const [statsRes, searchRes] = await Promise.allSettled([
         api.clawbotMemoryStats(),
-        api.clawbotMemorySearch('最近的记忆', 20),
+        api.clawbotMemorySearch('recent', 20),
       ]);
       if (statsRes.status === 'fulfilled') {
         setStats(statsRes.value as MemStats);
@@ -279,7 +279,7 @@ export function Memory() {
                             {t('memory.source')}: {source}
                           </span>
                           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                            {relativeTime(mem.updated_at ?? mem.created_at)}
+                            {relativeTime(mem.updated_at ?? mem.created_at, t)}
                           </span>
                         </div>
                       </div>
