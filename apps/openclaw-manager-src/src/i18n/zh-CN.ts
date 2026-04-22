@@ -1257,6 +1257,8 @@ export const zhCN: Record<string, string> = {
   'home.briefMetrics.socialPosts': '社媒发帖',
   'home.briefMetrics.apiDailyCost': 'API日费用',
   'home.briefMetrics.marketSentiment': '市场情绪',
+  'home.briefSummaryEnglish': '// AI 英文摘要（数据源为英文 RSS）',
+  'home.briefSummaryLabel': 'AI 摘要',
 
   // TradingEngineCard 补全
   'trading.ibkrLive': 'IBKR 实盘 // 自动交易引擎',
