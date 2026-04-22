@@ -176,7 +176,7 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         engine = get_pydantic_engine()
         if engine.available:
             result = await engine.full_analysis(symbol)
-        return result.to_dict()
+            return result.to_dict()
     except HTTPException:
         raise
     except Exception:
