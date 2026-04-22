@@ -227,7 +227,7 @@ export function Evolution() {
                 </div>
               )}
               {proposals.slice(0, 8).map((p) => {
-                const ss = statusStyle(p.status);
+                const ss = statusStyle(p.status, t);
                 return (
                   <div key={p.id}
                     className="flex items-center gap-3 py-2.5 px-3 rounded-lg"

@@ -399,10 +399,10 @@ export function Dev() {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  构建状态
+                  {t('dev.buildStatusTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  构建状态
+                  {t('dev.buildStatusTitle')}
                 </p>
               </div>
             </div>
