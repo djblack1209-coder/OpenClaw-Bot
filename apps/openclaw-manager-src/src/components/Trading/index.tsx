@@ -74,17 +74,17 @@ const cardVariants = {
 
 /* ====== 辅助函数 ====== */
 
-/** 时间格式化 */
-function timeAgo(isoStr: string): string {
+/** 时间格式化（接受翻译函数以支持国际化） */
+function timeAgo(isoStr: string, t: (key: string) => string): string {
   try {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return `${mins} 分钟前`;
+    if (mins < 1) return t('trading.justNow');
+    if (mins < 60) return `${mins} ${t('trading.minutesAgo')}`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} 小时前`;
+    if (hrs < 24) return `${hrs} ${t('trading.hoursAgo')}`;
     const days = Math.floor(hrs / 24);
-    return `${days} 天前`;
+    return `${days} ${t('trading.daysAgo')}`;
   } catch {
     return '—';
   }
@@ -118,7 +118,7 @@ function pnlColor(value: number): string {
 /* ====== 主组件 ====== */
 
 export function Trading() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
 
   /* ---- 状态 ---- */
@@ -208,7 +208,7 @@ export function Trading() {
         <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
           <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {t('trading.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
       )}
@@ -405,7 +405,7 @@ export function Trading() {
                       {t('trading.confidence')}: {(sig.confidence * 100).toFixed(0)}%
                     </span>
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      {sig.source} · {timeAgo(sig.timestamp)}
+                      {sig.source} · {timeAgo(sig.timestamp, t)}
                     </span>
                   </div>
                   {/* 置信度进度条 */}

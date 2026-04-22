@@ -105,17 +105,17 @@ function mapCategory(cat: string): NotificationCategory {
   return 'SYSTEM';
 }
 
-/** 时间格式化 */
-function timeAgo(isoStr: string): string {
+/** 时间格式化（接受翻译函数以支持国际化） */
+function timeAgo(isoStr: string, t: (key: string) => string): string {
   try {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return `${mins} 分钟前`;
+    if (mins < 1) return t('notifications.justNow');
+    if (mins < 60) return `${mins} ${t('notifications.minutesAgo')}`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} 小时前`;
+    if (hrs < 24) return `${hrs} ${t('notifications.hoursAgo')}`;
     const days = Math.floor(hrs / 24);
-    return `${days} 天前`;
+    return `${days} ${t('notifications.daysAgo')}`;
   } catch {
     return '—';
   }
@@ -418,7 +418,7 @@ export function Notifications() {
                           style={{ color: 'var(--text-disabled)' }}
                         >
                           <Clock size={10} className="inline mr-1" />
-                          {timeAgo(item.created_at)}
+                          {timeAgo(item.created_at, t)}
                         </span>
                         <span
                           className="font-mono text-[10px] uppercase"

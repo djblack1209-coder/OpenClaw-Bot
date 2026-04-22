@@ -47,15 +47,15 @@ interface MemStats {
   [key: string]: unknown;
 }
 
-/* ====== 分类映射 ====== */
-const CATEGORY_META: Record<string, { label: string; color: string; bg: string }> = {
-  profile:    { label: '画像', color: 'var(--accent-purple)', bg: 'rgba(168,85,247,0.1)' },
-  fact:       { label: '事实', color: 'var(--accent-cyan)',   bg: 'rgba(6,182,212,0.1)' },
-  preference: { label: '偏好', color: 'var(--accent-amber)',  bg: 'rgba(245,158,11,0.1)' },
+/* ====== 分类映射（使用 i18n key） ====== */
+const CATEGORY_META: Record<string, { labelKey: string; color: string; bg: string }> = {
+  profile:    { labelKey: 'memory.catProfile.label', color: 'var(--accent-purple)', bg: 'rgba(168,85,247,0.1)' },
+  fact:       { labelKey: 'memory.catFact.label', color: 'var(--accent-cyan)',   bg: 'rgba(6,182,212,0.1)' },
+  preference: { labelKey: 'memory.catPreference.label', color: 'var(--accent-amber)',  bg: 'rgba(245,158,11,0.1)' },
 };
 
 function categoryBadge(cat?: string) {
-  return CATEGORY_META[cat ?? ''] ?? { label: cat ?? '其他', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.05)' };
+  return CATEGORY_META[cat ?? ''] ?? { labelKey: cat ? `memory.catOther` : 'memory.catOther', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.05)' };
 }
 
 /** 重要度渲染 */

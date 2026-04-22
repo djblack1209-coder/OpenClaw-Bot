@@ -138,7 +138,7 @@ function fmtSec(val: number | null | undefined): string {
 /* ====== 主组件 ====== */
 
 export function Performance() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [perfData, setPerfData] = useState<PerfData | null>(null);
   const [statusData, setStatusData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,7 +261,7 @@ export function Performance() {
         <div className="flex items-center justify-end gap-1.5 px-6 pt-4 pb-0 max-w-[1440px] mx-auto">
           <Clock size={10} style={{ color: 'var(--text-disabled)' }} />
           <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-            最后更新 {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {t('performance.lastUpdate')} {lastUpdated.toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
       )}
