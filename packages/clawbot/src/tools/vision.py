@@ -4,9 +4,9 @@ OpenClaw 图片理解 — 利用 LiteLLM 已有的 Vision 模型支持
 
 Usage:
     from src.tools.vision import analyze_image
-from src.utils import scrub_secrets
     result = await analyze_image(image_bytes, "这张图里有什么？")
 """
+from src.utils import scrub_secrets
 import base64
 import logging
 from typing import Optional

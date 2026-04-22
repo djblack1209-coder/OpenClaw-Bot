@@ -9,7 +9,6 @@ crawl4ai-powered Shopping Price Engine
 
 用法:
     from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
-from src.utils import scrub_secrets
     if HAS_CRAWL4AI:
         result = await smart_compare("iPhone 16 128GB")
 
@@ -18,6 +17,7 @@ Layer 4 (商务层) — OMEGA blueprint gap fill.
 
 import asyncio
 import logging
+from src.utils import scrub_secrets
 import re
 import urllib.parse
 from dataclasses import dataclass, field, asdict

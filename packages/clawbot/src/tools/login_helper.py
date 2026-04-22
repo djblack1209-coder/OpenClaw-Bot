@@ -7,12 +7,12 @@
 
 使用示例:
     from src.tools.login_helper import LoginHelper
-from src.utils import scrub_secrets
     helper = LoginHelper("闲鱼")
     helper.alert_and_open("https://login.taobao.com/...")
     ok = await helper.wait_for_condition(lambda: check_cookie(), timeout=600)
 """
 
+from src.utils import scrub_secrets
 import asyncio
 import os
 import subprocess
