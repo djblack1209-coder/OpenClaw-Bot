@@ -317,7 +317,7 @@ export function Dev() {
                   <div className="flex items-center gap-2">
                     <Clock size={12} style={{ color: 'var(--text-disabled)' }} />
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
-                      PID: {status?.pid ?? '--'} | 主机: {status?.hostname ?? '--'} | Python: {status?.python_version ?? '--'}
+                      PID: {status?.pid ?? '--'} | {t('dev.hostLabel')}: {status?.hostname ?? '--'} | Python: {status?.python_version ?? '--'}
                     </span>
                   </div>
                 </div>
@@ -431,10 +431,10 @@ export function Dev() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  技术债务
+                  {t('dev.techDebtTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  技术债务 // HEALTH.md
+                  {t('dev.techDebtSubtitle')}
                 </p>
               </div>
               {healthLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}
@@ -514,10 +514,10 @@ export function Dev() {
               </div>
               <div className="flex-1">
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  依赖更新
+                  {t('dev.depUpdatesTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  PIP 依赖更新
+                  {t('dev.depUpdatesSubtitle')}
                 </p>
               </div>
               {depsLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />}

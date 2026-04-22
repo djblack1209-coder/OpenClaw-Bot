@@ -241,7 +241,7 @@ export default function DevPanel() {
           ...next[index],
           status: 'error',
           latencyMs: ms,
-          errorMsg: err instanceof Error ? err.message : '请求失败',
+          errorMsg: err instanceof Error ? err.message : t('devPanel.requestFailed'),
         };
         return next;
       });
@@ -290,7 +290,7 @@ export default function DevPanel() {
               <div className="flex items-center gap-2 flex-1">
                 <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
                 <h2 className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                  系统日志
+                  {t('devPanel.sysLogTitle')}
                 </h2>
                 <span className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                   {t('devPanel.sysLogSubtitle')}
@@ -346,10 +346,10 @@ export default function DevPanel() {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  系统信息
+                  {t('devPanel.sysInfoTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  系统信息
+                  {t('devPanel.sysInfoSubtitle')}
                 </p>
               </div>
             </div>
@@ -363,10 +363,10 @@ export default function DevPanel() {
             ) : (
               <div className="flex-1 space-y-2">
                 {[
-                  { label: '操作系统', value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
-                  { label: '架构', value: sysInfo.arch, color: 'var(--accent-cyan)' },
+                  { label: t('devPanel.osLabel'), value: `${sysInfo.os} ${sysInfo.os_version}`, color: 'var(--text-primary)' },
+                  { label: t('devPanel.archLabel'), value: sysInfo.arch, color: 'var(--accent-cyan)' },
                   { label: 'OpenClaw', value: sysInfo.openclaw_version ?? (sysInfo.openclaw_installed ? t('devPanel.installed') : t('devPanel.notInstalled')), color: sysInfo.openclaw_installed ? 'var(--accent-green)' : 'var(--accent-red)' },
-                  { label: 'Node 版本', value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
+                  { label: t('devPanel.nodeVersion'), value: sysInfo.node_version ?? '--', color: 'var(--accent-amber)' },
                   { label: t('devPanel.configDir'), value: sysInfo.config_dir ?? '--', color: 'var(--text-tertiary)' },
                 ].map((info) => (
                   <div
@@ -397,10 +397,10 @@ export default function DevPanel() {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  环境变量
+                  {t('devPanel.envVarsTitle')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  环境变量
+                  {t('devPanel.envVarsSubtitle')}
                 </p>
               </div>
             </div>
