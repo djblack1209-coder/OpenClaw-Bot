@@ -527,29 +527,51 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
     # ============ 持仓查询 ============
 
     async def get_positions(self) -> List[Dict]:
-        """获取所有持仓"""
+        """获取所有持仓（含实时市场价格）"""
         if not await self.ensure_connected():
             return []
 
         try:
             positions = self.ib.positions(account=self.account)
+            if not positions:
+                return []
+
+            # 批量获取实时价格
+            contracts = [pos.contract for pos in positions]
+            tickers = {}
+            try:
+                # 确保合约有 exchange 信息
+                for c in contracts:
+                    if not c.exchange:
+                        c.exchange = "SMART"
+                qualified = await self.ib.qualifyContractsAsync(*contracts)
+                ticker_list = self.ib.reqTickers(*qualified)
+                await asyncio.sleep(1)  # 等待价格数据到达
+                for t in ticker_list:
+                    if t.contract:
+                        tickers[t.contract.symbol] = t.marketPrice() if t.marketPrice() == t.marketPrice() else 0.0  # NaN 检查
+            except Exception as e:
+                logger.warning("[IBKR] 批量获取实时价格失败: %s", e)
+
             result = []
             for pos in positions:
-                cost_basis = float(pos.position) * float(pos.avgCost)
+                qty = float(pos.position)
+                avg_cost = float(pos.avgCost)
+                cost_basis = qty * avg_cost
+                market_price = tickers.get(pos.contract.symbol, 0.0)
+                market_value = qty * market_price if market_price > 0 else 0.0
                 result.append(
                     {
                         "symbol": pos.contract.symbol,
                         "sec_type": pos.contract.secType,
                         "exchange": pos.contract.exchange,
                         "currency": pos.contract.currency,
-                        "quantity": float(pos.position),
-                        "avg_cost": float(pos.avgCost),
-                        # 注意: market_value 实际为成本基础(qty*avgCost)，非实时市值。
-                        # IBKR positions() 不提供实时市值，下游消费者应使用
-                        # quantity * current_price 计算真实市值。
-                        # 保留此字段是为了向后兼容下游（cmd_trading_mixin/telegram_ux/charts 等）。
-                        "market_value": cost_basis,
+                        "quantity": qty,
+                        "avg_cost": avg_cost,
+                        "market_price": market_price,
+                        "market_value": market_value,
                         "cost_basis": cost_basis,
+                        "unrealized_pnl": market_value - cost_basis if market_price > 0 else 0.0,
                     }
                 )
             return result
