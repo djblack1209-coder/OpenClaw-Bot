@@ -280,7 +280,9 @@ class NewsFetcher:
             if link_el is None:
                 link_el = entry.find("atom:link", ns)
 
-            title = (title_el.text or "").strip() if title_el is not None else ""
+            title_raw = (title_el.text or "").strip() if title_el is not None else ""
+            import html as html_mod
+            title = html_mod.unescape(title_raw)
             if not title:
                 continue
 
@@ -311,9 +313,10 @@ class NewsFetcher:
                     if desc_el is not None and desc_el.text:
                         break
             if desc_el is not None and desc_el.text:
-                # 去除 HTML 标签
+                # 去除 HTML 标签 + 解码 HTML 实体（如 &#039; → '）
                 import re
-                summary = re.sub(r"<[^>]+>", "", desc_el.text).strip()[:200]
+                import html as html_mod
+                summary = html_mod.unescape(re.sub(r"<[^>]+>", "", desc_el.text)).strip()[:200]
 
             items.append(NewsItem(
                 title=title,
