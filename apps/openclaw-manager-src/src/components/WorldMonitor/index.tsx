@@ -1021,7 +1021,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.transoceanicLink')}</p>
                   </div>
                 </div>
-                <span className="font-mono text-sm font-medium" style={{ color: extData?.infrastructure?.submarine_cable?.value === '降级' ? 'var(--accent-amber)' : 'var(--accent-green)' }}>{extData?.infrastructure?.submarine_cable?.value ?? '—'}</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: extData?.infrastructure?.submarine_cable?.value === '降级' ? 'var(--accent-amber)' : 'var(--accent-green)' }}>{extData?.infrastructure?.submarine_cable?.value ?? '—'}</span>
               </div>
             </div>
           </div>
