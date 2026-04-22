@@ -1749,4 +1749,79 @@ export const enUS: Record<string, string> = {
   // World Monitor
   'worldMonitor.lastUpdate': 'Last updated',
   'worldMonitor.loading': 'Loading data...',
+
+  // ====== Sprint 5 Final: New keys (2026-04-22) ======
+
+  // Setup page
+  'setup.checkFailed': 'Environment check failed',
+  'setup.installFailed': 'Installation failed',
+  'setup.checkingEnv': 'Checking system environment...',
+  'setup.osLabel': 'Operating System',
+  'setup.installing': 'Installing...',
+  'setup.install': 'Install',
+  'setup.recheck': 'Re-check',
+  'setup.startUsing': 'Get Started',
+  'setup.manualDownloadNode': 'Download Node.js manually',
+  'setup.envReady': 'Environment ready!',
+  'setup.envReadyDesc': 'Node.js and OpenClaw are properly installed',
+  'setup.envConfig': 'Environment Config',
+  'setup.missingDepsDesc': 'Missing required dependencies, please complete the following installations',
+  'setup.wizardSubtitle': 'Environment detection & installation wizard',
+
+  // Dev page
+  'dev.title': 'Dev Panel',
+  'dev.gitCommitsTitle': 'Git Commits',
+  'dev.gitCommitsSubtitle': 'GIT COMMITS',
+  'dev.buildStatusTitle': 'Build Status',
+  'dev.buildStatusSubtitle': 'BUILD STATUS',
+  'dev.techDebtTitle': 'Tech Debt',
+  'dev.techDebtSubtitle': 'TECH DEBT // HEALTH.md',
+  'dev.depUpdatesTitle': 'Dependency Updates',
+  'dev.depUpdatesSubtitle': 'PIP DEPENDENCY UPDATES',
+  'dev.hostLabel': 'Host',
+
+  // DevPanel page
+  'devPanel.requestFailed': 'Request failed',
+  'devPanel.sysLogTitle': 'System Logs',
+  'devPanel.sysInfoTitle': 'System Info',
+  'devPanel.sysInfoSubtitle': 'SYSTEM INFO',
+  'devPanel.osLabel': 'Operating System',
+  'devPanel.archLabel': 'Architecture',
+  'devPanel.nodeVersion': 'Node Version',
+  'devPanel.envVarsTitle': 'Environment Variables',
+  'devPanel.envVarsSubtitle': 'ENV VARS',
+  'devPanel.apiTestTitle': 'API Test',
+
+  // Testing page additions
+  'testing.copiedToClipboard': 'Command copied to clipboard',
+  'testing.quickActionsSubtitle': 'Quick Actions',
+
+  // Money page additions
+  'money.tradingPnlSubtitle': 'TRADING P&L // LIVE DATA',
+
+  // Scheduler error feedback
+  'scheduler.loadFailed': 'Scheduler load failed',
+  'scheduler.toggleFailed': 'Task toggle failed',
+
+  // Logs page additions
+  'logs.loadFailed': 'Log loading failed',
+  'logs.filterAll': 'All',
+  'logs.noContent': '(empty)',
+  'logs.realtime': 'Realtime',
+  'logs.offline': 'Offline',
+  'logs.wsOffline': 'Offline / Reconnecting',
+
+  // Evolution additions
+  'evolution.loadFailed': 'Evolution data load failed',
+  'evolution.scanFailed': 'Scan failed',
+  'evolution.priorityHigh': 'High',
+  'evolution.priorityMedium': 'Medium',
+  'evolution.priorityLow': 'Low',
+  'evolution.statusSuccess': 'Success',
+  'evolution.statusRunning': 'Running',
+  'evolution.statusSkipped': 'Skipped',
+
+  // Onboarding additions
+  'onboarding.apiKeySaveFailed': 'API Key save failed. Please reconfigure in Settings later.',
+  'onboarding.baseUrlSaveFailed': 'Base URL save failed. Please reconfigure in Settings later.',
 };
