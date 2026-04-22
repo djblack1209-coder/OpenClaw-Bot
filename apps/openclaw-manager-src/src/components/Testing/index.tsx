@@ -222,10 +222,10 @@ export function Testing() {
               </div>
               <div>
                 <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  快速操作
+                  {t('testing.quickActions')}
                 </h2>
                 <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  快捷操作
+                  {t('testing.quickActionsSubtitle')}
                 </p>
               </div>
             </div>
@@ -284,7 +284,7 @@ export function Testing() {
               </div>
               <Terminal size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                测试输出
+                {t('testing.testOutput')}
               </span>
               <span className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
                 TEST OUTPUT
