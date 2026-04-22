@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-22 (后端 API 字段补全 — 闲鱼详情/消息统计/服务 uptime)
+> 最后更新: 2026-04-22 (最终体验打磨 — AIConfig 费用/社媒超时/Settings 网络状态)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -123,6 +123,9 @@
 | HI-751 | `backend` | rpc.py | 🟠 ✅已修 /api/v1/status xianyu 子对象仅含 online+service → 补 auto_reply_active/cookie_ok/conversations_today/unread_chats | 2026-04-22 |
 | HI-752 | `backend` | system.py | 🟡 ✅已修 /api/v1/perf 缺 today_messages/active_users → 从 StructuredLogger+bot_registry 读取 | 2026-04-22 |
 | HI-753 | `backend` | system.py | 🟡 ✅已修 /api/v1/system/services 缺 uptime → 新增 ps -o etime 进程运行时长解析 | 2026-04-22 |
+| HI-754 | `backend` | rpc.py+schemas.py | 🟠 ✅已修 /pool/stats 缺 today_cost/week_cost/month_cost/budget → 从 CostAnalyzer 注入 | 2026-04-22 |
+| HI-755 | `backend` | rpc.py+worker_bridge.py | 🟠 ✅已修 /social/status 超时(300s) → worker 5s + 外层 2s 双保险 + 兜底数据 | 2026-04-22 |
+| HI-756 | `frontend` | Settings | 🟡 ✅已修 网络状态硬编码 ONLINE → 根据 API 可达性动态显示绿/红 | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
