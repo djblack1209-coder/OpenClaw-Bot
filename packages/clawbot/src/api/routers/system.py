@@ -54,6 +54,17 @@ def perf_metrics():
         all_avgs = [s["avg"] for s in all_stats.values() if s.get("count", 0) > 0]
         avg_response_ms = (sum(all_avgs) / len(all_avgs) * 1000) if all_avgs else 0
 
+        # 消息统计（从 StructuredLogger 和 bot_registry 读取）
+        today_messages = 0
+        active_users = 0
+        try:
+            from src.bot.globals import metrics as _bot_metrics, bot_registry as _bots
+            _stats = _bot_metrics.get_stats()
+            today_messages = _stats.get("today_messages", 0)
+            active_users = len(_bots) if _bots else 0
+        except Exception:
+            pass
+
         # 系统资源（转为前端期望的字段名）
         cpu_count = os.cpu_count() or 1
         cpu_load = resources.get("cpu_load_1m", 0)
@@ -79,6 +90,8 @@ def perf_metrics():
             # 聚合
             "llm_calls": total_calls,
             "avg_response_ms": round(avg_response_ms, 1),
+            "today_messages": today_messages,
+            "active_users": active_users,
 
             # 兼容旧字段
             "metrics": all_stats,
@@ -359,6 +372,37 @@ def _check_process_alive(keyword: str, port: int | None = None) -> bool:
     return False
 
 
+def _get_process_uptime_seconds(keyword: str) -> int | None:
+    """获取匹配进程的运行时长（秒），返回 None 表示不可用"""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", keyword],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        pid = result.stdout.strip().splitlines()[0]
+        # 用 ps 获取进程运行时长
+        ps_result = subprocess.run(
+            ["ps", "-o", "etime=", "-p", pid],
+            capture_output=True, text=True, timeout=5,
+        )
+        if ps_result.returncode != 0:
+            return None
+        # etime 格式: [[DD-]HH:]MM:SS → 统一转秒
+        etime = ps_result.stdout.strip().replace("-", ":")
+        parts = [int(p) for p in etime.split(":")]
+        if len(parts) == 2:      # MM:SS
+            return parts[0] * 60 + parts[1]
+        elif len(parts) == 3:    # HH:MM:SS
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 4:    # DD:HH:MM:SS
+            return parts[0] * 86400 + parts[1] * 3600 + parts[2] * 60 + parts[3]
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/system/services")
 def list_services():
     """获取所有服务的运行状态"""
@@ -366,15 +410,29 @@ def list_services():
         services = []
         for svc in _SERVICE_REGISTRY:
             alive = _check_process_alive(svc["process_keyword"], svc.get("port"))
-            services.append(
-                {
-                    "id": svc["id"],
-                    "name": svc["name"],
-                    "description": svc["description"],
-                    "status": "running" if alive else "stopped",
-                    "port": svc["port"],
-                }
-            )
+            svc_info = {
+                "id": svc["id"],
+                "name": svc["name"],
+                "description": svc["description"],
+                "status": "running" if alive else "stopped",
+                "port": svc["port"],
+            }
+            # 运行中的服务补充 uptime 信息
+            if alive:
+                uptime_s = _get_process_uptime_seconds(svc["process_keyword"])
+                if uptime_s is not None:
+                    svc_info["uptime_seconds"] = uptime_s
+                    # 人类可读格式
+                    d = uptime_s // 86400
+                    h = (uptime_s % 86400) // 3600
+                    m = (uptime_s % 3600) // 60
+                    if d > 0:
+                        svc_info["uptime"] = f"{d}d {h}h"
+                    elif h > 0:
+                        svc_info["uptime"] = f"{h}h {m}m"
+                    else:
+                        svc_info["uptime"] = f"{m}m"
+            services.append(svc_info)
         return {"services": services}
     except Exception as e:
         logger.exception("获取服务列表失败")
