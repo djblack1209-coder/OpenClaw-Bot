@@ -136,6 +136,17 @@ function timeAgo(isoStr: string): string {
   }
 }
 
+/** 在外部浏览器中打开链接（Tauri 环境用 plugin-shell，降级用 window.open） */
+async function openExternal(url: string) {
+  if (!url) return;
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
+
 /* ====== 入场动画配置 ====== */
 const containerVariants = {
   hidden: {},
@@ -438,7 +449,8 @@ export function NewsFeed() {
                       color: isActive ? color : 'var(--text-tertiary)',
                     }}
                   >
-                    {cat}
+                    {/* 分类按钮显示中文标签 */}
+                    {CATEGORY_LABELS[cat] ?? cat}
                   </button>
                 );
               })}
@@ -474,16 +486,16 @@ export function NewsFeed() {
                       style={{ color: 'var(--text-primary)' }}
                     >
                       {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline"
+                        <span
+                          className="hover:underline cursor-pointer"
                           style={{ color: 'inherit' }}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); openExternal(item.url); }}
+                          role="link"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter') openExternal(item.url); }}
                         >
                           {item.title}
-                        </a>
+                        </span>
                       ) : item.title}
                     </h4>
                   </div>
@@ -504,7 +516,8 @@ export function NewsFeed() {
                         border: `1px solid ${CATEGORY_COLORS[item.category]}30`,
                       }}
                     >
-                      {item.category}
+                      {/* 新闻条目分类标签显示中文 */}
+                      {CATEGORY_LABELS[item.category] ?? item.category}
                     </span>
                   </div>
                 </motion.div>
@@ -743,7 +756,8 @@ export function NewsFeed() {
                       className="font-mono text-xs"
                       style={{ color: 'var(--text-secondary)' }}
                     >
-                      {cat.name}
+                      {/* 分类统计显示中文标签 */}
+                      {CATEGORY_LABELS[cat.name as NewsCategory] ?? cat.name}
                     </span>
                     <span
                       className="font-mono text-[10px] font-semibold"

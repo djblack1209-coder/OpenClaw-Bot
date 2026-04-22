@@ -166,7 +166,17 @@ export function Bots() {
         const xy = s.xianyu as Record<string, unknown> | undefined;
         if (xy) {
           xianyuOnline = Boolean(xy.running ?? xy.online ?? false);
-          xianyuAutoReply = Boolean(xy.auto_reply_active ?? xy.auto_reply_enabled ?? false);
+          /* auto_reply_active 由后端在 admin API 可用时设置；
+             如果字段不存在但进程在线，说明 admin API 未返回，
+             此时以进程在线状态作为自动回复的合理降级判断 */
+          if (xy.auto_reply_active !== undefined) {
+            xianyuAutoReply = Boolean(xy.auto_reply_active);
+          } else if (xy.auto_reply_enabled !== undefined) {
+            xianyuAutoReply = Boolean(xy.auto_reply_enabled);
+          } else {
+            /* 降级：进程在线即视为自动回复开启 */
+            xianyuAutoReply = xianyuOnline;
+          }
         }
       }
       let convCount = 0;
@@ -370,7 +380,7 @@ export function Bots() {
                 return (
                   <div
                     key={svc.id}
-                    className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors"
+                    className="flex flex-nowrap items-center gap-3 px-4 py-3 rounded-2xl transition-colors"
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)' }}
                   >
                     {/* 状态圆点 */}
@@ -414,7 +424,7 @@ export function Bots() {
 
                     {/* 启停按钮 */}
                     <motion.button
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer text-[10px] font-mono font-bold"
+                      className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer text-[10px] font-mono font-bold"
                       style={{
                         background: isRunning ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
                         border: `1px solid ${isRunning ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
