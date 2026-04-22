@@ -14,8 +14,8 @@
 
 ## 2026-04-22 — Sprint 5 全量生产审计：安全修复 + 测试修复 + API Bug 修复 + 依赖清理
 > 领域: `backend` `frontend` `security` `infra`
-> 影响模块: omega.py, test_broker_bridge.py, kiro-gateway/.env, venv diskcache, npm dependencies
-> 关联问题: HI-715, HI-716, HI-718, HI-719, HI-720
+> 影响模块: omega.py, test_broker_bridge.py, kiro-gateway/.env, venv diskcache, npm dependencies, chat_router.py(删除), PROJECT_MAP.md, ci.yml, 20+ 前端组件(审计)
+> 关联问题: HI-715, HI-716, HI-717, HI-718, HI-719, HI-720, HI-721~724
 
 ### 变更内容
 
@@ -27,6 +27,17 @@
 **P1 功能修复 (2项)**
 - `omega.py:179` UnboundLocalError 修复: `return result.to_dict()` 移入 `if engine.available` 块内（HI-715）
 - `test_broker_bridge.py` mock 修复: qualifyContractsAsync 改用 AsyncMock + reqTickers 返回带价格的 ticker（HI-716）
+
+**架构清理 (3项)**
+- `chat_router.py` 向后兼容层彻底迁移: 6 处引用改为 `src.routing`，删除 44 行 shim 文件
+- `PROJECT_MAP.md` 文件数更新: 189→297 文件，67K→100K 行
+- `CI workflow` 名称统一: OpenEverything CI → OpenClaw CI
+
+**P2 UI/UX 代码审计 (4项新增技术债)**
+- HI-721: 20+ 组件 233 处暗色模式硬编码（浅色模式不可用）
+- HI-722: Onboarding API Key 表单无格式验证
+- HI-723: Testing 页 Quick Action 死按钮
+- HI-724: AIVoteCard 6 处中文硬编码未接入 i18n
 
 **审计验证通过项 (Sprint 4 修复回归验证)**
 - HI-701: yfinance 替换 Yahoo v8 — 43 标的全部返回非零价格 ✅

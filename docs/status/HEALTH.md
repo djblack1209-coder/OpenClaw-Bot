@@ -90,9 +90,13 @@
 | ID | 领域 | 模块 | 描述 | 发现日期 |
 |----|------|------|------|----------|
 | (已移至已解决) | | | HI-462/701~714 全部已修复，见下方已解决区 | |
-| HI-715 | `backend` | `omega.py` | 🟡 `omega_investment_analyze` 中 `result` 变量在 `engine.available=False` 时未定义，触发 UnboundLocalError | 2026-04-22 |
-| HI-716 | `backend` | `test_broker_bridge.py` | 🟡 测试 mock 不完整 — `qualifyContractsAsync` 需要 AsyncMock 而非 MagicMock | 2026-04-22 |
-| HI-717 | `docs` | `PROJECT_MAP.md` | 🟡 Python 文件计数过时: 文档记录 189 实际 298 (+57.7%) | 2026-04-22 |
+| HI-715 | `backend` | `omega.py` | 🟡 ✅已修 `omega_investment_analyze` UnboundLocalError | 2026-04-22 |
+| HI-716 | `backend` | `test_broker_bridge.py` | 🟡 ✅已修 测试 mock AsyncMock | 2026-04-22 |
+| HI-717 | `docs` | `PROJECT_MAP.md` | 🟡 ✅已修 文件数 189→297 已更新 | 2026-04-22 |
+| HI-721 | `frontend` | 20+ 组件 | 🟡 TECH_DEBT: 暗色模式硬编码 — 233 处不支持浅色模式 | 2026-04-22 |
+| HI-722 | `frontend` | `Onboarding/index.tsx` | 🟡 UX: API Key 表单无格式验证 | 2026-04-22 |
+| HI-723 | `frontend` | `Testing/index.tsx` | 🟡 UX: Quick Action 按钮仅 toast 无功能 | 2026-04-22 |
+| HI-724 | `frontend` | `AIVoteCard.tsx` | 🟡 i18n: 6 处中文硬编码未接入 t() | 2026-04-22 |
 
 > **备注**: HI-598 安全事件代码层面已修复（git filter-repo 清除历史 + force push），但 **TAVILY_API_KEY 等密钥需要用户手动去各平台轮换**。
 
