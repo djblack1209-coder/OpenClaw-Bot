@@ -390,7 +390,7 @@ export function Bots() {
 
                     {/* 图标 + 名称 */}
                     <Server size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
-                    <span className="font-medium text-sm flex-shrink-0" style={{ color: 'var(--text-primary)' }}>
+                    <span className="font-medium text-sm truncate max-w-[140px]" style={{ color: 'var(--text-primary)' }}>
                       {svc.name}
                     </span>
 
@@ -556,7 +556,7 @@ export function Bots() {
                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)' }}
                 whileHover={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' }}
                 whileTap={{ scale: 0.98 }}
-                onClick={(e) => { e.stopPropagation(); setLoading(true); fetchData(); }}
+                onClick={async (e) => { e.stopPropagation(); setLoading(true); await fetchData(); toast.success(t('bots.dataRefreshed'), { duration: 2000 }); }}
               >
                 <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}>

@@ -79,6 +79,10 @@ DEFAULT_FEEDS: list[RSSFeed] = [
     RSSFeed("华尔街见闻", "https://wallstreetcn.com/rss", NewsCategory.FINANCE, "zh", 1),
     RSSFeed("36氪", "https://36kr.com/feed", NewsCategory.TECHNOLOGY, "zh", 1),
     RSSFeed("财联社", "https://www.cls.cn/rss", NewsCategory.FINANCE, "zh", 1),
+    # 中文科技/综合
+    RSSFeed("澎湃新闻", "https://feedx.net/rss/thepaper.xml", NewsCategory.GEOPOLITICS, "zh", 1),
+    RSSFeed("界面新闻", "https://feedx.net/rss/jiemian.xml", NewsCategory.FINANCE, "zh", 1),
+    RSSFeed("知乎热榜", "https://feedx.net/rss/zhihu-daily.xml", NewsCategory.TECHNOLOGY, "zh", 2),
     # 英文综合
     RSSFeed("Reuters World", "https://feeds.reuters.com/reuters/worldNews", NewsCategory.GEOPOLITICS, "en", 1),
     RSSFeed("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", NewsCategory.GEOPOLITICS, "en", 1),

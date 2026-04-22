@@ -7,6 +7,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+
+/** HTML 实体解码（处理 &#8217; &#039; &amp; 等） */
+function decodeHtmlEntities(text: string): string {
+  if (!text || !text.includes('&')) return text;
+  const el = document.createElement('textarea');
+  el.innerHTML = text;
+  return el.value;
+}
 import {
   Newspaper,
   ShieldAlert,
@@ -40,6 +48,7 @@ type NewsCategory =
 /** API 返回的新闻条目 */
 interface NewsApiItem {
   title: string;
+  url: string;
   source: string;
   category: string;
   published_at: string;
@@ -52,6 +61,7 @@ interface NewsItem {
   id: string;
   source: string;
   title: string;
+  url: string;
   summary: string;
   timeAgo: string;
   category: NewsCategory;
@@ -203,8 +213,9 @@ export function NewsFeed() {
       const items: NewsItem[] = (resp.items ?? []).map((item, idx) => ({
         id: String(idx + 1),
         source: item.source?.toUpperCase() ?? 'UNKNOWN',
-        title: item.title ?? '',
-        summary: item.summary ?? '',
+        title: decodeHtmlEntities(item.title ?? ''),
+        url: item.url ?? '',
+        summary: decodeHtmlEntities(item.summary ?? ''),
         timeAgo: timeAgo(item.published_at),
         category: mapCategory(item.category ?? ''),
         threatLevel: item.threat_level ?? 'low',
@@ -449,7 +460,18 @@ export function NewsFeed() {
                       className="font-display text-sm font-medium mt-0.5 leading-snug"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {item.title}
+                      {item.url ? (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                          style={{ color: 'inherit' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {item.title}
+                        </a>
+                      ) : item.title}
                     </h4>
                   </div>
 

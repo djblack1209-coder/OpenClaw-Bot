@@ -563,7 +563,9 @@ export function WorldMonitor() {
         id: String(idx + 1),
         timestamp: formatTimestamp(item.published_at),
         category: mapNewsCategory(item.category),
-        message: `[${item.source}] ${item.title}`,
+        message: `[${item.source}] ${item.title}`.replace(/&#\d+;/g, (m) => {
+          const el = document.createElement('textarea'); el.innerHTML = m; return el.value;
+        }),
       }));
       setIntelFeed(entries);
       setLastUpdated(new Date());
