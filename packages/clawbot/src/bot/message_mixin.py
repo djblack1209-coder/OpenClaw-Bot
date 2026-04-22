@@ -345,7 +345,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                     is_mentioned=not is_group,  # 私聊视为 mentioned
                 )
                 # 入队追踪（不阻塞处理，仅用于统计和优先级感知）
-                from src.chat_router import PrioritizedMessage
+                from src.routing import PrioritizedMessage
                 import time as _ptime
 
                 await priority_message_queue.enqueue(

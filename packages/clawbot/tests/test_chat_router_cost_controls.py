@@ -1,6 +1,6 @@
 import pytest
 
-from src.chat_router import BotCapability, ChatRouter
+from src.routing import BotCapability, ChatRouter
 
 
 @pytest.mark.asyncio

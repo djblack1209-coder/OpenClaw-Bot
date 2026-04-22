@@ -7,7 +7,7 @@ discuss mode, service workflow auto-start.
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from src.chat_router import (
+from src.routing import (
     ChatRouter,
     BotCapability,
     Intent,

@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-04-17 (Sprint 4 全量端到端审计) | AI 开发助手请先读完本文再开始工作 | 含用户痛点地图
+> 最后更新: 2026-04-22 (Sprint 5 全量生产审计) | AI 开发助手请先读完本文再开始工作 | 含用户痛点地图
 
 ## 一句话概述
 
@@ -67,7 +67,7 @@
 ```
 OpenClaw Bot/
 ├── packages/
-│   └── clawbot/                    # 🧠 核心 Python 后端 (189 文件, 67,079 行)
+│   └── clawbot/                    # 🧠 核心 Python 后端 (297 文件, 100,363 行)
 │       ├── multi_main.py           # 入口: 多Bot启动 + 信号处理 (875行)
 │       ├── config/
 │       │   ├── bot_profiles.py     # 7个Bot人设/能力/投资角色 (323行)
@@ -351,7 +351,7 @@ CREW          # CrewAI 多智能体
 | `src/core/security.py` | 245 | 安全防护层 |
 | `src/litellm_router.py` | 653 | LiteLLM 统一路由 |
 | `src/structured_llm.py` | — | instructor 结构化输出 |
-| `src/chat_router.py` | 1,415 | 群聊意图路由 + 协作编排 |
+| `src/chat_router.py` | — | ✅ 已删除 (Sprint 5)，全部引用迁移到 `src/routing/` 包 |
 | `src/context_manager.py` | 751 | 上下文窗口管理 |
 | `src/llm_cache.py` | — | SQLite3 LLM 缓存 (utils_cache) |
 
@@ -615,7 +615,7 @@ CREW          # CrewAI 多智能体
 - ~~`src/senses/`~~ — ✅ 已清理（2026-04-18），感知功能已迁移至 `src/tools/` (OCR/STT/图片处理)
 - ~~`src/actions/`~~ — ✅ 已清理（2026-04-18），动作功能已迁移至 `src/core/executor.py`
 - ~~`src/execution_hub.py`~~ — ✅ 已清理（2026-04-18），功能已迁移至 `src/execution/` 模块化包
-- `src/chat_router.py` — ⚠️ 保留作为向后兼容层，实际逻辑在 `src/routing/` 包（被 3 个文件引用）
+- ~~`src/chat_router.py`~~ — ✅ 已删除（2026-04-22），全部引用迁移到 `src/routing/` 包
 - 部分 executor 路径 (VOICE_CALL, HUMAN) 为框架定义，待实际集成
 
 ### 运行环境

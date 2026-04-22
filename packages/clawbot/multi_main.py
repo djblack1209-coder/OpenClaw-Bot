@@ -66,7 +66,7 @@ from src.trading_journal import journal
 from src.trading_memory_bridge import trading_memory_bridge
 from src.litellm_router import free_pool, ROUTE_BALANCED
 from src.context_manager import TieredContextManager
-from src.chat_router import PriorityMessageQueue
+from src.routing import PriorityMessageQueue
 from src.strategy_engine import create_default_engine
 from src.social_tools import ABTestManager
 from src.langfuse_obs import init_langfuse
