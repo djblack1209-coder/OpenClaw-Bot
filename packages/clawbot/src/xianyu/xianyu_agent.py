@@ -297,18 +297,24 @@ class BaseAgent:
 
     async def _acall(self, messages: List[Dict], system: str = "", temperature: float = 0.4) -> str:
         from src.litellm_router import free_pool
-        try:
-            response = await free_pool.acompletion(
-                model_family=self.model_family,
-                messages=messages,
-                system_prompt=system or self.system_prompt,
-                temperature=temperature,
-                max_tokens=600,
-            )
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            logger.error(f"[XianyuAgent] LLM 调用失败: {scrub_secrets(str(e))}")
-            return error_ai_busy()
+        # HI-736: LLM 调用失败时重试一次（间隔 2 秒），避免买家直接看到错误信息
+        for attempt in range(2):
+            try:
+                response = await free_pool.acompletion(
+                    model_family=self.model_family,
+                    messages=messages,
+                    system_prompt=system or self.system_prompt,
+                    temperature=temperature,
+                    max_tokens=600,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                if attempt == 0:
+                    logger.warning("[XianyuAgent] LLM 调用失败，2 秒后重试: %s", scrub_secrets(str(e)))
+                    await asyncio.sleep(2)
+                else:
+                    logger.error("[XianyuAgent] LLM 重试仍失败: %s", scrub_secrets(str(e)))
+                    return error_ai_busy()
 
     async def agenerate(self, user_msg: str, item_desc: str, context: str,
                         bargain_count: int = 0, buyer_profile: str = "") -> str:

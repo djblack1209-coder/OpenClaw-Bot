@@ -267,7 +267,15 @@ class CookieCloudManager:
                 self._add_sync_record(True, "Cookie 无变化，跳过更新")
                 return True
 
-            # Cookie 有变化，写入 .env
+            # Cookie 有变化，先验证有效性再写入 .env（HI-734: 防止同步过期 cookie）
+            is_valid = await self._validate_cookie(cookie_str)
+            if not is_valid:
+                self._consecutive_failures += 1
+                self._add_sync_record(False, "Cookie 已同步但验证无效（可能已过期），跳过写入")
+                logger.warning("CookieCloud: 同步到的 Cookie 验证失败（hasLogin=False），不写入 .env")
+                return False
+
+            # 验证通过，写入 .env
             from .cookie_refresher import update_env_file
             update_env_file(cookie_str)
             self._last_cookie_str = cookie_str
@@ -305,6 +313,26 @@ class CookieCloudManager:
                 logger.debug("闲鱼 PID 文件不存在，跳过信号发送")
         except (ValueError, ProcessLookupError, PermissionError) as e:
             logger.warning("发送 SIGUSR1 失败: %s", e)
+
+    async def _validate_cookie(self, cookie_str: str) -> bool:
+        """HI-734: 用 hasLogin API 验证 cookie 是否有效
+
+        创建临时 XianyuApis 客户端，调用 has_login() 判断 cookie 是否已过期。
+        验证通过返回 True，失败（过期/无效/异常）返回 False。
+        """
+        try:
+            from .xianyu_apis import XianyuApis
+            async with XianyuApis(cookie_str) as api:
+                ok = await api.has_login()
+                if ok:
+                    logger.debug("CookieCloud: Cookie 验证通过 (hasLogin=True)")
+                    return True
+                else:
+                    logger.warning("CookieCloud: Cookie 验证失败 (hasLogin=False)")
+                    return False
+        except Exception as e:
+            logger.warning("CookieCloud: Cookie 验证异常: %s", scrub_secrets(str(e)))
+            return False
 
     def should_notify_user(self) -> bool:
         """判断是否应该通知用户（静默模式策略）
