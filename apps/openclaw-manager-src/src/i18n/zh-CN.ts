@@ -1609,8 +1609,22 @@ export const zhCN: Record<string, string> = {
   'plugins.cliUnavailable': '[SYSTEM] CLI 工具接口不可用，尝试技能列表',
   'plugins.skillsUnavailable': '[SYSTEM] 技能列表不可用',
   'plugins.noPluginDataLog': '[SYSTEM] 暂无可用插件数据',
+  'plugins.fetchFailed': '获取插件数据失败',
+  'plugins.toggleFailed': '切换失败',
   'apiGateway.refreshData': '刷新数据',
-  'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击"重新检查"',
+  'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击\"重新检查\"',
+  'setup.nodeRestartRequired': 'Node.js 安装完成，请重启应用以使环境变量生效',
+  'setup.needsV22': '(需要 v22+)',
+  'setup.notInstalled': '未安装',
+  'setup.installNodeFirst': '请先安装 Node.js',
   'ui.commandPanelTitle': '命令面板',
   'ui.commandPanelDesc': '搜索要执行的命令...',
+
+  // 通用状态标签（StatusIndicator 组件）
+  'status.running': '运行中',
+  'status.stopped': '已停止',
+  'status.error': '异常',
+  'status.warning': '警告',
+  'status.starting': '启动中',
+  'status.stopping': '停止中',
 };

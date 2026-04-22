@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useLanguage } from '@/i18n';
 
 /**
  * 通用确认对话框组件
@@ -17,9 +18,9 @@ interface ConfirmDialogProps {
   title: string;
   /** 对话框描述内容 */
   description?: string;
-  /** 确认按钮文字，默认"确认"。调用者应使用 t('common.confirm') 覆盖 */
+  /** 确认按钮文字，默认使用 i18n common.confirm */
   confirmText?: string;
-  /** 取消按钮文字，默认"取消"。调用者应使用 t('common.cancel') 覆盖 */
+  /** 取消按钮文字，默认使用 i18n common.cancel */
   cancelText?: string;
   /** 确认按钮是否为危险样式（红色），默认 false */
   destructive?: boolean;
@@ -33,11 +34,14 @@ export function ConfirmDialog({
   onConfirm,
   title,
   description,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   destructive = false,
   loading = false,
 }: ConfirmDialogProps) {
+  const { t } = useLanguage();
+  const resolvedConfirmText = confirmText ?? t('common.confirm');
+  const resolvedCancelText = cancelText ?? t('common.cancel');
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   // 打开时自动聚焦确认按钮
@@ -90,7 +94,7 @@ export function ConfirmDialog({
                 disabled={loading}
                 className="px-4 py-2 text-sm text-gray-300 bg-dark-700 hover:bg-dark-600 rounded-lg border border-dark-500 transition-colors disabled:opacity-50"
               >
-                {cancelText}
+                {resolvedCancelText}
               </button>
               <button
                 ref={confirmRef}
@@ -108,7 +112,7 @@ export function ConfirmDialog({
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                 )}
-                {confirmText}
+                {resolvedConfirmText}
               </button>
             </div>
           </motion.div>

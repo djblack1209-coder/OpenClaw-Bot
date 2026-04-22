@@ -1609,8 +1609,22 @@ export const enUS: Record<string, string> = {
   'plugins.cliUnavailable': '[SYSTEM] CLI tool endpoint unavailable, trying skills list',
   'plugins.skillsUnavailable': '[SYSTEM] Skills list unavailable',
   'plugins.noPluginDataLog': '[SYSTEM] No plugin data available',
+  'plugins.fetchFailed': 'Failed to fetch plugin data',
+  'plugins.toggleFailed': 'Toggle failed',
   'apiGateway.refreshData': 'Refresh data',
-  'setup.terminalOpened': 'Install terminal opened. Please complete installation then click "Re-check"',
+  'setup.terminalOpened': 'Install terminal opened. Please complete installation then click \"Re-check\"',
+  'setup.nodeRestartRequired': 'Node.js installation complete. Please restart the app for environment variables to take effect',
+  'setup.needsV22': '(requires v22+)',
+  'setup.notInstalled': 'Not installed',
+  'setup.installNodeFirst': 'Please install Node.js first',
   'ui.commandPanelTitle': 'Command Palette',
   'ui.commandPanelDesc': 'Search for a command...',
+
+  // 通用状态标签（StatusIndicator 组件）
+  'status.running': 'Running',
+  'status.stopped': 'Stopped',
+  'status.error': 'Error',
+  'status.warning': 'Warning',
+  'status.starting': 'Starting',
+  'status.stopping': 'Stopping',
 };
