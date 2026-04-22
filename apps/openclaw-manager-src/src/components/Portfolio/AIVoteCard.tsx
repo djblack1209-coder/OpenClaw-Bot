@@ -3,6 +3,7 @@
  * 展示 6 个 AI 模型的投票结果（买入/持有/跳过）+ 共识信号 + 置信度
  * 设计灵感：Robinhood 分析师评级 + Linear 卡片风格
  */
+import { useLanguage } from '../../i18n';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -226,19 +227,20 @@ interface AIVoteCardProps {
 
 export function AIVoteCard({ result, loading, error, onTriggerVote, className }: AIVoteCardProps) {
   const [inputSymbol, setInputSymbol] = useState('');
+  const { t } = useLanguage();
 
   /* 尚未投票 — 展示输入框 */
   if (!result && !loading) {
     return (
       <GlassCard className={className} hoverable={false}>
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">AI 团队投票</h3>
+        <h3 className="text-sm font-semibold text-gray-300 mb-3">{t('portfolio.vote.title')}</h3>
         <p className="text-xs text-gray-500 mb-4">
           输入股票代码，6 个 AI 分析师会分别给出买入/持有/跳过建议
         </p>
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="输入代码，如 AAPL"
+            placeholder={t('portfolio.vote.placeholder')}
             value={inputSymbol}
             onChange={(e) => setInputSymbol(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
@@ -269,8 +271,8 @@ export function AIVoteCard({ result, loading, error, onTriggerVote, className }:
       <GlassCard className={className} hoverable={false}>
         <div className="flex flex-col items-center justify-center py-8">
           <Loader2 size={32} className="text-[var(--oc-brand)] animate-spin mb-3" />
-          <p className="text-sm text-gray-300">AI 团队投票中...</p>
-          <p className="text-xs text-gray-500 mt-1">6 个模型正在分析，通常需要 30-60 秒</p>
+          <p className="text-sm text-gray-300">{t('portfolio.vote.voting')}</p>
+          <p className="text-xs text-gray-500 mt-1">{t('portfolio.vote.votingHint')}</p>
         </div>
       </GlassCard>
     );

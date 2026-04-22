@@ -435,12 +435,17 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     if (apiKey.trim()) {
       try {
         await api.saveEnvValue('LLM_API_KEY', apiKey.trim());
-      } catch { /* 静默失败，用户可稍后在设置中配置 */ }
+      } catch {
+        // 提示用户保存失败，但不阻止完成引导
+        try { const { toast } = await import('sonner'); toast.error('API Key 保存失败，请稍后在设置中重新配置'); } catch { /* sonner 未加载 */ }
+      }
     }
     if (baseUrl.trim()) {
       try {
         await api.saveEnvValue('LLM_BASE_URL', baseUrl.trim());
-      } catch { /* 静默失败 */ }
+      } catch {
+        try { const { toast } = await import('sonner'); toast.error('Base URL 保存失败，请稍后在设置中重新配置'); } catch { /* sonner 未加载 */ }
+      }
     }
 
     onComplete();
