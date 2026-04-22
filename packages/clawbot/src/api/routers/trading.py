@@ -224,8 +224,9 @@ async def portfolio_summary():
             enriched_positions.append(
                 {
                     "symbol": pos.get("symbol", ""),
-                    "qty": qty,
-                    "avg_cost": round(avg_cost, 2),
+                    "name": pos.get("name", pos.get("symbol", "")),
+                    "quantity": qty,
+                    "avg_price": round(avg_cost, 2),
                     "current_price": round(current_price, 2),
                     "market_value": round(market_value, 2),
                     "pnl": round(pnl, 2),

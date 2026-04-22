@@ -201,6 +201,28 @@ class ClawBotRPC:
                             "side": "short" if qty < 0 else "long",
                         }
                     )
+                # 兜底：如果 IBKR 没返回实时价格，用 yfinance 补齐
+                symbols_needing_price = [p["symbol"] for p in positions if not p.get("current_price")]
+                if symbols_needing_price:
+                    try:
+                        import yfinance as yf
+                        tickers = yf.Tickers(" ".join(symbols_needing_price))
+                        for sym in symbols_needing_price:
+                            try:
+                                info = tickers.tickers[sym].fast_info
+                                price = float(getattr(info, "last_price", 0) or 0)
+                                if not price:
+                                    price = float(getattr(info, "previous_close", 0) or 0)
+                                for p in positions:
+                                    if p["symbol"] == sym and price > 0:
+                                        p["current_price"] = price
+                                        p["market_value"] = p["quantity"] * price
+                                        cost = p["quantity"] * p["avg_price"]
+                                        p["unrealized_pnl"] = p["market_value"] - cost
+                            except Exception:
+                                pass
+                    except ImportError:
+                        logger.debug("yfinance 未安装，跳过价格补齐")
             except Exception as e:
                 logger.warning("Failed to get IBKR positions: %s", e)
 
