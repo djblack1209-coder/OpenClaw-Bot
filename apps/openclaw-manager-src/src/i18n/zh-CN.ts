@@ -1611,7 +1611,6 @@ export const zhCN: Record<string, string> = {
   'plugins.noPluginDataLog': '[SYSTEM] 暂无可用插件数据',
   'plugins.fetchFailed': '获取插件数据失败',
   'plugins.toggleFailed': '切换失败',
-  'apiGateway.refreshData': '刷新数据',
   'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击\"重新检查\"',
   'setup.nodeRestartRequired': 'Node.js 安装完成，请重启应用以使环境变量生效',
   'setup.needsV22': '(需要 v22+)',
@@ -1627,4 +1626,127 @@ export const zhCN: Record<string, string> = {
   'status.warning': '警告',
   'status.starting': '启动中',
   'status.stopping': '停止中',
+
+  // ---- Sprint 5 终局补漏: Agent B 中断时未写入的 key ----
+  // API 网关
+  'apiGateway.gatewayStarted': '网关服务已启动',
+  'apiGateway.gatewayStopped': '网关服务已停止',
+  'apiGateway.offlineLabel': '离线',
+  'apiGateway.onlineLabel': '在线',
+  'apiGateway.operationFailed': '操作失败',
+  'apiGateway.startService': '启动服务',
+  'apiGateway.stopService': '停止服务',
+  'apiGateway.refreshData': '刷新数据',
+
+  // AI 助手
+  'assistant.vote.desc': 'AI 投票分析',
+
+  // 渠道
+  'channels.channelDisabled': '渠道已停用',
+  'channels.channelEnabled': '渠道已启用',
+  'channels.toggleFailed': '切换失败',
+  'channels.toggleNeedsTauri': '需要桌面客户端',
+  'channels.unknownError': '未知错误',
+
+  // 仪表盘
+  'dashboard.liveLogs': '实时日志',
+  'dashboard.serviceDesc': '服务说明',
+  'dashboard.services': '服务',
+  'dashboard.systemStatus': '系统状态',
+
+  // 错误边界
+  'error.boundary.desc': '页面没有真正退出，已被错误边界接管。请先点击"刷新界面"，若仍复现，再把下面错误信息发给我。',
+  'error.boundary.pageError': '页面出错了',
+  'error.boundary.pageErrorDesc': '此页面发生了错误，请尝试重试或返回首页',
+  'error.boundary.pageErrorNamed': '页面发生崩溃',
+  'error.boundary.reload': '刷新界面',
+  'error.boundary.title': 'OpenClaw 发生错误',
+  'error.boundary.unknownError': '未知错误',
+  'error.boundary.viewDetails': '查看错误详情',
+
+  // 执行流
+  'executionFlow.dagExecutor': 'DAG 执行器',
+
+  // 金融雷达
+  'finRadar.others': '其他',
+
+  // 首页
+  'home.fetchFailed': '数据获取失败',
+
+  // 记忆
+  'memory.daysAgo': '天前',
+  'memory.hoursAgo': '小时前',
+  'memory.justNow': '刚刚',
+  'memory.minutesAgo': '分钟前',
+
+  // 通知
+  'notifications.daysAgo': '天前',
+  'notifications.hoursAgo': '小时前',
+  'notifications.justNow': '刚刚',
+  'notifications.minutesAgo': '分钟前',
+
+  // 性能
+  'performance.lastUpdate': '最后更新',
+
+  // 插件
+  'plugins.noPlugins': '暂无插件',
+  'plugins.protocolStatusTitle': '协议状态',
+  'plugins.realtime': '实时',
+
+  // 投资组合
+  'portfolio.ibNotConnected': 'IB Gateway 未连接',
+  'portfolio.ibNotConnectedDesc': '连接 IB Gateway 后自动显示持仓数据',
+  'portfolio.vote.analyzeBtn': '分析',
+  'portfolio.vote.buyLabel': '买入',
+  'portfolio.vote.divergenceWarning': '意见分歧',
+  'portfolio.vote.entry': '入场价',
+  'portfolio.vote.holdLabel': '持有',
+  'portfolio.vote.noAction': '无操作',
+  'portfolio.vote.noReasoning': '暂无分析理由',
+  'portfolio.vote.reAnalyze': '重新分析',
+  'portfolio.vote.skipLabel': '跳过',
+  'portfolio.vote.stopLoss': '止损',
+  'portfolio.vote.suggestBuy': '建议买入',
+  'portfolio.vote.takeProfit': '止盈',
+  'portfolio.vote.vetoWarning': '被否决',
+  'portfolio.vote.vetoed': '已否决',
+
+  // 设置
+  'settings.browserModeCannotSave': '浏览器模式下无法保存',
+  'settings.browserModeHint': '当前为浏览器模式 — 系统信息和服务控制仅在桌面客户端可用',
+  'settings.desktopOnly': '仅桌面客户端可用',
+  'settings.loadFailed': '设置加载失败',
+  'settings.saveFailed': '保存失败',
+  'settings.saveSuccess': '保存成功',
+
+  // 共享组件
+  'shared.goToSettings': '前往设置',
+  'shared.retry': '重试',
+
+  // 社交媒体
+  'social.contentCalendar': '内容日历',
+  'social.contentStats': '内容统计',
+  'social.draftBox': '草稿箱',
+  'social.operationFailed': '操作失败，请稍后重试',
+  'social.platformStatus': '平台状态',
+  'social.postAnalysis': '发布分析',
+  'social.trendingTopics': '热门话题',
+
+  // 插件商店
+  'store.cannotLoadPlugins': '无法加载插件列表',
+  'store.statusAll': '全部',
+  'store.statusApproved': '已通过',
+  'store.statusPending': '待审批',
+  'store.statusRejected': '已拒绝',
+
+  // 交易
+  'trading.daysAgo': '天前',
+  'trading.hoursAgo': '小时前',
+  'trading.justNow': '刚刚',
+  'trading.lastUpdate': '最后更新',
+  'trading.minutesAgo': '分钟前',
+
+  // 全球监控
+  'worldMonitor.lastUpdate': '最后更新',
+  'worldMonitor.loading': '数据加载中...',
 };
