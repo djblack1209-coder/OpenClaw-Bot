@@ -237,7 +237,7 @@ export function Evolution() {
                     </span>
                     <span className="px-2 py-0.5 rounded font-mono text-[9px] tracking-wider shrink-0"
                       style={{ background: `${priorityColor(p.priority)}15`, color: priorityColor(p.priority) }}>
-                      {priorityLabel(p.priority)}
+                      {priorityLabel(p.priority, t)}
                     </span>
                     <span className="font-mono text-xs flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
                       {p.title}
@@ -338,7 +338,7 @@ export function Evolution() {
                       background: `${priorityColor(p.priority)}15`,
                       color: priorityColor(p.priority),
                     }}>
-                    {priorityLabel(p.priority)}
+                    {priorityLabel(p.priority, t)}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>

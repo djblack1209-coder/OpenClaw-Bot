@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/tauri';
 import { useLanguage } from '@/i18n';
+import { toast } from '@/lib/notify';
 
 /* ────────────────────────────────────────────────────────────────
    Types
@@ -437,14 +438,14 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         await api.saveEnvValue('LLM_API_KEY', apiKey.trim());
       } catch {
         // 提示用户保存失败，但不阻止完成引导
-        try { const { toast } = await import('sonner'); toast.error('API Key 保存失败，请稍后在设置中重新配置'); } catch { /* sonner 未加载 */ }
+        toast.error(t('onboarding.apiKeySaveFailed'), { channel: 'notification' });
       }
     }
     if (baseUrl.trim()) {
       try {
         await api.saveEnvValue('LLM_BASE_URL', baseUrl.trim());
       } catch {
-        try { const { toast } = await import('sonner'); toast.error('Base URL 保存失败，请稍后在设置中重新配置'); } catch { /* sonner 未加载 */ }
+        toast.error(t('onboarding.baseUrlSaveFailed'), { channel: 'notification' });
       }
     }
 
