@@ -165,7 +165,8 @@ export function HomeDashboard() {
         const botsArr = (s.bots as Record<string, unknown>[]) ?? [];
         setBots(botsArr.map((b) => ({
           name: String(b.name || b.bot_name || ''),
-          signal: String(b.signal || b.status || 'pending') as BotVote['signal'],
+          // alive 但没 signal → 空闲(abstain)，不是待定(pending)
+          signal: String(b.signal || b.status || (b.alive ? 'abstain' : 'pending')) as BotVote['signal'],
           confidence: Number(b.confidence ?? 0.5),
         })));
         setTelemetry((prev) => ({
@@ -434,19 +435,31 @@ export function HomeDashboard() {
                   </div>
                 )}
                 {/* 简报指标 — 从 metrics 子对象渲染 */}
-                {Object.entries((briefData.metrics as Record<string, unknown>) ?? briefData)
-                  .filter(([k, v]) => k !== 'deltas' && typeof v !== 'object')
-                  .slice(0, 6)
-                  .map(([key, value]) => (
+                {(() => {
+                  const entries = Object.entries((briefData.metrics as Record<string, unknown>) ?? briefData)
+                    .filter(([k, v]) => k !== 'deltas' && typeof v !== 'object')
+                    .slice(0, 6);
+                  const allZero = entries.every(([, v]) => v === 0 || v === '0');
+                  if (allZero) {
+                    return (
+                      <div className="col-span-full p-3 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
+                          今日暂无新活动
+                        </span>
+                      </div>
+                    );
+                  }
+                  return entries.map(([key, value]) => (
                   <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
                       {{ portfolio_pnl: t('home.briefMetrics.portfolioPnl'), positions_count: t('home.briefMetrics.positionsCount'), xianyu_consultations: t('home.briefMetrics.xianyuConsultations'), xianyu_orders: t('home.briefMetrics.xianyuOrders'), social_posts: t('home.briefMetrics.socialPosts'), api_daily_cost: t('home.briefMetrics.apiDailyCost'), market_sentiment: t('home.briefMetrics.marketSentiment') }[key] || key.replace(/_/g, ' ')}
                     </span>
                     <div className="font-mono text-lg font-bold mt-1" style={{ color: value === 0 ? 'var(--text-disabled)' : 'var(--accent-cyan)' }}>
-                      {typeof value === 'number' ? (value === 0 ? '暂无' : value.toLocaleString()) : String(value ?? '—')}
+                      {typeof value === 'number' ? (value === 0 ? '—' : value.toLocaleString()) : String(value ?? '—')}
                     </div>
                   </div>
-                ))}
+                  ));
+                })()}
               </div>
               {typeof briefData.summary === 'string' && briefData.summary && (
                 <p className="font-mono text-xs mt-3" style={{ color: 'var(--text-secondary)' }}>
