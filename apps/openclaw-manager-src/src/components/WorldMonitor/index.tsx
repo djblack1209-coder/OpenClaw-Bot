@@ -977,7 +977,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.gridStatus')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: extData?.infrastructure?.power_grid?.value === '异常' ? 'var(--accent-red)' : 'var(--accent-green)' }}>{extData?.infrastructure?.power_grid?.value ?? '—'}</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: ['异常', 'abnormal', 'critical', 'error'].includes(String(extData?.infrastructure?.power_grid?.value ?? '').toLowerCase()) ? 'var(--accent-red)' : 'var(--accent-green)' }}>{extData?.infrastructure?.power_grid?.value ?? '—'}</span>
               </div>
 
               {/* 海底光缆 */}
@@ -991,7 +991,7 @@ export function WorldMonitor() {
                     <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>{t('worldMonitor.transoceanicLink')}</p>
                   </div>
                 </div>
-                <span className="text-metric" style={{ fontSize: '20px', color: extData?.infrastructure?.submarine_cable?.value === '降级' ? 'var(--accent-amber)' : 'var(--accent-green)' }}>{extData?.infrastructure?.submarine_cable?.value ?? '—'}</span>
+                <span className="text-metric" style={{ fontSize: '20px', color: ['降级', 'degraded', 'warning'].includes(String(extData?.infrastructure?.submarine_cable?.value ?? '').toLowerCase()) ? 'var(--accent-amber)' : 'var(--accent-green)' }}>{extData?.infrastructure?.submarine_cable?.value ?? '—'}</span>
               </div>
             </div>
           </div>
