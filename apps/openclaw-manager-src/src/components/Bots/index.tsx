@@ -142,7 +142,8 @@ export function Bots() {
         api.services(),
         api.cookieCloudStatus(),
         api.xianyuConversations(20),
-        api.clawbotAutopilotStatus(),
+        /* 使用 social/status API 获取自动驾驶状态，保持与社交页数据源一致 */
+        api.clawbotSocialStatus(),
         clawbotFetchJson('/api/v1/controls/scheduler').catch(() => null),
         api.clawbotStatus(),
       ]);
@@ -188,13 +189,13 @@ export function Bots() {
       }
       setXianyuData({ online: xianyuOnline, autoReplyEnabled: xianyuAutoReply, conversationCount: convCount });
 
-      /* 社媒自动驾驶 */
+      /* 社媒自动驾驶 — 从 social/status API 提取（与社交页使用同一数据源） */
       if (autopilotRes.status === 'fulfilled' && autopilotRes.value) {
         const ap = autopilotRes.value as Record<string, unknown>;
         setAutopilotData({
-          running: Boolean(ap.running ?? ap.active ?? false),
+          running: Boolean(ap.autopilot_running ?? ap.running ?? ap.active ?? false),
           mode: String(ap.mode ?? 'manual'),
-          nextPublishTime: ap.next_publish_time ? String(ap.next_publish_time) : ap.next_run ? String(ap.next_run) : ap.next_time ? String(ap.next_time) : null,
+          nextPublishTime: ap.next_scheduled_time ? String(ap.next_scheduled_time) : ap.next_publish_time ? String(ap.next_publish_time) : ap.next_run ? String(ap.next_run) : ap.next_time ? String(ap.next_time) : null,
           postsToday: Number(ap.posts_today ?? ap.published_today ?? 0),
         });
       }
@@ -315,10 +316,12 @@ export function Bots() {
   const cookieLabel = cookieValid ? 'VALID' : 'INVALID';
   const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
 
-  /* 通知服务状态（从 services 列表中查找） */
-  // 运行时服务名匹配，非 UI 文本
+  /* 通知服务状态：Apprise 是内置模块不是独立进程，
+   * 从 services 列表查找；如果找不到则从系统在线状态推断 */
+  const backendOnline = services.length > 0 || !error;
   const notifService = services.find((s) => s.id === 'notification' || s.id === 'apprise' || s.name?.includes('notif') || s.name?.includes('通知'));
-  const notifRunning = notifService?.status === 'running';
+  /* 通知功能在后端是内置的（Apprise 库），只要后端在运行就是可用的 */
+  const notifRunning = notifService ? notifService.status === 'running' : backendOnline;
 
   return (
     <div className="h-full overflow-y-auto scroll-container">

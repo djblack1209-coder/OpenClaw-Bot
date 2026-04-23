@@ -525,10 +525,7 @@ export function Portfolio() {
   ];
 
   /* ====== Bot 共识统计 ====== */
-  const bullCount = team.filter(m => signalCategory(m.signal) === 'bull').length;
-  const bearCount = team.filter(m => signalCategory(m.signal) === 'bear').length;
-  const neutralCount = team.length - bullCount - bearCount;
-  const totalVotes = team.length || 1; /* 防除零 */
+  /* team 统计在 AI 团队面板 IIFE 内部动态计算 */
 
   /* ====== 持仓权重分布 ====== */
   const allocation = p.positions
@@ -722,24 +719,45 @@ export function Portfolio() {
                   {t("portfolio.aiTeam")}
                 </h3>
 
-                {team.length === 0 ? (
-                  <div className="mt-6 flex-1 flex items-center justify-center">
+                {/* 优先显示后端 team 数据，其次显示最近的投票结果 */}
+                {team.length === 0 && !voteResult ? (
+                  <div className="mt-6 flex-1 flex flex-col items-center justify-center gap-2">
                     <p className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>
                       {t("portfolio.noTeamData")}
                     </p>
+                    <p className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
+                      {t("portfolio.votePrompt")}
+                    </p>
                   </div>
-                ) : (
-                  <>
+                ) : (() => {
+                  /* 合并 team 数据和最近投票结果 */
+                  const displayTeam = team.length > 0 ? team : (voteResult?.votes || voteResult?.team || []).map((v: any) => ({
+                    analyst: v.analyst || v.model || v.name || 'AI',
+                    signal: v.signal || v.action || 'neutral',
+                    confidence: typeof v.confidence === 'number' ? v.confidence : 0.5,
+                    reasoning: v.reasoning || v.reason || '',
+                  }));
+                  const dBull = displayTeam.filter((m: any) => signalCategory(m.signal) === 'bull').length;
+                  const dNeutral = displayTeam.filter((m: any) => signalCategory(m.signal) === 'neutral').length;
+                  const dBear = displayTeam.filter((m: any) => signalCategory(m.signal) === 'bear').length;
+                  const dTotal = displayTeam.length || 1;
+                   return (<>
+                    {/* 投票来源标签（仅当使用最近投票结果替代时） */}
+                    {team.length === 0 && voteResult && (
+                      <span className="font-mono text-[9px] mt-2 block" style={{ color: 'var(--text-disabled)' }}>
+                        {voteResult.symbol ? `最近分析: ${voteResult.symbol}` : '最近投票结果'}
+                      </span>
+                    )}
                     {/* 共识进度条 */}
                     <div className="flex h-3 rounded-full overflow-hidden mt-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <div className="h-full transition-all" style={{ width: `${(bullCount / totalVotes) * 100}%`, background: 'var(--accent-green)' }} />
-                      <div className="h-full transition-all" style={{ width: `${(neutralCount / totalVotes) * 100}%`, background: 'var(--accent-amber)' }} />
-                      <div className="h-full transition-all" style={{ width: `${(bearCount / totalVotes) * 100}%`, background: 'var(--accent-red)' }} />
+                      <div className="h-full transition-all" style={{ width: `${(dBull / dTotal) * 100}%`, background: 'var(--accent-green)' }} />
+                      <div className="h-full transition-all" style={{ width: `${(dNeutral / dTotal) * 100}%`, background: 'var(--accent-amber)' }} />
+                      <div className="h-full transition-all" style={{ width: `${(dBear / dTotal) * 100}%`, background: 'var(--accent-red)' }} />
                     </div>
 
                     {/* 团队成员列表 */}
                     <div className="mt-4 space-y-2 flex-1">
-                      {team.map(m => (
+                      {displayTeam.map((m: any) => (
                         <div key={m.analyst} className="flex items-center justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -770,19 +788,19 @@ export function Portfolio() {
                     <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-green)' }} />
-                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bullCount} {t('portfolio.bullish')}</span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{dBull} {t('portfolio.bullish')}</span>
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-amber)' }} />
-                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{neutralCount} {t('portfolio.neutral')}</span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{dNeutral} {t('portfolio.neutral')}</span>
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-red)' }} />
-                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{bearCount} {t('portfolio.bearish')}</span>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{dBear} {t('portfolio.bearish')}</span>
                       </span>
                     </div>
-                  </>
-                )}
+                  </>);
+                })()}
               </div>
             </motion.div>
 
