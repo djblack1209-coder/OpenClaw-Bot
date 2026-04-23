@@ -42,9 +42,11 @@ _http = ResilientHTTPClient(timeout=15.0, name="wechat_bridge")
 _WECHAT_ENABLED = os.getenv("WECHAT_NOTIFY_ENABLED", "").lower() in ("true", "1", "yes")
 _ILINK_BASE = "https://ilinkai.weixin.qq.com"
 
-# 凭证路径 (相对于项目根目录)
+# 凭证路径 — 优先 HOME 目录下的 .openclaw（OpenClaw CLI 默认位置），回退到项目根目录
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # → OpenEverything/
-_ACCOUNTS_DIR = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts"
+_HOME_OPENCLAW = Path.home() / ".openclaw" / "openclaw-weixin" / "accounts"
+_PROJECT_OPENCLAW = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts"
+_ACCOUNTS_DIR = _HOME_OPENCLAW if _HOME_OPENCLAW.exists() else _PROJECT_OPENCLAW
 
 
 class _CredentialStore:
