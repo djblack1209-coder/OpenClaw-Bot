@@ -727,11 +727,22 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
     { id: 'wechat', labelKey: 'settings.platformWechat', url: '' },
   ];
 
-  /* 拉取各平台 Cookie 状态 */
+  /* 拉取各平台 Cookie 状态
+   * 后端 /api/v1/cookies/status 返回：
+   * { platforms: { xianyu: {...}, x: {...}, xhs: {...}, wechat: {...} }, summary: {...} }
+   * 需要将 x → twitter, xhs → xiaohongshu 映射到前端字段 */
   const fetchCookieStatus = useCallback(async () => {
     try {
-      const data = await clawbotFetchJson('/api/v1/cookies/status') as CookieStatusMap;
-      setCookieStatus(data ?? {});
+      const raw = await clawbotFetchJson('/api/v1/cookies/status') as any;
+      /* 兼容两种格式：嵌套在 platforms 里 或 直接平铺 */
+      const platforms = raw?.platforms ?? raw ?? {};
+      const mapped: CookieStatusMap = {
+        xianyu: platforms.xianyu ?? undefined,
+        twitter: platforms.twitter ?? platforms.x ?? undefined,
+        xiaohongshu: platforms.xiaohongshu ?? platforms.xhs ?? undefined,
+        wechat: platforms.wechat ?? undefined,
+      };
+      setCookieStatus(mapped);
     } catch (err) {
       console.warn('[CookieSyncCenter] 获取 Cookie 状态失败:', err);
       /* 失败时不覆盖已有数据 */

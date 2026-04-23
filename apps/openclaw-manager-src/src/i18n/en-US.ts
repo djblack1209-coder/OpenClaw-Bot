@@ -1402,6 +1402,7 @@ export const enUS: Record<string, string> = {
   'bots.statusActive': 'ACTIVE',
   'bots.statusIdle': 'IDLE',
   'bots.dataRefreshed': 'Data refreshed',
+  'bots.serviceNeedsManualStart': 'This service requires manual startup',
 
   // Settings 补全
   'settings.accountTitle': 'Account // ACCOUNT',
@@ -1746,6 +1747,14 @@ export const enUS: Record<string, string> = {
   'social.platformStatus': 'Platform Status',
   'social.postAnalysis': 'Post Analysis',
   'social.trendingTopics': 'Trending Topics',
+  'social.platform.x': 'X (Twitter)',
+  'social.platform.xhs': 'RedNote (XHS)',
+  'social.platform.weibo': 'Weibo',
+  'social.platform.default': 'Unknown',
+  'social.platform.unknown': 'Unknown',
+  'social.editDraft': 'Edit',
+  'social.deleteDraft': 'Delete',
+  'social.publishDraft': 'Publish',
 
   // Store
   'store.cannotLoadPlugins': 'Cannot load plugins',

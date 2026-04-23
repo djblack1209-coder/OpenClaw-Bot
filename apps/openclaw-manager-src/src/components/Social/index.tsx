@@ -56,6 +56,7 @@ interface SocialStatusData {
 interface DraftItem {
   id: string;
   title: string;
+  content?: string;
   platform?: string;
   status?: string;
   created_at?: string;
@@ -89,6 +90,10 @@ export function Social() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autopilotLoading, setAutopilotLoading] = useState(false);
+  /* 草稿展开/编辑状态 */
+  const [expandedDraftId, setExpandedDraftId] = useState<string | null>(null);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
@@ -245,7 +250,7 @@ export function Social() {
               </div>
             )}
 
-            {/* 草稿列表 */}
+            {/* 草稿列表 — 支持展开查看/编辑内容 */}
             <div>
               <span className="text-label mb-3 block" style={{ color: 'var(--text-tertiary)' }}>
                 {t('social.draftBox')} ({drafts.length})
@@ -256,22 +261,111 @@ export function Social() {
                 )}
                 {drafts.slice(0, 5).map((draft, i) => {
                   const pConfig = draft.platform ? getPlatformCfg(draft.platform) : null;
+                  const draftId = draft.id ?? String(i);
+                  const isExpanded = expandedDraftId === draftId;
+                  const isEditing = editingDraftId === draftId;
                   return (
-                    <div key={draft.id ?? i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                      style={{ background: 'var(--bg-base)' }}>
-                      {pConfig && (
-                        <span className="flex-shrink-0 px-2 py-0.5 rounded-full font-mono text-[10px] tracking-wider"
-                          style={{ background: pConfig.bg, color: pConfig.color }}>
-                          {t(pConfig.labelKey)}
+                    <div key={draftId}>
+                      {/* 草稿标题行（点击展开/收起） */}
+                      <div
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all"
+                        style={{ background: isExpanded ? 'rgba(0,212,255,0.04)' : 'var(--bg-base)' }}
+                        onClick={() => {
+                          if (isEditing) return;
+                          setExpandedDraftId(isExpanded ? null : draftId);
+                          setEditingDraftId(null);
+                        }}
+                      >
+                        {pConfig && (
+                          <span className="flex-shrink-0 px-2 py-0.5 rounded-full font-mono text-[10px] tracking-wider"
+                            style={{ background: pConfig.bg, color: pConfig.color }}>
+                            {t(pConfig.labelKey)}
+                          </span>
+                        )}
+                        <span className="font-mono text-xs truncate flex-1" style={{ color: 'var(--text-primary)' }}>
+                          {draft.title}
                         </span>
-                      )}
-                      <span className="font-mono text-xs truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                        {draft.title}
-                      </span>
-                      {draft.status && (
-                        <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
-                          {draft.status}
-                        </span>
+                        {draft.status && (
+                          <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
+                            {draft.status}
+                          </span>
+                        )}
+                        {/* 展开/收起指示器 */}
+                        <span className="font-mono text-[10px] flex-shrink-0 transition-transform" style={{
+                          color: 'var(--text-tertiary)',
+                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                        }}>▸</span>
+                      </div>
+                      {/* 展开的内容区域 */}
+                      {isExpanded && (
+                        <div className="ml-3 mt-1 px-3 py-3 rounded-xl" style={{
+                          background: 'rgba(0,212,255,0.02)',
+                          border: '1px solid rgba(0,212,255,0.1)',
+                        }}>
+                          {isEditing ? (
+                            /* 编辑模式 */
+                            <div className="space-y-2">
+                              <textarea
+                                className="w-full px-3 py-2 rounded-lg font-mono text-xs resize-none"
+                                style={{
+                                  background: 'var(--bg-base)',
+                                  color: 'var(--text-primary)',
+                                  border: '1px solid rgba(0,212,255,0.2)',
+                                  minHeight: 80,
+                                  outline: 'none',
+                                }}
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  className="px-3 py-1 rounded-lg font-mono text-[10px] font-bold"
+                                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                                  onClick={() => { setEditingDraftId(null); setEditingText(''); }}
+                                >{t('common.cancel')}</button>
+                                <button
+                                  className="px-3 py-1 rounded-lg font-mono text-[10px] font-bold"
+                                  style={{ background: 'var(--accent-cyan)', color: 'var(--bg-primary)' }}
+                                  onClick={async () => {
+                                    try {
+                                      await api.clawbotSocialDraftUpdate(i, editingText);
+                                      toast.success(t('common.saving'), { channel: 'log' });
+                                      setEditingDraftId(null);
+                                      setEditingText('');
+                                      await fetchData();
+                                    } catch {
+                                      toast.error(t('social.operationFailed'), { channel: 'notification' });
+                                    }
+                                  }}
+                                >{t('common.save')}</button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* 查看模式 */
+                            <div>
+                              <p className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+                                {draft.content || draft.title || t('common.noData')}
+                              </p>
+                              {draft.created_at && (
+                                <span className="font-mono text-[9px] mt-2 block" style={{ color: 'var(--text-disabled)' }}>
+                                  {new Date(draft.created_at).toLocaleString('zh-CN')}
+                                </span>
+                              )}
+                              <div className="flex gap-2 mt-2 justify-end">
+                                <button
+                                  className="px-3 py-1 rounded-lg font-mono text-[10px] font-bold cursor-pointer"
+                                  style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.2)', color: 'var(--accent-cyan)' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingDraftId(draftId);
+                                    setEditingText(draft.content || draft.title || '');
+                                  }}
+                                >{t('social.editDraft')}</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   );
