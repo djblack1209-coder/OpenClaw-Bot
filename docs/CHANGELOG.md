@@ -12,6 +12,12 @@
 
 ## 最近更新（2026-04）
 
+**R7: 日报质量修复 + 微信推送 + CI 修复**
+- 日报 `<think>` 标签泄露：daily_brief_llm.py 三处 LLM 响应添加 `_strip_think_tags()` 清理
+- 微信不收日报：`_notify_telegram` 只发 Telegram，完全绕过 WeChat 通道，已添加 `send_to_wechat` 同步推送
+- CI lint 失败：9 个 Ruff F401 未使用 import 已清理（cookies/store/wechat/deal_scanner/wechat_receiver）
+- 测试：1450 passed, 11 skipped, 0 failed
+
 ## 2026-04-23 — 全量系统审计 R1+R2（跨端修复 + 插件商店重构）
 > 领域: `backend` `frontend` `docs`
 > 影响模块: Settings, Social, Bots, Xianyu, Store, Portfolio, Trading, Risk, Notifications, NewsFeed, Assistant, WorldMonitor
