@@ -167,7 +167,7 @@ def init_trading_system(
     from src.auto_trader import AutoTrader
 
     max_scan_candidates = env_int("MAX_SCAN_CANDIDATES", 50, minimum=10)
-    max_vote_candidates = env_int("MAX_VOTE_CANDIDATES", 10, minimum=3)
+    max_vote_candidates = env_int("MAX_VOTE_CANDIDATES", 5, minimum=3)  # 性能优化: 10→5，减少 50% LLM 调用
     scan_func = None
     analyze_func = None
     ai_team_func = None
@@ -325,25 +325,33 @@ def init_trading_system(
                     )
                     return resp.choices[0].message.content or ""
 
-                master_insights = []
-                for cand in candidates[:max_candidates]:
+                # 性能优化: 所有候选并行分析（从顺序改为 asyncio.gather，节省 80%+ 时间）
+                async def _analyze_one(cand):
                     sym = cand.get("symbol", "")
                     analysis = analyses.get(sym, {})
-                    if sym and analysis:
-                        try:
-                            panel = await run_master_panel(sym, analysis, _master_llm_call)
-                            consensus = panel.get("consensus", {})
-                            sig = consensus.get("consensus_signal", "neutral")
-                            conf = consensus.get("consensus_confidence", 0)
-                            breakdown = consensus.get("signal_breakdown", {})
-                            master_insights.append(
-                                f"{sym}: 大师共识={sig} 置信度={conf:.0%} "
-                                f"(看多:{breakdown.get('bullish', 0):.1f} "
-                                f"看空:{breakdown.get('bearish', 0):.1f} "
-                                f"中性:{breakdown.get('neutral', 0):.1f})"
-                            )
-                        except Exception as master_err:
-                            logger.debug("[TradingSystem] %s 大师分析失败: %s", sym, master_err)
+                    if not sym or not analysis:
+                        return None
+                    try:
+                        panel = await run_master_panel(sym, analysis, _master_llm_call)
+                        consensus = panel.get("consensus", {})
+                        sig = consensus.get("consensus_signal", "neutral")
+                        conf = consensus.get("consensus_confidence", 0)
+                        breakdown = consensus.get("signal_breakdown", {})
+                        return (
+                            f"{sym}: 大师共识={sig} 置信度={conf:.0%} "
+                            f"(看多:{breakdown.get('bullish', 0):.1f} "
+                            f"看空:{breakdown.get('bearish', 0):.1f} "
+                            f"中性:{breakdown.get('neutral', 0):.1f})"
+                        )
+                    except Exception as master_err:
+                        logger.debug("[TradingSystem] %s 大师分析失败: %s", sym, master_err)
+                        return None
+
+                panel_results = await asyncio.gather(
+                    *[_analyze_one(c) for c in candidates[:max_candidates]],
+                    return_exceptions=True,
+                )
+                master_insights = [r for r in panel_results if isinstance(r, str)]
 
                 if master_insights:
                     account_context += "\n\n[投资大师圆桌会议 — 5位大师(巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒)的共识]\n" + "\n".join(master_insights)
