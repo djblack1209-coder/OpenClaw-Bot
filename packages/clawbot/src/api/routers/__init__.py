@@ -15,6 +15,7 @@ from .conversation import router as router_conversation
 from .xianyu import router as router_xianyu
 from .cli import router as router_cli
 from .monitor import router as router_monitor
+from .wechat import router as router_wechat
 
 __all__ = [
     "router_system",
@@ -32,4 +33,5 @@ __all__ = [
     "router_xianyu",
     "router_cli",
     "router_monitor",
+    "router_wechat",
 ]
