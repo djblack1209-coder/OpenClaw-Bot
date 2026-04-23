@@ -55,6 +55,12 @@
 - `packages/clawbot/src/api/routers/system.py` — 通知并发安全
 - `packages/clawbot/src/api/routers/__init__.py` / `server.py` — 路由注册
 
+**R5: 数据流诊断 + 用户引导 + 桌面端构建**
+- 定时任务：确认为真实数据（硬编码描述表 + 调度器运行时状态），Bot 启动后 source=live
+- 热门话题：确认为真实 API（微博/百度/知乎），境外 IP 可能无法访问，前端添加原因提示
+- CookieCloud：确认需要 COOKIECLOUD_HOST/UUID/PASSWORD 环境变量，前端添加配置引导
+- Tauri 桌面端构建成功：OpenClaw.app + DMG 已安装到 /Applications
+
 **R4: 功能验证 + 性能优化 + 细节修复**
 - 代码分割：最大 chunk 从 634KB 降到 355KB（-44%），React/Framer/Lucide 独立 vendor chunk
 - Plugins 路由直接渲染 Store（消除重定向闪烁）
