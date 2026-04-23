@@ -15,6 +15,7 @@ iFlow API Key 自动续期脚本
 
 定时触发: 由 ExecutionScheduler 在 key 使用第 6 天自动调用
 """
+from __future__ import annotations
 
 import argparse
 import json
