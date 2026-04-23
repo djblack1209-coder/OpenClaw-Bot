@@ -1447,6 +1447,7 @@ export const enUS: Record<string, string> = {
   'bots.statusIdle': 'IDLE',
   'bots.dataRefreshed': 'Data refreshed',
   'bots.serviceNeedsManualStart': 'This service requires manual startup',
+  'bots.xianyuCookieStatus': 'Xianyu Login Cookie',
 
   // Settings 补全
   'settings.accountTitle': 'Account // ACCOUNT',

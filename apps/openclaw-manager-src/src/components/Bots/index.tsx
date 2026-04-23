@@ -643,6 +643,7 @@ export function Bots() {
             </div>
             <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
               {t('bots.xianyuTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.xianyuSuffix')}</span>
+              <span className="font-mono text-xs ml-2" style={{ color: 'var(--text-disabled)', fontWeight: 400 }}>:18790</span>
             </h3>
 
             <div className="space-y-4">
@@ -670,11 +671,11 @@ export function Bots() {
                 </span>
               </div>
 
-              {/* Cookie 状态 */}
+              {/* Cookie 状态 — 明确是闲鱼登录 Cookie */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Cookie size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.cookieStatus')}</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.xianyuCookieStatus')}</span>
                 </div>
                 <span
                   className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold"

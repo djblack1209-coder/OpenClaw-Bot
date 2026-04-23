@@ -1447,6 +1447,7 @@ export const zhCN: Record<string, string> = {
   'bots.statusIdle': '待机',
   'bots.dataRefreshed': '数据已刷新',
   'bots.serviceNeedsManualStart': '该服务需要手动启动',
+  'bots.xianyuCookieStatus': '闲鱼登录 Cookie',
 
   // Settings 补全
   'settings.accountTitle': '账户信息 // ACCOUNT',

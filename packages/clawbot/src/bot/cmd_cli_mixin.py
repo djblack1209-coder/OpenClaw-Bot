@@ -1,5 +1,9 @@
 """CLI-Anything Telegram 命令 — /cli 系列
 
+⚠️ 注意：此 Mixin 未注册到 MultiBot 中（未继承、未添加 CommandHandler）。
+         属于预备代码，需要在 multi_bot.py 中注册后才能使用。
+         审计日期: 2026-04-23
+
 让用户通过 Telegram 控制桌面软件:
 - /cli list          — 列出可用工具
 - /cli run gimp project new --width 1920 --height 1080

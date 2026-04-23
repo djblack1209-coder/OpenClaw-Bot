@@ -40,6 +40,16 @@ export default defineConfig({
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     // 生成 sourcemap 以便调试
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    // 代码分割 — 将大型依赖拆分为独立 chunk，减少主包体积
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-framer': ['framer-motion'],
+          'vendor-lucide': ['lucide-react'],
+        },
+      },
+    },
   },
   
   // 环境变量

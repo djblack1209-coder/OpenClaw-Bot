@@ -34,7 +34,6 @@ const Testing = lazy(() => import('./components/Testing').then(m => ({ default: 
 const Logs = lazy(() => import('./components/Logs').then(m => ({ default: m.Logs })));
 const ExecutionFlow = lazy(() => import('./components/ExecutionFlow').then(m => ({ default: m.ExecutionFlow })));
 const Memory = lazy(() => import('./components/Memory').then(m => ({ default: m.Memory })));
-const Plugins = lazy(() => import('./components/Plugins').then(m => ({ default: m.Plugins })));
 const Evolution = lazy(() => import('./components/Evolution').then(m => ({ default: m.Evolution })));
 const APIGateway = lazy(() => import('./components/APIGateway').then(m => ({ default: m.APIGateway })));
 const Scheduler = lazy(() => import('./components/Scheduler').then(m => ({ default: m.Scheduler })));
@@ -206,7 +205,7 @@ function App() {
       dashboard: <PageErrorBoundary pageName="仪表盘"><Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} /></PageErrorBoundary>,
       flow: <PageErrorBoundary pageName="执行流"><ExecutionFlow /></PageErrorBoundary>,
       memory: <PageErrorBoundary pageName="记忆"><Memory /></PageErrorBoundary>,
-      plugins: <PageErrorBoundary pageName="插件"><Plugins /></PageErrorBoundary>,
+      plugins: <PageErrorBoundary pageName="插件"><Store /></PageErrorBoundary>,
       ai: <PageErrorBoundary pageName="AI 配置"><AIConfig /></PageErrorBoundary>,
       channels: <PageErrorBoundary pageName="频道"><Channels /></PageErrorBoundary>,
       social: <PageErrorBoundary pageName="社媒"><Social /></PageErrorBoundary>,
