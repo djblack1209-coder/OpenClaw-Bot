@@ -49,7 +49,7 @@ BACKEND_API_TOKEN = os.getenv("BACKEND_API_TOKEN", "")
 CHANNEL_VERSION = "1.0.3"
 
 # 长轮询配置
-POLL_TIMEOUT_S = 35  # iLink 默认长轮询超时
+POLL_TIMEOUT_S = 35  # iLink 默认长轮询超时（服务端控制，不能改太小）
 MAX_CONSECUTIVE_ERRORS = 5  # 连续错误次数上限
 ERROR_BACKOFF_S = 30  # 连续错误后的退避时间
 SESSION_PAUSE_S = 3600  # session 过期后暂停时间（1小时）
@@ -248,7 +248,7 @@ async def _forward_to_backend(client: httpx.AsyncClient, from_user: str,
             resp = await client.post(
                 "https://api.siliconflow.cn/v1/chat/completions",
                 json={
-                    "model": "Qwen/Qwen2.5-72B-Instruct",
+                    "model": "Qwen/Qwen2.5-7B-Instruct",  # 7B 更快，微信场景够用
                     "messages": [
                         {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答。"},
                         {"role": "user", "content": text},
