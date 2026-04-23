@@ -1762,6 +1762,14 @@ export const zhCN: Record<string, string> = {
   'store.statusApproved': '已通过',
   'store.statusPending': '待审批',
   'store.statusRejected': '已拒绝',
+  'store.tabSkills': '技能工具',
+  'store.tabExtensions': '平台渠道',
+  'store.tabBotSkills': 'Bot 技能',
+  'store.tabMcp': 'MCP 插件',
+  'store.tabEvolution': '进化发现',
+  'store.categoryFilter': '分类筛选',
+  'store.installed': '已安装',
+  'store.totalInstalled': '已安装',
 
   // 交易
   'trading.daysAgo': '天前',

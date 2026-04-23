@@ -17,6 +17,7 @@ from .cli import router as router_cli
 from .monitor import router as router_monitor
 from .wechat import router as router_wechat
 from .cookies import router as router_cookies
+from .store import router as router_store
 
 __all__ = [
     "router_system",
@@ -36,4 +37,5 @@ __all__ = [
     "router_monitor",
     "router_wechat",
     "router_cookies",
+    "router_store",
 ]
