@@ -184,6 +184,14 @@ class OpsCommandsMixin:
             await update.message.reply_text("正在生成执行简报...")
             brief = await execution_hub.generate_daily_brief()
             await send_long_message(update.effective_chat.id, brief, context)
+            # 同步推送到微信（手动触发也要送达微信）
+            try:
+                from src.wechat_bridge import send_to_wechat
+                import asyncio
+                _t = asyncio.create_task(send_to_wechat(brief))
+                _t.add_done_callback(lambda t: logger.debug("[cmd_brief] 微信推送完成") if not t.exception() else logger.warning("[cmd_brief] 微信推送失败: %s", t.exception()))
+            except Exception as e:
+                logger.debug("[cmd_brief] 微信同步跳过: %s", e)
         except Exception as e:
             logger.warning("[cmd_brief] 执行失败: %s", e)
             try:

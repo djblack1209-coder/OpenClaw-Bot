@@ -744,7 +744,7 @@ async def main():
             _t = asyncio.create_task(send_to_wechat(text))
             _t.add_done_callback(_task_done_cb("WeChat_Notify"))
         except Exception as e:
-            logger.debug("[WeChat] 同步推送失败: %s", e)
+            logger.warning("[WeChat] 同步推送失败: %s", e)
 
     # 通知批量合并器 — 防止 auto_trader 刷屏
     from src.telegram_ux import NotificationBatcher
