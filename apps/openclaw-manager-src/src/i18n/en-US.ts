@@ -1332,6 +1332,13 @@ export const enUS: Record<string, string> = {
   'newsFeed.timeMinutesAgo': 'min ago',
   'newsFeed.timeHoursAgo': 'hr ago',
   'newsFeed.timeDaysAgo': 'days ago',
+  'newsFeed.catAll': 'All',
+  'newsFeed.catFinance': 'Finance',
+  'newsFeed.catTech': 'Tech',
+  'newsFeed.catGeopolitics': 'Geopolitics',
+  'newsFeed.catCrypto': 'Crypto',
+  'newsFeed.catMilitary': 'Military',
+  'newsFeed.catEnergy': 'Energy',
 
   // FinRadar 补全
   'finRadar.dataLoading': 'Loading data...',
@@ -1856,4 +1863,18 @@ export const enUS: Record<string, string> = {
   // Onboarding additions
   'onboarding.apiKeySaveFailed': 'API Key save failed. Please reconfigure in Settings later.',
   'onboarding.baseUrlSaveFailed': 'Base URL save failed. Please reconfigure in Settings later.',
+
+  // R2 i18n — card titles
+  'trading.systemStatusLabel': 'SYSTEM STATUS',
+  'trading.activeSignalsLabel': 'ACTIVE SIGNALS',
+  'trading.spyKlineLabel': 'SPY KLINE (1D)',
+  'trading.quickAccessLabel': 'QUICK ACCESS',
+  'risk.overviewLabel': 'RISK OVERVIEW',
+  'risk.volatilityLossLabel': 'VOLATILITY & LOSS',
+  'risk.concentrationLabel': 'CONCENTRATION',
+  'risk.controlsLabel': 'RISK CONTROLS',
+  'risk.alertsLabel': 'RISK ALERTS',
+  'notifications.centerLabel': 'NOTIFICATION CENTER',
+  'notifications.unreadOverviewLabel': 'UNREAD OVERVIEW',
+  'notifications.sourcesLabel': 'SOURCES',
 };

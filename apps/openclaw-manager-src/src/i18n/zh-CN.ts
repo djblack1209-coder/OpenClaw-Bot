@@ -1332,6 +1332,13 @@ export const zhCN: Record<string, string> = {
   'newsFeed.timeMinutesAgo': '分钟前',
   'newsFeed.timeHoursAgo': '小时前',
   'newsFeed.timeDaysAgo': '天前',
+  'newsFeed.catAll': '全部',
+  'newsFeed.catFinance': '财经',
+  'newsFeed.catTech': '科技',
+  'newsFeed.catGeopolitics': '地缘政治',
+  'newsFeed.catCrypto': '加密货币',
+  'newsFeed.catMilitary': '军事',
+  'newsFeed.catEnergy': '能源',
 
   // FinRadar 补全
   'finRadar.dataLoading': '数据加载中...',
@@ -1856,4 +1863,18 @@ export const zhCN: Record<string, string> = {
   // 新手引导补充
   'onboarding.apiKeySaveFailed': 'API Key 保存失败，请稍后在设置中重新配置',
   'onboarding.baseUrlSaveFailed': 'Base URL 保存失败，请稍后在设置中重新配置',
+
+  // R2 i18n 补全 — 卡片标题
+  'trading.systemStatusLabel': '系统状态',
+  'trading.activeSignalsLabel': '活跃信号',
+  'trading.spyKlineLabel': 'SPY K线 (日线)',
+  'trading.quickAccessLabel': '快速跳转',
+  'risk.overviewLabel': '风险概览',
+  'risk.volatilityLossLabel': '波动与亏损',
+  'risk.concentrationLabel': '集中度',
+  'risk.controlsLabel': '风控参数',
+  'risk.alertsLabel': '风险告警',
+  'notifications.centerLabel': '通知中心',
+  'notifications.unreadOverviewLabel': '未读概览',
+  'notifications.sourcesLabel': '来源分布',
 };

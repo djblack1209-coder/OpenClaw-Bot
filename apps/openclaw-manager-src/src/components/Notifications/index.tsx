@@ -287,7 +287,7 @@ export function Notifications() {
               <div className="flex items-center gap-3">
                 <Bell size={16} style={{ color: 'var(--accent-cyan)' }} />
                 <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                  NOTIFICATION CENTER
+                  {t('notifications.centerLabel')}
                 </span>
                 {unreadCount > 0 && (
                   <span
@@ -482,7 +482,7 @@ export function Notifications() {
               <div className="flex items-center gap-3 mb-4">
                 <BellOff size={16} style={{ color: 'var(--accent-amber)' }} />
                 <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                  UNREAD OVERVIEW
+                  {t('notifications.unreadOverviewLabel')}
                 </span>
               </div>
               <div className="text-center mb-4">
@@ -535,7 +535,7 @@ export function Notifications() {
               <div className="flex items-center gap-3 mb-4">
                 <Filter size={16} style={{ color: 'var(--accent-purple)' }} />
                 <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                  SOURCES
+                  {t('notifications.sourcesLabel')}
                 </span>
               </div>
               <div className="space-y-2">

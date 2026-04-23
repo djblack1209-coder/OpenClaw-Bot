@@ -228,7 +228,7 @@ export function Trading() {
             <div className="flex items-center gap-3 mb-4">
               <Activity size={16} style={{ color: 'var(--accent-cyan)' }} />
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                SYSTEM STATUS
+                {t('trading.systemStatusLabel')}
               </span>
             </div>
 
@@ -365,7 +365,7 @@ export function Trading() {
             <div className="flex items-center gap-3 mb-1">
               <Zap size={16} style={{ color: 'var(--accent-amber)' }} />
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                ACTIVE SIGNALS
+                {t('trading.activeSignalsLabel')}
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
@@ -438,7 +438,7 @@ export function Trading() {
             <div className="flex items-center gap-3 mb-1">
               <CandlestickChart size={16} style={{ color: 'var(--accent-green)' }} />
               <span className="text-label" style={{ color: 'var(--accent-green)' }}>
-                SPY KLINE (1D)
+                {t('trading.spyKlineLabel')}
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
@@ -507,7 +507,7 @@ export function Trading() {
             <div className="flex items-center gap-3 mb-1">
               <Briefcase size={16} style={{ color: 'var(--accent-purple)' }} />
               <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                QUICK ACCESS
+                {t('trading.quickAccessLabel')}
               </span>
             </div>
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>

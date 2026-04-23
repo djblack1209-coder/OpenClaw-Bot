@@ -221,7 +221,7 @@ export function Risk() {
             <div className="flex items-center gap-3 mb-4">
               <ShieldAlert size={16} style={{ color: riskLevel.color }} />
               <span className="text-label" style={{ color: riskLevel.color }}>
-                RISK OVERVIEW
+                {t('risk.overviewLabel')}
               </span>
             </div>
 
@@ -296,7 +296,7 @@ export function Risk() {
             <div className="flex items-center gap-3 mb-4">
               <TrendingDown size={16} style={{ color: 'var(--accent-amber)' }} />
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                VOLATILITY & LOSS
+                {t('risk.volatilityLossLabel')}
               </span>
             </div>
 
@@ -391,7 +391,7 @@ export function Risk() {
             <div className="flex items-center gap-3 mb-4">
               <PieChart size={16} style={{ color: 'var(--accent-purple)' }} />
               <span className="text-label" style={{ color: 'var(--accent-purple)' }}>
-                CONCENTRATION
+                {t('risk.concentrationLabel')}
               </span>
             </div>
 
@@ -499,7 +499,7 @@ export function Risk() {
             <div className="flex items-center gap-3 mb-4">
               <ShieldCheck size={16} style={{ color: 'var(--accent-cyan)' }} />
               <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
-                RISK CONTROLS
+                {t('risk.controlsLabel')}
               </span>
             </div>
 
@@ -610,7 +610,7 @@ export function Risk() {
             <div className="flex items-center gap-3 mb-4">
               <AlertTriangle size={16} style={{ color: 'var(--accent-amber)' }} />
               <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-                RISK ALERTS
+                {t('risk.alertsLabel')}
               </span>
             </div>
 
