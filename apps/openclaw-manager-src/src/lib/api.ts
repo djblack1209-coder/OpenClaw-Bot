@@ -485,4 +485,32 @@ export const api = {
     if (!resp.ok) throw new Error(`语音识别失败: HTTP ${resp.status}`);
     return resp.json();
   },
+
+  // ══════════════════════════════════════════════
+  //  统一插件商店 (Store)
+  // ══════════════════════════════════════════════
+
+  /** 获取商店完整目录（skills + extensions + bot-skills） */
+  storeCatalog: () =>
+    clawbotFetchJson('/api/v1/store/catalog'),
+
+  /** 获取商店分类列表 */
+  storeCategories: () =>
+    clawbotFetchJson('/api/v1/store/categories'),
+
+  // ══════════════════════════════════════════════
+  //  社媒分析 (Social Analytics)
+  // ══════════════════════════════════════════════
+
+  /** 获取社媒运营分析数据 */
+  socialAnalytics: (days: number = 7) =>
+    clawbotFetchJson(`/api/v1/social/analytics?days=${days}`),
+
+  /** 获取社媒 Cookie 状态 */
+  socialCookieStatus: () =>
+    clawbotFetchJson('/api/v1/social/cookie-status'),
+
+  /** 获取闲鱼 Cookie 状态 */
+  xianyuCookieStatus: () =>
+    clawbotFetchJson('/api/v1/xianyu/cookie-status'),
 };
