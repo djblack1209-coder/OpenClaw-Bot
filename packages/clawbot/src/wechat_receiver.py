@@ -239,39 +239,91 @@ def _extract_text(msg: dict) -> str:
 
 async def _forward_to_backend(client: httpx.AsyncClient, from_user: str,
                                text: str) -> str:
-    """将消息转发到 Mac 后端，获取 AI 回复"""
-    if not BACKEND_URL:
-        return "⚠️ 后端未配置，消息已收到但无法处理。"
+    """生成 AI 回复 — 优先云端直接调 LLM API，后端不可达时降级"""
 
-    try:
-        headers = {"Content-Type": "application/json"}
-        if BACKEND_API_TOKEN:
-            headers["X-API-Token"] = BACKEND_API_TOKEN
+    # 方案 1: 云端直接调 SiliconFlow（最快，不依赖 Mac）
+    sf_key = os.getenv("SILICONFLOW_API_KEY", "")
+    if sf_key:
+        try:
+            resp = await client.post(
+                "https://api.siliconflow.cn/v1/chat/completions",
+                json={
+                    "model": "Qwen/Qwen2.5-72B-Instruct",
+                    "messages": [
+                        {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答。"},
+                        {"role": "user", "content": text},
+                    ],
+                    "max_tokens": 500,
+                    "temperature": 0.7,
+                },
+                headers={
+                    "Authorization": f"Bearer {sf_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if reply.strip():
+                    import re
+                    reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL)
+                    reply = re.sub(r'<think>.*$', '', reply, flags=re.DOTALL)
+                    reply = reply.strip()
+                    if reply:
+                        logger.info("SiliconFlow 回复成功 (%.1fs)", resp.elapsed.total_seconds())
+                        return reply
+        except Exception as e:
+            logger.warning("SiliconFlow 调用失败: %s", e)
 
-        resp = await client.post(
-            f"{BACKEND_URL}/api/v1/wechat/incoming",
-            json={"from_user": from_user, "text": text},
-            headers=headers,
-            timeout=60,  # LLM 处理可能较慢
-        )
+    # 方案 2: 云端调 Groq（备选，速度极快）
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if groq_key:
+        try:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答。"},
+                        {"role": "user", "content": text},
+                    ],
+                    "max_tokens": 500,
+                },
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if reply.strip():
+                    logger.info("Groq 回复成功 (%.1fs)", resp.elapsed.total_seconds())
+                    return reply.strip()
+        except Exception as e:
+            logger.warning("Groq 调用失败: %s", e)
 
-        if resp.status_code == 200:
-            data = resp.json()
-            return data.get("reply", data.get("text", "（后端未返回内容）"))
-        elif resp.status_code == 404:
-            # 后端没有 /wechat/incoming 端点，用通用 chat 端点
-            logger.info("后端无 /wechat/incoming，尝试直接 LLM 调用")
-            return await _direct_llm_reply(text)
-        else:
-            return f"⚠️ 后端返回错误 ({resp.status_code})"
-    except httpx.ConnectError:
-        logger.warning("无法连接后端 %s", BACKEND_URL)
-        return "⚠️ 后端暂时不可达，请稍后再试。"
-    except httpx.TimeoutException:
-        return "⏳ 处理超时，请稍后再试。"
-    except Exception as e:
-        logger.error("转发消息失败: %s", e)
-        return "⚠️ 消息处理失败。"
+    # 方案 3: 走 Mac 后端（最后手段）
+    if BACKEND_URL:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if BACKEND_API_TOKEN:
+                headers["X-API-Token"] = BACKEND_API_TOKEN
+            resp = await client.post(
+                f"{BACKEND_URL}/api/v1/wechat/incoming",
+                json={"from_user": from_user, "text": text},
+                headers=headers,
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("reply", "（无回复）")
+        except Exception as e:
+            logger.warning("Mac 后端调用失败: %s", e)
+
+    return "⚠️ AI 服务暂时不可用，请稍后再试。"
 
 
 async def _direct_llm_reply(text: str) -> str:
