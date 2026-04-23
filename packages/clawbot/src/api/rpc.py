@@ -602,6 +602,13 @@ class ClawBotRPC:
 
             # 同时提供 running 字段，兼容前端读取 r.running ?? r.active
             _autopilot_running = result.get("autopilot_running", False)
+            # 修复: worker 不知道 scheduler 状态，额外检查 autopilot status endpoint
+            if not _autopilot_running:
+                try:
+                    ap_status = ClawBotRPC._rpc_autopilot_status()
+                    _autopilot_running = ap_status.get("running", False)
+                except Exception:
+                    pass
             return {
                 "autopilot_running": _autopilot_running,
                 "running": _autopilot_running,
