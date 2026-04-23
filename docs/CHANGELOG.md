@@ -12,6 +12,49 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-23 — 全量系统审计 R1+R2（跨端修复 + 插件商店重构）
+> 领域: `backend` `frontend` `docs`
+> 影响模块: Settings, Social, Bots, Xianyu, Store, Portfolio, Trading, Risk, Notifications, NewsFeed, Assistant, WorldMonitor
+> 关联问题: 用户报告 12 项 + 审计发现 17 项
+
+### 变更内容
+
+**R1: 用户报告问题修复（12 项全部完成）**
+- Cookie 同步中心：修复后端返回 x/xhs 与前端 twitter/xiaohongshu 字段不匹配
+- 社交页自动驾驶：为 autopilot start/stop/status 添加 HTTP 降级
+- 社交页草稿箱：新增点击展开查看内容 + 编辑/保存功能
+- 社交页平台状态：补全 social.platform.x/xhs/weibo/unknown 翻译 key
+- 闲鱼页 Cookie 同步：改进结果判断，区分成功/失败反馈
+- 智能体页 New-API：处理 Docker 服务 skipped 状态给出明确提示
+- 智能体页定时任务：修复 URL 从 /scheduler/{id} 到 /scheduler/task/{id}/toggle
+- 智能体页状态矛盾：统一使用 social/status API 作为自动驾驶数据源
+- 智能体页通知服务：Apprise 内置模块后端在线即可用
+- 投资组合 AI 团队面板：当 team 为空时展示最近投票结果
+
+**R1-11: 统一插件商店 App Store 风格重构**
+- 后端新增 /api/v1/store/catalog 端点，扫描 skills/extensions/bot-skills 目录
+- 前端 Store 组件完全重写为 5-Tab 商店（技能工具·44 / 平台渠道·39 / Bot技能·35 / MCP / 进化发现）
+- Plugins 页面合并到 Store，MCP 标签页复用 start/stop IPC
+
+**R2: 前端 i18n 全量修复（35 项）**
+- Trading/Risk/Notifications: 12 个卡片标题从硬编码英文改为 t()
+- NewsFeed: 分类标签从硬编码中文改为 getCategoryLabel() + timeAgo 国际化
+- Assistant: 24 个快捷指令 prefix + 8 处 toast 从硬编码中文改为 i18n
+- WorldMonitor: 基础设施状态比较从单一中文改为中英文数组兼容
+
+**R2: 后端健壮性修复**
+- xianyu.py: cookiecloud/configure 从裸参数改为 Pydantic BaseModel 接收 JSON body
+- system.py: 通知标记已读添加 try/except + list() 防并发修改
+
+### 文件变更
+- `apps/openclaw-manager-src/src/components/` — Settings, Social, Bots, Xianyu, Store, Portfolio, Plugins, Trading, Risk, Notifications, NewsFeed, Assistant, WorldMonitor
+- `apps/openclaw-manager-src/src/lib/api.ts` — HTTP 降级
+- `apps/openclaw-manager-src/src/i18n/zh-CN.ts` / `en-US.ts` — 新增 70+ i18n key
+- `packages/clawbot/src/api/routers/store.py` — 新增统一商店 API
+- `packages/clawbot/src/api/routers/xianyu.py` — CookieCloud 参数修复
+- `packages/clawbot/src/api/routers/system.py` — 通知并发安全
+- `packages/clawbot/src/api/routers/__init__.py` / `server.py` — 路由注册
+
 ## 2026-04-23 — Sprint 5 终极收官 + 冗余清理
 > 领域: `backend` `frontend` `infra` `social` `xianyu` `docs`
 > 影响模块: 全平台
