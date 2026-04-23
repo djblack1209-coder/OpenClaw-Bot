@@ -55,8 +55,10 @@ interface SocialStatusData {
 }
 interface DraftItem {
   id: string;
-  title: string;
+  title?: string;
+  topic?: string;
   content?: string;
+  text?: string;
   platform?: string;
   status?: string;
   created_at?: string;
@@ -69,9 +71,14 @@ interface CalendarItem {
 }
 interface TopicItem {
   id?: string;
-  name: string;
-  heat: number;
+  name?: string;
+  title?: string;
+  heat?: number;
+  score?: number;
   platform?: string;
+  source?: string;
+  url?: string;
+  summary?: string;
 }
 
 /* ====== 主组件 ====== */
@@ -283,7 +290,7 @@ export function Social() {
                           </span>
                         )}
                         <span className="font-mono text-xs truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                          {draft.title}
+                          {draft.title || draft.topic || '(无标题)'}
                         </span>
                         {draft.status && (
                           <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
@@ -345,7 +352,7 @@ export function Social() {
                             /* 查看模式 */
                             <div>
                               <p className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
-                                {draft.content || draft.title || t('common.noData')}
+                                {draft.content || draft.text || draft.title || draft.topic || t('common.noData')}
                               </p>
                               {draft.created_at && (
                                 <span className="font-mono text-[9px] mt-2 block" style={{ color: 'var(--text-disabled)' }}>
@@ -359,7 +366,7 @@ export function Social() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setEditingDraftId(draftId);
-                                    setEditingText(draft.content || draft.title || '');
+                                    setEditingText(draft.content || draft.text || draft.title || draft.topic || '');
                                   }}
                                 >{t('social.editDraft')}</button>
                               </div>
@@ -486,14 +493,14 @@ export function Social() {
                     {i + 1}
                   </span>
                   <span className="font-mono text-xs flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                    {topic.name}
+                    {topic.name || topic.title || '(无标题)'}
                   </span>
                   {topic.platform && (
                     <span className="font-mono text-[9px] flex-shrink-0" style={{ color: 'var(--text-disabled)' }}>
                       {topic.platform}
                     </span>
                   )}
-                  <HeatBar value={topic.heat} />
+                  <HeatBar value={topic.heat ?? topic.score ?? 0} />
                 </div>
               ))}
             </div>
