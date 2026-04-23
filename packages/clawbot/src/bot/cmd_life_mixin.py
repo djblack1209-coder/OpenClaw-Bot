@@ -658,6 +658,26 @@ class LifeCommandsMixin:
 
     @requires_auth
     @with_typing
+    async def cmd_deals(self, update, context):
+        """折扣搜集 — 主动扫描全网好价
+
+        用法:
+        /deals           — 扫描全品类热门折扣（30%+ 降价）
+        /deals iPhone    — 搜索指定商品的折扣
+        /deals 数码       — 搜索指定分类
+        """
+        try:
+            from src.shopping.deal_scanner import manual_deal_scan
+            query = " ".join(context.args) if context.args else ""
+            await update.message.reply_text("🔍 正在扫描折扣，请稍候...")
+            result = await manual_deal_scan(query)
+            await send_long_message(update, result)
+        except Exception as e:
+            logger.exception("[Deals] 折扣扫描失败: %s", e)
+            await update.message.reply_text(error_service_failed("折扣扫描"))
+
+    @requires_auth
+    @with_typing
     async def cmd_pricewatch(self, update, context):
         """降价提醒管理
 
