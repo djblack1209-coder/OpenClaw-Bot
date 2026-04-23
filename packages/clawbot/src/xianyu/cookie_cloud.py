@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -28,6 +29,12 @@ logger = logging.getLogger(__name__)
 
 # ---- 闲鱼相关域名（按优先级排序，越前面的越重要）----
 XIANYU_DOMAINS = [".goofish.com", ".taobao.com", ".alicdn.com", ".aliyun.com"]
+
+# ---- X/Twitter 相关域名 ----
+X_DOMAINS = [".twitter.com", ".x.com"]
+
+# ---- 小红书相关域名 ----
+XHS_DOMAINS = [".xiaohongshu.com"]
 
 # ---- 最小刷新间隔（秒），防止频繁请求 ----
 MIN_REFRESH_INTERVAL = 60
@@ -165,6 +172,45 @@ class CookieCloudClient:
             logger.error("CookieCloud: 获取闲鱼 Cookie 失败: %s", scrub_secrets(str(e)))
             return None
 
+    def _extract_x_cookies(self, decrypted: dict) -> dict:
+        """从解密后的 CookieCloud 数据中提取 X/Twitter 相关 Cookie
+
+        扫描 .twitter.com 和 .x.com 域名，合并所有 Cookie。
+        返回字典包含 ct0、auth_token、twid 等关键字段。
+        """
+        cookie_data = decrypted.get("cookie_data", {})
+        kv: Dict[str, str] = {}
+        for domain in X_DOMAINS:
+            for key, cookies in cookie_data.items():
+                if domain in key:
+                    for c in cookies:
+                        name = c.get("name", "")
+                        value = c.get("value", "")
+                        if name and value:
+                            kv[name] = value
+        if kv:
+            logger.debug("CookieCloud: 提取到 X/Twitter Cookie（%d 个键值对）", len(kv))
+        return kv
+
+    def _extract_xhs_cookies(self, decrypted: dict) -> dict:
+        """从解密后的 CookieCloud 数据中提取小红书相关 Cookie
+
+        扫描 .xiaohongshu.com 域名，返回所有找到的 Cookie。
+        """
+        cookie_data = decrypted.get("cookie_data", {})
+        kv: Dict[str, str] = {}
+        for domain in XHS_DOMAINS:
+            for key, cookies in cookie_data.items():
+                if domain in key:
+                    for c in cookies:
+                        name = c.get("name", "")
+                        value = c.get("value", "")
+                        if name and value:
+                            kv[name] = value
+        if kv:
+            logger.debug("CookieCloud: 提取到小红书 Cookie（%d 个键值对）", len(kv))
+        return kv
+
     async def health_check(self, timeout: int = 5) -> bool:
         """检查 CookieCloud 服务端是否可达"""
         try:
@@ -248,16 +294,35 @@ class CookieCloudManager:
         """执行一次 Cookie 同步
 
         成功时更新 .env 文件并发送 SIGUSR1 信号热重载闲鱼进程。
+        同时顺带提取 X/Twitter 和小红书的 Cookie 并保存到本地文件。
         返回 True 表示同步成功且 Cookie 有更新。
         """
         if not self.enabled:
             return False
 
         try:
-            cookie_str = await self._client.get_xianyu_cookie_string()
+            # 一次性拉取解密数据，复用给闲鱼/X/XHS 三个平台
+            decrypted = await self._client.fetch_decrypted()
+            cookie_data = decrypted.get("cookie_data", {})
+
+            # 提取闲鱼 Cookie（原有逻辑，内联以避免重复网络请求）
+            kv: Dict[str, str] = {}
+            for domain in reversed(XIANYU_DOMAINS):
+                for key, cookies in cookie_data.items():
+                    if domain in key:
+                        for c in cookies:
+                            name = c.get("name", "")
+                            value = c.get("value", "")
+                            if name and value:
+                                kv[name] = value
+
+            cookie_str = "; ".join(f"{k}={v}" for k, v in kv.items()) if kv else None
+
             if not cookie_str:
                 self._consecutive_failures += 1
                 self._add_sync_record(False, "未获取到闲鱼 Cookie（浏览器可能离线）")
+                # 即使闲鱼 Cookie 失败，仍尝试提取 X/XHS Cookie
+                self._extract_and_save_extra_cookies(decrypted)
                 return False
 
             # 检查 Cookie 是否有变化
@@ -265,6 +330,8 @@ class CookieCloudManager:
                 self._consecutive_failures = 0
                 self._last_sync_time = time.time()
                 self._add_sync_record(True, "Cookie 无变化，跳过更新")
+                # 闲鱼没变，但 X/XHS 可能有变化，仍然提取
+                self._extract_and_save_extra_cookies(decrypted)
                 return True
 
             # Cookie 有变化，先验证有效性再写入 .env（HI-734: 防止同步过期 cookie）
@@ -273,6 +340,8 @@ class CookieCloudManager:
                 self._consecutive_failures += 1
                 self._add_sync_record(False, "Cookie 已同步但验证无效（可能已过期），跳过写入")
                 logger.warning("CookieCloud: 同步到的 Cookie 验证失败（hasLogin=False），不写入 .env")
+                # 闲鱼验证失败不影响 X/XHS 提取
+                self._extract_and_save_extra_cookies(decrypted)
                 return False
 
             # 验证通过，写入 .env
@@ -286,6 +355,9 @@ class CookieCloudManager:
             # 发送 SIGUSR1 信号通知闲鱼进程热重载 Cookie
             self._signal_xianyu_reload()
 
+            # 顺带提取 X/XHS Cookie（复用同一次 CookieCloud 同步）
+            self._extract_and_save_extra_cookies(decrypted)
+
             logger.info("CookieCloud: Cookie 同步成功并已更新")
             return True
 
@@ -295,6 +367,35 @@ class CookieCloudManager:
             self._add_sync_record(False, msg)
             logger.error("CookieCloud: %s", msg)
             return False
+
+    def _extract_and_save_extra_cookies(self, decrypted: dict):
+        """提取并保存 X/Twitter 和小红书的 Cookie 到本地文件
+
+        即使闲鱼 Cookie 同步失败，也尝试提取其他平台的 Cookie，
+        因为 CookieCloud 数据已经拉下来了，不浪费这次网络请求。
+        """
+        openclaw_dir = Path.home() / ".openclaw"
+        openclaw_dir.mkdir(parents=True, exist_ok=True)
+
+        # 提取并保存 X/Twitter Cookie
+        try:
+            x_cookies = self._client._extract_x_cookies(decrypted)
+            if x_cookies:
+                x_path = openclaw_dir / "x_cookies.json"
+                x_path.write_text(json.dumps(x_cookies, indent=2))
+                logger.info("[CookieCloud] X cookies synced: %d items", len(x_cookies))
+        except Exception as e:
+            logger.debug("[CookieCloud] X cookie extraction failed: %s", e)
+
+        # 提取并保存小红书 Cookie
+        try:
+            xhs_cookies = self._client._extract_xhs_cookies(decrypted)
+            if xhs_cookies:
+                xhs_path = openclaw_dir / "xhs_cookies.json"
+                xhs_path.write_text(json.dumps(xhs_cookies, indent=2))
+                logger.info("[CookieCloud] XHS cookies synced: %d items", len(xhs_cookies))
+        except Exception as e:
+            logger.debug("[CookieCloud] XHS cookie extraction failed: %s", e)
 
     def _signal_xianyu_reload(self):
         """通知闲鱼进程热重载 Cookie（通过 SIGUSR1 信号）"""

@@ -11,14 +11,28 @@ import {
   Stethoscope, Check, MemoryStick, Loader2, Save,
   Languages, ExternalLink, KeyRound,
   Power, PlayCircle, StopCircle, AlertTriangle,
+  Cookie, RefreshCw,
 } from 'lucide-react';
 import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { controlAllManagedServices } from '@/lib/tauri-ipc';
-import { isTauri } from '@/lib/tauri-core';
+import { isTauri, clawbotFetchJson } from '@/lib/tauri-core';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
+
+/* ====== Cookie 状态类型 ====== */
+interface PlatformCookieStatus {
+  has_cookie: boolean;
+  last_modified?: string | null;
+}
+
+interface CookieStatusMap {
+  xianyu?: PlatformCookieStatus;
+  twitter?: PlatformCookieStatus;
+  xiaohongshu?: PlatformCookieStatus;
+  wechat?: PlatformCookieStatus;
+}
 
 /** 在系统默认浏览器中打开 URL（Tauri 用 shell plugin，非 Tauri 用 window.open） */
 async function openExternal(url: string): Promise<void> {
@@ -506,93 +520,8 @@ export function Settings(_props: SettingsProps) {
           </div>
         </motion.div>
 
-        {/* ====== Row 2.6: 账号登录 — 一键打开登录页 (span-8) ====== */}
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-8" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(0,255,170,0.15)' }}>
-                <KeyRound size={20} style={{ color: 'var(--accent-green)' }} />
-              </div>
-              <div>
-                <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {t('settings.accountLoginTitle')}
-                </h2>
-                <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
-                  {t('settings.accountLoginDesc')}
-                </p>
-              </div>
-            </div>
-
-            {/* 主按钮 */}
-            <button
-              onClick={async () => {
-                const urls = [
-                  'https://goofish.com',
-                  'https://x.com/login',
-                  'https://www.xiaohongshu.com',
-                ];
-                for (const url of urls) {
-                  await openExternal(url);
-                }
-                toast.success(t('settings.openedLoginPages'), { channel: 'log' });
-              }}
-              className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer w-full justify-center mb-4"
-              style={{
-                background: 'var(--accent-green)',
-                color: 'var(--bg-primary)',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.opacity = '0.85';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.opacity = '1';
-              }}>
-              <ExternalLink size={16} />
-              {t('settings.openAllLoginPages')}
-            </button>
-
-            {/* 单独平台按钮 */}
-            <div className="flex flex-wrap gap-3 mb-4">
-              {[
-                { name: t('settings.platformXianyu'), url: 'https://goofish.com' },
-                { name: t('settings.platformX'), url: 'https://x.com/login' },
-                { name: t('settings.platformXiaohongshu'), url: 'https://www.xiaohongshu.com' },
-              ].map((platform) => (
-                <button
-                  key={platform.name}
-                  onClick={async () => {
-                    await openExternal(platform.url);
-                    toast.success(`${t('settings.openedPlatformLogin')}: ${platform.name}`, { channel: 'log' });
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
-                  style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--glass-border)',
-                    color: 'var(--text-secondary)',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-cyan)';
-                    (e.currentTarget as HTMLElement).style.color = 'var(--accent-cyan)';
-                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-border)';
-                    (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
-                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)';
-                  }}>
-                  <span className="font-mono text-xs font-medium">{platform.name}</span>
-                  <ExternalLink size={12} />
-                </button>
-              ))}
-            </div>
-
-            {/* 提示信息 */}
-            <p className="font-mono text-[11px] leading-relaxed px-1" style={{ color: 'var(--text-disabled)' }}>
-              {t('settings.loginCookieHint')}
-            </p>
-          </div>
-        </motion.div>
+        {/* ====== Row 2.6: Cookie 同步中心 (span-8) ====== */}
+        <CookieSyncCenter t={t} />
 
         {/* ====== 一键启动/停止所有服务 ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>
@@ -758,5 +687,200 @@ function ResourceBar({
           transition={{ duration: 0.8, ease: 'easeOut' }} />
       </div>
     </div>
+  );
+}
+
+/** 将 last_modified 时间戳转换为相对时间文案 */
+function formatRelativeTime(dateStr: string | null | undefined, t: (key: string) => string): string {
+  if (!dateStr) return t('settings.notConfigured');
+  try {
+    const date = new Date(dateStr);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    if (diffMs < 0) return t('settings.lastSync');
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return t('settings.justSynced');
+    if (diffMin < 60) return `${diffMin}m`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d`;
+  } catch {
+    return dateStr;
+  }
+}
+
+/** Cookie 同步中心 — 独立子组件 */
+function CookieSyncCenter({ t }: { t: (key: string) => string }) {
+  /* 各平台 Cookie 状态 */
+  const [cookieStatus, setCookieStatus] = useState<CookieStatusMap>({});
+  /* 是否正在同步 */
+  const [syncing, setSyncing] = useState(false);
+  /* 是否已完成首次加载 */
+  const [loaded, setLoaded] = useState(false);
+
+  /* 平台定义：id、名称、登录 URL */
+  const PLATFORMS: { id: keyof CookieStatusMap; labelKey: string; url: string }[] = [
+    { id: 'xianyu', labelKey: 'settings.platformXianyu', url: 'https://goofish.com' },
+    { id: 'twitter', labelKey: 'settings.platformX', url: 'https://x.com/login' },
+    { id: 'xiaohongshu', labelKey: 'settings.platformXiaohongshu', url: 'https://www.xiaohongshu.com' },
+    { id: 'wechat', labelKey: 'settings.platformWechat', url: '' },
+  ];
+
+  /* 拉取各平台 Cookie 状态 */
+  const fetchCookieStatus = useCallback(async () => {
+    try {
+      const data = await clawbotFetchJson('/api/v1/cookies/status') as CookieStatusMap;
+      setCookieStatus(data ?? {});
+    } catch (err) {
+      console.warn('[CookieSyncCenter] 获取 Cookie 状态失败:', err);
+      /* 失败时不覆盖已有数据 */
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  /* 首次挂载时拉取一次 */
+  useEffect(() => { fetchCookieStatus(); }, [fetchCookieStatus]);
+
+  /* 一键同步 */
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    try {
+      await clawbotFetchJson('/api/v1/cookies/sync-all', { method: 'POST' });
+      toast.success(t('settings.syncSuccess'), { channel: 'notification' });
+      /* 同步完成后刷新状态 */
+      await fetchCookieStatus();
+    } catch (err) {
+      console.error('[CookieSyncCenter] 同步失败:', err);
+      toast.error(`${t('settings.syncFailed')}: ${err instanceof Error ? err.message : String(err)}`, { channel: 'notification' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <motion.div className="col-span-12 md:col-span-6 lg:col-span-8" variants={cardVariants}>
+      <div className="abyss-card p-6 h-full">
+        {/* 标题栏 */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(255,170,0,0.15)' }}>
+            <Cookie size={20} style={{ color: 'var(--accent-amber)' }} />
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              {t('settings.cookieSyncCenter')}
+            </h2>
+            <p className="font-mono text-[10px] tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+              COOKIE SYNC // MULTI-PLATFORM
+            </p>
+          </div>
+        </div>
+
+        {/* 平台状态网格 — 2×2 */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {PLATFORMS.map((platform) => {
+            const status = cookieStatus[platform.id];
+            const hasCookie = status?.has_cookie ?? false;
+            const lastMod = status?.last_modified ?? null;
+            return (
+              <div key={platform.id}
+                className="p-3 rounded-xl flex items-center gap-3"
+                style={{ background: 'var(--bg-base)' }}>
+                {/* 状态指示灯 */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: hasCookie ? 'var(--accent-green)' : 'var(--accent-red)' }} />
+                  {hasCookie && (
+                    <div className="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping opacity-30"
+                      style={{ background: 'var(--accent-green)' }} />
+                  )}
+                </div>
+                {/* 平台名称 + 时间 */}
+                <div className="flex-1 min-w-0">
+                  <span className="font-mono text-xs font-bold block truncate"
+                    style={{ color: 'var(--text-primary)' }}>
+                    {t(platform.labelKey)}
+                  </span>
+                  <span className="font-mono text-[10px] block truncate"
+                    style={{ color: hasCookie ? 'var(--text-tertiary)' : 'var(--accent-red)' }}>
+                    {loaded
+                      ? (hasCookie
+                          ? (lastMod ? `${t('settings.lastSync')} ${formatRelativeTime(lastMod, t)}` : t('settings.lastSync'))
+                          : t('settings.notConfigured'))
+                      : '...'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 操作按钮行 */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          {/* 一键同步 Cookie 按钮 */}
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer flex-1 justify-center"
+            style={{
+              background: syncing ? 'var(--bg-tertiary)' : 'var(--accent-amber)',
+              color: 'var(--bg-primary)',
+              opacity: syncing ? 0.7 : 1,
+              cursor: syncing ? 'not-allowed' : 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              if (!syncing) (e.currentTarget as HTMLElement).style.opacity = '0.85';
+            }}
+            onMouseLeave={(e) => {
+              if (!syncing) (e.currentTarget as HTMLElement).style.opacity = '1';
+            }}>
+            {syncing
+              ? <Loader2 size={16} className="animate-spin" />
+              : <RefreshCw size={16} />}
+            {syncing ? t('settings.syncing') : t('settings.syncAllCookies')}
+          </button>
+
+          {/* 打开登录页按钮（保持原有功能作为后备） */}
+          <button
+            onClick={async () => {
+              const urls = [
+                'https://goofish.com',
+                'https://x.com/login',
+                'https://www.xiaohongshu.com',
+              ];
+              for (const url of urls) {
+                await openExternal(url);
+              }
+              toast.success(t('settings.openedLoginPages'), { channel: 'log' });
+            }}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl font-mono text-xs font-medium transition-all cursor-pointer"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--glass-border)',
+              color: 'var(--text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-cyan)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--accent-cyan)';
+              (e.currentTarget as HTMLElement).style.background = 'var(--bg-card-hover)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-border)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+              (e.currentTarget as HTMLElement).style.background = 'var(--bg-card)';
+            }}>
+            <ExternalLink size={14} />
+            {t('settings.openLoginPages')}
+          </button>
+        </div>
+
+        {/* 提示信息 */}
+        <p className="font-mono text-[11px] leading-relaxed px-1" style={{ color: 'var(--text-disabled)' }}>
+          {t('settings.loginCookieHint')}
+        </p>
+      </div>
+    </motion.div>
   );
 }

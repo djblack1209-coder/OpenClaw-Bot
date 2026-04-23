@@ -1468,6 +1468,18 @@ export const zhCN: Record<string, string> = {
   'settings.platformX': 'X / Twitter',
   'settings.platformXiaohongshu': '小红书',
 
+  // Cookie 同步中心
+  'settings.cookieSyncCenter': 'Cookie 同步中心',
+  'settings.syncAllCookies': '一键同步 Cookie',
+  'settings.syncing': '同步中...',
+  'settings.syncSuccess': 'Cookie 同步成功',
+  'settings.syncFailed': 'Cookie 同步失败',
+  'settings.lastSync': '已同步',
+  'settings.notConfigured': '未配置',
+  'settings.openLoginPages': '打开登录页',
+  'settings.platformWechat': '微信',
+  'settings.justSynced': '刚刚',
+
   // Sidebar 补全
   'sidebar.statusOnline': '在线',
   'sidebar.statusOffline': '离线',
