@@ -136,17 +136,8 @@ export function HomeDashboard() {
     return () => clearTimeout(safetyTimer);
   }, [loading]);
 
-  /* 初次加载时显示 loading 状态，防止数据全为零时闪烁 */
-  if (loading && !lastUpdated) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
-        <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
-          {t('home.loading') || '加载中...'}
-        </span>
-      </div>
-    );
-  }
+  /* loading 状态标记（不在这里 return，避免违反 React hooks 规则） */
+  const showLoadingOverlay = loading && !lastUpdated;
 
   /* WebSocket 实时日志推送 */
   useClawbotWS('notification', useCallback((event) => {
@@ -283,6 +274,15 @@ export function HomeDashboard() {
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
+      {/* 首次加载 loading 遮罩（不用早返回，避免 hooks 顺序问题） */}
+      {showLoadingOverlay && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
+          <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
+          <span className="ml-3 font-mono text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            {t('home.loading') || '加载中...'}
+          </span>
+        </div>
+      )}
       {/* 后端不可达时显示连接状态提示条 */}
       {apiReachable === false && (
         <div className="mx-4 mt-4 mb-0 px-4 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.2)' }}>
