@@ -269,5 +269,16 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
         return result[:3] if result else []
 
     except Exception as e:
-        logger.debug("[DailyBrief] 今日建议 LLM 调用失败: %s", e)
-        return []
+        logger.warning("[DailyBrief] 今日建议 LLM 调用失败: %s", e)
+        # 降级模板：基于已有数据生成基础建议，不让整个 section 消失
+        fallback = []
+        if sections_data:
+            if sections_data.get("xianyu_consultations", 0) > 0:
+                fallback.append(f"闲鱼今日{sections_data['xianyu_consultations']}条咨询，留意高频问题优化话术")
+            if sections_data.get("positions_count", 0) > 0:
+                fallback.append("检查持仓止损位是否需要调整")
+            if sections_data.get("social_posts", 0) > 0:
+                fallback.append("查看社媒互动数据，关注高互动内容类型")
+        if not fallback:
+            fallback.append("今日数据较少，建议关注核心业务指标")
+        return fallback[:3]
