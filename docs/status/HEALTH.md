@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-23 (全量系统审计 R1~R6 完成，Python 3.9 兼容性全修，Tauri 构建通过)
+> 最后更新: 2026-04-23 (全量系统审计 R1~R7 完成，日报质量+微信推送+CI 修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -157,6 +157,9 @@
 | HI-746 | `frontend` | Bots | 🟡 ✅已修 社媒下次发布时间字段名 next_publish_time → 加 next_time 回退 | 2026-04-22 |
 | HI-747 | `frontend` | Bots | 🟡 ✅已修 调度器状态字段 running → 加 scheduler_running 回退 | 2026-04-22 |
 | HI-748 | `frontend` | Home | 🟠 ✅已修 首页闲鱼卡片导航到 bots 而非 xianyu | 2026-04-22 |
+| HI-760 | `backend` | `daily_brief_llm.py` | 🔴 ✅已修 日报 LLM 输出含 `<think>` 推理标签，直接暴露给用户 → 添加 `_strip_think_tags()` 清理 | 2026-04-23 |
+| HI-761 | `backend` | `multi_main.py` | 🔴 ✅已修 微信不收日报 — `_notify_telegram` 只走 Telegram，绕过 WeChat 通道 → 末尾添加 `send_to_wechat` 同步推送 | 2026-04-23 |
+| HI-762 | `backend` | 5 files | 🟡 ✅已修 CI Ruff lint 失败 — 9 个 F401 未使用 import → `ruff --fix` 自动清理 | 2026-04-23 |
 | HI-749 | `frontend` | Home | 🟡 ✅已修 首次加载无 spinner → 加 Loader2 防闪零 | 2026-04-22 |
 | HI-750 | `frontend` | Dashboard | 🟡 ✅已修 quickStats 3/4 指标永远 '--' → 替换为 CPU/内存真实数据 + 加手动刷新按钮 | 2026-04-22 |
 | HI-751 | `backend` | rpc.py | 🟠 ✅已修 /api/v1/status xianyu 子对象仅含 online+service → 补 auto_reply_active/cookie_ok/conversations_today/unread_chats | 2026-04-22 |
