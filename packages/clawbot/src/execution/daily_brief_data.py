@@ -324,7 +324,7 @@ async def _brief_quick_ref(sections: list) -> None:
 
 
 async def _brief_positions(sections: list) -> None:
-    """section 1: 持仓概览"""
+    """section 1: 持仓概览 — 无持仓时不显示（减少空白噪音）"""
     try:
         from src.position_monitor import position_monitor
 
@@ -349,17 +349,13 @@ async def _brief_positions(sections: list) -> None:
             if status.get("recent_exits", 0) > 0:
                 items.append(f"最近自动平仓: {status['recent_exits']} 笔")
             sections.append(_section("💼 持仓概览", items))
-        else:
-            # 持仓数据为空，显示引导占位
-            sections.append(_section("💼 持仓概览", ["暂无持仓数据", "💡 说「帮我投资 AAPL」开始你的第一笔交易"]))
+        # 无持仓时不显示，避免日报充斥空白占位
     except Exception as e:
         logger.debug("[DailyBrief] positions: %s", e)
-        # 获取持仓数据异常，显示引导占位
-        sections.append(_section("💼 持仓概览", ["暂无持仓数据", "💡 说「帮我投资 AAPL」开始你的第一笔交易"]))
 
 
 async def _brief_trading(sections: list) -> None:
-    """section 2: 交易绩效 + 今日交易"""
+    """section 2: 交易绩效 + 今日交易 — 无交易时不显示"""
     try:
         from src.trading_journal import journal
 
@@ -374,9 +370,6 @@ async def _brief_trading(sections: list) -> None:
                 if perf.get("expectancy"):
                     items.append(f"期望值: ${perf['expectancy']:+.2f}/笔")
                 sections.append(_section("📊 7日交易绩效", items))
-            else:
-                # 无交易记录，显示引导占位
-                sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
 
             # 今日 P&L
             today_pnl = journal.get_today_pnl()
@@ -389,13 +382,9 @@ async def _brief_trading(sections: list) -> None:
                 if today_pnl.get("hit_limit"):
                     items.append("⚠️ 已触及日亏损限额")
                 sections.append(_section("📅 今日交易", items))
-        else:
-            # journal 模块未初始化，显示引导占位
-            sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
+        # 无交易数据时不显示
     except Exception as e:
         logger.debug("[DailyBrief] journal: %s", e)
-        # 获取交易数据异常，显示引导占位
-        sections.append(_section("📊 交易绩效", ["暂无交易记录", "💡 说「自动交易」让AI帮你寻找机会"]))
 
 
 async def _brief_targets(sections: list) -> None:
@@ -518,13 +507,9 @@ async def _brief_watchlist(sections: list, *, monitors=None) -> None:
                     items.append(f"{emoji} {sym}: ${price:,.2f} ({change:+.2f}%)")
                 if items:
                     sections.append(_section("👀 关注股票隔夜变动", items))
-        else:
-            # 无自选股，显示引导占位
-            sections.append(_section("👀 关注股票", ["暂无自选股", "💡 说「关注 TSLA」添加你感兴趣的股票"]))
+        # 无自选股时不显示
     except Exception as e:
         logger.debug("[DailyBrief] watchlist: %s", e)
-        # 获取关注股票数据异常，显示引导占位
-        sections.append(_section("👀 关注股票", ["暂无自选股", "💡 说「关注 TSLA」添加你感兴趣的股票"]))
 
 
 async def _brief_market(sections: list) -> None:
@@ -617,17 +602,15 @@ async def _brief_news(sections: list) -> None:
 
 
 async def _brief_social_ops(sections: list) -> None:
-    """section 8: 社媒运营状态"""
-    _fallback = _section("📱 社媒运营", ["自动驾驶未启动", "💡 说「社媒计划」开始自动发文"])
+    """section 8: 社媒运营状态 — 未启动时不显示"""
     try:
         from src.social_scheduler import social_autopilot
 
         if social_autopilot:
             status = social_autopilot.status()
-            if status:
+            if status and status.get("running"):
                 items = []
-                running = "运行中" if status.get("running") else "已停止"
-                items.append(f"自动驾驶: {running}")
+                items.append("自动驾驶: 运行中")
                 if status.get("posts_today", 0) > 0:
                     items.append(f"今日已发: {status['posts_today']} 篇")
                 if status.get("draft_count", 0) > 0:
@@ -637,13 +620,9 @@ async def _brief_social_ops(sections: list) -> None:
                     next_time = status.get("next_time", "")
                     items.append(f"下一动作: {next_action} ({next_time})")
                 sections.append(_section("📱 社媒运营", items))
-            else:
-                sections.append(_fallback)
-        else:
-            sections.append(_fallback)
+        # 自动驾驶未启动时不显示
     except Exception as e:
         logger.debug("[DailyBrief] social: %s", e)
-        sections.append(_fallback)
 
 
 async def _brief_ops_status(sections: list, *, monitors=None, db_path=None) -> None:
@@ -690,8 +669,7 @@ async def _brief_api_cost(sections: list) -> None:
 
 
 async def _brief_xianyu(sections: list) -> None:
-    """section 11: 闲鱼运营"""
-    _fallback = _section("🐟 闲鱼运营", ["暂无闲鱼数据", "💡 说「闲鱼」查看闲鱼客服状态"])
+    """section 11: 闲鱼运营 — 无数据时不显示"""
     try:
         from src.xianyu.xianyu_context import XianyuContextManager
 
@@ -719,8 +697,7 @@ async def _brief_xianyu(sections: list) -> None:
                 logger.warning("闲鱼利润数据获取失败: %s", e)
             if xlines:
                 sections.append(_section("🐟 闲鱼运营", xlines))
-            else:
-                sections.append(_fallback)
+            # 无有效数据行时不显示
             # 今日热销 Top3
             try:
                 top3 = xctx.get_item_rankings(days=1, limit=3)
@@ -735,10 +712,9 @@ async def _brief_xianyu(sections: list) -> None:
             except Exception as e:
                 logger.debug("闲鱼热销获取异常: %s", e)
         else:
-            sections.append(_fallback)
+            pass  # 无闲鱼数据时不显示
     except Exception as e:
         logger.debug("日报段落生成异常: %s", e)
-        sections.append(_fallback)
 
 
 async def _brief_engagement(sections: list, *, db_path=None) -> None:
