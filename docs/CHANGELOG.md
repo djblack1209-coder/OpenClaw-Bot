@@ -55,6 +55,12 @@
 - `packages/clawbot/src/api/routers/system.py` — 通知并发安全
 - `packages/clawbot/src/api/routers/__init__.py` / `server.py` — 路由注册
 
+**R3: 跨端一致性审计 + 收尾**
+- api.ts: 补全 store/social/xianyu 5 个缺失 API 封装函数
+- session_tracker.py: API 端口从硬编码 18790 改为环境变量
+- COMMAND_REGISTRY.md: 总数修正 100→102，补登 3 个漏记命令
+- 跨端对比完成：Bot 102 个命令 vs 桌面端 30 个页面，核心功能对齐
+
 ## 2026-04-23 — Sprint 5 终极收官 + 冗余清理
 > 领域: `backend` `frontend` `infra` `social` `xianyu` `docs`
 > 影响模块: 全平台
