@@ -39,6 +39,7 @@ from .routers import (
     router_cli,
     router_monitor,
     router_wechat,
+    router_cookies,
 )
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,7 @@ class APIServer:
         self.app.include_router(router_cli, prefix="/api/v1", tags=["CLI"])
         self.app.include_router(router_monitor, prefix="/api/v1", tags=["WorldMonitor"])
         self.app.include_router(router_wechat, prefix="/api/v1", tags=["WeChat"])
+        self.app.include_router(router_cookies, prefix="/api/v1", tags=["Cookies"])
 
     def start(self):
         """Start uvicorn in a daemon thread"""
