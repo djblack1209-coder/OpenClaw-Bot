@@ -423,23 +423,24 @@ async def _handle_command(client: httpx.AsyncClient, text: str) -> str | None:
         # 持仓/投资组合类指令
         if cmd in ("持仓", "仓位", "portfolio", "/portfolio", "ipositions", "/ipositions"):
             resp = await client.get(
-                f"{backend}/api/v1/portfolio/positions",
+                f"{backend}/api/v1/trading/positions",
                 headers=headers, timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()
-                positions = data if isinstance(data, list) else data.get("positions", [])
+                positions = data.get("positions", []) if isinstance(data, dict) else data
                 if not positions:
                     return "💼 当前无持仓"
                 lines = ["💼 持仓概览\n"]
                 total_pnl = 0
                 for p in positions[:10]:
                     sym = p.get("symbol", "?")
-                    qty = p.get("quantity", p.get("position", 0))
-                    pnl = p.get("unrealized_pnl", p.get("pnl", 0))
+                    qty = p.get("quantity", 0)
+                    cur = p.get("current_price", 0)
+                    pnl = p.get("unrealized_pnl", 0)
                     total_pnl += pnl
                     pnl_icon = "📈" if pnl >= 0 else "📉"
-                    lines.append(f"{pnl_icon} {sym}: {qty}股 ${pnl:+.2f}")
+                    lines.append(f"{pnl_icon} {sym}: {qty:.0f}股 现价${cur:.2f} 浮盈${pnl:+.2f}")
                 lines.append(f"\n总浮盈亏: ${total_pnl:+.2f}")
                 return "\n".join(lines)
 
@@ -451,16 +452,17 @@ async def _handle_command(client: httpx.AsyncClient, text: str) -> str | None:
             )
             if resp.status_code == 200:
                 data = resp.json()
-                quotes = data if isinstance(data, list) else data.get("quotes", [])
-                if not quotes:
-                    return "💹 行情数据暂不可用"
                 lines = ["💹 市场行情\n"]
-                for q in quotes[:8]:
-                    name = q.get("name", q.get("symbol", "?"))
-                    price = q.get("price", 0)
-                    change = q.get("change_pct", q.get("change_percent", 0))
-                    icon = "🟢" if change >= 0 else "🔴"
-                    lines.append(f"{icon} {name}: {price:.2f} ({change:+.2f}%)")
+                # 指数
+                for q in data.get("indices", [])[:5]:
+                    icon = "🟢" if q.get("change_pct", 0) >= 0 else "🔴"
+                    lines.append(f"{icon} {q.get('name', '?')}: {q.get('price', 0):,.2f} ({q.get('change_pct', 0):+.2f}%)")
+                # 加密货币
+                for q in data.get("crypto", [])[:3]:
+                    icon = "🟢" if q.get("change_pct", 0) >= 0 else "🔴"
+                    lines.append(f"{icon} {q.get('name', '?')}: ${q.get('price', 0):,.0f} ({q.get('change_pct', 0):+.2f}%)")
+                if len(lines) <= 1:
+                    return "💹 行情数据暂不可用"
                 return "\n".join(lines)
 
         # 性能/延迟类指令
