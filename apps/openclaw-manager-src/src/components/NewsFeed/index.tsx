@@ -109,28 +109,31 @@ function mapCategory(cat: string): NewsCategory {
   return 'ALL';
 }
 
-/* ====== 分类中文标签映射 ====== */
-const CATEGORY_LABELS: Record<NewsCategory, string> = {
-  ALL: '全部',
-  FINANCE: '财经',
-  TECH: '科技',
-  GEOPOLITICS: '地缘政治',
-  CRYPTO: '加密货币',
-  MILITARY: '军事',
-  ENERGY: '能源',
-};
+/* ====== 分类标签映射（国际化） ====== */
+function getCategoryLabel(cat: string, t: (k: string) => string): string {
+  const map: Record<string, string> = {
+    ALL: t('newsFeed.catAll'),
+    FINANCE: t('newsFeed.catFinance'),
+    TECH: t('newsFeed.catTech'),
+    GEOPOLITICS: t('newsFeed.catGeopolitics'),
+    CRYPTO: t('newsFeed.catCrypto'),
+    MILITARY: t('newsFeed.catMilitary'),
+    ENERGY: t('newsFeed.catEnergy'),
+  };
+  return map[cat] || cat;
+}
 
-/** 把 ISO 时间转为中文相对时间 */
-function timeAgo(isoStr: string): string {
+/** 把 ISO 时间转为国际化相对时间 */
+function timeAgo(isoStr: string, t: (k: string) => string): string {
   try {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return `${mins} 分钟前`;
+    if (mins < 1) return t('newsFeed.timeJustNow');
+    if (mins < 60) return `${mins} ${t('newsFeed.timeMinutesAgo')}`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} 小时前`;
+    if (hrs < 24) return `${hrs} ${t('newsFeed.timeHoursAgo')}`;
     const days = Math.floor(hrs / 24);
-    return `${days} 天前`;
+    return `${days} ${t('newsFeed.timeDaysAgo')}`;
   } catch {
     return '—';
   }
@@ -240,7 +243,7 @@ export function NewsFeed() {
         title: decodeHtmlEntities(item.title ?? ''),
         url: item.url ?? '',
         summary: decodeHtmlEntities(item.summary ?? ''),
-        timeAgo: timeAgo(item.published_at),
+        timeAgo: timeAgo(item.published_at, t),
         category: mapCategory(item.category ?? ''),
         threatLevel: item.threat_level ?? 'low',
       }));
@@ -449,8 +452,8 @@ export function NewsFeed() {
                       color: isActive ? color : 'var(--text-tertiary)',
                     }}
                   >
-                    {/* 分类按钮显示中文标签 */}
-                    {CATEGORY_LABELS[cat] ?? cat}
+                    {/* 分类按钮显示国际化标签 */}
+                    {getCategoryLabel(cat, t)}
                   </button>
                 );
               })}
@@ -516,8 +519,8 @@ export function NewsFeed() {
                         border: `1px solid ${CATEGORY_COLORS[item.category]}30`,
                       }}
                     >
-                      {/* 新闻条目分类标签显示中文 */}
-                      {CATEGORY_LABELS[item.category] ?? item.category}
+                      {/* 新闻条目分类标签显示国际化 */}
+                      {getCategoryLabel(item.category, t)}
                     </span>
                   </div>
                 </motion.div>
@@ -622,7 +625,7 @@ export function NewsFeed() {
                 {t('newsFeed.trendingTopics')}
               </span>
               <div className="space-y-2">
-                {trending.map((t, i) => (
+                {trending.map((trend, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between p-2 rounded-lg"
@@ -637,14 +640,14 @@ export function NewsFeed() {
                         className="font-mono text-xs"
                         style={{ color: 'var(--text-secondary)' }}
                       >
-                        {t.topic}
+                        {trend.topic}
                       </span>
                     </div>
                     <span
                       className="font-mono text-[10px] font-semibold"
                       style={{ color: 'var(--accent-green)' }}
                     >
-                      {t.delta}
+                      {trend.delta}
                     </span>
                   </div>
                 ))}
@@ -756,8 +759,8 @@ export function NewsFeed() {
                       className="font-mono text-xs"
                       style={{ color: 'var(--text-secondary)' }}
                     >
-                      {/* 分类统计显示中文标签 */}
-                      {CATEGORY_LABELS[cat.name as NewsCategory] ?? cat.name}
+                      {/* 分类统计显示国际化标签 */}
+                      {getCategoryLabel(cat.name, t)}
                     </span>
                     <span
                       className="font-mono text-[10px] font-semibold"
