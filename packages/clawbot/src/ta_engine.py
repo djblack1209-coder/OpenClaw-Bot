@@ -424,25 +424,10 @@ def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") 
         change = price - prev_close
         change_pct = (change / prev_close * 100) if prev_close else 0
 
-        # ticker.info (仅 yfinance 有效，其他市场跳过)
+        # ticker.info — 性能优化: 跳过额外的 HTTP 请求获取 shortName
+        # 在全市场扫描时这会为每个 symbol 多一次 HTTP 调用，触发 yfinance 限速
+        # shortName 仅用于展示，不影响交易决策，直接用 symbol 代替
         name = symbol
-        try:
-            from src.data_providers import detect_market, Market
-            market = detect_market(symbol)
-            if market == Market.US:
-                import yfinance as yf
-                info = yf.Ticker(symbol).info
-                name = info.get('shortName', symbol)
-        except ImportError:
-            # 无 data_providers，直接用 yfinance
-            try:
-                import yfinance as yf
-                info = yf.Ticker(symbol).info
-                name = info.get('shortName', symbol)
-            except Exception as _info_err:
-                logger.warning("[TA] %s ticker.info 获取失败(不影响分析): %s", symbol, _info_err)
-        except Exception as _info_err:
-            logger.warning("[TA] %s ticker.info 获取失败(不影响分析): %s", symbol, _info_err)
 
         return {
             "symbol": symbol.upper(),
