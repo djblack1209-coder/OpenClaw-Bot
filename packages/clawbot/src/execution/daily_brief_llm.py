@@ -44,8 +44,9 @@ async def _analyze_news_with_llm(headlines: List[str], holdings: List[str]) -> L
             f"以下是今日科技新闻标题:\n{news_text}\n\n"
             f"请用中文，每条新闻一句话分析（15字以内），"
             f"标注对用户持仓的影响（利好/利空/中性）。"
-            f"如果没有直接影响就不标注。总共不超过100字。"
+            f"如果没有直接影响就标注中性。总共不超过100字。"
             f"格式: 每行一条，用 • 开头，影响用 → 标注。"
+            f"直接输出分析结果，不要有推理过程或解释。"
         )
 
         resp = await free_pool.acompletion(
@@ -135,9 +136,11 @@ async def _generate_executive_summary(sections_data: dict) -> str:
         prompt = (
             f"你是一位私人财务管家。以下是用户今日的关键数据:\n"
             f"{metrics_text}{delta_text}\n\n"
-            f"请用中文写 2 句话总结今天的整体状况。"
-            f"第一句概括全局（好/坏/平稳），第二句点出最值得关注的一件事。"
-            f"语气亲切简洁，不超过 80 字。不要加标题或 emoji。"
+            f"请用中文写 2 句话总结今天的整体状况。\n"
+            f"第一句概括全局（好/坏/平稳），第二句点出最值得关注的一件事。\n"
+            f"必须引用具体数字（如「市场情绪46偏恐惧」而非「市场情绪谨慎」）。\n"
+            f"语气亲切简洁，不超过 80 字。不要加标题、emoji、推理过程。\n"
+            f"直接输出 2 句话，不要有任何前缀或解释。"
         )
 
         resp = await free_pool.acompletion(
@@ -235,8 +238,10 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
             f"请给出恰好 3 条今日可操作建议。要求:\n"
             f"1. 每条建议必须引用具体数据（如「闲鱼咨询 15 条但下单仅 2 笔，建议优化话术」）\n"
             f"2. 建议要具体可执行，不要空泛（如「注意市场风险」这种无用建议）\n"
-            f"3. 用中文，每条一行，用 1. 2. 3. 编号，每条不超过 30 字\n"
+            f"3. 用中文，每条一行，每条不超过 30 字\n"
             f"4. 涵盖不同领域（投资/电商/运营中选 2-3 个有数据的领域）\n"
+            f"5. 没有数据支撑的领域不要硬凑建议\n"
+            f"直接输出 3 条建议，不要有推理过程、前缀或解释。"
         )
 
         resp = await free_pool.acompletion(

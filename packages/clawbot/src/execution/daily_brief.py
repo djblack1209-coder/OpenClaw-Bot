@@ -65,25 +65,47 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     sections: List[Tuple[str, List[str]]] = []
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # ── 依次采集各 section（每个子函数内部 try/except，互不影响）──
-    await _brief_agenda(sections, db_path=db_path)
+    # ── 价值位阶排序: 行动建议 > 异常检测 > 资产状况 > 运营数据 > 信息参考 ──
+
+    # 第一层: 快速参考（天气/汇率 — 每天都有用）
     await _brief_quick_ref(sections)
+
+    # 第二层: 资产状况（有数据才显示）
     await _brief_positions(sections)
     await _brief_trading(sections)
+    await _brief_watchlist(sections, monitors=monitors)
+
+    # 第三层: 市场（每天有数据）
+    await _brief_market(sections)
+    await _brief_sentiment(sections)
+
+    # 第四层: 运营数据（社媒+闲鱼合并展示）
+    social_sections: List[Tuple[str, List[str]]] = []
+    await _brief_social_ops(social_sections)
+    await _brief_engagement(social_sections, db_path=db_path)
+    await _brief_followers(social_sections)
+    # 合并社媒数据为一个 section（避免碎片化）
+    if social_sections:
+        merged_items = []
+        for _, items in social_sections:
+            merged_items.extend(items)
+        sections.append(_section("📱 社媒", merged_items))
+
+    await _brief_xianyu(sections)
+
+    # 第五层: 信息参考
+    await _brief_news(sections)
+    await _brief_trending(sections)
+
+    # 第六层: 日程/待办/提醒（有才显示）
+    await _brief_agenda(sections, db_path=db_path)
     await _brief_targets(sections)
     await _brief_todos(sections, db_path=db_path)
     await _brief_reminders(sections, db_path=db_path)
-    await _brief_watchlist(sections, monitors=monitors)
-    await _brief_market(sections)
-    await _brief_sentiment(sections)
-    await _brief_news(sections)
-    await _brief_social_ops(sections)
+
+    # 第七层: 系统运维（运营者关注）
     await _brief_ops_status(sections, monitors=monitors, db_path=db_path)
     await _brief_api_cost(sections)
-    await _brief_xianyu(sections)
-    await _brief_engagement(sections, db_path=db_path)
-    await _brief_followers(sections)
-    await _brief_trending(sections)
 
     # ── 收集关键指标 + 昨日对比（用于执行摘要和智能建议）──
     sections_data = await _collect_brief_metrics(db_path=db_path)
