@@ -786,6 +786,13 @@ async def main():
                     await app.bot.send_message(chat_id=_private_notify_chat_id, text=text)
             except Exception as e:
                 logger.error("[ExecutionHub] 私聊通知发送失败: %s", e)
+        # 微信镜像推送 — 定时推送（晨报/周报/闲鱼/预算等）也要到达微信
+        try:
+            from src.wechat_bridge import send_to_wechat
+            _t = asyncio.create_task(send_to_wechat(text))
+            _t.add_done_callback(_task_done_cb("WeChat_Private"))
+        except Exception as e:
+            logger.warning("[WeChat] 私聊镜像推送失败: %s", e)
 
     # 给 AutoRecovery 设置通知函数 — 崩溃/恢复时主动推送 Telegram 通知
     if auto_recovery and bots:

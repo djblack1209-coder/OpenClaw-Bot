@@ -359,6 +359,165 @@ async def _direct_llm_reply(text: str) -> str:
     return "⚠️ AI 服务暂时不可用。"
 
 
+# ── 微信命令路由 — 核心指令直接调后端 API ──────────────
+
+
+async def _handle_command(client: httpx.AsyncClient, text: str) -> str | None:
+    """识别微信端核心指令，直接调后端 API 返回结构化数据。
+
+    返回 None 表示不是命令，走普通 LLM 聊天。
+    返回字符串表示已处理，直接发回微信。
+    """
+    # 去空白和标点
+    cmd = text.strip().lower().replace("？", "").replace("?", "").replace("！", "").replace("!", "")
+
+    backend = BACKEND_URL
+    if not backend:
+        return None
+
+    headers = {"Content-Type": "application/json"}
+    if BACKEND_API_TOKEN:
+        headers["X-API-Token"] = BACKEND_API_TOKEN
+
+    try:
+        # 日报类指令
+        if cmd in ("日报", "简报", "今日简报", "brief", "/brief"):
+            resp = await client.get(
+                f"{backend}/api/v1/system/daily-brief",
+                headers=headers, timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                # 从 JSON 构建简洁文本摘要
+                lines = ["📊 今日简报\n"]
+                if data.get("cpu_percent") is not None:
+                    lines.append(f"CPU: {data['cpu_percent']:.0f}% | 内存: {data.get('memory_percent', 0):.0f}%")
+                if data.get("bots_online") is not None:
+                    lines.append(f"Bot: {data.get('bots_online', 0)}/{data.get('bots_total', 0)} 在线")
+                if data.get("today_messages") is not None:
+                    lines.append(f"今日消息: {data['today_messages']}")
+                return "\n".join(lines) if len(lines) > 1 else None
+
+        # 系统状态类指令
+        if cmd in ("状态", "系统状态", "status", "/status"):
+            resp = await client.get(
+                f"{backend}/api/v1/status",
+                headers=headers, timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                bots = data.get("bots", [])
+                alive = sum(1 for b in bots if b.get("alive"))
+                uptime_h = data.get("uptime_seconds", 0) / 3600
+                xianyu = data.get("xianyu", {})
+                lines = [
+                    "🖥 系统状态\n",
+                    f"运行时间: {uptime_h:.1f} 小时",
+                    f"Bot: {alive}/{len(bots)} 在线",
+                    f"闲鱼: {'✅ 在线' if xianyu.get('online') else '❌ 离线'}",
+                ]
+                if xianyu.get("auto_reply_active"):
+                    lines.append(f"自动回复: ✅ | 今日咨询: {xianyu.get('conversations_today', 0)}")
+                return "\n".join(lines)
+
+        # 持仓/投资组合类指令
+        if cmd in ("持仓", "仓位", "portfolio", "/portfolio", "ipositions", "/ipositions"):
+            resp = await client.get(
+                f"{backend}/api/v1/portfolio/positions",
+                headers=headers, timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                positions = data if isinstance(data, list) else data.get("positions", [])
+                if not positions:
+                    return "💼 当前无持仓"
+                lines = ["💼 持仓概览\n"]
+                total_pnl = 0
+                for p in positions[:10]:
+                    sym = p.get("symbol", "?")
+                    qty = p.get("quantity", p.get("position", 0))
+                    pnl = p.get("unrealized_pnl", p.get("pnl", 0))
+                    total_pnl += pnl
+                    pnl_icon = "📈" if pnl >= 0 else "📉"
+                    lines.append(f"{pnl_icon} {sym}: {qty}股 ${pnl:+.2f}")
+                lines.append(f"\n总浮盈亏: ${total_pnl:+.2f}")
+                return "\n".join(lines)
+
+        # 行情类指令
+        if cmd in ("行情", "market", "/market", "大盘"):
+            resp = await client.get(
+                f"{backend}/api/v1/monitor/finance",
+                headers=headers, timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                quotes = data if isinstance(data, list) else data.get("quotes", [])
+                if not quotes:
+                    return "💹 行情数据暂不可用"
+                lines = ["💹 市场行情\n"]
+                for q in quotes[:8]:
+                    name = q.get("name", q.get("symbol", "?"))
+                    price = q.get("price", 0)
+                    change = q.get("change_pct", q.get("change_percent", 0))
+                    icon = "🟢" if change >= 0 else "🔴"
+                    lines.append(f"{icon} {name}: {price:.2f} ({change:+.2f}%)")
+                return "\n".join(lines)
+
+        # 性能/延迟类指令
+        if cmd in ("性能", "perf", "/perf", "延迟"):
+            resp = await client.get(
+                f"{backend}/api/v1/perf",
+                headers=headers, timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                lines = [
+                    "⚡ 性能指标\n",
+                    f"CPU: {data.get('cpu_percent', 0):.0f}% | 内存: {data.get('memory_percent', 0):.0f}%",
+                ]
+                for m in data.get("latency_metrics", [])[:3]:
+                    lines.append(f"{m['name']}: avg {m['avg']:.1f}s p95 {m['p95']:.1f}s ({m['count']}次)")
+                return "\n".join(lines)
+
+        # 闲鱼类指令
+        if cmd in ("闲鱼", "xianyu", "/xianyu", "闲鱼状态"):
+            resp = await client.get(
+                f"{backend}/api/v1/status",
+                headers=headers, timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                xy = data.get("xianyu", {})
+                lines = [
+                    "🐟 闲鱼状态\n",
+                    f"在线: {'✅' if xy.get('online') else '❌'}",
+                    f"自动回复: {'✅' if xy.get('auto_reply_active') else '❌'}",
+                    f"Cookie: {'✅' if xy.get('cookie_ok') else '⚠️ 需刷新'}",
+                    f"今日咨询: {xy.get('conversations_today', 0)}",
+                ]
+                return "\n".join(lines)
+
+        # 帮助指令
+        if cmd in ("帮助", "help", "/help", "指令", "命令"):
+            return (
+                "📱 微信可用指令\n\n"
+                "日报 — 查看今日简报\n"
+                "状态 — 系统运行状态\n"
+                "持仓 — 查看投资持仓\n"
+                "行情 — 市场行情\n"
+                "性能 — 系统性能指标\n"
+                "闲鱼 — 闲鱼客服状态\n"
+                "帮助 — 查看本列表\n\n"
+                "其他消息 → AI 对话"
+            )
+
+    except Exception as e:
+        logger.warning("[WeChat命令] %s 执行失败: %s", cmd, e)
+        return None
+
+    return None  # 不是已知命令，走 LLM 聊天
+
+
 # ── 主循环 ────────────────────────────────────────────
 
 
@@ -455,8 +614,11 @@ async def main():
 
                     logger.info("📩 来自 %s...: %s", from_user[:15], text[:50])
 
-                    # 获取 AI 回复
-                    reply = await _forward_to_backend(client, from_user, text)
+                    # 优先走命令路由（日报/持仓/行情/状态等核心指令）
+                    reply = await _handle_command(client, text)
+                    if reply is None:
+                        # 不是命令，走 LLM 聊天
+                        reply = await _forward_to_backend(client, from_user, text)
 
                     # 发回微信
                     ctx = _context_tokens.get(from_user, ctx_token)

@@ -13,14 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 async def _send_proactive(user_id: str, text: str):
-    """通过 Telegram 发送主动通知。"""
+    """通过 Telegram + 微信发送主动通知。"""
     try:
         from src.bot.globals import bot_registry
         bots = bot_registry
         if not bots:
             return
 
-        # 用第一个可用 bot 发送
+        # 用第一个可用 bot 发送 Telegram
         bot = next(iter(bots.values()), None)
         if bot and hasattr(bot, "application"):
             admin_chat_id = int(user_id) if user_id.isdigit() else None
@@ -31,6 +31,14 @@ async def _send_proactive(user_id: str, text: str):
                 )
     except Exception as e:
         logger.debug(f"主动通知发送失败: {e}")
+
+    # 微信镜像推送 — 异动告警/交易跟踪/闲鱼订单等主动通知也要到达微信
+    try:
+        import asyncio
+        from src.wechat_bridge import send_to_wechat
+        asyncio.create_task(send_to_wechat(f"💡 {text}"))
+    except Exception as e:
+        logger.debug("[WeChat] 主动通知镜像失败: %s", e)
 
 
 async def _send_proactive_photo(user_id: str, photo_bytes: bytes, caption: str):
