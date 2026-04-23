@@ -471,7 +471,12 @@ export function Social() {
 
             <div className="space-y-2">
               {topics.length === 0 && (
-                <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noTopics')}</span>
+                <div className="flex flex-col gap-1.5 py-2">
+                  <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>{t('social.noTopics')}</span>
+                  <span className="font-mono text-[10px] leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
+                    {t('social.noTopicsHint')}
+                  </span>
+                </div>
               )}
               {topics.slice(0, 6).map((topic, i) => (
                 <div key={topic.id ?? i} className="flex items-center gap-3 px-3 py-2 rounded-xl"
