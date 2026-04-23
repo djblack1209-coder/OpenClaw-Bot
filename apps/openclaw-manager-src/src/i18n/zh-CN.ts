@@ -1402,6 +1402,7 @@ export const zhCN: Record<string, string> = {
   'bots.statusActive': '运行中',
   'bots.statusIdle': '待机',
   'bots.dataRefreshed': '数据已刷新',
+  'bots.serviceNeedsManualStart': '该服务需要手动启动',
 
   // Settings 补全
   'settings.accountTitle': '账户信息 // ACCOUNT',
@@ -1746,6 +1747,14 @@ export const zhCN: Record<string, string> = {
   'social.platformStatus': '平台状态',
   'social.postAnalysis': '发布分析',
   'social.trendingTopics': '热门话题',
+  'social.platform.x': 'X (Twitter)',
+  'social.platform.xhs': '小红书',
+  'social.platform.weibo': '微博',
+  'social.platform.default': '未知平台',
+  'social.platform.unknown': '未知平台',
+  'social.editDraft': '编辑',
+  'social.deleteDraft': '删除',
+  'social.publishDraft': '发布',
 
   // 插件商店
   'store.cannotLoadPlugins': '无法加载插件列表',

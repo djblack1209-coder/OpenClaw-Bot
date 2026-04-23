@@ -237,15 +237,21 @@ export function Bots() {
     const isStop = currentStatus === 'running';
     setActionLoading((prev) => ({ ...prev, [serviceId]: true }));
     try {
+      let result: any;
       if (isStop) {
-        await api.serviceStop(serviceId);
+        result = await api.serviceStop(serviceId);
       } else {
-        await api.serviceStart(serviceId);
+        result = await api.serviceStart(serviceId);
       }
       /* 等一小段时间让后端状态更新 */
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
-      toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`, { channel: 'log' });
+      /* 处理跳过的情况（如 Docker 服务、需要手动启动的服务） */
+      if (result?.status === 'skipped') {
+        toast.warning(`${serviceName}: ${result?.message || t('bots.serviceNeedsManualStart')}`, { channel: 'notification' });
+      } else {
+        toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`, { channel: 'log' });
+      }
     } catch (e: any) {
       await fetchData();
       toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
@@ -278,10 +284,9 @@ export function Bots() {
   const handleSchedulerTaskToggle = async (taskId: string, currentEnabled: boolean) => {
     setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: true }));
     try {
-      await clawbotFetchJson(`/api/v1/controls/scheduler/${taskId}`, {
+      /* 后端路由: POST /api/v1/controls/scheduler/task/{task_id}/toggle?enabled=true|false */
+      await clawbotFetchJson(`/api/v1/controls/scheduler/task/${taskId}/toggle?enabled=${!currentEnabled}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !currentEnabled }),
       });
       toast.success(`${taskId} ${currentEnabled ? t('bots.taskDisabled') : t('bots.taskEnabled')}`, { channel: 'log' });
       await new Promise((r) => setTimeout(r, 500));

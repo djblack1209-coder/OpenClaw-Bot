@@ -153,9 +153,16 @@ export function Xianyu() {
   const handleSync = async () => {
     setSyncLoading(true);
     try {
-      await api.cookieCloudSync();
+      const result = await api.cookieCloudSync() as any;
       await new Promise((r) => setTimeout(r, 1000));
       await fetchData();
+      /* 检查后端返回的同步结果 */
+      if (result?.success === false || result?.cookiecloud?.success === false) {
+        const msg = result?.message || result?.cookiecloud?.message || t('xianyu.error.cookieSyncFailed');
+        toast.error(msg, { channel: 'notification' });
+      } else {
+        toast.success(t('xianyu.syncHistory.success'), { channel: 'log' });
+      }
     } catch {
       toast.error(t('xianyu.error.cookieSyncFailed'), { channel: 'notification' });
       await fetchData();

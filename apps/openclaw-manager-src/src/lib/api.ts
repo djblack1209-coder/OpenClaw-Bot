@@ -80,22 +80,28 @@ export const api = {
   // ── 社媒运营 ──
   clawbotSocialStatus: () =>
     isTauri() ? ipc.clawbotSocialStatus() : clawbotFetchJson('/api/v1/social/status'),
-  clawbotSocialTopics: ipc.clawbotSocialTopics,
+  clawbotSocialTopics: (params?: any) =>
+    isTauri() ? ipc.clawbotSocialTopics(params?.count) : clawbotFetchJson('/api/v1/social/topics'),
+  clawbotSocialCalendar: (days?: number) =>
+    isTauri() ? ipc.clawbotSocialCalendar(days) : clawbotFetchJson('/api/v1/social/calendar'),
   clawbotSocialCompose: ipc.clawbotSocialCompose,
   clawbotSocialPublish: ipc.clawbotSocialPublish,
   clawbotSocialResearch: ipc.clawbotSocialResearch,
   clawbotSocialMetrics: ipc.clawbotSocialMetrics,
   clawbotSocialPersonas: ipc.clawbotSocialPersonas,
-  clawbotSocialCalendar: ipc.clawbotSocialCalendar,
 
   // ── 社媒自动驾驶 ──
-  clawbotAutopilotStatus: ipc.clawbotAutopilotStatus,
-  clawbotAutopilotStart: ipc.clawbotAutopilotStart,
-  clawbotAutopilotStop: ipc.clawbotAutopilotStop,
+  clawbotAutopilotStatus: () =>
+    isTauri() ? ipc.clawbotAutopilotStatus() : clawbotFetchJson('/api/v1/social/autopilot/status'),
+  clawbotAutopilotStart: () =>
+    isTauri() ? ipc.clawbotAutopilotStart() : clawbotFetchJson('/api/v1/social/autopilot/start', { method: 'POST' }),
+  clawbotAutopilotStop: () =>
+    isTauri() ? ipc.clawbotAutopilotStop() : clawbotFetchJson('/api/v1/social/autopilot/stop', { method: 'POST' }),
   clawbotAutopilotTrigger: ipc.clawbotAutopilotTrigger,
 
   // ── 社媒草稿管理 ──
-  clawbotSocialDrafts: ipc.clawbotSocialDrafts,
+  clawbotSocialDrafts: () =>
+    isTauri() ? ipc.clawbotSocialDrafts() : clawbotFetchJson('/api/v1/social/drafts'),
   clawbotSocialDraftUpdate: ipc.clawbotSocialDraftUpdate,
   clawbotSocialDraftDelete: ipc.clawbotSocialDraftDelete,
   clawbotSocialDraftPublish: ipc.clawbotSocialDraftPublish,
