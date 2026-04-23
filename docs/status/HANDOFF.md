@@ -4,9 +4,50 @@
 
 ---
 
-## [2026-04-23] Sprint 5 终极收官：微信云端部署 + 黑五折扣 + 人设生成 + 全面体验修复
+## [2026-04-23] R9-R12: 性能加速 + 日报补全 + 三端体验对齐
 
 ### 本次完成了什么
+
+**R9: LLM 响应加速**
+- 路由策略从 simple-shuffle 改为 latency-based-routing（自动选最快源）
+- 超时压缩: SiliconFlow 45→25s, Sambanova 90→30s, g4f 90→30s
+- 重试减半: retry_after 5→2s, num_retries 3→2
+- 投票系统: timeout 120→45s, stagger 0.5→0.1s, batch 顺序→并行(最多3)
+- 冷却加强: cooldown_time 30→60s
+
+**R10: 日报体验补全**
+- 手动 /brief 同步推送微信
+- WeChat 推送失败从 DEBUG 升为 WARNING
+- 日报建议 LLM 失败时生成降级模板
+
+**R11: 交易周期加速**
+- Master Analysts 顺序→全并行 (asyncio.gather)
+- 投票候选 10→5（减少 50% LLM 调用）
+- yfinance 跳过 ticker.info（省 50-150 次 HTTP 请求）
+
+**R12: 三端体验对齐**
+- _notify_private_telegram 新增微信镜像（晨报/周报/闲鱼/预算等 8 个定时推送）
+- _send_proactive 新增微信镜像（异动/交易跟踪/订单等 9 个事件通知）
+- 微信端新增 7 个核心指令（日报/状态/持仓/行情/性能/闲鱼/帮助）
+
+### 未完成的工作
+- 微信命令路由需要同步到腾讯云 wechat_receiver.py（本地已改好，云端需部署）
+- LLM 延迟指标需要等几个小时积累数据后验证（刚重启，perf 计数器已清零）
+- 桌面端还没有系统级推送通知（Tauri notification API 未接入）
+- 微信 AI 对话没有记忆/上下文（每条消息独立处理）
+
+### 需要注意的坑
+- 后端已重启，R9/R10/R11 配置已生效
+- 微信接收器在腾讯云 101.43.41.96 上运行，需要 rsync 或 scp 部署新代码
+- `openclaw-gateway` 进程不能和 `wechat_receiver` 同时运行
+
+### 当前系统状态
+- 后端: 运行中 (7 Bot 在线)
+- 闲鱼: 在线 (自动回复活跃)
+- 微信: 云端运行中（腾讯云，需部署新代码才能用指令）
+- 测试: 1486 passed, 0 failed
+
+---
 
 **微信 Bot 云端独立运行**
 - `wechat_receiver.py` 部署到腾讯云 101.43.41.96 (systemd 守护)
