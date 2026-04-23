@@ -280,22 +280,30 @@ def list_notifications(
 @router.post("/system/notifications/{notification_id}/read")
 def mark_notification_read(notification_id: str = Path(...)):
     """标记通知为已读"""
-    for notif in _notifications:
-        if notif["id"] == notification_id:
-            notif["read"] = True
-            return {"ok": True}
-    raise HTTPException(status_code=404, detail="通知不存在")
+    try:
+        for notif in list(_notifications):
+            if notif["id"] == notification_id:
+                notif["read"] = True
+                return {"ok": True}
+        raise HTTPException(status_code=404, detail="通知不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 @router.post("/system/notifications/read-all")
 def mark_all_notifications_read():
     """标记所有通知为已读"""
-    count = 0
-    for notif in _notifications:
-        if not notif["read"]:
-            notif["read"] = True
-            count += 1
-    return {"ok": True, "marked_count": count}
+    try:
+        count = 0
+        for notif in list(_notifications):
+            if not notif["read"]:
+                notif["read"] = True
+                count += 1
+        return {"ok": True, "marked_count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ============ 服务管理 ============

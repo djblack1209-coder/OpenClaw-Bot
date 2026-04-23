@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..auth import verify_api_token
 from ..error_utils import safe_error as _safe_error
@@ -290,13 +291,16 @@ async def cookiecloud_sync_now():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
+class CookieCloudConfigRequest(BaseModel):
+    """CookieCloud 配置请求体"""
+    host: str = ""
+    uuid: str = ""
+    password: str = ""
+    interval: int = 300
+
+
 @router.post("/xianyu/cookiecloud/configure")
-async def cookiecloud_configure(
-    host: str = "",
-    uuid: str = "",
-    password: str = "",
-    interval: int = 300,
-):
+async def cookiecloud_configure(req: CookieCloudConfigRequest):
     """配置 CookieCloud 服务端连接信息
 
     配置成功后会立即执行一次同步测试。
@@ -306,13 +310,13 @@ async def cookiecloud_configure(
         from src.xianyu.cookie_cloud import get_cookie_cloud_manager
         manager = get_cookie_cloud_manager()
 
-        if not host or not uuid or not password:
+        if not req.host or not req.uuid or not req.password:
             return {
                 "success": False,
                 "message": "缺少必填参数: host, uuid, password",
             }
 
-        success = await manager.configure(host, uuid, password, interval)
+        success = await manager.configure(req.host, req.uuid, req.password, req.interval)
         return {
             "success": success,
             "message": "CookieCloud 配置成功并已完成首次同步" if success else "配置已保存但首次同步失败（请检查参数）",
