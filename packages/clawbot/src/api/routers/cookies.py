@@ -1,7 +1,6 @@
 """
 Cookie 同步中心 API — 一键同步 + 全平台状态查询
 """
-import json
 import logging
 import os
 from datetime import datetime

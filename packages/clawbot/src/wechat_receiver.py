@@ -29,9 +29,7 @@ import os
 import secrets
 import signal
 import sys
-import time
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
