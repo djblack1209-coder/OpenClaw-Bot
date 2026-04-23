@@ -32,6 +32,7 @@ class ExecutionScheduler:
         self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
         self._last_coupon_date = ""  # 每日领券去重
+        self._last_deal_scan_ts = 0.0  # 折扣搜集上次扫描时间
         # 外部依赖（注入）
         self.monitor_manager = None
         self.social_autopilot_func = None
@@ -104,6 +105,9 @@ class ExecutionScheduler:
 
             # 降价监控 — 每6小时检查一次 (06:00/12:00/18:00/00:00 ET)
             await self._run_price_watch_check(now, ts)
+
+            # 折扣搜集 — 每4小时扫描全网好价
+            await self._run_deal_scan(ts)
 
             # 每天 20:00 预算超支检查
             await self._run_budget_alert(now)
@@ -627,3 +631,18 @@ def _run_daily_db_backup():
                     logger.error("[Scheduler] Backup failed: %s → %s", db, status)
     except Exception:
         logger.error("[Scheduler] daily DB backup failed", exc_info=True)
+
+    # ── 折扣搜集 ───────────────────────────────────────────
+
+    async def _run_deal_scan(self, ts: float):
+        """每 4 小时扫描全网折扣并推送"""
+        interval = safe_int(os.getenv("OPS_DEAL_SCAN_INTERVAL_MIN", "240"), 240) * 60
+        if ts - self._last_deal_scan_ts < interval:
+            return
+        self._last_deal_scan_ts = ts
+
+        try:
+            from src.shopping.deal_scanner import scheduled_deal_scan
+            await scheduled_deal_scan()
+        except Exception as e:
+            logger.warning("[Scheduler] 折扣扫描失败: %s", e)

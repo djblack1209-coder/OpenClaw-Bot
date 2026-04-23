@@ -381,6 +381,7 @@ class MultiBot(
         self.app.add_handler(CommandHandler("weekly", self.cmd_weekly))
         self.app.add_handler(CommandHandler("review_history", self.cmd_review_history))
         self.app.add_handler(CommandHandler("bill", self.cmd_bill))
+        self.app.add_handler(CommandHandler("deals", self.cmd_deals))
         self.app.add_handler(CommandHandler("pricewatch", self.cmd_pricewatch))
         self.app.add_handler(CommandHandler("intel", self.cmd_intel))
         self.app.add_handler(CommandHandler("coupon", self.cmd_coupon))
