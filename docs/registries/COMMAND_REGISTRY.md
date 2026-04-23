@@ -1,6 +1,6 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-19 (体验升级: +/perf) | 总数 100
+> 最后更新: 2026-04-23 (全量审计修正) | 总数 102
 
 ---
 
@@ -313,3 +313,11 @@
 | `intel_cat:<key>` | `handle_intel_callback` | 行业分类情报查询 |
 | `intel_reg:<key>` | `handle_intel_callback` | 地区情报查询 |
 | `intel_brief` | `handle_intel_callback` | 生成每日综合情报简报 |
+
+### 3.8 微信领券 — `IntelCommandMixin` (cmd_intel_mixin.py, 共用)
+
+| # | 命令 | Handler | 说明 | BotFather |
+|---|------|---------|------|:-:|
+| 100 | `/coupon` | `cmd_coupon` | 微信全平台自动领券 | N |
+| 101 | `/test_token` | `cmd_test_token` | 测试领券 Token 有效性 | N |
+| 102 | `/set_coupon_token` | `cmd_set_coupon_token` | 设置微信领券 Token | N |
