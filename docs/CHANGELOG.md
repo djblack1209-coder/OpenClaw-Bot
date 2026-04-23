@@ -55,6 +55,13 @@
 - `packages/clawbot/src/api/routers/system.py` — 通知并发安全
 - `packages/clawbot/src/api/routers/__init__.py` / `server.py` — 路由注册
 
+**R4: 功能验证 + 性能优化 + 细节修复**
+- 代码分割：最大 chunk 从 634KB 降到 355KB（-44%），React/Framer/Lucide 独立 vendor chunk
+- Plugins 路由直接渲染 Store（消除重定向闪烁）
+- 闲鱼卡片补全端口号 :18790 + Cookie 描述明确为「闲鱼登录 Cookie」
+- cmd_cli_mixin.py 标记为未注册预备代码（223 行）
+- Store catalog API 验证：41 skills + 32 extensions + 34 bot-skills 正确扫描
+
 **R3: 跨端一致性审计 + 收尾**
 - api.ts: 补全 store/social/xianyu 5 个缺失 API 封装函数
 - session_tracker.py: API 端口从硬编码 18790 改为环境变量
