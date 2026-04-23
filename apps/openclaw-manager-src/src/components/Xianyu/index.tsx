@@ -598,6 +598,15 @@ export function Xianyu() {
                 value={`${cookieStatus?.consecutive_failures ?? 0} ${t('xianyu.cookie.times')}`} />
               <InfoRow icon={cookieStatus?.enabled ? Wifi : WifiOff} label={t('xianyu.cookie.syncFeature')}
                 value={cookieStatus?.enabled ? t('xianyu.cookie.syncEnabled') : t('xianyu.cookie.syncDisabled')} />
+
+              {/* CookieCloud 未配置引导提示 */}
+              {!cookieStatus?.enabled && (
+                <div className="mt-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(255,187,0,0.06)', border: '1px solid rgba(255,187,0,0.15)' }}>
+                  <p className="font-mono text-[10px] leading-relaxed" style={{ color: 'var(--accent-amber)' }}>
+                    {t('xianyu.cookie.notConfiguredHint')}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* 手动同步按钮 */}
