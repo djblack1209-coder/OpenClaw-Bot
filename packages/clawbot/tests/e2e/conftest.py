@@ -9,6 +9,7 @@ handler 全链路。
 import os
 import sys
 import pytest
+from typing import Optional
 from unittest.mock import MagicMock, AsyncMock, patch
 
 # 让 src/ 可以直接 import（e2e/ 比 tests/ 多嵌套一层）
@@ -140,7 +141,7 @@ class FakeContext:
 
     def __init__(
         self,
-        args: list | None = None,
+        args: Optional[list] = None,
         bot_username: str = "test_bot",
     ):
         self.args = args or []
@@ -218,7 +219,7 @@ def make_context():
     """
 
     def _factory(
-        args: list | None = None,
+        args: Optional[list] = None,
         bot_username: str = "test_bot",
     ) -> FakeContext:
         return FakeContext(args=args, bot_username=bot_username)

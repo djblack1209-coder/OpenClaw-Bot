@@ -356,7 +356,7 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
 ]
 
 
-def _check_process_alive(keyword: str, port: int | None = None) -> bool:
+def _check_process_alive(keyword: str, port: Optional[int] = None) -> bool:
     """检测进程/服务是否存活 — 优先 pgrep，失败则 TCP 端口探活（兼容 Docker 容器）"""
     try:
         result = subprocess.run(
@@ -380,7 +380,7 @@ def _check_process_alive(keyword: str, port: int | None = None) -> bool:
     return False
 
 
-def _get_process_uptime_seconds(keyword: str) -> int | None:
+def _get_process_uptime_seconds(keyword: str) -> Optional[int]:
     """获取匹配进程的运行时长（秒），返回 None 表示不可用"""
     try:
         result = subprocess.run(
