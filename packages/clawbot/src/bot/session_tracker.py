@@ -105,9 +105,10 @@ class SessionTrackerMixin:
             # 2. 闲鱼未读消息 — 通过 FastAPI 内部 API 查询闲鱼进程状态
             import os as _os
 
+            api_port = _os.environ.get("CLAWBOT_API_PORT", "18790")
             api_token = _os.environ.get("OPENCLAW_API_TOKEN", "")
             resp = await _http_status.get(
-                "http://127.0.0.1:18790/api/v1/system/status",
+                f"http://127.0.0.1:{api_port}/api/v1/system/status",
                 headers={"X-API-Token": api_token} if api_token else {},
             )
             if resp.status_code == 200:
