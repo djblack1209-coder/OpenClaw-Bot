@@ -1468,6 +1468,18 @@ export const enUS: Record<string, string> = {
   'settings.platformX': 'X / Twitter',
   'settings.platformXiaohongshu': 'Xiaohongshu',
 
+  // Cookie Sync Center
+  'settings.cookieSyncCenter': 'Cookie Sync Center',
+  'settings.syncAllCookies': 'Sync All Cookies',
+  'settings.syncing': 'Syncing...',
+  'settings.syncSuccess': 'Cookie sync successful',
+  'settings.syncFailed': 'Cookie sync failed',
+  'settings.lastSync': 'Synced',
+  'settings.notConfigured': 'Not configured',
+  'settings.openLoginPages': 'Open Login Pages',
+  'settings.platformWechat': 'WeChat',
+  'settings.justSynced': 'Just now',
+
   // Sidebar 补全
   'sidebar.statusOnline': 'ONLINE',
   'sidebar.statusOffline': 'OFFLINE',

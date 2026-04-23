@@ -9,7 +9,7 @@ import {
   User, Shield, Cpu, HardDrive, Wifi, Key, Bell,
   Settings2, Download, RotateCcw, Trash2, FileText,
   Stethoscope, Check, MemoryStick, Loader2, Save,
-  Languages, ExternalLink, KeyRound,
+  Languages, ExternalLink,
   Power, PlayCircle, StopCircle, AlertTriangle,
   Cookie, RefreshCw,
 } from 'lucide-react';
