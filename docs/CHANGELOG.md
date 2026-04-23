@@ -61,6 +61,15 @@
 - CookieCloud：确认需要 COOKIECLOUD_HOST/UUID/PASSWORD 环境变量，前端添加配置引导
 - Tauri 桌面端构建成功：OpenClaw.app + DMG 已安装到 /Applications
 
+**R6: Python 3.9 兼容性全量修复**
+- system.py: `int | None` → `Optional[int]`（2 处运行时崩溃）
+- e2e/conftest.py: `list | None` → `Optional[list]`（2 处运行时崩溃）
+- db_backup.py: 添加 `from __future__ import annotations`（`Path | None` 崩溃）
+- iflow_key_renew.py: 添加 `from __future__ import annotations`（`str | None` 3 处）
+- test_api_routes_regression.py: starlette TestClient 版本不兼容自动 skip（8 个测试）
+- 全量扫描确认：0 处 match/case，49 处 PEP 585 泛型下标安全无需修改
+- 测试：1450 passed, 11 skipped, 0 failed
+
 **R4: 功能验证 + 性能优化 + 细节修复**
 - 代码分割：最大 chunk 从 634KB 降到 355KB（-44%），React/Framer/Lucide 独立 vendor chunk
 - Plugins 路由直接渲染 Store（消除重定向闪烁）
