@@ -1757,11 +1757,19 @@ export const enUS: Record<string, string> = {
   'social.publishDraft': 'Publish',
 
   // Store
-  'store.cannotLoadPlugins': 'Cannot load plugins',
+  'store.cannotLoadPlugins': 'Cannot load plugin list',
   'store.statusAll': 'All',
   'store.statusApproved': 'Approved',
   'store.statusPending': 'Pending',
   'store.statusRejected': 'Rejected',
+  'store.tabSkills': 'Skills',
+  'store.tabExtensions': 'Extensions',
+  'store.tabBotSkills': 'Bot Skills',
+  'store.tabMcp': 'MCP Plugins',
+  'store.tabEvolution': 'Evolution',
+  'store.categoryFilter': 'Categories',
+  'store.installed': 'Installed',
+  'store.totalInstalled': 'Installed',
 
   // Trading
   'trading.daysAgo': 'd ago',
