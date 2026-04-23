@@ -6,11 +6,17 @@
 """
 
 import logging
+import re
 from typing import List
 
 from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_think_tags(text: str) -> str:
+    """去除 LLM 输出中的 <think>...</think> 推理标签（Qwen 等模型常带）"""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 async def _analyze_news_with_llm(headlines: List[str], holdings: List[str]) -> List[str]:
@@ -50,6 +56,7 @@ async def _analyze_news_with_llm(headlines: List[str], holdings: List[str]) -> L
             cache_ttl=1800,  # 缓存30分钟，避免重复调用
         )
         text = (resp.choices[0].message.content or "").strip()
+        text = _strip_think_tags(text)
 
         if not text:
             return None
@@ -141,6 +148,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
             cache_ttl=1800,
         )
         text = (resp.choices[0].message.content or "").strip()
+        text = _strip_think_tags(text)
         if text:
             return text
 
@@ -239,6 +247,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
             cache_ttl=1800,
         )
         text = (resp.choices[0].message.content or "").strip()
+        text = _strip_think_tags(text)
         if not text:
             return []
 

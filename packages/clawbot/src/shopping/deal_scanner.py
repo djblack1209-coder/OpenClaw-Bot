@@ -26,8 +26,8 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict
 
@@ -37,7 +37,6 @@ from bs4 import BeautifulSoup
 from src.constants import DEFAULT_USER_AGENT
 from src.shopping.price_engine import (
     search_smzdm,
-    PriceResult,
 )
 
 logger = logging.getLogger(__name__)
