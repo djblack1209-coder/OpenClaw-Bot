@@ -212,9 +212,11 @@ async def _send_message(client: httpx.AsyncClient, token: str,
             timeout=15,
         )
         data = resp.json()
-        if data.get("ret", -1) == 0:
+        # iLink sendMessage 成功时返回 {} 或 {"ret": 0}
+        # 只有明确的错误码才算失败
+        if resp.status_code == 200 and data.get("ret", 0) == 0:
             return True
-        logger.warning("sendMessage 失败: %s", data)
+        logger.warning("sendMessage 失败: status=%s body=%s", resp.status_code, data)
     except Exception as e:
         logger.error("sendMessage 异常: %s", e)
     return False
