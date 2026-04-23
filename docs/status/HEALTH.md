@@ -86,14 +86,14 @@
 |------|------|------|
 | 核心服务 | 🟢 运行中 | 7 Bot + FastAPI + Redis (macOS 主节点), Python 进程后台静默运行(无 Dock 图标) |
 | 开发工具性能 | 🟢 优化 | OpenCode watcher 扫描文件数从 32.8万 降至 ~5千 (项目瘦身 16GB→6.6GB + 30+条 ignore 规则) |
-| LLM 路由 | 🟢 加固 | 主链调整为 SiliconFlow/iflow/Groq/Gemini → Cerebras/OpenRouter/NVIDIA/Volcengine → Mistral/Cohere/GPT_API_Free/g4f，切断 XAPI Claude 空余额兜底 + iflow Key 7天有效期自动检测+告警 |
+| LLM 路由 | 🟢 加速 | R9性能优化: latency-based-routing(自动选最快源) + 超时压缩(SF 45→25s, SN 90→30s, g4f 90→30s) + 重试减半(retry 3→2, after 5→2s) + 冷却加强(30→60s) |
 | 主动智能 | 🟢 运行中 | ProactiveEngine 三步管道 + EventBus触发 + 30min定时检查 + 安静时段过滤(0-7点不推送) |
 | AI 记忆 | 🟢 贯通 | SmartMemory→SharedMemory→TieredContextManager user_profile 双通道同步 + 沟通风格偏好确定性注入(onboarding→profile链路修复) |
 | 意图识别 | 🟢 加固 | 中文NLP→fast_parse正则→LLM降级分类→Brain任务图，三级漏斗 + 提醒同义词扩展(帮我记住/别忘了/设个闹钟等) |
 | 闲鱼客服 | 🟢 加固 | 底价注入+10msg/min限速+prompt注入防护+自动接受价格上限+后台任务异常监控+库存低预警+WS心跳修复+重连熔断器+通知异步化+WS参数名修复(additional→extra_headers)+渐进式告警(5/15/30/50次后静默) |
-| 交易系统 | 🟢 安全加固 | 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 + R4:持仓获取失败返回保守敞口防超额开仓 + 投票弃权机制:超时票不计入统计(timeout 120s+abstained标记+否决逻辑修复) |
+| 交易系统 | 🟢 加速 | R9: 投票超时120→45s + stagger 0.5→0.1s + batch符号并行(最多3个) → 交易周期预计从25min降到8-12min + 22项安全修复 + 风控参数验证 + 日盈亏锁 + SELL风控 + 预算竞态修复 + AI共识度分歧保护 |
 | 备用节点 | 🟢 就绪 | 腾讯云 2C2G — 代码已同步, clawbot.service+failover.timer 已部署并验证, 心跳超时120s+3次失败自动接管, Mac恢复后自动退让 |
-| 测试通过率 | 🟢 100% | 1431/1431 Python (2项跳过, 0 失败), 0 TypeScript错误 |
+| 测试通过率 | 🟢 100% | 1486/1486 Python (2项跳过, 0 失败), 0 TypeScript错误 |
 | 前端数据接入 | 🟢 完成 | 31 页面全部接入真实 API (原 16 个 Mock + 3 个占位符)。0 页面展示假数据。monitor.py 路由已挂载。 |
 | 投资信号追踪 | 🟢 贯通 | record_prediction→validate_predictions→vote_history 三管道全通 |
 | 社媒数据分析 | 🟢 贯通 | 浏览器采集→post_engagement存储→/social_report展示→PostTimeOptimizer学习 |
