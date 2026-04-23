@@ -12,9 +12,9 @@
       "multi_key": true,
       "base_url": "https://api.siliconflow.cn/v1",
       "prefix": "openai/",
-      "timeout": 45,
-      "stream_timeout": 60,
-      "note": "SiliconFlow free",
+      "timeout": 25,
+      "stream_timeout": 40,
+      "note": "SiliconFlow free (timeout 45→25s 性能优化)",
       "models": [
         {"id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "family": "qwen", "tier": "S"},
         {"id": "deepseek-ai/DeepSeek-V3.2", "family": "deepseek", "tier": "S"},
@@ -144,9 +144,9 @@
       "env_key": "SAMBANOVA_API_KEY",
       "base_url": "https://api.sambanova.ai/v1",
       "prefix": "openai/",
-      "timeout": 90,
-      "stream_timeout": 120,
-      "note": "Sambanova free (Reasoning 模型需要长超时)",
+      "timeout": 30,
+      "stream_timeout": 45,
+      "note": "Sambanova free (timeout 90→30s 性能优化，R1推理模型用 stream 模式)",
       "models": [
         {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 10},
         {"id": "DeepSeek-V3.2", "family": "deepseek", "tier": "A", "rpm": 10},
@@ -182,9 +182,9 @@
       "base_url_env": "SILICONFLOW_PAID_BASE_URL",
       "base_url_default": "https://api.siliconflow.cn/v1",
       "prefix": "openai/",
-      "timeout": 45,
-      "stream_timeout": 60,
-      "note": "SiliconFlow paid keys (10条, 14元/条, 未实名, 禁止Pro模型)",
+      "timeout": 25,
+      "stream_timeout": 40,
+      "note": "SiliconFlow paid keys (timeout 45→25s 性能优化)",
       "models": [
         {"id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "family": "qwen", "tier": "S", "_comment": "免费模型复用"},
         {"id": "deepseek-ai/DeepSeek-V3.2", "family": "deepseek", "tier": "S", "_comment": "免费模型复用"},
@@ -254,9 +254,9 @@
       "env_key": "LOCAL_HF_MODEL_ENDPOINT",
       "env_key_optional": true,
       "base_url": "http://127.0.0.1:11434",
-      "timeout": 30,
-      "stream_timeout": 60,
-      "note": "本地 Ollama (零成本兜底)",
+      "timeout": 20,
+      "stream_timeout": 40,
+      "note": "本地 Ollama (timeout 30→20s 性能优化)",
       "models": [
         {"id": "ollama/gemma4:e4b-optimized", "family": "gemma", "tier": "D", "rpm": 999}
       ]
@@ -267,9 +267,9 @@
       "base_url_env": "G4F_BASE_URL",
       "base_url_default": "http://127.0.0.1:18891/v1",
       "prefix": "openai/",
-      "timeout": 90,
-      "stream_timeout": 120,
-      "note": "g4f 兜底 (本地服务, TIER_C, 响应慢30-90s)",
+      "timeout": 30,
+      "stream_timeout": 45,
+      "note": "g4f 兜底 (timeout 90→30s 性能优化，避免长时间卡在慢兜底上)",
       "models": [
         {"id": "auto", "family": "g4f", "tier": "C"}
       ]
@@ -301,13 +301,14 @@
   },
 
   "router_config": {
-    "num_retries": 3,
+    "num_retries": 2,
     "timeout": 15,
     "stream_timeout": 30,
     "allowed_fails": 3,
-    "cooldown_time": 30,
-    "retry_after": 5,
-    "routing_strategy": "simple-shuffle"
+    "cooldown_time": 60,
+    "retry_after": 2,
+    "routing_strategy": "latency-based-routing",
+    "_note": "2026-04-23 性能优化: shuffle→latency-based, retries 3→2, retry_after 5→2s, cooldown 30→60s"
   },
 
   "model_ranking": {

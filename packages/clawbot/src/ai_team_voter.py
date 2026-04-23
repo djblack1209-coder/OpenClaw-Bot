@@ -479,7 +479,7 @@ async def run_team_vote(
     analysis: dict,
     api_callers: Dict[str, Callable],
     notify_func: Optional[Callable] = None,
-    timeout_per_bot: float = 120,
+    timeout_per_bot: float = 45,
     account_context: str = "",
     vote_history: Optional[Dict[str, Dict]] = None,
     progress_func: Optional[Callable] = None,
@@ -590,14 +590,14 @@ async def run_team_vote(
             abstained=True,
         )
 
-    # 并行调用前4个分析师（错开0.5s减轻网关压力）
+    # 并行调用前4个分析师（错开0.1s减轻网关压力，从0.5s优化到0.1s）
     async def _staggered_call(bot_id: str, delay: float) -> BotVote:
         if delay > 0:
             await asyncio.sleep(delay)
         return await _call_bot(bot_id)
 
     parallel_votes = await asyncio.gather(
-        *[_staggered_call(bid, i * 0.5) for i, bid in enumerate(parallel_bots)],
+        *[_staggered_call(bid, i * 0.1) for i, bid in enumerate(parallel_bots)],
         return_exceptions=True,
     )
 
@@ -853,12 +853,14 @@ async def run_team_vote_batch(
     """
     results = []
 
-    for i, candidate in enumerate(candidates[:max_candidates]):
+    # 性能优化: 最多 3 个符号并行投票（从顺序改为并发，节省 60-70% 时间）
+    max_parallel = 3
+    batch_candidates = candidates[:max_candidates]
+
+    async def _vote_one(i: int, candidate: dict) -> VoteResult:
         symbol = candidate.get("symbol", "")
         analysis = analyses.get(symbol, {})
-
-        await _safe_notify(notify_func, f"\n-- 分析候选 {i + 1}/{min(len(candidates), max_candidates)}: {symbol} --")
-
+        await _safe_notify(notify_func, f"\n-- 分析候选 {i + 1}/{len(batch_candidates)}: {symbol} --")
         vote_result = await run_team_vote(
             symbol=symbol,
             analysis=analysis,
@@ -868,10 +870,24 @@ async def run_team_vote_batch(
             vote_history=vote_history,
             progress_func=progress_func,
         )
-        results.append(vote_result)
-
-        # 播报投票结果
         await _safe_notify(notify_func, vote_result.format_telegram())
+        return vote_result
+
+    # 分批并行：每批最多 max_parallel 个符号同时投票
+    for batch_start in range(0, len(batch_candidates), max_parallel):
+        batch = batch_candidates[batch_start:batch_start + max_parallel]
+        batch_results = await asyncio.gather(
+            *[_vote_one(batch_start + j, c) for j, c in enumerate(batch)],
+            return_exceptions=True,
+        )
+        for idx, r in enumerate(batch_results):
+            if isinstance(r, VoteResult):
+                results.append(r)
+            else:
+                # 异常情况：创建一个空结果
+                symbol = batch[idx].get("symbol", "?")
+                logger.error("[TeamVoteBatch] %s 投票异常: %s", symbol, r)
+                results.append(VoteResult(symbol=symbol))
 
     # 按 buy_count 降序，同票数按 avg_confidence 降序
     results.sort(key=lambda r: (r.buy_count, r.avg_confidence), reverse=True)
