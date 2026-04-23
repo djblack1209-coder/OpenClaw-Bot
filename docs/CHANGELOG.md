@@ -12,6 +12,34 @@
 
 ## 最近更新（2026-04）
 
+## 2026-04-23 — Sprint 5 终极收官 + 冗余清理
+> 领域: `backend` `frontend` `infra` `social` `xianyu` `docs`
+> 影响模块: 全平台
+> 关联问题: HI-757~762, React Error #310
+
+### 变更内容
+
+**微信 Bot 云端部署** — wechat_receiver.py 部署到腾讯云，Mac 关机不影响微信 Bot
+
+**黑五折扣搜集模块** — deal_scanner.py + /deals 命令 + 4 小时定时扫描
+
+**社媒人设资源** — gpt-image-2 生成 5 张场景图 + 人设配置文件
+
+**首页崩溃修复** — React Error #310 (hooks 顺序违规)
+
+**Cookie 同步中心** — CookieCloud 扩展支持 X/XHS + Settings UI + 一键同步 API
+
+**Telegram Bot 修复** — LLM 缓存数据库损坏 + g4f 广告过滤
+
+**文件清理** — 旧日志 138→21MB，浏览器缓存 190→78MB，__pycache__ 10MB
+
+### 文件变更
+- 新增: wechat_receiver.py, deal_scanner.py, routers/wechat.py, routers/cookies.py
+- 新增: data/persona/ (5 张人设图), data/social_personas/zhou-yuheng.json
+- 修复: Home/index.tsx (hooks 顺序), api_mixin.py (g4f 广告过滤)
+- 清理: 旧日志/浏览器缓存/__pycache__ (~230MB)
+- 文档: HANDOFF.md 裁剪至 104 行
+
 ## 2026-04-22 — 后端 API 字段补全：让前端 '--' 变成真实数据
 > 领域: `backend`
 > 影响模块: rpc.py, system.py
