@@ -26,36 +26,36 @@ function getModeConfig(t: (key: string) => string): Record<AssistantMode, {
 }> {
   return {
     chat:    { label: t('assistant.mode.chat'), colorHex: '#00d4ff', commands: [
-      { label: t('assistant.cmd.brief'), prefix: '今日简报 ', icon: <BookOpen size={I}/> },
-      { label: t('assistant.cmd.weather'), prefix: '天气查询 ', icon: <Sparkles size={I}/> },
-      { label: t('assistant.cmd.translate'), prefix: '翻译文本: ', icon: <PenTool size={I}/> },
-      { label: t('assistant.cmd.report'), prefix: '帮我写周报 ', icon: <Palette size={I}/> },
-      { label: t('assistant.cmd.qa'), prefix: '知识问答: ', icon: <Brain size={I}/> },
-      { label: t('assistant.cmd.schedule'), prefix: '日程安排 ', icon: <Clock size={I}/> },
+      { label: t('assistant.cmd.brief'), prefix: t('assistant.prefix.brief'), icon: <BookOpen size={I}/> },
+      { label: t('assistant.cmd.weather'), prefix: t('assistant.prefix.weather'), icon: <Sparkles size={I}/> },
+      { label: t('assistant.cmd.translate'), prefix: t('assistant.prefix.translate'), icon: <PenTool size={I}/> },
+      { label: t('assistant.cmd.report'), prefix: t('assistant.prefix.report'), icon: <Palette size={I}/> },
+      { label: t('assistant.cmd.qa'), prefix: t('assistant.prefix.qa'), icon: <Brain size={I}/> },
+      { label: t('assistant.cmd.schedule'), prefix: t('assistant.prefix.schedule'), icon: <Clock size={I}/> },
     ]},
     invest:  { label: t('assistant.mode.invest'), colorHex: '#00ffaa', commands: [
-      { label: t('assistant.cmd.aapl'), prefix: '分析AAPL ', icon: <TrendingUp size={I}/> },
-      { label: t('assistant.cmd.holdings'), prefix: '查看持仓 ', icon: <BarChart3 size={I}/> },
-      { label: t('assistant.cmd.backtest'), prefix: '回测策略 ', icon: <Target size={I}/> },
-      { label: t('assistant.cmd.vote'), prefix: '大师投票 ', icon: <Brain size={I}/> },
-      { label: t('assistant.cmd.risk'), prefix: '风控报告 ', icon: <Shield size={I}/> },
-      { label: t('assistant.cmd.scan'), prefix: '市场扫描 ', icon: <ScanSearch size={I}/> },
+      { label: t('assistant.cmd.aapl'), prefix: t('assistant.prefix.aapl'), icon: <TrendingUp size={I}/> },
+      { label: t('assistant.cmd.holdings'), prefix: t('assistant.prefix.holdings'), icon: <BarChart3 size={I}/> },
+      { label: t('assistant.cmd.backtest'), prefix: t('assistant.prefix.backtest'), icon: <Target size={I}/> },
+      { label: t('assistant.cmd.vote'), prefix: t('assistant.prefix.vote'), icon: <Brain size={I}/> },
+      { label: t('assistant.cmd.risk'), prefix: t('assistant.prefix.risk'), icon: <Shield size={I}/> },
+      { label: t('assistant.cmd.scan'), prefix: t('assistant.prefix.scan'), icon: <ScanSearch size={I}/> },
     ]},
     execute: { label: t('assistant.mode.execute'), colorHex: '#fbbf24', commands: [
-      { label: t('assistant.cmd.tweet'), prefix: '发布推文 ', icon: <Send size={I}/> },
-      { label: t('assistant.cmd.batch'), prefix: '批量操作 ', icon: <Zap size={I}/> },
-      { label: t('assistant.cmd.cron'), prefix: '定时任务 ', icon: <Clock size={I}/> },
-      { label: t('assistant.cmd.export'), prefix: '数据导出 ', icon: <BarChart3 size={I}/> },
-      { label: t('assistant.cmd.check'), prefix: '系统检查 ', icon: <Cpu size={I}/> },
-      { label: t('assistant.cmd.logs'), prefix: '查看日志 ', icon: <History size={I}/> },
+      { label: t('assistant.cmd.tweet'), prefix: t('assistant.prefix.tweet'), icon: <Send size={I}/> },
+      { label: t('assistant.cmd.batch'), prefix: t('assistant.prefix.batch'), icon: <Zap size={I}/> },
+      { label: t('assistant.cmd.cron'), prefix: t('assistant.prefix.cron'), icon: <Clock size={I}/> },
+      { label: t('assistant.cmd.export'), prefix: t('assistant.prefix.export'), icon: <BarChart3 size={I}/> },
+      { label: t('assistant.cmd.check'), prefix: t('assistant.prefix.check'), icon: <Cpu size={I}/> },
+      { label: t('assistant.cmd.logs'), prefix: t('assistant.prefix.logs'), icon: <History size={I}/> },
     ]},
     create:  { label: t('assistant.mode.create'), colorHex: '#a78bfa', commands: [
-      { label: t('assistant.cmd.article'), prefix: '帮我写文章: ', icon: <PenTool size={I}/> },
-      { label: t('assistant.cmd.image'), prefix: '生成图片: ', icon: <Palette size={I}/> },
-      { label: t('assistant.cmd.video'), prefix: '视频脚本: ', icon: <Sparkles size={I}/> },
-      { label: t('assistant.cmd.copy'), prefix: '营销文案: ', icon: <BookOpen size={I}/> },
-      { label: t('assistant.cmd.code'), prefix: '代码生成: ', icon: <Cpu size={I}/> },
-      { label: t('assistant.cmd.brain'), prefix: '头脑风暴: ', icon: <Brain size={I}/> },
+      { label: t('assistant.cmd.article'), prefix: t('assistant.prefix.article'), icon: <PenTool size={I}/> },
+      { label: t('assistant.cmd.image'), prefix: t('assistant.prefix.image'), icon: <Palette size={I}/> },
+      { label: t('assistant.cmd.video'), prefix: t('assistant.prefix.video'), icon: <Sparkles size={I}/> },
+      { label: t('assistant.cmd.copy'), prefix: t('assistant.prefix.copy'), icon: <BookOpen size={I}/> },
+      { label: t('assistant.cmd.code'), prefix: t('assistant.prefix.code'), icon: <Cpu size={I}/> },
+      { label: t('assistant.cmd.brain'), prefix: t('assistant.prefix.brain'), icon: <Brain size={I}/> },
     ]},
   };
 }
@@ -253,22 +253,22 @@ export function Assistant() {
     ev.target.value = '';
 
     setUploadingFile(true);
-    toast.info(`正在处理: ${file.name}...`, { channel: 'log' });
+    toast.info(t('assistant.processingFile') + `: ${file.name}...`, { channel: 'log' });
 
     try {
       const result = await api.conversationUpload(file);
       const text = result?.text || '';
       if (text) {
         // 将提取的文本追加到输入框
-        const prefix = `[附件: ${file.name}]\n提取内容：${text}\n\n`;
+        const prefix = `[${t('assistant.attachment')}: ${file.name}]\n${t('assistant.extractedContent')}：${text}\n\n`;
         setInput(prev => prefix + prev);
-        toast.success(`${file.name} 解析完成`, { channel: 'log' });
+        toast.success(`${file.name} ${t('assistant.parseDone')}`, { channel: 'log' });
       } else {
-        toast.warning(`${file.name} 未提取到有效内容`, { channel: 'notification' });
+        toast.warning(`${file.name} ${t('assistant.noValidContent')}`, { channel: 'notification' });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('common.unknownError');
-      toast.error(`附件处理失败: ${msg}`, { channel: 'notification' });
+      toast.error(`${t('assistant.attachmentFailed')}: ${msg}`, { channel: 'notification' });
     } finally {
       setUploadingFile(false);
     }
@@ -309,7 +309,7 @@ export function Assistant() {
           return;
         }
 
-        toast.info('正在识别语音...', { channel: 'log' });
+        toast.info(t('assistant.recognizingVoice'), { channel: 'log' });
         try {
           const result = await api.conversationVoice(audioBlob);
           const text = result?.text || '';
@@ -321,24 +321,24 @@ export function Assistant() {
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : t('common.unknownError');
-          toast.error(`语音识别失败: ${msg}`, { channel: 'notification' });
+          toast.error(`${t('assistant.voiceRecognitionFailed')}: ${msg}`, { channel: 'notification' });
         }
       };
 
       recorder.onerror = () => {
         stream.getTracks().forEach(track => track.stop());
         setIsRecording(false);
-        toast.error('录音出错，请重试', { channel: 'notification' });
+        toast.error(t('assistant.recordingError'), { channel: 'notification' });
       };
 
       recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
-      toast.info('正在录音，再次点击停止...', { channel: 'log' });
+      toast.info(t('assistant.recordingStarted'), { channel: 'log' });
     } catch (err) {
       // 用户拒绝麦克风权限或浏览器不支持
       const msg = err instanceof Error ? err.message : t('common.unknownError');
-      toast.error(`无法启动录音: ${msg}`, { channel: 'notification' });
+      toast.error(`${t('assistant.cannotStartRecording')}: ${msg}`, { channel: 'notification' });
     }
   }, [isRecording]);
 
