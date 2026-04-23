@@ -54,49 +54,25 @@ async def wechat_incoming(payload: Dict[str, Any] = Body(...)):
                 "• 回答问题\n\n"
                 "直接发消息给我就行！"}
 
-    # 1. 尝试通过 Brain 处理（完整智能体管线）
+    # 微信场景优先速度：直接走 LLM，跳过 Brain（Brain 处理链路 30-90 秒太慢）
     reply = ""
     try:
-        from src.core.brain import get_brain
-        brain = get_brain()
-        result = await brain.process_message(source="wechat", message=text)
-        result_dict = result.to_dict()
-
-        if result_dict.get("result"):
-            if isinstance(result_dict["result"], str):
-                reply = result_dict["result"]
-            elif isinstance(result_dict["result"], dict):
-                reply = (
-                    result_dict["result"].get("synthesized_reply")
-                    or result_dict["result"].get("answer")
-                    or result_dict["result"].get("response")
-                    or result_dict["result"].get("text")
-                    or ""
-                )
-        elif result_dict.get("error"):
-            reply = f"处理出错了: {result_dict['error'][:100]}"
+        from src.litellm_router import free_pool
+        response = await free_pool.acompletion(
+            model_family="qwen",  # qwen 家族最快最稳
+            messages=[
+                {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答用户的问题。"},
+                {"role": "user", "content": text},
+            ],
+            max_tokens=500,
+        )
+        llm_text = response.choices[0].message.content or ""
+        if llm_text.strip():
+            reply = llm_text.strip()
     except Exception as e:
-        logger.warning("[微信] Brain 处理失败: %s", e)
+        logger.warning("[微信] LLM 调用失败: %s", e)
 
-    # 2. Brain 没返回有效内容 → LLM 直接回复
-    if not reply.strip() or "暂时无法处理" in reply:
-        try:
-            from src.litellm_router import free_pool
-            response = await free_pool.acompletion(
-                model_family="qwen",  # 默认用 qwen 家族（最快最稳）
-                messages=[
-                    {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答。"},
-                    {"role": "user", "content": text},
-                ],
-                max_tokens=500,
-            )
-            llm_text = response.choices[0].message.content or ""
-            if llm_text.strip():
-                reply = llm_text.strip()
-        except Exception as e:
-            logger.warning("[微信] LLM 直接调用失败: %s", e)
-
-    # 3. 最终兜底
+    # 兜底
     if not reply.strip():
         reply = "抱歉，我暂时没能理解你的意思。换个方式再试试？"
 
