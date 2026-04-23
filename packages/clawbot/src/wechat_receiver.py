@@ -348,7 +348,7 @@ async def main():
             try:
                 data = await _get_updates(client, token, buf)
 
-                ret = data.get("ret", -1)
+                ret = data.get("ret", 0)  # iLink 正常响应无 ret 字段，默认 0 表示成功
                 errcode = data.get("errcode", 0)
 
                 # session 过期
@@ -357,17 +357,8 @@ async def main():
                     await asyncio.sleep(SESSION_PAUSE_S)
                     continue
 
-                # ret=-1 且无 errcode/errmsg 是 iLink 的"空轮询"响应（暂无消息）
-                if ret == -1 and not errcode and not data.get("errmsg"):
-                    # 正常情况：更新 buf，继续轮询
-                    new_buf = data.get("get_updates_buf", buf)
-                    if new_buf and new_buf != buf:
-                        buf = new_buf
-                        _save_buf(buf)
-                    continue
-
-                # 其他错误
-                if ret != 0:
+                # 有明确错误码的失败
+                if errcode and errcode != 0:
                     consecutive_errors += 1
                     logger.warning("getUpdates 错误: ret=%s errcode=%s errmsg=%s (连续%d次)",
                                    ret, errcode, data.get("errmsg", ""), consecutive_errors)
@@ -379,7 +370,7 @@ async def main():
                         await asyncio.sleep(2)
                     continue
 
-                # 成功
+                # 成功（无 ret 字段或 ret=0 都算成功）
                 consecutive_errors = 0
                 new_buf = data.get("get_updates_buf", buf)
                 if new_buf != buf:
