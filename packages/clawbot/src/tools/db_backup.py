@@ -4,6 +4,7 @@
 不需要停止服务即可安全备份数据库文件。
 每天凌晨2点自动执行，保留最近7天的备份。
 """
+from __future__ import annotations
 
 import logging
 import shutil
