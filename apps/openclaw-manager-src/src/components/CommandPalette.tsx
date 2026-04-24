@@ -15,10 +15,34 @@ import { toast } from '@/lib/notify'
 import { useLanguage } from '@/i18n'
 
 import {
-  Bot, Brain, DollarSign, Dna, Globe,
-  Layout, MessageSquare, Network, Settings, Shield,
-  Zap, TrendingUp, Newspaper, Send,
+  Bot, Brain, DollarSign, Dna, Fish, Globe,
+  Home, Landmark, Layout, MessageSquare, Network, Settings, Shield,
+  ShoppingBag, Zap, TrendingUp, Newspaper, Send,
 } from 'lucide-react'
+
+const mainNavigationItems: Array<{ page: PageType; labelKey: string; icon: React.ElementType }> = [
+  { page: 'home', labelKey: 'sidebar.home', icon: Home },
+  { page: 'assistant', labelKey: 'sidebar.assistant', icon: MessageSquare },
+  { page: 'worldmonitor', labelKey: 'sidebar.worldmonitor', icon: Globe },
+  { page: 'newsfeed', labelKey: 'sidebar.newsfeed', icon: Newspaper },
+  { page: 'finradar', labelKey: 'sidebar.finradar', icon: Landmark },
+  { page: 'portfolio', labelKey: 'sidebar.portfolio', icon: TrendingUp },
+  { page: 'bots', labelKey: 'sidebar.bots', icon: Bot },
+  { page: 'store', labelKey: 'sidebar.store', icon: ShoppingBag },
+  { page: 'xianyu', labelKey: 'sidebar.xianyu', icon: Fish },
+  { page: 'social', labelKey: 'sidebar.social', icon: Globe },
+  { page: 'settings', labelKey: 'sidebar.settings', icon: Settings },
+]
+
+const developerNavigationItems: Array<{ page: PageType; labelKey: string; icon: React.ElementType }> = [
+  { page: 'dashboard', labelKey: 'commandPalette.nav.dashboard', icon: Layout },
+  { page: 'control', labelKey: 'commandPalette.nav.control', icon: Zap },
+  { page: 'money', labelKey: 'commandPalette.nav.money', icon: DollarSign },
+  { page: 'memory', labelKey: 'commandPalette.nav.memory', icon: Brain },
+  { page: 'evolution', labelKey: 'commandPalette.nav.evolution', icon: Dna },
+  { page: 'channels', labelKey: 'commandPalette.nav.channels', icon: MessageSquare },
+  { page: 'gateway', labelKey: 'commandPalette.nav.gateway', icon: Network },
+]
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
@@ -98,42 +122,21 @@ export function CommandPalette() {
         )}
 
         <CommandGroup heading={t('commandPalette.navigation')}>
-          <CommandItem onSelect={() => navigate('dashboard')}>
-            <Layout className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.dashboard')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('control')}>
-            <Zap className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.control')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('social')}>
-            <Globe className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.social')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('money')}>
-            <DollarSign className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.money')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('memory')}>
-            <Brain className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.memory')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('evolution')}>
-            <Dna className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.evolution')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('channels')}>
-            <MessageSquare className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.channels')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('gateway')}>
-            <Network className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.gateway')}
-          </CommandItem>
-          <CommandItem onSelect={() => navigate('settings')}>
-            <Settings className="mr-2 h-4 w-4" />
-            {t('commandPalette.nav.settings')}
-          </CommandItem>
+          {mainNavigationItems.map(({ page, labelKey, icon: Icon }) => (
+            <CommandItem key={page} onSelect={() => navigate(page)}>
+              <Icon className="mr-2 h-4 w-4" />
+              {t(labelKey)}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+
+        <CommandGroup heading={t('sidebar.devTools')}>
+          {developerNavigationItems.map(({ page, labelKey, icon: Icon }) => (
+            <CommandItem key={page} onSelect={() => navigate(page)}>
+              <Icon className="mr-2 h-4 w-4" />
+              {t(labelKey)}
+            </CommandItem>
+          ))}
         </CommandGroup>
 
         <CommandSeparator />
