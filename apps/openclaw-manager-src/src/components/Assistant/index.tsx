@@ -171,7 +171,7 @@ export function Assistant() {
     try { setSessions((await api.conversationSessions(50))?.sessions || []); }
     catch (e) { console.error('加载会话列表失败:', e); toast.error(t('assistant.loadFailed'), { channel: 'notification' }); }
     finally { setLoadingSessions(false); }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
@@ -182,7 +182,7 @@ export function Assistant() {
       const raw: Array<{ role: string; content: string; timestamp?: string }> = (await api.conversationGet(sid))?.messages || [];
       setMessages(raw.map((m, i) => ({ id: `${sid}-${i}`, role: m.role === 'user' ? 'user' as const : 'ai' as const, content: m.content, timestamp: fmtTime(m.timestamp) })));
     } catch (e) { console.error('加载会话消息失败:', e); toast.error(t('assistant.selectFailed'), { channel: 'notification' }); }
-  }, []);
+  }, [t]);
 
   // 新建对话
   const createSession = useCallback(async () => {
@@ -190,7 +190,7 @@ export function Assistant() {
       const d = await api.conversationCreate(t('assistant.newChat'));
       if (d?.id) { setActiveId(d.id); setMessages([]); await loadSessions(); }
     } catch (e) { console.error('创建会话失败:', e); toast.error(t('assistant.createFailed'), { channel: 'notification' }); }
-  }, [loadSessions]);
+  }, [loadSessions, t]);
 
   // 删除对话
   const deleteSession = useCallback(async (sid: string, ev: React.MouseEvent) => {
@@ -200,7 +200,7 @@ export function Assistant() {
       if (sid === activeId) { setActiveId(null); setMessages([]); }
       await loadSessions();
     } catch (e) { console.error('删除会话失败:', e); toast.error(t('assistant.deleteFailed'), { channel: 'notification' }); }
-  }, [activeId, loadSessions]);
+  }, [activeId, loadSessions, t]);
 
   // 发送消息（核心逻辑）
   const handleSend = useCallback(async () => {
@@ -272,7 +272,7 @@ export function Assistant() {
     } finally {
       setUploadingFile(false);
     }
-  }, []);
+  }, [t]);
 
   // 语音录制切换：点击开始/停止录音
   const toggleRecording = useCallback(async () => {
@@ -340,7 +340,7 @@ export function Assistant() {
       const msg = err instanceof Error ? err.message : t('common.unknownError');
       toast.error(`${t('assistant.cannotStartRecording')}: ${msg}`, { channel: 'notification' });
     }
-  }, [isRecording]);
+  }, [isRecording, t]);
 
   /* ========== 渲染 ========== */
   return (

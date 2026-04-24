@@ -173,7 +173,7 @@ export function Settings(_props: SettingsProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -222,7 +222,7 @@ export function Settings(_props: SettingsProps) {
         } catch { toast.error(t('settings.diagFailed'), { channel: 'notification' }); }
         break;
     }
-  }, []);
+  }, [t]);
 
   /* —— 保存配置 —— */
   const handleSave = async () => {
