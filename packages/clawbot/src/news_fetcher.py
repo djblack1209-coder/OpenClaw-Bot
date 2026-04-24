@@ -9,7 +9,6 @@ v2.0 变更 (2026-03-23):
 """
 
 import asyncio
-from typing import List, Dict, Optional
 import re
 
 from src.notify_style import format_digest
@@ -24,8 +23,9 @@ except ImportError:
     feedparser = None  # type: ignore[assignment]
 
 import logging
-from src.utils import now_et, scrub_secrets
+
 from src.http_client import ResilientHTTPClient
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 _http = ResilientHTTPClient(timeout=30.0, name="news_fetcher")
 
 # ── 内置 RSS 源（无需 API Key）──
-RSS_FEEDS: Dict[str, List[str]] = {
+RSS_FEEDS: dict[str, list[str]] = {
     "tech_en": [
         "https://hnrss.org/newest?points=100",  # Hacker News 100+ 分
         "https://feeds.feedburner.com/TechCrunch/",  # TechCrunch
@@ -67,7 +67,7 @@ class NewsFetcher:
         "crypto": ["Bitcoin", "比特币", "Ethereum", "加密货币"],
     }
 
-    def __init__(self, serpapi_key: Optional[str] = None):
+    def __init__(self, serpapi_key: str | None = None):
         """
         初始化
 
@@ -79,7 +79,7 @@ class NewsFetcher:
         # asyncio 锁：保护 _seen_titles 跨 await 的并发访问（HI-465）
         self._seen_lock = asyncio.Lock()
 
-    async def fetch_rss_feed(self, feed_url: str, count: int = 5) -> List[Dict[str, str]]:
+    async def fetch_rss_feed(self, feed_url: str, count: int = 5) -> list[dict[str, str]]:
         """feedparser 解析 RSS/Atom feed (v2.0 新增).
 
         搬运 feedparser (9.8k⭐) — 支持 RSS 0.9/1.0/2.0 + Atom 0.3/1.0
@@ -122,7 +122,7 @@ class NewsFetcher:
             logger.warning(f"[news_fetcher] feedparser RSS 失败 ({feed_url}): {scrub_secrets(str(e))}")
             return []
 
-    async def fetch_by_category(self, category: str, count: int = 5) -> List[Dict[str, str]]:
+    async def fetch_by_category(self, category: str, count: int = 5) -> list[dict[str, str]]:
         """按分类抓取 RSS 新闻 (v2.0 新增)
 
         category: tech_en | tech_cn | ai | finance
@@ -146,7 +146,7 @@ class NewsFetcher:
                 deduped.append(item)
         return deduped[:count]
 
-    async def _fetch_rss_regex(self, url: str, count: int = 5) -> List[Dict[str, str]]:
+    async def _fetch_rss_regex(self, url: str, count: int = 5) -> list[dict[str, str]]:
         """feedparser 不可用时的 regex 降级"""
         try:
             resp = await _http.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -169,9 +169,9 @@ class NewsFetcher:
             return []
 
     @staticmethod
-    def format_news_items(items: List[Dict[str, str]], max_items: int = 3, title_max_len: int = 72) -> List[str]:
+    def format_news_items(items: list[dict[str, str]], max_items: int = 3, title_max_len: int = 72) -> list[str]:
         """将新闻条目排成更适合消息推送的公告式样式。"""
-        lines: List[str] = []
+        lines: list[str] = []
         for idx, item in enumerate(items[:max_items], 1):
             title = re.sub(r"\s+", " ", str(item.get("title", "") or "").strip())
             source = re.sub(r"\s+", " ", str(item.get("source", "") or "").strip())
@@ -195,7 +195,7 @@ class NewsFetcher:
 
         return lines
 
-    async def fetch_from_bing(self, query: str, count: int = 5) -> List[Dict[str, str]]:
+    async def fetch_from_bing(self, query: str, count: int = 5) -> list[dict[str, str]]:
         """从 Bing 搜索新闻"""
         try:
             url = "https://www.bing.com/news/search"
@@ -232,7 +232,7 @@ class NewsFetcher:
             logger.debug("Bing新闻抓取失败: %s", e)
             return []
 
-    async def fetch_from_google_news_rss(self, query: str, count: int = 5) -> List[Dict[str, str]]:
+    async def fetch_from_google_news_rss(self, query: str, count: int = 5) -> list[dict[str, str]]:
         """从 Google News RSS 获取新闻"""
         try:
             import urllib.parse
@@ -269,7 +269,7 @@ class NewsFetcher:
             logger.debug("Google News RSS抓取失败: %s", e)
             return []
 
-    async def fetch_topic_news(self, topic: str, count: int = 3) -> List[Dict[str, str]]:
+    async def fetch_topic_news(self, topic: str, count: int = 3) -> list[dict[str, str]]:
         """获取特定主题的新闻（跨主题去重）"""
         keywords = self.TOPICS.get(topic, [topic])
         all_news = []

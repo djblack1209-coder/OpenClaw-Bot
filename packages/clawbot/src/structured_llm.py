@@ -26,9 +26,10 @@ import json
 import logging
 import re
 import threading
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
+
 from src.constants import FAMILY_QWEN
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ T = TypeVar("T", bound=BaseModel)
 
 # ── 缓存 instructor client（避免每次调用都创建）─────────────
 
-_instructor_client_cache: Dict[int, Any] = {}
+_instructor_client_cache: dict[int, Any] = {}
 # 保护缓存的 check-then-create 模式，防止并发重复创建 instructor client
 _cache_lock = threading.Lock()
 
@@ -83,8 +84,8 @@ def _get_instructor_client(router: Any) -> Any:
 
 
 async def structured_completion(
-    response_model: Type[T],
-    messages: List[Dict[str, str]],
+    response_model: type[T],
+    messages: list[dict[str, str]],
     model_family: str = FAMILY_QWEN,
     system_prompt: str = "",
     temperature: float = 0.1,
@@ -164,8 +165,8 @@ async def structured_completion(
 
 
 async def _instructor_path(
-    response_model: Type[T],
-    messages: List[Dict[str, str]],
+    response_model: type[T],
+    messages: list[dict[str, str]],
     model_family: str,
     router: Any,
     temperature: float,
@@ -202,8 +203,8 @@ async def _instructor_path(
 
 
 async def _fallback_path(
-    response_model: Type[T],
-    messages: List[Dict[str, str]],
+    response_model: type[T],
+    messages: list[dict[str, str]],
     model_family: str,
     pool: Any,
     system_prompt: str,

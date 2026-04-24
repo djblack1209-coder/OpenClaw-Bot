@@ -13,7 +13,7 @@ from collections import defaultdict
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,26 +21,26 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from ..core.user_error import humanize_error
-from .auth import verify_api_token, log_token_status
+from .auth import log_token_status, verify_api_token
 from .routers import (
-    router_system,
-    router_trading,
-    router_social,
-    router_memory,
-    router_pool,
-    router_ws,
-    router_evolution,
-    router_shopping,
-    router_omega,
-    router_newapi,
+    router_cli,
     router_controls,
     router_conversation,
-    router_xianyu,
-    router_cli,
-    router_monitor,
-    router_wechat,
     router_cookies,
+    router_evolution,
+    router_memory,
+    router_monitor,
+    router_newapi,
+    router_omega,
+    router_pool,
+    router_shopping,
+    router_social,
     router_store,
+    router_system,
+    router_trading,
+    router_wechat,
+    router_ws,
+    router_xianyu,
 )
 
 logger = logging.getLogger(__name__)
@@ -213,8 +213,8 @@ class APIServer:
     def __init__(self, port: int = 18790, host: str = "127.0.0.1"):
         self.port = port
         self.host = host
-        self._thread: Optional[threading.Thread] = None
-        self._server: Optional[uvicorn.Server] = None
+        self._thread: threading.Thread | None = None
+        self._server: uvicorn.Server | None = None
 
         # 安全加固: 生产环境关闭 API 文档页面
         _is_production = os.environ.get("ENV", "").lower() in ("prod", "production")

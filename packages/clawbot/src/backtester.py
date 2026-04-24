@@ -24,31 +24,29 @@ v2.0 新增（对标 freqtrade 47.7k⭐）：
 """
 import logging
 import math
-from typing import Dict, List, Optional
-
-from src.risk_config import RiskConfig
-from src.risk_manager import RiskManager
-
-# === re-export: 数据模型和数据加载（从 backtester_models 导入并暴露） ===
-from src.backtester_models import (  # noqa: F401
-    Bar,
-    BacktestTrade,
-    BacktestConfig,
-    PerformanceReport,
-    load_historical_data,
-    bars_to_dataframe,
-)
 
 # === re-export: v2.0 高级分析功能（从 backtester_advanced 导入并暴露） ===
 from src.backtester_advanced import (  # noqa: F401
-    run_monte_carlo,
-    format_monte_carlo,
-    run_parameter_optimization,
-    format_optimization_result,
-    run_walk_forward,
-    format_walk_forward,
     calc_enhanced_metrics,
+    format_monte_carlo,
+    format_optimization_result,
+    format_walk_forward,
+    run_monte_carlo,
+    run_parameter_optimization,
+    run_walk_forward,
 )
+
+# === re-export: 数据模型和数据加载（从 backtester_models 导入并暴露） ===
+from src.backtester_models import (
+    BacktestConfig,
+    BacktestTrade,
+    Bar,
+    PerformanceReport,
+    bars_to_dataframe,
+    load_historical_data,
+)
+from src.risk_config import RiskConfig
+from src.risk_manager import RiskManager
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +78,17 @@ class Backtester:
 
         # 状态
         self._capital = self.config.initial_capital
-        self._open_trades: List[BacktestTrade] = []
-        self._closed_trades: List[BacktestTrade] = []
+        self._open_trades: list[BacktestTrade] = []
+        self._closed_trades: list[BacktestTrade] = []
         self._trade_counter = 0
-        self._equity_curve: List[float] = []
+        self._equity_curve: list[float] = []
         self._peak_equity: float = self.config.initial_capital
         self._max_drawdown: float = 0
         self._max_drawdown_pct: float = 0
         self._trades_today: int = 0
-        self._current_date: Optional[str] = None
+        self._current_date: str | None = None
 
-    def run(self, symbol: str, bars: List[Bar], lookback: int = 50) -> PerformanceReport:
+    def run(self, symbol: str, bars: list[Bar], lookback: int = 50) -> PerformanceReport:
         """
         执行回测
 
@@ -431,11 +429,11 @@ def run_backtest(
 
 
 def run_multi_backtest(
-    symbols: List[str],
+    symbols: list[str],
     period: str = "1y",
     interval: str = "1d",
     initial_capital: float = 10000.0,
-) -> Dict[str, PerformanceReport]:
+) -> dict[str, PerformanceReport]:
     """
     多标的回测
 
@@ -452,7 +450,7 @@ def run_multi_backtest(
     return results
 
 
-def format_multi_report(reports: Dict[str, PerformanceReport]) -> str:
+def format_multi_report(reports: dict[str, PerformanceReport]) -> str:
     """格式化多标的回测汇总"""
     lines = [
         "=" * 60,

@@ -4,7 +4,6 @@
 """
 import math
 from datetime import datetime, timedelta
-from typing import List, Dict
 
 from src.utils import now_et
 
@@ -12,7 +11,7 @@ from src.utils import now_et
 class JournalPerformanceMixin:
     """绩效统计相关方法，依赖主类的 _conn() / get_closed_trades() / get_config()"""
 
-    def get_performance(self, days: int = 30) -> Dict:
+    def get_performance(self, days: int = 30) -> dict:
         """计算绩效指标"""
         trades = self.get_closed_trades(days=days, limit=1000)
         if not trades:
@@ -98,7 +97,7 @@ class JournalPerformanceMixin:
             "consecutive_losses": max_consec_losses,
         }
 
-    def get_today_pnl(self) -> Dict:
+    def get_today_pnl(self) -> dict:
         """今日盈亏"""
         from src.utils import today_et_str
         today = today_et_str()
@@ -141,8 +140,8 @@ class JournalPerformanceMixin:
             return ([], [])
 
         initial_capital = float(self.get_config('initial_capital', '2000'))
-        equity_values: List[float] = []
-        date_labels: List[str] = []
+        equity_values: list[float] = []
+        date_labels: list[str] = []
         running = initial_capital
 
         for r in rows:

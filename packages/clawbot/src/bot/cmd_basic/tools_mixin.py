@@ -4,15 +4,17 @@
 import logging
 import os
 
-from src.bot.globals import (
-    get_siliconflow_key, send_long_message,
-    news_fetcher, image_tool,
-)
-from src.message_format import format_error
-from src.bot.error_messages import error_generic
-from src.telegram_ux import with_typing, ProgressTracker
 from src.bot.auth import requires_auth
+from src.bot.error_messages import error_generic
+from src.bot.globals import (
+    get_siliconflow_key,
+    image_tool,
+    news_fetcher,
+    send_long_message,
+)
 from src.constants import IMG_MODEL_FLUX
+from src.message_format import format_error
+from src.telegram_ux import ProgressTracker, with_typing
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +130,7 @@ class _ToolsMixin:
         """文字转语音 — /tts <文本> [音色]"""
         args = context.args or []
         if not args:
-            from src.tools.tts_tool import format_voice_list, CHINESE_VOICES
+            from src.tools.tts_tool import CHINESE_VOICES, format_voice_list
             help_text = "🎤 文字转语音\n\n用法: /tts <文本> [音色]\n\n"
             help_text += format_voice_list()
             help_text += "\n\n示例：\n  /tts 今天天气真好\n  /tts 你好世界 云希"
@@ -136,7 +138,7 @@ class _ToolsMixin:
             return
 
         # 检查最后一个参数是否是音色名
-        from src.tools.tts_tool import text_to_speech, CHINESE_VOICES
+        from src.tools.tts_tool import CHINESE_VOICES, text_to_speech
         voice = None
         text_parts = list(args)
         if text_parts[-1] in CHINESE_VOICES:
@@ -189,7 +191,7 @@ class _ToolsMixin:
         msg = await update.message.reply_text("🤖 Agent 正在思考并执行...")
 
         try:
-            from src.agent_tools import run_agent, HAS_SMOLAGENTS
+            from src.agent_tools import HAS_SMOLAGENTS, run_agent
 
             if not HAS_SMOLAGENTS:
                 await msg.edit_text(
@@ -238,7 +240,7 @@ class _ToolsMixin:
 
         # 1. 股票快速查询
         try:
-            from src.invest_tools import get_stock_quote, get_crypto_quote
+            from src.invest_tools import get_crypto_quote, get_stock_quote
             from src.telegram_ux import format_quote_card
 
             # 判断是否像股票代码（1-5个字母）
@@ -386,8 +388,9 @@ end tell
 
             # 微信同步通知
             try:
-                from src.wechat_bridge import send_to_wechat
                 import asyncio
+
+                from src.wechat_bridge import send_to_wechat
                 asyncio.create_task(send_to_wechat(
                     "🖥 Claude Code 已在桌面启动" +
                     (f"\n> {prompt[:80]}" if prompt else "")

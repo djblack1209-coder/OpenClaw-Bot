@@ -3,11 +3,11 @@ ClawBot 监控 — 异常检测器
 
 对标 Datadog APM 的异常检测：延迟尖峰、错误率突增、成本异常、流量异常。
 """
-import time
 import logging
 import threading
+import time
 from collections import deque
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class AnomalyDetector:
         self._request_timestamps = deque(maxlen=window_size * 2)
         self._lock = threading.Lock()
         # 告警状态
-        self._alerts: List[Dict[str, Any]] = []
+        self._alerts: list[dict[str, Any]] = []
         self._max_alerts = 200
 
     def record_request(self, latency_ms: float, success: bool, cost_usd: float = 0.0):
@@ -42,7 +42,7 @@ class AnomalyDetector:
             self._cost_window.append(cost_usd)
             self._request_timestamps.append(now)
 
-    def _z_score(self, values: List[float], current: float) -> float:
+    def _z_score(self, values: list[float], current: float) -> float:
         """计算 Z-score"""
         if len(values) < 10:
             return 0.0
@@ -52,7 +52,7 @@ class AnomalyDetector:
         std = math.sqrt(variance) if variance > 0 else 0.001
         return (current - mean) / std
 
-    def detect_latency_spike(self, threshold_z: float = 2.5) -> Optional[Dict[str, Any]]:
+    def detect_latency_spike(self, threshold_z: float = 2.5) -> dict[str, Any] | None:
         """检测延迟尖峰（Z-score > threshold）"""
         with self._lock:
             if len(self._latency_window) < 20:
@@ -74,7 +74,7 @@ class AnomalyDetector:
             return alert
         return None
 
-    def detect_error_rate_spike(self, threshold: float = 0.3) -> Optional[Dict[str, Any]]:
+    def detect_error_rate_spike(self, threshold: float = 0.3) -> dict[str, Any] | None:
         """检测错误率突增（最近窗口错误率 > threshold）"""
         with self._lock:
             if len(self._error_window) < 10:
@@ -98,7 +98,7 @@ class AnomalyDetector:
             return alert
         return None
 
-    def detect_cost_anomaly(self, threshold_z: float = 3.0) -> Optional[Dict[str, Any]]:
+    def detect_cost_anomaly(self, threshold_z: float = 3.0) -> dict[str, Any] | None:
         """检测成本异常（单次请求成本 Z-score 过高）"""
         with self._lock:
             if len(self._cost_window) < 20:
@@ -122,7 +122,7 @@ class AnomalyDetector:
             return alert
         return None
 
-    def detect_traffic_anomaly(self) -> Optional[Dict[str, Any]]:
+    def detect_traffic_anomaly(self) -> dict[str, Any] | None:
         """检测流量异常（QPS 突增或骤降）"""
         with self._lock:
             ts = list(self._request_timestamps)
@@ -149,7 +149,7 @@ class AnomalyDetector:
             return alert
         return None
 
-    def check_all(self) -> List[Dict[str, Any]]:
+    def check_all(self) -> list[dict[str, Any]]:
         """运行所有异常检测"""
         alerts = []
         for detect_fn in [
@@ -166,17 +166,17 @@ class AnomalyDetector:
                 logger.debug(f"[AnomalyDetector] 检测失败: {e}")
         return alerts
 
-    def _add_alert(self, alert: Dict[str, Any]):
+    def _add_alert(self, alert: dict[str, Any]):
         with self._lock:
             self._alerts.append(alert)
             if len(self._alerts) > self._max_alerts:
                 self._alerts = self._alerts[-self._max_alerts:]
 
-    def get_recent_alerts(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_recent_alerts(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._alerts[-limit:])
 
-    def get_health_summary(self) -> Dict[str, Any]:
+    def get_health_summary(self) -> dict[str, Any]:
         """获取健康摘要"""
         with self._lock:
             lat = list(self._latency_window)

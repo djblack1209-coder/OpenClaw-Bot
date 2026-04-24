@@ -16,16 +16,17 @@ CrewAI 集成层 — 搬运自 CrewAI (46.6k⭐)
 """
 import logging
 import os
-from typing import Dict, Any, Optional, List, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
-from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE
+from src.bot.config import SILICONFLOW_BASE, SILICONFLOW_KEYS
 
 logger = logging.getLogger(__name__)
 
 _crewai_available = False
 try:
-    from crewai import Agent, Task, Crew, Process
+    from crewai import Agent, Crew, Process, Task
     _crewai_available = True
 except ImportError:
     Agent = Task = Crew = Process = None  # type: ignore[assignment,misc]
@@ -93,8 +94,8 @@ class CrewAIBridge:
     CrewAI 不可用时自动降级回原有 ai_team_voter。
     """
 
-    def __init__(self, analysts: Optional[List[AnalystRole]] = None,
-                 llm_fn: Optional[Callable] = None):
+    def __init__(self, analysts: list[AnalystRole] | None = None,
+                 llm_fn: Callable | None = None):
         self.analysts = analysts or DEFAULT_ANALYSTS
         self.llm_fn = llm_fn
         self._crew = None
@@ -135,9 +136,9 @@ class CrewAIBridge:
         self._agents = agents
 
     async def analyze_trade(
-        self, symbol: str, analysis_data: Dict[str, Any],
-        notify_fn: Optional[Callable] = None,
-    ) -> Dict[str, Any]:
+        self, symbol: str, analysis_data: dict[str, Any],
+        notify_fn: Callable | None = None,
+    ) -> dict[str, Any]:
         """
         用 CrewAI 多 Agent 分析交易机会。
 
@@ -189,8 +190,8 @@ class CrewAIBridge:
             return await self._fallback_analyze(symbol, analysis_data, notify_fn)
 
     async def _fallback_analyze(
-        self, symbol: str, analysis_data: Dict, notify_fn: Optional[Callable],
-    ) -> Dict[str, Any]:
+        self, symbol: str, analysis_data: dict, notify_fn: Callable | None,
+    ) -> dict[str, Any]:
         """降级回原有 ai_team_voter"""
         try:
             from src.ai_team_voter import run_team_vote
@@ -206,7 +207,7 @@ class CrewAIBridge:
             return {"decision": "SKIP", "confidence": 0, "engine": "none",
                     "error": "ai_team_voter 不可用"}
 
-    def _parse_crew_result(self, result, symbol: str) -> List[Dict]:
+    def _parse_crew_result(self, result, symbol: str) -> list[dict]:
         """解析 CrewAI 输出为投票列表"""
         from json_repair import loads as jloads
         votes = []
@@ -241,7 +242,7 @@ class CrewAIBridge:
             })
         return votes
 
-    def _tally_votes(self, votes: List[Dict], symbol: str) -> Dict[str, Any]:
+    def _tally_votes(self, votes: list[dict], symbol: str) -> dict[str, Any]:
         """计票（与 ai_team_voter 逻辑一致）"""
         buy_count = sum(1 for v in votes if v["vote"] == "BUY")
         threshold = max(4, len(votes) * 2 // 3)
@@ -281,7 +282,7 @@ class CrewAIBridge:
             "symbol": symbol,
         }
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "available": _crewai_available,
             "using_crewai": self._using_crewai,
@@ -290,7 +291,7 @@ class CrewAIBridge:
         }
 
 
-def _format_analysis(data: Dict) -> str:
+def _format_analysis(data: dict) -> str:
     """格式化分析数据为简洁文本"""
     parts = []
     for k, v in list(data.items())[:15]:
@@ -303,7 +304,7 @@ def _format_analysis(data: Dict) -> str:
 
 # ── 全局实例 ──
 
-_bridge: Optional[CrewAIBridge] = None
+_bridge: CrewAIBridge | None = None
 
 
 def init_crewai_bridge(analysts=None, llm_fn=None) -> CrewAIBridge:
@@ -312,5 +313,5 @@ def init_crewai_bridge(analysts=None, llm_fn=None) -> CrewAIBridge:
     return _bridge
 
 
-def get_crewai_bridge() -> Optional[CrewAIBridge]:
+def get_crewai_bridge() -> CrewAIBridge | None:
     return _bridge

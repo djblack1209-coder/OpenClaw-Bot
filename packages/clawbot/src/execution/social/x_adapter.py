@@ -1,7 +1,6 @@
 """
 X/Twitter 平台适配器 — 包装 x_platform.py 的发布函数
 """
-from typing import Dict, List, Optional
 
 from src.execution.social.platform_adapter import SocialPlatformAdapter
 
@@ -18,7 +17,7 @@ class XPlatformAdapter(SocialPlatformAdapter):
         return "X/Twitter"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["twitter", "tw"]
 
     def normalize_content(self, raw_content: str) -> tuple:
@@ -26,10 +25,10 @@ class XPlatformAdapter(SocialPlatformAdapter):
         return "", raw_content
 
     def build_worker_payload(
-        self, content: str, title: str = "", images: Optional[List[str]] = None
-    ) -> Dict:
+        self, content: str, title: str = "", images: list[str] | None = None
+    ) -> dict:
         """构建 X 发布的 worker 参数"""
-        payload: Dict = {"text": content}
+        payload: dict = {"text": content}
         if images:
             payload["images"] = images
         return payload
@@ -42,10 +41,10 @@ class XPlatformAdapter(SocialPlatformAdapter):
         self,
         content: str,
         title: str = "",
-        images: Optional[List[str]] = None,
+        images: list[str] | None = None,
         worker_fn=None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """发布到 X — 委托给 x_platform.publish_x_post"""
         from src.execution.social.x_platform import publish_x_post
 

@@ -20,8 +20,9 @@ OpenClaw LLM 可观测性 — 搬运 Arize Phoenix OTEL (9k⭐)
 
 import logging
 import os
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ except ImportError:
 
 def init_phoenix(
     project_name: str = "openclaw-bot",
-    endpoint: Optional[str] = None,
+    endpoint: str | None = None,
 ) -> bool:
     """初始化 Phoenix OTEL 追踪。
 
@@ -145,8 +146,8 @@ def init_phoenix(
 
 
 def trace_function(
-    name: Optional[str] = None,
-    attributes: Optional[Dict[str, str]] = None,
+    name: str | None = None,
+    attributes: dict[str, str] | None = None,
 ) -> Callable[[F], F]:
     """装饰器：为任意 async 函数创建 OTEL span。
 
@@ -193,7 +194,7 @@ def trace_function(
 # ============================================================
 
 
-def get_mcp_config() -> Dict[str, Any]:
+def get_mcp_config() -> dict[str, Any]:
     """返回 Phoenix MCP Server 配置 dict，可直接写入 OpenCode / Cursor 配置。
 
     Phoenix MCP Server 允许 AI 编辑器直接查询 trace 数据。
@@ -221,7 +222,7 @@ def get_mcp_config() -> Dict[str, Any]:
 # ============================================================
 
 
-def get_phoenix_url() -> Optional[str]:
+def get_phoenix_url() -> str | None:
     """返回 Phoenix UI 地址，未配置时返回 None。"""
     endpoint = os.getenv("PHOENIX_ENDPOINT", "")
     if not endpoint:
@@ -230,7 +231,7 @@ def get_phoenix_url() -> Optional[str]:
     return endpoint.rstrip("/")
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats() -> dict[str, Any]:
     """获取 Phoenix 观测层状态。"""
     return {
         "available": _phoenix_available,

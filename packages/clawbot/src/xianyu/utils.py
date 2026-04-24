@@ -5,7 +5,7 @@ import json
 import secrets
 import struct
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 
 def generate_mid() -> str:
@@ -43,7 +43,7 @@ def generate_sign(t: str, token: str, data: str) -> str:
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def trans_cookies(cookie_str: str) -> Dict[str, str]:
+def trans_cookies(cookie_str: str) -> dict[str, str]:
     cookies = {}
     for item in cookie_str.split(";"):
         item = item.strip()
@@ -115,10 +115,10 @@ class _MsgPackDecoder:
         if f >= 0xE0: return f - 256
         raise ValueError(f"Unknown format: 0x{f:02x}")
 
-    def _arr(self, n: int) -> List[Any]:
+    def _arr(self, n: int) -> list[Any]:
         return [self.decode() for _ in range(n)]
 
-    def _map(self, n: int) -> Dict[Any, Any]:
+    def _map(self, n: int) -> dict[Any, Any]:
         return {self.decode(): self.decode() for _ in range(n)}
 
 

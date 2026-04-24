@@ -2,15 +2,17 @@
 SessionMixin — 讨论会话 + 服务工作流管理
 从 router.py 拆分而来，以 Mixin 方式注入 ChatRouter，管理所有会话类状态。
 """
+import asyncio
+import logging
 import re
 import time
-import logging
-import asyncio
-from typing import Dict, List, Optional, Tuple
 
 from src.constants import (
-    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_SONNET,
+    BOT_DEEPSEEK,
+    BOT_GPTOSS,
+    BOT_QWEN,
 )
 from src.routing.constants import (
     SERVICE_WORKFLOW_ACTION_HINTS,
@@ -27,14 +29,14 @@ class SessionMixin:
 
     def _init_sessions(self):
         """初始化会话相关的状态（由 ChatRouter.__init__ 调用）"""
-        self._discuss_sessions: Dict[int, Dict] = {}
+        self._discuss_sessions: dict[int, dict] = {}
         self._discuss_lock = asyncio.Lock()
-        self._service_workflows: Dict[int, ServiceWorkflowSession] = {}
+        self._service_workflows: dict[int, ServiceWorkflowSession] = {}
         self._service_workflow_lock = asyncio.Lock()
 
     # ============ 讨论模式 ============
 
-    async def start_discuss(self, chat_id: int, topic: str, rounds: int, participants: Optional[List[str]] = None, discuss_type: str = "discuss") -> str:
+    async def start_discuss(self, chat_id: int, topic: str, rounds: int, participants: list[str] | None = None, discuss_type: str = "discuss") -> str:
         """
         启动讨论模式。
 
@@ -88,14 +90,14 @@ class SessionMixin:
                 return "讨论模式已结束。"
             return "当前没有进行中的讨论。"
 
-    def get_discuss_session(self, chat_id: int) -> Optional[Dict]:
+    def get_discuss_session(self, chat_id: int) -> dict | None:
         """获取讨论会话"""
         session = self._discuss_sessions.get(chat_id)
         if session and session.get("active"):
             return session
         return None
 
-    async def next_discuss_turn(self, chat_id: int) -> Optional[Tuple[str, str]]:
+    async def next_discuss_turn(self, chat_id: int) -> tuple[str, str] | None:
         """
         获取讨论模式的下一个发言者和提示。
 
@@ -161,7 +163,7 @@ class SessionMixin:
         intake_bot_id: str,
         expert_bot_id: str,
         director_bot_id: str,
-    ) -> Tuple[bool, str, Optional[ServiceWorkflowSession]]:
+    ) -> tuple[bool, str, ServiceWorkflowSession | None]:
         """启动服务工作流会话"""
         async with self._service_workflow_lock:
             current = self._service_workflows.get(chat_id)
@@ -221,7 +223,7 @@ class SessionMixin:
             return True
         return False
 
-    def get_service_workflow(self, chat_id: int) -> Optional[ServiceWorkflowSession]:
+    def get_service_workflow(self, chat_id: int) -> ServiceWorkflowSession | None:
         """获取活跃的服务工作流会话"""
         session = self._service_workflows.get(chat_id)
         if session and session.active:

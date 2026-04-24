@@ -6,7 +6,6 @@ Core — 生活服务领域执行器 Mixin
 """
 
 import logging
-from typing import Dict
 
 from src.constants import FAMILY_QWEN
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 class LifeExecutorMixin:
     """生活服务领域执行器"""
 
-    async def _exec_smart_shopping(self, params: Dict) -> Dict:
+    async def _exec_smart_shopping(self, params: dict) -> dict:
         """智能购物比价 — 委托给统一比价引擎 smart_compare_prices()
 
         降级链由 price_engine.smart_compare_prices() 内部管理:
@@ -37,7 +36,7 @@ class LifeExecutorMixin:
             )
 
             # 将 ComparisonReport 转为 brain 层期望的 dict 格式
-            data: Dict = {
+            data: dict = {
                 "source": "smart_compare",
                 "product": product,
                 "platforms_searched": report.searched_platforms,
@@ -75,7 +74,7 @@ class LifeExecutorMixin:
 
         return {"source": "unavailable", "product": product, "note": "比价服务暂时不可用"}
 
-    async def _exec_platform_search(self, params: Dict) -> Dict:
+    async def _exec_platform_search(self, params: dict) -> dict:
         """平台搜索 — 使用实际的 price_engine 函数"""
         platform = params.get("platform", "unknown")
         query = params.get("query", "")
@@ -104,15 +103,15 @@ class LifeExecutorMixin:
             logger.warning("%s搜索失败: %s", platform, e)
             return {"source": platform, "results": [], "error": str(e)}
 
-    async def _exec_rank_results(self, params: Dict) -> Dict:
+    async def _exec_rank_results(self, params: dict) -> dict:
         """排序筛选结果"""
         return {"source": "ranker", "ranked": [], "note": "汇总搜索结果并排序"}
 
-    async def _exec_present_options(self, params: Dict) -> Dict:
+    async def _exec_present_options(self, params: dict) -> dict:
         """展示选项给用户"""
         return {"source": "presenter", "options": [], "note": "生成Inline Keyboard"}
 
-    async def _exec_booking_search(self, params: Dict) -> Dict:
+    async def _exec_booking_search(self, params: dict) -> dict:
         """预订搜索 — Tavily 优先, Jina 降级"""
         goal = params.get("goal", params.get("query", ""))
         if not goal:
@@ -121,7 +120,7 @@ class LifeExecutorMixin:
         raw = None
         search_source = "jina"
         try:
-            from src.tools.tavily_search import search_context, _HAS_TAVILY
+            from src.tools.tavily_search import _HAS_TAVILY, search_context
 
             if _HAS_TAVILY:
                 tavily_raw = await search_context(f"{goal} 预约 预订 价格", max_results=5)
@@ -166,11 +165,11 @@ class LifeExecutorMixin:
                 logger.warning("预订搜索 LLM 结构化失败: %s", e)
         return {"source": "booking_search", "results": [], "note": "预订搜索暂不可用"}
 
-    async def _exec_detect_booking_method(self, params: Dict) -> Dict:
+    async def _exec_detect_booking_method(self, params: dict) -> dict:
         """检测预订方式"""
         return {"method": "browser", "fallback": "phone"}
 
-    async def _exec_booking_execute(self, params: Dict) -> Dict:
+    async def _exec_booking_execute(self, params: dict) -> dict:
         """执行预订 — browser-use (81k⭐) 自然语言浏览器自动化"""
         goal = params.get("goal", params.get("query", ""))
         url = params.get("url", "")
@@ -190,11 +189,11 @@ class LifeExecutorMixin:
             logger.warning("浏览器预订失败: %s", e)
         return {"source": "booking_fallback", "success": False, "note": "浏览器自动化未就绪"}
 
-    async def _exec_booking_phone(self, params: Dict) -> Dict:
+    async def _exec_booking_phone(self, params: dict) -> dict:
         """电话预订"""
         return {"source": "voice_call", "status": "pending", "note": "需要Retell AI"}
 
-    async def _exec_booking_confirm(self, params: Dict) -> Dict:
+    async def _exec_booking_confirm(self, params: dict) -> dict:
         """预订确认 — 检查执行结果"""
         upstream = params.get("_upstream_results", {})
         booking_result = upstream.get("execute", {}) if isinstance(upstream, dict) else {}
@@ -202,7 +201,7 @@ class LifeExecutorMixin:
             return {"source": "confirmation", "confirmed": True, "details": booking_result}
         return {"source": "confirmation", "confirmed": False, "note": "预订执行未成功，无法确认"}
 
-    async def _exec_life_service(self, params: Dict) -> Dict:
+    async def _exec_life_service(self, params: dict) -> dict:
         """生活服务 — 天气查询等"""
         goal = params.get("goal", "")
         city = params.get("city_hint", "")

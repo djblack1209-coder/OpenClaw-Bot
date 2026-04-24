@@ -40,6 +40,7 @@ def _build_smart_reply_keyboard(
     5. 始终保留反馈按钮 (👍👎🔄)
     """
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
     from src.feedback import build_feedback_keyboard
 
     text = (response_text or "").lower()

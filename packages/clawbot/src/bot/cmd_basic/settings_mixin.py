@@ -3,8 +3,8 @@
 """
 import logging
 
-from src.telegram_ux import with_typing
 from src.bot.auth import requires_auth
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +29,10 @@ class _SettingsMixin:
 
     async def _cmd_settings_inner(self, update, context):
         """设置管理 — 内部实现"""
-        from src.bot.globals import user_prefs
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
+
+        from src.bot.globals import user_prefs
 
         user_id = update.effective_user.id
         args = context.args or []
@@ -92,9 +93,10 @@ class _SettingsMixin:
 
     async def handle_settings_callback(self, update, context):
         """处理设置切换按钮的回调"""
-        from src.bot.globals import user_prefs
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
+
+        from src.bot.globals import user_prefs
 
         query = update.callback_query
         await query.answer()

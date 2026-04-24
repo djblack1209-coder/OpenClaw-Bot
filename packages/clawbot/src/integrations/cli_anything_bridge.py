@@ -19,7 +19,7 @@ import logging
 import re
 import shutil
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*$")
 
 # ── 已发现工具的缓存 ──
-_cli_cache: List[Dict[str, str]] = []
+_cli_cache: list[dict[str, str]] = []
 _cli_cache_ts: float = 0.0
 _CLI_CACHE_TTL: float = 60.0  # 缓存 60 秒
 
@@ -39,7 +39,7 @@ def _is_valid_tool_name(name: str) -> bool:
     return bool(_TOOL_NAME_PATTERN.match(name))
 
 
-def discover_installed_clis() -> List[Dict[str, str]]:
+def discover_installed_clis() -> list[dict[str, str]]:
     """扫描 PATH 中已安装的 cli-anything-* 工具
 
     工作原理:
@@ -59,7 +59,7 @@ def discover_installed_clis() -> List[Dict[str, str]]:
     import os
     import subprocess
 
-    tools: List[Dict[str, str]] = []
+    tools: list[dict[str, str]] = []
     seen_names: set = set()
 
     # 遍历 PATH 中的每个目录
@@ -114,9 +114,9 @@ def discover_installed_clis() -> List[Dict[str, str]]:
 
 async def run_cli_command(
     tool_name: str,
-    args: Optional[List[str]] = None,
+    args: list[str] | None = None,
     timeout: int = 30,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """执行一个 CLI-Anything 工具命令
 
     安全措施:
@@ -184,7 +184,7 @@ async def run_cli_command(
             "duration_ms": duration_ms,
         }
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         duration_ms = int((time.monotonic() - start_ms) * 1000)
         # 超时后尝试终止进程
         try:
@@ -213,7 +213,7 @@ async def run_cli_command(
         }
 
 
-async def install_cli_tool(tool_name: str) -> Dict[str, Any]:
+async def install_cli_tool(tool_name: str) -> dict[str, Any]:
     """通过 pip 安装一个 CLI-Anything 工具
 
     安全措施:
@@ -249,7 +249,7 @@ async def install_cli_tool(tool_name: str) -> Dict[str, Any]:
             proc.communicate(), timeout=120  # pip 安装可能较慢
         )
 
-        _output = (stdout or b"").decode("utf-8", errors="replace")  # noqa: F841 — 保留便于调试
+        _output = (stdout or b"").decode("utf-8", errors="replace")
         err_output = (stderr or b"").decode("utf-8", errors="replace")
 
         if proc.returncode == 0:
@@ -273,7 +273,7 @@ async def install_cli_tool(tool_name: str) -> Dict[str, Any]:
                 "message": f"❌ 安装 {package_name} 失败: {short_err}",
             }
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {
             "success": False,
             "message": f"❌ 安装 {package_name} 超时（120 秒）",
@@ -300,7 +300,7 @@ class CLIAnythingManager:
     """
 
     _instance: Optional["CLIAnythingManager"] = None
-    _lock: Optional[asyncio.Lock] = None
+    _lock: asyncio.Lock | None = None
 
     @classmethod
     def get_instance(cls) -> "CLIAnythingManager":
@@ -311,7 +311,7 @@ class CLIAnythingManager:
 
     def __init__(self):
         # asyncio.Lock 延迟创建（可能还没有事件循环）
-        self._async_lock: Optional[asyncio.Lock] = None
+        self._async_lock: asyncio.Lock | None = None
 
     def _get_lock(self) -> asyncio.Lock:
         """延迟获取 asyncio 锁（避免在事件循环外创建）"""
@@ -319,26 +319,26 @@ class CLIAnythingManager:
             self._async_lock = asyncio.Lock()
         return self._async_lock
 
-    def discover(self) -> List[Dict[str, str]]:
+    def discover(self) -> list[dict[str, str]]:
         """发现已安装的 CLI 工具（同步方法，带缓存）"""
         return discover_installed_clis()
 
     async def run(
         self,
         tool_name: str,
-        args: Optional[List[str]] = None,
+        args: list[str] | None = None,
         timeout: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """执行 CLI 命令（线程安全）"""
         async with self._get_lock():
             return await run_cli_command(tool_name, args, timeout)
 
-    async def install(self, tool_name: str) -> Dict[str, Any]:
+    async def install(self, tool_name: str) -> dict[str, Any]:
         """安装 CLI 工具（线程安全）"""
         async with self._get_lock():
             return await install_cli_tool(tool_name)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取 CLI-Anything 整体状态"""
         tools = self.discover()
         # 检查 cli-anything 主命令是否存在

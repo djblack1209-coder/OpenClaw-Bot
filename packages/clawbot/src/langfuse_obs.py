@@ -16,11 +16,11 @@ Langfuse 观测层 — 搬运自 langfuse (23.4k⭐)
   3. 在 LLM 调用处用 trace_llm_call() 包装
 """
 
+import logging
 import os
 import time
-import logging
-from typing import Optional, Dict, Any
 from functools import wraps
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def trace_llm_call(
     user_id: str = "",
     chat_id: str = "",
     chat_type: str = "",
-    metadata: Optional[Dict] = None,
+    metadata: dict | None = None,
 ):
     """
     装饰器：追踪 LLM 调用。
@@ -170,7 +170,7 @@ def log_generation(
     latency_ms: float = 0,
     input_tokens: int = 0,
     output_tokens: int = 0,
-    metadata: Optional[Dict] = None,
+    metadata: dict | None = None,
 ):
     """
     手动记录一次 LLM 调用（非装饰器模式）。
@@ -203,7 +203,7 @@ def log_generation(
         logger.debug("[LangfuseObs] log_generation 失败: %s", e)
 
 
-def log_event(name: str, metadata: Dict[str, Any] = None):
+def log_event(name: str, metadata: dict[str, Any] = None):
     """记录非 LLM 事件（如工具调用、错误等）"""
     if not _langfuse_client:
         return
@@ -237,7 +237,7 @@ def shutdown():
         _langfuse_client = None
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats() -> dict[str, Any]:
     """获取观测层状态"""
     return {
         "available": _langfuse_available,

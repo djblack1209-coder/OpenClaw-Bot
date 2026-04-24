@@ -1,19 +1,19 @@
 """
 ClawBot - Telegram AI 助手 (v5.0 Mixin 架构版)
 """
-from .http_client import ResilientHTTPClient
-from .history_store import HistoryStore
-from .routing import ChatRouter
 from .context_manager import ContextManager
-from .monitoring import StructuredLogger, HealthChecker, AutoRecovery
+from .history_store import HistoryStore
+from .http_client import ResilientHTTPClient
+from .monitoring import AutoRecovery, HealthChecker, StructuredLogger
+from .routing import ChatRouter
 
 __all__ = [
-    "ResilientHTTPClient",
-    "HistoryStore",
+    "AutoRecovery",
     "ChatRouter",
     "ContextManager",
-    "StructuredLogger",
     "HealthChecker",
-    "AutoRecovery",
+    "HistoryStore",
+    "ResilientHTTPClient",
+    "StructuredLogger",
 ]
 __version__ = "5.0.0"

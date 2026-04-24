@@ -2,11 +2,11 @@
 CollabOrchestrator — 多 Bot 协作编排器
 从 chat_router.py 拆分而来，实现「规划-执行-审查-汇总」四阶段协作流程。
 """
+import asyncio
+import logging
 import re
 import time
-import logging
-import asyncio
-from typing import Dict, Optional, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from src.routing.models import CollabPhase, CollabTask
 from src.routing.router import ChatRouter
@@ -30,8 +30,8 @@ class CollabOrchestrator:
 
     def __init__(self, router: ChatRouter):
         self.router = router
-        self.active_tasks: Dict[str, CollabTask] = {}  # task_id -> CollabTask
-        self._api_callers: Dict[str, Callable] = {}    # bot_id -> async api call func
+        self.active_tasks: dict[str, CollabTask] = {}  # task_id -> CollabTask
+        self._api_callers: dict[str, Callable] = {}    # bot_id -> async api call func
         self._lock = asyncio.Lock()
 
     def register_api_caller(self, bot_id: str, caller: Callable[..., Awaitable[str]]):
@@ -42,7 +42,7 @@ class CollabOrchestrator:
         self,
         chat_id: int,
         task_text: str,
-        planner_override: Optional[str] = None,
+        planner_override: str | None = None,
     ) -> CollabTask:
         """
         启动协作任务。
@@ -347,7 +347,7 @@ class CollabOrchestrator:
         await self.run_summary(task)
         return task
 
-    def get_active_task(self, chat_id: int) -> Optional[CollabTask]:
+    def get_active_task(self, chat_id: int) -> CollabTask | None:
         """获取某个 chat 的活跃协作任务"""
         for task in self.active_tasks.values():
             if task.chat_id == chat_id and task.phase != CollabPhase.DONE:

@@ -12,9 +12,9 @@ import asyncio
 import logging
 import os
 
-from src.bot.globals import send_long_message
-from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
+from src.bot.globals import send_long_message
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -483,6 +483,7 @@ class XianyuCommandsMixin:
         """闲鱼卡券管理 — /ship <子命令>"""
         try:
             import time as _time
+
             from src.xianyu.auto_shipper import AutoShipper
 
             shipper = AutoShipper()

@@ -11,10 +11,9 @@ OpenClaw — fal.ai 多模态生成客户端
 """
 import logging
 import os
-from typing import Dict, Optional
 
-from src.utils import scrub_secrets
 from src.http_client import ResilientHTTPClient
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ async def generate_image(
     model: str = "fal-ai/flux/schnell",
     size: str = "landscape_16_9",
     num_images: int = 1,
-) -> Optional[str]:
+) -> str | None:
     """
     AI 图像生成 — fal.ai 云端。
 
@@ -102,7 +101,7 @@ async def generate_video(
     prompt: str,
     duration: str = "5",
     model: str = "fal-ai/kling-video/v1/standard/text-to-video",
-) -> Optional[str]:
+) -> str | None:
     """
     AI 视频生成 — fal.ai 云端 (Kling/Seedance)。
 
@@ -157,7 +156,7 @@ async def image_to_image(
     prompt: str,
     model: str = "fal-ai/flux/dev/image-to-image",
     strength: float = 0.75,
-) -> Optional[str]:
+) -> str | None:
     """图像编辑/风格转换"""
     key = _get_fal_key()
     if not key:
@@ -180,7 +179,7 @@ async def image_to_image(
     return None
 
 
-def get_available_models() -> Dict[str, str]:
+def get_available_models() -> dict[str, str]:
     """列出可用模型"""
     return {
         "flux_schnell": "fal-ai/flux/schnell",

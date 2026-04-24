@@ -21,10 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from loguru import logger
-
 
 # ── 异动类型 ────────────────────────────────────────────────
 ANOMALY_PRICE_SURGE = "price_surge"       # 单日涨跌幅 >3%
@@ -58,9 +57,9 @@ class WatchlistMonitor:
         """
         self._check_interval = check_interval
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         # 冷却记录: (symbol, anomaly_type) → monotonic timestamp
-        self._cooldowns: Dict[tuple, float] = {}
+        self._cooldowns: dict[tuple, float] = {}
 
     async def start(self):
         """启动监控循环"""
@@ -135,7 +134,7 @@ class WatchlistMonitor:
         quotes_raw = await asyncio.gather(*quote_tasks, return_exceptions=True)
 
         # 构建 symbol → quote 映射
-        quotes: Dict[str, Dict] = {}
+        quotes: dict[str, dict] = {}
         for sym, q in zip(symbols, quotes_raw):
             if isinstance(q, Exception) or not q:
                 continue
@@ -145,7 +144,7 @@ class WatchlistMonitor:
             return
 
         # 3. 逐标的检查异动
-        anomalies: List[Dict[str, Any]] = []
+        anomalies: list[dict[str, Any]] = []
 
         for item in items:
             sym = item.get("symbol", "")
@@ -203,7 +202,7 @@ class WatchlistMonitor:
         if anomalies:
             await self._publish_anomalies(anomalies)
 
-    async def _deep_scan(self, anomalies: List[Dict], quotes: Dict[str, Dict]):
+    async def _deep_scan(self, anomalies: list[dict], quotes: dict[str, dict]):
         """对已有异动的标的做深度技术指标检测（放量/RSI极值）"""
         # 收集需要深度扫描的 symbol（排除已有异动的，避免重复报）
         scanned_symbols = {a["symbol"] for a in anomalies}
@@ -215,8 +214,8 @@ class WatchlistMonitor:
             return
 
         try:
-            from src.ta_engine import compute_indicators
             from src.data_providers import get_history
+            from src.ta_engine import compute_indicators
         except ImportError:
             return
 
@@ -266,7 +265,7 @@ class WatchlistMonitor:
             except Exception as e:
                 logger.warning("[WatchList] 深度扫描 %s 失败: %s", sym, e)
 
-    async def _enrich_anomalies(self, anomalies: List[Dict]):
+    async def _enrich_anomalies(self, anomalies: list[dict]):
         """为异动通知附加新闻原因、迷你K线图、RSI指标、持仓信息。
 
         所有增强操作均 try/except 包裹，失败不影响基础通知。
@@ -278,7 +277,7 @@ class WatchlistMonitor:
         symbols = list({a["symbol"] for a in anomalies})
 
         # ── 1. 新闻搜索: Google News RSS → Bing 降级 ──
-        news_map: Dict[str, str] = {}
+        news_map: dict[str, str] = {}
         try:
             from src.news_fetcher import NewsFetcher
             nf = NewsFetcher()
@@ -297,11 +296,11 @@ class WatchlistMonitor:
             logger.debug(f"异动新闻搜索模块不可用: {e}")
 
         # ── 2. 迷你K线图 + RSI ──
-        chart_map: Dict[str, bytes] = {}
-        rsi_map: Dict[str, float] = {}
+        chart_map: dict[str, bytes] = {}
+        rsi_map: dict[str, float] = {}
         try:
-            from src.data_providers import get_history
             from src.charts import generate_candlestick
+            from src.data_providers import get_history
 
             for sym in symbols:
                 try:
@@ -344,7 +343,7 @@ class WatchlistMonitor:
             logger.debug(f"K线图模块不可用: {e}")
 
         # ── 3. 持仓信息（用于显示"你持有 X 股，浮盈 +$Y"）──
-        holding_map: Dict[str, Dict] = {}
+        holding_map: dict[str, dict] = {}
         try:
             from src.invest_tools import Portfolio
             portfolio = Portfolio()
@@ -368,10 +367,10 @@ class WatchlistMonitor:
                 anomaly["holding_qty"] = 0
                 anomaly["holding_avg_price"] = 0
 
-    async def _publish_anomalies(self, anomalies: List[Dict]):
+    async def _publish_anomalies(self, anomalies: list[dict]):
         """将异动事件发布到 EventBus"""
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
 
             bus = get_event_bus()
             for anomaly in anomalies:
@@ -411,7 +410,7 @@ class WatchlistMonitor:
 
 # ── 单例 ────────────────────────────────────────────────────
 
-_monitor: Optional[WatchlistMonitor] = None
+_monitor: WatchlistMonitor | None = None
 
 
 def get_watchlist_monitor() -> WatchlistMonitor:

@@ -16,11 +16,11 @@
   2. 本模块通过 HTTP API 与其交互
   3. 监控结果推送到 Telegram + 写入 SharedMemory
 """
+import asyncio
 import logging
 import os
-import asyncio
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +35,12 @@ MONITOR_PASS = os.getenv("GOOFISH_MONITOR_PASS", "")
 class MonitorTask:
     """监控任务定义"""
     name: str
-    keywords: List[str]
+    keywords: list[str]
     min_price: float = 0
     max_price: float = 99999
     ai_prompt: str = ""
     interval_minutes: int = 30
-    account_id: Optional[str] = None
+    account_id: str | None = None
     enabled: bool = True
 
 
@@ -53,7 +53,7 @@ class MonitorResult:
     price: float
     seller: str
     ai_analysis: str = ""
-    images: List[str] = field(default_factory=list)
+    images: list[str] = field(default_factory=list)
     url: str = ""
     found_at: str = ""
 
@@ -106,7 +106,7 @@ class GoofishMonitor:
             logger.warning("[GoofishMonitor] 连接失败: %s", e)
         return False
 
-    async def create_task(self, task: MonitorTask) -> Optional[Dict]:
+    async def create_task(self, task: MonitorTask) -> dict | None:
         """创建监控任务"""
         if not self._authenticated:
             await self.authenticate()
@@ -140,7 +140,7 @@ class GoofishMonitor:
             logger.warning("[GoofishMonitor] 创建任务异常: %s", e)
         return None
 
-    async def get_tasks(self) -> List[Dict]:
+    async def get_tasks(self) -> list[dict]:
         """获取所有监控任务"""
         if not self._authenticated:
             await self.authenticate()
@@ -155,7 +155,7 @@ class GoofishMonitor:
             logger.warning("[GoofishMonitor] 获取任务列表失败: %s", e)
         return []
 
-    async def get_results(self, task_id: str = "", limit: int = 20) -> List[Dict]:
+    async def get_results(self, task_id: str = "", limit: int = 20) -> list[dict]:
         """获取监控结果"""
         if not self._authenticated:
             await self.authenticate()
@@ -174,7 +174,7 @@ class GoofishMonitor:
             logger.warning("[GoofishMonitor] 获取结果失败: %s", e)
         return []
 
-    async def get_accounts(self) -> List[Dict]:
+    async def get_accounts(self) -> list[dict]:
         """获取账号列表"""
         if not self._authenticated:
             await self.authenticate()
@@ -189,7 +189,7 @@ class GoofishMonitor:
             logger.warning("[GoofishMonitor] 获取账号列表失败: %s", e)
         return []
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """检查 ai-goofish-monitor 服务状态"""
         session = await self._get_session()
         if not session:
@@ -225,7 +225,7 @@ class XianyuMonitorBridge:
         self.monitor = monitor
         self.memory = shared_memory
         self.notify_fn = notify_fn
-        self._last_check: Dict[str, str] = {}  # task_id -> last_result_id
+        self._last_check: dict[str, str] = {}  # task_id -> last_result_id
         self._running = False
 
     async def start_polling(self, interval_seconds: int = 300):
@@ -301,7 +301,7 @@ class XianyuMonitorBridge:
             lines.append(f"- {item.get('value', '')[:120]}")
         return "\n".join(lines)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "monitor_url": self.monitor.base_url,
             "tracked_tasks": len(self._last_check),
@@ -311,8 +311,8 @@ class XianyuMonitorBridge:
 
 # ── 全局实例 ──
 
-_monitor: Optional[GoofishMonitor] = None
-_bridge: Optional[XianyuMonitorBridge] = None
+_monitor: GoofishMonitor | None = None
+_bridge: XianyuMonitorBridge | None = None
 
 
 def init_goofish_monitor(shared_memory=None, notify_fn=None) -> XianyuMonitorBridge:
@@ -324,9 +324,9 @@ def init_goofish_monitor(shared_memory=None, notify_fn=None) -> XianyuMonitorBri
     return _bridge
 
 
-def get_monitor() -> Optional[GoofishMonitor]:
+def get_monitor() -> GoofishMonitor | None:
     return _monitor
 
 
-def get_bridge() -> Optional[XianyuMonitorBridge]:
+def get_bridge() -> XianyuMonitorBridge | None:
     return _bridge

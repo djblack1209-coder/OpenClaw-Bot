@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -24,7 +24,7 @@ _NPM_EXTENSIONS_DIR = _PROJECT_ROOT / "packages" / "openclaw-npm" / "extensions"
 _BOT_SKILLS_DIR = _PROJECT_ROOT / "apps" / "openclaw" / "skills"
 
 
-def _parse_skill_md_frontmatter(path: Path) -> Dict[str, Any]:
+def _parse_skill_md_frontmatter(path: Path) -> dict[str, Any]:
     """解析 SKILL.md 的 YAML frontmatter（--- 分隔的头部元数据）"""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -37,7 +37,7 @@ def _parse_skill_md_frontmatter(path: Path) -> Dict[str, Any]:
         return {}
 
     frontmatter_text = match.group(1)
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
 
     # 简易 YAML 解析（避免引入 pyyaml 依赖）
     for line in frontmatter_text.split("\n"):
@@ -50,9 +50,7 @@ def _parse_skill_md_frontmatter(path: Path) -> Dict[str, Any]:
             key = line[:colon_idx].strip()
             value = line[colon_idx + 1:].strip()
             # 去掉引号
-            if value.startswith('"') and value.endswith('"'):
-                value = value[1:-1]
-            elif value.startswith("'") and value.endswith("'"):
+            if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
                 value = value[1:-1]
             # 跳过多行值的续行
             if value == "|" or value == ">":
@@ -72,7 +70,7 @@ def _parse_skill_md_frontmatter(path: Path) -> Dict[str, Any]:
     return result
 
 
-def _parse_package_json(path: Path) -> Dict[str, Any]:
+def _parse_package_json(path: Path) -> dict[str, Any]:
     """解析 package.json"""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -80,7 +78,7 @@ def _parse_package_json(path: Path) -> Dict[str, Any]:
         return {}
 
 
-def _scan_npm_skills() -> List[Dict[str, Any]]:
+def _scan_npm_skills() -> list[dict[str, Any]]:
     """扫描 NPM Skills 目录"""
     items = []
     if not _NPM_SKILLS_DIR.exists():
@@ -120,7 +118,7 @@ def _scan_npm_skills() -> List[Dict[str, Any]]:
         # 解析嵌套的 metadata 字段（如 emoji、requires）
         metadata_str = meta.get("metadata", "")
         emoji = ""
-        requires: Dict[str, Any] = {}
+        requires: dict[str, Any] = {}
         if isinstance(metadata_str, str) and metadata_str.strip().startswith("{"):
             try:
                 metadata_obj = json.loads(metadata_str.replace("'", '"'))
@@ -145,7 +143,7 @@ def _scan_npm_skills() -> List[Dict[str, Any]]:
     return items
 
 
-def _scan_npm_extensions() -> List[Dict[str, Any]]:
+def _scan_npm_extensions() -> list[dict[str, Any]]:
     """扫描 NPM Extensions 目录"""
     items = []
     if not _NPM_EXTENSIONS_DIR.exists():
@@ -196,7 +194,7 @@ def _scan_npm_extensions() -> List[Dict[str, Any]]:
     return items
 
 
-def _scan_bot_skills() -> List[Dict[str, Any]]:
+def _scan_bot_skills() -> list[dict[str, Any]]:
     """扫描 Bot Skills 目录"""
     items = []
     if not _BOT_SKILLS_DIR.exists():
@@ -277,7 +275,7 @@ def _scan_bot_skills() -> List[Dict[str, Any]]:
 
 
 @router.get("/catalog")
-async def get_store_catalog() -> Dict[str, Any]:
+async def get_store_catalog() -> dict[str, Any]:
     """获取统一商店目录 — 扫描所有本地技能/扩展目录"""
     skills = _scan_npm_skills()
     extensions = _scan_npm_extensions()
@@ -285,7 +283,7 @@ async def get_store_catalog() -> Dict[str, Any]:
 
     # 汇总分类
     all_items = skills + extensions + bot_skills
-    categories: Dict[str, int] = {}
+    categories: dict[str, int] = {}
     for item in all_items:
         cat = item.get("category", "其他")
         categories[cat] = categories.get(cat, 0) + 1
@@ -305,7 +303,7 @@ async def get_store_catalog() -> Dict[str, Any]:
 
 
 @router.get("/categories")
-async def get_store_categories() -> Dict[str, Any]:
+async def get_store_categories() -> dict[str, Any]:
     """获取商店所有分类及计数"""
     catalog = await get_store_catalog()
     return {"categories": catalog["summary"]["categories"]}

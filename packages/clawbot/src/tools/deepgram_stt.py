@@ -12,10 +12,9 @@ OpenClaw — Deepgram STT (语音转文字)
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
-from src.utils import scrub_secrets
 from src.http_client import ResilientHTTPClient
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ async def transcribe_audio(
     audio_data: bytes,
     language: str = "zh",
     model: str = "nova-3",
-) -> Optional[str]:
+) -> str | None:
     """
     语音转文字 — Deepgram Nova-3。
 
@@ -96,7 +95,7 @@ async def transcribe_audio(
     return None
 
 
-async def transcribe_file(file_path: str, language: str = "zh") -> Optional[str]:
+async def transcribe_file(file_path: str, language: str = "zh") -> str | None:
     """从文件转录"""
     path = Path(file_path)
     if not path.exists():

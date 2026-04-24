@@ -3,11 +3,11 @@ Execution Hub — 调度器
 统一的定时任务调度，替代原 execution_hub 中的 _scheduler_loop
 """
 
-import os
-import time
 import asyncio
 import logging
-from typing import Callable, Optional
+import os
+import time
+from collections.abc import Callable
 
 from src.execution._utils import parse_hhmm, safe_int
 from src.utils import now_et
@@ -20,9 +20,9 @@ class ExecutionScheduler:
 
     def __init__(self):
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._notify_func: Optional[Callable] = None
-        self._private_notify_func: Optional[Callable] = None
+        self._task: asyncio.Task | None = None
+        self._notify_func: Callable | None = None
+        self._private_notify_func: Callable | None = None
         # 状态追踪
         self._last_brief_date = ""
         self._last_monitor_ts = 0.0
@@ -353,10 +353,10 @@ class ExecutionScheduler:
 
         try:
             from src.execution.life_automation import (
-                check_bill_alerts,
-                get_bill_reminders_due,
                 BILL_TYPE_EMOJI,
                 BILL_TYPE_LABEL,
+                check_bill_alerts,
+                get_bill_reminders_due,
             )
 
             # 低余额告警 (09:00 和 18:00)
@@ -383,7 +383,7 @@ class ExecutionScheduler:
 
                 # 发布 BILL_DUE 事件
                 try:
-                    from src.core.event_bus import get_event_bus, EventType
+                    from src.core.event_bus import EventType, get_event_bus
 
                     bus = get_event_bus()
                     await bus.publish(

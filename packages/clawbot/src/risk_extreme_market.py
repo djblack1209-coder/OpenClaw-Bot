@@ -8,7 +8,6 @@
 """
 import logging
 from datetime import timedelta
-from typing import List, Tuple
 
 from src.utils import now_et
 
@@ -32,7 +31,7 @@ class ExtremeMarketMixin:
         price_change_pct: float = 0,
         vix: float = 0,
         spread_pct: float = 0,
-    ) -> Tuple[str, List[str]]:
+    ) -> tuple[str, list[str]]:
         """
         检测极端行情条件
 

@@ -5,7 +5,8 @@
 import csv
 import io
 import logging
-from typing import Any, List, Optional
+from typing import Any
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,11 @@ logger = logging.getLogger(__name__)
 try:
     import openpyxl
     from openpyxl.styles import (
-        Alignment, Border, Font, PatternFill, Side,
+        Alignment,
+        Border,
+        Font,
+        PatternFill,
+        Side,
     )
     HAS_OPENPYXL = True
 except ImportError:
@@ -58,7 +63,7 @@ def _auto_width(ws) -> None:
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 10), 40)
 
 
-def _style_header(ws, headers: List[str]) -> None:
+def _style_header(ws, headers: list[str]) -> None:
     """统一表头样式"""
     ws.append(headers)
     for cell in ws[ws.max_row]:
@@ -79,7 +84,7 @@ def _style_pnl_cell(cell, value: float) -> None:
         cell.fill = _RED_FILL
 
 
-def _write_csv(headers: List[str], rows: List[List[Any]]) -> io.BytesIO:
+def _write_csv(headers: list[str], rows: list[list[Any]]) -> io.BytesIO:
     """CSV 降级输出"""
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -93,7 +98,7 @@ def _write_csv(headers: List[str], rows: List[List[Any]]) -> io.BytesIO:
 # ── 公共 API ─────────────────────────────────────────────────
 
 
-def export_trades(trades: List[dict], format: str = "xlsx") -> io.BytesIO:
+def export_trades(trades: list[dict], format: str = "xlsx") -> io.BytesIO:
     """导出交易记录
 
     Parameters
@@ -171,8 +176,8 @@ def export_trades(trades: List[dict], format: str = "xlsx") -> io.BytesIO:
 # ── 记账数据导出 ─────────────────────────────────────────────
 
 def export_expenses(
-    expenses: List[dict],
-    summary: Optional[dict] = None,
+    expenses: list[dict],
+    summary: dict | None = None,
     format: str = "xlsx",
 ) -> io.BytesIO:
     """导出记账数据 — 支出+收入明细表 + 月度汇总sheet
@@ -303,8 +308,8 @@ def export_expenses(
 # ── 闲鱼订单导出 ─────────────────────────────────────────────
 
 def export_xianyu_orders(
-    orders: List[dict],
-    profit_summary: Optional[dict] = None,
+    orders: list[dict],
+    profit_summary: dict | None = None,
     format: str = "xlsx",
 ) -> io.BytesIO:
     """导出闲鱼订单 — 订单明细表 + 利润汇总sheet
@@ -416,7 +421,7 @@ def export_xianyu_orders(
     return buf
 
 
-def export_watchlist(items: List[dict], format: str = "xlsx") -> io.BytesIO:
+def export_watchlist(items: list[dict], format: str = "xlsx") -> io.BytesIO:
     """导出自选股列表
 
     Parameters
@@ -464,8 +469,8 @@ def export_watchlist(items: List[dict], format: str = "xlsx") -> io.BytesIO:
 
 
 def export_portfolio(
-    positions: List[dict],
-    summary: Optional[dict] = None,
+    positions: list[dict],
+    summary: dict | None = None,
     format: str = "xlsx",
 ) -> io.BytesIO:
     """导出投资组合

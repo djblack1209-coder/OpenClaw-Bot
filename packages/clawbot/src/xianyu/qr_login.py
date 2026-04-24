@@ -28,12 +28,12 @@ import subprocess
 import time
 from io import BytesIO
 from random import random
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 from loguru import logger
-from src.utils import scrub_secrets
 
+from src.utils import scrub_secrets
 
 # 闲鱼护照 API 地址
 _PASSPORT_HOST = "https://passport.goofish.com"
@@ -62,10 +62,10 @@ class QRLoginManager:
     """纯 API 扫码登录管理器 — 不弹浏览器"""
 
     def __init__(self):
-        self.cookies: Dict[str, str] = {}
-        self.params: Dict[str, Any] = {}
+        self.cookies: dict[str, str] = {}
+        self.params: dict[str, Any] = {}
 
-    async def _get_m_h5_tk(self) -> Dict[str, str]:
+    async def _get_m_h5_tk(self) -> dict[str, str]:
         """步骤1: 获取 _m_h5_tk Cookie（签名用）"""
         data = {"bizScene": "home"}
         data_str = json.dumps(data, separators=(",", ":"))
@@ -99,7 +99,7 @@ class QRLoginManager:
 
             return cookies
 
-    async def _get_login_params(self) -> Dict[str, Any]:
+    async def _get_login_params(self) -> dict[str, Any]:
         """步骤2: 获取二维码登录的表单参数"""
         params = {
             "lang": "zh_cn", "appName": "xianyu", "appEntrance": "web",
@@ -133,7 +133,7 @@ class QRLoginManager:
             self.params.update(form_data)
             return form_data
 
-    async def generate_qr_code(self) -> Dict[str, Any]:
+    async def generate_qr_code(self) -> dict[str, Any]:
         """生成二维码，返回 PNG 字节数据。
 
         Returns:
@@ -198,7 +198,7 @@ class QRLoginManager:
 
     async def poll_login_status(
         self, timeout: int = 300, interval: float = 1.5
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """轮询扫码状态，直到成功/过期/取消。
 
         Returns:
@@ -275,7 +275,7 @@ class QRLoginManager:
 
         return {"success": False, "status": "timeout"}
 
-    async def login_and_save(self) -> Dict[str, Any]:
+    async def login_and_save(self) -> dict[str, Any]:
         """完整登录流程: 生成二维码 → 轮询 → 保存 Cookie → 通知进程。
 
         Returns:

@@ -6,10 +6,10 @@ init_trading_system 和 set_ai_team_callers 的实现
 import asyncio
 import logging
 
-from src.utils import env_bool, env_int, env_float
 from src.trading._helpers import (
     _estimate_open_positions_exposure,
 )
+from src.utils import env_bool, env_float, env_int
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ def init_trading_system(
     analyze_func = None
     ai_team_func = None
     try:
-        from src.ta_engine import scan_market, get_full_analysis
+        from src.ta_engine import get_full_analysis, scan_market
         from src.universe import full_market_scan
 
         # 使用全市场扫描（600+标的，多层漏斗筛选）替代小 watchlist
@@ -310,8 +310,8 @@ def init_trading_system(
 
             # 注入投资大师圆桌会议分析（5 位大师的共识作为投票参考）
             try:
-                from src.trading.master_analysts import run_master_panel
                 from src.litellm_router import get_litellm_router
+                from src.trading.master_analysts import run_master_panel
 
                 _router = get_litellm_router()
 
@@ -417,7 +417,7 @@ def init_trading_system(
     )
 
     # 5. 行情缓存
-    from src.quote_cache import QuoteCache, CacheConfig
+    from src.quote_cache import CacheConfig, QuoteCache
 
     _ts._quote_cache = QuoteCache(
         config=CacheConfig(ttl_seconds=60, refresh_interval=30),

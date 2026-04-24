@@ -3,8 +3,8 @@
 
 import logging
 
-from src.http_client import ResilientHTTPClient
 from src.bot.input_processor import _build_smart_reply_keyboard
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
 

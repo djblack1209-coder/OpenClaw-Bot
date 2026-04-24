@@ -6,7 +6,6 @@
 import logging
 import re
 import time
-from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -37,7 +36,7 @@ def _strip_g4f_ads(text: str) -> str:
     return cleaned.strip()
 
 
-async def _generate_wechat_reply(text: str) -> Optional[str]:
+async def _generate_wechat_reply(text: str) -> str | None:
     """微信场景走轻量 LLM 链路，避免完整 Brain 链路响应过慢。"""
     try:
         from src.litellm_router import free_pool

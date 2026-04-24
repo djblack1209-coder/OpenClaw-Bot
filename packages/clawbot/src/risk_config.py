@@ -7,7 +7,6 @@
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
@@ -46,7 +45,7 @@ class RiskConfig:
     trading_end_minute: int = 0
 
     # 标的黑名单
-    blacklist: List[str] = field(default_factory=list)
+    blacklist: list[str] = field(default_factory=list)
 
     # 极端行情保护
     volatility_spike_threshold: float = 3.0  # ATR倍数，超过视为波动率飙升
@@ -112,8 +111,8 @@ class RiskCheckResult:
 
     approved: bool  # 是否通过
     reason: str = ""  # 拒绝原因
-    warnings: List[str] = field(default_factory=list)  # 警告信息
-    adjusted_quantity: Optional[float] = None  # 建议调整后的数量
+    warnings: list[str] = field(default_factory=list)  # 警告信息
+    adjusted_quantity: float | None = None  # 建议调整后的数量
     max_position_value: float = 0  # 允许的最大仓位价值
     max_loss: float = 0  # 该笔交易最大亏损
     risk_score: int = 0  # 风险评分 0-100

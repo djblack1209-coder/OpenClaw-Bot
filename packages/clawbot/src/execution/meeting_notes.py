@@ -5,8 +5,8 @@ Execution Hub — 会议纪要提炼
 import logging
 from pathlib import Path
 
-from src.execution._utils import extract_json_object
 from src.execution._ai import ai_pool
+from src.execution._utils import extract_json_object
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)

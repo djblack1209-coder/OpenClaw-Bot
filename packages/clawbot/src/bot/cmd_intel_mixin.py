@@ -5,7 +5,6 @@
 """
 
 import logging
-from typing import Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -19,13 +18,13 @@ logger = logging.getLogger(__name__)
 _WORLDMONITOR_AVAILABLE = False
 try:
     from src.tools.worldmonitor_client import (
-        fetch_category_news,
-        fetch_region_news,
-        generate_intel_brief,
-        format_intel_items,
-        fetch_news_by_query,
         INDUSTRY_CATEGORIES,
         REGION_CATEGORIES,
+        fetch_category_news,
+        fetch_news_by_query,
+        fetch_region_news,
+        format_intel_items,
+        generate_intel_brief,
     )
     _WORLDMONITOR_AVAILABLE = True
 except ImportError:
@@ -75,7 +74,7 @@ _CATEGORY_NAME_MAP = {
 }
 
 
-def _category_name_to_key(name: str) -> Optional[str]:
+def _category_name_to_key(name: str) -> str | None:
     """将中文/英文分类名称映射为分类键名
 
     支持模糊匹配：输入"金融"、"金融经济"、"finance" 均返回 "finance"。

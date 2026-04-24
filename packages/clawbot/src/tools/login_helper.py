@@ -12,15 +12,16 @@
     ok = await helper.wait_for_condition(lambda: check_cookie(), timeout=600)
 """
 
-from src.utils import scrub_secrets
 import asyncio
 import os
 import subprocess
 import sys
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from loguru import logger
+
+from src.utils import scrub_secrets
 
 
 class LoginHelper:
@@ -135,7 +136,7 @@ class LoginHelper:
         check_fn: Callable[[], bool],
         timeout: int = 600,
         poll_interval: int = 10,
-        on_success: Optional[Callable] = None,
+        on_success: Callable | None = None,
     ) -> bool:
         """异步轮询等待条件满足（如 Cookie 更新、Token 有效等）。
 
@@ -171,7 +172,7 @@ class LoginHelper:
     def open_browser_profile(
         self,
         profile_dir: str,
-        urls: Optional[list] = None,
+        urls: list | None = None,
     ) -> bool:
         """打开带有特定用户数据目录的 Chrome 浏览器（用于 X/XHS 等需要浏览器 Cookie 的服务）。
 

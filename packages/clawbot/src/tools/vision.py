@@ -6,12 +6,11 @@ Usage:
     from src.tools.vision import analyze_image
     result = await analyze_image(image_bytes, "这张图里有什么？")
 """
-from src.utils import scrub_secrets
 import base64
 import logging
-from typing import Optional
 
 from src.constants import FAMILY_GEMINI
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ async def analyze_image(
     image_bytes: bytes,
     prompt: str = "描述这张图片的内容",
     model_family: str = FAMILY_GEMINI,
-) -> Optional[str]:
+) -> str | None:
     """用 Vision 模型分析图片。
 
     通过 litellm_router.free_pool 路由到支持 vision 的模型

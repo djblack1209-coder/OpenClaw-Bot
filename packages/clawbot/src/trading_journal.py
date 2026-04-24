@@ -15,21 +15,20 @@ v1.1: 拆分为 Mixin 模块（HI-358），按 DB 表域名分离：
 - journal_review.py       — 复盘 & 迭代改进
 """
 
-from src.utils import now_et
-import sqlite3
-import os
 import logging
-from datetime import datetime, timedelta
+import os
+import sqlite3
 from contextlib import contextmanager
-from typing import List, Dict, Optional
+from datetime import datetime, timedelta
 
 from src.db_utils import get_conn as _get_db_conn
 
 # 导入所有 Mixin
 from src.journal_performance import JournalPerformanceMixin
 from src.journal_predictions import JournalPredictionsMixin
-from src.journal_targets import JournalTargetsMixin
 from src.journal_review import JournalReviewMixin
+from src.journal_targets import JournalTargetsMixin
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +296,7 @@ class TradingJournal(
         logger.info(f"[Journal] 开仓 #{trade_id}: {side} {symbol} x{quantity} @ {entry_price} (status={safe_status})")
         return trade_id
 
-    def get_pending_trades(self, limit: int = 200) -> List[Dict]:
+    def get_pending_trades(self, limit: int = 200) -> list[dict]:
         """获取待成交入场交易（status='pending'）"""
         with self._conn() as conn:
             rows = conn.execute(
@@ -311,8 +310,8 @@ class TradingJournal(
         filled_qty: float,
         fill_price: float,
         entry_order_id: str = "",
-        fill_time: Optional[str] = None,
-    ) -> Dict:
+        fill_time: str | None = None,
+    ) -> dict:
         """将 pending 交易回写为 open（成交回补）"""
         if filled_qty <= 0 or fill_price <= 0:
             return {"error": "filled_qty/fill_price 必须大于0"}
@@ -351,7 +350,7 @@ class TradingJournal(
             "status": "open",
         }
 
-    def cancel_trade(self, trade_id: int, reason: str = "") -> Dict:
+    def cancel_trade(self, trade_id: int, reason: str = "") -> dict:
         """取消交易（通常用于 pending 入场订单撤单）"""
         with self._conn() as conn:
             trade = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
@@ -381,7 +380,7 @@ class TradingJournal(
             "reason": reason,
         }
 
-    def set_trade_status(self, trade_id: int, status: str, reason: str = "") -> Dict:
+    def set_trade_status(self, trade_id: int, status: str, reason: str = "") -> dict:
         """通用状态更新（open/pending/cancelled）"""
         safe_status = str(status or "").lower().strip()
         if safe_status not in ("open", "pending", "cancelled", "closed"):
@@ -415,7 +414,7 @@ class TradingJournal(
 
     def close_trade(
         self, trade_id: int, exit_price: float, exit_order_id: str = "", exit_reason: str = "", fees: float = 0
-    ) -> Dict:
+    ) -> dict:
         """平仓记录"""
         with self._conn() as conn:
             trade = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
@@ -436,7 +435,7 @@ class TradingJournal(
             pnl_pct = (pnl / (entry_price * quantity)) * 100 if entry_price * quantity > 0 else 0
 
             entry_time = datetime.fromisoformat(trade["entry_time"])
-            from src.utils import now_et, _ET
+            from src.utils import _ET, now_et
 
             _now_et = now_et()
             _tz = _ET if _ET is not None else _now_et.tzinfo
@@ -472,13 +471,13 @@ class TradingJournal(
             "hold_hours": round(hold_hours, 1),
         }
 
-    def get_open_trades(self) -> List[Dict]:
+    def get_open_trades(self) -> list[dict]:
         """获取所有未平仓交易"""
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM trades WHERE status='open' ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
 
-    def get_closed_trades(self, days: int = 30, limit: int = 50) -> List[Dict]:
+    def get_closed_trades(self, days: int = 30, limit: int = 50) -> list[dict]:
         """获取已平仓交易"""
         since = (now_et() - timedelta(days=days)).isoformat()
         with self._conn() as conn:
@@ -488,7 +487,7 @@ class TradingJournal(
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_trade(self, trade_id: int) -> Optional[Dict]:
+    def get_trade(self, trade_id: int) -> dict | None:
         """获取指定交易记录"""
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
@@ -498,10 +497,10 @@ class TradingJournal(
         self,
         offset: int = 0,
         limit: int = 20,
-        status: Optional[str] = None,
-        symbol: Optional[str] = None,
-        side: Optional[str] = None,
-    ) -> Dict:
+        status: str | None = None,
+        symbol: str | None = None,
+        side: str | None = None,
+    ) -> dict:
         """分页查询交易记录，支持状态/标的/方向筛选，返回 {items, total, offset, limit}"""
         conditions = []
         params: list = []

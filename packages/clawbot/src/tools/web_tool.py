@@ -1,11 +1,12 @@
 """
 ClawBot - 网页抓取工具（含 SSRF 防护）
 """
-import httpx
-import re
-from typing import Dict, Any
-from bs4 import BeautifulSoup
 import logging
+import re
+from typing import Any
+
+import httpx
+from bs4 import BeautifulSoup
 
 # 从统一的安全模块导入 SSRF 检查函数
 from src.core.security import check_ssrf
@@ -25,7 +26,7 @@ class WebTool:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         }
 
-    async def fetch(self, url: str, format: str = "text") -> Dict[str, Any]:
+    async def fetch(self, url: str, format: str = "text") -> dict[str, Any]:
         """抓取网页内容（含 SSRF 防护）"""
         # SSRF 防护: 检查 URL 是否指向内网/敏感地址
         if not check_ssrf(url):
@@ -55,7 +56,7 @@ class WebTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def search(self, query: str, num_results: int = 5) -> Dict[str, Any]:
+    async def search(self, query: str, num_results: int = 5) -> dict[str, Any]:
         """搜索"""
         try:
             url = f"https://html.duckduckgo.com/html/?q={query}"

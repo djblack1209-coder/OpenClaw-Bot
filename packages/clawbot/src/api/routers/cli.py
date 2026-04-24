@@ -7,7 +7,6 @@
 """
 
 import logging
-from typing import List
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -24,7 +23,7 @@ router = APIRouter()
 class CLIRunRequest(BaseModel):
     """执行 CLI 命令的请求体"""
     tool: str = Field(..., description="工具名称", min_length=1, max_length=64)
-    args: List[str] = Field(default_factory=list, description="命令参数列表")
+    args: list[str] = Field(default_factory=list, description="命令参数列表")
     timeout: int = Field(default=30, ge=1, le=300, description="超时秒数")
 
 
@@ -57,7 +56,7 @@ class CLIToolInfo(BaseModel):
 # ── 端点 ──────────────────────────────────────────────────
 
 
-@router.get("/cli/tools", response_model=List[CLIToolInfo])
+@router.get("/cli/tools", response_model=list[CLIToolInfo])
 def list_cli_tools():
     """列出所有已安装的 CLI-Anything 工具"""
     try:

@@ -4,10 +4,10 @@
 import io
 import logging
 
-from src.bot.globals import history_store, shared_memory, send_long_message
-from src.ocr_service import ocr_image, OcrResult
-from src.ocr_router import classify_ocr_scene, OcrScene
-from src.ocr_processors import process_financial_scene, process_ecommerce_scene
+from src.bot.globals import history_store, send_long_message, shared_memory
+from src.ocr_processors import process_ecommerce_scene, process_financial_scene
+from src.ocr_router import OcrScene, classify_ocr_scene
+from src.ocr_service import OcrResult, ocr_image
 from src.telegram_markdown import md_to_html
 from src.utils import scrub_secrets
 
@@ -288,7 +288,8 @@ class OCRHandlerMixin:
             if fname.lower().endswith(docling_supported):
                 try:
                     from src.tools.docling_service import (
-                        summarize_document, HAS_DOCLING,
+                        HAS_DOCLING,
+                        summarize_document,
                     )
                     if HAS_DOCLING:
                         # 写入临时文件 — Docling 需要文件路径

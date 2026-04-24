@@ -6,11 +6,10 @@ Bot 发言质量与频率控制模块
 2. TokenBudget — 每日 Token 预算控制，防止滥用
 3. QualityGate — 发言质量门控（最小长度、重复检测）
 """
-import time
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +45,16 @@ class TokenBudgetConfig:
 class RateLimiter:
     """滑动窗口频率限制器"""
 
-    def __init__(self, config: Optional[RateLimitConfig] = None):
+    def __init__(self, config: RateLimitConfig | None = None):
         self.config = config or RateLimitConfig()
         # {bot_id: [timestamp, ...]}
-        self._requests: Dict[str, list] = defaultdict(list)
+        self._requests: dict[str, list] = defaultdict(list)
         # {bot_id: last_response_timestamp}
-        self._last_response: Dict[str, float] = {}
+        self._last_response: dict[str, float] = {}
         # 被限流的计数
-        self._throttled_count: Dict[str, int] = defaultdict(int)
+        self._throttled_count: dict[str, int] = defaultdict(int)
 
-    def check(self, bot_id: str, chat_type: str = "group") -> Tuple[bool, str]:
+    def check(self, bot_id: str, chat_type: str = "group") -> tuple[bool, str]:
         """
         检查是否允许请求。
 
@@ -127,7 +126,7 @@ class RateLimiter:
             },
         }
 
-    def get_all_status(self) -> Dict[str, dict]:
+    def get_all_status(self) -> dict[str, dict]:
         """获取所有 Bot 的限流状态"""
         all_bots = set(self._requests.keys()) | set(self._last_response.keys())
         return {bot_id: self.get_status(bot_id) for bot_id in sorted(all_bots)}
@@ -136,10 +135,10 @@ class RateLimiter:
 class TokenBudget:
     """每日 Token 预算管理器"""
 
-    def __init__(self, config: Optional[TokenBudgetConfig] = None):
+    def __init__(self, config: TokenBudgetConfig | None = None):
         self.config = config or TokenBudgetConfig()
         # {bot_id: {"date": "YYYY-MM-DD", "input": N, "output": N}}
-        self._usage: Dict[str, dict] = {}
+        self._usage: dict[str, dict] = {}
 
     def _today(self) -> str:
         import datetime
@@ -153,7 +152,7 @@ class TokenBudget:
             self._usage[bot_id] = usage
         return usage
 
-    def check(self, bot_id: str, is_claude: bool = False) -> Tuple[bool, str]:
+    def check(self, bot_id: str, is_claude: bool = False) -> tuple[bool, str]:
         """检查是否还有 Token 预算"""
         usage = self._get_usage(bot_id)
         total = usage["input"] + usage["output"]
@@ -187,7 +186,7 @@ class TokenBudget:
             "usage_pct": f"{total / limit * 100:.1f}%" if limit > 0 else "N/A",
         }
 
-    def get_all_status(self) -> Dict[str, dict]:
+    def get_all_status(self) -> dict[str, dict]:
         """获取所有 Bot 的 Token 使用状态"""
         return {bot_id: self.get_status(bot_id) for bot_id in sorted(self._usage.keys())}
 
@@ -199,10 +198,10 @@ class QualityGate:
         self.min_response_length = min_response_length
         self.max_duplicate_ratio = max_duplicate_ratio
         # {bot_id: [last_N_responses]}
-        self._recent_responses: Dict[str, list] = defaultdict(list)
+        self._recent_responses: dict[str, list] = defaultdict(list)
         self._max_history = 20
 
-    def check_response(self, bot_id: str, response: str) -> Tuple[bool, str]:
+    def check_response(self, bot_id: str, response: str) -> tuple[bool, str]:
         """
         检查回复质量。
 

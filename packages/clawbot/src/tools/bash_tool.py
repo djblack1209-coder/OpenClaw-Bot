@@ -2,12 +2,11 @@
 ClawBot - Bash命令执行工具
 安全加固版: 白名单模式 + shell=False + 环境变量清洗
 """
-import subprocess
-import shlex
-import os
-import signal
 import logging
-from typing import Optional
+import os
+import shlex
+import signal
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -43,10 +42,10 @@ class BashTool:
         "git",
     })
 
-    def __init__(self, working_dir: Optional[str] = None, timeout: int = 120):
+    def __init__(self, working_dir: str | None = None, timeout: int = 120):
         self.working_dir = working_dir or str(Path.home())
         self.timeout = timeout
-        self.current_process: Optional[subprocess.Popen] = None
+        self.current_process: subprocess.Popen | None = None
 
     def is_allowed(self, command: str) -> bool:
         """检查命令是否在白名单中 (基于 shlex 拆分后的第一个 token)"""
@@ -61,7 +60,7 @@ class BashTool:
             # shlex 解析失败 (如未闭合引号)，拒绝执行
             return False
 
-    def execute(self, command: str, workdir: Optional[str] = None, timeout: Optional[int] = None) -> dict:
+    def execute(self, command: str, workdir: str | None = None, timeout: int | None = None) -> dict:
         """
         执行Bash命令 (白名单模式, shell=False)
 

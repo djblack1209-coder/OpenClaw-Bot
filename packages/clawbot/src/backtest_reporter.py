@@ -10,9 +10,10 @@ ClawBot 回测报告生成器 v1.0（对标 TradingAgents 32.5k⭐ + freqtrade 4
 - 纯 Python 实现，零外部依赖（使用 SVG 图表）
 """
 
-import math
 import logging
-from typing import Any, Dict, List, Optional
+import math
+from typing import Any
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -25,10 +26,10 @@ class SVGChart:
 
     @staticmethod
     def line_chart(
-        data: List[float],
+        data: list[float],
         width: int = 800, height: int = 300,
         title: str = "", color: str = "#2196F3",
-        fill: bool = True, labels: Optional[List[str]] = None,
+        fill: bool = True, labels: list[str] | None = None,
     ) -> str:
         """生成 SVG 折线图"""
         if not data or len(data) < 2:
@@ -94,7 +95,7 @@ class SVGChart:
 
     @staticmethod
     def bar_chart(
-        labels: List[str], values: List[float],
+        labels: list[str], values: list[float],
         width: int = 600, height: int = 250,
         title: str = "", color_positive: str = "#4CAF50",
         color_negative: str = "#F44336",
@@ -160,7 +161,7 @@ class SVGChart:
     def gauge(
         value: float, min_val: float = 0, max_val: float = 100,
         title: str = "", width: int = 200, height: int = 130,
-        thresholds: Optional[List[tuple]] = None,
+        thresholds: list[tuple] | None = None,
     ) -> str:
         """生成 SVG 仪表盘"""
         if thresholds is None:
@@ -259,9 +260,9 @@ class BacktestReporter:
     def generate_report(
         report,  # PerformanceReport
         symbol: str = "",
-        enhanced_metrics: Optional[Dict] = None,
-        monte_carlo: Optional[Dict] = None,
-        trades: Optional[List] = None,
+        enhanced_metrics: dict | None = None,
+        monte_carlo: dict | None = None,
+        trades: list | None = None,
     ) -> str:
         """生成完整的 HTML 回测报告"""
 
@@ -424,7 +425,7 @@ class BacktestReporter:
 
     @staticmethod
     def generate_comparison_report(
-        reports: Dict[str, Any],
+        reports: dict[str, Any],
         title: str = "策略对比报告",
     ) -> str:
         """生成多标的/多策略对比报告"""
@@ -565,8 +566,8 @@ class BokehVisualizer:
             return {"success": False, "error": "backtesting.py 未安装"}
 
         try:
-            import yfinance as yf
             import pandas as pd
+            import yfinance as yf
 
             # 1. 下载数据
             ticker = yf.Ticker(symbol)

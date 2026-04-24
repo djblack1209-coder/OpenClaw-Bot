@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from typing import Coroutine, Optional
+from collections.abc import Coroutine
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 def create_monitored_task(
     coro: Coroutine,
     *,
-    name: Optional[str] = None,
-    task_logger: Optional[logging.Logger] = None,
+    name: str | None = None,
+    task_logger: logging.Logger | None = None,
 ) -> asyncio.Task:
     """创建带异常监控的异步任务
 

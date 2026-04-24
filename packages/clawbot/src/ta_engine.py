@@ -8,7 +8,6 @@ ClawBot 超短线技术分析引擎 v1.0
 """
 import asyncio
 import logging
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +484,7 @@ SCAN_WATCHLIST_CRYPTO = [
 ]
 
 
-def _sync_scan_single(symbol: str) -> Optional[dict]:
+def _sync_scan_single(symbol: str) -> dict | None:
     """扫描单个标的（同步）— 统一数据提供层，支持 US/CN_A/CRYPTO"""
     try:
         # 优先使用统一数据提供层
@@ -544,7 +543,7 @@ def _sync_scan_single(symbol: str) -> Optional[dict]:
         return None
 
 
-async def scan_market(symbols: List[str] = None) -> List[dict]:
+async def scan_market(symbols: list[str] = None) -> list[dict]:
     """并行扫描市场，返回有信号的标的列表（按score排序）"""
     if symbols is None:
         symbols = SCAN_WATCHLIST
@@ -629,7 +628,7 @@ def format_analysis(data: dict) -> str:
     return "\n".join(lines)
 
 
-def format_scan_results(signals: List[dict]) -> str:
+def format_scan_results(signals: list[dict]) -> str:
     """格式化扫描结果"""
     if not signals:
         return "市场扫描完成\n\n暂无明显信号，市场平静。"

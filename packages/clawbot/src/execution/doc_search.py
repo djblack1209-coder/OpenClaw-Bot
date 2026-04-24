@@ -4,7 +4,6 @@ Execution Hub — 本地文档检索
 """
 import logging
 from pathlib import Path
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ def build_doc_index(roots=None, max_files=500) -> dict:
     }
 
 
-def search_docs(query=None, files=None, limit=10) -> List[dict]:
+def search_docs(query=None, files=None, limit=10) -> list[dict]:
     """在已索引的文档中搜索关键词"""
     keyword = str(query or "").strip().lower()
     if not keyword:

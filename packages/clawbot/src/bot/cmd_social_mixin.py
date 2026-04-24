@@ -12,16 +12,17 @@ Bot — 社媒发布 / 热点 / 人设 / 日历 命令 Mixin
 import asyncio
 import logging
 
-from src.bot.globals import execution_hub, send_long_message, image_tool, get_siliconflow_key
-from src.message_format import format_error
-from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
-from src.telegram_ux import with_typing
+from src.bot.error_messages import error_service_failed
+from src.bot.globals import execution_hub, get_siliconflow_key, image_tool, send_long_message
 from src.constants import IMG_MODEL_FLUX
+from src.message_format import format_error
 from src.notify_style import (
-    format_social_published, format_social_dual_result,
     format_hotpost_result,
+    format_social_dual_result,
+    format_social_published,
 )
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 
@@ -664,7 +665,7 @@ class SocialCommandsMixin:
     async def cmd_publish(self, update, context):
         """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
         try:
-            from src.sau_bridge import publish_video, publish_note, get_supported_platforms, PLATFORMS
+            from src.sau_bridge import PLATFORMS, get_supported_platforms, publish_note, publish_video
 
             args = context.args or []
             if len(args) < 2:
@@ -722,7 +723,7 @@ class SocialCommandsMixin:
             if len(args) > 1:
                 try:
                     day_offset = int(args[1])
-                except ValueError as e:  # noqa: F841
+                except ValueError as e:
                     logger.debug("用户输入解析失败: %s", e)
             result = execution_hub.mark_calendar_done(day_offset=day_offset)
             if result.get("success"):
@@ -738,7 +739,7 @@ class SocialCommandsMixin:
         if args:
             try:
                 days = int(args[0])
-            except ValueError as e:  # noqa: F841
+            except ValueError as e:
                 logger.debug("用户输入解析失败: %s", e)
 
         # 先查DB已有计划
@@ -791,7 +792,7 @@ class SocialCommandsMixin:
         if context.args:
             try:
                 days = int(context.args[0])
-            except ValueError as e:  # noqa: F841
+            except ValueError as e:
                 logger.debug("用户输入解析失败: %s", e)
         result = execution_hub.get_post_performance_report(days=days)
         if not result.get("success"):

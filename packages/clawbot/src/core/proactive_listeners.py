@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.core.proactive_notify import _send_proactive, _send_proactive_photo
 
@@ -36,10 +36,10 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
     应在 multi_main.py 启动阶段调用。
     """
     try:
-        from src.core.event_bus import get_event_bus, EventType
+        from src.core.event_bus import EventType, get_event_bus
         bus = get_event_bus()
 
-        async def on_trade_executed(event_data: Dict[str, Any]):
+        async def on_trade_executed(event_data: dict[str, Any]):
             """交易成交后评估是否需要通知其他关联信息 + 延迟跟进。"""
             try:
                 # 兼容 Event 对象和原始 dict 两种格式
@@ -110,7 +110,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
             except Exception as e:
                 logger.warning("交易后主动通知评估失败: %s", e)
 
-        async def on_risk_alert(event_data: Dict[str, Any]):
+        async def on_risk_alert(event_data: dict[str, Any]):
             """风控预警触发主动通知。"""
             try:
                 user_id = str(event_data.get("user_id", ""))
@@ -133,7 +133,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
             bus.subscribe(EventType.RISK_ALERT, on_risk_alert)
 
         # 自选股异动 → 情报级主动推送（新闻+K线图+RSI+持仓浮盈）
-        async def on_watchlist_anomaly(event_data: Dict[str, Any]):
+        async def on_watchlist_anomaly(event_data: dict[str, Any]):
             """自选股异动触发富文本通知（v2.0: 从纯文本升级为情报卡片）。
 
             通知格式:
@@ -242,7 +242,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
 
         # 任务闭环跟踪 — 搬运 Apple Reminders / Todoist 定时回看模式
         # 投资类任务执行完后，延迟 2 小时检查结果变化并主动推送
-        async def on_task_completed(event_data: Dict[str, Any]):
+        async def on_task_completed(event_data: dict[str, Any]):
             """任务完成后延迟回访 — 让 Bot 在时间轴上有延续性。"""
             try:
                 task_type = event_data.get("goal", "")
@@ -303,7 +303,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
 
         # 流式进度反馈 — 搬运 Claude artifact 流式 / ChatGPT 思考过程
         # 多步任务每完成一步实时推送进度到用户
-        async def on_brain_progress(event_data: Dict[str, Any]):
+        async def on_brain_progress(event_data: dict[str, Any]):
             """任务图执行进度 → 实时推送到用户。"""
             try:
                 step = event_data.get("step", 0)

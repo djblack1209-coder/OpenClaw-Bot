@@ -7,11 +7,12 @@ Execution — 赏金猎人模块
 import json
 import logging
 import sqlite3
-from typing import Dict, List, Optional, Any
+from typing import Any
+
 from json_repair import loads as jloads
 
-from src.execution._db import get_conn
 from src.execution._ai import ai_pool
+from src.execution._db import get_conn
 from src.execution._utils import extract_json_object
 from src.utils import now_et, scrub_secrets
 
@@ -40,7 +41,7 @@ def _ensure_bounty_table(db_path: str):
         logger.error(f"[Bounty] 表创建失败: {scrub_secrets(str(e))}")
 
 
-def _upsert_lead(conn, lead: Dict):
+def _upsert_lead(conn, lead: dict):
     """插入或更新赏金线索"""
     now = now_et().isoformat()
     try:
@@ -61,7 +62,7 @@ def _upsert_lead(conn, lead: Dict):
         logger.warning(f"[Bounty] upsert failed: {scrub_secrets(str(e))}")
 
 
-async def _scan_github_bounties(keywords: List[str]) -> List[Dict]:
+async def _scan_github_bounties(keywords: list[str]) -> list[dict]:
     """通过 AI 搜索 GitHub bounty issues"""
     kw_str = ", ".join(keywords[:5])
     prompt = (
@@ -86,7 +87,7 @@ async def _scan_github_bounties(keywords: List[str]) -> List[Dict]:
     return []
 
 
-async def _scan_web_bounties(keywords: List[str]) -> List[Dict]:
+async def _scan_web_bounties(keywords: list[str]) -> list[dict]:
     """通过 AI 搜索 Web 上的 bounty 机会"""
     kw_str = ", ".join(keywords[:5])
     prompt = (
@@ -110,9 +111,9 @@ async def _scan_web_bounties(keywords: List[str]) -> List[Dict]:
 
 
 async def scan_bounties(
-    keywords: Optional[List[str]] = None,
+    keywords: list[str] | None = None,
     db_path: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """扫描 GitHub + Web 赏金机会"""
     if not keywords:
         keywords = ["python", "typescript", "ai", "blockchain", "security"]
@@ -142,10 +143,10 @@ async def scan_bounties(
 
 
 def list_bounty_leads(
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 20,
     db_path: str = "",
-) -> List[Dict]:
+) -> list[dict]:
     """列出赏金线索"""
     _ensure_bounty_table(db_path)
     try:
@@ -167,7 +168,7 @@ def list_bounty_leads(
         return []
 
 
-async def evaluate_bounty_lead(lead_id: int, db_path: str = "") -> Dict:
+async def evaluate_bounty_lead(lead_id: int, db_path: str = "") -> dict:
     """AI 评估单个赏金线索的可行性"""
     _ensure_bounty_table(db_path)
     try:
@@ -205,7 +206,7 @@ async def evaluate_bounty_lead(lead_id: int, db_path: str = "") -> Dict:
         return {"error": str(e)}
 
 
-async def run_bounty_hunter(db_path: str = "") -> Dict[str, Any]:
+async def run_bounty_hunter(db_path: str = "") -> dict[str, Any]:
     """一键运行赏金猎人: 扫描 → 评估 → 推荐"""
     scan_result = await scan_bounties(db_path=db_path)
     leads = list_bounty_leads(status="new", limit=10, db_path=db_path)

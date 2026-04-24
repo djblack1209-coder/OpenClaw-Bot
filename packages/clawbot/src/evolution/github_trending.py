@@ -9,15 +9,14 @@ import asyncio
 import logging
 import os
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import timedelta
-
-from src.utils import now_et
-from src.constants import DEFAULT_USER_AGENT
-from typing import List, Optional
 from urllib.parse import quote
 
 import aiohttp
+
+from src.constants import DEFAULT_USER_AGENT
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class TrendingRepo:
     stars: int = 0
     forks: int = 0
     stars_today: int = 0             # 当日/当周新增 star
-    topics: List[str] = field(default_factory=list)
+    topics: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     readme_url: str = ""             # raw README URL
@@ -53,7 +52,7 @@ async def fetch_trending(
     language: str = "",
     since: str = "weekly",
     timeout: int = 15,
-) -> List[TrendingRepo]:
+) -> list[TrendingRepo]:
     """
     爬取 github.com/trending，返回趋势仓库列表。
 
@@ -73,7 +72,7 @@ async def fetch_trending(
         "Accept-Language": "en-US,en;q=0.9",
     }
 
-    repos: List[TrendingRepo] = []
+    repos: list[TrendingRepo] = []
 
     try:
         timeout_obj = aiohttp.ClientTimeout(total=timeout, sock_connect=10)
@@ -86,7 +85,7 @@ async def fetch_trending(
                             return repos
                         html = await resp.text()
                         break
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                except (TimeoutError, aiohttp.ClientError) as e:
                     if attempt == 2:
                         raise
                     logger.debug("[trending] 请求重试 attempt=%d: %s", attempt + 1, e)
@@ -104,9 +103,9 @@ async def fetch_trending(
     return repos
 
 
-def _parse_trending_html(html: str, since: str) -> List[TrendingRepo]:
+def _parse_trending_html(html: str, since: str) -> list[TrendingRepo]:
     """解析 GitHub trending 页面 HTML，提取仓库信息。"""
-    repos: List[TrendingRepo] = []
+    repos: list[TrendingRepo] = []
 
     # 每个仓库在一个 <article class="Box-row"> 块中
     articles = re.split(r'<article\s+class="Box-row"', html)
@@ -126,7 +125,7 @@ def _parse_trending_html(html: str, since: str) -> List[TrendingRepo]:
     return repos
 
 
-def _parse_single_article(article: str, since: str) -> Optional[TrendingRepo]:
+def _parse_single_article(article: str, since: str) -> TrendingRepo | None:
     """从单个 article HTML 块中提取仓库信息。"""
     # 仓库名: <h2 ...><a href="/owner/repo">
     name_match = re.search(r'href="(/[^/]+/[^/"]+)"', article)
@@ -191,10 +190,10 @@ async def fetch_fast_growing_repos(
     days_back: int = 7,
     min_stars: int = 500,
     language: str = "",
-    token: Optional[str] = None,
+    token: str | None = None,
     max_results: int = 30,
     timeout: int = 15,
-) -> List[TrendingRepo]:
+) -> list[TrendingRepo]:
     """
     通过 GitHub Search API 查找近期快速增长的仓库。
 
@@ -232,7 +231,7 @@ async def fetch_fast_growing_repos(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    repos: List[TrendingRepo] = []
+    repos: list[TrendingRepo] = []
 
     try:
         timeout_obj = aiohttp.ClientTimeout(total=timeout, sock_connect=10)
@@ -252,7 +251,7 @@ async def fetch_fast_growing_repos(
                             return repos
                         data = await resp.json()
                         break
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                except (TimeoutError, aiohttp.ClientError) as e:
                     if attempt == 2:
                         raise
                     logger.debug("[search_api] 请求重试 attempt=%d: %s", attempt + 1, e)
@@ -295,7 +294,7 @@ async def fetch_fast_growing_repos(
 # 3. 获取 README 内容
 # ──────────────────────────────────────────────
 
-async def fetch_readme(repo_name: str, token: Optional[str] = None, max_chars: int = 8000) -> str:
+async def fetch_readme(repo_name: str, token: str | None = None, max_chars: int = 8000) -> str:
     """
     获取仓库 README 内容 (截断到 max_chars)。
     先尝试 main 分支，失败后尝试 master。

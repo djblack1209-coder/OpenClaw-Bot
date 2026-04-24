@@ -11,7 +11,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,8 @@ async def text_to_speech(
     voice: str = DEFAULT_VOICE,
     rate: str = DEFAULT_RATE,
     volume: str = DEFAULT_VOLUME,
-    output_path: Optional[str] = None,
-) -> Optional[str]:
+    output_path: str | None = None,
+) -> str | None:
     """将文本转换为语音文件
 
     Args:
@@ -92,7 +91,7 @@ async def text_to_speech(
         return None
 
 
-async def get_voices(language: str = "zh") -> List[Dict]:
+async def get_voices(language: str = "zh") -> list[dict]:
     """获取可用音色列表"""
     try:
         import edge_tts

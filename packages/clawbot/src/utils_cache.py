@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class DiskCache:
                 logger.warning("[DiskCache] 反序列化失败 key=%s: %s", key, e)
                 return default
 
-    def set(self, key: str, value: Any, expire: Optional[int] = None) -> None:
+    def set(self, key: str, value: Any, expire: int | None = None) -> None:
         """写入缓存值，可选设置 TTL（秒）。"""
         exp_time = time.time() + expire if expire else None
         try:

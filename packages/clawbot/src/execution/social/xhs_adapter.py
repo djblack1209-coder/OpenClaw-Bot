@@ -1,7 +1,6 @@
 """
 小红书平台适配器 — 包装 xhs_platform.py 的发布函数
 """
-from typing import Dict, List, Optional
 
 from src.execution.social.platform_adapter import SocialPlatformAdapter
 
@@ -18,7 +17,7 @@ class XhsPlatformAdapter(SocialPlatformAdapter):
         return "小红书"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["xhs", "小红书"]
 
     def normalize_content(self, raw_content: str) -> tuple:
@@ -29,10 +28,10 @@ class XhsPlatformAdapter(SocialPlatformAdapter):
         return title, body
 
     def build_worker_payload(
-        self, content: str, title: str = "", images: Optional[List[str]] = None
-    ) -> Dict:
+        self, content: str, title: str = "", images: list[str] | None = None
+    ) -> dict:
         """构建小红书发布的 worker 参数"""
-        payload: Dict = {"title": title, "body": content}
+        payload: dict = {"title": title, "body": content}
         if images:
             payload["images"] = images
         return payload
@@ -45,10 +44,10 @@ class XhsPlatformAdapter(SocialPlatformAdapter):
         self,
         content: str,
         title: str = "",
-        images: Optional[List[str]] = None,
+        images: list[str] | None = None,
         worker_fn=None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """发布到小红书 — 委托给 xhs_platform.publish_xhs_article"""
         from src.execution.social.xhs_platform import publish_xhs_article
 

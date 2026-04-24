@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -47,11 +47,11 @@ class ResponseCard:
             parts.append(f"\n<i>{self.footer}</i>")
         return "\n".join(parts) or "（无内容）"
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         """生成 Inline Keyboard，子类覆写"""
         return None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "card_type": self.card_type,
             "title": self.title,
@@ -148,7 +148,7 @@ class InvestmentAnalysisCard(ResponseCard):
 
         return "\n".join(l for l in lines if l)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         buttons = []
 
         if self.recommendation == "buy" and not self.veto:
@@ -203,7 +203,7 @@ class BacktestCard(ResponseCard):
             f"{'✅ 策略可用' if self.sharpe_ratio > 1.0 and self.max_drawdown > -0.20 else '⚠️ 需谨慎'}"
         )
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         return InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("🔄 换RSI策略", callback_data=f"bt:rsi:{self.symbol}"),
@@ -222,7 +222,7 @@ class TrendingCard(ResponseCard):
     """热点趋势卡片"""
     card_type: str = "trending"
     platform: str = ""
-    topics: List[Dict] = field(default_factory=list)
+    topics: list[dict] = field(default_factory=list)
 
     def to_telegram(self) -> str:
         platform_emoji = {"weibo": "🔥", "baidu": "🔍", "zhihu": "💬", "x": "𝕏"}.get(
@@ -238,7 +238,7 @@ class TrendingCard(ResponseCard):
 
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         if not self.topics:
             return None
         buttons = []
@@ -285,7 +285,7 @@ class SystemStatusCard(ResponseCard):
             f"   {cost_bar} {cost_pct:.1f}%"
         )
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         return InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📊 持仓", callback_data="cmd:portfolio"),
@@ -305,7 +305,7 @@ class EvolutionCard(ResponseCard):
     """进化提案卡片"""
     card_type: str = "evolution"
     proposals_count: int = 0
-    proposals: List[Dict] = field(default_factory=list)
+    proposals: list[dict] = field(default_factory=list)
 
     def to_telegram(self) -> str:
         lines = [
@@ -325,7 +325,7 @@ class EvolutionCard(ResponseCard):
 
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         if not self.proposals:
             return None
         buttons = []
@@ -346,8 +346,8 @@ class InfoCard(ResponseCard):
     """通用信息回答卡片"""
     card_type: str = "info"
     answer: str = ""
-    sources: List[str] = field(default_factory=list)
-    _override_buttons: Optional[InlineKeyboardMarkup] = field(
+    sources: list[str] = field(default_factory=list)
+    _override_buttons: InlineKeyboardMarkup | None = field(
         default=None, repr=False
     )
 
@@ -360,7 +360,7 @@ class InfoCard(ResponseCard):
                 lines.append(f"  • {s[:60]}")
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         """支持外部覆写 action buttons (用于合成回复 + 投资按钮组合)"""
         return self._override_buttons
 
@@ -372,7 +372,7 @@ class ClarificationCard(ResponseCard):
     """追问卡片 — 需要用户补充信息"""
     card_type: str = "clarification"
     goal: str = ""
-    missing_params: List[str] = field(default_factory=list)
+    missing_params: list[str] = field(default_factory=list)
     partial_results: str = ""  # 已完成的部分
 
     def to_telegram(self) -> str:
@@ -385,7 +385,7 @@ class ClarificationCard(ResponseCard):
                 lines.append(f"  • {p}")
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         """根据参数类型生成快捷按钮"""
         if not self.missing_params:
             return None
@@ -433,7 +433,7 @@ class ErrorCard(ResponseCard):
             lines.append("\n<i>可以重试或换个方式表达</i>")
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         if not self.recoverable:
             return None
         return InlineKeyboardMarkup([
@@ -451,7 +451,7 @@ class ShoppingCard(ResponseCard):
     """购物比价结果卡片"""
     card_type: str = "shopping"
     product: str = ""
-    products: List[Dict] = field(default_factory=list)
+    products: list[dict] = field(default_factory=list)
     recommendation: str = ""
     best_deal: str = ""
     tips: str = ""
@@ -478,7 +478,7 @@ class ShoppingCard(ResponseCard):
 
         return "\n".join(lines)
 
-    def action_buttons(self) -> Optional[InlineKeyboardMarkup]:
+    def action_buttons(self) -> InlineKeyboardMarkup | None:
         buttons = []
         if self.products:
             self.products[0].get("name", "商品")[:10]
@@ -576,7 +576,7 @@ def card_from_brain_result(result) -> ResponseCard:
     )
 
 
-def _build_investment_card(data: Dict, task_id: str, intent) -> ResponseCard:
+def _build_investment_card(data: dict, task_id: str, intent) -> ResponseCard:
     """从投资分析结果构建卡片 — 处理多种数据格式"""
     symbol = intent.known_params.get("symbol_hint", intent.known_params.get("symbol_raw", "?"))
 
@@ -648,7 +648,7 @@ def _build_investment_card(data: Dict, task_id: str, intent) -> ResponseCard:
     )
 
 
-def _safe_score(data: Dict, key: str) -> float:
+def _safe_score(data: dict, key: str) -> float:
     """安全提取评分"""
     v = data.get(key)
     if isinstance(v, dict):
@@ -656,7 +656,7 @@ def _safe_score(data: Dict, key: str) -> float:
     return 0.0
 
 
-def _safe_summary(data: Dict, key: str) -> str:
+def _safe_summary(data: dict, key: str) -> str:
     """安全提取摘要"""
     v = data.get(key)
     if isinstance(v, dict):
@@ -710,7 +710,7 @@ def _extract_node_score(node_data) -> float:
     return 0.0
 
 
-def _build_shopping_card(data: Dict, intent) -> ShoppingCard:
+def _build_shopping_card(data: dict, intent) -> ShoppingCard:
     """从购物比价结果构建卡片"""
     product = intent.known_params.get("product_hint", intent.goal)
 
@@ -740,7 +740,7 @@ def _build_shopping_card(data: Dict, intent) -> ShoppingCard:
     return ShoppingCard(product=product, recommendation=str(data)[:200])
 
 
-def _build_life_card(data: Dict, intent) -> ResponseCard:
+def _build_life_card(data: dict, intent) -> ResponseCard:
     """从生活服务结果构建卡片（天气等）"""
     # 检查天气数据
     for v in data.values():
@@ -762,7 +762,7 @@ def _build_life_card(data: Dict, intent) -> ResponseCard:
     return InfoCard(title=intent.goal, answer=_format_dict_readable(data))
 
 
-def _build_system_card(data: Dict) -> SystemStatusCard:
+def _build_system_card(data: dict) -> SystemStatusCard:
     """从系统状态数据构建卡片"""
     status_data = data.get("status", data)
     if isinstance(status_data, dict) and "status" in status_data:
@@ -782,7 +782,7 @@ def _build_system_card(data: Dict) -> SystemStatusCard:
     )
 
 
-def _build_evolution_card(data: Dict) -> EvolutionCard:
+def _build_evolution_card(data: dict) -> EvolutionCard:
     """从进化扫描结果构建卡片"""
     scan = data.get("scan", data)
     if isinstance(scan, dict):
@@ -793,7 +793,7 @@ def _build_evolution_card(data: Dict) -> EvolutionCard:
     return EvolutionCard()
 
 
-def _build_social_card(data: Dict, intent) -> ResponseCard:
+def _build_social_card(data: dict, intent) -> ResponseCard:
     """从社媒结果构建卡片"""
     # 热点趋势
     if "topics" in data or any("topics" in str(v) for v in data.values()):
@@ -807,7 +807,7 @@ def _build_social_card(data: Dict, intent) -> ResponseCard:
     return InfoCard(title=intent.goal, answer=_format_dict_readable(data))
 
 
-def _format_dict_readable(data: Dict, max_depth: int = 2) -> str:
+def _format_dict_readable(data: dict, max_depth: int = 2) -> str:
     """将嵌套 dict 格式化为人类可读文本"""
     lines = []
     for key, value in data.items():

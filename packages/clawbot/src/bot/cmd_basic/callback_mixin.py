@@ -129,11 +129,7 @@ class _CallbackMixin:
             symbol = parts[-1] if len(parts) > 2 else ""
             context.args = [symbol] if symbol else []
             await _safe_cmd_from_callback(query, self.cmd_backtest, update, context, "backtest")
-        elif data.startswith("ta:detail:"):
-            symbol = data.split(":")[-1]
-            context.args = [symbol]
-            await _safe_cmd_from_callback(query, self.cmd_ta, update, context, "ta")
-        elif data.startswith("analyze:"):
+        elif data.startswith("ta:detail:") or data.startswith("analyze:"):
             symbol = data.split(":")[-1]
             context.args = [symbol]
             await _safe_cmd_from_callback(query, self.cmd_ta, update, context, "ta")

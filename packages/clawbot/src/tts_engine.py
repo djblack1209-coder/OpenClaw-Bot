@@ -10,7 +10,6 @@ Usage:
 """
 import io
 import logging
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +31,13 @@ MAX_TEXT_LENGTH = 5000
 TRUNCATION_SUFFIX = "...详细内容请查看文字消息"
 
 # ── Voice list cache ──────────────────────────────────────────
-_voice_cache: Optional[List[dict]] = None
+_voice_cache: list[dict] | None = None
 
 
 async def text_to_voice(
     text: str,
     voice: str = DEFAULT_VOICE,
-) -> Optional[bytes]:
+) -> bytes | None:
     """将文本转换为 MP3 语音。
 
     Args:
@@ -75,7 +74,7 @@ async def text_to_voice(
         return None
 
 
-async def get_available_voices(language: str = "zh") -> List[dict]:
+async def get_available_voices(language: str = "zh") -> list[dict]:
     """获取可用语音列表（按语言筛选，首次获取后缓存）。
 
     Args:

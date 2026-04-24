@@ -9,12 +9,12 @@ ClawBot - 结构化错误处理 v1.0
 - Telegram 通知（发给管理员）
 - 与 monitoring.py StructuredLogger 集成
 """
-import logging
-import traceback
-import time
 import asyncio
+import logging
+import time
+import traceback
 from collections import defaultdict
-from typing import Optional, Dict, Any
+from typing import Any
 
 from src.http_client import ResilientHTTPClient
 
@@ -62,8 +62,8 @@ class ErrorThrottler:
 
     def __init__(self, window_seconds: int = 300):
         self._window = window_seconds
-        self._seen: Dict[str, float] = {}  # fingerprint -> last_reported_ts
-        self._counts: Dict[str, int] = defaultdict(int)  # fingerprint -> suppressed count
+        self._seen: dict[str, float] = {}  # fingerprint -> last_reported_ts
+        self._counts: dict[str, int] = defaultdict(int)  # fingerprint -> suppressed count
         # asyncio 锁：保护 _seen/_counts 跨 await 的并发访问（HI-466）
         self._lock = asyncio.Lock()
 
@@ -109,8 +109,8 @@ class ErrorHandler:
 
     def __init__(
         self,
-        admin_chat_id: Optional[int] = None,
-        bot_token: Optional[str] = None,
+        admin_chat_id: int | None = None,
+        bot_token: str | None = None,
         throttle_window: int = 300,
         structured_logger=None,
     ):
@@ -119,7 +119,7 @@ class ErrorHandler:
         self._throttler = ErrorThrottler(throttle_window)
         self._structured_logger = structured_logger
         self._total_errors = 0
-        self._category_counts: Dict[str, int] = defaultdict(int)
+        self._category_counts: dict[str, int] = defaultdict(int)
         # asyncio 锁：保护计数器跨 await 的并发修改（HI-466）
         self._lock = asyncio.Lock()
 
@@ -128,7 +128,7 @@ class ErrorHandler:
         error: Exception,
         bot_id: str = "system",
         context: str = "",
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         notify: bool = True,
     ):
         """上报错误 — 分类、去重、记录、通知"""
@@ -199,7 +199,7 @@ class ErrorHandler:
             ctx = (update.effective_message.text or "")[:50]
         await self.report(error, bot_id=bot_id, context=f"telegram:{ctx}")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取错误统计"""
         return {
             "total_errors": self._total_errors,
@@ -208,12 +208,12 @@ class ErrorHandler:
 
 
 # 全局单例（延迟初始化）
-_global_handler: Optional[ErrorHandler] = None
+_global_handler: ErrorHandler | None = None
 
 
 def init_error_handler(
-    admin_chat_id: Optional[int] = None,
-    bot_token: Optional[str] = None,
+    admin_chat_id: int | None = None,
+    bot_token: str | None = None,
     structured_logger=None,
 ) -> ErrorHandler:
     """初始化全局错误处理器"""
@@ -226,5 +226,5 @@ def init_error_handler(
     return _global_handler
 
 
-def get_error_handler() -> Optional[ErrorHandler]:
+def get_error_handler() -> ErrorHandler | None:
     return _global_handler

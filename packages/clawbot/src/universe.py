@@ -17,7 +17,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import List, Dict, Optional
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ HK_STOCKS = [
 ]
 
 
-def get_full_universe() -> List[str]:
+def get_full_universe() -> list[str]:
     """获取完整标的池（去重）"""
     all_symbols = SP500_CORE + ETFS + CRYPTO + CHINA_ADR + HK_STOCKS
     seen = set()
@@ -111,7 +111,7 @@ def get_full_universe() -> List[str]:
     return result
 
 
-def get_universe_by_category() -> Dict[str, List[str]]:
+def get_universe_by_category() -> dict[str, list[str]]:
     """按分类获取标的池"""
     return {
         "sp500_core": SP500_CORE,
@@ -138,11 +138,11 @@ def get_universe_stats() -> str:
 
 # ============ 多层筛选漏斗 ============
 
-_screen_cache: Dict[str, tuple] = {}  # cache_key -> (result, timestamp)
+_screen_cache: dict[str, tuple] = {}  # cache_key -> (result, timestamp)
 SCREEN_CACHE_TTL = 300  # 5分钟缓存
 
 
-def _sync_quick_screen(symbol: str) -> Optional[dict]:
+def _sync_quick_screen(symbol: str) -> dict | None:
     """
     快速筛选单个标的（同步，在线程池执行）
     第一层：只看价格变动和成交量，淘汰无异动的
@@ -180,11 +180,11 @@ def _sync_quick_screen(symbol: str) -> Optional[dict]:
 
 
 async def full_market_scan(
-    categories: Optional[List[str]] = None,
+    categories: list[str] | None = None,
     max_workers: int = 20,
     top_n: int = 50,
-    symbols: Optional[List[str]] = None,
-) -> Dict:
+    symbols: list[str] | None = None,
+) -> dict:
     """
     全市场多层筛选漏斗
 
@@ -314,7 +314,7 @@ async def full_market_scan(
     }
 
 
-def format_full_scan(result: Dict) -> str:
+def format_full_scan(result: dict) -> str:
     """格式化全市场扫描结果"""
     lines = [
         "全市场扫描报告",

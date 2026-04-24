@@ -4,7 +4,6 @@
 """
 from collections import Counter
 from datetime import timedelta
-from typing import List, Dict, Optional
 
 from src.utils import now_et
 
@@ -37,7 +36,7 @@ class JournalReviewMixin:
                   kwargs.get('participants', '')))
             return cursor.lastrowid
 
-    def get_latest_review(self, session_type: str = 'daily') -> Optional[Dict]:
+    def get_latest_review(self, session_type: str = 'daily') -> dict | None:
         """获取最近一次复盘记录"""
         with self._conn() as conn:
             row = conn.execute(
@@ -46,7 +45,7 @@ class JournalReviewMixin:
             ).fetchone()
         return dict(row) if row else None
 
-    def get_review_history(self, limit: int = 5) -> List[Dict]:
+    def get_review_history(self, limit: int = 5) -> list[dict]:
         """获取历史复盘记录列表"""
         with self._conn() as conn:
             rows = conn.execute(
@@ -58,7 +57,7 @@ class JournalReviewMixin:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def generate_review_data(self, date: str = None) -> Dict:
+    def generate_review_data(self, date: str = None) -> dict:
         """生成复盘数据（供AI团队复盘用）"""
         if date is None:
             date = now_et().strftime('%Y-%m-%d')
@@ -133,7 +132,7 @@ class JournalReviewMixin:
 
     # ============ 周期复盘迭代 ============
 
-    def generate_iteration_report(self, days: int = 7) -> Dict:
+    def generate_iteration_report(self, days: int = 7) -> dict:
         """生成迭代改进报告：分析失败交易的模式"""
         since = (now_et() - timedelta(days=days)).strftime('%Y-%m-%d')
 
@@ -197,7 +196,7 @@ class JournalReviewMixin:
             "improvement_suggestions": self._generate_suggestions(pattern_freq, bad_trades),
         }
 
-    def _generate_suggestions(self, pattern_freq: dict, bad_trades: list) -> List[str]:
+    def _generate_suggestions(self, pattern_freq: dict, bad_trades: list) -> list[str]:
         """根据失败模式生成改进建议"""
         suggestions = []
 

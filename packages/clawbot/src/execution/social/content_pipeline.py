@@ -16,7 +16,6 @@ Social — 内容管道引擎 (从 execution_hub.py 迁移)
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
 from src.execution._ai import ai_pool
 from src.execution._utils import extract_json_object
@@ -27,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 # ── 辅助: 标签/趋势/评分 ────────────────────────────────────
 
-def social_topic_tags(topic: str = "") -> List[str]:
+def social_topic_tags(topic: str = "") -> list[str]:
     """从话题推导标签"""
     topic = topic or ""
-    tags: List[str] = []
+    tags: list[str] = []
     if "AI" in topic or "ai" in topic:
         tags.extend(["AI", "效率"])
     if "OpenClaw" in topic:
@@ -40,17 +39,17 @@ def social_topic_tags(topic: str = "") -> List[str]:
     return tags or ["AI", "工具"]
 
 
-def creator_trend_label(topic: str = "", strategy: Optional[Dict] = None) -> str:
+def creator_trend_label(topic: str = "", strategy: dict | None = None) -> str:
     """获取趋势标签"""
     strategy = strategy or {}
     trend_label = strategy.get("trend_label", "")
     return trend_label or "今日热点"
 
 
-def source_title_lines(sources: Optional[List] = None, limit: int = 1, max_len: int = 18) -> List[str]:
+def source_title_lines(sources: list | None = None, limit: int = 1, max_len: int = 18) -> list[str]:
     """格式化来源标题"""
     sources = sources or []
-    rows: List[str] = []
+    rows: list[str] = []
     for item in sources[:max(1, int(limit))]:
         title = item.get("title", "")
         source = item.get("source", "")
@@ -63,7 +62,7 @@ def source_title_lines(sources: Optional[List] = None, limit: int = 1, max_len: 
     return rows
 
 
-def utility_profile(topic: str = "") -> Dict:
+def utility_profile(topic: str = "") -> dict:
     """话题实用性评分"""
     topic = topic or ""
     score = 50
@@ -106,7 +105,7 @@ def score_practical_value(topic: str = "", insights=None, sources=None) -> int:
 
 # ── 策略推导 ────────────────────────────────────────────────
 
-def derive_topic_strategy(topic: str, research: Dict, memory: Dict) -> Dict:
+def derive_topic_strategy(topic: str, research: dict, memory: dict) -> dict:
     """为话题推导完整的内容策略"""
     insights = research.get("insights", {})
     patterns = insights.get("patterns", [])
@@ -142,7 +141,7 @@ def derive_topic_strategy(topic: str, research: Dict, memory: Dict) -> Dict:
 
 # ── 内容组合 (X / 小红书) ───────────────────────────────────
 
-def compose_human_x_post(topic: str = "", strategy: Optional[Dict] = None, sources: Optional[List] = None) -> str:
+def compose_human_x_post(topic: str = "", strategy: dict | None = None, sources: list | None = None) -> str:
     """组合人类风格的 X 推文"""
     strategy = strategy or {}
     sources = sources or []
@@ -170,7 +169,7 @@ def compose_human_x_post(topic: str = "", strategy: Optional[Dict] = None, sourc
     return "\n".join(lines)[:278]
 
 
-def compose_human_xhs_article(topic: str = "", strategy: Optional[Dict] = None, sources: Optional[List] = None) -> Dict:
+def compose_human_xhs_article(topic: str = "", strategy: dict | None = None, sources: list | None = None) -> dict:
     """组合人类风格的小红书文章"""
     strategy = strategy or {}
     sources = sources or []
@@ -189,7 +188,7 @@ async def research_social_topic(
     limit: int = 5,
     news_fetcher=None,
     curate_fn=None,
-) -> Dict:
+) -> dict:
     """研究社媒话题 — 从新闻源收集素材并分类
 
     Args:
@@ -198,8 +197,8 @@ async def research_social_topic(
         news_fetcher: NewsFetcher 实例
         curate_fn: 策划过滤函数 (items, limit) -> list
     """
-    google_items: List = []
-    bing_items: List = []
+    google_items: list = []
+    bing_items: list = []
     if news_fetcher:
         try:
             google_items = await news_fetcher.fetch_from_google_news_rss(topic, count=limit)
@@ -242,7 +241,7 @@ async def create_topic_social_package(
     news_fetcher=None,
     curate_fn=None,
     save_draft_fn=None,
-) -> Dict:
+) -> dict:
     """创建话题内容包 — 研究 → 策略 → 双平台内容 → 草稿"""
     try:
         research = await research_social_topic(
@@ -294,7 +293,7 @@ async def autopost_topic_content(
     curate_fn=None,
     save_draft_fn=None,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """按话题自动发布社媒内容 — 通过适配器统一分发"""
     try:
         package = await create_topic_social_package(
@@ -346,7 +345,7 @@ async def autopost_hot_content(
     discover_fn=None,
     save_draft_fn=None,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """自动发布热门内容"""
     if not discover_fn:
         return {"success": False, "error": "discover_fn not provided"}
@@ -423,7 +422,7 @@ async def build_social_plan(
     topic: str = None,
     limit: int = 3,
     discover_fn=None,
-) -> Dict:
+) -> dict:
     """构建每日社媒计划"""
     if not discover_fn:
         return {"success": False, "error": "discover_fn not provided"}
@@ -462,7 +461,7 @@ async def build_social_repost_bundle(
     topic: str = "OpenClaw 实战",
     worker_fn=None,
     save_draft_fn=None,
-) -> Dict:
+) -> dict:
     """构建社媒转发包"""
     if not worker_fn:
         return {"success": False, "error": "worker_fn not provided"}
@@ -505,7 +504,7 @@ async def build_social_repost_bundle(
 
 # ── 内容创意 & 日历 ────────────────────────────────────────
 
-async def generate_content_ideas(keyword: str = "AI 工具", count: int = 5) -> Dict:
+async def generate_content_ideas(keyword: str = "AI 工具", count: int = 5) -> dict:
     """AI 生成内容创意选题"""
     prompt = (
         f"请为关键词「{keyword}」生成 {count} 个社交媒体内容选题创意，"
@@ -531,7 +530,7 @@ async def generate_content_ideas(keyword: str = "AI 工具", count: int = 5) -> 
 
 # ── 内容日历持久化层 ──────────────────────────────────────
 
-def _save_calendar_to_db(days_list: List[Dict]) -> int:
+def _save_calendar_to_db(days_list: list[dict]) -> int:
     """将生成的日历条目批量写入 content_calendar 表，返回写入条数"""
     try:
         from src.execution._db import get_conn
@@ -569,7 +568,7 @@ def _save_calendar_to_db(days_list: List[Dict]) -> int:
         return 0
 
 
-def get_calendar_from_db(days: int = 7) -> List[Dict]:
+def get_calendar_from_db(days: int = 7) -> list[dict]:
     """从 content_calendar 表查询未来 N 天的计划"""
     try:
         from src.execution._db import get_conn
@@ -597,7 +596,7 @@ def get_calendar_from_db(days: int = 7) -> List[Dict]:
         return []
 
 
-def mark_calendar_done(day_offset: int) -> Dict:
+def mark_calendar_done(day_offset: int) -> dict:
     """标记第 N 天的日历条目为已完成"""
     try:
         from src.execution._db import get_conn
@@ -616,7 +615,7 @@ def mark_calendar_done(day_offset: int) -> Dict:
         return {"success": False, "error": str(e)}
 
 
-async def generate_content_calendar(days: int = 7) -> Dict:
+async def generate_content_calendar(days: int = 7) -> dict:
     """AI 生成内容日历 — 注入最佳发布时段 + 结果持久化到 DB"""
     # 注入 PostTimeOptimizer 最佳时段数据
     best_hours_hint = ""
@@ -657,9 +656,9 @@ async def generate_content_calendar(days: int = 7) -> Dict:
 # ── 首发套件 ────────────────────────────────────────────────
 
 def create_social_launch_drafts(
-    persona: Optional[Dict] = None,
+    persona: dict | None = None,
     save_draft_fn=None,
-) -> Dict:
+) -> dict:
     """创建社媒账号首发草稿套件"""
     persona = persona or {}
     name = persona.get("name", "OpenClaw")
@@ -697,20 +696,21 @@ def create_social_launch_drafts(
 
 def get_post_performance_report(
     days: int = 7,
-    draft_store: Optional[List] = None,
-) -> Dict:
+    draft_store: list | None = None,
+) -> dict:
     """获取发布效果报告 — 整合草稿状态 + 真实互动数据"""
     drafts = draft_store or []
     total = len(drafts)
     published = sum(1 for d in drafts if d.get("status") == "published")
 
     # ── 从数据库拉取真实互动数据 ──
-    by_platform: Dict[str, Dict] = {}
-    top_posts: List[Dict] = []
+    by_platform: dict[str, dict] = {}
+    top_posts: list[dict] = []
     try:
-        from src.execution.life_automation import get_engagement_summary
-        from src.execution._db import get_conn
         import time
+
+        from src.execution._db import get_conn
+        from src.execution.life_automation import get_engagement_summary
 
         # 按平台聚合的汇总数据
         eng = get_engagement_summary(days=days)

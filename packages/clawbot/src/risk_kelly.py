@@ -6,7 +6,6 @@
 - _get_trade_stats(): 从交易历史计算胜率和盈亏比
 """
 import logging
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ class KellyMixin:
         stop_loss: float,
         take_profit: float = 0,
         capital: float = None,
-    ) -> Dict:
+    ) -> dict:
         """
         基于凯利公式计算最优仓位（对标 freqtrade 的仓位优化）
 
@@ -119,7 +118,7 @@ class KellyMixin:
             "total_trades_used": total_trades,
         }
 
-    def _get_trade_stats(self) -> Dict:
+    def _get_trade_stats(self) -> dict:
         """从交易历史计算胜率和盈亏比"""
         if not self._trade_history:
             return {"win_rate": 0.5, "avg_win": 0, "avg_loss": 0, "total_trades": 0}

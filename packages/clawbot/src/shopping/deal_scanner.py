@@ -29,7 +29,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict
 
 import httpx
 from bs4 import BeautifulSoup
@@ -112,7 +111,7 @@ class DealHistory:
     """已推送 Deal 的历史记录，用于 24 小时去重"""
 
     def __init__(self):
-        self._history: Dict[str, float] = {}  # hash_key → timestamp
+        self._history: dict[str, float] = {}  # hash_key → timestamp
         self._load()
 
     def _load(self):
@@ -156,12 +155,12 @@ _history = DealHistory()
 # ── SMZDM 热门好价抓取 ────────────────────────────────
 
 
-async def _fetch_smzdm_hot_deals(limit: int = 20) -> List[DealItem]:
+async def _fetch_smzdm_hot_deals(limit: int = 20) -> list[DealItem]:
     """抓取 SMZDM 热门好价排行（不需要关键词，直接抓热门）
 
     数据源: https://www.smzdm.com/fenlei/ 各分类热门
     """
-    deals: List[DealItem] = []
+    deals: list[DealItem] = []
     headers = {
         "User-Agent": DEFAULT_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -193,9 +192,9 @@ async def _fetch_smzdm_hot_deals(limit: int = 20) -> List[DealItem]:
     return deals
 
 
-async def _fetch_smzdm_category_deals(keywords: List[str], category: str) -> List[DealItem]:
+async def _fetch_smzdm_category_deals(keywords: list[str], category: str) -> list[DealItem]:
     """按关键词搜索 SMZDM 折扣商品"""
-    deals: List[DealItem] = []
+    deals: list[DealItem] = []
 
     for kw in keywords:
         try:
@@ -228,7 +227,7 @@ async def _fetch_smzdm_category_deals(keywords: List[str], category: str) -> Lis
     return deals
 
 
-def _parse_smzdm_deal(item) -> Optional[DealItem]:
+def _parse_smzdm_deal(item) -> DealItem | None:
     """从 SMZDM 列表项解析折扣信息"""
     try:
         # 标题
@@ -319,9 +318,9 @@ def _infer_category(title: str) -> str:
 
 
 async def scan_deals(
-    categories: Optional[List[dict]] = None,
+    categories: list[dict] | None = None,
     min_discount: int = MIN_DISCOUNT_PCT,
-) -> List[DealItem]:
+) -> list[DealItem]:
     """扫描全网折扣 — 返回去重后的新 Deal 列表
 
     Args:
@@ -332,7 +331,7 @@ async def scan_deals(
         去重后的新 DealItem 列表（已过滤历史）
     """
     cats = categories or DEAL_CATEGORIES
-    all_deals: List[DealItem] = []
+    all_deals: list[DealItem] = []
 
     logger.info("🔍 开始扫描折扣... (%d 个分类)", len(cats))
 
@@ -370,7 +369,7 @@ async def scan_deals(
 # ── 推送 ──────────────────────────────────────────────
 
 
-async def push_deals_telegram(deals: List[DealItem], chat_id: int, bot_token: str):
+async def push_deals_telegram(deals: list[DealItem], chat_id: int, bot_token: str):
     """推送折扣列表到 Telegram"""
     if not deals:
         return
@@ -405,13 +404,13 @@ async def push_deals_telegram(deals: List[DealItem], chat_id: int, bot_token: st
         logger.error("Telegram 推送异常: %s", e)
 
 
-async def push_deals_wechat(deals: List[DealItem]):
+async def push_deals_wechat(deals: list[DealItem]):
     """推送折扣列表到微信"""
     if not deals:
         return
 
     try:
-        from src.wechat_bridge import send_to_wechat, is_wechat_notify_enabled
+        from src.wechat_bridge import is_wechat_notify_enabled, send_to_wechat
         if not is_wechat_notify_enabled():
             return
 

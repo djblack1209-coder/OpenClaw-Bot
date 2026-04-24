@@ -31,7 +31,7 @@ except ImportError:
     _HAS_LOGURU = False
     _loguru_logger = None  # type: ignore[assignment]
 
-__all__ = ["setup_logging", "get_logger"]
+__all__ = ["get_logger", "setup_logging"]
 
 # 幂等标记 — 防止多次调用重复安装 handler
 _SETUP_DONE = False

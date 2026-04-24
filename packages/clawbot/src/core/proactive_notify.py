@@ -35,6 +35,7 @@ async def _send_proactive(user_id: str, text: str):
     # 微信镜像推送 — 异动告警/交易跟踪/闲鱼订单等主动通知也要到达微信
     try:
         import asyncio
+
         from src.wechat_bridge import send_to_wechat
         asyncio.create_task(send_to_wechat(f"💡 {text}"))
     except Exception as e:
@@ -48,6 +49,7 @@ async def _send_proactive_photo(user_id: str, photo_bytes: bytes, caption: str):
     """
     try:
         import io as _io
+
         from src.bot.globals import bot_registry
         bots = bot_registry
         if not bots:

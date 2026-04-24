@@ -12,7 +12,6 @@ OpenClaw — Jina Reader 集成
     3. brain.py — 通用信息查询
 """
 import logging
-from typing import Optional
 
 import httpx
 
@@ -26,7 +25,7 @@ _HEADERS = {
 }
 
 
-async def jina_read(url: str, max_length: int = 5000) -> Optional[str]:
+async def jina_read(url: str, max_length: int = 5000) -> str | None:
     """
     读取任意URL的内容，返回干净的 Markdown 文本。
     处理 SPA、PDF、JS渲染页面，无需浏览器。
@@ -59,7 +58,7 @@ async def jina_read(url: str, max_length: int = 5000) -> Optional[str]:
     return None
 
 
-async def jina_search(query: str, max_results: int = 5) -> Optional[str]:
+async def jina_search(query: str, max_results: int = 5) -> str | None:
     """
     搜索并返回结果摘要（需要 JINA_API_KEY 环境变量）。
     免费额度: https://jina.ai/reader

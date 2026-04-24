@@ -4,18 +4,19 @@ IBKR 实盘命令 Mixin — 从 multi_main.py L1488-L1649 提取
 """
 import logging
 
-from src.trading_journal import TradingJournal
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
-from src.constants import ERR_LIMIT_PRICE_INVALID
-from src.telegram_ux import with_typing
 from src.bot.globals import (
     get_stock_quote,
     send_long_message,
 )
+
 # 幻影导入修复: ibkr/get_risk_manager 从实际定义模块导入
 from src.broker_selector import ibkr
+from src.constants import ERR_LIMIT_PRICE_INVALID
+from src.telegram_ux import with_typing
 from src.trading._lifecycle import get_risk_manager
+from src.trading_journal import TradingJournal
 
 logger = logging.getLogger(__name__)
 

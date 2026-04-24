@@ -15,12 +15,13 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 import httpx
 import yfinance as yf
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -233,7 +234,7 @@ class NewsFetcher:
                     idx, summary_text = result
                     if summary_text:
                         items[idx].summary = summary_text
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     f"[WorldMonitor] AI 摘要批次超时 (batch_start={batch_start}), 跳过剩余"
                 )
@@ -297,7 +298,7 @@ class NewsFetcher:
             url = url.strip()
 
             # 发布时间
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
             if pub_el is not None and pub_el.text:
                 try:
                     from email.utils import parsedate_to_datetime
@@ -318,8 +319,8 @@ class NewsFetcher:
                         break
             if desc_el is not None and desc_el.text:
                 # 去除 HTML 标签 + 解码 HTML 实体（如 &#039; → '）
-                import re
                 import html as html_mod
+                import re
                 summary = html_mod.unescape(re.sub(r"<[^>]+>", "", desc_el.text)).strip()[:200]
 
             items.append(NewsItem(
@@ -362,7 +363,7 @@ class CountryRisk:
     climate_score: float = 0.0     # 气候风险
     # 变化趋势
     change_24h: float = 0.0        # 24h 变化
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # 国家基线风险 — 参考 worldmonitor BASELINE_RISK
@@ -511,7 +512,7 @@ class RiskScorer:
                 for r in top5
             ],
             "total_countries": len(risks),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
 
 
@@ -530,7 +531,7 @@ class MarketQuote:
     market_cap: float = 0
     category: str = "stock"  # stock / crypto / commodity / forex
     exchange: str = ""
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class FinanceRadar:
@@ -726,7 +727,7 @@ class FinanceRadar:
                     ))
 
             return quotes
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[WorldMonitor] yfinance 请求超时 (15s)")
             return [
                 MarketQuote(

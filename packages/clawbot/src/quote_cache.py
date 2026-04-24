@@ -11,7 +11,6 @@ ClawBot 行情缓存 v1.0
 import asyncio
 import logging
 import time as _time
-from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -41,8 +40,8 @@ class QuoteCache:
     def __init__(self, config: CacheConfig = None, get_quote_func=None):
         self.config = config or CacheConfig()
         self._get_quote_func = get_quote_func  # async (symbol) -> {"price": float}
-        self._cache: Dict[str, CachedQuote] = {}
-        self._watch_symbols: Set[str] = set()
+        self._cache: dict[str, CachedQuote] = {}
+        self._watch_symbols: set[str] = set()
         self._running = False
         self._task = None
 
@@ -56,7 +55,7 @@ class QuoteCache:
         """设置报价获取函数"""
         self._get_quote_func = func
 
-    def watch(self, symbols: List[str]):
+    def watch(self, symbols: list[str]):
         """添加监控标的"""
         for s in symbols:
             self._watch_symbols.add(s.upper())
@@ -65,7 +64,7 @@ class QuoteCache:
         """移除监控标的"""
         self._watch_symbols.discard(symbol.upper())
 
-    def get(self, symbol: str) -> Optional[float]:
+    def get(self, symbol: str) -> float | None:
         """获取缓存报价（同步，用于非异步上下文）"""
         symbol = symbol.upper()
         entry = self._cache.get(symbol)
@@ -84,7 +83,7 @@ class QuoteCache:
             self._misses += 1
             return None
 
-    async def get_async(self, symbol: str) -> Optional[float]:
+    async def get_async(self, symbol: str) -> float | None:
         """获取报价（异步，缓存未命中时自动拉取）"""
         symbol = symbol.upper()
         price = self.get(symbol)
@@ -109,7 +108,7 @@ class QuoteCache:
 
         return None
 
-    def get_all(self) -> Dict[str, float]:
+    def get_all(self) -> dict[str, float]:
         """获取所有缓存报价"""
         now = _time.time()
         result = {}
@@ -127,7 +126,7 @@ class QuoteCache:
             timestamp=_time.time(), source=source,
         )
 
-    async def refresh(self, symbols: List[str] = None):
+    async def refresh(self, symbols: list[str] = None):
         """批量刷新报价"""
         if not self._get_quote_func:
             return

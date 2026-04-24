@@ -5,13 +5,13 @@ Python: RestrictedPython AST编译(第一道防线) → 子进程执行(OS隔离
 Node.js: 模块禁用 + --disable-proto=delete + 子进程执行
 Shell: 已禁用
 """
+import logging
 import os
 import signal
 import subprocess
 import tempfile
-from typing import Dict, Any
 from pathlib import Path
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ class CodeTool:
         except ImportError:
             logger.warning("[CodeTool] RestrictedPython 未安装，仅使用子进程沙箱")
 
-    def execute_python(self, code: str) -> Dict[str, Any]:
+    def execute_python(self, code: str) -> dict[str, Any]:
         """
         执行 Python 代码 (全部走子进程, 不在宿主进程内 exec)
 
@@ -255,7 +255,7 @@ class CodeTool:
         # Layer 2-4: 子进程执行 (OS 级隔离)
         return self._execute_in_subprocess(code, "python")
 
-    def execute_node(self, code: str) -> Dict[str, Any]:
+    def execute_node(self, code: str) -> dict[str, Any]:
         """执行 Node.js 代码 (模块禁用 + 原型链保护 + 子进程隔离)"""
         # 代码大小限制
         if len(code) > MAX_CODE_LENGTH:
@@ -266,7 +266,7 @@ class CodeTool:
 
         return self._execute_in_subprocess(code, "node")
 
-    def execute_shell(self, code: str) -> Dict[str, Any]:
+    def execute_shell(self, code: str) -> dict[str, Any]:
         """Shell 脚本执行已禁用"""
         logger.warning("[CodeTool] 拒绝执行 Shell 脚本 (%d 字符)", len(code))
         return {
@@ -274,7 +274,7 @@ class CodeTool:
             "error": "Shell 脚本执行已禁用。请使用 /bash 命令执行具体 shell 命令。"
         }
 
-    def _execute_in_subprocess(self, code: str, lang: str) -> Dict[str, Any]:
+    def _execute_in_subprocess(self, code: str, lang: str) -> dict[str, Any]:
         """
         在受限子进程中执行代码 (统一入口)
 

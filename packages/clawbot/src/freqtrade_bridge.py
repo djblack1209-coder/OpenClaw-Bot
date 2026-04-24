@@ -26,23 +26,24 @@ v2.0 新增：
 """
 
 import asyncio
+import json
 import logging
 import os
-import json
-from typing import Dict, Any, Optional, List, Tuple
-from pathlib import Path
 from dataclasses import dataclass, field
-from src.utils import now_et, env_float
-from src.constants import FAMILY_FAST  # noqa: F401 — 快速推理链
+from pathlib import Path
+from typing import Any
+
 from config.prompts import BACKTEST_ANALYST_PROMPT
+from src.constants import FAMILY_FAST
+from src.utils import env_float, now_et
 
 logger = logging.getLogger(__name__)
 
 # Freqtrade 可用性检测
 _freqtrade_available = False
 try:
-    from freqtrade.strategy import IStrategy
     from freqtrade.persistence import Trade
+    from freqtrade.strategy import IStrategy
 
     _freqtrade_available = True
 except ImportError:
@@ -57,9 +58,9 @@ def get_freqtrade_config(
     strategy: str = "ClawBotAIStrategy",
     timeframe: str = "5m",
     max_open_trades: int = 5,
-    pairs: Optional[List[str]] = None,
-    datadir: Optional[str] = None,
-) -> Dict[str, Any]:
+    pairs: list[str] | None = None,
+    datadir: str | None = None,
+) -> dict[str, Any]:
     """生成 Freqtrade 配置（桥接 ClawBot 现有设置）"""
     data_dir = datadir or os.getenv("DATA_DIR", str(Path(__file__).parent.parent / "data"))
 
@@ -311,8 +312,8 @@ class BacktestResult:
     # 元数据
     timerange: str = ""
     error: str = ""
-    raw: Dict[str, Any] = field(default_factory=dict)
-    trades: List[Dict] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
+    trades: list[dict] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     def format_telegram(self) -> str:
@@ -338,7 +339,7 @@ class BacktestResult:
             lines.append(f"平均持仓: {self.avg_duration}")
         return "\n".join(lines)
 
-    def to_memory_dict(self) -> Dict[str, Any]:
+    def to_memory_dict(self) -> dict[str, Any]:
         """转为 SharedMemory 存储格式"""
         return {
             "symbol": self.symbol,
@@ -366,7 +367,7 @@ class FreqtradeBacktestBridge:
     降级：freqtrade 不可用时自动降级到自研 backtester.py
     """
 
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: dict | None = None):
         self.config = config or get_freqtrade_config(dry_run=True)
         self._available = _freqtrade_available
 
@@ -377,11 +378,11 @@ class FreqtradeBacktestBridge:
         symbol: str,
         period: str = "1y",
         timeframe: str = "5m",
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """yfinance 下载 → freqtrade OHLCV JSON 格式"""
         try:
-            import yfinance as yf
             import pandas as pd
+            import yfinance as yf
 
             ticker = yf.Ticker(symbol)
             # 映射 period → yfinance interval 限制
@@ -444,7 +445,7 @@ class FreqtradeBacktestBridge:
     # ── 结果提取 ──
 
     @staticmethod
-    def _extract_results(bt_results: Dict, symbol: str, period: str) -> BacktestResult:
+    def _extract_results(bt_results: dict, symbol: str, period: str) -> BacktestResult:
         """从 freqtrade 回测输出提取结构化结果"""
         result = BacktestResult(
             success=True, symbol=symbol, period=period, engine="freqtrade", strategy="ClawBotAIStrategy"
@@ -558,7 +559,7 @@ class FreqtradeBacktestBridge:
         except Exception as e:
             return BacktestResult(success=False, symbol=symbol, period=period, error=str(e))
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "available": self._available,
             "strategy": self.config.get("strategy", ""),
@@ -571,7 +572,7 @@ class FreqtradeBacktestBridge:
     async def save_to_memory(
         self,
         result: BacktestResult,
-        chat_id: Optional[int] = None,
+        chat_id: int | None = None,
     ) -> bool:
         """将回测结果写入 SharedMemory，供 AI 团队投票参考"""
         try:
@@ -638,10 +639,10 @@ class FreqtradeBacktestBridge:
 #  异步包装 + 全局实例
 # ════════════════════════════════════════════
 
-_backtest_bridge: Optional[FreqtradeBacktestBridge] = None
+_backtest_bridge: FreqtradeBacktestBridge | None = None
 
 
-def init_freqtrade_bridge(config: Optional[Dict] = None) -> FreqtradeBacktestBridge:
+def init_freqtrade_bridge(config: dict | None = None) -> FreqtradeBacktestBridge:
     global _backtest_bridge
     _backtest_bridge = FreqtradeBacktestBridge(config)
     logger.info("[FreqtradeBridge] 初始化完成 (freqtrade=%s)", "可用" if _freqtrade_available else "未安装→降级builtin")
@@ -659,9 +660,9 @@ async def run_backtest_async(
     symbol: str,
     period: str = "1y",
     timeframe: str = "1d",
-    chat_id: Optional[int] = None,
+    chat_id: int | None = None,
     with_llm: bool = True,
-) -> Tuple[BacktestResult, str]:
+) -> tuple[BacktestResult, str]:
     """
     异步回测入口（供 Telegram /backtest --ft 调用）
 

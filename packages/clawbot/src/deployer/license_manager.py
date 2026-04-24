@@ -3,14 +3,13 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import platform
 import secrets
 import time
 import uuid
-import logging
 from contextlib import contextmanager
-from typing import Optional, Dict
 
 from src.db_utils import get_conn as _get_db_conn
 
@@ -52,7 +51,7 @@ def generate_offline_key(days: int = 365) -> str:
     return f"OC-{rand_part}-{expire_hex}-{sig}"
 
 
-def verify_offline_key(key: str) -> Dict:
+def verify_offline_key(key: str) -> dict:
     """离线验证License Key（买家端调用，不联网）
 
     返回: {"ok": bool, "message": str, "expires": str}
@@ -169,7 +168,7 @@ class LicenseManager:
         logger.info(f"License 已吊销: {key[:4]}...{key[-4:]}")
 
     # ---- 客户端验证 ----
-    def authenticate(self, username: str, password: str, machine_id: str = "", ip_addr: str = "") -> Dict:
+    def authenticate(self, username: str, password: str, machine_id: str = "", ip_addr: str = "") -> dict:
         """客户端登录验证，返回 {ok, license_key, message}"""
         # 按用户名查询所有 License，在 Python 侧验证密码（因为加盐后无法在 SQL 里比对）
         with self._conn() as c:
@@ -246,7 +245,7 @@ class LicenseManager:
             return False
         return machine_id in json.loads(row[0])
 
-    def verify_and_bind(self, license_key: str, machine_id: str = "", ip_addr: str = "") -> Dict:
+    def verify_and_bind(self, license_key: str, machine_id: str = "", ip_addr: str = "") -> dict:
         """License Key-only 验证 + 设备绑定"""
         with self._conn() as c:
             row = c.execute(
@@ -283,7 +282,7 @@ class LicenseManager:
 
         return {"ok": True, "license_key": license_key, "message": "验证通过"}
 
-    def find_by_buyer(self, buyer_id: str) -> Optional[str]:
+    def find_by_buyer(self, buyer_id: str) -> str | None:
         """通过买家ID查找活跃的 License Key"""
         # 转义 SQL LIKE 通配符，防止注入 % 或 _ 匹配到其他用户记录
         escaped = buyer_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

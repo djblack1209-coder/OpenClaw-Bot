@@ -7,11 +7,11 @@ ClawBot 回测引擎 — v2.0 高级分析功能
 - run_walk_forward: Walk-Forward 分析，检测过拟合
 - calc_enhanced_metrics: 增强绩效指标（Sortino/Calmar/SQN等）
 """
+import itertools
+import logging
 import math
 import random
-import logging
-import itertools
-from typing import Dict, List, Any
+from typing import Any
 
 from src.backtester_models import (
     BacktestConfig,
@@ -29,8 +29,8 @@ def run_monte_carlo(
     base_report: PerformanceReport,
     initial_capital: float = 10000.0,
     simulations: int = 1000,
-    confidence_levels: List[float] = None,
-) -> Dict[str, Any]:
+    confidence_levels: list[float] = None,
+) -> dict[str, Any]:
     """
     蒙特卡洛模拟（对标 freqtrade 的策略稳健性验证）
 
@@ -134,7 +134,7 @@ def run_monte_carlo(
     return result
 
 
-def format_monte_carlo(mc_result: Dict) -> str:
+def format_monte_carlo(mc_result: dict) -> str:
     """格式化蒙特卡洛模拟结果"""
     if "error" in mc_result:
         return f"蒙特卡洛模拟失败: {mc_result['error']}"
@@ -170,13 +170,13 @@ def format_monte_carlo(mc_result: Dict) -> str:
 
 def run_parameter_optimization(
     symbol: str,
-    param_grid: Dict[str, List],
+    param_grid: dict[str, list],
     period: str = "1y",
     interval: str = "1d",
     initial_capital: float = 10000.0,
     optimize_metric: str = "sharpe_ratio",
     max_combinations: int = 200,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     网格搜索参数优化（对标 freqtrade hyperopt）
 
@@ -265,7 +265,7 @@ def run_parameter_optimization(
     }
 
 
-def format_optimization_result(opt_result: Dict) -> str:
+def format_optimization_result(opt_result: dict) -> str:
     """格式化参数优化结果"""
     if "error" in opt_result:
         return f"参数优化失败: {opt_result['error']}"
@@ -312,9 +312,9 @@ def run_walk_forward(
     initial_capital: float = 10000.0,
     train_ratio: float = 0.7,
     n_splits: int = 3,
-    param_grid: Dict[str, List] = None,
+    param_grid: dict[str, list] = None,
     optimize_metric: str = "sharpe_ratio",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Walk-Forward 分析（对标 freqtrade 的过拟合检测）
 
@@ -417,7 +417,7 @@ def run_walk_forward(
     }
 
 
-def format_walk_forward(wf_result: Dict) -> str:
+def format_walk_forward(wf_result: dict) -> str:
     """格式化 Walk-Forward 分析结果"""
     if "error" in wf_result:
         return f"Walk-Forward 分析失败: {wf_result['error']}"
@@ -453,7 +453,7 @@ def format_walk_forward(wf_result: Dict) -> str:
 
 # ============ 增强绩效指标 ============
 
-def calc_enhanced_metrics(report: PerformanceReport, risk_free_rate: float = 0.05) -> Dict:
+def calc_enhanced_metrics(report: PerformanceReport, risk_free_rate: float = 0.05) -> dict:
     """
     计算增强绩效指标（对标 freqtrade 的完整指标体系）
 

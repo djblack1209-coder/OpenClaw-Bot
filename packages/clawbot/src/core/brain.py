@@ -20,31 +20,30 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-from src.constants import FAMILY_QWEN
-from src.core.event_bus import EventType, get_event_bus
-from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
-from src.core.task_graph import (
-    TaskGraph,
-    TaskGraphExecutor,
-    TaskNode,
-    NodeStatus,
-)
 from config.prompts import (
     CHAT_FALLBACK_PROMPT,
 )
+from src.constants import FAMILY_QWEN
+from src.core.brain_executors import BrainExecutorMixin
+from src.core.brain_graph_builders import BrainGraphBuilderMixin
+from src.core.event_bus import EventType, get_event_bus
+from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.response_synthesizer import (
-    get_response_synthesizer,
     get_context_collector,
+    get_response_synthesizer,
 )
+from src.core.task_graph import (
+    NodeStatus,
+    TaskGraph,
+    TaskGraphExecutor,
+    TaskNode,
+)
+from src.perf_metrics import perf_timer
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.resilience import api_limiter
-
-from src.perf_metrics import perf_timer
-from src.core.brain_graph_builders import BrainGraphBuilderMixin
-from src.core.brain_executors import BrainExecutorMixin
 
 logger = logging.getLogger(__name__)
 
@@ -61,22 +60,22 @@ class TaskResult:
     """一次任务执行的完整结果"""
 
     task_id: str
-    intent: Optional[ParsedIntent] = None
-    graph_progress: Optional[Dict] = None
+    intent: ParsedIntent | None = None
+    graph_progress: dict | None = None
     final_result: Any = None
     needs_clarification: bool = False
-    clarification_params: List[str] = field(default_factory=list)
-    error: Optional[str] = None
+    clarification_params: list[str] = field(default_factory=list)
+    error: str | None = None
     elapsed_seconds: float = 0.0
     cost_usd: float = 0.0
     source: str = ""
-    extra_data: Dict = field(default_factory=dict)  # 附加数据 (追问建议等)
+    extra_data: dict = field(default_factory=dict)  # 附加数据 (追问建议等)
 
     @property
     def success(self) -> bool:
         return self.error is None and self.final_result is not None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "task_id": self.task_id,
             "success": self.success,
@@ -99,7 +98,7 @@ class TaskResult:
           - 追问消息明确告知需要哪些信息
           - 结果消息根据任务类型格式化
         """
-        from src.message_format import format_result, format_error
+        from src.message_format import format_error, format_result
 
         if self.error:
             return format_error(
@@ -135,9 +134,9 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     def __init__(self):
         self._intent_parser = IntentParser()
         self._event_bus = get_event_bus()
-        self._active_tasks: Dict[str, TaskResult] = {}
-        self._pending_callbacks: Dict[str, Dict] = {}  # callback_id → context
-        self._pending_clarifications: Dict[int, str] = {}  # chat_id → task_id
+        self._active_tasks: dict[str, TaskResult] = {}
+        self._pending_callbacks: dict[str, dict] = {}  # callback_id → context
+        self._pending_clarifications: dict[int, str] = {}  # chat_id → task_id
         # 保护共享字典的异步锁 — 防止快速连续消息导致竞态（HI-456）
         self._lock = asyncio.Lock()
         self._config = self._load_config()
@@ -150,7 +149,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
         logger.info("OpenClawBrain 初始化完成")
 
-    def _load_config(self) -> Dict:
+    def _load_config(self) -> dict:
         """加载 omega.yaml 配置，不存在则用默认值"""
         defaults = {
             "cost": {"daily_budget_usd": 50.0, "show_cost_per_message": False},
@@ -173,7 +172,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             try:
                 import yaml
 
-                with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                with open(_CONFIG_PATH, encoding="utf-8") as f:
                     loaded = yaml.safe_load(f) or {}
                     # 合并（loaded 覆盖 defaults）
                     if "omega" in loaded:
@@ -195,7 +194,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         source: str,
         message: str,
         message_type: str = "text",
-        context: Optional[Dict] = None,
+        context: dict | None = None,
         pre_parsed_intent: Optional["ParsedIntent"] = None,
         skip_chat_fallback: bool = False,
     ) -> TaskResult:
@@ -407,7 +406,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
             logger.info("[%s] 执行任务图: %s, %s 个节点", task_id, graph.name, len(graph.nodes))
             try:
                 completed_graph = await asyncio.wait_for(self._graph_executor.execute(graph), timeout=90)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 result.error = "任务执行超时(90秒)，请简化请求或稍后重试"
                 result.elapsed_seconds = time.time() - start_time
                 return result
@@ -536,7 +535,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 任务图构建 ──────────────────────────────────────
 
-    async def _build_task_graph(self, intent: ParsedIntent) -> Optional[TaskGraph]:
+    async def _build_task_graph(self, intent: ParsedIntent) -> TaskGraph | None:
         """根据意图类型构建任务 DAG"""
         builders = {
             TaskType.INVESTMENT: self._build_investment_graph,
@@ -565,7 +564,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 追问回答处理 ────────────────────────────────────
 
-    def get_pending_clarification(self, chat_id: int) -> Optional[str]:
+    def get_pending_clarification(self, chat_id: int) -> str | None:
         """检查指定 chat 是否有待回答的追问。
 
         Returns:
@@ -573,7 +572,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         """
         return self._pending_clarifications.get(chat_id)
 
-    async def resume_with_answer(self, task_id: str, answer: str, context: Dict) -> TaskResult:
+    async def resume_with_answer(self, task_id: str, answer: str, context: dict) -> TaskResult:
         """用用户的文本回答恢复被追问中断的任务。
 
         工作流:
@@ -717,7 +716,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 任务管理 ──────────────────────────────────────
 
-    def get_active_tasks(self) -> List[Dict]:
+    def get_active_tasks(self) -> list[dict]:
         """获取所有活跃任务状态（用快照迭代防止字典大小变化）"""
         return [r.to_dict() for r in list(self._active_tasks.values())]
 
@@ -749,7 +748,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 进度和事件回调 ──────────────────────────────────
 
-    async def _on_progress(self, progress: Dict) -> None:
+    async def _on_progress(self, progress: dict) -> None:
         """任务图进度更新 — 推送到 EventBus"""
         await self._event_bus.publish(
             "brain.progress",
@@ -767,7 +766,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 自愈 ──────────────────────────────────────────
 
-    async def _try_self_heal(self, error: Exception, context: Dict) -> bool:
+    async def _try_self_heal(self, error: Exception, context: dict) -> bool:
         """尝试自愈 — 传递 context 但不传 retry_callable（Brain 层重试逻辑由调用者决定）"""
         try:
             from src.core.self_heal import get_self_heal_engine
@@ -784,7 +783,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_brain: Optional[OpenClawBrain] = None
+_brain: OpenClawBrain | None = None
 
 
 def get_brain() -> OpenClawBrain:

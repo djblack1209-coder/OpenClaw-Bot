@@ -27,17 +27,12 @@ import asyncio
 import functools
 import importlib.util
 import logging
-import time
 import threading
+import time
+from collections.abc import Callable, Sequence
 from contextlib import asynccontextmanager
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
 )
 
@@ -73,7 +68,7 @@ except ImportError:
 try:
     import httpx
 
-    _HTTPX_ERRORS: Tuple[Type[Exception], ...] = (
+    _HTTPX_ERRORS: tuple[type[Exception], ...] = (
         httpx.HTTPError,
         httpx.ConnectError,
         httpx.TimeoutException,
@@ -86,9 +81,9 @@ except ImportError:
 # ── 预定义错误组合 ────────────────────────────────────
 
 
-def _api_errors() -> Tuple[Type[Exception], ...]:
+def _api_errors() -> tuple[type[Exception], ...]:
     """API 调用常见可重试错误"""
-    base: Tuple[Type[Exception], ...] = (
+    base: tuple[type[Exception], ...] = (
         ConnectionError,
         asyncio.TimeoutError,
         TimeoutError,
@@ -97,9 +92,9 @@ def _api_errors() -> Tuple[Type[Exception], ...]:
     return base + _HTTPX_ERRORS
 
 
-def _network_errors() -> Tuple[Type[Exception], ...]:
+def _network_errors() -> tuple[type[Exception], ...]:
     """网络层可重试错误"""
-    base: Tuple[Type[Exception], ...] = (
+    base: tuple[type[Exception], ...] = (
         ConnectionError,
         ConnectionResetError,
         ConnectionAbortedError,
@@ -109,7 +104,7 @@ def _network_errors() -> Tuple[Type[Exception], ...]:
         asyncio.TimeoutError,
     )
     # httpx 特有的连接错误
-    httpx_net: Tuple[Type[Exception], ...] = ()
+    httpx_net: tuple[type[Exception], ...] = ()
     try:
         import httpx as _httpx
 
@@ -125,9 +120,9 @@ def _network_errors() -> Tuple[Type[Exception], ...]:
     return base + httpx_net
 
 
-def _llm_errors() -> Tuple[Type[Exception], ...]:
+def _llm_errors() -> tuple[type[Exception], ...]:
     """LLM API 可重试错误（排除编程错误）"""
-    base: Tuple[Type[Exception], ...] = (
+    base: tuple[type[Exception], ...] = (
         ConnectionError,
         asyncio.TimeoutError,
         TimeoutError,
@@ -137,7 +132,7 @@ def _llm_errors() -> Tuple[Type[Exception], ...]:
 
 
 # 不应重试的错误（编程错误）
-_NON_RETRYABLE: Tuple[Type[Exception], ...] = (
+_NON_RETRYABLE: tuple[type[Exception], ...] = (
     ValueError,
     TypeError,
     KeyError,
@@ -155,8 +150,8 @@ _NON_RETRYABLE: Tuple[Type[Exception], ...] = (
 def _make_retry_decorator(
     *,
     attempts: int = 3,
-    on: Optional[Tuple[Type[Exception], ...]] = None,
-    exclude: Optional[Tuple[Type[Exception], ...]] = None,
+    on: tuple[type[Exception], ...] | None = None,
+    exclude: tuple[type[Exception], ...] | None = None,
     wait_initial: float = 1.0,
     wait_max: float = 30.0,
     wait_exp_base: float = 2.0,
@@ -249,9 +244,11 @@ def _make_retry_decorator(
     elif _RETRY_BACKEND == "tenacity":
         from tenacity import (
             retry as tenacity_retry,
+        )
+        from tenacity import (
+            retry_if_exception,
             stop_after_attempt,
             wait_exponential_jitter,
-            retry_if_exception,
         )
 
         def decorator(func: F) -> F:
@@ -277,7 +274,7 @@ def _make_retry_decorator(
 
                 @functools.wraps(func)
                 async def async_wrapper(*args, **kwargs):
-                    last_exc: Optional[Exception] = None
+                    last_exc: Exception | None = None
                     for attempt in range(attempts):
                         try:
                             return await func(*args, **kwargs)
@@ -308,7 +305,7 @@ def _make_retry_decorator(
                 def sync_wrapper(*args, **kwargs):
                     import time as _time
 
-                    last_exc: Optional[Exception] = None
+                    last_exc: Exception | None = None
                     for attempt in range(attempts):
                         try:
                             return func(*args, **kwargs)
@@ -377,8 +374,8 @@ retry_llm = _make_retry_decorator(
 def retry_custom(
     *,
     attempts: int = 3,
-    on: Tuple[Type[Exception], ...] = (Exception,),
-    exclude: Optional[Tuple[Type[Exception], ...]] = None,
+    on: tuple[type[Exception], ...] = (Exception,),
+    exclude: tuple[type[Exception], ...] | None = None,
     wait_initial: float = 1.0,
     wait_max: float = 30.0,
     name: str = "retry_custom",
@@ -410,10 +407,10 @@ _LIMITER_BACKEND: str = "manual"  # "pyrate" | "manual"
 
 try:
     from pyrate_limiter import (
+        BucketFullException,
         Duration,
         Limiter,
         Rate,
-        BucketFullException,
     )
 
     _LIMITER_BACKEND = "pyrate"
@@ -427,7 +424,7 @@ except ImportError:
 # ── 预配置的服务限流规则 ──────────────────────────────
 
 # (名称, 最大请求数, 时间窗口秒数)
-_SERVICE_LIMITS: Dict[str, Sequence[Tuple[int, float]]] = {
+_SERVICE_LIMITS: dict[str, Sequence[tuple[int, float]]] = {
     # yfinance: 2000/hour（官方限制）
     "yfinance": [(2000, 3600)],
     # akshare: 100/minute（经验值，防封）
@@ -448,7 +445,7 @@ _SERVICE_LIMITS: Dict[str, Sequence[Tuple[int, float]]] = {
 # ── PyrateLimiter 后端 ────────────────────────────────
 
 if _LIMITER_BACKEND == "pyrate":
-    _pyrate_limiters: Dict[str, Limiter] = {}
+    _pyrate_limiters: dict[str, Limiter] = {}
     _pyrate_lock = threading.Lock()
 
     def _get_pyrate_limiter(service: str) -> Limiter:
@@ -531,7 +528,7 @@ else:
                 deficit = 1.0 - self._tokens
                 return deficit / self._rate
 
-    _manual_buckets: Dict[str, list[_TokenBucket]] = {}
+    _manual_buckets: dict[str, list[_TokenBucket]] = {}
     _manual_lock = threading.Lock()
 
     def _get_manual_buckets(service: str) -> list[_TokenBucket]:
@@ -577,7 +574,7 @@ else:
 
 def configure_service_limit(
     service: str,
-    limits: Sequence[Tuple[int, float]],
+    limits: Sequence[tuple[int, float]],
 ) -> None:
     """
     动态配置服务限流规则。
@@ -610,7 +607,7 @@ def get_limiter_backend() -> str:
     return _LIMITER_BACKEND
 
 
-def get_service_limits() -> Dict[str, Sequence[Tuple[int, float]]]:
+def get_service_limits() -> dict[str, Sequence[tuple[int, float]]]:
     """返回所有已配置的服务限流规则"""
     return dict(_SERVICE_LIMITS)
 
@@ -625,7 +622,7 @@ def get_service_limits() -> Dict[str, Sequence[Tuple[int, float]]]:
 # 类比: 船舱隔板（Bulkhead）— 一个舱进水不会沉没整艘船。
 
 # 默认并发限制
-_BULKHEAD_LIMITS: Dict[str, int] = {
+_BULKHEAD_LIMITS: dict[str, int] = {
     "llm": 10,  # LLM 调用最多 10 个并发
     "browser": 3,  # 浏览器自动化最多 3 个并发
     "api": 20,  # 外部 API 最多 20 个并发
@@ -634,9 +631,9 @@ _BULKHEAD_LIMITS: Dict[str, int] = {
     "generic": 15,  # 通用默认 15 个并发
 }
 
-_bulkhead_semaphores: Dict[str, asyncio.Semaphore] = {}
+_bulkhead_semaphores: dict[str, asyncio.Semaphore] = {}
 _bulkhead_lock = threading.Lock()
-_bulkhead_stats: Dict[str, Dict[str, int]] = {}  # 统计: {service: {acquired: N, rejected: N, peak: N}}
+_bulkhead_stats: dict[str, dict[str, int]] = {}  # 统计: {service: {acquired: N, rejected: N, peak: N}}
 
 
 def _get_bulkhead(service: str) -> asyncio.Semaphore:
@@ -683,7 +680,7 @@ async def bulkhead(service: str = "generic", timeout: float = 30.0):
 
         yield
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         stats["rejected"] = stats.get("rejected", 0) + 1
         logger.warning(
             f"[Bulkhead] {service} 隔离舱已满，等待{timeout}s后超时 (限制={_BULKHEAD_LIMITS.get(service, 15)})"
@@ -711,7 +708,7 @@ def configure_bulkhead(service: str, max_concurrent: int):
     logger.info(f"[Bulkhead] 更新 {service} 并发限制: {max_concurrent}")
 
 
-def get_bulkhead_stats() -> Dict[str, Dict[str, int]]:
+def get_bulkhead_stats() -> dict[str, dict[str, int]]:
     """获取所有 Bulkhead 隔离舱的统计信息"""
     result = {}
     for service, stats in _bulkhead_stats.items():

@@ -10,7 +10,7 @@ import logging
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 def run_social_worker(
     action: str,
-    payload: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Run scripts/social_browser_worker.py as a subprocess and return parsed JSON.
 
     Mirrors ExecutionHub._run_social_worker() exactly:
@@ -41,7 +41,7 @@ def run_social_worker(
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
     max_retries = 2 if action and "publish" in str(action) else 1
-    last_err: Optional[Dict[str, Any]] = None
+    last_err: dict[str, Any] | None = None
 
     for attempt in range(max_retries):
         try:
@@ -63,7 +63,7 @@ def run_social_worker(
             if cp.returncode != 0:
                 last_err = {
                     "success": False,
-                    "error": "worker exited {}".format(cp.returncode),
+                    "error": f"worker exited {cp.returncode}",
                     "stderr": str(cp.stderr or "").strip(),
                     "stdout": str(cp.stdout or "").strip(),
                 }
@@ -118,8 +118,8 @@ def run_social_worker(
 
 async def run_social_worker_async(
     action: str,
-    payload: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """异步版本 run_social_worker — 不阻塞事件循环。
 
     与同步版本逻辑完全一致，但使用 asyncio.create_subprocess_exec 和 asyncio.sleep。
@@ -128,7 +128,7 @@ async def run_social_worker_async(
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
     max_retries = 2 if action and "publish" in str(action) else 1
-    last_err: Optional[Dict[str, Any]] = None
+    last_err: dict[str, Any] | None = None
 
     for attempt in range(max_retries):
         try:
@@ -142,7 +142,7 @@ async def run_social_worker_async(
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
                     proc.communicate(), timeout=300
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 last_err = {"success": False, "error": f"worker 超时 (action={action})"}

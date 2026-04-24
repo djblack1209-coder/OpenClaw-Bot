@@ -6,23 +6,22 @@ import importlib.util
 import io
 import logging
 import time as _time
-from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
-from src.telegram_markdown import md_to_html
+
 from src.bot.chinese_nlp_mixin import _match_chinese_command
+from src.bot.error_messages import error_ai_busy, error_auth, error_generic, error_network, error_rate_limit
 from src.constants import TG_MSG_LIMIT
+from src.telegram_markdown import md_to_html
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
 # ── 输入预处理函数从 input_processor.py 导入（向后兼容）──
-from src.bot.input_processor import _detect_correction, _build_smart_reply_keyboard
-
-
-from src.bot.workflow_mixin import WorkflowMixin
 from src.bot.callback_mixin import CallbackMixin
-from src.bot.voice_handler import VoiceHandlerMixin
+from src.bot.input_processor import _build_smart_reply_keyboard, _detect_correction
 from src.bot.session_tracker import SessionTrackerMixin
 from src.bot.stream_manager import StreamManagerMixin
+from src.bot.voice_handler import VoiceHandlerMixin
+from src.bot.workflow_mixin import WorkflowMixin
 from src.perf_metrics import perf_timer
 
 
@@ -39,8 +38,9 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
         """
         from telegram import constants
         from telegram.error import BadRequest, RetryAfter, TimedOut
-        from src.smart_memory import get_smart_memory
+
         from src.feedback import build_feedback_keyboard
+        from src.smart_memory import get_smart_memory
 
         # ── HI-011 flood 根治: 时间门控 + 编辑次数上限 ──
         # Telegram 群聊 editMessageText 限制约 20次/分钟
@@ -345,8 +345,9 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                     is_mentioned=not is_group,  # 私聊视为 mentioned
                 )
                 # 入队追踪（不阻塞处理，仅用于统计和优先级感知）
-                from src.routing import PrioritizedMessage
                 import time as _ptime
+
+                from src.routing import PrioritizedMessage
 
                 await priority_message_queue.enqueue(
                     PrioritizedMessage(

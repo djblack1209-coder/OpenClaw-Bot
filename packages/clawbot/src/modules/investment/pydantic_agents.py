@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -57,8 +57,8 @@ class ResearchOutput(BaseModel):
     confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     recommendation: Literal["buy", "sell", "hold"] = "hold"
     valuation: Literal["高估", "合理", "低估"] = "合理"
-    catalysts: List[str] = Field(default_factory=list, description="近期催化剂")
-    risks: List[str] = Field(default_factory=list, description="风险因素")
+    catalysts: list[str] = Field(default_factory=list, description="近期催化剂")
+    risks: list[str] = Field(default_factory=list, description="风险因素")
     reasoning: str = Field(default="", description="分析摘要")
 
 
@@ -68,8 +68,8 @@ class TAOutput(BaseModel):
     confidence: float = Field(ge=0, le=1, default=0.5, description="分析置信度")
     recommendation: Literal["buy", "sell", "hold"] = "hold"
     trend: Literal["上涨", "下跌", "震荡", "突破"] = "震荡"
-    support: List[float] = Field(default_factory=list, description="支撑位")
-    resistance: List[float] = Field(default_factory=list, description="压力位")
+    support: list[float] = Field(default_factory=list, description="支撑位")
+    resistance: list[float] = Field(default_factory=list, description="压力位")
     key_signal: str = ""
     reasoning: str = ""
 
@@ -112,13 +112,13 @@ class DirectorOutput(BaseModel):
 class StructuredAnalysis:
     """完整的投资团队分析结果"""
     symbol: str
-    research: Optional[ResearchOutput] = None
-    ta: Optional[TAOutput] = None
-    quant: Optional[QuantOutput] = None
-    risk: Optional[RiskOutput] = None
-    director: Optional[DirectorOutput] = None
+    research: ResearchOutput | None = None
+    ta: TAOutput | None = None
+    quant: QuantOutput | None = None
+    risk: RiskOutput | None = None
+    director: DirectorOutput | None = None
     elapsed_seconds: float = 0.0
-    models_used: Dict[str, str] = field(default_factory=dict)
+    models_used: dict[str, str] = field(default_factory=dict)
 
     @property
     def final_recommendation(self) -> str:
@@ -178,7 +178,7 @@ class StructuredAnalysis:
         lines.append(f"\n⏱ {self.elapsed_seconds:.1f}s | 模型: {', '.join(set(self.models_used.values()))}")
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
             "recommendation": self.final_recommendation,
@@ -222,7 +222,7 @@ class PydanticInvestmentEngine:
     def available(self) -> bool:
         return bool(self.key)
 
-    async def full_analysis(self, symbol: str, market_data: Optional[Dict] = None) -> StructuredAnalysis:
+    async def full_analysis(self, symbol: str, market_data: dict | None = None) -> StructuredAnalysis:
         """完整的6角色分析（并行 → 串行风控 → 决策）"""
         result = StructuredAnalysis(symbol=symbol)
         t0 = time.time()
@@ -286,7 +286,7 @@ class PydanticInvestmentEngine:
         return result
 
     async def _run_agent(self, agent_name: str, system_prompt: str,
-                         data: Dict, output_type: type) -> tuple:
+                         data: dict, output_type: type) -> tuple:
         """运行单个 agent — 直接 HTTP 调用 + Pydantic 解析"""
         model = AGENT_MODELS.get(agent_name, "qwen3-235b-a22b-instruct")
 
@@ -342,7 +342,7 @@ class PydanticInvestmentEngine:
 
         return (agent_name, parsed, model)
 
-    async def _fetch_data(self, symbol: str) -> Dict:
+    async def _fetch_data(self, symbol: str) -> dict:
         """获取市场数据"""
         data = {"symbol": symbol}
 
@@ -371,7 +371,7 @@ class PydanticInvestmentEngine:
                 data["ma5"] = float(close.rolling(5).mean().iloc[-1])
                 data["ma20"] = float(close.rolling(20).mean().iloc[-1])
                 data["change_1d"] = float(close.pct_change().iloc[-1])
-                data["change_5d"] = float((close.iloc[-1] / close.iloc[-5] - 1)) if len(close) >= 5 else 0
+                data["change_5d"] = float(close.iloc[-1] / close.iloc[-5] - 1) if len(close) >= 5 else 0
                 data["volume_avg"] = float(hist["Volume"].mean())
                 data["volume_last"] = float(hist["Volume"].iloc[-1])
         except Exception as e:
@@ -388,7 +388,7 @@ class PydanticInvestmentEngine:
 
         return data
 
-    def _build_risk_context(self, result: StructuredAnalysis, data: Dict) -> Dict:
+    def _build_risk_context(self, result: StructuredAnalysis, data: dict) -> dict:
         """构建风控上下文"""
         ctx = dict(data)
         if result.research:
@@ -403,7 +403,7 @@ class PydanticInvestmentEngine:
             ctx["volatility"] = result.quant.volatility
         return ctx
 
-    def _build_director_context(self, result: StructuredAnalysis) -> Dict:
+    def _build_director_context(self, result: StructuredAnalysis) -> dict:
         """构建总监决策上下文"""
         ctx = {"symbol": result.symbol}
         if result.research:
@@ -435,7 +435,7 @@ DIRECTOR_PROMPT = INVESTMENT_ROLES["director"]
 
 # ── 全局单例 ──────────────────────────────────────────
 
-_engine: Optional[PydanticInvestmentEngine] = None
+_engine: PydanticInvestmentEngine | None = None
 
 def get_pydantic_engine() -> PydanticInvestmentEngine:
     global _engine

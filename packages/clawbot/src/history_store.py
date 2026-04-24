@@ -3,11 +3,12 @@ ClawBot - SQLite 历史记录存储
 替代 JSON 文件，支持并发安全、高效查询
 """
 import json
+import logging
 import sqlite3
 import threading
-import logging
-from typing import List, Dict, Any, Optional
 from pathlib import Path
+from typing import Any
+
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class HistoryStore:
     """基于 SQLite 的对话历史存储"""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path:
             self.db_path = Path(db_path)
         else:
@@ -68,7 +69,7 @@ class HistoryStore:
         chat_id: int,
         role: str,
         content: Any,
-        metadata: Optional[Dict] = None
+        metadata: dict | None = None
     ):
         """添加一条消息"""
         conn = self._get_conn()
@@ -87,7 +88,7 @@ class HistoryStore:
         bot_id: str,
         chat_id: int,
         limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """获取最近的消息"""
         conn = self._get_conn()
         rows = conn.execute(
@@ -137,7 +138,7 @@ class HistoryStore:
         )
         conn.commit()
 
-    def get_all_chat_ids(self, bot_id: str) -> List[int]:
+    def get_all_chat_ids(self, bot_id: str) -> list[int]:
         """获取某个 bot 的所有 chat_id"""
         conn = self._get_conn()
         rows = conn.execute(
@@ -146,7 +147,7 @@ class HistoryStore:
         ).fetchall()
         return [row["chat_id"] for row in rows]
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取存储统计"""
         conn = self._get_conn()
         total = conn.execute("SELECT COUNT(*) as cnt FROM messages").fetchone()["cnt"]
@@ -173,7 +174,7 @@ class HistoryStore:
                 chat_id_str = f.stem.split('_')[-1]
                 chat_id = int(chat_id_str)
 
-                with open(f, 'r', encoding='utf-8') as file:
+                with open(f, encoding='utf-8') as file:
                     messages = json.load(file)
 
                 for msg in messages:

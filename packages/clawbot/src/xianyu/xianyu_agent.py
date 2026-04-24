@@ -7,10 +7,9 @@
 """
 import asyncio
 import concurrent.futures
+import logging
 import os
 import re
-import logging
-from typing import Dict, List, Optional
 
 from src.bot.error_messages import error_ai_busy
 from src.constants import FAMILY_QWEN
@@ -25,7 +24,7 @@ def _load_prompt(name: str) -> str:
     for suffix in ("", "_example"):
         path = os.path.join(PROMPT_DIR, f"{name}{suffix}.txt")
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return f.read()
     raise FileNotFoundError(f"Prompt {name} not found in {PROMPT_DIR}")
 
@@ -43,7 +42,7 @@ class ContentSafetyFilter:
     """
 
     # 敏感词库 — 覆盖联系方式泄露、支付规避、平台规避、欺诈话术
-    SENSITIVE_WORDS: List[str] = [
+    SENSITIVE_WORDS: list[str] = [
         # ── 即时通讯 / 联系方式 ──
         "微信", "微信号", "wx", "vx", "v信", "威信", "weixin", "wechat",
         "qq", "扣扣", "企鹅号", "qq号",
@@ -75,7 +74,7 @@ class ContentSafetyFilter:
     ]
 
     # 正则模式 — 检测结构化敏感信息 (手机号、微信号、QQ、URL 等)
-    REGEX_PATTERNS: Dict[str, str] = {
+    REGEX_PATTERNS: dict[str, str] = {
         "手机号码": r"1[3-9](?:[\s\-\.·]*\d){9}",
         "微信号变体": (
             r"(?:wx|vx|v信|威信|weixin|wechat|薇信|薇芯|围信)"
@@ -88,8 +87,8 @@ class ContentSafetyFilter:
     }
 
     def __init__(self) -> None:
-        self._dfa_root: Dict = {}
-        self._compiled_patterns: List[tuple] = []
+        self._dfa_root: dict = {}
+        self._compiled_patterns: list[tuple] = []
         self._build_dfa()
         self._compile_patterns()
 
@@ -128,7 +127,7 @@ class ContentSafetyFilter:
         - 大小写混用: WX → wx
         - 零宽字符/不可见字符
         """
-        result: List[str] = []
+        result: list[str] = []
         for ch in text:
             code = ord(ch)
             # 全角 ASCII (FF01-FF5E) → 半角 (0021-007E)
@@ -148,10 +147,10 @@ class ContentSafetyFilter:
 
     # ── 核心检测 ──
 
-    def _dfa_search(self, text: str) -> List[str]:
+    def _dfa_search(self, text: str) -> list[str]:
         """DFA 扫描: O(n) 复杂度敏感词匹配，返回命中的词"""
         normalized = self._normalize(text)
-        violations: List[str] = []
+        violations: list[str] = []
         n = len(normalized)
         i = 0
         while i < n:
@@ -172,9 +171,9 @@ class ContentSafetyFilter:
                 i += 1
         return violations
 
-    def _regex_search(self, text: str) -> List[str]:
+    def _regex_search(self, text: str) -> list[str]:
         """正则模式扫描: 检测结构化敏感信息 (手机号/QQ/URL 等)"""
-        violations: List[str] = []
+        violations: list[str] = []
         for name, pattern in self._compiled_patterns:
             match = pattern.search(text)
             if match:
@@ -183,7 +182,7 @@ class ContentSafetyFilter:
 
     # ── 公开 API ──
 
-    def get_violations(self, text: str) -> List[str]:
+    def get_violations(self, text: str) -> list[str]:
         """返回所有检测到的违规项列表"""
         if not text:
             return []
@@ -213,7 +212,7 @@ class ContentSafetyFilter:
         从后向前替换避免索引偏移。
         """
         # 构建 原文索引 → 规范化字符 的映射
-        char_map: List[tuple] = []
+        char_map: list[tuple] = []
         for idx, ch in enumerate(text):
             code = ord(ch)
             if 0xFF01 <= code <= 0xFF5E:
@@ -230,7 +229,7 @@ class ContentSafetyFilter:
             return text
 
         # 在映射序列上执行 DFA, 记录需替换的原文区间
-        replace_ranges: List[tuple] = []
+        replace_ranges: list[tuple] = []
         n = len(char_map)
         i = 0
         while i < n:
@@ -295,7 +294,7 @@ class BaseAgent:
                 self.agenerate(user_msg, item_desc, context, bargain_count, buyer_profile)
             )
 
-    async def _acall(self, messages: List[Dict], system: str = "", temperature: float = 0.4) -> str:
+    async def _acall(self, messages: list[dict], system: str = "", temperature: float = 0.4) -> str:
         from src.litellm_router import free_pool
         # HI-736: LLM 调用失败时重试一次（间隔 2 秒），避免买家直接看到错误信息
         for attempt in range(2):
@@ -437,7 +436,7 @@ class XianyuReplyBot:
         self.ctx = ctx  # XianyuContextManager 实例 — 用于读取回复配置
         self._load_agents()
         self.router = IntentRouter(self.agents["classify"])
-        self.last_intent: Optional[str] = None
+        self.last_intent: str | None = None
 
     def _load_agents(self):
         fam = self.model_family
@@ -452,7 +451,7 @@ class XianyuReplyBot:
         self._load_agents()
         self.router = IntentRouter(self.agents["classify"])
 
-    def generate_reply(self, user_msg: str, item_desc: str, context: List[Dict],
+    def generate_reply(self, user_msg: str, item_desc: str, context: list[dict],
                        item_id: str = "", user_id: str = "") -> str:
         """同步接口 (兼容旧调用)"""
         try:
@@ -469,7 +468,7 @@ class XianyuReplyBot:
             logger.error(f"[XianyuReplyBot] sync generate failed: {scrub_secrets(str(e))}")
             return error_ai_busy()
 
-    async def agenerate_reply(self, user_msg: str, item_desc: str, context: List[Dict],
+    async def agenerate_reply(self, user_msg: str, item_desc: str, context: list[dict],
                               item_id: str = "", user_id: str = "") -> str:
         """异步接口 — 推荐使用
 

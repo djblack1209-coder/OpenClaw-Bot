@@ -10,12 +10,13 @@
   - 与 SharedMemory 集成（不替换，增强）
 """
 
+import asyncio
 import json
 import logging
-import asyncio
 import time
-from typing import List, Dict, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+
 from src.utils import emit_flow_event
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ class SmartMemoryPipeline:
     def __init__(
         self,
         shared_memory,
-        llm_fn: Optional[Callable] = None,
+        llm_fn: Callable | None = None,
         extract_interval: int = 5,
         profile_interval: int = 50,
     ):
@@ -124,8 +125,8 @@ class SmartMemoryPipeline:
         self.llm_fn = llm_fn
         self.extract_interval = extract_interval
         self.profile_interval = profile_interval
-        self._turn_count: Dict[int, int] = {}  # chat_id -> turn count
-        self._pending_messages: Dict[int, List[Dict]] = {}  # chat_id -> recent messages
+        self._turn_count: dict[int, int] = {}  # chat_id -> turn count
+        self._pending_messages: dict[int, list[dict]] = {}  # chat_id -> recent messages
         self._lock = asyncio.Lock()
         self._extracting: set = set()  # chat_ids currently running extraction
         self._last_extract_time: float = 0  # 全局限流: 防止多聊天并发触发 LLM 风暴
@@ -295,7 +296,7 @@ class SmartMemoryPipeline:
             for fact in facts[:5]:  # 限制每轮最多处理 5 条
                 await self._resolve_and_store(fact, chat_id, user_id, bot_id)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("[SmartMemory] 事实提取超时 (chat=%s)", chat_id)
         except Exception as e:
             logger.warning("[SmartMemory] 事实提取失败 (chat=%s): %s", chat_id, e)
@@ -347,7 +348,7 @@ class SmartMemoryPipeline:
 
             # NONE: 不操作
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("[SmartMemory] 冲突解决超时: %s", fact[:80])
         except Exception as e:
             logger.debug("[SmartMemory] 冲突解决失败: %s", e)
@@ -448,7 +449,7 @@ class SmartMemoryPipeline:
                     memory_file = Path(ws_dir) / "MEMORY.md"
 
                     if memory_file.exists():
-                        with open(memory_file, "r", encoding="utf-8") as mf:
+                        with open(memory_file, encoding="utf-8") as mf:
                             mf_content = mf.read()
 
                         # 如果没有智能画像块，创建一个
@@ -478,7 +479,7 @@ class SmartMemoryPipeline:
                 except Exception as sync_e:
                     logger.warning("[SmartMemory] 同步至 MEMORY.md 失败: %s", sync_e)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("[SmartMemory] 用户画像更新超时: user=%s", user_id)
         except Exception as e:
             logger.warning("[SmartMemory] 用户画像更新失败: %s", e)
@@ -486,7 +487,7 @@ class SmartMemoryPipeline:
     # ── 解析工具 ──
 
     @staticmethod
-    def _parse_facts(response: str) -> List[str]:
+    def _parse_facts(response: str) -> list[str]:
         """从 LLM 响应中解析事实列表"""
         try:
             data = SmartMemoryPipeline._parse_json(response)
@@ -513,9 +514,10 @@ class SmartMemoryPipeline:
         return MemoryAction(event="NONE")
 
     @staticmethod
-    def _parse_json(text: str) -> Optional[dict]:
+    def _parse_json(text: str) -> dict | None:
         """从可能包含 markdown 代码块的文本中提取 JSON（使用 json_repair 容错）"""
         import re
+
         from json_repair import loads as jloads
 
         # 尝试直接解析（json_repair 自动修复尾逗号、缺引号等）
@@ -553,7 +555,7 @@ class SmartMemoryPipeline:
                         start_idx = -1
         return None
 
-    def get_user_profile(self, user_id: int) -> Optional[dict]:
+    def get_user_profile(self, user_id: int) -> dict | None:
         """获取用户画像"""
         search_result = self.memory.search(f"user_profile_{user_id}", limit=1)
         results = search_result.get("results", []) if isinstance(search_result, dict) else []
@@ -691,7 +693,7 @@ class SmartMemoryPipeline:
 
 
 # 全局实例
-smart_memory: Optional[SmartMemoryPipeline] = None
+smart_memory: SmartMemoryPipeline | None = None
 
 
 def init_smart_memory(shared_memory, llm_fn=None) -> SmartMemoryPipeline:
@@ -702,5 +704,5 @@ def init_smart_memory(shared_memory, llm_fn=None) -> SmartMemoryPipeline:
     return smart_memory
 
 
-def get_smart_memory() -> Optional[SmartMemoryPipeline]:
+def get_smart_memory() -> SmartMemoryPipeline | None:
     return smart_memory

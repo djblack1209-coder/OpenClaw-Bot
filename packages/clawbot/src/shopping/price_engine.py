@@ -26,8 +26,7 @@ No login required: uses only public search pages.
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field, asdict
-from typing import List, Optional
+from dataclasses import asdict, dataclass, field
 
 import httpx
 from bs4 import BeautifulSoup
@@ -70,10 +69,10 @@ class ComparisonReport:
     """Aggregated comparison report across platforms."""
 
     query: str
-    results: List[dict] = field(default_factory=list)
-    best_deal: Optional[dict] = None
+    results: list[dict] = field(default_factory=list)
+    best_deal: dict | None = None
     ai_summary: str = ""
-    searched_platforms: List[str] = field(default_factory=list)
+    searched_platforms: list[str] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -94,13 +93,13 @@ _REQUEST_TIMEOUT = 15  # seconds
 # ──────────────────────────────────────────────
 
 
-async def search_smzdm(keyword: str, limit: int = 10) -> List[PriceResult]:
+async def search_smzdm(keyword: str, limit: int = 10) -> list[PriceResult]:
     """Search 什么值得买 for deals — the best Chinese deal aggregator.
 
     No login required, public search.
     URL pattern: https://search.smzdm.com/?c=faxian&s=关键词&order=score
     """
-    results: List[PriceResult] = []
+    results: list[PriceResult] = []
     url = "https://search.smzdm.com/"
     params = {"c": "faxian", "s": keyword, "order": "score"}
 
@@ -136,7 +135,7 @@ async def search_smzdm(keyword: str, limit: int = 10) -> List[PriceResult]:
     return results
 
 
-def _parse_smzdm_item(item) -> Optional[PriceResult]:
+def _parse_smzdm_item(item) -> PriceResult | None:
     """Extract a PriceResult from a single SMZDM search result element."""
     # Title
     title_el = item.select_one("h5 a, .feed-block-title a, a.feed-nowrap")
@@ -176,13 +175,13 @@ def _parse_smzdm_item(item) -> Optional[PriceResult]:
 # ──────────────────────────────────────────────
 
 
-async def search_jd(keyword: str, limit: int = 10) -> List[PriceResult]:
+async def search_jd(keyword: str, limit: int = 10) -> list[PriceResult]:
     """Search JD.com for products — public search, no login.
 
     URL pattern: https://search.jd.com/Search?keyword=xxx&enc=utf-8
     Note: JD may return JS-rendered pages; we parse whatever HTML is available.
     """
-    results: List[PriceResult] = []
+    results: list[PriceResult] = []
     url = "https://search.jd.com/Search"
     params = {"keyword": keyword, "enc": "utf-8"}
 
@@ -214,7 +213,7 @@ async def search_jd(keyword: str, limit: int = 10) -> List[PriceResult]:
     return results
 
 
-def _parse_jd_item(item) -> Optional[PriceResult]:
+def _parse_jd_item(item) -> PriceResult | None:
     """Extract a PriceResult from a single JD search result element."""
     title_el = item.select_one(".p-name em, .p-name a")
     price_el = item.select_one(".p-price strong i, .p-price i")
@@ -289,7 +288,7 @@ def _extract_price(text: str) -> float:
     return 0.0
 
 
-def _build_ai_prompt(query: str, priced: List[PriceResult]) -> str:
+def _build_ai_prompt(query: str, priced: list[PriceResult]) -> str:
     """Build AI analysis prompt from comparison results."""
     items_text = "\n".join(
         f"- {r.title}: ¥{r.price} ({r.platform})"
@@ -307,7 +306,7 @@ def _build_ai_prompt(query: str, priced: List[PriceResult]) -> str:
     )
 
 
-async def _generate_ai_summary(query: str, priced: List[PriceResult]) -> str:
+async def _generate_ai_summary(query: str, priced: list[PriceResult]) -> str:
     """Generate AI-powered deal analysis summary.
 
     Uses the project's shared AI pool (LiteLLM router) if available.
@@ -336,13 +335,13 @@ async def _generate_ai_summary(query: str, priced: List[PriceResult]) -> str:
 # ──────────────────────────────────────────────
 
 
-async def search_smzdm_rss(keyword: str, limit: int = 10) -> List[PriceResult]:
+async def search_smzdm_rss(keyword: str, limit: int = 10) -> list[PriceResult]:
     """通过 SMZDM RSS feed 获取优惠信息 — 比 HTML 爬取更可靠。
 
     RSS 不走搜索页面，不触发反爬机制。
     使用分类 RSS + 关键词过滤。
     """
-    results: List[PriceResult] = []
+    results: list[PriceResult] = []
     # SMZDM 各品类 RSS feed
     rss_urls = [
         "https://www.smzdm.com/feed",                    # 全站优惠
@@ -464,8 +463,8 @@ async def compare_prices(
     )
 
     # Flatten results, ignoring exceptions
-    all_results: List[PriceResult] = []
-    platforms: List[str] = []
+    all_results: list[PriceResult] = []
+    platforms: list[str] = []
 
     # RSS 优先（最可靠，不被反爬）
     if isinstance(smzdm_rss_results, list) and smzdm_rss_results:
@@ -542,8 +541,8 @@ async def smart_compare_prices(
     if not query:
         return ComparisonReport(query=query, ai_summary="未指定商品")
 
-    all_results: List[PriceResult] = []
-    platforms: List[str] = []
+    all_results: list[PriceResult] = []
+    platforms: list[str] = []
 
     # ── 第一级: SMZDM+JD 直接爬取（总是执行，速度最快） ──
     try:
@@ -600,9 +599,9 @@ async def smart_compare_prices(
 # ──────────────────────────────────────────────
 
 
-def _dicts_to_price_results(result_dicts: List[dict]) -> List[PriceResult]:
+def _dicts_to_price_results(result_dicts: list[dict]) -> list[PriceResult]:
     """将 compare_prices 返回的 dict 列表转回 PriceResult 对象"""
-    results: List[PriceResult] = []
+    results: list[PriceResult] = []
     for d in result_dicts:
         try:
             results.append(PriceResult(
@@ -620,10 +619,10 @@ def _dicts_to_price_results(result_dicts: List[dict]) -> List[PriceResult]:
     return results
 
 
-async def _tier_tavily(query: str) -> List[PriceResult]:
+async def _tier_tavily(query: str) -> list[PriceResult]:
     """第二级降级: Tavily 智能搜索 + LLM 分析"""
     try:
-        from src.tools.tavily_search import search_context, _HAS_TAVILY
+        from src.tools.tavily_search import _HAS_TAVILY, search_context
 
         if not _HAS_TAVILY:
             return []
@@ -645,10 +644,10 @@ async def _tier_tavily(query: str) -> List[PriceResult]:
     return []
 
 
-async def _tier_crawl4ai(query: str, limit: int = 5) -> List[PriceResult]:
+async def _tier_crawl4ai(query: str, limit: int = 5) -> list[PriceResult]:
     """第三级降级: crawl4ai 结构化提取"""
     try:
-        from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
+        from src.shopping.crawl4ai_engine import HAS_CRAWL4AI, smart_compare
 
         if not HAS_CRAWL4AI:
             return []
@@ -659,7 +658,7 @@ async def _tier_crawl4ai(query: str, limit: int = 5) -> List[PriceResult]:
             return []
 
         # 将 crawl4ai 的 ProductPrice 转为 PriceResult
-        converted: List[PriceResult] = []
+        converted: list[PriceResult] = []
         for p in result.products:
             if p.price > 0:
                 converted.append(PriceResult(
@@ -679,12 +678,13 @@ async def _tier_crawl4ai(query: str, limit: int = 5) -> List[PriceResult]:
     return []
 
 
-async def _tier_jina_llm(query: str) -> List[PriceResult]:
+async def _tier_jina_llm(query: str) -> list[PriceResult]:
     """第四级降级: Jina Reader 读取搜索页面 + LLM 提取价格"""
     jina_context = ""
     try:
-        from src.tools.jina_reader import jina_read
         import urllib.parse
+
+        from src.tools.jina_reader import jina_read
 
         q = urllib.parse.quote(f"{query} 价格 对比")
         raw = await jina_read(
@@ -706,13 +706,13 @@ async def _tier_jina_llm(query: str) -> List[PriceResult]:
 
 async def _llm_extract_prices(
     query: str, context: str, source_tag: str
-) -> List[PriceResult]:
+) -> list[PriceResult]:
     """用 LLM 从文本上下文中提取结构化价格列表"""
     try:
-        from src.litellm_router import free_pool
-        from src.constants import FAMILY_DEEPSEEK
-        from src.resilience import api_limiter
         from config.prompts import SOUL_CORE
+        from src.constants import FAMILY_DEEPSEEK
+        from src.litellm_router import free_pool
+        from src.resilience import api_limiter
 
         if not free_pool:
             return []
@@ -755,7 +755,7 @@ async def _llm_extract_prices(
         if not isinstance(products, list):
             return []
 
-        results: List[PriceResult] = []
+        results: list[PriceResult] = []
         for item in products[:10]:
             if not isinstance(item, dict):
                 continue
@@ -787,8 +787,8 @@ async def _llm_extract_prices(
 
 async def _build_final_report(
     query: str,
-    all_results: List[PriceResult],
-    platforms: List[str],
+    all_results: list[PriceResult],
+    platforms: list[str],
     use_ai_summary: bool,
 ) -> ComparisonReport:
     """汇总所有降级层的结果，构建最终 ComparisonReport"""

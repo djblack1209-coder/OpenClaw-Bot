@@ -10,7 +10,7 @@ Skyvern 视觉 RPA 桥接
 """
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,11 @@ class SkyvernBridge:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
     ):
         self._available = False
-        self._client: Optional[SkyvernClient] = None  # type: ignore[type-arg]
+        self._client: SkyvernClient | None = None  # type: ignore[type-arg]
 
         if not _HAS_SKYVERN:
             logger.warning(
@@ -63,7 +63,7 @@ class SkyvernBridge:
             return
 
         try:
-            kwargs: Dict[str, Any] = {"api_key": key}
+            kwargs: dict[str, Any] = {"api_key": key}
 
             # 支持自定义 base_url (自托管 Skyvern 实例)
             url = base_url or os.getenv("SKYVERN_BASE_URL", "")
@@ -85,7 +85,7 @@ class SkyvernBridge:
         """检查 Skyvern 是否可用 (SDK 已安装且 API Key 有效)"""
         return self._available and self._client is not None
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """健康检查 — 返回连接状态"""
         if not self.is_available():
             return {
@@ -110,10 +110,10 @@ class SkyvernBridge:
         url: str,
         goal: str,
         max_steps: int = 10,
-        data_extraction_schema: Optional[Dict[str, Any]] = None,
+        data_extraction_schema: dict[str, Any] | None = None,
         wait_for_completion: bool = True,
         timeout: float = 600,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """核心方法: 导航到 URL，通过视觉理解实现目标。
 
         Args:
@@ -135,7 +135,7 @@ class SkyvernBridge:
             }
 
         try:
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "prompt": goal,
                 "url": url,
                 "max_steps": max_steps,
@@ -148,7 +148,7 @@ class SkyvernBridge:
             response = await self._client.run_task(**kwargs)  # type: ignore[union-attr]
 
             # 解析 TaskRunResponse
-            result_data: Dict[str, Any] = {
+            result_data: dict[str, Any] = {
                 "run_id": response.run_id,
                 "status": response.status,
                 "output": response.output,
@@ -175,10 +175,10 @@ class SkyvernBridge:
     async def extract_data(
         self,
         url: str,
-        schema: Dict[str, Any],
-        prompt: Optional[str] = None,
+        schema: dict[str, Any],
+        prompt: str | None = None,
         max_steps: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """从页面提取结构化数据。
 
         Args:
@@ -201,10 +201,10 @@ class SkyvernBridge:
     async def fill_form(
         self,
         url: str,
-        fields: Dict[str, str],
+        fields: dict[str, str],
         submit: bool = True,
         max_steps: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """填写页面表单。
 
         Args:
@@ -242,7 +242,7 @@ class SkyvernBridge:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_bridge: Optional[SkyvernBridge] = None
+_bridge: SkyvernBridge | None = None
 
 
 def get_skyvern_bridge() -> SkyvernBridge:

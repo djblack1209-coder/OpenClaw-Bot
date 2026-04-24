@@ -15,7 +15,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+
 import httpx
 
 # Resilience integration — auto-retry on network errors
@@ -49,7 +49,7 @@ class HotTopic:
 # ──── 微博热搜 ────────────────────────────────────────
 
 @retry_network
-async def _fetch_weibo(client: httpx.AsyncClient) -> List[HotTopic]:
+async def _fetch_weibo(client: httpx.AsyncClient) -> list[HotTopic]:
     """微博热搜 — 公开 AJAX API，无需 Cookie"""
     topics = []
     # Network errors propagate to @retry_network for automatic retry
@@ -81,7 +81,7 @@ async def _fetch_weibo(client: httpx.AsyncClient) -> List[HotTopic]:
 # ──── 百度热搜 ────────────────────────────────────────
 
 @retry_network
-async def _fetch_baidu(client: httpx.AsyncClient) -> List[HotTopic]:
+async def _fetch_baidu(client: httpx.AsyncClient) -> list[HotTopic]:
     """百度热搜 — 公开 API"""
     topics = []
     # Network errors propagate to @retry_network for automatic retry
@@ -125,7 +125,7 @@ async def _fetch_baidu(client: httpx.AsyncClient) -> List[HotTopic]:
 # ──── 知乎热榜 ────────────────────────────────────────
 
 @retry_network
-async def _fetch_zhihu(client: httpx.AsyncClient) -> List[HotTopic]:
+async def _fetch_zhihu(client: httpx.AsyncClient) -> list[HotTopic]:
     """知乎热榜 — 需要特定 header"""
     topics = []
     headers = {**_HEADERS, "Referer": "https://www.zhihu.com/hot"}
@@ -159,9 +159,9 @@ async def _fetch_zhihu(client: httpx.AsyncClient) -> List[HotTopic]:
 # ──── 统一入口 ────────────────────────────────────────
 
 async def fetch_real_trending(
-    sources: Optional[List[str]] = None,
+    sources: list[str] | None = None,
     limit: int = 20,
-) -> List[dict]:
+) -> list[dict]:
     """从多个真实平台获取热搜，并行请求，合并去重。
 
     Args:
@@ -184,7 +184,7 @@ async def fetch_real_trending(
         tasks = [fetchers[s](client) for s in sources if s in fetchers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    all_topics: List[HotTopic] = []
+    all_topics: list[HotTopic] = []
     for result in results:
         if isinstance(result, list):
             all_topics.extend(result)

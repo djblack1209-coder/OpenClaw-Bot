@@ -26,7 +26,7 @@ import statistics
 import threading
 import time
 from collections import defaultdict, deque
-from typing import Callable, Dict, Optional
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class PerfTracker:
     def __init__(self, max_records: int = _MAX_RECORDS_PER_METRIC):
         self._max_records = max_records
         # 指标名 → deque(maxlen=max_records) 存储耗时记录
-        self._data: Dict[str, deque] = defaultdict(
+        self._data: dict[str, deque] = defaultdict(
             lambda: deque(maxlen=self._max_records)
         )
         self._lock = threading.Lock()
@@ -58,7 +58,7 @@ class PerfTracker:
         with self._lock:
             self._data[metric_name].append(duration_seconds)
 
-    def get_stats(self, metric_name: str) -> Dict:
+    def get_stats(self, metric_name: str) -> dict:
         """获取指定指标的统计数据
 
         Returns:
@@ -86,7 +86,7 @@ class PerfTracker:
             "min": round(min(sorted_records), 4),
         }
 
-    def get_all_stats(self) -> Dict[str, Dict]:
+    def get_all_stats(self) -> dict[str, dict]:
         """获取所有指标的统计数据"""
         with self._lock:
             metric_names = list(self._data.keys())
@@ -127,7 +127,7 @@ class PerfTracker:
 
 # ── 全局单例 ──────────────────────────────────────────
 
-_global_tracker: Optional[PerfTracker] = None
+_global_tracker: PerfTracker | None = None
 _tracker_lock = threading.Lock()
 
 
@@ -146,7 +146,7 @@ def get_tracker() -> PerfTracker:
 
 def perf_timer(
     metric_name: str,
-    tracker: Optional[PerfTracker] = None,
+    tracker: PerfTracker | None = None,
 ) -> Callable:
     """性能计时装饰器，自动记录函数执行时间
 

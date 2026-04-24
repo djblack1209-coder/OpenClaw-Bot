@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel
 
 from src.http_client import ResilientHTTPClient
+
 from ..error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)

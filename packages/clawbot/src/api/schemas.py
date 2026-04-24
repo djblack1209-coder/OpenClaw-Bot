@@ -4,11 +4,12 @@ ClawBot Internal API Schemas
 所有请求/响应模型集中定义，供各 router 引用
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, Any
 from enum import Enum
-from src.utils import now_et
+from typing import Any
 
+from pydantic import BaseModel, Field
+
+from src.utils import now_et
 
 # ============================================================
 # System
@@ -205,10 +206,10 @@ class PoolStats(BaseModel):
     avg_latency_ms: float = 0.0
     by_provider: dict = {}
     # 前端 AIConfig 面板所需的成本统计字段
-    today_cost: Optional[float] = None
-    week_cost: Optional[float] = None
-    month_cost: Optional[float] = None
-    budget: Optional[float] = None
+    today_cost: float | None = None
+    week_cost: float | None = None
+    month_cost: float | None = None
+    budget: float | None = None
 
 
 # ============================================================
@@ -250,14 +251,14 @@ class TeamVoteRequest(BaseModel):
 class SocialPublishRequest(BaseModel):
     platform: str  # "x", "xhs", "both"
     content: str
-    schedule_at: Optional[str] = None
+    schedule_at: str | None = None
 
 
 class MemorySearchRequest(BaseModel):
     query: str
     limit: int = 10
     mode: str = "hybrid"  # keyword/semantic/hybrid
-    category: Optional[str] = None
+    category: str | None = None
 
 
 class StatusMsg(BaseModel):
@@ -285,7 +286,7 @@ class ComparisonReportSchema(BaseModel):
     success: bool = True
     query: str
     results: list[dict] = []
-    best_deal: Optional[dict] = None
+    best_deal: dict | None = None
     ai_summary: str = ""
     platforms: list[str] = []
     count: int = 0

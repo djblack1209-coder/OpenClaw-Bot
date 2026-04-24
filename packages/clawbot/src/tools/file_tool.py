@@ -4,14 +4,14 @@ ClawBot - 文件操作工具
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 class FileTool:
     """文件读写操作"""
 
-    def __init__(self, base_dir: Optional[str] = None):
+    def __init__(self, base_dir: str | None = None):
         self.base_dir = Path(base_dir).resolve() if base_dir else Path.home().resolve()
 
     def _safe_resolve(self, path: str) -> Path:
@@ -42,7 +42,7 @@ class FileTool:
 
         return resolved
 
-    def read(self, path: str, offset: int = 0, limit: int = 2000) -> Dict[str, Any]:
+    def read(self, path: str, offset: int = 0, limit: int = 2000) -> dict[str, Any]:
         """读取文件内容"""
         try:
             file_path = self._safe_resolve(path)
@@ -57,7 +57,7 @@ class FileTool:
             if size > 10 * 1024 * 1024:
                 return {"success": False, "error": f"文件过大: {size / 1024 / 1024:.1f}MB"}
 
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(file_path, encoding='utf-8', errors='replace') as f:
                 lines = f.readlines()
 
             total_lines = len(lines)
@@ -81,7 +81,7 @@ class FileTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def write(self, path: str, content: str) -> Dict[str, Any]:
+    def write(self, path: str, content: str) -> dict[str, Any]:
         """写入文件"""
         try:
             file_path = self._safe_resolve(path)
@@ -94,7 +94,7 @@ class FileTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def edit(self, path: str, old_string: str, new_string: str, replace_all: bool = False) -> Dict[str, Any]:
+    def edit(self, path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict[str, Any]:
         """编辑文件 (替换字符串)"""
         try:
             file_path = self._safe_resolve(path)
@@ -102,7 +102,7 @@ class FileTool:
             if not file_path.exists():
                 return {"success": False, "error": f"文件不存在: {path}"}
 
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 content = f.read()
 
             count = content.count(old_string)
@@ -125,7 +125,7 @@ class FileTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def list_dir(self, path: str, pattern: str = "*") -> Dict[str, Any]:
+    def list_dir(self, path: str, pattern: str = "*") -> dict[str, Any]:
         """列出目录内容"""
         try:
             dir_path = self._safe_resolve(path)
@@ -156,7 +156,7 @@ class FileTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def search(self, path: str, pattern: str, content_pattern: Optional[str] = None) -> Dict[str, Any]:
+    def search(self, path: str, pattern: str, content_pattern: str | None = None) -> dict[str, Any]:
         """搜索文件"""
         try:
             dir_path = self._safe_resolve(path)
@@ -169,7 +169,7 @@ class FileTool:
                 if len(matches) >= 100:
                     break
 
-                match_info: Dict[str, Any] = {"path": str(file_path), "name": file_path.name}
+                match_info: dict[str, Any] = {"path": str(file_path), "name": file_path.name}
 
                 if content_pattern:
                     try:
@@ -181,7 +181,7 @@ class FileTool:
                         except re.error as regex_err:
                             return {"success": False, "error": f"正则表达式无效: {regex_err}"}
 
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        with open(file_path, encoding='utf-8', errors='ignore') as f:
                             content = f.read()
 
                         found = regex.findall(content)

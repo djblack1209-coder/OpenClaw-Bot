@@ -23,7 +23,6 @@ import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from src.db_utils import get_conn as _get_db_conn
 
@@ -92,7 +91,7 @@ class AutoShipper:
 
     # ── 卡券管理 ──
 
-    def add_cards(self, item_id: str, cards: List[str], spec: str = "") -> Dict:
+    def add_cards(self, item_id: str, cards: list[str], spec: str = "") -> dict:
         """批量添加卡券到库存"""
         added = 0
         duplicates = 0
@@ -111,7 +110,7 @@ class AutoShipper:
         logger.info("[AutoShipper] 添加卡券: item=%s, 成功=%d, 重复=%d", item_id, added, duplicates)
         return {"added": added, "duplicates": duplicates}
 
-    def get_inventory(self, item_id: str = None) -> List[Dict]:
+    def get_inventory(self, item_id: str = None) -> list[dict]:
         """查看库存状态"""
         with self._conn() as conn:
             if item_id:
@@ -142,7 +141,7 @@ class AutoShipper:
         delay_seconds: int = 30,
         reply_template: str = None,
         max_daily_ship: int = 50,
-    ) -> Dict:
+    ) -> dict:
         """设置商品发货规则"""
         template = reply_template or "您好，您的卡券如下：\n{card_content}\n请注意保存，如有问题随时联系~"
         with self._conn() as conn:
@@ -156,7 +155,7 @@ class AutoShipper:
             )
         return {"success": True, "item_id": item_id}
 
-    def get_rule(self, item_id: str) -> Optional[Dict]:
+    def get_rule(self, item_id: str) -> dict | None:
         """获取商品发货规则"""
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM shipping_rules WHERE item_id=?", (item_id,)).fetchone()
@@ -164,7 +163,7 @@ class AutoShipper:
 
     # ── 发货执行 ──
 
-    def process_order(self, order_id: str, item_id: str, buyer_id: str = "", spec: str = "") -> Dict:
+    def process_order(self, order_id: str, item_id: str, buyer_id: str = "", spec: str = "") -> dict:
         """处理订单 → 分配卡券 → 返回发货内容"""
         # 检查发货规则
         rule = self.get_rule(item_id)
@@ -251,7 +250,7 @@ class AutoShipper:
             ).fetchone()
         return row[0] if row else 0
 
-    def check_low_stock(self, threshold: int = 3) -> List[Dict]:
+    def check_low_stock(self, threshold: int = 3) -> list[dict]:
         """检查低库存商品 — 返回库存低于阈值的商品列表"""
         with self._conn() as conn:
             rows = conn.execute(
@@ -262,7 +261,7 @@ class AutoShipper:
             ).fetchall()
         return [{"item_id": r["item_id"], "available": r["available"]} for r in rows]
 
-    def get_shipping_stats(self, item_id: str = None) -> Dict:
+    def get_shipping_stats(self, item_id: str = None) -> dict:
         """发货统计"""
         with self._conn() as conn:
             if item_id:

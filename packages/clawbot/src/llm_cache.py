@@ -25,9 +25,9 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
-from src.utils import scrub_secrets
+from typing import Any, Optional
 
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def _get_cache() -> Optional["DiskCache"]:
 
 def _make_cache_key(
     messages: list,
-    model_family: Optional[str],
+    model_family: str | None,
     temperature: float,
 ) -> str:
     """Generate deterministic cache key from request parameters.
@@ -105,8 +105,8 @@ def _make_cache_key(
 
 
 async def cached_completion(
-    model_family: Optional[str] = None,
-    messages: Optional[list] = None,
+    model_family: str | None = None,
+    messages: list | None = None,
     system_prompt: str = "",
     temperature: float = 0.7,
     max_tokens: int = 4096,
@@ -206,14 +206,14 @@ async def cached_completion(
     return response
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """Return cache statistics.
 
     Returns:
         Dict with keys: hits, misses, hit_rate, bypassed, errors,
                         entries, size_mb, size_limit_mb, directory
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "enabled": HAS_DISKCACHE,
         "hits": _stats["hits"],
         "misses": _stats["misses"],

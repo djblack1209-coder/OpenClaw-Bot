@@ -17,20 +17,21 @@ import logging
 import os
 import re
 import statistics
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from config.prompts import INVEST_VOTE_PROMPTS
-from src.execution._utils import safe_float
-from src.utils import env_int, env_float
 from src.constants import (
-    BOT_QWEN,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_OPUS,
+    BOT_CLAUDE_SONNET,
     BOT_DEEPSEEK,
     BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU,
-    BOT_CLAUDE_SONNET,
-    BOT_CLAUDE_OPUS,
+    BOT_QWEN,
 )
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from src.execution._utils import safe_float
+from src.utils import env_float, env_int
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def _env_text(key: str, default: str) -> str:
     return str(raw).strip() or default
 
 
-async def _safe_notify(notify_func: Optional[Callable], msg: str) -> None:
+async def _safe_notify(notify_func: Callable | None, msg: str) -> None:
     """Send notification, silently log on failure."""
     if notify_func:
         try:
@@ -108,7 +109,7 @@ class VoteResult:
     """团队投票结果"""
 
     symbol: str
-    votes: List[BotVote] = field(default_factory=list)
+    votes: list[BotVote] = field(default_factory=list)
     decision: str = "HOLD"  # BUY / HOLD
     buy_count: int = 0
     hold_count: int = 0
@@ -121,8 +122,8 @@ class VoteResult:
     avg_target: float = 0
     summary: str = ""
     data_completeness: float = 0
-    used_data: List[str] = field(default_factory=list)
-    missing_data: List[str] = field(default_factory=list)
+    used_data: list[str] = field(default_factory=list)
+    missing_data: list[str] = field(default_factory=list)
     price: float = 0
     change_pct: float = 0
     trend: str = ""
@@ -149,7 +150,7 @@ class VoteResult:
         if self.avg_entry > self.avg_stop and self.avg_target > self.avg_entry:
             risk_reward = (self.avg_target - self.avg_entry) / (self.avg_entry - self.avg_stop)
 
-        gate_notes: List[str] = []
+        gate_notes: list[str] = []
         gate_ok = True
         if self.decision != "BUY":
             gate_ok = False
@@ -229,7 +230,7 @@ class VoteResult:
                 ]
             )
         else:
-            trigger_parts: List[str] = []
+            trigger_parts: list[str] = []
             if self.resistance > 0:
                 trigger_parts.append(f"放量站稳 ${self.resistance:.2f}")
             if self.vol_ratio > 0:
@@ -284,13 +285,13 @@ def _parse_vote(text: str, bot_id: str, bot_name: str, role: str) -> BotVote:
             return "未提供明确理由"
         return text_raw[:160]
 
-    def _extract_json_with_vote(raw_text: str) -> Optional[dict]:
-        candidates: List[str] = []
+    def _extract_json_with_vote(raw_text: str) -> dict | None:
+        candidates: list[str] = []
         fenced = re.findall(r"```(?:json|JSON)?\s*([\s\S]*?)```", raw_text)
         candidates.extend([c.strip() for c in fenced if c and c.strip()])
         candidates.append(raw_text.strip())
 
-        def _try_json(candidate: str) -> Optional[dict]:
+        def _try_json(candidate: str) -> dict | None:
             if not candidate:
                 return None
             from json_repair import loads as jloads
@@ -403,7 +404,7 @@ def _to_float(value: Any) -> float:
         return 0.0
 
 
-def _build_data_audit(analysis: dict) -> Tuple[List[str], List[str], float]:
+def _build_data_audit(analysis: dict) -> tuple[list[str], list[str], float]:
     if not isinstance(analysis, dict):
         return [], ["技术数据"], 0.0
 
@@ -477,12 +478,12 @@ def _format_ta_summary(analysis: dict) -> str:
 async def run_team_vote(
     symbol: str,
     analysis: dict,
-    api_callers: Dict[str, Callable],
-    notify_func: Optional[Callable] = None,
+    api_callers: dict[str, Callable],
+    notify_func: Callable | None = None,
     timeout_per_bot: float = 45,
     account_context: str = "",
-    vote_history: Optional[Dict[str, Dict]] = None,
-    progress_func: Optional[Callable] = None,
+    vote_history: dict[str, dict] | None = None,
+    progress_func: Callable | None = None,
 ) -> VoteResult:
     """
     对单个标的运行6人团队投票。
@@ -572,7 +573,7 @@ async def run_team_vote(
                     timeout=timeout_per_bot,
                 )
                 return _parse_vote(response, bot_id, bot_id, role)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_err = "回复超时"
                 logger.warning("[TeamVote] %s 超时(%ds) [%d/%d]", bot_id, timeout_per_bot, attempt + 1, max_attempts)
             except Exception as e:
@@ -668,7 +669,7 @@ async def run_team_vote(
                 )
                 commander_vote_result = _parse_vote(response, commander_id, commander_id, role)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", commander_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", commander_id, _attempt + 1, e)
@@ -715,7 +716,7 @@ async def run_team_vote(
                 )
                 strategist_vote_result = _parse_vote(response, strategist_id, strategist_id, role)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("[TeamVote] %s 超时 [%d/2]", strategist_id, _attempt + 1)
             except Exception as e:
                 logger.warning("[TeamVote] %s 失败 [%d/2]: %s", strategist_id, _attempt + 1, e)
@@ -827,15 +828,15 @@ async def run_team_vote(
 
 
 async def run_team_vote_batch(
-    candidates: List[dict],
-    analyses: Dict[str, dict],
-    api_callers: Dict[str, Callable],
-    notify_func: Optional[Callable] = None,
+    candidates: list[dict],
+    analyses: dict[str, dict],
+    api_callers: dict[str, Callable],
+    notify_func: Callable | None = None,
     max_candidates: int = 5,
     account_context: str = "",
-    vote_history: Optional[Dict[str, Dict]] = None,
-    progress_func: Optional[Callable] = None,
-) -> List[VoteResult]:
+    vote_history: dict[str, dict] | None = None,
+    progress_func: Callable | None = None,
+) -> list[VoteResult]:
     """
     对多个候选标的批量运行团队投票。
 

@@ -21,7 +21,6 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Dict
 
 import requests
 
@@ -102,7 +101,7 @@ class ComfyUIClient:
         if not filename:
             raise ValueError("文件名无效(为空或仅含路径分隔符)")
 
-        params: Dict[str, str] = {"filename": filename}
+        params: dict[str, str] = {"filename": filename}
         if subfolder:
             # 子目录同样做安全净化
             subfolder = os.path.basename(subfolder)

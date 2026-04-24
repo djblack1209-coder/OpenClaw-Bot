@@ -16,15 +16,16 @@ browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
 """
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
-from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE
+from src.bot.config import SILICONFLOW_BASE, SILICONFLOW_KEYS
 
 logger = logging.getLogger(__name__)
 
 _browser_use_available = False
 try:
-    from browser_use import Agent as BrowserAgent, Browser, BrowserConfig
+    from browser_use import Agent as BrowserAgent
+    from browser_use import Browser, BrowserConfig
     _browser_use_available = True
 except ImportError:
     BrowserAgent = Browser = BrowserConfig = None  # type: ignore[assignment,misc]
@@ -74,7 +75,7 @@ class BrowserUseBridge:
         logger.warning("[BrowserUseBridge] 无可用 LLM，browser-use 功能受限")
         return None
 
-    async def run_task(self, task: str, url: str = "", max_steps: int = 10) -> Dict[str, Any]:
+    async def run_task(self, task: str, url: str = "", max_steps: int = 10) -> dict[str, Any]:
         """
         用自然语言描述执行浏览器任务。
 
@@ -116,7 +117,7 @@ class BrowserUseBridge:
                 "steps": max_steps,
                 "engine": "browser-use",
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[BrowserUseBridge] 任务执行超时(120s)")
             return {"success": False, "error": "浏览器任务超时(120秒)"}
         except Exception as e:
@@ -131,8 +132,8 @@ class BrowserUseBridge:
                     logger.debug("关闭浏览器实例时异常(可忽略): %s", e)
 
     async def extract_data(
-        self, url: str, instruction: str, schema: Optional[Dict] = None,
-    ) -> Dict[str, Any]:
+        self, url: str, instruction: str, schema: dict | None = None,
+    ) -> dict[str, Any]:
         """
         从网页提取结构化数据。
 
@@ -149,7 +150,7 @@ class BrowserUseBridge:
         task = f"导航到 {url}，{instruction}{schema_hint}。将结果以 JSON 格式输出。"
         return await self.run_task(task, max_steps=8)
 
-    async def take_screenshot(self, url: str) -> Dict[str, Any]:
+    async def take_screenshot(self, url: str) -> dict[str, Any]:
         """截取网页截图"""
         if not self._using_browser_use:
             return {"success": False, "error": "browser-use 未安装"}
@@ -171,13 +172,13 @@ class BrowserUseBridge:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def fill_form(self, url: str, form_data: Dict[str, str]) -> Dict[str, Any]:
+    async def fill_form(self, url: str, form_data: dict[str, str]) -> dict[str, Any]:
         """自动填写表单"""
         fields_desc = ", ".join(f"{k}={v}" for k, v in form_data.items())
         task = f"导航到 {url}，找到表单，填写以下字段: {fields_desc}，然后提交。"
         return await self.run_task(task, max_steps=8)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "available": _browser_use_available,
             "using_browser_use": self._using_browser_use,
@@ -196,7 +197,7 @@ class BrowserUseBridge:
 
 # ── 全局实例 ──
 
-_bridge: Optional[BrowserUseBridge] = None
+_bridge: BrowserUseBridge | None = None
 
 
 def init_browser_use(llm=None, headless: bool = True) -> BrowserUseBridge:
@@ -207,5 +208,5 @@ def init_browser_use(llm=None, headless: bool = True) -> BrowserUseBridge:
     return _bridge
 
 
-def get_browser_use() -> Optional[BrowserUseBridge]:
+def get_browser_use() -> BrowserUseBridge | None:
     return _bridge

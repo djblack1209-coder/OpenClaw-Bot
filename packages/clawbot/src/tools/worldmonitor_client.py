@@ -7,14 +7,14 @@
 """
 
 import asyncio
+import logging
 import os
 import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any
 
 import httpx
-from src.http_client import ResilientHTTPClient
 
-import logging
+from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _HEADERS = {
 _http_rss = ResilientHTTPClient(timeout=15.0, name="worldmonitor_rss")
 
 # --- 行业分类 → API 端点映射 ---
-INDUSTRY_CATEGORIES: Dict[str, dict] = {
+INDUSTRY_CATEGORIES: dict[str, dict] = {
     "finance": {
         "name": "金融经济",
         "emoji": "🏦",
@@ -71,7 +71,7 @@ INDUSTRY_CATEGORIES: Dict[str, dict] = {
 }
 
 # --- 地区分类 ---
-REGION_CATEGORIES: Dict[str, dict] = {
+REGION_CATEGORIES: dict[str, dict] = {
     "north_america": {
         "name": "北美",
         "emoji": "🇺🇸",
@@ -103,10 +103,10 @@ REGION_CATEGORIES: Dict[str, dict] = {
 # ── 内存缓存 ──────────────────────────────────────────
 
 # 缓存结构: {缓存键: (写入时间戳, 数据)}
-_cache: Dict[str, Tuple[float, Any]] = {}
+_cache: dict[str, tuple[float, Any]] = {}
 
 
-def _get_cached(key: str) -> Optional[Any]:
+def _get_cached(key: str) -> Any | None:
     """从缓存读取数据，超过 TTL 则返回 None"""
     entry = _cache.get(key)
     if entry is None:
@@ -135,7 +135,7 @@ _URL_KEYS = ("url", "link")
 _TIME_KEYS = ("published_at", "date", "timestamp", "published", "updated")
 
 
-def _extract_list(payload: Any) -> List[dict]:
+def _extract_list(payload: Any) -> list[dict]:
     """从 API 响应体中提取条目列表
 
     按优先级尝试多个常见键名，兼容不同 API 结构。
@@ -164,7 +164,7 @@ def _first(d: dict, keys: tuple) -> str:
     return ""
 
 
-def _normalize_item(raw: dict) -> Dict[str, str]:
+def _normalize_item(raw: dict) -> dict[str, str]:
     """将原始 API 条目统一为标准格式"""
     return {
         "title": _first(raw, _TITLE_KEYS) or "（无标题）",
@@ -177,7 +177,7 @@ def _normalize_item(raw: dict) -> Dict[str, str]:
 
 # ── 核心抓取 ──────────────────────────────────────────
 
-async def _fetch_endpoint(client: httpx.AsyncClient, endpoint: str) -> List[dict]:
+async def _fetch_endpoint(client: httpx.AsyncClient, endpoint: str) -> list[dict]:
     """请求单个 API 端点并返回标准化条目列表"""
     url = f"{_BASE_URL}{endpoint}"
     try:
@@ -196,7 +196,7 @@ async def _fetch_endpoint(client: httpx.AsyncClient, endpoint: str) -> List[dict
         return []
 
 
-async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> List[Dict]:
+async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> list[dict]:
     """降级方案：Worldmonitor 不可用时尝试 Google News RSS
 
     搬运 news_fetcher 的 RSS 解析逻辑作为兜底数据源。
@@ -212,7 +212,7 @@ async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> List[Di
         })
         if resp.status_code != 200:
             return []
-        items: List[Dict] = []
+        items: list[dict] = []
         raw_items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
         for raw in raw_items[:max_items]:
             title_m = re.search(r"<title>(.*?)</title>", raw)
@@ -237,7 +237,7 @@ async def _fallback_rss_news(query: str, max_items: int = _MAX_ITEMS) -> List[Di
 
 async def fetch_category_news(
     category: str, max_items: int = _MAX_ITEMS
-) -> List[Dict]:
+) -> list[dict]:
     """获取指定行业分类的情报新闻
 
     按分类对应的端点列表依次请求，汇总结果并去重。
@@ -262,7 +262,7 @@ async def fetch_category_news(
         return []
 
     endpoints = cat_info["endpoints"]
-    all_items: List[Dict] = []
+    all_items: list[dict] = []
     seen_titles: set = set()
 
     try:
@@ -298,7 +298,7 @@ async def fetch_category_news(
 
 async def fetch_region_news(
     region: str, max_items: int = _MAX_ITEMS
-) -> List[Dict]:
+) -> list[dict]:
     """获取指定地区的情报新闻
 
     全球分类直接请求通用新闻端点；
@@ -322,7 +322,7 @@ async def fetch_region_news(
         logger.warning("未知地区分类: %s", region)
         return []
 
-    all_items: List[Dict] = []
+    all_items: list[dict] = []
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -369,7 +369,7 @@ async def fetch_region_news(
 
 async def fetch_news_by_query(
     query: str, max_items: int = _MAX_ITEMS
-) -> List[Dict]:
+) -> list[dict]:
     """按关键词搜索情报新闻
 
     先尝试 Worldmonitor 的搜索端点，不可用则降级到 Google News RSS。
@@ -390,7 +390,7 @@ async def fetch_news_by_query(
     if cached is not None:
         return cached[:max_items]
 
-    items: List[Dict] = []
+    items: list[dict] = []
 
     # 尝试 Worldmonitor 搜索 API
     try:
@@ -446,7 +446,7 @@ async def generate_intel_brief() -> str:
 
     date_str = now_et().strftime("%Y年%m月%d日")
 
-    sections: List[Tuple[str, List[str]]] = []
+    sections: list[tuple[str, list[str]]] = []
 
     for cat_key, cat_info in INDUSTRY_CATEGORIES.items():
         emoji = cat_info["emoji"]
@@ -496,7 +496,7 @@ async def generate_intel_brief() -> str:
     return "\n".join(lines)
 
 
-def format_intel_items(items: List[Dict], max_items: int = 5) -> str:
+def format_intel_items(items: list[dict], max_items: int = 5) -> str:
     """将新闻条目列表格式化为 Telegram 友好的富文本
 
     每条格式: • <b>标题</b>
@@ -513,7 +513,7 @@ def format_intel_items(items: List[Dict], max_items: int = 5) -> str:
     if not items:
         return "暂无相关情报。"
 
-    lines: List[str] = []
+    lines: list[str] = []
     for item in items[:max_items]:
         title = item.get("title", "（无标题）")
         summary = item.get("summary", "")
@@ -535,7 +535,7 @@ def format_intel_items(items: List[Dict], max_items: int = 5) -> str:
             lines.append(f"  {_escape_html(short_summary)}")
 
         # 来源和时间行
-        meta_parts: List[str] = []
+        meta_parts: list[str] = []
         if source:
             meta_parts.append(source)
         if published:

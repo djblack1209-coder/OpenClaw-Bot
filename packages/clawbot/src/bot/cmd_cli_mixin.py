@@ -16,8 +16,8 @@
 import logging
 
 from src.bot.auth import requires_auth
-from src.telegram_ux import with_typing
 from src.integrations.cli_anything_bridge import CLIAnythingManager
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 

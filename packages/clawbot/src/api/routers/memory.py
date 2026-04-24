@@ -1,8 +1,8 @@
 """Memory endpoints — search, stats"""
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import MemorySearchResult, MemoryStats, WSMessageType
@@ -14,11 +14,11 @@ router = APIRouter()
 
 @router.get("/memory/search", response_model=MemorySearchResult)
 def search_memory(
-    query: Optional[str] = Query(default=None),
-    q: Optional[str] = Query(default=None),
+    query: str | None = Query(default=None),
+    q: str | None = Query(default=None),
     limit: int = Query(10, ge=1, le=100),
     mode: str = Query("hybrid", pattern="^(keyword|semantic|hybrid)$"),
-    category: Optional[str] = None,
+    category: str | None = None,
 ):
     """搜索记忆库"""
     effective_query = query if query is not None else q

@@ -7,7 +7,6 @@
 - get_risk_exposure_summary(): 生成风险敞口摘要
 """
 import logging
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,8 @@ class SectorMixin:
     """
 
     def _check_sector_concentration(
-        self, symbol: str, new_value: float, current_positions: List[Dict]
-    ) -> Optional[str]:
+        self, symbol: str, new_value: float, current_positions: list[dict]
+    ) -> str | None:
         """检查板块集中度，返回警告信息或None"""
         sector = self._symbol_sectors.get(symbol, "unknown")
         if sector == "unknown":
@@ -48,14 +47,14 @@ class SectorMixin:
                     f"${max_sector:.2f}({self.config.max_sector_exposure_pct*100}%)")
         return None
 
-    def lookup_sectors(self, symbols: List[str]) -> Dict[str, str]:
+    def lookup_sectors(self, symbols: list[str]) -> dict[str, str]:
         """查询标的所属行业，优先用缓存，缓存未命中时用 yfinance 查询
 
         返回 {symbol: sector} 映射，查询失败的标记为 '未知'。
         结果会写回 _symbol_sectors 缓存，避免重复查询。
         """
-        result: Dict[str, str] = {}
-        to_fetch: List[str] = []
+        result: dict[str, str] = {}
+        to_fetch: list[str] = []
         for sym in symbols:
             s = sym.upper()
             cached = self._symbol_sectors.get(s)
@@ -87,8 +86,8 @@ class SectorMixin:
         return result
 
     def get_risk_exposure_summary(
-        self, positions: List[Dict], cash: float = 0
-    ) -> Dict:
+        self, positions: list[dict], cash: float = 0
+    ) -> dict:
         """生成风险敞口摘要数据，供 /portfolio 展示
 
         返回包含单只最大占比、行业最大占比、总仓位、日亏损额度等信息的字典。
@@ -111,7 +110,7 @@ class SectorMixin:
                 max_single_sym = p.get("symbol", "?")
 
         # 行业聚合占比
-        sector_values: Dict[str, float] = {}
+        sector_values: dict[str, float] = {}
         symbols = [p.get("symbol", "") for p in positions]
         sector_map = self.lookup_sectors(symbols)
         for p in positions:

@@ -18,7 +18,6 @@ import re
 import threading
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from src.utils import now_et, scrub_secrets
 
@@ -36,7 +35,7 @@ _MAX_DRAFTS: int = 500
 _lock = threading.Lock()
 
 
-def _load_drafts() -> List[Dict]:
+def _load_drafts() -> list[dict]:
     """从 JSON 文件加载草稿列表，文件不存在或损坏时返回空列表"""
     try:
         if _DRAFTS_FILE.exists():
@@ -50,7 +49,7 @@ def _load_drafts() -> List[Dict]:
     return []
 
 
-def _save_drafts(drafts: List[Dict]) -> None:
+def _save_drafts(drafts: list[dict]) -> None:
     """将草稿列表写入 JSON 文件，自动创建目录"""
     try:
         _DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -115,7 +114,7 @@ def _detect_duplicate(
     body: str,
     topic: str = "",
     threshold: float = 0.7,
-) -> Optional[Dict]:
+) -> dict | None:
     """检测与现有草稿的重复（调用前需持有 _lock）"""
     drafts = _load_drafts()
     # 只检查最近 50 条
@@ -133,9 +132,9 @@ def save_social_draft(
     platform: str = "both",
     title: str = "",
     body: str = "",
-    sources: Optional[List] = None,
+    sources: list | None = None,
     topic: str = "",
-) -> Dict:
+) -> dict:
     """保存社媒草稿 (含去重检测，持久化到文件)"""
     platform_name = str(platform or "").strip().lower()
     if platform_name not in frozenset({"x", "xiaohongshu", "both"}):
@@ -188,7 +187,7 @@ def list_social_drafts(
     platform: str = None,
     status: str = None,
     limit: int = 20,
-) -> List[Dict]:
+) -> list[dict]:
     """列出草稿"""
     with _lock:
         result = _load_drafts()
@@ -199,7 +198,7 @@ def list_social_drafts(
     return result[-limit:]
 
 
-def get_social_draft(draft_id) -> Optional[Dict]:
+def get_social_draft(draft_id) -> dict | None:
     """获取单个草稿（兼容字符串和整数 ID）"""
     with _lock:
         drafts = _load_drafts()
@@ -210,7 +209,7 @@ def get_social_draft(draft_id) -> Optional[Dict]:
     return None
 
 
-def update_social_draft_status(draft_id, status: str) -> Dict:
+def update_social_draft_status(draft_id, status: str) -> dict:
     """更新草稿状态"""
     with _lock:
         drafts = _load_drafts()
@@ -223,7 +222,7 @@ def update_social_draft_status(draft_id, status: str) -> Dict:
     return {"success": False, "error": f"草稿 {draft_id} 不存在"}
 
 
-def delete_social_draft(draft_id) -> Dict:
+def delete_social_draft(draft_id) -> dict:
     """删除草稿"""
     with _lock:
         drafts = _load_drafts()
@@ -239,11 +238,11 @@ async def create_social_draft(
     platform: str = None,
     topic: str = None,
     max_items: int = 3,
-    monitors: List[Dict] = None,
+    monitors: list[dict] = None,
     fetch_posts_fn=None,
     news_fetcher=None,
     curate_fn=None,
-) -> Dict:
+) -> dict:
     """从 X 监控帖子或新闻创建社媒草稿
 
     优先使用 monitors + fetch_posts_fn (从 X profile 监控收集)，
@@ -253,7 +252,7 @@ async def create_social_draft(
     topic = topic or "AI"
     max_items = max_items or 3
 
-    all_items: List[Dict] = []
+    all_items: list[dict] = []
 
     # 路径1: 从 X profile monitors 收集
     if monitors and fetch_posts_fn:
@@ -295,9 +294,9 @@ async def create_social_draft(
 
 # ── 内容构建器 (从 execution_hub.py 迁移) ────────────────────
 
-def _social_topic_tags(topic: str = "") -> List[str]:
+def _social_topic_tags(topic: str = "") -> list[str]:
     """从话题推导标签"""
-    tags: List[str] = []
+    tags: list[str] = []
     if "AI" in topic or "ai" in topic:
         tags.extend(["AI", "效率"])
     if "OpenClaw" in topic:
@@ -307,7 +306,7 @@ def _social_topic_tags(topic: str = "") -> List[str]:
     return tags or ["AI", "工具"]
 
 
-def _build_x_social_body(items: List[Dict], topic: str = "") -> str:
+def _build_x_social_body(items: list[dict], topic: str = "") -> str:
     """构建 X 推文正文"""
     topic_label = topic or "AI/出海"
     tags = _social_topic_tags(topic)
@@ -323,14 +322,14 @@ def _build_x_social_body(items: List[Dict], topic: str = "") -> str:
     return "\n".join(lines)[:278]
 
 
-def _build_xiaohongshu_title(items: List[Dict], topic: str = "") -> str:
+def _build_xiaohongshu_title(items: list[dict], topic: str = "") -> str:
     """构建小红书标题"""
     topic_label = topic or "AI/出海"
     title = f"今日{topic_label}情报：{len(items)}位博主更新"
     return title[:20]
 
 
-def _build_xiaohongshu_body(items: List[Dict], topic: str = "") -> str:
+def _build_xiaohongshu_body(items: list[dict], topic: str = "") -> str:
     """构建小红书正文"""
     topic_label = topic or "AI/出海/独立开发"
     _social_topic_tags(topic)
@@ -353,7 +352,7 @@ def publish_social_draft(
     platform: str = None,
     draft_id=None,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """通过 browser worker 发布草稿 — 使用适配器统一分发"""
     draft = get_social_draft(draft_id) if draft_id else None
     if not draft:

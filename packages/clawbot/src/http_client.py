@@ -3,12 +3,12 @@ ClawBot - 增强 HTTP 客户端
 支持指数退避重试、熔断器、请求级别追踪
 """
 
-import time
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+import time
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import httpx
 
@@ -64,7 +64,7 @@ class CircuitBreaker:
             self.state = CircuitState.OPEN
             logger.warning(f"熔断器 -> OPEN (连续失败 {self.failure_count} 次)")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         return {
             "state": self.state.value,
             "failure_count": self.failure_count,
@@ -108,7 +108,7 @@ class RequestMetrics:
         else:
             self.failed_requests += 1
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         return {
             "total": self.total_requests,
             "success": self.successful_requests,
@@ -131,8 +131,8 @@ class ResilientHTTPClient:
     def __init__(
         self,
         timeout: float = 120.0,
-        retry_config: Optional[RetryConfig] = None,
-        circuit_breaker: Optional[CircuitBreaker] = None,
+        retry_config: RetryConfig | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
         name: str = "default",
         verify_ssl: bool = True,
     ):
@@ -182,12 +182,12 @@ class ResilientHTTPClient:
         method: str,
         url: str,
         *,
-        headers: Optional[Dict] = None,
-        json: Optional[Dict] = None,
-        params: Optional[Dict] = None,
-        content: Optional[bytes] = None,
-        data: Optional[Dict] = None,
-        files: Optional[Any] = None,
+        headers: dict | None = None,
+        json: dict | None = None,
+        params: dict | None = None,
+        content: bytes | None = None,
+        data: dict | None = None,
+        files: Any | None = None,
         follow_redirects: bool = False,
         ssrf_check: bool = False,
     ) -> httpx.Response:
@@ -203,7 +203,7 @@ class ResilientHTTPClient:
         """
         # SSRF 防护: 当调用方明确要求检查时，拦截指向内网/元数据服务的请求
         if ssrf_check:
-            from src.core.security import check_ssrf, SSRFError
+            from src.core.security import SSRFError, check_ssrf
 
             if not check_ssrf(url):
                 raise SSRFError(f"[{self.name}] SSRF 安全检查未通过: {url} (禁止访问内网/元数据服务地址)")
@@ -291,7 +291,7 @@ class ResilientHTTPClient:
             raise last_exception
         raise Exception(f"[{self.name}] 请求失败，已重试 {retries} 次")
 
-    def _calc_delay(self, attempt: int, response: Optional[httpx.Response] = None) -> float:
+    def _calc_delay(self, attempt: int, response: httpx.Response | None = None) -> float:
         """计算退避延迟，支持 Retry-After 头"""
         # 优先使用服务端的 Retry-After
         if response is not None:
@@ -312,7 +312,7 @@ class ResilientHTTPClient:
     async def post(self, url: str, **kwargs) -> httpx.Response:
         return await self.request("POST", url, **kwargs)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "metrics": self.metrics.get_status(),

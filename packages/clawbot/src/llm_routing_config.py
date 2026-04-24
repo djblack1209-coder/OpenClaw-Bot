@@ -14,7 +14,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from src.utils import scrub_secrets
 
@@ -29,7 +28,7 @@ def _env(name: str) -> str:
     return os.getenv(name, "")
 
 
-def _env_list(name: str) -> List[str]:
+def _env_list(name: str) -> list[str]:
     """读取逗号分隔的环境变量列表"""
     val = os.getenv(name, "")
     if not val:
@@ -37,7 +36,7 @@ def _env_list(name: str) -> List[str]:
     return [k.strip() for k in val.split(",") if k.strip()]
 
 
-def load_routing_config(config_path: Optional[str] = None) -> Dict:
+def load_routing_config(config_path: str | None = None) -> dict:
     """
     加载路由配置 JSON
 
@@ -53,7 +52,7 @@ def load_routing_config(config_path: Optional[str] = None) -> Dict:
         return {}
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             config = json.load(f)
         logger.info(f"[RoutingConfig] 加载成功: {len(config.get('providers', {}))} 个 provider")
         return config
@@ -63,9 +62,9 @@ def load_routing_config(config_path: Optional[str] = None) -> Dict:
 
 
 def build_deployments_from_config(
-    config: Dict,
+    config: dict,
     dep_fn,
-) -> List[Dict]:
+) -> list[dict]:
     """
     从 JSON 配置构建 LiteLLM deployment 列表
 
@@ -77,7 +76,7 @@ def build_deployments_from_config(
         LiteLLM deployment 列表 (同 _build_all_deployments 返回格式)
     """
     providers = config.get("providers", {})
-    deps: List[Dict] = []
+    deps: list[dict] = []
 
     for provider_name, provider_cfg in providers.items():
         # 解析 API Key
@@ -124,9 +123,9 @@ def build_deployments_from_config(
 
 
 def build_fallbacks_from_config(
-    config: Dict,
+    config: dict,
     active_families: set,
-) -> List[Dict]:
+) -> list[dict]:
     """
     从 JSON 配置构建 LiteLLM fallback 链
 
@@ -156,13 +155,13 @@ def build_fallbacks_from_config(
     return fallbacks
 
 
-def get_bot_model_family(config: Dict, bot_id: str) -> Optional[str]:
+def get_bot_model_family(config: dict, bot_id: str) -> str | None:
     """从配置获取 Bot 对应的 model_family"""
     mapping = config.get("bot_model_family", {})
     return mapping.get(bot_id)
 
 
-def get_router_config(config: Dict) -> Dict:
+def get_router_config(config: dict) -> dict:
     """获取 Router 全局配置参数"""
     return config.get(
         "router_config",
@@ -178,20 +177,20 @@ def get_router_config(config: Dict) -> Dict:
     )
 
 
-def get_model_ranking(config: Dict) -> Dict:
+def get_model_ranking(config: dict) -> dict:
     """获取模型强度评分表 — T5-3: 从 JSON model_ranking 加载"""
     ranking = config.get("model_ranking", {})
     # 过滤掉 _comment 等元数据字段
     return {k: v for k, v in ranking.items() if not k.startswith("_") and isinstance(v, (int, float))}
 
 
-def get_smart_route_mapping(config: Dict) -> Dict:
+def get_smart_route_mapping(config: dict) -> dict:
     """获取 smart_route 的 model→family 映射 — T5-4: 从 JSON smart_route_model_to_family 加载"""
     mapping = config.get("smart_route_model_to_family", {})
     return {k: v for k, v in mapping.items() if not k.startswith("_")}
 
 
-def _resolve_keys(provider_cfg: Dict) -> List[str]:
+def _resolve_keys(provider_cfg: dict) -> list[str]:
     """解析 provider 的 API Key（支持单 key 和多 key）"""
     # 必选 key
     env_key = provider_cfg.get("env_key", "")
@@ -217,7 +216,7 @@ def _resolve_keys(provider_cfg: Dict) -> List[str]:
     return []
 
 
-def _resolve_base_url(provider_cfg: Dict) -> str:
+def _resolve_base_url(provider_cfg: dict) -> str:
     """解析 provider 的 base_url（支持环境变量覆盖和默认值）"""
     # 优先从环境变量读取
     env_name = provider_cfg.get("base_url_env", "")

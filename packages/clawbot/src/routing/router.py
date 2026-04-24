@@ -3,20 +3,20 @@ ChatRouter — 群聊消息智能路由器
 从 chat_router.py 拆分而来，包含核心路由判断和意图分类。
 会话管理（讨论/工作流）通过 SessionMixin 注入。
 """
-import time
-import logging
 import asyncio
+import logging
 import threading
-from typing import Dict, List, Optional, Tuple, Callable
+import time
+from collections.abc import Callable
 
 from src.constants import BOT_DEEPSEEK, BOT_QWEN
 from src.routing.constants import (
     CHAIN_DISCUSS_TRIGGERS,
-    Intent,
+    FALLBACK_ROTATION,
     INTENT_BOT_MAP,
     INTENT_KEYWORDS,
     LANE_ROUTE_RULES,
-    FALLBACK_ROTATION,
+    Intent,
 )
 from src.routing.models import BotCapability
 from src.routing.sessions import SessionMixin
@@ -29,18 +29,18 @@ class ChatRouter(SessionMixin):
     """群聊消息智能路由器 — 继承 SessionMixin 获得讨论/工作流能力"""
 
     def __init__(self):
-        self.bots: Dict[str, BotCapability] = {}
+        self.bots: dict[str, BotCapability] = {}
         # 防重复回复：记录最近已回复的消息
-        self._recent_responses: Dict[int, Dict] = {}  # msg_id -> {bot_id, time}
+        self._recent_responses: dict[int, dict] = {}  # msg_id -> {bot_id, time}
         self._response_window = 5.0  # 秒，同一消息的回复窗口
         self._response_lock = asyncio.Lock()  # 保护 _recent_responses 异步并发访问
         self._response_lock_sync = threading.Lock()  # 保护 sync should_respond 的竞态
         # 已注册的 bot user_id 集合，用于过滤 bot 消息
         self._bot_user_ids: set = set()
         # LLM 路由回调（可选，设置后用 LLM 做意图分类）
-        self._llm_router_caller: Optional[Callable] = None
+        self._llm_router_caller: Callable | None = None
         # LLM 路由结果缓存：message_id -> (intent, bot_id) 或 None
-        self._llm_cache: Dict[int, Optional[Tuple[str, str]]] = {}
+        self._llm_cache: dict[int, tuple[str, str] | None] = {}
         self._llm_cache_max = 200  # 最大缓存条目
         # 初始化会话管理（来自 SessionMixin）
         self._init_sessions()
@@ -69,7 +69,7 @@ class ChatRouter(SessionMixin):
 
     # ============ Lane 分流 ============
 
-    def _extract_lane_override(self, text: str) -> Optional[Tuple[str, str, str]]:
+    def _extract_lane_override(self, text: str) -> tuple[str, str, str] | None:
         """
         从文本中提取显式 lane 分流标记。
 
@@ -85,13 +85,13 @@ class ChatRouter(SessionMixin):
 
     # ============ 意图分类 ============
 
-    def classify_intent(self, text: str) -> List[Tuple[str, float]]:
+    def classify_intent(self, text: str) -> list[tuple[str, float]]:
         """
         对消息进行意图分类（关键词版本，同步）。
         返回 [(intent, score), ...] 按分数降序排列。
         """
         text_lower = text.lower()
-        scores: Dict[str, float] = {}
+        scores: dict[str, float] = {}
 
         for intent, keywords in INTENT_KEYWORDS.items():
             score = 0.0
@@ -109,7 +109,7 @@ class ChatRouter(SessionMixin):
         sorted_intents = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return sorted_intents
 
-    async def classify_intent_llm(self, text: str, message_id: Optional[int] = None) -> Optional[Tuple[str, str]]:
+    async def classify_intent_llm(self, text: str, message_id: int | None = None) -> tuple[str, str] | None:
         """
         使用 LLM 进行意图分类（异步，更准确）。
         结果按 message_id 缓存，同一消息不会重复调用 LLM。
@@ -186,9 +186,9 @@ class ChatRouter(SessionMixin):
         bot_id: str,
         text: str,
         chat_type: str,
-        message_id: Optional[int] = None,
-        from_user_id: Optional[int] = None,
-    ) -> Tuple[bool, str]:
+        message_id: int | None = None,
+        from_user_id: int | None = None,
+    ) -> tuple[bool, str]:
         """
         判断某个 bot 是否应该回复此消息（同步版本）。
 
@@ -298,9 +298,9 @@ class ChatRouter(SessionMixin):
         bot_id: str,
         text: str,
         chat_type: str,
-        message_id: Optional[int] = None,
-        from_user_id: Optional[int] = None,
-    ) -> Tuple[bool, str]:
+        message_id: int | None = None,
+        from_user_id: int | None = None,
+    ) -> tuple[bool, str]:
         """
         异步版本的 should_respond，支持 LLM 路由。
 
@@ -416,7 +416,7 @@ class ChatRouter(SessionMixin):
 
     # ============ 内部辅助方法 ============
 
-    def _record_response(self, message_id: Optional[int], bot_id: str):
+    def _record_response(self, message_id: int | None, bot_id: str):
         """记录回复（sync 版本需要 threading.Lock 保护）"""
         if message_id is None:
             return
@@ -427,7 +427,7 @@ class ChatRouter(SessionMixin):
             }
             self._cleanup_old_responses()
 
-    def _already_responded(self, message_id: Optional[int], current_bot_id: str) -> bool:
+    def _already_responded(self, message_id: int | None, current_bot_id: str) -> bool:
         """检查是否已有其他 bot 回复了此消息"""
         if message_id is None:
             return False
@@ -448,7 +448,7 @@ class ChatRouter(SessionMixin):
         for msg_id in expired:
             del self._recent_responses[msg_id]
 
-    def get_routing_info(self, text: str) -> Dict:
+    def get_routing_info(self, text: str) -> dict:
         """获取路由信息（调试用）"""
         intents = self.classify_intent(text)
         top_intent = intents[0] if intents else (Intent.GENERAL, 0)

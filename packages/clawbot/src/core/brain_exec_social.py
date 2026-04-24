@@ -7,7 +7,7 @@ Core — 社媒运营领域执行器 Mixin
 
 import asyncio
 import logging
-from typing import Dict
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class SocialExecutorMixin:
     """社媒运营领域执行器"""
 
-    async def _exec_trending_scan(self, params: Dict) -> Dict:
+    async def _exec_trending_scan(self, params: dict) -> dict:
         """热点扫描 — 复用现有 real_trending"""
         try:
             from src.execution.social.real_trending import fetch_real_trending
@@ -27,7 +27,7 @@ class SocialExecutorMixin:
             logger.warning(f"热点扫描失败: {scrub_secrets(str(e))}")
             return {"source": "trending_fallback", "topics": []}
 
-    async def _exec_social_intel(self, params: Dict) -> Dict:
+    async def _exec_social_intel(self, params: dict) -> dict:
         """社交数据采集 — MediaCrawler (46k⭐) 多平台爬虫"""
         platform = params.get("platform", "xhs")
         topic = params.get("content_hint", params.get("topic", ""))
@@ -63,7 +63,7 @@ class SocialExecutorMixin:
             logger.warning(f"社交数据采集失败: {scrub_secrets(str(e))}")
         return {"source": "social_intel_unavailable", "trending": [], "related_posts": []}
 
-    async def _exec_content_strategy(self, params: Dict) -> Dict:
+    async def _exec_content_strategy(self, params: dict) -> dict:
         """内容策划 — 复用现有 content_strategy"""
         try:
             from src.execution.social.content_strategy import derive_content_strategy
@@ -75,7 +75,7 @@ class SocialExecutorMixin:
             logger.warning(f"内容策划失败: {scrub_secrets(str(e))}")
             return {"source": "strategy_fallback", "strategy": {}}
 
-    async def _exec_content_generate(self, params: Dict) -> Dict:
+    async def _exec_content_generate(self, params: dict) -> dict:
         """内容生成 — 调用 content_strategy.compose_post()"""
         try:
             from src.execution.social.content_strategy import compose_post
@@ -101,7 +101,7 @@ class SocialExecutorMixin:
             logger.warning(f"内容生成失败: {scrub_secrets(str(e))}")
         return {"source": "content_gen_fallback", "draft": "", "note": "内容生成模块异常"}
 
-    async def _exec_social_publish(self, params: Dict) -> Dict:
+    async def _exec_social_publish(self, params: dict) -> dict:
         """社媒发布 — 通过适配器统一分发到对应平台"""
         platform = params.get("platform", "x")
         draft = params.get("draft", params.get("content", ""))

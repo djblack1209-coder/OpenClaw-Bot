@@ -8,8 +8,8 @@ Bot — AI 小说工坊 命令 Mixin
 import logging
 from pathlib import Path
 
-from src.constants import TG_SAFE_LENGTH
 from src.bot.auth import requires_auth
+from src.constants import TG_SAFE_LENGTH
 
 logger = logging.getLogger(__name__)
 

@@ -11,11 +11,11 @@ OCR 场景处理器 — 将 OCR 文字转化为业务决策
 - 电商场景对接闲鱼实际商品数据
 - OCR 结果注入对话上下文（可追问）
 """
+import logging
 import re
 import time
-import logging
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from typing import Any
 
 from src.constants import FAMILY_QWEN
 from src.utils import scrub_secrets
@@ -29,10 +29,10 @@ class ProcessorResult:
     success: bool
     summary: str
     action_taken: str
-    data: Dict[str, Any]
-    next_step: Optional[str] = None
-    auto_invest_topic: Optional[str] = None   # 非空时自动触发 /invest
-    context_injection: Optional[str] = None   # 注入对话上下文（可追问）
+    data: dict[str, Any]
+    next_step: str | None = None
+    auto_invest_topic: str | None = None   # 非空时自动触发 /invest
+    context_injection: str | None = None   # 注入对话上下文（可追问）
 
 
 # ── LLM 结构化提取 ──────────────────────────────────────────────
@@ -85,7 +85,7 @@ OCR 文字:
 如果某个字段无法提取，留空。价格用数字，不带符号。"""
 
 
-async def _llm_extract(prompt: str, ocr_text: str) -> Optional[Dict]:
+async def _llm_extract(prompt: str, ocr_text: str) -> dict | None:
     """调用 LLM 做结构化提取 — 走 LiteLLM Router"""
     try:
         from src.litellm_router import free_pool
@@ -113,7 +113,7 @@ async def _llm_extract(prompt: str, ocr_text: str) -> Optional[Dict]:
 
 # ── 正则兜底（LLM 失败时）──────────────────────────────────────
 
-def _regex_extract_financial(ocr_text: str) -> Dict[str, Any]:
+def _regex_extract_financial(ocr_text: str) -> dict[str, Any]:
     """正则兜底提取"""
     symbols = re.findall(r'\b([A-Z]{2,5})\b', ocr_text)
     known = {"AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD",
@@ -127,7 +127,7 @@ def _regex_extract_financial(ocr_text: str) -> Dict[str, Any]:
     }
 
 
-def _regex_extract_ecommerce(ocr_text: str) -> Dict[str, Any]:
+def _regex_extract_ecommerce(ocr_text: str) -> dict[str, Any]:
     """正则兜底提取"""
     prices_raw = re.findall(r'(?:¥|￥)\s*(\d+\.?\d*)', ocr_text)
     prices_raw += re.findall(r'(\d+\.?\d*)\s*元', ocr_text)
@@ -288,7 +288,7 @@ async def process_ecommerce_scene(
 
 
 def _generate_pricing_advice(
-    price_range: Dict, products: List[Dict], signals: List[str]
+    price_range: dict, products: list[dict], signals: list[str]
 ) -> str:
     """基于 LLM 提取的结构化数据生成定价建议"""
     if not price_range:

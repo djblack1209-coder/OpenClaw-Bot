@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from src.core.proactive_notify import _send_proactive, _safe_parse_time
+from src.core.proactive_notify import _safe_parse_time, _send_proactive
 
 if TYPE_CHECKING:
     from src.core.proactive_engine import ProactiveEngine
@@ -46,7 +46,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         return
 
     try:
-        from src.bot.globals import bot_registry, ALLOWED_USER_IDS
+        from src.bot.globals import ALLOWED_USER_IDS, bot_registry
 
         if not bot_registry:
             return
@@ -183,7 +183,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
                         # 统计频繁提及的标的
                         import re as _re
 
-                        _ticker_counts: Dict[str, int] = {}
+                        _ticker_counts: dict[str, int] = {}
                         for msg in user_msgs:
                             tickers = _re.findall(r"\b([A-Z]{2,5})\b", msg)
                             _skip = {"AI", "ETF", "RSI", "MACD", "OK", "VS", "API", "BOT", "LLM"}

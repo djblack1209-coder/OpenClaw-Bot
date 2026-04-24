@@ -6,11 +6,10 @@
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import List, Tuple
+from datetime import UTC, datetime, timedelta
 
-from src.notify_style import format_digest, kv, bullet
-from src.execution.daily_brief_data import _section, _get_timestamp_tag
+from src.execution.daily_brief_data import _get_timestamp_tag, _section
+from src.notify_style import bullet, format_digest, kv
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +25,10 @@ async def weekly_report() -> str:
 
     所有数据源独立 try/except，一个失败不影响其他。
     """
-    sections: List[Tuple[str, List[str]]] = []
+    sections: list[tuple[str, list[str]]] = []
 
     # 计算本周起止日期
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_end = now.strftime("%Y-%m-%d")
     week_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 

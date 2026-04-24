@@ -14,12 +14,12 @@ import logging
 import os
 from pathlib import Path
 
+from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
 from src.bot.globals import execution_hub, send_long_message
 from src.bot.rate_limiter import rate_limiter, token_budget
-from src.bot.error_messages import error_service_failed
-from src.bot.auth import requires_auth
-from src.telegram_ux import with_typing
 from src.notify_style import format_cost_card
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +186,9 @@ class OpsCommandsMixin:
             await send_long_message(update.effective_chat.id, brief, context)
             # 同步推送到微信（手动触发也要送达微信）
             try:
-                from src.wechat_bridge import send_to_wechat
                 import asyncio
+
+                from src.wechat_bridge import send_to_wechat
                 _t = asyncio.create_task(send_to_wechat(brief))
                 _t.add_done_callback(lambda t: logger.debug("[cmd_brief] 微信推送完成") if not t.exception() else logger.warning("[cmd_brief] 微信推送失败: %s", t.exception()))
             except Exception as e:

@@ -15,9 +15,10 @@ import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
+
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -33,10 +34,10 @@ class ExecutionResult:
     execution_path: str = ""    # api / browser / voice_call / composio / skyvern / human
     elapsed_seconds: float = 0.0
     cost_usd: float = 0.0
-    error: Optional[str] = None
-    attempts: List[Dict] = field(default_factory=list)
+    error: str | None = None
+    attempts: list[dict] = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "success": self.success,
             "path": self.execution_path,
@@ -49,7 +50,7 @@ class ExecutionResult:
 
 # ── 平台注册表 ──────────────────────────────────────────
 
-PLATFORM_REGISTRY: Dict[str, Dict] = {
+PLATFORM_REGISTRY: dict[str, dict] = {
     "dianping": {"browser_url": "https://www.dianping.com", "phone": True},
     "meituan": {"browser_url": "https://www.meituan.com", "phone": True},
     "jd": {"browser_url": "https://www.jd.com"},
@@ -69,8 +70,8 @@ class PlatformCircuitBreaker:
     def __init__(self, failure_threshold: int = 3, recovery_seconds: int = 300):
         self._failure_threshold = failure_threshold
         self._recovery_seconds = recovery_seconds
-        self._failures: Dict[str, int] = defaultdict(int)
-        self._tripped_at: Dict[str, float] = {}
+        self._failures: dict[str, int] = defaultdict(int)
+        self._tripped_at: dict[str, float] = {}
 
     def record_failure(self, platform: str) -> None:
         self._failures[platform] += 1
@@ -93,7 +94,7 @@ class PlatformCircuitBreaker:
             return True
         return False
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         return {
             "failures": dict(self._failures),
             "tripped": {
@@ -131,7 +132,7 @@ class MultiPathExecutor:
     def __init__(self):
         self._circuit_breaker = PlatformCircuitBreaker()
         # 懒初始化 httpx 客户端，首次使用时创建，避免未关闭导致 TCP 连接泄漏 (HI-159/160)
-        self._http_client: Optional[httpx.AsyncClient] = None
+        self._http_client: httpx.AsyncClient | None = None
         self._closed = False
         self._stats = defaultdict(int)
         logger.info("MultiPathExecutor 初始化完成")
@@ -175,7 +176,7 @@ class MultiPathExecutor:
             )
 
     async def execute_with_fallback(
-        self, strategies: List[Dict], platform: str = "unknown"
+        self, strategies: list[dict], platform: str = "unknown"
     ) -> ExecutionResult:
         """
         按顺序尝试多个执行策略。
@@ -268,8 +269,8 @@ class MultiPathExecutor:
         self,
         endpoint: str,
         method: str = "GET",
-        params: Optional[Dict] = None,
-        headers: Optional[Dict] = None,
+        params: dict | None = None,
+        headers: dict | None = None,
     ) -> Any:
         """API 直连 — 最优先的执行路径"""
         if not endpoint:
@@ -299,7 +300,7 @@ class MultiPathExecutor:
         return resp.text
 
     async def execute_via_browser(
-        self, url: str, actions: List[Dict]
+        self, url: str, actions: list[dict]
     ) -> Any:
         """浏览器自动化 — API不可用时的备选"""
         if not url:
@@ -356,7 +357,7 @@ class MultiPathExecutor:
             finally:
                 await browser.close()
 
-    async def _execute_via_drission(self, url: str, actions: List[Dict]) -> Any:
+    async def _execute_via_drission(self, url: str, actions: list[dict]) -> Any:
         """DrissionPage 备选浏览器（反检测更好）"""
         from DrissionPage import ChromiumPage
 
@@ -375,7 +376,7 @@ class MultiPathExecutor:
         phone: str,
         objective: str,
         script_hints: str = "",
-    ) -> Dict:
+    ) -> dict:
         """AI 语音拨号 — 只有电话渠道时的最后手段"""
         if not phone:
             raise ValueError("电话号码为空")
@@ -424,9 +425,9 @@ class MultiPathExecutor:
     async def execute_via_composio(
         self,
         action: str,
-        params: Optional[Dict] = None,
-        entity_id: Optional[str] = None,
-        connected_account_id: Optional[str] = None,
+        params: dict | None = None,
+        entity_id: str | None = None,
+        connected_account_id: str | None = None,
     ) -> Any:
         """Composio 外部服务 — 250+ 应用集成 (Gmail/Calendar/Slack/GitHub 等)"""
         if not action:
@@ -460,7 +461,7 @@ class MultiPathExecutor:
         url: str,
         goal: str,
         max_steps: int = 10,
-        data_extraction_schema: Optional[Dict] = None,
+        data_extraction_schema: dict | None = None,
     ) -> Any:
         """Skyvern 视觉 RPA — 通过截图 + LLM 理解页面，无需 CSS selector"""
         if not url:
@@ -495,11 +496,11 @@ class MultiPathExecutor:
         return result.get("data")
 
     async def fallback_to_human(
-        self, task_description: str, context: Dict
+        self, task_description: str, context: dict
     ) -> None:
         """通知用户需要人工处理"""
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
             bus = get_event_bus()
             await bus.publish(
                 EventType.HUMAN_REQUIRED,
@@ -513,7 +514,7 @@ class MultiPathExecutor:
         except Exception as e:
             logger.warning(f"人工通知推送失败: {scrub_secrets(str(e))}")
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """获取执行统计"""
         return {
             "execution_stats": dict(self._stats),
@@ -523,7 +524,7 @@ class MultiPathExecutor:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_executor: Optional[MultiPathExecutor] = None
+_executor: MultiPathExecutor | None = None
 
 
 def get_executor() -> MultiPathExecutor:

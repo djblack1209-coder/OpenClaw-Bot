@@ -128,7 +128,8 @@ async def handle_monthly_summary(mixin, update, context, action_arg):
     """月度收支报告"""
     user = update.effective_user
     from src.execution.life_automation import (
-        get_monthly_summary, format_monthly_report,
+        format_monthly_report,
+        get_monthly_summary,
     )
     # 解析月份参数
     year_month = None
@@ -172,8 +173,12 @@ async def handle_bill_update_nlp(mixin, update, context, action_arg):
     bill_type_cn = parts[0]
     balance = float(parts[1]) if len(parts) > 1 else 0
     from src.execution.life_automation import (
-        resolve_bill_type, find_bill_by_type, update_bill_balance,
-        add_bill_account, BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+        BILL_TYPE_EMOJI,
+        BILL_TYPE_LABEL,
+        add_bill_account,
+        find_bill_by_type,
+        resolve_bill_type,
+        update_bill_balance,
     )
     acct_type = resolve_bill_type(bill_type_cn)
     if not acct_type:
@@ -191,8 +196,9 @@ async def handle_bill_update_nlp(mixin, update, context, action_arg):
                 msg += f"\n⚠️ 低于阈值 ¥{result['threshold']:.0f}，请注意充值！"
                 # 发布 BILL_DUE 事件
                 try:
-                    from src.core.event_bus import get_event_bus, EventType
                     import asyncio
+
+                    from src.core.event_bus import EventType, get_event_bus
                     bus = get_event_bus()
                     asyncio.ensure_future(bus.publish(
                         EventType.BILL_DUE,
@@ -236,8 +242,10 @@ async def handle_bill_add_nlp(mixin, update, context, action_arg):
     bill_type_cn = parts[0]
     threshold = float(parts[1]) if len(parts) > 1 else 30
     from src.execution.life_automation import (
-        resolve_bill_type, add_bill_account,
-        BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+        BILL_TYPE_EMOJI,
+        BILL_TYPE_LABEL,
+        add_bill_account,
+        resolve_bill_type,
     )
     acct_type = resolve_bill_type(bill_type_cn)
     if not acct_type:
@@ -263,8 +271,10 @@ async def handle_bill_query(mixin, update, context, action_arg):
     """查询指定类型账单余额: '查话费'"""
     user = update.effective_user
     from src.execution.life_automation import (
-        resolve_bill_type, find_bill_by_type,
-        BILL_TYPE_EMOJI, BILL_TYPE_LABEL,
+        BILL_TYPE_EMOJI,
+        BILL_TYPE_LABEL,
+        find_bill_by_type,
+        resolve_bill_type,
     )
     acct_type = resolve_bill_type(action_arg)
     if not acct_type:
@@ -308,7 +318,7 @@ async def handle_bill_predict(mixin, update, context, action_arg):
 # ── 提醒系统 v2.0 ──────────────────────────────────────────
 async def handle_ops_life_remind(mixin, update, context, action_arg):
     """提醒系统: 列表/取消/重复/自然语言时间/经典延迟"""
-    from src.execution.life_automation import create_reminder, list_reminders, cancel_reminder
+    from src.execution.life_automation import cancel_reminder, create_reminder, list_reminders
     chat_id = update.effective_chat.id if update.effective_chat else 0
     parts = action_arg.split("|||") if action_arg else []
     reply = ""

@@ -1,9 +1,10 @@
 """Shopping endpoints — price comparison across platforms"""
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/shopping/compare", response_model=Dict[str, Any])
+@router.post("/shopping/compare", response_model=dict[str, Any])
 async def compare_prices(
     query: str = Query(..., description="商品搜索关键词，例如 'iPhone 16 128GB'"),
     limit: int = Query(5, ge=1, le=20, description="每个平台的最大结果数"),

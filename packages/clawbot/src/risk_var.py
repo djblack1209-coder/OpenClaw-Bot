@@ -13,8 +13,8 @@ VaR/CVaR 风险度量 Mixin
 """
 
 import logging
+
 import numpy as np
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ class VaRMixin:
 
         return round(float(total_return / max_dd), 2)
 
-    def get_var_metrics(self) -> Dict:
+    def get_var_metrics(self) -> dict:
         """
         获取完整的 VaR 风险度量指标集
 
@@ -215,7 +215,7 @@ class VaRMixin:
             "sufficient_data": pnl_count >= 10,
         }
 
-    def check_var_limit(self, proposed_loss: float) -> Optional[str]:
+    def check_var_limit(self, proposed_loss: float) -> str | None:
         """
         检查拟议交易的最大损失是否超过 VaR 限额
 

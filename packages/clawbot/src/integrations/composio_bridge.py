@@ -13,14 +13,14 @@ Composio 250+ 外部服务集成桥接
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # ── Composio SDK 导入 (graceful degradation) ──────────────────
 _HAS_COMPOSIO = False
 try:
-    from composio import ComposioToolSet, Action, App
+    from composio import Action, App, ComposioToolSet
     _HAS_COMPOSIO = True
     logger.info("[ComposioBridge] composio-core SDK 已加载")
 except ImportError:
@@ -45,9 +45,9 @@ class ComposioBridge:
             result = bridge.execute_action("GITHUB_STAR_A_REPOSITORY", {"owner": "...", "repo": "..."})
     """
 
-    def __init__(self, api_key: Optional[str] = None, entity_id: str = "default"):
+    def __init__(self, api_key: str | None = None, entity_id: str = "default"):
         self._available = False
-        self._toolset: Optional[ComposioToolSet] = None  # type: ignore[type-arg]
+        self._toolset: ComposioToolSet | None = None  # type: ignore[type-arg]
         self._entity_id = entity_id
 
         if not _HAS_COMPOSIO:
@@ -76,7 +76,7 @@ class ComposioBridge:
         """检查 Composio 是否可用 (SDK 已安装且 API Key 有效)"""
         return self._available and self._toolset is not None
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """健康检查 — 返回连接状态、已连接应用等"""
         if not self.is_available():
             return {
@@ -104,7 +104,7 @@ class ComposioBridge:
 
     # ── 应用 & 动作枚举 ──────────────────────────────────
 
-    def list_apps(self) -> List[str]:
+    def list_apps(self) -> list[str]:
         """列出所有可用的应用集成
 
         Returns:
@@ -120,7 +120,7 @@ class ComposioBridge:
             logger.error("[ComposioBridge] list_apps 失败: %s", e)
             return []
 
-    def list_actions(self, app_name: str) -> List[Dict[str, Any]]:
+    def list_actions(self, app_name: str) -> list[dict[str, Any]]:
         """列出指定应用的所有可用动作
 
         Args:
@@ -139,7 +139,7 @@ class ComposioBridge:
             )
             result = []
             for schema in schemas:
-                entry: Dict[str, Any] = {"name": ""}
+                entry: dict[str, Any] = {"name": ""}
                 if hasattr(schema, "name"):
                     entry["name"] = schema.name
                 if hasattr(schema, "description"):
@@ -152,7 +152,7 @@ class ComposioBridge:
             logger.error("[ComposioBridge] list_actions(%s) 失败: %s", app_name, e)
             return []
 
-    def find_actions(self, *apps: str, use_case: str) -> List[str]:
+    def find_actions(self, *apps: str, use_case: str) -> list[str]:
         """按用例描述搜索最匹配的动作 (语义搜索)
 
         Args:
@@ -180,10 +180,10 @@ class ComposioBridge:
     def execute_action(
         self,
         action_name: str,
-        params: Optional[Dict[str, Any]] = None,
-        entity_id: Optional[str] = None,
-        connected_account_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+        entity_id: str | None = None,
+        connected_account_id: str | None = None,
+    ) -> dict[str, Any]:
         """执行一个 Composio 动作
 
         Args:
@@ -231,7 +231,7 @@ class ComposioBridge:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_bridge: Optional[ComposioBridge] = None
+_bridge: ComposioBridge | None = None
 
 
 def get_composio_bridge() -> ComposioBridge:

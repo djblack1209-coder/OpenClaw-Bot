@@ -1,12 +1,13 @@
 """Social media endpoints — status, topics, compose, publish, autopilot"""
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
-from ..schemas import SocialStatus, SocialPublishRequest, WSMessageType
+from ..schemas import SocialPublishRequest, SocialStatus, WSMessageType
 from .ws import push_event
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ def get_social_status():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.get("/social/browser-status", response_model=Dict[str, Any])
+@router.get("/social/browser-status", response_model=dict[str, Any])
 def get_social_browser_status():
     """获取 X / 小红书浏览器会话状态"""
     try:
@@ -33,7 +34,7 @@ def get_social_browser_status():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.get("/social/analytics", response_model=Dict[str, Any])
+@router.get("/social/analytics", response_model=dict[str, Any])
 def get_social_analytics(days: int = Query(default=7, ge=1, le=30)):
     """获取社媒分析面板数据"""
     try:
@@ -43,7 +44,7 @@ def get_social_analytics(days: int = Query(default=7, ge=1, le=30)):
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.get("/social/topics", response_model=Dict[str, Any])
+@router.get("/social/topics", response_model=dict[str, Any])
 async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
     """发现热门话题"""
     try:
@@ -53,7 +54,7 @@ async def discover_topics(count: int = Query(default=10, ge=1, le=50)):
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
-@router.post("/social/compose", response_model=Dict[str, Any])
+@router.post("/social/compose", response_model=dict[str, Any])
 async def compose_content(
     topic: str,
     platform: str = "x",
@@ -75,7 +76,7 @@ async def compose_content(
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
-@router.post("/social/publish", response_model=Dict[str, Any])
+@router.post("/social/publish", response_model=dict[str, Any])
 async def publish_content(req: SocialPublishRequest):
     """发布内容到社交平台（通过浏览器 worker）。
 
@@ -104,7 +105,7 @@ async def publish_content(req: SocialPublishRequest):
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
-@router.post("/social/research", response_model=Dict[str, Any])
+@router.post("/social/research", response_model=dict[str, Any])
 async def deep_research(topic: str, count: int = Query(default=10, ge=1, le=50)):
     """深度话题研究 — 抓取平台数据并聚合洞察"""
     try:
@@ -114,7 +115,7 @@ async def deep_research(topic: str, count: int = Query(default=10, ge=1, le=50))
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
-@router.get("/social/metrics", response_model=Dict[str, Any])
+@router.get("/social/metrics", response_model=dict[str, Any])
 async def get_metrics():
     """社交指标/分析 — 粉丝数、互动率等"""
     try:
@@ -124,7 +125,7 @@ async def get_metrics():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.get("/social/personas", response_model=Dict[str, Any])
+@router.get("/social/personas", response_model=dict[str, Any])
 def list_personas():
     """列出可用的社交人设（data/social_personas/）"""
     try:
@@ -136,7 +137,7 @@ def list_personas():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.get("/social/calendar", response_model=Dict[str, Any])
+@router.get("/social/calendar", response_model=dict[str, Any])
 async def get_calendar(days: int = Query(default=7, ge=1, le=30)):
     """内容日历生成 — 热门话题映射为逐日计划"""
     try:
@@ -146,7 +147,7 @@ async def get_calendar(days: int = Query(default=7, ge=1, le=30)):
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/generate-image", response_model=Dict[str, Any])
+@router.post("/social/generate-image", response_model=dict[str, Any])
 async def gen_image(prompt: str):
     """通过 ComfyUI（本地）或云端降级生成图片"""
     try:
@@ -156,7 +157,7 @@ async def gen_image(prompt: str):
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
-@router.post("/social/generate-persona-photo", response_model=Dict[str, Any])
+@router.post("/social/generate-persona-photo", response_model=dict[str, Any])
 async def gen_persona_photo(
     persona: str = "default",
     scenario: str = "working in a cafe",
@@ -175,7 +176,7 @@ async def gen_persona_photo(
 # ──────────────────────────────────────────────
 
 
-@router.get("/social/autopilot/status", response_model=Dict[str, Any])
+@router.get("/social/autopilot/status", response_model=dict[str, Any])
 def autopilot_status():
     """获取自动驾驶调度状态 — 运行中、任务列表、下次动作"""
     try:
@@ -185,7 +186,7 @@ def autopilot_status():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/autopilot/start", response_model=Dict[str, Any])
+@router.post("/social/autopilot/start", response_model=dict[str, Any])
 def autopilot_start():
     """启动社交自动驾驶调度器（5 个定时任务）"""
     try:
@@ -206,7 +207,7 @@ def autopilot_start():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/autopilot/stop", response_model=Dict[str, Any])
+@router.post("/social/autopilot/stop", response_model=dict[str, Any])
 def autopilot_stop():
     """停止社交自动驾驶调度器"""
     try:
@@ -227,7 +228,7 @@ def autopilot_stop():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/autopilot/trigger/{job_id}", response_model=Dict[str, Any])
+@router.post("/social/autopilot/trigger/{job_id}", response_model=dict[str, Any])
 def autopilot_trigger(job_id: str):
     """手动触发特定的自动驾驶任务。
 
@@ -258,7 +259,7 @@ def autopilot_trigger(job_id: str):
 # ──────────────────────────────────────────────
 
 
-@router.get("/social/drafts", response_model=Dict[str, Any])
+@router.get("/social/drafts", response_model=dict[str, Any])
 def list_drafts():
     """列出自动驾驶状态中的所有草稿"""
     try:
@@ -268,7 +269,7 @@ def list_drafts():
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.patch("/social/drafts/{index}", response_model=Dict[str, Any])
+@router.patch("/social/drafts/{index}", response_model=dict[str, Any])
 def update_draft(index: int = Path(ge=0, description="草稿索引"), text: str = ""):
     """更新草稿文本内容"""
     try:
@@ -278,7 +279,7 @@ def update_draft(index: int = Path(ge=0, description="草稿索引"), text: str 
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.delete("/social/drafts/{index}", response_model=Dict[str, Any])
+@router.delete("/social/drafts/{index}", response_model=dict[str, Any])
 def delete_draft(index: int = Path(ge=0, description="草稿索引")):
     """按索引删除草稿"""
     try:
@@ -288,7 +289,7 @@ def delete_draft(index: int = Path(ge=0, description="草稿索引")):
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
-@router.post("/social/drafts/{index}/publish", response_model=Dict[str, Any])
+@router.post("/social/drafts/{index}/publish", response_model=dict[str, Any])
 async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
     """立即发布指定草稿"""
     try:

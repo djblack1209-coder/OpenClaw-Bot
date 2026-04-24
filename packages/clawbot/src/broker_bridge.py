@@ -14,14 +14,14 @@ import logging
 import os as _os
 import shlex
 import time as _time
-from pathlib import Path
-from typing import Optional, List, Dict, TYPE_CHECKING
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-from src.notify_style import format_ibkr_connectivity
-from src.utils import now_et, scrub_secrets
 from src.broker_scanner import BrokerScannerMixin
 from src.broker_slippage import BrokerSlippageMixin, SlippageEstimate  # noqa: F401 — 向后兼容重导出
+from src.notify_style import format_ibkr_connectivity
+from src.utils import now_et, scrub_secrets
 
 BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state.json"
 
@@ -38,10 +38,10 @@ IBKR_ORDER_POLL_INTERVAL = 0.5  # 订单状态轮询间隔
 IBKR_CANCEL_CONFIRM_WAIT = 1  # 取消订单后等待确认
 
 if TYPE_CHECKING:
-    from ib_async import IB, MarketOrder, LimitOrder
+    from ib_async import IB, LimitOrder, MarketOrder
 
 try:
-    from ib_async import IB, MarketOrder, LimitOrder
+    from ib_async import IB, LimitOrder, MarketOrder
 
     HAS_IB = True
 except ImportError:
@@ -65,7 +65,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self.account = account
         self.budget = budget  # 预算上限（USD）
         self.total_spent = 0.0  # 已花费
-        self.ib: Optional[IB] = None
+        self.ib: IB | None = None
         self._connected = False
         self._reconnect_lock = asyncio.Lock()
         self._budget_lock = asyncio.Lock()  # 预算读写原子锁，防止并发下单时预算追踪失准
@@ -474,7 +474,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     # ============ 账户信息 ============
 
-    async def get_account_summary(self) -> Dict:
+    async def get_account_summary(self) -> dict:
         """获取账户摘要"""
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
@@ -526,7 +526,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     # ============ 持仓查询 ============
 
-    async def get_positions(self) -> List[Dict]:
+    async def get_positions(self) -> list[dict]:
         """获取所有持仓（含实时市场价格）"""
         if not await self.ensure_connected():
             return []
@@ -602,7 +602,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
-    ) -> Dict:
+    ) -> dict:
         """统一下单逻辑（BUY/SELL 共用）"""
         if quantity <= 0:
             return {"error": f"数量必须大于零 (got {quantity})"}
@@ -720,7 +720,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
-    ) -> Dict:
+    ) -> dict:
         """买入下单（带预算控制）"""
         return await self._place_order("BUY", symbol, quantity, order_type, limit_price, decided_by, reason)
 
@@ -732,13 +732,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
-    ) -> Dict:
+    ) -> dict:
         """卖出下单"""
         return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
 
     # ============ 订单管理 ============
 
-    async def get_open_orders(self) -> List[Dict]:
+    async def get_open_orders(self) -> list[dict]:
         """获取未完成订单"""
         if not await self.ensure_connected():
             return []
@@ -765,7 +765,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error(f"[IBKR] 获取订单失败: {scrub_secrets(str(e))}")
             return []
 
-    async def get_trade_snapshots(self) -> List[Dict]:
+    async def get_trade_snapshots(self) -> list[dict]:
         """获取当前会话内订单快照（含已提交/已成交/已取消状态）"""
         if not await self.ensure_connected():
             return []
@@ -791,7 +791,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error("[IBKR] 获取订单快照失败: %s", e)
             return []
 
-    async def get_recent_fills(self, lookback_hours: int = 48) -> List[Dict]:
+    async def get_recent_fills(self, lookback_hours: int = 48) -> list[dict]:
         """获取近期成交回报（用于与 journal 对账）"""
         if not await self.ensure_connected():
             return []
@@ -856,7 +856,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             )
         return "\n".join(lines)
 
-    async def cancel_order(self, order_id: int) -> Dict:
+    async def cancel_order(self, order_id: int) -> dict:
         """取消订单"""
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
@@ -873,7 +873,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.exception("取消订单失败: order_id=%s", order_id)
             return {"error": f"取消订单失败: {e}"}
 
-    async def cancel_all_orders(self) -> Dict:
+    async def cancel_all_orders(self) -> dict:
         """取消所有未完成订单"""
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
@@ -961,7 +961,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 def __getattr__(name):
     """向后兼容：从 broker_selector 延迟导入 get_ibkr/ibkr/get_broker"""
     if name in ("get_ibkr", "ibkr", "get_broker"):
-        from src.broker_selector import get_ibkr, ibkr, get_broker  # noqa: F811
+        from src.broker_selector import get_broker, get_ibkr, ibkr
 
         _exports = {"get_ibkr": get_ibkr, "ibkr": ibkr, "get_broker": get_broker}
         return _exports[name]

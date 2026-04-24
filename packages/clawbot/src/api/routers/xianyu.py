@@ -4,7 +4,7 @@ import base64
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,10 +22,10 @@ router = APIRouter(dependencies=[Depends(verify_api_token)])
 # ---------------------------------------------------------------------------
 # Stores the active QR login session so the status endpoint can query it.
 # Keyed by creation timestamp; only the latest session is used.
-_active_session: Optional[Dict[str, Any]] = None
+_active_session: dict[str, Any] | None = None
 
 
-def _get_session() -> Optional[Dict[str, Any]]:
+def _get_session() -> dict[str, Any] | None:
     """Return the current active QR session, or None."""
     return _active_session
 
@@ -99,7 +99,7 @@ _QUERY_TIMEOUT = httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0)
 
 async def _check_qr_status_once(
     manager: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Perform a single query against the Goofish passport QR status API.
 
     This does NOT loop — it fires one request and returns immediately,

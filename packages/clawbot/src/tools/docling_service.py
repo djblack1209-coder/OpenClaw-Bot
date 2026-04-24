@@ -8,13 +8,12 @@ Usage:
     markdown, tables = await convert_document("/path/to/file.pdf")
     summary = await summarize_document("/path/to/file.pdf", question="这份合同的关键条款是什么？")
 """
-from src.utils import scrub_secrets
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, Tuple
 
 from src.constants import TG_SAFE_LENGTH
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ def _truncate(text: str, limit: int = TG_SAFE_LENGTH) -> str:
     return text[:limit - len(TRUNCATION_INDICATOR)] + TRUNCATION_INDICATOR
 
 
-def _extract_tables_from_result(result) -> List[dict]:
+def _extract_tables_from_result(result) -> list[dict]:
     """从 Docling 转换结果中提取所有表格为 list of dicts。
 
     Docling v2 的 ConversionResult.document.tables 包含 TableItem 对象，
@@ -80,7 +79,7 @@ def _extract_tables_from_result(result) -> List[dict]:
 
 async def convert_document(
     file_path: str,
-) -> Tuple[str, List[dict]]:
+) -> tuple[str, list[dict]]:
     """将文档转换为 Markdown + 提取表格。
 
     Args:

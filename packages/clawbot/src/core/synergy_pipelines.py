@@ -22,7 +22,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Set
+
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -70,11 +70,11 @@ class SynergyPipelines:
             "behavior_to_recommend": True,
             "profit_celebration": True,
         }
-        self._vetoed_symbols: Set[str] = set()  # 被风控否决的标的
-        self._social_signals: Dict[str, Dict] = {}  # 社交信号缓存
-        self._recent_events: List[Dict] = []
+        self._vetoed_symbols: set[str] = set()  # 被风控否决的标的
+        self._social_signals: dict[str, dict] = {}  # 社交信号缓存
+        self._recent_events: list[dict] = []
         self._last_news_scan_ts: float = 0.0       # 上次新闻情感扫描时间戳
-        self._news_scan_task: Optional[asyncio.Task] = None  # 管道5定时扫描后台任务
+        self._news_scan_task: asyncio.Task | None = None  # 管道5定时扫描后台任务
         self._stats = {
             "pipelines_triggered": 0,
             "social_drafts_created": 0,
@@ -87,7 +87,7 @@ class SynergyPipelines:
     async def register_all(self) -> None:
         """注册所有协同管道到 EventBus"""
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
             bus = get_event_bus()
 
             # 管道1: 交易信号 → 社媒内容草稿
@@ -339,7 +339,7 @@ class SynergyPipelines:
 
         try:
             # 步骤1: 获取用户当前持仓标的
-            held_symbols: Set[str] = set()
+            held_symbols: set[str] = set()
             try:
                 from src.trading_journal import journal as tj
                 if tj:
@@ -356,14 +356,14 @@ class SynergyPipelines:
                 return 0
 
             # 步骤2: 构建反向映射 ticker→公司名集合（用于匹配新闻标题）
-            ticker_to_names: Dict[str, Set[str]] = {}
+            ticker_to_names: dict[str, set[str]] = {}
             for name, ticker in _NAME_TO_TICKER.items():
                 ticker_to_names.setdefault(ticker, set()).add(name.lower())
 
             # 步骤3: 抓取多源最新新闻（RSS 三级降级，不调 LLM）
             from src.news_fetcher import NewsFetcher
             fetcher = NewsFetcher()
-            all_news: List[Dict] = []
+            all_news: list[dict] = []
             for category in ("finance", "tech_en", "tech_cn"):
                 try:
                     items = await fetcher.fetch_by_category(category, count=10)
@@ -387,7 +387,7 @@ class SynergyPipelines:
                 title_lower = title.lower()
 
                 # 匹配持仓标的（ticker 直匹配 + 公司名匹配）
-                matched_symbols: Set[str] = set()
+                matched_symbols: set[str] = set()
                 for sym in held_symbols:
                     # 直接 ticker 匹配（如 "NVDA" 出现在标题中）
                     if sym.lower() in title_lower:
@@ -412,7 +412,7 @@ class SynergyPipelines:
 
                         # 发布 RISK_ALERT 事件到 EventBus（管道4会自动禁止社媒推荐）
                         try:
-                            from src.core.event_bus import get_event_bus, EventType
+                            from src.core.event_bus import EventType, get_event_bus
                             bus = get_event_bus()
                             await bus.publish(
                                 EventType.RISK_ALERT,
@@ -506,7 +506,7 @@ class SynergyPipelines:
 
     # ── 查询接口 ──────────────────────────────────
 
-    def get_social_signal(self, symbol: str) -> Optional[Dict]:
+    def get_social_signal(self, symbol: str) -> dict | None:
         """投资团队调用：获取标的的社交信号"""
         signal = self._social_signals.get(symbol)
         if signal and (time.time() - signal["timestamp"]) < 3600:  # 1小时内有效
@@ -517,7 +517,7 @@ class SynergyPipelines:
         """社媒模块调用：检查标的是否被风控否决"""
         return symbol in self._vetoed_symbols
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         return {
             **self._stats,
             "active_pipelines": sum(self._pipeline_config.values()),
@@ -590,7 +590,7 @@ class SynergyPipelines:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_pipelines: Optional[SynergyPipelines] = None
+_pipelines: SynergyPipelines | None = None
 
 
 def get_synergy_pipelines() -> SynergyPipelines:

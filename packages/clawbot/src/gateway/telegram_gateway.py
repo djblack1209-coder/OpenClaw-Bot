@@ -9,15 +9,19 @@ OpenClaw OMEGA — Telegram 主控台网关
 """
 import logging
 import os
-from typing import Dict, List, Optional
 
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup,
     BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
 )
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters,
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
 )
 
 from src.utils import scrub_secrets
@@ -34,11 +38,11 @@ class OpenClawGateway:
         await gw.start()
     """
 
-    def __init__(self, token: str, admin_user_ids: Optional[List[int]] = None):
+    def __init__(self, token: str, admin_user_ids: list[int] | None = None):
         self._token = token
         self._admin_ids = set(admin_user_ids or [])
-        self._app: Optional[Application] = None
-        self._progress_messages: Dict[int, int] = {}  # chat_id → message_id（用于编辑进度消息）
+        self._app: Application | None = None
+        self._progress_messages: dict[int, int] = {}  # chat_id → message_id（用于编辑进度消息）
 
         if not token:
             logger.warning("OMEGA Gateway Bot Token 未设置")
@@ -427,7 +431,7 @@ class OpenClawGateway:
         return "\n".join(lines)
 
     def _build_clarification_keyboard(
-        self, task_id: str, params: List[str]
+        self, task_id: str, params: list[str]
     ) -> InlineKeyboardMarkup:
         """构建追问键盘"""
         buttons = []
@@ -458,7 +462,7 @@ class OpenClawGateway:
 
     # ── 广播（EventBus消费者）──────────────────────────
 
-    async def _broadcast_progress(self, data: Dict) -> None:
+    async def _broadcast_progress(self, data: dict) -> None:
         """向所有管理员广播进度"""
         if not self._app or not self._admin_ids:
             return
@@ -476,7 +480,7 @@ class OpenClawGateway:
             except Exception:
                 logger.warning("向用户 %s 广播进度消息失败", uid, exc_info=True)
 
-    async def _broadcast_result(self, data: Dict) -> None:
+    async def _broadcast_result(self, data: dict) -> None:
         """广播任务完成"""
         if not self._app or not self._admin_ids:
             return
@@ -489,7 +493,7 @@ class OpenClawGateway:
             except Exception:
                 logger.warning("向用户 %s 广播任务完成消息失败", uid, exc_info=True)
 
-    async def _broadcast_alert(self, data: Dict) -> None:
+    async def _broadcast_alert(self, data: dict) -> None:
         """广播告警"""
         if not self._app or not self._admin_ids:
             return
@@ -500,7 +504,7 @@ class OpenClawGateway:
             except Exception:
                 logger.warning("向用户 %s 广播告警消息失败", uid, exc_info=True)
 
-    def _format_progress(self, progress: Dict) -> str:
+    def _format_progress(self, progress: dict) -> str:
         """格式化进度消息"""
         total = progress.get("total", 0)
         completed = progress.get("completed", 0)
@@ -519,10 +523,10 @@ class OpenClawGateway:
 
 # ── 启动入口 ──────────────────────────────────────────────
 
-_gateway: Optional[OpenClawGateway] = None
+_gateway: OpenClawGateway | None = None
 
 
-async def start_gateway() -> Optional[OpenClawGateway]:
+async def start_gateway() -> OpenClawGateway | None:
     """启动 Gateway Bot（从环境变量读取配置）"""
     global _gateway
     token = os.environ.get("OMEGA_GATEWAY_BOT_TOKEN", "")

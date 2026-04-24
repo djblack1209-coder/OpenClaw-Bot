@@ -4,7 +4,6 @@
 """
 import logging
 from datetime import timedelta
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ class JournalTargetsMixin:
                 """, (round(actual_pnl, 2), actual_trades,
                       round(actual_win_rate, 1), status, t['id']))
 
-    def get_active_targets(self) -> List[Dict]:
+    def get_active_targets(self) -> list[dict]:
         """获取所有活跃盈利目标"""
         self.update_profit_target_progress()
         with self._conn() as conn:

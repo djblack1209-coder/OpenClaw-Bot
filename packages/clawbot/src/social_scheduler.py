@@ -22,10 +22,11 @@ import logging
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ def _alert_admin(message: str) -> None:
     将异步通知调度到主事件循环。如果主循环不可用则静默跳过。
     """
     try:
-        from src.core.proactive_notify import _send_proactive
         from src.bot.globals import ALLOWED_USER_IDS
+        from src.core.proactive_notify import _send_proactive
 
         if not ALLOWED_USER_IDS:
             return
@@ -80,12 +81,12 @@ _state_lock = threading.Lock()
 # ─── State persistence ────────────────────────────────────────
 
 
-def _load_state() -> Dict[str, Any]:
+def _load_state() -> dict[str, Any]:
     """Load autopilot state from disk. Returns defaults if missing.
 
     Thread-safe: guarded by ``_state_lock``.
     """
-    defaults: Dict[str, Any] = {
+    defaults: dict[str, Any] = {
         "enabled": False,
         "last_scan_topics": [],
         "drafts": [],
@@ -104,7 +105,7 @@ def _load_state() -> Dict[str, Any]:
     return defaults
 
 
-def _save_state(state: Dict[str, Any]) -> None:
+def _save_state(state: dict[str, Any]) -> None:
     """Persist autopilot state to disk.
 
     Thread-safe: guarded by ``_state_lock``.
@@ -123,7 +124,7 @@ def _save_state(state: Dict[str, Any]) -> None:
 # ─── WebSocket notification helper ────────────────────────────
 
 
-def _notify(message: str, data: Optional[Dict] = None) -> None:
+def _notify(message: str, data: dict | None = None) -> None:
     """Push event to connected dashboard clients (best-effort)."""
     try:
         from src.api.routers.ws import push_event
@@ -205,7 +206,7 @@ def job_morning_scan() -> None:
 
         # Synergy: 社交热点 → 交易标的扫描（通过 EventBus）
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
 
             bus = get_event_bus()
             await bus.publish(
@@ -296,7 +297,7 @@ def job_evening_produce() -> None:
             return
 
         persona = load_persona(name="default")
-        drafts: List[Dict[str, Any]] = []
+        drafts: list[dict[str, Any]] = []
 
         for topic_data in topics[:3]:
             title = topic_data.get("title", "")
@@ -384,8 +385,8 @@ def job_night_publish() -> None:
             _notify("跳过发布: 无待发草稿")
             return
 
-        published: List[Dict] = []
-        failed: List[Dict] = []
+        published: list[dict] = []
+        failed: list[dict] = []
 
         for draft in ready_drafts:
             platform = draft.get("platform", "x")
@@ -470,7 +471,7 @@ def job_night_publish() -> None:
         # EventBus: 社媒发布事件（逐篇发射，触发主动引擎 1 小时后跟进）
         if published:
             try:
-                from src.core.event_bus import get_event_bus, EventType
+                from src.core.event_bus import EventType, get_event_bus
 
                 bus = get_event_bus()
                 for draft in published:
@@ -507,7 +508,7 @@ def _review_check_kpi(result: dict, state: dict) -> tuple:
         "metrics_raw": result if result.get("success") else {},
         "review_time": now_et().isoformat(),
     }
-    warnings: List[str] = []
+    warnings: list[str] = []
     if result.get("success"):
         x_stats = result.get("x", {}).get("stats", {})
         xhs_stats = result.get("xiaohongshu", {}).get("stats", {})
@@ -603,7 +604,7 @@ def _review_check_milestones() -> None:
             for ms in _MILESTONES:
                 if _prev < ms <= _curr:
                     try:
-                        from src.core.event_bus import get_event_bus, EventType
+                        from src.core.event_bus import EventType, get_event_bus
 
                         _bus = get_event_bus()
                         # 使用 _run_async 将事件发布调度到主事件循环
@@ -732,7 +733,7 @@ class SocialAutopilot:
     _instance: Optional["SocialAutopilot"] = None
     _lock = threading.Lock()
     # 主事件循环引用，供线程池中的 job 函数调度异步操作
-    _main_loop: Optional[asyncio.AbstractEventLoop] = None
+    _main_loop: asyncio.AbstractEventLoop | None = None
     # 保护 _current_publish_hour 的读写，防止线程竞争
     _publish_hour_lock = threading.Lock()
 
@@ -748,7 +749,7 @@ class SocialAutopilot:
         if self._initialized:
             return
         self._initialized = True
-        self._scheduler: Optional[BackgroundScheduler] = None
+        self._scheduler: BackgroundScheduler | None = None
         # 保存主事件循环引用，用于线程安全地调度异步操作
         try:
             self._main_loop = asyncio.get_running_loop()
@@ -763,7 +764,7 @@ class SocialAutopilot:
 
     # ── Public API ────────────────────────────────────────────
 
-    def start(self) -> Dict[str, Any]:
+    def start(self) -> dict[str, Any]:
         """Start the scheduler with all 5 daily cron jobs."""
         if self._scheduler and self._scheduler.running:
             return {"status": "already_running"}
@@ -855,7 +856,7 @@ class SocialAutopilot:
         logger.info("[Autopilot] APScheduler 已启动, %d 个任务", len(self._scheduler.get_jobs()))
         return {"status": "started", "jobs": len(self._scheduler.get_jobs())}
 
-    def stop(self) -> Dict[str, Any]:
+    def stop(self) -> dict[str, Any]:
         """Graceful shutdown."""
         if not self._scheduler or not self._scheduler.running:
             return {"status": "not_running"}
@@ -871,12 +872,12 @@ class SocialAutopilot:
         logger.info("[Autopilot] APScheduler 已停止")
         return {"status": "stopped"}
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Return current autopilot state + next job schedule."""
         running = bool(self._scheduler and self._scheduler.running)
         state = _load_state()
 
-        jobs: List[Dict[str, Any]] = []
+        jobs: list[dict[str, Any]] = []
         next_action = ""
         next_time = ""
 
@@ -909,7 +910,7 @@ class SocialAutopilot:
             "topics_selected": len(state.get("last_scan_topics", [])),
         }
 
-    def trigger_job(self, job_id: str) -> Dict[str, Any]:
+    def trigger_job(self, job_id: str) -> dict[str, Any]:
         """Manually trigger a specific job (for testing / 严总 override)."""
         job_map = {
             "morning_scan": job_morning_scan,

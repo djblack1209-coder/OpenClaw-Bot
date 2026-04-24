@@ -4,13 +4,12 @@ ClawBot 监控 — Prometheus 指标收集器 + HTTP 服务器
 对标 LiteLLM: 无外部依赖的轻量级 Prometheus 指标导出。
 支持 Counter, Gauge, Histogram 三种指标类型。
 """
-import os
-import time
 import json
 import logging
+import os
 import threading
-from typing import Dict, Optional, List
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +25,19 @@ class PrometheusMetrics:
     """
 
     def __init__(self):
-        self._counters: Dict[str, Dict[str, float]] = {}   # name -> {labels_key: value}
-        self._gauges: Dict[str, Dict[str, float]] = {}
-        self._histograms: Dict[str, Dict[str, List[float]]] = {}
-        self._help: Dict[str, str] = {}
-        self._type: Dict[str, str] = {}
+        self._counters: dict[str, dict[str, float]] = {}   # name -> {labels_key: value}
+        self._gauges: dict[str, dict[str, float]] = {}
+        self._histograms: dict[str, dict[str, list[float]]] = {}
+        self._help: dict[str, str] = {}
+        self._type: dict[str, str] = {}
         self._lock = threading.Lock()
 
-    def _labels_key(self, labels: Optional[Dict[str, str]] = None) -> str:
+    def _labels_key(self, labels: dict[str, str] | None = None) -> str:
         if not labels:
             return ""
         return ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
 
-    def counter_inc(self, name: str, value: float = 1, labels: Optional[Dict[str, str]] = None,
+    def counter_inc(self, name: str, value: float = 1, labels: dict[str, str] | None = None,
                     help_text: str = ""):
         with self._lock:
             if name not in self._counters:
@@ -49,7 +48,7 @@ class PrometheusMetrics:
             key = self._labels_key(labels)
             self._counters[name][key] = self._counters[name].get(key, 0) + value
 
-    def gauge_set(self, name: str, value: float, labels: Optional[Dict[str, str]] = None,
+    def gauge_set(self, name: str, value: float, labels: dict[str, str] | None = None,
                   help_text: str = ""):
         with self._lock:
             if name not in self._gauges:
@@ -60,7 +59,7 @@ class PrometheusMetrics:
             key = self._labels_key(labels)
             self._gauges[name][key] = value
 
-    def histogram_observe(self, name: str, value: float, labels: Optional[Dict[str, str]] = None,
+    def histogram_observe(self, name: str, value: float, labels: dict[str, str] | None = None,
                           help_text: str = ""):
         with self._lock:
             if name not in self._histograms:

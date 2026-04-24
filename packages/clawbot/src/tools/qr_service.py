@@ -4,7 +4,6 @@
 """
 import io
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ except ImportError:
 
 def generate_qr(
     data: str,
-    logo_path: Optional[str] = None,
+    logo_path: str | None = None,
     box_size: int = 10,
     border: int = 2,
 ) -> io.BytesIO:

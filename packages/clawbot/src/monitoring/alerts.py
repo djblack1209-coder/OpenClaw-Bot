@@ -3,9 +3,9 @@ ClawBot 监控 — 告警规则引擎
 
 对标 LiteLLM: 可编程告警规则 + 回调通知。
 """
-import time
 import logging
-from typing import Optional, List, Callable
+import time
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class AlertRule:
         self.cooldown = cooldown
         self.last_fired = 0.0
 
-    def check(self) -> Optional[str]:
+    def check(self) -> str | None:
         now = time.time()
         if now - self.last_fired < self.cooldown:
             return None
@@ -36,8 +36,8 @@ class AlertRule:
 class AlertManager:
     """告警管理器"""
     def __init__(self):
-        self.rules: List[AlertRule] = []
-        self._callbacks: List[Callable[[str, str], None]] = []
+        self.rules: list[AlertRule] = []
+        self._callbacks: list[Callable[[str, str], None]] = []
 
     def add_rule(self, rule: AlertRule):
         self.rules.append(rule)
@@ -46,7 +46,7 @@ class AlertManager:
         """注册告警回调 (rule_name, message)"""
         self._callbacks.append(callback)
 
-    def check_all(self) -> List[str]:
+    def check_all(self) -> list[str]:
         fired = []
         for rule in self.rules:
             msg = rule.check()

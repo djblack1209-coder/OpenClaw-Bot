@@ -3,7 +3,7 @@ PriorityMessageQueue — 优先级消息队列
 从 chat_router.py 拆分而来，确保高优先级消息（@bot、风控告警）优先处理。
 """
 import asyncio
-from typing import Dict, Any
+from typing import Any
 
 from src.routing.constants import CHAIN_DISCUSS_TRIGGERS
 from src.routing.models import MessagePriority, PrioritizedMessage
@@ -66,7 +66,7 @@ class PriorityMessageQueue:
     def pending(self) -> int:
         return self._queue.qsize()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             **self._stats,
             "pending": self.pending,

@@ -5,11 +5,10 @@
 所有模块的 SQLite 连接都应通过此模块获取，避免样板代码重复。
 """
 
+import logging
 import os
 import sqlite3
-import logging
 from contextlib import contextmanager
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ def _secure_db_permissions(db_path: str) -> None:
 
 
 @contextmanager
-def get_conn(db_path: str, *, row_factory: Optional[type] = None):
+def get_conn(db_path: str, *, row_factory: type | None = None):
     """获取 SQLite 连接的上下文管理器，异常时自动回滚。
 
     参数:
