@@ -282,7 +282,7 @@ export function FinRadar() {
       { name: 'ETH', pct: Math.round(ethPct * 10) / 10, color: 'var(--accent-purple)' },
       { name: t('finRadar.others'), pct: Math.round(othersPct * 10) / 10, color: 'var(--text-tertiary)' },
     ];
-  }, [marketData]);
+  }, [marketData, t]);
 
   /** 市场摘要 — 从实际数据计算 */
   const marketSummary = useMemo(() => {
