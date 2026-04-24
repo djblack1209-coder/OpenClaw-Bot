@@ -644,7 +644,7 @@ class ClawBotRPC:
         任一路径可用即视为 ready。
         """
         try:
-            from src.execution import execution_hub
+            from src.bot.globals import execution_hub
             from pathlib import Path
             import json as _json
 
@@ -709,7 +709,7 @@ class ClawBotRPC:
     def _rpc_social_analytics(days: int = 7) -> dict:
         """Get analytics data used by the desktop social dashboard."""
         try:
-            from src.execution import execution_hub
+            from src.bot.globals import execution_hub
 
             report = execution_hub.get_post_performance_report(days=days) or {}
             by_platform = report.get("by_platform", {}) or {}

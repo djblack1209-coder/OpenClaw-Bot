@@ -206,7 +206,7 @@ def _resolve_keys(provider_cfg: Dict) -> List[str]:
 
     # 可选 key（如 g4f 可以无 key）
     env_key_optional = provider_cfg.get("env_key_optional", "")
-    if env_key_optional:
+    if isinstance(env_key_optional, str) and env_key_optional:
         k = _env(env_key_optional)
         return [k] if k else ["dummy"]  # g4f 等本地服务不需要真 key
 
