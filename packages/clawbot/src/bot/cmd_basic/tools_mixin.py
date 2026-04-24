@@ -365,12 +365,19 @@ class _ToolsMixin:
         await update.message.reply_text(f"🖥 Claude Code 正在处理...\n\n> {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
 
         try:
+            # 构建完整环境变量（launchd 进程可能缺少用户环境）
+            env = os.environ.copy()
+            env.setdefault("HOME", os.path.expanduser("~"))
+            env.setdefault("USER", os.getenv("USER", "blackdj"))
+            env["PATH"] = f"{os.path.expanduser('~/.npm-global/bin')}:/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '/usr/bin:/bin')}"
+
             # 启动 claude -p "<prompt>" --output-format text
             proc = await _asyncio.create_subprocess_exec(
                 claude_path, "-p", prompt, "--output-format", "text",
                 stdout=_asyncio.subprocess.PIPE,
                 stderr=_asyncio.subprocess.PIPE,
-                cwd="/Users/blackdj/Desktop/OpenEverything",
+                cwd=os.path.expanduser("~/Desktop/OpenEverything"),
+                env=env,
             )
 
             # 设置超时（Claude Code 可能运行很久）
