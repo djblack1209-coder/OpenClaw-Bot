@@ -1,18 +1,18 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (OpenCode GPT5.5 上下文截断修复)
+> 最后更新: 2026-04-24 (OpenCode GPT5.5 上下文安全线修复)
 
 ---
 
-## 🟢 2026-04-24 OpenCode GPT5.5 上下文截断修复
+## 🟢 2026-04-24 OpenCode GPT5.5 上下文安全线修复
 
-> 本轮修复 OpenCode 总 token 到 194k 左右回答停止的问题。根因是本地 OpenCode 配置与实际使用模型不一致，并且 GPT5.5 上下文声明过高，导致压缩触发过晚。
+> 本轮修复 OpenCode 总 token 到 194k 左右回答停止的问题。用户确认上下文限制应按 272k 判断，因此不改默认模型，只修正 GPT5.5 的安全上下文声明和 GPT 模式识别。
 
 ### 已修复
 | # | 问题 | 严重度 | 修复方式 |
 |---|------|--------|---------|
-| OPENCODE-CTX-194K | OpenCode 会话在 194k token 附近停止回答 | 🟠 | 将默认模型切到 `gpt-5.5`，把 GPT5.5 安全上下文声明调为 200k/input 160k/output 40k，让 OpenCode 提前压缩 |
-| OPENCODE-GPT-MODE | GPT 独立模式插件仍识别旧 `gpt-5.4` | 🟡 | 改为识别 `gpt-5.5`，同步说明文档 |
+| OPENCODE-CTX-194K | OpenCode 会话在 194k token 附近停止回答 | 🟠 | 保持默认模型不变，把 GPT5.5 安全上下文声明调为 272k/input 232k/output 40k |
+| OPENCODE-GPT-MODE | GPT 独立模式插件仍识别旧 `gpt-5.4` | 🟡 | 改为识别 `gpt-5.5`，仅手动选择 GPT5.5 时生效 |
 
 ### 验证结果
 | 项目 | 结果 | 说明 |
@@ -21,7 +21,7 @@
 | GPT5.5 190k 实测 | ✅ 200 OK | `prompt_tokens=190031`, `finish=stop` |
 | GPT5.5 210k 实测 | ✅ 200 OK | `total_tokens=210045`, `finish=stop` |
 | GPT5.5 250k 实测 | ✅ 200 OK | `total_tokens=250075`, `finish=stop` |
-| GPT5.5 280k 实测 | 🟡 不健康 | HTTP 200 但 completion 为 0，耗时 92s，因此不作为 OpenCode 安全上限 |
+| GPT5.5 280k 实测 | 🟡 不健康 | HTTP 200 但 completion 为 0，耗时 92s，佐证 272k 附近应作为风险边界 |
 
 ---
 
