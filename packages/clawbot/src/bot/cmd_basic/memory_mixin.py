@@ -3,8 +3,8 @@
 """
 import logging
 
-from src.telegram_ux import with_typing
 from src.bot.auth import requires_auth
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +31,10 @@ class _MemoryMixin:
 
     async def _cmd_memory_inner(self, update, context):
         """记忆管理 — 内部实现"""
-        from src.smart_memory import get_smart_memory
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
+
+        from src.smart_memory import get_smart_memory
 
         user_id = update.effective_user.id
         sm = get_smart_memory()
@@ -86,9 +87,10 @@ class _MemoryMixin:
 
     async def handle_feedback_callback(self, update, context):
         """处理 反馈按钮 — 搬运自 karfly 的 callback 模式"""
-        from src.feedback import parse_feedback_data, get_feedback_store
-        from src.litellm_router import adaptive_router
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        from src.feedback import get_feedback_store, parse_feedback_data
+        from src.litellm_router import adaptive_router
 
         query = update.callback_query
         await query.answer()  # 立即响应，消除加载动画（karfly 关键模式）
@@ -128,9 +130,10 @@ class _MemoryMixin:
 
     async def handle_memory_callback(self, update, context):
         """处理记忆管理的分页/删除回调"""
-        from src.smart_memory import get_smart_memory
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
+
+        from src.smart_memory import get_smart_memory
 
         query = update.callback_query
         await query.answer()

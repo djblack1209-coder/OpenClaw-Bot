@@ -3,8 +3,12 @@
 从 chat_router.py 拆分而来，集中管理所有路由相关常量。
 """
 from src.constants import (
-    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_CLAUDE_OPUS,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_OPUS,
+    BOT_CLAUDE_SONNET,
+    BOT_DEEPSEEK,
+    BOT_GPTOSS,
+    BOT_QWEN,
 )
 
 # 链式讨论触发词（统一定义，避免重复）

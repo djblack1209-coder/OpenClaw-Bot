@@ -9,16 +9,15 @@ GLM-OCR 服务 — 生产级图片/文档文字识别
 - 结构化错误返回（调用方可区分失败原因）
 - 可观测性（成功率、延迟、调用量）
 """
-import os
-import time
 import base64
 import hashlib
 import logging
+import os
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
-from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker, CircuitOpenError
+from src.http_client import CircuitBreaker, CircuitOpenError, ResilientHTTPClient, RetryConfig
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -40,11 +39,11 @@ _CACHE_TTL = 3600  # 1 小时
 class _LRUCache:
     """简易 LRU 缓存，带 TTL"""
     def __init__(self, maxsize: int = _CACHE_MAX, ttl: int = _CACHE_TTL):
-        self._data: OrderedDict[str, Tuple[str, float]] = OrderedDict()
+        self._data: OrderedDict[str, tuple[str, float]] = OrderedDict()
         self._maxsize = maxsize
         self._ttl = ttl
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         if key not in self._data:
             return None
         text, ts = self._data[key]
@@ -75,7 +74,7 @@ _OCR_RATE_LIMIT = 30     # 每用户每小时最多 30 次
 _user_ocr_calls: dict[int, list[float]] = {}
 
 
-def _check_rate_limit(user_id: int) -> Tuple[bool, str]:
+def _check_rate_limit(user_id: int) -> tuple[bool, str]:
     """检查用户 OCR 调用频率，返回 (allowed, reason)"""
     now = time.time()
     calls = _user_ocr_calls.get(user_id, [])
@@ -99,15 +98,15 @@ def _record_ocr_call(user_id: int):
 class OcrResult:
     """OCR 结果，调用方可区分成功/失败/缓存命中"""
     ok: bool
-    text: Optional[str] = None
-    error: Optional[str] = None
+    text: str | None = None
+    error: str | None = None
     cached: bool = False
     tokens_used: int = 0
 
 
 # ── HTTP 客户端（单例）────────────────────────────────
 
-_client: Optional[ResilientHTTPClient] = None
+_client: ResilientHTTPClient | None = None
 
 
 def _get_client() -> ResilientHTTPClient:

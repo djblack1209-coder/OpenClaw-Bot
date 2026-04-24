@@ -9,20 +9,20 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..schemas import WSMessageType
-from ..auth import verify_ws_token
 from src.utils import now_et
+
+from ..auth import verify_ws_token
+from ..schemas import WSMessageType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # 每个客户端拥有独立的事件队列，避免 popleft 互抢
 # key = WebSocket 对象, value = asyncio.Queue
-_client_queues: Dict[WebSocket, asyncio.Queue] = {}
+_client_queues: dict[WebSocket, asyncio.Queue] = {}
 _lock = threading.Lock()
 
 
@@ -168,7 +168,7 @@ async def websocket_events(websocket: WebSocket):
                     except asyncio.QueueEmpty:
                         break
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # 发送心跳
                 try:
                     await websocket.send_json({

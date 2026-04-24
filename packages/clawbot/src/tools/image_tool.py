@@ -2,14 +2,16 @@
 ClawBot - 图片生成工具 (硅基流动)
 """
 import base64
-import httpx
-import urllib.parse
-from typing import Dict, Any, Optional
-from pathlib import Path
 import logging
-from src.utils import now_et
+import urllib.parse
+from pathlib import Path
+from typing import Any
+
+import httpx
+
 from src.constants import IMG_MODEL_FLUX
 from src.http_client import ResilientHTTPClient
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class ImageTool:
         "sdxl": "stabilityai/stable-diffusion-xl-base-1.0",
     }
 
-    def __init__(self, api_key: Optional[str] = None, output_dir: Optional[str] = None):
+    def __init__(self, api_key: str | None = None, output_dir: str | None = None):
         self.api_key = api_key
         if output_dir:
             self.output_dir = Path(output_dir)
@@ -50,7 +52,7 @@ class ImageTool:
             f.write(img_bytes)
         return str(filepath)
 
-    async def _generate_via_pollinations(self, prompt: str, model: str, size: str) -> Dict[str, Any]:
+    async def _generate_via_pollinations(self, prompt: str, model: str, size: str) -> dict[str, Any]:
         width, height = map(int, size.split("x"))
         encoded_prompt = urllib.parse.quote(prompt.strip())
         url = (
@@ -66,7 +68,7 @@ class ImageTool:
             path = self._save_image_bytes(response.content, prefix="pollinations")
         return {"success": True, "prompt": prompt, "model": f"{model}-fallback", "paths": [path], "provider": "pollinations"}
 
-    async def generate(self, prompt: str, model: str = IMG_MODEL_FLUX, size: str = "1024x1024") -> Dict[str, Any]:
+    async def generate(self, prompt: str, model: str = IMG_MODEL_FLUX, size: str = "1024x1024") -> dict[str, Any]:
         """生成图片"""
         if not self.api_key:
             return await self._generate_via_pollinations(prompt, model, size)

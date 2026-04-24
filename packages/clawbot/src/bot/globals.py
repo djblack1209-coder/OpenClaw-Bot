@@ -5,41 +5,53 @@
 注意: 纯配置(环境变量/API Key管理)已提取到 src.bot.config (HI-359)。
 本模块保留运行时共享状态 + 向后兼容 re-export。
 """
-import logging
 import asyncio
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
 
 # ---- 从 config.py 导入纯配置 (HI-359: 打破循环依赖) ----
 from src.bot.config import (  # noqa: F401 — 向后兼容 re-export
-    parse_ids,
     ALLOWED_USER_IDS,
-    SILICONFLOW_KEYS, SILICONFLOW_BASE, SILICONFLOW_PAID_KEYS,
-    DATA_DIR, CLAUDE_KEY, CLAUDE_BASE,
-    G4F_BASE, G4F_KEY, KIRO_BASE, KIRO_KEY,
-    SERPAPI_KEY, BRAVE_SEARCH_API_KEY,
-    COMPOSIO_API_KEY, SKYVERN_API_KEY,
-    current_sf_key_idx, sf_key_balances, LOW_BALANCE_THRESHOLD,
-    get_siliconflow_key, update_key_balance, get_total_balance, mark_key_exhausted,
+    BRAVE_SEARCH_API_KEY,
+    CLAUDE_BASE,
+    CLAUDE_KEY,
+    COMPOSIO_API_KEY,
+    DATA_DIR,
+    G4F_BASE,
+    G4F_KEY,
+    KIRO_BASE,
+    KIRO_KEY,
+    LOW_BALANCE_THRESHOLD,
+    SERPAPI_KEY,
+    SILICONFLOW_BASE,
+    SILICONFLOW_KEYS,
+    SILICONFLOW_PAID_KEYS,
+    SKYVERN_API_KEY,
+    current_sf_key_idx,
+    get_siliconflow_key,
+    get_total_balance,
+    mark_key_exhausted,
+    parse_ids,
+    sf_key_balances,
+    update_key_balance,
 )
-
 from src.constants import TG_SAFE_LENGTH
-from src.history_store import HistoryStore
-from src.routing import ChatRouter, CollabOrchestrator
-from src.monitoring import StructuredLogger, HealthChecker
-from src.news_fetcher import NewsFetcher
-from src.tools.image_tool import ImageTool
 from src.context_manager import ContextManager
-from src.tool_executor import ToolExecutor
-from src.shared_memory import SharedMemory
 from src.execution import ExecutionHub
-from src.litellm_router import init_free_pool
-from src.utils import now_et
-from src.message_sender import send_long_message  # noqa: F401 re-export: 78+ 处引用
+from src.history_store import HistoryStore
 from src.invest_tools import get_stock_quote  # noqa: F401 re-export: message_mixin 等引用
+from src.litellm_router import init_free_pool
+from src.message_sender import send_long_message  # noqa: F401 re-export: 78+ 处引用
+from src.monitoring import HealthChecker, StructuredLogger
+from src.news_fetcher import NewsFetcher
 from src.pipeline_helper import execute_trade_via_pipeline  # noqa: F401 re-export
+from src.routing import ChatRouter, CollabOrchestrator
+from src.shared_memory import SharedMemory
+from src.tool_executor import ToolExecutor
+from src.tools.image_tool import ImageTool
 from src.trading_system import get_trading_pipeline  # noqa: F401 re-export
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +74,10 @@ tool_executor = ToolExecutor(
 )
 
 # Bot 实例注册表
-bot_registry: Dict[str, 'object'] = {}
+bot_registry: dict[str, 'object'] = {}
 
 # 待确认交易
-_pending_trades: Dict[str, dict] = {}
+_pending_trades: dict[str, dict] = {}
 
 # ============ 优化模块全局实例（供 mixin 层访问） ============
 # 由 multi_main.py 启动时注入，避免 mixin 层自行实例化
@@ -98,7 +110,7 @@ def _cleanup_pending_trades():
 
 # ============ 辅助函数 ============
 
-async def send_as_bot(bot_id: str, chat_id: int, text: str, reply_to_message_id: Optional[int] = None):
+async def send_as_bot(bot_id: str, chat_id: int, text: str, reply_to_message_id: int | None = None):
     """用指定 bot 自己的 Telegram 账号发送消息"""
     from src.message_sender import _clean_for_telegram, _split_message
 
@@ -148,6 +160,7 @@ async def safe_edit(msg, text: str, parse_mode: str = "Markdown"):
 
 import json as _json
 
+
 class UserPreferencesManager:
     """Per-user 偏好管理器 — 持久化到 JSON 文件
 
@@ -168,13 +181,13 @@ class UserPreferencesManager:
         self._dir = Path(data_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._filepath = self._dir / "user_preferences.json"
-        self._prefs: Dict[str, dict] = {}
+        self._prefs: dict[str, dict] = {}
         self._load()
 
     def _load(self):
         if self._filepath.exists():
             try:
-                with open(self._filepath, 'r', encoding='utf-8') as f:
+                with open(self._filepath, encoding='utf-8') as f:
                     self._prefs = _json.load(f)
             except Exception as e:  # noqa: F841
                 self._prefs = {}

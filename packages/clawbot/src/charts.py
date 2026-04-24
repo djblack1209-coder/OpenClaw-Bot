@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.http_client import ResilientHTTPClient
 
@@ -75,7 +75,7 @@ _DARK_LAYOUT = dict(
 # ── 工具函数 ─────────────────────────────────────────────
 
 
-def _fig_to_png(fig: "go.Figure") -> bytes:
+def _fig_to_png(fig: go.Figure) -> bytes:
     """将 plotly Figure 导出为 PNG bytes (via kaleido)。"""
     try:
         return fig.to_image(format="png", width=_WIDTH, height=_HEIGHT, scale=2)
@@ -107,9 +107,9 @@ def _matplotlib_fallback(fn_name: str):
 
 
 def generate_candlestick(
-    ohlcv_data: List[Dict[str, Any]],
+    ohlcv_data: list[dict[str, Any]],
     symbol: str = "",
-    indicators: Optional[Dict[str, Any]] = None,
+    indicators: dict[str, Any] | None = None,
 ) -> bytes:
     """K 线图 + 成交量 + 可选技术指标叠加。
 
@@ -254,7 +254,7 @@ def generate_candlestick(
 
 
 def generate_portfolio_pie(
-    positions: List[Dict[str, Any]],
+    positions: list[dict[str, Any]],
     title: str = "持仓分布",
 ) -> bytes:
     """交互式持仓饼图 — 最大仓位自动 pull-out。
@@ -315,7 +315,7 @@ def generate_portfolio_pie(
 
 
 def generate_pnl_waterfall(
-    trades: List[Dict[str, Any]],
+    trades: list[dict[str, Any]],
     title: str = "交易盈亏",
 ) -> bytes:
     """瀑布图 — 逐笔 PnL + 累计总额。
@@ -376,8 +376,8 @@ def generate_pnl_waterfall(
 
 
 def generate_equity_curve(
-    equity_data: List[float],
-    benchmark: Optional[List[float]] = None,
+    equity_data: list[float],
+    benchmark: list[float] | None = None,
     title: str = "权益曲线",
 ) -> bytes:
     """权益曲线 + 可选基准对比 + 回撤阴影。
@@ -496,7 +496,7 @@ def generate_equity_curve(
 
 
 async def render_task_dag(
-    nodes: Dict[str, Any],
+    nodes: dict[str, Any],
     title: str = "",
 ) -> bytes:
     """将任务 DAG 渲染为流程图 (via mermaid.ink API)。

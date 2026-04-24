@@ -4,17 +4,18 @@ ClawBot - 共享工具执行器
 支持工具熔断、结果截断、危险命令检测。
 """
 
-import time
 import logging
-from typing import Dict, Any, Optional, List
+import time
 from pathlib import Path
+from typing import Any
+
+from src.constants import FAMILY_CLAUDE
 
 from .tools.bash_tool import BashTool
-from .tools.file_tool import FileTool
-from .tools.web_tool import WebTool
 from .tools.code_tool import CodeTool
+from .tools.file_tool import FileTool
 from .tools.memory_tool import MemoryTool
-from src.constants import FAMILY_CLAUDE
+from .tools.web_tool import WebTool
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,8 @@ class ToolCircuitBreaker:
     def __init__(self, max_failures: int = 3, cooldown: float = 120.0):
         self.max_failures = max_failures
         self.cooldown = cooldown
-        self._failures: Dict[str, int] = {}
-        self._last_failure: Dict[str, float] = {}
+        self._failures: dict[str, int] = {}
+        self._last_failure: dict[str, float] = {}
 
     def record_success(self, tool_name: str):
         self._failures.pop(tool_name, None)
@@ -46,7 +47,7 @@ class ToolCircuitBreaker:
             return True
         return False
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         return {
             name: {"failures": count, "available": self.is_available(name)} for name, count in self._failures.items()
         }
@@ -374,7 +375,7 @@ class ToolExecutor:
     也可供其他 bot 通过委托机制间接使用。
     """
 
-    def __init__(self, working_dir: Optional[str] = None, siliconflow_key_func=None, shared_memory=None):
+    def __init__(self, working_dir: str | None = None, siliconflow_key_func=None, shared_memory=None):
         self.working_dir = working_dir or str(Path.home())
 
         # 初始化工具实例
@@ -396,7 +397,7 @@ class ToolExecutor:
         # 最大工具结果长度（防止超长结果撑爆上下文）
         self.max_result_length = 8000
 
-    async def execute(self, tool_name: str, tool_input: Dict) -> Dict[str, Any]:
+    async def execute(self, tool_name: str, tool_input: dict) -> dict[str, Any]:
         """
         执行工具（带熔断检查和结果截断）。
 
@@ -430,7 +431,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] %s 执行异常", tool_name)
             return {"success": False, "error": str(e)}
 
-    async def _dispatch(self, tool_name: str, tool_input: Dict) -> Dict[str, Any]:
+    async def _dispatch(self, tool_name: str, tool_input: dict) -> dict[str, Any]:
         """分发工具调用到具体实现"""
 
         if tool_name == "bash":
@@ -549,7 +550,7 @@ class ToolExecutor:
         else:
             return {"success": False, "error": f"未知工具: {tool_name}"}
 
-    def _truncate_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def _truncate_result(self, result: dict[str, Any]) -> dict[str, Any]:
         """截断过长的工具结果，防止撑爆上下文"""
         for key in ("content", "stdout", "stderr", "output"):
             if key in result and isinstance(result[key], str):
@@ -559,11 +560,11 @@ class ToolExecutor:
                     )
         return result
 
-    def get_tools_schema(self) -> List[Dict]:
+    def get_tools_schema(self) -> list[dict]:
         """返回工具定义列表（Claude API 格式）"""
         return MULTI_BOT_TOOLS
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """返回工具执行器状态"""
         return {
             "working_dir": self.working_dir,
@@ -573,9 +574,9 @@ class ToolExecutor:
 
     # ========== 交易工具实现 ==========
 
-    async def _tool_get_quote(self, tool_input: Dict) -> Dict:
+    async def _tool_get_quote(self, tool_input: dict) -> dict:
         try:
-            from .invest_tools import get_stock_quote, get_crypto_quote, format_quote
+            from .invest_tools import format_quote, get_crypto_quote, get_stock_quote
 
             symbol = tool_input["symbol"].upper().strip()
             crypto = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "DOT", "AVAX"}
@@ -590,9 +591,9 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] get_quote 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}
 
-    async def _tool_technical_analysis(self, tool_input: Dict) -> Dict:
+    async def _tool_technical_analysis(self, tool_input: dict) -> dict:
         try:
-            from .ta_engine import get_full_analysis, format_analysis
+            from .ta_engine import format_analysis, get_full_analysis
 
             symbol = tool_input["symbol"].upper().strip()
             crypto = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "DOT", "AVAX"}
@@ -619,7 +620,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] technical_analysis 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}
 
-    async def _tool_scan_market(self, tool_input: Dict) -> Dict:
+    async def _tool_scan_market(self, tool_input: dict) -> dict:
         try:
             from .ta_engine import scan_market
 
@@ -644,7 +645,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] scan_market 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_market_overview(self, _: Dict) -> Dict:
+    async def _tool_market_overview(self, _: dict) -> dict:
         try:
             from .invest_tools import get_market_summary
 
@@ -654,7 +655,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] market_overview 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_get_positions(self, _: Dict) -> Dict:
+    async def _tool_get_positions(self, _: dict) -> dict:
         try:
             from .broker_bridge import ibkr
             from .invest_tools import portfolio
@@ -683,7 +684,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] get_positions 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_portfolio_summary(self, _: Dict) -> Dict:
+    async def _tool_portfolio_summary(self, _: dict) -> dict:
         try:
             from .broker_bridge import ibkr
 
@@ -707,7 +708,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] portfolio_summary 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_risk_status(self, _: Dict) -> Dict:
+    async def _tool_risk_status(self, _: dict) -> dict:
         try:
             from .trading_system import _risk_manager
 
@@ -730,7 +731,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] risk_status 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_search_news(self, tool_input: Dict) -> Dict:
+    async def _tool_search_news(self, tool_input: dict) -> dict:
         try:
             from .news_fetcher import NewsFetcher
             from .notify_style import format_announcement
@@ -765,10 +766,10 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] search_news 失败 (query=%s)", tool_input.get("query"))
             return {"success": False, "error": str(e)}
 
-    async def _tool_calc_position_size(self, tool_input: Dict) -> Dict:
+    async def _tool_calc_position_size(self, tool_input: dict) -> dict:
         try:
-            from .ta_engine import calc_position_size
             from .broker_bridge import ibkr
+            from .ta_engine import calc_position_size
 
             symbol = tool_input["symbol"].upper()
             entry = float(tool_input["entry_price"])
@@ -798,7 +799,7 @@ class ToolExecutor:
 
     # ========== MemGPT/Letta 风格分层记忆工具实现 (P2-3第二期) ==========
 
-    async def _tool_core_memory_append(self, tool_input: Dict) -> Dict:
+    async def _tool_core_memory_append(self, tool_input: dict) -> dict:
         """向核心记忆追加内容 — 委托给 TieredContextManager.core_append"""
         try:
             from src.bot.globals import tiered_ctx
@@ -818,7 +819,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] core_memory_append 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_core_memory_replace(self, tool_input: Dict) -> Dict:
+    async def _tool_core_memory_replace(self, tool_input: dict) -> dict:
         """替换核心记忆中的指定内容"""
         try:
             from src.bot.globals import tiered_ctx
@@ -845,7 +846,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] core_memory_replace 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_archival_memory_insert(self, tool_input: Dict) -> Dict:
+    async def _tool_archival_memory_insert(self, tool_input: dict) -> dict:
         """存入归档记忆"""
         try:
             from src.bot.globals import tiered_ctx
@@ -873,7 +874,7 @@ class ToolExecutor:
             logger.exception("[ToolExecutor] archival_memory_insert 失败")
             return {"success": False, "error": str(e)}
 
-    async def _tool_archival_memory_search(self, tool_input: Dict) -> Dict:
+    async def _tool_archival_memory_search(self, tool_input: dict) -> dict:
         """语义搜索归档记忆"""
         try:
             from src.bot.globals import tiered_ctx

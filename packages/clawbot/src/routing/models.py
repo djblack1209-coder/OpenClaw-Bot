@@ -3,9 +3,9 @@
 从 chat_router.py 拆分而来，集中管理路由相关的数据结构。
 """
 import time
-from enum import Enum
-from typing import Dict, List, Any
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
 from src.constants import BOT_CLAUDE_SONNET, BOT_QWEN
 
@@ -16,8 +16,8 @@ class BotCapability:
     bot_id: str
     name: str
     username: str
-    keywords: List[str]           # 触发关键词
-    domains: List[str]            # 擅长领域
+    keywords: list[str]           # 触发关键词
+    domains: list[str]            # 擅长领域
     priority: int = 0             # 优先级（越高越优先）
 
 
@@ -33,15 +33,15 @@ class ServiceWorkflowSession:
     director_bot_id: str
     stage: str = "awaiting_selection"
     active: bool = True
-    options: List[Dict[str, Any]] = field(default_factory=list)
+    options: list[dict[str, Any]] = field(default_factory=list)
     intake_summary: str = ""
-    missing_info: List[str] = field(default_factory=list)
+    missing_info: list[str] = field(default_factory=list)
     selected_option_id: int = 0
     selection_note: str = ""
-    expert_plan: Dict[str, Any] = field(default_factory=dict)
-    team_plan: Dict[str, Any] = field(default_factory=dict)
-    execution_results: List[Dict[str, Any]] = field(default_factory=list)
-    validation_results: List[Dict[str, Any]] = field(default_factory=list)
+    expert_plan: dict[str, Any] = field(default_factory=dict)
+    team_plan: dict[str, Any] = field(default_factory=dict)
+    execution_results: list[dict[str, Any]] = field(default_factory=list)
+    validation_results: list[dict[str, Any]] = field(default_factory=list)
     final_report: str = ""
     rating_hint: str = ""
     created_at: float = field(default_factory=time.time)
@@ -100,4 +100,4 @@ class PrioritizedMessage:
     user_id: int = field(compare=False)
     text: str = field(compare=False)
     bot_id: str = field(compare=False, default="")
-    metadata: Dict[str, Any] = field(compare=False, default_factory=dict)
+    metadata: dict[str, Any] = field(compare=False, default_factory=dict)

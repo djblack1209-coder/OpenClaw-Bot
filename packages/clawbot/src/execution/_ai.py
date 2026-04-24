@@ -5,7 +5,7 @@ Execution Hub — AI 调用层 (LiteLLM 版)
 import logging
 import os
 import time
-from typing import Dict, Callable
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +15,23 @@ except ImportError:
     log_generation = None  # type: ignore[assignment]
 
 from src.constants import (
-    BOT_QWEN, BOT_DEEPSEEK, BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_FREE_LLM,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_SONNET,
+    BOT_DEEPSEEK,
+    BOT_FREE_LLM,
+    BOT_GPTOSS,
+    BOT_QWEN,
     FAMILY_QWEN,
 )
-from src.utils import emit_flow_event as _emit_flow, scrub_secrets
+from src.utils import emit_flow_event as _emit_flow
+from src.utils import scrub_secrets
 
 
 class AICallerPool:
     """管理 AI 调用 — 优先注入 caller，回退走 LiteLLM Router"""
 
     def __init__(self):
-        self._callers: Dict[str, Callable] = {}
+        self._callers: dict[str, Callable] = {}
 
     def set_callers(self, callers: dict):
         self._callers = dict(callers or {})

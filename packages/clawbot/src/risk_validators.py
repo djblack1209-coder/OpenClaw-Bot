@@ -17,7 +17,6 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Dict, List, Optional, Tuple
 
 from src.risk_config import RiskCheckResult
 from src.utils import now_et, scrub_secrets
@@ -39,7 +38,7 @@ class ValidatorContext:
     stop_loss: float
     take_profit: float
     signal_score: int
-    current_positions: List[Dict]
+    current_positions: list[dict]
     # 由 RiskManager 填充的运行时状态
     config: object = None  # RiskConfig
     today_pnl: float = 0.0
@@ -50,8 +49,8 @@ class ValidatorContext:
     trade_history: list = field(default_factory=list)
     peak_capital: float = 0.0
     # 中间结果（Validator 间传递）
-    adjusted_quantity: Optional[float] = None
-    warnings: List[str] = field(default_factory=list)
+    adjusted_quantity: float | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 class RiskValidator(ABC):
@@ -69,7 +68,7 @@ class RiskValidator(ABC):
         return 100
 
     @abstractmethod
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         """
         执行校验
 
@@ -90,7 +89,7 @@ class ParameterValidator(RiskValidator):
     name = "参数合法性"
     order = 0
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.entry_price <= 0:
             return (False, f"入场价必须大于零 (got {ctx.entry_price})")
         if ctx.quantity <= 0:
@@ -104,7 +103,7 @@ class BlacklistValidator(RiskValidator):
     name = "黑名单"
     order = 1
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.symbol in ctx.config.blacklist:
             return (False, f"{ctx.symbol} 在黑名单中，禁止交易")
         return None
@@ -119,7 +118,7 @@ class CooldownValidator(RiskValidator):
     def __init__(self, risk_manager):
         self._rm = risk_manager
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if self._rm._is_in_cooldown():
             remaining = int((self._rm._cooldown_until - now_et()).total_seconds()) // 60
             return (False, f"熔断冷却中，还需等待{remaining}分钟 (连续{self._rm._consecutive_losses}笔亏损触发)")
@@ -142,7 +141,7 @@ class DailyLossValidator(RiskValidator):
     name = "日亏损限额"
     order = 3
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.today_pnl <= -ctx.config.daily_loss_limit:
             return (
                 False,
@@ -161,7 +160,7 @@ class TradingHoursValidator(RiskValidator):
     def __init__(self, risk_manager):
         self._rm = risk_manager
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.config.trading_hours_enabled and not self._rm._is_trading_hours():
             return (False, "当前非交易时段，禁止下单")
         return None
@@ -173,7 +172,7 @@ class StopLossValidator(RiskValidator):
     name = "止损验证"
     order = 5
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.side == "BUY" and ctx.stop_loss <= 0:
             return (False, "买入必须设定止损价（stop_loss > 0）")
         if ctx.side == "BUY" and ctx.stop_loss > 0:
@@ -200,7 +199,7 @@ class RiskRewardValidator(RiskValidator):
     name = "风险收益比"
     order = 6
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if ctx.side == "BUY" and ctx.stop_loss > 0 and ctx.take_profit > 0:
             risk = ctx.entry_price - ctx.stop_loss
             reward = ctx.take_profit - ctx.entry_price
@@ -239,7 +238,7 @@ class PositionSizeValidator(RiskValidator):
     name = "仓位大小"
     order = 7
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         # 单笔风险金额
         max_risk_amount = ctx.config.total_capital * ctx.config.max_risk_per_trade_pct
         if ctx.side == "BUY" and ctx.stop_loss > 0:
@@ -304,7 +303,7 @@ class ExposureValidator(RiskValidator):
     name = "敞口与持仓数"
     order = 8
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         if not ctx.current_positions:
             return None
         position_value = ctx.quantity * ctx.entry_price
@@ -346,7 +345,7 @@ class DrawdownValidator(RiskValidator):
     def __init__(self, risk_manager):
         self._rm = risk_manager
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         # 动态回撤保护
         drawdown_level = self._rm._get_drawdown_level()
         if drawdown_level == "halt":
@@ -388,7 +387,7 @@ class FrequencyValidator(RiskValidator):
     def __init__(self, risk_manager):
         self._rm = risk_manager
 
-    def validate(self, ctx: ValidatorContext) -> Optional[Tuple[bool, str]]:
+    def validate(self, ctx: ValidatorContext) -> tuple[bool, str] | None:
         freq_check = self._rm._check_trade_frequency()
         if freq_check:
             return (False, freq_check)
@@ -409,7 +408,7 @@ class ValidatorChain:
     """
 
     def __init__(self):
-        self._validators: List[RiskValidator] = []
+        self._validators: list[RiskValidator] = []
 
     def add_validator(self, validator: RiskValidator):
         """注册新的 Validator"""
@@ -447,7 +446,7 @@ class ValidatorChain:
         return result
 
     @property
-    def validator_names(self) -> List[str]:
+    def validator_names(self) -> list[str]:
         """返回当前注册的所有 Validator 名称"""
         return [v.name for v in self._validators]
 

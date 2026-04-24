@@ -21,7 +21,7 @@ v2.0 新增 (2026-03-23):
 
 import logging
 import re
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ import asyncio  # noqa: E402
 # 错误分类规则：(匹配函数, 用户可见消息)
 # 按优先级排列，先匹配先返回
 # 注意: s 是 str(error).lower()（保留空格），用于灵活匹配
-_ERROR_PATTERNS: List[Tuple[Any, str]] = [
+_ERROR_PATTERNS: list[tuple[Any, str]] = [
     # LiteLLM 全链路降级失败（所有 provider 都挂了）
     (
         lambda e, s: "no healthy deployment" in s or "all deployments" in s or "no available deployment" in s,
@@ -113,7 +113,7 @@ _ERROR_PATTERNS: List[Tuple[Any, str]] = [
 ]
 
 
-def format_error(error: Union[Exception, str], context: str = "") -> str:
+def format_error(error: Exception | str, context: str = "") -> str:
     """将任何错误转换为用户友好的中文消息 (错误格式化的 SSOT)。
 
     与 error_messages.py 的关系:
@@ -163,7 +163,7 @@ _SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 
 def format_info_card(
     title: str,
-    sections: List[Tuple[str, str]],
+    sections: list[tuple[str, str]],
     footer: str = "",
 ) -> str:
     """生成统一的 HTML 信息卡片。
@@ -178,7 +178,7 @@ def format_info_card(
     Returns:
         Telegram HTML 格式的卡片文本
     """
-    parts: List[str] = []
+    parts: list[str] = []
 
     # 标题
     parts.append(f"<b>📊 {escape_html(title)}</b>")
@@ -308,7 +308,7 @@ def _flatten_result(result: dict) -> dict:
     Brain 返回 {"node_id": {"source": ..., "data": ...}, ...}
     将所有节点结果合并为一个扁平字典，后面节点的值覆盖前面。
     """
-    flat: Dict[str, Any] = {}
+    flat: dict[str, Any] = {}
     for key, value in result.items():
         if isinstance(value, dict):
             # 嵌套节点结果 — 展开
@@ -326,7 +326,7 @@ def _format_investment(data: dict) -> str:
       2. InvestmentAnalysisCard (response_cards.py 富卡片 + 按钮) ← gateway 层
       3. 本函数 (纯文本) ← 前两者都不可用时的最终降级
     """
-    sections: List[Tuple[str, str]] = []
+    sections: list[tuple[str, str]] = []
 
     # 优先使用 Pydantic 引擎的 telegram_text
     telegram_text = data.get("telegram_text")
@@ -384,7 +384,7 @@ def _format_investment(data: dict) -> str:
 def _format_shopping(data: dict) -> str:
     """购物比价结果格式化。"""
     product = data.get("product", "商品")
-    sections: List[Tuple[str, str]] = []
+    sections: list[tuple[str, str]] = []
 
     # 商品列表
     products = data.get("products", [])
@@ -436,7 +436,7 @@ def _format_shopping(data: dict) -> str:
 
 def _format_social(data: dict) -> str:
     """社媒发布结果格式化。"""
-    sections: List[Tuple[str, str]] = []
+    sections: list[tuple[str, str]] = []
 
     platform = data.get("platform", "")
     success = data.get("success")
@@ -497,7 +497,7 @@ def _format_generic(data: dict) -> str:
         return ""
 
     # 否则构建 key-value 列表
-    lines: List[str] = []
+    lines: list[str] = []
     for key, value in data.items():
         if key in _SKIP_KEYS or key.startswith("_"):
             continue

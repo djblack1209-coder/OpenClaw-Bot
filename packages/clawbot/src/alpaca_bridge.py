@@ -29,7 +29,6 @@ Alpaca 优势:
 import asyncio
 import logging
 import os
-from typing import Dict, List, Optional
 
 from src.utils import scrub_secrets
 
@@ -39,12 +38,12 @@ logger = logging.getLogger(__name__)
 _HAS_ALPACA = False
 try:
     from alpaca.trading.client import TradingClient
+    from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
     from alpaca.trading.requests import (
-        MarketOrderRequest,
-        LimitOrderRequest,
         GetOrdersRequest,
+        LimitOrderRequest,
+        MarketOrderRequest,
     )
-    from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
     _HAS_ALPACA = True
     logger.info("[AlpacaBridge] alpaca-py SDK 已加载")
 except ImportError:
@@ -68,7 +67,7 @@ class AlpacaBridge:
         self.budget = budget
         self._spent = 0.0
         self._connected = False
-        self._client: Optional[TradingClient] = None  # type: ignore[type-arg]
+        self._client: TradingClient | None = None  # type: ignore[type-arg]
 
         if not _HAS_ALPACA:
             logger.warning("[AlpacaBridge] alpaca-py 未安装，所有操作将返回模拟数据")
@@ -96,7 +95,7 @@ class AlpacaBridge:
 
     # ── 账户 ────────────────────────────────────────────────
 
-    async def get_account_summary(self) -> Dict:
+    async def get_account_summary(self) -> dict:
         """获取账户摘要 — 兼容 IBKRBridge.get_account_summary()"""
         if not self.connected:
             logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
@@ -124,7 +123,7 @@ class AlpacaBridge:
 
     # ── 持仓 ────────────────────────────────────────────────
 
-    async def get_positions(self) -> List[Dict]:
+    async def get_positions(self) -> list[dict]:
         """获取当前持仓 — 兼容 IBKRBridge.get_positions()"""
         if not self.connected:
             return []
@@ -157,8 +156,8 @@ class AlpacaBridge:
         symbol: str,
         quantity: float,
         order_type: str = "market",
-        limit_price: Optional[float] = None,
-    ) -> Dict:
+        limit_price: float | None = None,
+    ) -> dict:
         """买入 — 兼容 IBKRBridge.buy()"""
         return await self._place_order("BUY", symbol, quantity, order_type, limit_price)
 
@@ -167,8 +166,8 @@ class AlpacaBridge:
         symbol: str,
         quantity: float,
         order_type: str = "market",
-        limit_price: Optional[float] = None,
-    ) -> Dict:
+        limit_price: float | None = None,
+    ) -> dict:
         """卖出 — 兼容 IBKRBridge.sell()"""
         return await self._place_order("SELL", symbol, quantity, order_type, limit_price)
 
@@ -178,8 +177,8 @@ class AlpacaBridge:
         symbol: str,
         quantity: float,
         order_type: str = "market",
-        limit_price: Optional[float] = None,
-    ) -> Dict:
+        limit_price: float | None = None,
+    ) -> dict:
         if not self.connected:
             logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
             return {"status": "⚠️ 模拟数据 — Alpaca未连接，以下数据非真实交易",
@@ -263,7 +262,7 @@ class AlpacaBridge:
 
     # ── 订单管理 ────────────────────────────────────────────
 
-    async def get_open_orders(self) -> List[Dict]:
+    async def get_open_orders(self) -> list[dict]:
         """获取未成交订单"""
         if not self.connected:
             return []
@@ -289,7 +288,7 @@ class AlpacaBridge:
             logger.error(f"[AlpacaBridge] 订单查询失败: {e}")
             return []
 
-    async def cancel_order(self, order_id: str) -> Dict:
+    async def cancel_order(self, order_id: str) -> dict:
         """取消订单"""
         if not self.connected:
             return {"status": "simulated", "order_id": order_id,
@@ -302,7 +301,7 @@ class AlpacaBridge:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    async def cancel_all_orders(self) -> Dict:
+    async def cancel_all_orders(self) -> dict:
         """取消所有订单"""
         if not self.connected:
             return {"status": "simulated", "cancelled": 0,
@@ -318,7 +317,7 @@ class AlpacaBridge:
     # ── 模拟数据 ────────────────────────────────────────────
 
     @staticmethod
-    def _mock_account() -> Dict:
+    def _mock_account() -> dict:
         return {
             "equity": 100000.0,
             "cash": 100000.0,
@@ -370,6 +369,7 @@ class AlpacaBridge:
             return []
         try:
             from datetime import timedelta
+
             from src.utils import now_et
 
             def _get_fills():
@@ -410,7 +410,7 @@ class AlpacaBridge:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_bridge: Optional[AlpacaBridge] = None
+_bridge: AlpacaBridge | None = None
 
 
 def get_alpaca_bridge() -> AlpacaBridge:

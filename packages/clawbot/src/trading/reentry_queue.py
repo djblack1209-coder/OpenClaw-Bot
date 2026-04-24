@@ -9,14 +9,13 @@ Trading — 重入队列管理 v2.0
 """
 import json
 import logging
-from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 _PENDING_REENTRY_CONFIG_KEY = "pending_reentry_queue_json"
 
 
-def _normalize_item(item: dict) -> Optional[dict]:
+def _normalize_item(item: dict) -> dict | None:
     """规范化单条 reentry 记录，验证必要字段。"""
     if not isinstance(item, dict):
         return None
@@ -39,7 +38,7 @@ def _normalize_item(item: dict) -> Optional[dict]:
     }
 
 
-def load_pending_reentry_queue(journal=None) -> List[Dict]:
+def load_pending_reentry_queue(journal=None) -> list[dict]:
     """从 trading_journal 配置中加载并规范化重入队列。
 
     Args:
@@ -69,7 +68,7 @@ def load_pending_reentry_queue(journal=None) -> List[Dict]:
     return normalized
 
 
-def save_pending_reentry_queue(journal=None, queue: List[Dict] = None) -> None:
+def save_pending_reentry_queue(journal=None, queue: list[dict] = None) -> None:
     """持久化重入队列到 trading_journal 配置。"""
     if queue is None:
         queue = []
@@ -89,8 +88,8 @@ def save_pending_reentry_queue(journal=None, queue: List[Dict] = None) -> None:
 
 
 def queue_reentry_from_trade(
-    queue: List[Dict], trade: dict, reason: str = ""
-) -> tuple[List[Dict], bool]:
+    queue: list[dict], trade: dict, reason: str = ""
+) -> tuple[list[dict], bool]:
     """将取消的交易加入重入队列。
 
     Args:

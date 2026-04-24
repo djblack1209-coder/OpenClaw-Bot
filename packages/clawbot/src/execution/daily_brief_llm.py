@@ -7,7 +7,6 @@
 
 import logging
 import re
-from typing import List
 
 from src.constants import FAMILY_QWEN
 
@@ -19,7 +18,7 @@ def _strip_think_tags(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
-async def _analyze_news_with_llm(headlines: List[str], holdings: List[str]) -> List[str]:
+async def _analyze_news_with_llm(headlines: list[str], holdings: list[str]) -> list[str]:
     """用最便宜的 LLM 对新闻标题做一句话分析 + 持仓影响关联。
 
     成本控制: 用免费的 qwen 模型，max_tokens=300，prompt 限制100字回复。

@@ -13,8 +13,8 @@ Core — 节点执行器 Mixin 聚合入口
 """
 
 from src.core.brain_exec_invest import InvestExecutorMixin
-from src.core.brain_exec_social import SocialExecutorMixin
 from src.core.brain_exec_life import LifeExecutorMixin
+from src.core.brain_exec_social import SocialExecutorMixin
 from src.core.brain_exec_tools import ToolsExecutorMixin
 
 

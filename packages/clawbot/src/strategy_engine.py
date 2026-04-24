@@ -26,9 +26,10 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
+
 from src.utils import now_et, scrub_secrets
 
 try:
@@ -60,7 +61,7 @@ class TradeSignal:
     timeframe: str = "1d"
     confidence: float = 0.5   # 0-1 置信度
     reason: str = ""
-    indicators: Dict[str, float] = field(default_factory=dict)
+    indicators: dict[str, float] = field(default_factory=dict)
     stop_loss_pct: float = 0.0
     take_profit_pct: float = 0.0
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
@@ -71,13 +72,13 @@ class MarketData:
     """市场数据（策略输入）"""
     symbol: str
     timeframe: str
-    closes: List[float]
-    opens: List[float] = field(default_factory=list)
-    highs: List[float] = field(default_factory=list)
-    lows: List[float] = field(default_factory=list)
-    volumes: List[float] = field(default_factory=list)
-    timestamps: List[str] = field(default_factory=list)
-    extra: Dict[str, Any] = field(default_factory=dict)
+    closes: list[float]
+    opens: list[float] = field(default_factory=list)
+    highs: list[float] = field(default_factory=list)
+    lows: list[float] = field(default_factory=list)
+    volumes: list[float] = field(default_factory=list)
+    timestamps: list[str] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def last_close(self) -> float:
@@ -118,7 +119,7 @@ class BaseStrategy(ABC):
     # 子类必须设置
     name: str = "base"
     version: str = "1.0"
-    timeframes: List[str] = ["1d"]       # 支持的时间框架
+    timeframes: list[str] = ["1d"]       # 支持的时间框架
     min_data_points: int = 30            # 最少需要的数据点数
     weight: float = 1.0                  # 在策略组合中的权重
 
@@ -131,7 +132,7 @@ class BaseStrategy(ABC):
         ...
 
     def should_exit(self, data: MarketData, entry_price: float,
-                    current_pnl_pct: float) -> Optional[TradeSignal]:
+                    current_pnl_pct: float) -> TradeSignal | None:
         """判断是否应该退出持仓（可选覆盖）"""
         return None
 
@@ -494,8 +495,8 @@ class StrategyEngine:
     """
 
     def __init__(self):
-        self._strategies: Dict[str, BaseStrategy] = {}
-        self._results_history: List[Dict] = []
+        self._strategies: dict[str, BaseStrategy] = {}
+        self._results_history: list[dict] = []
 
     def register(self, strategy: BaseStrategy):
         """注册策略"""
@@ -506,7 +507,7 @@ class StrategyEngine:
         """注销策略"""
         self._strategies.pop(name, None)
 
-    def list_strategies(self) -> List[Dict[str, Any]]:
+    def list_strategies(self) -> list[dict[str, Any]]:
         """列出所有已注册策略"""
         return [
             {"name": s.name, "version": s.version, "weight": s.weight,
@@ -514,7 +515,7 @@ class StrategyEngine:
             for s in self._strategies.values()
         ]
 
-    def analyze(self, data: MarketData, strategies: Optional[List[str]] = None) -> Dict[str, Any]:
+    def analyze(self, data: MarketData, strategies: list[str] | None = None) -> dict[str, Any]:
         """运行所有（或指定）策略并返回加权合并结果
 
         Returns:
@@ -536,7 +537,7 @@ class StrategyEngine:
                     "consensus_score": 0, "confidence": 0, "signals": [],
                     "recommendation": "No strategies registered"}
 
-        signals: List[TradeSignal] = []
+        signals: list[TradeSignal] = []
         for strategy in active.values():
             try:
                 sig = strategy.analyze(data)
@@ -603,7 +604,7 @@ class StrategyEngine:
 
         return result
 
-    def get_history(self, symbol: Optional[str] = None, limit: int = 20) -> List[Dict]:
+    def get_history(self, symbol: str | None = None, limit: int = 20) -> list[dict]:
         """获取分析历史"""
         history = self._results_history
         if symbol:
@@ -614,7 +615,7 @@ class StrategyEngine:
         self,
         symbol: str,
         period: str = "2y",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         所有已注册策略 × VectorBT 回测 — 一键对比。
 

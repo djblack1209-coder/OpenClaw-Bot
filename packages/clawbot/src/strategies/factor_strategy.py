@@ -14,10 +14,10 @@ v1.0 — 2026-03-24
 """
 
 import importlib.util
+import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import json
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -186,7 +186,7 @@ class FactorMLModel:
         self.symbol = symbol.upper()
         self.n_future_days = n_future_days
         self.model = None
-        self.feature_names: List[str] = []
+        self.feature_names: list[str] = []
 
     @property
     def model_path(self) -> Path:
@@ -356,14 +356,14 @@ class FactorStrategy(BaseStrategy):
         self.use_ml = use_ml and HAS_LGB
         self.n_future_days = n_future_days
         self.retrain_days = retrain_days
-        self._ml_models: Dict[str, FactorMLModel] = {}
+        self._ml_models: dict[str, FactorMLModel] = {}
 
     @property
     def ml_available(self) -> bool:
         """ML 路径是否可用"""
         return HAS_LGB
 
-    def _get_ml_model(self, symbol: str, df: pd.DataFrame) -> Optional[FactorMLModel]:
+    def _get_ml_model(self, symbol: str, df: pd.DataFrame) -> FactorMLModel | None:
         """获取或训练 ML 模型"""
         if not self.use_ml:
             return None
@@ -421,7 +421,7 @@ class FactorStrategy(BaseStrategy):
         last_factors = factors.iloc[-1]
 
         # 构建指标字典
-        indicators: Dict[str, float] = {
+        indicators: dict[str, float] = {
             "price": data.last_close,
             "mom_5d": round(float(last_factors.get("mom_5d", 0)), 4),
             "mom_20d": round(float(last_factors.get("mom_20d", 0)), 4),
@@ -502,7 +502,7 @@ class FactorStrategy(BaseStrategy):
             )
 
     def should_exit(self, data: MarketData, entry_price: float,
-                    current_pnl_pct: float) -> Optional[TradeSignal]:
+                    current_pnl_pct: float) -> TradeSignal | None:
         """因子模型判断是否应退出"""
         signal = self.analyze(data)
 
@@ -516,7 +516,7 @@ class FactorStrategy(BaseStrategy):
             )
         return None
 
-    def get_factor_report(self, data: MarketData) -> Dict[str, Any]:
+    def get_factor_report(self, data: MarketData) -> dict[str, Any]:
         """生成详细因子报告 — 用于 Telegram 展示"""
         df = self._prepare_dataframe(data)
         factors = AlphaFactors.compute_all(df)

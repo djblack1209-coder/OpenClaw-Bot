@@ -7,15 +7,14 @@
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from typing import List, Tuple
+from datetime import UTC, datetime, timedelta
 
 from src.execution._db import get_conn
 
 logger = logging.getLogger(__name__)
 
 
-def _section(title: str, items: List[str]) -> Tuple[str, List[str]]:
+def _section(title: str, items: list[str]) -> tuple[str, list[str]]:
     """构建一个 section tuple (title, items) for format_digest"""
     return (title, items)
 
@@ -27,7 +26,7 @@ def _get_timestamp_tag() -> str:
 
         return timestamp_tag()
     except Exception:
-        return datetime.now(timezone.utc).strftime("%H:%M UTC")
+        return datetime.now(UTC).strftime("%H:%M UTC")
 
 
 async def _get_yesterday_comparison(db_path=None) -> dict:
@@ -128,7 +127,7 @@ def _format_delta(value, unit: str = "") -> str:
     return f" ({arrow}{abs_val:.0f}{unit})"
 
 
-async def _build_today_agenda(db_path=None) -> List[str]:
+async def _build_today_agenda(db_path=None) -> list[str]:
     """今日日程 — 合并所有数据源按紧急度排序
 
     数据源:
@@ -141,7 +140,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     返回排序后的日程文本列表，空列表表示无日程。
     """
     # (优先级, 文本) — 数字越小越紧急
-    agenda: List[Tuple[int, str]] = []
+    agenda: list[tuple[int, str]] = []
 
     # ── 1. 持仓风险项 — 接近止损的持仓 ──
     try:
@@ -226,7 +225,7 @@ async def _build_today_agenda(db_path=None) -> List[str]:
     return [text for _, text in agenda]
 
 
-async def _fetch_trending_projects() -> List[str]:
+async def _fetch_trending_projects() -> list[str]:
     """从 GitHub Trending 获取与 OpenClaw 相关的有价值项目"""
 
     # 关注的关键领域
@@ -250,7 +249,7 @@ async def _fetch_trending_projects() -> List[str]:
         "wechat",
     ]
 
-    items: List[str] = []
+    items: list[str] = []
     try:
         # 使用现有的 github_trending 模块
         try:

@@ -4,42 +4,42 @@ Extracted from multi_main.py.
 """
 
 import asyncio
+import json
 import logging
 import re
-import json
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from config.prompts import INVEST_DISCUSSION_ROLES
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
-from src.telegram_ux import with_typing
-from config.prompts import INVEST_DISCUSSION_ROLES
-from src.utils import now_et
 from src.bot.globals import (
+    _pending_trades,
+    bot_registry,
     chat_router,
     collab_orchestrator,
-    bot_registry,
     safe_edit,
     send_as_bot,
     shared_memory,
-    _pending_trades,
 )
 
 # 幻影导入修复: 8 个符号从实际定义模块导入
 from src.broker_selector import ibkr
-from src.trading_journal import journal
-from src.universe import get_full_universe, full_market_scan
-from src.ta_engine import get_full_analysis, format_analysis
-from src.invest_tools import format_quote, get_market_summary
-from src.constants import TG_SAFE_LENGTH
 from src.constants import (
-    BOT_QWEN,
+    BOT_CLAUDE_HAIKU,
+    BOT_CLAUDE_OPUS,
+    BOT_CLAUDE_SONNET,
     BOT_DEEPSEEK,
     BOT_GPTOSS,
-    BOT_CLAUDE_HAIKU,
-    BOT_CLAUDE_SONNET,
-    BOT_CLAUDE_OPUS,
+    BOT_QWEN,
+    TG_SAFE_LENGTH,
 )
+from src.invest_tools import format_quote, get_market_summary
+from src.ta_engine import format_analysis, get_full_analysis
+from src.telegram_ux import with_typing
+from src.trading_journal import journal
+from src.universe import full_market_scan, get_full_universe
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -432,7 +432,7 @@ class CollabCommandsMixin:
                 await asyncio.sleep(1)
                 bot_status[bot_id] = "done"
                 await _update_progress()
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 bot_status[bot_id] = "timeout"
                 await _update_progress()
                 logger.warning("[Invest] %s 回复超时 (%ss)", bot_id, timeout_sec)
@@ -655,7 +655,7 @@ class CollabCommandsMixin:
                         await asyncio.sleep(0.3)
                 # 间隔1秒，避免消息刷屏太快
                 await asyncio.sleep(1)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("[Discuss] %s 回复超时 (%ss)，跳过", bot_id, timeout_sec)
                 try:
                     await bot_telegram.send_message(

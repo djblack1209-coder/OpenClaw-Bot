@@ -35,9 +35,11 @@ Apprise URL 格式参考: https://github.com/caronc/apprise/wiki
 import asyncio
 import logging
 import os
+from collections.abc import Sequence
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -91,7 +93,7 @@ class NotifyLevel(IntEnum):
 # ── 事件类型到通知级别的默认映射 ──────────────────────────
 
 # 决定哪些 EventBus 事件应该被自动转发为通知
-_EVENT_NOTIFY_MAP: Dict[str, Dict[str, Any]] = {
+_EVENT_NOTIFY_MAP: dict[str, dict[str, Any]] = {
     # 事件类型 → {level, tags, title_template}
     "trade.risk_alert": {
         "level": NotifyLevel.CRITICAL,
@@ -169,14 +171,14 @@ _EVENT_NOTIFY_MAP: Dict[str, Dict[str, Any]] = {
 # ── 配置加载 ──────────────────────────────────────────────
 
 
-def _load_yaml_config(path: Path) -> Dict[str, Any]:
+def _load_yaml_config(path: Path) -> dict[str, Any]:
     """加载 YAML 配置文件，不存在则返回空字典"""
     if not path.exists():
         return {}
     try:
         import yaml  # PyYAML，已是常见依赖
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return data if isinstance(data, dict) else {}
     except ImportError:
@@ -187,7 +189,7 @@ def _load_yaml_config(path: Path) -> Dict[str, Any]:
         return {}
 
 
-def _build_telegram_url() -> Optional[str]:
+def _build_telegram_url() -> str | None:
     """
     从现有 Telegram 环境变量构建 Apprise URL，作为兜底渠道。
     兼容项目中已有的 BOT_TOKEN / ADMIN_CHAT_ID 模式。
@@ -215,8 +217,8 @@ class NotificationManager:
     """
 
     def __init__(self):
-        self._ap: Optional[Any] = None  # apprise.Apprise instance
-        self._tag_routes: Dict[str, Any] = {}  # tag → 独立 Apprise 实例
+        self._ap: Any | None = None  # apprise.Apprise instance
+        self._tag_routes: dict[str, Any] = {}  # tag → 独立 Apprise 实例
         self._min_level: NotifyLevel = NotifyLevel.LOW
         self._initialized = False
         self._send_count = 0
@@ -225,8 +227,8 @@ class NotificationManager:
 
     def initialize(
         self,
-        urls: Optional[Sequence[str]] = None,
-        config_path: Optional[Path] = None,
+        urls: Sequence[str] | None = None,
+        config_path: Path | None = None,
         min_level: NotifyLevel = NotifyLevel.LOW,
     ) -> "NotificationManager":
         """
@@ -249,7 +251,7 @@ class NotificationManager:
         self._ap = apprise.Apprise()
 
         # ── 收集渠道 URL ──
-        all_urls: List[str] = []
+        all_urls: list[str] = []
 
         # 1. 显式传入
         if urls:
@@ -332,8 +334,8 @@ class NotificationManager:
         body: str,
         title: str = "",
         level: NotifyLevel = NotifyLevel.NORMAL,
-        tags: Optional[List[str]] = None,
-        notify_type: Optional[str] = None,
+        tags: list[str] | None = None,
+        notify_type: str | None = None,
     ) -> bool:
         """
         发送通知到所有已配置渠道。
@@ -549,7 +551,7 @@ class NotificationManager:
 
     # ── 查询 / 管理 ──────────────────────────────────────
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取通知系统统计"""
         channel_count = len(self._ap) if self._ap else 0
         return {
@@ -564,7 +566,7 @@ class NotificationManager:
             "mapped_events": len(_EVENT_NOTIFY_MAP),
         }
 
-    def add_channel(self, url: str, tag: Optional[str] = None) -> bool:
+    def add_channel(self, url: str, tag: str | None = None) -> bool:
         """运行时动态添加通知渠道"""
         if not APPRISE_AVAILABLE:
             logger.warning("Apprise 未安装，无法添加渠道")
@@ -619,7 +621,7 @@ class NotificationManager:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_notification_manager: Optional[NotificationManager] = None
+_notification_manager: NotificationManager | None = None
 
 
 def get_notification_manager() -> NotificationManager:

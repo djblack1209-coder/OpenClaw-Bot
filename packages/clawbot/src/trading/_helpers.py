@@ -4,7 +4,6 @@ Trading — 内部工具函数
 """
 import logging
 from datetime import datetime
-from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +35,8 @@ def _estimate_open_positions_exposure(portfolio) -> float:
 
 def _is_us_market_open_now() -> bool:
     """判断当前是否处于美股常规交易时段（美东 09:30-16:00）"""
-    from src.utils import now_et
     from src.auto_trader import is_market_holiday
+    from src.utils import now_et
 
     now = now_et()
     if now.weekday() >= 5:
@@ -52,7 +51,7 @@ def _is_us_market_open_now() -> bool:
     return market_open and not market_close
 
 
-def _parse_datetime(value: str) -> Optional[datetime]:
+def _parse_datetime(value: str) -> datetime | None:
     """解析 ISO 日期字符串，确保返回 timezone-aware datetime (美东时间)"""
     try:
         dt = datetime.fromisoformat(str(value))
@@ -69,19 +68,19 @@ def _parse_datetime(value: str) -> Optional[datetime]:
 # ============ 重入队列代理 ============
 
 
-def _load_pending_reentry_queue() -> List[Dict]:
+def _load_pending_reentry_queue() -> list[dict]:
     """从 trading_journal 加载重入队列 — 委托到 reentry_queue 模块"""
     from src.trading.reentry_queue import load_pending_reentry_queue
     return load_pending_reentry_queue()
 
 
-def _save_pending_reentry_queue(queue: List[Dict]) -> None:
+def _save_pending_reentry_queue(queue: list[dict]) -> None:
     """持久化重入队列 — 委托到 reentry_queue 模块"""
     from src.trading.reentry_queue import save_pending_reentry_queue
     save_pending_reentry_queue(queue=queue)
 
 
-def _queue_reentry_from_trade(trade: Dict, reason: str = "") -> bool:
+def _queue_reentry_from_trade(trade: dict, reason: str = "") -> bool:
     """将撤单后的交易加入次日重挂队列 — 委托到 reentry_queue 模块"""
     import src.trading_system as _ts
     from src.trading.reentry_queue import queue_reentry_from_trade
@@ -96,7 +95,7 @@ def _queue_reentry_from_trade(trade: Dict, reason: str = "") -> bool:
 # ============ 持仓同步 ============
 
 
-def _ensure_monitor_position_from_trade(trade: Dict) -> None:
+def _ensure_monitor_position_from_trade(trade: dict) -> None:
     """确保指定交易存在于持仓监控器中（用于成交回写后补监控）"""
     import src.trading_system as _ts
 

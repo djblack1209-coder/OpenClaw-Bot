@@ -23,20 +23,18 @@
 import asyncio
 import fcntl
 import json
+import logging
 import os
 import re
 import signal
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
 from src.http_client import ResilientHTTPClient
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +137,7 @@ def save_token_persistent(token: str) -> None:
         _PERSISTENT_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
         # 目录权限设为 700，仅当前用户可访问
         os.chmod(_PERSISTENT_TOKEN_DIR, 0o700)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         data = {
             "token": token,
             "captured_at": now.isoformat(),
@@ -156,7 +154,7 @@ def save_token_persistent(token: str) -> None:
         logger.error("持久化保存 token 失败: %s", e)
 
 
-def load_saved_token() -> Optional[dict]:
+def load_saved_token() -> dict | None:
     """从持久化文件加载已保存的 token
 
     Returns:
@@ -187,7 +185,7 @@ def load_saved_token() -> Optional[dict]:
         return None
 
     # 计算 token 年龄
-    now_ts = int(datetime.now(timezone.utc).timestamp())
+    now_ts = int(datetime.now(UTC).timestamp())
     age_seconds = now_ts - captured_ts
     age_hours = age_seconds / 3600
 
@@ -389,7 +387,7 @@ def _set_macos_proxy(enable: bool) -> bool:
 # ── mitmproxy 进程管理 ─────────────────────────────────
 
 
-def _start_mitmdump() -> Optional[subprocess.Popen]:
+def _start_mitmdump() -> subprocess.Popen | None:
     """启动 mitmdump 代理进程
 
     使用项目内的 mitm_token_addon.py 作为 addon 脚本，
@@ -436,7 +434,7 @@ def _start_mitmdump() -> Optional[subprocess.Popen]:
         return None
 
 
-def _kill_mitmdump(proc: Optional[subprocess.Popen]) -> None:
+def _kill_mitmdump(proc: subprocess.Popen | None) -> None:
     """安全终止 mitmdump 进程及其进程组"""
     if proc is None:
         return
@@ -511,7 +509,7 @@ def _close_mini_program() -> None:
 # ── Token 提取 ─────────────────────────────────────────
 
 
-def _extract_token() -> Optional[str]:
+def _extract_token() -> str | None:
     """从 mitm addon 写入的临时文件中提取 session-token
 
     按优先级依次尝试多种正则模式，返回找到的第一个有效 token。
@@ -673,7 +671,7 @@ async def _redeem_gift(token: str, gift_id: str) -> dict:
         return {"error": str(e)}
 
 
-async def _get_balance(token: str) -> Optional[int]:
+async def _get_balance(token: str) -> int | None:
     """查询提现免费额度（单位：分）
 
     Args:
@@ -868,14 +866,14 @@ async def auto_claim_coupon() -> str:
         lock_fd = open(_LOCK_FILE, "w")
         # 非阻塞方式获取排他锁，拿不到说明已有进程在执行
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except (IOError, OSError):
+    except OSError:
         # 获取锁失败 → 另一个领券流程正在运行
         logger.warning("领券文件锁获取失败，已有领券流程正在进行")
         if lock_fd:
             lock_fd.close()
         return "ℹ️ 领券正在进行中，请稍后"
 
-    mitm_proc: Optional[subprocess.Popen] = None
+    mitm_proc: subprocess.Popen | None = None
     proxy_was_set = False
 
     try:

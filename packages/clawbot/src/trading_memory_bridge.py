@@ -157,4 +157,5 @@ class TradingMemoryBridge:
 
 # 从 trading_journal 导入全局 journal 实例，创建桥接实例
 from src.trading_journal import journal  # noqa: E402
+
 trading_memory_bridge = TradingMemoryBridge(journal)

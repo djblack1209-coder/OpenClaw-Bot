@@ -12,7 +12,7 @@ import logging
 import os as _os
 import threading
 
-from src.broker_bridge import IBKRBridge, HAS_IB
+from src.broker_bridge import HAS_IB, IBKRBridge
 
 logger = logging.getLogger(__name__)
 

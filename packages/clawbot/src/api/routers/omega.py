@@ -4,7 +4,7 @@ OMEGA API Router — Brain状态 / 成本控制 / 安全 / 事件总线
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/omega")
 
 
-@router.get("/status", response_model=Dict[str, Any])
+@router.get("/status", response_model=dict[str, Any])
 async def omega_status():
     """OMEGA 系统状态"""
     result = {"omega": True}
@@ -80,7 +80,7 @@ async def omega_status():
     return result
 
 
-@router.get("/cost", response_model=Dict[str, Any])
+@router.get("/cost", response_model=dict[str, Any])
 async def omega_cost():
     """成本详情"""
     try:
@@ -93,7 +93,7 @@ async def omega_cost():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/events", response_model=Dict[str, Any])
+@router.get("/events", response_model=dict[str, Any])
 async def omega_events(event_type: str = "", limit: int = Query(default=50, ge=1, le=500)):
     """事件历史"""
     try:
@@ -106,7 +106,7 @@ async def omega_events(event_type: str = "", limit: int = Query(default=50, ge=1
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/audit", response_model=Dict[str, Any])
+@router.get("/audit", response_model=dict[str, Any])
 async def omega_audit(limit: int = Query(default=50, ge=1, le=500)):
     """审计日志"""
     try:
@@ -119,7 +119,7 @@ async def omega_audit(limit: int = Query(default=50, ge=1, le=500)):
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/tasks", response_model=Dict[str, Any])
+@router.get("/tasks", response_model=dict[str, Any])
 async def omega_tasks():
     """活跃任务"""
     try:
@@ -132,7 +132,7 @@ async def omega_tasks():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.post("/process", response_model=Dict[str, Any])
+@router.post("/process", response_model=dict[str, Any])
 async def omega_process(
     message: str = Body(max_length=1000, embed=True, description="发送给 Brain 的消息"),
     source: str = Body(default="api", embed=True, description="消息来源"),
@@ -149,7 +149,7 @@ async def omega_process(
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/investment/team", response_model=Dict[str, Any])
+@router.get("/investment/team", response_model=dict[str, Any])
 async def omega_investment_team():
     """投资团队状态"""
     try:
@@ -166,7 +166,7 @@ async def omega_investment_team():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.post("/investment/analyze", response_model=Dict[str, Any])
+@router.post("/investment/analyze", response_model=dict[str, Any])
 async def omega_investment_analyze(symbol: str, market: str = "cn"):
     """触发投资分析（优先 Pydantic AI 引擎）"""
     # 优先: Pydantic AI 结构化分析
@@ -194,7 +194,7 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/investment/backtest", response_model=Dict[str, Any])
+@router.get("/investment/backtest", response_model=dict[str, Any])
 async def omega_investment_backtest(
     symbol: str,
     strategy: str = "ma_cross",
@@ -255,7 +255,7 @@ async def omega_investment_backtest(
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/tools/jina-read", response_model=Dict[str, Any])
+@router.get("/tools/jina-read", response_model=dict[str, Any])
 async def omega_jina_read(url: str = Query(max_length=2048, description="要读取的URL")):
     """读取URL内容（Jina Reader）"""
     # SSRF 防护: 校验 URL 协议 + 解析域名 IP 后再次校验（防 DNS 重绑定）
@@ -302,7 +302,7 @@ async def omega_jina_read(url: str = Query(max_length=2048, description="要读�
         raise HTTPException(status_code=502, detail=_safe_error(e))
 
 
-@router.get("/tools/jina-search", response_model=Dict[str, Any])
+@router.get("/tools/jina-search", response_model=dict[str, Any])
 async def omega_jina_search(query: str = Query(max_length=500, description="搜索关键词")):
     """Web搜索（Jina Search）"""
     try:
@@ -315,7 +315,7 @@ async def omega_jina_search(query: str = Query(max_length=500, description="搜�
         raise HTTPException(status_code=502, detail=_safe_error(e))
 
 
-@router.post("/tools/generate-image", response_model=Dict[str, Any])
+@router.post("/tools/generate-image", response_model=dict[str, Any])
 async def omega_generate_image(
     prompt: str = Query(max_length=1000, description="图像描述"), model: str = "fal-ai/flux/schnell"
 ):
@@ -330,7 +330,7 @@ async def omega_generate_image(
         raise HTTPException(status_code=502, detail=_safe_error(e))
 
 
-@router.post("/tools/generate-video", response_model=Dict[str, Any])
+@router.post("/tools/generate-video", response_model=dict[str, Any])
 async def omega_generate_video(
     prompt: str = Query(max_length=1000, description="视频描述"),
     model: str = "fal-ai/kling-video/v1/standard/text-to-video",
@@ -346,7 +346,7 @@ async def omega_generate_video(
         raise HTTPException(status_code=502, detail=_safe_error(e))
 
 
-@router.get("/tools/media-models", response_model=Dict[str, Any])
+@router.get("/tools/media-models", response_model=dict[str, Any])
 async def omega_media_models():
     """可用的图像/视频模型列表"""
     try:

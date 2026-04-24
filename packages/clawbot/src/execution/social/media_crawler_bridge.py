@@ -9,12 +9,13 @@ MediaCrawler 集成桥接层 — 搬运自 MediaCrawler (46.2k⭐)
   2. 本模块通过 HTTP API 与其 FastAPI WebUI 交互
   3. 爬取结果写入 SharedMemory，供 AI 团队做内容策略参考
 """
+import asyncio
+import json
 import logging
 import os
-import json
-import asyncio
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,8 @@ class MediaCrawlerBridge:
         return PLATFORM_MAP.get(platform.lower().strip(), platform.lower().strip())
 
     async def search_platform(
-        self, platform: str, keywords: List[str], limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+        self, platform: str, keywords: list[str], limit: int = 20,
+    ) -> list[dict[str, Any]]:
         """搜索指定平台的内容"""
         plat = self._normalize_platform(platform)
         session = await self._get_session()
@@ -97,7 +98,7 @@ class MediaCrawlerBridge:
 
     async def get_creator_posts(
         self, platform: str, creator_id: str, limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """获取创作者的帖子列表"""
         plat = self._normalize_platform(platform)
         session = await self._get_session()
@@ -125,7 +126,7 @@ class MediaCrawlerBridge:
 
     async def get_post_comments(
         self, platform: str, post_id: str, limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """获取帖子评论"""
         plat = self._normalize_platform(platform)
         session = await self._get_session()
@@ -150,7 +151,7 @@ class MediaCrawlerBridge:
             logger.warning("[MediaCrawler] 获取评论失败: %s", e)
         return []
 
-    async def get_trending(self, platform: str) -> List[Dict[str, Any]]:
+    async def get_trending(self, platform: str) -> list[dict[str, Any]]:
         """获取平台热门话题（通过搜索热门关键词实现）"""
         plat = self._normalize_platform(platform)
         trending_keywords = {
@@ -163,8 +164,8 @@ class MediaCrawlerBridge:
         return await self.search_platform(platform, keywords, limit=10)
 
     async def analyze_competitors(
-        self, platform: str, competitor_ids: List[str],
-    ) -> Dict[str, Any]:
+        self, platform: str, competitor_ids: list[str],
+    ) -> dict[str, Any]:
         """分析竞品账号"""
         results = {}
         for cid in competitor_ids[:5]:  # 限制最多 5 个
@@ -196,7 +197,7 @@ class MediaCrawlerBridge:
             )
         return results
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         session = await self._get_session()
         if not session:
             return {"status": "error", "message": "httpx 未安装"}
@@ -210,8 +211,8 @@ class MediaCrawlerBridge:
     # ── CLI 回退模式 ──
 
     async def _cli_search(
-        self, platform: str, keywords: List[str], limit: int,
-    ) -> List[Dict[str, Any]]:
+        self, platform: str, keywords: list[str], limit: int,
+    ) -> list[dict[str, Any]]:
         """通过 CLI 调用 MediaCrawler（本地安装模式）"""
         crawler_dir = CRAWLER_DIR
         if not crawler_dir or not Path(crawler_dir).exists():
@@ -247,7 +248,7 @@ class MediaCrawlerBridge:
                     return items if isinstance(items, list) else []
             else:
                 logger.warning("[MediaCrawler] CLI 执行失败: %s", stderr.decode()[:200])
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[MediaCrawler] CLI 执行超时")
         except Exception as e:
             logger.warning("[MediaCrawler] CLI 执行异常: %s", e)
@@ -255,7 +256,7 @@ class MediaCrawlerBridge:
 
     # ── 内部方法 ──
 
-    def _save_to_memory(self, platform: str, mode: str, keywords: List[str], items: List[Dict]):
+    def _save_to_memory(self, platform: str, mode: str, keywords: list[str], items: list[dict]):
         """将爬取结果写入 SharedMemory"""
         if not self.memory or not items:
             return
@@ -276,14 +277,14 @@ class MediaCrawlerBridge:
         )
 
 
-def _avg_field(items: List[Dict], field: str) -> float:
+def _avg_field(items: list[dict], field: str) -> float:
     vals = [item.get(field, 0) for item in items if isinstance(item.get(field, 0), (int, float))]
     return round(sum(vals) / max(len(vals), 1), 1)
 
 
 # ── 全局实例 ──
 
-_bridge: Optional[MediaCrawlerBridge] = None
+_bridge: MediaCrawlerBridge | None = None
 
 
 def init_media_crawler(shared_memory=None) -> MediaCrawlerBridge:
@@ -293,5 +294,5 @@ def init_media_crawler(shared_memory=None) -> MediaCrawlerBridge:
     return _bridge
 
 
-def get_media_crawler() -> Optional[MediaCrawlerBridge]:
+def get_media_crawler() -> MediaCrawlerBridge | None:
     return _bridge

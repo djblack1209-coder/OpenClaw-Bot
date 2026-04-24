@@ -5,8 +5,8 @@ Trading — 生命周期管理
 import logging
 
 from src.trading._helpers import (
-    _parse_datetime,
     _load_pending_reentry_queue,
+    _parse_datetime,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,8 @@ async def _restore_open_positions():
 
     if _ts._position_monitor and _ts._risk_manager:
         try:
-            from src.trading_journal import journal as tj
             from src.position_monitor import MonitoredPosition
+            from src.trading_journal import journal as tj
             from src.utils import now_et
             open_trades = tj.get_open_trades()
             for t in open_trades:

@@ -6,7 +6,6 @@ ClawBot - Telegram 消息发送工具 v2.0
 import asyncio
 import logging
 import re
-from typing import Optional
 
 from telegram.ext import ContextTypes
 
@@ -53,7 +52,7 @@ async def send_long_message(
     chat_id: int,
     text: str,
     context: ContextTypes.DEFAULT_TYPE,
-    reply_to_message_id: Optional[int] = None,
+    reply_to_message_id: int | None = None,
     max_length: int = TG_SAFE_LENGTH,
     chunk_delay: float = 0.3,
 ):
@@ -109,7 +108,7 @@ async def _send_safe(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
     text: str,
-    reply_to_message_id: Optional[int] = None,
+    reply_to_message_id: int | None = None,
 ):
     """安全发送消息，Markdown 失败时回退纯文本，reply失败时去掉回复"""
     try:

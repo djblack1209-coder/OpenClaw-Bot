@@ -11,7 +11,6 @@
 """
 
 import time
-from typing import Optional
 
 import httpx
 from loguru import logger
@@ -45,12 +44,12 @@ LOCAL_SUITABLE_TASKS = frozenset(
 )
 
 # 后端检测缓存
-_cached_backend: Optional[str] = None
+_cached_backend: str | None = None
 _cache_time: float = 0.0
 _CACHE_TTL = 60.0  # 缓存 60 秒
 
 
-async def detect_backend(custom_endpoint: Optional[str] = None) -> Optional[str]:
+async def detect_backend(custom_endpoint: str | None = None) -> str | None:
     """
     自动检测可用的本地 LLM 后端
 
@@ -101,9 +100,9 @@ async def local_complete(
     task_type: str = "general",
     max_tokens: int = 512,
     system: str = "你是一个简洁高效的助手，用中文回答。",
-    custom_endpoint: Optional[str] = None,
-    model_name: Optional[str] = None,
-) -> Optional[str]:
+    custom_endpoint: str | None = None,
+    model_name: str | None = None,
+) -> str | None:
     """
     调用本地轻量模型完成任务
 
@@ -215,7 +214,7 @@ def _clear_cache():
 # ──────────────────────────────────────────────
 
 
-async def classify_intent(text: str, **kwargs) -> Optional[str]:
+async def classify_intent(text: str, **kwargs) -> str | None:
     """
     用本地模型做初步意图分类，减少送往付费 API 的流量
 

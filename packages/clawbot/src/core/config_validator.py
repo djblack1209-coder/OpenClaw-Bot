@@ -3,21 +3,19 @@
 
 在 multi_main.py 中调用 validate_startup_config()，输出警告并在严重缺失时阻止启动。
 """
+import logging
 import os
 from pathlib import Path
-from typing import List, Tuple
-
-import logging
 
 logger = logging.getLogger(__name__)
 
 # ── 必须设置的环境变量 ──
-REQUIRED_ENV_VARS: List[Tuple[str, str]] = [
+REQUIRED_ENV_VARS: list[tuple[str, str]] = [
     ("ALLOWED_USER_IDS", "管理员 Telegram user ID — 用于权限控制"),
 ]
 
 # ── 至少需要一个的环境变量组 ──
-REQUIRED_ONE_OF: List[Tuple[List[str], str]] = [
+REQUIRED_ONE_OF: list[tuple[list[str], str]] = [
     # 至少一个 Bot Token (否则系统无法接收消息)
     (
         [
@@ -52,27 +50,27 @@ REQUIRED_ONE_OF: List[Tuple[List[str], str]] = [
 ]
 
 # ── 必须存在的文件 (相对于 packages/clawbot/) ──
-REQUIRED_FILES: List[Tuple[str, str]] = [
+REQUIRED_FILES: list[tuple[str, str]] = [
     ("config/.env", "环境变量配置文件 — 包含所有 API Key 和 Bot Token"),
     ("config/omega.yaml", "OMEGA v2.0 系统配置文件"),
 ]
 
 # ── 推荐设置的环境变量 (缺失只警告，不阻止启动) ──
-RECOMMENDED_ENV_VARS: List[Tuple[str, str]] = [
+RECOMMENDED_ENV_VARS: list[tuple[str, str]] = [
     ("ADMIN_CHAT_ID", "管理员 chat ID — 缺失则无法接收 Telegram 告警通知"),
     ("LANGFUSE_SECRET_KEY", "Langfuse 追踪 — 缺失则 LLM 调用无法追踪"),
 ]
 
 
-def validate_startup_config() -> Tuple[List[str], List[str]]:
+def validate_startup_config() -> tuple[list[str], list[str]]:
     """
     验证启动配置。
 
     Returns:
         (errors, warnings) — errors 非空则应阻止启动，warnings 仅输出日志。
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     # 1. 必须的环境变量
     for var, desc in REQUIRED_ENV_VARS:
@@ -109,7 +107,7 @@ def validate_startup_config() -> Tuple[List[str], List[str]]:
     return errors, warnings
 
 
-def log_validation_results(errors: List[str], warnings: List[str]) -> bool:
+def log_validation_results(errors: list[str], warnings: list[str]) -> bool:
     """
     输出验证结果到日志。
 

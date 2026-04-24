@@ -9,10 +9,10 @@ Bot — 回调处理 Mixin
 import logging
 
 from src.bot.globals import (
-    send_long_message,
-    get_trading_pipeline,
     execute_trade_via_pipeline,
     get_stock_quote,
+    get_trading_pipeline,
+    send_long_message,
 )
 from src.bot.input_processor import _build_smart_reply_keyboard
 

@@ -4,15 +4,15 @@ ClawBot 监控 — 结构化日志 + 任务可观测性
 StructuredLogger: 结构化 JSON 日志 + Prometheus 指标集成
 TaskObserver: 任务级质量评估、成本分析、检索评估
 """
-import time
 import json
 import logging
-from typing import Dict, Any, Optional
+import time
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
-from src.utils import now_et, scrub_secrets
 from src.monitoring.metrics import prom
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 class StructuredLogger:
     """结构化日志记录器 + Prometheus 指标集成（对标 LiteLLM）"""
 
-    def __init__(self, name: str, log_dir: Optional[str] = None):
+    def __init__(self, name: str, log_dir: str | None = None):
         self.name = name
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "start_time": time.time(),
             "total_messages": 0,
             "total_api_calls": 0,
@@ -57,7 +57,7 @@ class StructuredLogger:
         """加载持久化的指标"""
         if self._metrics_path.exists():
             try:
-                with open(self._metrics_path, 'r') as f:
+                with open(self._metrics_path) as f:
                     saved = json.load(f)
                 self._stats["total_messages"] = saved.get("total_messages", 0)
                 self._stats["total_api_calls"] = saved.get("total_api_calls", 0)
@@ -114,7 +114,7 @@ class StructuredLogger:
         input_tokens: int = 0,
         output_tokens: int = 0,
         success: bool = True,
-        error: Optional[str] = None,
+        error: str | None = None,
         provider: str = "",
         cost_usd: float = 0.0,
     ):
@@ -176,7 +176,7 @@ class StructuredLogger:
         })
         logger.error(f"[ERR] bot={bot_id} type={error_type} msg={error_msg}")
 
-    def _emit_jsonl(self, data: Dict[str, Any]):
+    def _emit_jsonl(self, data: dict[str, Any]):
         """写入结构化 JSONL 日志 + 自动轮转（对标 logrotate）"""
         data["ts"] = now_et().isoformat()
         try:
@@ -206,7 +206,7 @@ class StructuredLogger:
                 src.rename(dst)
         path.rename(path.with_suffix(".jsonl.1"))
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取统计信息"""
         uptime = time.time() - self._stats["start_time"]
         latencies = self._stats["api_latencies"]
@@ -240,14 +240,14 @@ class TaskObserver:
     跟踪每个任务的总成本、总延迟、输出质量评分、检索命中率。
     """
 
-    def __init__(self, log_dir: Optional[str] = None):
+    def __init__(self, log_dir: str | None = None):
         if log_dir:
             self._log_dir = Path(log_dir)
         else:
             self._log_dir = Path(__file__).parent.parent.parent / "logs"
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._task_log_path = self._log_dir / "task-observations.jsonl"
-        self._active_tasks: Dict[str, Dict[str, Any]] = {}
+        self._active_tasks: dict[str, dict[str, Any]] = {}
 
     def start_task(self, task_id: str, task_type: str, bot_id: str = "",
                    chat_id: int = 0, prompt_preview: str = ""):
@@ -361,12 +361,12 @@ class TaskObserver:
 
         return record
 
-    def get_summary(self, days: int = 7) -> Dict[str, Any]:
+    def get_summary(self, days: int = 7) -> dict[str, Any]:
         """获取近 N 天的任务可观测性摘要"""
         cutoff = now_et() - timedelta(days=days)
         cutoff_iso = cutoff.isoformat()
 
-        by_type: Dict[str, Dict[str, Any]] = {}
+        by_type: dict[str, dict[str, Any]] = {}
         total_tasks = 0
         total_cost = 0.0
         quality_scores = []
@@ -375,7 +375,7 @@ class TaskObserver:
             return {"total_tasks": 0, "message": "No task observations yet"}
 
         try:
-            with open(self._task_log_path, "r") as f:
+            with open(self._task_log_path) as f:
                 for line in f:
                     line = line.strip()
                     if not line:

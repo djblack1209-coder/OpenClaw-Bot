@@ -1,9 +1,10 @@
 """部署授权服务端 — Flask API"""
 
 import hmac
-import os
 import logging
-from flask import Flask, request, jsonify
+import os
+
+from flask import Flask, jsonify, request
 
 from .license_manager import LicenseManager
 

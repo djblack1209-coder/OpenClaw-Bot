@@ -8,21 +8,21 @@ import logging
 
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_generic
-from src.telegram_ux import with_typing
 from src.bot.globals import (
     get_stock_quote,
 )
+from src.broker_selector import ibkr
+from src.constants import TG_SAFE_LENGTH
+from src.invest_tools import portfolio
+from src.telegram_ux import with_typing
 
 # 幻影导入修复: 5 个符号从实际定义模块导入
 from src.trading._lifecycle import (
     get_auto_trader,
-    get_risk_manager,
     get_position_monitor,
+    get_risk_manager,
     get_system_status,
 )
-from src.invest_tools import portfolio
-from src.broker_selector import ibkr
-from src.constants import TG_SAFE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +137,9 @@ class TradingCommandsMixin:
 
             # 富卡片格式
             try:
-                from src.telegram_ux import format_portfolio_card
                 from telegram.constants import ParseMode
+
+                from src.telegram_ux import format_portfolio_card
 
                 positions = getattr(mon, "positions", {})
                 if positions:
@@ -243,8 +244,8 @@ class TradingCommandsMixin:
             symbols = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD"]
             progress_msg = await update.message.reply_text("开始回测 %d 个标的 (%s)..." % (len(symbols), period))
             try:
-                from src.backtester import run_backtest, format_multi_report
                 from src.backtest_reporter import BacktestReporter
+                from src.backtester import format_multi_report, run_backtest
                 from src.telegram_ux import TelegramProgressBar
 
                 bar = TelegramProgressBar(
@@ -294,8 +295,8 @@ class TradingCommandsMixin:
                 # ── PyBroker 引擎路径 (Numba加速+Bootstrap验证) ──
                 try:
                     from src.modules.investment.backtester_pybroker import (
-                        get_pybroker_backtester,
                         HAS_PYBROKER,
+                        get_pybroker_backtester,
                     )
 
                     if not HAS_PYBROKER:
@@ -350,8 +351,8 @@ class TradingCommandsMixin:
             else:
                 # ── 自研引擎路径（原有逻辑） ──
                 try:
-                    from src.backtester import run_backtest
                     from src.backtest_reporter import BacktestReporter
+                    from src.backtester import run_backtest
 
                     report = await asyncio.to_thread(run_backtest, symbol, period=period)
                     result_text = report.format()
@@ -419,14 +420,14 @@ class TradingCommandsMixin:
 
         try:
             from src.backtester import (
+                calc_enhanced_metrics,
+                format_monte_carlo,
+                format_optimization_result,
+                format_walk_forward,
                 run_backtest,
                 run_monte_carlo,
-                format_monte_carlo,
                 run_parameter_optimization,
-                format_optimization_result,
                 run_walk_forward,
-                format_walk_forward,
-                calc_enhanced_metrics,
             )
             from src.message_sender import send_long_message
 
@@ -560,7 +561,7 @@ class TradingCommandsMixin:
     @with_typing
     async def cmd_rebalance(self, update, context):
         """/rebalance [set <preset>|status|run]"""
-        from src.rebalancer import rebalancer, PRESET_ALLOCATIONS
+        from src.rebalancer import PRESET_ALLOCATIONS, rebalancer
 
         args = context.args or []
         subcmd = args[0].lower() if args else "analyze"

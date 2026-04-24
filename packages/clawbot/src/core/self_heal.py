@@ -22,9 +22,9 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Coroutine, Dict, List, Optional
 
 from src.http_client import ResilientHTTPClient
 
@@ -33,11 +33,11 @@ _http = ResilientHTTPClient(timeout=15.0, name="self_heal")
 
 try:
     from tenacity import (
+        RetryError,
         retry,
+        retry_if_exception_type,
         stop_after_attempt,
         wait_exponential,
-        retry_if_exception_type,
-        RetryError,
     )
 
     HAS_TENACITY = True
@@ -72,12 +72,12 @@ class HealResult:
     healed: bool = False
     solution_used: str = ""
     error_category: ErrorCategory = ErrorCategory.UNKNOWN
-    attempts: List[Dict] = field(default_factory=list)
+    attempts: list[dict] = field(default_factory=list)
     elapsed_seconds: float = 0.0
 
 
 # 已知解决方案
-KNOWN_SOLUTIONS: Dict[str, Dict] = {
+KNOWN_SOLUTIONS: dict[str, dict] = {
     "ConnectionRefusedError": {
         "category": ErrorCategory.NETWORK,
         "solution": "服务未启动，检查端口并重启",
@@ -169,13 +169,13 @@ class SelfHealEngine:
     CIRCUIT_BREAK_COOLDOWN = 300  # 5 分钟冷却
 
     def __init__(self):
-        self._solution_cache: Dict[str, str] = {}
+        self._solution_cache: dict[str, str] = {}
         self._max_solution_cache = 500  # 防止无限增长
-        self._heal_history: List[Dict] = []
+        self._heal_history: list[dict] = []
         self._max_history = 200
 
         # pybreaker 熔断器池：每种错误签名一个独立的 CircuitBreaker
-        self._breakers: Dict[str, "pybreaker.CircuitBreaker"] = {}
+        self._breakers: dict[str, pybreaker.CircuitBreaker] = {}
 
         logger.info("SelfHealEngine 初始化完成（v3.0 — pybreaker + tenacity）")
 
@@ -232,8 +232,8 @@ class SelfHealEngine:
     async def heal(
         self,
         error: Exception,
-        context: Dict,
-        retry_callable: Optional[Callable[..., Coroutine]] = None,
+        context: dict,
+        retry_callable: Callable[..., Coroutine] | None = None,
     ) -> HealResult:
         """主入口 — 尝试自愈
 
@@ -364,9 +364,9 @@ class SelfHealEngine:
 
     async def _execute_known_solution(
         self,
-        solution: Dict,
-        context: Dict,
-        retry_callable: Optional[Callable[..., Coroutine]] = None,
+        solution: dict,
+        context: dict,
+        retry_callable: Callable[..., Coroutine] | None = None,
     ) -> bool:
         """执行已知解决方案 — v2.0: 真正重试失败操作"""
         action = solution.get("action", "")
@@ -421,7 +421,7 @@ class SelfHealEngine:
                         await asyncio.wait_for(retry_callable(), timeout=60)
                         logger.info("[自愈] 延长超时重试成功")
                         return True
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("[自愈] 延长超时后仍然超时")
                         return False
                     except Exception as e:
@@ -452,7 +452,7 @@ class SelfHealEngine:
             logger.warning("[自愈] 执行方案失败: %s", e)
         return False
 
-    async def _search_local_solutions(self, error_msg: str) -> Optional[str]:
+    async def _search_local_solutions(self, error_msg: str) -> str | None:
         """Step 3: 搜索本地记忆库"""
         # 检查缓存
         cache_key = error_msg[:100]
@@ -479,7 +479,7 @@ class SelfHealEngine:
             logger.debug("本地搜索失败: %s", e)
         return None
 
-    async def _search_web_solutions(self, error_msg: str) -> Optional[str]:
+    async def _search_web_solutions(self, error_msg: str) -> str | None:
         """Step 4: Web搜索 — Jina Reader (免费) 优先, Tavily 备选"""
         # 优先用 Jina Search（零成本）
         try:
@@ -522,8 +522,8 @@ class SelfHealEngine:
     async def _apply_solution(
         self,
         solution: str,
-        context: Dict,
-        retry_callable: Optional[Callable[..., Coroutine]] = None,
+        context: dict,
+        retry_callable: Callable[..., Coroutine] | None = None,
     ) -> bool:
         """尝试应用解决方案 — v2.0: 真实应用逻辑
 
@@ -580,8 +580,8 @@ class SelfHealEngine:
     async def _try_alternatives(
         self,
         error_type: str,
-        context: Dict,
-        retry_callable: Optional[Callable[..., Coroutine]] = None,
+        context: dict,
+        retry_callable: Callable[..., Coroutine] | None = None,
     ) -> bool:
         """Step 5: 尝试替代方案 — v2.0: 真实替换逻辑"""
         logger.info("[自愈] 尝试替代方案: %s", error_type)
@@ -633,10 +633,10 @@ class SelfHealEngine:
             for k in keys[: len(keys) // 2]:
                 del self._solution_cache[k]
 
-    async def _notify_human(self, error: Exception, attempts: List[Dict]) -> None:
+    async def _notify_human(self, error: Exception, attempts: list[dict]) -> None:
         """Step 6: 通知用户"""
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
 
             bus = get_event_bus()
             await bus.publish(
@@ -689,7 +689,7 @@ class SelfHealEngine:
         except Exception as e:
             logger.debug("发布自愈成功事件到 EventBus 失败: %s", e)
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """获取自愈统计"""
         total = len(self._heal_history)
         healed = sum(1 for h in self._heal_history if h.get("healed"))
@@ -702,7 +702,7 @@ class SelfHealEngine:
         }
 
 
-_engine: Optional[SelfHealEngine] = None
+_engine: SelfHealEngine | None = None
 
 
 def get_self_heal_engine() -> SelfHealEngine:

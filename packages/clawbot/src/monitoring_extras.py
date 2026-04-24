@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Optional, Dict, Any
+from typing import Any
 
 from src.http_client import ResilientHTTPClient
 
@@ -28,7 +28,7 @@ async def check_g4f_health(
     host: str = "127.0.0.1",
     port: int = 18891,
     timeout: float = 5.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """检查 g4f 服务是否存活
 
     返回: {"alive": bool, "latency_ms": float, "error": str|None}
@@ -59,8 +59,8 @@ class TelegramAlertNotifier:
         self.bot_token = bot_token
         self.chat_id = chat_id
         self._throttle = throttle_seconds
-        self._last_sent: Dict[str, float] = {}
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._last_sent: dict[str, float] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def sync_callback(self, rule_name: str, message: str):
         """同步回调 — 适配 AlertManager.on_alert() 的签名"""
@@ -119,9 +119,9 @@ class TelegramAlertNotifier:
 
 # ============ 系统资源监控 ============
 
-def get_system_resources() -> Dict[str, Any]:
+def get_system_resources() -> dict[str, Any]:
     """获取系统资源使用情况 — 不依赖 psutil，降级到系统命令"""
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
 
     # CPU 负载
     try:

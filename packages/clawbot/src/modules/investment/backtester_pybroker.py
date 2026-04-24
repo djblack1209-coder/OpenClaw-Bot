@@ -19,7 +19,7 @@ OpenClaw — PyBroker 回测引擎集成
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -73,15 +73,15 @@ class PyBrokerResult:
     benchmark_return: float = 0.0
     alpha: float = 0.0
     # PyBroker 特有指标
-    bootstrap_p_value: Optional[float] = None  # Bootstrap 统计验证 p-value
+    bootstrap_p_value: float | None = None  # Bootstrap 统计验证 p-value
     profit_factor: float = 0.0
     avg_pnl: float = 0.0
     initial_capital: float = 10000.0
     final_equity: float = 0.0
-    details: Dict = field(default_factory=dict)
+    details: dict = field(default_factory=dict)
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """转为字典（API 返回用）"""
         d = {
             "symbol": self.symbol,
@@ -392,7 +392,7 @@ class PyBrokerBacktester:
         self,
         symbol: str,
         period: str = "1y",
-    ) -> List[PyBrokerResult]:
+    ) -> list[PyBrokerResult]:
         """运行所有 PyBroker 策略并对比"""
         results = []
         for name in PYBROKER_STRATEGIES:
@@ -421,10 +421,10 @@ class PyBrokerBacktester:
 
 # ── 全局单例 ──────────────────────────────────────────
 
-_instance: Optional[PyBrokerBacktester] = None
+_instance: PyBrokerBacktester | None = None
 
 
-def get_pybroker_backtester(initial_capital: float = 10000.0) -> Optional[PyBrokerBacktester]:
+def get_pybroker_backtester(initial_capital: float = 10000.0) -> PyBrokerBacktester | None:
     """获取 PyBroker 回测器全局单例（不可用时返回 None）"""
     global _instance
     if not HAS_PYBROKER:

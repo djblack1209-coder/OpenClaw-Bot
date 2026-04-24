@@ -20,11 +20,13 @@ v1.1 变更 (2026-03-23):
 import asyncio
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime
-from typing import Dict, List, Optional, Callable, Any
+from typing import Any
 
 from src.models import TradeProposal
-from src.utils import now_et as _now_et, env_bool, env_int
+from src.utils import env_bool, env_int
+from src.utils import now_et as _now_et
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +36,11 @@ SLEEP_OFF_HOURS = 600  # 非交易时段（盘前/盘后）等待间隔（10分�
 
 
 # 从拆分后的模块导入
-from src.trading.market_calendar import is_market_holiday
-from src.trading_pipeline import TradingPipeline, TraderState
-from src.perf_metrics import perf_timer
 from src.auto_trader_filters import AutoTraderFiltersMixin
 from src.auto_trader_review import AutoTraderReviewMixin
+from src.perf_metrics import perf_timer
+from src.trading.market_calendar import is_market_holiday
+from src.trading_pipeline import TraderState, TradingPipeline
 
 
 class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
@@ -49,18 +51,18 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
     def __init__(
         self,
-        pipeline: Optional[TradingPipeline] = None,
-        scan_func: Optional[Callable] = None,
-        analyze_func: Optional[Callable] = None,
-        get_quote_func: Optional[Callable] = None,
-        notify_func: Optional[Callable] = None,
+        pipeline: TradingPipeline | None = None,
+        scan_func: Callable | None = None,
+        analyze_func: Callable | None = None,
+        get_quote_func: Callable | None = None,
+        notify_func: Callable | None = None,
         risk_manager: Any = None,
         scan_interval_minutes: int = 30,
         max_trades_per_cycle: int = 2,
         max_trades_per_day: int = 6,
         max_candidates_for_vote: int = 5,
         auto_mode: bool = False,
-        ai_team_func: Optional[Callable] = None,
+        ai_team_func: Callable | None = None,
     ):
         self.pipeline = pipeline
         self.scan_market = scan_func
@@ -77,13 +79,13 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
         self.state = TraderState.IDLE
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._cycle_count = 0
         self._today_trades = 0  # 今日已执行交易数
         self._today_date = ""  # 用于日切重置
-        self._last_scan: Optional[datetime] = None
-        self._scan_results: List[Dict] = []
-        self._proposals: List[TradeProposal] = []
+        self._last_scan: datetime | None = None
+        self._scan_results: list[dict] = []
+        self._proposals: list[TradeProposal] = []
         self._cycle_lock = asyncio.Lock()  # 防止并发循环执行
         self._no_trade_cycles = 0
         self._forced_trades_today = 0
@@ -338,7 +340,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
     # ============ 交易循环 ============
 
-    async def run_cycle_once(self) -> Dict:
+    async def run_cycle_once(self) -> dict:
         """手动触发一次交易循环（带并发锁）"""
         if self._cycle_lock.locked():
             return {"error": "交易循环正在执行中，请稍后再试"}
@@ -346,7 +348,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             return await self._run_cycle()
 
     @perf_timer("trader.run_cycle")
-    async def _run_cycle(self) -> Dict:
+    async def _run_cycle(self) -> dict:
         """执行一次完整的交易循环 — 4阶段全程Telegram播报"""
         cycle_result = {
             "cycle": self._cycle_count,
@@ -701,7 +703,8 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
                         # 发射结构化交易事件 — 供 ProactiveEngine 延迟跟进
                         try:
-                            from src.core.event_bus import get_event_bus, EventType as _EvtType
+                            from src.core.event_bus import EventType as _EvtType
+                            from src.core.event_bus import get_event_bus
 
                             _trade_event_data = {
                                 "symbol": proposal.symbol,
@@ -831,7 +834,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
     # ============ 状态 ============
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         return {
             "state": self.state.value,
             "running": self._running,
@@ -877,7 +880,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self.auto_mode = enabled
         logger.info("[AutoTrader] 自动模式: %s", "开启" if enabled else "关闭")
 
-    async def confirm_proposal(self, index: int = 0) -> Optional[Dict]:
+    async def confirm_proposal(self, index: int = 0) -> dict | None:
         """确认并执行待确认的提案"""
         if not self._proposals:
             return None
@@ -904,4 +907,4 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
 
 # ── 向后兼容导出 (v6.0 拆分) ──
-from src.trading_pipeline import TradingPipeline  # noqa: F401
+from src.trading_pipeline import TradingPipeline

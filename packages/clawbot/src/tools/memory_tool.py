@@ -2,9 +2,10 @@
 ClawBot - 长期记忆工具
 """
 import json
-from typing import Dict, Any, Optional
-from pathlib import Path
 import logging
+from pathlib import Path
+from typing import Any
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class MemoryTool:
     """长期记忆"""
 
-    def __init__(self, storage_path: Optional[str] = None):
+    def __init__(self, storage_path: str | None = None):
         if storage_path:
             self.storage_path = Path(storage_path)
         else:
@@ -21,13 +22,13 @@ class MemoryTool:
             from src.bot.config import DATA_DIR
             self.storage_path = Path(DATA_DIR) / "memory.json"
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self.memories: Dict[str, Any] = {}
+        self.memories: dict[str, Any] = {}
         self._load()
 
     def _load(self):
         if self.storage_path.exists():
             try:
-                with open(self.storage_path, 'r', encoding='utf-8') as f:
+                with open(self.storage_path, encoding='utf-8') as f:
                     self.memories = json.load(f)
             except (json.JSONDecodeError, OSError) as e:  # noqa: F841
                 self.memories = {}
@@ -36,14 +37,14 @@ class MemoryTool:
         with open(self.storage_path, 'w', encoding='utf-8') as f:
             json.dump(self.memories, f, ensure_ascii=False, indent=2)
 
-    def remember(self, key: str, value: Any, category: str = "general") -> Dict[str, Any]:
+    def remember(self, key: str, value: Any, category: str = "general") -> dict[str, Any]:
         if category not in self.memories:
             self.memories[category] = {}
         self.memories[category][key] = {"value": value, "time": now_et().isoformat()}
         self._save()
         return {"success": True, "key": key, "category": category}
 
-    def recall(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
+    def recall(self, key: str, category: str | None = None) -> dict[str, Any]:
         if category:
             if category in self.memories and key in self.memories[category]:
                 return {"success": True, "key": key, "value": self.memories[category][key]["value"]}
@@ -53,7 +54,7 @@ class MemoryTool:
                     return {"success": True, "key": key, "value": items[key]["value"], "category": cat}
         return {"success": False, "error": f"未找到: {key}"}
 
-    def forget(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
+    def forget(self, key: str, category: str | None = None) -> dict[str, Any]:
         if category and category in self.memories and key in self.memories[category]:
             del self.memories[category][key]
             self._save()
@@ -65,7 +66,7 @@ class MemoryTool:
                 return {"success": True}
         return {"success": False, "error": f"未找到: {key}"}
 
-    def list_memories(self, category: Optional[str] = None) -> Dict[str, Any]:
+    def list_memories(self, category: str | None = None) -> dict[str, Any]:
         if category:
             items = self.memories.get(category, {})
             return {"success": True, "category": category, "items": list(items.keys()), "count": len(items)}
@@ -77,7 +78,7 @@ class MemoryTool:
                 total += len(items)
             return {"success": True, "categories": result, "total": total}
 
-    def search(self, query: str) -> Dict[str, Any]:
+    def search(self, query: str) -> dict[str, Any]:
         results = []
         query_lower = query.lower()
         for cat, items in self.memories.items():

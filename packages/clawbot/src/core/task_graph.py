@@ -9,14 +9,15 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from src.utils import emit_flow_event as _emit_flow, scrub_secrets
-
+from src.utils import emit_flow_event as _emit_flow
+from src.utils import scrub_secrets
 
 # ── 节点状态 ──────────────────────────────────────────
 
@@ -49,15 +50,15 @@ class TaskNode:
     id: str                                     # 唯一ID
     name: str                                   # 人类可读名称（中文）
     executor_type: ExecutorType                 # 执行器类型
-    execute_fn: Optional[Callable] = None       # 实际执行函数
-    params: Dict[str, Any] = field(default_factory=dict)
-    dependencies: List[str] = field(default_factory=list)  # 依赖的节点ID列表
+    execute_fn: Callable | None = None       # 实际执行函数
+    params: dict[str, Any] = field(default_factory=dict)
+    dependencies: list[str] = field(default_factory=list)  # 依赖的节点ID列表
     retry_count: int = 3                        # 最大重试次数
     timeout_seconds: int = 120                  # 超时时间
-    fallback_node_id: Optional[str] = None      # 失败时的备选节点
+    fallback_node_id: str | None = None      # 失败时的备选节点
     status: NodeStatus = NodeStatus.PENDING
     result: Any = None                          # 执行结果
-    error: Optional[str] = None                 # 错误信息
+    error: str | None = None                 # 错误信息
     started_at: float = 0.0
     finished_at: float = 0.0
     attempt: int = 0                            # 当前重试次数
@@ -70,7 +71,7 @@ class TaskNode:
             return time.time() - self.started_at
         return 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
@@ -90,7 +91,7 @@ class TaskGraph:
     """有向无环图，管理一组有依赖关系的任务"""
     graph_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = ""                              # 任务图名称
-    nodes: Dict[str, TaskNode] = field(default_factory=dict)
+    nodes: dict[str, TaskNode] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
     def add_node(self, node: TaskNode) -> None:
@@ -108,7 +109,7 @@ class TaskGraph:
         if depends_on not in self.nodes[node_id].dependencies:
             self.nodes[node_id].dependencies.append(depends_on)
 
-    def get_ready_nodes(self) -> List[TaskNode]:
+    def get_ready_nodes(self) -> list[TaskNode]:
         """获取所有依赖已满足、可以执行的节点"""
         ready = []
         for node in self.nodes.values():
@@ -148,7 +149,7 @@ class TaskGraph:
             for n in self.nodes.values()
         )
 
-    def get_progress(self) -> Dict:
+    def get_progress(self) -> dict:
         """获取执行进度"""
         total = len(self.nodes)
         completed = sum(1 for n in self.nodes.values()
@@ -169,7 +170,7 @@ class TaskGraph:
             "nodes": [n.to_dict() for n in self.nodes.values()],
         }
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return self.get_progress()
 
 
@@ -192,8 +193,8 @@ class TaskGraphExecutor:
 
     def __init__(
         self,
-        on_progress: Optional[Callable[[Dict], Coroutine]] = None,
-        on_node_complete: Optional[Callable[[TaskNode], Coroutine]] = None,
+        on_progress: Callable[[dict], Coroutine] | None = None,
+        on_node_complete: Callable[[TaskNode], Coroutine] | None = None,
     ):
         self._on_progress = on_progress
         self._on_node_complete = on_node_complete
@@ -277,7 +278,7 @@ class TaskGraphExecutor:
                         logger.debug("Silenced exception", exc_info=True)
                 return
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 node.error = f"超时 ({node.timeout_seconds}s)"
                 logger.warning(f"节点超时: {node.name} (尝试 {attempt}/{node.retry_count})")
                 _emit_flow(node.id, "hub", "error", f"超时: {node.name}",
@@ -327,19 +328,19 @@ class TaskGraphBuilder:
 
     def __init__(self, name: str):
         self._name = name
-        self._nodes: List[Dict] = []
+        self._nodes: list[dict] = []
 
     def add(
         self,
         node_id: str,
         name: str,
         executor_type: ExecutorType,
-        execute_fn: Optional[Callable] = None,
-        params: Optional[Dict] = None,
-        after: Optional[List[str]] = None,
+        execute_fn: Callable | None = None,
+        params: dict | None = None,
+        after: list[str] | None = None,
         timeout: int = 120,
         retry: int = 3,
-        fallback: Optional[str] = None,
+        fallback: str | None = None,
     ) -> "TaskGraphBuilder":
         """添加节点"""
         self._nodes.append({

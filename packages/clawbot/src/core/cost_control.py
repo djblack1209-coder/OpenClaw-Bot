@@ -10,7 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Dict, Optional
 
 from src.utils import now_et, scrub_secrets
 
@@ -22,7 +21,7 @@ COST_DIR.mkdir(parents=True, exist_ok=True)
 DAILY_LOG = COST_DIR / "daily_costs.jsonl"
 
 # 模型定价（每百万 token，美元）
-MODEL_COSTS: Dict[str, Dict[str, float]] = {
+MODEL_COSTS: dict[str, dict[str, float]] = {
     # 高端
     "claude-opus-4": {"input": 15.0, "output": 75.0},
     "gpt-4o": {"input": 2.5, "output": 10.0},
@@ -73,8 +72,8 @@ class CostController:
         self._today_spend: float = 0.0
         self._today_date: str = now_et().strftime("%Y-%m-%d")
         self._records: list = []
-        self._by_model: Dict[str, float] = defaultdict(float)
-        self._by_task: Dict[str, float] = defaultdict(float)
+        self._by_model: dict[str, float] = defaultdict(float)
+        self._by_task: dict[str, float] = defaultdict(float)
         self._load_today()
         logger.info(f"CostController 初始化: 日预算 ${daily_budget_usd:.2f}")
 
@@ -84,7 +83,7 @@ class CostController:
         if not DAILY_LOG.exists():
             return
         try:
-            with open(DAILY_LOG, "r") as f:
+            with open(DAILY_LOG) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -192,15 +191,15 @@ class CostController:
             return "qwen3-235b"
         return recommended
 
-    def get_weekly_report(self) -> Dict:
+    def get_weekly_report(self) -> dict:
         """周报"""
         week_start = (now_et() - timedelta(days=7)).strftime("%Y-%m-%d")
         weekly_cost = 0.0
-        daily_breakdown: Dict[str, float] = defaultdict(float)
+        daily_breakdown: dict[str, float] = defaultdict(float)
 
         if DAILY_LOG.exists():
             try:
-                with open(DAILY_LOG, "r") as f:
+                with open(DAILY_LOG) as f:
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -223,7 +222,7 @@ class CostController:
             "daily_breakdown": dict(daily_breakdown),
         }
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         self._check_date_rollover()
         return {
             "today_spend": round(self._today_spend, 4),
@@ -236,7 +235,7 @@ class CostController:
         }
 
 
-_controller: Optional[CostController] = None
+_controller: CostController | None = None
 
 
 def get_cost_controller() -> CostController:

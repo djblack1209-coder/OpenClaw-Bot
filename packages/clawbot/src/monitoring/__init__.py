@@ -6,27 +6,26 @@ ClawBot 监控包 — 结构化日志 + 健康检查 + 自动恢复 + Prometheus
 """
 
 # === Prometheus 指标 ===
-from src.monitoring.metrics import (
-    PrometheusMetrics,
-    prom,
-    start_metrics_server,
-    _start_time,
-)
-
 # === 告警规则引擎 ===
-from src.monitoring.alerts import AlertRule, AlertManager
+from src.monitoring.alerts import AlertManager, AlertRule
 
-# === 结构化日志 + 任务可观测性 ===
-from src.monitoring.logger import StructuredLogger, TaskObserver, task_observer
-
-# === 健康检查 + 自动恢复 ===
-from src.monitoring.health import HealthChecker, AutoRecovery
+# === 异常检测 ===
+from src.monitoring.anomaly_detector import AnomalyDetector, anomaly_detector
 
 # === 成本归因分析 ===
 from src.monitoring.cost_analyzer import CostAnalyzer, cost_analyzer
 
-# === 异常检测 ===
-from src.monitoring.anomaly_detector import AnomalyDetector, anomaly_detector
+# === 健康检查 + 自动恢复 ===
+from src.monitoring.health import AutoRecovery, HealthChecker
+
+# === 结构化日志 + 任务可观测性 ===
+from src.monitoring.logger import StructuredLogger, TaskObserver, task_observer
+from src.monitoring.metrics import (
+    PrometheusMetrics,
+    _start_time,
+    prom,
+    start_metrics_server,
+)
 
 # === 监控增强 (代理到 monitoring_extras) ===
 

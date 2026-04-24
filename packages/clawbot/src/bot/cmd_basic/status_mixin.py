@@ -5,15 +5,20 @@ import asyncio
 import logging
 import os
 
+from src.bot.auth import requires_auth
 from src.bot.globals import (
-    history_store, metrics, health_checker,
-    get_total_balance, SILICONFLOW_KEYS, LOW_BALANCE_THRESHOLD,
-    send_long_message, execution_hub,
+    LOW_BALANCE_THRESHOLD,
+    SILICONFLOW_KEYS,
+    execution_hub,
+    get_total_balance,
+    health_checker,
+    history_store,
+    metrics,
+    send_long_message,
 )
+from src.http_client import ResilientHTTPClient
 from src.litellm_router import free_pool
 from src.telegram_ux import with_typing
-from src.bot.auth import requires_auth
-from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
 

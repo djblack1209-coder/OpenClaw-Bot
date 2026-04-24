@@ -7,9 +7,10 @@ import time
 import uuid
 from collections import deque
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import Ping, SystemStatus, WSMessageType
@@ -36,8 +37,8 @@ def ping():
 def perf_metrics():
     """获取性能度量指标 — 系统资源 + API 延迟统计（同时返回前端期望的扁平字段）"""
     try:
-        from src.perf_metrics import get_tracker
         from src.monitoring_extras import get_system_resources
+        from src.perf_metrics import get_tracker
 
         tracker = get_tracker()
         all_stats = tracker.get_all_stats()
@@ -58,7 +59,8 @@ def perf_metrics():
         today_messages = 0
         active_users = 0
         try:
-            from src.bot.globals import metrics as _bot_metrics, bot_registry as _bots
+            from src.bot.globals import bot_registry as _bots
+            from src.bot.globals import metrics as _bot_metrics
             _stats = _bot_metrics.get_stats()
             today_messages = _stats.get("today_messages", 0)
             active_users = len(_bots) if _bots else 0
@@ -127,7 +129,7 @@ async def daily_brief():
     """
     try:
         now = datetime.now()
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "date": now.strftime("%Y年%m月%d日"),
             "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()],
             "system_status": "healthy",
@@ -218,7 +220,7 @@ def push_notification(
     category: str = "system",
     level: str = "info",
     action_url: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """推送一条通知（供其他模块调用）
 
     category: system / trading / xianyu / social / security / ai
@@ -251,7 +253,7 @@ def push_notification(
 @router.get("/system/notifications")
 def list_notifications(
     limit: int = Query(default=50, ge=1, le=200),
-    category: Optional[str] = Query(default=None, description="按类别过滤: system/trading/xianyu/social/security/ai"),
+    category: str | None = Query(default=None, description="按类别过滤: system/trading/xianyu/social/security/ai"),
     unread_only: bool = Query(default=False, description="只返回未读通知"),
 ):
     """获取通知列表"""
@@ -309,7 +311,7 @@ def mark_all_notifications_read():
 # ============ 服务管理 ============
 
 # 服务定义表（与前端 Bots 页面的自动化脚本卡片对应）
-_SERVICE_REGISTRY: List[Dict[str, Any]] = [
+_SERVICE_REGISTRY: list[dict[str, Any]] = [
     {
         "id": "clawbot-agent",
         "name": "AI 助手后端",
@@ -356,7 +358,7 @@ _SERVICE_REGISTRY: List[Dict[str, Any]] = [
 ]
 
 
-def _check_process_alive(keyword: str, port: Optional[int] = None) -> bool:
+def _check_process_alive(keyword: str, port: int | None = None) -> bool:
     """检测进程/服务是否存活 — 优先 pgrep，失败则 TCP 端口探活（兼容 Docker 容器）"""
     try:
         result = subprocess.run(
@@ -380,7 +382,7 @@ def _check_process_alive(keyword: str, port: Optional[int] = None) -> bool:
     return False
 
 
-def _get_process_uptime_seconds(keyword: str) -> Optional[int]:
+def _get_process_uptime_seconds(keyword: str) -> int | None:
     """获取匹配进程的运行时长（秒），返回 None 表示不可用"""
     try:
         result = subprocess.run(
@@ -470,7 +472,7 @@ _CLAWBOT_PKG_DIR = os.path.abspath(
 )
 
 # 服务 ID → 启动命令映射
-_SERVICE_START_COMMANDS: Dict[str, Optional[List[str]]] = {
+_SERVICE_START_COMMANDS: dict[str, list[str] | None] = {
     "clawbot-agent": ["python", "-m", "src.multi_main"],
     "xianyu": ["python", "-m", "src.xianyu.xianyu_main"],
     "gateway": None,   # 需要手动启动
@@ -479,7 +481,7 @@ _SERVICE_START_COMMANDS: Dict[str, Optional[List[str]]] = {
 }
 
 
-def _lookup_service(service_id: str) -> Dict[str, Any]:
+def _lookup_service(service_id: str) -> dict[str, Any]:
     """按 id 查找服务定义，找不到则 404"""
     svc = next((s for s in _SERVICE_REGISTRY if s["id"] == service_id), None)
     if not svc:
@@ -640,7 +642,7 @@ def git_log():
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "git log 执行失败")
 
-        commits: List[Dict[str, str]] = []
+        commits: list[dict[str, str]] = []
         for line in result.stdout.strip().splitlines():
             parts = line.split("|", 3)
             if len(parts) == 4:
@@ -670,7 +672,7 @@ def health_summary():
                 "resolved_count": 0,
             }
 
-        with open(health_path, "r", encoding="utf-8") as f:
+        with open(health_path, encoding="utf-8") as f:
             content = f.read()
 
         # 分割「活跃问题」和「已解决」两个区域

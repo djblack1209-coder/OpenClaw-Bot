@@ -6,7 +6,6 @@ Core — 投资/交易领域执行器 Mixin
 """
 
 import logging
-from typing import Dict
 
 from config.prompts import INVEST_DIRECTOR_DECISION_PROMPT
 from src.constants import FAMILY_DEEPSEEK
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class InvestExecutorMixin:
     """投资/交易领域执行器"""
 
-    async def _exec_investment_research(self, params: Dict) -> Dict:
+    async def _exec_investment_research(self, params: dict) -> dict:
         """投资研究 — 优先用 Pydantic AI 引擎，降级到原有 team"""
         symbol = params.get("symbol", "")
         if not symbol:
@@ -57,7 +56,7 @@ class InvestExecutorMixin:
 
         return {"source": "unavailable", "note": "投资分析模块未就绪"}
 
-    async def _exec_ta_analysis(self, params: Dict) -> Dict:
+    async def _exec_ta_analysis(self, params: dict) -> dict:
         """技术分析 — 复用现有 ta_engine"""
         try:
             from src.ta_engine import get_full_analysis
@@ -70,7 +69,7 @@ class InvestExecutorMixin:
             logger.warning(f"技术分析失败: {scrub_secrets(str(e))}")
         return {"source": "ta_unavailable", "note": "技术分析暂不可用"}
 
-    async def _exec_quant_analysis(self, params: Dict) -> Dict:
+    async def _exec_quant_analysis(self, params: dict) -> dict:
         """量化分析 — 调用投资团队的量化工程师"""
         try:
             from src.modules.investment.team import get_investment_team
@@ -82,7 +81,7 @@ class InvestExecutorMixin:
             pass
         return {"source": "quant_unavailable", "note": "量化分析模块未就绪"}
 
-    async def _exec_risk_check(self, params: Dict) -> Dict:
+    async def _exec_risk_check(self, params: dict) -> dict:
         """风控审核 — 调用风控官"""
         try:
             from src.trading_system import get_risk_manager
@@ -125,7 +124,7 @@ class InvestExecutorMixin:
         # FAIL-CLOSED: 风控模块不可用时，拒绝交易而非默认放行
         return {"source": "risk_default", "approved": False, "note": "风控模块未就绪，安全起见默认拒绝（fail-closed）"}
 
-    async def _exec_director_decision(self, params: Dict) -> Dict:
+    async def _exec_director_decision(self, params: dict) -> dict:
         """总监决策 — 汇总研究/TA/量化/风控结果做出最终决策"""
         symbol = params.get("symbol", "")
         try:
@@ -166,7 +165,7 @@ class InvestExecutorMixin:
             "reasoning": "决策模块异常，默认持有",
         }
 
-    async def _exec_portfolio_query(self, params: Dict) -> Dict:
+    async def _exec_portfolio_query(self, params: dict) -> dict:
         """持仓查询 — 先检查连接状态，避免超时等待"""
         try:
             from src.broker_selector import ibkr

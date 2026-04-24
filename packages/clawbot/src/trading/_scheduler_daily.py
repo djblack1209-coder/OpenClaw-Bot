@@ -7,9 +7,9 @@ import json
 import logging
 from datetime import time, timedelta
 
-from src.notify_style import format_notice, kv, bullet
-from src.utils import env_bool, env_int, env_float
+from src.notify_style import bullet, format_notice, kv
 from src.trading._helpers import _parse_datetime
+from src.utils import env_bool, env_float, env_int
 
 logger = logging.getLogger(__name__)
 
@@ -348,8 +348,8 @@ async def _setup_scheduler():
     """配置并启动所有定时任务"""
     import src.trading_system as _ts
     from src.trading._scheduler_tasks import (
-        _reconcile_ibkr_entry_fills,
         _cancel_stale_pending_entries,
+        _reconcile_ibkr_entry_fills,
         _submit_pending_reentry_queue,
     )
 

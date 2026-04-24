@@ -9,9 +9,9 @@
 - SQLite 持久化反馈记录
 """
 import logging
-import time
 import threading
-from typing import Optional
+import time
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def build_feedback_keyboard(bot_id: str, model_used: str, chat_id: int) -> Inlin
     ]])
 
 
-def parse_feedback_data(data: str) -> Optional[dict]:
+def parse_feedback_data(data: str) -> dict | None:
     """解析 callback_data"""
     try:
         parts = data.split("|")
@@ -56,8 +56,8 @@ class FeedbackStore:
     """SQLite 反馈存储 — 轻量，不引入额外依赖"""
 
     def __init__(self, db_path: str = ""):
-        import sqlite3
         import atexit
+        import sqlite3
         # 使用相对于项目根目录的规范路径，避免不同工作目录启动时路径错误
         if db_path:
             self.db_path = db_path
@@ -142,7 +142,7 @@ class FeedbackStore:
 
 
 # 全局实例
-_feedback_store: Optional[FeedbackStore] = None
+_feedback_store: FeedbackStore | None = None
 
 
 def get_feedback_store() -> FeedbackStore:

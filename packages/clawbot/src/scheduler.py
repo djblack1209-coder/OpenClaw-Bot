@@ -4,9 +4,11 @@ ClawBot - 定时任务调度器
 所有定时任务使用美东时间（America/New_York）
 """
 import asyncio
-from datetime import datetime, time, timedelta
-from typing import Callable, Dict, Any, Optional, List
 import logging
+from collections.abc import Callable
+from datetime import UTC, datetime, time, timedelta
+from typing import Any
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -25,8 +27,7 @@ def _now_et() -> datetime:
         return datetime.now(ET)
     except Exception as e:  # noqa: F841
         # Fallback: 返回带 UTC 时区的 datetime，避免 naive vs aware 比较异常
-        from datetime import timezone
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
 class Task:
@@ -36,8 +37,8 @@ class Task:
         self,
         name: str,
         func: Callable,
-        schedule_time: Optional[time] = None,
-        interval_minutes: Optional[int] = None,
+        schedule_time: time | None = None,
+        interval_minutes: int | None = None,
         enabled: bool = True
     ):
         self.name = name
@@ -45,8 +46,8 @@ class Task:
         self.schedule_time = schedule_time  # 每天固定时间执行（美东）
         self.interval_minutes = interval_minutes  # 间隔执行
         self.enabled = enabled
-        self.last_run: Optional[datetime] = None
-        self.next_run: Optional[datetime] = None
+        self.last_run: datetime | None = None
+        self.next_run: datetime | None = None
         self._calculate_next_run()
 
     def _calculate_next_run(self):
@@ -96,16 +97,16 @@ class Scheduler:
     """任务调度器"""
 
     def __init__(self):
-        self.tasks: Dict[str, Task] = {}
+        self.tasks: dict[str, Task] = {}
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     def add_task(
         self,
         name: str,
         func: Callable,
-        schedule_time: Optional[time] = None,
-        interval_minutes: Optional[int] = None,
+        schedule_time: time | None = None,
+        interval_minutes: int | None = None,
         enabled: bool = True
     ):
         """添加任务"""
@@ -175,7 +176,7 @@ class Scheduler:
             self._task.cancel()
         logger.info("调度器已停止")
 
-    def get_status(self) -> List[Dict[str, Any]]:
+    def get_status(self) -> list[dict[str, Any]]:
         """获取所有任务状态"""
         status = []
         for name, task in self.tasks.items():

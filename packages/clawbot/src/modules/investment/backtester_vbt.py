@@ -29,7 +29,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+
 from src.execution._utils import safe_float
 from src.utils import now_et, scrub_secrets
 
@@ -92,11 +92,11 @@ class BacktestResult:
     sortino_ratio: float = 0.0
     benchmark_return: float = 0.0
     alpha: float = 0.0
-    best_params: Dict = field(default_factory=dict)
-    details: Dict = field(default_factory=dict)
+    best_params: dict = field(default_factory=dict)
+    details: dict = field(default_factory=dict)
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
             "strategy": self.strategy,
@@ -149,7 +149,7 @@ class ComparisonResult:
     """多策略对比结果"""
     symbol: str
     period: str
-    results: List[BacktestResult] = field(default_factory=list)
+    results: list[BacktestResult] = field(default_factory=list)
     best_strategy: str = ""
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
@@ -170,7 +170,7 @@ class ComparisonResult:
         lines.append(f"\n🔬 最佳策略: *{self.best_strategy}*")
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
             "period": self.period,
@@ -221,7 +221,7 @@ def _extract_stats(
     strategy: str,
     period: str,
     benchmark_close=None,
-    best_params: Optional[Dict] = None,
+    best_params: dict | None = None,
 ) -> BacktestResult:
     """从 vectorbt Portfolio 提取统一统计指标"""
     try:
@@ -299,7 +299,7 @@ class VectorbtBacktester:
     def available(self) -> bool:
         return self._available
 
-    def _pf_kwargs(self) -> Dict:
+    def _pf_kwargs(self) -> dict:
         return {
             "init_cash": self.init_cash,
             "fees": self.fees,
@@ -523,7 +523,7 @@ class VectorbtBacktester:
 
         def _run():
             try:
-                from src.strategies.drl_strategy import StockTradingEnv, HAS_GYM, HAS_SB3
+                from src.strategies.drl_strategy import HAS_GYM, HAS_SB3, StockTradingEnv
             except ImportError:
                 return BacktestResult(symbol=symbol, strategy=strategy_name,
                                       period=period, details={"error": "drl_strategy 模块不可用"})
@@ -558,7 +558,7 @@ class VectorbtBacktester:
                                       period=period, details={"error": "数据不足以训练+测试"})
 
             try:
-                from stable_baselines3 import PPO, A2C
+                from stable_baselines3 import A2C, PPO
                 from stable_baselines3.common.vec_env import DummyVecEnv
 
                 # 训练
@@ -644,7 +644,7 @@ class VectorbtBacktester:
 
         def _run():
             try:
-                from src.strategies.factor_strategy import AlphaFactors, FactorScorer, FactorMLModel, HAS_LGB
+                from src.strategies.factor_strategy import HAS_LGB, AlphaFactors, FactorMLModel, FactorScorer
             except ImportError:
                 return BacktestResult(symbol=symbol, strategy=strategy_name,
                                       period=period, details={"error": "factor_strategy 模块不可用"})
@@ -762,7 +762,7 @@ class VectorbtBacktester:
         strategy: str = "ma_cross",
         returns_series=None,
         benchmark_symbol: str = "SPY",
-    ) -> Optional[str]:
+    ) -> str | None:
         """生成 QuantStats HTML 完整报告（Tearsheet）
 
         支持两种模式:
@@ -912,7 +912,7 @@ class VectorbtBacktester:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_backtester: Optional[VectorbtBacktester] = None
+_backtester: VectorbtBacktester | None = None
 
 
 def get_backtester() -> VectorbtBacktester:
@@ -925,7 +925,7 @@ def get_backtester() -> VectorbtBacktester:
 
 # ── 快速信号验证（供投资团队调用）────────────────────────────
 
-async def quick_signal_validation(symbol: str, period: str = "6mo") -> Dict:
+async def quick_signal_validation(symbol: str, period: str = "6mo") -> dict:
     """快速信号验证 — 为投资决策提供历史胜率参考。
 
     运行 3 个核心策略(MA/RSI/MACD)的简化回测,返回汇总结果。

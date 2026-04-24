@@ -4,24 +4,25 @@
 """
 import logging
 import time as _time
-from typing import Dict
 
-from src.bot.globals import (
-    get_stock_quote, send_long_message,
-)
-# 幻影导入修复: 6 个符号从实际定义模块导入
-from src.invest_tools import get_crypto_quote, get_market_summary, format_quote, portfolio
-from src.trading._lifecycle import get_risk_manager
-from src.broker_selector import ibkr
-from src.bot.error_messages import error_service_failed
-from src.constants import ERR_RISK_NOT_INIT, ERR_QTY_POSITIVE, ERR_ORDER_PENDING, ERR_LIVE_UNAVAILABLE
 from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
+from src.bot.globals import (
+    get_stock_quote,
+    send_long_message,
+)
+from src.broker_selector import ibkr
+from src.constants import ERR_LIVE_UNAVAILABLE, ERR_ORDER_PENDING, ERR_QTY_POSITIVE, ERR_RISK_NOT_INIT
+
+# 幻影导入修复: 6 个符号从实际定义模块导入
+from src.invest_tools import format_quote, get_crypto_quote, get_market_summary, portfolio
 from src.telegram_ux import with_typing
+from src.trading._lifecycle import get_risk_manager
 
 logger = logging.getLogger(__name__)
 
 # ── 防重复下单冷却 (FIX 3) ──────────────────────────────────
-_trade_cooldown: Dict[str, float] = {}   # key="{user_id}:{symbol}", value=timestamp
+_trade_cooldown: dict[str, float] = {}   # key="{user_id}:{symbol}", value=timestamp
 _TRADE_COOLDOWN_SEC = 30
 
 
@@ -122,9 +123,10 @@ class InvestCommandsMixin:
 
             # 优先使用富卡片格式
             if isinstance(quote, dict) and "price" in quote and not quote.get("error"):
-                from src.telegram_ux import format_quote_card
-                from telegram.constants import ParseMode
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                from telegram.constants import ParseMode
+
+                from src.telegram_ux import format_quote_card
                 card = format_quote_card(quote)
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("📊 技术分析", callback_data=f"ta_{symbol}"),
@@ -171,8 +173,9 @@ class InvestCommandsMixin:
 
         if positions_raw:
             # 并行查询行情，构建 format_portfolio_card 所需数据
-            from src.bot.globals import get_stock_quote
             import asyncio
+
+            from src.bot.globals import get_stock_quote
             quotes = await asyncio.gather(
                 *[get_stock_quote(p["symbol"]) for p in positions_raw],
                 return_exceptions=True,
@@ -227,8 +230,9 @@ class InvestCommandsMixin:
 
             # ── SPY Benchmark 对比（新增） ──────────────────
             try:
-                import yfinance as yf
                 from datetime import datetime, timedelta
+
+                import yfinance as yf
                 # 计算组合近30天收益
                 total_value = sum(abs(p.get("market_value", 0)) for p in enriched) + cash
                 total_cost = sum(p.get("quantity", 0) * p.get("avg_cost", 0) for p in enriched) + cash

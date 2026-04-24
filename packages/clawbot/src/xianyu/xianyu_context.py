@@ -1,13 +1,14 @@
 """闲鱼对话上下文管理 — SQLite 持久化"""
 
 import json
-import os
 import logging
+import os
 from contextlib import contextmanager
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
-from src.utils import now_et
+from typing import Any
+
 from src.db_utils import get_conn as _get_db_conn
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ class XianyuContextManager:
                 (chat_id, chat_id, self.max_history),
             )
 
-    def get_context(self, chat_id: str) -> List[Dict[str, str]]:
+    def get_context(self, chat_id: str) -> list[dict[str, str]]:
         with self._conn() as c:
             rows = c.execute(
                 "SELECT role, content FROM messages WHERE chat_id=? ORDER BY id ASC LIMIT ?",
@@ -156,7 +157,7 @@ class XianyuContextManager:
                 (item_id, json.dumps(data, ensure_ascii=False), json.dumps(data, ensure_ascii=False)),
             )
 
-    def get_item(self, item_id: str) -> Optional[dict]:
+    def get_item(self, item_id: str) -> dict | None:
         with self._conn() as c:
             row = c.execute("SELECT data FROM items WHERE item_id=?", (item_id,)).fetchone()
         return json.loads(row[0]) if row else None
@@ -171,7 +172,7 @@ class XianyuContextManager:
                 (chat_id, user_id, item_id, status, amount, cost),
             )
 
-    def get_unnotified_orders(self) -> List[Dict[str, Any]]:
+    def get_unnotified_orders(self) -> list[dict[str, Any]]:
         with self._conn() as c:
             rows = c.execute(
                 "SELECT id,chat_id,user_id,item_id,status,ts FROM orders WHERE notified=?", (NOTIFY_NONE,)
@@ -200,7 +201,7 @@ class XianyuContextManager:
             else:
                 c.execute("UPDATE consultations SET converted=1 WHERE chat_id=?", (chat_id,))
 
-    def get_latest_chat_id(self, user_id: str) -> Optional[str]:
+    def get_latest_chat_id(self, user_id: str) -> str | None:
         """根据用户ID获取最近一次咨询的 chat_id"""
         with self._conn() as c:
             row = c.execute(
@@ -219,7 +220,7 @@ class XianyuContextManager:
                 (item_id, floor_price, floor_price),
             )
 
-    def get_floor_price(self, item_id: str) -> Optional[float]:
+    def get_floor_price(self, item_id: str) -> float | None:
         """获取商品底价，未设置返回 None"""
         with self._conn() as c:
             row = c.execute("SELECT floor_price FROM floor_prices WHERE item_id=?", (item_id,)).fetchone()
@@ -231,13 +232,13 @@ class XianyuContextManager:
             cur = c.execute("DELETE FROM floor_prices WHERE item_id=?", (item_id,))
         return cur.rowcount > 0
 
-    def list_floor_prices(self) -> List[Dict]:
+    def list_floor_prices(self) -> list[dict]:
         """列出所有已设底价的商品"""
         with self._conn() as c:
             rows = c.execute("SELECT item_id, floor_price, updated FROM floor_prices ORDER BY updated DESC").fetchall()
         return [{"item_id": r[0], "floor_price": r[1], "updated": r[2]} for r in rows]
 
-    def get_recent_item_id(self, user_id: str) -> Optional[str]:
+    def get_recent_item_id(self, user_id: str) -> str | None:
         """获取该用户最近一次会话的商品ID"""
         with self._conn() as conn:
             row = conn.execute(
@@ -246,7 +247,7 @@ class XianyuContextManager:
             ).fetchone()
         return row[0] if row else None
 
-    def daily_stats(self, date: str = "") -> Dict[str, Any]:
+    def daily_stats(self, date: str = "") -> dict[str, Any]:
         """获取某天的统计数据，默认今天"""
         if not date:
             date = now_et().strftime("%Y-%m-%d")
@@ -473,7 +474,7 @@ class XianyuContextManager:
             )
         return True
 
-    def get_faqs(self) -> List[Dict[str, str]]:
+    def get_faqs(self) -> list[dict[str, str]]:
         """获取所有FAQ"""
         with self._conn() as c:
             rows = c.execute(
@@ -535,8 +536,8 @@ class XianyuContextManager:
                 "SELECT config_type, key, value FROM reply_config ORDER BY priority DESC, id ASC"
             ).fetchall()
         style = None
-        faqs: List[Dict[str, str]] = []
-        item_rules: Dict[str, str] = {}
+        faqs: list[dict[str, str]] = []
+        item_rules: dict[str, str] = {}
         for config_type, key, value in rows:
             if config_type == "style" and key == "tone":
                 style = value

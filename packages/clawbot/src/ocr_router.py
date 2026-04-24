@@ -9,10 +9,9 @@ OCR 场景路由器 — 识别图片类型，分发到对应业务处理链
   ecommerce  — 竞品截图/商品页/价格表 → 竞品分析 → 定价建议
   general    — 通用文字提取（默认）
 """
-import re
 import logging
+import re
 from dataclasses import dataclass
-from typing import List, Tuple
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ class OcrScene(Enum):
 class SceneMatch:
     scene: OcrScene
     confidence: float          # 0.0 ~ 1.0
-    matched_signals: List[str] # 命中的关键词/模式
+    matched_signals: list[str] # 命中的关键词/模式
     summary: str               # 一句话说明为什么匹配
 
 
@@ -87,7 +86,7 @@ _ECOMMERCE_PATTERNS = [
 ]
 
 
-def _count_signals(text: str, keywords: set, patterns: list) -> Tuple[int, List[str]]:
+def _count_signals(text: str, keywords: set, patterns: list) -> tuple[int, list[str]]:
     """统计命中的信号数量和具体命中项"""
     matched = []
     text_lower = text.lower()

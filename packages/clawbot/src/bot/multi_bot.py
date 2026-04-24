@@ -3,34 +3,32 @@ MultiBot 核心类 — 组合所有 Mixin，提供 __init__ / run / stop
 """
 
 import logging
-from typing import Tuple, Optional
 
+from config.bot_profiles import get_bot_config
+from config.prompts import SOUL_CORE
+from src.bot.api_mixin import APIMixin
+from src.bot.chinese_nlp_mixin import ChineseNLPMixin
+from src.bot.cmd_analysis_mixin import AnalysisCommandsMixin
+from src.bot.cmd_basic_mixin import BasicCommandsMixin
+from src.bot.cmd_collab_mixin import CollabCommandsMixin
+from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
+from src.bot.cmd_ibkr_mixin import IBKRCommandsMixin
+from src.bot.cmd_intel_mixin import IntelCommandMixin
+from src.bot.cmd_invest_mixin import InvestCommandsMixin
+from src.bot.cmd_trading_mixin import TradingCommandsMixin
 from src.bot.globals import (
+    ALLOWED_USER_IDS,
     chat_router,
     health_checker,
     shared_memory,
-    ALLOWED_USER_IDS,
 )
+from src.bot.message_mixin import MessageHandlerMixin
+from src.bot.ocr_mixin import OCRHandlerMixin
+from src.error_handler import get_error_handler
+from src.http_client import CircuitBreaker, ResilientHTTPClient, RetryConfig
 
 # 幻影导入修复: BotCapability/get_bot_config 从实际定义模块导入
 from src.routing.models import BotCapability
-from config.bot_profiles import get_bot_config
-from config.prompts import SOUL_CORE
-from src.http_client import ResilientHTTPClient, RetryConfig, CircuitBreaker
-
-from src.bot.api_mixin import APIMixin
-from src.bot.cmd_basic_mixin import BasicCommandsMixin
-from src.bot.cmd_invest_mixin import InvestCommandsMixin
-from src.bot.cmd_analysis_mixin import AnalysisCommandsMixin
-from src.bot.cmd_ibkr_mixin import IBKRCommandsMixin
-from src.bot.cmd_trading_mixin import TradingCommandsMixin
-from src.bot.cmd_collab_mixin import CollabCommandsMixin
-from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
-from src.bot.chinese_nlp_mixin import ChineseNLPMixin
-from src.bot.ocr_mixin import OCRHandlerMixin
-from src.bot.message_mixin import MessageHandlerMixin
-from src.bot.cmd_intel_mixin import IntelCommandMixin
-from src.error_handler import get_error_handler
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +37,8 @@ logger = logging.getLogger(__name__)
 # 每次对话自动注入 ~500 token 的用户实时状态到 system prompt
 # 使得 "最近交易做得怎么样" 能得到基于真实 P&L 的回答
 
-import time as _time
 import threading as _threading
+import time as _time
 
 _live_context_cache = {"text": "", "ts": 0}
 _LIVE_CONTEXT_TTL = 60  # 缓存60秒，避免每条消息都拉取
@@ -240,13 +238,13 @@ class MultiBot(
         return await tool_executor.execute(tool_name, tool_input)
 
     async def _should_respond_async(
-        self, text: str, chat_type: str, message_id: Optional[int] = None, from_user_id: Optional[int] = None
-    ) -> Tuple[bool, str]:
+        self, text: str, chat_type: str, message_id: int | None = None, from_user_id: int | None = None
+    ) -> tuple[bool, str]:
         return await chat_router.should_respond_async(self.bot_id, text, chat_type, message_id, from_user_id)
 
     def _should_respond(
-        self, text: str, chat_type: str, message_id: Optional[int] = None, from_user_id: Optional[int] = None
-    ) -> Tuple[bool, str]:
+        self, text: str, chat_type: str, message_id: int | None = None, from_user_id: int | None = None
+    ) -> tuple[bool, str]:
         return chat_router.should_respond(self.bot_id, text, chat_type, message_id, from_user_id)
 
     # ============ 启动 / 停止 ============
@@ -259,9 +257,9 @@ class MultiBot(
         from telegram import Update
         from telegram.ext import (
             ApplicationBuilder,
+            CallbackQueryHandler,
             CommandHandler,
             MessageHandler,
-            CallbackQueryHandler,
             filters,
         )
 

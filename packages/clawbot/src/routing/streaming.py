@@ -3,10 +3,11 @@ StreamingResponse — 流式传输支持
 从 chat_router.py 拆分而来，对标 LiteLLM 的 streaming 支持。
 让 Telegram bot 可以逐步更新消息而不是等待完整响应。
 """
-import time
-import logging
 import asyncio
-from typing import List, Callable
+import logging
+import time
+from collections.abc import Callable
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class StreamingResponse:
     """流式响应包装器 — 支持 SSE 风格的逐 chunk 传输"""
 
     def __init__(self):
-        self._chunks: List[str] = []
+        self._chunks: list[str] = []
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._done = False
         self._full_text = ""
@@ -38,7 +39,7 @@ class StreamingResponse:
         while True:
             try:
                 chunk = await asyncio.wait_for(self._queue.get(), timeout=60)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("[Streaming] Queue read timeout — producer may have crashed")
                 break
             if chunk is None:

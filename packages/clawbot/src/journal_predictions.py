@@ -5,7 +5,6 @@
 """
 import logging
 from datetime import timedelta
-from typing import Dict, List
 
 from src.utils import now_et
 
@@ -32,7 +31,7 @@ class JournalPredictionsMixin:
                   confidence, reasoning, decided_by))
             return cursor.lastrowid
 
-    def record_vote_records(self, prediction_id: int, symbol: str, votes: List) -> None:
+    def record_vote_records(self, prediction_id: int, symbol: str, votes: list) -> None:
         """记录每个AI分析师的独立投票结果（HI-535）
 
         参数:
@@ -64,7 +63,7 @@ class JournalPredictionsMixin:
         logger.debug("[Predictions] 记录 %d 条个体投票 (prediction_id=%d, symbol=%s)",
                      len(votes), prediction_id, symbol)
 
-    def validate_predictions(self, date: str = None) -> Dict:
+    def validate_predictions(self, date: str = None) -> dict:
         """收盘验证：对比 AI 研判 vs 实际走势，同时验证个体投票"""
         if date is None:
             date = now_et().strftime('%Y-%m-%d')
@@ -177,7 +176,7 @@ class JournalPredictionsMixin:
                     UPDATE vote_records SET direction_correct=? WHERE id=?
                 """, (dir_correct, v['id']))
 
-    def get_prediction_accuracy(self, days: int = 30) -> Dict:
+    def get_prediction_accuracy(self, days: int = 30) -> dict:
         """获取指定天数内的研判准确率统计（含个体投票准确率）"""
         since = (now_et() - timedelta(days=days)).strftime('%Y-%m-%d')
         with self._conn() as conn:
@@ -219,7 +218,7 @@ class JournalPredictionsMixin:
             "per_voter": per_voter,
         }
 
-    def _get_per_voter_accuracy(self, since: str) -> Dict:
+    def _get_per_voter_accuracy(self, since: str) -> dict:
         """统计每个AI分析师的个体投票准确率
 
         返回格式:

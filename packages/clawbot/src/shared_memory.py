@@ -10,15 +10,16 @@ ClawBot - 共享记忆层 v4.0 (Mem0 驱动)
 所有调用方零改动：remember/recall/search/forget/get_context_for_prompt 签名不变。
 """
 
+import json
+import logging
+import os
 import sqlite3
 import threading
-import logging
 import time
-import json
-import os
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
+from typing import Any
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ except ImportError:
 def _build_mem0_config() -> dict:
     """构建 Mem0 配置，优先使用环境变量中的 API。"""
     # 从 config 导入避免循环依赖 (globals.py 导入了 SharedMemory, 但 config.py 无此依赖)
-    from src.bot.config import SILICONFLOW_KEYS, SILICONFLOW_BASE, DATA_DIR
+    from src.bot.config import DATA_DIR, SILICONFLOW_BASE, SILICONFLOW_KEYS
 
     config: dict = {
         "vector_store": {
@@ -183,7 +184,7 @@ class SharedMemory:
     # 记忆总量上限 — 超过时按 LRU 淘汰低价值记忆
     MAX_MEMORIES = 2000
 
-    def __init__(self, db_path: Optional[str] = None, embedding_fn=None):
+    def __init__(self, db_path: str | None = None, embedding_fn=None):
         # SQLite 路径（始终需要，用于 workflow_feedback 等）
         if db_path:
             self.db_path = Path(db_path)
@@ -337,12 +338,12 @@ class SharedMemory:
         value: str,
         category: str = "general",
         source_bot: str = "system",
-        chat_id: Optional[int] = None,
+        chat_id: int | None = None,
         importance: int = 1,
-        ttl_hours: Optional[int] = None,
-        related_keys: Optional[List[str]] = None,
-        memory_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        ttl_hours: int | None = None,
+        related_keys: list[str] | None = None,
+        memory_type: str | None = None,
+    ) -> dict[str, Any]:
         """存入共享记忆。接口与 v3.0 完全兼容。
 
         v4.1 新增: memory_type 参数（fact/preference/episodic/procedural/meta）
@@ -451,7 +452,7 @@ class SharedMemory:
         logger.debug("[SharedMemory] %s 写入: [%s] %s (mem0=%s)", source_bot, category, key, bool(mem0_id))
         return {"success": True, "key": key, "category": category, "source": source_bot, "id": mem_id}
 
-    def _link_memories(self, conn, from_id: int, related_keys: List[str]):
+    def _link_memories(self, conn, from_id: int, related_keys: list[str]):
         """建立记忆间的关联"""
         for rk in related_keys:
             row = conn.execute(
@@ -476,7 +477,7 @@ class SharedMemory:
                     )
         conn.commit()
 
-    def recall(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
+    def recall(self, key: str, category: str | None = None) -> dict[str, Any]:
         """按 key 精确查找记忆"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
@@ -510,8 +511,8 @@ class SharedMemory:
         return {"success": False, "error": f"未找到: {key}"}
 
     def search(
-        self, query: str, limit: int = 10, mode: str = "hybrid", chat_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, query: str, limit: int = 10, mode: str = "hybrid", chat_id: int | None = None
+    ) -> dict[str, Any]:
         """混合搜索记忆。Mem0 模式下使用向量索引，SQLite 模式下使用关键词+本地嵌入。"""
         conn = self._get_conn()
         self._cleanup_expired(conn)
@@ -620,8 +621,8 @@ class SharedMemory:
         return {"success": True, "query": query, "mode": mode, "results": results, "count": len(results)}
 
     def semantic_search(
-        self, query: str, limit: int = 5, category: Optional[str] = None, chat_id: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, limit: int = 5, category: str | None = None, chat_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """纯语义搜索。Mem0 模式下直接用向量索引。"""
         # ── Mem0 路径 ──
         if self._using_mem0 and self._mem0:
@@ -699,7 +700,7 @@ class SharedMemory:
     #  删除
     # ════════════════════════════════════════════
 
-    def forget(self, key: str, category: Optional[str] = None) -> Dict[str, Any]:
+    def forget(self, key: str, category: str | None = None) -> dict[str, Any]:
         """删除记忆"""
         conn = self._get_conn()
 
@@ -745,7 +746,7 @@ class SharedMemory:
         exec_result: str,
         summary_result: str,
         planner_id: str,
-        chat_id: Optional[int] = None,
+        chat_id: int | None = None,
     ):
         short_task = task_text[:80]
         timestamp = now_et().strftime("%m/%d %H:%M")
@@ -778,8 +779,8 @@ class SharedMemory:
         stage3_score: int,
         summary: str = "",
         improvement_focus: str = "",
-        chat_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        chat_id: int | None = None,
+    ) -> dict[str, Any]:
         conn = self._get_conn()
         now = now_et().isoformat()
         conn.execute(
@@ -817,7 +818,7 @@ class SharedMemory:
         )
         return {"success": True, "workflow_id": workflow_id}
 
-    def get_service_workflow_feedback_stats(self, limit: int = 20, chat_id: Optional[int] = None) -> Dict[str, Any]:
+    def get_service_workflow_feedback_stats(self, limit: int = 20, chat_id: int | None = None) -> dict[str, Any]:
         conn = self._get_conn()
         params: list = []
         query = (
@@ -855,7 +856,7 @@ class SharedMemory:
             "recent_focus": focus[:3],
         }
 
-    def get_service_workflow_feedback_summary(self, limit: int = 20, chat_id: Optional[int] = None) -> str:
+    def get_service_workflow_feedback_summary(self, limit: int = 20, chat_id: int | None = None) -> str:
         stats = self.get_service_workflow_feedback_stats(limit=limit, chat_id=chat_id)
         if not stats.get("count"):
             return ""
@@ -872,7 +873,7 @@ class SharedMemory:
     #  System Prompt 注入
     # ════════════════════════════════════════════
 
-    def get_context_for_prompt(self, max_tokens: int = 500, chat_id: Optional[int] = None) -> str:
+    def get_context_for_prompt(self, max_tokens: int = 500, chat_id: int | None = None) -> str:
         """生成注入到 system_prompt 的记忆索引（L0 地图模型）。
 
         采用递归索引架构，只注入最浅层的"世界地图"（分类统计+高亮条目），
@@ -1079,7 +1080,7 @@ class SharedMemory:
     #  统计
     # ════════════════════════════════════════════
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         conn = self._get_conn()
         total = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories").fetchone()["cnt"]
         embedded = conn.execute("SELECT COUNT(*) as cnt FROM shared_memories WHERE embedding IS NOT NULL").fetchone()[

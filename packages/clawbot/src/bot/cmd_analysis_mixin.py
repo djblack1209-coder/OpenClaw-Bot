@@ -5,19 +5,23 @@
 import asyncio
 import logging
 
+from config.prompts import REVIEW_ROLES
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_service_failed
-from src.telegram_ux import with_typing
-from src.utils import scrub_secrets
 from src.bot.globals import (
-    chat_router, collab_orchestrator, bot_registry,
-    send_long_message, safe_edit,
+    bot_registry,
+    chat_router,
+    collab_orchestrator,
+    safe_edit,
+    send_long_message,
 )
+from src.constants import BOT_CLAUDE_HAIKU, BOT_CLAUDE_SONNET, BOT_DEEPSEEK, TG_SAFE_LENGTH
+
 # 幻影导入修复: 5 个符号从实际定义模块导入
-from src.ta_engine import get_full_analysis, scan_market, format_analysis, format_scan_results
+from src.ta_engine import format_analysis, format_scan_results, get_full_analysis, scan_market
+from src.telegram_ux import with_typing
 from src.trading_journal import journal
-from config.prompts import REVIEW_ROLES
-from src.constants import TG_SAFE_LENGTH, BOT_CLAUDE_HAIKU, BOT_DEEPSEEK, BOT_CLAUDE_SONNET
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +417,7 @@ class AnalysisCommandsMixin:
         if context.args:
             try:
                 limit = int(context.args[0])
-            except ValueError as e:  # noqa: F841
+            except ValueError as e:
                 logger.debug("用户输入格式错误: %s", e)
 
         try:
@@ -487,7 +491,7 @@ class AnalysisCommandsMixin:
         symbol = args[0].upper()
         msg = await update.message.reply_text(f"{self.emoji} 正在运行 DRL 策略分析 {symbol} ...")
         try:
-            from src.strategies.drl_strategy import DRLStrategy, HAS_GYM, HAS_SB3
+            from src.strategies.drl_strategy import HAS_GYM, HAS_SB3, DRLStrategy
 
             # 检查依赖是否安装
             if not HAS_GYM or not HAS_SB3:
@@ -589,12 +593,12 @@ class AnalysisCommandsMixin:
         symbol = args[0].upper()
         msg = await update.message.reply_text(f"{self.emoji} 正在计算 {symbol} 的 Alpha 因子 ...")
         try:
-            from src.strategies.factor_strategy import (
-                FactorStrategy, HAS_LGB,
-            )
-
             # 获取市场数据
             from src.data_providers import get_history_sync
+            from src.strategies.factor_strategy import (
+                HAS_LGB,
+                FactorStrategy,
+            )
             df = get_history_sync(symbol, period="6mo", interval="1d")
             if df is None or df.empty:
                 await safe_edit(msg, f"⚠️ 未找到 {symbol} 的历史数据")

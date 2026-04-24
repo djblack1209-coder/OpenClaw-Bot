@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ def _init_xhs() -> bool:
 _init_xhs()
 
 
-def xhs_login(cookie_str: str) -> Dict:
+def xhs_login(cookie_str: str) -> dict:
     """使用浏览器 Cookie 字符串登录小红书
 
     获取方法: 打开小红书网页版，F12 → Network → 复制请求头中的 Cookie 值。
@@ -161,9 +161,9 @@ def xhs_is_authenticated() -> bool:
 def xhs_create_note(
     title: str,
     content: str,
-    images: Optional[List[str]] = None,
+    images: list[str] | None = None,
     is_private: bool = False,
-) -> Dict:
+) -> dict:
     """通过 xhs 库发布小红书笔记（Cookie 认证）
 
     Args:
@@ -230,7 +230,7 @@ async def publish_xhs_article(
     body: str,
     worker_fn=None,
     image_path: str = None,
-) -> Dict:
+) -> dict:
     """发布小红书笔记
 
     v2.0 二级降级: xhs API → browser worker
@@ -270,7 +270,7 @@ async def reply_to_xhs_comment(
     note_url: str,
     reply_text: str,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """回复小红书评论"""
     if not note_url or not reply_text:
         return {"success": False, "error": "URL 和回复内容不能为空"}
@@ -292,7 +292,7 @@ async def reply_to_xhs_comment(
 async def update_xhs_profile(
     bio: str = None,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """更新小红书个人资料"""
     if not worker_fn:
         return {"success": False, "error": "browser worker 未配置"}

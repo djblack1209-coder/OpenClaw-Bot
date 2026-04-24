@@ -21,10 +21,11 @@ Usage:
     # HTML 模式（推荐）— 兼容性更好
     safe_html = md_to_html("**bold** and `code` and [link](url)")
 """
-from src.utils import scrub_secrets
 import html
 import logging
 import re
+
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +34,31 @@ logger = logging.getLogger(__name__)
 try:
     from mistletoe import Document
     from mistletoe.base_renderer import BaseRenderer
-    from mistletoe.span_token import (
-        RawText,
-        EscapeSequence,
-        InlineCode,
-        Strong,
-        Emphasis,
-        Strikethrough,
-        AutoLink,
-        Link,
-        Image,
-    )
     from mistletoe.block_token import (
-        Heading,
-        Paragraph,
         BlockCode,
         CodeFence,
-        List as ListBlock,
+        Heading,
+        HTMLBlock,
         ListItem,
+        Paragraph,
+        Quote,
         Table,
         TableRow,
-        Quote,
         ThematicBreak,
-        HTMLBlock,
+    )
+    from mistletoe.block_token import (
+        List as ListBlock,
+    )
+    from mistletoe.span_token import (
+        AutoLink,
+        Emphasis,
+        EscapeSequence,
+        Image,
+        InlineCode,
+        Link,
+        RawText,
+        Strikethrough,
+        Strong,
     )
 
     HAS_MISTLETOE = True

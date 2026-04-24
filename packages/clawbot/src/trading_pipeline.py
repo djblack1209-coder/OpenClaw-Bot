@@ -27,14 +27,16 @@ import json
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Callable, Any
+from collections.abc import Callable
 from enum import Enum
+from typing import Any
 
 from src.models import TradeProposal
 from src.notify_style import (
     format_trade_executed,
     format_trade_submitted,
 )
+
 logger = logging.getLogger(__name__)
 
 class TraderState(Enum):
@@ -61,7 +63,7 @@ class TradingPipeline:
         journal: Any = None,
         portfolio: Any = None,
         monitor: Any = None,
-        notify_func: Optional[Callable] = None,
+        notify_func: Callable | None = None,
         decision_validator: Any = None,
     ):
         self.risk_manager = risk_manager
@@ -71,7 +73,7 @@ class TradingPipeline:
         self.monitor = monitor
         self.notify = notify_func
         self.decision_validator = decision_validator
-        self._execution_log: List[Dict] = []
+        self._execution_log: list[dict] = []
 
     async def _safe_notify(self, msg: str) -> None:
         """Pipeline 通知 — 只推成交和风控相关"""
@@ -99,8 +101,8 @@ class TradingPipeline:
     async def execute_proposal(
         self,
         proposal: TradeProposal,
-        pre_fetched_analysis: Optional[Dict] = None,
-    ) -> Dict:
+        pre_fetched_analysis: dict | None = None,
+    ) -> dict:
         """执行单个交易提案 - 完整管道
 
         Args:
@@ -511,7 +513,7 @@ class TradingPipeline:
         return result
 
 
-def parse_trade_proposal(text: str, symbol: str = "") -> Optional[TradeProposal]:
+def parse_trade_proposal(text: str, symbol: str = "") -> TradeProposal | None:
     """从AI回复文本中解析交易提案"""
     text_lower = text.lower()
 

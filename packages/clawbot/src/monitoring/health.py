@@ -4,10 +4,12 @@ ClawBot 监控 — 健康检查 + 自动恢复
 HealthChecker: Bot 心跳 + 错误计数 + 不健康回调
 AutoRecovery: 不健康 Bot 自动重启（带冷却 + 计数上限）
 """
-import time
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List, Callable
+import time
+from collections.abc import Callable
+from typing import Any
+
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -17,8 +19,8 @@ class HealthChecker:
     """Bot 健康检查器"""
 
     def __init__(self):
-        self._bot_status: Dict[str, Dict[str, Any]] = {}
-        self._callbacks: List[Callable] = []
+        self._bot_status: dict[str, dict[str, Any]] = {}
+        self._callbacks: list[Callable] = []
 
     def register_bot(self, bot_id: str):
         """注册 bot"""
@@ -74,7 +76,7 @@ class HealthChecker:
         """注册不健康回调"""
         self._callbacks.append(callback)
 
-    def check_all(self) -> Dict[str, bool]:
+    def check_all(self) -> dict[str, bool]:
         """检查所有 bot 健康状态"""
         now = time.time()
         results = {}
@@ -92,7 +94,7 @@ class HealthChecker:
                         logger.debug("[HealthChecker] 回调执行失败: %s", e)
         return results
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         return {
             bot_id: {
                 "healthy": s["healthy"],
@@ -115,7 +117,7 @@ class AutoRecovery:
         restart_cooldown: float = 60.0,
         reset_window: float = 600.0,  # 持续健康10分钟后重置重启计数
         exhausted_cooldown: float = 1800.0,  # 重启次数耗尽后的冷却期（默认30分钟），冷却后重置计数再试
-        notify_func: Optional[Callable] = None,  # Telegram 通知函数，崩溃/恢复时主动推送
+        notify_func: Callable | None = None,  # Telegram 通知函数，崩溃/恢复时主动推送
     ):
         self.health = health_checker
         self.max_restarts = max_restarts
@@ -123,16 +125,16 @@ class AutoRecovery:
         self.reset_window = reset_window
         self.exhausted_cooldown = exhausted_cooldown
         self._notify_func = notify_func
-        self._restart_funcs: Dict[str, Callable] = {}
-        self._stop_funcs: Dict[str, Callable] = {}  # 停止函数（重启前先停旧实例）
-        self._last_restart: Dict[str, float] = {}
-        self._last_healthy_since: Dict[str, float] = {}  # 持续健康起始时间
-        self._exhausted_since: Dict[str, float] = {}  # 记录重启次数耗尽的时间
+        self._restart_funcs: dict[str, Callable] = {}
+        self._stop_funcs: dict[str, Callable] = {}  # 停止函数（重启前先停旧实例）
+        self._last_restart: dict[str, float] = {}
+        self._last_healthy_since: dict[str, float] = {}  # 持续健康起始时间
+        self._exhausted_since: dict[str, float] = {}  # 记录重启次数耗尽的时间
         self._notified_exhausted: set = set()  # 已通知过耗尽的 bot_id，防重复推送
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
-    def register_restart_func(self, bot_id: str, restart_func: Callable, stop_func: Optional[Callable] = None):
+    def register_restart_func(self, bot_id: str, restart_func: Callable, stop_func: Callable | None = None):
         """注册 bot 重启函数和停止函数"""
         self._restart_funcs[bot_id] = restart_func
         if stop_func:

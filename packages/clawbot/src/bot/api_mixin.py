@@ -11,22 +11,22 @@ API 调用 Mixin — 重构版: 统一走 LiteLLM Router
 import json
 import logging
 import time as _time
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
+from src.bot.error_messages import error_circuit_open, error_generic, error_tool_abuse
 from src.bot.globals import (
-    history_store,
-    context_manager,
-    metrics,
-    health_checker,
-    tool_executor,
     CLAUDE_BASE,
     CLAUDE_KEY,
+    context_manager,
+    health_checker,
+    history_store,
+    metrics,
+    tool_executor,
 )
-from src.bot.rate_limiter import rate_limiter, token_budget, quality_gate
-from src.bot.error_messages import error_generic, error_circuit_open, error_tool_abuse
-from src.http_client import CircuitOpenError
-from src.litellm_router import free_pool, BOT_MODEL_FAMILY
+from src.bot.rate_limiter import quality_gate, rate_limiter, token_budget
 from src.constants import BOT_CLAUDE_OPUS, FAMILY_CLAUDE, FAMILY_G4F
+from src.http_client import CircuitOpenError
+from src.litellm_router import BOT_MODEL_FAMILY, free_pool
 from src.utils import scrub_secrets
 
 try:

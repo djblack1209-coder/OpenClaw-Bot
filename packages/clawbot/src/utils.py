@@ -5,7 +5,7 @@ ClawBot 共享工具函数
 import json
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
 # ── 日志脱敏工具 ──────────────────────────────────────
 
 import re as _re
+
 
 def scrub_secrets(msg: str) -> str:
     """从错误消息中移除 API Key / Token / 内部URL 等敏感信息（HI-462）

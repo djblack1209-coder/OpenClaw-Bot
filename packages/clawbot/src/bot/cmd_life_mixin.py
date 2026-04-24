@@ -13,11 +13,10 @@ import asyncio
 import json
 import logging
 
-from src.constants import FAMILY_FAST  # noqa: F401 — 快速推理链
-
-from src.bot.globals import execution_hub, send_long_message
-from src.bot.error_messages import error_service_failed
 from src.bot.auth import requires_auth
+from src.bot.error_messages import error_service_failed
+from src.bot.globals import execution_hub, send_long_message
+from src.constants import FAMILY_FAST
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -324,14 +323,15 @@ class LifeCommandsMixin:
         /bill remove 2                  — 删除第2个追踪
         """
         import time as _time
+
         from src.execution.life_automation import (
+            BILL_TYPE_EMOJI,
+            BILL_TYPE_LABEL,
             add_bill_account,
-            update_bill_balance,
             list_bill_accounts,
             remove_bill_account,
             resolve_bill_type,
-            BILL_TYPE_EMOJI,
-            BILL_TYPE_LABEL,
+            update_bill_balance,
         )
 
         user = update.effective_user
@@ -483,8 +483,9 @@ class LifeCommandsMixin:
                     msg += f"\n⚠️ 低于阈值 ¥{result['threshold']:.0f}，请注意充值！"
                     # 发布 BILL_DUE 事件
                     try:
-                        from src.core.event_bus import get_event_bus, EventType
                         import asyncio
+
+                        from src.core.event_bus import EventType, get_event_bus
 
                         bus = get_event_bus()
                         asyncio.ensure_future(
@@ -619,9 +620,9 @@ class LifeCommandsMixin:
     async def _fetch_bill_discounts(self, account_type: str, user_id, chat_id, context):
         """用 AI 搜索缴费优惠渠道并缓存结果"""
         from src.execution.life_automation import (
-            save_discount_suggestions,
-            BILL_TYPE_LABEL,
             BILL_TYPE_EMOJI,
+            BILL_TYPE_LABEL,
+            save_discount_suggestions,
         )
 
         label = BILL_TYPE_LABEL.get(account_type, account_type)

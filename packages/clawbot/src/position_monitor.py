@@ -23,10 +23,11 @@ v2.0 变更 (2026-03-24):
 import asyncio
 import logging
 import time
-from datetime import datetime
-from typing import Dict, List, Optional, Callable, Any
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from src.utils import now_et as _now_et_fn
 
@@ -91,13 +92,13 @@ class MonitoredPosition:
     current_price: float = 0
     unrealized_pnl: float = 0
     unrealized_pnl_pct: float = 0
-    last_check: Optional[datetime] = None
+    last_check: datetime | None = None
     atr: float = 0  # ATR值，用于动态尾部止损
     breakeven_triggered: bool = False  # 保本止损是否已触发
     partial_exit_done: bool = False  # 分批止盈是否已执行（50%在1.5R）
     original_quantity: float = 0  # 原始数量（分批止盈后quantity会减少）
     # v2.0: 止损调整事件 (由 PositionMonitor 消费并推送通知)
-    _pending_adjustments: List[str] = field(default_factory=list)
+    _pending_adjustments: list[str] = field(default_factory=list)
 
     def update_price(self, price: float):
         self.current_price = price
@@ -197,7 +198,7 @@ class MonitoredPosition:
                             " ATR=%.2f" % self.atr if self.atr > 0 else "",
                         )
 
-    def drain_adjustments(self) -> List[str]:
+    def drain_adjustments(self) -> list[str]:
         """取出并清空待通知的止损调整事件"""
         msgs = list(self._pending_adjustments)
         self._pending_adjustments.clear()
@@ -218,9 +219,9 @@ class PositionMonitor:
     def __init__(
         self,
         check_interval: int = 30,
-        get_quote_func: Optional[Callable] = None,
-        execute_sell_func: Optional[Callable] = None,
-        notify_func: Optional[Callable] = None,
+        get_quote_func: Callable | None = None,
+        execute_sell_func: Callable | None = None,
+        notify_func: Callable | None = None,
         risk_manager: Any = None,
         journal: Any = None,
     ):
@@ -230,15 +231,15 @@ class PositionMonitor:
         self.notify = notify_func
         self.risk_manager = risk_manager
         self.journal = journal
-        self.positions: Dict[int, MonitoredPosition] = {}
+        self.positions: dict[int, MonitoredPosition] = {}
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._exit_history: List[ExitSignal] = []
-        self._exit_retry_count: Dict[int, int] = {}  # trade_id -> 重试次数
+        self._task: asyncio.Task | None = None
+        self._exit_history: list[ExitSignal] = []
+        self._exit_retry_count: dict[int, int] = {}  # trade_id -> 重试次数
         self._max_exit_retries = 3  # 最大重试次数
         # v2.0: 通知节流 (搬运 PanWatch throttle 模式)
         # key: (trade_id, AlertLevel) -> last_alert_timestamp
-        self._alert_cooldowns: Dict[tuple, float] = {}
+        self._alert_cooldowns: dict[tuple, float] = {}
         logger.info("[PositionMonitor] 初始化完成 | 检查间隔=%ds", check_interval)
 
     # ============ 持仓管理 ============
@@ -333,7 +334,7 @@ class PositionMonitor:
         if not self.get_quote:
             return
         symbols = list(set(p.symbol for p in self.positions.values()))
-        quotes: Dict[str, float] = {}
+        quotes: dict[str, float] = {}
         try:
             results = await asyncio.gather(
                 *[self.get_quote(sym) for sym in symbols],
@@ -346,7 +347,7 @@ class PositionMonitor:
             logger.error("[Monitor] 批量获取行情失败: %s", e)
             return
 
-        exit_signals: List[ExitSignal] = []
+        exit_signals: list[ExitSignal] = []
         for trade_id, pos in list(self.positions.items()):
             try:
                 price = quotes.get(pos.symbol)
@@ -386,7 +387,7 @@ class PositionMonitor:
         # 定期清理过期的预警冷却记录（防止内存泄漏）
         self._cleanup_stale_cooldowns()
 
-    def _check_exit_conditions(self, pos: MonitoredPosition) -> Optional[ExitSignal]:
+    def _check_exit_conditions(self, pos: MonitoredPosition) -> ExitSignal | None:
         price = pos.current_price
 
         if pos.side == "BUY":
@@ -800,7 +801,7 @@ class PositionMonitor:
         """发送预警通知 — 优先 NotificationManager，降级 notify_func"""
         # 尝试 NotificationManager (多渠道)
         try:
-            from src.notifications import get_notification_manager, NotifyLevel
+            from src.notifications import NotifyLevel, get_notification_manager
 
             nm = get_notification_manager()
             if nm:
@@ -854,7 +855,7 @@ class PositionMonitor:
 
     # ============ 状态查询 ============
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         positions_info = []
         total_unrealized = 0.0
         for tid, pos in self.positions.items():
@@ -927,7 +928,7 @@ class PositionMonitor:
                 lines.append("  %s %s @ $%.2f" % (sig.position.symbol, sig.reason.value, sig.trigger_price))
         return "\n".join(lines)
 
-    async def check_once(self) -> List[ExitSignal]:
+    async def check_once(self) -> list[ExitSignal]:
         if not self.positions:
             return []
         history_before = len(self._exit_history)
@@ -936,4 +937,4 @@ class PositionMonitor:
 
 
 # 全局实例（延迟初始化，需要注入依赖）
-position_monitor: Optional[PositionMonitor] = None
+position_monitor: PositionMonitor | None = None

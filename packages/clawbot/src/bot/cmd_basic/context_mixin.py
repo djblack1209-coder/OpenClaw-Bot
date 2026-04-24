@@ -3,9 +3,9 @@
 """
 import logging
 
-from src.bot.globals import history_store, context_manager
-from src.telegram_ux import with_typing
 from src.bot.auth import requires_auth
+from src.bot.globals import context_manager, history_store
+from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
 

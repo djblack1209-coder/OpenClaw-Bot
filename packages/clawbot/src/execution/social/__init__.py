@@ -18,39 +18,40 @@ Social — 社交媒体子包
   from src.execution.social.x_platform import publish_x_post
 """
 
-from src.execution.social.x_platform import (
-    fetch_x_profile_posts,
-    publish_x_post,
-    reply_to_x_post,
-    # v3.0 新增: twikit Cookie 持久化登录
-    twikit_login,
-    twikit_is_authenticated,
-    twikit_post_tweet,
-    X_COOKIES_PATH,
-)
-from src.execution.social.xhs_platform import (
-    publish_xhs_article,
-    reply_to_xhs_comment,
-    update_xhs_profile,
-    # v2.0 新增: xhs Cookie 持久化登录
-    xhs_login,
-    xhs_is_authenticated,
-    xhs_create_note,
-    XHS_COOKIES_PATH,
-)
 from src.execution.social.content_strategy import (
-    discover_hot_topics,
-    derive_content_strategy,
     compose_post,
+    derive_content_strategy,
+    discover_hot_topics,
     load_persona,
 )
+
 # 适配器注册表 — 导入即触发自动注册
 from src.execution.social.platform_adapter import (
+    SocialPlatformAdapter,
     get_adapter,
     get_all_adapters,
     list_supported_platforms,
     register_adapter,
-    SocialPlatformAdapter,
+)
+from src.execution.social.x_platform import (
+    X_COOKIES_PATH,
+    fetch_x_profile_posts,
+    publish_x_post,
+    reply_to_x_post,
+    twikit_is_authenticated,
+    # v3.0 新增: twikit Cookie 持久化登录
+    twikit_login,
+    twikit_post_tweet,
+)
+from src.execution.social.xhs_platform import (
+    XHS_COOKIES_PATH,
+    publish_xhs_article,
+    reply_to_xhs_comment,
+    update_xhs_profile,
+    xhs_create_note,
+    xhs_is_authenticated,
+    # v2.0 新增: xhs Cookie 持久化登录
+    xhs_login,
 )
 
 __all__ = [

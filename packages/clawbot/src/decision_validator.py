@@ -17,8 +17,8 @@ ClawBot AI 决策验证层 v2.0
 """
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
 
 from src.models import TradeProposal
 
@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 class ValidationResult:
     """决策验证结果"""
     approved: bool                                      # 是否通过验证
-    issues: List[str] = field(default_factory=list)     # 硬性问题（导致拒绝）
-    warnings: List[str] = field(default_factory=list)   # 软性警告（仅提示）
-    adjusted_proposal: Optional[TradeProposal] = None   # 调整后的提案（如有）
+    issues: list[str] = field(default_factory=list)     # 硬性问题（导致拒绝）
+    warnings: list[str] = field(default_factory=list)   # 软性警告（仅提示）
+    adjusted_proposal: TradeProposal | None = None   # 调整后的提案（如有）
     validation_confidence: float = 1.0                  # 验证结论的置信度 (0-1)，issue越多越低
 
     def __str__(self) -> str:
@@ -88,7 +88,7 @@ class DecisionValidator:
         self.min_confidence_threshold = min_confidence_threshold
 
         # 决策频率追踪: symbol -> last_decision_timestamp
-        self._recent_decisions: Dict[str, float] = {}
+        self._recent_decisions: dict[str, float] = {}
 
         logger.info(
             "[DecisionValidator] 初始化 | 价格容差=%.1f%% | 数据有效期=%ds | "
@@ -107,7 +107,7 @@ class DecisionValidator:
     async def validate(
         self,
         proposal: TradeProposal,
-        pre_fetched_analysis: Optional[Dict] = None,
+        pre_fetched_analysis: dict | None = None,
     ) -> ValidationResult:
         """
         对 TradeProposal 执行全部验证检查。
@@ -119,8 +119,8 @@ class DecisionValidator:
             proposal: 待验证的交易提案
             pre_fetched_analysis: 已获取的技术分析数据（避免重复调用 yfinance）
         """
-        all_issues: List[str] = []
-        all_warnings: List[str] = []
+        all_issues: list[str] = []
+        all_warnings: list[str] = []
 
         logger.info(
             "[DecisionValidator] 开始验证: %s %s x%d @ $%.2f",
@@ -129,7 +129,7 @@ class DecisionValidator:
         )
 
         # -- 获取实时行情 --
-        quote_data: Optional[Dict] = None
+        quote_data: dict | None = None
         try:
             quote_data = await self.get_quote(proposal.symbol)
         except Exception as e:
@@ -140,7 +140,7 @@ class DecisionValidator:
 
         # -- 获取实时技术分析（用于方向/信号验证）--
         # P1#18: 优先使用调用方已获取的分析数据，避免重复调用 yfinance
-        live_analysis: Optional[Dict] = None
+        live_analysis: dict | None = None
         if pre_fetched_analysis and isinstance(pre_fetched_analysis, dict) and "error" not in pre_fetched_analysis:
             live_analysis = pre_fetched_analysis
             logger.debug("[DecisionValidator] 使用预获取的技术分析数据")
@@ -222,14 +222,14 @@ class DecisionValidator:
     # ================================================================
 
     async def _check_price_sanity(
-        self, proposal: TradeProposal, quote_data: Optional[Dict]
-    ) -> Tuple[List[str], List[str]]:
+        self, proposal: TradeProposal, quote_data: dict | None
+    ) -> tuple[list[str], list[str]]:
         """
         验证 AI 给出的入场价是否与实时行情一致。
         偏差超过 price_tolerance_pct 视为问题。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if quote_data is None or not isinstance(quote_data, dict):
             # 无行情时无法校验，已在 validate() 中记录 issue
@@ -292,14 +292,14 @@ class DecisionValidator:
     # ================================================================
 
     def _check_direction_consistency(
-        self, proposal: TradeProposal, live_analysis: Optional[Dict]
-    ) -> Tuple[List[str], List[str]]:
+        self, proposal: TradeProposal, live_analysis: dict | None
+    ) -> tuple[list[str], list[str]]:
         """
         验证 AI 建议的方向是否与技术指标信号一致。
         严重矛盾（如强烈卖出信号却建议买入）视为 issue。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if live_analysis is None:
             warnings.append("无法获取实时技术分析，跳过方向一致性检查")
@@ -344,14 +344,14 @@ class DecisionValidator:
 
     def _check_quantity_budget(
         self, proposal: TradeProposal
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         验证建议数量是否在合理预算范围内。
         - 数量必须为正整数
         - 总成本不应超过合理上限
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if proposal.action in ("HOLD", "WAIT"):
             return issues, warnings
@@ -392,12 +392,12 @@ class DecisionValidator:
 
     def _check_duplicate_position(
         self, proposal: TradeProposal
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         检查是否已持有该标的，避免重复建仓。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if proposal.action != "BUY":
             return issues, warnings
@@ -432,14 +432,14 @@ class DecisionValidator:
 
     def _check_logical_consistency(
         self, proposal: TradeProposal
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         验证止损/入场/止盈的逻辑关系：
         - BUY:  stop_loss < entry_price < take_profit
         - SELL: stop_loss > entry_price > take_profit
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         action = proposal.action.upper()
         entry = proposal.entry_price
@@ -504,14 +504,14 @@ class DecisionValidator:
     # ================================================================
 
     def _check_signal_strength(
-        self, proposal: TradeProposal, live_analysis: Optional[Dict]
-    ) -> Tuple[List[str], List[str]]:
+        self, proposal: TradeProposal, live_analysis: dict | None
+    ) -> tuple[list[str], list[str]]:
         """
         验证 AI 声称的信号评分是否与实际技术分析匹配。
         偏差过大说明 AI 可能在"编造"信号。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         claimed_score = proposal.signal_score
 
@@ -565,15 +565,15 @@ class DecisionValidator:
     # ================================================================
 
     def _check_data_freshness(
-        self, quote_data: Optional[Dict]
-    ) -> Tuple[List[str], List[str]]:
+        self, quote_data: dict | None
+    ) -> tuple[list[str], list[str]]:
         """
         检查行情数据是否过期。
         quote_data 中应包含 timestamp 字段（Unix 秒）。
         超过 max_price_age_seconds 视为过期。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if quote_data is None or not isinstance(quote_data, dict):
             # 无行情数据的 issue 已在 validate() 中记录
@@ -622,13 +622,13 @@ class DecisionValidator:
 
     def _check_decision_frequency(
         self, proposal: TradeProposal
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         防止 AI 短时间内对同一标的连续下单。
         同一标的在 min_decision_interval_seconds 内只允许一次决策。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if proposal.action in ("HOLD", "WAIT"):
             return issues, warnings
@@ -658,14 +658,14 @@ class DecisionValidator:
     # ================================================================
 
     def _check_extreme_volatility(
-        self, proposal: TradeProposal, quote_data: Optional[Dict]
-    ) -> Tuple[List[str], List[str]]:
+        self, proposal: TradeProposal, quote_data: dict | None
+    ) -> tuple[list[str], list[str]]:
         """
         标的日内波动超过阈值时拒绝交易。
         极端波动下价格不可预测，AI 的分析可能完全失效。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if proposal.action in ("HOLD", "WAIT"):
             return issues, warnings
@@ -709,13 +709,13 @@ class DecisionValidator:
 
     def _check_confidence_level(
         self, proposal: TradeProposal
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         验证 AI 的置信度是否达到最低阈值。
         置信度过低说明 AI 自身也不确定，不应执行交易。
         """
-        issues: List[str] = []
-        warnings: List[str] = []
+        issues: list[str] = []
+        warnings: list[str] = []
 
         if proposal.action in ("HOLD", "WAIT"):
             return issues, warnings

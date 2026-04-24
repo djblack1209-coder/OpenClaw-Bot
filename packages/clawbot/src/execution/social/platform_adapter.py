@@ -6,9 +6,8 @@
 2. 在 _auto_register() 中注册
 无需修改任何调用方代码。
 """
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 import logging
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class SocialPlatformAdapter(ABC):
         ...
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         """平台名称别名列表（如 ['twitter', 'tw']）"""
         return []
 
@@ -38,10 +37,10 @@ class SocialPlatformAdapter(ABC):
         self,
         content: str,
         title: str = "",
-        images: Optional[List[str]] = None,
+        images: list[str] | None = None,
         worker_fn=None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """发布内容到平台，返回结果字典"""
         ...
 
@@ -49,7 +48,7 @@ class SocialPlatformAdapter(ABC):
         """将原始内容规范化为 (title, body) — 子类可覆盖"""
         return "", raw_content
 
-    def build_worker_payload(self, content: str, title: str = "", images: Optional[List[str]] = None) -> Dict:
+    def build_worker_payload(self, content: str, title: str = "", images: list[str] | None = None) -> dict:
         """构建 worker 调用参数 — 子类可覆盖"""
         return {"text": content}
 
@@ -61,7 +60,7 @@ class SocialPlatformAdapter(ABC):
 
 # ── 平台注册表 ──────────────────────────────────────────────
 
-_ADAPTERS: Dict[str, "SocialPlatformAdapter"] = {}
+_ADAPTERS: dict[str, "SocialPlatformAdapter"] = {}
 
 
 def register_adapter(adapter: SocialPlatformAdapter) -> None:
@@ -71,15 +70,15 @@ def register_adapter(adapter: SocialPlatformAdapter) -> None:
         _ADAPTERS[alias.lower()] = adapter
 
 
-def get_adapter(platform: str) -> Optional[SocialPlatformAdapter]:
+def get_adapter(platform: str) -> SocialPlatformAdapter | None:
     """根据平台名称获取适配器（支持别名，大小写不敏感）"""
     return _ADAPTERS.get(platform.lower())
 
 
-def get_all_adapters() -> Dict[str, SocialPlatformAdapter]:
+def get_all_adapters() -> dict[str, SocialPlatformAdapter]:
     """获取所有已注册的适配器（按 platform_id 去重）"""
     seen: set = set()
-    result: Dict[str, SocialPlatformAdapter] = {}
+    result: dict[str, SocialPlatformAdapter] = {}
     for adapter in _ADAPTERS.values():
         if adapter.platform_id not in seen:
             seen.add(adapter.platform_id)
@@ -87,7 +86,7 @@ def get_all_adapters() -> Dict[str, SocialPlatformAdapter]:
     return result
 
 
-def list_supported_platforms() -> List[str]:
+def list_supported_platforms() -> list[str]:
     """返回所有支持的平台 ID 列表"""
     return list(get_all_adapters().keys())
 

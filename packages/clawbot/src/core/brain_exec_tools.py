@@ -6,9 +6,8 @@ Core — 工具 + 系统领域执行器 Mixin
 """
 
 import logging
-from typing import Dict
 
-from config.prompts import SOUL_CORE, INFO_QUERY_PROMPT
+from config.prompts import INFO_QUERY_PROMPT, SOUL_CORE
 from src.bot.error_messages import error_ai_busy
 from src.constants import FAMILY_DEEPSEEK, FAMILY_QWEN
 from src.resilience import api_limiter
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ToolsExecutorMixin:
     """工具 + 系统领域执行器"""
 
-    async def _exec_llm_query(self, params: Dict) -> Dict:
+    async def _exec_llm_query(self, params: dict) -> dict:
         """LLM 信息查询 — 注入 SOUL_CORE 人格 + 对话上下文"""
         question = params.get("question", "")
         try:
@@ -63,7 +62,7 @@ class ToolsExecutorMixin:
             logger.warning(f"LLM查询失败: {scrub_secrets(str(e))}")
         return {"source": "llm_fallback", "answer": error_ai_busy()}
 
-    async def _exec_system_status(self, params: Dict) -> Dict:
+    async def _exec_system_status(self, params: dict) -> dict:
         """系统状态 — 复用现有 RPC"""
         try:
             from src.api.rpc import ClawBotRPC
@@ -74,7 +73,7 @@ class ToolsExecutorMixin:
             logger.warning(f"获取系统状态失败: {scrub_secrets(str(e))}")
             return {"source": "status_error", "error": str(e)}
 
-    async def _exec_evolution_scan(self, params: Dict) -> Dict:
+    async def _exec_evolution_scan(self, params: dict) -> dict:
         """进化扫描 — 复用现有 evolution engine"""
         try:
             from src.evolution.engine import EvolutionEngine
@@ -90,7 +89,7 @@ class ToolsExecutorMixin:
             logger.warning(f"进化扫描失败: {scrub_secrets(str(e))}")
             return {"source": "evolution_error", "error": str(e)}
 
-    async def _exec_code_task(self, params: Dict) -> Dict:
+    async def _exec_code_task(self, params: dict) -> dict:
         """代码任务 — 调用 CodeTool 沙盒执行"""
         task_desc = params.get("task", "")
         try:

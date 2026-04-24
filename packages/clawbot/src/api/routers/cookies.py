@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/cookies")
 
 
 @router.get("/status")
-async def cookie_status() -> Dict[str, Any]:
+async def cookie_status() -> dict[str, Any]:
     """查询所有平台 Cookie 状态"""
     platforms = {}
 
@@ -63,7 +63,7 @@ async def cookie_status() -> Dict[str, Any]:
 
 
 @router.post("/sync-all")
-async def sync_all_cookies() -> Dict[str, Any]:
+async def sync_all_cookies() -> dict[str, Any]:
     """一键同步所有平台 Cookie（通过 CookieCloud）"""
     results = {}
 

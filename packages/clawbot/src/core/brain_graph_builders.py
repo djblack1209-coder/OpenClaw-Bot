@@ -7,8 +7,8 @@ Core — 任务图构建器 Mixin
 """
 import logging
 
-from src.core.task_graph import TaskGraph, TaskGraphBuilder, ExecutorType
 from src.core.intent_parser import ParsedIntent
+from src.core.task_graph import ExecutorType, TaskGraph, TaskGraphBuilder
 
 logger = logging.getLogger(__name__)
 

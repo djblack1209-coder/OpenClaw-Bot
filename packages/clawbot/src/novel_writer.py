@@ -21,7 +21,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from src.db_utils import get_conn as _get_db_conn
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +144,7 @@ class NovelWriter:
             logger.error("[NovelWriter] LLM 调用失败: %s", e)
             return ""
 
-    async def create_novel(self, genre: str, style: str = "轻松有趣", user_id: int = 0) -> Dict:
+    async def create_novel(self, genre: str, style: str = "轻松有趣", user_id: int = 0) -> dict:
         """创建新小说 — 生成大纲和世界观"""
         # 1. 用 LLM 生成大纲
         user_prompt = f"请为以下题材生成一部网文小说的完整大纲：\n题材：{genre}\n风格：{style}"
@@ -178,7 +177,7 @@ class NovelWriter:
         logger.info("[NovelWriter] 新小说创建: #%d《%s》(%s)", novel_id, title, genre)
         return {"novel_id": novel_id, "title": title, "tagline": tagline, "outline": outline}
 
-    async def write_next_chapter(self, novel_id: int) -> Dict:
+    async def write_next_chapter(self, novel_id: int) -> dict:
         """续写下一章"""
         with self._conn() as conn:
             novel = conn.execute("SELECT * FROM novels WHERE id=?", (novel_id,)).fetchone()
@@ -255,7 +254,7 @@ class NovelWriter:
             "word_count": word_count,
         }
 
-    def get_novel_status(self, novel_id: int) -> Dict:
+    def get_novel_status(self, novel_id: int) -> dict:
         """获取小说状态"""
         with self._conn() as conn:
             novel = conn.execute("SELECT * FROM novels WHERE id=?", (novel_id,)).fetchone()
@@ -279,7 +278,7 @@ class NovelWriter:
             ],
         }
 
-    def list_novels(self, user_id: int = 0) -> List[Dict]:
+    def list_novels(self, user_id: int = 0) -> list[dict]:
         """列出所有小说"""
         with self._conn() as conn:
             novels = conn.execute(
@@ -304,7 +303,7 @@ class NovelWriter:
                 )
         return result
 
-    def export_txt(self, novel_id: int) -> Optional[str]:
+    def export_txt(self, novel_id: int) -> str | None:
         """导出小说为 TXT 文件"""
         with self._conn() as conn:
             novel = conn.execute("SELECT * FROM novels WHERE id=?", (novel_id,)).fetchone()
@@ -339,7 +338,7 @@ class NovelWriter:
 
 
 # 全局单例
-_writer: Optional[NovelWriter] = None
+_writer: NovelWriter | None = None
 
 
 def get_novel_writer() -> NovelWriter:

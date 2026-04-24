@@ -36,24 +36,24 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from config.prompts import (
+    PROACTIVE_CRITIC_PROMPT,
     PROACTIVE_GATE_PROMPT,
     PROACTIVE_GENERATE_PROMPT,
-    PROACTIVE_CRITIC_PROMPT,
     SOUL_CORE,
 )
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
 from src.constants import FAMILY_G4F, FAMILY_QWEN
-from src.resilience import api_limiter
+from src.core.proactive_listeners import setup_proactive_listeners  # noqa: F401
 
 # ── 从拆分模块导入，保持向后兼容 (HI-358) ──
-from src.core.proactive_models import GateResult, NotificationDraft, CriticResult  # noqa: F401
-from src.core.proactive_notify import _send_proactive, _send_proactive_photo, _safe_parse_time  # noqa: F401
-from src.core.proactive_listeners import setup_proactive_listeners  # noqa: F401
+from src.core.proactive_models import CriticResult, GateResult, NotificationDraft
+from src.core.proactive_notify import _safe_parse_time, _send_proactive, _send_proactive_photo  # noqa: F401
 from src.core.proactive_periodic import periodic_proactive_check  # noqa: F401
+from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -87,10 +87,10 @@ class ProactiveEngine:
     """
 
     def __init__(self):
-        self._sent_log: Dict[str, List[float]] = {}  # user_id → [timestamps]
-        self._recent_notifications: Dict[str, List[str]] = {}  # user_id → [texts]
+        self._sent_log: dict[str, list[float]] = {}  # user_id → [timestamps]
+        self._recent_notifications: dict[str, list[str]] = {}  # user_id → [texts]
         # 内容去重冷却: "user_id::签名" → 最后发送时间戳
-        self._content_cooldown: Dict[str, float] = {}
+        self._content_cooldown: dict[str, float] = {}
         self._last_cleanup = 0.0
         # asyncio 锁：保护 _sent_log/_recent_notifications/_content_cooldown 跨 await 的并发访问（HI-464）
         self._lock = asyncio.Lock()
@@ -123,7 +123,7 @@ class ProactiveEngine:
         current_context: str,
         user_id: str = "",
         user_profile: str = "",
-    ) -> Optional[str]:
+    ) -> str | None:
         """三步管道评估是否应该主动推送通知。
 
         Args:
@@ -205,7 +205,7 @@ class ProactiveEngine:
         current_context: str,
         user_profile: str,
         recent_notifications: str,
-    ) -> Optional[GateResult]:
+    ) -> GateResult | None:
         """Gate: 快速判断是否值得打扰。用最便宜的模型。"""
         prompt = PROACTIVE_GATE_PROMPT.format(
             user_profile=user_profile or "暂无画像",
@@ -227,7 +227,7 @@ class ProactiveEngine:
         user_profile: str,
         gate_reasoning: str,
         recent_notifications: str,
-    ) -> Optional[NotificationDraft]:
+    ) -> NotificationDraft | None:
         """Generate: 生成通知文本。"""
         prompt = PROACTIVE_GENERATE_PROMPT.format(
             gate_reasoning=gate_reasoning,
@@ -247,7 +247,7 @@ class ProactiveEngine:
         self,
         notification_text: str,
         draft_reasoning: str,
-    ) -> Optional[CriticResult]:
+    ) -> CriticResult | None:
         """Critic: 最后一道关卡。"""
         prompt = PROACTIVE_CRITIC_PROMPT.format(
             notification_text=notification_text,
@@ -287,8 +287,9 @@ class ProactiveEngine:
 
         # 降级: 用 free_pool + json_repair
         try:
-            from src.litellm_router import free_pool
             import json_repair
+
+            from src.litellm_router import free_pool
 
             if not free_pool:
                 return None
@@ -356,7 +357,7 @@ class ProactiveEngine:
         将提取到的特征排序拼接后取 MD5 前 12 位作为签名，
         保证相同含义的上下文产生相同签名。
         """
-        parts: List[str] = []
+        parts: list[str] = []
 
         # 1. 提取股票代码（大写 2~5 字母，前后为边界）
         tickers = re.findall(r"\b([A-Z]{2,5})\b", context)
@@ -436,7 +437,7 @@ class ProactiveEngine:
 #  单例
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_engine: Optional[ProactiveEngine] = None
+_engine: ProactiveEngine | None = None
 
 
 def get_proactive_engine() -> ProactiveEngine:

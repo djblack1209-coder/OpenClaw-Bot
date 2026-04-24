@@ -2,9 +2,9 @@
 Execution Hub — 共享工具函数
 从原 execution_hub.py 提取的通用工具方法
 """
+import logging
 import re
 import subprocess
-import logging
 from dataclasses import dataclass
 from email.header import decode_header
 

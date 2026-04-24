@@ -5,13 +5,12 @@ ClawBot - Telegram UX 增强层 v1.0
 """
 
 import asyncio
-import time
 import logging
+import time
 from contextlib import asynccontextmanager
-from typing import Optional
 
-from telegram.constants import ChatAction
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ class TypingIndicator:
         self.chat_id = chat_id
         self.context = context
         self.interval = interval  # Telegram typing expires after 5s
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     async def _keep_typing(self):
         try:
@@ -86,7 +85,7 @@ class ProgressTracker:
         self._steps: list = []
         self._current_step = ""
         self._frame_idx = 0
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._start_time = 0.0
 
     async def __aenter__(self):
@@ -305,7 +304,7 @@ async def send_error_with_retry(update, context, error: Exception, retry_command
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     # 延迟导入: 打破 telegram_ux ↔ bot 的循环依赖
-    from src.bot.error_messages import error_ai_busy, error_rate_limit, error_network, error_auth, error_generic
+    from src.bot.error_messages import error_ai_busy, error_auth, error_generic, error_network, error_rate_limit
 
     err_str = str(error).lower()
     if "timeout" in err_str or "timed out" in err_str:
@@ -901,7 +900,7 @@ class CardBuilder:
             parts.append("\n".join(self._lines))
         return "\n".join(parts)
 
-    def build_keyboard(self) -> Optional[InlineKeyboardMarkup]:
+    def build_keyboard(self) -> InlineKeyboardMarkup | None:
         """构建键盘"""
         # 自动结束最后一行
         if self._buttons:

@@ -23,7 +23,8 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 from src.constants import TG_MSG_LIMIT
 from src.message_format import strip_markdown
 from src.utils import now_et
@@ -83,8 +84,8 @@ class SentimentResult:
     score: float          # -1.0 (极负面) 到 +1.0 (极正面)
     label: str            # positive / negative / neutral
     confidence: float     # 0-1
-    positive_words: List[str] = field(default_factory=list)
-    negative_words: List[str] = field(default_factory=list)
+    positive_words: list[str] = field(default_factory=list)
+    negative_words: list[str] = field(default_factory=list)
 
 
 def _lexicon_sentiment(text: str) -> SentimentResult:
@@ -202,7 +203,7 @@ class ABVariant:
     """A/B 测试变体"""
     variant_id: str
     content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     # 追踪指标
     impressions: int = 0
     clicks: int = 0
@@ -234,10 +235,10 @@ class ABTest:
     """A/B 测试"""
     test_id: str
     name: str
-    variants: List[ABVariant]
+    variants: list[ABVariant]
     created_at: str = field(default_factory=lambda: now_et().isoformat())
     status: str = "active"  # active / paused / completed
-    winner_id: Optional[str] = None
+    winner_id: str | None = None
     min_impressions: int = 30  # 每个变体最少曝光数才能判定胜者
 
     def pick_variant(self) -> ABVariant:
@@ -259,7 +260,7 @@ class ABTest:
                 best_variant = v
         return best_variant
 
-    def check_winner(self) -> Optional[str]:
+    def check_winner(self) -> str | None:
         """检查是否有统计显著的胜者"""
         if any(v.impressions < self.min_impressions for v in self.variants):
             return None
@@ -281,8 +282,8 @@ class ABTest:
 class ABTestManager:
     """A/B 测试管理器"""
 
-    def __init__(self, data_dir: Optional[str] = None):
-        self._tests: Dict[str, ABTest] = {}
+    def __init__(self, data_dir: str | None = None):
+        self._tests: dict[str, ABTest] = {}
         if data_dir:
             self._data_path = Path(data_dir) / "ab_tests.json"
         else:
@@ -290,8 +291,8 @@ class ABTestManager:
         self._data_path.parent.mkdir(parents=True, exist_ok=True)
         self._load()
 
-    def create_test(self, name: str, contents: List[str],
-                    metadata: Optional[List[Dict]] = None) -> ABTest:
+    def create_test(self, name: str, contents: list[str],
+                    metadata: list[dict] | None = None) -> ABTest:
         """创建 A/B 测试"""
         test_id = hashlib.md5(f"{name}_{time.time()}".encode()).hexdigest()[:8]
         variants = []
@@ -306,7 +307,7 @@ class ABTestManager:
         logger.info(f"[ABTest] 创建测试 '{name}' ({test_id}): {len(variants)} 个变体")
         return test
 
-    def get_content(self, test_id: str) -> Tuple[str, str]:
+    def get_content(self, test_id: str) -> tuple[str, str]:
         """获取测试内容（自动选择变体）
 
         Returns: (variant_id, content)
@@ -343,7 +344,7 @@ class ABTestManager:
         test.check_winner()
         self._save()
 
-    def get_results(self, test_id: str) -> Optional[Dict[str, Any]]:
+    def get_results(self, test_id: str) -> dict[str, Any] | None:
         """获取测试结果"""
         test = self._tests.get(test_id)
         if not test:
@@ -367,7 +368,7 @@ class ABTestManager:
             ],
         }
 
-    def list_tests(self, status: Optional[str] = None) -> List[Dict]:
+    def list_tests(self, status: str | None = None) -> list[dict]:
         tests = self._tests.values()
         if status:
             tests = [t for t in tests if t.status == status]
@@ -462,7 +463,7 @@ class ContentAdapter:
 class PostTimeOptimizer:
     """基于历史互动数据推荐最佳发布时间（带 JSON 持久化）"""
 
-    def __init__(self, data_dir: Optional[str] = None):
+    def __init__(self, data_dir: str | None = None):
         import threading
         # 默认最佳时段（基于通用社交媒体研究）
         self._default_hours = {
@@ -470,7 +471,7 @@ class PostTimeOptimizer:
             "twitter": [8, 12, 17, 20],
             "weibo": [8, 12, 18, 22],
         }
-        self._engagement_by_hour: Dict[int, List[float]] = {}
+        self._engagement_by_hour: dict[int, list[float]] = {}
         # 线程锁：保护跨线程访问（APScheduler 线程写入 + asyncio 主线程读取）(HI-457)
         self._data_lock = threading.Lock()
         # 持久化路径：优先使用传入目录，否则用包级 data/ 目录
@@ -496,7 +497,7 @@ class PostTimeOptimizer:
         # 用快照写磁盘（无需持锁，避免 I/O 阻塞其他线程）
         self._save(snapshot)
 
-    def best_hours(self, platform: str = "telegram", top_n: int = 3) -> List[int]:
+    def best_hours(self, platform: str = "telegram", top_n: int = 3) -> list[int]:
         """推荐最佳发布时间"""
         with self._data_lock:
             if not self._engagement_by_hour:
@@ -509,7 +510,7 @@ class PostTimeOptimizer:
         sorted_hours = sorted(avg_by_hour.items(), key=lambda x: -x[1])
         return [h for h, _ in sorted_hours[:top_n]]
 
-    def _save(self, snapshot: Optional[Dict[str, list]] = None):
+    def _save(self, snapshot: dict[str, list] | None = None):
         """将互动数据写入 JSON 文件。优先使用传入的快照，否则在锁内拍新快照"""
         try:
             if snapshot is None:
@@ -534,11 +535,11 @@ class PostTimeOptimizer:
 
 
 # ── PostTimeOptimizer 全局单例 ──
-_post_time_optimizer_instance: Optional[PostTimeOptimizer] = None
+_post_time_optimizer_instance: PostTimeOptimizer | None = None
 _post_time_optimizer_lock = __import__("threading").Lock()
 
 
-def get_post_time_optimizer(data_dir: Optional[str] = None) -> PostTimeOptimizer:
+def get_post_time_optimizer(data_dir: str | None = None) -> PostTimeOptimizer:
     """获取 PostTimeOptimizer 全局单例，避免每次调用新建实例导致数据丢失"""
     global _post_time_optimizer_instance
     if _post_time_optimizer_instance is None:

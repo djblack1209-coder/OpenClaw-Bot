@@ -26,7 +26,6 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
 
 from src.constants import TG_SAFE_LENGTH
 from src.utils import scrub_secrets
@@ -55,12 +54,12 @@ class _CredentialStore:
     使用 __slots__ 限制属性访问，__repr__ 屏蔽敏感值，
     避免 token 在日志、调试器或 dir() 中意外泄露。
     """
-    __slots__ = ("_token", "_user_id", "_context_token", "_context_token_ts", "_warned")
+    __slots__ = ("_context_token", "_context_token_ts", "_token", "_user_id", "_warned")
 
     def __init__(self) -> None:
-        self._token: Optional[str] = None
-        self._user_id: Optional[str] = None
-        self._context_token: Optional[str] = None
+        self._token: str | None = None
+        self._user_id: str | None = None
+        self._context_token: str | None = None
         self._context_token_ts: float = 0
         self._warned: bool = False
 
@@ -71,21 +70,21 @@ class _CredentialStore:
         return f"<_CredentialStore token={has_token} user_id={has_user}>"
 
     @property
-    def token(self) -> Optional[str]:
+    def token(self) -> str | None:
         self._ensure_loaded()
         return self._token
 
     @property
-    def user_id(self) -> Optional[str]:
+    def user_id(self) -> str | None:
         self._ensure_loaded()
         return self._user_id
 
     @property
-    def context_token(self) -> Optional[str]:
+    def context_token(self) -> str | None:
         return self._context_token
 
     @context_token.setter
-    def context_token(self, value: Optional[str]) -> None:
+    def context_token(self, value: str | None) -> None:
         self._context_token = value
 
     @property
@@ -122,7 +121,7 @@ class _CredentialStore:
             if not accounts_file.exists():
                 return
 
-            with open(accounts_file, "r") as f:
+            with open(accounts_file) as f:
                 account_ids = json.load(f)
 
             if not account_ids:
@@ -136,7 +135,7 @@ class _CredentialStore:
             if not cred_file.exists():
                 return
 
-            with open(cred_file, "r") as f:
+            with open(cred_file) as f:
                 cred = json.load(f)
 
             self._token = cred.get("token", "")
@@ -182,7 +181,7 @@ def is_wechat_notify_enabled() -> bool:
     return bool(_creds.token and _creds.user_id)
 
 
-async def _get_context_token(token: str, user_id: str) -> Optional[str]:
+async def _get_context_token(token: str, user_id: str) -> str | None:
     """通过 getconfig API 获取 contextToken（30 分钟 TTL 自动刷新）。"""
     import time
     if _creds.context_token and (time.time() - _creds.context_token_ts) < 1800:
@@ -213,7 +212,7 @@ async def _get_context_token(token: str, user_id: str) -> Optional[str]:
     return None
 
 
-async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
+async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
     """将通知文本发送到微信用户。
 
     Args:
@@ -291,7 +290,7 @@ async def send_to_wechat(text: str, user_id: Optional[str] = None) -> bool:
     return False
 
 
-def send_to_wechat_sync(text: str, user_id: Optional[str] = None) -> bool:
+def send_to_wechat_sync(text: str, user_id: str | None = None) -> bool:
     """同步版本 — 在非异步上下文中使用。"""
     try:
         try:

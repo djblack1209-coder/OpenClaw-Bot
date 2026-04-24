@@ -7,20 +7,20 @@ IBKR 扫描器与合约搜索 Mixin
 """
 
 import asyncio
-import re
 import logging
+import re
 import time as _time
-from typing import List, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ib_async import Stock, Forex, Crypto, Contract, ScannerSubscription
+    from ib_async import Contract, Crypto, Forex, ScannerSubscription, Stock
 
 try:
-    from ib_async import Stock, Forex, Crypto, Contract, ScannerSubscription
+    from ib_async import Contract, Crypto, Forex, ScannerSubscription, Stock
 
     _HAS_IB_SCANNER = True
 except ImportError:
@@ -82,7 +82,7 @@ class BrokerScannerMixin:
         max_symbols: int = 800,
         include_us: bool = True,
         include_hk: bool = True,
-    ) -> List[str]:
+    ) -> list[str]:
         """从 IBKR Scanner 拉取动态可交易标的池（近实时）"""
         if not await self.ensure_connected():
             return []
@@ -151,7 +151,7 @@ class BrokerScannerMixin:
         logger.info("[IBKR] Scanner 动态标的池: %d 个", len(symbols))
         return symbols
 
-    async def search_matching_contracts(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search_matching_contracts(self, query: str, limit: int = 20) -> list[dict]:
         """按关键字搜索 IBKR 可交易合约（用于任意标的发现）"""
         if not await self.ensure_connected():
             return []
@@ -191,7 +191,7 @@ class BrokerScannerMixin:
         exchange: str = "SMART",
         currency: str = "USD",
         timeout_seconds: float = 6.0,
-    ) -> Dict:
+    ) -> dict:
         """获取单个标的 IBKR 实时快照（last/bid/ask/volume）"""
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}

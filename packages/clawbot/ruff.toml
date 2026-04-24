@@ -24,6 +24,9 @@ ignore = [
     "B905",   # zip() 不强制 strict=True
     "SIM108", # 不强制三元表达式
     "RUF012", # ClassVar 注解 — 与 Pydantic BaseModel 冲突
+    "RUF001", # 允许字符串中使用中文字符 (项目要求中文注释)
+    "RUF002", # 允许文档字符串中使用中文字符
+    "RUF003", # 允许注释中使用中文字符
 ]
 
 [lint.per-file-ignores]

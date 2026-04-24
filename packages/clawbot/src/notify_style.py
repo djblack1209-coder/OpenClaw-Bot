@@ -14,9 +14,8 @@ v2.1 变更 (2026-03-23):
   - 新增 natural_number(): "1,234,567" / "1.2 million"
 """
 
-from typing import Iterable, List, Optional, Sequence, Tuple
-
 import logging
+from collections.abc import Iterable, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +148,8 @@ def natural_number(n) -> str:
 
 def format_notice(
     title: str,
-    bullets: Optional[Iterable[str]] = None,
-    links: Optional[Iterable[str]] = None,
+    bullets: Iterable[str] | None = None,
+    links: Iterable[str] | None = None,
     footer: str = "",
     icon: str = "",
 ) -> str:
@@ -175,7 +174,7 @@ def format_notice(
 def format_digest(
     title: str,
     intro: str = "",
-    sections: Optional[Sequence[Tuple[str, Sequence[str]]]] = None,
+    sections: Sequence[tuple[str, Sequence[str]]] | None = None,
     footer: str = "",
 ) -> str:
     # icon="" 避免 format_announcement 默认加 📢 前缀，调用方标题已自带 emoji
@@ -185,9 +184,9 @@ def format_digest(
 def format_announcement(
     title: str,
     intro: str = "",
-    paragraphs: Optional[Sequence[str]] = None,
-    sections: Optional[Sequence[Tuple[str, Sequence[str]]]] = None,
-    links: Optional[Sequence[str]] = None,
+    paragraphs: Sequence[str] | None = None,
+    sections: Sequence[tuple[str, Sequence[str]]] | None = None,
+    links: Sequence[str] | None = None,
     footer: str = "",
     icon: str = "📢",
 ) -> str:
@@ -503,7 +502,7 @@ def format_bounty_result(
 # ── 长消息自动分割（Telegram 单消息上限 4096 字符）──────────
 
 
-def split_long_message(text: str, max_len: int = 4096) -> List[str]:
+def split_long_message(text: str, max_len: int = 4096) -> list[str]:
     """将超长文本按 section 边界智能分割为多条消息。
 
     分割策略（按优先级）：
@@ -526,7 +525,7 @@ def split_long_message(text: str, max_len: int = 4096) -> List[str]:
     # 按 section 分隔符拆分（━━━ 分隔线 或 ▸ 开头的标题行前断开）
     parts = re.split(r"(?=\n━━━|\n▸ )", text)
 
-    chunks: List[str] = []
+    chunks: list[str] = []
     current = ""
 
     for part in parts:
@@ -556,10 +555,10 @@ def split_long_message(text: str, max_len: int = 4096) -> List[str]:
     return chunks if chunks else [text[:max_len]]
 
 
-def _split_by_lines(text: str, max_len: int) -> List[str]:
+def _split_by_lines(text: str, max_len: int) -> list[str]:
     """按换行符分割超长文本，保证不在行中间断开"""
     lines = text.split("\n")
-    chunks: List[str] = []
+    chunks: list[str] = []
     current = ""
 
     for line in lines:

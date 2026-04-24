@@ -12,8 +12,8 @@ FastAPI API 认证中间件 — 共享密钥 Token 验证。
   - WebSocket 兼容: WS 连接通过 query param ?token= 验证
 """
 import hmac
-import os
 import logging
+import os
 
 from fastapi import HTTPException, WebSocket
 from fastapi.security import APIKeyHeader

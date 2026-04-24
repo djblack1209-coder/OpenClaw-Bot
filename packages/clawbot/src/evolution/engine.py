@@ -18,16 +18,17 @@ import logging
 import os
 import re
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 from src.utils import now_et
+
 from .github_trending import (
     TrendingRepo,
-    fetch_trending,
     fetch_fast_growing_repos,
     fetch_readme,
+    fetch_trending,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class EvolutionProposal:
     evaluated_by: str = ""           # 哪个 LLM 模型
     llm_reasoning: str = ""          # LLM 的评估原文
     repo_language: str = ""
-    repo_topics: List[str] = field(default_factory=list)
+    repo_topics: list[str] = field(default_factory=list)
     matched_gap: str = ""            # 匹配到的能力缺口
 
     def __post_init__(self):
@@ -95,8 +96,8 @@ class ScanResult:
     repos_scanned: int
     repos_evaluated: int
     proposals_generated: int
-    proposals: List[EvolutionProposal]
-    errors: List[str]
+    proposals: list[EvolutionProposal]
+    errors: list[str]
     duration_seconds: float = 0.0
 
     def to_dict(self) -> dict:
@@ -116,7 +117,7 @@ class ScanResult:
 # Capability Gap Map
 # ──────────────────────────────────────────────
 
-DEFAULT_CAPABILITY_GAPS: List[Dict[str, str]] = [
+DEFAULT_CAPABILITY_GAPS: list[dict[str, str]] = [
     {
         "module": "perception",
         "gap": "real_time_market_sentiment",
@@ -249,8 +250,8 @@ class EvolutionEngine:
     def __init__(
         self,
         min_stars: int = 500,
-        languages: Optional[List[str]] = None,
-        github_token: Optional[str] = None,
+        languages: list[str] | None = None,
+        github_token: str | None = None,
     ):
         self.min_stars = min_stars
         self.languages = languages or ["python", "typescript", "javascript"]
@@ -267,7 +268,7 @@ class EvolutionEngine:
         """加载或创建默认配置"""
         if CONFIG_FILE.exists():
             try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                with open(CONFIG_FILE, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.warning("[evolution] Failed to load config: %s", e)
@@ -292,7 +293,7 @@ class EvolutionEngine:
 
     # ──────────────── Main Scan Loop ────────────────
 
-    async def daily_scan(self) -> List[EvolutionProposal]:
+    async def daily_scan(self) -> list[EvolutionProposal]:
         """
         主进化扫描循环:
         1. 采集 GitHub trending + 快速增长仓库
@@ -304,13 +305,13 @@ class EvolutionEngine:
         import time
         t0 = time.time()
         scan_id = str(uuid.uuid4())[:8]
-        errors: List[str] = []
-        all_proposals: List[EvolutionProposal] = []
+        errors: list[str] = []
+        all_proposals: list[EvolutionProposal] = []
 
         logger.info("[evolution] === Scan %s started ===", scan_id)
 
         # ─── Step 1: 采集候选仓库 ───
-        candidates: List[TrendingRepo] = []
+        candidates: list[TrendingRepo] = []
 
         # 1a. GitHub Trending (每种语言)
         for lang in self.languages:
@@ -340,7 +341,7 @@ class EvolutionEngine:
 
         # ─── Step 2: 去重 + 过滤 ───
         seen_names = set()
-        filtered: List[TrendingRepo] = []
+        filtered: list[TrendingRepo] = []
         for repo in candidates:
             if repo.name in seen_names:
                 continue
@@ -427,7 +428,7 @@ class EvolutionEngine:
 
     # ──────────────── LLM Evaluation ────────────────
 
-    async def _evaluate_relevance(self, repo: TrendingRepo) -> Optional[EvolutionProposal]:
+    async def _evaluate_relevance(self, repo: TrendingRepo) -> EvolutionProposal | None:
         """
         用 LLM 评估一个仓库对 OpenClaw 的集成价值。
         返回 EvolutionProposal 或 None (如果评估失败或价值太低)。
@@ -503,7 +504,7 @@ class EvolutionEngine:
 
         return proposal
 
-    def _heuristic_evaluate(self, repo: TrendingRepo, readme: str = "") -> Optional[EvolutionProposal]:
+    def _heuristic_evaluate(self, repo: TrendingRepo, readme: str = "") -> EvolutionProposal | None:
         """无 LLM 的启发式评估 — 基于关键词匹配 + Star 数量 + 能力差距匹配。
 
         不需要 AI，纯规则评分，确保进化引擎在 LLM 不可用时也能工作。
@@ -561,7 +562,7 @@ class EvolutionEngine:
         )
 
     @staticmethod
-    def _parse_llm_json(text: str) -> Optional[Dict[str, Any]]:
+    def _parse_llm_json(text: str) -> dict[str, Any] | None:
         """从 LLM 响应中提取 JSON，处理各种格式。"""
         if not text:
             return None
@@ -593,7 +594,7 @@ class EvolutionEngine:
 
     # ──────────────── Capability Gaps ────────────────
 
-    def get_capability_gaps(self) -> List[Dict[str, str]]:
+    def get_capability_gaps(self) -> list[dict[str, str]]:
         """返回已知能力缺口列表。扫描时用于匹配趋势项目。"""
         return list(self._capability_gaps)
 
@@ -619,11 +620,11 @@ class EvolutionEngine:
 
     def list_proposals(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         limit: int = 50,
-    ) -> List[EvolutionProposal]:
+    ) -> list[EvolutionProposal]:
         """列出最近的提案，可按状态过滤。"""
-        proposals: List[EvolutionProposal] = []
+        proposals: list[EvolutionProposal] = []
         if not PROPOSALS_DIR.exists():
             return proposals
 
@@ -631,7 +632,7 @@ class EvolutionEngine:
         files = sorted(PROPOSALS_DIR.glob("*.json"), reverse=True)
         for f in files[:limit * 2]:  # 多读一些，因为可能有过滤
             try:
-                with open(f, "r", encoding="utf-8") as fp:
+                with open(f, encoding="utf-8") as fp:
                     data = json.load(fp)
                 p = EvolutionProposal.from_dict(data)
                 if status and p.status != status:
@@ -652,7 +653,7 @@ class EvolutionEngine:
 
         for f in PROPOSALS_DIR.glob(f"*_{proposal_id}.json"):
             try:
-                with open(f, "r", encoding="utf-8") as fp:
+                with open(f, encoding="utf-8") as fp:
                     data = json.load(fp)
                 data["status"] = new_status
                 with open(f, "w", encoding="utf-8") as fp:
@@ -672,14 +673,14 @@ class EvolutionEngine:
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(scan_result.to_dict(), ensure_ascii=False) + "\n")
 
-    def get_scan_history(self, limit: int = 20) -> List[dict]:
+    def get_scan_history(self, limit: int = 20) -> list[dict]:
         """获取最近的扫描历史。"""
         if not HISTORY_FILE.exists():
             return []
 
-        lines: List[str] = []
+        lines: list[str] = []
         try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            with open(HISTORY_FILE, encoding="utf-8") as f:
                 lines = f.readlines()
         except Exception as e:  # noqa: F841
             return []
@@ -723,7 +724,7 @@ class EvolutionEngine:
 
         # EventBus 推送（新增 — 触发协同管道广播）
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
             bus = get_event_bus()
             await bus.publish(
                 EventType.EVOLUTION_PROPOSAL,

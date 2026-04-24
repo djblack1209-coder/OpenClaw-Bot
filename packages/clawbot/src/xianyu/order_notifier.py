@@ -1,11 +1,10 @@
 """订单通知模块 — 邮件 + Telegram 推送 + 日报 + 健康告警"""
 import asyncio
+import logging
 import os
 import smtplib
-import logging
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict
+from email.mime.text import MIMEText
 
 import httpx
 
@@ -30,7 +29,7 @@ class OrderNotifier:
         self.tg_token = os.getenv("NOTIFY_TG_TOKEN", "")
         self.tg_chat_id = os.getenv("NOTIFY_TG_CHAT_ID", "")
 
-    def notify_order(self, order: Dict):
+    def notify_order(self, order: dict):
         """下单通知：同时发邮件和 Telegram"""
         user_id = order.get("user_id", "unknown")
         item_id = order.get("item_id", "unknown")
@@ -85,7 +84,7 @@ class OrderNotifier:
         text = f"{emoji} 闲鱼客服 [{event}]\n{detail}" if detail else f"{emoji} 闲鱼客服 [{event}]"
         self._send_telegram(text)
 
-    def notify_daily_report(self, stats: Dict):
+    def notify_daily_report(self, stats: dict):
         """每日销售/咨询日报"""
         text = (
             f"📊 闲鱼日报 [{stats['date']}]\n"

@@ -2,8 +2,9 @@
 
 import json
 import logging
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -175,24 +176,24 @@ def get_scheduler_status():
     ]
 
     # 调度器实例属性名 → 任务 id 的映射，用于读取 last_run 时间戳
-    _ts_field_map: Dict[str, str] = {
+    _ts_field_map: dict[str, str] = {
         "monitors": "_last_monitor_ts",
         "bounty_scan": "_last_bounty_ts",
         "social_operator": "_last_social_operator_ts",
         "stock_check": "_last_stock_check_ts",
         "price_watch": "_last_price_watch_ts",
     }
-    _date_field_map: Dict[str, str] = {
+    _date_field_map: dict[str, str] = {
         "daily_brief": "_last_brief_date",
         "morning_news": "_last_news_date",
         "daily_coupon": "_last_coupon_date",
     }
 
-    tasks: list[Dict[str, Any]] = []
+    tasks: list[dict[str, Any]] = []
     source = "live" if scheduler_running else "static"
 
     for task_def in static_tasks:
-        task: Dict[str, Any] = {**task_def, "source": source}
+        task: dict[str, Any] = {**task_def, "source": source}
 
         # 从调度器实例补充运行时信息
         if scheduler_instance and scheduler_running:
@@ -201,8 +202,8 @@ def get_scheduler_status():
             if tid in _ts_field_map:
                 ts_val = getattr(scheduler_instance, _ts_field_map[tid], 0.0)
                 if ts_val and ts_val > 0:
-                    from datetime import datetime, timezone
-                    task["last_run"] = datetime.fromtimestamp(ts_val, tz=timezone.utc).isoformat()
+                    from datetime import datetime
+                    task["last_run"] = datetime.fromtimestamp(ts_val, tz=UTC).isoformat()
             # 日期类型的 last_run（daily_brief, morning_news 等）
             elif tid in _date_field_map:
                 date_val = getattr(scheduler_instance, _date_field_map[tid], "")

@@ -23,9 +23,10 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-from src.utils import now_et
+from typing import Any
+
 from src.constants import FAMILY_QWEN
+from src.utils import now_et
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class AgentReport:
     score: float = 0.0  # 0-10 综合评分
     recommendation: str = "hold"  # buy/sell/hold
     reasoning: str = ""
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     elapsed_seconds: float = 0.0
 
 
@@ -67,11 +68,11 @@ class TeamAnalysis:
     timestamp: str = field(default_factory=lambda: now_et().isoformat())
 
     # 各角色报告
-    research_report: Optional[AgentReport] = None
-    ta_report: Optional[AgentReport] = None
-    quant_report: Optional[AgentReport] = None
-    risk_report: Optional[AgentReport] = None
-    director_report: Optional[AgentReport] = None
+    research_report: AgentReport | None = None
+    ta_report: AgentReport | None = None
+    quant_report: AgentReport | None = None
+    risk_report: AgentReport | None = None
+    director_report: AgentReport | None = None
 
     # 最终决策
     final_recommendation: str = "hold"
@@ -82,7 +83,7 @@ class TeamAnalysis:
     veto: bool = False
     veto_reason: str = ""
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
             "market": self.market,
@@ -169,9 +170,9 @@ class DailyBrief:
 
     date: str = field(default_factory=lambda: now_et().strftime("%Y-%m-%d"))
     market_overview: str = ""
-    opportunities: List[Dict] = field(default_factory=list)
-    risks: List[str] = field(default_factory=list)
-    portfolio_status: Dict = field(default_factory=dict)
+    opportunities: list[dict] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
+    portfolio_status: dict = field(default_factory=dict)
 
 
 # ── 角色提示词 — 从中央注册表导入 ──────────────────────
@@ -264,7 +265,7 @@ class InvestmentTeam:
         self,
         symbol: str,
         market: str = "cn",
-        context: Optional[Dict] = None,
+        context: dict | None = None,
     ) -> TeamAnalysis:
         """
         完整投资分析 — 研究员+TA+量化 并行 → 风控审核 → 总监决策。
@@ -321,7 +322,7 @@ class InvestmentTeam:
 
         # 5. 发布事件
         try:
-            from src.core.event_bus import get_event_bus, EventType
+            from src.core.event_bus import EventType, get_event_bus
 
             bus = get_event_bus()
             await bus.publish(
@@ -335,12 +336,12 @@ class InvestmentTeam:
         logger.info("[投资团队] %s 分析完成: %s", symbol, analysis.final_recommendation)
         return analysis
 
-    async def research(self, symbol: str) -> Dict:
+    async def research(self, symbol: str) -> dict:
         """仅研究员分析（供 Brain 直接调用）"""
         report = await self._run_researcher(symbol, "cn")
         return report.__dict__ if report else {}
 
-    async def quant_analysis(self, symbol: str) -> Dict:
+    async def quant_analysis(self, symbol: str) -> dict:
         """仅量化分析（供 Brain 直接调用）"""
         report = await self._run_quant(symbol, "cn")
         return report.__dict__ if report else {}
@@ -526,7 +527,7 @@ class InvestmentTeam:
         report.elapsed_seconds = time.time() - start
         return report
 
-    async def review_trade(self, trade_id: str) -> Dict:
+    async def review_trade(self, trade_id: str) -> dict:
         """交易复盘"""
         try:
             from src.trading_journal import journal
@@ -558,13 +559,13 @@ class InvestmentTeam:
             brief.market_overview = f"简报生成失败: {e}"
         return brief
 
-    def get_portfolio_status(self) -> Dict:
+    def get_portfolio_status(self) -> dict:
         """获取当前持仓状态"""
         return self._get_portfolio_context()
 
     # ── 数据获取 ──────────────────────────────────────
 
-    async def _fetch_fundamental_data(self, symbol: str, market: str) -> Dict:
+    async def _fetch_fundamental_data(self, symbol: str, market: str) -> dict:
         """获取基本面数据 — 多源汇聚"""
         data = {}
 
@@ -613,7 +614,7 @@ class InvestmentTeam:
 
         return data if data else {"error": "无数据", "symbol": symbol}
 
-    async def _fetch_ta_data(self, symbol: str) -> Dict:
+    async def _fetch_ta_data(self, symbol: str) -> dict:
         """获取技术分析数据"""
         try:
             from src.ta_engine import get_full_analysis
@@ -624,7 +625,7 @@ class InvestmentTeam:
             logger.exception("技术分析数据获取失败: %s", symbol)
             return {"error": str(e), "symbol": symbol}
 
-    async def _fetch_quant_data(self, symbol: str) -> Dict:
+    async def _fetch_quant_data(self, symbol: str) -> dict:
         """获取量化数据"""
         try:
             import yfinance as yf
@@ -650,7 +651,7 @@ class InvestmentTeam:
             logger.exception("量化数据获取失败: %s", symbol)
             return {"error": str(e)}
 
-    def _get_portfolio_context(self) -> Dict:
+    def _get_portfolio_context(self) -> dict:
         """获取当前持仓上下文"""
         try:
             from src.broker_selector import ibkr
@@ -668,7 +669,7 @@ class InvestmentTeam:
 
     # ── LLM 分析（统一入口）──────────────────────────────
 
-    async def _llm_analyze(self, system_prompt: str, user_content: str) -> Dict:
+    async def _llm_analyze(self, system_prompt: str, user_content: str) -> dict:
         """统一的 LLM 分析调用"""
         try:
             from src.litellm_router import free_pool
@@ -722,10 +723,10 @@ class StrategyHealthMonitor:
     DEVIATION_THRESHOLD = 0.20  # 偏离20%触发暂停
 
     def __init__(self):
-        self._strategy_performance: Dict[str, Dict] = {}
+        self._strategy_performance: dict[str, dict] = {}
         self._suspended_strategies: set = set()
 
-    def record_performance(self, strategy_name: str, live_return: float, backtest_return: float) -> Optional[str]:
+    def record_performance(self, strategy_name: str, live_return: float, backtest_return: float) -> str | None:
         """
         记录策略表现，检测是否需要暂停。
 
@@ -783,7 +784,7 @@ class StrategyHealthMonitor:
     def resume_strategy(self, strategy_name: str) -> None:
         self._suspended_strategies.discard(strategy_name)
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         return {
             "performance": self._strategy_performance,
             "suspended": list(self._suspended_strategies),
@@ -792,7 +793,7 @@ class StrategyHealthMonitor:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_investment_team: Optional[InvestmentTeam] = None
+_investment_team: InvestmentTeam | None = None
 
 
 def get_investment_team() -> InvestmentTeam:

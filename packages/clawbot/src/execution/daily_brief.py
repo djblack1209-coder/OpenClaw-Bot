@@ -8,51 +8,49 @@
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import List, Tuple
-
-from src.notify_style import format_digest
+from datetime import UTC, datetime
 
 # ── 从子模块导入 ──────────────────────────────────────────────
 from src.execution.daily_brief_data import (  # noqa: F401
-    _section,
-    _get_timestamp_tag,
-    _get_yesterday_comparison,
-    _calc_deltas,
-    _format_delta,
-    _build_today_agenda,
-    _fetch_trending_projects,
-    _fetch_weather,
-    _fetch_forex,
     # R5-2: section 子函数
     _brief_agenda,
-    _brief_quick_ref,
-    _brief_positions,
-    _brief_trading,
-    _brief_targets,
-    _brief_todos,
-    _brief_reminders,
-    _brief_watchlist,
-    _brief_market,
-    _brief_sentiment,
-    _brief_news,
-    _brief_social_ops,
-    _brief_ops_status,
     _brief_api_cost,
-    _brief_xianyu,
     _brief_engagement,
     _brief_followers,
+    _brief_market,
+    _brief_news,
+    _brief_ops_status,
+    _brief_positions,
+    _brief_quick_ref,
+    _brief_reminders,
+    _brief_sentiment,
+    _brief_social_ops,
+    _brief_targets,
+    _brief_todos,
+    _brief_trading,
     _brief_trending,
+    _brief_watchlist,
+    _brief_xianyu,
+    _build_today_agenda,
+    _calc_deltas,
     _collect_brief_metrics,
+    _fetch_forex,
+    _fetch_trending_projects,
+    _fetch_weather,
+    _format_delta,
+    _get_timestamp_tag,
+    _get_yesterday_comparison,
+    _section,
 )
 from src.execution.daily_brief_llm import (  # noqa: F401
     _analyze_news_with_llm,
-    _generate_executive_summary,
     _generate_daily_recommendations,
+    _generate_executive_summary,
 )
 
 # 向后兼容: scheduler.py / cmd_analysis_mixin.py 从本模块导入 weekly_report
 from src.execution.weekly_report import weekly_report  # noqa: F401
+from src.notify_style import format_digest
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +60,8 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
 
     流程: 采集 13+ 数据源 → 收集关键指标 → LLM 执行摘要 → 智能建议 → 组装输出
     """
-    sections: List[Tuple[str, List[str]]] = []
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    sections: list[tuple[str, list[str]]] = []
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
 
     # ── 价值位阶排序: 行动建议 > 异常检测 > 资产状况 > 运营数据 > 信息参考 ──
 
@@ -80,7 +78,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     await _brief_sentiment(sections)
 
     # 第四层: 运营数据（社媒+闲鱼合并展示）
-    social_sections: List[Tuple[str, List[str]]] = []
+    social_sections: list[tuple[str, list[str]]] = []
     await _brief_social_ops(social_sections)
     await _brief_engagement(social_sections, db_path=db_path)
     await _brief_followers(social_sections)

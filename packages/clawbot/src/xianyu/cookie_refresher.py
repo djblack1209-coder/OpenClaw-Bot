@@ -77,7 +77,7 @@ def update_env_file(cookie_str: str):
         logger.debug("未找到 .env 文件，跳过写回")
         return
     try:
-        with open(env_path, "r", encoding="utf-8") as f:
+        with open(env_path, encoding="utf-8") as f:
             content = f.read()
         if "XIANYU_COOKIES=" in content:
             content = re.sub(

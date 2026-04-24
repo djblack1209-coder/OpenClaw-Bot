@@ -5,12 +5,12 @@ ClawBot 监控 — 成本归因分析器
 按 bot/用户/功能/模型 维度的成本归因 + 月度预测 + 预算告警。
 """
 
-import time
 import logging
 import threading
+import time
 from contextlib import contextmanager
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any
 
 from src.db_utils import get_conn as _get_db_conn
 
@@ -27,7 +27,7 @@ class CostAnalyzer:
     - 预算告警
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path:
             self._db_path = db_path
         else:
@@ -68,7 +68,7 @@ class CostAnalyzer:
             """)
 
         # 内存缓存：最近 1000 条记录用于快速聚合
-        self._recent: List[Dict[str, Any]] = []
+        self._recent: list[dict[str, Any]] = []
         self._max_recent = 1000
 
     def record(
@@ -127,10 +127,10 @@ class CostAnalyzer:
         except Exception as e:
             logger.warning("[CostAnalyzer] DB写入失败: %s", e)
 
-    def analyze_by_bot(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
+    def analyze_by_bot(self, hours: float = 24) -> dict[str, dict[str, Any]]:
         """按 bot 维度的成本归因"""
         cutoff = time.time() - hours * 3600
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         try:
             with self._conn() as conn:
                 rows = conn.execute(
@@ -152,10 +152,10 @@ class CostAnalyzer:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
         return result
 
-    def analyze_by_model(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
+    def analyze_by_model(self, hours: float = 24) -> dict[str, dict[str, Any]]:
         """按模型维度的成本归因"""
         cutoff = time.time() - hours * 3600
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         try:
             with self._conn() as conn:
                 rows = conn.execute(
@@ -176,10 +176,10 @@ class CostAnalyzer:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
         return result
 
-    def analyze_by_user(self, hours: float = 24) -> Dict[int, Dict[str, Any]]:
+    def analyze_by_user(self, hours: float = 24) -> dict[int, dict[str, Any]]:
         """按用户维度的成本归因"""
         cutoff = time.time() - hours * 3600
-        result: Dict[int, Dict[str, Any]] = {}
+        result: dict[int, dict[str, Any]] = {}
         try:
             with self._conn() as conn:
                 rows = conn.execute(
@@ -198,10 +198,10 @@ class CostAnalyzer:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
         return result
 
-    def analyze_by_feature(self, hours: float = 24) -> Dict[str, Dict[str, Any]]:
+    def analyze_by_feature(self, hours: float = 24) -> dict[str, dict[str, Any]]:
         """按功能维度的成本归因"""
         cutoff = time.time() - hours * 3600
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         try:
             with self._conn() as conn:
                 rows = conn.execute(
@@ -220,7 +220,7 @@ class CostAnalyzer:
             logger.debug(f"[CostAnalyzer] 查询失败: {e}")
         return result
 
-    def predict_monthly_cost(self) -> Dict[str, float]:
+    def predict_monthly_cost(self) -> dict[str, float]:
         """基于最近 7 天数据预测月度成本"""
         week_data = self.analyze_by_bot(hours=168)  # 7 days
         total_week = sum(v["cost_usd"] for v in week_data.values())
@@ -231,7 +231,7 @@ class CostAnalyzer:
             "monthly_predicted_usd": round(daily_avg * 30, 2),
         }
 
-    def get_dashboard(self) -> Dict[str, Any]:
+    def get_dashboard(self) -> dict[str, Any]:
         """获取成本看板数据"""
         return {
             "by_bot_24h": self.analyze_by_bot(24),

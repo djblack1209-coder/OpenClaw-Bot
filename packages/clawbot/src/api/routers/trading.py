@@ -3,18 +3,19 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path as FilePath
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import (
-    TradingPositions,
     PnLSummary,
     TeamVoteRequest,
+    TradingPositions,
     WSMessageType,
 )
 from .ws import push_event
@@ -57,7 +58,7 @@ async def get_pnl():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/trading/signals", response_model=Dict[str, Any])
+@router.get("/trading/signals", response_model=dict[str, Any])
 def get_signals():
     """获取交易信号"""
     try:
@@ -69,7 +70,7 @@ def get_signals():
         raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
-@router.get("/trading/system", response_model=Dict[str, Any])
+@router.get("/trading/system", response_model=dict[str, Any])
 def get_trading_system():
     """获取交易系统状态"""
     try:
@@ -94,7 +95,7 @@ async def trading_dashboard():
         return {"chart_data": [], "assets": [], "connected": False}
 
 
-@router.post("/trading/vote", response_model=Dict[str, Any])
+@router.post("/trading/vote", response_model=dict[str, Any])
 async def trigger_vote(req: TeamVoteRequest):
     """触发 AI 团队投票
 
@@ -153,8 +154,9 @@ async def get_kline_data(
     {"symbol": "AAPL", "data": [{"time": unix_ts, "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...}]}
     """
     try:
-        import yfinance as yf
         import asyncio
+
+        import yfinance as yf
 
         def _fetch():
             ticker = yf.Ticker(symbol)
@@ -355,7 +357,7 @@ _WATCHLIST_DIR = FilePath(os.path.dirname(__file__)).resolve().parents[2] / "dat
 _WATCHLIST_FILE = _WATCHLIST_DIR / "watchlist.json"
 
 
-def _load_watchlist() -> List[Dict[str, Any]]:
+def _load_watchlist() -> list[dict[str, Any]]:
     """从 JSON 文件加载自选股列表"""
     try:
         if _WATCHLIST_FILE.exists():
@@ -365,7 +367,7 @@ def _load_watchlist() -> List[Dict[str, Any]]:
     return []
 
 
-def _save_watchlist(watchlist: List[Dict[str, Any]]) -> None:
+def _save_watchlist(watchlist: list[dict[str, Any]]) -> None:
     """保存自选股列表到 JSON 文件"""
     _WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
     _WATCHLIST_FILE.write_text(
@@ -403,7 +405,7 @@ async def add_to_watchlist(req: WatchlistAddRequest):
             "symbol": symbol,
             "target_price": target_price,
             "direction": direction,
-            "added_at": datetime.now(timezone.utc).isoformat(),
+            "added_at": datetime.now(UTC).isoformat(),
         })
         _save_watchlist(watchlist)
         return watchlist
@@ -471,9 +473,10 @@ def get_valuation(
     """对指定标的运行 4 大估值模型（DCF/持有人收益/EV-EBITDA/残余收入）"""
     try:
         import yfinance as yf
+
         from src.trading.valuation_models import (
-            get_valuation_summary,
             calculate_wacc,
+            get_valuation_summary,
         )
 
         symbol = symbol.strip().upper()

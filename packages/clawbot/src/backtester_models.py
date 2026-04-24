@@ -10,9 +10,8 @@ ClawBot 回测引擎 — 数据模型与数据加载
 - bars_to_dataframe: K线转 pandas DataFrame
 """
 import logging
-from datetime import datetime
-from typing import List, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class BacktestTrade:
     trailing_stop_price: float = 0
     highest_price: float = 0
     exit_price: float = 0
-    exit_time: Optional[datetime] = None
+    exit_time: datetime | None = None
     exit_reason: str = ""
     pnl: float = 0
     pnl_pct: float = 0
@@ -59,7 +58,7 @@ class BacktestConfig:
     initial_capital: float = 10000.0
     # 信号过滤
     min_score: int = 30
-    allowed_trends: List[str] = field(default_factory=lambda: [
+    allowed_trends: list[str] = field(default_factory=lambda: [
         "strong_up", "up", "sideways"
     ])
     max_rsi6: float = 75.0
@@ -99,8 +98,8 @@ class PerformanceReport:
     end_date: str = ""
     trading_days: int = 0
     # 权益曲线
-    equity_curve: List[float] = field(default_factory=list)
-    daily_returns: List[float] = field(default_factory=list)
+    equity_curve: list[float] = field(default_factory=list)
+    daily_returns: list[float] = field(default_factory=list)
 
     def format(self) -> str:
         """格式化绩效报告"""
@@ -138,7 +137,7 @@ def load_historical_data(
     symbol: str,
     period: str = "1y",
     interval: str = "1d",
-) -> List[Bar]:
+) -> list[Bar]:
     """从 yfinance 加载历史数据，返回 Bar 列表"""
     import yfinance as yf
 
@@ -167,7 +166,7 @@ def load_historical_data(
     return bars
 
 
-def bars_to_dataframe(bars: List[Bar]):
+def bars_to_dataframe(bars: list[Bar]):
     """将 Bar 列表转为 pandas DataFrame（供 ta_engine 使用）"""
     import pandas as pd
     data = {

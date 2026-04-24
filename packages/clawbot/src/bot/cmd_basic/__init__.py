@@ -4,14 +4,14 @@
 通过 MRO 组装为最终的 BasicCommandsMixin，对外接口完全不变。
 """
 
-from src.bot.cmd_basic.onboarding_mixin import _OnboardingMixin  # noqa: F401
-from src.bot.cmd_basic.help_mixin import _HelpMixin, _build_help_main_keyboard  # noqa: F401
-from src.bot.cmd_basic.status_mixin import _StatusMixin
-from src.bot.cmd_basic.settings_mixin import _SettingsMixin
-from src.bot.cmd_basic.memory_mixin import _MemoryMixin
 from src.bot.cmd_basic.callback_mixin import _CallbackMixin
-from src.bot.cmd_basic.tools_mixin import _ToolsMixin
 from src.bot.cmd_basic.context_mixin import _ContextMixin
+from src.bot.cmd_basic.help_mixin import _build_help_main_keyboard, _HelpMixin
+from src.bot.cmd_basic.memory_mixin import _MemoryMixin
+from src.bot.cmd_basic.onboarding_mixin import _OnboardingMixin
+from src.bot.cmd_basic.settings_mixin import _SettingsMixin
+from src.bot.cmd_basic.status_mixin import _StatusMixin
+from src.bot.cmd_basic.tools_mixin import _ToolsMixin
 
 
 class BasicCommandsMixin(

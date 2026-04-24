@@ -10,10 +10,9 @@ Design principles:
   4. Sync methods for fast reads, async methods only when calling async subsystems
 """
 
+import logging
 import os
 import time
-import logging
-from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +198,7 @@ class ClawBotRPC:
         from src.invest_tools import portfolio
 
         connected = False
-        positions: List[dict] = []
+        positions: list[dict] = []
         account_summary: dict = {}
 
         try:
@@ -484,8 +483,8 @@ class ClawBotRPC:
         Returns:
             VoteResult dict on success, or ``{"error": "..."}`` on failure.
         """
-        from src.trading_system import _ai_team_api_callers
         from src.ai_team_voter import run_team_vote
+        from src.trading_system import _ai_team_api_callers
 
         if not _ai_team_api_callers:
             return {"error": "AI team callers not initialized"}
@@ -524,8 +523,8 @@ class ClawBotRPC:
         # 辅助函数: 检查 Cookie 文件是否存在且有效
         def _check_cookie_file(platform: str) -> bool:
             """检查 ~/.openclaw/ 下对应平台的 Cookie 文件"""
-            from pathlib import Path
             import json as _json
+            from pathlib import Path
             cookie_files = {
                 "x": Path.home() / ".openclaw" / "x_cookies.json",
                 "xhs": Path.home() / ".openclaw" / "xhs_cookies.json",
@@ -644,9 +643,10 @@ class ClawBotRPC:
         任一路径可用即视为 ready。
         """
         try:
-            from src.bot.globals import execution_hub
-            from pathlib import Path
             import json as _json
+            from pathlib import Path
+
+            from src.bot.globals import execution_hub
 
             status = execution_hub.get_social_browser_status() or {}
             x_ready = status.get("x_ready")
@@ -688,8 +688,8 @@ class ClawBotRPC:
             x_cookie = "unknown"
             xhs_cookie = "unknown"
             try:
-                from pathlib import Path
                 import json as _json
+                from pathlib import Path
                 x_path = Path.home() / ".openclaw" / "x_cookies.json"
                 if x_path.exists() and bool(_json.loads(x_path.read_text(encoding="utf-8"))):
                     x_cookie = "ready"
@@ -948,9 +948,10 @@ class ClawBotRPC:
     @staticmethod
     async def _rpc_social_draft_publish(index: int) -> dict:
         """Publish a draft immediately."""
-        from src.social_scheduler import _load_state, _save_state
-        from src.execution.social.worker_bridge import run_social_worker
         import asyncio
+
+        from src.execution.social.worker_bridge import run_social_worker
+        from src.social_scheduler import _load_state, _save_state
 
         state = _load_state()
         drafts = state.get("drafts", [])
@@ -1130,7 +1131,7 @@ class ClawBotRPC:
         query: str,
         limit: int = 10,
         mode: str = "hybrid",
-        category: Optional[str] = None,
+        category: str | None = None,
     ) -> dict:
         """Search shared memory (hybrid / semantic / keyword).
 

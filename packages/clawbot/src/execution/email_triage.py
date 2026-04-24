@@ -4,8 +4,8 @@ Execution Hub — 邮件自动整理
 """
 import logging
 
-from src.execution._utils import extract_json_object
 from src.execution._ai import ai_pool
+from src.execution._utils import extract_json_object
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)

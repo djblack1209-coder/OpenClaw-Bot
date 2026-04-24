@@ -15,9 +15,10 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
 from src.utils import scrub_secrets
 
 try:
@@ -63,10 +64,10 @@ class ParsedIntent:
 
     goal: str  # 核心目标（一句话）
     task_type: TaskType  # 任务分类
-    known_params: Dict[str, Any] = field(default_factory=dict)
-    missing_critical: List[str] = field(default_factory=list)
-    missing_optional: List[str] = field(default_factory=list)
-    constraints: List[str] = field(default_factory=list)
+    known_params: dict[str, Any] = field(default_factory=dict)
+    missing_critical: list[str] = field(default_factory=list)
+    missing_optional: list[str] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
     urgency: str = "normal"  # urgent / normal / background
     reversible: bool = True  # 操作是否可逆
     estimated_cost_usd: float = 0.0  # 预估LLM费用
@@ -107,10 +108,10 @@ class IntentLLMOutput(BaseModel):
         description="任务分类: investment/social/shopping/booking/life/"
         "code/info/communication/system/evolution/unknown",
     )
-    known_params: Dict[str, Any] = Field(default_factory=dict, description="已知参数 key-value")
-    missing_critical: List[str] = Field(default_factory=list, description="缺失的关键参数名")
-    missing_optional: List[str] = Field(default_factory=list, description="缺失的可选参数名")
-    constraints: List[str] = Field(default_factory=list, description="约束条件")
+    known_params: dict[str, Any] = Field(default_factory=dict, description="已知参数 key-value")
+    missing_critical: list[str] = Field(default_factory=list, description="缺失的关键参数名")
+    missing_optional: list[str] = Field(default_factory=list, description="缺失的可选参数名")
+    constraints: list[str] = Field(default_factory=list, description="约束条件")
     urgency: Literal["urgent", "normal", "background"] = Field(default="normal", description="紧急度")
     reversible: bool = Field(default=True, description="操作是否可逆")
     requires_confirmation: bool = Field(default=False, description="是否需要用户确认")
@@ -145,6 +146,8 @@ class IntentLLMOutput(BaseModel):
 # LLM 解析提示词 — 从中央注册表导入
 from config.prompts import (
     INTENT_PARSER_PROMPT as _PARSE_SYSTEM_PROMPT,
+)
+from config.prompts import (
     INTENT_PARSER_USER_TEMPLATE as _PARSE_USER_TEMPLATE,
 )
 
@@ -162,7 +165,7 @@ class IntentParser:
         self._fast_patterns = self._build_fast_patterns()
         logger.info("IntentParser 初始化完成")
 
-    def _build_fast_patterns(self) -> List[Dict]:
+    def _build_fast_patterns(self) -> list[dict]:
         """
         快速模式匹配 — 常见指令不需要调用 LLM。
         覆盖 ~60% 的日常指令，节省 LLM 调用费用。
@@ -277,7 +280,7 @@ class IntentParser:
         self,
         message: str,
         message_type: str = "text",
-        context: Optional[Dict] = None,
+        context: dict | None = None,
     ) -> ParsedIntent:
         """
         解析用户消息为结构化意图。
@@ -333,7 +336,7 @@ class IntentParser:
                 raw_message=message,
             )
 
-    def _try_fast_parse(self, message: str) -> Optional[ParsedIntent]:
+    def _try_fast_parse(self, message: str) -> ParsedIntent | None:
         """快速正则匹配 + jieba 关键词增强"""
         msg_lower = message.lower().strip()
 
@@ -381,7 +384,7 @@ class IntentParser:
                     )
         return None
 
-    async def _try_llm_classify(self, message: str) -> Optional[ParsedIntent]:
+    async def _try_llm_classify(self, message: str) -> ParsedIntent | None:
         """轻量 LLM 意图分类 — fast_parse 的降级路径。
 
         用最便宜的模型快速判断消息是否属于可执行的任务类型。
@@ -467,7 +470,7 @@ class IntentParser:
                 raw_message=message,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("[IntentParser] LLM 分类超时")
             return None
         except Exception as e:
@@ -475,7 +478,7 @@ class IntentParser:
             return None
 
     @staticmethod
-    def _resolve_ticker(text: str) -> Optional[str]:
+    def _resolve_ticker(text: str) -> str | None:
         """中文股票名/简称 → ticker 代码"""
         _TICKER_MAP = {
             # A股
@@ -548,7 +551,7 @@ class IntentParser:
         self,
         message: str,
         message_type: str,
-        context: Dict,
+        context: dict,
     ) -> ParsedIntent:
         """
         使用 LLM 解析意图。
@@ -589,7 +592,7 @@ class IntentParser:
         self,
         message: str,
         message_type: str,
-        context: Dict,
+        context: dict,
     ) -> ParsedIntent:
         """
         Legacy LLM 解析 — 不依赖 instructor 的降级路径。

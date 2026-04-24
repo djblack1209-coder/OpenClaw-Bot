@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 HAS_SMOLAGENTS = False
 
 try:
-    from smolagents import Tool, CodeAgent, LiteLLMModel
+    from smolagents import CodeAgent, LiteLLMModel, Tool
     HAS_SMOLAGENTS = True
     logger.info("[SmolAgents] SDK 可用")
 except ImportError:

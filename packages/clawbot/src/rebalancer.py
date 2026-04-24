@@ -17,7 +17,6 @@ v2.0 新增 (2026-03-23):
 6. [NEW] 有效前沿优化：PyPortfolioOpt 自动计算最优权重
 """
 import logging
-from typing import Dict, List
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -76,8 +75,8 @@ class RebalancePlan:
     total_value: float = 0              # 组合总价值
     cash: float = 0                     # 当前现金
     target_cash_pct: float = 5.0        # 目标现金比例
-    drifts: List[PositionDrift] = field(default_factory=list)
-    trades_needed: List[PositionDrift] = field(default_factory=list)  # 需要执行的调仓
+    drifts: list[PositionDrift] = field(default_factory=list)
+    trades_needed: list[PositionDrift] = field(default_factory=list)  # 需要执行的调仓
     is_balanced: bool = True            # 是否已平衡
     max_drift: float = 0               # 最大漂移
 
@@ -179,9 +178,9 @@ class Rebalancer:
 
     def __init__(self, config: RebalanceConfig = None):
         self.config = config or RebalanceConfig()
-        self._targets: List[AllocationTarget] = []
+        self._targets: list[AllocationTarget] = []
 
-    def set_targets(self, targets: List[AllocationTarget]):
+    def set_targets(self, targets: list[AllocationTarget]):
         """设置目标配置"""
         total = sum(t.target_pct for t in targets)
         if total > 100:
@@ -192,13 +191,13 @@ class Rebalancer:
         logger.info("[Rebalancer] 设置目标配置: %d个标的, 总权重%.1f%%",
                     len(targets), sum(t.target_pct for t in targets))
 
-    def get_targets(self) -> List[AllocationTarget]:
+    def get_targets(self) -> list[AllocationTarget]:
         return self._targets
 
     def analyze(
         self,
-        positions: List[Dict],
-        quotes: Dict[str, float],
+        positions: list[dict],
+        quotes: dict[str, float],
         cash: float,
     ) -> RebalancePlan:
         """
@@ -349,11 +348,11 @@ class Rebalancer:
 
     async def optimize_weights(
         self,
-        symbols: List[str],
+        symbols: list[str],
         portfolio_value: float,
         objective: str = "max_sharpe",
         period: str = "1y",
-    ) -> Dict:
+    ) -> dict:
         """使用 PyPortfolioOpt 有效前沿计算最优投资组合权重。
 
         搬运自 PyPortfolioOpt (4.6k⭐, BSD-3) — 全球最流行的 Python 投资组合优化库。
@@ -389,6 +388,7 @@ class Rebalancer:
 
         try:
             import asyncio
+
             import pandas as pd
 
             def _run_optimization():

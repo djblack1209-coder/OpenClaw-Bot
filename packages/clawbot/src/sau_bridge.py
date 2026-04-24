@@ -13,7 +13,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ PLATFORMS = {
 DEFAULT_ACCOUNT = os.getenv("SAU_DEFAULT_ACCOUNT", "default")
 
 
-async def _run_sau_cmd(args: List[str], timeout: int = 120) -> Dict:
+async def _run_sau_cmd(args: list[str], timeout: int = 120) -> dict:
     """执行 sau CLI 命令并返回结构化结果"""
     cmd = ["sau"] + args
     logger.info("[SAU] 执行: %s", " ".join(cmd[:5]))
@@ -51,7 +50,7 @@ async def _run_sau_cmd(args: List[str], timeout: int = 120) -> Dict:
         else:
             logger.warning("[SAU] 失败 (rc=%d): %s", proc.returncode, result["stderr"][:200])
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("[SAU] 命令超时 (%ds)", timeout)
         return {"success": False, "error": f"命令超时 ({timeout}s)", "returncode": -1}
     except FileNotFoundError:
@@ -68,7 +67,7 @@ async def check_sau_installed() -> bool:
     return result["success"]
 
 
-async def check_login(platform: str, account: str = "") -> Dict:
+async def check_login(platform: str, account: str = "") -> dict:
     """检查指定平台的登录状态"""
     account = account or DEFAULT_ACCOUNT
     if platform not in PLATFORMS:
@@ -77,7 +76,7 @@ async def check_login(platform: str, account: str = "") -> Dict:
     return result
 
 
-async def login(platform: str, account: str = "") -> Dict:
+async def login(platform: str, account: str = "") -> dict:
     """登录指定平台（需要扫码）"""
     account = account or DEFAULT_ACCOUNT
     if platform not in PLATFORMS:
@@ -91,10 +90,10 @@ async def publish_video(
     video_path: str,
     title: str,
     description: str = "",
-    tags: List[str] = None,
+    tags: list[str] = None,
     account: str = "",
     timeout: int = 180,
-) -> Dict:
+) -> dict:
     """发布视频到指定平台"""
     account = account or DEFAULT_ACCOUNT
     if platform not in PLATFORMS:
@@ -118,13 +117,13 @@ async def publish_video(
 
 async def publish_note(
     platform: str,
-    images: List[str],
+    images: list[str],
     title: str,
     content: str = "",
-    tags: List[str] = None,
+    tags: list[str] = None,
     account: str = "",
     timeout: int = 120,
-) -> Dict:
+) -> dict:
     """发布图文笔记到指定平台"""
     account = account or DEFAULT_ACCOUNT
     if platform not in PLATFORMS:
@@ -150,14 +149,14 @@ async def publish_note(
 
 
 async def publish_multi_platform(
-    platforms: List[str],
+    platforms: list[str],
     video_path: str = "",
-    images: List[str] = None,
+    images: list[str] = None,
     title: str = "",
     description: str = "",
-    tags: List[str] = None,
+    tags: list[str] = None,
     account: str = "",
-) -> Dict[str, Dict]:
+) -> dict[str, dict]:
     """一键多平台发布（并行执行）"""
     async def _publish_one(platform):
         if platform not in PLATFORMS:
@@ -179,12 +178,12 @@ async def publish_multi_platform(
     return results
 
 
-def get_supported_platforms() -> Dict:
+def get_supported_platforms() -> dict:
     """返回支持的平台列表"""
     return PLATFORMS
 
 
-def format_publish_result(results: Dict[str, Dict]) -> str:
+def format_publish_result(results: dict[str, dict]) -> str:
     """格式化多平台发布结果为用户友好消息"""
     lines = ["📤 发布结果:\n"]
     for platform, result in results.items():

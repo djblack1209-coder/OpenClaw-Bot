@@ -16,11 +16,9 @@ WorldMonitor API 路由 — 全球情报监控端点
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
-
 from fastapi import APIRouter, Query
 
 logger = logging.getLogger(__name__)
@@ -34,11 +32,11 @@ router = APIRouter(prefix="/monitor", tags=["WorldMonitor 全球情报"])
 
 @router.get("/news")
 async def get_news(
-    category: Optional[str] = Query(None, description="新闻分类过滤，如 finance/technology/geopolitics"),
+    category: str | None = Query(None, description="新闻分类过滤，如 finance/technology/geopolitics"),
     limit: int = Query(50, ge=1, le=200, description="返回条数"),
 ):
     """获取 AI 聚合新闻列表"""
-    from src.monitoring.world_monitor import get_news_fetcher, NewsCategory
+    from src.monitoring.world_monitor import NewsCategory, get_news_fetcher
 
     fetcher = get_news_fetcher()
 
@@ -67,7 +65,7 @@ async def get_news(
             }
             for item in items[:limit]
         ],
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -77,7 +75,7 @@ async def get_news(
 
 @router.get("/risk")
 async def get_risk_scores(
-    country: Optional[str] = Query(None, description="ISO 国家代码过滤，如 US/CN/RU"),
+    country: str | None = Query(None, description="ISO 国家代码过滤，如 US/CN/RU"),
 ):
     """获取国家风险指数评分"""
     from src.monitoring.world_monitor import get_risk_scorer
@@ -139,7 +137,7 @@ async def get_finance_all():
     return {
         "success": True,
         **data,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -230,13 +228,13 @@ async def get_extended_monitoring():
             "ransomware": {"value": 0, "label": "本周披露"},
             "supply_chain": {"value": 0, "label": "包/CI 投毒"},
         },
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
     async with httpx.AsyncClient(timeout=8.0) as client:
         # 1. USGS 地震数据（免费公开 API，获取过去 24h M4.5+ 地震计数）
         try:
-            start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d")
+            start_time = (datetime.now(UTC) - timedelta(hours=24)).strftime("%Y-%m-%d")
             r = await client.get(
                 "https://earthquake.usgs.gov/fdsnws/event/1/count",
                 params={"format": "geojson", "minmagnitude": "4.5", "starttime": start_time},
@@ -277,7 +275,7 @@ async def get_extended_monitoring():
             if r.status_code == 200:
                 vulns = r.json().get("vulnerabilities", [])
                 # 统计最近 7 天新增的漏洞
-                week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+                week_ago = (datetime.now(UTC) - timedelta(days=7)).strftime("%Y-%m-%d")
                 recent = sum(1 for v in vulns if v.get("dateAdded", "") >= week_ago)
                 result["cyber"]["active_exploits"]["value"] = recent
         except Exception as e:
@@ -285,7 +283,7 @@ async def get_extended_monitoring():
 
         # 4. 基于内部新闻分类的推算（从自己的 RSS 新闻源中统计）
         try:
-            from src.monitoring.world_monitor import get_news_fetcher, NewsCategory
+            from src.monitoring.world_monitor import NewsCategory, get_news_fetcher
             fetcher = get_news_fetcher()
             news = await fetcher.fetch_all()
             # 统计基础设施和网络安全分类的新闻数量

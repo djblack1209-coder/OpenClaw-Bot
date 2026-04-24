@@ -20,11 +20,10 @@ v2.0 变更 (2026-03-23):
 - 推文分析和转发策略
 """
 import asyncio
+import hashlib
 import logging
 import os
-import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from src.http_client import ResilientHTTPClient
 
@@ -75,8 +74,8 @@ async def twikit_login(
     username: str,
     email: str,
     password: str,
-    totp_secret: Optional[str] = None,
-) -> Dict:
+    totp_secret: str | None = None,
+) -> dict:
     """使用用户名/邮箱/密码登录 X，Cookie 自动保存到本地文件
 
     首次登录后，后续启动会自动加载 Cookie，无需再次输入密码。
@@ -130,8 +129,8 @@ def twikit_is_authenticated() -> bool:
 
 async def twikit_post_tweet(
     text: str,
-    media_paths: Optional[List[str]] = None,
-) -> Dict:
+    media_paths: list[str] | None = None,
+) -> dict:
     """通过 twikit 发布推文（Cookie 认证，无需 API Key）
 
     如果 Cookie 过期会捕获异常并返回明确错误，不会崩溃。
@@ -206,14 +205,15 @@ try:
 except ImportError:
     logger.info("[X] tweepy 未安装 (pip install tweepy)")
 
-from src.utils import emit_flow_event as _emit_flow, scrub_secrets
+from src.utils import emit_flow_event as _emit_flow
+from src.utils import scrub_secrets
 
 
 async def fetch_x_profile_posts(
     handle: str,
     count: int = 8,
     worker_fn=None,
-) -> List[Dict]:
+) -> list[dict]:
     """获取 X 用户最近的公开动态
 
     v2.0 三级降级:
@@ -257,7 +257,7 @@ async def fetch_x_profile_posts(
     return []
 
 
-async def _fetch_via_twikit(handle: str, count: int) -> List[Dict]:
+async def _fetch_via_twikit(handle: str, count: int) -> list[dict]:
     """通过 twikit Cookie 获取用户最近推文（无需 API Key）"""
     try:
         user = await _twikit_client.get_user_by_screen_name(handle)
@@ -283,7 +283,7 @@ async def _fetch_via_twikit(handle: str, count: int) -> List[Dict]:
         return []
 
 
-async def _fetch_via_tweepy(handle: str, count: int) -> List[Dict]:
+async def _fetch_via_tweepy(handle: str, count: int) -> list[dict]:
     """通过 tweepy API v2 获取用户最近推文 (Bearer Token 认证)"""
     try:
         # 先获取用户 ID
@@ -316,7 +316,7 @@ async def _fetch_via_tweepy(handle: str, count: int) -> List[Dict]:
         return []
 
 
-async def _fetch_via_jina(handle: str, count: int) -> List[Dict]:
+async def _fetch_via_jina(handle: str, count: int) -> list[dict]:
     """通过 Jina reader 抓取 X 动态"""
     url = f"https://r.jina.ai/https://x.com/{handle}"
     headers = {"Accept": "text/plain"}
@@ -334,7 +334,7 @@ async def _fetch_via_jina(handle: str, count: int) -> List[Dict]:
         return []
 
 
-def _parse_jina_x_output(text: str, handle: str, count: int) -> List[Dict]:
+def _parse_jina_x_output(text: str, handle: str, count: int) -> list[dict]:
     """解析 Jina reader 返回的 X 页面文本"""
     items = []
     lines = text.strip().splitlines()
@@ -372,7 +372,7 @@ async def publish_x_post(
     content: str,
     worker_fn=None,
     image_path: str = None,
-) -> Dict:
+) -> dict:
     """发布推文
 
     v3.0 三级降级: twikit Cookie → tweepy API → browser worker
@@ -412,7 +412,7 @@ async def reply_to_x_post(
     tweet_url: str,
     reply_text: str,
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """回复推文"""
     if not tweet_url or not reply_text:
         return {"success": False, "error": "URL 和回复内容不能为空"}
@@ -464,7 +464,7 @@ def normalize_x_handle(source: str = "") -> str:
 def extract_x_handle_candidates_from_markdown(
     markdown: str,
     limit: int = 10,
-) -> List[str]:
+) -> list[str]:
     """从 markdown 文本中提取 X 用户名候选
 
     支持两种模式:
@@ -472,7 +472,7 @@ def extract_x_handle_candidates_from_markdown(
     2. 行尾的英文用户名 (如编号列表 "1. 描述。WaytoAGI")
     """
     import re
-    handles: List[str] = []
+    handles: list[str] = []
     seen: set = set()
     skip_words = {
         "the", "and", "for", "not", "are", "was", "has",
@@ -515,10 +515,10 @@ def extract_x_profile_posts_from_markdown(
     handle: str = "",
     markdown: str = "",
     limit: int = 5,
-) -> List[Dict]:
+) -> list[dict]:
     """从 Jina reader markdown 中提取 X 推文帖子列表"""
     import re
-    posts: List[Dict] = []
+    posts: list[dict] = []
     status_pattern = re.compile(
         r"https://x\.com/" + re.escape(handle) + r"/status/(\d+)"
     )
@@ -565,7 +565,7 @@ def extract_x_profile_posts_from_markdown(
 async def fetch_x_reader_payload(
     source: str = "",
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """通过 worker 获取 X 内容"""
     url = normalize_x_source(source)
     if not worker_fn:
@@ -581,7 +581,7 @@ async def fetch_x_reader_payload(
 # ── X 监控简报 (从 execution_hub.py 迁移) ───────────────────
 
 async def generate_x_monitor_brief(
-    monitors: List[Dict] = None,
+    monitors: list[dict] = None,
     fetch_posts_fn=None,
 ) -> str:
     """生成 X 监控简报"""
@@ -630,7 +630,7 @@ async def generate_x_monitor_brief(
 
 # ── 推文执行分析 (从 execution_hub.py 迁移) ──────────────────
 
-def derive_tweet_execution_strategy(text: str = "") -> Dict:
+def derive_tweet_execution_strategy(text: str = "") -> dict:
     """根据推文内容推导执行策略"""
     content = str(text or "").strip().lower()
     urgency = 5
@@ -666,7 +666,7 @@ def derive_tweet_execution_strategy(text: str = "") -> Dict:
 async def analyze_tweet_execution(
     source: str = "",
     worker_fn=None,
-) -> Dict:
+) -> dict:
     """分析推文并推导执行策略"""
     payload = await fetch_x_reader_payload(source, worker_fn=worker_fn)
     if not payload.get("success"):
@@ -687,7 +687,7 @@ async def run_tweet_execution(
     worker_fn=None,
     ai_call_fn=None,
     save_draft_fn=None,
-) -> Dict:
+) -> dict:
     """执行推文发布流程: 分析 → AI 生成 → 保存草稿"""
     analysis = await analyze_tweet_execution(source, worker_fn=worker_fn)
     if not analysis.get("success"):
@@ -724,7 +724,7 @@ async def import_x_monitors_from_tweet(
     limit: int = 10,
     worker_fn=None,
     add_monitor_fn=None,
-) -> List[Dict]:
+) -> list[dict]:
     """从推文中提取并导入 X 监控账号"""
     payload = await fetch_x_reader_payload(source, worker_fn=worker_fn)
     markdown = ""

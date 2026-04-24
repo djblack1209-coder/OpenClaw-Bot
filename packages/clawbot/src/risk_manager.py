@@ -32,21 +32,19 @@ v2.0 新增（对标 freqtrade）：
 
 import logging
 import threading
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-
-from src.utils import now_et, scrub_secrets
 from collections import deque
+from datetime import datetime, timedelta
 
 # 风控配置和检查结果类型已提取到 risk_config.py
-from src.risk_config import RiskConfig, RiskCheckResult  # noqa: F401 — 向后兼容重新导出
+from src.risk_config import RiskCheckResult, RiskConfig
 
 # Mixin 模块：极端行情、凯利公式、板块集中度
-from src.risk_extreme_market import ExtremeMarketMixin  # noqa: F401
-from src.risk_kelly import KellyMixin  # noqa: F401
-from src.risk_sector import SectorMixin  # noqa: F401
-from src.risk_var import VaRMixin  # noqa: F401 — VaR/CVaR 风险度量 (搬运自 QuantStats)
-from src.risk_validators import ValidatorChain, ValidatorContext, build_default_chain  # noqa: F401
+from src.risk_extreme_market import ExtremeMarketMixin
+from src.risk_kelly import KellyMixin
+from src.risk_sector import SectorMixin
+from src.risk_validators import ValidatorChain, ValidatorContext, build_default_chain
+from src.risk_var import VaRMixin
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +69,15 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         # 运行时状态
         self._state_lock = threading.Lock()
         self._consecutive_losses: int = 0
-        self._cooldown_until: Optional[datetime] = None
+        self._cooldown_until: datetime | None = None
         self._today_pnl: float = 0.0
         self._today_trades: int = 0
-        self._last_pnl_update: Optional[str] = None  # 日期字符串
-        self._last_refresh_ts: Optional[datetime] = None
+        self._last_pnl_update: str | None = None  # 日期字符串
+        self._last_refresh_ts: datetime | None = None
 
         # 极端行情状态
-        self._extreme_events: List[dict] = []
-        self._last_extreme_time: Optional[datetime] = None
+        self._extreme_events: list[dict] = []
+        self._last_extreme_time: datetime | None = None
 
         # === v2.0 新增状态 ===
 
@@ -96,10 +94,10 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         self._position_scale: float = 1.0  # 仓位缩放因子
 
         # 板块/相关性追踪
-        self._symbol_sectors: Dict[str, str] = {}
+        self._symbol_sectors: dict[str, str] = {}
 
         # 盈利回吐追踪
-        self._position_peak_pnl: Dict[str, float] = {}  # symbol -> 最高浮盈
+        self._position_peak_pnl: dict[str, float] = {}  # symbol -> 最高浮盈
 
         # v2.2: Validator 链式架构（借鉴 rqalpha Frontend Validator 模式）
         self._validator_chain: ValidatorChain = build_default_chain(self)
@@ -124,7 +122,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         self._validator_chain.remove_validator(name)
 
     @property
-    def validator_names(self) -> List[str]:
+    def validator_names(self) -> list[str]:
         """当前注册的所有 Validator 名称"""
         return self._validator_chain.validator_names
 
@@ -139,7 +137,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         stop_loss: float = 0,
         take_profit: float = 0,
         signal_score: int = 0,
-        current_positions: List[Dict] = None,
+        current_positions: list[dict] = None,
     ) -> RiskCheckResult:
         """
         交易前风控审核 - 所有交易必须通过此检查
@@ -382,7 +380,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         entry_price: float,
         stop_loss: float,
         capital: float = None,
-    ) -> Dict:
+    ) -> dict:
         """
         基于风控规则计算安全仓位大小
 
@@ -496,7 +494,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
 
         return "\n".join(lines)
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """获取风控系统状态（v2.0增强版）
 
         HI-522: 加锁保护共享状态读取，确保返回一致性快照
@@ -598,7 +596,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         stop_loss: float,
         take_profit: float,
         signal_score: int,
-        current_positions: List[Dict] = None,
+        current_positions: list[dict] = None,
     ) -> int:
         """
         计算综合风险评分 0-100（越高越危险）
@@ -711,7 +709,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
             return "warn"
         return "normal"
 
-    def _check_trade_frequency(self) -> Optional[str]:
+    def _check_trade_frequency(self) -> str | None:
         """检查交易频率是否超限，返回拒绝原因或None"""
         now = now_et()
 

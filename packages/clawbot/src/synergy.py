@@ -13,7 +13,7 @@ OpenClaw 跨模块联动系统 — 别人抄不走的核心壁垒
   3. 所有联动可通过 config 开关
 """
 import logging
-from typing import List
+
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class SynergyEngine:
             "social_to_trading": True,
             "evolution_broadcast": True,
         }
-        self._recent: List[str] = []  # dedup buffer
+        self._recent: list[str] = []  # dedup buffer
 
     # ─── Chain 1: Trading Signal → Social Draft ──────────
 

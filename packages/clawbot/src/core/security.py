@@ -12,9 +12,8 @@ import secrets
 import socket
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 from src.utils import scrub_secrets
@@ -158,14 +157,14 @@ class SecurityGate:
             verified = gate.verify_pin("1234")
     """
 
-    def __init__(self, admin_user_ids: Optional[List[int]] = None):
-        self._admin_ids: Set[int] = set(admin_user_ids or [])
-        self._pin_hash: Optional[str] = self._load_pin_hash()
-        self._operation_count: Dict[str, int] = {}
+    def __init__(self, admin_user_ids: list[int] | None = None):
+        self._admin_ids: set[int] = set(admin_user_ids or [])
+        self._pin_hash: str | None = self._load_pin_hash()
+        self._operation_count: dict[str, int] = {}
         self._pin_attempts: dict = {}  # user_id -> {"count": int, "locked_until": float}
         logger.info(f"SecurityGate 初始化 (管理员: {len(self._admin_ids)})")
 
-    def _load_pin_hash(self) -> Optional[str]:
+    def _load_pin_hash(self) -> str | None:
         """加载已存储的 PIN hash"""
         if PIN_FILE.exists():
             try:
@@ -313,12 +312,12 @@ class SecurityGate:
         self,
         user_id: int,
         action: str,
-        details: Optional[Dict] = None,
+        details: dict | None = None,
         success: bool = True,
     ) -> None:
         """写入审计日志（追加模式，不可篡改）"""
         record = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "user_id": user_id,
             "action": action,
             "success": success,
@@ -414,19 +413,19 @@ class SecurityGate:
 
         return sanitized
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         return {
             "admin_count": len(self._admin_ids),
             "pin_configured": self.has_pin(),
             "operation_counts": dict(self._operation_count),
         }
 
-    def get_recent_operations(self, limit: int = 20) -> List[Dict]:
+    def get_recent_operations(self, limit: int = 20) -> list[dict]:
         """获取最近的操作日志"""
         records = []
         if AUDIT_FILE.exists():
             try:
-                with open(AUDIT_FILE, "r", encoding="utf-8") as f:
+                with open(AUDIT_FILE, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if line:
@@ -436,7 +435,7 @@ class SecurityGate:
         return records[-limit:]
 
 
-_gate: Optional[SecurityGate] = None
+_gate: SecurityGate | None = None
 
 
 def get_security_gate() -> SecurityGate:

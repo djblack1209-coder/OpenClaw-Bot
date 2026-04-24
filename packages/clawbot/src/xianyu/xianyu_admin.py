@@ -19,13 +19,14 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from src.utils import now_et, scrub_secrets
-from src.api.auth import verify_api_token, log_token_status
+
+from src.api.auth import log_token_status, verify_api_token
 from src.api.error_utils import safe_error as _safe_error
+from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +235,7 @@ def system_status():
             status["cookie_ok"] = getattr(_live, '_cookie_ok', False)
             status["last_heartbeat"] = getattr(_live, 'last_hb_resp', 0)
             status["token_age_s"] = int(
-                (now_et().timestamp() - getattr(_live, 'token_ts', 0))
+                now_et().timestamp() - getattr(_live, 'token_ts', 0)
             ) if getattr(_live, 'token_ts', 0) > 0 else -1
             status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
         return status
@@ -368,6 +369,7 @@ def start_admin_server(
     log_token_status()
 
     import threading
+
     import uvicorn
 
     def _run():

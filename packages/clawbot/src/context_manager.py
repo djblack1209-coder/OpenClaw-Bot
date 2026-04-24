@@ -22,11 +22,12 @@ v2.0:
 """
 
 import json
-import tempfile
-import os
-from typing import List, Dict, Any, Optional, Tuple
-from pathlib import Path
 import logging
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
+
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class ContextManager:
         "设定",
     ]
 
-    def __init__(self, storage_dir: Optional[str] = None):
+    def __init__(self, storage_dir: str | None = None):
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
@@ -112,13 +113,13 @@ class ContextManager:
 
             self.storage_dir = Path(DATA_DIR)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.compressed_summary: Optional[str] = None
-        self.key_facts: List[str] = []
-        self.user_preferences: Dict[str, Any] = {}
+        self.compressed_summary: str | None = None
+        self.key_facts: list[str] = []
+        self.user_preferences: dict[str, Any] = {}
         # 每个 (bot_id, chat_id) 的压缩状态
-        self._compression_state: Dict[str, dict] = {}
+        self._compression_state: dict[str, dict] = {}
 
-    def estimate_tokens(self, messages: List[Dict]) -> int:
+    def estimate_tokens(self, messages: list[dict]) -> int:
         """估算 token 数（CJK 感知）"""
         total = 0
         for msg in messages:
@@ -135,7 +136,7 @@ class ContextManager:
             total += 4
         return total
 
-    def estimate_single_message_tokens(self, msg: Dict) -> int:
+    def estimate_single_message_tokens(self, msg: dict) -> int:
         """估算单条消息的 token 数"""
         return self.estimate_tokens([msg])
 
@@ -158,15 +159,15 @@ class ContextManager:
         chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         return chinese * 2 + (len(text) - chinese) // 4
 
-    def should_compress(self, messages: List[Dict]) -> bool:
+    def should_compress(self, messages: list[dict]) -> bool:
         """判断是否需要压缩"""
         return self.estimate_tokens(messages) > self.COMPRESS_THRESHOLD
 
-    def must_compress(self, messages: List[Dict]) -> bool:
+    def must_compress(self, messages: list[dict]) -> bool:
         """判断是否必须强制压缩（防止 API 超时）"""
         return self.estimate_tokens(messages) > self.FORCE_COMPRESS_THRESHOLD
 
-    def _is_key_message(self, msg: Dict) -> bool:
+    def _is_key_message(self, msg: dict) -> bool:
         """判断消息是否包含关键信息"""
         content = msg.get("content", "")
         if isinstance(content, str):
@@ -178,7 +179,7 @@ class ContextManager:
                         return True
         return False
 
-    def _get_message_text(self, msg: Dict, max_len: int = 300) -> str:
+    def _get_message_text(self, msg: dict, max_len: int = 300) -> str:
         """提取消息文本"""
         content = msg.get("content", "")
         if isinstance(content, str):
@@ -191,7 +192,7 @@ class ContextManager:
             return "\n".join(parts)[:max_len]
         return ""
 
-    def _truncate_message(self, msg: Dict, max_chars: int = 200) -> Dict:
+    def _truncate_message(self, msg: dict, max_chars: int = 200) -> dict:
         """截断单条消息内容，保留结构"""
         content = msg.get("content", "")
         if isinstance(content, str):
@@ -216,9 +217,9 @@ class ContextManager:
 
     def compress_local(
         self,
-        messages: List[Dict],
-        target_tokens: Optional[int] = None,
-    ) -> Tuple[List[Dict], str]:
+        messages: list[dict],
+        target_tokens: int | None = None,
+    ) -> tuple[list[dict], str]:
         """
         本地压缩上下文 - 不消耗任何 API 请求。
 
@@ -338,7 +339,7 @@ class ContextManager:
 
         return new_messages, summary_text
 
-    def _aggressive_compress(self, messages: List[Dict], target_tokens: int) -> List[Dict]:
+    def _aggressive_compress(self, messages: list[dict], target_tokens: int) -> list[dict]:
         """激进压缩 - 当普通压缩后仍超标时使用"""
         # 从前往后截断，保留最后的消息
         result = []
@@ -359,9 +360,9 @@ class ContextManager:
 
     def prepare_messages_for_api(
         self,
-        messages: List[Dict],
+        messages: list[dict],
         model_max_tokens: int = 180000,
-    ) -> Tuple[List[Dict], bool]:
+    ) -> tuple[list[dict], bool]:
         """
         为 API 调用准备消息列表。
         如果超过阈值，自动进行本地压缩。
@@ -385,7 +386,7 @@ class ContextManager:
         history_store,
         bot_id: str,
         chat_id: int,
-        compressed_messages: List[Dict],
+        compressed_messages: list[dict],
     ):
         """
         将压缩后的消息写回 HistoryStore（替换原有历史）。
@@ -409,7 +410,7 @@ class ContextManager:
 
     # ============ 辅助方法 ============
 
-    def _save_summary(self, summary: str, original_messages: List[Dict]):
+    def _save_summary(self, summary: str, original_messages: list[dict]):
         """保存摘要到文件"""
         timestamp = now_et().strftime("%Y%m%d_%H%M%S")
         data = {
@@ -423,7 +424,7 @@ class ContextManager:
         except Exception as e:
             logger.error(f"保存摘要失败: {scrub_secrets(str(e))}")
 
-    def get_context_status(self, messages: List[Dict]) -> Dict[str, Any]:
+    def get_context_status(self, messages: list[dict]) -> dict[str, Any]:
         """获取上下文状态信息"""
         tokens = self.estimate_tokens(messages)
         return {
@@ -476,8 +477,8 @@ class TieredContextManager:
         self.total_budget = total_budget
 
         # v3.0: per-chat core memory (chat_id → Dict[str, str])
-        self._core_memories: Dict[int, Dict[str, str]] = {}
-        self._core_dirty: Dict[int, bool] = {}
+        self._core_memories: dict[int, dict[str, str]] = {}
+        self._core_dirty: dict[int, bool] = {}
 
         # 持久化目录
         self._memory_dir = Path(self.ctx.storage_dir) / "core_memory"
@@ -485,7 +486,7 @@ class TieredContextManager:
 
         # v3.1: Block 注册表 — 定义每个 block 的 token 限额和默认值
         # 借鉴 Letta memory_blocks 架构: 每个 block 有独立 name/limit/default
-        self._block_registry: Dict[str, Dict] = {}
+        self._block_registry: dict[str, dict] = {}
 
         # 注册默认 block（等效于原 _default_core 硬编码）
         self.register_block("user_profile", limit=2000, default="")
@@ -498,7 +499,7 @@ class TieredContextManager:
         self._default_core = {name: info["default"] for name, info in self._block_registry.items()}
 
         # 向后兼容: 保留全局 _core_memory 用于无 chat_id 场景
-        self._core_memory: Dict[str, str] = dict(self._default_core)
+        self._core_memory: dict[str, str] = dict(self._default_core)
         self._core_dirty_global = False
 
     # ---- v3.1: 动态 Block 注册（借鉴 Letta memory_blocks）----
@@ -519,7 +520,7 @@ class TieredContextManager:
         if hasattr(self, "_default_core"):
             self._default_core[name] = default
 
-    def get_block_info(self) -> Dict[str, Dict]:
+    def get_block_info(self) -> dict[str, dict]:
         """获取所有注册的 block 信息（名称 → {limit, usage}）"""
         result = {}
         for name, info in self._block_registry.items():
@@ -555,7 +556,7 @@ class TieredContextManager:
 
     # ---- v3.0: Per-chat Core Memory 管理 ----
 
-    def _get_core(self, chat_id: int = 0) -> Dict[str, str]:
+    def _get_core(self, chat_id: int = 0) -> dict[str, str]:
         """获取指定 chat 的 core memory，自动加载持久化数据"""
         if chat_id == 0:
             return self._core_memory
@@ -566,12 +567,12 @@ class TieredContextManager:
 
         return self._core_memories[chat_id]
 
-    def _load_core(self, chat_id: int) -> Dict[str, str]:
+    def _load_core(self, chat_id: int) -> dict[str, str]:
         """从磁盘加载 core memory"""
         path = self._memory_dir / f"chat_{chat_id}.json"
         if path.exists():
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     data = json.load(f)
                 logger.debug(f"[TieredCtx] 加载 core memory: chat={chat_id}")
                 # 合并默认字段（防止旧文件缺少新字段）
@@ -751,7 +752,7 @@ class TieredContextManager:
 
     # ---- 自动事实提取 ----
 
-    def extract_and_archive_facts(self, messages: List[Dict]):
+    def extract_and_archive_facts(self, messages: list[dict]):
         """从对话中提取事实并存入 archival memory
 
         对标 Letta 的自动记忆管理：扫描用户消息中的关键信息，
@@ -782,11 +783,11 @@ class TieredContextManager:
 
     def build_context(
         self,
-        messages: List[Dict],
+        messages: list[dict],
         system_prompt: str = "",
         query_hint: str = "",
         chat_id: int = 0,
-    ) -> Tuple[List[Dict], Dict[str, Any]]:
+    ) -> tuple[list[dict], dict[str, Any]]:
         """智能组装分层上下文 v3.0（搬运自 Letta 上下文编排模式）
 
         v3.0 升级:
@@ -873,7 +874,7 @@ class TieredContextManager:
 
         return assembled, metadata
 
-    def get_status(self, chat_id: int = 0) -> Dict[str, Any]:
+    def get_status(self, chat_id: int = 0) -> dict[str, Any]:
         """获取分层上下文状态"""
         core = self._get_core(chat_id)
         core_size = sum(len(v) for v in core.values())

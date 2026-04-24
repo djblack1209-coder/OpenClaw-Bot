@@ -13,10 +13,9 @@ DRL 强化学习交易策略 — 搬运自 FinRL (AI4Finance, 11k⭐, MIT)
 v1.0 — 2026-03-24
 """
 
-import logging
 import hashlib
+import logging
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -36,7 +35,7 @@ except ImportError:
     HAS_GYM = False
 
 try:
-    from stable_baselines3 import PPO, A2C
+    from stable_baselines3 import A2C, PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
     HAS_SB3 = True
 except ImportError:
@@ -338,7 +337,7 @@ class DRLStrategy(BaseStrategy):
         df = self._prepare_dataframe(data)
         return self._train_model(df, symbol)
 
-    def _predict_action(self, data: MarketData) -> Tuple[float, float]:
+    def _predict_action(self, data: MarketData) -> tuple[float, float]:
         """使用训练好的模型预测动作
 
         Returns:
@@ -441,7 +440,7 @@ class DRLStrategy(BaseStrategy):
             )
 
     def should_exit(self, data: MarketData, entry_price: float,
-                    current_pnl_pct: float) -> Optional[TradeSignal]:
+                    current_pnl_pct: float) -> TradeSignal | None:
         """DRL 模型判断是否应退出"""
         if not self.available or self._model is None:
             return None

@@ -17,11 +17,12 @@ Layer 4 (商务层) — OMEGA blueprint gap fill.
 
 import asyncio
 import logging
-from src.utils import scrub_secrets
 import re
 import urllib.parse
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,12 @@ LlmExtractionStrategy = None
 try:
     from crawl4ai import AsyncWebCrawler as _AsyncWebCrawler
     from crawl4ai import BrowserConfig as _BrowserConfig
-    from crawl4ai import CrawlerRunConfig as _CrawlerRunConfig
     from crawl4ai import CacheMode as _CacheMode
+    from crawl4ai import CrawlerRunConfig as _CrawlerRunConfig
     from crawl4ai.extraction_strategy import (
         JsonCssExtractionStrategy as _JsonCssExtractionStrategy,
+    )
+    from crawl4ai.extraction_strategy import (
         LlmExtractionStrategy as _LlmExtractionStrategy,
     )
 
@@ -76,7 +79,7 @@ class ProductPrice:
     sales: str = ""
     source: str = ""  # 抽取来源标记: "css" / "llm" / "jina"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
@@ -84,15 +87,15 @@ class ProductPrice:
 class PriceCompareResult:
     """比价结果汇总"""
 
-    products: List[ProductPrice] = field(default_factory=list)
+    products: list[ProductPrice] = field(default_factory=list)
     best_deal: str = ""
     recommendation: str = ""
     source: str = ""  # "crawl4ai_css" / "crawl4ai_llm" / "jina_llm"
     query: str = ""
-    platforms_searched: List[str] = field(default_factory=list)
+    platforms_searched: list[str] = field(default_factory=list)
     error: str = ""
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "products": [p.to_dict() for p in self.products],
             "best_deal": self.best_deal,
@@ -110,7 +113,7 @@ class PriceCompareResult:
 # 会用这些选择器从 DOM 中结构化提取 JSON 数组。
 # 注意: 电商平台频繁改版，选择器需要定期维护。
 
-PLATFORM_SCHEMAS: Dict[str, Dict[str, Any]] = {
+PLATFORM_SCHEMAS: dict[str, dict[str, Any]] = {
     "jd": {
         "name": "京东商品列表",
         "search_url": "https://search.jd.com/Search?keyword={query}&enc=utf-8",
@@ -280,7 +283,7 @@ async def _crawl_platform_css(
     platform_key: str,
     query: str,
     limit: int = 8,
-) -> List[ProductPrice]:
+) -> list[ProductPrice]:
     """
     用 crawl4ai 的 JsonCssExtractionStrategy 抽取单个平台的商品列表。
     CSS 选择器方式 — 速度最快，不消耗 LLM token。
@@ -317,7 +320,7 @@ async def _crawl_platform_css(
         page_timeout=20000,  # 20 秒超时
     )
 
-    results: List[ProductPrice] = []
+    results: list[ProductPrice] = []
     try:
         async with AsyncWebCrawler(config=browser_cfg) as crawler:
             crawl_result = await crawler.arun(url=url, config=crawl_cfg)
@@ -362,7 +365,7 @@ async def _crawl_platform_css(
                     )
                 )
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} 超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} CSS 抽取异常: {scrub_secrets(str(e))}")
@@ -377,7 +380,7 @@ async def _crawl_platform_llm(
     platform_key: str,
     query: str,
     limit: int = 6,
-) -> List[ProductPrice]:
+) -> list[ProductPrice]:
     """
     用 crawl4ai 的 LlmExtractionStrategy 从网页 markdown 中抽取商品信息。
     消耗 LLM token，但能应对反爬后页面结构变化的场景。
@@ -446,7 +449,7 @@ async def _crawl_platform_llm(
         page_timeout=25000,
     )
 
-    results: List[ProductPrice] = []
+    results: list[ProductPrice] = []
     try:
         async with AsyncWebCrawler(config=browser_cfg) as crawler:
             crawl_result = await crawler.arun(url=url, config=crawl_cfg)
@@ -492,7 +495,7 @@ async def _crawl_platform_llm(
                     )
                 )
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
     except Exception as e:
         logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {scrub_secrets(str(e))}")
@@ -505,7 +508,7 @@ async def _crawl_platform_llm(
 
 async def smart_compare(
     product: str,
-    platforms: Optional[List[str]] = None,
+    platforms: list[str] | None = None,
     limit_per_platform: int = 6,
 ) -> PriceCompareResult:
     """
@@ -539,8 +542,8 @@ async def smart_compare(
         )
 
     platforms = platforms or DEFAULT_PLATFORMS
-    all_products: List[ProductPrice] = []
-    platforms_searched: List[str] = []
+    all_products: list[ProductPrice] = []
+    platforms_searched: list[str] = []
     source_method = "crawl4ai_css"
 
     # ── 第一级: CSS 结构化抽取（并发所有平台）──
@@ -629,7 +632,7 @@ async def smart_compare(
     )
 
 
-def _build_recommendation(product: str, priced: List[ProductPrice]) -> str:
+def _build_recommendation(product: str, priced: list[ProductPrice]) -> str:
     """根据比价结果生成简洁推荐文本"""
     if not priced:
         return f"未找到 {product} 的有效价格信息，建议直接在各平台搜索对比。"

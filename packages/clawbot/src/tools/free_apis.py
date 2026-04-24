@@ -16,9 +16,9 @@ OpenClaw — free-api.com 公共 API 集成
     trending = await get_multi_trending()
 """
 import logging
-from typing import Dict, List
 
 import httpx
+
 from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def _translate_weather(desc: str) -> str:
     return desc
 
 
-async def get_weather(city: str) -> Dict:
+async def get_weather(city: str) -> dict:
     """获取城市天气预报（3日）— 使用 wttr.in（完全免费无 key）"""
     try:
         r = await _http.get(f"https://wttr.in/{city}?format=j1", headers=_HEADERS)
@@ -86,7 +86,7 @@ async def get_weather(city: str) -> Dict:
 
 # ── 多源热榜 ──────────────────────────────────────
 
-async def get_multi_trending() -> List[Dict]:
+async def get_multi_trending() -> list[dict]:
     """从多个平台获取热榜（并行）"""
     async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as c:
         tasks = [
@@ -105,7 +105,7 @@ async def get_multi_trending() -> List[Dict]:
     return all_topics
 
 
-async def _fetch_baidu_trending(c: httpx.AsyncClient) -> List[Dict]:
+async def _fetch_baidu_trending(c: httpx.AsyncClient) -> list[dict]:
     """百度热搜"""
     try:
         r = await c.get("https://top.baidu.com/api/board?platform=wise&tab=realtime")
@@ -126,7 +126,7 @@ async def _fetch_baidu_trending(c: httpx.AsyncClient) -> List[Dict]:
     return []
 
 
-async def _fetch_toutiao_trending(c: httpx.AsyncClient) -> List[Dict]:
+async def _fetch_toutiao_trending(c: httpx.AsyncClient) -> list[dict]:
     """今日头条热榜"""
     try:
         r = await c.get("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc&_signature=_02B4Z6wo00f01")
@@ -140,7 +140,7 @@ async def _fetch_toutiao_trending(c: httpx.AsyncClient) -> List[Dict]:
     return []
 
 
-async def _fetch_bilibili_trending(c: httpx.AsyncClient) -> List[Dict]:
+async def _fetch_bilibili_trending(c: httpx.AsyncClient) -> list[dict]:
     """B站热搜"""
     try:
         r = await c.get("https://app.bilibili.com/x/v2/search/trending/ranking")
@@ -156,7 +156,7 @@ async def _fetch_bilibili_trending(c: httpx.AsyncClient) -> List[Dict]:
 
 # ── 汇率 ──────────────────────────────────────────
 
-async def get_exchange_rate(from_currency: str = "USD", to_currency: str = "CNY") -> Dict:
+async def get_exchange_rate(from_currency: str = "USD", to_currency: str = "CNY") -> dict:
     """实时汇率查询"""
     try:
         r = await _http.get(f"https://open.er-api.com/v6/latest/{from_currency}")
@@ -214,7 +214,7 @@ async def query_express(tracking_number: str) -> str:
     return f"📦 单号 {tracking_number} 查询失败，请稍后再试"
 
 
-async def get_ip_info(ip: str = "") -> Dict:
+async def get_ip_info(ip: str = "") -> dict:
     """IP 归属地查询"""
     try:
         url = f"https://ipinfo.io/{ip}/json" if ip else "https://ipinfo.io/json"

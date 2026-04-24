@@ -8,12 +8,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from loguru import logger
 
 
-def get_watchlist_symbols() -> List[str]:
+def get_watchlist_symbols() -> list[str]:
     """获取所有自选股代码列表
 
     Returns:
@@ -30,7 +28,7 @@ def get_watchlist_symbols() -> List[str]:
         return []
 
 
-def get_watchlist_with_targets() -> List[Dict]:
+def get_watchlist_with_targets() -> list[dict]:
     """获取自选股完整信息（含目标价和止损价）
 
     Returns:

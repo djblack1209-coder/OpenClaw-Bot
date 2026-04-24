@@ -13,10 +13,11 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class EventType:
 class Event:
     """一个事件实例"""
     event_type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     source: str = ""          # 发布者标识
     timestamp: float = field(default_factory=time.time)
     priority: int = 5         # 1=最高, 10=最低
@@ -109,7 +110,7 @@ class Subscription:
     handler: Callable[[Event], Coroutine]
     subscriber_name: str = ""
     priority: int = 5         # 低值高优先级, 决定调用顺序
-    filter_fn: Optional[Callable[[Event], bool]] = None  # 事件过滤器
+    filter_fn: Callable[[Event], bool] | None = None  # 事件过滤器
 
 
 # ── 事件总线 ──────────────────────────────────────────────
@@ -134,13 +135,13 @@ class EventBus:
     """
 
     def __init__(self, audit_enabled: bool = True):
-        self._subscriptions: Dict[str, List[Subscription]] = defaultdict(list)
-        self._wildcard_subs: List[Subscription] = []
-        self._event_history: List[Event] = []
+        self._subscriptions: dict[str, list[Subscription]] = defaultdict(list)
+        self._wildcard_subs: list[Subscription] = []
+        self._event_history: list[Event] = []
         self._max_history = 1000
         self._audit_enabled = audit_enabled
-        self._stats: Dict[str, int] = defaultdict(int)
-        self._error_count: Dict[str, int] = defaultdict(int)
+        self._stats: dict[str, int] = defaultdict(int)
+        self._error_count: dict[str, int] = defaultdict(int)
         logger.info("EventBus 初始化完成")
 
     def subscribe(
@@ -149,7 +150,7 @@ class EventBus:
         handler: Callable[[Event], Coroutine],
         subscriber_name: str = "",
         priority: int = 5,
-        filter_fn: Optional[Callable[[Event], bool]] = None,
+        filter_fn: Callable[[Event], bool] | None = None,
     ) -> None:
         """
         订阅事件。
@@ -196,7 +197,7 @@ class EventBus:
     async def publish(
         self,
         event_type: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         source: str = "",
         priority: int = 5,
     ) -> int:
@@ -231,7 +232,7 @@ class EventBus:
             self._write_audit(event)
 
         # 收集匹配的订阅者
-        handlers: List[Subscription] = []
+        handlers: list[Subscription] = []
 
         # 精确匹配 — 取快照，防止 subscribe() 并发修改列表
         if event_type in self._subscriptions:
@@ -282,7 +283,7 @@ class EventBus:
             import json
             audit_file = AUDIT_DIR / "events.jsonl"
             record = {
-                "ts": datetime.fromtimestamp(event.timestamp, tz=timezone.utc).isoformat(),
+                "ts": datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat(),
                 "type": event.event_type,
                 "source": event.source,
                 "priority": event.priority,
@@ -296,7 +297,7 @@ class EventBus:
 
     # ── 查询接口 ──────────────────────────────────────────
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取事件统计"""
         return {
             "total_events": sum(self._stats.values()),
@@ -307,7 +308,7 @@ class EventBus:
             "history_size": len(self._event_history),
         }
 
-    def get_recent_events(self, event_type: str = "", limit: int = 20) -> List[Dict]:
+    def get_recent_events(self, event_type: str = "", limit: int = 20) -> list[dict]:
         """获取最近的事件"""
         events = self._event_history
         if event_type:
@@ -342,7 +343,7 @@ class EventBus:
 
 # ── 全局单例 ──────────────────────────────────────────────
 
-_event_bus: Optional[EventBus] = None
+_event_bus: EventBus | None = None
 _bus_lock = __import__("threading").Lock()
 
 

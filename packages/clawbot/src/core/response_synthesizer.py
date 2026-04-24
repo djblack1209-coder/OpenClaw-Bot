@@ -18,12 +18,12 @@ OpenClaw 响应合成层 — 从"数据堆砌"到"对话式回复"
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
-from config.prompts import SOUL_CORE, RESPONSE_SYNTH_PROMPT, FOLLOWUP_SUGGESTIONS_PROMPT
+from config.prompts import FOLLOWUP_SUGGESTIONS_PROMPT, RESPONSE_SYNTH_PROMPT, SOUL_CORE
 
 # 速率限制 — resilience 模块始终可导入，内部已做优雅降级
-from src.constants import FAMILY_QWEN, FAMILY_G4F
+from src.constants import FAMILY_G4F, FAMILY_QWEN
 from src.resilience import api_limiter
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class ResponseSynthesizer:
     _first_time_flags: dict = {}  # 类级共享: 所有实例共享标志状态(设计如此，单进程单实例)
 
     # 任务类型 → 合成时的附加指引
-    _TASK_HINTS: Dict[str, str] = {
+    _TASK_HINTS: dict[str, str] = {
         "investment": (
             "这是投资分析结果。重点说: 建议(买/卖/持有) + 核心理由(一句话) + 风险提醒。"
             "如果多个分析师意见不一致，要明确说出分歧。"
@@ -78,12 +78,12 @@ class ResponseSynthesizer:
 
     async def synthesize(
         self,
-        raw_data: Dict[str, Any],
+        raw_data: dict[str, Any],
         task_type: str = "unknown",
         user_profile: str = "",
         conversation_summary: str = "",
         max_tokens: int = 300,
-    ) -> Optional[str]:
+    ) -> str | None:
         """将原始数据结果合成为对话式回复。
 
         Args:
@@ -148,7 +148,7 @@ class ResponseSynthesizer:
 
         return None
 
-    def _format_raw_data(self, data: Dict[str, Any], depth: int = 0) -> str:
+    def _format_raw_data(self, data: dict[str, Any], depth: int = 0) -> str:
         """将嵌套 dict 格式化为 LLM 可读的文本。"""
         if depth > 3:
             return str(data)[:200]
@@ -298,15 +298,15 @@ class BrainContextCollector:
     """
 
     def __init__(self):
-        self._profile_cache: Dict[str, str] = {}  # user_id → profile text
-        self._profile_cache_ttl: Dict[str, float] = {}  # user_id → timestamp
+        self._profile_cache: dict[str, str] = {}  # user_id → profile text
+        self._profile_cache_ttl: dict[str, float] = {}  # user_id → timestamp
 
     async def collect(
         self,
-        user_id: Optional[str] = None,
-        chat_id: Optional[str] = None,
-        bot_id: Optional[str] = None,
-    ) -> Dict[str, str]:
+        user_id: str | None = None,
+        chat_id: str | None = None,
+        bot_id: str | None = None,
+    ) -> dict[str, str]:
         """收集 Brain 需要的上下文。
 
         Returns:
@@ -467,8 +467,8 @@ class BrainContextCollector:
 #  单例
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_synthesizer: Optional[ResponseSynthesizer] = None
-_context_collector: Optional[BrainContextCollector] = None
+_synthesizer: ResponseSynthesizer | None = None
+_context_collector: BrainContextCollector | None = None
 
 
 def get_response_synthesizer() -> ResponseSynthesizer:

@@ -1,7 +1,6 @@
 """Evolution API endpoints — scan, proposals, capability gaps"""
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
@@ -107,7 +106,7 @@ async def trigger_scan(background_tasks: BackgroundTasks):
 
 @router.get("/proposals", response_model=list[ProposalOut])
 def list_proposals(
-    status: Optional[str] = Query(None, description="按状态过滤: proposed/approved/integrated/rejected"),
+    status: str | None = Query(None, description="按状态过滤: proposed/approved/integrated/rejected"),
     limit: int = Query(50, ge=1, le=200),
 ):
     """列出最近的进化提案"""

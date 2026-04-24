@@ -15,8 +15,9 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import litellm
 from litellm.router import Router
@@ -59,7 +60,7 @@ def _scrub_secrets(msg: str) -> str:
 
 # ---- LLM 缓存层 (sqlite3 自研缓存, graceful degradation) ----
 try:
-    from src.llm_cache import _make_cache_key, _get_cache
+    from src.llm_cache import _get_cache, _make_cache_key
 
     _HAS_LLM_CACHE = True
 
@@ -86,10 +87,11 @@ except ImportError:
     # llm_cache 模块不可用时，尝试直接使用 utils_cache 作为降级方案
     _fallback_cache = None
     try:
-        from src.utils_cache import DiskCache as _DiskCache
-        from pathlib import Path as _Path
         import hashlib as _hashlib
         import json as _json_cache
+        from pathlib import Path as _Path
+
+        from src.utils_cache import DiskCache as _DiskCache
 
         _fallback_cache_dir = _Path(__file__).resolve().parent.parent / "data" / "llm_cache"
         _fallback_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -416,7 +418,7 @@ def _env(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 
-def _env_list(key: str) -> List[str]:
+def _env_list(key: str) -> list[str]:
     return [k.strip() for k in _env(key).split(",") if k.strip()]
 
 
@@ -424,8 +426,8 @@ class LiteLLMPool:
     """LiteLLM Router 封装，对外保持 FreeAPIPool 兼容接口。"""
 
     def __init__(self):
-        self._router: Optional[Router] = None
-        self._sources: Dict[str, List[FreeAPISource]] = {}
+        self._router: Router | None = None
+        self._sources: dict[str, list[FreeAPISource]] = {}
         self.default_routing: str = ROUTE_BALANCED
         self._call_count = 0
         self._error_count = 0
@@ -445,7 +447,7 @@ class LiteLLMPool:
             pass
 
     @property
-    def sources(self) -> Dict[str, List[FreeAPISource]]:
+    def sources(self) -> dict[str, list[FreeAPISource]]:
         return self._sources
 
     def _reg(self, family: str, src: FreeAPISource):
@@ -463,14 +465,14 @@ class LiteLLMPool:
         note: str = "",
         timeout: int = 0,
         stream_timeout: int = 0,
-    ) -> Dict:
+    ) -> dict:
         """创建一个 LiteLLM deployment + 注册 FreeAPISource。
 
         timeout/stream_timeout: per-model 超时配置（秒）。0 表示使用 Router 全局默认值。
         不同模型应设置差异化超时: Groq(快速推理)→8s, 大模型→30s, Reasoning模型→90s。
         """
         dep_id = f"{name}/{model}"
-        params: Dict[str, Any] = {"model": model, "api_key": key}
+        params: dict[str, Any] = {"model": model, "api_key": key}
         if base:
             params["api_base"] = base
         if rpm:
@@ -496,8 +498,8 @@ class LiteLLMPool:
         )
         return {"model_name": fam, "litellm_params": params, "model_info": {"id": dep_id, "tier": "free"}}
 
-    def _build_all_deployments(self) -> List[Dict]:
-        deps: List[Dict] = []
+    def _build_all_deployments(self) -> list[dict]:
+        deps: list[dict] = []
 
         # SiliconFlow
         sf_base = "https://api.siliconflow.cn/v1"
@@ -906,10 +908,10 @@ class LiteLLMPool:
         fallbacks = []
         try:
             from src.llm_routing_config import (
-                load_routing_config,
                 build_deployments_from_config,
                 build_fallbacks_from_config,
                 get_router_config,
+                load_routing_config,
             )
 
             self._routing_config = load_routing_config()
@@ -1021,8 +1023,8 @@ class LiteLLMPool:
     @perf_timer("llm.acompletion")
     async def acompletion(
         self,
-        model_family: Optional[str],
-        messages: List[Dict],
+        model_family: str | None,
+        messages: list[dict],
         system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 4096,
@@ -1121,7 +1123,7 @@ class LiteLLMPool:
             # 全链路降级到 g4f 时通知管理员（意味着所有优质 provider 都挂了）
             if model == "g4f" or "g4f" in str(e).lower():
                 try:
-                    from src.core.event_bus import get_event_bus, EventType
+                    from src.core.event_bus import EventType, get_event_bus
 
                     await get_event_bus().publish(
                         EventType.SYSTEM_ALERT,
@@ -1261,8 +1263,8 @@ class LiteLLMPool:
     # ---- 兼容旧接口 ----
 
     def get_best_source(
-        self, model_family: str, min_tier: str = TIER_C, routing: Optional[str] = None
-    ) -> Optional[FreeAPISource]:
+        self, model_family: str, min_tier: str = TIER_C, routing: str | None = None
+    ) -> FreeAPISource | None:
         min_val = _TIER_ORDER.get(min_tier, 3)
         avail = [
             s
@@ -1275,8 +1277,8 @@ class LiteLLMPool:
         return avail[0]
 
     def get_any_source(
-        self, min_tier: str = TIER_C, routing: Optional[str] = None
-    ) -> Optional[Tuple[str, FreeAPISource]]:
+        self, min_tier: str = TIER_C, routing: str | None = None
+    ) -> tuple[str, FreeAPISource] | None:
         min_val = _TIER_ORDER.get(min_tier, 3)
         best, best_score, best_fam = None, -1, ""
         for fam, sources in self._sources.items():
@@ -1299,7 +1301,7 @@ class LiteLLMPool:
 
     # REMOVED: remove_exhausted() - 已废弃，无调用者（LiteLLM Router 内置 cooldown 机制）
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         total = sum(len(v) for v in self._sources.values())
         active = sum(1 for v in self._sources.values() for s in v if s.can_accept_request())
         avg_lat = self._total_latency / max(self._call_count, 1)
@@ -1328,8 +1330,8 @@ class LiteLLMPool:
             "engine": "litellm",
         }
 
-    def _stats_by_provider(self) -> Dict:
-        provs: Dict[str, Dict] = {}
+    def _stats_by_provider(self) -> dict:
+        provs: dict[str, dict] = {}
         for sources in self._sources.values():
             for s in sources:
                 p = s.provider
@@ -1376,7 +1378,7 @@ class LiteLLMPool:
             summary = "\n".join(lines)
 
             # 通过 Telegram Bot 发送给所有管理员
-            from src.bot.globals import bot_registry, ALLOWED_USER_IDS
+            from src.bot.globals import ALLOWED_USER_IDS, bot_registry
 
             bot = next(iter(bot_registry.values()), None)
             if bot and hasattr(bot, "application"):
@@ -1390,7 +1392,7 @@ class LiteLLMPool:
         except Exception as e:
             logger.debug("发送启动健康摘要失败(不影响正常运行): %s", e)
 
-    async def health_check(self, timeout: float = 10.0) -> Dict:
+    async def health_check(self, timeout: float = 10.0) -> dict:
         """启动时健康检查 — 快速 ping 每个 provider，禁用不可用的。
 
         Returns:
@@ -1404,7 +1406,7 @@ class LiteLLMPool:
         disabled_providers = []
 
         # Group sources by provider to avoid redundant checks
-        providers_seen: Dict[str, bool] = {}
+        providers_seen: dict[str, bool] = {}
 
         for family, sources in self._sources.items():
             for src in sources:
@@ -1459,9 +1461,9 @@ class LiteLLMPool:
         "sf_paid_": "siliconflow_paid",
     }
 
-    def _group_providers(self) -> Dict[str, Dict]:
+    def _group_providers(self) -> dict[str, dict]:
         """将 deployments 按逻辑 provider 分组，返回 {display_name: {keys: {raw_provider: src}}}"""
-        groups: Dict[str, Dict[str, FreeAPISource]] = {}
+        groups: dict[str, dict[str, FreeAPISource]] = {}
         seen_providers: set = set()
 
         for _family, sources in self._sources.items():
@@ -1480,7 +1482,7 @@ class LiteLLMPool:
 
         return groups
 
-    async def _test_single_key(self, src: FreeAPISource, timeout: float = 10.0) -> Dict:
+    async def _test_single_key(self, src: FreeAPISource, timeout: float = 10.0) -> dict:
         """测试单个 key — 返回 {status, error?}"""
         import asyncio
         import re
@@ -1488,7 +1490,7 @@ class LiteLLMPool:
         # 使用 litellm 直接调用 (绕过 Router fallback)
         model_id = src._deployment_id.split("/", 1)[-1] if "/" in src._deployment_id else src.model
         # 为 litellm 构建正确的 model 格式
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "model": f"openai/{model_id}" if src.base_url else model_id,
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
@@ -1504,7 +1506,7 @@ class LiteLLMPool:
                 timeout=timeout,
             )
             return {"status": "ok"}
-        except asyncio.TimeoutError as e:  # noqa: F841
+        except TimeoutError as e:  # noqa: F841
             return {"status": "unreachable", "error": f"Timeout ({timeout}s)"}
         except Exception as e:
             err_str = _scrub_secrets(str(e))
@@ -1527,7 +1529,7 @@ class LiteLLMPool:
             else:
                 return {"status": "unknown_error", "error": err_str[:200]}
 
-    async def validate_keys(self, timeout: float = 10.0) -> Dict:
+    async def validate_keys(self, timeout: float = 10.0) -> dict:
         """验证所有 API Key 健康状态 — 按 provider 分组、逐 key 测试。
 
         Returns:
@@ -1544,12 +1546,12 @@ class LiteLLMPool:
             }
         """
         import asyncio
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         start = time.time()
         groups = self._group_providers()
 
-        async def _test_group(display: str, key_map: Dict[str, FreeAPISource]) -> tuple:
+        async def _test_group(display: str, key_map: dict[str, FreeAPISource]) -> tuple:
             """测试一个 provider 组, 返回 (display, result_dict)"""
             if len(key_map) == 1:
                 # 单 key provider — 测一次
@@ -1569,8 +1571,8 @@ class LiteLLMPool:
                 # 多 key provider — 逐 key 测
                 keys_tested = 0
                 keys_ok = 0
-                dead_indices: List[int] = []
-                errors: List[str] = []
+                dead_indices: list[int] = []
+                errors: list[str] = []
 
                 # 按 provider 名排序以保持稳定索引
                 sorted_items = sorted(key_map.items(), key=lambda x: x[0])
@@ -1601,7 +1603,7 @@ class LiteLLMPool:
 
                 overall = "ok" if keys_ok == keys_tested else ("auth_error" if keys_ok == 0 else "partial")
 
-                info: Dict[str, Any] = {
+                info: dict[str, Any] = {
                     "status": overall,
                     "keys_tested": keys_tested,
                     "keys_ok": keys_ok,
@@ -1617,7 +1619,7 @@ class LiteLLMPool:
         group_tasks = [_test_group(d, km) for d, km in groups.items()]
         group_results = await asyncio.gather(*group_tasks, return_exceptions=True)
 
-        providers_report: Dict[str, Dict] = {}
+        providers_report: dict[str, dict] = {}
         healthy_count = 0
         unhealthy_count = 0
 
@@ -1635,7 +1637,7 @@ class LiteLLMPool:
 
         elapsed = time.time() - start
         report = {
-            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
             "total_providers": len(providers_report),
             "healthy": healthy_count,
             "unhealthy": unhealthy_count,

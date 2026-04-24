@@ -15,15 +15,25 @@ import os
 import re
 from pathlib import Path
 
-from src.execution._db import DB_PATH, ensure_db_dir, init_db, get_conn
 from src.execution._ai import ai_pool
-from src.utils import scrub_secrets
+from src.execution._db import DB_PATH, ensure_db_dir, get_conn, init_db
 from src.execution._utils import (
-    extract_json_object, topic_slug, normalize_monitor_text,
-    safe_int as safe_int, safe_float as safe_float, parse_hhmm as parse_hhmm,
+    extract_json_object,
+    normalize_monitor_text,
+    topic_slug,
+)
+from src.execution._utils import (
+    parse_hhmm as parse_hhmm,
+)
+from src.execution._utils import (
+    safe_float as safe_float,
+)
+from src.execution._utils import (
+    safe_int as safe_int,
 )
 from src.execution.monitoring import MonitorManager
 from src.execution.scheduler import ExecutionScheduler
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +338,9 @@ class ExecutionHub:
     async def autopost_topic_content(self, platform=None, topic=None):
         """按主题自动发布社媒内容"""
         from src.execution.social.content_pipeline import (
-            derive_topic_strategy, compose_human_x_post, compose_human_xhs_article,
+            compose_human_x_post,
+            compose_human_xhs_article,
+            derive_topic_strategy,
             research_social_topic,
         )
         topic = topic or "OpenClaw 实战"
@@ -378,7 +390,9 @@ class ExecutionHub:
     async def autopost_hot_content(self, platform=None, topic=None):
         """自动发布热门内容"""
         from src.execution.social.content_pipeline import (
-            derive_topic_strategy, compose_human_x_post, compose_human_xhs_article,
+            compose_human_x_post,
+            compose_human_xhs_article,
+            derive_topic_strategy,
         )
         discovery = await self.discover_hot_social_topics(limit=1)
         if not discovery.get("success") or not discovery.get("candidates"):
@@ -435,7 +449,9 @@ class ExecutionHub:
     async def build_social_repost_bundle(self, topic=None):
         """构建社媒转发包"""
         from src.execution.social.content_pipeline import (
-            derive_topic_strategy, compose_human_x_post, compose_human_xhs_article,
+            compose_human_x_post,
+            compose_human_xhs_article,
+            derive_topic_strategy,
         )
         topic = topic or "OpenClaw 实战"
         research = self._run_social_worker("research", {"topic": topic})
@@ -470,7 +486,8 @@ class ExecutionHub:
     async def generate_content_calendar(self, days=7):
         """生成内容日历 — 优先从DB加载已有计划，无计划时才调AI生成"""
         from src.execution.social.content_pipeline import (
-            generate_content_calendar, get_calendar_from_db,
+            generate_content_calendar,
+            get_calendar_from_db,
         )
         # 先查表，有已有计划直接返回
         existing = get_calendar_from_db(days=days)
@@ -592,17 +609,17 @@ class ExecutionHub:
 
     async def analyze_tweet_execution(self, source=None, **kwargs):
         """分析推文执行策略"""
-        from src.execution.social.x_platform import analyze_tweet_execution
         from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.x_platform import analyze_tweet_execution
         return await analyze_tweet_execution(
             source=source or "", worker_fn=run_social_worker,
         )
 
     async def run_tweet_execution(self, source=None, **kwargs):
         """执行推文发布流程"""
-        from src.execution.social.x_platform import run_tweet_execution
-        from src.execution.social.worker_bridge import run_social_worker
         from src.execution.social.drafts import save_social_draft
+        from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.x_platform import run_tweet_execution
         return await run_tweet_execution(
             source=source or "",
             worker_fn=run_social_worker,
@@ -612,8 +629,8 @@ class ExecutionHub:
 
     async def import_x_monitors_from_tweet(self, source=None, limit=None, **kwargs):
         """从推文导入 X 监控账号"""
-        from src.execution.social.x_platform import import_x_monitors_from_tweet
         from src.execution.social.worker_bridge import run_social_worker
+        from src.execution.social.x_platform import import_x_monitors_from_tweet
         return await import_x_monitors_from_tweet(
             source=source or "", limit=limit or 10,
             worker_fn=run_social_worker,

@@ -4,7 +4,6 @@ AutoTrader 候选筛选与提案生成 Mixin
 """
 import asyncio
 import logging
-from typing import Dict, List, Optional
 
 from src.models import TradeProposal
 from src.utils import env_bool, env_int
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class AutoTraderFiltersMixin:
     """候选筛选与提案生成能力，由 AutoTrader 通过 Mixin 继承"""
 
-    def _filter_candidates(self, signals: List[Dict]) -> List[Dict]:
+    def _filter_candidates(self, signals: list[dict]) -> list[dict]:
         """从扫描结果中筛选候选标的（自适应阈值）
 
         过滤条件（根据市场环境动态调整）:
@@ -75,7 +74,7 @@ class AutoTraderFiltersMixin:
         candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
         return candidates
 
-    async def _generate_proposal(self, candidate: Dict) -> Optional[TradeProposal]:
+    async def _generate_proposal(self, candidate: dict) -> TradeProposal | None:
         """为候选标的生成交易提案"""
         symbol = candidate.get("symbol", "")
         score = candidate.get("score", 0)
@@ -121,7 +120,7 @@ class AutoTraderFiltersMixin:
             atr=atr_mult * price,
         )
 
-    async def _enrich_candidates_with_broker_quotes(self, candidates: List[Dict]) -> None:
+    async def _enrich_candidates_with_broker_quotes(self, candidates: list[dict]) -> None:
         """用 IBKR 实时快照刷新候选现价，减少数据滞后"""
         if not candidates:
             return
@@ -136,7 +135,7 @@ class AutoTraderFiltersMixin:
         limit = min(len(candidates), env_int("IBKR_QUOTE_ENRICH_TOP", 12, minimum=1))
         sem = asyncio.Semaphore(4)
 
-        async def _fetch_and_apply(item: Dict):
+        async def _fetch_and_apply(item: dict):
             symbol = item.get("symbol", "")
             if not symbol:
                 return

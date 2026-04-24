@@ -6,7 +6,6 @@ import asyncio
 import logging
 from collections import OrderedDict
 from datetime import timedelta
-from typing import Dict, List
 
 from src.notify_style import (
     format_notice,
@@ -14,13 +13,13 @@ from src.notify_style import (
     format_trade_fill_reconciled,
     kv,
 )
-from src.utils import env_bool, env_int
 from src.trading._helpers import (
+    _ensure_monitor_position_from_trade,
     _is_us_market_open_now,
     _parse_datetime,
     _queue_reentry_from_trade,
-    _ensure_monitor_position_from_trade,
 )
+from src.utils import env_bool, env_int
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ async def _reconcile_ibkr_entry_fills():
     )
     fills = fills or []
 
-    aggregated: Dict = {}
+    aggregated: dict = {}
     new_exec = 0
     for fill in fills:
         exec_id = str(fill.get("exec_id", "") or "")
@@ -90,7 +89,7 @@ async def _reconcile_ibkr_entry_fills():
         keys = list(_ts._processed_fill_exec_ids.keys())
         _ts._processed_fill_exec_ids = OrderedDict.fromkeys(keys[-4000:], True)
 
-    pending_by_order: Dict = {}
+    pending_by_order: dict = {}
     for trade in pending:
         oid = str(trade.get("entry_order_id", "") or "").strip()
         if oid:
@@ -242,7 +241,7 @@ async def _cancel_stale_pending_entries():
         if o.get("order_id") is not None
     }
 
-    snapshots: List = []
+    snapshots: list = []
     if hasattr(broker, "get_trade_snapshots"):
         snapshots = await broker.get_trade_snapshots()
     snapshot_map = {
@@ -347,13 +346,13 @@ async def _submit_pending_reentry_queue():
     max_retries = env_int("PENDING_REENTRY_MAX_RETRIES", 2, minimum=1)
     retry_interval_min = env_int("PENDING_REENTRY_RETRY_INTERVAL_MIN", 5, minimum=1)
 
+    from src.invest_tools import get_stock_quote
     from src.models import TradeProposal
     from src.utils import now_et
-    from src.invest_tools import get_stock_quote
 
     now_dt = now_et()
     submitted_count = 0
-    next_queue: List[Dict] = []
+    next_queue: list[dict] = []
 
     for item in list(_ts._pending_reentry_queue):
         if submitted_count >= max_per_cycle:
@@ -406,7 +405,7 @@ async def _submit_pending_reentry_queue():
             signal_score=int(float(item.get("signal_score", 0) or 0)),
             confidence=0.55,
             reason=str(item.get("entry_reason", "") or "")[:180] or "次日重挂执行",
-            decided_by=f"ReEntry/{str(item.get('decided_by', 'AutoTrader') or 'AutoTrader')}",
+            decided_by=f"ReEntry/{item.get('decided_by', 'AutoTrader') or 'AutoTrader'!s}",
         )
 
         try:

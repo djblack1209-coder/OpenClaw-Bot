@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import httpx
 
@@ -64,12 +64,12 @@ class CookieCloudClient:
         self.password = password
         # 密钥派生: md5(uuid + "-" + password) 的前 16 个 hex 字符
         self._passphrase = hashlib.md5(
-            f"{uuid}-{password}".encode("utf-8")
+            f"{uuid}-{password}".encode()
         ).hexdigest()[:16]
 
     def _evp_bytes_to_key(
         self, passphrase: bytes, salt: bytes, key_len: int = 32, iv_len: int = 16
-    ) -> Tuple[bytes, bytes]:
+    ) -> tuple[bytes, bytes]:
         """OpenSSL EVP_BytesToKey(MD5) 密钥派生实现
 
         CryptoJS 默认使用此算法从 passphrase + salt 派生 AES 密钥和 IV。
@@ -139,7 +139,7 @@ class CookieCloudClient:
         else:
             return self._decrypt_legacy(encrypted)
 
-    async def get_xianyu_cookie_string(self, timeout: int = 15) -> Optional[str]:
+    async def get_xianyu_cookie_string(self, timeout: int = 15) -> str | None:
         """获取闲鱼相关域名的 Cookie 字符串（name=value; 格式）
 
         按域名优先级合并: .goofish.com > .taobao.com > .alicdn.com > .aliyun.com
@@ -150,7 +150,7 @@ class CookieCloudClient:
             cookie_data = data.get("cookie_data", {})
 
             # 按优先级反序遍历，让高优先级的覆盖低优先级的
-            kv: Dict[str, str] = {}
+            kv: dict[str, str] = {}
             for domain in reversed(XIANYU_DOMAINS):
                 for key, cookies in cookie_data.items():
                     if domain in key:
@@ -179,7 +179,7 @@ class CookieCloudClient:
         返回字典包含 ct0、auth_token、twid 等关键字段。
         """
         cookie_data = decrypted.get("cookie_data", {})
-        kv: Dict[str, str] = {}
+        kv: dict[str, str] = {}
         for domain in X_DOMAINS:
             for key, cookies in cookie_data.items():
                 if domain in key:
@@ -198,7 +198,7 @@ class CookieCloudClient:
         扫描 .xiaohongshu.com 域名，返回所有找到的 Cookie。
         """
         cookie_data = decrypted.get("cookie_data", {})
-        kv: Dict[str, str] = {}
+        kv: dict[str, str] = {}
         for domain in XHS_DOMAINS:
             for key, cookies in cookie_data.items():
                 if domain in key:
@@ -229,14 +229,14 @@ class CookieCloudManager:
     """
 
     def __init__(self):
-        self._client: Optional[CookieCloudClient] = None
+        self._client: CookieCloudClient | None = None
         self._enabled = False
         self._last_sync_time = 0.0
         self._sync_interval = 300  # 默认 5 分钟
         self._consecutive_failures = 0
         self._max_failures_before_notify = 6  # 连续失败 6 次（30 分钟）后才通知
-        self._sync_history: List[Dict[str, Any]] = []
-        self._last_cookie_str: Optional[str] = ""
+        self._sync_history: list[dict[str, Any]] = []
+        self._last_cookie_str: str | None = ""
         self._load_config()
 
     def _load_config(self):
@@ -267,7 +267,7 @@ class CookieCloudManager:
         return self._enabled and self._client is not None
 
     @property
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """返回当前同步状态（用于 API/GUI 展示）"""
         return {
             "enabled": self._enabled,
@@ -306,7 +306,7 @@ class CookieCloudManager:
             cookie_data = decrypted.get("cookie_data", {})
 
             # 提取闲鱼 Cookie（原有逻辑，内联以避免重复网络请求）
-            kv: Dict[str, str] = {}
+            kv: dict[str, str] = {}
             for domain in reversed(XIANYU_DOMAINS):
                 for key, cookies in cookie_data.items():
                     if domain in key:
@@ -406,7 +406,7 @@ class CookieCloudManager:
                 os.path.dirname(__file__), "..", "..", "data", "xianyu.pid"
             )
             if os.path.exists(pid_file):
-                with open(pid_file, "r") as f:
+                with open(pid_file) as f:
                     pid = int(f.read().strip())
                 os.kill(pid, signal.SIGUSR1)
                 logger.info("已发送 SIGUSR1 到闲鱼进程 (PID %d)", pid)
@@ -448,6 +448,7 @@ class CookieCloudManager:
 
         # 深夜不通知
         from datetime import datetime
+
         import pytz
         try:
             tz = pytz.timezone(os.environ.get("TIMEZONE", "Asia/Shanghai"))
@@ -512,7 +513,7 @@ class CookieCloudManager:
 
 
 # ---- 全局单例 ----
-_manager: Optional[CookieCloudManager] = None
+_manager: CookieCloudManager | None = None
 
 
 def get_cookie_cloud_manager() -> CookieCloudManager:

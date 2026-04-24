@@ -17,11 +17,10 @@ import tempfile
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/conversation")
@@ -35,12 +34,12 @@ class ConversationStore:
 
     def __init__(self) -> None:
         # 会话列表: {session_id: {id, title, created_at, updated_at, messages: [...]}}
-        self._sessions: Dict[str, Dict[str, Any]] = {}
+        self._sessions: dict[str, dict[str, Any]] = {}
 
     # 会话上限保护：防止无限创建导致内存耗尽
     MAX_SESSIONS = 200
 
-    def create_session(self, title: str = "新对话") -> Dict[str, Any]:
+    def create_session(self, title: str = "新对话") -> dict[str, Any]:
         """创建新会话"""
         # 超过上限时自动淘汰最旧会话
         if len(self._sessions) >= self.MAX_SESSIONS:
@@ -60,11 +59,11 @@ class ConversationStore:
         self._sessions[session_id] = session
         return session
 
-    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
         """获取单个会话"""
         return self._sessions.get(session_id)
 
-    def list_sessions(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         """获取会话列表（按最近更新排序，不含消息体）"""
         sessions = sorted(
             self._sessions.values(),
@@ -89,8 +88,8 @@ class ConversationStore:
         session_id: str,
         role: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """向会话追加消息"""
         session = self._sessions.get(session_id)
         if not session:
@@ -358,7 +357,7 @@ def _sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _split_text(text: str) -> List[str]:
+def _split_text(text: str) -> list[str]:
     """将文本按句子/段落分段，用于模拟流式输出"""
     if not text:
         return [""]

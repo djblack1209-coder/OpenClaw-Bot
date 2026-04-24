@@ -17,11 +17,10 @@ import logging
 import os
 import time as _time
 from contextlib import contextmanager
-from typing import Optional, Dict, Tuple
 
-from src.utils import now_et, env_bool, scrub_secrets
-from src.http_client import ResilientHTTPClient
 from src.db_utils import get_conn as _get_db_conn
+from src.http_client import ResilientHTTPClient
+from src.utils import env_bool, now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ _http = ResilientHTTPClient(timeout=10, name="invest_tools")
 
 # ============ 行情缓存（统一代理到 QuoteCache） ============
 
-_quote_cache: Dict[str, Tuple[dict, float]] = {}  # 本地回退缓存
+_quote_cache: dict[str, tuple[dict, float]] = {}  # 本地回退缓存
 CACHE_TTL = 60  # 缓存60秒
 
 
@@ -45,7 +44,7 @@ def _get_global_quote_cache():
         return None
 
 
-def _get_cached_quote(symbol: str, allow_stale: bool = False) -> Optional[dict]:
+def _get_cached_quote(symbol: str, allow_stale: bool = False) -> dict | None:
     """获取缓存的行情 — 优先从 QuoteCache 读取，回退到本地缓存
 
     Args:
@@ -169,7 +168,7 @@ def _sync_get_quote(symbol: str) -> dict:
             logger.warning("[InvestTools] %s yfinance 请求失败, 返回过期缓存 (age=%ds): %s",
                            symbol, stale.get("_stale_age_secs", 0), e)
             return stale
-        return {"error": f"查询 {symbol} 失败: {str(e)}"}
+        return {"error": f"查询 {symbol} 失败: {e!s}"}
 
 
 # ============ 异步行情查询 ============
@@ -640,11 +639,11 @@ portfolio = Portfolio()
 # 搬运自 alternative.me API + fear-and-greed (MIT)
 # 零依赖，零成本，反向指标对投资决策有参考价值
 
-_fng_cache: Dict[str, Tuple[dict, float]] = {}
+_fng_cache: dict[str, tuple[dict, float]] = {}
 _FNG_TTL = 3600  # 1小时缓存
 
 
-async def get_fear_greed_index() -> Dict:
+async def get_fear_greed_index() -> dict:
     """获取 CNN/Crypto Fear & Greed Index — 零 API Key。
 
     搬运自 alternative.me API (开源社区标准方案)。
@@ -720,7 +719,7 @@ async def get_fear_greed_index() -> Dict:
         }
 
 
-async def get_quick_quotes(symbols: list) -> Dict:
+async def get_quick_quotes(symbols: list) -> dict:
     """快速获取多标的报价（并行）— 供 daily_brief 等使用"""
     if not symbols:
         return {}

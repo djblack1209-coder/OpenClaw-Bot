@@ -10,7 +10,7 @@ Social — 内容策略引擎
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+
 from json_repair import loads as jloads
 
 from src.execution._ai import ai_pool
@@ -20,7 +20,7 @@ from src.utils import scrub_secrets
 logger = logging.getLogger(__name__)
 
 
-async def discover_hot_topics(count: int = 5) -> List[Dict]:
+async def discover_hot_topics(count: int = 5) -> list[dict]:
     """发现当前热点话题 — 优先真实热搜，LLM 作为回退。
 
     数据源优先级:
@@ -66,8 +66,8 @@ async def discover_hot_topics(count: int = 5) -> List[Dict]:
 async def derive_content_strategy(
     topic: str,
     platform: str = "x",
-    persona: Optional[Dict] = None,
-) -> Dict:
+    persona: dict | None = None,
+) -> dict:
     """为指定话题推导内容策略"""
     persona_hint = ""
     if persona:
@@ -97,10 +97,10 @@ async def derive_content_strategy(
 async def compose_post(
     topic: str,
     platform: str = "x",
-    strategy: Optional[Dict] = None,
-    persona: Optional[Dict] = None,
+    strategy: dict | None = None,
+    persona: dict | None = None,
     max_length: int = 280,
-) -> Dict:
+) -> dict:
     """AI 生成社交媒体帖子"""
     constraints = []
     if platform == "x":
@@ -141,7 +141,7 @@ async def compose_post(
         return {"success": False, "error": str(e)}
 
 
-def load_persona(persona_dir: Optional[str] = None, name: str = "default") -> Optional[Dict]:
+def load_persona(persona_dir: str | None = None, name: str = "default") -> dict | None:
     """加载社交人设配置"""
     if not persona_dir:
         persona_dir = str(
