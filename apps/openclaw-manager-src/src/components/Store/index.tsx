@@ -101,8 +101,7 @@ export function Store() {
 
   /* Evolution 数据 */
   const [evoItems, setEvoItems] = useState<StoreItem[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_evoStats, setEvoStats] = useState<EvolutionStatsRaw | null>(null);
+  const [, setEvoStats] = useState<EvolutionStatsRaw | null>(null);
   const [evoApproving, setEvoApproving] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
