@@ -404,7 +404,7 @@ def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") 
         # 优先使用统一数据提供层 (自动检测 US/CN_A/CRYPTO)
         df = None
         try:
-            from src.data_providers import get_history_sync, detect_market
+            from src.data_providers import get_history_sync
             df = get_history_sync(symbol, period=period, interval=interval)
         except ImportError:
             # 回退到 yfinance-only

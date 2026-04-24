@@ -325,7 +325,6 @@ class _ToolsMixin:
           /claude code           — 在项目目录打开 Claude Code 交互终端
           /claude code <消息>    — 打开终端并自动发送初始消息
         """
-        import asyncio as _asyncio
         import shutil
         import subprocess
 
@@ -390,7 +389,7 @@ end tell
                 from src.wechat_bridge import send_to_wechat
                 import asyncio
                 asyncio.create_task(send_to_wechat(
-                    f"🖥 Claude Code 已在桌面启动" +
+                    "🖥 Claude Code 已在桌面启动" +
                     (f"\n> {prompt[:80]}" if prompt else "")
                 ))
             except Exception:

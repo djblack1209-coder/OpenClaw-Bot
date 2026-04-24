@@ -3,6 +3,7 @@ Trading — 系统初始化
 init_trading_system 和 set_ai_team_callers 的实现
 """
 
+import asyncio
 import logging
 
 from src.utils import env_bool, env_int, env_float
