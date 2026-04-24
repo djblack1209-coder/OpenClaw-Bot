@@ -82,7 +82,7 @@ class _SettingsMixin:
                     callback_data=f"settings|{user_id}|{key}|{next_val}",
                 )])
 
-        lines.append("\n点击按钮切换，或用 /settings <key> <value> 直接设置")
+        lines.append("\n点击按钮切换，或用 /settings &lt;key&gt; &lt;value&gt; 直接设置")
 
         await update.message.reply_text(
             "\n".join(lines),

@@ -125,21 +125,30 @@ class XianyuCommandsMixin:
                 await update.message.reply_text("⚠️ 闲鱼客服进程未运行")
 
         else:  # status (显式传 status 或其他未知参数)
-            proc = await asyncio.create_subprocess_exec(
-                "pgrep",
-                "-fl",
-                "xianyu_main",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            output = stdout.decode().strip()
-            if output:
-                lines = output.split("\n")
-                msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个"
-                await update.message.reply_text(msg)
-            else:
-                await update.message.reply_text("🔴 闲鱼 AI 客服未运行\n\n发送 /xianyu start 启动")
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "pgrep",
+                    "-fl",
+                    "xianyu_main",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                output = stdout.decode().strip()
+                reply_func = getattr(update, 'effective_message', update.message)
+                if reply_func is None:
+                    reply_func = update.message
+                if output:
+                    lines = output.split("\n")
+                    msg = f"🟢 闲鱼 AI 客服运行中\n进程: {len(lines)} 个"
+                    await reply_func.reply_text(msg)
+                else:
+                    await reply_func.reply_text("🔴 闲鱼 AI 客服未运行\n\n发送 /xianyu start 启动")
+            except Exception as e:
+                logger.warning("[cmd_xianyu] status 查询失败: %s", e)
+                reply_func = getattr(update, 'effective_message', None) or update.message
+                if reply_func:
+                    await reply_func.reply_text(f"⚠️ 闲鱼状态查询失败: {e}")
 
     # ---- 社媒内容日历 ----
 
