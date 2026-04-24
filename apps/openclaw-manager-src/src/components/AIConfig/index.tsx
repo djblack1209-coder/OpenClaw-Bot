@@ -176,7 +176,7 @@ export function AIConfig() {
       let channelsLoaded = false;
       if (channelsResp.status === 'fulfilled') {
         try {
-          const raw = await parseResponse<any>(channelsResp.value);
+          const raw = await parseResponse<Record<string, unknown>>(channelsResp.value);
           const list: ChannelItem[] = Array.isArray(raw) ? raw
             : Array.isArray(raw?.data) ? raw.data
             : Array.isArray(raw?.channels) ? raw.channels
@@ -193,7 +193,7 @@ export function AIConfig() {
         const data = poolResp.value as PoolStats;
         setPoolStats(data);
         if (!channelsLoaded) {
-          const total = Number((data as any)?.total_sources ?? (data as any)?.pool_total_sources ?? 0);
+          const total = Number((data as PoolStats)?.total_sources ?? (data as PoolStats)?.pool_total_sources ?? 0);
           if (total > 0) {
             setChannels(Array.from({ length: total }, (_, i) => ({
               id: -(i + 1),
@@ -249,10 +249,10 @@ export function AIConfig() {
   const enabledCount = channels.filter(isChannelEnabled).length;
   const totalChannelsDisplay = channels.length > 0
     ? channels.length
-    : Number((poolStats as any)?.total_sources ?? (poolStats as any)?.pool_total_sources ?? 0);
+    : Number((poolStats as PoolStats)?.total_sources ?? (poolStats as PoolStats)?.pool_total_sources ?? 0);
   const enabledChannelsDisplay = enabledCount > 0
     ? enabledCount
-    : Number((poolStats as any)?.active_sources ?? (poolStats as any)?.pool_active_sources ?? 0);
+    : Number((poolStats as PoolStats)?.active_sources ?? (poolStats as PoolStats)?.pool_active_sources ?? 0);
 
   // 从渠道提取所有唯一模型
   const allModels = Array.from(
@@ -264,7 +264,7 @@ export function AIConfig() {
   );
   const totalModelsDisplay = allModels.length > 0
     ? allModels.length
-    : Object.values(((poolStats as any)?.by_provider ?? {}) as Record<string, { models?: number }>).reduce(
+    : Object.values(((poolStats as PoolStats)?.by_provider ?? {}) as Record<string, { models?: number }>).reduce(
         (sum, item) => sum + Number(item?.models ?? 0),
         0,
       );
