@@ -1,7 +1,8 @@
 """
-工具命令 Mixin — /draw, /news, /qr, /tts, /agent, inline query
+工具命令 Mixin — /draw, /news, /qr, /tts, /agent, /claude code, inline query
 """
 import logging
+import os
 
 from src.bot.globals import (
     get_siliconflow_key, send_long_message,
@@ -345,8 +346,18 @@ class _ToolsMixin:
 
         prompt = " ".join(args)
 
-        # 检查 claude 是否可用
+        # 检查 claude 是否可用（搜索常见安装路径）
         claude_path = shutil.which("claude")
+        if not claude_path:
+            # 常见安装路径硬编码搜索
+            for p in [
+                os.path.expanduser("~/.npm-global/bin/claude"),
+                "/usr/local/bin/claude",
+                "/opt/homebrew/bin/claude",
+            ]:
+                if os.path.isfile(p) and os.access(p, os.X_OK):
+                    claude_path = p
+                    break
         if not claude_path:
             await update.message.reply_text("⚠️ Claude Code CLI 未安装。请先运行: npm install -g @anthropic-ai/claude-code")
             return
