@@ -1,0 +1,122 @@
+[
+  {
+    "page": "home",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "assistant",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "notifications",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "worldmonitor",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "newsfeed",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "finradar",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "portfolio",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "trading",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "risk",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "bots",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "store",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "xianyu",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "social",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "settings",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "dashboard",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "control",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "gateway",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "scheduler",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "perf",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "channels",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "ai",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "plugins",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "memory",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "flow",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "evolution",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "dev",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "devpanel",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "testing",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "logs",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  },
+  {
+    "page": "money",
+    "html_sample": "<!DOCTYPE html>\n<html lang=\"zh-CN\" class=\"dark\">\n  <head>\n    <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$Re"
+  }
+]

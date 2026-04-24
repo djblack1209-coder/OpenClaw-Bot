@@ -85,6 +85,25 @@ export type PageType =
   | 'dev' | 'devpanel' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
   | 'memory' | 'evolution' | 'gateway' | 'scheduler' | 'perf';
 
+const VALID_PAGES = new Set<PageType>([
+  'home', 'assistant', 'notifications', 'worldmonitor', 'newsfeed', 'finradar',
+  'portfolio', 'trading', 'risk', 'bots', 'store', 'xianyu', 'onboarding',
+  'control', 'dashboard', 'ai', 'channels', 'social', 'money', 'dev',
+  'devpanel', 'testing', 'logs', 'settings', 'flow', 'plugins', 'memory',
+  'evolution', 'gateway', 'scheduler', 'perf',
+]);
+
+const DEV_PAGES = new Set<PageType>([
+  'control', 'dashboard', 'ai', 'channels', 'money', 'dev', 'devpanel',
+  'testing', 'logs', 'flow', 'plugins', 'memory', 'evolution', 'gateway',
+  'scheduler', 'perf',
+]);
+
+function parsePageParam(): PageType | null {
+  const page = new URLSearchParams(window.location.search).get('page');
+  return page && VALID_PAGES.has(page as PageType) ? (page as PageType) : null;
+}
+
 export interface EnvironmentStatus {
   node_installed: boolean;
   node_version: string | null;
@@ -116,6 +135,13 @@ function App() {
   const setServiceStatus = useAppStore((s) => s.setServiceStatus);
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
+  const devMode = useAppStore((s) => s.devMode);
+
+  useEffect(() => {
+    const page = parsePageParam();
+    if (!page) return;
+    setCurrentPage(DEV_PAGES.has(page) && !devMode ? 'home' : page);
+  }, [devMode, setCurrentPage]);
 
   // 检查环境
   const checkEnvironment = useCallback(async () => {
