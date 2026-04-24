@@ -252,7 +252,6 @@
 
     "ollama_local": {
       "env_key": "LOCAL_HF_MODEL_ENDPOINT",
-      "env_key_optional": true,
       "base_url": "http://127.0.0.1:11434",
       "timeout": 20,
       "stream_timeout": 40,

@@ -75,16 +75,16 @@ class RSSFeed:
 
 # 内置 RSS 源列表 — 精选中文 + 英文源
 DEFAULT_FEEDS: list[RSSFeed] = [
-    # 中文财经
-    RSSFeed("华尔街见闻", "https://wallstreetcn.com/rss", NewsCategory.FINANCE, "zh", 1),
+    # 中文财经（原站 RSS 已失效，使用 Google News RSS 代理）
+    RSSFeed("华尔街见闻", "https://news.google.com/rss/search?q=site:wallstreetcn.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", NewsCategory.FINANCE, "zh", 1),
     RSSFeed("36氪", "https://36kr.com/feed", NewsCategory.TECHNOLOGY, "zh", 1),
-    RSSFeed("财联社", "https://www.cls.cn/rss", NewsCategory.FINANCE, "zh", 1),
+    RSSFeed("财联社", "https://news.google.com/rss/search?q=site:cls.cn&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", NewsCategory.FINANCE, "zh", 1),
     # 中文科技/综合
     RSSFeed("澎湃新闻", "https://feedx.net/rss/thepaper.xml", NewsCategory.GEOPOLITICS, "zh", 1),
     RSSFeed("界面新闻", "https://feedx.net/rss/jiemian.xml", NewsCategory.FINANCE, "zh", 1),
-    RSSFeed("知乎热榜", "https://feedx.net/rss/zhihu-daily.xml", NewsCategory.TECHNOLOGY, "zh", 2),
+    RSSFeed("知乎热榜", "https://www.zhihu.com/rss", NewsCategory.TECHNOLOGY, "zh", 2),
     # 英文综合
-    RSSFeed("Reuters World", "https://feeds.reuters.com/reuters/worldNews", NewsCategory.GEOPOLITICS, "en", 1),
+    RSSFeed("Reuters World", "https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en", NewsCategory.GEOPOLITICS, "en", 1),
     RSSFeed("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", NewsCategory.GEOPOLITICS, "en", 1),
     RSSFeed("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", NewsCategory.GEOPOLITICS, "en", 1),
     # 科技
@@ -95,13 +95,13 @@ DEFAULT_FEEDS: list[RSSFeed] = [
     RSSFeed("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/", NewsCategory.CRYPTO, "en", 1),
     RSSFeed("The Block", "https://www.theblock.co/rss.xml", NewsCategory.CRYPTO, "en", 2),
     # 军事/安全
-    RSSFeed("Defense One", "https://www.defenseone.com/rss/", NewsCategory.MILITARY, "en", 2),
-    RSSFeed("CSIS", "https://www.csis.org/rss", NewsCategory.GEOPOLITICS, "en", 2),
+    RSSFeed("Defense One", "https://www.defenseone.com/rss/all/", NewsCategory.MILITARY, "en", 2),
+    RSSFeed("CSIS", "https://news.google.com/rss/search?q=site:csis.org&hl=en-US&gl=US&ceid=US:en", NewsCategory.GEOPOLITICS, "en", 2),
     # 能源/大宗
     RSSFeed("OilPrice", "https://oilprice.com/rss/main", NewsCategory.ENERGY, "en", 2),
     # 中国相关
     RSSFeed("SCMP", "https://www.scmp.com/rss/4/feed", NewsCategory.CHINA, "en", 1),
-    RSSFeed("Caixin", "https://www.caixinglobal.com/rss.xml", NewsCategory.CHINA, "en", 2),
+    RSSFeed("Caixin", "https://news.google.com/rss/search?q=site:caixin.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", NewsCategory.CHINA, "en", 2),
 ]
 
 

@@ -1,6 +1,26 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (全量审计第十三轮，API smoke test + 桌面端启动验证 + 服务器可达性)
+> 最后更新: 2026-04-24 (全量审计第十四轮，RSS 源修复 + execution_hub 断引用 + LiteLLM 配置修复)
+
+---
+
+## 🟢 2026-04-24 全量审计第十四轮：生产问题修复
+
+> 本轮修复上一轮 API smoke test 暴露的 3 个真实生产问题。
+
+### 已修复
+| # | 问题 | 严重度 | 修复方式 |
+|---|------|--------|---------|
+| AUDIT-2026-04-24-R42 | 7 个 RSS 源 URL 失效 (404/DNS错误) | 🟠 | 华尔街见闻/财联社/Caixin/CSIS 改用 Google News RSS 代理；知乎改用官方 `/rss`；Defense One 改用 `/rss/all/`；Reuters 改用 Google News 搜索 |
+| AUDIT-2026-04-24-R43 | Social analytics/browser-status 因 `execution_hub` 导入路径错误 500 | 🟠 | `src/api/rpc.py` 改为 `from src.bot.globals import execution_hub`（实例化位置） |
+| AUDIT-2026-04-24-R44 | LiteLLM JSON Config 加载失败 (str expected, not bool) | 🟡 | `config/llm_routing.json` 的 `ollama_local.env_key_optional` 从 `true`(bool) 改为删除；`llm_routing_config.py` 增加 `isinstance` 类型防御 |
+
+### 验证结果
+| 项目 | 结果 | 说明 |
+|------|------|------|
+| 后端全量 pytest | ✅ 100% 通过 | 无回归 |
+| LiteLLM JSON Config | ✅ 42 deployments | 配置正常加载，不再回退到硬编码 |
+| RSS 源 URL | ✅ 全部 200 | 替代 URL 均验证可达 |
 
 ---
 
