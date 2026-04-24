@@ -136,7 +136,7 @@ export function Xianyu() {
         setServiceRunning(xySvc?.status === 'running' || xySvc?.running === true);
       }
       setError(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(e?.message ?? t('xianyu.error.loadFailed'));
     } finally {
       setLoading(false);

@@ -126,7 +126,7 @@ export function Social() {
         setTopics(Array.isArray(t) ? t : t?.topics ?? []);
       }
       setError(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(e?.message ?? t('social.loadFailed'));
     } finally {
       setLoading(false);

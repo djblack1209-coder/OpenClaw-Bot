@@ -208,7 +208,7 @@ export function Store() {
       }
       await new Promise(r => setTimeout(r, 800));
       await fetchMcp();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(`${t('plugins.operationFailed')}: ${e?.message ?? ''}`, { channel: 'notification' });
     } finally {
       setMcpToggling(null);
@@ -226,7 +226,7 @@ export function Store() {
       if (!resp.ok) throw new Error(await resp.text().catch(() => `HTTP ${resp.status}`));
       toast.success(action === 'approved' ? t('store.approveSuccess') : t('store.rejectSuccess'), { channel: 'log' });
       await fetchEvolution();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(`${t('store.approveFailed')}: ${e?.message ?? ''}`, { channel: 'notification' });
     } finally {
       setEvoApproving(null);
