@@ -12,17 +12,17 @@
 
 ## 最近更新（2026-04）
 
-## [2026-04-24] OpenCode GPT5.5 上下文截断修复
+## [2026-04-24] OpenCode GPT5.5 上下文安全线修复
 > 领域: `infra`, `ai-pool`
 > 影响模块: `OpenCode`, `GPT5.5`, `gpt-mode-switcher`
 > 关联问题: OPENCODE-CTX-194K
 ### 变更内容
-- 实测 `zhongzhuanapi-max-copy-copy/gpt-5.5`：150k、190k、210k、250k token 请求均正常返回；280k 虽 HTTP 200 但 completion 为 0 且耗时 92s，判定为不健康边界。
-- 将 OpenCode 默认主模型和子智能体模型切到 `zhongzhuanapi-max-copy-copy/gpt-5.5`，避免当前配置实际仍使用 Claude 模型。
-- 将 GPT5.5 的 OpenCode 上下文声明从虚高的 1,050,000 调整为保守的 200,000，输入 160,000、输出 40,000，让 OpenCode 在约 160k 主动压缩，避免 194k 附近才停止回答。
-- 将 GPT 独立模式插件从识别 `gpt-5.4` 改为识别 `gpt-5.5`。
+- 实测 `zhongzhuanapi-max-copy-copy/gpt-5.5`：150k、190k、210k、250k token 请求均正常返回；280k 虽 HTTP 200 但 completion 为 0 且耗时 92s，说明 272k 附近是实际风险边界。
+- 保持 OpenCode 默认主模型和子智能体模型不变，不再强行切到 GPT5.5。
+- 将 GPT5.5 的 OpenCode 上下文声明从虚高的 1,050,000 调整为 272,000，输入 232,000、输出 40,000，让 OpenCode 以 272k 作为安全线触发压缩，避免会话在 194k 附近中断后无恢复空间。
+- 将 GPT 独立模式插件从识别 `gpt-5.4` 改为识别 `gpt-5.5`，仅在手动选择 GPT5.5 时生效。
 ### 文件变更
-- `~/.config/opencode/opencode.json` — 对齐 GPT5.5 默认模型和安全上下文上限
+- `~/.config/opencode/opencode.json` — 修正 GPT5.5 安全上下文上限，不修改默认模型
 - `~/.config/opencode/plugins/gpt-mode-switcher.js` — GPT 独立模式识别模型更新为 GPT5.5
 - `~/.config/opencode/instructions/gpt-autonomy.md` — 同步说明文字中的模型名
 
