@@ -1674,7 +1674,7 @@ export const zhCN: Record<string, string> = {
   'plugins.noPluginDataLog': '[SYSTEM] 暂无可用插件数据',
   'plugins.fetchFailed': '获取插件数据失败',
   'plugins.toggleFailed': '切换失败',
-  'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击\"重新检查\"',
+  'setup.terminalOpened': '已打开安装终端，请在终端中完成安装后点击"重新检查"',
   'setup.nodeRestartRequired': 'Node.js 安装完成，请重启应用以使环境变量生效',
   'setup.needsV22': '(需要 v22+)',
   'setup.notInstalled': '未安装',

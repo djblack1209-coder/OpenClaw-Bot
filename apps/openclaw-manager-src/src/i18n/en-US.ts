@@ -1674,7 +1674,7 @@ export const enUS: Record<string, string> = {
   'plugins.noPluginDataLog': '[SYSTEM] No plugin data available',
   'plugins.fetchFailed': 'Failed to fetch plugin data',
   'plugins.toggleFailed': 'Toggle failed',
-  'setup.terminalOpened': 'Install terminal opened. Please complete installation then click \"Re-check\"',
+  'setup.terminalOpened': 'Install terminal opened. Please complete installation then click "Re-check"',
   'setup.nodeRestartRequired': 'Node.js installation complete. Please restart the app for environment variables to take effect',
   'setup.needsV22': '(requires v22+)',
   'setup.notInstalled': 'Not installed',

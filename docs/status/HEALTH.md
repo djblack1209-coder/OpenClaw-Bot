@@ -1,8 +1,29 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-23 (全量系统审计 R1~R8 完成，日报体验重构)
+> 最后更新: 2026-04-24 (全量审计首轮，构建阻塞与 Redis 空密码防护)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
+
+---
+
+## 🟡 2026-04-24 全量审计首轮发现与修复
+
+> 本轮先覆盖构建/依赖/Compose/安全凭据治理/前端静态质量的高价值入口，深度 UI 逐页截图审计仍需继续。
+
+### 已修复
+| # | 问题 | 严重度 | 修复方式 |
+|---|------|--------|---------|
+| AUDIT-2026-04-24-R1 | 前端 i18n 文案多余转义导致 ESLint 4 个错误 | 🟡 | 去除 `setup.terminalOpened` 中无效转义，lint 错误降为 0 |
+| AUDIT-2026-04-24-R2 | Docker Compose 在未注入 `REDIS_PASSWORD` 时会把 Redis 配成空密码 | 🟠 | Compose 改为强制变量校验，缺失时拒绝启动；`.env.example` 补配置说明 |
+
+### 本轮未完成/需继续
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| AUDIT-2026-04-24-R3 | 真实密钥已在当前对话暴露，且本机 `.env` 内含大量生产 Key | 🔴 | 需要用户到各平台轮换 Telegram/GitHub/Cloudflare/LLM/Tavily/CookieCloud/服务器 root 密码等凭据 |
+| AUDIT-2026-04-24-R4 | 本机 Node 为 18.20.8，但前端依赖要求 Node 20+ | 🟠 | 当前 build 可过，但 npm/依赖已持续 EBADENGINE 警告，桌面构建环境应升级到 Node 22 |
+| AUDIT-2026-04-24-R5 | Python 3.12 环境缺后端运行依赖，pytest 因 `numpy` 缺失中断 | 🟠 | 需用 `uv pip install -r requirements-dev.txt` 建立一致测试环境后重跑全量测试 |
+| AUDIT-2026-04-24-R6 | 前端 ESLint 仍有 132 个历史 warning | 🟡 | 主要为 `any` 类型和 React Hook 依赖，未阻塞 build，但会阻塞 `npm run lint --max-warnings 0` |
+| AUDIT-2026-04-24-R7 | UI 截图工具生成了桌面/移动端截图，但当前模型不能读取工具截图内容 | 🟡 | 已生成 `apps/openclaw-manager-src/output/playwright/openclaw-home.png` 和 mobile 截图，需下一轮换可读截图验证方式逐页审计 |
 
 ---
 
