@@ -69,8 +69,8 @@ export function CommandPalette() {
     }
   }, [open])
 
-  const navigate = (page: string) => {
-    setCurrentPage(page as PageType)
+  const navigate = (page: PageType) => {
+    setCurrentPage(page)
     setOpen(false)
   }
 
@@ -95,7 +95,7 @@ export function CommandPalette() {
       success: `${t('commandPalette.commandSent')}: ${trimmed}`,
       error: (e: unknown) => `${t('commandPalette.commandFailed')}: ${e instanceof Error ? e.message : String(e)}`,
     })
-  }, [])
+  }, [t])
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

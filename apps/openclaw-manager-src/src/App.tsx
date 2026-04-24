@@ -161,7 +161,7 @@ function App() {
       appLogger.error('环境检查失败', e);
       setIsReady(true);
     }
-  }, []);
+  }, [setEnvStatus, setIsReady]);
 
   useEffect(() => {
     appLogger.info('🦞 App 组件已挂载');
@@ -183,7 +183,7 @@ function App() {
     fetchServiceStatus();
     const interval = setInterval(fetchServiceStatus, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [setServiceStatus]);
 
   const handleSetupComplete = useCallback(() => {
     appLogger.info('安装向导完成');
