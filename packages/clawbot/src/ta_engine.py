@@ -83,14 +83,21 @@ def compute_indicators(df) -> dict:
     result['atr_pct'] = round(result['atr_14'] / price * 100, 2) if price > 0 else 0
 
     # --- ADX (趋势强度) ---
-    if len(df) >= 20:
-        adx_indicator = ta.trend.ADXIndicator(high, low, close, window=14)
-        adx_val = adx_indicator.adx().iloc[-1]
-        result['adx'] = round(float(adx_val), 2) if not math.isnan(adx_val) else 0
-        adx_pos = adx_indicator.adx_pos().iloc[-1]
-        adx_neg = adx_indicator.adx_neg().iloc[-1]
-        result['adx_pos'] = round(float(adx_pos), 2) if not math.isnan(adx_pos) else 0
-        result['adx_neg'] = round(float(adx_neg), 2) if not math.isnan(adx_neg) else 0
+    # ADX 需要至少 28 行数据（window=14, 内部需 2*window 行预热）
+    if len(df) >= 28:
+        try:
+            adx_indicator = ta.trend.ADXIndicator(high, low, close, window=14)
+            adx_val = adx_indicator.adx().iloc[-1]
+            result['adx'] = round(float(adx_val), 2) if not math.isnan(adx_val) else 0
+            adx_pos = adx_indicator.adx_pos().iloc[-1]
+            adx_neg = adx_indicator.adx_neg().iloc[-1]
+            result['adx_pos'] = round(float(adx_pos), 2) if not math.isnan(adx_pos) else 0
+            result['adx_neg'] = round(float(adx_neg), 2) if not math.isnan(adx_neg) else 0
+        except (IndexError, ValueError) as e:
+            logger.debug("[TA] ADX 计算失败(数据不足): %s", e)
+            result['adx'] = 0
+            result['adx_pos'] = 0
+            result['adx_neg'] = 0
 
     # --- 成交量指标 ---
     # P2#34: 均量排除当日不完整数据（用 iloc[-21:-1] 而非 tail(20)）

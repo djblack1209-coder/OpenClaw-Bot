@@ -312,3 +312,85 @@ class _ToolsMixin:
             await query.answer(results[:10], cache_time=30)
         except Exception:
             logger.debug("Silenced exception", exc_info=True)
+
+    # ---- Claude Code CLI 桥接 ----
+
+    @requires_auth
+    @with_typing
+    async def cmd_claude_code(self, update, context):
+        """通过 Telegram 与 Claude Code CLI 对话。
+
+        用法: /claude code <消息>
+        在本地启动 claude -p "<消息>"，捕获输出并回传。
+        """
+        import asyncio as _asyncio
+        import shutil
+
+        args = context.args or []
+
+        # /claude code <消息> — 跳过 "code" 这个词
+        if args and args[0].lower() == "code":
+            args = args[1:]
+
+        if not args:
+            await update.message.reply_text(
+                "🖥 Claude Code CLI\n\n"
+                "用法: /claude code <你的问题或任务>\n"
+                "示例: /claude code 帮我写一个Python快速排序\n"
+                "示例: /claude code 解释什么是依赖注入\n\n"
+                "这会在本地启动 Claude Code CLI 处理你的请求，"
+                "并将结果同步回 Telegram。"
+            )
+            return
+
+        prompt = " ".join(args)
+
+        # 检查 claude 是否可用
+        claude_path = shutil.which("claude")
+        if not claude_path:
+            await update.message.reply_text("⚠️ Claude Code CLI 未安装。请先运行: npm install -g @anthropic-ai/claude-code")
+            return
+
+        await update.message.reply_text(f"🖥 Claude Code 正在处理...\n\n> {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
+
+        try:
+            # 启动 claude -p "<prompt>" --output-format text
+            proc = await _asyncio.create_subprocess_exec(
+                claude_path, "-p", prompt, "--output-format", "text",
+                stdout=_asyncio.subprocess.PIPE,
+                stderr=_asyncio.subprocess.PIPE,
+                cwd="/Users/blackdj/Desktop/OpenEverything",
+            )
+
+            # 设置超时（Claude Code 可能运行很久）
+            try:
+                stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=120)
+            except _asyncio.TimeoutError:
+                proc.kill()
+                await update.message.reply_text("⚠️ Claude Code 执行超时（120秒限制）。请缩小任务范围后重试。")
+                return
+
+            output = stdout.decode("utf-8", errors="replace").strip()
+            err_output = stderr.decode("utf-8", errors="replace").strip()
+
+            if proc.returncode != 0 and not output:
+                await update.message.reply_text(f"⚠️ Claude Code 执行失败 (code={proc.returncode})\n\n{err_output[:500]}")
+                return
+
+            if not output:
+                output = "(无输出)"
+
+            # 发送结果（可能很长，用 send_long_message 分段）
+            header = f"🖥 Claude Code 回复\n{'─' * 30}\n\n"
+            await send_long_message(update.effective_chat.id, header + output, context)
+
+            # 微信同步推送
+            try:
+                from src.wechat_bridge import send_to_wechat
+                _asyncio.create_task(send_to_wechat(f"🖥 Claude Code\n> {prompt[:50]}\n\n{output[:500]}"))
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.warning("[cmd_claude_code] 执行失败: %s", e)
+            await update.message.reply_text(f"⚠️ Claude Code 执行异常: {e}")
