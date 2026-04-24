@@ -137,7 +137,7 @@ export function Xianyu() {
       }
       setError(null);
     } catch (e: unknown) {
-      setError(e?.message ?? t('xianyu.error.loadFailed'));
+      setError((e as Error)?.message ?? t('xianyu.error.loadFailed'));
     } finally {
       setLoading(false);
     }
