@@ -220,7 +220,7 @@ export function Bots() {
 
       setError(null);
     } catch (e: unknown) {
-      setError(e?.message ?? t('bots.loadFailed'));
+      setError((e as Error)?.message ?? t('bots.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -255,7 +255,7 @@ export function Bots() {
       }
     } catch (e: unknown) {
       await fetchData();
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
+      toast.error(`${t('bots.operationFailed')}: ${(e as Error)?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setActionLoading((prev) => ({ ...prev, [serviceId]: false }));
     }
@@ -275,7 +275,7 @@ export function Bots() {
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
     } catch (e: unknown) {
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
+      toast.error(`${t('bots.operationFailed')}: ${(e as Error)?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setAutopilotLoading(false);
     }
@@ -293,7 +293,7 @@ export function Bots() {
       await new Promise((r) => setTimeout(r, 500));
       await fetchData();
     } catch (e: unknown) {
-      toast.error(`${t('bots.operationFailed')}: ${e?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
+      toast.error(`${t('bots.operationFailed')}: ${(e as Error)?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });
     } finally {
       setSchedulerTaskLoading((prev) => ({ ...prev, [taskId]: false }));
     }
