@@ -1,6 +1,32 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (全量审计第八~九轮，react-hooks/exhaustive-deps 归零)
+> 最后更新: 2026-04-24 (全量审计第十轮，any 类型债首批收敛 82→65)
+
+---
+
+## 🟢 2026-04-24 全量审计第十轮：any 类型债首批收敛
+
+> 本轮开始处理剩余 `@typescript-eslint/no-explicit-any`，优先修复最安全的 `catch (e: any)` → `catch (e: unknown)`、删除 `unused eslint-disable`、以及 AIConfig 已有 index signature 可直接去掉 `as any` 的场景。
+
+### 已修复
+| # | 问题 | 严重度 | 修复方式 |
+|---|------|--------|---------|
+| AUDIT-2026-04-24-R35 | Store 有 unused eslint-disable + `_evoStats` 未使用变量 | 🔵 | 去掉注释和下划线前缀，改用 `[, setEvoStats]` |
+| AUDIT-2026-04-24-R36 | Bots/Social/Xianyu/Store 共 8 处 `catch (e: any)` | 🟡 | 改为 `catch (e: unknown)` + `(e as Error)?.message` |
+| AUDIT-2026-04-24-R37 | AIConfig 8 处 `as any` 但 PoolStats 已有 index signature | 🟡 | 改为 `as PoolStats` 或 `Record<string, unknown>`，去掉冗余 cast |
+
+### 验证结果
+| 项目 | 结果 | 说明 |
+|------|------|------|
+| 前端类型检查 | ✅ 通过 | `fnm use 22.22.2 && npx tsc --noEmit` 无错误 |
+| 前端生产构建 | ✅ 通过 | `fnm use 22.22.2 && npm run build` 成功 |
+| 前端 lint warning | 🟡 下降 | 从 82 降到 65 |
+| Diff 检查 | ✅ 通过 | `git diff --check` 无输出 |
+
+### 仍需继续
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| AUDIT-2026-04-24-R38 | 前端仍有 65 个 `any` warning | 🟡 | 剩余分布在 Settings/Store/Bots/Social/Xianyu/ControlCenter/Portfolio/Dashboard/Evolution/Logs/Memory/api.ts/tauri-core.ts，多数需要 `as Record<string, unknown>` 替换 |
 
 ---
 
