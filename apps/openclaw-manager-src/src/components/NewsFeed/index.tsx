@@ -256,7 +256,7 @@ export function NewsFeed() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 首次加载 + 定时刷新 */
   useEffect(() => {
@@ -329,7 +329,7 @@ export function NewsFeed() {
         topic,
         delta: `${count} ${t('newsFeed.articles')}`,
       }));
-  }, [newsItems]);
+  }, [newsItems, t]);
 
   /** AI 摘要 — 组合前 3 条新闻的 summary */
   const aiSummary = useMemo(() => {
@@ -340,7 +340,7 @@ export function NewsFeed() {
     return summaries.length > 0
       ? summaries.join(' ')
       : t('newsFeed.noSummary');
-  }, [newsItems]);
+  }, [newsItems, t]);
 
   /** 威胁等级统计 */
   const threatCounts = useMemo(() => {

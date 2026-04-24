@@ -236,7 +236,7 @@ export function APIGateway() {
         return next;
       });
     }
-  }, []);
+  }, [t]);
 
   /* ── 删除渠道 ── */
   const handleDeleteChannel = useCallback(async (channelId: number, name?: string) => {
@@ -263,7 +263,7 @@ export function APIGateway() {
       description: `${t('apiGateway.confirmDeleteChannel')}${name || channelId}`,
       onConfirm: doDelete,
     });
-  }, []);
+  }, [t]);
 
   /* ── 删除令牌 ── */
   const handleDeleteToken = useCallback(async (tokenId: number, name?: string) => {
@@ -307,7 +307,7 @@ export function APIGateway() {
     } finally {
       setGatewayServiceToggling(false);
     }
-  }, [gatewayServiceRunning, fetchData]);
+  }, [fetchData, gatewayServiceRunning, t]);
 
   /* ── 派生数据 ── */
   const isOnline = gatewayStatus?.running || gatewayStatus?.online || gatewayStatus?.status === 'ok';
