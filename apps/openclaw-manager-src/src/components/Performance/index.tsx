@@ -174,7 +174,7 @@ export function Performance() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* —— 首次加载 + 30 秒自动刷新 —— */
   useEffect(() => {

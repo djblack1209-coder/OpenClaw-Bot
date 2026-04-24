@@ -450,7 +450,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
 
     onComplete();
-  }, [selectedFeatures, apiKey, baseUrl, onComplete]);
+  }, [selectedFeatures, apiKey, baseUrl, onComplete, t]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-primary, #020202)' }}>

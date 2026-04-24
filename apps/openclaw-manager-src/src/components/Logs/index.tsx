@@ -111,7 +111,7 @@ export function Logs() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 

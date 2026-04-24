@@ -290,7 +290,7 @@ export function APIGateway() {
       description: `${t('apiGateway.confirmDeleteToken')}${name || tokenId}`,
       onConfirm: doDelete,
     });
-  }, []);
+  }, [t]);
 
   /* ── 网关服务启停 ── */
   const handleGatewayServiceToggle = useCallback(async () => {

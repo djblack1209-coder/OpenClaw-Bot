@@ -1,8 +1,32 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (全量审计第七轮，内部工具页 Hook 依赖风险收敛)
-> Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
-> 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
+> 最后更新: 2026-04-24 (全量审计第八~九轮，react-hooks/exhaustive-deps 归零)
+
+---
+
+## 🟢 2026-04-24 全量审计第八~九轮：Hook 依赖风险归零
+
+> 本轮一次性清完全部剩余 `react-hooks/exhaustive-deps` 警告。前端 Hook 闭包风险从 132 → 0。
+
+### 已修复
+| # | 问题 | 严重度 | 修复方式 |
+|---|------|--------|---------|
+| AUDIT-2026-04-24-R32 | Channels/Dev/DevPanel/WorldMonitor 数据拉取和计算回调缺少翻译函数依赖 | 🟡 | 第八轮批量补齐，lint 103→96 |
+| AUDIT-2026-04-24-R33 | APIGateway/Evolution/Logs/Memory/Money/Onboarding/Performance/Portfolio/Scheduler/Setup/WorldMonitor 剩余 14 处 Hook 依赖 | 🟡 | 第九轮一次性全部修完，lint 96→82 |
+
+### 验证结果
+| 项目 | 结果 | 说明 |
+|------|------|------|
+| 前端类型检查 | ✅ 通过 | `fnm use 22.22.2 && npx tsc --noEmit` 无错误 |
+| 前端生产构建 | ✅ 通过 | `fnm use 22.22.2 && npm run build` 成功 |
+| `react-hooks/exhaustive-deps` | ✅ 归零 | 从最初 132 降到 0，全部清完 |
+| 前端 lint warning | 🟡 82 个 | 剩余全部为 `@typescript-eslint/no-explicit-any`(81) + 1 个 unused eslint-disable |
+| Diff 检查 | ✅ 通过 | `git diff --check` 无输出 |
+
+### 仍需继续
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| AUDIT-2026-04-24-R34 | 前端仍有 82 个 lint warning | 🟡 | 全部为 `any` 类型债，需要后端 API 返回值建模后逐步替换 |
 
 ---
 

@@ -159,7 +159,7 @@ export function Channels() {
         return next;
       });
     }
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   /* ── 统计数据（从真实配置计算） ── */
   const connected = channels.filter((ch) => ch.enabled && hasRealConfig(ch.config)).length;
