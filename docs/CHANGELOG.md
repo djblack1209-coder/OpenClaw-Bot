@@ -12,6 +12,20 @@
 
 ## 最近更新（2026-04）
 
+## [2026-04-24] OpenCode GPT5.5 上下文截断修复
+> 领域: `infra`, `ai-pool`
+> 影响模块: `OpenCode`, `GPT5.5`, `gpt-mode-switcher`
+> 关联问题: OPENCODE-CTX-194K
+### 变更内容
+- 实测 `zhongzhuanapi-max-copy-copy/gpt-5.5`：150k、190k、210k、250k token 请求均正常返回；280k 虽 HTTP 200 但 completion 为 0 且耗时 92s，判定为不健康边界。
+- 将 OpenCode 默认主模型和子智能体模型切到 `zhongzhuanapi-max-copy-copy/gpt-5.5`，避免当前配置实际仍使用 Claude 模型。
+- 将 GPT5.5 的 OpenCode 上下文声明从虚高的 1,050,000 调整为保守的 200,000，输入 160,000、输出 40,000，让 OpenCode 在约 160k 主动压缩，避免 194k 附近才停止回答。
+- 将 GPT 独立模式插件从识别 `gpt-5.4` 改为识别 `gpt-5.5`。
+### 文件变更
+- `~/.config/opencode/opencode.json` — 对齐 GPT5.5 默认模型和安全上下文上限
+- `~/.config/opencode/plugins/gpt-mode-switcher.js` — GPT 独立模式识别模型更新为 GPT5.5
+- `~/.config/opencode/instructions/gpt-autonomy.md` — 同步说明文字中的模型名
+
 **本机 AI 工具模型配置对齐中转站**
 - OpenCode：主模型、子智能体、摘要、压缩统一切到 `claude-opus-4-6-thinking-c` 按次满血模型；轻量标题继续走便宜模型
 - Claude Code / CC Switch：当前 Claude provider 默认模型切到 `claude-opus-4-6-thinking-c`，反重力 MAX 保留按量 `claude-opus-4-6-thinking`，官转 MAX 不再配置 thinking 模型
