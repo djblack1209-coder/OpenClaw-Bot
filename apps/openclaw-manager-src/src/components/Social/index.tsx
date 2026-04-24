@@ -127,7 +127,7 @@ export function Social() {
       }
       setError(null);
     } catch (e: unknown) {
-      setError(e?.message ?? t('social.loadFailed'));
+      setError((e as Error)?.message ?? t('social.loadFailed'));
     } finally {
       setLoading(false);
     }
