@@ -12,6 +12,14 @@
 
 ## 最近更新（2026-04）
 
+**本机 AI 工具模型配置对齐中转站**
+- OpenCode：主模型、子智能体、摘要、压缩统一切到 `claude-opus-4-6-thinking-c` 按次满血模型；轻量标题继续走便宜模型
+- Claude Code / CC Switch：当前 Claude provider 默认模型切到 `claude-opus-4-6-thinking-c`，反重力 MAX 保留按量 `claude-opus-4-6-thinking`，官转 MAX 不再配置 thinking 模型
+- Codex / CC Switch：默认继续使用 `gpt-5.5`，补齐 1M 上下文、90 万自动压缩阈值、xhigh 推理配置，并移除不存在的 custom-models 引用
+- 价格与限制：按中转站模型广场同步 `gpt-liang`、`反重Max-liang`、`官转Max-liang`、`AWS-liang`、`反重力满血次数`、`default` 分组价格；上下文和输出上限按官方 Anthropic/OpenAI 文档校准
+- 领域: `infra`, `ai-pool`
+- 影响模块: `OpenCode`, `Claude Code`, `Codex`, `CC Switch`
+
 **微信 Bot 桥接器 WeClaw 恢复运行**
 - 从 GitHub 源码重新编译安装 WeClaw v0.7.1（Go 语言桥接器，绕过 macOS Gatekeeper）
 - 修复配置：设置 claude CLI 工作目录指向 OpenEverything 项目，添加 `--dangerously-skip-permissions` 参数
