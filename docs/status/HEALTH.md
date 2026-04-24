@@ -1,6 +1,6 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (全量审计首轮，构建阻塞与 Redis 空密码防护)
+> 最后更新: 2026-04-24 (全量审计第二轮，后端测试环境与微信路由回归修复)
 > Bug 生命周期: 发现 → 记录到「活跃问题」→ 修复 → 移至「已解决」→ 运维AI从模式中识别「技术债务」
 > 严重度: 🔴 阻塞 | 🟠 重要 | 🟡 一般 | 🔵 低优先
 
@@ -24,6 +24,34 @@
 | AUDIT-2026-04-24-R5 | Python 3.12 环境缺后端运行依赖，pytest 因 `numpy` 缺失中断 | 🟠 | 需用 `uv pip install -r requirements-dev.txt` 建立一致测试环境后重跑全量测试 |
 | AUDIT-2026-04-24-R6 | 前端 ESLint 仍有 132 个历史 warning | 🟡 | 主要为 `any` 类型和 React Hook 依赖，未阻塞 build，但会阻塞 `npm run lint --max-warnings 0` |
 | AUDIT-2026-04-24-R7 | UI 截图工具生成了桌面/移动端截图，但当前模型不能读取工具截图内容 | 🟡 | 已生成 `apps/openclaw-manager-src/output/playwright/openclaw-home.png` 和 mobile 截图，需下一轮换可读截图验证方式逐页审计 |
+
+---
+
+## 🟢 2026-04-24 全量审计第二轮发现与修复
+
+> 本轮补齐 Python 3.12 真实测试环境、Node 22 前端构建链、Tauri 入口与 `/Applications` 应用状态验证。
+
+### 已修复
+| # | 问题 | 严重度 | 修复方式 |
+|---|------|--------|---------|
+| AUDIT-2026-04-24-R8 | `src/api/routers/__init__.py` 注册了 `router_wechat`，但 `routers/wechat.py` 文件在 HEAD 缺失，导致 API 服务和后端测试导入阶段崩溃 | 🔴 | 恢复 `packages/clawbot/src/api/routers/wechat.py`，使用 FastAPI + Pydantic request/response model 重建 `/api/v1/wechat/incoming` |
+
+### 验证结果
+| 项目 | 结果 | 说明 |
+|------|------|------|
+| 后端全量测试 | ✅ 通过 | Python 3.12 `.venv312` 环境安装依赖后，pytest 全量跑到 100% |
+| Node 22 前端安装 | ✅ 通过 | `fnm use 22.22.2 && npm ci` 成功，Node engine 警告消失 |
+| 前端类型检查 | ✅ 通过 | `npx tsc --noEmit` 无错误 |
+| 前端生产构建 | ✅ 通过 | `npm run build` 成功，最大 chunk 355.98KB |
+| Tauri Rust 检查 | ✅ 通过 | `cargo check` 成功 |
+| macOS 应用入口 | ✅ 通过 | `/Applications/OpenClaw.app` 存在，`/Applications/OpenEverything.app` 不存在 |
+
+### 仍需继续
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| AUDIT-2026-04-24-R9 | pytest 有 `RuntimeWarning: coroutine ... was never awaited` | 🟡 | 出现在 `tests/test_social_scheduler.py::TestSchedulerLifecycle::test_stop_shuts_down_scheduler`，测试通过但存在异步清理技术债 |
+| AUDIT-2026-04-24-R10 | 前端 ESLint 仍有 132 个 warning | 🟡 | Node 22 下仍被 `--max-warnings 0` 阻塞，主要为 `any` 类型和 React Hook 依赖 |
+| AUDIT-2026-04-24-R11 | 本轮未执行完整 `make tauri-build` | 🔵 | 为避免清理 `/Applications` 和重建大包副作用，本轮只验证 Tauri CLI、Rust check 和当前安装入口 |
 
 ---
 
