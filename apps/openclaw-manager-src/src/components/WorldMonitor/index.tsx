@@ -582,7 +582,7 @@ export function WorldMonitor() {
       }
     }
     return map;
-  }, [riskList]);
+  }, [riskList, t]);
 
   /** 前 8 高风险国家（按分数降序） */
   const topRiskCountries = useMemo<CountryRisk[]>(() => {

@@ -176,7 +176,7 @@ export default function DevPanel() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 拉取环境变量 */
   const fetchEnvVars = useCallback(async () => {
@@ -206,7 +206,7 @@ export default function DevPanel() {
         };
       })
     );
-  }, []);
+  }, [t]);
 
   /* API 单端点测试 */
   const runApiTest = useCallback(async (index: number) => {
@@ -246,7 +246,7 @@ export default function DevPanel() {
         return next;
       });
     }
-  }, []);
+  }, [t]);
 
   /* 测试全部 API */
   const runAllApiTests = useCallback(async () => {

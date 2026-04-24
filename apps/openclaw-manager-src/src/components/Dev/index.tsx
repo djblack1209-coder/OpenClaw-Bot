@@ -159,7 +159,7 @@ export function Dev() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 数据拉取 — Git 提交记录 */
   const fetchGitLog = useCallback(async () => {
@@ -175,7 +175,7 @@ export function Dev() {
     } finally {
       if (mountedRef.current) setGitLogLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 数据拉取 — 技术债务 */
   const fetchHealth = useCallback(async () => {
@@ -191,7 +191,7 @@ export function Dev() {
     } finally {
       if (mountedRef.current) setHealthLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 数据拉取 — 过时依赖 */
   const fetchDeps = useCallback(async () => {
@@ -207,7 +207,7 @@ export function Dev() {
     } finally {
       if (mountedRef.current) setDepsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     mountedRef.current = true;
