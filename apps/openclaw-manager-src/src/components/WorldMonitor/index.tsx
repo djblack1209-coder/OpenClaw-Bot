@@ -582,7 +582,7 @@ export function WorldMonitor() {
       }
     }
     return map;
-  }, [riskList, t]);
+  }, [riskList]);
 
   /** 前 8 高风险国家（按分数降序） */
   const topRiskCountries = useMemo<CountryRisk[]>(() => {
@@ -611,7 +611,7 @@ export function WorldMonitor() {
         description: `${t('worldMonitor.riskScore')} ${r.composite_score}，24h ${r.change_24h > 0 ? '+' : ''}${(r.change_24h ?? 0).toFixed(1)}`,
         link: 'https://worldmonitor.app',
       }));
-  }, [riskList]);
+  }, [riskList, t]);
 
   /* 全局风险值 */
   const globalScore = globalRisk?.score ?? 0;

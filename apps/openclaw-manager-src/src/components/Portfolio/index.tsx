@@ -284,7 +284,7 @@ export function Portfolio() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* ---- 挂载 + 30 秒自动刷新（仅在持仓概览标签页时） ---- */
   useEffect(() => {
@@ -353,7 +353,7 @@ export function Portfolio() {
     } finally {
       setControlsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   /* 切换到自动交易标签时自动拉取 */
   useEffect(() => {

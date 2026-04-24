@@ -142,7 +142,7 @@ export function Memory() {
     } finally {
       setSearching(false);
     }
-  }, [fetchStats]);
+  }, [fetchStats, t]);
 
   const onSearchChange = (val: string) => {
     setSearchQuery(val);

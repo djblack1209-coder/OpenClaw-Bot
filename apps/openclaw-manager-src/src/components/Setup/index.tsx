@@ -70,7 +70,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     } finally {
       setChecking(false);
     }
-  }, [onComplete]);
+  }, [onComplete, t]);
 
   useEffect(() => {
     setupLogger.info('Setup 组件初始化');
