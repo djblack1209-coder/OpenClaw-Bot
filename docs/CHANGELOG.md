@@ -12,6 +12,15 @@
 
 ## 最近更新（2026-04）
 
+**微信 Bot 桥接器 WeClaw 恢复运行**
+- 从 GitHub 源码重新编译安装 WeClaw v0.7.1（Go 语言桥接器，绕过 macOS Gatekeeper）
+- 修复配置：设置 claude CLI 工作目录指向 OpenEverything 项目，添加 `--dangerously-skip-permissions` 参数
+- 验证微信 session 有效，消息收发正常（`/info` 命令测试通过）
+- 配置 5 个 AI Agent：Claude(CLI)、Codex(CLI)、Gemini(ACP)、Kiro(ACP)、OpenCode(ACP)
+- HTTP API 监听 `127.0.0.1:18011`，可用于端到端测试的消息推送
+- 领域: `infra`
+- 影响模块: `weclaw`, `微信集成`
+
 **R9: LLM 响应加速 — 从"能用"到"快"**
 - 路由策略：`simple-shuffle` → `latency-based-routing`，路由器自动选最快的提供商
 - 重试开销减半：`retry_after` 5→2s，`num_retries` 3→2，失败回退延迟从 15s 降到 4s
