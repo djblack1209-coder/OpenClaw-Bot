@@ -141,7 +141,7 @@ export function Xianyu() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchData();
@@ -223,7 +223,7 @@ export function Xianyu() {
       setQrStatus('expired');
       stopQrPolling();
     }, 300_000);
-  }, [stopQrPolling, fetchData]);
+  }, [fetchData, stopQrPolling, t]);
 
   /* ====== 扫码登录 — 生成二维码 ====== */
   const handleGenerateQR = async () => {
