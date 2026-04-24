@@ -17,6 +17,7 @@
 - Claude Code / CC Switch：当前 Claude provider 默认模型切到 `claude-opus-4-6-thinking-c`，反重力 MAX 保留按量 `claude-opus-4-6-thinking`，官转 MAX 不再配置 thinking 模型
 - Codex / CC Switch：默认继续使用 `gpt-5.5`，补齐 1M 上下文、90 万自动压缩阈值、xhigh 推理配置，并移除不存在的 custom-models 引用
 - 价格与限制：按中转站模型广场同步 `gpt-liang`、`反重Max-liang`、`官转Max-liang`、`AWS-liang`、`反重力满血次数`、`default` 分组价格；上下文和输出上限按官方 Anthropic/OpenAI 文档校准
+- 补充修正：`gpt-image-2-2k` / `gpt-image-2-4k` 按次价格分别为 ¥0.180 / ¥0.270；`gpt-5.5` 上下文按官方文档修正为 1,050,000 tokens，最大输出 128,000 tokens
 - 领域: `infra`, `ai-pool`
 - 影响模块: `OpenCode`, `Claude Code`, `Codex`, `CC Switch`
 
