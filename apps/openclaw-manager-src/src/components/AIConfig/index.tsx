@@ -212,7 +212,7 @@ export function AIConfig() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchData();
@@ -243,7 +243,7 @@ export function AIConfig() {
         return next;
       });
     }
-  }, []);
+  }, [t]);
 
   /* ── 派生数据 ── */
   const enabledCount = channels.filter(isChannelEnabled).length;
