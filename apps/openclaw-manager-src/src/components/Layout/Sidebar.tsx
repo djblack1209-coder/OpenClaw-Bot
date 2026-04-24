@@ -195,7 +195,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
       const timer = setTimeout(() => setVersionClicks(0), 2000);
       return () => clearTimeout(timer);
     }
-  }, [versionClicks]);
+  }, [toggleDevMode, versionClicks]);
 
   return (
     <aside

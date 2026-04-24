@@ -134,7 +134,7 @@ export function HomeDashboard() {
       }
     }, 8_000);
     return () => clearTimeout(safetyTimer);
-  }, [loading]);
+  }, [lastUpdated, loading]);
 
   /* loading 状态标记（不在这里 return，避免违反 React hooks 规则） */
   const showLoadingOverlay = loading && !lastUpdated;
@@ -150,7 +150,7 @@ export function HomeDashboard() {
       message: String(d.title || d.message || ''),
     };
     setLogs((prev) => [entry, ...prev].slice(0, 50));
-  }, []));
+  }, [lang]));
 
   /* WebSocket 实时状态更新 */
   useClawbotWS('status', useCallback((event) => {
@@ -264,7 +264,7 @@ export function HomeDashboard() {
       setLoading(false);
       setLastUpdated(new Date());
     }
-  }, []);
+  }, [lang, t]);
 
   useEffect(() => {
     fetchAll();

@@ -52,7 +52,7 @@ export function Header({ currentPage }: HeaderProps) {
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [lang]);
 
   /* 打开 Web Dashboard */
   const handleOpenDashboard = async () => {
