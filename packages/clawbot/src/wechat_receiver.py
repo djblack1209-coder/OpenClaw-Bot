@@ -500,17 +500,25 @@ async def _handle_command(client: httpx.AsyncClient, text: str) -> str | None:
                 return "\n".join(lines)
 
         # 帮助指令
-        if cmd in ("帮助", "help", "/help", "指令", "命令"):
+        if cmd in ("帮助", "help", "/help", "指令", "命令", "你好", "hi", "hello"):
             return (
                 "📱 微信可用指令\n\n"
-                "日报 — 查看今日简报\n"
+                "📊 查询类:\n"
+                "日报 — 今日执行简报\n"
                 "状态 — 系统运行状态\n"
-                "持仓 — 查看投资持仓\n"
-                "行情 — 市场行情\n"
+                "持仓 — 投资持仓概览\n"
+                "行情 — 全球市场行情\n"
                 "性能 — 系统性能指标\n"
-                "闲鱼 — 闲鱼客服状态\n"
-                "帮助 — 查看本列表\n\n"
-                "其他消息 → AI 对话"
+                "闲鱼 — 闲鱼客服状态\n\n"
+                "🖥 AI Agent 指令:\n"
+                "/claude <消息> — Claude Code 执行任务\n"
+                "/codex <任务> — Codex 执行\n"
+                "/gemini <问题> — Gemini 回答\n"
+                "/opencode <任务> — OpenCode 执行\n"
+                "/new — 新建对话\n"
+                "/info — 查看当前 Agent\n\n"
+                "💡 直接发消息即可 AI 对话\n"
+                "发「帮助」随时查看本列表"
             )
 
     except Exception as e:

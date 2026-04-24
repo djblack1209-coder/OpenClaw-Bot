@@ -45,13 +45,24 @@ async def wechat_incoming(payload: Dict[str, Any] = Body(...)):
     start = time.time()
 
     # 处理 /start 命令
-    if text.lower() in ("/start", "你好", "hi", "hello"):
-        return {"reply": "你好！我是 OpenClaw AI 助手 🤖\n\n"
-                "我可以帮你：\n"
-                "• 聊天对话\n"
-                "• 比价查询（发\"帮我找便宜的 iPhone\"）\n"
-                "• 回答问题\n\n"
-                "直接发消息给我就行！"}
+    if text.lower() in ("/start", "你好", "hi", "hello", "帮助", "help"):
+        return {"reply": "你好！我是 OpenClaw AI 助手\n\n"
+                "📱 常用指令：\n"
+                "日报 — 查看今日简报\n"
+                "状态 — 系统运行状态\n"
+                "持仓 — 投资持仓概览\n"
+                "行情 — 全球市场行情\n"
+                "性能 — 系统性能指标\n"
+                "闲鱼 — 闲鱼客服状态\n"
+                "帮助 — 查看指令列表\n\n"
+                "🖥 AI Agent 指令（weclaw）：\n"
+                "/claude <消息> — Claude Code 执行\n"
+                "/codex <任务> — Codex 执行\n"
+                "/gemini <问题> — Gemini 回答\n"
+                "/opencode <任务> — OpenCode 执行\n"
+                "/new — 新建对话\n"
+                "/info — 当前 Agent 信息\n\n"
+                "其他消息直接发送即可，AI 会回复"}
 
     # 微信场景优先速度：直接走 LLM，跳过 Brain（Brain 处理链路 30-90 秒太慢）
     reply = ""

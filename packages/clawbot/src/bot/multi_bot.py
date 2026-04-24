@@ -387,6 +387,8 @@ class MultiBot(
         self.app.add_handler(CommandHandler("coupon", self.cmd_coupon))
         self.app.add_handler(CommandHandler("test_token", self.cmd_test_token))
         self.app.add_handler(CommandHandler("set_coupon_token", self.cmd_set_coupon_token))
+        # Claude Code CLI 桥接 — /claude code <消息>（仅 Free LLM Bot 有效）
+        self.app.add_handler(CommandHandler("claude", self.cmd_claude_code))
         self.app.add_handler(CallbackQueryHandler(self.handle_trade_callback, pattern=r"^itrade"))
         self.app.add_handler(CallbackQueryHandler(self.handle_help_callback, pattern=r"^help:"))
         # onboard: 回调已由 ConversationHandler 内部处理，无需单独注册
