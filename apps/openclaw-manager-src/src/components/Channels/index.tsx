@@ -124,7 +124,7 @@ export function Channels() {
     }
 
     setLoading(false);
-  }, []);
+  }, [t]);
 
   /* ── 首次加载 + 自动刷新 ── */
   useEffect(() => {
@@ -133,7 +133,7 @@ export function Channels() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   /* ── 渠道启停切换 ── */
   const handleToggleChannel = useCallback(async (ch: ChannelConfig) => {
