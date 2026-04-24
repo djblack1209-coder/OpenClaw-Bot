@@ -1,6 +1,42 @@
 # HEALTH.md — 系统健康仪表盘
 
-> 最后更新: 2026-04-24 (全量审计第十二轮，CI 全绿 + API 路由注册验证)
+> 最后更新: 2026-04-24 (全量审计第十三轮，API smoke test + 桌面端启动验证 + 服务器可达性)
+
+---
+
+## 🟢 2026-04-24 全量审计第十三轮：API smoke test + 桌面端 + 服务器
+
+> 本轮真正启动后端服务打了 66 个 GET 路由、检查了服务器外部可达性、启动了 macOS 桌面端。
+
+### API Smoke Test 结果 (66 GET 路由)
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| 200 OK | 56 | 正常返回 |
+| 超时 | 5 | `/status`、`/system/outdated-deps`、`/monitor/finance`、`/monitor/extended`、`/social/metrics` |
+| 错误 | 5 | `/trading/valuation`(422)、`/newapi/*`(503 x3)、`/events`(404) |
+
+### 发现的生产问题
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| AUDIT-2026-04-24-R42 | 7 个 RSS 源 URL 已失效 (404) | 🟠 | 华尔街见闻、财联社、知乎热榜、Reuters World、Defense One、CSIS、Caixin 的 RSS 地址返回 404/DNS 错误 |
+| AUDIT-2026-04-24-R43 | `src.execution.execution_hub` 导入不存在 | 🟠 | Social analytics 和 browser-status 两个端点因此 500，说明 execution_hub 模块被删除但引用未清理 |
+| AUDIT-2026-04-24-R44 | LiteLLM JSON Config 加载失败 | 🟡 | 回退到硬编码配置，不影响运行但说明 JSON 配置格式有误 (str expected, not bool) |
+| AUDIT-2026-04-24-R45 | `/api/v1/status` 超时 (>8s) | 🟡 | 主状态端点响应过慢，可能在阻塞等待某个外部服务 |
+| AUDIT-2026-04-24-R46 | NewAPI 代理 503 (ConnectError 重试 3 次) | 🟡 | 本地没有运行 NewAPI 服务，预期行为，但生产环境需确保 NewAPI 容器正常 |
+
+### 服务器外部可达性
+| 端口 | 结果 | 说明 |
+|------|------|------|
+| 80 | 404 | Nginx/反代在运行，返回 404 (可能缺少站点配置) |
+| 443 | 不可达 | HTTPS 未配置或未开放 |
+| 3000 | 不可达 | NewAPI 管理端口未对外开放 |
+| 18790 | 不可达 | ClawBot API 端口未对外开放 (或未启动) |
+
+### macOS 桌面端启动
+| 项目 | 结果 | 说明 |
+|------|------|------|
+| `/Applications/OpenClaw.app` 启动 | ✅ 成功 | 窗口 1200x799 正常显示 |
+| 窗口截图 | ❌ 权限不足 | Screen Recording 权限未授予，不影响功能 |
 
 ---
 
