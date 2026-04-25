@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from ..auth import verify_api_token
 from ..error_utils import safe_error as _safe_error
+from ..rpc import ClawBotRPC
 
 logger = logging.getLogger(__name__)
 # 安全加固(HI-582): 路由级别也挂载 Token 认证，防止被单独挂载时缺少全局认证保护
@@ -28,6 +29,48 @@ _active_session: dict[str, Any] | None = None
 def _get_session() -> dict[str, Any] | None:
     """Return the current active QR session, or None."""
     return _active_session
+
+
+# ---------------------------------------------------------------------------
+# GET /xianyu/status — 闲鱼模块综合状态
+# ---------------------------------------------------------------------------
+
+
+@router.get("/xianyu/status")
+async def xianyu_status():
+    """获取闲鱼模块综合运行状态。
+
+    聚合进程在线状态、Cookie 健康、今日咨询数等信息，
+    供前端一次性获取闲鱼模块全貌。
+    """
+    try:
+        # 从系统状态中提取闲鱼部分
+        status_data = ClawBotRPC._rpc_system_status()
+        xianyu_detail = status_data.get("xianyu", {})
+
+        result: dict[str, Any] = {
+            "running": xianyu_detail.get("online", False),
+            "online": xianyu_detail.get("online", False),
+            "cookie_ok": xianyu_detail.get("cookie_ok", False),
+            "auto_reply_active": xianyu_detail.get("auto_reply_active", False),
+            "conversations_today": xianyu_detail.get("conversations_today", 0),
+            "unread_chats": xianyu_detail.get("unread_chats", 0),
+        }
+
+        # 补充 CookieCloud 同步状态（最佳努力）
+        try:
+            from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+            manager = get_cookie_cloud_manager()
+            cc_status = manager.status
+            result["cookiecloud_enabled"] = cc_status.get("enabled", False)
+            result["cookiecloud_last_sync"] = cc_status.get("last_sync", None)
+        except Exception:
+            result["cookiecloud_enabled"] = False
+
+        return result
+    except Exception as e:
+        logger.exception("获取闲鱼状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e))
 
 
 # ---------------------------------------------------------------------------
