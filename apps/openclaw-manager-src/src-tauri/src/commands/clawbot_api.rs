@@ -10,9 +10,10 @@ use tauri::command;
 const CLAWBOT_API_BASE: &str = "http://127.0.0.1:18790/api/v1";
 
 /// 全局复用的 HTTP 客户端，避免每次请求都新建 TCP 连接
+/// 超时设为 120 秒以支持 AI 类长时间操作（投资分析会、图片生成等）
 static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(120))
         .pool_max_idle_per_host(5)
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
@@ -27,16 +28,28 @@ fn get_api_token() -> Option<String> {
             return Some(token);
         }
     }
-    // 降级：从 .env 文件中读取
+    // 降级：从 .env 文件中读取（自动探测项目路径，不硬编码）
     let home = std::env::var("HOME").ok()?;
-    let env_path = format!("{}/Desktop/OpenEverything/packages/clawbot/config/.env", home);
-    let content = std::fs::read_to_string(&env_path).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("OPENCLAW_API_TOKEN=") {
-            let value = trimmed.strip_prefix("OPENCLAW_API_TOKEN=")?.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
+    // 尝试多个可能的 .env 位置
+    let candidates = [
+        // 通过 Cargo manifest 目录推断项目根
+        format!("{}/../../../packages/clawbot/config/.env", env!("CARGO_MANIFEST_DIR")),
+        // 常见路径
+        format!("{}/Desktop/OpenEverything/packages/clawbot/config/.env", home),
+        format!("{}/.openclaw/config/.env", home),
+    ];
+    for env_path in &candidates {
+        if let Ok(content) = std::fs::read_to_string(env_path) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("OPENCLAW_API_TOKEN=") {
+                    if let Some(value) = trimmed.strip_prefix("OPENCLAW_API_TOKEN=") {
+                        let value = value.trim();
+                        if !value.is_empty() {
+                            return Some(value.to_string());
+                        }
+                    }
+                }
             }
         }
     }
