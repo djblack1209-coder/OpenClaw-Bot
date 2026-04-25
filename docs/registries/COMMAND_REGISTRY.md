@@ -1,14 +1,14 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-23 (全量审计修正) | 总数 102
+> 最后更新: 2026-04-25 (新增 /claude, /deals + 微信编号映射) | 总数 104
 
 ---
 
-## 1. 注册命令一览（99 个）
+## 1. 注册命令一览（101 个）
 
 命令在 `multi_bot.py:289-387` 统一注册。
 
-### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行)
+### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行) + `ToolsMixin` (cmd_basic/tools_mixin.py)
 
 | # | 命令 | Handler | 说明 | BotFather 菜单 |
 |---|------|---------|------|:-:|
@@ -32,6 +32,7 @@
 | 17 | `/qr` | `cmd_qr` | 生成二维码 | N |
 | 18 | `/keyhealth` | `cmd_keyhealth` | API Key 健康验证报告 (Admin) | N |
 | 19 | `/tts` | `cmd_tts` | 文字转语音 (edge-tts, 支持6种中文音色) | N |
+| 20 | `/claude` | `cmd_claude` | Claude Code CLI 桥接，启动/停止 Claude Code 开发环境 | N |
 
 ### 1.2 投资命令 — `InvestCommandsMixin` (cmd_invest_mixin.py, 498 行)
 
@@ -137,11 +138,12 @@
 | 92 | `/xianyu_style` | `cmd_xianyu_style` | 闲鱼 AI 客服回复配置 — 自定义回复风格/FAQ模板/商品规则 (set/faq/rule/show) | N |
 | 93 | `/bill` | `cmd_bill` | 生活账单追踪 — 话费/水电费余额检测 + 低余额告警 + 定期提醒 (add/update/list/remove + 中文NLP) | N |
 | 94 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
-| 95 | `/intel` | `cmd_intel` | 全球情报速递 — 7大行业+5大地区交互式菜单 + 关键词搜索 (Worldmonitor API) | Y |
-| 96 | `/coupon` | `cmd_coupon` | 微信笔笔省领券 — mitmproxy抓包+API直调自动领取提现免费券 | N |
-| 97 | `/test_token` | `cmd_test_token` | 测试已保存的领券token有效性 — 纯API调用,不走mitmproxy,返回token年龄和有效状态 | N |
-| 98 | `/set_coupon_token` | `cmd_set_coupon_token` | 手动设置领券token — 通过手机抓包获取token后直接设置,免mitmproxy流程 | N |
-| 99 | `/evolution` | `cmd_evolution` | 进化引擎状态 — 查看自动进化提案/能力缺口/审批统计 (cmd_ops_mixin.py) | N |
+| 95 | `/deals` | `cmd_deals` | 折扣搜索/比价查询 (cmd_life_mixin.py) | N |
+| 96 | `/intel` | `cmd_intel` | 全球情报速递 — 7大行业+5大地区交互式菜单 + 关键词搜索 (Worldmonitor API) | Y |
+| 97 | `/coupon` | `cmd_coupon` | 微信笔笔省领券 — mitmproxy抓包+API直调自动领取提现免费券 | N |
+| 98 | `/test_token` | `cmd_test_token` | 测试已保存的领券token有效性 — 纯API调用,不走mitmproxy,返回token年龄和有效状态 | N |
+| 99 | `/set_coupon_token` | `cmd_set_coupon_token` | 手动设置领券token — 通过手机抓包获取token后直接设置,免mitmproxy流程 | N |
+| 100 | `/evolution` | `cmd_evolution` | 进化引擎状态 — 查看自动进化提案/能力缺口/审批统计 (cmd_ops_mixin.py) | N |
 
 ---
 
@@ -304,7 +306,7 @@
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 95 | `/intel` | `cmd_intel` | 全球情报速递（交互式菜单 + 分类查询 + 搜索） | N |
+| 96 | `/intel` | `cmd_intel` | 全球情报速递（交互式菜单 + 分类查询 + 搜索） | N |
 
 **Inline 回调按钮:**
 
@@ -318,6 +320,110 @@
 
 | # | 命令 | Handler | 说明 | BotFather |
 |---|------|---------|------|:-:|
-| 100 | `/coupon` | `cmd_coupon` | 微信全平台自动领券 | N |
-| 101 | `/test_token` | `cmd_test_token` | 测试领券 Token 有效性 | N |
-| 102 | `/set_coupon_token` | `cmd_set_coupon_token` | 设置微信领券 Token | N |
+| 97 | `/coupon` | `cmd_coupon` | 微信全平台自动领券 | N |
+| 98 | `/test_token` | `cmd_test_token` | 测试领券 Token 有效性 | N |
+| 99 | `/set_coupon_token` | `cmd_set_coupon_token` | 设置微信领券 Token | N |
+
+---
+
+## 微信端编号命令映射
+
+定义在 `wechat.py`。微信端不支持 `/` 斜杠命令，用户发送数字编号触发对应功能。
+
+### 100-109: AI & 基础
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 100 | `/help` | 帮助菜单 |
+| 101 | `/clear` | 清空对话 |
+| 102 | `/status` | Bot 状态 |
+| 103 | `/draw` | AI 生图 |
+| 104 | `/news` | 科技早报 |
+| 105 | `/tts` | 文字转语音 |
+| 106 | `/qr` | 生成二维码 |
+
+### 200-221: 投资分析
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 200 | `/quote` | 行情查询 |
+| 201 | `/market` | 市场概览 |
+| 202 | `/portfolio` | 投资组合 |
+| 203 | `/ta` | 技术分析 |
+| 204 | `/signal` | 买卖信号 |
+| 205 | `/scan` | 市场扫描 |
+| 206 | `/chart` | K线图 |
+| 207 | `/calc` | 仓位计算器 |
+| 208 | `/trades` | 交易记录 |
+| 209 | `/performance` | 绩效仪表盘 |
+| 210 | `/review` | AI 复盘 |
+| 211 | `/journal` | 交易日志 |
+| 212 | `/watchlist` | 自选股 |
+| 213 | `/risk` | 风控状态 |
+| 214 | `/monitor` | 持仓监控 |
+| 215 | `/tradingsystem` | 交易系统状态 |
+| 216 | `/backtest` | 回测 |
+| 217 | `/invest` | AI 投资会议 |
+| 218 | `/equity` | 权益曲线 |
+| 219 | `/targets` | 盈利目标进度 |
+| 220 | `/accuracy` | AI 预测准确率 |
+| 221 | `/weekly` | 综合周报 |
+
+### 230-235: IBKR 实盘
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 230 | `/ibuy` | IBKR 买入 |
+| 231 | `/isell` | IBKR 卖出 |
+| 232 | `/ipositions` | IBKR 持仓 |
+| 233 | `/iorders` | IBKR 挂单 |
+| 234 | `/iaccount` | IBKR 账户 |
+| 235 | `/icancel` | 取消订单 |
+
+### 300-308: 社媒
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 300 | `/hot` | 热点发文 |
+| 301 | `/post` | 双平台发文 |
+| 302 | `/xpost` | 发 X |
+| 303 | `/xhspost` | 发小红书 |
+| 304 | `/social_plan` | 发文计划 |
+| 305 | `/social_persona` | 社媒人设 |
+| 306 | `/topic` | 题材研究 |
+| 307 | `/social_report` | 社媒报告 |
+| 308 | `/social_calendar` | 内容日历 |
+
+### 400-407: 闲鱼
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 400 | `/xianyu` | 闲鱼客服控制 |
+| 401 | `/xianyu_report` | 闲鱼报表 |
+| 402 | `/xianyu_style` | 客服风格配置 |
+| 403 | `/ship` | 卡券管理 |
+| 404 | `/pricewatch` | 降价监控 |
+| 405 | `/deals` | 折扣搜索/比价 |
+| 406 | `/coupon` | 微信领券 |
+| 407 | `/intel` | 全球情报 |
+
+### 500-503: 生活
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 500 | `/brief` | 执行简报 |
+| 501 | `/bill` | 生活账单 |
+| 502 | `/export` | 数据导出 |
+| 503 | `/ops` | 自动化工作台 |
+
+### 600-606: 系统
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 600 | `/memory` | Bot 记忆管理 |
+| 601 | `/settings` | 个人设置 |
+| 602 | `/model` | 当前模型 |
+| 603 | `/pool` | API 池状态 |
+| 604 | `/perf` | 性能指标 |
+| 605 | `/cost` | 成本/配额 |
+| 606 | `/config` | 运行配置 |
