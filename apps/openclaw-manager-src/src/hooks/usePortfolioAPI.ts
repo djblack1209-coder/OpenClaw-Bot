@@ -164,14 +164,17 @@ export function usePositions(pollInterval = 30000) {
 export function usePnL(pollInterval = 30000) {
   const [data, setData] = useState<PnLSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  /* 错误状态，供消费组件展示错误 UI */
+  const [error, setError] = useState<string | null>(null);
 
   const fetch_ = useCallback(async () => {
     try {
       const resp = await clawbotFetch('/api/v1/trading/pnl');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       setData(await resp.json());
-    } catch {
-      // 静默，使用默认值
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '获取盈亏数据失败');
     } finally {
       setLoading(false);
     }
@@ -183,7 +186,7 @@ export function usePnL(pollInterval = 30000) {
     return () => clearInterval(id);
   }, [fetch_, pollInterval]);
 
-  return { pnl: data, loading, refresh: fetch_ };
+  return { pnl: data, loading, error, refresh: fetch_ };
 }
 
 /* ════════════════════════════════════
@@ -193,14 +196,17 @@ export function useTradingControls() {
   const [controls, setControls] = useState<TradingControls | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  /* 错误状态，供消费组件展示错误 UI */
+  const [error, setError] = useState<string | null>(null);
 
   const fetch_ = useCallback(async () => {
     try {
       const resp = await clawbotFetch('/api/v1/controls/trading');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       setControls(await resp.json());
-    } catch {
-      // 静默
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '获取交易控制失败');
     } finally {
       setLoading(false);
     }
@@ -227,7 +233,7 @@ export function useTradingControls() {
 
   useEffect(() => { fetch_(); }, [fetch_]);
 
-  return { controls, loading, saving, update, refresh: fetch_ };
+  return { controls, loading, saving, error, update, refresh: fetch_ };
 }
 
 /* ════════════════════════════════════

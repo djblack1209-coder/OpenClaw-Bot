@@ -15,6 +15,7 @@ import {
 import { api } from '../../lib/api';
 import { useAppStore } from '@/stores/appStore';
 import { useClawbotWS } from '@/hooks/useClawbotWS';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 import { createLogger } from '@/lib/logger';
 import { toast } from '@/lib/notify';
 import type { PageType } from '../../App';
@@ -266,11 +267,8 @@ export function HomeDashboard() {
     }
   }, [lang, t]);
 
-  useEffect(() => {
-    fetchAll();
-    const timer = setInterval(fetchAll, 30_000);
-    return () => clearInterval(timer);
-  }, [fetchAll]);
+  /* 使用可见性感知轮询，仅在首页激活时刷新数据 */
+  useActivePagePolling('home', fetchAll, 30_000);
 
   return (
     <div className="h-full overflow-y-auto scroll-container">

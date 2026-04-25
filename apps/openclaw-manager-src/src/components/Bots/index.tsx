@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from '@/lib/notify';
 import {
@@ -27,6 +27,7 @@ import {
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
 import { clawbotFetchJson } from '../../lib/tauri-core';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {

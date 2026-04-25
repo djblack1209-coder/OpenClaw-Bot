@@ -355,20 +355,25 @@ export function ControlCenter() {
     const newValue = !sw.enabled;
 
     try {
+      let resp: Response;
       if (sw.group === 'trading' && tradingRef.current) {
         /* 把完整交易控制对象更新后回传 */
         const updated = { ...tradingRef.current, [sw.apiKey]: newValue };
-        await clawbotFetch('/api/v1/controls/trading', {
+        resp = await clawbotFetch('/api/v1/controls/trading', {
           method: 'POST',
           body: JSON.stringify(updated),
         });
+        /* 检查 HTTP 响应状态，失败则回滚 */
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         tradingRef.current = updated;
       } else if (sw.group === 'social' && socialRef.current) {
         const updated = { ...socialRef.current, [sw.apiKey]: newValue };
-        await clawbotFetch('/api/v1/controls/social', {
+        resp = await clawbotFetch('/api/v1/controls/social', {
           method: 'POST',
           body: JSON.stringify(updated),
         });
+        /* 检查 HTTP 响应状态，失败则回滚 */
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         socialRef.current = updated;
       } else {
         throw new Error(t('controlCenter.controlDataNotLoaded'));
@@ -380,6 +385,10 @@ export function ControlCenter() {
       );
       toast.success(`${sw.label} ${newValue ? t('controlCenter.enabled') : t('controlCenter.disabled')}`, { channel: 'log' });
     } catch (err) {
+      /* 请求失败：回滚 UI 到原始状态 */
+      setSwitches((prev) =>
+        prev.map((s) => (s.id === sw.id ? { ...s, enabled: !newValue } : s)),
+      );
       const msg = err instanceof Error ? err.message : t('controlCenter.unknownError');
       toast.error(`${t('controlCenter.toggleFailed')} ${sw.label}`, { description: msg, channel: 'notification' });
     } finally {

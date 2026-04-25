@@ -103,12 +103,7 @@ export function Settings(_props: SettingsProps) {
   const [envKeys, setEnvKeys] = useState<{ key: string; name: string; value: string }[]>([]);
   const [sysInfo, setSysInfo] = useState<Record<string, any> | null>(null);
   const [perf, setPerf] = useState<{ cpu: number; memUsed: number; memTotal: number; diskUsed: number; diskTotal: number } | null>(null);
-  const [notifications, setNotifications] = useState<{ id: string; labelKey: string; enabled: boolean }[]>([
-    { id: 'telegram', labelKey: 'settings.telegramNotifLabel', enabled: true },
-    { id: 'email', labelKey: 'settings.emailNotifLabel', enabled: false },
-    { id: 'trade', labelKey: 'settings.tradeAlertLabel', enabled: true },
-    { id: 'error', labelKey: 'settings.errorAlertLabel', enabled: true },
-  ]);
+  const [notifications, setNotifications] = useState<{ id: string; labelKey: string; enabled: boolean }[]>([]);
 
   /* 安全超时：防止某个 API 超时导致设置页转圈太久，最多等 8 秒强制渲染 */
   useEffect(() => {
@@ -158,14 +153,28 @@ export function Settings(_props: SettingsProps) {
       /* 从 config 中提取通知开关（如果后端有） */
       if (cfgRes.status === 'fulfilled') {
         const c = cfgRes.value as any;
-        if (c.notifications) {
-          setNotifications((prev) =>
-            prev.map((n) => ({
-              ...n,
-              enabled: c.notifications?.[n.id] ?? n.enabled,
-            })),
-          );
-        }
+        /* 通知开关的默认定义 */
+        const defaultNotifications = [
+          { id: 'telegram', labelKey: 'settings.telegramNotifLabel', enabled: false },
+          { id: 'email', labelKey: 'settings.emailNotifLabel', enabled: false },
+          { id: 'trade', labelKey: 'settings.tradeAlertLabel', enabled: false },
+          { id: 'error', labelKey: 'settings.errorAlertLabel', enabled: false },
+        ];
+        /* 用后端返回的值覆盖默认值 */
+        setNotifications(
+          defaultNotifications.map((n) => ({
+            ...n,
+            enabled: c.notifications?.[n.id] ?? n.enabled,
+          })),
+        );
+      } else {
+        /* 后端不可达时，也要填充默认结构，否则 UI 为空 */
+        setNotifications([
+          { id: 'telegram', labelKey: 'settings.telegramNotifLabel', enabled: false },
+          { id: 'email', labelKey: 'settings.emailNotifLabel', enabled: false },
+          { id: 'trade', labelKey: 'settings.tradeAlertLabel', enabled: false },
+          { id: 'error', labelKey: 'settings.errorAlertLabel', enabled: false },
+        ]);
       }
     } catch (err) {
       console.error('[Settings] 加载失败:', err);
