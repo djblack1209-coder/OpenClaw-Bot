@@ -415,7 +415,11 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
   }, []);
 
   return (
-    <div className="relative w-full" style={{ minHeight: 320 }}>
+    <div
+      className="relative w-full"
+      style={{ minHeight: 320 }}
+      onWheel={(e) => e.stopPropagation()}
+    >
       <MapTooltip info={tooltip} />
       <ComposableMap
         projection="geoEqualEarth"
@@ -428,7 +432,14 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
           background: 'transparent',
         }}
       >
-        <ZoomableGroup center={[10, 20]} zoom={1}>
+        {/* 禁用鼠标滚轮缩放: translateExtent 限制平移范围, 不设 onMoveEnd 回调 */}
+        <ZoomableGroup
+          center={[10, 20]}
+          zoom={1}
+          minZoom={1}
+          maxZoom={1}
+          translateExtent={[[-100, -100], [900, 500]]}
+        >
           <Geographies geography={GEO_URL}>
             {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: { name: string } }> }) =>
               geographies.map((geo) => {
