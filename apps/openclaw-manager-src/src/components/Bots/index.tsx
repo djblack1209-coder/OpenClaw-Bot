@@ -227,11 +227,8 @@ export function Bots() {
     }
   }, [t]);
 
-  useEffect(() => {
-    fetchData();
-    const timer = setInterval(fetchData, 30_000);
-    return () => clearInterval(timer);
-  }, [fetchData]);
+  /* 使用可见性感知轮询，仅在 Bots 页激活时刷新数据 */
+  useActivePagePolling('bots', fetchData, 30_000);
 
   /* ====== 服务启停（带 Toast 反馈） ====== */
   const handleToggleService = async (serviceId: string, currentStatus: string) => {
