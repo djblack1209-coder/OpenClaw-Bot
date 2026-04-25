@@ -3,7 +3,7 @@
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
  * 真实 API 数据：渠道(模型)列表 / API 池统计 / 启禁用操作
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { toast } from '@/lib/notify';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
