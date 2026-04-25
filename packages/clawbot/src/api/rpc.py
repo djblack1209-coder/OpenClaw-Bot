@@ -435,6 +435,8 @@ class ClawBotRPC:
             has_real_values = any(a.get("value", 0) > 0 for a in assets)
             if not assets or not has_real_values:
                 try:
+                    # 清空之前的空数据，用兜底数据替换
+                    assets.clear()
                     positions_data = await ClawBotRPC._rpc_trading_positions()
                     for pos in positions_data.get("positions", []):
                         market_value = pos.get("market_value", 0)
