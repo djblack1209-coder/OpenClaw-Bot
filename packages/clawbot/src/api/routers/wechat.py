@@ -193,13 +193,72 @@ def _parse_numbered_cmd(text: str) -> tuple[int | None, str]:
     return None, text
 
 
+async def _self_call_api(path: str, timeout: float = 10.0) -> dict | list | str:
+    """调用本地 FastAPI 端点获取数据（self-call 模式）。
+
+    所有编号命令通过 HTTP self-call 调用已验证的 API 路由层，
+    避免直接引用可能不存在的 RPC 方法。
+    """
+    import os
+
+    import httpx
+
+    port = int(os.environ.get("API_PORT", "18790"))
+    token = os.environ.get("OPENCLAW_API_TOKEN", "")
+    headers = {"X-API-Token": token} if token else {}
+    url = f"http://127.0.0.1:{port}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            return {"error": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        logger.warning("[微信] API self-call 失败 %s: %s", path, e)
+        return {"error": str(e)}
+
+
+# ── 编号命令到 API 路径的映射 ──
+# 只映射可以通过 GET 请求获取数据的命令
+_CMD_API_MAP: dict[str, tuple[str, str]] = {
+    # 投资类
+    "cmd_quote": ("/api/v1/trading/kline?symbol={arg}&interval=1d&limit=1", "行情查询"),
+    "cmd_market": ("/api/v1/monitor/finance/indices", "市场概览"),
+    "cmd_portfolio": ("/api/v1/trading/portfolio-summary", "投资组合"),
+    "cmd_signal": ("/api/v1/trading/signals", "交易信号"),
+    "cmd_trades": ("/api/v1/trading/journal?limit=10", "交易记录"),
+    "cmd_watchlist": ("/api/v1/trading/watchlist", "自选股"),
+    "cmd_ipositions": ("/api/v1/trading/positions", "实盘持仓"),
+    "cmd_monitor": ("/api/v1/trading/positions", "持仓监控"),
+    "cmd_iaccount": ("/api/v1/trading/pnl", "IBKR 账户"),
+    "cmd_tradingsystem": ("/api/v1/trading/system", "交易系统"),
+    "cmd_performance": ("/api/v1/trading/pnl", "投资绩效"),
+    "cmd_iorders": ("/api/v1/trading/positions", "实盘挂单"),
+    # 系统类
+    "cmd_status": ("/api/v1/system/status", "系统状态"),
+    "cmd_news": ("/api/v1/system/daily-brief", "科技早报"),
+    "cmd_pool": ("/api/v1/pool/stats", "API 池状态"),
+    "cmd_memory": ("/api/v1/memory/stats", "记忆管理"),
+    "cmd_cost": ("/api/v1/omega/cost", "成本配额"),
+    "cmd_perf": ("/api/v1/system/perf", "性能指标"),
+    # 闲鱼类
+    "cmd_xianyu": ("/api/v1/xianyu/conversations", "闲鱼客服"),
+    "cmd_xianyu_report": ("/api/v1/xianyu/profit", "闲鱼报表"),
+    # 社媒类
+    "cmd_social_report": ("/api/v1/social/analytics?days=7", "社媒报告"),
+    "cmd_social_persona": ("/api/v1/social/personas", "社媒人设"),
+    # 风控
+    "cmd_risk": ("/api/v1/monitor/risk", "风控状态"),
+    # 仪表盘
+    "cmd_dashboard": ("/api/v1/trading/dashboard", "交易仪表盘"),
+}
+
+
 async def _execute_numbered_cmd(num: int, arg: str) -> str:
     """执行编号命令，返回文本结果。
 
-    通过 RPC 层调用后端业务逻辑，避免依赖 Telegram Update 对象。
+    通过 HTTP self-call 调用本地 FastAPI 端点，确保调用路径与 API 路由层完全一致。
     """
-    from src.api.rpc import ClawBotRPC
-
     cmd_info = NUMBERED_COMMANDS.get(num)
     if not cmd_info:
         return f"未知命令编号: {num}"
@@ -211,130 +270,31 @@ async def _execute_numbered_cmd(num: int, arg: str) -> str:
         return f"命令 {num}({desc}) 需要参数\n例如: \"{num} 内容\""
 
     try:
-        # ── 投资类: 通过 RPC 调用 ──
-        if func_name == "cmd_quote":
-            data = await ClawBotRPC._rpc_trading_quote(arg)
-            if isinstance(data, dict) and data.get("error"):
-                return f"查询失败: {data['error']}"
-            if isinstance(data, str):
-                return data
-            return _format_quote(data)
+        # ── 有 API 映射的命令: 直接调用本地端点 ──
+        if func_name in _CMD_API_MAP:
+            path_template, title = _CMD_API_MAP[func_name]
+            path = path_template.replace("{arg}", arg) if "{arg}" in path_template else path_template
+            data = await _self_call_api(path, timeout=15.0)
+            # 持仓数据特殊格式化
+            if func_name in ("cmd_ipositions", "cmd_monitor"):
+                return _format_positions(data) if isinstance(data, dict) else _format_dict_result(title, data)
+            return _format_dict_result(title, data)
 
-        if func_name == "cmd_market":
-            data = ClawBotRPC._rpc_trading_market_overview()
-            return _format_dict_result("市场概览", data)
-
-        if func_name == "cmd_portfolio":
-            data = await ClawBotRPC._rpc_trading_portfolio_summary()
-            return _format_dict_result("投资组合", data)
-
+        # ── 技术分析: 需要拼 symbol 参数 ──
         if func_name == "cmd_ta":
-            data = await ClawBotRPC._rpc_trading_ta(arg)
+            data = await _self_call_api(f"/api/v1/trading/kline?symbol={arg}&interval=1d&limit=30", timeout=15.0)
             return _format_dict_result(f"{arg} 技术分析", data)
 
-        if func_name == "cmd_signal":
-            data = ClawBotRPC._rpc_trading_signals()
-            return _format_dict_result("交易信号", data)
-
-        if func_name == "cmd_trades":
-            data = ClawBotRPC._rpc_trading_journal_entries(limit=10)
-            return _format_dict_result("最近交易", data)
-
-        if func_name == "cmd_watchlist":
-            data = ClawBotRPC._rpc_trading_watchlist()
-            return _format_dict_result("自选股", data)
-
-        if func_name == "cmd_risk":
-            data = ClawBotRPC._rpc_trading_risk_status()
-            return _format_dict_result("风控状态", data)
-
-        if func_name in ("cmd_ipositions", "cmd_monitor"):
-            data = await ClawBotRPC._rpc_trading_positions()
-            return _format_positions(data)
-
-        if func_name == "cmd_iaccount":
-            data = await ClawBotRPC._rpc_trading_pnl()
-            return _format_dict_result("IBKR 账户", data)
-
-        if func_name == "cmd_tradingsystem":
-            data = ClawBotRPC._rpc_trading_system_status()
-            return _format_dict_result("交易系统", data)
-
-        if func_name == "cmd_performance":
-            data = await ClawBotRPC._rpc_trading_pnl()
-            return _format_dict_result("投资绩效", data)
-
-        # ── 系统类 ──
-        if func_name == "cmd_status":
-            data = ClawBotRPC._rpc_system_status()
-            return _format_dict_result("系统状态", data)
-
-        if func_name == "cmd_news":
-            data = await ClawBotRPC._rpc_daily_brief()
-            if isinstance(data, str):
-                return data
-            return _format_dict_result("今日简报", data)
-
-        if func_name == "cmd_pool":
-            data = ClawBotRPC._rpc_pool_stats()
-            return _format_dict_result("API 池", data)
-
-        if func_name == "cmd_memory":
-            data = ClawBotRPC._rpc_memory_stats()
-            return _format_dict_result("记忆管理", data)
-
-        if func_name == "cmd_cost":
-            data = ClawBotRPC._rpc_omega_cost()
-            return _format_dict_result("成本配额", data)
-
-        if func_name == "cmd_perf":
-            data = ClawBotRPC._rpc_system_perf()
-            return _format_dict_result("性能指标", data)
-
-        # ── 闲鱼类 ──
-        if func_name == "cmd_xianyu":
-            data = ClawBotRPC._rpc_xianyu_conversations()
-            return _format_dict_result("闲鱼客服", data)
-
-        if func_name == "cmd_xianyu_report":
-            data = ClawBotRPC._rpc_xianyu_profit()
-            return _format_dict_result("闲鱼报表", data)
-
-        # ── 社媒类 ──
-        if func_name == "cmd_social_report":
-            data = ClawBotRPC._rpc_social_analytics(days=7)
-            return _format_dict_result("社媒报告", data)
-
-        if func_name == "cmd_social_persona":
-            data = ClawBotRPC._rpc_social_personas()
-            return _format_dict_result("社媒人设", data)
-
-        # ── 需要 Telegram 交互的命令: 走 LLM 代理 ──
-        if func_name in (
-            "cmd_draw", "cmd_tts", "cmd_qr", "cmd_calc", "cmd_chart",
-            "cmd_backtest", "cmd_invest", "cmd_post", "cmd_xpost",
-            "cmd_xhspost", "cmd_topic", "cmd_hot", "cmd_social_plan",
-            "cmd_social_calendar", "cmd_ibuy", "cmd_isell", "cmd_icancel",
-            "cmd_iorders", "cmd_xianyu_style", "cmd_ship", "cmd_pricewatch",
-            "cmd_deals", "cmd_coupon", "cmd_intel", "cmd_brief", "cmd_bill",
-            "cmd_export", "cmd_ops", "cmd_settings", "cmd_model", "cmd_config",
-            "cmd_scan", "cmd_journal", "cmd_review", "cmd_equity",
-            "cmd_targets", "cmd_accuracy", "cmd_weekly", "cmd_rebalance",
-            "cmd_clear",
-        ):
-            # 这些命令需要复杂的交互逻辑，走 LLM 语义理解
-            prompt = f"用户想要执行「{desc}」"
-            if arg:
-                prompt += f"，参数: {arg}"
-            reply = await _generate_wechat_reply(prompt)
-            return reply or f"已收到指令: {desc}" + (f" ({arg})" if arg else "")
-
-        # 默认: 用 LLM 处理
-        return f"命令 {num}({desc}) 正在处理中..."
+        # ── 需要复杂交互的命令: 走 LLM 语义理解 ──
+        prompt = f"用户想要执行「{desc}」"
+        if arg:
+            prompt += f"，参数: {arg}"
+        reply = await _generate_wechat_reply(prompt)
+        return reply or f"已收到指令: {desc}" + (f" ({arg})" if arg else "")
 
     except Exception as e:
         logger.warning("[微信] 命令 %d 执行失败: %s", num, e)
-        return f"命令执行出错，请稍后再试"
+        return "命令执行出错，请稍后再试"
 
 
 def _format_quote(data: dict) -> str:
