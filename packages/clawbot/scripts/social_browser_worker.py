@@ -221,6 +221,8 @@ def start_social_browser() -> Dict[str, Any]:
             "--no-default-browser-check",
             "--disable-features=DialMediaRouteProvider",
             "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--js-flags=--max-old-space-size=512",
             "about:blank",
         ],
         stdout=subprocess.DEVNULL,

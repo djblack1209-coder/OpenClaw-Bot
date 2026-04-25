@@ -626,11 +626,13 @@ class BokehVisualizer:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
-                page = browser.new_page(viewport={"width": 1400, "height": 900})
-                page.goto(f"file://{html_path}")
-                page.wait_for_timeout(2000)  # 等 Bokeh JS 渲染
-                png_bytes = page.screenshot(full_page=False)
-                browser.close()
+                try:
+                    page = browser.new_page(viewport={"width": 1400, "height": 900})
+                    page.goto(f"file://{html_path}")
+                    page.wait_for_timeout(2000)  # 等 Bokeh JS 渲染
+                    png_bytes = page.screenshot(full_page=False)
+                finally:
+                    browser.close()
             buf = io.BytesIO(png_bytes)
             buf.name = "backtest_chart.png"
             buf.seek(0)

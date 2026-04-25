@@ -209,42 +209,51 @@ function App() {
       exit: { opacity: 0, scale: 0.98 },
     };
 
-    // 每个页面用 PageErrorBoundary 隔离崩溃，单页出错不影响侧边栏和其他页面
-    const pages: Record<PageType, JSX.Element> = {
-      /* C 端新页面 */
-      home: <PageErrorBoundary pageName="首页"><HomeDashboard /></PageErrorBoundary>,
-      assistant: <PageErrorBoundary pageName="AI 助手"><Assistant /></PageErrorBoundary>,
-      notifications: <PageErrorBoundary pageName="通知中心"><NotificationsPage /></PageErrorBoundary>,
-      /* 全球情报（worldmonitor） */
-      worldmonitor: <PageErrorBoundary pageName="全球监控"><WorldMonitor /></PageErrorBoundary>,
-      newsfeed: <PageErrorBoundary pageName="新闻中心"><NewsFeed /></PageErrorBoundary>,
-      finradar: <PageErrorBoundary pageName="金融雷达"><FinRadar /></PageErrorBoundary>,
-      portfolio: <PageErrorBoundary pageName="投资组合"><Portfolio /></PageErrorBoundary>,
-      trading: <PageErrorBoundary pageName="交易引擎"><TradingPage /></PageErrorBoundary>,
-      risk: <PageErrorBoundary pageName="风险分析"><RiskPage /></PageErrorBoundary>,
-      bots: <PageErrorBoundary pageName="我的机器人"><Bots /></PageErrorBoundary>,
-      store: <PageErrorBoundary pageName="Bot 商店"><Store /></PageErrorBoundary>,
-      xianyu: <PageErrorBoundary pageName="闲鱼管理"><Xianyu /></PageErrorBoundary>,
-      onboarding: <PageErrorBoundary pageName="引导"><Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} /></PageErrorBoundary>,
-      /* 原有页面 */
-      control: <PageErrorBoundary pageName="控制中心"><ControlCenter /></PageErrorBoundary>,
-      dashboard: <PageErrorBoundary pageName="仪表盘"><Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} /></PageErrorBoundary>,
-      flow: <PageErrorBoundary pageName="执行流"><ExecutionFlow /></PageErrorBoundary>,
-      memory: <PageErrorBoundary pageName="记忆"><Memory /></PageErrorBoundary>,
-      plugins: <PageErrorBoundary pageName="插件"><Store /></PageErrorBoundary>,
-      ai: <PageErrorBoundary pageName="AI 配置"><AIConfig /></PageErrorBoundary>,
-      channels: <PageErrorBoundary pageName="频道"><Channels /></PageErrorBoundary>,
-      social: <PageErrorBoundary pageName="社媒"><Social /></PageErrorBoundary>,
-      money: <PageErrorBoundary pageName="财务"><Money /></PageErrorBoundary>,
-      dev: <PageErrorBoundary pageName="开发"><Dev /></PageErrorBoundary>,
-      devpanel: <PageErrorBoundary pageName="开发者工作台"><DevPanel /></PageErrorBoundary>,
-      testing: <PageErrorBoundary pageName="测试"><Testing /></PageErrorBoundary>,
-      logs: <PageErrorBoundary pageName="日志"><Logs /></PageErrorBoundary>,
-      settings: <PageErrorBoundary pageName="设置"><Settings onEnvironmentChange={checkEnvironment} /></PageErrorBoundary>,
-      evolution: <PageErrorBoundary pageName="进化"><Evolution /></PageErrorBoundary>,
-      gateway: <PageErrorBoundary pageName="API 网关"><APIGateway /></PageErrorBoundary>,
-      scheduler: <PageErrorBoundary pageName="任务调度"><Scheduler /></PageErrorBoundary>,
-      perf: <PageErrorBoundary pageName="性能监控"><Performance /></PageErrorBoundary>,
+    // 只渲染当前活跃页面，避免每次 render 实例化全部 28+ 个页面组件
+    const renderActivePage = (): JSX.Element => {
+      const wrap = (pageName: string, child: JSX.Element) => (
+        <PageErrorBoundary pageName={pageName}>{child}</PageErrorBoundary>
+      );
+      switch (currentPage) {
+        /* C 端新页面 */
+        case 'home': return wrap('首页', <HomeDashboard />);
+        case 'assistant': return wrap('AI 助手', <Assistant />);
+        case 'notifications': return wrap('通知中心', <NotificationsPage />);
+        /* 全球情报 */
+        case 'worldmonitor': return wrap('全球监控', <WorldMonitor />);
+        case 'newsfeed': return wrap('新闻中心', <NewsFeed />);
+        case 'finradar': return wrap('金融雷达', <FinRadar />);
+        /* 资产管理 */
+        case 'portfolio': return wrap('投资组合', <Portfolio />);
+        case 'trading': return wrap('交易引擎', <TradingPage />);
+        case 'risk': return wrap('风险分析', <RiskPage />);
+        /* 智能体 */
+        case 'bots': return wrap('我的机器人', <Bots />);
+        case 'store': return wrap('Bot 商店', <Store />);
+        /* 运营中心 */
+        case 'xianyu': return wrap('闲鱼管理', <Xianyu />);
+        case 'onboarding': return wrap('引导', <Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} />);
+        /* 原有页面（开发者模式） */
+        case 'control': return wrap('控制中心', <ControlCenter />);
+        case 'dashboard': return wrap('仪表盘', <Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} />);
+        case 'flow': return wrap('执行流', <ExecutionFlow />);
+        case 'memory': return wrap('记忆', <Memory />);
+        case 'plugins': return wrap('插件', <Store />);
+        case 'ai': return wrap('AI 配置', <AIConfig />);
+        case 'channels': return wrap('频道', <Channels />);
+        case 'social': return wrap('社媒', <Social />);
+        case 'money': return wrap('财务', <Money />);
+        case 'dev': return wrap('开发', <Dev />);
+        case 'devpanel': return wrap('开发者工作台', <DevPanel />);
+        case 'testing': return wrap('测试', <Testing />);
+        case 'logs': return wrap('日志', <Logs />);
+        case 'settings': return wrap('设置', <Settings onEnvironmentChange={checkEnvironment} />);
+        case 'evolution': return wrap('进化', <Evolution />);
+        case 'gateway': return wrap('API 网关', <APIGateway />);
+        case 'scheduler': return wrap('任务调度', <Scheduler />);
+        case 'perf': return wrap('性能监控', <Performance />);
+        default: return wrap('首页', <HomeDashboard />);
+      }
     };
 
     return (
@@ -259,7 +268,7 @@ function App() {
           className="h-full"
         >
           <Suspense fallback={<PageLoader />}>
-            {pages[currentPage]}
+            {renderActivePage()}
           </Suspense>
         </motion.div>
       </AnimatePresence>

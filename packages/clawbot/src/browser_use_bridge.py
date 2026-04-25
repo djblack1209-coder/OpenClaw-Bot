@@ -155,6 +155,7 @@ class BrowserUseBridge:
         if not self._using_browser_use:
             return {"success": False, "error": "browser-use 未安装"}
 
+        browser = None
         try:
             config = BrowserConfig(headless=True)
             browser = Browser(config=config)
@@ -166,11 +167,16 @@ class BrowserUseBridge:
             await pg.goto(url, wait_until="networkidle", timeout=30000)
             screenshot = await pg.screenshot(full_page=True)
             await context.close()
-            await browser.close()
 
             return {"success": True, "screenshot": screenshot, "url": url}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
 
     async def fill_form(self, url: str, form_data: dict[str, str]) -> dict[str, Any]:
         """自动填写表单"""
