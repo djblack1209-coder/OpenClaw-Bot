@@ -660,16 +660,43 @@ class LifeCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_deals(self, update, context):
-        """折扣搜集 — 主动扫描全网好价
+        """折扣搜集 — 主动扫描全网好价 / 全球黑五关键词搜索
 
         用法:
         /deals           — 扫描全品类热门折扣（30%+ 降价）
         /deals iPhone    — 搜索指定商品的折扣
         /deals 数码       — 搜索指定分类
+        /deals bf VPS    — 全球黑五折扣搜索（去重，不重复推送）
         """
         try:
+            args = context.args or []
+            # 子命令: /deals bf <keyword> — 全球黑五折扣搜索
+            if args and args[0].lower() in {"bf", "blackfriday", "黑五", "global"}:
+                keyword = " ".join(args[1:]).strip()
+                if not keyword:
+                    await update.message.reply_text(
+                        "用法: /deals bf <关键词>\n\n"
+                        "示例:\n"
+                        "  /deals bf VPS\n"
+                        "  /deals bf GPU\n"
+                        "  /deals bf domain\n"
+                        "  /deals bf cloud hosting\n\n"
+                        "搜索全球供应商的黑五/折扣优惠，同一条不会重复推送。"
+                    )
+                    return
+                await update.message.reply_text(f"🌍 正在搜索「{keyword}」全球折扣，请稍候...")
+                from src.shopping.blackfriday_scanner import (
+                    format_deals_message,
+                    scan_blackfriday_deals,
+                )
+                deals = await scan_blackfriday_deals(keyword)
+                result = format_deals_message(keyword, deals)
+                await send_long_message(update.effective_chat.id, result, context)
+                return
+
+            # 默认: 国内折扣扫描
             from src.shopping.deal_scanner import manual_deal_scan
-            query = " ".join(context.args) if context.args else ""
+            query = " ".join(args) if args else ""
             await update.message.reply_text("🔍 正在扫描折扣，请稍候...")
             result = await manual_deal_scan(query)
             await send_long_message(update.effective_chat.id, result, context)

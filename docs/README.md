@@ -12,7 +12,7 @@
 ## 审计与排查
 
 - `sop/FULL_AUDIT_PLAN.md`：全量审计总方案
-- `audit/`：分轮次审计记录
+- `audit/AUDIT_HISTORY.md`：12 轮全量审计浓缩汇总
 - `guides/OPENCLAW_APP_VISUAL_AUDIT_PROMPT.md`：OpenClaw APP 全量视觉级审计提示词
 
 ## 开发规范
@@ -33,7 +33,7 @@
 - `guides/QUICKSTART.md`：快速启动
 - `guides/DEVELOPER_GUIDE.md`：开发指南
 - `guides/DEPLOYMENT_GUIDE.md`：部署指南
-- `guides/DISASTER_RECOVERY.md`：灾备恢复
+- `guides/DR_GUIDE.md`：灾备恢复
 - `guides/KEY_ROTATION_GUIDE.md`：密钥轮换
 - `guides/NIGHTLY_AUDIT_SETUP.md`：夜间审计
 
