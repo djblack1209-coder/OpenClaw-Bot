@@ -672,7 +672,7 @@ class LifeCommandsMixin:
             query = " ".join(context.args) if context.args else ""
             await update.message.reply_text("🔍 正在扫描折扣，请稍候...")
             result = await manual_deal_scan(query)
-            await send_long_message(update, result)
+            await send_long_message(update.effective_chat.id, result, context)
         except Exception as e:
             logger.exception("[Deals] 折扣扫描失败: %s", e)
             await update.message.reply_text(error_service_failed("折扣扫描"))
