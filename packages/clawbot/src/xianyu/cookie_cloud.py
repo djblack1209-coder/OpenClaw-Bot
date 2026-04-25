@@ -39,6 +39,9 @@ XHS_DOMAINS = [".xiaohongshu.com"]
 # ---- 最小刷新间隔（秒），防止频繁请求 ----
 MIN_REFRESH_INTERVAL = 60
 
+# ---- 连续失败后的最大退避间隔（秒），30 分钟封顶 ----
+MAX_BACKOFF_INTERVAL = 1800
+
 # ---- 同步记录最大保留条数 ----
 MAX_SYNC_HISTORY = 50
 
@@ -267,15 +270,40 @@ class CookieCloudManager:
         return self._enabled and self._client is not None
 
     @property
+    def _effective_interval(self) -> int:
+        """计算当前实际同步间隔（含退避）
+
+        连续失败时指数退避: 基础间隔 * 2^(失败次数-1)，封顶 MAX_BACKOFF_INTERVAL。
+        成功时恢复基础间隔。
+        """
+        if self._consecutive_failures <= 0:
+            return self._sync_interval
+        # 指数退避: 300 → 600 → 1200 → 1800(封顶)
+        backoff = self._sync_interval * (2 ** min(self._consecutive_failures - 1, 4))
+        return min(backoff, MAX_BACKOFF_INTERVAL)
+
+    @property
     def status(self) -> dict[str, Any]:
         """返回当前同步状态（用于 API/GUI 展示）"""
+        # 生成状态说明，让 GUI 看得懂
+        if not self._enabled:
+            status_message = "未配置 CookieCloud"
+        elif self._consecutive_failures == 0:
+            status_message = "正常"
+        elif self._consecutive_failures < self._max_failures_before_notify:
+            status_message = f"同步暂时失败（{self._consecutive_failures}次），自动重试中"
+        else:
+            status_message = f"服务端可能离线（已连续失败{self._consecutive_failures}次），已自动降低重试频率"
+
         return {
             "enabled": self._enabled,
             "host": scrub_secrets(os.environ.get("COOKIECLOUD_HOST", "")),
             "sync_interval_seconds": self._sync_interval,
+            "effective_interval_seconds": self._effective_interval,
             "last_sync_time": self._last_sync_time,
             "consecutive_failures": self._consecutive_failures,
             "last_cookie_available": bool(self._last_cookie_str),
+            "status_message": status_message,
             "sync_history": self._sync_history[-10:],  # 最近 10 条同步记录
         }
 
@@ -465,14 +493,26 @@ class CookieCloudManager:
         )
 
     async def run_sync_loop(self):
-        """持续运行的同步循环（作为后台任务注册到 APScheduler 或 asyncio）"""
+        """持续运行的同步循环（作为后台任务注册到 APScheduler 或 asyncio）
+
+        连续失败时自动降低重试频率（指数退避），避免对离线服务端无效轰炸。
+        成功后自动恢复正常间隔。
+        """
         logger.info("CookieCloud 同步循环已启动，间隔 %d 秒", self._sync_interval)
         while True:
             try:
                 await self.sync_once()
             except Exception as e:
                 logger.error("CookieCloud 同步循环异常: %s", scrub_secrets(str(e)))
-            await asyncio.sleep(self._sync_interval)
+
+            # 计算下次等待时间：正常间隔 or 退避间隔
+            wait = self._effective_interval
+            if wait > self._sync_interval:
+                logger.info(
+                    "CookieCloud: 连续失败 %d 次，下次同步间隔退避到 %d 秒",
+                    self._consecutive_failures, wait,
+                )
+            await asyncio.sleep(wait)
 
     async def configure(self, host: str, uuid: str, password: str, interval: int = 300) -> bool:
         """动态配置 CookieCloud（从 GUI/API 调用）
