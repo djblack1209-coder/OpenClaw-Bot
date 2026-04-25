@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { apiLogger } from './logger';
+import { trackApiWait, trackError } from './qa-tracker';
 
 // 检查是否在 Tauri 环境中运行
 export function isTauri(): boolean {
@@ -379,6 +380,9 @@ export async function clawbotFetch(
     headers.set('Content-Type', 'application/json');
   }
 
+  // QA 追踪：记录请求开始时间
+  const _qaStart = Date.now();
+
   // 超时控制：用 AbortController 实现，不影响已有的 signal
   if (timeoutMs > 0 && !init?.signal) {
     const controller = new AbortController();
@@ -390,9 +394,11 @@ export async function clawbotFetch(
         signal: controller.signal,
       });
       clearTimeout(timer);
+      trackApiWait(path, Date.now() - _qaStart);
       return resp;
     } catch (err) {
       clearTimeout(timer);
+      trackError(path, err instanceof Error ? err.message : String(err));
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new Error(`请求超时（${timeoutMs / 1000}秒）: ${path}`);
       }
@@ -401,7 +407,14 @@ export async function clawbotFetch(
   }
 
   // 调用方已提供 signal 或不限时 — 直接透传
-  return fetch(`${CLAWBOT_API_BASE}${path}`, { ...init, headers });
+  try {
+    const resp = await fetch(`${CLAWBOT_API_BASE}${path}`, { ...init, headers });
+    trackApiWait(path, Date.now() - _qaStart);
+    return resp;
+  } catch (err) {
+    trackError(path, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
 }
 
 /**
