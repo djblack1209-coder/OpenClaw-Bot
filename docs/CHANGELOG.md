@@ -12,6 +12,19 @@
 
 ## 最近更新（2026-04）
 
+## [2026-04-25] 内存优化: Chrome 浏览器 + 模块懒加载
+> 领域: `backend`, `infra`
+> 影响模块: `social_browser_worker`, `multi_main`, `browser_use_bridge`
+> 关联问题: PERF-MEM-001
+### 变更内容
+- Chrome 社交浏览器 V8 堆限制从 512MB 降至 128MB，新增 `--renderer-process-limit=3` 限制渲染进程数，禁用 background networking/extensions/component-update 等冗余功能。预计节省 ~800-1200MB
+- 新增 `cleanup_excess_tabs()` 自动清理重复/无用标签页（blob: URL、chrome:// 内部页、重复登录页），每次状态检查时自动触发，标签页上限 4 个
+- browser-use、CrewAI、进化引擎改为懒加载模式——启动时不实例化，首次使用时才初始化。预计减少启动内存 ~30-50MB
+### 文件变更
+- `scripts/social_browser_worker.py` — Chrome 启动参数内存优化 + 标签页清理函数
+- `multi_main.py` — browser-use/CrewAI/进化引擎从启动初始化改为延迟加载
+- `src/browser_use_bridge.py` — `get_browser_use()` 改为自动懒初始化
+
 ## [2026-04-24] OpenCode GPT5.5 上下文安全线修复
 > 领域: `infra`, `ai-pool`
 > 影响模块: `OpenCode`, `GPT5.5`, `gpt-mode-switcher`

@@ -487,21 +487,13 @@ async def main():
     except Exception as e:
         logger.info(f"  自选股异动监控跳过: {e}")
 
-    # 初始化 browser-use 浏览器代理
-    try:
-        from src.browser_use_bridge import init_browser_use
-        init_browser_use(headless=True)
-        logger.info("  browser-use 浏览器代理已初始化")
-    except Exception as e:
-        logger.info(f"  browser-use 初始化跳过: {e}")
+    # browser-use 浏览器代理 — 延迟到首次使用时初始化（节省 ~15-30MB 启动内存）
+    # init_browser_use 会在 src.browser_use_bridge 首次调用时自动触发
+    logger.info("  browser-use 浏览器代理: 延迟加载模式（首次使用时初始化）")
 
-    # 初始化 CrewAI 多 Agent 协作桥接
-    try:
-        from src.crewai_bridge import init_crewai_bridge
-        init_crewai_bridge()
-        logger.info("  CrewAI 多 Agent 协作桥接已初始化")
-    except Exception as e:
-        logger.info(f"  CrewAI 初始化跳过: {e}")
+    # CrewAI 多 Agent 协作桥接 — 延迟到首次使用时初始化（节省 ~10-20MB 启动内存）
+    # crewai_bridge 内部已是懒加载单例，无需启动时预热
+    logger.info("  CrewAI 多 Agent 协作桥接: 延迟加载模式（首次使用时初始化）")
 
     # === 启动内控 API 服务器 (搬运 freqtrade RPC + Open WebUI 模式) ===
     api_port = int(os.environ.get("API_PORT", "18790"))
@@ -572,14 +564,9 @@ async def main():
     except Exception as e:
         logger.info(f"  OMEGA Gateway Bot 初始化跳过: {e}")
 
-    # === 进化引擎初始化 (搬运 GitHub Trending 扫描模式) ===
-    _evolution_engine = None
-    try:
-        from src.evolution.engine import EvolutionEngine
-        _evolution_engine = EvolutionEngine()
-        logger.info("  进化引擎已就绪（可通过 Manager UI 触发扫描）")
-    except Exception as e:
-        logger.info(f"  进化引擎初始化跳过: {e}")
+    # === 进化引擎 — 延迟到首次扫描时初始化（每 24h 才用一次，不必常驻内存） ===
+    _evolution_engine = None  # 懒加载：定时任务触发时才 import + 实例化
+    logger.info("  进化引擎: 延迟加载模式（首次定时扫描时初始化）")
 
     # === 社交自动驾驶 — 检查是否需要自动恢复 (搬运 APScheduler 模式) ===
     try:
@@ -885,11 +872,17 @@ async def main():
             if alert_counter >= _alert_check_interval:
                 alert_counter = 0
                 alert_mgr.check_all()
-            # 进化引擎定时扫描（默认每24小时）
-            if _evolution_engine and evolution_counter >= _evolution_interval:
+            # 进化引擎定时扫描（默认每24小时，懒加载）
+            if evolution_counter >= _evolution_interval:
                 evolution_counter = 0
                 async def _run_evolution_scan():
+                    nonlocal _evolution_engine
                     try:
+                        # 懒加载: 首次扫描时才导入和实例化
+                        if _evolution_engine is None:
+                            from src.evolution.engine import EvolutionEngine
+                            _evolution_engine = EvolutionEngine()
+                            logger.info("[Evolution] 进化引擎已懒加载初始化")
                         proposals = await _evolution_engine.daily_scan()
                         if proposals:
                             logger.info("[Evolution] 发现 %d 个进化提案", len(proposals))
