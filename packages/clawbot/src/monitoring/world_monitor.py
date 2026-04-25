@@ -113,6 +113,10 @@ class NewsFetcher:
     _SUMMARY_SYSTEM_PROMPT = (
         "你是新闻摘要助手。用一句简洁的中文概括以下新闻标题的内容，不超过50字。"
     )
+    # 英文标题翻译提示词
+    _TRANSLATE_SYSTEM_PROMPT = (
+        "将以下英文新闻标题翻译为简洁的中文，保持新闻标题风格，不超过30字。只输出翻译结果。"
+    )
 
     def __init__(
         self,
@@ -174,17 +178,35 @@ class NewsFetcher:
         return sorted(results, key=lambda x: x.published_at, reverse=True)
 
     async def _enrich_summaries(self, items: list[NewsItem]) -> list[NewsItem]:
-        """为缺少摘要的新闻条目生成 AI 中文摘要
+        """为新闻条目补全中文摘要 + 翻译英文标题
 
-        使用 free_pool (LiteLLM Router) 批量调用 LLM，每批最多 10 条，
-        超时 10 秒。任何失败都静默跳过，不影响新闻正常返回。
+        处理逻辑:
+        1. 无摘要 → AI 生成中文摘要
+        2. 有英文摘要 → AI 翻译为中文摘要
+        3. 英文标题 → AI 翻译为中文标题
         """
-        # 筛选需要补全摘要的条目（有标题但无摘要）
-        need_summary: list[tuple[int, NewsItem]] = [
-            (idx, item) for idx, item in enumerate(items)
-            if not item.summary and item.title
-        ]
-        if not need_summary:
+        import re
+
+        def _is_english(text: str) -> bool:
+            """判断文本是否主要为英文（ASCII 字母占比 > 50%）"""
+            if not text:
+                return False
+            ascii_letters = sum(1 for c in text if c.isascii() and c.isalpha())
+            return ascii_letters / max(len(text), 1) > 0.5
+
+        # 收集需要处理的条目: (索引, 任务类型, 文本)
+        tasks: list[tuple[int, str, str]] = []
+        for idx, item in enumerate(items):
+            if not item.summary and item.title:
+                # 无摘要 → 生成中文摘要
+                tasks.append((idx, "summary", item.title))
+            elif item.summary and _is_english(item.summary):
+                # 英文摘要 → 翻译为中文
+                tasks.append((idx, "translate_summary", item.summary))
+            if item.title and _is_english(item.title):
+                # 英文标题 → 翻译为中文
+                tasks.append((idx, "translate_title", item.title))
+        if not tasks:
             return items
 
         # 延迟导入，避免循环依赖或模块未初始化时炸掉
@@ -200,40 +222,50 @@ class NewsFetcher:
 
         # 分批处理，每批最多 10 条
         batch_size = 10
-        for batch_start in range(0, len(need_summary), batch_size):
-            batch = need_summary[batch_start: batch_start + batch_size]
+        for batch_start in range(0, len(tasks), batch_size):
+            batch = tasks[batch_start: batch_start + batch_size]
 
-            async def _generate_one(idx: int, item: NewsItem) -> tuple[int, str]:
-                """为单条新闻生成摘要，返回 (索引, 摘要文本)"""
+            async def _generate_one(idx: int, task_type: str, text: str) -> tuple[int, str, str]:
+                """处理单条任务，返回 (索引, 任务类型, 结果文本)"""
                 try:
+                    # 根据任务类型选择不同的系统提示词
+                    if task_type == "summary":
+                        sys_prompt = self._SUMMARY_SYSTEM_PROMPT
+                    else:
+                        sys_prompt = self._TRANSLATE_SYSTEM_PROMPT
                     resp = await free_pool.acompletion(
-                        model_family=None,  # 自动路由选择最优模型
-                        messages=[{"role": "user", "content": item.title}],
-                        system_prompt=self._SUMMARY_SYSTEM_PROMPT,
+                        model_family=None,
+                        messages=[{"role": "user", "content": text}],
+                        system_prompt=sys_prompt,
                         temperature=0.3,
                         max_tokens=100,
-                        cache_ttl=3600,  # 相同标题命中缓存
+                        cache_ttl=3600,
                     )
-                    text = resp.choices[0].message.content.strip()
-                    return (idx, text)
+                    result_text = resp.choices[0].message.content.strip()
+                    return (idx, task_type, result_text)
                 except Exception as e:
-                    logger.warning(f"[WorldMonitor] AI 摘要生成失败: {item.title[:30]}… — {scrub_secrets(str(e))}")
-                    return (idx, "")
+                    logger.warning(f"[WorldMonitor] AI 处理失败: {text[:30]}… — {scrub_secrets(str(e))}")
+                    return (idx, task_type, "")
 
             try:
-                # 批量并发调用，整批 10 秒超时
-                coros = [_generate_one(idx, item) for idx, item in batch]
+                coros = [_generate_one(idx, task_type, text) for idx, task_type, text in batch]
                 batch_results = await asyncio.wait_for(
                     asyncio.gather(*coros, return_exceptions=True),
-                    timeout=10.0,
+                    timeout=15.0,
                 )
-                # 回填摘要
+                # 回填结果
                 for result in batch_results:
                     if isinstance(result, Exception):
                         continue
-                    idx, summary_text = result
-                    if summary_text:
-                        items[idx].summary = summary_text
+                    idx, task_type, result_text = result
+                    if not result_text:
+                        continue
+                    if task_type == "summary":
+                        items[idx].summary = result_text
+                    elif task_type == "translate_summary":
+                        items[idx].summary = result_text
+                    elif task_type == "translate_title":
+                        items[idx].title = result_text
             except TimeoutError:
                 logger.warning(
                     f"[WorldMonitor] AI 摘要批次超时 (batch_start={batch_start}), 跳过剩余"
