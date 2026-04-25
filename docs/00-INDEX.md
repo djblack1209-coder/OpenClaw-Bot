@@ -39,18 +39,7 @@
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| R01 基础设施审计 | `docs/audit/R01_INFRA.md` | 基础设施与文件治理（✅ 已完成） |
-| R02 后端核心审计 | `docs/audit/R02_BACKEND_CORE.md` | 后端核心引擎（✅ 已完成） |
-| R03 Bot 命令审计 | `docs/audit/R03_BOT_COMMANDS.md` | Telegram Bot 命令层 |
-| R04 Bot 业务审计 | `docs/audit/R04_BOT_BUSINESS.md` | Telegram Bot 业务场景 |
-| R05 macOS 架构审计 | `docs/audit/R05_MACOS_ARCH.md` | macOS 桌面端架构 |
-| R06 macOS 核心审计 | `docs/audit/R06_MACOS_CORE.md` | macOS 核心页面（✅ 已完成） |
-| R07 macOS 业务审计 | `docs/audit/R07_MACOS_BUSINESS.md` | macOS 业务页面（✅ 已完成） |
-| R08 交易系统审计 | `docs/audit/R08_TRADING.md` | 投资交易系统 |
-| R09 闲鱼社媒审计 | `docs/audit/R09_XIANYU_SOCIAL.md` | 闲鱼+社媒+微信+工具链 |
-| R10 部署审计 | `docs/audit/R10_DEPLOY.md` | 生产部署与运维 |
-| R11 端到端验证 | `docs/audit/R11_E2E_FINAL.md` | 端到端集成验证 |
-| R12 CI/CD 审计 | `docs/audit/R12_CI_DEVOPS.md` | CI/CD 管道与 DevOps |
+| 审计历史汇总 | `docs/audit/AUDIT_HISTORY.md` | R01-R12 共 12 轮全量审计浓缩汇总 |
 
 ## 商业文档 (docs/business/)
 
@@ -65,10 +54,9 @@
 | 快速启动 | `docs/guides/QUICKSTART.md` | OMEGA v2.0 快速启动指南 |
 | 开发者指南 | `docs/guides/DEVELOPER_GUIDE.md` | ClawBot 开发环境搭建与规范 |
 | 部署指南 | `docs/guides/DEPLOYMENT_GUIDE.md` | 闲鱼商业部署系统使用指南 |
-| 灾难恢复 (旧) | `docs/guides/DISASTER_RECOVERY.md` | 灾难恢复指南 (2026-03) |
-| 灾难恢复 (新) | `docs/guides/DR_GUIDE.md` | 灾难恢复指南 (2026-04 更新) |
+| 灾难恢复 | `docs/guides/DR_GUIDE.md` | 灾难恢复指南 (2026-04 更新) |
 | 密钥轮换 | `docs/guides/KEY_ROTATION_GUIDE.md` | 密钥轮换操作流程 |
-| 夜间审计部署 | `docs/guides/NIGHTLY_AUDIT_SETUP.md` | 夜间自动审计系统部署 |
+| 夜间审计部署 | `docs/guides/NIGHTLY_AUDIT_SETUP.md` | 夜间自动审计系统部署（历史参考） |
 | APP 视觉审计提示词 | `docs/guides/OPENCLAW_APP_VISUAL_AUDIT_PROMPT.md` | 逐页逐组件视觉级审计提示词模板 |
 
 ## 开发规范 (docs/sop/)
@@ -94,7 +82,6 @@
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| 健康检查报告 | `docs/reports/HEALTH_CHECK_2026_03_16.md` | 2026-03-16 全功能链路测试报告 |
 | MRU 分析报告 | `docs/reports/MRU_ANALYSIS_2026_04_16.md` | 积木化解构与开源情报整合决策报告 |
 
 ## Superpowers 工作区 (docs/superpowers/)

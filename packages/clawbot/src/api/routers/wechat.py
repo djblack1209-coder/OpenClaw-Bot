@@ -89,6 +89,7 @@ NUMBERED_COMMANDS: dict[int, tuple[str, bool, str]] = {
     405: ("折扣搜索", True, "cmd_deals"),
     406: ("微信领券", False, "cmd_coupon"),
     407: ("全球情报", False, "cmd_intel"),
+    408: ("黑五折扣", True, "cmd_deals"),  # 用法: "408 VPS" → 等效于 /deals bf VPS
     # 🏠 500-509: 生活
     500: ("执行简报", False, "cmd_brief"),
     501: ("话费账单", False, "cmd_bill"),
@@ -284,6 +285,19 @@ async def _execute_numbered_cmd(num: int, arg: str) -> str:
         if func_name == "cmd_ta":
             data = await _self_call_api(f"/api/v1/trading/kline?symbol={arg}&interval=1d&limit=30", timeout=15.0)
             return _format_dict_result(f"{arg} 技术分析", data)
+
+        # ── 黑五折扣搜索: 直接调用扫描器 ──
+        if num == 408:
+            try:
+                from src.shopping.blackfriday_scanner import (
+                    format_deals_message,
+                    scan_blackfriday_deals,
+                )
+                deals = await scan_blackfriday_deals(arg)
+                return format_deals_message(arg, deals)
+            except Exception as e:
+                logger.warning("[微信] 黑五折扣搜索失败: %s", e)
+                return f"黑五折扣搜索失败: {e}"
 
         # ── 需要复杂交互的命令: 走 LLM 语义理解 ──
         prompt = f"用户想要执行「{desc}」"
