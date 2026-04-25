@@ -1,6 +1,35 @@
 /**
- * 前端通知总线：写入内存队列 + 弹出可见 toast 浮层。
+ * 前端通知总线：写入内存队列 + 弹出可见 toast 浮层 + macOS 原生通知。
  */
+
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification';
+
+// ── macOS 原生通知 ──
+
+/**
+ * 发送操作系统级原生通知（macOS Notification Center）。
+ * 在非 Tauri 环境或权限未授予时静默降级。
+ */
+export async function showNativeNotification(title: string, body: string): Promise<void> {
+  try {
+    let permitted = await isPermissionGranted();
+    if (!permitted) {
+      const permission = await requestPermission();
+      permitted = permission === 'granted';
+    }
+    if (permitted) {
+      sendNotification({ title, body });
+    }
+  } catch {
+    // 非 Tauri 环境或插件不可用 — 静默忽略
+  }
+}
+
+// ── 前端内存通知队列 ──
 
 export type FrontendNotificationLevel = 'info' | 'warning' | 'error' | 'success';
 export type FrontendNotificationChannel = 'log' | 'notification';

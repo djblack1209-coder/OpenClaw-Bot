@@ -1,6 +1,7 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { showNativeNotification } from './lib/notify';
 
 import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -168,6 +169,9 @@ function App() {
     checkEnvironment();
   }, [checkEnvironment]);
 
+  // 记录上一次服务运行状态，用于检测状态变化并发送原生通知
+  const prevRunningRef = useRef<boolean | null>(null);
+
   // 定期获取服务状态
   useEffect(() => {
     if (!isTauri()) return;
@@ -176,6 +180,17 @@ function App() {
       try {
         const status = await invoke<ServiceStatus>('get_service_status');
         setServiceStatus(status);
+
+        // 检测状态变化 → 发送 macOS 原生通知
+        const prev = prevRunningRef.current;
+        if (prev !== null && prev !== status.running) {
+          if (status.running) {
+            showNativeNotification('OpenClaw 服务已启动', '后端服务已恢复运行');
+          } else {
+            showNativeNotification('OpenClaw 服务已停止', '后端服务已停止运行，请检查');
+          }
+        }
+        prevRunningRef.current = status.running;
       } catch {
         // 静默处理轮询错误
       }
