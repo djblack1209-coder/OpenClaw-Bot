@@ -140,6 +140,13 @@ def get_universe_stats() -> str:
 
 _screen_cache: dict[str, tuple] = {}  # cache_key -> (result, timestamp)
 SCREEN_CACHE_TTL = 300  # 5分钟缓存
+_SCREEN_CACHE_MAX = 500  # 防止缓存无限增长
+
+
+def _check_screen_cache_size():
+    """防止缓存无限增长"""
+    if len(_screen_cache) > _SCREEN_CACHE_MAX:
+        _screen_cache.clear()
 
 
 def _sync_quick_screen(symbol: str) -> dict | None:
@@ -147,6 +154,8 @@ def _sync_quick_screen(symbol: str) -> dict | None:
     快速筛选单个标的（同步，在线程池执行）
     第一层：只看价格变动和成交量，淘汰无异动的
     """
+    # 防止缓存无限增长
+    _check_screen_cache_size()
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)

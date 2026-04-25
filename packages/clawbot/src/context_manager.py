@@ -116,8 +116,9 @@ class ContextManager:
         self.compressed_summary: str | None = None
         self.key_facts: list[str] = []
         self.user_preferences: dict[str, Any] = {}
-        # 每个 (bot_id, chat_id) 的压缩状态
+        # 每个 (bot_id, chat_id) 的压缩状态（限制最大 500 条，超限逐出最早条目）
         self._compression_state: dict[str, dict] = {}
+        self._COMPRESSION_STATE_MAX = 500
 
     def estimate_tokens(self, messages: list[dict]) -> int:
         """估算 token 数（CJK 感知）"""
@@ -477,8 +478,10 @@ class TieredContextManager:
         self.total_budget = total_budget
 
         # v3.0: per-chat core memory (chat_id → Dict[str, str])
+        # 限制最大 200 个 chat 的 core memory 在内存中，超限逐出最早加载的
         self._core_memories: dict[int, dict[str, str]] = {}
         self._core_dirty: dict[int, bool] = {}
+        self._CORE_MEMORIES_MAX = 200
 
         # 持久化目录
         self._memory_dir = Path(self.ctx.storage_dir) / "core_memory"
@@ -562,6 +565,17 @@ class TieredContextManager:
             return self._core_memory
 
         if chat_id not in self._core_memories:
+            # 防止内存无限增长：超限时逐出最早加载的条目（先持久化脏数据）
+            if len(self._core_memories) >= self._CORE_MEMORIES_MAX:
+                evict_count = len(self._core_memories) - self._CORE_MEMORIES_MAX + 1
+                evict_keys = list(self._core_memories.keys())[:evict_count]
+                for ek in evict_keys:
+                    if self._core_dirty.get(ek):
+                        self._save_core(ek)
+                    del self._core_memories[ek]
+                    self._core_dirty.pop(ek, None)
+                logger.debug("[TieredCtx] 逐出 %d 个 core memory 条目，当前 %d 个",
+                             evict_count, len(self._core_memories))
             self._core_memories[chat_id] = self._load_core(chat_id)
             self._core_dirty[chat_id] = False
 

@@ -315,7 +315,9 @@ class VolumeBreakoutStrategy(BaseStrategy):
             return TradeSignal(symbol=data.symbol, signal=SignalType.HOLD,
                                score=0, strategy_name=self.name, reason="Insufficient data")
 
-        if HAS_PANDAS_TA:
+        ta, has_ta = _import_pandas_ta()
+        if has_ta:
+            pd = _import_pandas()
             df = data.to_dataframe()
             vol_sma = ta.sma(df["volume"], length=20)
             avg_vol = float(vol_sma.iloc[-1]) if pd.notna(vol_sma.iloc[-1]) else 1
@@ -372,7 +374,8 @@ class MACDStrategy(BaseStrategy):
             return TradeSignal(symbol=data.symbol, signal=SignalType.HOLD,
                                score=0, strategy_name=self.name, reason="Insufficient data")
 
-        if not HAS_PANDAS_TA:
+        ta, has_ta = _import_pandas_ta()
+        if not has_ta:
             return TradeSignal(symbol=data.symbol, signal=SignalType.HOLD,
                                score=0, strategy_name=self.name,
                                reason="pandas-ta not installed, MACD unavailable")
@@ -446,7 +449,8 @@ class BollingerBandStrategy(BaseStrategy):
             return TradeSignal(symbol=data.symbol, signal=SignalType.HOLD,
                                score=0, strategy_name=self.name, reason="Insufficient data")
 
-        if not HAS_PANDAS_TA:
+        ta, has_ta = _import_pandas_ta()
+        if not has_ta:
             return TradeSignal(symbol=data.symbol, signal=SignalType.HOLD,
                                score=0, strategy_name=self.name,
                                reason="pandas-ta not installed, Bollinger unavailable")
@@ -692,7 +696,7 @@ def create_default_engine() -> StrategyEngine:
     engine.register(MACrossStrategy(fast_period=10, slow_period=30))
     engine.register(RSIMomentumStrategy())
     engine.register(VolumeBreakoutStrategy())
-    if HAS_PANDAS_TA:
+    if _has_pandas_ta():
         engine.register(MACDStrategy())
         engine.register(BollingerBandStrategy())
     else:
