@@ -179,7 +179,8 @@ class MACrossStrategy(BaseStrategy):
 
         df = data.to_dataframe()
 
-        if HAS_PANDAS_TA:
+        ta, has_ta = _import_pandas_ta()
+        if has_ta:
             # 使用 pandas-ta 标准指标
             if self.use_ema:
                 fast_series = ta.ema(df["close"], length=self.fast_period)
