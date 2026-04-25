@@ -12,6 +12,18 @@
 
 ## 最近更新（2026-04）
 
+## [2026-04-25] 全量审计与优化 Sprint
+> 领域: `backend` | `frontend` | `wechat`
+> 影响模块: `wechat.py`, `rpc.py`, `world_monitor.py`, `social_browser_worker.py`, `multi_main.py`, 前端 8 个组件
+> 关联问题: 全量审计
+
+### 变更内容
+- 后端: 修复 /trading/pnl 全零问题(IBKR 离线兜底计算), /trading/dashboard 空数据, /monitor/finance 行情全零(yfinance getattr), /social/analytics 导入错误, /trading/system unknown 状态
+- 前端: 修复 Social 页 t 变量遮蔽, ControlCenter 响应检查, usePortfolioAPI 错误处理, 8 个页面轮询优化(useActivePagePolling), Settings 通知硬编码
+- 微信: 实现编号命令系统(60+ 命令映射), 欢迎消息, 完整功能列表
+- 性能: Chrome V8 堆 512→128MB, 渲染进程限制 3, 自动清理多余标签页, 模块懒加载(browser-use/CrewAI/进化引擎)
+- Telegram: 命令全量审计(100/100 通过), 发现 2 个注册表缺失(/claude, /deals)
+
 ## [2026-04-25] 内存优化: Chrome 浏览器 + 模块懒加载
 > 领域: `backend`, `infra`
 > 影响模块: `social_browser_worker`, `multi_main`, `browser_use_bridge`
