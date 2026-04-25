@@ -185,7 +185,6 @@ class NewsFetcher:
         2. 有英文摘要 → AI 翻译为中文摘要
         3. 英文标题 → AI 翻译为中文标题
         """
-        import re
 
         def _is_english(text: str) -> bool:
             """判断文本是否主要为英文（ASCII 字母占比 > 50%）"""
