@@ -363,11 +363,13 @@ class MultiPathExecutor:
 
         def _run():
             page = ChromiumPage()
-            page.get(url)
-            title = page.title
-            text = page.html[:5000]
-            page.quit()
-            return {"url": url, "title": title, "content_preview": text[:500]}
+            try:
+                page.get(url)
+                title = page.title
+                text = page.html[:5000]
+                return {"url": url, "title": title, "content_preview": text[:500]}
+            finally:
+                page.quit()
 
         return await asyncio.to_thread(_run)
 

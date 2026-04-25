@@ -187,7 +187,7 @@ export function Notifications() {
        setBackendItems((prev) => {
          /* 去重 */
          if (prev.some((i) => i.id === newItem.id)) return prev;
-         return [newItem, ...prev];
+          return [newItem, ...prev].slice(0, 200);
       });
     }
   });

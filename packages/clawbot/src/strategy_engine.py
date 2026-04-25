@@ -28,15 +28,31 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-import pandas as pd
-
 from src.utils import now_et, scrub_secrets
 
-try:
-    import pandas_ta as ta
-    HAS_PANDAS_TA = True
-except ImportError:
-    HAS_PANDAS_TA = False
+
+def _import_pandas():
+    """延迟导入 pandas，减少模块加载时的内存占用"""
+    import pandas as pd
+    return pd
+
+
+def _import_pandas_ta():
+    """延迟导入 pandas-ta，减少模块加载时的内存占用"""
+    try:
+        import pandas_ta as ta
+        return ta, True
+    except ImportError:
+        return None, False
+
+
+def _has_pandas_ta() -> bool:
+    """检查 pandas-ta 是否可用（不实际导入整个模块）"""
+    try:
+        import pandas_ta as ta  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +104,9 @@ class MarketData:
     def length(self) -> int:
         return len(self.closes)
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self):
         """转为 pandas DataFrame（供 pandas-ta 使用）"""
+        pd = _import_pandas()
         data = {"close": self.closes}
         if self.opens:
             data["open"] = self.opens

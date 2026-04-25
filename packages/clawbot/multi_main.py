@@ -1063,6 +1063,13 @@ async def main():
             logger.info("  MediaCrawlerBridge httpx 客户端已关闭")
     except Exception as e:
         logger.debug("MediaCrawlerBridge 关闭跳过: %s", e)
+    # 关闭社交自动化的 headless Chrome 浏览器
+    try:
+        import subprocess as _sp
+        _sp.run(["pkill", "-f", "remote-debugging-port=19222"], capture_output=True, timeout=5)
+        logger.info("  社交浏览器已终止")
+    except Exception:
+        pass
     for bot in bots:
         # Bot 已在关闭序列开头停止 polling，这里只关闭 HTTP 连接
         try:

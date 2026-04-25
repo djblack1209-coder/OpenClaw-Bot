@@ -83,12 +83,14 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
   appendToLastAssistant: (chunk) =>
     set((s) => {
-      const msgs = [...s.messages];
+      const msgs = s.messages;
+      if (msgs.length === 0) return s;
       const last = msgs[msgs.length - 1];
-      if (last && last.role === 'assistant' && last.streaming) {
-        msgs[msgs.length - 1] = { ...last, content: last.content + chunk };
-      }
-      return { messages: msgs };
+      if (last.role !== 'assistant' || !last.streaming) return s;
+      // 用索引更新避免展开整个数组，减少流式输出时的 GC 压力
+      const updated = [...msgs];
+      updated[updated.length - 1] = { ...last, content: last.content + chunk };
+      return { messages: updated };
     }),
 
   finishStreaming: (metadata) =>
