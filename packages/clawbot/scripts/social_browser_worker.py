@@ -222,7 +222,15 @@ def start_social_browser() -> Dict[str, Any]:
             "--disable-features=DialMediaRouteProvider",
             "--disable-gpu",
             "--disable-dev-shm-usage",
-            "--js-flags=--max-old-space-size=512",
+            # 内存优化: V8 堆限制从 512MB 降到 128MB（社交发文不需要大 JS 堆）
+            "--js-flags=--max-old-space-size=128",
+            # 内存优化: 限制渲染进程数，防止每个标签页都独占一个进程
+            "--renderer-process-limit=3",
+            # 内存优化: 禁用不必要的后台功能
+            "--disable-background-networking",
+            "--disable-extensions",
+            "--disable-component-update",
+            "--disable-default-apps",
             "about:blank",
         ],
         stdout=subprocess.DEVNULL,
@@ -231,6 +239,54 @@ def start_social_browser() -> Dict[str, Any]:
     if not wait_for_browser(timeout=20):
         raise RuntimeError("OpenClaw social browser failed to start")
     return {"success": True, "started": True, "browser_running": True}
+
+
+# 内存优化: 关闭多余标签页（blob:、重复的登录页），保留核心页面
+MAX_OPEN_TABS = 4  # 最多保留 4 个标签页
+
+
+def cleanup_excess_tabs() -> int:
+    """关闭重复和无用的标签页，释放 Chrome 渲染进程内存。
+    返回关闭的标签页数量。
+    """
+    tabs = list_browser_tabs()
+    if len(tabs) <= MAX_OPEN_TABS:
+        return 0
+
+    # 按优先级保留: x.com/home > x.com/profile > xiaohongshu > 其他
+    # 关闭: blob: URL、重复的登录页、omnibox
+    to_close: List[str] = []
+    seen_urls: set = set()
+    kept = 0
+    for tab in tabs:
+        url = tab.get("url", "")
+        tab_id = tab.get("id", "")
+
+        # 无条件关闭: blob: URL 和 chrome:// 内部页面
+        if url.startswith("blob:") or url.startswith("chrome://"):
+            to_close.append(tab_id)
+            continue
+
+        # 去重: 同一 URL 只保留一个
+        norm = normalized_url(url)
+        if norm in seen_urls:
+            to_close.append(tab_id)
+            continue
+        seen_urls.add(norm)
+
+        # 超过上限的标签页也关闭
+        kept += 1
+        if kept > MAX_OPEN_TABS:
+            to_close.append(tab_id)
+
+    closed = 0
+    for tab_id in to_close:
+        try:
+            cdp_request(f"/json/close/{tab_id}", timeout=3)
+            closed += 1
+        except Exception:
+            pass
+    return closed
 
 
 def normalized_url(url: str) -> str:
@@ -801,9 +857,12 @@ def social_browser_status(payload: Dict[str, Any]) -> Dict[str, Any]:
             "xiaohongshu_ready": None,
             "urls": [],
         }
+    # 内存优化: 每次检查状态时顺便清理多余标签页
+    closed = cleanup_excess_tabs()
     with social_browser(target_urls_for(platforms) if start else [], seed_platforms=platforms if start else []) as (context, seed):
         state = inspect_browser_state(context)
         state["seeded"] = bool(seed.get("seeded"))
+        state["tabs_closed"] = closed
         return state
 
 

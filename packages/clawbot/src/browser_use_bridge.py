@@ -215,4 +215,8 @@ def init_browser_use(llm=None, headless: bool = True) -> BrowserUseBridge:
 
 
 def get_browser_use() -> BrowserUseBridge | None:
+    """获取 bridge 实例 — 首次调用时自动初始化（懒加载）"""
+    global _bridge
+    if _bridge is None:
+        _bridge = init_browser_use(headless=True)
     return _bridge
