@@ -676,10 +676,13 @@ class FinanceRadar:
                         ticker = tickers.tickers.get(sym)
                         if ticker is None:
                             continue
-                        # fast_info 比 info 快得多，优先使用
+                        # fast_info 是属性对象，必须用 getattr 而非 dict.get
                         fi = ticker.fast_info
-                        price = float(fi.get("lastPrice", 0) or 0)
-                        prev_close = float(fi.get("previousClose", 0) or 0)
+                        price = float(getattr(fi, "last_price", 0) or 0)
+                        # 兜底: last_price 为 0 时尝试 previous_close
+                        if not price:
+                            price = float(getattr(fi, "previous_close", 0) or 0)
+                        prev_close = float(getattr(fi, "previous_close", 0) or 0)
                         change_pct = (
                             ((price - prev_close) / prev_close * 100)
                             if prev_close

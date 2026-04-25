@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from '@/lib/notify';
 import { motion } from 'framer-motion';
 import {
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -122,8 +123,9 @@ export function Social() {
         setCalendar(Array.isArray(c) ? c : c?.items ?? c?.calendar ?? []);
       }
       if (topicsRes.status === 'fulfilled') {
-        const t = topicsRes.value as any;
-        setTopics(Array.isArray(t) ? t : t?.topics ?? []);
+        /* 避免与外层 i18n t 函数同名 */
+        const topicData = topicsRes.value as any;
+        setTopics(Array.isArray(topicData) ? topicData : topicData?.topics ?? []);
       }
       setError(null);
     } catch (e: unknown) {
@@ -133,11 +135,8 @@ export function Social() {
     }
   }, [t]);
 
-  useEffect(() => {
-    fetchData();
-    const timer = setInterval(fetchData, 30_000);
-    return () => clearInterval(timer);
-  }, [fetchData]);
+  /* 使用可见性感知轮询，仅在社交页激活时刷新数据 */
+  useActivePagePolling('social', fetchData, 30_000);
 
   /* ====== 自动驾驶切换 ====== */
   const handleAutopilotToggle = async () => {

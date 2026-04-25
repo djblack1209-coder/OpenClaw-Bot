@@ -313,7 +313,11 @@ class ClawBotRPC:
 
     @staticmethod
     async def _rpc_trading_pnl() -> dict:
-        """Get PnL summary from trading journal + IBKR account."""
+        """Get PnL summary from trading journal + IBKR account.
+
+        修复: 当 IBKR 离线时，从本地持仓+yfinance 实时价格计算未实现盈亏，
+        与 portfolio-summary 共享同一数据源，避免全部返回零。
+        """
         from src.broker_selector import ibkr
         from src.trading_journal import journal
 
@@ -347,8 +351,10 @@ class ClawBotRPC:
             logger.warning("Failed to get journal stats: %s", e)
 
         # ── From IBKR account summary (async) ──
+        ibkr_connected = False
         try:
-            if ibkr and ibkr.connected:
+            ibkr_connected = ibkr.connected if ibkr else False
+            if ibkr_connected:
                 summary = await ibkr.get_account_summary() or {}
                 result["account_value"] = float(summary.get("NetLiquidation", 0) or 0)
                 result["cash"] = float(summary.get("TotalCashValue", 0) or 0)
@@ -356,6 +362,29 @@ class ClawBotRPC:
                 result["daily_pnl"] = float(summary.get("RealizedPnL", 0) or summary.get("DailyPnL", 0) or 0)
         except Exception as e:
             logger.warning("Failed to get IBKR account summary: %s", e)
+
+        # ── 兜底: IBKR 离线且 journal 没有 PnL 数据时，从本地持仓计算未实现盈亏 ──
+        if not ibkr_connected and result["total_pnl"] == 0.0:
+            try:
+                # 复用 _rpc_trading_positions 获取持仓（含 yfinance 实时价格）
+                positions_data = await ClawBotRPC._rpc_trading_positions()
+                positions_list = positions_data.get("positions", [])
+                total_value = 0.0
+                total_cost = 0.0
+                for pos in positions_list:
+                    qty = pos.get("quantity", 0)
+                    avg_price = pos.get("avg_price", 0)
+                    current_price = pos.get("current_price", 0)
+                    market_value = qty * current_price if qty and current_price else 0
+                    cost_basis = qty * avg_price if qty and avg_price else 0
+                    total_value += market_value
+                    total_cost += cost_basis
+                if total_cost > 0:
+                    result["total_pnl"] = round(total_value - total_cost, 2)
+                    result["total_pnl_pct"] = round((total_value - total_cost) / total_cost * 100, 2)
+                    result["account_value"] = round(total_value, 2)
+            except Exception as e:
+                logger.warning("Failed to compute PnL from local positions: %s", e)
 
         return result
 
@@ -365,7 +394,11 @@ class ClawBotRPC:
 
     @staticmethod
     async def _rpc_trading_dashboard() -> dict:
-        """盈利仪表盘数据：图表+资产+连接状态"""
+        """盈利仪表盘数据：图表+资产+连接状态
+
+        修复: IBKR 离线时从本地持仓+yfinance 获取资产列表，
+        避免 dashboard 永远返回空 assets 和 value=0。
+        """
         from src.broker_selector import ibkr
         from src.trading_journal import journal
 
@@ -395,6 +428,21 @@ class ClawBotRPC:
                         )
             except Exception as e:
                 logger.debug("[RPC] IBKR 持仓查询失败: %s", e)
+
+            # 兜底: IBKR 离线时从本地持仓获取资产列表（复用 _rpc_trading_positions 含 yfinance 价格）
+            if not assets:
+                try:
+                    positions_data = await ClawBotRPC._rpc_trading_positions()
+                    for pos in positions_data.get("positions", []):
+                        market_value = pos.get("market_value", 0)
+                        pnl = pos.get("unrealized_pnl", 0)
+                        assets.append({
+                            "name": pos.get("symbol", "Unknown"),
+                            "value": round(float(market_value), 2),
+                            "pnl": round(float(pnl), 2),
+                        })
+                except Exception as e:
+                    logger.debug("[RPC] 本地持仓查询失败: %s", e)
 
             # 用真实交易日志生成净值曲线，避免前端长期看到空图
             try:
@@ -447,14 +495,36 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_trading_system_status() -> dict:
-        """Get auto-trading system status (risk manager, pipeline, etc.)."""
+        """Get auto-trading system status (risk manager, pipeline, etc.).
+
+        修复: get_system_status() 返回的是格式化字符串而非 dict，
+        需要包装为 dict 结构，并提取关键状态字段。
+        """
         from src.trading_system import get_system_status
 
         try:
-            return get_system_status() or {}
+            raw = get_system_status()
+            # get_system_status 返回字符串（用于 Telegram 展示），包装为 dict
+            if isinstance(raw, dict):
+                return raw
+            if isinstance(raw, str):
+                # 解析字符串中的关键信息
+                text = raw.strip()
+                if not text or text == "交易系统未初始化":
+                    return {
+                        "status": "offline",
+                        "status_text": text or "交易系统未初始化",
+                        "initialized": False,
+                    }
+                return {
+                    "status": "running",
+                    "status_text": text,
+                    "initialized": True,
+                }
+            return {"status": "unknown"}
         except Exception as e:
             logger.warning("Failed to get trading system status: %s", e)
-            return {}
+            return {"status": "error", "error": str(e)}
 
     # ──────────────────────────────────────────────
     #  Trading — AI Team Vote
@@ -707,11 +777,16 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_analytics(days: int = 7) -> dict:
-        """Get analytics data used by the desktop social dashboard."""
-        try:
-            from src.bot.globals import execution_hub
+        """Get analytics data used by the desktop social dashboard.
 
-            report = execution_hub.get_post_performance_report(days=days) or {}
+        修复: 避免从 src.bot.globals 导入 execution_hub（可能因循环依赖失败），
+        直接调用底层的 content_pipeline.get_post_performance_report。
+        """
+        try:
+            from src.execution.social.content_pipeline import get_post_performance_report
+            from src.execution.social.drafts import _draft_store
+
+            report = get_post_performance_report(days=days, draft_store=_draft_store) or {}
             by_platform = report.get("by_platform", {}) or {}
             top_posts = report.get("top_posts", []) or []
 
