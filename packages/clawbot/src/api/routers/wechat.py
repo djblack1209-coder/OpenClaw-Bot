@@ -15,6 +15,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/wechat")
 
 
+# ── 微信对话记忆缓存 ──
+# 每个用户保留最近 10 条消息，30 分钟无活动自动过期
+_wechat_memory: dict[str, dict] = {}
+_MEMORY_TTL = 1800  # 30 分钟
+_MAX_MESSAGES = 10
+
+
+def _get_user_history(user_id: str) -> list[dict]:
+    """获取用户的对话历史，过期则清空。"""
+    entry = _wechat_memory.get(user_id)
+    if not entry:
+        return []
+    if time.time() - entry["last_active"] > _MEMORY_TTL:
+        del _wechat_memory[user_id]
+        return []
+    return list(entry["messages"])
+
+
+def _add_to_history(user_id: str, role: str, content: str) -> None:
+    """追加一条消息到用户历史。"""
+    if user_id not in _wechat_memory:
+        _wechat_memory[user_id] = {"messages": [], "last_active": time.time()}
+    entry = _wechat_memory[user_id]
+    entry["messages"].append({"role": role, "content": content})
+    entry["last_active"] = time.time()
+    # 保留最近 N 条
+    if len(entry["messages"]) > _MAX_MESSAGES:
+        entry["messages"] = entry["messages"][-_MAX_MESSAGES:]
+
+
 class WeChatIncomingRequest(BaseModel):
     """微信云端转发的消息体。"""
 
@@ -422,17 +452,22 @@ def _translate_key(key: str) -> str:
     return translations.get(key, key)
 
 
-async def _generate_wechat_reply(text: str) -> str | None:
-    """微信场景走轻量 LLM 链路，避免完整 Brain 链路响应过慢。"""
+async def _generate_wechat_reply(text: str, history: list[dict] | None = None) -> str | None:
+    """微信场景走轻量 LLM 链路，带对话记忆，避免完整 Brain 链路响应过慢。"""
     try:
         from src.litellm_router import free_pool
 
+        messages: list[dict] = [
+            {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答用户的问题。"},
+        ]
+        # 注入对话历史（如有）
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": text})
+
         response = await free_pool.acompletion(
             model_family="qwen",
-            messages=[
-                {"role": "system", "content": "你是 OpenClaw AI 助手。用中文简洁友好地回答用户的问题。"},
-                {"role": "user", "content": text},
-            ],
+            messages=messages,
             max_tokens=500,
         )
         llm_text = response.choices[0].message.content or ""
@@ -463,6 +498,11 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
         # 特殊处理: 100 = 帮助菜单
         if num == 100:
             return WeChatIncomingResponse(reply=_build_full_help())
+        # 101 = 清空对话记忆
+        if num == 101:
+            if from_user in _wechat_memory:
+                del _wechat_memory[from_user]
+            return WeChatIncomingResponse(reply="✅ 对话记忆已清空")
         reply = await _execute_numbered_cmd(num, arg)
         elapsed = round(time.time() - start, 2)
         logger.info("[微信] 命令 %d 执行 (%ss): %s...", num, elapsed, reply[:50])
@@ -472,10 +512,15 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
     if text.lower() in ("/start", "你好", "hi", "hello", "菜单", "帮助", "help"):
         return WeChatIncomingResponse(reply=_build_welcome_message())
 
-    # ── 3. LLM 对话 ──
-    reply = await _generate_wechat_reply(text)
+    # ── 3. LLM 对话（带对话记忆）──
+    history = _get_user_history(from_user)
+    reply = await _generate_wechat_reply(text, history=history)
     if not reply:
         reply = "抱歉，我暂时没能理解你的意思。换个方式再试试？"
+    else:
+        # 对话成功 → 记录用户消息和助手回复到历史
+        _add_to_history(from_user, "user", text)
+        _add_to_history(from_user, "assistant", reply)
 
     reply = _strip_g4f_ads(reply)
     elapsed = round(time.time() - start, 2)
