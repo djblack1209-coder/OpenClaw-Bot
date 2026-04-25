@@ -34,6 +34,7 @@ def ping():
 
 
 @router.get("/perf")
+@router.get("/system/perf")
 def perf_metrics():
     """获取性能度量指标 — 系统资源 + API 延迟统计（同时返回前端期望的扁平字段）"""
     try:
@@ -154,6 +155,24 @@ async def daily_brief():
             }
         except Exception as e:
             logger.warning("简报指标收集失败: %s", e)
+
+        # 兜底：如果 portfolio_pnl 仍为 0，尝试从 RPC 交易接口获取真实数据
+        if not result["metrics"].get("portfolio_pnl"):
+            try:
+                pnl_data = await ClawBotRPC._rpc_trading_pnl()
+                if pnl_data:
+                    result["metrics"]["portfolio_pnl"] = pnl_data.get("total_pnl", 0)
+            except Exception as e:
+                logger.debug("简报兜底获取 PnL 失败: %s", e)
+
+        if not result["metrics"].get("positions_count"):
+            try:
+                pos_data = await ClawBotRPC._rpc_trading_positions()
+                if pos_data:
+                    positions = pos_data.get("positions", [])
+                    result["metrics"]["positions_count"] = len(positions) if isinstance(positions, list) else 0
+            except Exception as e:
+                logger.debug("简报兜底获取持仓数失败: %s", e)
 
         # 各模块状态
         try:
