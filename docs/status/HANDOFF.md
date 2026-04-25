@@ -1,40 +1,54 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-25
+> 最后更新: 2026-04-26
 
 ---
 
-## [2026-04-25 晚] 遗留任务清零 Session
+## [2026-04-26] 遗留任务清零 + 腾讯云部署
 
 ### 本次完成了什么
-- 重启 clawbot 服务并验证全部 5 个后端修复生效
-  - PnL: 0 → $3,790.14 ✅
-  - Dashboard: value=0 → QQQ=$16,597 SPY=$31,413 ✅
-  - Indices: price=0 → S&P 500=$7,165.08 ✅
-  - System: "unknown" → "running" ✅
-  - Social: import error → 正常 ✅
-- 修复 PnL 兜底条件（IBKR 在线但 get_account_summary 失败时也走兜底）
-- 修复 Dashboard assets 重复问题（兜底前先 clear 旧空数据）
-- CookieCloud 311 次失败修复（根因: 服务器离线 + 无退避，已加指数退避 300→1800s）
-- Chrome 浏览器停止 + 新内存参数待下次启动生效
-- Tauri 桌面端通知接入（服务状态变化时触发 macOS 通知）
-- 微信对话记忆（每用户 10 条上下文，30 分钟 TTL）
+
+**后端修复验证（全部 5 个已通过实测）**
+- PnL: $0 → **$3,790.14** (account_value=$48,010.36)
+- Dashboard: value=0 → QQQ=**$16,597** SPY=**$31,413** (修复了重复数据)
+- Indices: price=0 → S&P 500=**$7,165.08** (+0.8%)
+- System: "unknown" → **"running"** + IBKR 已连接
+- Social: import error → **正常**
+
+**PnL/Dashboard 深层修复**
+- 兜底条件改为: IBKR 在线但 get_account_summary 失败时也走持仓计算
+- Dashboard assets.clear() 防止空值和真实值重复
+
+**CookieCloud 修复**
+- 根因: 服务器 127.0.0.1:8088 离线 + 无退避策略
+- 修复: 指数退避 300→600→1200→1800秒
+
+**腾讯云微信部署**
+- 编号命令: 3位数字→转发 Mac 后端 API (通过反向隧道 28790)
+- 对话记忆: 10条/用户, 30分钟 TTL
+- 帮助消息: 编号快查表
+- SESSION_PAUSE_S: 3600→60 秒
+
+**其他**
+- Tauri 桌面通知接入
+- 微信本地端对话记忆
 
 ### 未完成的工作
-- 微信端部署到腾讯云（编号命令+记忆功能需同步）
-- Chrome V8 128MB 实测（浏览器下次启动后观察是否有页面崩溃）
-- CookieCloud 服务器本身需要启动（127.0.0.1:8088 当前离线）
+- iLink session 过期: 需要在微信端重新发起与 bot 的会话
+- Chrome V8 128MB 实测: 下次社交浏览器启动后观察
+- CookieCloud 服务器启动: 127.0.0.1:8088 仍离线
 
 ### 需要注意的坑
-- 每次改 Python 后端代码需要重启 clawbot 才能生效
-- 微信 wechat.py 的编号命令走 HTTP self-call 到 localhost:18790
-- Dashboard chart_data 仍为空（需要有交易历史才能生成净值曲线）
+- Python 后端改代码后需重启 clawbot (pkill -f multi_main && nohup .venv312/bin/python multi_main.py &)
+- 腾讯云微信接收器: `/opt/openclaw-wechat/wechat_receiver.py`
+- 反向隧道: autossh 本地 18790 → 云端 28790 (自动保活)
+- Dashboard chart_data 为空 — 需有交易历史才有净值曲线
 
 ### 当前系统状态
-- 后端: ✅ 运行中，所有修复已生效
+- 后端: ✅ 运行中, 所有修复已生效
+- 微信: ✅ 已部署新代码, iLink session 待恢复
 - 测试: 1486 passed, 0 failed
-- TypeScript: 0 errors, Rust: cargo check passed
-- 磁盘: 3.9 GB（已清理）
+- 磁盘: 3.9 GB
 - 远程: 已同步
 
 ---
