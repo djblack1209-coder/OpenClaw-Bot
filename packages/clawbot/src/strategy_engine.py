@@ -247,7 +247,9 @@ class RSIMomentumStrategy(BaseStrategy):
 
     def _calc_rsi(self, data: MarketData) -> float:
         """计算 RSI — 优先 pandas-ta（Wilder 标准），降级手动 SMA-RSI"""
-        if HAS_PANDAS_TA:
+        ta, has_ta = _import_pandas_ta()
+        if has_ta:
+            pd = _import_pandas()
             df = data.to_dataframe()
             rsi_series = ta.rsi(df["close"], length=self.period)
             val = rsi_series.iloc[-1]
