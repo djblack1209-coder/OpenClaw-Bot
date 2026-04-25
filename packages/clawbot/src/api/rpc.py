@@ -363,8 +363,10 @@ class ClawBotRPC:
         except Exception as e:
             logger.warning("Failed to get IBKR account summary: %s", e)
 
-        # ── 兜底: IBKR 离线且 journal 没有 PnL 数据时，从本地持仓计算未实现盈亏 ──
-        if not ibkr_connected and result["total_pnl"] == 0.0:
+        # ── 兜底: 无论 IBKR 是否连接，只要 account_value 和 total_pnl 都为 0，就从持仓计算 ──
+        # 场景1: IBKR 离线 → ibkr_connected=False
+        # 场景2: IBKR 在线但 get_account_summary 失败(event loop 冲突) → 数据全零
+        if result["account_value"] == 0.0 and result["total_pnl"] == 0.0:
             try:
                 # 复用 _rpc_trading_positions 获取持仓（含 yfinance 实时价格）
                 positions_data = await ClawBotRPC._rpc_trading_positions()
@@ -429,8 +431,9 @@ class ClawBotRPC:
             except Exception as e:
                 logger.debug("[RPC] IBKR 持仓查询失败: %s", e)
 
-            # 兜底: IBKR 离线时从本地持仓获取资产列表（复用 _rpc_trading_positions 含 yfinance 价格）
-            if not assets:
+            # 兜底: assets 为空或 value 全零时，从 _rpc_trading_positions 获取（含 yfinance 价格）
+            has_real_values = any(a.get("value", 0) > 0 for a in assets)
+            if not assets or not has_real_values:
                 try:
                     positions_data = await ClawBotRPC._rpc_trading_positions()
                     for pos in positions_data.get("positions", []):
