@@ -3,7 +3,7 @@
  * 12 列 CSS Grid 布局，玻璃卡片 + 终端美学
  * 所有数据来自后端 API，30 秒自动刷新
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Power,
@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { toast } from '@/lib/notify';
 import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -329,12 +330,8 @@ export function ControlCenter() {
     }
   }, [buildSwitches, t]);
 
-  /* —— 初始加载 + 30 秒自动刷新 —— */
-  useEffect(() => {
-    fetchAll();
-    const timer = setInterval(() => fetchAll(true), AUTO_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [fetchAll]);
+  /* 使用可见性感知轮询，仅在总控页激活时刷新数据 */
+  useActivePagePolling('control', fetchAll, AUTO_REFRESH_MS);
 
   /* —— 手动刷新 —— */
   const handleRefresh = async () => {

@@ -24,6 +24,7 @@ import { toast } from '@/lib/notify';
 import { useLanguage } from '../../i18n';
 import type { SystemInfo } from '../../lib/tauri-core';
 import { EmptyState } from '../shared/EmptyState';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -255,16 +256,17 @@ export default function DevPanel() {
     }
   }, [runApiTest]);
 
+  /* 使用可见性感知轮询，仅在 DevPanel 页激活时自动刷新 */
+  useActivePagePolling('devpanel', fetchData, REFRESH_INTERVAL_MS);
+
+  /* 首次加载环境变量（非轮询，只拉一次） */
   useEffect(() => {
     mountedRef.current = true;
-    fetchData();
     fetchEnvVars();
-    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
     return () => {
       mountedRef.current = false;
-      clearInterval(timer);
     };
-  }, [fetchData, fetchEnvVars]);
+  }, [fetchEnvVars]);
 
   return (
     <div className="h-full overflow-y-auto scroll-container">
