@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { PageType, EnvironmentStatus } from '../App';
 import type { ServiceStatus } from '../lib/tauri';
+import { trackClick, trackPageLoad } from '../lib/qa-tracker';
 
 /**
  * 导航守卫回调：页面切换前调用，返回 true 允许切换，返回 false 阻止切换。
@@ -54,7 +55,12 @@ export const useAppStore = create<AppState>()(
       navigationGuard: null,
 
       /* Actions */
-      setCurrentPage: (page) => set({ currentPage: page }),
+      setCurrentPage: (page) => {
+        trackClick(`nav:${page}`);
+        // 记录页面切换时间（用当前时间戳作为起点，下次切换时可对比）
+        trackPageLoad(page, 0);
+        set({ currentPage: page });
+      },
       setOnboardingComplete: (complete) => {
         set({ onboardingComplete: complete });
       },

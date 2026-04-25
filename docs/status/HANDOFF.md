@@ -4,6 +4,38 @@
 
 ---
 
+## [2026-04-25 PM] 全量审计 + 大扫除 Session
+
+### 本次完成了什么
+- 全量客户端审计（68 API端点 + 30 前端页面 + 100 Telegram命令）
+- 修复 17 个 Bug（5 后端数据 + 5 前端 + 2 闲鱼 + 4 微信 + 1 Tauri）
+- 性能优化：Chrome V8 128MB + 懒加载 3 模块
+- 微信端编号命令系统（56 个命令 + 欢迎消息）
+- 项目大扫除：11GB → 3.9GB，删除 IDE 配置/空目录/夜间审计/重复文档
+- 浓缩 R01-R12 审计报告为单一 AUDIT_HISTORY.md
+- 新增黑五关键词扫描器（/deals bf VPS）
+- QA 交互追踪器（点击/等待时间/错误收集）
+
+### 未完成的工作
+- 服务重启后验证所有后端修复（PnL/行情/社媒分析）
+- Chrome V8 128MB 实测验证（重启后观察）
+- CookieCloud 311 次失败根因排查
+- 微信端端到端测试（需在 Tencent Cloud 部署新代码）
+
+### 需要注意的坑
+- 运行中的 Python 进程用旧代码，需 restart 生效
+- wechat.py 的编号命令用 HTTP self-call，依赖 API 端口 18790
+- Chrome 浏览器需手动 kill 重启才能用新内存参数
+
+### 当前系统状态
+- 测试：1486 passed, 0 failed
+- TypeScript: 0 errors
+- Rust: cargo check passed
+- 磁盘：3.9 GB（从 11 GB 清理）
+- 远程：已同步 push
+
+---
+
 ## [2026-04-25] 全量审计与优化 Sprint + 文档治理
 
 ### 本次完成了什么
@@ -58,4 +90,3 @@
 - 文档: CHANGELOG/HANDOFF/HEALTH 已同步
 
 ---
-
