@@ -4,7 +4,7 @@
  * 尝试从后端获取真实交易 P&L 和 AI 成本数据，无数据源的模块诚实标注"暂无数据源"
  * 30 秒自动刷新
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign,
@@ -21,6 +21,7 @@ import { useLanguage } from '../../i18n';
 import { api } from '../../lib/api';
 import { toast } from '@/lib/notify';
 import { EmptyState } from '../shared/EmptyState';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -152,15 +153,8 @@ export function Money() {
     }
   }, [t]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    fetchData();
-    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(timer);
-    };
-  }, [fetchData]);
+  /* 使用可见性感知轮询，仅在盈利页激活时刷新数据 */
+  useActivePagePolling('money', fetchData, REFRESH_INTERVAL_MS);
 
   /* P&L 历史图表数据 */
   const pnlHistory = pnlData?.history ?? [];

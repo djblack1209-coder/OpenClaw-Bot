@@ -215,11 +215,8 @@ export function AIConfig() {
     }
   }, [t]);
 
-  useEffect(() => {
-    fetchData();
-    const timer = setInterval(() => fetchData(true), 30_000);
-    return () => clearInterval(timer);
-  }, [fetchData]);
+  /* 使用可见性感知轮询，仅在 AI 配置页激活时刷新数据 */
+  useActivePagePolling('aiconfig', fetchData, 30_000);
 
   /* ── 渠道启用/禁用切换 ── */
   const handleToggle = useCallback(async (channelId: number) => {

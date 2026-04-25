@@ -23,6 +23,7 @@ import { api } from '../../lib/api';
 import { toast } from '@/lib/notify';
 import { useLanguage } from '../../i18n';
 import { EmptyState } from '../shared/EmptyState';
+import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -209,19 +210,19 @@ export function Dev() {
     }
   }, [t]);
 
+  /* 使用可见性感知轮询，仅在 Dev 页激活时自动刷新系统概览 */
+  useActivePagePolling('dev', fetchData, REFRESH_INTERVAL_MS);
+
+  /* 首次加载 Git/健康/依赖数据（非轮询，只拉一次） */
   useEffect(() => {
     mountedRef.current = true;
-    // 并行拉取所有数据
-    fetchData();
     fetchGitLog();
     fetchHealth();
     fetchDeps();
-    const timer = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
     return () => {
       mountedRef.current = false;
-      clearInterval(timer);
     };
-  }, [fetchData, fetchGitLog, fetchHealth, fetchDeps]);
+  }, [fetchGitLog, fetchHealth, fetchDeps]);
 
   /* 概览统计 — 来自真实 API */
   const overviewStats = statusError
