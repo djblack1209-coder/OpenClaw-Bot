@@ -47,7 +47,7 @@ describe("validatePrivateKey fuzz", () => {
     });
 
     it("rejects RTL override", () => {
-      const withRtl = "\u202E${TEST_PRIVATE_KEY_HEX}";
+      const withRtl = "\u202E" + "0123456789abcdef".repeat(4);
       expect(() => validatePrivateKey(withRtl)).toThrow();
     });
 
@@ -191,13 +191,13 @@ describe("normalizePubkey fuzz", () => {
   describe("case sensitivity", () => {
     it("normalizes uppercase to lowercase", () => {
       const upper = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
-      const lower = "${TEST_PRIVATE_KEY_HEX}";
+      const lower = "0123456789abcdef".repeat(4);
       expect(normalizePubkey(upper)).toBe(lower);
     });
 
     it("normalizes mixed case to lowercase", () => {
       const mixed = "0123456789AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789AbCdEf";
-      const lower = "${TEST_PRIVATE_KEY_HEX}";
+      const lower = "0123456789abcdef".repeat(4);
       expect(normalizePubkey(mixed)).toBe(lower);
     });
   });

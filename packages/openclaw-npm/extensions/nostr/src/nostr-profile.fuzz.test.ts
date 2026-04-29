@@ -7,9 +7,8 @@ import {
   sanitizeProfileForDisplay,
 } from "./nostr-profile.js";
 
-// Test private key
-const TEST_HEX_KEY = "${TEST_PRIVATE_KEY_HEX}";
-const TEST_SK = new Uint8Array(TEST_HEX_KEY.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
+const TEST_HEX_VALUE = "0123456789abcdef".repeat(4);
+const TEST_SK = new Uint8Array(TEST_HEX_VALUE.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
 
 // ============================================================================
 // Unicode Attack Vectors

@@ -1,6 +1,6 @@
 # CHANGELOG
 
-> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
+> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/update-protocol.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
 ## 按月查看
@@ -11,6 +11,76 @@
 ---
 
 ## 最近更新（2026-04）
+
+## [2026-04-28] Git 全历史密钥扫描 + 本地风险清理
+> 领域: `infra` | `docs`
+> 影响模块: Git history, .gitignore, security scan, local runtime cache
+> 关联问题: HI-817, HI-818, HI-819
+
+### 变更内容
+- 安全: 使用 gitleaks、trufflehog、detect-secrets 对当前工作区、本机 ignored 文件和 1217 个 Git 历史提交做密钥扫描。
+- 安全: 确认公开历史曾包含 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json`、sqlite 数据库等敏感痕迹；记录为待轮换密钥 + 待历史重写。
+- 安全: 从 Git 索引移除 `.openclaw/iflow_key_timestamp.json`, 并补充根 `.gitignore` 规则。
+- 安全: 执行 `git-filter-repo` 全历史重写, 清除敏感配置、设备配对文件、数据库、`.env`、旧依赖、构建产物和样例凭据噪音。
+- 安全: 清理后 `gitleaks` Git 全历史扫描 0 命中, `trufflehog` Git 全历史扫描 0 verified / 0 unverified。
+- 清理: 删除可重建本地产物约 4.4GB，包括前端 `node_modules`、Tauri `target`、Python venv、子项目 venv、日志文件。
+- 清理: 删除本机浏览器 profile 中确认含 Gemini API key 痕迹的临时 LevelDB 日志。
+- Git: 运行 `git gc --prune=now`, 本地松散对象清零。
+- 文档: 新增密钥扫描报告, 更新 HEALTH 安全状态。
+
+### 文件变更
+- `.gitignore` — 增加 `.openclaw/iflow_key_timestamp.json` 与本地扫描报告忽略规则
+- `.openclaw/iflow_key_timestamp.json` — 从 Git 索引移除, 保留本机文件
+- `.pre-commit-config.yaml` — 移除已删除 `.secrets.baseline` 的依赖
+- `docs/reports/secret-scan-2026-04-28.md` — 新增全量密钥扫描报告
+- `docs/status/health.md` — 登记 HI-817/HI-818/HI-819
+- `docs/changelog.md` — 记录本次安全扫描与清理
+
+## [2026-04-27] Tauri 桌面端重新构建 + Makefile + iLink Session 修复
+> 领域: `frontend` | `infra` | `wechat` | `docs`
+> 影响模块: Makefile, wechat_receiver(云端), BUILD_GUIDE
+> 关联问题: HI-812, HI-816
+
+### 变更内容
+- 构建: 创建项目 Makefile，`make tauri-build` 一键清理+编译+安装+验证
+- 构建: 桌面端重新构建，OpenClaw.app 7.8MB 已安装到 /Applications
+- 构建: 清理旧版 OpenClaw.app 残留，确认无 OpenEverything.app 双版本
+- 云端: iLink Session 过期自动恢复 — 清空轮询游标强制重建 session
+- 云端: 诊断 errcode=-14 根因 — iLink bot token 在平台侧失效，需重新扫码
+- 文档: 新增 BUILD_GUIDE.md (构建铁律+快速构建+环境要求+常见问题)
+
+### 文件变更
+- `Makefile` — 新建，包含 tauri-build/dev/clean + backend-restart/test + cloud-sync
+- `docs/guides/BUILD_GUIDE.md` — 新建，桌面端构建必操作指南
+- `/opt/openclaw-wechat/wechat_receiver.py`(云端) — session 过期时清空 buf 游标
+
+## [2026-04-26] 全量桌面客户端审计 — 7项Bug修复 + 性能优化 + 三端对齐
+> 领域: `backend` | `frontend` | `wechat` | `infra`
+> 影响模块: world_monitor, broker_bridge, monitor, log_config, wechat, multi_main
+> 关联问题: HI-805~811
+
+### 变更内容
+- 后端: 金融指数全零修复(yfinance单个Ticker替代批量请求) + volume数据补全
+- 后端: IBKR accountSummary event loop冲突修复(accountSummary→accountSummaryAsync)
+- 后端: /monitor/extended超时修复(3个外部API改并发+缓存优先+20s超时保护)
+- 后端: loguru配置修复(rotation 10s→50MB) + 清理1800+旧日志文件(168MB)
+- 微信: 欢迎消息重写(完整功能速查+分区索引) + cmd_dashboard不可达修复(添加编号107)
+- 微信: cmd_iorders差异化格式化 + 完整帮助消息动态生成
+- 微信: cmd_status路径修复(/system/status→/status) + 12个命令新增API映射
+- 微信: 热点话题(300)专用格式化 + 全球情报(407)嵌套dict展开 + 执行简报(500)映射
+- 微信: 全市场扫描(205)改为需要参数 + 全球情报timeout提升至30s
+- 性能: Ollama模型常驻9.1GB修复(unload + KEEP_ALIVE=5m自动卸载)
+- 审计: Telegram 101命令全对齐 / 微信64命令映射完整 / 桌面端30页面覆盖
+- 审计: 全量命令验证 27/27 可用(25✅ 2⚠️数据空 0❌)
+- 测试: 1486 passed, 0 failed (零回归)
+- 云端: 腾讯云wechat_receiver.py同步(欢迎消息+帮助+服务重启)
+
+### 文件变更
+- `src/monitoring/world_monitor.py` — yfinance单个Ticker + volume + 超时25s + warning级别
+- `src/broker_bridge.py` — accountSummary→accountSummaryAsync
+- `src/api/routers/monitor.py` — extended端点并发+缓存+超时保护
+- `src/log_config.py` — loguru rotation改为50MB固定文件名
+- `src/api/routers/wechat.py` — 新增_format_intel/_format_topics + 12个API映射 + timeout差异化
 
 ## [2026-04-25] 全量审计与优化 Sprint
 > 领域: `backend` | `frontend` | `wechat`

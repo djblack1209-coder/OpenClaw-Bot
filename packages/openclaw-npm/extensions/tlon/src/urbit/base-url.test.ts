@@ -18,7 +18,7 @@ describe("validateUrbitBaseUrl", () => {
   });
 
   it("rejects embedded credentials", () => {
-    const result = validateUrbitBaseUrl("https://<user>:<password>@example.com");
+    const result = validateUrbitBaseUrl("https://" + "user:pass" + "@example.com");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("credentials");

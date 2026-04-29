@@ -69,9 +69,11 @@ packages/clawbot/.clawbot/
 packages/clawbot/kiro-gateway/.venv/
 
 # Secrets - NEVER commit
+.secrets.baseline
 .openclaw/openclaw.json
 .openclaw/.env
 .openclaw/openclaw.json.bak
+.openclaw/iflow_key_timestamp.json
 
 # 二进制分发包
 *.dmg
@@ -141,6 +143,13 @@ apps/OpenClaw.app/
 # === Git 备份（BFG 清理产物）===
 .git.backup/
 *.bfg-report/
+
+# === 密钥扫描本地报告（可能包含敏感上下文）===
+.secret-scan/
+secret-scan/
+gitleaks-report.*
+trufflehog-report.*
+detect-secrets-report.*
 
 # === 本地 Git worktrees ===
 .worktrees/

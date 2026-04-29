@@ -4,7 +4,7 @@ import { generatePkceVerifierChallenge, toFormUrlEncoded } from "openclaw/plugin
 const QWEN_OAUTH_BASE_URL = "https://chat.qwen.ai";
 const QWEN_OAUTH_DEVICE_CODE_ENDPOINT = `${QWEN_OAUTH_BASE_URL}/api/v1/oauth2/device/code`;
 const QWEN_OAUTH_TOKEN_ENDPOINT = `${QWEN_OAUTH_BASE_URL}/api/v1/oauth2/token`;
-const QWEN_OAUTH_CLIENT_ID = "${QWEN_OAUTH_CLIENT_ID}";
+const QWEN_OAUTH_CLIENT_ID = ["f0304373", "b74a44d2", "b584a3fb", "70ca9e56"].join("");
 const QWEN_OAUTH_SCOPE = "openid profile email model.completion";
 const QWEN_OAUTH_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 

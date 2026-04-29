@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { nostrPlugin } from "./channel.js";
 
+const TEST_NOSTR_HEX = "0123456789abcdef".repeat(4);
+
 describe("nostrPlugin", () => {
   describe("meta", () => {
     it("has correct id", () => {
@@ -45,7 +47,7 @@ describe("nostrPlugin", () => {
       const cfg = {
         channels: {
           nostr: {
-            privateKey: "${TEST_PRIVATE_KEY_HEX}",
+            privateKey: TEST_NOSTR_HEX,
           },
         },
       };
@@ -74,7 +76,7 @@ describe("nostrPlugin", () => {
         return;
       }
 
-      const hexPubkey = "${TEST_PRIVATE_KEY_HEX}";
+      const hexPubkey = TEST_NOSTR_HEX;
       expect(looksLikeId(hexPubkey)).toBe(true);
     });
 
@@ -94,7 +96,7 @@ describe("nostrPlugin", () => {
         return;
       }
 
-      const hexPubkey = "${TEST_PRIVATE_KEY_HEX}";
+      const hexPubkey = TEST_NOSTR_HEX;
       expect(normalize(`nostr:${hexPubkey}`)).toBe(hexPubkey);
     });
   });
@@ -120,7 +122,7 @@ describe("nostrPlugin", () => {
         return;
       }
 
-      const hexPubkey = "${TEST_PRIVATE_KEY_HEX}";
+      const hexPubkey = TEST_NOSTR_HEX;
       expect(normalize(`nostr:${hexPubkey}`)).toBe(hexPubkey);
     });
   });
