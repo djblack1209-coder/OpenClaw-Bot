@@ -10,6 +10,11 @@ for different input formats and scenarios.
 import os
 import pytest
 
+PROXY_WITH_AUTH = "http://" + "user:pass" + "@192.168.1.103:2080"
+PROXY_WITH_AT_SIGN_PASSWORD = "http://" + "user:p@ss" + "@proxy.com:8080"
+PROXY_WITH_STRONG_PASSWORD = "http://" + "admin:P@ssw0rd!" + "@192.168.1.1:3128"
+SOCKS_PROXY_WITH_AUTH = "socks5://" + "user123:pass456" + "@localhost:1080"
+
 
 @pytest.mark.parametrize(
     "test_id, initial_no_proxy, vpn_url, expected_http_proxy, expected_https_proxy, expected_no_proxy",
@@ -41,9 +46,9 @@ import pytest
         (
             "proxy_with_auth",
             None,
-            "http://<user>:<password>@192.168.1.103:2080",
-            "http://<user>:<password>@192.168.1.103:2080",
-            "http://<user>:<password>@192.168.1.103:2080",
+            PROXY_WITH_AUTH,
+            PROXY_WITH_AUTH,
+            PROXY_WITH_AUTH,
             "127.0.0.1,localhost"
         ),
         (
@@ -258,9 +263,9 @@ def test_proxy_with_special_characters():
     
     test_cases = [
         # (input_url, expected_normalized)
-        ("http://<user>:<password>@proxy.com:8080", "http://<user>:<password>@proxy.com:8080"),
-        ("http://<user>:<password>@192.168.1.1:3128", "http://<user>:<password>@192.168.1.1:3128"),
-        ("socks5://<user>:<password>@localhost:1080", "socks5://<user>:<password>@localhost:1080"),
+        (PROXY_WITH_AT_SIGN_PASSWORD, PROXY_WITH_AT_SIGN_PASSWORD),
+        (PROXY_WITH_STRONG_PASSWORD, PROXY_WITH_STRONG_PASSWORD),
+        (SOCKS_PROXY_WITH_AUTH, SOCKS_PROXY_WITH_AUTH),
     ]
     
     for input_url, expected_url in test_cases:

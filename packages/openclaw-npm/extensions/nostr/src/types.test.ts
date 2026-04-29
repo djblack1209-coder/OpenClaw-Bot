@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { listNostrAccountIds, resolveDefaultNostrAccountId, resolveNostrAccount } from "./types.js";
 
-const TEST_PRIVATE_KEY = "${TEST_PRIVATE_KEY_HEX}";
+const TEST_NOSTR_HEX = "0123456789abcdef".repeat(4);
 
 describe("listNostrAccountIds", () => {
   it("returns empty array when not configured", () => {
@@ -17,7 +17,7 @@ describe("listNostrAccountIds", () => {
   it("returns default when privateKey is configured", () => {
     const cfg = {
       channels: {
-        nostr: { privateKey: TEST_PRIVATE_KEY },
+        nostr: { privateKey: TEST_NOSTR_HEX },
       },
     };
     expect(listNostrAccountIds(cfg)).toEqual(["default"]);
@@ -26,7 +26,7 @@ describe("listNostrAccountIds", () => {
   it("returns configured defaultAccount when privateKey is configured", () => {
     const cfg = {
       channels: {
-        nostr: { privateKey: TEST_PRIVATE_KEY, defaultAccount: "work" },
+        nostr: { privateKey: TEST_NOSTR_HEX, defaultAccount: "work" },
       },
     };
     expect(listNostrAccountIds(cfg)).toEqual(["work"]);
@@ -37,7 +37,7 @@ describe("resolveDefaultNostrAccountId", () => {
   it("returns default when configured", () => {
     const cfg = {
       channels: {
-        nostr: { privateKey: TEST_PRIVATE_KEY },
+        nostr: { privateKey: TEST_NOSTR_HEX },
       },
     };
     expect(resolveDefaultNostrAccountId(cfg)).toBe("default");
@@ -51,7 +51,7 @@ describe("resolveDefaultNostrAccountId", () => {
   it("prefers configured defaultAccount when present", () => {
     const cfg = {
       channels: {
-        nostr: { privateKey: TEST_PRIVATE_KEY, defaultAccount: "work" },
+        nostr: { privateKey: TEST_NOSTR_HEX, defaultAccount: "work" },
       },
     };
     expect(resolveDefaultNostrAccountId(cfg)).toBe("work");
@@ -63,7 +63,7 @@ describe("resolveNostrAccount", () => {
     const cfg = {
       channels: {
         nostr: {
-          privateKey: TEST_PRIVATE_KEY,
+          privateKey: TEST_NOSTR_HEX,
           name: "Test Bot",
           relays: ["wss://test.relay"],
           dmPolicy: "pairing" as const,
@@ -76,7 +76,7 @@ describe("resolveNostrAccount", () => {
     expect(account.name).toBe("Test Bot");
     expect(account.enabled).toBe(true);
     expect(account.configured).toBe(true);
-    expect(account.privateKey).toBe(TEST_PRIVATE_KEY);
+    expect(account.privateKey).toBe(TEST_NOSTR_HEX);
     expect(account.publicKey).toMatch(/^[0-9a-f]{64}$/);
     expect(account.relays).toEqual(["wss://test.relay"]);
   });
@@ -99,7 +99,7 @@ describe("resolveNostrAccount", () => {
       channels: {
         nostr: {
           enabled: false,
-          privateKey: TEST_PRIVATE_KEY,
+          privateKey: TEST_NOSTR_HEX,
         },
       },
     };
@@ -112,7 +112,7 @@ describe("resolveNostrAccount", () => {
   it("handles custom accountId parameter", () => {
     const cfg = {
       channels: {
-        nostr: { privateKey: TEST_PRIVATE_KEY },
+        nostr: { privateKey: TEST_NOSTR_HEX },
       },
     };
     const account = resolveNostrAccount({ cfg, accountId: "custom" });
@@ -124,7 +124,7 @@ describe("resolveNostrAccount", () => {
     const cfg = {
       channels: {
         nostr: {
-          privateKey: TEST_PRIVATE_KEY,
+          privateKey: TEST_NOSTR_HEX,
           allowFrom: ["npub1test", "0123456789abcdef"],
         },
       },
@@ -152,7 +152,7 @@ describe("resolveNostrAccount", () => {
     const cfg = {
       channels: {
         nostr: {
-          privateKey: TEST_PRIVATE_KEY,
+          privateKey: TEST_NOSTR_HEX,
           name: "Bot",
           enabled: true,
           relays: ["wss://relay1", "wss://relay2"],
@@ -164,7 +164,7 @@ describe("resolveNostrAccount", () => {
     const account = resolveNostrAccount({ cfg });
 
     expect(account.config).toEqual({
-      privateKey: TEST_PRIVATE_KEY,
+      privateKey: TEST_NOSTR_HEX,
       name: "Bot",
       enabled: true,
       relays: ["wss://relay1", "wss://relay2"],

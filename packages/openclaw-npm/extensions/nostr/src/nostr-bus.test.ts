@@ -7,25 +7,24 @@ import {
   pubkeyToNpub,
 } from "./nostr-bus.js";
 
-// Test private key (DO NOT use in production - this is a known test key)
-const TEST_HEX_KEY = "${TEST_PRIVATE_KEY_HEX}";
+const TEST_HEX_VALUE = "0123456789abcdef".repeat(4);
 const TEST_NSEC = "nsec1qypqxpq9qtpqscx7peytzfwtdjmcv0mrz5rjpej8vjppfkqfqy8skqfv3l";
 
 describe("validatePrivateKey", () => {
   describe("hex format", () => {
     it("accepts valid 64-char hex key", () => {
-      const result = validatePrivateKey(TEST_HEX_KEY);
+      const result = validatePrivateKey(TEST_HEX_VALUE);
       expect(result).toBeInstanceOf(Uint8Array);
       expect(result.length).toBe(32);
     });
 
     it("accepts lowercase hex", () => {
-      const result = validatePrivateKey(TEST_HEX_KEY.toLowerCase());
+      const result = validatePrivateKey(TEST_HEX_VALUE.toLowerCase());
       expect(result).toBeInstanceOf(Uint8Array);
     });
 
     it("accepts uppercase hex", () => {
-      const result = validatePrivateKey(TEST_HEX_KEY.toUpperCase());
+      const result = validatePrivateKey(TEST_HEX_VALUE.toUpperCase());
       expect(result).toBeInstanceOf(Uint8Array);
     });
 
@@ -36,23 +35,23 @@ describe("validatePrivateKey", () => {
     });
 
     it("trims whitespace", () => {
-      const result = validatePrivateKey(`  ${TEST_HEX_KEY}  `);
+      const result = validatePrivateKey(`  ${TEST_HEX_VALUE}  `);
       expect(result).toBeInstanceOf(Uint8Array);
     });
 
     it("trims newlines", () => {
-      const result = validatePrivateKey(`${TEST_HEX_KEY}\n`);
+      const result = validatePrivateKey(`${TEST_HEX_VALUE}\n`);
       expect(result).toBeInstanceOf(Uint8Array);
     });
 
     it("rejects 63-char hex (too short)", () => {
-      expect(() => validatePrivateKey(TEST_HEX_KEY.slice(0, 63))).toThrow(
+      expect(() => validatePrivateKey(TEST_HEX_VALUE.slice(0, 63))).toThrow(
         "Private key must be 64 hex characters",
       );
     });
 
     it("rejects 65-char hex (too long)", () => {
-      expect(() => validatePrivateKey(TEST_HEX_KEY + "0")).toThrow(
+      expect(() => validatePrivateKey(TEST_HEX_VALUE + "0")).toThrow(
         "Private key must be 64 hex characters",
       );
     });
@@ -71,7 +70,7 @@ describe("validatePrivateKey", () => {
     });
 
     it("rejects key with 0x prefix", () => {
-      expect(() => validatePrivateKey("0x" + TEST_HEX_KEY)).toThrow(
+      expect(() => validatePrivateKey("0x" + TEST_HEX_VALUE)).toThrow(
         "Private key must be 64 hex characters",
       );
     });
@@ -93,7 +92,7 @@ describe("validatePrivateKey", () => {
 describe("isValidPubkey", () => {
   describe("hex format", () => {
     it("accepts valid 64-char hex pubkey", () => {
-      const validHex = "${TEST_PRIVATE_KEY_HEX}";
+      const validHex = "0123456789abcdef".repeat(4);
       expect(isValidPubkey(validHex)).toBe(true);
     });
 
@@ -108,7 +107,7 @@ describe("isValidPubkey", () => {
     });
 
     it("rejects 65-char hex", () => {
-      const longHex = "${TEST_PRIVATE_KEY_HEX}0";
+      const longHex = "0123456789abcdef".repeat(4) + "0";
       expect(isValidPubkey(longHex)).toBe(false);
     });
 
@@ -134,7 +133,7 @@ describe("isValidPubkey", () => {
     });
 
     it("handles whitespace-padded input", () => {
-      const validHex = "${TEST_PRIVATE_KEY_HEX}";
+      const validHex = "0123456789abcdef".repeat(4);
       expect(isValidPubkey(`  ${validHex}  `)).toBe(true);
     });
   });
@@ -149,7 +148,7 @@ describe("normalizePubkey", () => {
     });
 
     it("trims whitespace", () => {
-      const hex = "${TEST_PRIVATE_KEY_HEX}";
+      const hex = "0123456789abcdef".repeat(4);
       expect(normalizePubkey(`  ${hex}  `)).toBe(hex);
     });
 
@@ -161,14 +160,14 @@ describe("normalizePubkey", () => {
 
 describe("getPublicKeyFromPrivate", () => {
   it("derives public key from hex private key", () => {
-    const pubkey = getPublicKeyFromPrivate(TEST_HEX_KEY);
+    const pubkey = getPublicKeyFromPrivate(TEST_HEX_VALUE);
     expect(pubkey).toMatch(/^[0-9a-f]{64}$/);
     expect(pubkey.length).toBe(64);
   });
 
   it("derives consistent public key", () => {
-    const pubkey1 = getPublicKeyFromPrivate(TEST_HEX_KEY);
-    const pubkey2 = getPublicKeyFromPrivate(TEST_HEX_KEY);
+    const pubkey1 = getPublicKeyFromPrivate(TEST_HEX_VALUE);
+    const pubkey2 = getPublicKeyFromPrivate(TEST_HEX_VALUE);
     expect(pubkey1).toBe(pubkey2);
   });
 
@@ -179,20 +178,20 @@ describe("getPublicKeyFromPrivate", () => {
 
 describe("pubkeyToNpub", () => {
   it("converts hex pubkey to npub format", () => {
-    const hex = "${TEST_PRIVATE_KEY_HEX}";
+    const hex = "0123456789abcdef".repeat(4);
     const npub = pubkeyToNpub(hex);
     expect(npub).toMatch(/^npub1[a-z0-9]+$/);
   });
 
   it("produces consistent output", () => {
-    const hex = "${TEST_PRIVATE_KEY_HEX}";
+    const hex = "0123456789abcdef".repeat(4);
     const npub1 = pubkeyToNpub(hex);
     const npub2 = pubkeyToNpub(hex);
     expect(npub1).toBe(npub2);
   });
 
   it("normalizes uppercase hex first", () => {
-    const lower = "${TEST_PRIVATE_KEY_HEX}";
+    const lower = "0123456789abcdef".repeat(4);
     const upper = lower.toUpperCase();
     expect(pubkeyToNpub(lower)).toBe(pubkeyToNpub(upper));
   });

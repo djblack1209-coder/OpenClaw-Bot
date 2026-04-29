@@ -13,6 +13,7 @@ env/
 # 密钥和配置（绝不提交）
 config/.env
 config/.env.*
+!config/.env.example
 data/api_keys.json
 *.pem
 *.key

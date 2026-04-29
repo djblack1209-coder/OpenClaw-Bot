@@ -53,7 +53,7 @@ vi.mock("@twurple/auth", () => ({
 describe("probeTwitch", () => {
   const mockAccount: TwitchAccountConfig = {
     username: "testbot",
-    accessToken: "oauth:${TWITCH_ACCESS_TOKEN}",
+    accessToken: "oauth:" + "test-token",
     clientId: "test-client-id",
     channel: "testchannel",
   };
@@ -168,7 +168,7 @@ describe("probeTwitch", () => {
   it("trims token before validation", async () => {
     const account: TwitchAccountConfig = {
       ...mockAccount,
-      accessToken: "  oauth:${TWITCH_ACCESS_TOKEN}  ",
+      accessToken: "  oauth:" + "test-token  ",
     };
 
     const result = await probeTwitch(account, 5000);

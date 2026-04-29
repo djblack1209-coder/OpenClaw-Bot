@@ -32,5 +32,4 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
         exclude: '(\.env\.example|package-lock\.json|\.github/)$'

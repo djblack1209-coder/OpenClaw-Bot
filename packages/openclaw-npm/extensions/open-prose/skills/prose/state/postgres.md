@@ -197,7 +197,11 @@ For team collaboration or production:
 
 ```bash
 # Example: Neon
-echo "OPENPROSE_POSTGRES_URL=postgresql://ep-name.us-east-2.aws.neon.tech/neondb?sslmode=require" >> .prose/.env
+printf "%s\n" \
+  "PGUSER=your_user" \
+  "PGPASSWORD=your_password" \
+  "OPENPROSE_POSTGRES_URL=postgresql://ep-name.us-east-2.aws.neon.tech/neondb?sslmode=require" \
+  >> .prose/.env
 ```
 
 ---
@@ -505,7 +509,7 @@ Your output goes to PostgreSQL state.
 
 | Property | Value |
 |----------|-------|
-| Connection | `postgresql://host:5432/db` |
+| Connection | `postgresql://host:5432/db` (credentials from environment) |
 | Schema | `openprose` |
 | Run ID | `20260116-143052-a7b3c9` |
 | Binding | `research` |
@@ -535,7 +539,7 @@ Your output goes to PostgreSQL state.
 
 | Property | Value |
 |----------|-------|
-| Connection | `postgresql://host:5432/db` |
+| Connection | `postgresql://host:5432/db` (credentials from environment) |
 | Schema | `openprose` |
 | Run ID | `20260116-143052-a7b3c9` |
 | Binding | `result` |

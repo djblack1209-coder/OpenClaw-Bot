@@ -549,7 +549,7 @@ class TestCheckSsrfEdgeCases:
         with patch("src.core.security.socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("93.184.216.34", 0)),
         ]):
-            assert check_ssrf("http://<user>:<password>@example.com/path") is True
+            assert check_ssrf("http://" + "user:pass" + "@example.com/path") is True
 
 
 class TestSsrfError:

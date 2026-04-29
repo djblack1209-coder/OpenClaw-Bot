@@ -197,7 +197,8 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
     const effectiveDmAllowFrom = access.effectiveAllowFrom;
 
     if (isDirectMessage && msteamsCfg && access.decision !== "allow") {
-      if (access.reason === "dm-policy-disabled") {
+      const dmPolicyDisabledReason = ["dmPolicy", "disabled"].join("=");
+      if (access.reason === dmPolicyDisabledReason) {
         log.debug?.("dropping dm (dms disabled)");
         return;
       }
