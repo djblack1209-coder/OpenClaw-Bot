@@ -13,8 +13,8 @@
 
 ## [2026-05-01] 质量优化: 测试入口、RPC 去重与文档入口修正
 > 领域: `backend` | `infra` | `docs`
-> 影响模块: `Makefile`, `api/rpc`, `bot mixins`, `social adapters`, `docs`
-> 关联问题: HI-821, HI-822
+> 影响模块: `Makefile`, `api/rpc`, `bot mixins`, `social adapters`, `requirements-dev`, `docs`
+> 关联问题: HI-821, HI-822, HI-823
 
 ### 变更内容
 - 架构: 梳理后端主数据流，确认 API/Telegram 共享 `ClawBotRPC` 聚合层，优先优化共用热点。
@@ -25,7 +25,8 @@
 - 清理: 去掉命令聚合类、安全异常和 SDK 降级路径中的空占位语句，抽象策略/社媒适配器改为明确 `NotImplementedError`。
 - 文档: 同步 AGENTS/SOP/索引中的文档路径到当前真实文件名，修复旧归档链接和不存在的索引项。
 - 文档: 用 AST 扫描真实语法占位，剩余 64 个历史 `pass` 登记为 TD-004，后续按模块分批审查。
-- 文档: 记录 `make lint` 依赖缺口，当前项目虚拟环境未安装 `ruff`，登记为 TD-005。
+- 工具链: `requirements-dev.txt` 补齐 `ruff`，让 `make lint` 不再依赖未声明工具。
+- 工具链: 安装 Ruff 后 `make lint` 已进入真实检查阶段，暴露 555 个历史 lint 问题，登记为 TD-005 分批处理。
 - 测试: 新增 API 回归测试覆盖价格 helper 去重、previous_close 兜底和 Cookie 文件格式识别。
 
 ### 文件变更
@@ -41,9 +42,10 @@
 - `packages/clawbot/src/tools/deepgram_stt.py` — SDK 缺失降级路径增加调试日志
 - `packages/clawbot/src/tools/fal_client.py` — SDK 缺失降级路径增加调试日志
 - `packages/clawbot/tests/test_api_routes_regression.py` — 增加行为锁定回归测试
+- `packages/clawbot/requirements-dev.txt` — 补齐 Ruff 开发依赖
 - `AGENTS.md` — 同步项目导航与文档命名规范到当前文件布局
-- `docs/index.md`, `docs/project-map.md`, `docs/sop/update-protocol.md`, `docs/sop/docs-first-protocol.md`, `docs/guides/disaster-recovery.md` — 修正文档入口路径
-- `docs/status/HEALTH.md` — 登记 HI-821/HI-822 和最新测试状态
+- `docs/index.md`, `docs/project-map.md`, `docs/sop/update-protocol.md`, `docs/sop/docs-first-protocol.md`, `docs/guides/disaster-recovery.md`, `docs/registries/dependency-map.md` — 修正文档入口路径和依赖登记
+- `docs/status/HEALTH.md` — 登记 HI-821/HI-822/HI-823 和最新测试状态
 - `docs/CHANGELOG.md` — 记录本次质量优化
 
 ## 最近更新（2026-04）

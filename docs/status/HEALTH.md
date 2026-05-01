@@ -60,6 +60,7 @@
 | HI-820 | SECURITY | Git 全历史重写完成：移除敏感历史路径、数据库/依赖/构建产物、扫描器样例噪音；清理后 gitleaks/trufflehog 历史扫描 0 命中 | 2026-04-28 |
 | HI-821 | TECH_DEBT | Makefile 测试入口优先使用系统 Python 导致 pytest 缺失；API RPC 价格补齐和社媒 Cookie 检测存在重复实现 | 2026-05-01 |
 | HI-822 | TECH_DEBT | AGENTS/SOP/索引仍指向历史大写文档路径；部分抽象类和聚合类保留空占位语句 | 2026-05-01 |
+| HI-823 | INFRA | `make lint` 依赖 ruff 但开发依赖未声明；已补齐 requirements-dev 与依赖注册表 | 2026-05-01 |
 
 ---
 
@@ -71,4 +72,4 @@
 | TD-002 | ARCH_LIMIT | 部分微信编号命令(~25个)无真实API,走LLM通用回复 | 🟡 |
 | TD-003 | TECH_DEBT | CLICommandsMixin (/cli) 预备代码未注册 | 🔵 |
 | TD-004 | TECH_DEBT | 源码仍有 64 个历史 `pass` 语句，多数位于可选依赖降级、异常兜底和测试辅助路径，需按模块分批审查后清理 | 🔵 |
-| TD-005 | TECH_DEBT | `make lint` 目标依赖 `ruff`，但当前 `.venv312` 未安装该工具，需补齐开发依赖或调整 lint 入口 | 🔵 |
+| TD-005 | TECH_DEBT | `ruff` 工具链已补齐，但 `make lint` 暴露 555 个历史 lint 问题，主要为 UP031(192)、B904(93)、RUF013(62)、E402(49) | 🟡 |
