@@ -1,6 +1,6 @@
 # OpenClaw Bot — 依赖清单
 
-> 最后更新: 2026-04-18 | 修正依赖总数统计 (80+→62, 与 requirements.txt 实际行数对齐)
+> 最后更新: 2026-05-01 | 补齐开发依赖 ruff，修复 Makefile lint 工具链缺口
 
 ## 搬运的高星项目 (38 个, 累计 ~473k Stars)
 
@@ -93,7 +93,8 @@
 | `pyobjc-core` | `>=10.0` | macOS Quartz 底层 | requirements.txt 已有但注册表漏登 |
 | `arize-phoenix-otel` | `>=0.1.0` | Phoenix OTEL 客户端 | requirements.txt 已有但注册表漏登 |
 | `openinference-instrumentation-litellm` | `>=0.1.0` | LiteLLM OTEL 插桩 | requirements.txt 已有但注册表漏登 |
-| `pytest` / `pytest-asyncio` / `pytest-cov` | 多版本 | 测试框架 | requirements.txt 已有但注册表漏登 |
+| `pytest` / `pytest-asyncio` / `pytest-cov` | 多版本 | 测试框架 | requirements-dev.txt |
+| `ruff` | `>=0.8.0,<1.0.0` | Python 代码检查与格式化 | requirements-dev.txt |
 
 **已移除**: `tiktoken` — 注册表曾列出但 requirements.txt 未包含，代码中也未使用 (P5审计已从搬运表中替换为 RestrictedPython)
 - 最低支持: Python 3.10 (`docling>=2.0.0` 要求)
