@@ -11,6 +11,23 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-01] 质量优化: API 边界异常链路清理
+> 领域: `backend` | `docs`
+> 影响模块: `api/routers/cli`, `api/routers/pool`, `api/routers/shopping`, `docs`
+> 关联问题: TD-005
+
+### 变更内容
+- 维护性: 为 CLI、API 池和购物比价路由的异常转换补充 `raise ... from e`，保留原始异常链，方便排查问题。
+- 行为保持: 接口状态码、错误文案和日志级别不变，仅提升故障定位信息。
+- 技术债: 全仓 Ruff 历史问题从 552 降到 547，B904 剩余项从 93 降到 88。
+
+### 文件变更
+- `packages/clawbot/src/api/routers/cli.py` — 3 个端点补充异常链
+- `packages/clawbot/src/api/routers/pool.py` — API 池统计错误转换补充异常链
+- `packages/clawbot/src/api/routers/shopping.py` — 购物比价错误转换补充异常链
+- `docs/status/HEALTH.md` — 同步 TD-005 剩余技术债计数
+- `docs/CHANGELOG.md` — 记录本次质量优化
+
 ## [2026-05-01] 质量优化: monitor 路由 lint 清理
 > 领域: `backend` | `docs`
 > 影响模块: `api/routers/monitor`, `docs`
