@@ -15,6 +15,7 @@ WorldMonitor API 路由 — 全球情报监控端点
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -109,7 +110,7 @@ def _parse_translation_result(data: dict, originals: list[str]) -> list[str]:
     reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     if not reply:
         return originals
-    lines = [l.strip() for l in reply.strip().split("\n") if l.strip()]
+    lines = [line.strip() for line in reply.strip().split("\n") if line.strip()]
     results = []
     for line in lines:
         cleaned = re.sub(r"^\d+[\.\)、：:\s]+", "", line).strip()
@@ -139,7 +140,7 @@ async def _translate_english_items(items: list) -> list:
         originals = [text for _, _, text in batch]
         translated = await _translate_batch(originals)
 
-        for (idx, field, original), result in zip(batch, translated):
+        for (_idx, field, original), result in zip(batch, translated):
             if result != original:
                 cache_key = f"{field[0]}:{original}"
                 _translation_cache[cache_key] = result
@@ -164,11 +165,11 @@ def _apply_cached_translations(items: list):
 
 
 _bg_translation_running = False
+_background_translation_tasks: set[asyncio.Task[None]] = set()
 
 
 def _schedule_background_translation(items: list):
     """启动后台翻译任务（不阻塞 API 响应）"""
-    import asyncio
     global _bg_translation_running
 
     # 检查是否有英文内容需要翻译
@@ -196,10 +197,12 @@ def _schedule_background_translation(items: list):
             _bg_translation_running = False
 
     try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(_bg_translate())
-    except Exception:
-        pass
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(_bg_translate())
+        _background_translation_tasks.add(task)
+        task.add_done_callback(_background_translation_tasks.discard)
+    except Exception as e:
+        logger.debug("[翻译] 后台翻译调度跳过: %s", e)
 
 
 # ============================================================

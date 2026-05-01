@@ -11,6 +11,22 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-01] 质量优化: monitor 路由 lint 清理
+> 领域: `backend` | `docs`
+> 影响模块: `api/routers/monitor`, `docs`
+> 关联问题: TD-004, TD-005
+
+### 变更内容
+- 维护性: 清理 monitor 路由中的歧义变量名和未使用循环变量，消除当前文件 Ruff 告警。
+- 可靠性: 后台翻译任务保留任务引用并在结束时移除，避免异步任务被静默丢弃。
+- 清理: 将后台翻译调度失败的空占位改为 debug 日志，保持接口返回行为不变。
+- 技术债: 全仓 Ruff 历史问题从 555 降到 552，源码 `pass` 语句从 64 降到 63。
+
+### 文件变更
+- `packages/clawbot/src/api/routers/monitor.py` — 清理 3 项机械 lint 问题和 1 个空异常占位
+- `docs/status/HEALTH.md` — 同步 TD-004/TD-005 剩余技术债计数
+- `docs/CHANGELOG.md` — 记录本次质量优化
+
 ## [2026-05-01] 质量优化: 测试入口、RPC 去重与文档入口修正
 > 领域: `backend` | `infra` | `docs`
 > 影响模块: `Makefile`, `api/rpc`, `bot mixins`, `social adapters`, `requirements-dev`, `docs`
