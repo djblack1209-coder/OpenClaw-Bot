@@ -72,4 +72,4 @@
 | TD-002 | ARCH_LIMIT | 部分微信编号命令(~25个)无真实API,走LLM通用回复 | 🟡 |
 | TD-003 | TECH_DEBT | CLICommandsMixin (/cli) 预备代码未注册 | 🔵 |
 | TD-004 | TECH_DEBT | 源码仍有 63 个历史 `pass` 语句，多数位于可选依赖降级、异常兜底和测试辅助路径，需按模块分批审查后清理 | 🔵 |
-| TD-005 | TECH_DEBT | `ruff` 工具链已补齐，但 `make lint` 暴露 552 个历史 lint 问题，主要为 UP031(192)、B904(93)、RUF013(62)、E402(49)；已完成 monitor 路由 3 项机械清理 | 🟡 |
+| TD-005 | TECH_DEBT | `ruff` 工具链已补齐，但 `make lint` 暴露 547 个历史 lint 问题，主要为 UP031(192)、B904(88)、RUF013(62)、E402(49)；已完成 monitor 路由 3 项和 API 边界异常链路 5 项机械清理 | 🟡 |
