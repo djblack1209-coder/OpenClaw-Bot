@@ -25,5 +25,3 @@ class BasicCommandsMixin(
     _ContextMixin,
 ):
     """基础 Telegram 命令 — 组合全部子 Mixin（含引导向导）"""
-
-    pass

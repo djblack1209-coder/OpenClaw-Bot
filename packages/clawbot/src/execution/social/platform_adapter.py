@@ -19,13 +19,13 @@ class SocialPlatformAdapter(ABC):
     @abstractmethod
     def platform_id(self) -> str:
         """平台唯一标识（如 'x', 'xiaohongshu'）"""
-        ...
+        raise NotImplementedError("子类必须提供平台唯一标识")
 
     @property
     @abstractmethod
     def display_name(self) -> str:
         """平台显示名称（如 'X/Twitter', '小红书'）"""
-        ...
+        raise NotImplementedError("子类必须提供平台显示名称")
 
     @property
     def aliases(self) -> list[str]:
@@ -42,7 +42,7 @@ class SocialPlatformAdapter(ABC):
         **kwargs,
     ) -> dict:
         """发布内容到平台，返回结果字典"""
-        ...
+        raise NotImplementedError("子类必须实现社媒发布逻辑")
 
     def normalize_content(self, raw_content: str) -> tuple:
         """将原始内容规范化为 (title, body) — 子类可覆盖"""

@@ -244,10 +244,11 @@ OpenClaw Bot/
 │   └── launchagents/               # macOS 服务管理
 ├── docker-compose.yml              # Docker 编排
 └── docs/
-    ├── PROJECT_MAP.md              # ← 你在这里
-    ├── README.md
-    ├── QUICKSTART.md
-    └── business-plan.md
+    ├── project-map.md              # ← 你在这里
+    ├── index.md
+    ├── CHANGELOG.md
+    ├── guides/QUICKSTART.md
+    └── business/xianyu-business-plan.md
 ```
 
 ---

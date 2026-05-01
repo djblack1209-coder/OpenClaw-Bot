@@ -24,4 +24,3 @@ class ExecutionCommandsMixin(
     OpsCommandsMixin,
 ):
     """执行场景命令聚合类 — 保持 multi_bot.py 继承链不变。"""
-    pass

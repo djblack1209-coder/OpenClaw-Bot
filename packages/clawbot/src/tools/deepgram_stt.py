@@ -62,7 +62,7 @@ async def transcribe_audio(
             return transcript
         return None
     except ImportError:
-        pass
+        logger.debug("deepgram SDK 未安装，使用 HTTP 降级")
     except Exception as e:
         logger.warning(f"Deepgram SDK 失败: {scrub_secrets(str(e))}")
 

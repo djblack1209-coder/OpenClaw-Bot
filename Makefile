@@ -1,9 +1,18 @@
 # OpenClaw Bot — Monorepo 任务入口
 # 使用: make test / make lint / make format / make typecheck / make docker
 
-# Python 路径自动探测: 优先用系统 python3，找不到则回退到项目虚拟环境
+# Python 路径自动探测: 优先用项目虚拟环境，避免系统 python3 缺少 pytest 或依赖
 CLAWBOT := packages/clawbot
-PYTHON ?= $(shell command -v python3 || echo $(CLAWBOT)/.venv312/bin/python)
+PYTHON ?= $(shell \
+	if [ -x "$(CURDIR)/$(CLAWBOT)/.venv312/bin/python" ]; then \
+		echo "$(CURDIR)/$(CLAWBOT)/.venv312/bin/python"; \
+	elif command -v python3.12 >/dev/null 2>&1; then \
+		command -v python3.12; \
+	elif command -v python3 >/dev/null 2>&1; then \
+		command -v python3; \
+	else \
+		echo python3; \
+	fi)
 FRONTEND := apps/openclaw-manager-src
 
 .PHONY: test lint format typecheck docker clean help ci-local syntax-check

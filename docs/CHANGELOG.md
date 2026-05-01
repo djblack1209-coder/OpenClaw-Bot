@@ -5,10 +5,46 @@
 
 ## 按月查看
 
-- [2026-04 月变更记录](CHANGELOG/2026-04.md) — 最新
-- [2026-03 月变更记录](CHANGELOG/2026-03.md)
+- [2026-04 月变更记录](changelog-archive/2026-04.md)
 
 ---
+
+## 最近更新（2026-05）
+
+## [2026-05-01] 质量优化: 测试入口、RPC 去重与文档入口修正
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Makefile`, `api/rpc`, `bot mixins`, `social adapters`, `docs`
+> 关联问题: HI-821, HI-822
+
+### 变更内容
+- 架构: 梳理后端主数据流，确认 API/Telegram 共享 `ClawBotRPC` 聚合层，优先优化共用热点。
+- 维护性: `Makefile` 的 Python 探测改为优先使用项目 `.venv312`，避免系统 Python 无 pytest 时测试入口失效。
+- 重复代码: 提取 yfinance 批量价格补齐 helper，统一 IBKR 价格兜底和本地持仓价格兜底。
+- 重复代码: 提取社媒 Cookie 状态 helper，统一 X/Twitter 与小红书登录状态检测。
+- 清理: 去掉 `CircuitOpenError` 的空 `pass`，将抽象风控校验器中的 `...` 改为明确异常。
+- 清理: 去掉命令聚合类、安全异常和 SDK 降级路径中的空占位语句，抽象策略/社媒适配器改为明确 `NotImplementedError`。
+- 文档: 同步 AGENTS/SOP/索引中的文档路径到当前真实文件名，修复旧归档链接和不存在的索引项。
+- 文档: 用 AST 扫描真实语法占位，剩余 64 个历史 `pass` 登记为 TD-004，后续按模块分批审查。
+- 文档: 记录 `make lint` 依赖缺口，当前项目虚拟环境未安装 `ruff`，登记为 TD-005。
+- 测试: 新增 API 回归测试覆盖价格 helper 去重、previous_close 兜底和 Cookie 文件格式识别。
+
+### 文件变更
+- `Makefile` — Python 探测优先项目虚拟环境
+- `packages/clawbot/src/api/rpc.py` — 提取价格补齐与社媒 Cookie 检测 helper
+- `packages/clawbot/src/http_client.py` — 清理异常类空占位
+- `packages/clawbot/src/risk_validators.py` — 抽象方法改为明确 `NotImplementedError`
+- `packages/clawbot/src/bot/cmd_basic/__init__.py` — 去掉命令聚合类空占位
+- `packages/clawbot/src/bot/cmd_execution_mixin.py` — 去掉执行命令聚合类空占位
+- `packages/clawbot/src/core/security.py` — 清理安全异常空占位
+- `packages/clawbot/src/execution/social/platform_adapter.py` — 抽象社媒适配器改为明确未实现异常
+- `packages/clawbot/src/strategy_engine.py` — 抽象策略分析改为明确未实现异常
+- `packages/clawbot/src/tools/deepgram_stt.py` — SDK 缺失降级路径增加调试日志
+- `packages/clawbot/src/tools/fal_client.py` — SDK 缺失降级路径增加调试日志
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加行为锁定回归测试
+- `AGENTS.md` — 同步项目导航与文档命名规范到当前文件布局
+- `docs/index.md`, `docs/project-map.md`, `docs/sop/update-protocol.md`, `docs/sop/docs-first-protocol.md`, `docs/guides/disaster-recovery.md` — 修正文档入口路径
+- `docs/status/HEALTH.md` — 登记 HI-821/HI-822 和最新测试状态
+- `docs/CHANGELOG.md` — 记录本次质量优化
 
 ## 最近更新（2026-04）
 
@@ -1939,4 +1975,4 @@
 
 ...
 
-查看完整记录请访问 [2026-04.md](CHANGELOG/2026-04.md)
+查看完整记录请访问 [2026-04.md](changelog-archive/2026-04.md)

@@ -1,6 +1,6 @@
 # OpenClaw 文档总索引
 
-> 最后更新: 2026-04-28
+> 最后更新: 2026-05-01
 
 ## 核心文档
 
@@ -49,7 +49,7 @@
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| 快速启动 | `docs/guides/quickstart.md` | OMEGA v2.0 快速启动指南 |
+| 快速启动 | `docs/guides/QUICKSTART.md` | OMEGA v2.0 快速启动指南 |
 | 开发者指南 | `docs/guides/developer-guide.md` | ClawBot 开发环境搭建与规范 |
 | 部署指南 | `docs/guides/deployment-guide.md` | 闲鱼商业部署系统使用指南 |
 | 灾难恢复 | `docs/guides/disaster-recovery.md` | 灾难恢复指南 (2026-04 更新) |
@@ -74,14 +74,6 @@
 | 智能化跃迁 Wave 1 | `docs/specs/2026-03-30-intelligence-wave1-design.md` | 全系统智能化跃迁设计 |
 | 领券+情报集成 | `docs/specs/2026-04-06-coupon-worldmonitor-design.md` | 微信笔笔省领券 + Worldmonitor 情报 |
 | UX 体验升级 | `docs/specs/2026-04-19-ux-experience-upgrade-design.md` | 从"能跑通"到"用的爽"体验升级 |
-| P0 稳定性设计 | `docs/specs/2026-04-21-p0-stability-reset-design.md` | P0 稳定性全量重做设计文档 |
-
-## 实施计划 (docs/plans/)
-
-| 文档 | 路径 | 说明 |
-|------|------|------|
-| 体验升级计划 | `docs/plans/2026-04-19-experience-upgrade.md` | 体验升级三阶段实施计划 |
-| P0 稳定性计划 | `docs/plans/2026-04-21-p0-stability-reset.md` | P0 稳定性全量重做实施计划 |
 
 ## 报告 (docs/reports/)
 

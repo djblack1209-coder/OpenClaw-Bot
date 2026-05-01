@@ -74,7 +74,7 @@ async def generate_image(
             return url
         return None
     except ImportError:
-        pass
+        logger.debug("fal_client SDK 未安装，使用 HTTP 降级")
     except Exception as e:
         logger.warning(f"fal_client 失败: {scrub_secrets(str(e))}")
 
@@ -131,7 +131,7 @@ async def generate_video(
             logger.info(f"fal.ai 视频生成成功: {model}")
             return url
     except ImportError:
-        pass
+        logger.debug("fal_client SDK 未安装，使用 HTTP 降级")
     except Exception as e:
         logger.warning(f"fal.ai 视频生成失败: {scrub_secrets(str(e))}")
 

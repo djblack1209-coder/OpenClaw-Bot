@@ -127,7 +127,7 @@ rsync -avz user@vps:/path/to/clawbot/data/ packages/clawbot/data/
    - `SILICONFLOW_API_KEY` — SiliconFlow 控制台
    - `IBKR_*` — IBKR 交易网关配置
    - `XIANYU_COOKIES` — 需要重新扫码登录
-3. 其余密钥参见 `docs/registries/API_POOL_REGISTRY.md`
+3. 其余密钥参见 `docs/registries/api-pool-registry.md`
 
 ---
 
