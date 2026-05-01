@@ -38,7 +38,6 @@ SSRF_BLOCKED_HOSTS: frozenset = frozenset({
 
 class SSRFError(Exception):
     """SSRF 安全检查未通过时抛出的异常"""
-    pass
 
 
 def check_ssrf(url: str) -> bool:

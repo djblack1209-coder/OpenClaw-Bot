@@ -146,7 +146,7 @@ class BaseStrategy(ABC):
 
         子类必须实现此方法。
         """
-        ...
+        raise NotImplementedError("子类必须实现策略分析逻辑")
 
     def should_exit(self, data: MarketData, entry_price: float,
                     current_pnl_pct: float) -> TradeSignal | None:

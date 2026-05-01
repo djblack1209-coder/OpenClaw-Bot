@@ -13,6 +13,7 @@ Design principles:
 import logging
 import os
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,65 @@ def _safe_error(e: Exception) -> str:
     if len(msg) > 200:
         msg = msg[:200] + "..."
     return msg
+
+
+def _fetch_yfinance_prices(symbols: list[str]) -> dict[str, float]:
+    """批量获取 yfinance 最新价，单个标的失败时返回 0.0。"""
+    unique_symbols = list(dict.fromkeys(sym for sym in symbols if sym))
+    if not unique_symbols:
+        return {}
+
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.debug("yfinance 未安装，跳过价格补齐")
+        return {sym: 0.0 for sym in unique_symbols}
+
+    try:
+        tickers = yf.Tickers(" ".join(unique_symbols))
+    except Exception as e:
+        logger.warning("yfinance price fetch failed (degraded to zeros): %s", e)
+        return {sym: 0.0 for sym in unique_symbols}
+
+    prices: dict[str, float] = {}
+    for sym in unique_symbols:
+        try:
+            info = tickers.tickers[sym].fast_info
+            price = float(getattr(info, "last_price", 0) or 0)
+            if price <= 0:
+                price = float(getattr(info, "previous_close", 0) or 0)
+            prices[sym] = price if price > 0 else 0.0
+        except Exception as e:
+            logger.debug("yfinance price fetch failed for %s: %s", sym, e)
+            prices[sym] = 0.0
+    return prices
+
+
+def _is_social_cookie_ready(platform: str, *, allow_xhs_a1: bool = True) -> bool:
+    """检查社媒 Cookie 文件是否存在且包含有效登录信息。"""
+    cookie_files = {
+        "x": Path.home() / ".openclaw" / "x_cookies.json",
+        "xhs": Path.home() / ".openclaw" / "xhs_cookies.json",
+    }
+    path = cookie_files.get(platform)
+    if not path or not path.exists():
+        return False
+
+    try:
+        import json as _json
+
+        data = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.debug("读取%s Cookie文件异常: %s", platform, e)
+        return False
+
+    if platform == "x":
+        return bool(data)
+    if platform == "xhs" and isinstance(data, dict):
+        has_cookie = bool(data.get("cookie", ""))
+        has_a1 = allow_xhs_a1 and bool(data.get("a1", ""))
+        return has_cookie or has_a1
+    return False
 
 
 # Track process startup time for uptime calculation
@@ -227,25 +287,14 @@ class ClawBotRPC:
                 # 兜底：如果 IBKR 没返回实时价格，用 yfinance 补齐
                 symbols_needing_price = [p["symbol"] for p in positions if not p.get("current_price")]
                 if symbols_needing_price:
-                    try:
-                        import yfinance as yf
-                        tickers = yf.Tickers(" ".join(symbols_needing_price))
-                        for sym in symbols_needing_price:
-                            try:
-                                info = tickers.tickers[sym].fast_info
-                                price = float(getattr(info, "last_price", 0) or 0)
-                                if not price:
-                                    price = float(getattr(info, "previous_close", 0) or 0)
-                                for p in positions:
-                                    if p["symbol"] == sym and price > 0:
-                                        p["current_price"] = price
-                                        p["market_value"] = p["quantity"] * price
-                                        cost = p["quantity"] * p["avg_price"]
-                                        p["unrealized_pnl"] = p["market_value"] - cost
-                            except Exception:
-                                pass
-                    except ImportError:
-                        logger.debug("yfinance 未安装，跳过价格补齐")
+                    live_prices = _fetch_yfinance_prices(symbols_needing_price)
+                    for p in positions:
+                        price = live_prices.get(p["symbol"], 0.0)
+                        if price > 0:
+                            p["current_price"] = price
+                            p["market_value"] = p["quantity"] * price
+                            cost = p["quantity"] * p["avg_price"]
+                            p["unrealized_pnl"] = p["market_value"] - cost
             except Exception as e:
                 logger.warning("Failed to get IBKR positions: %s", e)
 
@@ -262,20 +311,7 @@ class ClawBotRPC:
                 # Batch-fetch current prices via yfinance (already a project dependency)
                 live_prices: dict = {}
                 if symbols:
-                    try:
-                        import yfinance as yf
-                        tickers = yf.Tickers(" ".join(symbols))
-                        for sym in symbols:
-                            try:
-                                info = tickers.tickers[sym].fast_info
-                                price = float(getattr(info, "last_price", 0) or 0)
-                                if price <= 0:
-                                    price = float(getattr(info, "previous_close", 0) or 0)
-                                live_prices[sym] = price
-                            except Exception:
-                                live_prices[sym] = 0.0
-                    except Exception as e_yf:
-                        logger.warning("yfinance price fetch failed (degraded to zeros): %s", e_yf)
+                    live_prices = _fetch_yfinance_prices(symbols)
 
                 for p in local_positions or []:
                     qty = float(p.get("quantity", 0) or 0)
@@ -595,44 +631,20 @@ class ClawBotRPC:
 
         使用线程超时保护（2秒），防止 worker 子进程启动慢导致前端超时。
         """
-        # 辅助函数: 检查 Cookie 文件是否存在且有效
-        def _check_cookie_file(platform: str) -> bool:
-            """检查 ~/.openclaw/ 下对应平台的 Cookie 文件"""
-            import json as _json
-            from pathlib import Path
-            cookie_files = {
-                "x": Path.home() / ".openclaw" / "x_cookies.json",
-                "xhs": Path.home() / ".openclaw" / "xhs_cookies.json",
-            }
-            path = cookie_files.get(platform)
-            if not path or not path.exists():
-                return False
-            try:
-                data = _json.loads(path.read_text(encoding="utf-8"))
-                # X 的 Cookie 文件由 twikit 直接管理（非空即可）
-                if platform == "x":
-                    return bool(data)
-                # XHS 的 Cookie 文件：支持 {cookie: "..."} 和 {a1: "...", web_session: "..."} 两种格式
-                if platform == "xhs":
-                    return bool(data.get("cookie", "")) or (isinstance(data, dict) and bool(data.get("a1", "")))
-                return False
-            except Exception:
-                return False
-
         _placeholder = {
             "autopilot_running": False,
             "running": False,
             "platforms": [
                 {
                     "platform": "x",
-                    "connected": _check_cookie_file("x"),
+                    "connected": _is_social_cookie_ready("x"),
                     "last_post_time": "",
                     "posts_today": 0,
                     "total_posts": 0,
                 },
                 {
                     "platform": "xhs",
-                    "connected": _check_cookie_file("xhs"),
+                    "connected": _is_social_cookie_ready("xhs"),
                     "last_post_time": "",
                     "posts_today": 0,
                     "total_posts": 0,
@@ -671,8 +683,8 @@ class ClawBotRPC:
             xhs_status = result.get("xhs", {})
 
             # Worker 返回的 connected 和 Cookie 文件检测 取 OR（任一为真即认为已连接）
-            x_connected = x_status.get("connected", False) or _check_cookie_file("x")
-            xhs_connected = xhs_status.get("connected", False) or _check_cookie_file("xhs")
+            x_connected = x_status.get("connected", False) or _is_social_cookie_ready("x")
+            xhs_connected = xhs_status.get("connected", False) or _is_social_cookie_ready("xhs")
 
             # 同时提供 running 字段，兼容前端读取 r.running ?? r.active
             _autopilot_running = result.get("autopilot_running", False)
@@ -681,8 +693,8 @@ class ClawBotRPC:
                 try:
                     ap_status = ClawBotRPC._rpc_autopilot_status()
                     _autopilot_running = ap_status.get("running", False)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("社媒自动驾驶状态兜底失败: %s", e)
             return {
                 "autopilot_running": _autopilot_running,
                 "running": _autopilot_running,
@@ -718,9 +730,6 @@ class ClawBotRPC:
         任一路径可用即视为 ready。
         """
         try:
-            import json as _json
-            from pathlib import Path
-
             from src.bot.globals import execution_hub
 
             status = execution_hub.get_social_browser_status() or {}
@@ -728,22 +737,8 @@ class ClawBotRPC:
             xhs_ready = status.get("xiaohongshu_ready")
 
             # 额外检查 Cookie 文件（twikit / xhs 持久化登录）
-            x_cookie_ok = False
-            xhs_cookie_ok = False
-            try:
-                x_path = Path.home() / ".openclaw" / "x_cookies.json"
-                if x_path.exists():
-                    data = _json.loads(x_path.read_text(encoding="utf-8"))
-                    x_cookie_ok = bool(data)
-            except Exception as e:
-                logger.debug("读取X Cookie文件异常: %s", e)
-            try:
-                xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
-                if xhs_path.exists():
-                    data = _json.loads(xhs_path.read_text(encoding="utf-8"))
-                    xhs_cookie_ok = bool(data.get("cookie", "")) or (isinstance(data, dict) and bool(data.get("a1", "")))
-            except Exception as e:
-                logger.debug("读取XHS Cookie文件异常: %s", e)
+            x_cookie_ok = _is_social_cookie_ready("x")
+            xhs_cookie_ok = _is_social_cookie_ready("xhs")
 
             def _map_ready(value, cookie_ok: bool):
                 if value is True or cookie_ok:
@@ -760,19 +755,8 @@ class ClawBotRPC:
         except Exception as e:
             logger.warning("Social browser status failed: %s", e)
             # 即使主逻辑失败，也检查 Cookie 文件
-            x_cookie = "unknown"
-            xhs_cookie = "unknown"
-            try:
-                import json as _json
-                from pathlib import Path
-                x_path = Path.home() / ".openclaw" / "x_cookies.json"
-                if x_path.exists() and bool(_json.loads(x_path.read_text(encoding="utf-8"))):
-                    x_cookie = "ready"
-                xhs_path = Path.home() / ".openclaw" / "xhs_cookies.json"
-                if xhs_path.exists() and bool(_json.loads(xhs_path.read_text(encoding="utf-8")).get("cookie", "")):
-                    xhs_cookie = "ready"
-            except Exception as e:
-                logger.debug("降级读取Cookie文件异常: %s", e)
+            x_cookie = "ready" if _is_social_cookie_ready("x") else "unknown"
+            xhs_cookie = "ready" if _is_social_cookie_ready("xhs", allow_xhs_a1=False) else "unknown"
             return {
                 "browser_running": False,
                 "x": x_cookie,

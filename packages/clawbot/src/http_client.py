@@ -322,5 +322,3 @@ class ResilientHTTPClient:
 
 class CircuitOpenError(Exception):
     """熔断器开启异常"""
-
-    pass

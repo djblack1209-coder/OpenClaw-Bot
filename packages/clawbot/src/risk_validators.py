@@ -60,7 +60,7 @@ class RiskValidator(ABC):
     @abstractmethod
     def name(self) -> str:
         """校验器名称（用于日志和调试）"""
-        ...
+        raise NotImplementedError("子类必须提供校验器名称")
 
     @property
     def order(self) -> int:
@@ -77,7 +77,7 @@ class RiskValidator(ABC):
             (False, "原因") — 拒绝交易
             不会返回 (True, ...) — 通过就返回 None
         """
-        ...
+        raise NotImplementedError("子类必须实现风控校验逻辑")
 
 
 # ── 内置 Validator 实现 ──────────────────────────────

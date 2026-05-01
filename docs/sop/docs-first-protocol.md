@@ -87,7 +87,7 @@
 
 ```
 Step 1: 识别触发技术 → 对照触发条件表
-Step 2: 查 DEPENDENCY_MAP.md 确认项目版本
+Step 2: 查 `docs/registries/dependency-map.md` 确认项目版本
 Step 3: 精准定位文档页面（不拉整站）
 Step 4: 执行拉取（Context7 > WebFetch > GitHub搜索）
 Step 5: 验证拉取结果（三种工具均失败 → 降级策略）

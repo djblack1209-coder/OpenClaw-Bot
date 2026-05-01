@@ -94,8 +94,8 @@
 
 **阶段概要：**
 
-1. **需求理解** — 读 PROJECT_MAP.md + HEALTH.md → 复述需求 → 拆解用户故事
-2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/sop/DOCS_FIRST_PROTOCOL.md`）
+1. **需求理解** — 读 `docs/project-map.md` + `docs/status/HEALTH.md` → 复述需求 → 拆解用户故事
+2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/sop/docs-first-protocol.md`）
 3. **计划制定** — TodoWrite 列步骤 → 标注验证标准
 4. **执行开发** — 逐步实现 → 每步过质量门 → 定期汇报
 5. **质量保证** — 全量测试 → UI 截图验证 → 无回归
@@ -156,7 +156,7 @@ cd packages/clawbot && pytest tests/ -x --tb=short
 - 用"相当于……"类比解释改动
 - 模糊需求 → 直接按最可能理解开始做
 - 进度汇报："一共 N 步，做到第 X 步"
-- 错误翻译参考表 → `docs/sop/ERROR_TRANSLATION_REF.md`
+- 错误翻译参考表 → `docs/sop/error-translation-ref.md`
 
 ### 交付汇报模板
 ```
@@ -174,7 +174,7 @@ cd packages/clawbot && pytest tests/ -x --tb=short
 OpenClaw Bot/
 ├── AGENTS.md                    ← 你在这里
 ├── docs/                        ← 文档治理中心
-│   ├── PROJECT_MAP.md           ← 项目全景 (必读)
+│   ├── project-map.md           ← 项目全景 (必读)
 │   ├── CHANGELOG.md             ← 变更日志
 │   ├── status/HEALTH.md         ← 系统健康 + Bug + 技术债
 │   ├── status/HANDOFF.md        ← 会话交接
@@ -194,13 +194,13 @@ OpenClaw Bot/
 
 | 变更类型 | 必须更新 |
 |----------|---------|
-| 新增/删除 Python 模块 | `docs/registries/MODULE_REGISTRY.md` |
-| 新增/修改命令或按钮 | `docs/registries/COMMAND_REGISTRY.md` |
-| 新增 pip 依赖 | `docs/registries/DEPENDENCY_MAP.md` |
-| 新增/修改 API Key/LLM | `docs/registries/API_POOL_REGISTRY.md` |
+| 新增/删除 Python 模块 | `docs/registries/module-registry.md` |
+| 新增/修改命令或按钮 | `docs/registries/command-registry.md` |
+| 新增 pip 依赖 | `docs/registries/dependency-map.md` |
+| 新增/修改 API Key/LLM | `docs/registries/api-pool-registry.md` |
 | 发现 Bug / 技术债 | `docs/status/HEALTH.md` |
 | 修复 Bug | HEALTH.md + `docs/CHANGELOG.md` |
-| 架构级改动 | `docs/PROJECT_MAP.md` |
+| 架构级改动 | `docs/project-map.md` |
 | **任何代码变更** | `docs/CHANGELOG.md` |
 
 ---
@@ -231,13 +231,13 @@ OpenClaw Bot/
 
 | 文档类型 | 放在 | 命名 |
 |----------|------|------|
-| 架构/设计 | `docs/architecture/` | `大写_下划线.md` |
-| 操作指南 | `docs/guides/` | `大写_下划线.md` |
-| 报告 | `docs/reports/` | `大写_YYYY_MM_DD.md` |
+| 架构/设计 | `docs/architecture/` | `kebab-case.md` |
+| 操作指南 | `docs/guides/` | `kebab-case.md`（已有 `QUICKSTART.md` 保持原名） |
+| 报告 | `docs/reports/` | `kebab-case-YYYY-MM-DD.md` |
 | 功能规格 | `docs/specs/` | `YYYY-MM-DD-topic-design.md` |
-| 注册表 | `docs/registries/` | `大写_下划线.md` |
+| 注册表 | `docs/registries/` | `kebab-case.md` |
 
-**禁止**: 小写命名、中文文件名、空格、在 `docs/` 以外建 `.md`
+**禁止**: 中文文件名、空格、在 `docs/` 以外建 `.md`
 
 ---
 
@@ -255,12 +255,12 @@ OpenClaw Bot/
 
 | 我要... | 去看... |
 |---------|---------|
-| 理解项目 | `docs/PROJECT_MAP.md` |
+| 理解项目 | `docs/project-map.md` |
 | 已知问题 | `docs/status/HEALTH.md` |
 | 变更历史 | `docs/CHANGELOG.md` |
 | 模块/命令/依赖 | `docs/registries/` |
-| 文档拉取规范 | `docs/sop/DOCS_FIRST_PROTOCOL.md` |
-| 错误翻译参考 | `docs/sop/ERROR_TRANSLATION_REF.md` |
+| 文档拉取规范 | `docs/sop/docs-first-protocol.md` |
+| 错误翻译参考 | `docs/sop/error-translation-ref.md` |
 | 上次交接 | `docs/status/HANDOFF.md` |
 | 运行测试 | `cd packages/clawbot && pytest` |
 
@@ -268,7 +268,7 @@ OpenClaw Bot/
 
 ## 12. 官方文档优先协议 (简要版)
 
-> 完整版: `docs/sop/DOCS_FIRST_PROTOCOL.md`
+> 完整版: `docs/sop/docs-first-protocol.md`
 
 **核心规则**: 涉及以下技术栈的代码修改，**必须先拉文档再写代码**：
 LiteLLM / PTB / FastAPI / Tauri v2 / CrewAI / browser-use / crawl4ai / Redis / mem0 / httpx / APScheduler / 任何新库

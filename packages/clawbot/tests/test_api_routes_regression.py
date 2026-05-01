@@ -1,4 +1,5 @@
 import sys
+import types
 import pytest
 from fastapi.testclient import TestClient
 
@@ -150,6 +151,50 @@ def test_trading_dashboard_builds_chart_from_journal(monkeypatch):
         {"name": "04-10", "value": 10125.5},
     ]
     assert result["connected"] is False
+
+
+def test_rpc_yfinance_price_helper_deduplicates_and_uses_previous_close(monkeypatch):
+    from src.api import rpc
+
+    class _FastInfo:
+        last_price = 0
+        previous_close = 123.45
+
+    class _Ticker:
+        fast_info = _FastInfo()
+
+    class _Tickers:
+        def __init__(self, symbols):
+            assert symbols == "AAPL MSFT"
+            self.tickers = {"AAPL": _Ticker(), "MSFT": _Ticker()}
+
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Tickers=_Tickers))
+
+    assert rpc._fetch_yfinance_prices(["AAPL", "AAPL", "MSFT"]) == {
+        "AAPL": 123.45,
+        "MSFT": 123.45,
+    }
+
+
+def test_social_cookie_helper_supports_known_cookie_formats(monkeypatch, tmp_path):
+    from src.api import rpc
+
+    cookie_dir = tmp_path / ".openclaw"
+    cookie_dir.mkdir()
+    monkeypatch.setattr(rpc.Path, "home", lambda: tmp_path)
+
+    (cookie_dir / "x_cookies.json").write_text("{}", encoding="utf-8")
+    assert rpc._is_social_cookie_ready("x") is False
+
+    (cookie_dir / "x_cookies.json").write_text('{"auth": "ok"}', encoding="utf-8")
+    assert rpc._is_social_cookie_ready("x") is True
+
+    (cookie_dir / "xhs_cookies.json").write_text('{"a1": "token"}', encoding="utf-8")
+    assert rpc._is_social_cookie_ready("xhs") is True
+    assert rpc._is_social_cookie_ready("xhs", allow_xhs_a1=False) is False
+
+    (cookie_dir / "xhs_cookies.json").write_text('{"cookie": "web_session=ok"}', encoding="utf-8")
+    assert rpc._is_social_cookie_ready("xhs", allow_xhs_a1=False) is True
 
 
 def test_xianyu_admin_masks_internal_errors(monkeypatch):
