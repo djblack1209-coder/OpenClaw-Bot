@@ -9,18 +9,18 @@
 
 | 代码变更类型 | 必须更新的文档 | 说明 |
 |-------------|---------------|------|
-| 新增/删除 Python 模块 | `docs/registries/module-registry.md` | 新增条目或标记删除 |
-| 新增/修改 Telegram 命令 | `docs/registries/command-registry.md` | 更新命令表 |
-| 新增/修改回调按钮 | `docs/registries/command-registry.md` | 更新回调模式表 |
-| 新增中文触发词 | `docs/registries/command-registry.md` | 更新触发器表 |
-| 新增 pip 依赖 | `docs/registries/dependency-map.md` | 新增依赖条目 |
-| 新增/修改 API Key | `docs/registries/api-pool-registry.md` | 更新号池表 |
-| 新增/修改 LLM 提供商 | `docs/registries/api-pool-registry.md` | 更新限制详情 |
-| 架构级改动 | `docs/project-map.md` | 更新相关章节 |
-| 发现 Bug | `docs/status/HEALTH.md` | 登记到「活跃问题」 |
-| 修复 Bug | `docs/status/HEALTH.md` + `docs/CHANGELOG.md` | 移至「已解决」+ 追加变更日志 |
-| 识别技术债 | `docs/status/HEALTH.md` | 记入「技术债务」 |
-| **任何代码变更** | `docs/CHANGELOG.md` | **无例外** — 追加结构化条目 |
+| 新增/删除 Python 模块 | `docs/033-module-registry.md` | 新增条目或标记删除 |
+| 新增/修改 Telegram 命令 | `docs/031-command-registry.md` | 更新命令表 |
+| 新增/修改回调按钮 | `docs/031-command-registry.md` | 更新回调模式表 |
+| 新增中文触发词 | `docs/031-command-registry.md` | 更新触发器表 |
+| 新增 pip 依赖 | `docs/032-dependency-map.md` | 新增依赖条目 |
+| 新增/修改 API Key | `docs/030-api-pool-registry.md` | 更新号池表 |
+| 新增/修改 LLM 提供商 | `docs/030-api-pool-registry.md` | 更新限制详情 |
+| 架构级改动 | `docs/001-project-map.md` | 更新相关章节 |
+| 发现 Bug | `docs/060-health.md` | 登记到「活跃问题」 |
+| 修复 Bug | `docs/060-health.md` + `docs/002-changelog.md` | 移至「已解决」+ 追加变更日志 |
+| 识别技术债 | `docs/060-health.md` | 记入「技术债务」 |
+| **任何代码变更** | `docs/002-changelog.md` | **无例外** — 追加结构化条目 |
 
 ---
 

@@ -17,7 +17,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 管理端不公开展示。普通 `/admin.html` 在公网会返回 404。日常用法是先注册/登录自己的用户账号，在右上角账户区域输入一次性管理员身份码，当前账号会升级为管理员，身份码随即作废；升级后账户区域会出现运营入口，管理 API 也会直接识别当前登录态。隐藏入口码和管理员令牌仍保留为服务器后备方案，不给普通用户展示。
 
-人工收款、固定域名、SMTP、Turnstile 和正式支付接口的操作清单见 `docs/guides/frist-api-operator-runbook.md`。
+人工收款、固定域名、SMTP、Turnstile 和正式支付接口的操作清单见 `docs/024-frist-api-operator-runbook.md`。
 
 无域名阶段这是临时 HTTP 验收地址。正式开放陌生付费用户前，必须绑定域名、HTTPS、SMTP/找回密码、Turnstile、真实支付回调、管理员 2FA 和数据库备份。
 

@@ -17,6 +17,6 @@
 
 | 原文件 | 新位置 |
 |--------|--------|
-| ~~developer-guide.md~~ | `docs/guides/DEVELOPER_GUIDE.md` |
-| ~~deployment-guide.md~~ | `docs/guides/DEPLOYMENT_GUIDE.md` |
-| ~~health-check-report.md~~ | `docs/reports/HEALTH_CHECK_2026_03_16.md` |
+| ~~developer-guide.md~~ | `docs/022-developer-guide.md` |
+| ~~deployment-guide.md~~ | `docs/021-deployment-guide.md` |
+| ~~health-check-report.md~~ | 历史报告已合并到 `docs/060-health.md` |

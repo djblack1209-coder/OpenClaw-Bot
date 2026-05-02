@@ -37,49 +37,6 @@ export function createNewApiClient({ baseUrl = window.location.origin, fetchImpl
   };
 }
 
-export function createFristApiDataStore({ client, fallback, config = {} }) {
-  const dataFallback = cloneData(fallback);
-
-  return {
-    async load() {
-      let statusConfig = {};
-      try {
-        const status = await client.getStatus();
-        statusConfig = configFromStatus(status, config);
-      } catch {
-        return cloneData(dataFallback);
-      }
-
-      const [user, tokens, usage, channelHealth] = await Promise.allSettled([
-        client.getUserSelf?.(),
-        client.getTokens?.(),
-        client.getUsage?.(),
-        client.getChannelHealth?.(),
-      ]);
-
-      return {
-        ...cloneData(dataFallback),
-        accountSummary:
-          user.status === 'fulfilled'
-            ? normalizeNewApiUserSummary(user.value, statusConfig)
-            : cloneData(dataFallback.accountSummary),
-        apiKeys:
-          tokens.status === 'fulfilled'
-            ? valueOrFallback(normalizeNewApiTokens(tokens.value, statusConfig), dataFallback.apiKeys)
-            : cloneData(dataFallback.apiKeys),
-        modelUsage:
-          usage.status === 'fulfilled'
-            ? valueOrFallback(normalizeNewApiUsage(usage.value, statusConfig), dataFallback.modelUsage)
-            : cloneData(dataFallback.modelUsage),
-        channelChecks:
-          channelHealth.status === 'fulfilled'
-            ? valueOrFallback(normalizeNewApiChannels(channelHealth.value), dataFallback.channelChecks)
-            : cloneData(dataFallback.channelChecks),
-      };
-    },
-  };
-}
-
 export function normalizeNewApiUserSummary(raw, options = {}) {
   const user = unwrapObject(raw);
   const plan = readPlanName(user, options.planNames);
@@ -184,14 +141,6 @@ export function normalizeNewApiChannels(raw) {
       replacement: String(channel.replacement || ''),
     };
   });
-}
-
-function configFromStatus(raw, overrides) {
-  const status = unwrapObject(raw);
-  return {
-    ...overrides,
-    quotaPerCny: Number(overrides.quotaPerCny || status.quota_per_unit || status.quotaPerCny || DEFAULT_QUOTA_PER_CNY),
-  };
 }
 
 function unwrapArray(raw) {
@@ -313,12 +262,4 @@ function formatTime(value) {
   const date = new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric);
   if (Number.isNaN(date.getTime())) return '--:--';
   return date.toISOString().slice(11, 16);
-}
-
-function valueOrFallback(value, fallback) {
-  return Array.isArray(value) && value.length > 0 ? value : cloneData(fallback);
-}
-
-function cloneData(value) {
-  return JSON.parse(JSON.stringify(value));
 }

@@ -392,7 +392,7 @@ Frist-API 独立部署，不与 OpenClaw 内部 New API 共用运行环境。
 ## 交接提示词
 
 ```text
-你现在接手 OpenClaw 项目的 Frist-API 盈利渠道设计与实现。当前仓库是 /Users/blackdj/Desktop/OpenEverything，必须遵守 AGENTS.md SOP。先读 docs/project-map.md、docs/status/HEALTH.md、docs/specs/2026-05-01-frist-api-mvp-design.md、docs/guides/frist-api-quickstart.md，再动代码。
+你现在接手 OpenClaw 项目的 Frist-API 盈利渠道设计与实现。当前仓库是 /Users/blackdj/Desktop/OpenEverything，必须遵守 AGENTS.md SOP。先读 docs/001-project-map.md、docs/060-health.md、docs/054-2026-05-01-frist-api-mvp-design.md、docs/025-frist-api-quickstart.md，再动代码。
 
 业务目标: 基于 QuantumNous/new-api 二开一个公开收费 API 中转网站，品牌名固定为 Frist-API。OpenClaw APP 现有 New API 页面保持不动，Frist-API 独立部署、独立数据库、独立 Redis、独立域名，只作为中转收费系统，不用本机硬件做模型推理。
 
@@ -406,7 +406,7 @@ Frist-API 独立部署，不与 OpenClaw 内部 New API 共用运行环境。
 
 UI 方向: 参考 https://tabcode.cc/dashboard 的黑白极简控制台。用户侧要小白友好，隐藏渠道、分组、模型映射、倍率等复杂概念。管理侧要向导式，重点是号源总览、补号助手、模型探测、价格解析、渠道管理、用户管理、订单与兑换码、风控日志。
 
-实现约束: 优先复用 QuantumNous/new-api 现有注册、用户、充值、令牌、渠道、模型、日志和支付能力；需要改 FastAPI/Tauri/新库时按 docs/sop/docs-first-protocol.md 先查官方文档；任何代码变更必须更新 docs/CHANGELOG.md，发现问题登记 docs/status/HEALTH.md。公开二开要注意 QuantumNous/new-api 的 AGPL-3.0 协议，保留源码公开入口或公开 fork。
+实现约束: 优先复用 QuantumNous/new-api 现有注册、用户、充值、令牌、渠道、模型、日志和支付能力；需要改 FastAPI/Tauri/新库时按 docs/040-docs-first-protocol.md 先查官方文档；任何代码变更必须更新 docs/002-changelog.md，发现问题登记 docs/060-health.md。公开二开要注意 QuantumNous/new-api 的 AGPL-3.0 协议，保留源码公开入口或公开 fork。
 
 当前雏形: 已有 apps/frist-api 用户控制台、独立 /admin.html 管理端、apps/frist-api/server/server.js 轻量中转后端、apps/frist-api/src/core.js 核心逻辑、apps/frist-api/src/newApiClient.js New-API 适配层、apps/frist-api/tests/ 测试、docker-compose.frist-api.yml 原型入口、Makefile 的 frist-api-test/frist-api-dev/frist-api-up/frist-api-down 命令。当前版本已能本地跑通注册、充值申请、人工入账、兑换、创建 Key、CC Switch 导入、补日卡池、直连/代理择优、价格扣费、网关转发和日卡自动切换，仍不是最终 New-API fork。
 

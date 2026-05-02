@@ -43,18 +43,21 @@ export function createBusinessStateFromDashboard(dashboard, options = {}) {
       monthCostCents: centsFromMoney(account.monthCost),
       todayCalls: integerFromText(account.todayCalls),
     },
-    apiKeys: (dashboard.apiKeys || []).map((key, index) => ({
-      id: String(key.id || `key-${index + 1}`),
-      name: key.name || `API Key ${index + 1}`,
-      secret: key.secret || `fk-live-demo-${index + 1}`,
-      preview: key.preview || maskKey(key.secret || `fk-live-demo-${index + 1}`),
-      enabled: Boolean(key.enabled),
-      costCents: centsFromMoney(key.cost),
-      tokens: key.tokens || '0.00M',
-      lastUsed: key.lastUsed || '-',
-      expiresAt: key.expiresAt || '-',
-      modelGroup: key.modelGroup || 'All',
-    })),
+    apiKeys: (dashboard.apiKeys || []).map((key, index) => {
+      const secret = key.secret || '';
+      return {
+        id: String(key.id || `key-${index + 1}`),
+        name: key.name || `API Key ${index + 1}`,
+        secret,
+        preview: key.preview || (secret ? maskKey(secret) : '未返回'),
+        enabled: Boolean(key.enabled),
+        costCents: centsFromMoney(key.cost),
+        tokens: key.tokens || '0.00M',
+        lastUsed: key.lastUsed || '-',
+        expiresAt: key.expiresAt || '-',
+        modelGroup: key.modelGroup || 'All',
+      };
+    }),
     modelUsage: clone(dashboard.modelUsage || []),
     channelChecks: clone(dashboard.channelChecks || []),
     rechargeOptions: clone(dashboard.rechargeOptions || []),
@@ -431,7 +434,7 @@ export function routeModelRequest(state, { model, pool, quotaCost }) {
 }
 
 function fallbackModels(models) {
-  return models?.length ? clone(models) : ['claude-haiku', 'gpt-5.5', 'gemini-2.5-pro'];
+  return models?.length ? clone(models) : ['claude-opus-4-6-thinking-c', 'gpt-5.5', 'gemini-2.5-pro'];
 }
 
 function normalizeDate(value) {

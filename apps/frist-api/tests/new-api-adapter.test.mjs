@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
-  createFristApiDataStore,
   createNewApiClient,
   normalizeNewApiChannels,
   normalizeNewApiTokens,
@@ -12,10 +11,10 @@ import {
 } from '../src/newApiClient.js';
 import { normalizeFristDashboard } from '../src/serverClient.js';
 
-const fallback = {
+const previousDashboard = {
   accountSummary: {
     userInitials: 'DJ',
-    plan: '月卡 Pro',
+    plan: '历史套餐',
     balance: '¥81.58',
     todayCost: '¥18.42',
     monthCost: '¥428.90',
@@ -26,13 +25,13 @@ const fallback = {
     todayCalls: '186 次',
     renewalDate: '2026-05-28',
   },
-  apiKeys: [{ id: 'fallback-key', name: '演示 Key', preview: 'fk-live-••••••demo', enabled: true }],
-  channelChecks: [{ provider: 'Claude', channel: '演示线', ok: true, latencyMs: 300 }],
+  apiKeys: [{ id: 'previous-key', name: '历史 Key', preview: 'fk-live-••••••prev', enabled: true }],
+  channelChecks: [{ provider: 'Claude', channel: '历史线路', ok: true, latencyMs: 300 }],
   modelUsage: [{ model: 'Claude', amount: '¥18.42', percent: 100, calls: '18 次', tokens: '1.00M' }],
 };
 
 describe('Frist-API New-API adapter', () => {
-  it('normalizes lightweight Frist-API dashboard billing counters instead of keeping demo totals', () => {
+  it('normalizes lightweight Frist-API dashboard billing counters instead of keeping stale totals', () => {
     const dashboard = normalizeFristDashboard(
       {
         authenticated: false,
@@ -42,7 +41,7 @@ describe('Frist-API New-API adapter', () => {
         channelChecks: [],
         modelUsage: [],
       },
-      fallback,
+      previousDashboard,
     );
 
     assert.equal(dashboard.accountSummary.plan, '未登录');
@@ -53,6 +52,22 @@ describe('Frist-API New-API adapter', () => {
     assert.deepEqual(dashboard.modelUsage, [
       { model: 'Claude', amount: '¥0.00', percent: 0, calls: '0 次', tokens: '0.00M' },
     ]);
+  });
+
+  it('returns empty public dashboard state when no fallback is provided', () => {
+    const dashboard = normalizeFristDashboard({
+      authenticated: false,
+      account: {},
+      user: {},
+      apiKeys: [],
+      channelChecks: [],
+      modelUsage: [],
+    });
+
+    assert.equal(dashboard.accountSummary.plan, '未登录');
+    assert.equal(dashboard.apiKeys.length, 0);
+    assert.equal(dashboard.channelChecks.length, 0);
+    assert.equal(dashboard.modelUsage.length, 0);
   });
 
   it('preserves authenticated dashboard billing counters when the server provides them', () => {
@@ -76,7 +91,7 @@ describe('Frist-API New-API adapter', () => {
         channelChecks: [],
         modelUsage: [],
       },
-      fallback,
+      previousDashboard,
     );
 
     assert.equal(dashboard.accountSummary.todayCost, '¥5.00');
@@ -198,44 +213,6 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(JSON.stringify(channels).includes('supplier.example.com'), false);
   });
 
-  it('falls back to demo data when New-API is unavailable', async () => {
-    const store = createFristApiDataStore({
-      fallback,
-      client: {
-        getStatus: async () => {
-          throw new Error('New-API offline');
-        },
-      },
-    });
-
-    assert.deepEqual(await store.load(), fallback);
-  });
-
-  it('merges successful New-API slices while keeping fallback for missing optional endpoints', async () => {
-    const store = createFristApiDataStore({
-      fallback,
-      config: { quotaPerCny: 100, planNames: { default: '默认套餐' } },
-      client: {
-        getStatus: async () => ({ data: { quota_per_unit: 100 } }),
-        getUserSelf: async () => ({ data: { username: 'first_user', quota: 1200, used_quota: 300, group: 'default' } }),
-        getTokens: async () => ({ data: [{ id: 1, name: '生产 Key', key: 'fk-live-abc123456789', status: 1 }] }),
-        getUsage: async () => {
-          throw new Error('usage endpoint missing');
-        },
-        getChannelHealth: async () => {
-          throw new Error('channel endpoint missing');
-        },
-      },
-    });
-
-    const data = await store.load();
-    assert.equal(data.accountSummary.balance, '¥12.00');
-    assert.equal(data.accountSummary.plan, '默认套餐');
-    assert.equal(data.apiKeys[0].name, '生产 Key');
-    assert.deepEqual(data.modelUsage, fallback.modelUsage);
-    assert.deepEqual(data.channelChecks, fallback.channelChecks);
-  });
-
   it('creates a session-based New-API client without sending user API keys from the browser', async () => {
     const calls = [];
     const client = createNewApiClient({
@@ -260,11 +237,14 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(Object.hasOwn(calls[0].init.headers, 'Authorization'), false);
   });
 
-  it('wires the page through the New-API data store instead of hard-coded demo arrays', () => {
+  it('wires the page through the real Frist server dashboard without local fallbacks', () => {
     const appSource = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
 
-    assert.equal(appSource.includes('createFristApiDataStore'), true);
+    assert.equal(appSource.includes('createFristApiBrowserClient'), true);
     assert.equal(appSource.includes('loadDashboardData'), true);
+    assert.equal(appSource.includes('createFristApiDataStore'), false);
+    assert.equal(appSource.includes("from './data.js'"), false);
+    assert.equal(appSource.includes('store.load()'), false);
     assert.equal(/import\s*{[^}]*accountSummary/s.test(appSource), false);
     assert.equal(/import\s*{[^}]*channelChecks/s.test(appSource), false);
   });

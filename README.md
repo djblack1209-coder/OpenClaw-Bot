@@ -59,12 +59,12 @@ OpenClaw Bot/
 
 ## Documentation
 
-- `docs/README.md`：文档总入口，先看这个
-- `docs/PROJECT_MAP.md`：项目全景与模块说明
-- `docs/status/HEALTH.md`：已知问题与技术债
-- `docs/CHANGELOG.md`：完整变更历史
-- `docs/sop/FULL_AUDIT_PLAN.md`：全量审计总方案
-- `docs/guides/OPENCLAW_APP_VISUAL_AUDIT_PROMPT.md`：OpenClaw APP 全量视觉级审计提示词
+- `docs/003-docs-index.md`：文档总入口，先看这个
+- `docs/001-project-map.md`：项目全景与模块说明
+- `docs/060-health.md`：已知问题与技术债
+- `docs/002-changelog.md`：完整变更历史
+- `docs/042-full-audit-plan.md`：全量审计总方案
+- `docs/029-visual-audit-prompt.md`：OpenClaw APP 全量视觉级审计提示词
 
 ## License
 

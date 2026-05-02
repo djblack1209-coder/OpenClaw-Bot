@@ -1434,7 +1434,7 @@
 
 ## 3. 待搬运高星项目清单 (2026-03-23 评估)
 
-> 详细设计文档: `docs/specs/2026-03-23-upgrade-opportunities-design.md`
+> 详细设计文档: `docs/050-2026-03-23-upgrade-opportunities-design.md`
 
 ### 3.1 价值位阶 1 — 交易系统硬实力
 

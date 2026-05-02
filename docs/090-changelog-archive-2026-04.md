@@ -1,5 +1,5 @@
 # CHANGELOG
-> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/UPDATE_PROTOCOL.md`。
+> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/043-update-protocol.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
 ## [2026-04-25] 全量审计与优化 Sprint
@@ -39,7 +39,7 @@
 - `apps/openclaw-manager-src/src/components/Social/index.tsx` — catch 类型 + error 访问修正。
 - `apps/openclaw-manager-src/src/components/Xianyu/index.tsx` — catch 类型 + error 访问修正。
 - `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — 去掉冗余 as any cast。
-- `docs/status/HEALTH.md` — 登记第十轮审计结果。
+- `docs/060-health.md` — 登记第十轮审计结果。
 
 ## 2026-04-24 — 全量审计第八~九轮：react-hooks/exhaustive-deps 归零
 > 领域: `frontend` `docs`
@@ -54,7 +54,7 @@
 
 ### 文件变更
 - `apps/openclaw-manager-src/src/components/` 下 14 个组件文件补齐 Hook 依赖。
-- `docs/status/HEALTH.md` — 登记第八~九轮审计结果。
+- `docs/060-health.md` — 登记第八~九轮审计结果。
 
 ## 2026-04-24 — 全量审计第七轮：内部工具页 Hook 依赖风险收敛
 > 领域: `frontend` `docs`
@@ -73,7 +73,7 @@
 - `apps/openclaw-manager-src/src/components/APIGateway/index.tsx` — 补齐网关操作回调依赖。
 - `apps/openclaw-manager-src/src/components/Bots/index.tsx` — 补齐服务舰队数据拉取依赖。
 - `apps/openclaw-manager-src/src/components/NewsFeed/index.tsx` — 补齐新闻拉取和摘要计算依赖。
-- `docs/status/HEALTH.md` — 登记第七轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第七轮审计结果和剩余问题。
 
 ## 2026-04-24 — 全量审计第六轮：核心交互页 Hook 依赖风险收敛
 > 领域: `frontend` `docs`
@@ -91,7 +91,7 @@
 - `apps/openclaw-manager-src/src/components/Xianyu/index.tsx` — 补齐数据刷新和扫码轮询依赖。
 - `apps/openclaw-manager-src/src/components/Social/index.tsx` — 补齐社媒数据拉取依赖。
 - `apps/openclaw-manager-src/src/components/Settings/index.tsx` — 补齐设置加载和操作回调依赖。
-- `docs/status/HEALTH.md` — 登记第六轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第六轮审计结果和剩余问题。
 
 ## 2026-04-24 — 全量审计第五轮：前端 Hook 依赖风险收敛
 > 领域: `frontend` `docs`
@@ -111,7 +111,7 @@
 - `apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx` — 补齐开发者模式切换依赖。
 - `apps/openclaw-manager-src/src/components/Home/index.tsx` — 补齐首页加载、日志时间、拉取错误文案依赖。
 - `apps/openclaw-manager-src/src/components/FinRadar/index.tsx` — 补齐金融雷达翻译依赖。
-- `docs/status/HEALTH.md` — 登记第五轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第五轮审计结果和剩余问题。
 
 ## 2026-04-24 — 全量审计第四轮：逐页截图深链接与开发者页守卫
 > 领域: `frontend` `docs`
@@ -126,7 +126,7 @@
 
 ### 文件变更
 - `apps/openclaw-manager-src/src/App.tsx` — 新增页面参数解析、合法页面白名单、开发者页守卫。
-- `docs/status/HEALTH.md` — 登记第四轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第四轮审计结果和剩余问题。
 
 ## 2026-04-24 — 全量审计第三轮：命令面板导航对齐主功能
 > 领域: `frontend` `docs`
@@ -141,7 +141,7 @@
 
 ### 文件变更
 - `apps/openclaw-manager-src/src/components/CommandPalette.tsx` — 命令面板导航对齐主功能。
-- `docs/status/HEALTH.md` — 登记第三轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第三轮审计结果和剩余问题。
 
 ## 2026-04-24 — 全量审计首轮：构建阻塞与 Redis 空密码防护
 > 领域: `frontend` `infra` `docs`
@@ -173,7 +173,7 @@
 
 ### 文件变更
 - `packages/clawbot/src/api/routers/wechat.py` — 恢复微信消息处理路由。
-- `docs/status/HEALTH.md` — 登记第二轮审计结果和剩余问题。
+- `docs/060-health.md` — 登记第二轮审计结果和剩余问题。
 
 ## 2026-04-21 — 安全修复: 移除有 CVE 的 diskcache，替换为自研 sqlite3 缓存
 > 领域: `backend`
@@ -197,9 +197,9 @@
 - `src/litellm_router.py` — 替换 diskcache 降级方案
 - `multi_main.py` — 更新注释
 - `requirements.txt` — 移除 diskcache 依赖
-- `docs/status/HEALTH.md` — HI-388 标记已解决
-- `docs/registries/DEPENDENCY_MAP.md` — diskcache 标记已移除
-- `docs/PROJECT_MAP.md` — 更新缓存技术栈描述
+- `docs/060-health.md` — HI-388 标记已解决
+- `docs/032-dependency-map.md` — diskcache 标记已移除
+- `docs/001-project-map.md` — 更新缓存技术栈描述
 - `docs/audit/R01_INFRA.md` — R1.22 标记已修复
 
 ## 2026-04-18 — 全方位审计 v3.0 R2: 后端核心引擎
@@ -276,7 +276,7 @@
 - `packages/clawbot/.github/` — 删除
 - `docker-compose.yml` — Redis maxmemory 修复
 - `packages/clawbot/requirements.txt` — RestrictedPython 版本上限
-- `docs/registries/DEPENDENCY_MAP.md` — stamina 版本修复
+- `docs/032-dependency-map.md` — stamina 版本修复
 - `packages/clawbot/pytest.ini` — 默认选项优化
 - `docs/superpowers/` — 删除
 - `AUDIT_PLAN.md` — v3.0 重写
@@ -310,7 +310,7 @@
 - `packages/clawbot/tests/test_message_mixin.py` — 新增 12 个测试用例
 - `packages/clawbot/src/freqtrade_bridge.py` — 修复 confirm_trade_entry() API 不匹配
 - `packages/clawbot/src/core/brain_exec_invest.py` — 补传 stop_loss 参数修复 StopLossValidator 误拒
-- `docs/status/HEALTH.md` — 新增 HI-520~524
+- `docs/060-health.md` — 新增 HI-520~524
 
 ---
 
@@ -714,7 +714,7 @@
 - **迭代 LOOP**: 定义 6 个核心度量指标 + 三轮迭代计划 + 季度评估触发条件
 - **关键发现**: brain_executors.py 扇出失控(20+模块)、社媒模块 72 处被引用最高、购物比价耦合最低(仅 1 个外部依赖)
 ### 文件变更
-- `docs/reports/MRU_ANALYSIS_2026_04_16.md` — 新建：完整分析报告
+- `docs/082-mru-analysis-2026-04-16.md` — 新建：完整分析报告
 
 ---
 
@@ -1095,8 +1095,8 @@
 ### 文件变更
 - `packages/clawbot/src/litellm_router.py` — g4f API Key 从环境变量读取
 - `packages/clawbot/src/trading/_scheduler_daily.py` — IBKR 健康检查日志降频 + 间隔可配置
-- `docs/status/HEALTH.md` — HI-495/496/497 标记已修复
-- `docs/CHANGELOG.md` — 本条目
+- `docs/060-health.md` — HI-495/496/497 标记已修复
+- `docs/002-changelog.md` — 本条目
 
 ---
 
@@ -1129,8 +1129,8 @@
 - `packages/clawbot/src/execution/scheduler.py` — 领券时区改为北京时间
 - `packages/clawbot/src/execution/wechat_coupon.py` — 新增 fcntl.flock 并发锁
 - `scripts/nightly-audit/run-audit.sh` — 新增补跑模式
-- `docs/status/HEALTH.md` — 新增 HI-492~HI-497
-- `docs/CHANGELOG.md` — 本条目
+- `docs/060-health.md` — 新增 HI-492~HI-497
+- `docs/002-changelog.md` — 本条目
 
 ---
 
@@ -1407,7 +1407,7 @@
 - `packages/clawbot/.github/workflows/ci.yml` — Python 矩阵统一
 - `packages/clawbot/scripts/systemd/clawbot-failover.service` — 降权为 clawbot 用户
 - `packages/clawbot/scripts/systemd/vps_failover_check.sh` — systemctl 操作加 sudo
-- `docs/status/HEALTH.md` — 6 条 HI 状态更新
+- `docs/060-health.md` — 6 条 HI 状态更新
 
 ---
 
@@ -1441,7 +1441,7 @@
 - HEALTH.md 中 HI-484 标记为已修复
 
 ### 文件变更
-- `docs/status/HEALTH.md` — HI-484 标记已修复
+- `docs/060-health.md` — HI-484 标记已修复
 
 ---
 
@@ -1476,15 +1476,15 @@
 - `packages/clawbot/requirements.txt` — stamina 版本约束修正
 - `tools/launchagents/ai.openclaw.heartbeat-sender.plist` — VPS IP 改为必填环境变量
 - `packages/clawbot/kiro-gateway/.env.example` — 示例密码清空
-- `docs/registries/MODULE_REGISTRY.md` — 补全 26 个子模块
-- `docs/registries/COMMAND_REGISTRY.md` — 数量校准 96→98
+- `docs/033-module-registry.md` — 补全 26 个子模块
+- `docs/031-command-registry.md` — 数量校准 96→98
 
 ---
 
 ## [2026-04-12] MODULE_REGISTRY 补全 26 个 HI-358 拆分子模块
 
 > 领域: `docs`
-> 影响模块: `docs/registries/MODULE_REGISTRY.md`
+> 影响模块: `docs/033-module-registry.md`
 > 关联问题: HI-358 大文件拆分后 26 个新子模块未注册
 
 ### 变更内容
@@ -1494,7 +1494,7 @@
 - 更新文件头部最后更新时间和模块总数
 
 ### 文件变更
-- `docs/registries/MODULE_REGISTRY.md` — 新增 92 行注册条目 (Section 2.3)
+- `docs/033-module-registry.md` — 新增 92 行注册条目 (Section 2.3)
 
 ---
 
@@ -1573,7 +1573,7 @@
 ## [2026-04-12] 夜间审计系统 v2.0 全面升级
 
 > 领域: `infra`
-> 影响模块: `scripts/nightly-audit/*`, `docs/guides/NIGHTLY_AUDIT_SETUP.md`
+> 影响模块: `scripts/nightly-audit/*`, `docs/028-nightly-audit-setup.md`
 > 关联问题: 审计系统全面检查发现的多项缺陷
 
 ### 变更内容
@@ -1596,7 +1596,7 @@
 - `scripts/nightly-audit/run-audit.sh` — 全面升级（预检/断点/增量/评分/告警/清理/8阶段）
 - `scripts/nightly-audit/setup-mac.sh` — 新增开机补跑机制
 - `scripts/nightly-audit/config.env.example` — 新增增量审计/日志保留/变更限制/阶段数配置
-- `docs/guides/NIGHTLY_AUDIT_SETUP.md` — 全面更新至 v2.0
+- `docs/028-nightly-audit-setup.md` — 全面更新至 v2.0
 
 ---
 
@@ -1627,7 +1627,7 @@
 ## [2026-04-12] 夜间自动审计系统
 
 > 领域: `infra`, `docs`
-> 影响模块: `scripts/nightly-audit/*`, `docs/guides/NIGHTLY_AUDIT_SETUP.md`
+> 影响模块: `scripts/nightly-audit/*`, `docs/028-nightly-audit-setup.md`
 > 关联问题: 无（新功能）
 
 ### 变更内容
@@ -1649,7 +1649,7 @@
 - `scripts/nightly-audit/phases/06-governance-docs.txt` — 文件治理与文档审计提示词
 - `scripts/nightly-audit/setup-mac.sh` — macOS launchd 定时配置脚本
 - `scripts/nightly-audit/install-server.sh` — Ubuntu 服务器安装脚本
-- `docs/guides/NIGHTLY_AUDIT_SETUP.md` — 部署指南
+- `docs/028-nightly-audit-setup.md` — 部署指南
 - `.gitignore` — 新增审计配置和日志排除规则
 
 ---
@@ -1971,8 +1971,8 @@
 - `packages/clawbot/tests/test_litellm_router.py` — 新增 Gemini/Cerebras 与 key 脱敏断言
 - `packages/clawbot/config/.env.example` — 号池说明更新
 - `packages/clawbot/config/.env` — 清理重复 MEM0 配置 + 清空 XAPI Claude 配置
-- `docs/registries/API_POOL_REGISTRY.md` — 号池注册表更新
-- `docs/status/HEALTH.md` — 新增测试环境说明 + LLM 路由状态更新
+- `docs/030-api-pool-registry.md` — 号池注册表更新
+- `docs/060-health.md` — 新增测试环境说明 + LLM 路由状态更新
 
 ## [2026-04-09] 进化引擎数据修复 + 微信渠道补全 + API网关引导优化
 
@@ -2526,7 +2526,7 @@
 - `src/bot/message_mixin.py` — 闲鱼未读消息空壳实现为 API 查询
 - `apps/.../Plugins/index.tsx` — 3个占位按钮接通真实逻辑
 - `apps/.../Memory/index.tsx` — 统计面板接入 memoryStats API
-- `docs/registries/MODULE_REGISTRY.md` — 补录 7 个核心模块
+- `docs/033-module-registry.md` — 补录 7 个核心模块
 - `packages/clawbot/config/.env.example` — 清除 2 个真实 Bot 用户名
 
 ---
@@ -2573,8 +2573,8 @@
 - `src/api/server.py` — 生产环境关闭 API 文档
 - `kiro-gateway/main.py` — CORS methods/headers 收窄
 - `tests/test_shared_memory_core.py` — 更新测试验证用户隔离行为
-- `docs/status/HEALTH.md` — 清理僵尸条目 + 登记新发现
-- `docs/CHANGELOG.md` — 记录本次审计
+- `docs/060-health.md` — 清理僵尸条目 + 登记新发现
+- `docs/002-changelog.md` — 记录本次审计
 
 ---
 

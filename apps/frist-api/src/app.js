@@ -1,54 +1,44 @@
 import {
   buildClientSetupCommands,
   normalizeBaseUrl,
+  normalizeOfficialModelList,
+  normalizeOfficialModelName,
   summarizeModelHealth,
 } from './core.js';
 import {
-  applyRecharge,
   buildBusinessClientConfig,
   buildBusinessImportUrl,
   createBusinessStateFromDashboard,
-  createCustomerKey,
-  deleteCustomerKey,
-  deriveDashboardData,
-  redeemCode,
-  registerCustomer,
-  renameCustomerKey,
-  setCustomerKeyEnabled,
-  verifyCustomerEmail,
 } from './businessFlow.js';
-import * as fallbackData from './data.js';
-import { createFristApiDataStore, createNewApiClient } from './newApiClient.js';
 import { createFristApiBrowserClient, normalizeFristDashboard } from './serverClient.js';
 
-const fallbackDashboard = {
-  accountSummary: fallbackData.accountSummary,
-  apiKeys: fallbackData.apiKeys,
-  channelChecks: fallbackData.channelChecks,
-  helpLinks: fallbackData.helpLinks,
-  importTargets: fallbackData.importTargets,
-  modelUsage: fallbackData.modelUsage,
-  modelCatalog: fallbackData.modelCatalog,
-  rechargeOptions: fallbackData.rechargeOptions,
+const emptyDashboard = {
+  accountSummary: {
+    userInitials: 'FA',
+    plan: '未登录',
+    renewalDate: '-',
+    balance: '¥0.00',
+    todayCost: '¥0.00',
+    monthCost: '¥0.00',
+    quotaLeft: '¥0.00',
+    packageQuota: '¥0.00',
+    boosterQuota: '¥0.00',
+    usageTotal: '¥0.00',
+    todayCalls: '0 次',
+    email: '',
+    isAdmin: false,
+  },
+  apiKeys: [],
+  channelChecks: [],
+  helpLinks: [],
+  importTargets: ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'],
+  modelUsage: [],
+  modelCatalog: [],
+  rechargeOptions: [],
 };
 
-const dashboardData = { ...fallbackDashboard };
+const dashboardData = structuredClone(emptyDashboard);
 let businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
-
-const store = createFristApiDataStore({
-  fallback: dashboardData,
-  client: createNewApiClient({
-    baseUrl: window.FRIST_API_BASE_URL || window.location.origin,
-  }),
-  config: {
-    planNames: {
-      default: '默认套餐',
-      monthly_pro: '月卡 Pro',
-      day: '日卡',
-      month: '月卡',
-    },
-  },
-});
 
 const serverClient = createFristApiBrowserClient({
   baseUrl: window.FRIST_API_SERVER_BASE_URL || window.location.origin,
@@ -106,7 +96,8 @@ const state = {
   model: 'gpt-5.5',
   playgroundModel: 'gpt-5.5',
   modelGroup: 'OpenAI',
-  selectedRechargeCny: 3.87,
+  selectedRechargeCny: 5.88,
+  selectedRechargePlanId: '',
   selectedRechargePlan: 'day',
   serverAvailable: false,
   hasServerSession: false,
@@ -150,16 +141,16 @@ function render() {
 }
 
 async function loadDashboardData() {
-  let nextData;
+  let nextData = normalizeFristDashboard(emptyServerPayload(), emptyDashboard);
   try {
     const serverDashboard = await serverClient.loadDashboard();
-    nextData = normalizeFristDashboard(serverDashboard, fallbackDashboard);
+    nextData = normalizeFristDashboard(serverDashboard, emptyDashboard);
     state.serverAvailable = true;
     state.hasServerSession = Boolean(serverDashboard.authenticated);
   } catch (error) {
-    state.serverAvailable = error.status === 401;
+    state.serverAvailable = false;
     state.hasServerSession = false;
-    nextData = error.status === 401 ? createGuestDashboard(fallbackDashboard) : await store.load();
+    setActionMessage(error.message || '服务暂时不可用，请先启动后端');
   }
 
   for (const [key, value] of Object.entries(nextData)) {
@@ -168,6 +159,19 @@ async function loadDashboardData() {
   businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
   syncPrimaryAccountState();
   render();
+}
+
+function emptyServerPayload() {
+  return {
+    authenticated: false,
+    account: {},
+    user: {},
+    apiKeys: [],
+    channelChecks: [],
+    modelUsage: [],
+    modelCatalog: [],
+    rechargeOptions: [],
+  };
 }
 
 function renderAccountSummary() {
@@ -272,8 +276,13 @@ function renderProviderSummary(item) {
   return `
     <article class="provider-row">
       <span class="health-dot health-dot--${item.status}" aria-hidden="true"></span>
-      <strong>${item.provider}</strong>
-      <small>${item.okText} · ${item.latencyText}</small>
+      <div class="provider-main">
+        <strong>${escapeHtml(item.provider)}</strong>
+        <small class="provider-meta">${escapeHtml(item.okText)} · 最低 ${escapeHtml(item.latencyText)} · ${escapeHtml(item.checkedText)}</small>
+        <div class="provider-models">
+          ${item.models.map((model) => `<span>${escapeHtml(model)}</span>`).join('')}
+        </div>
+      </div>
     </article>
   `;
 }
@@ -288,6 +297,8 @@ function providerSummaries(channelChecks) {
       healthy: 0,
       bestLatency: 0,
       models: [],
+      checkedAt: '',
+      lastReason: '',
     };
     current.total += 1;
     current.healthy += snapshot.ok && !snapshot.maintenance ? 1 : 0;
@@ -297,6 +308,8 @@ function providerSummaries(channelChecks) {
         : Number(snapshot.latencyMs || 0);
     }
     current.models.push(snapshot.model);
+    current.checkedAt = [current.checkedAt, snapshot.checkedAt].filter(Boolean).sort().at(-1) || '';
+    current.lastReason = snapshot.officialStatus || snapshot.status || current.lastReason;
     current.status = current.healthy > 0 ? summary.status : 'down';
     grouped.set(snapshot.provider, current);
   }
@@ -306,8 +319,17 @@ function providerSummaries(channelChecks) {
     status: item.healthy > 0 ? (item.bestLatency > 1600 ? 'slow' : 'healthy') : 'down',
     okText: item.healthy > 0 ? `${item.healthy}/${item.total}` : '不可用',
     latencyText: item.bestLatency ? `${item.bestLatency}ms` : '-',
-    models: [...new Set(item.models)].slice(0, 4),
+    checkedText: item.checkedAt ? `最近 ${formatCheckedAt(item.checkedAt)}` : item.lastReason || '等待检测',
+    models: normalizeOfficialModelList([...new Set(item.models)]).slice(0, 4),
   }));
+}
+
+function formatCheckedAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value || '-');
+  }
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function renderPlayground() {
@@ -499,19 +521,22 @@ function modelMatchesUiGroup(model, group) {
 function sortModelsByStrength(models) {
   const order = [
     'gpt-5.5-pro',
+    'gpt-5.5-c',
     'gpt-5.5',
     'gpt-5.4-pro',
+    'gpt-5.4-c',
     'gpt-5.4',
     'gpt-5.4-mini',
     'gpt-5.4-nano',
     'gpt-image-2',
     'gpt-image-1.5',
     'gpt-image-1',
-    'claude-haiku-4-5-20251001',
-    'claude-haiku',
+    'claude-opus-4-6-thinking-c',
+    'claude-opus-4-6-c',
+    'claude-sonnet-4-5-c',
     'gemini-2.5-flash',
   ];
-  return [...new Set((models || []).map((model) => String(model || '').trim()).filter(Boolean))].sort((left, right) => {
+  return [...new Set((models || []).map((model) => normalizeOfficialModelName(model)).filter(Boolean))].sort((left, right) => {
     const leftRank = order.indexOf(left);
     const rightRank = order.indexOf(right);
     const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;
@@ -522,10 +547,11 @@ function sortModelsByStrength(models) {
 }
 
 function modelCatalogRows() {
-  const statusByModel = new Map((dashboardData.channelChecks || []).map((item) => [item.model, item]));
+  const statusByModel = new Map((dashboardData.channelChecks || []).map((item) => [normalizeOfficialModelName(item.model), item]));
   const catalog = (dashboardData.modelCatalog || []).map((item) => ({
     ...item,
-    available: statusByModel.has(item.model) ? Boolean(statusByModel.get(item.model).ok) : Boolean(item.available),
+    model: normalizeOfficialModelName(item.model),
+    available: statusByModel.has(normalizeOfficialModelName(item.model)) ? Boolean(statusByModel.get(normalizeOfficialModelName(item.model)).ok) : Boolean(item.available),
   }));
   const catalogModels = new Set(catalog.map((item) => item.model));
   const liveAdditions = (dashboardData.channelChecks || [])
@@ -619,14 +645,20 @@ function renderModelGroupPicker() {
 function renderRechargeOptions() {
   const { rechargeOptions } = dashboardData;
   const container = document.querySelector('[data-recharge-options]');
+  if (!state.selectedRechargePlanId && rechargeOptions[0]) {
+    state.selectedRechargePlanId = rechargeOptions[0].id || '';
+    state.selectedRechargeCny = Number(rechargeOptions[0].priceCny || String(rechargeOptions[0].cny).replace(/[^\d.]/g, ''));
+    state.selectedRechargePlan = rechargeOptions[0].plan || 'balance';
+  }
   container.innerHTML = rechargeOptions
     .map(
       (option) => `
-        <button class="amount-button ${option.active ? 'is-active' : ''}" data-recharge-plan="${option.plan || 'balance'}" data-recharge-option="${Number(
-          String(option.cny).replace(/[^\d.]/g, ''),
+        <button class="amount-button ${option.id === state.selectedRechargePlanId || option.active ? 'is-active' : ''}" data-recharge-plan-id="${escapeHtml(option.id || '')}" data-recharge-plan="${option.plan || 'balance'}" data-recharge-option="${Number(
+          option.priceCny || String(option.cny).replace(/[^\d.]/g, ''),
         )}" type="button">
           <em>${option.label || '余额'}</em>
           <strong>${option.cny}</strong>
+          ${option.quotaUsd ? `<span>${escapeHtml(option.quota || `$${option.quotaUsd}`)} 额度</span>` : ''}
         </button>
       `,
     )
@@ -691,7 +723,7 @@ function renderImportLink() {
     openImport.toggleAttribute('aria-disabled', !link);
   }
   setText('[data-base-url]', normalizeBaseUrl(state.baseUrl));
-  setText('[data-pay-demo]', '提交');
+  setText('[data-pay-submit]', '提交');
   renderCrossImportGuide();
   refreshImportLinkFromServer();
 }
@@ -756,7 +788,7 @@ function syncWalkthroughFields() {
   const codexBase = normalizeBaseUrl(state.baseUrl);
   const claudeBase = codexBase.replace(/\/v1\/?$/i, '');
   const openAiModel = availableModelsForGroup('OpenAI')[0] || 'gpt-5.5';
-  const claudeModel = availableModelsForGroup('Claude')[0] || 'claude-haiku';
+  const claudeModel = availableModelsForGroup('Claude')[0] || 'claude-opus-4-6-thinking-c';
   const keyLabel = enabledKeyCount() ? 'fk-live-你的用户Key' : '先在 API 页面创建 fk-live 用户 Key';
   setText('[data-flow-codex-base]', codexBase);
   setText('[data-flow-claude-base]', claudeBase);
@@ -878,11 +910,9 @@ function bindStaticActions() {
 
     const amount = event.target.closest('[data-recharge-option]');
     if (amount) {
+      state.selectedRechargePlanId = amount.dataset.rechargePlanId || '';
       state.selectedRechargeCny = Number(amount.dataset.rechargeOption);
       state.selectedRechargePlan = amount.dataset.rechargePlan || 'balance';
-      for (const item of dashboardData.rechargeOptions) {
-        item.active = Number(String(item.cny).replace(/[^\d.]/g, '')) === state.selectedRechargeCny;
-      }
       renderRechargeOptions();
       renderImportLink();
       return;
@@ -890,7 +920,7 @@ function bindStaticActions() {
 
     const createKey = event.target.closest('[data-create-key]');
     if (createKey) {
-      handleCreateKey();
+      handleCreateKey(createKey);
       return;
     }
 
@@ -949,31 +979,31 @@ function bindStaticActions() {
 
     const register = event.target.closest('[data-register-account]');
     if (register) {
-      handleRegisterAccount();
+      handleRegisterAccount(register);
       return;
     }
 
     const login = event.target.closest('[data-login-account]');
     if (login) {
-      handleLoginAccount();
+      handleLoginAccount(login);
       return;
     }
 
     const changePassword = event.target.closest('[data-change-password]');
     if (changePassword) {
-      handleChangePassword();
+      handleChangePassword(changePassword);
       return;
     }
 
     const ownerClaim = event.target.closest('[data-owner-claim]');
     if (ownerClaim) {
-      handleOwnerClaim();
+      handleOwnerClaim(ownerClaim);
       return;
     }
 
     const verify = event.target.closest('[data-verify-account]');
     if (verify) {
-      handleVerifyAccount();
+      handleVerifyAccount(verify);
       return;
     }
 
@@ -1013,21 +1043,21 @@ function bindStaticActions() {
       return;
     }
 
-    const pay = event.target.closest('[data-pay-demo]');
+    const pay = event.target.closest('[data-pay-submit]');
     if (pay) {
-      handleRecharge();
+      handleRecharge(pay);
       return;
     }
 
     const redeem = event.target.closest('[data-redeem-code]');
     if (redeem) {
-      handleRedeemCode();
+      handleRedeemCode(redeem);
       return;
     }
 
     const refresh = event.target.closest('[data-refresh-health]');
     if (refresh) {
-      handleRefreshHealth();
+      handleRefreshHealth(event);
       return;
     }
 
@@ -1108,8 +1138,8 @@ async function prepareCaptchaChallenge(options = {}) {
   try {
     const challenge = await serverClient.challenge();
     state.captcha = {
-      id: challenge.id || '',
-      question: challenge.question || '',
+      id: challenge.required !== false ? challenge.id || '' : '',
+      question: challenge.required !== false ? challenge.question || '' : '',
     };
     renderAuthPanel();
   } catch {
@@ -1298,17 +1328,9 @@ async function toggleKey(id) {
   try {
     await serverClient.setKeyEnabled(id, { enabled: !key.enabled });
     await reloadServerDashboard(key.enabled ? 'API Key 已关闭' : 'API Key 已开启');
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    state.serverAvailable = false;
+    setActionMessage(serverError.message, 'error');
   }
-
-  businessState = setCustomerKeyEnabled(businessState, { id, enabled: !key.enabled });
-  applyBusinessState(key.enabled ? 'API Key 已关闭' : 'API Key 已开启');
 }
 
 async function renameKey(id) {
@@ -1326,17 +1348,9 @@ async function renameKey(id) {
   try {
     await serverClient.renameKey(id, { name });
     await reloadServerDashboard('API Key 已改名');
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    state.serverAvailable = false;
+    setActionMessage(serverError.message, 'error');
   }
-
-  businessState = renameCustomerKey(businessState, { id, name });
-  applyBusinessState('API Key 已改名');
 }
 
 function selectorEscape(value) {
@@ -1355,17 +1369,9 @@ async function deleteKey(id) {
   try {
     await serverClient.deleteKey(id);
     await reloadServerDashboard('API Key 已删除');
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    state.serverAvailable = false;
+    setActionMessage(serverError.message, 'error');
   }
-
-  businessState = deleteCustomerKey(businessState, { id });
-  applyBusinessState('API Key 已删除');
 }
 
 function syncPrimaryAccountState() {
@@ -1381,7 +1387,7 @@ function defaultModelForGroup(group) {
   const normalized = String(group || 'OpenAI').toLowerCase();
   const models = availableModels().filter((model) => modelMatchesUiGroup(model, group));
   if (models.length > 0) return sortModelsByStrength(models)[0];
-  if (normalized === 'claude') return 'claude-haiku';
+  if (normalized === 'claude') return 'claude-opus-4-6-thinking-c';
   if (normalized === 'other') return 'gemini-2.5-flash';
   return 'gpt-5.5';
 }
@@ -1390,81 +1396,57 @@ function enabledKeyCount() {
   return dashboardData.apiKeys.filter((item) => item.enabled).length;
 }
 
-async function handleCreateKey() {
+async function handleCreateKey(createKey) {
+  setScopedFeedback('[data-key-feedback]', '正在创建 API Key...', 'info');
+  setActionMessage('API Key 创建中...', 'info');
+  setButtonBusy(createKey, true, '创建中');
   try {
     await serverClient.createKey({
       name: `Frist Key ${dashboardData.apiKeys.length + 1}`,
       modelGroup: state.modelGroup,
     });
     await reloadServerDashboard('API Key 已创建，可直接导入 CC Switch');
-    return;
+    setScopedFeedback('[data-key-feedback]', 'API Key 已创建，可直接复制或导入 CC Switch。', 'success');
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-  }
-
-  try {
-    const result = createCustomerKey(businessState, {
-      name: `Frist Key ${businessState.apiKeys.length + 1}`,
-      modelGroup: state.modelGroup,
-    });
-    businessState = result.state;
-    applyBusinessState('API Key 已创建，可直接导入 CC Switch');
-  } catch (error) {
-    setActionMessage(error.message);
+    setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-key-feedback]', serverError.message, 'error');
+  } finally {
+    setButtonBusy(createKey, false);
   }
 }
 
-async function handleRegisterAccount() {
+async function handleRegisterAccount(register) {
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
+  setActionMessage('注册中...', 'info');
+  setScopedFeedback('[data-auth-feedback]', '正在提交注册信息...', 'info');
+  setButtonBusy(register, true, '注册中');
   try {
     const payload = await buildAuthPayload({ email, password });
-    const result = await serverClient.register(payload);
+    await serverClient.register(payload);
     state.serverAvailable = true;
     state.hasServerSession = true;
     setText('[data-verification-hint]', '注册成功，可以创建 Key。');
     await reloadServerDashboard('注册成功，可以创建 Key');
+    setScopedFeedback('[data-auth-feedback]', '注册成功，可以创建 Key。', 'success');
     toggleAuthPanel(false);
-    return;
   } catch (serverError) {
-    if (serverError.localValidation) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      await refreshCaptchaAfterAuthError(serverError);
-      return;
-    }
-    state.serverAvailable = false;
-  }
-
-  try {
-    const result = registerCustomer(businessState, { email, password });
-    businessState = {
-      ...result.state,
-      customer: {
-        ...result.state.customer,
-        emailVerified: true,
-        verificationCode: '',
-      },
-    };
-    setText('[data-verification-hint]', '注册成功，可以创建 Key。');
-    applyBusinessState('注册成功，可以创建 Key');
-    toggleAuthPanel(false);
-  } catch (error) {
-    setActionMessage(error.message);
+    setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+    await refreshCaptchaAfterAuthError(serverError);
+  } finally {
+    setButtonBusy(register, false);
   }
 }
 
-async function handleLoginAccount() {
+async function handleLoginAccount(login) {
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
+  setActionMessage('登录中...', 'info');
+  setScopedFeedback('[data-auth-feedback]', '正在验证邮箱和密码...', 'info');
+  setButtonBusy(login, true, '登录中');
   try {
     const payload = await buildAuthPayload({ email, password });
     await serverClient.login(payload);
@@ -1472,39 +1454,44 @@ async function handleLoginAccount() {
     state.hasServerSession = true;
     setText('[data-verification-hint]', '登录成功，可以继续充值、创建 Key 或导入 CC Switch。');
     await reloadServerDashboard('登录成功');
+    setActionMessage('登录成功', 'success');
+    setScopedFeedback('[data-auth-feedback]', '登录成功，可以继续创建 Key。', 'success');
     toggleAuthPanel(false);
   } catch (serverError) {
-    if (serverError.localValidation) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    setActionMessage(serverError.message);
+    setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
     await refreshCaptchaAfterAuthError(serverError);
+  } finally {
+    setButtonBusy(login, false);
   }
 }
 
-async function handleChangePassword() {
+async function handleChangePassword(button) {
   const currentPassword = document.querySelector('[data-register-password]').value;
   const newPassword = document.querySelector('[data-new-password]').value;
 
+  setButtonBusy(button, true, '保存中');
   try {
     await serverClient.changePassword({ oldPassword: currentPassword, newPassword });
     document.querySelector('[data-register-password]').value = newPassword;
     document.querySelector('[data-new-password]').value = '';
     await reloadServerDashboard('密码已更新');
   } catch (serverError) {
-    setActionMessage(serverError.message);
+    setActionMessage(serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
-async function handleOwnerClaim() {
+async function handleOwnerClaim(button) {
   const codeInput = document.querySelector('[data-owner-claim-code]');
   const code = codeInput?.value.trim() || '';
   if (!code) {
-    setActionMessage('请填写一次性身份码');
+    setActionMessage('请填写一次性身份码', 'error');
     return;
   }
 
+  setButtonBusy(button, true, '激活中');
   try {
     const result = await serverClient.claimAdmin({ code });
     if (codeInput) {
@@ -1513,35 +1500,27 @@ async function handleOwnerClaim() {
     businessState.customer.isAdmin = Boolean(result.user?.isAdmin);
     await reloadServerDashboard(result.message || '管理员身份已激活');
   } catch (serverError) {
-    setActionMessage(serverError.message);
+    setActionMessage(serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
-async function handleVerifyAccount() {
+async function handleVerifyAccount(button) {
   const codeInput = document.querySelector('[data-verify-code]');
   if (!codeInput) return;
   const code = codeInput.value;
 
+  setButtonBusy(button, true, '验证中');
   try {
     await serverClient.verify({ code });
     codeInput.value = '';
     setText('[data-verification-hint]', '邮箱已验证，可以充值并创建 Key。');
     await reloadServerDashboard('邮箱已验证');
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-  }
-
-  try {
-    businessState = verifyCustomerEmail(businessState, { code });
-    codeInput.value = '';
-    setText('[data-verification-hint]', '邮箱已验证，可以充值并创建 Key。');
-    applyBusinessState('邮箱已验证');
-  } catch (error) {
-    setActionMessage(error.message);
+    setActionMessage(serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
@@ -1551,9 +1530,12 @@ async function handleCopyKey(id, button) {
   await copyText(key.secret, button);
 }
 
-async function handleRecharge() {
+async function handleRecharge(button) {
+  setActionMessage('充值订单提交中...', 'info');
+  setButtonBusy(button, true, '提交中');
   try {
     const result = await serverClient.recharge({
+      planId: state.selectedRechargePlanId,
       amountCny: state.selectedRechargeCny,
       plan: state.selectedRechargePlan,
       method: 'web_checkout',
@@ -1564,20 +1546,11 @@ async function handleRecharge() {
         ? `${label}订单已提交`
         : `${label}已入账`;
     await reloadServerDashboard(message);
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
-    state.serverAvailable = false;
+    setActionMessage(serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
-
-  businessState = applyRecharge(businessState, {
-    amountCny: state.selectedRechargeCny,
-    method: 'demo_checkout',
-  });
-  applyBusinessState(`${rechargeLabel(state.selectedRechargePlan)}已入账`);
 }
 
 function rechargeLabel(plan) {
@@ -1586,105 +1559,43 @@ function rechargeLabel(plan) {
   return '余额';
 }
 
-async function handleRedeemCode() {
+async function handleRedeemCode(button) {
   const input = document.querySelector('[data-exchange-code]');
+  setButtonBusy(button, true, '兑换中');
   try {
-    await serverClient.redeem({ code: input.value || 'FRIST-DAY-001' });
+    await serverClient.redeem({ code: input.value || '' });
     input.value = '';
     await reloadServerDashboard('兑换码已生效');
-    return;
   } catch (serverError) {
-    if (state.serverAvailable) {
-      setActionMessage(serverError.message);
-      return;
-    }
+    setActionMessage(serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
+}
 
+async function handleRefreshHealth(event) {
+  event?.preventDefault();
+  setActionMessage('连通性刷新中...', 'info');
   try {
-    businessState = redeemCode(businessState, { code: input.value || 'FRIST-DAY-001' });
-    input.value = '';
-    applyBusinessState('兑换码已生效');
+    await reloadServerDashboard('连通性已刷新');
+    setActionMessage('连通性已刷新', 'success');
   } catch (error) {
-    setActionMessage(error.message);
+    setActionMessage(error.message || '刷新失败', 'error');
   }
-}
-
-async function handleRefreshHealth() {
-  if (state.serverAvailable) {
-    try {
-      await reloadServerDashboard('连通性已刷新');
-      return;
-    } catch (error) {
-      setActionMessage(error.message || '刷新失败');
-      return;
-    }
-  }
-
-  const checkedAt = new Date().toISOString().slice(11, 16);
-  businessState.channelChecks = businessState.channelChecks.map((item, index) => ({
-    ...item,
-    ok: true,
-    latencyMs: Math.max(280, Number(item.latencyMs || 900) - (index + 1) * 37),
-    pingMs: Math.max(35, Number(item.pingMs || 90) - index * 4),
-    checkedAt,
-    officialStatus: '正常',
-    history: ['ok', ...(item.history || [])].slice(0, 12),
-  }));
-  applyBusinessState('连通性已刷新');
-}
-
-function applyBusinessState(message) {
-  const nextData = deriveDashboardData(businessState, fallbackDashboard);
-  for (const [key, value] of Object.entries(nextData)) {
-    dashboardData[key] = value;
-  }
-  syncPrimaryAccountState();
-  render();
-  setActionMessage(message);
 }
 
 async function reloadServerDashboard(message) {
-  const nextData = normalizeFristDashboard(await serverClient.loadDashboard(), fallbackDashboard);
+  const payload = await serverClient.loadDashboard();
+  const nextData = normalizeFristDashboard(payload, emptyDashboard);
   state.serverAvailable = true;
-  state.hasServerSession = true;
+  state.hasServerSession = Boolean(payload.authenticated);
   for (const [key, value] of Object.entries(nextData)) {
     dashboardData[key] = value;
   }
   businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
   syncPrimaryAccountState();
   render();
-  setActionMessage(message);
-}
-
-function createGuestDashboard(fallback) {
-  return {
-    ...fallback,
-    accountSummary: {
-      ...fallback.accountSummary,
-      userInitials: 'FA',
-      plan: '未登录',
-      balance: '¥0.00',
-      quotaLeft: '¥0.00',
-      packageQuota: '¥0.00',
-      boosterQuota: '¥0.00',
-      todayCost: '¥0.00',
-      monthCost: '¥0.00',
-      usageTotal: '¥0.00',
-      todayCalls: '0 次',
-    },
-    apiKeys: [],
-    modelUsage: zeroModelUsage(fallback.modelUsage),
-  };
-}
-
-function zeroModelUsage(modelUsage) {
-  return (modelUsage || []).map((item) => ({
-    ...item,
-    percent: 0,
-    amount: '¥0.00',
-    calls: '0 次',
-    tokens: '0.00M',
-  }));
+  setActionMessage(message, 'success');
 }
 
 function activeApiKey() {
@@ -1735,8 +1646,38 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function setActionMessage(message) {
-  setText('[data-action-message]', message);
+function setActionMessage(message, type = 'success') {
+  for (const element of document.querySelectorAll('[data-action-message]')) {
+    element.textContent = message;
+    element.classList.add('is-visible');
+    element.classList.toggle('action-message--success', type === 'success');
+    element.classList.toggle('action-message--error', type === 'error');
+    element.classList.toggle('action-message--info', type === 'info');
+  }
+}
+
+function setScopedFeedback(selector, message, type = 'info') {
+  for (const element of document.querySelectorAll(selector)) {
+    element.textContent = message;
+    element.classList.toggle('field-feedback--success', type === 'success');
+    element.classList.toggle('field-feedback--error', type === 'error');
+    element.classList.toggle('field-feedback--info', type === 'info');
+  }
+}
+
+function setButtonBusy(button, busy, busyText = '处理中') {
+  if (!button) return;
+  if (busy) {
+    button.dataset.previousText = button.textContent || '';
+    button.textContent = busyText;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    return;
+  }
+  button.textContent = button.dataset.previousText || button.textContent;
+  button.disabled = false;
+  button.removeAttribute('aria-busy');
+  delete button.dataset.previousText;
 }
 
 async function copyText(text, button) {

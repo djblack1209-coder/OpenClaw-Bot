@@ -127,7 +127,7 @@ rsync -avz user@vps:/path/to/clawbot/data/ packages/clawbot/data/
    - `SILICONFLOW_API_KEY` — SiliconFlow 控制台
    - `IBKR_*` — IBKR 交易网关配置
    - `XIANYU_COOKIES` — 需要重新扫码登录
-3. 其余密钥参见 `docs/registries/api-pool-registry.md`
+3. 其余密钥参见 `docs/030-api-pool-registry.md`
 
 ---
 
@@ -144,6 +144,6 @@ rsync -avz user@vps:/path/to/clawbot/data/ packages/clawbot/data/
 ## 联系方式
 
 遇到无法恢复的问题，检查：
-- `docs/status/HEALTH.md` — 已知问题
-- `docs/status/HANDOFF.md` — 最近的工作状态
+- `docs/060-health.md` — 已知问题
+- `docs/061-handoff.md` — 最近的工作状态
 - GitHub Issues — 记录和追踪

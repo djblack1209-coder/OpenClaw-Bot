@@ -69,18 +69,29 @@ const HEALTH_LABELS = {
 };
 
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
+const OFFICIAL_MODEL_ALIASES = new Map([
+  ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-c'],
+  ['claude-haiku-4-5', 'claude-sonnet-4-5-c'],
+  ['claude-haiku', 'claude-sonnet-4-5-c'],
+  ['claude-sonnet-4-5', 'claude-sonnet-4-5-c'],
+  ['claude-opus-4-6', 'claude-opus-4-6-c'],
+  ['claude-opus-4-6-thinking', 'claude-opus-4-6-thinking-c'],
+]);
 const MODEL_STRENGTH_ORDER = [
   'gpt-5.5-pro',
+  'gpt-5.5-c',
   'gpt-5.5',
   'gpt-5.4-pro',
+  'gpt-5.4-c',
   'gpt-5.4',
   'gpt-5.4-mini',
   'gpt-5.4-nano',
   'gpt-image-2',
   'gpt-image-1.5',
   'gpt-image-1',
-  'claude-haiku-4-5-20251001',
-  'claude-haiku',
+  'claude-opus-4-6-thinking-c',
+  'claude-opus-4-6-c',
+  'claude-sonnet-4-5-c',
   'gemini-2.5-flash',
 ];
 
@@ -109,6 +120,16 @@ export function normalizeBaseUrl(value) {
   }
   const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   return withProtocol.replace(/\/+$/, '');
+}
+
+export function normalizeOfficialModelName(model) {
+  const value = String(model || '').trim();
+  if (!value) return '';
+  return OFFICIAL_MODEL_ALIASES.get(value.toLowerCase()) || value;
+}
+
+export function normalizeOfficialModelList(models = []) {
+  return [...new Set((Array.isArray(models) ? models : []).map(normalizeOfficialModelName).filter(Boolean))];
 }
 
 export function buildCcSwitchImportUrl({
@@ -627,8 +648,8 @@ export function parseSupplierOrderText(text, options = {}) {
 
 export function parsePriceText(text, options = {}) {
   const usdToCny = Number(options.usdToCny ?? 7.2);
-  const profitMultiplier = Number(options.profitMultiplier ?? 1.35);
-  const safetyCnyPerMillion = Number(options.safetyCnyPerMillion ?? 0.2);
+  const profitMultiplier = Number(options.profitMultiplier ?? 1);
+  const safetyCnyPerMillion = Number(options.safetyCnyPerMillion ?? 0);
 
   return String(text || '')
     .split('\n')
@@ -728,7 +749,7 @@ export function summarizeModelHealth(snapshot) {
 }
 
 function parsePriceLine(line, { usdToCny, profitMultiplier, safetyCnyPerMillion }) {
-  const model = line.match(/^([a-zA-Z0-9._:/-]+)/)?.[1];
+  const model = normalizeOfficialModelName(line.match(/^([a-zA-Z0-9._:/-]+)/)?.[1]);
   if (!model) return null;
 
   const currency = /[$＄]/.test(line) ? 'USD' : 'CNY';
@@ -818,10 +839,12 @@ function extractApiKeys(text) {
 function extractModels(text) {
   const modelLine = String(text || '').match(/模型[:：]\s*([^\n\r]+)/);
   if (!modelLine) return [];
-  return modelLine[1]
-    .split(/[、,，/\s]+/)
-    .map((item) => item.trim().replace(/模型$/i, ''))
-    .filter((item) => /^[a-zA-Z0-9._:-]+$/.test(item));
+  return normalizeOfficialModelList(
+    modelLine[1]
+      .split(/[、,，/\s]+/)
+      .map((item) => item.trim().replace(/模型$/i, ''))
+      .filter((item) => /^[a-zA-Z0-9._:-]+$/.test(item)),
+  );
 }
 
 function inferPool(text) {
@@ -922,7 +945,7 @@ function normalizeAvailableModels(availableModels = [], options = {}) {
     options.model,
     ...(providedModels.length === 0 && !options.defaultModel && !options.model ? [DEFAULT_PUBLIC_MODEL] : []),
   ]
-    .map((item) => String(item || '').trim())
+    .map(normalizeOfficialModelName)
     .filter(Boolean);
   return sortModelsByStrength([...new Set(models)]);
 }
@@ -933,7 +956,7 @@ function chooseDefaultModel({ model, defaultModel, availableModels = [] }) {
 }
 
 function sortModelsByStrength(models = []) {
-  return [...new Set(models.map((item) => String(item || '').trim()).filter(Boolean))].sort((left, right) => {
+  return [...new Set(models.map(normalizeOfficialModelName).filter(Boolean))].sort((left, right) => {
     const leftRank = MODEL_STRENGTH_ORDER.indexOf(left);
     const rightRank = MODEL_STRENGTH_ORDER.indexOf(right);
     const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;

@@ -30,6 +30,86 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.json.account.monthCost, '¥0.00');
       assert.equal(dashboard.json.account.usageTotal, '¥0.00');
       assert.deepEqual(dashboard.json.modelUsage, []);
+      assert.deepEqual(
+        dashboard.json.rechargeOptions.map((item) => ({
+          id: item.id,
+          quotaUsd: item.quotaUsd,
+          priceCny: item.priceCny,
+          durationDays: item.durationDays,
+        })),
+        [
+          { id: 'codex-30-day', quotaUsd: 30, priceCny: 5.88, durationDays: 1 },
+          { id: 'codex-30-unlimited', quotaUsd: 30, priceCny: 8.88, durationDays: 0 },
+          { id: 'codex-100-unlimited', quotaUsd: 100, priceCny: 28.88, durationDays: 0 },
+          { id: 'codex-500-unlimited', quotaUsd: 500, priceCny: 68.88, durationDays: 0 },
+          { id: 'codex-1000-unlimited', quotaUsd: 1000, priceCny: 118.88, durationDays: 0 },
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('marks captcha challenges as required only when the server enables captcha', async () => {
+    const relaxed = await createServerFixture({ requireCaptcha: false });
+    const strict = await createServerFixture({ requireCaptcha: true });
+
+    try {
+      const relaxedChallenge = await relaxed.request('/api/frist/challenge');
+      const strictChallenge = await strict.request('/api/frist/challenge');
+
+      assert.equal(relaxedChallenge.status, 200);
+      assert.equal(relaxedChallenge.json.required, false);
+      assert.equal(strictChallenge.status, 200);
+      assert.equal(strictChallenge.json.required, true);
+    } finally {
+      await relaxed.close();
+      await strict.close();
+    }
+  });
+
+  it('lets admins update recharge packages and official model prices without changing code', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const pricing = await fixture.request('/api/admin/pricing', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(pricing.status, 200);
+      assert.equal(pricing.json.rechargePlans.length, 5);
+      assert.equal(pricing.json.modelPrices.find((item) => item.model === 'gpt-5.5').source, 'official');
+
+      const updated = await fixture.request('/api/admin/pricing', {
+        method: 'PUT',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          rechargePlans: [
+            { id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 6.66, durationDays: 1 },
+            { id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0 },
+            { id: 'codex-100-unlimited', label: 'Codex API 100刀额度/不限时', quotaUsd: 100, priceCny: 28.88, durationDays: 0 },
+            { id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0 },
+            { id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0 },
+          ],
+          modelPrices: [
+            {
+              model: 'gpt-5.5',
+              currency: 'CNY',
+              inputCostCnyPerMillion: 9,
+              outputCostCnyPerMillion: 49,
+              inputSaleCnyPerMillion: 9,
+              outputSaleCnyPerMillion: 49,
+              source: 'official',
+            },
+          ],
+        },
+      });
+      assert.equal(updated.status, 200);
+      assert.equal(updated.json.rechargePlans[0].priceCny, 6.66);
+
+      const dashboard = await fixture.request('/api/frist/dashboard');
+      assert.equal(dashboard.json.rechargeOptions[0].priceCny, 6.66);
+      assert.equal(dashboard.json.rechargeOptions[0].cny, '¥6.66');
+      assert.equal(dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price, '¥9/¥49 每 1M');
     } finally {
       await fixture.close();
     }
@@ -711,7 +791,7 @@ describe('Frist-API public server chain', () => {
       assert.equal(models.status, 200);
       assert.deepEqual(
         models.json.data.map((item) => item.id),
-        ['gpt-5.4', 'gpt-5.5', 'gpt-image-2'],
+        ['gpt-5.5', 'gpt-5.4', 'gpt-image-2'],
       );
       assert.equal(JSON.stringify(models.json).includes('sk-models-day'), false);
     } finally {
@@ -1161,7 +1241,7 @@ describe('Frist-API public server chain', () => {
       });
 
       assert.equal(replenished.status, 200);
-      assert.deepEqual(replenished.json.supplierProfile.models, ['claude-haiku', 'gpt-5.5']);
+      assert.deepEqual(replenished.json.supplierProfile.models, ['claude-sonnet-4-5-c', 'gpt-5.5']);
       assert.equal(replenished.json.credentials.length, 1);
       assert.equal(replenished.json.credentials[0].keyPreview.endsWith('good'), true);
       assert.equal(replenished.json.failedKeys.length, 1);
@@ -1224,7 +1304,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [
             { value: 'sk-model-a', quotaRemaining: 900, latencyMs: 120 },
             { value: 'sk-model-b', quotaRemaining: 900, latencyMs: 80 },
@@ -1235,7 +1315,7 @@ describe('Frist-API public server chain', () => {
       const dashboard = await fixture.request('/api/frist/dashboard');
       assert.equal(dashboard.status, 200);
       assert.equal(dashboard.json.channelChecks.length, 1);
-      assert.equal(dashboard.json.channelChecks[0].model, 'claude-haiku');
+      assert.equal(dashboard.json.channelChecks[0].model, 'claude-sonnet-4-5-c');
       assert.equal(dashboard.json.channelChecks[0].ok, true);
       assert.match(dashboard.json.channelChecks[0].channel, /可用线路 2\/2/);
     } finally {
@@ -1253,7 +1333,7 @@ describe('Frist-API public server chain', () => {
         });
         return jsonResponse(200, {
           id: 'chatcmpl-ok',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'ok' } }],
         });
       },
@@ -1278,7 +1358,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [
             { value: 'sk-empty', quotaRemaining: 1, latencyMs: 90 },
             { value: 'sk-healthy', quotaRemaining: 900, latencyMs: 120 },
@@ -1710,7 +1790,7 @@ describe('Frist-API public server chain', () => {
       });
 
       const fullBody = {
-        model: 'claude-haiku',
+        model: 'claude-sonnet-4-5-c',
         messages: [
           { role: 'system', content: 'keep system prompt' },
           { role: 'user', content: 'first user turn' },
@@ -1788,7 +1868,7 @@ describe('Frist-API public server chain', () => {
           'x-frist-session-id': 'stream-alpha',
         },
         body: JSON.stringify({
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'stream this' }],
           stream: true,
         }),
@@ -1881,12 +1961,12 @@ describe('Frist-API public server chain', () => {
     }
   });
 
-  it('uses pasted model pricing and upstream usage to bill gateway calls', async () => {
+  it('uses confirmed official model pricing and upstream usage to bill gateway calls', async () => {
     const fixture = await createServerFixture({
       fetchImpl: async () =>
         jsonResponse(200, {
           id: 'chatcmpl-priced',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           usage: {
             prompt_tokens: 1_000_000,
             completion_tokens: 500_000,
@@ -1914,10 +1994,8 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-priced', quotaRemaining: 1000, latencyMs: 80 }],
-          priceText: 'claude-haiku input ¥1/1M output ¥2/1M',
-          pricing: { profitMultiplier: 1, safetyCnyPerMillion: 0 },
         },
       });
 
@@ -1925,20 +2003,20 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'priced request' }],
         },
       });
       assert.equal(response.status, 200);
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
-      assert.equal(dashboard.json.account.packageQuota, '¥6.00');
-      assert.equal(dashboard.json.account.todayCost, '¥2.00');
+      assert.equal(dashboard.json.account.packageQuota, '¥0.00');
+      assert.equal(dashboard.json.account.todayCost, '¥75.60');
 
       const inventory = await fixture.request('/api/admin/replenishments', {
         headers: { 'x-admin-token': 'admin-test-token' },
       });
-      assert.equal(inventory.json.credentials[0].quotaRemaining, 800);
+      assert.equal(inventory.json.credentials[0].quotaRemaining, 0);
     } finally {
       await fixture.close();
     }
