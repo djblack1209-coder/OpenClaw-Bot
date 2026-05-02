@@ -120,6 +120,10 @@ Frist-API 现在不是只会展示页面的 MVP，已经能跑小范围真实验
 
 我接入时会做三件事: 创建支付订单并返回二维码，校验支付宝异步通知签名，按订单号幂等入账，避免重复通知重复加钱。
 
+参考官方文档:
+
+- 支付宝文档中心 `alipay.trade.precreate` 统一收单线下交易预创建: https://opendocs.alipay.com/open/f540afd8_alipay.trade.precreate
+
 ### 微信支付 Native
 
 微信支付 Native 适合桌面网页扫码支付。它需要微信商户平台审核，通常比个人收款码多一步主体资质。
@@ -138,6 +142,10 @@ Frist-API 现在不是只会展示页面的 MVP，已经能跑小范围真实验
 10. 重启 Frist-API 后，用 0.01 元订单测试: 下单生成 Native 二维码、微信扫码付款、收到回调、用户自动入账、重复回调不会重复加钱。
 
 我接入时会做三件事: 创建 Native 支付二维码，解密并验签微信回调，按支付订单状态幂等入账。
+
+参考官方文档:
+
+- 微信支付 Native 下单: https://pay.wechatpay.cn/doc/v3/merchant/4012791877
 
 ### Stripe
 
