@@ -1,0 +1,46 @@
+# Frist-API 独立公开中转站原型
+# 本地预览: docker compose -f docker-compose.frist-api.yml up -d
+# 网站: http://127.0.0.1:3180
+
+services:
+  frist-api-server:
+    image: node:22-alpine
+    container_name: frist-api-server
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "server/server.js"]
+    ports:
+      - "127.0.0.1:3180:3180"
+    volumes:
+      - ./apps/frist-api:/app:ro
+      - ./data/frist-api/runtime:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_ENV=${NODE_ENV:-development}
+      - FRIST_API_HOST=0.0.0.0
+      - FRIST_API_PORT=3180
+      - FRIST_API_DATA_FILE=/data/runtime.json
+      - FRIST_API_PUBLIC_MODE=${FRIST_API_PUBLIC_MODE:-0}
+      - FRIST_API_ADMIN_TOKEN=${FRIST_API_ADMIN_TOKEN:-frist-api-dev-admin-token}
+      - FRIST_API_ADMIN_PAGE_CODE=${FRIST_API_ADMIN_PAGE_CODE:-}
+      - FRIST_API_ADMIN_CLAIM_CODES=${FRIST_API_ADMIN_CLAIM_CODES:-}
+      - FRIST_API_SESSION_SECRET=${FRIST_API_SESSION_SECRET:-frist-api-dev-session-secret-change-before-production}
+      - FRIST_API_PUBLIC_GATEWAY_BASE_URL=${FRIST_API_PUBLIC_GATEWAY_BASE_URL:-}
+      - FRIST_API_PROBE_TIMEOUT_MS=${FRIST_API_PROBE_TIMEOUT_MS:-2500}
+      - FRIST_API_ALLOW_DEMO_RECHARGE=${FRIST_API_ALLOW_DEMO_RECHARGE:-0}
+      - FRIST_API_EXPOSE_VERIFICATION_CODE=${FRIST_API_EXPOSE_VERIFICATION_CODE:-0}
+      - FRIST_API_REQUIRE_CAPTCHA=${FRIST_API_REQUIRE_CAPTCHA:-0}
+      - FRIST_API_AUTH_RATE_LIMIT_MAX=${FRIST_API_AUTH_RATE_LIMIT_MAX:-20}
+      - FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS=${FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS:-60000}
+      - FRIST_API_LOW_INVENTORY_WEBHOOK=${FRIST_API_LOW_INVENTORY_WEBHOOK:-}
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3180/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
