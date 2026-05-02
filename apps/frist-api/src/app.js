@@ -700,6 +700,7 @@ function renderCrossImportGuide() {
   const title = document.querySelector('[data-cross-import-title]');
   const copy = document.querySelector('[data-cross-import-copy]');
   const guide = document.querySelector('[data-claude-developer-guide]');
+  syncWalkthroughFields();
   const isClaudeTarget = state.target === 'Claude';
   const isOpenAiFamily = state.modelGroup === 'OpenAI';
   if (!title || !copy || !guide) return;
@@ -712,6 +713,7 @@ function renderCrossImportGuide() {
       '<li data-claude-guide-step>开启开发者模式，允许第三方 API。</li>',
       '<li data-claude-guide-step>点击一键导入，确认 Frist-API 供应商和模型。</li>',
     ].join('');
+    setActiveWalkthrough('openai-to-claude');
     return;
   }
 
@@ -724,6 +726,7 @@ function renderCrossImportGuide() {
       '<li data-claude-guide-step>点击一键导入，检查默认模型是否是 Claude 模型。</li>',
       '<li data-claude-guide-step>config.toml 会默认带上 Playwright、Superpowers 和 open-computer-use MCP。</li>',
     ].join('');
+    setActiveWalkthrough('claude-to-codex');
     return;
   }
 
@@ -735,6 +738,7 @@ function renderCrossImportGuide() {
       '<li data-claude-guide-step>点击一键导入，写入 Frist-API 供应商、最强默认模型和 MCP 配置。</li>',
       '<li data-claude-guide-step>首次使用 Computer Use 时，按 Codex 提示完成系统权限授权。</li>',
     ].join('');
+    setActiveWalkthrough('claude-to-codex');
     return;
   }
 
@@ -745,6 +749,28 @@ function renderCrossImportGuide() {
     '<li data-claude-guide-step>确认模型分组。</li>',
     '<li data-claude-guide-step>点击一键导入。</li>',
   ].join('');
+  setActiveWalkthrough('');
+}
+
+function syncWalkthroughFields() {
+  const codexBase = normalizeBaseUrl(state.baseUrl);
+  const claudeBase = codexBase.replace(/\/v1\/?$/i, '');
+  const openAiModel = availableModelsForGroup('OpenAI')[0] || 'gpt-5.5';
+  const claudeModel = availableModelsForGroup('Claude')[0] || 'claude-haiku';
+  const keyLabel = enabledKeyCount() ? 'fk-live-你的用户Key' : '先在 API 页面创建 fk-live 用户 Key';
+  setText('[data-flow-codex-base]', codexBase);
+  setText('[data-flow-claude-base]', claudeBase);
+  setText('[data-flow-openai-model]', openAiModel);
+  setText('[data-flow-claude-model]', claudeModel);
+  setText('[data-flow-user-key]', keyLabel);
+}
+
+function setActiveWalkthrough(name) {
+  for (const item of document.querySelectorAll('[data-walkthrough]')) {
+    const isActive = item.dataset.walkthrough === name;
+    item.classList.toggle('is-active', isActive);
+    item.classList.toggle('is-muted', Boolean(name) && !isActive);
+  }
 }
 
 function renderClientConfig() {

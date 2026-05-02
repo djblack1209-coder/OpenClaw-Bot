@@ -357,6 +357,16 @@ describe('Frist-API page business wiring', () => {
       'data-cross-import-copy',
       'data-claude-developer-guide',
       'data-claude-guide-step',
+      'data-walkthrough="openai-to-claude"',
+      'data-walkthrough="claude-to-codex"',
+      'Configure Third-Party Inference...',
+      'Gateway base URL',
+      'Gateway API key',
+      'Gateway auth scheme',
+      'Skip login-mode chooser',
+      'API 请求地址',
+      'wire_api = "responses"',
+      '[mcp_servers.playwright]',
       '开发者模式',
       '第三方 API',
       '一键导入',
@@ -374,6 +384,10 @@ describe('Frist-API page business wiring', () => {
       'Superpowers',
       'open-computer-use MCP',
       '系统权限授权',
+      'syncWalkthroughFields',
+      'setActiveWalkthrough',
+      'data-flow-claude-base',
+      'data-flow-codex-base',
     ]) {
       assert.equal(`${appScript}\n${styles}`.includes(required), true, `${required} 应该接入导入页状态和样式`);
     }
