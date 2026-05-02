@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260502-open5" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260502-open6" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -62,6 +62,7 @@
                   <button class="secondary-action" data-auth-submit="login" data-login-account type="button">登录</button>
                   <button class="ghost-action" data-auth-submit="register" data-register-account type="button" hidden>注册</button>
                 </div>
+                <p class="field-feedback" data-auth-feedback aria-live="polite"></p>
                 <p class="verification-hint" data-verification-hint>登录后创建 Key。</p>
               </div>
             </section>
@@ -261,6 +262,7 @@
               <h2>API</h2>
               <button class="primary-action" data-create-key type="button">创建 Key</button>
             </div>
+            <p class="field-feedback" data-key-feedback aria-live="polite"></p>
             <div class="segmented-control" data-model-group aria-label="模型分组">
               <button class="is-active" data-model-group-option="OpenAI" type="button">OpenAI</button>
               <button data-model-group-option="Claude" type="button">Claude</button>
@@ -281,7 +283,7 @@
               <h2>充值</h2>
             </div>
             <div class="amount-grid" data-recharge-options></div>
-            <button class="primary-action is-wide" data-pay-demo type="button">提交</button>
+            <button class="primary-action is-wide" data-pay-submit type="button">提交</button>
           </section>
 
           <details class="plain-section soft-details">
@@ -368,15 +370,15 @@
                         <span class="choice is-selected"><i>3</i>Gateway<br /><small>Anthropic-compatible</small></span>
                         <span class="choice">Bedrock<br /><small>AWS</small></span>
                       </div>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>4</i>Gateway base URL</span>
                         <code data-flow-claude-base>https://api.frist.example.com</code>
                       </label>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>5</i>Gateway API key</span>
                         <code data-flow-user-key>fk-live-你的用户Key</code>
                       </label>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>6</i>Gateway auth scheme</span>
                         <code>bearer</code>
                       </label>
@@ -416,7 +418,7 @@
                       <span class="is-marked"><i>2</i>模型家族: Claude</span>
                       <span class="is-marked"><i>3</i>点击一键导入</span>
                     </div>
-                    <div class="fake-field">
+                    <div class="diagram-field">
                       <span>导入链接</span>
                       <code>ccswitch://v1/import?app=codex...</code>
                     </div>
@@ -425,20 +427,20 @@
                   <div class="diagram-window diagram-window--codex">
                     <div class="codex-form">
                       <h4>CC Switch / Codex</h4>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>4</i>API 请求地址</span>
                         <code data-flow-codex-base>https://api.frist.example.com/v1</code>
                       </label>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>5</i>模型名称</span>
-                        <code data-flow-claude-model>claude-haiku</code>
+                        <code data-flow-claude-model>claude-opus-4-6-thinking-c</code>
                       </label>
-                      <label class="fake-field is-marked">
+                      <label class="diagram-field is-marked">
                         <span><i>6</i>auth.json</span>
                         <code>{ "OPENAI_API_KEY": "fk-live-..." }</code>
                       </label>
                       <pre class="mini-toml is-marked"><span>7</span>model_provider = "custom"
-model = "<b data-flow-claude-model>claude-haiku</b>"
+model = "<b data-flow-claude-model>claude-opus-4-6-thinking-c</b>"
 model_reasoning_effort = "xhigh"
 
 [model_providers.custom]
@@ -455,7 +457,7 @@ command = "npx"</pre>
                   <li>点击 <code>一键导入</code>；如果浏览器询问是否打开 CC Switch，选择允许。</li>
                   <li>在 CC Switch 的 Codex 页面确认 <code>API 请求地址</code> 是 <code data-flow-codex-base>https://api.frist.example.com/v1</code>。</li>
                   <li><code>auth.json</code> 里只需要 <code>OPENAI_API_KEY</code>，值填本站用户 Key；不要填上游供应商 Key。</li>
-                  <li><code>config.toml</code> 里确认 <code>wire_api = "responses"</code>，<code>model</code> 是 Claude 模型: <code data-flow-claude-model>claude-haiku</code>。</li>
+                  <li><code>config.toml</code> 里确认 <code>wire_api = "responses"</code>，<code>model</code> 是 Claude 模型: <code data-flow-claude-model>claude-opus-4-6-thinking-c</code>。</li>
                   <li>确认 <code>mcp_servers</code> 已包含 Playwright、Superpowers、open_computer_use。首次调用电脑操作时按系统弹窗授权。</li>
                   <li>写入通用配置后重启 Codex；同一会话先让模型记住一句话，再切换模型追问这句话，检查上下文是否自然衔接。</li>
                 </ol>
@@ -503,6 +505,6 @@ command = "npx"</pre>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260502-open4"></script>
+    <script type="module" src="./src/app.js?v=20260502-open6"></script>
   </body>
 </html>

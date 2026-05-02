@@ -10,16 +10,108 @@ import {
   modelMatchesGroup,
   normalizeBaseUrl,
   normalizeModelGroup,
+  normalizeOfficialModelList,
+  normalizeOfficialModelName,
   parsePriceText,
   parseSupplierOrderText,
   poolPriority,
   recommendConnectionPath,
 } from '../src/core.js';
 
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL = 'claude-opus-4-6-thinking-c';
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
-const DEFAULT_PROBE_MODELS = ['claude-haiku', 'gpt-5.5', 'gemini-2.5-flash'];
+const DEFAULT_USD_TO_CNY = 7.2;
+const DEFAULT_PROBE_MODELS = ['claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c', 'gpt-5.5', 'gemini-2.5-flash'];
 const DEFAULT_QUOTA_COST = 10;
+const DEFAULT_RECHARGE_PLANS = Object.freeze([
+  Object.freeze({
+    id: 'codex-30-day',
+    label: 'Codex API 30刀额度/日卡',
+    quotaUsd: 30,
+    priceCny: 5.88,
+    durationDays: 1,
+    plan: 'day',
+  }),
+  Object.freeze({
+    id: 'codex-30-unlimited',
+    label: 'Codex API 30刀额度/不限时',
+    quotaUsd: 30,
+    priceCny: 8.88,
+    durationDays: 0,
+    plan: 'balance',
+  }),
+  Object.freeze({
+    id: 'codex-100-unlimited',
+    label: 'Codex API 100刀额度/不限时',
+    quotaUsd: 100,
+    priceCny: 28.88,
+    durationDays: 0,
+    plan: 'balance',
+  }),
+  Object.freeze({
+    id: 'codex-500-unlimited',
+    label: 'Codex API 500刀额度/不限时',
+    quotaUsd: 500,
+    priceCny: 68.88,
+    durationDays: 0,
+    plan: 'balance',
+  }),
+  Object.freeze({
+    id: 'codex-1000-unlimited',
+    label: 'Codex API 1000刀额度/不限时',
+    quotaUsd: 1000,
+    priceCny: 118.88,
+    durationDays: 0,
+    plan: 'balance',
+  }),
+]);
+const DEFAULT_MODEL_PRICES = Object.freeze([
+  Object.freeze({
+    model: 'gpt-5.5',
+    currency: 'CNY',
+    inputCostCnyPerMillion: 8,
+    outputCostCnyPerMillion: 48,
+    inputSaleCnyPerMillion: 8,
+    outputSaleCnyPerMillion: 48,
+    source: 'official',
+  }),
+  Object.freeze({
+    model: 'gpt-5.5-c',
+    currency: 'CNY',
+    inputCostCnyPerMillion: 8,
+    outputCostCnyPerMillion: 48,
+    inputSaleCnyPerMillion: 8,
+    outputSaleCnyPerMillion: 48,
+    source: 'official',
+  }),
+  Object.freeze({
+    model: 'claude-opus-4-6-thinking-c',
+    currency: 'CNY',
+    inputCostCnyPerMillion: 108,
+    outputCostCnyPerMillion: 540,
+    inputSaleCnyPerMillion: 108,
+    outputSaleCnyPerMillion: 540,
+    source: 'official',
+  }),
+  Object.freeze({
+    model: 'claude-opus-4-6-c',
+    currency: 'CNY',
+    inputCostCnyPerMillion: 108,
+    outputCostCnyPerMillion: 540,
+    inputSaleCnyPerMillion: 108,
+    outputSaleCnyPerMillion: 540,
+    source: 'official',
+  }),
+  Object.freeze({
+    model: 'claude-sonnet-4-5-c',
+    currency: 'CNY',
+    inputCostCnyPerMillion: 21.6,
+    outputCostCnyPerMillion: 108,
+    inputSaleCnyPerMillion: 21.6,
+    outputSaleCnyPerMillion: 108,
+    source: 'official',
+  }),
+]);
 const DEFAULT_MODEL_CATALOG = [
   {
     model: 'gpt-5.5',
@@ -56,8 +148,8 @@ const DEFAULT_MODEL_CATALOG = [
   {
     model: DEFAULT_MODEL,
     family: 'Claude',
-    tagline: '轻量长文和低延迟',
-    context: '长上下文',
+    tagline: '复杂开发和长链路推理',
+    context: '1M 上下文',
     price: '官方同档 · 折扣结算',
     available: true,
   },
@@ -218,6 +310,30 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 }
 
 async function handleAdminApi({ request, response, url, store, serverOptions }) {
+  if (request.method === 'GET' && url.pathname === '/api/admin/pricing') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, pricingPayload(data));
+    return;
+  }
+
+  if (request.method === 'PUT' && url.pathname === '/api/admin/pricing') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      data.pricing = normalizePricingConfig(body);
+      data.priceDrafts = mergeModelPrices(data.priceDrafts, data.pricing.modelPrices);
+      data.events.unshift({
+        type: 'pricing_updated',
+        detail: `套餐 ${data.pricing.rechargePlans.length} 个，模型价格 ${data.pricing.modelPrices.length} 个`,
+        at: new Date().toISOString(),
+      });
+      return pricingPayload(data);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/admin/replenishments') {
     const data = await store.load();
     requireAdmin(data, request, serverOptions);
@@ -480,8 +596,11 @@ function claimAdminIdentity(data, request, body, serverOptions) {
 
 function rechargeCustomer(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
-  const amountCents = Math.round(Number(body.amountCny || 0) * 100);
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+  const selectedPlan = findRechargePlan(data, body);
+  const amountCents = selectedPlan ? planPriceCents(selectedPlan) : Math.round(Number(body.amountCny || 0) * 100);
+  const creditCents = selectedPlan ? planCreditCents(selectedPlan) : amountCents;
+  const planType = selectedPlan ? normalizeRechargePlan(selectedPlan.plan) : normalizeRechargePlan(body.plan);
+  if (!Number.isFinite(amountCents) || amountCents <= 0 || !Number.isFinite(creditCents) || creditCents <= 0) {
     throw publicError(400, '充值金额必须大于 0');
   }
 
@@ -492,7 +611,10 @@ function rechargeCustomer(data, request, body, serverOptions) {
       userId: user.id,
       email: user.email,
       amountCents,
-      plan: normalizeRechargePlan(body.plan),
+      creditCents,
+      quotaUsd: selectedPlan?.quotaUsd || 0,
+      planId: selectedPlan?.id || '',
+      plan: planType,
       method: String(body.method || 'manual_pending'),
       status: 'pending_manual_payment',
       createdAt: now,
@@ -503,6 +625,7 @@ function rechargeCustomer(data, request, body, serverOptions) {
       type: 'payment_order_created',
       userId: user.id,
       amountCents,
+      creditCents,
       plan: paymentOrder.plan,
       method: paymentOrder.method,
       at: now,
@@ -517,14 +640,22 @@ function rechargeCustomer(data, request, body, serverOptions) {
     };
   }
 
-  user.balanceCents += amountCents;
-  user.boosterQuotaCents += amountCents;
+  if (planType === 'day') {
+    user.plan = '日卡';
+    const expiresAt = addDays(currentDate(serverOptions), 1);
+    user.renewalDate = formatDate(expiresAt);
+    user.planExpiresAt = expiresAt.toISOString();
+    user.packageQuotaCents += creditCents;
+  } else {
+    user.boosterQuotaCents += creditCents;
+  }
   reconcileUserBalance(user);
   user.updatedAt = new Date().toISOString();
   data.events.push({
     type: 'recharged',
     userId: user.id,
     amountCents,
+    creditCents,
     method: String(body.method || 'manual'),
     at: user.updatedAt,
   });
@@ -536,12 +667,14 @@ function rechargeCustomer(data, request, body, serverOptions) {
 
 function manualRechargeCustomer(data, body) {
   const email = String(body.email || '').trim().toLowerCase();
-  const amountCents = Math.round(Number(body.amountCny || 0) * 100);
-  const planType = String(body.plan || 'balance').trim().toLowerCase();
+  const selectedPlan = findRechargePlan(data, body);
+  const amountCents = selectedPlan ? planPriceCents(selectedPlan) : Math.round(Number(body.amountCny || 0) * 100);
+  const creditCents = selectedPlan ? planCreditCents(selectedPlan) : amountCents;
+  const planType = selectedPlan ? normalizeRechargePlan(selectedPlan.plan) : String(body.plan || 'balance').trim().toLowerCase();
   if (!email) {
     throw publicError(400, '用户邮箱不能为空');
   }
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+  if (!Number.isFinite(amountCents) || amountCents <= 0 || !Number.isFinite(creditCents) || creditCents <= 0) {
     throw publicError(400, '充值金额必须大于 0');
   }
 
@@ -557,15 +690,18 @@ function manualRechargeCustomer(data, body) {
     const expiresAt = addDays(new Date(now), days);
     user.renewalDate = formatDate(expiresAt);
     user.planExpiresAt = expiresAt.toISOString();
-    user.packageQuotaCents += amountCents;
+    user.packageQuotaCents += creditCents;
   } else {
-    user.boosterQuotaCents += amountCents;
+    user.boosterQuotaCents += creditCents;
   }
   reconcileUserBalance(user);
   user.updatedAt = now;
 
   const pendingOrder = data.paymentOrders.find(
-    (order) => order.userId === user.id && order.status === 'pending_manual_payment' && Number(order.amountCents) === amountCents,
+    (order) =>
+      order.userId === user.id &&
+      order.status === 'pending_manual_payment' &&
+      (String(body.paymentOrderId || '') ? order.id === body.paymentOrderId : Number(order.amountCents) === amountCents),
   );
   if (pendingOrder) {
     pendingOrder.status = 'confirmed';
@@ -577,6 +713,7 @@ function manualRechargeCustomer(data, body) {
     type: 'manual_recharged',
     userId: user.id,
     amountCents,
+    creditCents,
     plan: planType,
     method: String(body.method || 'manual_confirmed'),
     at: now,
@@ -593,6 +730,47 @@ function manualRechargeCustomer(data, body) {
 function normalizeRechargePlan(value) {
   const plan = String(value || 'balance').trim().toLowerCase();
   return ['balance', 'day', 'month'].includes(plan) ? plan : 'balance';
+}
+
+function findRechargePlan(data, body = {}) {
+  const plans = normalizePricingConfig(data.pricing || {}).rechargePlans;
+  const requestedId = String(body.planId || '').trim();
+  if (requestedId) {
+    return plans.find((plan) => plan.id === requestedId) || null;
+  }
+  const requestedPlan = String(body.plan || '').trim().toLowerCase();
+  const amountCny = Number(body.amountCny || 0);
+  return (
+    plans.find(
+      (plan) =>
+        normalizeRechargePlan(plan.plan) === normalizeRechargePlan(requestedPlan) &&
+        Math.abs(Number(plan.priceCny || 0) - amountCny) < 0.001,
+    ) ||
+    plans.find((plan) => Math.abs(Number(plan.priceCny || 0) - amountCny) < 0.001) ||
+    null
+  );
+}
+
+function planCreditCents(plan) {
+  return Math.round(Number(plan.quotaUsd || 0) * DEFAULT_USD_TO_CNY * 100);
+}
+
+function planPriceCents(plan) {
+  return Math.round(Number(plan.priceCny || 0) * 100);
+}
+
+function buildRechargeOptions(data) {
+  return normalizePricingConfig(data.pricing || {}).rechargePlans.map((plan, index) => ({
+    id: plan.id,
+    label: plan.label,
+    quotaUsd: plan.quotaUsd,
+    priceCny: plan.priceCny,
+    durationDays: plan.durationDays,
+    plan: plan.plan,
+    cny: `¥${Number(plan.priceCny || 0).toFixed(2)}`,
+    quota: `$${Number(plan.quotaUsd || 0).toFixed(0)}`,
+    active: index === 0,
+  }));
 }
 
 function redeemCustomerCode(data, request, body, serverOptions) {
@@ -752,6 +930,7 @@ function buildDashboard(data, user, serverOptions) {
     modelUsage: buildModelUsage(data, user),
     channelChecks: buildChannelChecks(data),
     modelCatalog: buildModelCatalog(data),
+    rechargeOptions: buildRechargeOptions(data),
   };
 }
 
@@ -782,6 +961,7 @@ function buildGuestDashboard(data) {
     modelUsage: [],
     channelChecks: buildChannelChecks(data),
     modelCatalog: buildModelCatalog(data),
+    rechargeOptions: buildRechargeOptions(data),
   };
 }
 
@@ -1239,16 +1419,18 @@ function parseModelIds(bodyText) {
   try {
     const payload = JSON.parse(bodyText || '{}');
     if (!Array.isArray(payload.data)) return [];
-    return payload.data
-      .map((item) => String(item.id || item.name || '').trim())
-      .filter(Boolean);
+    return normalizeOfficialModelList(
+      payload.data
+        .map((item) => String(item.id || item.name || '').trim())
+        .filter(Boolean),
+    );
   } catch {
     return [];
   }
 }
 
 function uniqueStrings(values) {
-  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+  return [...new Set(values.map((value) => normalizeOfficialModelName(value)).filter(Boolean))];
 }
 
 async function routeChatCompletion(data, request, body, serverOptions, options = {}) {
@@ -1258,7 +1440,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
     throw publicError(401, '用户不存在');
   }
 
-  const model = String(body.model || '').trim();
+  const model = normalizeOfficialModelName(body.model);
   if (!model) {
     throw publicError(400, '缺少模型名称');
   }
@@ -1266,7 +1448,8 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
     throw publicError(403, '当前 API Key 的模型分组不匹配，请创建对应分组的 Key');
   }
 
-  const estimatedQuotaCost = estimateQuotaCostCents(data, model, body, serverOptions);
+  const routedBody = { ...body, model };
+  const estimatedQuotaCost = estimateQuotaCostCents(data, model, routedBody, serverOptions);
   expireUserPlanIfNeeded(data, user, serverOptions);
   if (availableQuotaCents(user) < estimatedQuotaCost) {
     throw publicError(402, '余额不足，请先充值或兑换套餐');
@@ -1280,7 +1463,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
       .filter((credential) => allowedPools.includes(credential.pool))
       .filter((credential) => credential.enabled)
       .filter((credential) => credential.status === 'healthy')
-      .filter((credential) => credential.models.includes(model) || credential.models.includes('*'))
+      .filter((credential) => normalizeOfficialModelList(credential.models).includes(model) || credential.models.includes('*'))
       .filter((credential) => credentialMatchesModelGroup(credential, model, userKey.modelGroup))
       .sort(compareGatewayCredentials),
     sessionKey,
@@ -1295,7 +1478,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
 
     let upstream;
     try {
-      upstream = await callGatewayAttempts(credential, body, serverOptions, options);
+      upstream = await callGatewayAttempts(credential, routedBody, serverOptions, options);
     } catch {
       failCredential(data, credential, 'upstream_network_failed');
       clearRouteAffinity(data, sessionKey, credential.id);
@@ -1313,7 +1496,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
     }
 
     if (upstream.status >= 200 && upstream.status < 300) {
-      const quotaCost = resolveQuotaCostCents(data, model, body, upstream, serverOptions);
+      const quotaCost = resolveQuotaCostCents(data, model, routedBody, upstream, serverOptions);
       credential.quotaRemaining = Math.max(0, Number(credential.quotaRemaining || 0) - quotaCost);
       credential.status = credential.quotaRemaining > 0 ? 'healthy' : 'exhausted';
       credential.enabled = credential.quotaRemaining > 0;
@@ -1744,6 +1927,13 @@ function createSecurityState() {
 }
 
 function createCaptchaChallenge(securityState, serverOptions) {
+  if (!serverOptions.requireCaptcha) {
+    return {
+      required: false,
+      id: '',
+      question: '',
+    };
+  }
   cleanupCaptchas(securityState);
   const left = 10 + randomBytes(1)[0] % 40;
   const right = 1 + randomBytes(1)[0] % 30;
@@ -1753,6 +1943,7 @@ function createCaptchaChallenge(securityState, serverOptions) {
     expiresAt: Date.now() + Number(serverOptions.captchaTtlMs || 600_000),
   });
   return {
+    required: true,
     id,
     question: `${left} + ${right} = ?`,
   };
@@ -1888,13 +2079,15 @@ function createRuntimeStore(dataFile) {
 }
 
 function normalizeRuntimeData(data) {
+  const pricing = normalizePricingConfig(data.pricing || {});
   return {
     users: Array.isArray(data.users) ? data.users : [],
     sessions: data.sessions && typeof data.sessions === 'object' ? data.sessions : {},
     userKeys: Array.isArray(data.userKeys) ? data.userKeys : [],
-    credentials: Array.isArray(data.credentials) ? data.credentials : [],
-    supplierProfiles: Array.isArray(data.supplierProfiles) ? data.supplierProfiles : [],
-    priceDrafts: Array.isArray(data.priceDrafts) ? data.priceDrafts : [],
+    credentials: Array.isArray(data.credentials) ? data.credentials.map(normalizeCredentialRecord) : [],
+    supplierProfiles: Array.isArray(data.supplierProfiles) ? data.supplierProfiles.map(normalizeSupplierProfileRecord) : [],
+    priceDrafts: mergeModelPrices(Array.isArray(data.priceDrafts) ? data.priceDrafts : [], pricing.modelPrices),
+    pricing,
     paymentOrders: Array.isArray(data.paymentOrders) ? data.paymentOrders : [],
     redemptions: Array.isArray(data.redemptions) ? data.redemptions : [],
     routeAffinities: data.routeAffinities && typeof data.routeAffinities === 'object' ? data.routeAffinities : {},
@@ -1902,6 +2095,93 @@ function normalizeRuntimeData(data) {
     usedAdminClaimCodeHashes: Array.isArray(data.usedAdminClaimCodeHashes) ? data.usedAdminClaimCodeHashes : [],
     events: Array.isArray(data.events) ? data.events : [],
   };
+}
+
+function normalizeCredentialRecord(credential) {
+  return {
+    ...credential,
+    models: normalizeOfficialModelList(credential.models || []),
+    modelGroup: normalizeModelGroup(credential.modelGroup || inferProviderGroup((credential.models || []).join('\n'))),
+  };
+}
+
+function normalizeSupplierProfileRecord(profile) {
+  return {
+    ...profile,
+    models: normalizeOfficialModelList(profile.models || []),
+    modelGroup: normalizeModelGroup(profile.modelGroup || inferProviderGroup((profile.models || []).join('\n'))),
+  };
+}
+
+function pricingPayload(data) {
+  const pricing = normalizePricingConfig(data.pricing || {});
+  return {
+    rechargePlans: pricing.rechargePlans,
+    modelPrices: pricing.modelPrices,
+  };
+}
+
+function normalizePricingConfig(input = {}) {
+  const rechargePlans = normalizeRechargePlans(input.rechargePlans);
+  const modelPrices = normalizeModelPrices(input.modelPrices);
+  return { rechargePlans, modelPrices };
+}
+
+function normalizeRechargePlans(plans) {
+  const rows = Array.isArray(plans) && plans.length ? plans : DEFAULT_RECHARGE_PLANS;
+  return rows
+    .map((plan, index) => {
+      const quotaUsd = Math.max(0, Number(plan.quotaUsd || 0));
+      const priceCny = Math.max(0, Number(plan.priceCny ?? plan.amountCny ?? 0));
+      const durationDays = Math.max(0, Number(plan.durationDays || 0));
+      const inferredPlan = durationDays === 1 ? 'day' : 'balance';
+      return {
+        id: String(plan.id || `plan-${index + 1}`).trim(),
+        label: String(plan.label || `Codex API ${quotaUsd}刀额度/${durationDays === 1 ? '日卡' : '不限时'}`).trim(),
+        quotaUsd,
+        priceCny: round2(priceCny),
+        durationDays,
+        plan: normalizeRechargePlan(plan.plan || inferredPlan),
+        active: index === 0,
+      };
+    })
+    .filter((plan) => plan.id && plan.quotaUsd > 0 && plan.priceCny > 0);
+}
+
+function normalizeModelPrices(prices) {
+  const rows = Array.isArray(prices) && prices.length ? prices : DEFAULT_MODEL_PRICES;
+  const merged = new Map();
+  for (const price of rows) {
+    const model = normalizeOfficialModelName(price.model);
+    if (!model) continue;
+    merged.set(model, {
+      model,
+      currency: String(price.currency || 'CNY').toUpperCase(),
+      inputCostCnyPerMillion: round2(Number(price.inputCostCnyPerMillion || 0)),
+      outputCostCnyPerMillion: round2(Number(price.outputCostCnyPerMillion || 0)),
+      inputSaleCnyPerMillion: round2(Number(price.inputSaleCnyPerMillion ?? price.inputCostCnyPerMillion ?? 0)),
+      outputSaleCnyPerMillion: round2(Number(price.outputSaleCnyPerMillion ?? price.outputCostCnyPerMillion ?? 0)),
+      source: String(price.source || 'official'),
+      status: String(price.status || 'confirmed'),
+    });
+  }
+  return [...merged.values()];
+}
+
+function mergeModelPrices(existing, configured) {
+  const merged = new Map();
+  for (const price of normalizeModelPrices(configured)) {
+    merged.set(price.model, price);
+  }
+  for (const price of Array.isArray(existing) ? existing : []) {
+    const model = normalizeOfficialModelName(price.model);
+    if (!model || merged.has(model)) continue;
+    merged.set(model, {
+      ...price,
+      model,
+    });
+  }
+  return [...merged.values()];
 }
 
 function normalizeServerOptions(options) {
@@ -2134,10 +2414,10 @@ function normalizeModels(models, options = {}) {
       .split(/[,\n]/)
       .map((item) => item.trim())
       .filter(Boolean);
-    return parsed.length > 0 || options.allowEmpty ? parsed : [DEFAULT_MODEL];
+    return parsed.length > 0 || options.allowEmpty ? normalizeOfficialModelList(parsed) : [DEFAULT_MODEL];
   }
   if (Array.isArray(models) && models.length > 0) {
-    return models.map((item) => String(item).trim()).filter(Boolean);
+    return normalizeOfficialModelList(models.map((item) => String(item).trim()).filter(Boolean));
   }
   if (options.allowEmpty) {
     return [];
@@ -2299,7 +2579,7 @@ function writeJson(response, status, payload, headers = {}) {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
-    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     ...headers,
   });
   response.end(JSON.stringify(payload));
@@ -2309,7 +2589,7 @@ function writeNoContent(response) {
   response.writeHead(204, {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
-    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   });
   response.end();
 }
@@ -2467,12 +2747,12 @@ function buildGatewayModels(data, request) {
       .filter((credential) => credentialMatchesModelGroup(credential, '', userKey.modelGroup))
       .flatMap((credential) => credential.models || []),
   )
-    .filter((model) => modelMatchesGroup(model, userKey.modelGroup || 'All'))
-    .sort();
+    .filter((model) => modelMatchesGroup(model, userKey.modelGroup || 'All'));
+  const sortedModels = sortModelsByStrength(models);
 
   return {
     object: 'list',
-    data: models.map((model) => ({
+    data: sortedModels.map((model) => ({
       id: model,
       object: 'model',
       owned_by: 'frist-api',
@@ -2506,19 +2786,22 @@ function strongestModel(models = []) {
 function sortModelsByStrength(models = []) {
   const order = [
     'gpt-5.5-pro',
+    'gpt-5.5-c',
     'gpt-5.5',
     'gpt-5.4-pro',
+    'gpt-5.4-c',
     'gpt-5.4',
     'gpt-5.4-mini',
     'gpt-5.4-nano',
     'gpt-image-2',
     'gpt-image-1.5',
     'gpt-image-1',
-    'claude-haiku-4-5-20251001',
-    'claude-haiku',
+    'claude-opus-4-6-thinking-c',
+    'claude-opus-4-6-c',
+    'claude-sonnet-4-5-c',
     'gemini-2.5-flash',
   ];
-  return uniqueStrings(models).sort((left, right) => {
+  return normalizeOfficialModelList(models).sort((left, right) => {
     const leftRank = order.indexOf(left);
     const rightRank = order.indexOf(right);
     const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;
@@ -2529,9 +2812,10 @@ function sortModelsByStrength(models = []) {
 }
 
 function findModelPrice(data, model) {
+  const normalizedModel = normalizeOfficialModelName(model);
   return [...(data.priceDrafts || [])]
     .reverse()
-    .find((draft) => draft.model === model || draft.model === '*');
+    .find((draft) => normalizeOfficialModelName(draft.model) === normalizedModel || draft.model === '*');
 }
 
 function parseUpstreamUsage(bodyText) {
@@ -2645,7 +2929,7 @@ function buildModelUsage(data, user) {
 function buildChannelChecks(data) {
   const grouped = new Map();
   for (const credential of data.credentials) {
-    const models = credential.models?.length ? credential.models : [DEFAULT_MODEL];
+    const models = normalizeOfficialModelList(credential.models?.length ? credential.models : [DEFAULT_MODEL]);
     for (const model of models) {
       const key = model;
       const current = grouped.get(key) || {
@@ -2675,7 +2959,7 @@ function buildChannelChecks(data) {
   return [...grouped.values()]
     .sort((left, right) => `${left.provider}:${left.model}`.localeCompare(`${right.provider}:${right.model}`))
     .map((item) => ({
-      model: item.model,
+      model: normalizeOfficialModelName(item.model),
       provider: item.provider,
       channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
       ok: item.healthy > 0,
@@ -2686,8 +2970,21 @@ function buildChannelChecks(data) {
 }
 
 function buildModelCatalog(data) {
-  const liveByModel = new Map(buildChannelChecks(data).map((item) => [item.model, item]));
-  const rowsByModel = new Map(DEFAULT_MODEL_CATALOG.map((item) => [item.model, { ...item }]));
+  const liveByModel = new Map(buildChannelChecks(data).map((item) => [normalizeOfficialModelName(item.model), item]));
+  const rowsByModel = new Map(
+    DEFAULT_MODEL_CATALOG.map((item) => {
+      const model = normalizeOfficialModelName(item.model);
+      const price = findModelPrice(data, model);
+      return [
+        model,
+        {
+          ...item,
+          model,
+          price: price ? priceLabel(price) : item.price || '按后台价格',
+        },
+      ];
+    }),
+  );
 
   for (const model of uniqueStrings(data.credentials.flatMap((credential) => credential.models || []))) {
     const live = liveByModel.get(model);
@@ -2710,8 +3007,9 @@ function buildModelCatalog(data) {
 }
 
 function providerFromModel(model = '') {
-  if (model.includes('gpt') || model.includes('openai')) return 'OpenAI';
-  if (model.includes('gemini')) return 'Gemini';
+  const value = String(model || '').toLowerCase();
+  if (value.includes('gpt') || value.includes('openai')) return 'OpenAI';
+  if (value.includes('gemini')) return 'Gemini';
   return 'Claude';
 }
 
@@ -2860,6 +3158,11 @@ function sanitizePaymentOrder(order) {
     id: order.id,
     email: order.email || '',
     amount: formatCny(order.amountCents),
+    amountCents: Number(order.amountCents || 0),
+    credit: formatCny(order.creditCents),
+    creditCents: Number(order.creditCents || order.amountCents || 0),
+    quotaUsd: Number(order.quotaUsd || 0),
+    planId: order.planId || '',
     plan: order.plan || 'balance',
     method: order.method,
     status: order.status,
@@ -2987,6 +3290,10 @@ function formatDate(date) {
 
 function formatCny(cents) {
   return `¥${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
+function round2(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 const isCli = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);

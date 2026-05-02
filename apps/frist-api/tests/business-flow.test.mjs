@@ -18,14 +18,73 @@ import {
   setCustomerKeyEnabled,
   verifyCustomerEmail,
 } from '../src/businessFlow.js';
-import { accountSummary, apiKeys, channelChecks, modelUsage, rechargeOptions } from '../src/data.js';
 
 const dashboardSeed = {
-  accountSummary,
-  apiKeys,
-  channelChecks,
-  modelUsage,
-  rechargeOptions,
+  accountSummary: {
+    userInitials: 'DJ',
+    plan: '月卡 Pro',
+    balance: '¥81.58',
+    todayCost: '¥18.42',
+    monthCost: '¥428.90',
+    quotaLeft: '¥81.58',
+    packageQuota: '¥64.00',
+    boosterQuota: '¥17.58',
+    usageTotal: '¥428.90',
+    todayCalls: '186 次',
+    renewalDate: '2026-05-28',
+  },
+  apiKeys: [
+    {
+      id: 'key-main',
+      name: '主力 Key',
+      preview: 'fk-live-••••••9x2a',
+      enabled: true,
+      cost: '¥428.90',
+      tokens: '25.58M',
+      lastUsed: '20:16',
+      expiresAt: '-',
+    },
+  ],
+  channelChecks: [
+    {
+      provider: 'Claude',
+      channel: '官渠主线',
+      model: 'claude-opus-4-6-thinking-c',
+      endpoint: 'https://api.frist.example.com/claude/office',
+      ok: true,
+      latencyMs: 1912,
+      pingMs: 87,
+      checkedAt: '20:16',
+      officialStatus: '正常',
+      availability: '89.65%',
+      successLabel: '8101/9036 成功',
+      history: ['ok', 'ok', 'ok', 'slow', 'ok', 'ok', 'ok', 'ok', 'down', 'ok', 'ok', 'ok'],
+      replacement: 'Claude 备用线',
+    },
+    {
+      provider: 'OpenAI',
+      channel: 'Codex Pro',
+      model: 'gpt-5.5',
+      endpoint: 'https://api.frist.example.com/openai/pro',
+      ok: true,
+      latencyMs: 1771,
+      pingMs: 196,
+      checkedAt: '20:16',
+      officialStatus: '降级',
+      availability: '99.24%',
+      successLabel: '9994/10071 成功',
+      history: ['ok', 'ok', 'ok', 'ok', 'slow', 'ok', 'ok', 'ok', 'ok', 'slow', 'ok', 'ok'],
+      replacement: 'Codex Plus',
+    },
+  ],
+  modelUsage: [
+    { model: 'Claude', family: 'Anthropic', percent: 42, amount: '¥179.22', calls: '326 次', tokens: '9.83M' },
+    { model: 'OpenAI', family: 'OpenAI', percent: 31, amount: '¥132.96', calls: '284 次', tokens: '8.12M' },
+  ],
+  rechargeOptions: [
+    { label: 'Codex API 30刀额度/日卡', caption: '1 天', plan: 'day', cny: '¥5.88', active: true },
+    { label: 'Codex API 30刀额度/不限时', caption: '不限时', plan: 'balance', cny: '¥8.88', active: false },
+  ],
 };
 
 describe('Frist-API customer business chain', () => {
@@ -36,7 +95,7 @@ describe('Frist-API customer business chain', () => {
     });
 
     const registered = registerCustomer(state, {
-      email: 'djblack1209@gmail.com',
+      email: 'customer@example.com',
       password: 'TestPass123!',
     });
     state = registered.state;
@@ -263,10 +322,12 @@ describe('Frist-API page business wiring', () => {
       'data-auth-close',
       'data-model-group',
       'data-create-key',
-      'data-pay-demo',
+      'data-pay-submit',
       'data-redeem-code',
       'data-refresh-health',
       'data-action-message',
+      'data-auth-feedback',
+      'data-key-feedback',
     ]) {
       assert.equal(page.includes(required), true, `${required} 应该接入客户侧业务动作`);
     }
@@ -290,9 +351,44 @@ describe('Frist-API page business wiring', () => {
     assert.equal(page.includes('.auth-panel__actions [hidden]'), true, '账户弹窗按钮隐藏态不能被通用按钮样式覆盖');
     assert.equal(page.includes('/api/frist/challenge'), true, '公开注册登录应该接入轻量挑战，避免机器人批量撞库');
     assert.equal(page.includes('/api/frist/admin/claim'), true, '管理员身份码应该从用户账号侧一次性激活');
+    assert.equal(page.includes('challenge.required !== false'), true, '前端只应在服务端要求时强制填写安全验证');
     assert.equal(page.includes('captchaId'), true, '注册登录请求应该带服务端挑战 ID');
     assert.equal(page.includes('captchaAnswer'), true, '注册登录请求应该带用户填写的挑战答案');
     assert.equal(page.includes('data-admin-token'), false, '用户端不能暴露管理 API 令牌输入框');
+  });
+
+  it('shows explicit success and failure feedback for login, key creation and health refresh', () => {
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+    for (const required of [
+      "setActionMessage('登录中",
+      "setActionMessage('登录成功",
+      "setActionMessage(serverError.message",
+      "setScopedFeedback('[data-auth-feedback]'",
+      "setScopedFeedback('[data-key-feedback]'",
+      'setButtonBusy(createKey',
+      'setButtonBusy(login',
+      'handleRefreshHealth(event)',
+      'event?.preventDefault()',
+      "setActionMessage('连通性刷新中",
+      "setActionMessage('连通性已刷新",
+    ]) {
+      assert.equal(appScript.includes(required), true, `${required} 应该让关键动作有明确反馈`);
+    }
+
+    for (const required of [
+      '.action-message.is-visible',
+      '.action-message--success',
+      '.action-message--error',
+      '.field-feedback',
+      '.field-feedback--error',
+      '.field-feedback--success',
+      '.provider-models',
+      '.provider-meta',
+    ]) {
+      assert.equal(styles.includes(required), true, `${required} 应该支撑明显反馈和升级后的连通性展示`);
+    }
   });
 
   it('renders client target selection and generated config snippets on the import page', () => {
@@ -394,7 +490,7 @@ describe('Frist-API page business wiring', () => {
   });
 
   it('documents the payment last-mile work that still needs the operator', () => {
-    const runbook = readFileSync(new URL('../../../docs/guides/frist-api-operator-runbook.md', import.meta.url), 'utf8');
+    const runbook = readFileSync(new URL('../../../docs/024-frist-api-operator-runbook.md', import.meta.url), 'utf8');
 
     for (const required of [
       '支付宝当面付',
@@ -498,9 +594,14 @@ describe('Frist-API page business wiring', () => {
       'data-admin-probe-mode',
       'data-admin-audit',
       'data-admin-replenish',
+      'data-admin-pricing',
+      'data-admin-pricing-save',
+      'data-admin-plans',
+      'data-admin-model-prices',
       '/api/admin/replenishments/parse-order',
       '/api/admin/replenishments',
       '/api/admin/customers/recharge',
+      '/api/admin/pricing',
     ]) {
       assert.equal(adminPage.includes(required), true, `${required} 应该只存在于管理端`);
       assert.equal(page.includes(required), false, `${required} 不应该出现在用户端`);

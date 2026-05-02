@@ -186,7 +186,7 @@ Mac 开机时:
 
 ### 上下文管理
 
-每个阶段是独立的 Claude Code 会话，避免单个会话的上下文窗口耗尽。阶段间通过 `docs/status/HANDOFF.md` 传递状态。
+每个阶段是独立的 Claude Code 会话，避免单个会话的上下文窗口耗尽。阶段间通过 `docs/061-handoff.md` 传递状态。
 
 如果单个阶段工作量太大，脚本会自动使用 `--resume` 续接（最多 3 次），模拟用户说"继续审计"。
 
@@ -229,9 +229,9 @@ git log --oneline --since="midnight"
 
 ```bash
 # 审计会更新这些文档
-cat docs/status/HANDOFF.md    # 最新交接摘要
-cat docs/status/HEALTH.md     # 系统健康状态
-cat docs/CHANGELOG.md         # 变更记录
+cat docs/061-handoff.md    # 最新交接摘要
+cat docs/060-health.md     # 系统健康状态
+cat docs/002-changelog.md         # 变更记录
 ```
 
 ### 管理定时任务

@@ -11,7 +11,9 @@ function init() {
   document.querySelector('[data-admin-parse-order]').addEventListener('click', parseOrder);
   document.querySelector('[data-admin-replenish]').addEventListener('click', replenish);
   document.querySelector('[data-admin-refresh]').addEventListener('click', loadInventory);
+  document.querySelector('[data-admin-pricing-save]').addEventListener('click', savePricing);
   loadInventory().catch((error) => setMessage(error.message));
+  loadPricing().catch((error) => setMessage(error.message));
 }
 
 function saveToken() {
@@ -101,6 +103,42 @@ async function loadInventory() {
   renderInventorySummary(result.inventorySummary || []);
   renderAudit(result.events || []);
   setMessage(`库存 ${result.credentials?.length || 0} 枚`);
+}
+
+async function loadPricing() {
+  const result = await adminRequest('/api/admin/pricing');
+  renderPricing(result);
+}
+
+async function savePricing() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+
+  try {
+    const payload = {
+      rechargePlans: JSON.parse(document.querySelector('[data-admin-plans]').value || '[]'),
+      modelPrices: JSON.parse(document.querySelector('[data-admin-model-prices]').value || '[]'),
+    };
+    const result = await adminRequest('/api/admin/pricing', {
+      method: 'PUT',
+      body: payload,
+    });
+    renderPricing(result);
+    setMessage(`价格已保存：套餐 ${result.rechargePlans.length} 个，模型 ${result.modelPrices.length} 个`);
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+function renderPricing(pricing) {
+  const plans = document.querySelector('[data-admin-plans]');
+  const modelPrices = document.querySelector('[data-admin-model-prices]');
+  if (plans) {
+    plans.value = JSON.stringify(pricing.rechargePlans || [], null, 2);
+  }
+  if (modelPrices) {
+    modelPrices.value = JSON.stringify(pricing.modelPrices || [], null, 2);
+  }
 }
 
 async function adminRequest(path, options = {}) {

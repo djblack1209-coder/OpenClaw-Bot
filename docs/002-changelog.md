@@ -1,15 +1,48 @@
 # CHANGELOG
 
-> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/sop/update-protocol.md`。
+> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/043-update-protocol.md`。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
 ## 按月查看
 
-- [2026-04 月变更记录](changelog-archive/2026-04.md)
+- [2026-04 月变更记录](090-changelog-archive-2026-04.md)
 
 ---
 
 ## 最近更新（2026-05）
+
+## [2026-05-02] Frist-API 用户闭环断点修复与价格管理
+> 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `CC Switch`, `Pricing`, `docs`
+> 关联问题: HI-838, TD-006, TD-008
+
+### 变更内容
+- 登录注册反馈: 用户登录、注册、验证码和密码错误现在都会显示明确成功/失败状态，按钮进入处理中状态，避免用户不知道请求是否生效。
+- API Key 创建反馈: 创建 Key 改为真实服务端链路，成功/失败均有明确提示，不再本地伪造或静默失败。
+- 连通性刷新: 刷新按钮保持在首页看板，不再误跳使用教程；渠道连通性升级为供应商、模型数量、可用状态和延迟摘要。
+- 模型命名清洗: 上游返回的历史 Claude Haiku 别名统一归一为官方展示名，用户页、导入链接和模型广场不再暴露 `claude-haiku-4-5-20251001` 这类非规范名称。
+- Mock 数据移除: 删除用户端网页 mock 数据文件和 New-API demo fallback；服务不可用时展示真实空态，不再展示演示套餐、演示用户或伪造 Key。
+- 价格管理: 新增管理端套餐与模型计价 JSON 编辑，默认套餐按用户确认的 5 档 Codex API 额度配置；模型计价按官方成本价走，优惠只体现在充值套餐。
+- 实机预审: 本地浏览器完整跑通注册、登录、创建 Key、刷新连通性、模型广场、充值套餐和管理端价格保存；腾讯云容器重新部署并通过本地/公网冒烟。
+- 测试额度: 测试账号已通过管理端人工入账补足 60 刀等值日卡额度，便于实测 API 聚合、模型切换、上下文粘滞和无缝降级。
+- 文档治理: 主项目 `docs/` 目录统一迁移到根目录编号命名，清理子目录层级，并同步代码、测试和 SOP 中的文档路径。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增价格管理 API、模型名清洗、真实空态数据、登录/Key 错误反馈和渠道连通性聚合
+- `apps/frist-api/src/app.js` — 接入登录/注册/Key/连通性显式反馈，移除 mock 兜底并刷新价格/模型/导入状态
+- `apps/frist-api/src/core.js` — 新增官方模型名归一化和跨客户端导入模型清单清洗
+- `apps/frist-api/src/serverClient.js` — 补齐价格、登录、Key 和 dashboard 请求归一化
+- `apps/frist-api/src/businessFlow.js` — 业务流去除演示数据依赖并同步价格配置
+- `apps/frist-api/src/admin.js` — 管理端新增套餐与模型价格读取/保存
+- `apps/frist-api/src/newApiClient.js` — 移除本地 demo store fallback
+- `apps/frist-api/src/data.js` — 删除网页 mock 数据源
+- `apps/frist-api/index.html` — 用户端补齐反馈容器、渠道连通性区域和真实空态
+- `apps/frist-api/admin.html` — 管理端新增价格管理区
+- `apps/frist-api/src/styles.css` — 增加反馈状态、连通性摘要和价格管理样式
+- `apps/frist-api/tests/*.mjs` — 覆盖登录反馈、Key 创建反馈、价格管理、模型清洗、mock 移除和网关计费
+- `docs/024-frist-api-operator-runbook.md` — 补齐价格管理、测试额度和支付人工操作指南
+- `docs/060-health.md` — 登记 HI-838 并更新 Frist-API 当前状态
+- `docs/002-changelog.md` — 记录本次用户闭环和价格管理收口
 
 ## [2026-05-02] Frist-API 跨模型导入实操流程图
 > 领域: `frontend` | `ai-pool` | `docs`
@@ -28,9 +61,9 @@
 - `apps/frist-api/src/app.js` — 接入流程图动态字段刷新和当前场景高亮
 - `apps/frist-api/src/styles.css` — 新增仿真实操窗口、菜单、设置页、Codex 配置页和响应式样式
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖流程图关键文案、字段和 MCP/Responses 配置提示
-- `docs/guides/frist-api-operator-runbook.md` — 扩写个人码收款、测试额度、支付宝/微信支付操作指南
-- `docs/status/HEALTH.md` — 登记 HI-837 并更新 Frist-API 当前状态
-- `docs/CHANGELOG.md` — 记录本次导入引导和支付手册改动
+- `docs/024-frist-api-operator-runbook.md` — 扩写个人码收款、测试额度、支付宝/微信支付操作指南
+- `docs/060-health.md` — 登记 HI-837 并更新 Frist-API 当前状态
+- `docs/002-changelog.md` — 记录本次导入引导和支付手册改动
 
 ## [2026-05-02] Frist-API Codex MCP 默认增强
 > 领域: `frontend` | `ai-pool` | `docs`
@@ -48,9 +81,9 @@
 - `apps/frist-api/src/app.js` — CC Switch 页新增 Codex 最强开发配置和 MCP 权限提示
 - `apps/frist-api/tests/core.test.mjs` — 覆盖 Codex MCP TOML 和 CC Switch 元数据
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页 MCP 引导文案
-- `docs/guides/frist-api-operator-runbook.md` — 增加 Codex MCP 默认增强和验收项
-- `docs/guides/frist-api-quickstart.md` — 增加 Codex MCP 配置说明
-- `docs/CHANGELOG.md` — 记录本次 MCP 默认增强
+- `docs/024-frist-api-operator-runbook.md` — 增加 Codex MCP 默认增强和验收项
+- `docs/025-frist-api-quickstart.md` — 增加 Codex MCP 配置说明
+- `docs/002-changelog.md` — 记录本次 MCP 默认增强
 
 ## [2026-05-02] Frist-API CC Switch 跨模型家族一键导入
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
@@ -74,9 +107,9 @@
 - `apps/frist-api/tests/core.test.mjs` — 覆盖 Claude Code 使用 ChatGPT 模型、Codex 使用 Claude 模型的导入配置
 - `apps/frist-api/tests/server.test.mjs` — 覆盖 `/v1/messages` 和 Responses fallback 网关链路
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页跨家族导入引导和支付最后一公里文档
-- `docs/guides/frist-api-operator-runbook.md` — 补齐收款二维码、支付宝当面付、微信支付 Native 和密钥操作指南
-- `docs/status/HEALTH.md` — 登记 HI-836 并更新 Frist-API 测试状态
-- `docs/CHANGELOG.md` — 记录本次 CC Switch 跨模型家族适配
+- `docs/024-frist-api-operator-runbook.md` — 补齐收款二维码、支付宝当面付、微信支付 Native 和密钥操作指南
+- `docs/060-health.md` — 登记 HI-836 并更新 Frist-API 测试状态
+- `docs/002-changelog.md` — 记录本次 CC Switch 跨模型家族适配
 
 ## [2026-05-02] Frist-API 首屏焦点流与品牌标识重做
 > 领域: `frontend` | `docs`
@@ -94,8 +127,8 @@
 - `apps/frist-api/index.html` — 调整首屏结构、品牌文案和快捷入口排序
 - `apps/frist-api/src/styles.css` — 重做品牌标识、首屏双栏布局、任务轨道和响应式断点
 - `apps/frist-api/tests/core.test.mjs` — 补充首屏焦点流与品牌回归断言
-- `docs/status/HEALTH.md` — 登记 HI-835 用户体验优化记录
-- `docs/CHANGELOG.md` — 记录本次首屏视觉优化
+- `docs/060-health.md` — 登记 HI-835 用户体验优化记录
+- `docs/002-changelog.md` — 记录本次首屏视觉优化
 
 ## [2026-05-02] Frist-API 生产入口恢复与商业化审计
 > 领域: `deploy` | `infra` | `docs` | `ai-pool`
@@ -111,11 +144,11 @@
 - 验证结果: 公网测试入口 `/` 和 `/api/frist/dashboard` 返回 `200 OK`；未授权 `/v1/models` 返回 `401`；公网冒烟脚本通过。
 
 ### 文件变更
-- `docs/reports/frist-api-production-readiness-2026-05-02.md` — 新增生产就绪审计、架构和商业化缺口报告
-- `docs/guides/frist-api-operator-runbook.md` — 扩写人工开通、支付、域名、邮箱、防刷、模型列表和生产验收清单
-- `docs/guides/frist-api-tencent-deploy.md` — 补充裸 IP 拒绝连接排查流程和多项目服务器反代边界
-- `docs/status/HEALTH.md` — 登记 HI-834 和 TD-008，并更新 Frist-API 当前生产化状态
-- `docs/CHANGELOG.md` — 记录本次线上入口恢复和商业化审计
+- `docs/080-frist-api-production-readiness-2026-05-02.md` — 新增生产就绪审计、架构和商业化缺口报告
+- `docs/024-frist-api-operator-runbook.md` — 扩写人工开通、支付、域名、邮箱、防刷、模型列表和生产验收清单
+- `docs/026-frist-api-tencent-deploy.md` — 补充裸 IP 拒绝连接排查流程和多项目服务器反代边界
+- `docs/060-health.md` — 登记 HI-834 和 TD-008，并更新 Frist-API 当前生产化状态
+- `docs/002-changelog.md` — 记录本次线上入口恢复和商业化审计
 
 ## [2026-05-02] Frist-API 导出模型清单可见化
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
@@ -138,8 +171,8 @@
 - `apps/frist-api/tests/core.test.mjs` — 覆盖 Codex/OpenCode 全模型导出和兼容字段
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页模型清单和配置同步接线
 - `apps/frist-api/tests/server.test.mjs` — 覆盖服务端 Codex/OpenCode 导出同一份完整模型列表
-- `docs/status/HEALTH.md` — 登记 HI-833
-- `docs/registries/command-registry.md` — 登记导出模型清单入口
+- `docs/060-health.md` — 登记 HI-833
+- `docs/031-command-registry.md` — 登记导出模型清单入口
 
 ## [2026-05-02] Frist-API 用户端完整度补强
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
@@ -167,8 +200,8 @@
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖账户弹窗、返回入口、广场删除/清空、API Key 操作和教程目标
 - `apps/frist-api/tests/core.test.mjs` — 覆盖 OpenCode 导出全模型列表并默认最强模型
 - `apps/frist-api/tests/server.test.mjs` — 覆盖 API Key 改名和删除 HTTP 链路
-- `docs/registries/command-registry.md` — 登记本轮新增用户侧操作入口
-- `docs/status/HEALTH.md` — 登记 HI-832
+- `docs/031-command-registry.md` — 登记本轮新增用户侧操作入口
+- `docs/060-health.md` — 登记 HI-832
 
 ## [2026-05-02] Frist-API 一次性管理员身份码
 > 领域: `backend` | `frontend` | `deploy` | `docs`
@@ -195,11 +228,11 @@
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页身份码接线且不暴露管理令牌输入框
 - `docker-compose.frist-api.yml` — 增加 `FRIST_API_ADMIN_CLAIM_CODES`
 - `apps/frist-api/deploy/production.env.example` — 增加一次性管理员身份码配置
-- `docs/guides/frist-api-quickstart.md` — 同步管理员首登链路和测试范围
-- `docs/guides/frist-api-tencent-deploy.md` — 同步腾讯云部署安全边界和上线检查
-- `docs/guides/frist-api-operator-runbook.md` — 新增必须人工操作的支付、域名、邮箱和验证码清单
-- `docs/registries/command-registry.md` — 登记身份码和运营入口选择器
-- `docs/status/HEALTH.md` — 登记 HI-831
+- `docs/025-frist-api-quickstart.md` — 同步管理员首登链路和测试范围
+- `docs/026-frist-api-tencent-deploy.md` — 同步腾讯云部署安全边界和上线检查
+- `docs/024-frist-api-operator-runbook.md` — 新增必须人工操作的支付、域名、邮箱和验证码清单
+- `docs/031-command-registry.md` — 登记身份码和运营入口选择器
+- `docs/060-health.md` — 登记 HI-831
 
 ## [2026-05-02] Frist-API 用户广场与数据教程页
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
@@ -228,11 +261,11 @@
 - `apps/frist-api/tests/core.test.mjs` — 覆盖一键配置命令不泄露上游字段
 - `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场、数据看板、模型广场和教程页接线
 - `apps/frist-api/tests/server.test.mjs` — 覆盖客户安全模型目录和图片生成路由
-- `docs/guides/frist-api-quickstart.md` — 同步用户组件、网关路由和测试覆盖
-- `docs/guides/frist-api-tencent-deploy.md` — 同步 Quick Tunnel HTTPS 入口、动态域名直签限制和长期域名方案
-- `docs/registries/command-registry.md` — 登记新增用户页面操作入口
-- `docs/status/HEALTH.md` — 更新 Frist-API 测试数和 HI-830
-- `docs/CHANGELOG.md` — 记录本次用户组件补齐
+- `docs/025-frist-api-quickstart.md` — 同步用户组件、网关路由和测试覆盖
+- `docs/026-frist-api-tencent-deploy.md` — 同步 Quick Tunnel HTTPS 入口、动态域名直签限制和长期域名方案
+- `docs/031-command-registry.md` — 登记新增用户页面操作入口
+- `docs/060-health.md` — 更新 Frist-API 测试数和 HI-830
+- `docs/002-changelog.md` — 记录本次用户组件补齐
 
 ## [2026-05-02] Frist-API 公开可测链路与隐藏管理入口
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
@@ -259,12 +292,12 @@
 - `docker-compose.frist-api.yml` — 暴露隐藏管理入口码、验证码、限流和低库存 Webhook 环境变量
 - `apps/frist-api/deploy/production.env.example` — 同步公开部署安全环境变量
 - `apps/frist-api/deploy/smoke-test.sh` — 冒烟检查新增验证码和隐藏管理入口验证
-- `docs/guides/frist-api-quickstart.md` — 更新当前用户/管理/网关完整链路
-- `docs/guides/frist-api-tencent-deploy.md` — 更新腾讯云公开验收与隐藏管理入口说明
-- `docs/reports/frist-api-public-snapshot-2026-05-02.md` — 归档公网用户端浏览器快照，避免根目录散落文档
-- `docs/status/HEALTH.md` — 更新 Frist-API 当前测试数和 HI-829
-- `docs/status/HANDOFF.md` — 更新当前交接状态
-- `docs/CHANGELOG.md` — 记录本次公开可测链路收口
+- `docs/025-frist-api-quickstart.md` — 更新当前用户/管理/网关完整链路
+- `docs/026-frist-api-tencent-deploy.md` — 更新腾讯云公开验收与隐藏管理入口说明
+- `docs/081-frist-api-public-snapshot-2026-05-02.md` — 归档公网用户端浏览器快照，避免根目录散落文档
+- `docs/060-health.md` — 更新 Frist-API 当前测试数和 HI-829
+- `docs/061-handoff.md` — 更新当前交接状态
+- `docs/002-changelog.md` — 记录本次公开可测链路收口
 
 ## [2026-05-02] Frist-API 用户端降噪与五客户端导入配置
 > 领域: `frontend` | `docs`
@@ -292,12 +325,12 @@
 - `apps/frist-api/tests/business-flow.test.mjs` — 同步用户/管理端解耦和导入配置测试
 - `apps/frist-api/tests/new-api-adapter.test.mjs` — 增加游客零消耗归一化回归测试
 - `apps/frist-api/tests/server.test.mjs` — 增加游客 Dashboard 零消耗回归测试
-- `docs/guides/frist-api-quickstart.md` — 同步当前公开用户链路和低密度页面结构
-- `docs/registries/command-registry.md` — 同步 Frist-API 当前真实 Web 操作入口
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 更新 UI 方向和当前实现边界
-- `docs/status/HEALTH.md` — 更新 Frist-API 测试数和 HI-828
-- `docs/status/HANDOFF.md` — 写入当前公网同步交接
-- `docs/CHANGELOG.md` — 记录本次用户端降噪
+- `docs/025-frist-api-quickstart.md` — 同步当前公开用户链路和低密度页面结构
+- `docs/031-command-registry.md` — 同步 Frist-API 当前真实 Web 操作入口
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 更新 UI 方向和当前实现边界
+- `docs/060-health.md` — 更新 Frist-API 测试数和 HI-828
+- `docs/061-handoff.md` — 写入当前公网同步交接
+- `docs/002-changelog.md` — 记录本次用户端降噪
 
 ## [2026-05-01] Frist-API 腾讯云公网验收部署
 > 领域: `deploy` | `infra` | `docs`
@@ -312,10 +345,10 @@
 
 ### 文件变更
 - `docker-compose.frist-api.yml` — 修正容器健康检查地址为 IPv4 loopback
-- `docs/guides/frist-api-quickstart.md` — 同步临时公网验收和健康检查说明
-- `docs/guides/frist-api-tencent-deploy.md` — 同步腾讯云临时验收端口和健康检查注意事项
-- `docs/status/HEALTH.md` — 更新 Frist-API 公网验收状态
-- `docs/CHANGELOG.md` — 记录本次公网部署
+- `docs/025-frist-api-quickstart.md` — 同步临时公网验收和健康检查说明
+- `docs/026-frist-api-tencent-deploy.md` — 同步腾讯云临时验收端口和健康检查注意事项
+- `docs/060-health.md` — 更新 Frist-API 公网验收状态
+- `docs/002-changelog.md` — 记录本次公网部署
 
 ## [2026-05-01] Frist-API 公开网关生产化加固
 > 领域: `backend` | `deploy` | `docs`
@@ -336,10 +369,10 @@
 - `apps/frist-api/tests/server.test.mjs` — 增加公开网关生产化回归测试
 - `apps/frist-api/deploy/production.env.example` — 增加生产模式和公开模式环境变量
 - `docker-compose.frist-api.yml` — 暴露 `NODE_ENV` 和 `FRIST_API_PUBLIC_MODE` 配置
-- `docs/guides/frist-api-quickstart.md` — 同步会话粘滞、流式透传、公开模式硬门槛和测试覆盖
-- `docs/guides/frist-api-tencent-deploy.md` — 同步服务器上线检查项
-- `docs/status/HEALTH.md` — 更新 Frist-API 当前状态和 HI-827
-- `docs/CHANGELOG.md` — 记录本次公开网关生产化加固
+- `docs/025-frist-api-quickstart.md` — 同步会话粘滞、流式透传、公开模式硬门槛和测试覆盖
+- `docs/026-frist-api-tencent-deploy.md` — 同步服务器上线检查项
+- `docs/060-health.md` — 更新 Frist-API 当前状态和 HI-827
+- `docs/002-changelog.md` — 记录本次公开网关生产化加固
 
 ## [2026-05-01] Frist-API 用户端商业化 UI 重构
 > 领域: `frontend` | `docs`
@@ -360,10 +393,10 @@
 - `apps/frist-api/src/app.js` — 增加首页轮播、自动切换和明细展开交互
 - `apps/frist-api/src/styles.css` — 重做用户端视觉层次、玻璃/拟物面板、动画和响应式样式
 - `apps/frist-api/tests/core.test.mjs` — 增加用户端商业化 UI 边界测试
-- `docs/guides/frist-api-quickstart.md` — 同步新用户端结构、截图和测试覆盖
-- `docs/registries/command-registry.md` — 登记新增轮播和展开交互入口
-- `docs/status/HEALTH.md` — 更新 Frist-API 测试数
-- `docs/CHANGELOG.md` — 记录本次用户端 UI 重构
+- `docs/025-frist-api-quickstart.md` — 同步新用户端结构、截图和测试覆盖
+- `docs/031-command-registry.md` — 登记新增轮播和展开交互入口
+- `docs/060-health.md` — 更新 Frist-API 测试数
+- `docs/002-changelog.md` — 记录本次用户端 UI 重构
 
 ## [2026-05-01] Frist-API 公开能用链路打通
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
@@ -385,13 +418,13 @@
 - `apps/frist-api/src/admin.js` — 管理端提交代理地址并展示直连/代理库存标签
 - `apps/frist-api/tests/server.test.mjs` — 增加代理转发、fallback 探测和 usage 扣费回归测试
 - `apps/frist-api/tests/business-flow.test.mjs` — 锁定代理字段只存在于管理端
-- `docs/guides/frist-api-quickstart.md` — 同步公开能用链路
-- `docs/guides/frist-api-tencent-deploy.md` — 同步弱服务器上线检查
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 同步当前实现边界和交接提示
-- `docs/registries/command-registry.md` — 登记管理端代理地址入口
-- `docs/status/HEALTH.md` — 更新 Frist-API 测试数和已修复技术债
-- `docs/status/HANDOFF.md` — 写入本轮交接状态
-- `docs/CHANGELOG.md` — 记录本次公开能用链路打通
+- `docs/025-frist-api-quickstart.md` — 同步公开能用链路
+- `docs/026-frist-api-tencent-deploy.md` — 同步弱服务器上线检查
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 同步当前实现边界和交接提示
+- `docs/031-command-registry.md` — 登记管理端代理地址入口
+- `docs/060-health.md` — 更新 Frist-API 测试数和已修复技术债
+- `docs/061-handoff.md` — 写入本轮交接状态
+- `docs/002-changelog.md` — 记录本次公开能用链路打通
 
 ## [2026-05-01] Frist-API 公开试用业务安全加固
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
@@ -419,12 +452,12 @@
 - `apps/frist-api/deploy/production.env.example` — 增加演示充值关闭开关
 - `Makefile` — 本地 Frist-API 开发启动默认回显验证码、关闭演示充值
 - `docker-compose.frist-api.yml` — 生产默认关闭演示充值
-- `docs/guides/frist-api-quickstart.md` — 同步公开试用充值和补号规则
-- `docs/guides/frist-api-tencent-deploy.md` — 同步上线前检查
-- `docs/registries/command-registry.md` — 登记 Frist-API 管理端人工入账入口
-- `docs/status/HEALTH.md` — 更新 Frist-API 当前状态
-- `docs/status/HANDOFF.md` — 更新 Frist-API 交接状态
-- `docs/CHANGELOG.md` — 记录本次公开试用业务安全加固
+- `docs/025-frist-api-quickstart.md` — 同步公开试用充值和补号规则
+- `docs/026-frist-api-tencent-deploy.md` — 同步上线前检查
+- `docs/031-command-registry.md` — 登记 Frist-API 管理端人工入账入口
+- `docs/060-health.md` — 更新 Frist-API 当前状态
+- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `docs/002-changelog.md` — 记录本次公开试用业务安全加固
 
 ## [2026-05-01] Frist-API 公开能用链路加固
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
@@ -454,14 +487,14 @@
 - `apps/frist-api/deploy/production.env.example` — 新增生产环境变量模板
 - `apps/frist-api/deploy/smoke-test.sh` — 新增部署冒烟检查脚本
 - `docker-compose.frist-api.yml` — 补充公开网关地址和探测超时环境变量
-- `docs/guides/frist-api-quickstart.md` — 同步公开试用链路和部署边界
-- `docs/guides/frist-api-tencent-deploy.md` — 新增腾讯云小服务器部署准备说明
-- `docs/reports/frist-api-public-usable-user-2026-05-01.png` — 保存用户端浏览器验证截图
-- `docs/reports/frist-api-public-usable-admin-2026-05-01.png` — 保存管理端浏览器验证截图
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 更新当前公开试用后端边界
-- `docs/status/HEALTH.md` — 更新 Frist-API 当前状态
-- `docs/status/HANDOFF.md` — 更新 Frist-API 交接状态
-- `docs/CHANGELOG.md` — 记录本次公开可用链路加固
+- `docs/025-frist-api-quickstart.md` — 同步公开试用链路和部署边界
+- `docs/026-frist-api-tencent-deploy.md` — 新增腾讯云小服务器部署准备说明
+- `docs/113-frist-api-public-usable-user-2026-05-01.png` — 保存用户端浏览器验证截图
+- `docs/112-frist-api-public-usable-admin-2026-05-01.png` — 保存管理端浏览器验证截图
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 更新当前公开试用后端边界
+- `docs/060-health.md` — 更新 Frist-API 当前状态
+- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `docs/002-changelog.md` — 记录本次公开可用链路加固
 
 ## [2026-05-01] Frist-API 公开试用链路后端
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
@@ -490,15 +523,15 @@
 - `.gitignore` — 忽略 Frist-API 本地运行数据，避免误提交用户 Key 或上游 Key
 - `Makefile` — `frist-api-dev` 改为完整链路启动，新增 `frist-api-static`
 - `docker-compose.frist-api.yml` — 改为轻量 Node 服务和 JSON 运行数据卷
-- `docs/guides/frist-api-quickstart.md` — 更新本地启动、管理端和公开试用边界
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 补充公开试用后端实现边界
-- `docs/reports/frist-api-public-user-2026-05-01.png` — 保存用户端浏览器验证截图
-- `docs/reports/frist-api-public-admin-2026-05-01.png` — 保存管理端浏览器验证截图
-- `docs/project-map.md` — 更新 Frist-API 项目登记
-- `docs/registries/command-registry.md` — 登记 Frist-API Web 操作入口
-- `docs/status/HEALTH.md` — 登记并关闭 Frist-API 首页 403 回归
-- `docs/status/HANDOFF.md` — 更新 Frist-API 交接状态
-- `docs/CHANGELOG.md` — 记录本次公开试用链路落地
+- `docs/025-frist-api-quickstart.md` — 更新本地启动、管理端和公开试用边界
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 补充公开试用后端实现边界
+- `docs/114-frist-api-public-user-2026-05-01.png` — 保存用户端浏览器验证截图
+- `docs/111-frist-api-public-admin-2026-05-01.png` — 保存管理端浏览器验证截图
+- `docs/001-project-map.md` — 更新 Frist-API 项目登记
+- `docs/031-command-registry.md` — 登记 Frist-API Web 操作入口
+- `docs/060-health.md` — 登记并关闭 Frist-API 首页 403 回归
+- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `docs/002-changelog.md` — 记录本次公开试用链路落地
 
 ## [2026-05-01] Frist-API 完整业务链路 MVP
 > 领域: `frontend` | `ai-pool` | `docs`
@@ -519,10 +552,10 @@
 - `apps/frist-api/index.html` — 新增用户侧注册与邮箱验证入口
 - `apps/frist-api/src/styles.css` — 新增账户链路表单样式
 - `apps/frist-api/tests/business-flow.test.mjs` — 新增完整业务链路回归测试
-- `docs/guides/frist-api-quickstart.md` — 同步当前业务闭环和验证方式
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 记录当前业务链路实现边界
-- `docs/status/HANDOFF.md` — 更新 Frist-API 交接状态
-- `docs/CHANGELOG.md` — 记录本次业务链路落地
+- `docs/025-frist-api-quickstart.md` — 同步当前业务闭环和验证方式
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 记录当前业务链路实现边界
+- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `docs/002-changelog.md` — 记录本次业务链路落地
 
 ## [2026-05-01] Frist-API 接入 New-API 前端适配层
 > 领域: `frontend` | `ai-pool` | `docs`
@@ -544,10 +577,10 @@
 - `apps/frist-api/deploy/nginx.conf` — 新增 Docker 站点代理配置
 - `apps/frist-api/tests/new-api-adapter.test.mjs` — 新增 New-API 适配层回归测试
 - `docker-compose.frist-api.yml` — 挂载 Frist-API Nginx 代理配置
-- `docs/guides/frist-api-quickstart.md` — 说明当前数据接入方式和下一步
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 同步当前前端适配边界
-- `docs/status/HANDOFF.md` — 更新 Frist-API 交接状态
-- `docs/CHANGELOG.md` — 记录本次适配层接入
+- `docs/025-frist-api-quickstart.md` — 说明当前数据接入方式和下一步
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 同步当前前端适配边界
+- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `docs/002-changelog.md` — 记录本次适配层接入
 
 ## [2026-05-01] Frist-API 参考 Tabcode 的用户控制台迭代
 > 领域: `frontend` | `docs`
@@ -571,8 +604,8 @@
 - `apps/frist-api/src/styles.css` — 重做分区控制台、状态卡和移动端样式
 - `apps/frist-api/favicon.svg` — 更新抽象品牌图标
 - `apps/frist-api/tests/core.test.mjs` — 增加分区导航和连通性字段测试
-- `docs/guides/frist-api-quickstart.md` — 同步当前可见能力
-- `docs/CHANGELOG.md` — 记录本次参考站迭代
+- `docs/025-frist-api-quickstart.md` — 同步当前可见能力
+- `docs/002-changelog.md` — 记录本次参考站迭代
 
 ## [2026-05-01] Frist-API 用户端 UI 解耦重构
 > 领域: `frontend` | `docs`
@@ -593,8 +626,8 @@
 - `apps/frist-api/src/styles.css` — 重做用户端视觉和响应式样式
 - `apps/frist-api/favicon.svg` — 更新抽象品牌图标
 - `apps/frist-api/tests/core.test.mjs` — 增加用户端/管理端解耦测试
-- `docs/guides/frist-api-quickstart.md` — 同步用户端范围说明
-- `docs/CHANGELOG.md` — 记录本次 UI 解耦重构
+- `docs/025-frist-api-quickstart.md` — 同步用户端范围说明
+- `docs/002-changelog.md` — 记录本次 UI 解耦重构
 
 ## [2026-05-01] Frist-API 网站雏形落地
 > 领域: `frontend` | `ai-pool` | `deploy` | `docs`
@@ -619,9 +652,9 @@
 - `apps/frist-api/package.json` — 本地测试和预览脚本
 - `docker-compose.frist-api.yml` — Frist-API 原型 Docker 入口
 - `Makefile` — 增加 Frist-API 本地命令
-- `docs/guides/frist-api-quickstart.md` — 新增快速启动指南
-- `docs/project-map.md` — 登记 Frist-API 应用位置
-- `docs/CHANGELOG.md` — 记录本次网站雏形落地
+- `docs/025-frist-api-quickstart.md` — 新增快速启动指南
+- `docs/001-project-map.md` — 登记 Frist-API 应用位置
+- `docs/002-changelog.md` — 记录本次网站雏形落地
 
 ## [2026-05-01] Frist-API 盈利中转站 MVP 设计落地
 > 领域: `docs` | `ai-pool`
@@ -639,9 +672,9 @@
 - 交接: 写入可直接交给下一位执行者的提示词，包含实现边界、优先级和验证要求。
 
 ### 文件变更
-- `docs/specs/2026-05-01-frist-api-mvp-design.md` — 新增 Frist-API MVP 设计文档和交接提示词
-- `docs/status/HANDOFF.md` — 写入本轮 Frist-API 交接摘要
-- `docs/CHANGELOG.md` — 记录本次方案文档落地
+- `docs/054-2026-05-01-frist-api-mvp-design.md` — 新增 Frist-API MVP 设计文档和交接提示词
+- `docs/061-handoff.md` — 写入本轮 Frist-API 交接摘要
+- `docs/002-changelog.md` — 记录本次方案文档落地
 
 ## [2026-05-01] 质量优化: API 边界异常链路清理
 > 领域: `backend` | `docs`
@@ -657,8 +690,8 @@
 - `packages/clawbot/src/api/routers/cli.py` — 3 个端点补充异常链
 - `packages/clawbot/src/api/routers/pool.py` — API 池统计错误转换补充异常链
 - `packages/clawbot/src/api/routers/shopping.py` — 购物比价错误转换补充异常链
-- `docs/status/HEALTH.md` — 同步 TD-005 剩余技术债计数
-- `docs/CHANGELOG.md` — 记录本次质量优化
+- `docs/060-health.md` — 同步 TD-005 剩余技术债计数
+- `docs/002-changelog.md` — 记录本次质量优化
 
 ## [2026-05-01] 质量优化: monitor 路由 lint 清理
 > 领域: `backend` | `docs`
@@ -673,8 +706,8 @@
 
 ### 文件变更
 - `packages/clawbot/src/api/routers/monitor.py` — 清理 3 项机械 lint 问题和 1 个空异常占位
-- `docs/status/HEALTH.md` — 同步 TD-004/TD-005 剩余技术债计数
-- `docs/CHANGELOG.md` — 记录本次质量优化
+- `docs/060-health.md` — 同步 TD-004/TD-005 剩余技术债计数
+- `docs/002-changelog.md` — 记录本次质量优化
 
 ## [2026-05-01] 质量优化: 测试入口、RPC 去重与文档入口修正
 > 领域: `backend` | `infra` | `docs`
@@ -709,9 +742,9 @@
 - `packages/clawbot/tests/test_api_routes_regression.py` — 增加行为锁定回归测试
 - `packages/clawbot/requirements-dev.txt` — 补齐 Ruff 开发依赖
 - `AGENTS.md` — 同步项目导航与文档命名规范到当前文件布局
-- `docs/index.md`, `docs/project-map.md`, `docs/sop/update-protocol.md`, `docs/sop/docs-first-protocol.md`, `docs/guides/disaster-recovery.md`, `docs/registries/dependency-map.md` — 修正文档入口路径和依赖登记
-- `docs/status/HEALTH.md` — 登记 HI-821/HI-822/HI-823 和最新测试状态
-- `docs/CHANGELOG.md` — 记录本次质量优化
+- `docs/003-docs-index.md`, `docs/001-project-map.md`, `docs/043-update-protocol.md`, `docs/040-docs-first-protocol.md`, `docs/023-disaster-recovery.md`, `docs/032-dependency-map.md` — 修正文档入口路径和依赖登记
+- `docs/060-health.md` — 登记 HI-821/HI-822/HI-823 和最新测试状态
+- `docs/002-changelog.md` — 记录本次质量优化
 
 ## 最近更新（2026-04）
 
@@ -735,8 +768,8 @@
 - `.gitignore` — 增加 `.openclaw/iflow_key_timestamp.json` 与本地扫描报告忽略规则
 - `.openclaw/iflow_key_timestamp.json` — 从 Git 索引移除, 保留本机文件
 - `.pre-commit-config.yaml` — 移除已删除 `.secrets.baseline` 的依赖
-- `docs/reports/secret-scan-2026-04-28.md` — 新增全量密钥扫描报告
-- `docs/status/health.md` — 登记 HI-817/HI-818/HI-819
+- `docs/083-secret-scan-2026-04-28.md` — 新增全量密钥扫描报告
+- `docs/060-health.md` — 登记 HI-817/HI-818/HI-819
 - `docs/changelog.md` — 记录本次安全扫描与清理
 
 ## [2026-04-27] Tauri 桌面端重新构建 + Makefile + iLink Session 修复
@@ -1270,8 +1303,8 @@
 - `packages/clawbot/tests/test_broker_bridge.py` — AsyncMock 修复
 - `packages/clawbot/kiro-gateway/.env` — 权限收紧
 - `apps/openclaw-manager-src/package-lock.json` — npm 漏洞包升级
-- `docs/status/HEALTH.md` — Sprint 5 审计条目
-- `docs/CHANGELOG.md` — 本条目
+- `docs/060-health.md` — Sprint 5 审计条目
+- `docs/002-changelog.md` — 本条目
 
 ## 2026-04-21 — 审计修复第六轮：全量日志脱敏 + 闲聊降级多族 + AI 新闻摘要 + diskcache CVE 替换
 > 领域: `backend`
@@ -1688,7 +1721,7 @@
 - `packages/clawbot/src/execution/social/__init__.py` — 导出新函数
 - `packages/clawbot/src/api/rpc.py` — 状态检测增加 Cookie 文件检查
 - `packages/clawbot/requirements.txt` — 新增 twikit>=2.0.0, xhs>=0.2.0
-- `docs/registries/DEPENDENCY_MAP.md` — 登记新依赖
+- `docs/032-dependency-map.md` — 登记新依赖
 
 ## 2026-04-20 — 全面质量审计：启停按钮补全 + Mock数据清理 + 时间戳
 > 领域: `frontend` `backend`
@@ -1909,7 +1942,7 @@
 7. **4 个 Rust 文件路径更新**: shell.rs / clawbot.rs / config.rs / clawbot_api.rs 中的 `Desktop/OpenClaw Bot` → `Desktop/OpenEverything`
 
 ### 产品体验升级设计文档
-8. **设计文档**: `docs/specs/2026-04-19-ux-experience-upgrade-design.md` — 四大场景(CookieCloud/远程开发/服务面板/数据可视化)完整设计
+8. **设计文档**: `docs/053-2026-04-19-ux-experience-upgrade-design.md` — 四大场景(CookieCloud/远程开发/服务面板/数据可视化)完整设计
 
 ### 文件变更
 - `src/xianyu/cookie_cloud.py` — 新增 (CookieCloud 集成核心模块)
@@ -1922,7 +1955,7 @@
 - `src-tauri/src/commands/clawbot_api.rs` — 路径修复
 - `src-tauri/src/commands/config.rs` — 路径修复
 - `src-tauri/src/utils/shell.rs` — 路径修复
-- `docs/specs/2026-04-19-ux-experience-upgrade-design.md` — 新增设计文档
+- `docs/053-2026-04-19-ux-experience-upgrade-design.md` — 新增设计文档
 
 ## 2026-04-19 — 桌面面板修复 + 性能监控页面
 > 领域: `frontend`
@@ -2022,7 +2055,7 @@
 - `packages/clawbot/requirements-dev.txt` — 新增 pytest-timeout + 版本约束收紧
 - `AUDIT_PLAN.md` — R3/R4 状态修正 + 新增 R12 + 总条目更新
 - `docs/audit/R12_CI_DEVOPS.md` — 新建 R12 审计文档（10条目/7修复/1跳过/2确认）
-- `docs/status/HEALTH.md` — 新增 HI-597 (CI Billing 阻塞)
+- `docs/060-health.md` — 新增 HI-597 (CI Billing 阻塞)
 
 ## 2026-04-19 — 技术债清理第9批: DevPanel 开发者工作台完整功能化（1项）
 > 领域: `frontend`
@@ -2145,8 +2178,8 @@
 - `apps/openclaw-manager-src/src/components/Social/index.tsx` — ConfirmDialog 替换 window.confirm
 - `apps/openclaw-manager-src/src/components/Evolution/index.tsx` — created_at 展示
 - `apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — 重启提示
-- `docs/registries/MODULE_REGISTRY.md` — 数字修正
-- `docs/registries/DEPENDENCY_MAP.md` — 数字修正
+- `docs/033-module-registry.md` — 数字修正
+- `docs/032-dependency-map.md` — 数字修正
 
 ## 2026-04-18 — 技术债清理第5批: 前端安全+体验+架构优化（6项）
 > 领域: `frontend`, `backend`
@@ -2189,14 +2222,14 @@
 
 3. **HI-525: LLM 配置漂移修复**: `config/llm_routing.json` 与 `litellm_router.py` 硬编码同步 — 12 个 provider 的 base_url/模型名/RPM/prefix/tier/timeout 全面对齐（iflow_unlimited 🔴严重漂移已修复）
 4. **HI-528: 数据库备份覆盖补全**: `novels.db` 和 `auto_shipper.db` 加入每日自动备份列表（9→11 个数据库）
-5. **HI-595: 灾难恢复指南**: 新建 `docs/guides/DR_GUIDE.md`，涵盖 11 个 SQLite 数据资产、4 个恢复场景操作步骤、保留策略说明
+5. **HI-595: 灾难恢复指南**: 新建 `docs/023-disaster-recovery.md`，涵盖 11 个 SQLite 数据资产、4 个恢复场景操作步骤、保留策略说明
 
 ### 文件变更
 - 28+ 个 `src/` 下源文件 — 静默异常修复
 - 14 个 `src/bot/cmd_*.py` — 命令错误处理
 - `config/llm_routing.json` — 12 provider 配置同步
 - `scripts/backup_databases.py` — 备份列表扩展
-- `docs/guides/DR_GUIDE.md` — 新建灾难恢复指南
+- `docs/023-disaster-recovery.md` — 新建灾难恢复指南
 
 ## 2026-04-18 — 技术债清理第3批: 死代码+数据降级+交易安全+闲鱼+通知系统（10项）
 > 领域: `backend`, `trading`, `xianyu`, `infra`
@@ -2488,8 +2521,8 @@
 - `packages/clawbot/src/bot/cmd_basic/callback_mixin.py` — 新增 `_safe_cmd_from_callback()` + 保护所有回调→命令调用
 - `packages/clawbot/src/bot/cmd_basic/help_mixin.py` — 修正 /invest 描述 5→6 位 AI
 - `packages/clawbot/src/bot/workflow_mixin.py` — 修正 `_pick_workflow_bot()` 返回类型一致性
-- `docs/registries/COMMAND_REGISTRY.md` — 9 项文档修正
-- `docs/status/HEALTH.md` — 新增 HI-529~534
+- `docs/031-command-registry.md` — 9 项文档修正
+- `docs/060-health.md` — 新增 HI-529~534
 
 ---
 
@@ -2519,7 +2552,7 @@
 - `packages/clawbot/tests/test_message_mixin.py` — 新增 12 个测试用例
 - `packages/clawbot/src/freqtrade_bridge.py` — 修复 confirm_trade_entry() API 不匹配
 - `packages/clawbot/src/core/brain_exec_invest.py` — 补传 stop_loss 参数修复 StopLossValidator 误拒
-- `docs/status/HEALTH.md` — 新增 HI-520~524
+- `docs/060-health.md` — 新增 HI-520~524
 
 ---
 

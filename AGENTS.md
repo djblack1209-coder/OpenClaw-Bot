@@ -1,7 +1,7 @@
 # OpenClaw Bot — AI CEO 开发 SOP
 
 > **本文件是所有 AI 工具的硬入口。** 最后更新: 2026-04-15
-> 参考资料已外移到 `docs/sop/` 下，本文件仅保留核心规则和流程。
+> 参考资料已外移到 `docs/` 根目录编号文档，本文件仅保留核心规则和流程。
 > v2 升级：借鉴 anthropics/claude-code + garrytan/gstack，新增决策分类、Skill 路由、验证铁律。
 
 ---
@@ -94,8 +94,8 @@
 
 **阶段概要：**
 
-1. **需求理解** — 读 `docs/project-map.md` + `docs/status/HEALTH.md` → 复述需求 → 拆解用户故事
-2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/sop/docs-first-protocol.md`）
+1. **需求理解** — 读 `docs/001-project-map.md` + `docs/060-health.md` → 复述需求 → 拆解用户故事
+2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/040-docs-first-protocol.md`）
 3. **计划制定** — TodoWrite 列步骤 → 标注验证标准
 4. **执行开发** — 逐步实现 → 每步过质量门 → 定期汇报
 5. **质量保证** — 全量测试 → UI 截图验证 → 无回归
@@ -156,7 +156,7 @@ cd packages/clawbot && pytest tests/ -x --tb=short
 - 用"相当于……"类比解释改动
 - 模糊需求 → 直接按最可能理解开始做
 - 进度汇报："一共 N 步，做到第 X 步"
-- 错误翻译参考表 → `docs/sop/error-translation-ref.md`
+- 错误翻译参考表 → `docs/041-error-translation-ref.md`
 
 ### 交付汇报模板
 ```
@@ -173,13 +173,13 @@ cd packages/clawbot && pytest tests/ -x --tb=short
 ```
 OpenClaw Bot/
 ├── AGENTS.md                    ← 你在这里
-├── docs/                        ← 文档治理中心
-│   ├── project-map.md           ← 项目全景 (必读)
-│   ├── CHANGELOG.md             ← 变更日志
-│   ├── status/HEALTH.md         ← 系统健康 + Bug + 技术债
-│   ├── status/HANDOFF.md        ← 会话交接
-│   ├── registries/              ← 模块/命令/依赖/API 注册表
-│   └── sop/                     ← 开发规范 (含外移的参考表)
+├── docs/                        ← 文档治理中心，根目录编号命名
+│   ├── 001-project-map.md       ← 项目全景 (必读)
+│   ├── 002-changelog.md         ← 变更日志
+│   ├── 003-docs-index.md        ← 文档总索引
+│   ├── 030-033-*.md             ← 模块/命令/依赖/API 注册表
+│   ├── 040-043-*.md             ← 开发规范
+│   └── 060-health.md            ← 系统健康 + Bug + 技术债
 ├── packages/clawbot/            ← Python 后端 (236 .py 文件)
 │   ├── multi_main.py            ← 入口
 │   └── src/                     ← 源码
@@ -194,14 +194,14 @@ OpenClaw Bot/
 
 | 变更类型 | 必须更新 |
 |----------|---------|
-| 新增/删除 Python 模块 | `docs/registries/module-registry.md` |
-| 新增/修改命令或按钮 | `docs/registries/command-registry.md` |
-| 新增 pip 依赖 | `docs/registries/dependency-map.md` |
-| 新增/修改 API Key/LLM | `docs/registries/api-pool-registry.md` |
-| 发现 Bug / 技术债 | `docs/status/HEALTH.md` |
-| 修复 Bug | HEALTH.md + `docs/CHANGELOG.md` |
-| 架构级改动 | `docs/project-map.md` |
-| **任何代码变更** | `docs/CHANGELOG.md` |
+| 新增/删除 Python 模块 | `docs/033-module-registry.md` |
+| 新增/修改命令或按钮 | `docs/031-command-registry.md` |
+| 新增 pip 依赖 | `docs/032-dependency-map.md` |
+| 新增/修改 API Key/LLM | `docs/030-api-pool-registry.md` |
+| 发现 Bug / 技术债 | `docs/060-health.md` |
+| 修复 Bug | `docs/060-health.md` + `docs/002-changelog.md` |
+| 架构级改动 | `docs/001-project-map.md` |
+| **任何代码变更** | `docs/002-changelog.md` |
 
 ---
 
@@ -231,13 +231,16 @@ OpenClaw Bot/
 
 | 文档类型 | 放在 | 命名 |
 |----------|------|------|
-| 架构/设计 | `docs/architecture/` | `kebab-case.md` |
-| 操作指南 | `docs/guides/` | `kebab-case.md`（已有 `QUICKSTART.md` 保持原名） |
-| 报告 | `docs/reports/` | `kebab-case-YYYY-MM-DD.md` |
-| 功能规格 | `docs/specs/` | `YYYY-MM-DD-topic-design.md` |
-| 注册表 | `docs/registries/` | `kebab-case.md` |
+| 核心入口 | `docs/` 根目录 | `001-009-kebab-case.md` |
+| 架构/商业/审计 | `docs/` 根目录 | `010-019-kebab-case.md` |
+| 操作指南 | `docs/` 根目录 | `020-029-kebab-case.md` |
+| 注册表 | `docs/` 根目录 | `030-039-kebab-case.md` |
+| SOP | `docs/` 根目录 | `040-049-kebab-case.md` |
+| 功能规格 | `docs/` 根目录 | `050-059-yyyy-mm-dd-topic.md` |
+| 状态文档 | `docs/` 根目录 | `060-069-kebab-case.md` |
+| 报告/归档 | `docs/` 根目录 | `080-099-kebab-case-yyyy-mm-dd.md` |
 
-**禁止**: 中文文件名、空格、在 `docs/` 以外建 `.md`
+**禁止**: 中文文件名、空格、主项目文档子目录、在 `docs/` 以外建普通说明文档。`AGENTS.md`、Bot 人设、Skill 文件、第三方包文档属于运行资产，不按主项目文档迁移。
 
 ---
 
@@ -255,20 +258,21 @@ OpenClaw Bot/
 
 | 我要... | 去看... |
 |---------|---------|
-| 理解项目 | `docs/project-map.md` |
-| 已知问题 | `docs/status/HEALTH.md` |
-| 变更历史 | `docs/CHANGELOG.md` |
-| 模块/命令/依赖 | `docs/registries/` |
-| 文档拉取规范 | `docs/sop/docs-first-protocol.md` |
-| 错误翻译参考 | `docs/sop/error-translation-ref.md` |
-| 上次交接 | `docs/status/HANDOFF.md` |
+| 理解项目 | `docs/001-project-map.md` |
+| 已知问题 | `docs/060-health.md` |
+| 变更历史 | `docs/002-changelog.md` |
+| 文档索引 | `docs/003-docs-index.md` |
+| 模块/命令/依赖 | `docs/030-api-pool-registry.md`、`docs/031-command-registry.md`、`docs/032-dependency-map.md`、`docs/033-module-registry.md` |
+| 文档拉取规范 | `docs/040-docs-first-protocol.md` |
+| 错误翻译参考 | `docs/041-error-translation-ref.md` |
+| 上次交接 | `docs/061-handoff.md` |
 | 运行测试 | `cd packages/clawbot && pytest` |
 
 ---
 
 ## 12. 官方文档优先协议 (简要版)
 
-> 完整版: `docs/sop/docs-first-protocol.md`
+> 完整版: `docs/040-docs-first-protocol.md`
 
 **核心规则**: 涉及以下技术栈的代码修改，**必须先拉文档再写代码**：
 LiteLLM / PTB / FastAPI / Tauri v2 / CrewAI / browser-use / crawl4ai / Redis / mem0 / httpx / APScheduler / 任何新库
@@ -299,7 +303,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 ## 14. 会话交接协议
 
 ### 对话结束时（有未完成工作）
-写入 `docs/status/HANDOFF.md`，格式：
+写入 `docs/061-handoff.md`，格式：
 ```markdown
 ## [YYYY-MM-DD HH:MM] 会话交接摘要
 ### 本次完成了什么
@@ -310,7 +314,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 只保留最近 5 条。
 
 ### 新对话开始时（用户说"继续"）
-读 HANDOFF.md → 读 HEALTH.md → 读 CHANGELOG 最近 3 条 → 汇报 → 恢复上下文 → 拍新基线
+读 `docs/061-handoff.md` → 读 `docs/060-health.md` → 读 `docs/002-changelog.md` 最近 3 条 → 汇报 → 恢复上下文 → 拍新基线
 
 ---
 
@@ -330,7 +334,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 
 ## 16. 健康汇报
 
-用户问"系统怎么样"时，从 HEALTH.md 读取数据，用大白话汇报：
+用户问"系统怎么样"时，从 `docs/060-health.md` 读取数据，用大白话汇报：
 - 整体状态 (✅/🟡/🟠/🔴)
 - 正常功能 / 小问题 / 需关注 / 严重问题
 - 最近改动和建议下一步

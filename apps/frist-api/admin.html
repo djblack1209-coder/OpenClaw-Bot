@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API 管理工作台</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260501-server1" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260502-open6" />
   </head>
   <body>
     <main class="admin-shell">
@@ -39,6 +39,26 @@
             <label>
               管理员令牌
               <input type="password" data-admin-token placeholder="FRIST_API_ADMIN_TOKEN" />
+            </label>
+          </div>
+        </section>
+
+        <section class="plain-section admin-span" data-admin-pricing>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">价格</span>
+              <h2>套餐与模型计价</h2>
+            </div>
+            <button class="primary-action" data-admin-pricing-save type="button">保存价格</button>
+          </div>
+          <div class="admin-two-col">
+            <label>
+              充值套餐 JSON
+              <textarea data-admin-plans rows="12" spellcheck="false" placeholder='[{"id":"codex-30-day","quotaUsd":30,"priceCny":5.88,"durationDays":1}]'></textarea>
+            </label>
+            <label>
+              模型官方价格 JSON
+              <textarea data-admin-model-prices rows="12" spellcheck="false" placeholder='[{"model":"gpt-5.5","inputSaleCnyPerMillion":8,"outputSaleCnyPerMillion":48}]'></textarea>
             </label>
           </div>
         </section>
@@ -105,7 +125,7 @@
             </label>
             <label>
               支持模型
-              <textarea data-admin-models rows="4" placeholder="claude-haiku&#10;gpt-5.5"></textarea>
+              <textarea data-admin-models rows="4" placeholder="claude-opus-4-6-thinking-c&#10;gpt-5.5"></textarea>
             </label>
           </div>
         </section>
@@ -140,7 +160,7 @@
             </label>
             <label>
               价格文本
-              <textarea data-admin-price-text rows="10" placeholder="claude-haiku input $0.8/1M output $4/1M"></textarea>
+              <textarea data-admin-price-text rows="10" placeholder="claude-opus-4-6-thinking-c input $15/1M output $75/1M"></textarea>
             </label>
           </div>
         </section>
@@ -168,6 +188,6 @@
       </div>
     </main>
 
-    <script type="module" src="./src/admin.js?v=20260501-server1"></script>
+    <script type="module" src="./src/admin.js?v=20260502-open6"></script>
   </body>
 </html>

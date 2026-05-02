@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -7,6 +7,8 @@ import {
   buildClientSetupCommands,
   buildCcSwitchImportUrl,
   chooseNextCredential,
+  normalizeOfficialModelList,
+  normalizeOfficialModelName,
   normalizeBaseUrl,
   parseSupplierOrderText,
   parsePriceText,
@@ -20,6 +22,21 @@ describe('Frist-API core flows', () => {
     assert.equal(normalizeBaseUrl('supplier.example.com/api/openai'), 'https://supplier.example.com/api/openai');
   });
 
+  it('cleans legacy supplier model names into the public official catalog names', () => {
+    assert.equal(normalizeOfficialModelName('claude-haiku-4-5-20251001'), 'claude-sonnet-4-5-c');
+    assert.equal(normalizeOfficialModelName('claude-opus-4-6'), 'claude-opus-4-6-c');
+    assert.equal(normalizeOfficialModelName('claude-opus-4-6-thinking'), 'claude-opus-4-6-thinking-c');
+    assert.deepEqual(
+      normalizeOfficialModelList([
+        'claude-haiku-4-5-20251001',
+        'claude-sonnet-4-5',
+        'gpt-5.5-c',
+        'gpt-5.5',
+      ]),
+      ['claude-sonnet-4-5-c', 'gpt-5.5-c', 'gpt-5.5'],
+    );
+  });
+
   it('builds a CC Switch import URL for every supported client target', () => {
     const targets = ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'];
 
@@ -28,7 +45,7 @@ describe('Frist-API core flows', () => {
         target,
         apiKey: 'fk_demo_user_preview',
         baseUrl: 'https://api.frist.example.com/v1/',
-        model: 'claude-sonnet-4-6-thinking',
+        model: 'claude-opus-4-6-thinking',
       }),
     );
 
@@ -48,15 +65,16 @@ describe('Frist-API core flows', () => {
       assert.equal(parsed.searchParams.get('endpoint'), expectedEndpoint);
       assert.equal(parsed.searchParams.get('homepage'), 'https://api.frist.example.com');
       assert.equal(parsed.searchParams.get('apiKey'), 'fk_demo_user_preview');
-      assert.equal(parsed.searchParams.get('model'), 'claude-sonnet-4-6-thinking');
+      assert.equal(parsed.searchParams.get('model'), 'claude-opus-4-6-thinking-c');
       assert.equal(parsed.searchParams.get('configFormat'), 'json');
       assert.match(decoded, /providerName=Frist-API/);
       assert.match(decoded, /officialUrl=/);
       assert.equal(parsed.searchParams.get('apiRequestUrl'), expectedEndpoint);
-      assert.match(decoded, /modelName=claude-sonnet-4-6-thinking/);
+      assert.match(decoded, /modelName=claude-opus-4-6-thinking-c/);
       assert.match(decoded, /fk_demo_user_preview/);
       assert.match(decoded, /https:\/\/api\.frist\.example\.com/);
-      assert.match(decoded, /claude-sonnet-4-6-thinking/);
+      assert.match(decoded, /claude-opus-4-6-thinking-c/);
+      assert.equal(decoded.includes('claude-haiku-4-5-20251001'), false);
       assert.equal(parsed.searchParams.get('wireApi'), expectedFormat);
       assert.match(decoded, /authJson=/);
       assert.match(decoded, /configToml=/);
@@ -300,7 +318,7 @@ describe('Frist-API core flows', () => {
       密码：cr_fakecodex_daycard_alpha000000000000000000000000000000000000
       第2张
       密码：cr_fakecodex_daycard_beta0000000000000000000000000000000000000
-      模型：gpt-5.4、gpt-5.5、gpt-image-2模型
+      模型：gpt-5.4、gpt-5.5-c、gpt-image-2模型
       中转站地址：  https://supplier-codex.example.com/admin-next/api-stats
       配置内容:
       地址: https://supplier-codex.example.com/openai
@@ -319,7 +337,7 @@ describe('Frist-API core flows', () => {
     assert.equal(parsed.quotaUsd, 30);
     assert.equal(parsed.amountCny, 3.87);
     assert.equal(parsed.providerGroup, 'OpenAI');
-    assert.deepEqual(parsed.models, ['gpt-5.4', 'gpt-5.5', 'gpt-image-2']);
+    assert.deepEqual(parsed.models, ['gpt-5.4', 'gpt-5.5-c', 'gpt-image-2']);
     assert.equal(parsed.keys.length, 2);
     assert.equal(parsed.keys[0].value.startsWith('cr_'), true);
     assert.equal(parsed.keys[0].quotaRemaining, 21600);
@@ -353,7 +371,32 @@ describe('Frist-API core flows', () => {
     assert.deepEqual(parsed.keys[0].extraHeaders, parsed.extraHeaders);
   });
 
-  it('parses pasted USD and CNY model prices into confirmed-safe draft prices', () => {
+  it('parses pasted USD and CNY model prices at official cost by default', () => {
+    const draft = parsePriceText(
+      `
+      claude-sonnet-4 input $3/1M output $15/1M
+      gpt-5.5 输入 ¥8/1M 输出 ¥48/1M
+      `,
+      { usdToCny: 7.2 },
+    );
+
+    assert.equal(draft.length, 2);
+    assert.deepEqual(draft[0], {
+      model: 'claude-sonnet-4',
+      currency: 'USD',
+      inputCostCnyPerMillion: 21.6,
+      outputCostCnyPerMillion: 108,
+      inputSaleCnyPerMillion: 21.6,
+      outputSaleCnyPerMillion: 108,
+      status: 'needs_admin_confirmation',
+    });
+    assert.equal(draft[1].model, 'gpt-5.5');
+    assert.equal(draft[1].currency, 'CNY');
+    assert.equal(draft[1].inputSaleCnyPerMillion, 8);
+    assert.equal(draft[1].outputSaleCnyPerMillion, 48);
+  });
+
+  it('still supports explicit operator markup when the admin enters one', () => {
     const draft = parsePriceText(
       `
       claude-sonnet-4 input $3/1M output $15/1M
@@ -451,7 +494,6 @@ describe('Frist-API user dashboard boundaries', () => {
   const page = [
     readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/data.js', import.meta.url), 'utf8'),
   ].join('\n');
 
   it('keeps admin-only replenishment and pricing content out of the user page', () => {
@@ -532,6 +574,25 @@ describe('Frist-API user dashboard boundaries', () => {
     assert.equal(userHtml.includes('月卡 Pro'), false, '公开页面初始 HTML 不应该闪现演示套餐');
     assert.equal(userHtml.includes('¥428.90'), false, '公开页面初始 HTML 不应该闪现演示消耗金额');
     assert.equal(userHtml.includes('>DJ<'), false, '公开页面初始 HTML 不应该闪现演示用户缩写');
+  });
+
+  it('keeps public pages free of bundled mock dashboard data and legacy model aliases', () => {
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const combined = `${userHtml}\n${appScript}`;
+
+    assert.equal(existsSync(new URL('../src/data.js', import.meta.url)), false, '生产源码不应保留网页 mock 数据文件');
+    assert.equal(appScript.includes("from './data.js'"), false, '用户网页不能再导入 mock 数据模块');
+    assert.equal(appScript.includes('fallbackDashboard'), false, '用户网页不能构造演示 dashboard 兜底');
+    assert.equal(appScript.includes('store.load()'), false, '服务不可用时不能从 New-API/demo store 兜底');
+    assert.equal(appScript.includes('applyRecharge('), false, '公开充值不能本地伪造成功');
+    assert.equal(appScript.includes('createCustomerKey('), false, '创建 Key 不能本地伪造成功');
+    assert.equal(appScript.includes('registerCustomer('), false, '注册不能本地伪造成功');
+    assert.equal(combined.includes('data-pay-demo'), false, '充值按钮不能再保留 demo 命名');
+    assert.equal(combined.includes('fake-field'), false, '用户流程图不能再保留 fake 命名');
+    assert.equal(combined.includes('fk-live-demo'), false, '用户端不能生成演示 API Key');
+    assert.equal(combined.includes('claude-haiku'), false, '用户端默认模型不能再保留非规范 Claude Haiku 命名');
+    assert.equal(combined.includes('claude-haiku-4-5-20251001'), false, '用户页面不能展示历史非规范模型名');
   });
 
   it('removes the customer sidebar and keeps navigation inside direct action buttons', () => {

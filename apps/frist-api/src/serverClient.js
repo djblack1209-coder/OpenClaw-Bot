@@ -68,13 +68,15 @@ export function createFristApiBrowserClient(options = {}) {
   };
 }
 
-export function normalizeFristDashboard(payload, fallback) {
+export function normalizeFristDashboard(payload, fallback = createEmptyDashboard()) {
   const authenticated = Boolean(payload.authenticated);
   const account = payload.account || {};
   const user = payload.user || {};
   const apiKeys = Array.isArray(payload.apiKeys) ? payload.apiKeys : [];
   const channelChecks = Array.isArray(payload.channelChecks) ? payload.channelChecks : [];
   const modelUsage = Array.isArray(payload.modelUsage) ? payload.modelUsage : [];
+  const modelCatalog = Array.isArray(payload.modelCatalog) ? payload.modelCatalog : [];
+  const rechargeOptions = Array.isArray(payload.rechargeOptions) ? payload.rechargeOptions : [];
   const accountFallback = authenticated ? fallback.accountSummary : guestAccountFallback(fallback.accountSummary);
 
   return {
@@ -108,8 +110,36 @@ export function normalizeFristDashboard(payload, fallback) {
       modelGroup: key.modelGroup || 'All',
     })),
     modelUsage: modelUsage.length > 0 ? normalizeModelUsage(modelUsage) : zeroModelUsage(fallback.modelUsage),
-    channelChecks: channelChecks.length > 0 ? normalizeChannelChecks(channelChecks, fallback.channelChecks) : fallback.channelChecks,
-    modelCatalog: normalizeModelCatalog(payload.modelCatalog, fallback.modelCatalog),
+    channelChecks: normalizeChannelChecks(channelChecks, fallback.channelChecks || []),
+    modelCatalog: normalizeModelCatalog(modelCatalog, fallback.modelCatalog || []),
+    rechargeOptions: normalizeRechargeOptions(rechargeOptions, fallback.rechargeOptions || []),
+  };
+}
+
+function createEmptyDashboard() {
+  return {
+    accountSummary: {
+      userInitials: 'FA',
+      plan: '未登录',
+      renewalDate: '-',
+      balance: '¥0.00',
+      todayCost: '¥0.00',
+      monthCost: '¥0.00',
+      quotaLeft: '¥0.00',
+      packageQuota: '¥0.00',
+      boosterQuota: '¥0.00',
+      usageTotal: '¥0.00',
+      todayCalls: '0 次',
+      email: '',
+      isAdmin: false,
+    },
+    apiKeys: [],
+    channelChecks: [],
+    helpLinks: [],
+    importTargets: ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'],
+    modelUsage: [],
+    modelCatalog: [],
+    rechargeOptions: [],
   };
 }
 
@@ -154,14 +184,15 @@ function zeroModelUsage(rows) {
   }));
 }
 
-function normalizeChannelChecks(rows, fallbackRows) {
+function normalizeChannelChecks(rows, fallbackRows = []) {
   return rows.map((row, index) => {
     const fallback = fallbackRows[index % Math.max(fallbackRows.length, 1)] || {};
     const ok = Boolean(row.ok);
+    const model = normalizeOfficialModelName(row.model || fallback.model || '');
     return {
       provider: row.provider || fallback.provider || 'Claude',
       channel: row.channel || `${row.provider || 'Claude'} 线路`,
-      model: row.model || fallback.model || 'claude-haiku',
+      model: model || 'unknown',
       endpoint: fallback.endpoint || '/v1/chat/completions',
       ok,
       maintenance: false,
@@ -181,7 +212,7 @@ function normalizeModelCatalog(rows, fallbackRows = []) {
     return fallbackRows;
   }
   return rows.map((row) => ({
-    model: row.model || row.id || 'unknown',
+    model: normalizeOfficialModelName(row.model || row.id || 'unknown'),
     family: row.family || row.provider || 'Other',
     tagline: row.tagline || row.description || '当前可用',
     context: row.context || '按模型能力',
@@ -190,7 +221,23 @@ function normalizeModelCatalog(rows, fallbackRows = []) {
   }));
 }
 
+function normalizeRechargeOptions(rows, fallbackRows = []) {
+  const source = Array.isArray(rows) && rows.length > 0 ? rows : fallbackRows;
+  return source.map((row, index) => ({
+    id: row.id || `plan-${index + 1}`,
+    label: row.label || '充值套餐',
+    cny: row.cny || `¥${Number(row.priceCny || row.amountCny || 0).toFixed(2)}`,
+    quota: row.quota || (row.quotaUsd ? `$${Number(row.quotaUsd).toFixed(0)}` : ''),
+    quotaUsd: Number(row.quotaUsd || 0),
+    priceCny: Number(row.priceCny ?? row.amountCny ?? moneyToNumber(row.cny)),
+    durationDays: Number(row.durationDays || 0),
+    plan: row.plan || (Number(row.durationDays || 0) === 1 ? 'day' : 'balance'),
+    active: row.active === true || index === 0,
+  }));
+}
+
 function moneyToNumber(value) {
   const number = Number(String(value || '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(number) ? number : 0;
 }
+import { normalizeOfficialModelName } from './core.js';
