@@ -11,6 +11,27 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-02] Frist-API 跨模型导入实操流程图
+> 领域: `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `Claude Code`, `Codex`, `Payments`
+> 关联问题: HI-837, HI-836
+
+### 变更内容
+- Claude Code 实操引导: CC Switch 页新增“ChatGPT / OpenAI 模型导入 Claude Code”流程图，按真实 Claude 菜单标出左上角 `Developer`、`Configure Third-Party Inference...`、`Gateway base URL`、`Gateway API key`、`Gateway auth scheme`、`Model list` 和 `Skip login-mode chooser`。
+- Codex 实操引导: 新增“Claude 模型导入 Codex”流程图，标出本站 CC Switch 目标选择、模型家族选择、一键导入、Codex `API 请求地址`、`auth.json`、`wire_api = "responses"`、默认 Claude 模型和 MCP 段。
+- 动态字段: 流程图中的 Frist-API 地址、Claude/Codex 地址、默认 OpenAI 模型、默认 Claude 模型会按当前站点和用户可用模型自动刷新。
+- 运营手册: 补齐个人微信/支付宝收款码试运营步骤、60 刀日卡测试额度折算说明、支付宝当面付和微信支付 Native 的小白级开通步骤。
+- 测试额度: 已通过后台人工入账路径给测试账号加入 60 刀等值日卡额度，用于实测 API 聚合、模型切换和上下文粘滞。
+
+### 文件变更
+- `apps/frist-api/index.html` — 新增两张跨模型导入实操流程图和逐步字段说明
+- `apps/frist-api/src/app.js` — 接入流程图动态字段刷新和当前场景高亮
+- `apps/frist-api/src/styles.css` — 新增仿真实操窗口、菜单、设置页、Codex 配置页和响应式样式
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖流程图关键文案、字段和 MCP/Responses 配置提示
+- `docs/guides/frist-api-operator-runbook.md` — 扩写个人码收款、测试额度、支付宝/微信支付操作指南
+- `docs/status/HEALTH.md` — 登记 HI-837 并更新 Frist-API 当前状态
+- `docs/CHANGELOG.md` — 记录本次导入引导和支付手册改动
+
 ## [2026-05-02] Frist-API Codex MCP 默认增强
 > 领域: `frontend` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `CC Switch`, `Codex`, `MCP`

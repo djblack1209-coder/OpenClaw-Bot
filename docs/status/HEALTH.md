@@ -15,7 +15,7 @@
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
 | 测试 | ✅ 1488 passed, 2 skipped, 0 failed |
-| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；90/90 本地链路测试通过，公网冒烟通过，用户端已补齐弹窗登录注册、跨页面返回、广场消息删除/清空、API Key 改名/删除、导出模型清单可见化、Claude Code/Codex 跨模型家族一键导入、Claude 开发者模式引导、Codex 默认 Playwright/Superpowers/open-computer-use MCP、Codex/OpenCode 全模型兼容字段、OpenCode/Hermes/Harmes 教程、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮已部署到腾讯云 `/opt/frist-api` 且 `frist-api-server` healthy；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
+| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、跨页面返回、广场消息删除/清空、API Key 改名/删除、导出模型清单可见化、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、Codex/OpenCode 全模型兼容字段、OpenCode/Hermes/Harmes 教程、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮已部署到腾讯云 `/opt/frist-api` 且 `frist-api-server` healthy；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
 | 日志目录 | ✅ 784KB (已清理本地日志) |
@@ -75,6 +75,7 @@
 | HI-834 | INFRA | Frist-API 裸 IP 测试入口拒绝连接；根因是容器仅本地绑定且 Nginx 未监听测试端口，同时服务器代码落后于本地 open4；已同步代码、更新 Nginx 监听并通过公网冒烟 | 2026-05-02 |
 | HI-835 | UX | Frist-API 首屏主卡过大、品牌标识弱化、快捷入口过于等分；已恢复黑白红品牌标识，并改为主控台、右侧说明、核心指标和不对称任务轨道 | 2026-05-02 |
 | HI-836 | UX/ARCH_LIMIT | CC Switch 跨模型家族导入存在断点：ChatGPT 模型不能直接导入 Claude Code，Claude 模型导入 Codex 缺少 Responses 降级链路；已补齐 Claude Code Anthropic Messages 配置、Codex Responses fallback、开发者模式引导和支付最后一公里手册 | 2026-05-02 |
+| HI-837 | UX | CC Switch 跨模型导入教程仍偏文字化，用户不知道 Claude 左上角菜单、第三方推理输入框和 Codex 配置字段在哪里；已补两张仿真实操流程图、编号步骤、字段对照和上下文切换验收提示 | 2026-05-02 |
 
 ---
 
