@@ -228,6 +228,7 @@ OpenClaw Bot/
 │   ├── openclaw-manager-src/       # 🖥️ Tauri 2 桌面管理端 (React+TS)
 │   │   ├── src/                    #   React UI 源码
 │   │   └── src-tauri/              #   Rust 后端
+│   ├── frist-api/                  # 💳 Frist-API 公开 API 中转收费站原型 (用户站 + 管理端 + 轻量中转后端)
 │   ├── openclaw/                   # 📋 Bot 配置/Skills/Memory 定义
 │   │   ├── AGENTS.md               #   Bot 行为指令
 │   │   ├── SOUL.md                 #   Bot 灵魂/人格

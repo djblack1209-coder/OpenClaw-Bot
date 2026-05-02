@@ -1,6 +1,48 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-04-25 (新增 /claude, /deals + 微信编号映射) | 总数 104
+> 最后更新: 2026-05-02 (同步 Frist-API 导出模型清单入口) | Bot 命令总数 104
+
+---
+
+## 0. Frist-API Web 操作入口
+
+| 入口 | 选择器 / 路径 | 说明 |
+|------|---------------|------|
+| 账户菜单 | `data-auth-toggle` / `data-auth-panel` | Frist-API 用户端右上角注册和登录入口 |
+| 用户注册 | `data-register-account` | Frist-API 用户端注册入口，公开页不回显验证码 |
+| 用户登录 | `data-login-account` | Frist-API 用户端邮箱密码登录入口 |
+| 管理员身份码 | `data-owner-claim-code` / `data-owner-claim` | 登录后用一次性身份码把当前账号升级为管理员 |
+| 运营入口 | `data-owner-entry` | 仅管理员账号可见，进入独立管理页 |
+| 返回首页 | `data-back-home` / `data-route="dashboard"` | 子页面统一返回用户首页，避免导入、广场、教程等页面迷路 |
+| 创建 Key | `data-create-key` | 创建用户 `fk-live-*` API Key |
+| Key 改名 | `data-key-name` / `data-rename-key` | 修改单个用户 API Key 的显示名称 |
+| Key 删除 | `data-delete-key` | 删除单个用户 API Key |
+| Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
+| 用户充值申请 | `data-pay-demo` | 生成待处理充值单，公开环境不直接入账 |
+| 兑换码 | `data-redeem-code` | 日卡/月卡/加油包兑换 |
+| 导入目标选择 | `data-import-targets` / `data-target` | 选择 Claude、Codex、OpenCode、OpenClaw、Hermes |
+| CC Switch 导入 | `data-open-import` / `data-copy-link` | 打开或复制五客户端导入链接 |
+| 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
+| 手动配置复制 | `data-copy-auth-json` / `data-copy-config-toml` | 复制 Codex/OpenCode 等客户端配置 |
+| 连通性刷新 | `data-refresh-health` | 用户侧模型连通性刷新 |
+| 广场模型选择 | `data-playground-model` | 用户选择要直接测试的文本或图片模型 |
+| 广场发送 | `data-playground-send` | 调用聊天网关或图片生成网关进行模型实测 |
+| 广场消息删除 | `data-delete-message` | 删除单条广场测试消息 |
+| 广场清空 | `data-clear-playground` | 清空广场测试消息并恢复欢迎提示 |
+| 图片输出 | `data-image-output` | 展示 `gpt-image-2` 等图片模型生成结果 |
+| 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图 |
+| 服务可用性 | `data-service-health` | 用户侧 Claude/OpenAI/其他模型可用状态 |
+| 模型广场 | `data-model-catalog` | 展示可用模型、家族、上下文和计价 |
+| 教程目标选择 | `data-guide-targets` / `data-guide-target` | 选择 Codex、Claude、OpenCode、OpenClaw、Hermes、Harmes 的配置教程 |
+| 教程 macOS 命令 | `data-mac-command` / `data-copy-mac-command` | 生成并复制 macOS 一键配置命令 |
+| 教程 Windows 命令 | `data-win-command` / `data-copy-win-command` | 生成并复制 Windows 一键配置命令 |
+| 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
+| 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
+| 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
+| 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
+| 管理端探测模式 | `/admin.html` + `data-admin-probe-mode` | 自动探测、严格探测和信任写入模式选择 |
+| 管理端库存刷新 | `/admin.html` + `data-admin-refresh` | 独立管理端查看脱敏库存状态 |
+| 管理端审计 | `/admin.html` + `data-admin-audit` | 查看补号、切换、耗尽、路由等脱敏事件 |
 
 ---
 

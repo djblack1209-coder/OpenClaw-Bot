@@ -1,109 +1,132 @@
 # HANDOFF — 会话交接摘要
 
-> 最后更新: 2026-04-26
+> 最后更新: 2026-05-02
 
 ---
 
-## [2026-04-26] 遗留任务清零 + 腾讯云部署
+## [2026-05-02 00:40] Frist-API 用户端降噪与公网同步交接
 
 ### 本次完成了什么
-
-**后端修复验证（全部 5 个已通过实测）**
-- PnL: $0 → **$3,790.14** (account_value=$48,010.36)
-- Dashboard: value=0 → QQQ=**$16,597** SPY=**$31,413** (修复了重复数据)
-- Indices: price=0 → S&P 500=**$7,165.08** (+0.8%)
-- System: "unknown" → **"running"** + IBKR 已连接
-- Social: import error → **正常**
-
-**PnL/Dashboard 深层修复**
-- 兜底条件改为: IBKR 在线但 get_account_summary 失败时也走持仓计算
-- Dashboard assets.clear() 防止空值和真实值重复
-
-**CookieCloud 修复**
-- 根因: 服务器 127.0.0.1:8088 离线 + 无退避策略
-- 修复: 指数退避 300→600→1200→1800秒
-
-**腾讯云微信部署**
-- 编号命令: 3位数字→转发 Mac 后端 API (通过反向隧道 28790)
-- 对话记忆: 10条/用户, 30分钟 TTL
-- 帮助消息: 编号快查表
-- SESSION_PAUSE_S: 3600→60 秒
-
-**其他**
-- Tauri 桌面通知接入
-- 微信本地端对话记忆
+- 用户端移除左侧导航、不可点击分组文字、sticky 顶栏和旧版高密度说明，首页只保留余额、模型消耗、Claude/OpenAI 连通性和 API Key/充值/CC Switch 三个入口。
+- 注册和登录收进右上角账户菜单，API 页面只保留创建 Key、Key 开关和请求地址。
+- CC Switch 导入扩展为 Claude、Codex、OpenCode、OpenClaw、Hermes 五个客户端，导入链接包含请求地址、模型、`auth.json` 和 `config.toml`。
+- 公开 HTML 初始值改为未登录、0 元和 `FA`，避免后端数据加载前闪现演示套餐或演示消耗。
+- 游客 Dashboard 归一化为 0 余额、0 消耗和 0 调用，未登录滚动时不再看到演示账单。
+- 充值页面三档选项改为三列，只保留类型和金额，去掉多余说明文字。
+- 注册/登录接入轻量验证码挑战和认证限流，公开模式保持验证码不回显、演示充值关闭。
+- 管理端普通 `/admin.html` 已隐藏为 404，必须用服务器环境变量里的隐藏入口码加载，再输入管理员令牌。
+- 补号订单文本清洗覆盖请求地址、卡密、额度、到期、模型、认证字段、认证前缀和额外请求头；用户侧 CC Switch 导入只暴露 Frist-API 供应商、用户 Key 和公开网关。
+- 网关保留小时卡、日卡、月卡、不限时、默认池优先级，会话粘滞、故障切换上下文保留、流式透传和低库存通知钩子。
+- 已同步到腾讯云临时公网 `http://101.43.41.96:5566/`，普通管理页公网访问返回 404。
+- 更新快速启动、腾讯云部署指南、命令注册表、设计文档、HEALTH 和 CHANGELOG。
 
 ### 未完成的工作
-- iLink session 过期: 需要在微信端重新发起与 bot 的会话
-- Chrome V8 128MB 实测: 下次社交浏览器启动后观察
-- CookieCloud 服务器启动: 127.0.0.1:8088 仍离线
+- 正式开放陌生付费用户前仍缺域名 HTTPS、SMTP/找回密码、Turnstile、管理员正式登录、2FA、真实支付回调、数据库迁移、备份和探测预算队列。
+- 当前轻量后端仍用 JSON 运行数据，适合小范围验收，不适合长期大规模运营。
 
 ### 需要注意的坑
-- Python 后端改代码后需重启 clawbot (pkill -f multi_main && nohup .venv312/bin/python multi_main.py &)
-- 腾讯云微信接收器: `/opt/openclaw-wechat/wechat_receiver.py`
-- 反向隧道: autossh 本地 18790 → 云端 28790 (自动保活)
-- Dashboard chart_data 为空 — 需有交易历史才有净值曲线
+- 不要把服务器密码、管理员令牌、用户真实卡密、上游 Key 或运行时 JSON 写入仓库、文档或最终汇报。
+- 生产必须保持 `FRIST_API_ALLOW_DEMO_RECHARGE=0` 和 `FRIST_API_EXPOSE_VERIFICATION_CODE=0`。
+- 生产必须保持 `FRIST_API_ADMIN_PAGE_CODE`、`FRIST_API_REQUIRE_CAPTCHA=1` 和认证限流。
+- 用户端不能再加入补号、号源、价格草稿、渠道写入、倍率、模型映射等管理端内容。
 
 ### 当前系统状态
-- 后端: ✅ 运行中, 所有修复已生效
-- 微信: ✅ 已部署新代码, iLink session 待恢复
-- 测试: 1486 passed, 0 failed
-- 磁盘: 3.9 GB
-- 远程: 已同步
+- `npm test` 当前为 74 passed, 0 failed。
+- 语法检查已覆盖 `app.js`、`serverClient.js`、`server.js`。
+- 公网 `http://101.43.41.96:5566/api/frist/challenge` 可返回验证码挑战；`http://101.43.41.96:5566/admin.html` 返回 404；游客 Dashboard 为 0 消耗。
+- 本地入口: `http://127.0.0.1:3180/`；公网验收入口: `http://101.43.41.96:5566/`。
+- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
 
----
-
-## [2026-04-25] 全量审计与优化 Sprint + 文档治理
+## [2026-05-01 17:45] Frist-API 公开试用业务安全交接
 
 ### 本次完成了什么
-
-**后端修复 (5 项)**
-- /trading/pnl 全零问题: IBKR 离线时兜底计算盈亏
-- /trading/dashboard 空数据: 补全数据源
-- /monitor/finance 行情全零: yfinance getattr 修复
-- /social/analytics 导入错误: execution_hub 路径修正
-- /trading/system unknown 状态: 状态映射补全
-
-**前端修复 (5 项)**
-- Social 页 t 变量遮蔽 bug
-- ControlCenter 响应检查逻辑
-- usePortfolioAPI 错误处理
-- 8 个页面轮询优化 (useActivePagePolling)
-- Settings 通知硬编码
-
-**微信增强**
-- 编号命令系统 (60+ 命令映射)
-- 欢迎消息 + 完整功能列表
-
-**性能优化**
-- Chrome V8 堆 512→128MB + 渲染进程限制 3
-- 自动清理多余标签页 (上限 4 个)
-- browser-use/CrewAI/进化引擎懒加载
-
-**文档治理**
-- 全量文件清理审计: 无垃圾文件残留
-- docs/ 结构审计: 命名规范全部合规
-- 发现 docs/00-INDEX.md 缺失 (全局指令引用但文件不存在)
-- CHANGELOG 更新本轮变更条目
-- HANDOFF 裁剪为最近 1 条 (之前积累 5+ 条未清理)
+- 用户链路从“注册后使用”补到“注册 / 登录 / 验证 / 充值 / 兑换 / 创建 Key / 开关 Key / CC Switch 导入 / 网关调用 / 用量扣费”。
+- 网关现在会先检查用户余额，余额不足时不访问上游，避免亏损；成功请求后按套餐额度优先、加油包兜底的顺序扣费。
+- 日卡池切换加固: 上游 Key 额度不足、上游返回余额不足、上游 5xx 或网络失败时会摘除当前 Key，并切到同池下一枚健康 Key。
+- 日卡套餐到期会在网关路由前清空套餐额度并切回默认套餐，旧日卡不能继续走日卡池。
+- 兑换码改为一次性使用，同一张日卡/月卡/加油包不能被多个用户重复兑换。
+- 管理端补号支持自动探测、严格探测和信任写入；未填写模型时会先按请求地址做一次 `/models` 探测，再逐 Key 做最低成本聊天健康检查。
+- 用户侧模型连通性按模型聚合显示可用线路数量，不再把每枚上游 Key 展示成客户状态卡。
+- 公开环境默认关闭演示充值；用户侧充值按钮只生成待处理充值单，管理端新增按邮箱人工确认入账。
 
 ### 未完成的工作
-- `docs/00-INDEX.md` 需要创建（全局 AGENTS.md 引用但不存在）
-- 微信命令路由需同步到腾讯云 wechat_receiver.py
-- 桌面端无系统级推送通知 (Tauri notification API 未接入)
-- 微信 AI 对话无记忆/上下文
-- `scripts/nightly-audit/unified-prompt.md` 轻微违反 .md 文件归属规则
+- 仍然使用 JSON 文件保存运行数据，小范围试用可以，扩大公开前要迁移 SQLite/PostgreSQL 或 New-API fork 数据库。
+- 还缺 SMTP、找回密码、Turnstile、管理员正式登录、2FA、真实支付回调、订单审计和限流。
+- 价格草稿仍未做管理员确认后上线的完整配置流。
 
 ### 需要注意的坑
-- 构建桌面端必须走 `make tauri-build`（会自动清理旧版本）
-- `openclaw-gateway` 进程不能和 `wechat_receiver` 同时运行
-- g4f 免费池响应慢 (30-90s)，优先用 SiliconFlow/Groq
+- `data/frist-api/runtime/runtime.json` 会包含用户 Key 和上游 Key，必须保持未跟踪。
+- 默认开发管理员令牌不能用于公开生产；生产必须设置强随机 `FRIST_API_ADMIN_TOKEN` 和 `FRIST_API_SESSION_SECRET`。
+- 用户端不要加入补号、号源、价格草稿、渠道写入等管理端内容。
 
 ### 当前系统状态
-- 后端: 运行中 (7 Bot 在线)
-- 闲鱼: 在线 (自动回复活跃)
-- 微信: 云端运行中 (腾讯云)
-- 桌面端: `/Applications/OpenClaw.app`
-- 文档: CHANGELOG/HANDOFF/HEALTH 已同步
+- 当时 `make frist-api-test` 为 42 passed, 0 failed。
+- 本地完整链路入口: `make frist-api-dev`，用户端 `http://127.0.0.1:3180`，管理端 `http://127.0.0.1:3180/admin.html`。
+- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
 
----
+## [2026-05-01 16:26] Frist-API 公开能用链路交接
+
+### 本次完成了什么
+- 补号助手增加代理请求地址，补号时会对直连和代理做低成本聊天探测，并把更优路径写入 `routeBaseUrl`。
+- 网关转发上游时优先使用补号探测得到的 `routeBaseUrl`，弱服务器只做鉴权、计费和转发，不承担本地推理。
+- 上游不支持 `/models` 时，系统会按内置模型清单逐个做低成本探测，只把通过的模型写入号源档案和凭证。
+- 管理端粘贴的价格文本已参与真实扣费；上游返回 `usage` 时按输入/输出 token 和销售价扣用户套餐额度、加油包额度以及上游库存额度。
+- 日卡链路继续加固: Key 额度不足、上游余额不足、上游 5xx、网络失败会摘除当前 Key 并切到同池下一枚健康 Key；日卡套餐过期会清空套餐额度并切回默认套餐。
+
+### 未完成的工作
+- 仍然使用 JSON 文件保存运行数据，小范围实测可以，扩大公开前要迁移 SQLite/PostgreSQL 或 New-API fork 数据库。
+- 还缺 SMTP、找回密码、Turnstile、管理员正式登录、2FA、真实支付回调、订单审计、限流和探测预算队列。
+- 当前模型能力探测只做低成本可用性判断，尚未做真实上下文上限、工具调用、流式能力和质量评分。
+
+### 需要注意的坑
+- 生产必须设置强随机 `FRIST_API_ADMIN_TOKEN` 和 `FRIST_API_SESSION_SECRET`。
+- 生产必须保持 `FRIST_API_ALLOW_DEMO_RECHARGE=0`、`FRIST_API_EXPOSE_VERIFICATION_CODE=0`。
+- 代理路径只是可选加速/稳定通道，不要把代理地址、上游 Key 或管理员令牌放到用户端。
+
+### 当前系统状态
+- 当时 `make frist-api-test` 为 45 passed, 0 failed。
+- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
+
+## [2026-05-01 16:10] Frist-API 公开试用链路交接
+
+### 本次完成了什么
+- 新增 `apps/frist-api/server/server.js` 轻量 Node 后端，用户端不再只是本地状态演示。
+- 用户 HTTP 链路已跑通: 注册、邮箱验证、充值、兑换码、创建 Key、开启/关闭 Key、Dashboard、CC Switch 导入。
+- 新增 `/v1/chat/completions` 中转网关，用户用 `fk-live-*` 鉴权，后端按套餐映射到日卡、月卡或默认池。
+- 日卡池自动切换已落到网关层: 额度不足先跳过，上游返回余额不足时标记当前上游 Key 耗尽并重试下一枚健康 Key。
+- 新增独立管理端 `apps/frist-api/admin.html` 和 `apps/frist-api/src/admin.js`，补号、价格文本和库存状态只在管理端出现。
+
+### 未完成的工作
+- 轻量后端仍用 JSON 文件保存用户、会话、用户 Key、上游 Key 和事件，正式运营前要迁移到 SQLite/PostgreSQL 或 New-API fork 数据库。
+- 还没有正式登录、找回密码、SMTP、Turnstile、管理员 2FA、支付回调、订单审计和限流。
+- 当前 Node 后端适合小规模公开试用，不是最终 New-API AGPL 合规 fork。
+
+### 需要注意的坑
+- `data/frist-api/runtime/runtime.json` 会包含用户 Key 和上游 Key，必须保持未跟踪，不能提交。
+- 管理端开发默认令牌不能用于公开生产，公开部署前必须换成强随机值并接正式登录。
+
+### 当前系统状态
+- 当时 `make frist-api-test` 为 31 passed, 0 failed。
+- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
+
+## [2026-05-01 14:48] Frist-API 完整业务链路交接
+
+### 本次完成了什么
+- 新增 `apps/frist-api/src/businessFlow.js`，把 Frist-API 用户侧和管理侧核心规则抽成可测试状态机。
+- 用户侧已跑通注册、邮箱验证、充值、兑换码、创建 Key、开启/关闭 Key、CC Switch 导入链接生成。
+- Key 列表改为按每个 Key 自己的启停状态渲染，多个 Key 时不会被全局开关误导。
+- 管理侧核心逻辑已跑通补号报告: 请求地址归一化、模型探测、Key 成功失败分组、直连/代理推荐、价格文本解析和待确认价格草稿。
+- 日卡池自动切换逻辑已跑通: 额度不足的 Key 会标记为 exhausted 并关闭，然后切到同池下一个健康 Key。
+
+### 未完成的工作
+- 生产要接入 New-API fork 的真实用户、Token、支付、兑换码、渠道和日志接口。
+- `/api/frist/channel-health` 仍需在 New-API fork 中实现用户安全的脱敏连通性接口。
+- 日卡自动切换必须放到真实网关路由层，不能只依赖前端状态。
+
+### 需要注意的坑
+- 不要把管理员 Key、上游号商 Key、渠道 ID 或请求地址暴露到浏览器端。
+- 价格解析生成的是待确认草稿，不能自动上线。
+
+### 当前系统状态
+- 当时 `make frist-api-test` 为 25 passed, 0 failed。
+- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。

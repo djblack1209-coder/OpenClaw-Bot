@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frist-API 管理工作台</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260501-server1" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-topbar">
+        <a class="brand" href="./admin.html" aria-label="Frist-API 管理端">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <b></b>
+          </span>
+          <span>Frist-API Admin</span>
+        </a>
+        <span class="action-message" data-admin-message>等待连接本地服务</span>
+      </header>
+
+      <section class="admin-hero">
+        <span class="eyebrow">库存与路由</span>
+        <h1>补号工作台</h1>
+        <p>按请求地址归类号源，写入日卡、月卡或默认池。这里是管理端，用户控制台不会展示这些入口。</p>
+      </section>
+
+      <div class="admin-grid">
+        <section class="plain-section">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">身份</span>
+              <h2>管理员令牌</h2>
+            </div>
+            <button class="ghost-action" data-admin-save-token type="button">保存</button>
+          </div>
+          <div class="form-stack">
+            <label>
+              管理员令牌
+              <input type="password" data-admin-token placeholder="FRIST_API_ADMIN_TOKEN" />
+            </label>
+          </div>
+        </section>
+
+        <section class="plain-section">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">人工充值</span>
+              <h2>确认入账</h2>
+            </div>
+            <button class="secondary-action" data-admin-credit type="button">入账</button>
+          </div>
+          <div class="form-stack">
+            <label>
+              用户邮箱
+              <input type="email" data-admin-credit-email placeholder="customer@example.com" />
+            </label>
+            <label>
+              入账金额
+              <input type="number" data-admin-credit-amount min="0.01" step="0.01" placeholder="8.00" />
+            </label>
+            <label>
+              入账类型
+              <select data-admin-credit-plan>
+                <option value="balance">余额</option>
+                <option value="day">日卡</option>
+                <option value="month">月卡</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="plain-section">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">接入</span>
+              <h2>请求地址与池子</h2>
+            </div>
+          </div>
+          <div class="form-stack">
+            <label>
+              请求地址
+              <input type="url" data-admin-base-url placeholder="https://supplier.example.com/v1" />
+            </label>
+            <label>
+              代理请求地址
+              <input type="url" data-admin-proxy-url placeholder="https://proxy.example.com/v1（可选）" />
+            </label>
+            <label>
+              套餐池
+              <select data-admin-pool>
+                <option value="day">日卡池</option>
+                <option value="month">月卡池</option>
+                <option value="default">默认池</option>
+              </select>
+            </label>
+            <label>
+              探测模式
+              <select data-admin-probe-mode>
+                <option value="auto">自动探测</option>
+                <option value="strict">严格探测</option>
+                <option value="trusted">信任写入</option>
+              </select>
+            </label>
+            <label>
+              支持模型
+              <textarea data-admin-models rows="4" placeholder="claude-haiku&#10;gpt-5.5"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="plain-section admin-span">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">清洗</span>
+              <h2>订单详情</h2>
+            </div>
+            <button class="secondary-action" data-admin-parse-order type="button">解析订单</button>
+          </div>
+          <label class="form-stack">
+            订单详情
+            <textarea data-admin-order-text rows="9" placeholder="直接粘贴订单详情页，系统会识别请求地址、Key、额度、卡类型和模型。"></textarea>
+          </label>
+          <div class="admin-inventory-summary" data-admin-inventory-summary></div>
+        </section>
+
+        <section class="plain-section admin-span">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">补充</span>
+              <h2>Key 与价格文本</h2>
+            </div>
+            <button class="primary-action" data-admin-replenish type="button">写入库存</button>
+          </div>
+          <div class="admin-two-col">
+            <label>
+              Key 列表
+              <textarea data-admin-keys rows="10" placeholder="sk-xxx&#10;sk-yyy,900,120"></textarea>
+            </label>
+            <label>
+              价格文本
+              <textarea data-admin-price-text rows="10" placeholder="claude-haiku input $0.8/1M output $4/1M"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="plain-section admin-span">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">库存</span>
+              <h2>当前号源状态</h2>
+            </div>
+            <button class="secondary-action" data-admin-refresh type="button">刷新</button>
+          </div>
+          <div class="admin-inventory" data-admin-inventory></div>
+        </section>
+
+        <section class="plain-section admin-span">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">审计</span>
+              <h2>最近操作</h2>
+            </div>
+          </div>
+          <div class="admin-audit" data-admin-audit></div>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="./src/admin.js?v=20260501-server1"></script>
+  </body>
+</html>

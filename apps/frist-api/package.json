@@ -1,0 +1,12 @@
+{
+  "name": "frist-api-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frist-API public API relay storefront prototype.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "node server/server.js",
+    "static": "python3 -m http.server 3180 --directory ."
+  }
+}

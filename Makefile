@@ -14,8 +14,9 @@ PYTHON ?= $(shell \
 		echo python3; \
 	fi)
 FRONTEND := apps/openclaw-manager-src
+FRIST_API := apps/frist-api
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -38,6 +39,21 @@ lint: ## Ruff 静态检查
 
 typecheck: ## 前端 TypeScript 类型检查
 	cd $(FRONTEND) && npx tsc --noEmit
+
+frist-api-test: ## 运行 Frist-API 原型测试
+	cd $(FRIST_API) && npm test
+
+frist-api-dev: ## 启动 Frist-API 本地完整链路 (http://127.0.0.1:3180)
+	cd $(FRIST_API) && FRIST_API_EXPOSE_VERIFICATION_CODE=1 FRIST_API_ALLOW_DEMO_RECHARGE=0 npm start
+
+frist-api-static: ## 仅启动 Frist-API 静态网站预览 (无后端链路)
+	cd $(FRIST_API) && npm run static
+
+frist-api-up: ## Docker 启动 Frist-API 网站 + New-API 核心原型
+	docker compose -f docker-compose.frist-api.yml up -d
+
+frist-api-down: ## Docker 停止 Frist-API 原型
+	docker compose -f docker-compose.frist-api.yml down
 
 ## ─── 格式化 ───
 format: ## Ruff 自动格式化

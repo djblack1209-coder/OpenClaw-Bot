@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frist-API</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260502-open5" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Frist-API">
+          <span class="brand-mark" aria-hidden="true"><i></i><b></b></span>
+          <span class="brand-copy">
+            <strong>Frist-API</strong>
+          </span>
+        </a>
+
+        <div class="topbar-actions">
+          <span class="action-message" data-action-message aria-live="polite">就绪</span>
+          <div class="auth-shell">
+            <button class="account-chip" data-auth-toggle type="button" aria-expanded="false">
+              <span data-plan>未登录</span>
+              <strong data-balance>¥0.00</strong>
+              <b data-user-initials>FA</b>
+            </button>
+            <section class="auth-panel" data-auth-panel hidden aria-label="账户">
+              <div class="auth-panel__scrim" data-auth-close aria-hidden="true"></div>
+              <div class="auth-dialog" data-auth-dialog role="dialog" aria-modal="true" aria-labelledby="auth-title">
+                <div class="auth-dialog__head">
+                  <div>
+                    <span class="eyebrow">Account</span>
+                    <h2 id="auth-title" data-auth-title>登录或注册</h2>
+                  </div>
+                  <button class="icon-action" data-auth-close type="button" aria-label="关闭账户弹窗">×</button>
+                </div>
+                <div class="auth-mode" role="tablist" aria-label="账户模式">
+                  <button class="is-active" data-auth-mode="login" type="button" role="tab" aria-selected="true">登录</button>
+                  <button data-auth-mode="register" type="button" role="tab" aria-selected="false">注册</button>
+                </div>
+                <div class="auth-panel__row">
+                  <input type="email" data-register-email placeholder="邮箱" aria-label="邮箱" />
+                  <input type="password" data-register-password placeholder="密码" aria-label="密码" />
+                </div>
+                <div class="auth-panel__row" data-password-row hidden>
+                  <input type="password" data-new-password placeholder="新密码" aria-label="新密码" />
+                  <button class="ghost-action" data-change-password type="button">改密码</button>
+                </div>
+                <div class="auth-panel__row captcha-row" data-captcha-row hidden>
+                  <span data-captcha-question>安全验证</span>
+                  <input type="text" inputmode="numeric" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
+                </div>
+                <div class="auth-panel__row owner-row" data-owner-claim-row hidden>
+                  <input type="password" data-owner-claim-code placeholder="身份码" aria-label="一次性身份码" />
+                  <button class="ghost-action" data-owner-claim type="button">激活</button>
+                </div>
+                <a class="owner-entry" data-owner-entry href="./admin.html" hidden>运营入口</a>
+                <div class="auth-panel__actions">
+                  <button class="secondary-action" data-auth-submit="login" data-login-account type="button">登录</button>
+                  <button class="ghost-action" data-auth-submit="register" data-register-account type="button" hidden>注册</button>
+                </div>
+                <p class="verification-hint" data-verification-hint>登录后创建 Key。</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </header>
+
+      <main class="main" id="main-content">
+
+        <section class="view-panel" data-view="dashboard">
+          <div class="hero-flow" data-hero-flow>
+            <section class="site-hero" data-site-hero aria-label="Frist-API">
+              <div class="hero-copy">
+                <span class="hero-kicker">Commercial API Gateway</span>
+                <h2>Frist-API</h2>
+                <p>一把 Key，自动切换最强可用模型。</p>
+                <a class="primary-action hero-primary" data-hero-primary-import href="#switch" data-route="switch">开始导入</a>
+              </div>
+              <div class="hero-signal" aria-hidden="true">
+                <i></i>
+                <i></i>
+                <i></i>
+              </div>
+            </section>
+
+            <aside class="hero-aside" data-hero-aside aria-label="上手路径">
+              <div class="hero-aside__copy">
+                <span class="eyebrow">从导入开始</span>
+                <p>先接入 CC Switch，再创建 Key；余额、模型列表和线路状态会同步到每个入口。</p>
+              </div>
+              <section class="focus-stack" data-focus-metrics aria-label="核心状态">
+                <article class="focus-metric is-balance">
+                  <span>余额</span>
+                  <strong data-quota-left>¥0.00</strong>
+                </article>
+                <article class="focus-metric">
+                  <span>消耗</span>
+                  <strong data-usage-total>¥0.00</strong>
+                </article>
+                <article class="focus-metric">
+                  <span>连通</span>
+                  <strong data-channel-ratio>4/4</strong>
+                </article>
+              </section>
+            </aside>
+          </div>
+
+          <section class="action-dock" data-action-dock aria-label="快捷操作">
+            <a class="is-priority-path" href="#switch" data-route="switch">
+              <strong>CC Switch</strong>
+            </a>
+            <a href="#api" data-route="api">
+              <strong>API Key</strong>
+            </a>
+            <a href="#billing" data-route="billing">
+              <strong>充值</strong>
+            </a>
+            <a href="#playground" data-route="playground">
+              <strong>广场</strong>
+            </a>
+            <a href="#analytics" data-route="analytics">
+              <strong>数据</strong>
+            </a>
+            <a href="#models" data-route="models">
+              <strong>模型</strong>
+            </a>
+            <a href="#docs" data-route="docs">
+              <strong>教程</strong>
+            </a>
+          </section>
+
+          <div class="dashboard-minimal-grid">
+            <section class="glass-panel usage-focus" data-usage-focus aria-label="模型消耗">
+              <div class="section-head">
+                <h2>模型消耗</h2>
+              </div>
+              <div class="usage-list is-compact" data-usage-compact></div>
+            </section>
+
+            <section class="glass-panel provider-summary" data-provider-summary aria-label="连通性">
+              <div class="section-head">
+                <h2>Claude / OpenAI</h2>
+                <button class="text-action" data-refresh-health type="button">刷新</button>
+              </div>
+              <div class="provider-list" data-channel-compact></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view-panel" data-view="playground" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section playground-surface">
+            <div class="section-head">
+              <h2>广场</h2>
+              <div class="section-actions">
+                <button class="text-action" data-clear-playground type="button">清空</button>
+                <select data-playground-model aria-label="选择模型"></select>
+              </div>
+            </div>
+            <div class="playground-stage">
+              <div class="conversation-window" data-playground-log aria-live="polite"></div>
+              <div class="image-output" data-image-output hidden></div>
+            </div>
+            <div class="composer">
+              <textarea data-playground-prompt rows="3" placeholder="输入一句话，直接测试当前模型。" aria-label="测试提示词"></textarea>
+              <button class="primary-action" data-playground-send type="button">发送</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="analytics" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section analytics-surface">
+            <div class="section-head">
+              <h2>数据看板</h2>
+              <button class="text-action" data-refresh-health type="button">刷新</button>
+            </div>
+            <div class="analytics-grid">
+              <article class="donut-panel">
+                <div class="usage-donut" data-usage-donut aria-label="模型消耗分布"></div>
+                <strong data-usage-total>¥0.00</strong>
+              </article>
+              <div class="usage-list" data-analytics-usage></div>
+            </div>
+            <div class="service-grid" data-service-health aria-label="服务可用性"></div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="models" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section model-market-surface">
+            <div class="section-head">
+              <h2>模型广场</h2>
+              <span class="status-pill status-pill--healthy" data-model-count>0 个可用</span>
+            </div>
+            <div class="model-catalog" data-model-catalog></div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="docs" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section docs-surface">
+            <div class="section-head">
+              <h2>使用教程</h2>
+              <span class="key-inline" data-guide-key-status>Key 已开启</span>
+            </div>
+            <div class="target-list guide-targets" data-guide-targets aria-label="教程客户端">
+              <button class="target-button is-active" data-guide-target="Codex" type="button">Codex</button>
+              <button class="target-button" data-guide-target="Claude" type="button">Claude</button>
+              <button class="target-button" data-guide-target="OpenCode" type="button">OpenCode</button>
+              <button class="target-button" data-guide-target="OpenClaw" type="button">OpenClaw</button>
+              <button class="target-button" data-guide-target="Hermes" type="button">Hermes</button>
+              <button class="target-button" data-guide-target="Harmes" type="button">Harmes</button>
+            </div>
+            <div class="guide-command-grid">
+              <article class="config-card">
+                <div class="section-head">
+                  <h2>macOS</h2>
+                  <button class="text-action" data-copy-mac-command type="button">复制</button>
+                </div>
+                <pre data-mac-command></pre>
+              </article>
+              <article class="config-card">
+                <div class="section-head">
+                  <h2>Windows</h2>
+                  <button class="text-action" data-copy-win-command type="button">复制</button>
+                </div>
+                <pre data-win-command></pre>
+              </article>
+            </div>
+            <details class="config-details" open>
+              <summary>配置文件</summary>
+              <div class="config-grid">
+                <article class="config-card">
+                  <div class="section-head">
+                    <h2>JSON</h2>
+                    <button class="text-action" data-copy-guide-json type="button">复制</button>
+                  </div>
+                  <pre data-guide-json>{}</pre>
+                </article>
+                <article class="config-card">
+                  <div class="section-head">
+                    <h2>TOML</h2>
+                    <button class="text-action" data-copy-guide-toml type="button">复制</button>
+                  </div>
+                  <pre data-guide-toml></pre>
+                </article>
+              </div>
+            </details>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="api" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section api-surface">
+            <div class="section-head">
+              <h2>API</h2>
+              <button class="primary-action" data-create-key type="button">创建 Key</button>
+            </div>
+            <div class="segmented-control" data-model-group aria-label="模型分组">
+              <button class="is-active" data-model-group-option="OpenAI" type="button">OpenAI</button>
+              <button data-model-group-option="Claude" type="button">Claude</button>
+              <button data-model-group-option="Other" type="button">Other</button>
+            </div>
+            <div class="endpoint-note">
+              <span>请求地址</span>
+              <b data-base-url>https://api.frist.example.com/v1</b>
+            </div>
+            <div class="api-list" data-api-keys></div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="billing" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section billing-surface">
+            <div class="section-head">
+              <h2>充值</h2>
+            </div>
+            <div class="amount-grid" data-recharge-options></div>
+            <button class="primary-action is-wide" data-pay-demo type="button">提交</button>
+          </section>
+
+          <details class="plain-section soft-details">
+            <summary>兑换码</summary>
+            <div class="exchange-row">
+              <input type="text" data-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
+              <button class="secondary-action" data-redeem-code type="button">兑换</button>
+            </div>
+          </details>
+        </section>
+
+        <section class="view-panel" data-view="switch" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section switch-surface">
+            <div class="section-head">
+              <h2>CC Switch</h2>
+              <span class="key-inline" data-key-inline-status>Key 已开启</span>
+            </div>
+            <div class="target-list" data-import-targets aria-label="导入位置">
+              <button class="target-button is-active" data-target="Claude" type="button">Claude</button>
+              <button class="target-button" data-target="Codex" type="button">Codex</button>
+              <button class="target-button" data-target="OpenCode" type="button">OpenCode</button>
+              <button class="target-button" data-target="OpenClaw" type="button">OpenClaw</button>
+              <button class="target-button" data-target="Hermes" type="button">Hermes</button>
+            </div>
+            <div class="import-family" data-import-family aria-label="模型家族">
+              <button class="is-active" data-import-family-option="OpenAI" type="button">ChatGPT / OpenAI</button>
+              <button data-import-family-option="Claude" type="button">Claude</button>
+              <button data-import-family-option="Other" type="button">Other</button>
+            </div>
+            <section class="cross-import-guide" aria-label="跨模型导入">
+              <div>
+                <span class="eyebrow">一键导入</span>
+                <h2 data-cross-import-title>ChatGPT 模型导入 Claude Code</h2>
+                <p data-cross-import-copy>选择 Claude + ChatGPT / OpenAI 后，Frist-API 会用 Anthropic Messages 入口接住 Claude Code，再把请求路由到可用的 ChatGPT 模型。</p>
+              </div>
+              <ol data-claude-developer-guide>
+                <li data-claude-guide-step>打开 CC Switch 的 Claude 配置页。</li>
+                <li data-claude-guide-step>开启开发者模式，允许第三方 API。</li>
+                <li data-claude-guide-step>点击一键导入，确认 Frist-API 供应商和模型。</li>
+              </ol>
+            </section>
+            <div class="import-actions">
+              <a class="primary-action" data-open-import href="#" rel="noopener">一键导入</a>
+              <button class="secondary-action" data-copy-link type="button">复制链接</button>
+            </div>
+            <div class="link-row is-quiet">
+              <input data-import-link readonly aria-label="CC Switch 导入链接" />
+            </div>
+            <div class="export-summary" aria-label="导出模型清单">
+              <article class="export-summary-card">
+                <span>默认模型</span>
+                <strong data-export-default-model>gpt-5.5</strong>
+              </article>
+              <article class="export-summary-card">
+                <span>可用模型</span>
+                <strong data-export-model-count>0 个</strong>
+              </article>
+              <div class="export-models" data-export-models role="list" aria-label="模型列表"></div>
+            </div>
+            <details class="config-details">
+              <summary>手动配置</summary>
+              <div class="config-grid">
+                <article class="config-card">
+                  <div class="section-head">
+                    <h2>auth.json</h2>
+                    <button class="text-action" data-copy-auth-json type="button">复制</button>
+                  </div>
+                  <pre data-auth-json>{}</pre>
+                </article>
+                <article class="config-card">
+                  <div class="section-head">
+                    <h2>config.toml</h2>
+                    <button class="text-action" data-copy-config-toml type="button">复制</button>
+                  </div>
+                  <pre data-config-toml></pre>
+                </article>
+              </div>
+            </details>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/app.js?v=20260502-open4"></script>
+  </body>
+</html>
