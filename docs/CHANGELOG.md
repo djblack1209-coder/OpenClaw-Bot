@@ -20,7 +20,7 @@
 - Claude Code 实操引导: CC Switch 页新增“ChatGPT / OpenAI 模型导入 Claude Code”流程图，按真实 Claude 菜单标出左上角 `Developer`、`Configure Third-Party Inference...`、`Gateway base URL`、`Gateway API key`、`Gateway auth scheme`、`Model list` 和 `Skip login-mode chooser`。
 - Codex 实操引导: 新增“Claude 模型导入 Codex”流程图，标出本站 CC Switch 目标选择、模型家族选择、一键导入、Codex `API 请求地址`、`auth.json`、`wire_api = "responses"`、默认 Claude 模型和 MCP 段。
 - 动态字段: 流程图中的 Frist-API 地址、Claude/Codex 地址、默认 OpenAI 模型、默认 Claude 模型会按当前站点和用户可用模型自动刷新。
-- 运营手册: 补齐个人微信/支付宝收款码试运营步骤、60 刀日卡测试额度折算说明、支付宝当面付和微信支付 Native 的小白级开通步骤。
+- 运营手册: 补齐个人微信/支付宝收款码试运营步骤、60 刀日卡测试额度折算说明、支付宝当面付和微信支付 Native 的小白级开通步骤，并加入对应官方接口文档入口。
 - 测试额度: 已通过后台人工入账路径给测试账号加入 60 刀等值日卡额度，用于实测 API 聚合、模型切换和上下文粘滞。
 
 ### 文件变更
