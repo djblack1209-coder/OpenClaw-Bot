@@ -5,6 +5,32 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-03] Frist-API 余额站上游与工作台首页适配
+> 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Gateway`, `Replenishment`, `Workbench`, `docs`
+> 关联问题: HI-844
+
+### 变更内容
+- 上游策略: 适配授权余额站模式，管理员补号可以直接录入供应商根地址；当根地址返回网站 HTML 壳时，补号探测会自动尝试同域 `/v1` OpenAI 兼容路径。
+- 探测校验: Chat Completions、Responses 和 Images 的 2xx 响应都要符合对应 OpenAI 兼容 JSON 结构，避免把网页、余额页或错误页误判为健康接口。
+- 额度判断: 2xx HTML 文本不再参与余额不足判断，避免供应商 Dashboard 文案里的 balance 字样误触发 `quota_failed`。
+- 公开部署: Docker Compose 透传 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP`，便于无域名裸 IP 阶段按显式开关完成公网验收。
+- 用户界面: 首页从营销 Hero 改为控制台工作台布局，参考余额站后台的信息密度，新增紧凑左侧导航、顶部操作区和余额/API Key/消耗/模型连通四个核心状态卡。
+- 验证准备: 新增根地址 HTML 自动切 `/v1` 的回归测试，保障 `gpt-5.5`、`gpt-image-2` 这类余额站模型进入广场实测前先通过真实 API 路径。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 增加根地址与 `/v1` 候选路由探测、响应结构校验和 2xx 额度判断保护
+- `apps/frist-api/tests/server.test.mjs` — 覆盖供应商根地址返回 HTML 时自动路由到 `/v1`
+- `apps/frist-api/index.html` — 首页改为工作台控制台布局
+- `apps/frist-api/src/styles.css` — 新增工作台、左侧 rail、控制台指标卡和响应式样式
+- `apps/frist-api/tests/core.test.mjs` — 更新首页布局边界测试
+- `docker-compose.frist-api.yml` — 透传无域名 HTTP 验收开关
+- `apps/frist-api/deploy/production.env.example` — 补充生产环境变量示例
+- `docs/024-frist-api-operator-runbook.md` — 增加授权余额站接入和根地址 `/v1` 自动探测说明
+- `docs/025-frist-api-quickstart.md` — 同步工作台首页、余额站探测和测试覆盖说明
+- `docs/031-command-registry.md` — 登记工作台 rail 和控制台主区入口
+- `docs/060-health.md` — 登记 HI-844
+
 ## [2026-05-03] Frist-API 上游失效库存落盘
 > 领域: `backend` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `Gateway`, `Inventory`, `docs`

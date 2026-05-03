@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260502-open7" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260503-inroi-console" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -73,81 +73,107 @@
       <main class="main" id="main-content">
 
         <section class="view-panel" data-view="dashboard">
-          <div class="hero-flow" data-hero-flow>
-            <section class="site-hero" data-site-hero aria-label="Frist-API">
-              <div class="hero-copy">
-                <span class="hero-kicker">Commercial API Gateway</span>
-                <h2>Frist-API</h2>
-                <p>一把 Key，自动切换最强可用模型。</p>
-                <a class="primary-action hero-primary" data-hero-primary-import href="#switch" data-route="switch">开始导入</a>
+          <div class="workspace-layout" data-workspace-layout>
+            <aside class="workspace-rail" data-workspace-rail aria-label="工作台导航">
+              <div class="rail-head">
+                <span class="rail-mark">F</span>
+                <div>
+                  <strong>Frist-API</strong>
+                  <span>Workbench</span>
+                </div>
               </div>
-              <div class="hero-signal" aria-hidden="true">
-                <i></i>
-                <i></i>
-                <i></i>
+              <nav class="action-dock workspace-nav" data-action-dock aria-label="快捷操作">
+                <a href="#dashboard" data-route="dashboard">
+                  <span>01</span>
+                  <strong>仪表盘</strong>
+                </a>
+                <a class="is-priority-path" href="#switch" data-route="switch">
+                  <span>02</span>
+                  <strong>CC Switch</strong>
+                </a>
+                <a href="#api" data-route="api">
+                  <span>03</span>
+                  <strong>API Key</strong>
+                </a>
+                <a href="#playground" data-route="playground">
+                  <span>04</span>
+                  <strong>广场</strong>
+                </a>
+                <a href="#analytics" data-route="analytics">
+                  <span>05</span>
+                  <strong>数据</strong>
+                </a>
+                <a href="#models" data-route="models">
+                  <span>06</span>
+                  <strong>模型</strong>
+                </a>
+                <a href="#billing" data-route="billing">
+                  <span>07</span>
+                  <strong>充值</strong>
+                </a>
+                <a href="#docs" data-route="docs">
+                  <span>08</span>
+                  <strong>教程</strong>
+                </a>
+              </nav>
+              <div class="rail-foot">
+                <span data-package-status>未登录 · - 续费</span>
+                <strong data-today-calls>0 次</strong>
               </div>
-            </section>
+            </aside>
 
-            <aside class="hero-aside" data-hero-aside aria-label="上手路径">
-              <div class="hero-aside__copy">
-                <span class="eyebrow">从导入开始</span>
-                <p>先接入 CC Switch，再创建 Key；余额、模型列表和线路状态会同步到每个入口。</p>
+            <section class="console-board" data-console-board>
+              <div class="console-head" data-hero-flow>
+                <div>
+                  <span class="hero-kicker">Commercial API Gateway</span>
+                  <h1>仪表盘</h1>
+                  <p>Frist-API</p>
+                </div>
+                <div class="console-toolbar">
+                  <a class="primary-action hero-primary" data-hero-primary-import href="#switch" data-route="switch">开始导入</a>
+                  <button class="secondary-action" data-refresh-health type="button">刷新连通</button>
+                </div>
               </div>
-              <section class="focus-stack" data-focus-metrics aria-label="核心状态">
+
+              <section class="focus-stack console-metrics" data-focus-metrics aria-label="核心状态">
                 <article class="focus-metric is-balance">
-                  <span>余额</span>
+                  <span>可用余额</span>
                   <strong data-quota-left>¥0.00</strong>
+                  <small data-quota-breakdown>套餐 ¥0.00 · 加油包 ¥0.00</small>
                 </article>
                 <article class="focus-metric">
-                  <span>消耗</span>
+                  <span>API Key</span>
+                  <strong data-api-summary>0 个 Key 已开启</strong>
+                  <small>fk-live-* 用户网关</small>
+                </article>
+                <article class="focus-metric">
+                  <span>累计消耗</span>
                   <strong data-usage-total>¥0.00</strong>
+                  <small data-today-cost>¥0.00</small>
                 </article>
                 <article class="focus-metric">
-                  <span>连通</span>
-                  <strong data-channel-ratio>4/4</strong>
+                  <span>模型连通</span>
+                  <strong data-channel-ratio>0/0</strong>
+                  <small>OpenAI / Claude</small>
                 </article>
               </section>
-            </aside>
-          </div>
 
-          <section class="action-dock" data-action-dock aria-label="快捷操作">
-            <a class="is-priority-path" href="#switch" data-route="switch">
-              <strong>CC Switch</strong>
-            </a>
-            <a href="#api" data-route="api">
-              <strong>API Key</strong>
-            </a>
-            <a href="#billing" data-route="billing">
-              <strong>充值</strong>
-            </a>
-            <a href="#playground" data-route="playground">
-              <strong>广场</strong>
-            </a>
-            <a href="#analytics" data-route="analytics">
-              <strong>数据</strong>
-            </a>
-            <a href="#models" data-route="models">
-              <strong>模型</strong>
-            </a>
-            <a href="#docs" data-route="docs">
-              <strong>教程</strong>
-            </a>
-          </section>
+              <div class="dashboard-minimal-grid">
+                <section class="glass-panel usage-focus" data-usage-focus aria-label="模型消耗">
+                  <div class="section-head">
+                    <h2>模型消耗</h2>
+                  </div>
+                  <div class="usage-list is-compact" data-usage-compact></div>
+                </section>
 
-          <div class="dashboard-minimal-grid">
-            <section class="glass-panel usage-focus" data-usage-focus aria-label="模型消耗">
-              <div class="section-head">
-                <h2>模型消耗</h2>
+                <section class="glass-panel provider-summary" data-provider-summary aria-label="连通性">
+                  <div class="section-head">
+                    <h2>Claude / OpenAI</h2>
+                    <button class="text-action" data-refresh-health type="button">刷新</button>
+                  </div>
+                  <div class="provider-list" data-channel-compact></div>
+                </section>
               </div>
-              <div class="usage-list is-compact" data-usage-compact></div>
-            </section>
-
-            <section class="glass-panel provider-summary" data-provider-summary aria-label="连通性">
-              <div class="section-head">
-                <h2>Claude / OpenAI</h2>
-                <button class="text-action" data-refresh-health type="button">刷新</button>
-              </div>
-              <div class="provider-list" data-channel-compact></div>
             </section>
           </div>
         </section>
@@ -520,6 +546,6 @@ command = "npx"</pre>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260502-open7"></script>
+    <script type="module" src="./src/app.js?v=20260503-inroi-console"></script>
   </body>
 </html>

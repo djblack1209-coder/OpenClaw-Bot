@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
-  --canvas: #f3f5f0;
-  --paper: #fffdf8;
-  --paper-soft: #f7faf3;
+  --canvas: #f5faf9;
+  --paper: #ffffff;
+  --paper-soft: #f2fbf8;
   --ink: #121510;
   --ink-soft: #30372f;
   --muted: #667063;
@@ -13,9 +13,9 @@
   --green: #07875f;
   --amber: #ba6f0c;
   --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
-  --radius-xl: 32px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
   --radius-pill: 999px;
   --shadow-1: 0 10px 30px rgba(24, 31, 23, 0.08);
   --shadow-2: 0 26px 80px rgba(24, 31, 23, 0.14);
@@ -37,7 +37,8 @@ body {
   margin: 0;
   overflow-x: hidden;
   background:
-    linear-gradient(120deg, rgba(255, 246, 232, 0.92), rgba(240, 248, 241, 0.94) 42%, rgba(233, 240, 255, 0.9)),
+    radial-gradient(circle at 28% 18%, rgba(190, 244, 230, 0.46), transparent 32%),
+    linear-gradient(135deg, rgba(247, 252, 251, 0.96), rgba(242, 249, 248, 0.92) 48%, rgba(246, 248, 255, 0.9)),
     var(--canvas);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -2131,6 +2132,206 @@ textarea:focus {
   font-size: 12px;
 }
 
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.workspace-rail,
+.console-board {
+  border: 1px solid rgba(18, 30, 25, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 42px rgba(28, 46, 41, 0.08);
+  animation: panelReveal 420ms var(--ease-out) both;
+}
+
+.workspace-rail {
+  display: grid;
+  gap: 16px;
+  min-height: calc(100vh - 130px);
+  border-radius: 22px;
+  padding: 14px;
+}
+
+.rail-head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 10px;
+}
+
+.rail-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #101114;
+  color: #ffffff;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(16, 17, 20, 0.18);
+}
+
+.rail-head strong {
+  display: block;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.rail-head span:not(.rail-mark),
+.rail-foot span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.action-dock.workspace-nav {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.action-dock.workspace-nav a {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  flex: initial;
+  min-height: 44px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 10px;
+  box-shadow: none;
+}
+
+.action-dock.workspace-nav a span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+}
+
+.action-dock.workspace-nav strong {
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.action-dock.workspace-nav a.is-active,
+.action-dock.workspace-nav a.is-priority-path {
+  background: rgba(226, 248, 242, 0.92);
+  color: #05745d;
+  box-shadow: inset 0 0 0 1px rgba(7, 135, 95, 0.13);
+}
+
+.action-dock.workspace-nav a.is-priority-path::before {
+  content: none;
+}
+
+.rail-foot {
+  align-self: end;
+  display: grid;
+  gap: 6px;
+  border-radius: 14px;
+  background: rgba(246, 250, 247, 0.92);
+  padding: 12px;
+  box-shadow: inset 0 0 0 1px rgba(18, 30, 25, 0.06);
+}
+
+.rail-foot strong {
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.console-board {
+  display: grid;
+  gap: 18px;
+  border-radius: 24px;
+  padding: 22px;
+}
+
+.console-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 72px;
+  border-bottom: 1px solid rgba(18, 30, 25, 0.07);
+  padding-bottom: 16px;
+}
+
+.console-head h1 {
+  margin-top: 6px;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1;
+}
+
+.console-head p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.console-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 10px;
+}
+
+.console-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: stretch;
+}
+
+.console-metrics .focus-metric {
+  min-height: 118px;
+  border: 1px solid rgba(18, 30, 25, 0.07);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(28, 46, 41, 0.06);
+}
+
+.console-metrics .focus-metric.is-balance {
+  background:
+    linear-gradient(145deg, rgba(236, 250, 244, 0.92), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+}
+
+.console-metrics .focus-metric strong {
+  display: block;
+  max-width: 100%;
+  font-size: clamp(22px, 2.4vw, 34px);
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+}
+
+.console-metrics .focus-metric small {
+  align-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.console-board .dashboard-minimal-grid {
+  margin-top: 0;
+}
+
+.console-board .glass-panel,
+.plain-section {
+  border: 1px solid rgba(18, 30, 25, 0.07);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 34px rgba(28, 46, 41, 0.07);
+}
+
 @media (hover: hover) {
   .brand:hover,
   .account-chip:hover,
@@ -2194,6 +2395,7 @@ textarea:focus {
   }
 
   .hero-flow,
+  .workspace-layout,
   .dashboard-minimal-grid,
   .playground-stage,
   .analytics-grid,
@@ -2203,6 +2405,14 @@ textarea:focus {
   .admin-grid,
   .admin-two-col {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-rail {
+    min-height: 0;
+  }
+
+  .action-dock.workspace-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .hero-aside {
@@ -2218,6 +2428,10 @@ textarea:focus {
 
   .focus-stack {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .console-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .target-list,
@@ -2342,6 +2556,32 @@ textarea:focus {
   }
 
   .focus-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-layout {
+    gap: 14px;
+  }
+
+  .workspace-rail,
+  .console-board {
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .action-dock.workspace-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .console-head {
+    display: grid;
+  }
+
+  .console-toolbar {
+    justify-content: start;
+  }
+
+  .console-metrics {
     grid-template-columns: 1fr;
   }
 

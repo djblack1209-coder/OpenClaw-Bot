@@ -20,6 +20,7 @@
 | Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
 | 用户充值申请 | `data-pay-demo` | 生成待处理充值单，公开环境不直接入账 |
 | 兑换码 | `data-redeem-code` | 日卡/月卡/加油包兑换 |
+| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-console-board` | 用户首页控制台布局，集中承载余额、Key、消耗和模型连通状态 |
 | 导入目标选择 | `data-import-targets` / `data-target` | 选择 Claude、Codex、OpenCode、OpenClaw、Hermes |
 | CC Switch 导入 | `data-open-import` / `data-copy-link` | 打开或复制五客户端导入链接 |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |

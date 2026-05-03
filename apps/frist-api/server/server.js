@@ -1246,16 +1246,16 @@ async function probeCredentialModels(baseUrl, rawKey, serverOptions, authConfig 
 }
 
 async function probeCredentialRoutes({ baseUrl, proxyBaseUrl, rawKey, authConfig = {}, models, serverOptions, collectAllModels }) {
-  const direct = await probeCredentialChat(baseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
+  const direct = await probeCredentialRouteCandidates(baseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
   if (!proxyBaseUrl) {
     return {
       ...direct,
       connectionPath: 'direct',
-      routeBaseUrl: baseUrl,
+      routeBaseUrl: direct.routeBaseUrl || baseUrl,
     };
   }
 
-  const proxy = await probeCredentialChat(proxyBaseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
+  const proxy = await probeCredentialRouteCandidates(proxyBaseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
   const connectionPath = recommendConnectionPath({
     direct: { ok: direct.ok, p95Ms: direct.latencyMs || 999999, failureRate: direct.ok ? 0 : 1 },
     proxy: { ok: proxy.ok, p95Ms: proxy.latencyMs || 999999, failureRate: proxy.ok ? 0 : 1 },
@@ -1264,14 +1264,14 @@ async function probeCredentialRoutes({ baseUrl, proxyBaseUrl, rawKey, authConfig
     return {
       ...proxy,
       connectionPath,
-      routeBaseUrl: proxyBaseUrl,
+      routeBaseUrl: proxy.routeBaseUrl || proxyBaseUrl,
     };
   }
   if (connectionPath === 'direct') {
     return {
       ...direct,
       connectionPath,
-      routeBaseUrl: baseUrl,
+      routeBaseUrl: direct.routeBaseUrl || baseUrl,
     };
   }
 
@@ -1283,6 +1283,40 @@ async function probeCredentialRoutes({ baseUrl, proxyBaseUrl, rawKey, authConfig
     connectionPath: 'direct',
     routeBaseUrl: baseUrl,
   };
+}
+
+async function probeCredentialRouteCandidates(baseUrl, rawKey, models, serverOptions, options = {}) {
+  let lastProbe = null;
+  for (const routeBaseUrl of routeBaseUrlCandidates(baseUrl)) {
+    const probe = await probeCredentialChat(routeBaseUrl, rawKey, models, serverOptions, options);
+    if (probe.ok) {
+      return { ...probe, routeBaseUrl };
+    }
+    lastProbe = probe;
+    if (['auth_failed', 'quota_failed'].includes(probe.status)) {
+      break;
+    }
+  }
+  return {
+    ...(lastProbe || { ok: false, status: 'network_failed', reason: '请求地址不可达', models: [] }),
+    routeBaseUrl: normalizeBaseUrl(baseUrl),
+  };
+}
+
+function routeBaseUrlCandidates(baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  const candidates = [normalized];
+  try {
+    const parsed = new URL(normalized);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+    if (!/(^|\/)v1$/i.test(pathname)) {
+      parsed.pathname = `${pathname}/v1`.replace(/\/+/g, '/');
+      candidates.push(normalizeBaseUrl(parsed.toString()));
+    }
+  } catch {
+    // normalizeBaseUrl 已经处理常见输入；极端解析失败时保留原始候选地址。
+  }
+  return [...new Set(candidates)];
 }
 
 async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, options = {}) {
@@ -1352,6 +1386,20 @@ async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, optio
         return { ok: false, status: 'quota_failed', reason: '上游额度不足或限速', models: [] };
       }
       if (response.status >= 200 && response.status < 300) {
+        if (!isOpenAiChatCompletionPayload(bodyText)) {
+          lastFailure = {
+            ok: false,
+            status: 'adapter_unsupported',
+            reason: '上游返回非 OpenAI 兼容响应',
+            models: [],
+            httpStatus: response.status,
+            bodyText,
+          };
+          if (!options.collectAllModels) {
+            return lastFailure;
+          }
+          continue;
+        }
         const latencyMs = Math.max(1, Date.now() - startedAt);
         supportedModels.push(model);
         bestLatencyMs = bestLatencyMs ? Math.min(bestLatencyMs, latencyMs) : latencyMs;
@@ -1461,6 +1509,16 @@ async function probeCredentialImageGeneration(baseUrl, rawKey, model, serverOpti
       return { ok: false, status: 'quota_failed', reason: '上游额度不足或限速', models: [], httpStatus: response.status, bodyText };
     }
     if (response.status >= 200 && response.status < 300) {
+      if (!isOpenAiImageGenerationPayload(bodyText)) {
+        return {
+          ok: false,
+          status: 'adapter_unsupported',
+          reason: '上游返回非 OpenAI 图片响应',
+          models: [],
+          httpStatus: response.status,
+          bodyText,
+        };
+      }
       return {
         ok: true,
         status: 'image_probe_ok',
@@ -1518,6 +1576,16 @@ async function probeCredentialResponses(baseUrl, rawKey, model, serverOptions, s
       return { ok: false, status: 'quota_failed', reason: '上游额度不足或限速', models: [], httpStatus: response.status, bodyText };
     }
     if (response.status >= 200 && response.status < 300) {
+      if (!isOpenAiResponsesPayload(bodyText)) {
+        return {
+          ok: false,
+          status: 'adapter_unsupported',
+          reason: '上游返回非 OpenAI Responses 响应',
+          models: [],
+          httpStatus: response.status,
+          bodyText,
+        };
+      }
       return {
         ok: true,
         status: 'responses_probe_ok',
@@ -1550,6 +1618,21 @@ async function probeCredentialResponses(baseUrl, rawKey, model, serverOptions, s
 
 function shouldTryResponsesProbe(status, bodyText) {
   return status === 404 || status === 405 || isModelUnsupportedResponse(status, bodyText);
+}
+
+function isOpenAiChatCompletionPayload(bodyText) {
+  const payload = parseJsonPayload(bodyText);
+  return Array.isArray(payload.choices);
+}
+
+function isOpenAiResponsesPayload(bodyText) {
+  const payload = parseJsonPayload(bodyText);
+  return payload.object === 'response' || Array.isArray(payload.output) || typeof payload.output_text === 'string';
+}
+
+function isOpenAiImageGenerationPayload(bodyText) {
+  const payload = parseJsonPayload(bodyText);
+  return Array.isArray(payload.data);
 }
 
 function isModelUnsupportedResponse(status, bodyText) {
@@ -2068,6 +2151,9 @@ function sanitizeExtraHeaders(headers) {
 }
 
 function isQuotaExhaustedResponse(upstream) {
+  if (upstream.status >= 200 && upstream.status < 300) {
+    return false;
+  }
   if (upstream.status === 402 || upstream.status === 429) {
     return true;
   }
