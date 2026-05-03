@@ -1018,6 +1018,71 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('persists disabled upstream credentials when every candidate is rejected', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        const auth = options.headers.authorization || '';
+        upstreamCalls.push({
+          url: String(url),
+          keyPreview: auth.includes('disabled-a') ? 'disabled-a' : 'disabled-b',
+        });
+        return jsonResponse(401, { error: { message: 'API key is disabled' } });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('all-upstreams-disabled@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'All Disabled Upstream Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [
+            { value: 'sk-disabled-a', quotaRemaining: 900, latencyMs: 10 },
+            { value: 'sk-disabled-b', quotaRemaining: 900, latencyMs: 20 },
+          ],
+        },
+      });
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      const models = await fixture.request('/v1/models', {
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+      });
+
+      assert.equal(gateway.status, 503);
+      assert.match(gateway.text, /当前模型暂不可用/);
+      assert.deepEqual(upstreamCalls.map((call) => call.keyPreview), ['disabled-a', 'disabled-b']);
+      assert.equal(inventory.json.credentials.every((item) => item.status === 'failed'), true);
+      assert.equal(models.json.data.some((item) => item.id === 'gpt-5.5'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('exports the same complete model list for Codex and OpenCode import URLs', async () => {
     const fixture = await createServerFixture({ requireEmailVerification: false });
 

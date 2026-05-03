@@ -1676,7 +1676,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
     return upstream;
   }
 
-  throw publicError(503, '当前模型暂不可用');
+  return gatewayUnavailableResponse();
 }
 
 async function callGatewayAttempts(credential, body, serverOptions, options = {}) {
@@ -1699,6 +1699,14 @@ async function callGatewayAttempts(credential, body, serverOptions, options = {}
   }
 
   return lastUpstream;
+}
+
+function gatewayUnavailableResponse() {
+  return {
+    status: 503,
+    contentType: 'application/json; charset=utf-8',
+    bodyText: JSON.stringify({ error: '当前模型暂不可用' }),
+  };
 }
 
 function shouldFailoverUpstream(upstream) {

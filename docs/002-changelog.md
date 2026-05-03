@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-03] Frist-API 上游失效库存落盘
+> 领域: `backend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Gateway`, `Inventory`, `docs`
+> 关联问题: HI-843
+
+### 变更内容
+- 真实公网实测发现: 线上两枚上游 Key 已被供应商禁用，但库存仍停留在 `healthy`，导致广场继续展示 `gpt-5.5` / `gpt-image-2` 可用。
+- 网关修复: 当同一模型的所有候选上游都因认证失败、网络失败或 5xx 被摘除后，返回 503 响应但保留本次库存状态变更，避免异常路径回滚。
+- 库存下线: 失效上游会被持久化为 failed/exhausted，后续 `/v1/models`、广场和导入模型清单不再展示这类不可用模型。
+- 验证结果: 新增所有候选上游被拒绝时的回归测试，确认 503 后库存状态会落盘且模型清单下线。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 将全候选失败路径改为可落盘的 503 网关响应
+- `apps/frist-api/tests/server.test.mjs` — 覆盖所有上游被禁用时的库存持久化和模型下线行为
+- `docs/002-changelog.md` — 记录公网实测暴露的问题与修复
+- `docs/025-frist-api-quickstart.md` — 同步回归测试数量
+- `docs/060-health.md` — 登记 HI-843
+
 ## [2026-05-03] Frist-API 备用渠道人工风控入口
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `Admin`, `Gateway`, `Replenishment`, `docs`
