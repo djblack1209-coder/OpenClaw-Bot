@@ -4,6 +4,31 @@
 
 ---
 
+## [2026-05-02 20:42] Frist-API 备用渠道与公网实测交接
+
+### 本次完成了什么
+- 已提交工作区原有改动: `dc7d373 feat: stabilize frist api connectivity`。
+- 已新增 CPA JSON、chong 和其他人工备用渠道入口；这些来源默认隔离，必须人工核验并勾选风险确认后才会进入路由。
+- 用户端 Dashboard、模型列表、广场和导入配置不暴露 CPA/chong、风险备注、上游来源和原始 Key。
+- 已修复公网实测发现的库存问题: 当所有候选上游都返回认证失败、网络失败或 5xx 时，网关返回 503 但会把 failed/exhausted 状态写入运行数据，避免模型继续假显示可用。
+- 已同步到腾讯云 `/opt/frist-api`，`frist-api-server` 容器为 healthy；服务器本机 smoke 通过，公网主页 200、管理页 404、未授权 `/v1/models` 401、验证码挑战可用。
+
+### 未完成的工作
+- 公网真实上游当前返回 `API key is disabled`，两枚库存已自动落盘为 failed，`gpt-5.5` 和 `gpt-image-2` 已从带 Key 的 `/v1/models` 下线。
+- 需要补入一枚真实可用、授权明确的上游 Key 后，再复测广场 `gpt-5.5` 对话和 `gpt-image-2` 图片生成。
+- 正式开放陌生付费用户前仍缺固定域名 HTTPS、SMTP/找回密码、Turnstile、真实支付回调、数据库迁移、备份、监控和管理员 2FA。
+
+### 需要注意的坑
+- 不要实现 OAuth Session 提取、Refresh Token 刷新、账号池规避风控或自动化批量获取逻辑；CPA JSON/chong 只能作为人工风险判断后的备用登记入口。
+- 不要把服务器密码、管理员入口码、管理员令牌、用户真实 Key、上游 Key 或运行时 JSON 写入仓库、文档或最终汇报。
+- 远端 `/opt/frist-api/.env` 已设置隐藏管理页入口码和 `FRIST_API_REQUIRE_CAPTCHA=1`，不要覆盖。
+
+### 当前系统状态
+- 本地 Frist-API `npm test`: 103 passed, 0 failed。
+- 本地 focused 服务端回归: 51 passed, 0 failed。
+- 公网 `http://101.43.41.96:5566/` 可访问；`http://101.43.41.96:5566/admin.html` 返回 404。
+- 带现有用户 Key 调用公网 `/v1/models` 在失效库存下线后返回 0 个模型；这是当前正确状态，等待新可用上游补入。
+
 ## [2026-05-02 00:40] Frist-API 用户端降噪与公网同步交接
 
 ### 本次完成了什么
@@ -107,26 +132,4 @@
 
 ### 当前系统状态
 - 当时 `make frist-api-test` 为 31 passed, 0 failed。
-- OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
-
-## [2026-05-01 14:48] Frist-API 完整业务链路交接
-
-### 本次完成了什么
-- 新增 `apps/frist-api/src/businessFlow.js`，把 Frist-API 用户侧和管理侧核心规则抽成可测试状态机。
-- 用户侧已跑通注册、邮箱验证、充值、兑换码、创建 Key、开启/关闭 Key、CC Switch 导入链接生成。
-- Key 列表改为按每个 Key 自己的启停状态渲染，多个 Key 时不会被全局开关误导。
-- 管理侧核心逻辑已跑通补号报告: 请求地址归一化、模型探测、Key 成功失败分组、直连/代理推荐、价格文本解析和待确认价格草稿。
-- 日卡池自动切换逻辑已跑通: 额度不足的 Key 会标记为 exhausted 并关闭，然后切到同池下一个健康 Key。
-
-### 未完成的工作
-- 生产要接入 New-API fork 的真实用户、Token、支付、兑换码、渠道和日志接口。
-- `/api/frist/channel-health` 仍需在 New-API fork 中实现用户安全的脱敏连通性接口。
-- 日卡自动切换必须放到真实网关路由层，不能只依赖前端状态。
-
-### 需要注意的坑
-- 不要把管理员 Key、上游号商 Key、渠道 ID 或请求地址暴露到浏览器端。
-- 价格解析生成的是待确认草稿，不能自动上线。
-
-### 当前系统状态
-- 当时 `make frist-api-test` 为 25 passed, 0 failed。
 - OpenClaw 后端、桌面端、内部 New API 管理页面未改动。
