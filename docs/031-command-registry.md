@@ -1,6 +1,6 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-05-03 (同步 Frist-API 广场连通实测入口) | Bot 命令总数 104
+> 最后更新: 2026-05-03 (同步 Frist-API 备用渠道人工风控入口) | Bot 命令总数 104
 
 ---
 
@@ -42,6 +42,9 @@
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
 | 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
 | 管理端探测模式 | `/admin.html` + `data-admin-probe-mode` | 自动探测、严格探测和信任写入模式选择 |
+| 管理端备用渠道类型 | `/admin.html` + `data-admin-source-type` | 区分授权/自有、CPA JSON、chong 和其他备用渠道 |
+| 管理端风险状态 | `/admin.html` + `data-admin-risk-status` / `data-admin-backup-risk-accepted` | 备用渠道默认隔离，人工核验并确认后才进入路由 |
+| 管理端风险备注 | `/admin.html` + `data-admin-risk-note` | 记录备用渠道来源责任人、放行依据和复核说明 |
 | 管理端库存刷新 | `/admin.html` + `data-admin-refresh` | 独立管理端查看脱敏库存状态 |
 | 管理端审计 | `/admin.html` + `data-admin-audit` | 查看补号、切换、耗尽、路由等脱敏事件 |
 

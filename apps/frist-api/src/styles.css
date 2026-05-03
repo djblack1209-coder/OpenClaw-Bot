@@ -2074,6 +2074,18 @@ textarea:focus {
   font-weight: 760;
 }
 
+.form-stack .check-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  font-weight: 720;
+}
+
+.form-stack .check-row input {
+  width: 16px;
+  height: 16px;
+}
+
 .admin-inventory,
 .admin-inventory-summary,
 .admin-audit {

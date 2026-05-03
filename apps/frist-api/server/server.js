@@ -33,6 +33,8 @@ const DEFAULT_PROBE_MODELS = [
   'gemini-2.5-flash',
 ];
 const DEFAULT_QUOTA_COST = 10;
+const PRIMARY_SOURCE_TYPE = 'authorized';
+const BACKUP_SOURCE_TYPES = new Set(['cpa_json_backup', 'chong_backup', 'manual_backup']);
 const DEFAULT_RECHARGE_PLANS = Object.freeze([
   Object.freeze({
     id: 'codex-30-day',
@@ -1002,6 +1004,14 @@ async function replenishCredentials(data, body, serverOptions) {
   const modelGroup = normalizeModelGroup(body.modelGroup || parsedOrder?.providerGroup || '');
   const cardType = normalizePool(body.cardType || parsedOrder?.cardType || pool);
   const expiresAt = String(body.expiresAt || parsedOrder?.expiresAt || '');
+  const sourceType = normalizeSourceType(body.sourceType || PRIMARY_SOURCE_TYPE);
+  const riskStatus = normalizeRiskStatus(
+    body.riskStatus || (sourceType === PRIMARY_SOURCE_TYPE ? 'approved' : 'quarantined'),
+  );
+  const backupRiskAccepted = Boolean(body.backupRiskAccepted || body.manualRiskAccepted);
+  const riskNote = sanitizeRiskNote(body.riskNote || '');
+  const routeApproved = isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted });
+  const gatedStatus = routeApproved ? 'healthy' : riskStatus === 'blocked' ? 'blocked' : 'quarantined';
   const now = new Date().toISOString();
   const keyInputs = normalizeReplenishmentKeys(body.keys ?? parsedOrder?.keys ?? []);
   if (keyInputs.length === 0) {
@@ -1019,7 +1029,8 @@ async function replenishCredentials(data, body, serverOptions) {
     serverOptions,
   });
   const models = providedModels.length > 0 ? providedModels : probeReport.models;
-  const sourceId = `source-${hashId(normalizedBaseUrl)}`;
+  const sourceFingerprint = sourceType === PRIMARY_SOURCE_TYPE ? normalizedBaseUrl : `${sourceType}:${normalizedBaseUrl}`;
+  const sourceId = `source-${hashId(sourceFingerprint)}`;
   const source = upsertSupplierProfile(data, {
     id: sourceId,
     baseUrl: normalizedBaseUrl,
@@ -1030,6 +1041,10 @@ async function replenishCredentials(data, body, serverOptions) {
     modelGroup,
     cardType,
     expiresAt,
+    sourceType,
+    riskStatus: gatedStatus === 'healthy' ? 'approved' : riskStatus,
+    backupRiskAccepted,
+    riskNote,
     connectionPath: probeReport.connectionPath,
     updatedAt: now,
   });
@@ -1064,12 +1079,16 @@ async function replenishCredentials(data, body, serverOptions) {
       authHeaderValuePrefix: key.authHeaderValuePrefix ?? 'Bearer',
       extraHeaders: sanitizeExtraHeaders(key.extraHeaders),
       models: credentialModels,
-      enabled: true,
-      status: 'healthy',
+      sourceType,
+      riskStatus: gatedStatus === 'healthy' ? 'approved' : riskStatus,
+      backupRiskAccepted,
+      riskNote,
+      enabled: routeApproved,
+      status: gatedStatus,
       quotaRemaining: Number.isFinite(key.quotaRemaining) ? key.quotaRemaining : Number(probe.quotaRemaining || 1000),
       latencyMs: key.latencyProvided && Number.isFinite(key.latencyMs) ? key.latencyMs : Number(probe.latencyMs || 999),
       lastProbeStatus: probe.status || probeMode,
-      lastProbeReason: probe.reason || '',
+      lastProbeReason: routeApproved ? probe.reason || '' : riskNote || '备用渠道待人工风险放行',
       createdAt: now,
       updatedAt: now,
     });
@@ -1091,6 +1110,9 @@ async function replenishCredentials(data, body, serverOptions) {
     credentialCount: credentials.length,
     failedCount: failedKeys.length,
     probeMode,
+    sourceType,
+    riskStatus,
+    routeApproved,
     at: now,
   });
 
@@ -1586,6 +1608,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
       .filter((credential) => allowedPools.includes(credential.pool))
       .filter((credential) => credential.enabled)
       .filter((credential) => credential.status === 'healthy')
+      .filter(isCredentialRouteApproved)
       .filter((credential) => normalizeOfficialModelList(credential.models).includes(model) || credential.models.includes('*'))
       .filter((credential) => credentialMatchesModelGroup(credential, model, userKey.modelGroup))
       .sort(compareGatewayCredentials),
@@ -2331,18 +2354,28 @@ function normalizeRuntimeData(data) {
 }
 
 function normalizeCredentialRecord(credential) {
+  const sourceType = normalizeSourceType(credential.sourceType || PRIMARY_SOURCE_TYPE);
   return {
     ...credential,
     models: normalizeOfficialModelList(credential.models || []),
     modelGroup: normalizeModelGroup(credential.modelGroup || inferProviderGroup((credential.models || []).join('\n'))),
+    sourceType,
+    riskStatus: normalizeRiskStatus(credential.riskStatus || 'approved'),
+    backupRiskAccepted: Boolean(credential.backupRiskAccepted),
+    riskNote: sanitizeRiskNote(credential.riskNote || ''),
   };
 }
 
 function normalizeSupplierProfileRecord(profile) {
+  const sourceType = normalizeSourceType(profile.sourceType || PRIMARY_SOURCE_TYPE);
   return {
     ...profile,
     models: normalizeOfficialModelList(profile.models || []),
     modelGroup: normalizeModelGroup(profile.modelGroup || inferProviderGroup((profile.models || []).join('\n'))),
+    sourceType,
+    riskStatus: normalizeRiskStatus(profile.riskStatus || 'approved'),
+    backupRiskAccepted: Boolean(profile.backupRiskAccepted),
+    riskNote: sanitizeRiskNote(profile.riskNote || ''),
   };
 }
 
@@ -2623,7 +2656,7 @@ function normalizeReplenishmentKeys(keys) {
   return keys
     .map((item) => (typeof item === 'string' ? { value: item } : item))
     .map((item) => ({
-      value: String(item.value || item.key || '').trim(),
+      value: String(item.value || item.key || item.apiKey || item.api_key || item.token || '').trim(),
       quotaRemaining: Number(item.quotaRemaining ?? 1000),
       quotaTotal: Number(item.quotaTotal ?? item.quotaRemaining ?? 1000),
       latencyMs: Number(item.latencyMs ?? 999),
@@ -2639,6 +2672,46 @@ function normalizeReplenishmentKeys(keys) {
       expiresAt: String(item.expiresAt || ''),
     }))
     .filter((item) => item.value);
+}
+
+function normalizeSourceType(value) {
+  const sourceType = String(value || '').trim().toLowerCase();
+  if (sourceType === PRIMARY_SOURCE_TYPE || sourceType === 'official' || sourceType === 'primary') return PRIMARY_SOURCE_TYPE;
+  if (sourceType === 'cpa' || sourceType === 'cpa_json' || sourceType === 'cpa_json_backup') return 'cpa_json_backup';
+  if (sourceType === 'chong' || sourceType === 'chong_backup') return 'chong_backup';
+  if (sourceType === 'manual_backup' || sourceType === 'other_backup' || sourceType === 'backup') return 'manual_backup';
+  return PRIMARY_SOURCE_TYPE;
+}
+
+function normalizeRiskStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'approved' || status === 'pass' || status === 'allowed') return 'approved';
+  if (status === 'blocked' || status === 'rejected' || status === 'disabled') return 'blocked';
+  return 'quarantined';
+}
+
+function sanitizeRiskNote(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+}
+
+function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted }) {
+  const normalizedSourceType = normalizeSourceType(sourceType);
+  const normalizedRiskStatus = normalizeRiskStatus(riskStatus);
+  if (normalizedRiskStatus !== 'approved') {
+    return false;
+  }
+  if (normalizedSourceType === PRIMARY_SOURCE_TYPE) {
+    return true;
+  }
+  return BACKUP_SOURCE_TYPES.has(normalizedSourceType) && Boolean(backupRiskAccepted);
+}
+
+function isCredentialRouteApproved(credential) {
+  return isSourceRouteApproved({
+    sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
+    riskStatus: credential.riskStatus || 'approved',
+    backupRiskAccepted: credential.backupRiskAccepted,
+  });
 }
 
 function normalizeModels(models, options = {}) {
@@ -2670,6 +2743,10 @@ function upsertSupplierProfile(data, profile) {
       modelGroup: profile.modelGroup || 'All',
       cardType: profile.cardType || profile.pool,
       expiresAt: profile.expiresAt || '',
+      sourceType: profile.sourceType || PRIMARY_SOURCE_TYPE,
+      riskStatus: profile.riskStatus || 'approved',
+      backupRiskAccepted: Boolean(profile.backupRiskAccepted),
+      riskNote: sanitizeRiskNote(profile.riskNote || ''),
       models: profile.models,
       connectionPath: profile.connectionPath || 'direct',
       createdAt: profile.updatedAt,
@@ -2682,6 +2759,10 @@ function upsertSupplierProfile(data, profile) {
   source.modelGroup = profile.modelGroup || source.modelGroup || 'All';
   source.cardType = profile.cardType || source.cardType || profile.pool;
   source.expiresAt = profile.expiresAt || source.expiresAt || '';
+  source.sourceType = profile.sourceType || source.sourceType || PRIMARY_SOURCE_TYPE;
+  source.riskStatus = profile.riskStatus || source.riskStatus || 'approved';
+  source.backupRiskAccepted = Boolean(profile.backupRiskAccepted);
+  source.riskNote = sanitizeRiskNote(profile.riskNote || source.riskNote || '');
   source.proxyBaseUrl = profile.proxyBaseUrl || '';
   source.routeBaseUrl = profile.routeBaseUrl || profile.baseUrl;
   source.models = profile.models;
@@ -2976,6 +3057,7 @@ function buildGatewayModels(data, request) {
       .filter((credential) => allowedPools.includes(credential.pool))
       .filter((credential) => credential.enabled)
       .filter((credential) => credential.status === 'healthy')
+      .filter(isCredentialRouteApproved)
       .filter((credential) => Number(credential.quotaRemaining || 0) > 0)
       .filter((credential) => credentialMatchesModelGroup(credential, '', userKey.modelGroup))
       .flatMap((credential) => credential.models || []),
@@ -3000,6 +3082,7 @@ function availableModelsForCustomer(data, user, key, requestedModel = '') {
     .filter((credential) => allowedPools.includes(credential.pool))
     .filter((credential) => credential.enabled)
     .filter((credential) => credential.status === 'healthy')
+    .filter(isCredentialRouteApproved)
     .filter((credential) => Number(credential.quotaRemaining || 0) > 0)
     .filter((credential) => credentialMatchesModelGroup(credential, '', key.modelGroup))
     .flatMap((credential) => credential.models || [])
@@ -3175,7 +3258,7 @@ function buildChannelChecks(data) {
         checkedAt: '',
         status: credential.status,
       };
-      const isHealthy = credential.enabled && credential.status === 'healthy';
+      const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
       current.total += 1;
       current.healthy += isHealthy ? 1 : 0;
       if (isHealthy) {
@@ -3286,7 +3369,7 @@ function buildInventorySummary(data) {
       nearestExpiresAt: '',
     };
     current.totalKeys += 1;
-    if (credential.enabled && credential.status === 'healthy') {
+    if (credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential)) {
       current.healthyKeys += 1;
       current.quotaRemaining += Number(credential.quotaRemaining || 0);
     }
@@ -3373,6 +3456,10 @@ function sanitizeCredential(credential) {
     pool: credential.pool,
     modelGroup: credential.modelGroup || 'All',
     cardType: credential.cardType || credential.pool,
+    sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
+    riskStatus: credential.riskStatus || 'approved',
+    backupRiskAccepted: Boolean(credential.backupRiskAccepted),
+    riskNote: credential.riskNote || '',
     baseUrl: credential.baseUrl,
     connectionPath: credential.connectionPath || 'direct',
     models: credential.models,

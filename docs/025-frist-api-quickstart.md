@@ -46,6 +46,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 - 人工入账: 按用户邮箱确认日卡、月卡或余额充值。
 - 补号助手: 可直接粘贴订单详情，也可手动输入请求地址、可选代理地址、池子、模型、价格文本和一批上游 Key。
+- 备用渠道: CPA JSON、chong 和其他人工备用渠道只能在管理端登记；默认进入隔离态，必须人工核验并勾选确认后才会进入路由。
 - 订单清洗: 自动识别请求地址、卡密、日卡/月卡/不限时、额度、数量、创建时间、到期时间、模型、认证字段、认证前缀和额外请求头。
 - 自动探测: 同一请求地址优先探测一次模型列表；每枚 Key 做最低成本健康检查，图片模型会走 `/images/generations` 探测，不再误用聊天接口。
 - fallback 探测: 上游不支持 `/models` 时，按内置模型清单逐个低成本探测，只写入可用模型。
@@ -108,7 +109,7 @@ http://127.0.0.1:3180/admin.html
 make frist-api-test
 ```
 
-当前回归覆盖 100 条，包括:
+当前回归覆盖 102 条，包括:
 
 - 用户注册、登录、改密、验证码挑战、认证限流、充值申请、管理员入账、兑换码、创建 Key、开启/关闭 Key 和 CC Switch 导入。
 - 广场模型对话、`5.5` / `image2` 别名清洗、广场连通实测、图片生成模型路由、图片模型补号探测、模型消耗分布、服务可用性、模型广场和使用教程页面接线。
@@ -120,6 +121,7 @@ make frist-api-test
 - 用户端无左侧导航、无 sticky、无旧版高密度分组文字。
 - 公开 HTML 初始值和游客 Dashboard 不闪现演示套餐、演示金额或演示用户。
 - 管理员一次性身份码升级、管理端隐藏入口、订单文本清洗、认证字段清洗、代理择优、fallback 模型探测、价格文本扣费。
+- CPA JSON/chong 备用渠道人工风控: 隔离态不出现在 `/v1/models`，不触发上游调用；人工放行后才可作为备用库存路由。
 - 日卡自动切换、会话粘滞、故障切换上下文保留、流式 SSE 透传。
 - 图片生成请求使用同一套用户 Key、日卡库存、上游故障切换和扣费链路。
 - OpenCode `/openai/chat/completions` 前缀路由、Chat Completions 到 Responses 降级、OpenCode `models` 对象映射、可复制 provider 片段，以及 Codex/OpenCode 完整模型清单导出。
@@ -162,6 +164,7 @@ apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE
 - 仍使用 JSON 运行数据，适合小范围验收；扩大公开前要迁移 SQLite/PostgreSQL 或 New-API fork 数据库。
 - 已有轻量验证码、认证限流和一次性管理员身份码，但未接 SMTP、找回密码、Turnstile、真实支付回调、管理员 2FA。
 - 补号探测已做低成本可用性判断、Responses fallback、直连/代理择优和认证字段清洗，但未做完整上下文上限、工具调用、流式能力和模型质量评分。
+- CPA JSON/chong 入口只做人工登记和放行，不包含 OAuth Session 提取、Refresh Token 刷新、账号池规避风控或自动化批量获取逻辑。
 - `QuantumNous/new-api` 是 AGPL-3.0，公开二开运营时必须准备源码公开入口或公开 fork。
 
 ## 下一步

@@ -5,6 +5,31 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-03] Frist-API 备用渠道人工风控入口
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `Gateway`, `Replenishment`, `docs`
+> 关联问题: HI-842
+
+### 变更内容
+- 备用渠道: 管理端补号新增 `CPA JSON 备用渠道`、`chong 备用渠道` 和其他人工备用渠道类型，只作为库存登记和应急入口。
+- 风险放行: 备用渠道默认写入隔离态，必须管理员选择已人工核验并勾选路由确认后，才会变成健康可路由库存。
+- 路由保护: `/v1/models`、用户导入模型清单、广场和实际网关调用只使用已放行库存；隔离或禁止状态不会访问上游。
+- JSON 入口: 管理端 Key 列表支持粘贴 JSON 数组，便于人工导入已合规确认的 API 兼容凭证；不实现 OAuth Token 抓取、批量刷新或绕过风控逻辑。
+- 隐私边界: 用户端 Dashboard 不暴露 `cpa_json_backup`、`chong_backup`、风险备注或上游来源字段。
+- 验证结果: Frist-API `npm test` 扩展到 102 条，覆盖备用渠道隔离、人工放行、图片生成和广场连通入口。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 增加渠道类型、风险状态、人工确认字段和路由过滤
+- `apps/frist-api/admin.html` — 管理端新增备用渠道类型、风险状态、人工确认和风险备注入口
+- `apps/frist-api/src/admin.js` — 提交/展示备用渠道风险字段，并支持 JSON 数组粘贴
+- `apps/frist-api/src/businessFlow.js` — 业务流补齐备用渠道隔离/放行规则
+- `apps/frist-api/tests/server.test.mjs` — 覆盖 CPA JSON 隔离和 chong 人工放行后的路由行为
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖管理端入口接线和备用渠道状态机
+- `docs/024-frist-api-operator-runbook.md` — 增加备用渠道人工风控操作边界
+- `docs/025-frist-api-quickstart.md` — 同步管理端备用渠道和测试覆盖说明
+- `docs/031-command-registry.md` — 登记备用渠道风险字段入口
+- `docs/060-health.md` — 登记 HI-842
+
 ## [2026-05-03] Frist-API 广场 5.5/image2 连通修复
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `Gateway`, `Playground`, `Replenishment`, `docs`
