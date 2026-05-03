@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-03] Frist-API 新余额站公网真测与图片广场优化
+> 领域: `frontend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Playground`, `Gateway`, `docs`
+> 关联问题: HI-845
+
+### 变更内容
+- 上游切换: 接入新的授权余额站 `/v1` 上游，并保留 CPA JSON/chong 仅作为人工风控备用入口。
+- 公网实测: 通过裸 IP 网关完成 `/v1/models`、`gpt-5.5` Chat Completions 和 `gpt-image-2` Images 真请求，图片响应返回有效 1024x1024 PNG。
+- 广场优化: 用户端广场生图默认带 `quality: low`、`output_format: png` 和 `n: 1`，让低带宽服务器上的图片连通测试更稳定。
+- 验证结果: Frist-API 本地回归保持 104 条通过，腾讯云容器 `frist-api-server` 处于 healthy 状态。
+
+### 文件变更
+- `apps/frist-api/src/app.js` — 广场图片请求默认使用轻量 PNG 参数
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场图片请求参数接线
+- `docs/002-changelog.md` — 记录新余额站公网真测和广场优化
+- `docs/025-frist-api-quickstart.md` — 同步图片广场实测口径
+- `docs/060-health.md` — 登记 HI-845
+
 ## [2026-05-03] Frist-API 余额站上游与工作台首页适配
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
 > 影响模块: `Frist-API`, `Gateway`, `Replenishment`, `Workbench`, `docs`

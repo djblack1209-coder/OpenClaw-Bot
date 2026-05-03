@@ -15,7 +15,7 @@
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
 | 测试 | ✅ 1488 passed, 2 skipped, 0 failed |
-| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮已补齐授权余额站根地址自动切 `/v1`、2xx 非 JSON 响应拦截、无域名 HTTP 验收开关透传和工作台式首页；CPA JSON/chong 仍只作为人工风险审核备用入口；腾讯云 `/opt/frist-api` 部署状态为 `frist-api-server` healthy，公网冒烟通过；本地 `npm test` 为 104/104 通过；旧公网真实上游已禁用，待接入新余额站上游后重新验证 `gpt-5.5` / `gpt-image-2` 真生成；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
+| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮已补齐授权余额站根地址自动切 `/v1`、2xx 非 JSON 响应拦截、无域名 HTTP 验收开关透传、工作台式首页和广场轻量 PNG 生图参数；CPA JSON/chong 仍只作为人工风险审核备用入口；腾讯云 `/opt/frist-api` 部署状态为 `frist-api-server` healthy，公网 `gpt-5.5` 文本和 `gpt-image-2` 图片真测通过；本地 `npm test` 为 104/104 通过；旧公网真实上游已禁用，新授权余额站 `/v1` 已接入；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
 | 日志目录 | ✅ 784KB (已清理本地日志) |
@@ -84,6 +84,7 @@
 | HI-842 | SECURITY/ARCH_LIMIT | Frist-API 需要把 CPA JSON 和 chong 作为备用渠道人工管理，但不能默认进入生产路由；已增加渠道类型、风险状态、人工确认和隔离态路由过滤 | 2026-05-03 |
 | HI-843 | BUG | 腾讯云公网实测发现上游返回 `API key is disabled` 时，网关 503 路径会回滚库存状态，导致广场继续展示失效模型；已改为保留失败状态并让模型清单自动下线 | 2026-05-03 |
 | HI-844 | BUG/UX | 授权余额站上游根地址会返回网站 HTML 壳，旧补号探测可能把 2xx HTML 当成健康或额度错误；已改为根地址失败后自动尝试 `/v1`、校验 OpenAI 兼容 JSON，并把首页改为控制台工作台布局 | 2026-05-03 |
+| HI-845 | UX/AI_POOL | 新余额站 `gpt-image-2` 真请求耗时 40-110 秒，广场默认图片参数过重容易放大公网等待；已改为轻量 PNG 请求并完成裸 IP 公网图片真测 | 2026-05-03 |
 
 ---
 
