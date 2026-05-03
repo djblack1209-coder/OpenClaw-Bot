@@ -124,6 +124,31 @@
               </select>
             </label>
             <label>
+              渠道类型
+              <select data-admin-source-type>
+                <option value="authorized">授权供应商 / 自有额度</option>
+                <option value="cpa_json_backup">CPA JSON 备用渠道</option>
+                <option value="chong_backup">chong 备用渠道</option>
+                <option value="manual_backup">其他人工备用渠道</option>
+              </select>
+            </label>
+            <label>
+              风险状态
+              <select data-admin-risk-status>
+                <option value="approved">已人工核验，可路由</option>
+                <option value="quarantined">待人工核验，先隔离</option>
+                <option value="blocked">禁止路由</option>
+              </select>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" data-admin-backup-risk-accepted />
+              <span>备用渠道已完成合规与风险判断，允许进入路由</span>
+            </label>
+            <label>
+              风险备注
+              <textarea data-admin-risk-note rows="3" placeholder="记录人工判断依据、来源责任人、可用范围和复核时间。"></textarea>
+            </label>
+            <label>
               支持模型
               <textarea data-admin-models rows="4" placeholder="claude-opus-4-6-thinking-c&#10;gpt-5.5"></textarea>
             </label>
@@ -156,7 +181,7 @@
           <div class="admin-two-col">
             <label>
               Key 列表
-              <textarea data-admin-keys rows="10" placeholder="sk-xxx&#10;sk-yyy,900,120"></textarea>
+              <textarea data-admin-keys rows="10" placeholder="sk-xxx&#10;sk-yyy,900,120&#10;或 JSON 数组 [{&quot;value&quot;:&quot;sk-xxx&quot;,&quot;quotaRemaining&quot;:900}]"></textarea>
             </label>
             <label>
               价格文本

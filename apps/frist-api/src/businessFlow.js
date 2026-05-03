@@ -16,6 +16,8 @@ const DAY_CARD_CODES = new Map([
 ]);
 
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
+const PRIMARY_SOURCE_TYPE = 'authorized';
+const BACKUP_SOURCE_TYPES = new Set(['cpa_json_backup', 'chong_backup', 'manual_backup']);
 
 export function createBusinessStateFromDashboard(dashboard, options = {}) {
   const idFactory = options.idFactory || defaultIdFactory();
@@ -272,10 +274,25 @@ export function createReplenishmentReport({
   keyProbes = {},
   connectionProbe = {},
   pricing = {},
+  sourceType = PRIMARY_SOURCE_TYPE,
+  riskStatus,
+  backupRiskAccepted = false,
+  riskNote = '',
 }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const models = modelProbe.supported === false ? fallbackModels(modelProbe.models) : clone(modelProbe.models || []);
   const connectionPath = recommendConnectionPath(connectionProbe);
+  const normalizedSourceType = normalizeSourceType(sourceType);
+  const normalizedRiskStatus = normalizeRiskStatus(
+    riskStatus || (normalizedSourceType === PRIMARY_SOURCE_TYPE ? 'approved' : 'quarantined'),
+  );
+  const routeApproved = isSourceRouteApproved({
+    sourceType: normalizedSourceType,
+    riskStatus: normalizedRiskStatus,
+    backupRiskAccepted,
+  });
+  const credentialStatus = routeApproved ? 'healthy' : normalizedRiskStatus === 'blocked' ? 'blocked' : 'quarantined';
+  const cleanRiskNote = String(riskNote || '').replace(/\s+/g, ' ').trim().slice(0, 500);
   const keyResults = keys.map((key) => {
     const probe = keyProbes[key] || { ok: false, reason: '未检测' };
     return {
@@ -292,6 +309,10 @@ export function createReplenishmentReport({
     baseUrl: normalizedBaseUrl,
     pool,
     connectionPath,
+    sourceType: normalizedSourceType,
+    riskStatus: normalizedRiskStatus,
+    backupRiskAccepted: Boolean(backupRiskAccepted),
+    riskNote: cleanRiskNote,
     models,
     keyResults,
     credentials: keyResults
@@ -301,8 +322,12 @@ export function createReplenishmentReport({
         pool,
         baseUrl: normalizedBaseUrl,
         models,
-        enabled: true,
-        status: 'healthy',
+        sourceType: normalizedSourceType,
+        riskStatus: normalizedRiskStatus,
+        backupRiskAccepted: Boolean(backupRiskAccepted),
+        riskNote: cleanRiskNote,
+        enabled: routeApproved,
+        status: credentialStatus,
         quotaRemaining: result.quotaRemaining,
         quotaTotal: result.quotaTotal || result.quotaRemaining,
         latencyMs: result.latencyMs,
@@ -317,6 +342,10 @@ export function createReplenishmentReportFromOrderText({
   keyProbes = {},
   connectionProbe = {},
   pricing = {},
+  sourceType = PRIMARY_SOURCE_TYPE,
+  riskStatus,
+  backupRiskAccepted = false,
+  riskNote = '',
 }) {
   const parsed = parseSupplierOrderText(orderText, pricing);
   const keyValues = parsed.keys.map((key) => key.value);
@@ -344,6 +373,10 @@ export function createReplenishmentReportFromOrderText({
       ? connectionProbe
       : { direct: { ok: true, p95Ms: 999, failureRate: 0 } },
     pricing,
+    sourceType,
+    riskStatus,
+    backupRiskAccepted,
+    riskNote,
   });
 
   return {
@@ -375,6 +408,10 @@ export function applyReplenishmentReport(state, report) {
       models: report.models,
       connectionPath: report.connectionPath,
       pool: report.pool,
+      sourceType: report.sourceType || PRIMARY_SOURCE_TYPE,
+      riskStatus: report.riskStatus || 'approved',
+      backupRiskAccepted: Boolean(report.backupRiskAccepted),
+      riskNote: report.riskNote || '',
     });
   }
 
@@ -394,12 +431,13 @@ export function applyReplenishmentReport(state, report) {
 export function routeModelRequest(state, { model, pool, quotaCost }) {
   const next = cloneState(state);
   const allowedPools = arguments[1].allowedPools?.length ? arguments[1].allowedPools : [pool];
-  const candidates = [...next.credentials];
+  const candidates = next.credentials.filter(isSourceRouteApproved);
   for (const credential of candidates) {
     const compatible =
       allowedPools.includes(credential.pool) &&
       credential.enabled &&
       credential.status === 'healthy' &&
+      isSourceRouteApproved(credential) &&
       credential.models.includes(model);
     if (compatible && Number(credential.quotaRemaining || 0) < quotaCost) {
       credential.status = 'exhausted';
@@ -435,6 +473,30 @@ export function routeModelRequest(state, { model, pool, quotaCost }) {
 
 function fallbackModels(models) {
   return models?.length ? clone(models) : ['claude-opus-4-6-thinking-c', 'gpt-5.5', 'gemini-2.5-pro'];
+}
+
+function normalizeSourceType(value) {
+  const sourceType = String(value || '').trim().toLowerCase();
+  if (sourceType === PRIMARY_SOURCE_TYPE || sourceType === 'official' || sourceType === 'primary') return PRIMARY_SOURCE_TYPE;
+  if (sourceType === 'cpa' || sourceType === 'cpa_json' || sourceType === 'cpa_json_backup') return 'cpa_json_backup';
+  if (sourceType === 'chong' || sourceType === 'chong_backup') return 'chong_backup';
+  if (sourceType === 'manual_backup' || sourceType === 'other_backup' || sourceType === 'backup') return 'manual_backup';
+  return PRIMARY_SOURCE_TYPE;
+}
+
+function normalizeRiskStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'approved' || status === 'pass' || status === 'allowed') return 'approved';
+  if (status === 'blocked' || status === 'rejected' || status === 'disabled') return 'blocked';
+  return 'quarantined';
+}
+
+function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted }) {
+  const normalizedSourceType = normalizeSourceType(sourceType);
+  const normalizedRiskStatus = normalizeRiskStatus(riskStatus || 'approved');
+  if (normalizedRiskStatus !== 'approved') return false;
+  if (normalizedSourceType === PRIMARY_SOURCE_TYPE) return true;
+  return BACKUP_SOURCE_TYPES.has(normalizedSourceType) && Boolean(backupRiskAccepted);
 }
 
 function normalizeDate(value) {

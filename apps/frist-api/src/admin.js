@@ -12,6 +12,7 @@ function init() {
   document.querySelector('[data-admin-replenish]').addEventListener('click', replenish);
   document.querySelector('[data-admin-refresh]').addEventListener('click', loadInventory);
   document.querySelector('[data-admin-pricing-save]').addEventListener('click', savePricing);
+  document.querySelector('[data-admin-source-type]').addEventListener('change', applySourceTypeDefaults);
   loadInventory().catch((error) => setMessage(error.message));
   loadPricing().catch((error) => setMessage(error.message));
 }
@@ -27,18 +28,21 @@ async function replenish() {
   state.adminToken = document.querySelector('[data-admin-token]').value.trim();
   window.localStorage.setItem(STORAGE_KEY, state.adminToken);
 
-  const payload = {
-    baseUrl: document.querySelector('[data-admin-base-url]').value,
-    proxyBaseUrl: document.querySelector('[data-admin-proxy-url]').value,
-    pool: document.querySelector('[data-admin-pool]').value,
-    probeMode: document.querySelector('[data-admin-probe-mode]').value,
-    models: linesFrom('[data-admin-models]'),
-    keys: parseKeyLines(document.querySelector('[data-admin-keys]').value) || undefined,
-    priceText: document.querySelector('[data-admin-price-text]').value,
-    orderText: document.querySelector('[data-admin-order-text]').value,
-  };
-
   try {
+    const payload = {
+      baseUrl: document.querySelector('[data-admin-base-url]').value,
+      proxyBaseUrl: document.querySelector('[data-admin-proxy-url]').value,
+      pool: document.querySelector('[data-admin-pool]').value,
+      probeMode: document.querySelector('[data-admin-probe-mode]').value,
+      sourceType: document.querySelector('[data-admin-source-type]').value,
+      riskStatus: document.querySelector('[data-admin-risk-status]').value,
+      backupRiskAccepted: document.querySelector('[data-admin-backup-risk-accepted]').checked,
+      riskNote: document.querySelector('[data-admin-risk-note]').value,
+      models: linesFrom('[data-admin-models]'),
+      keys: parseKeyLines(document.querySelector('[data-admin-keys]').value) || undefined,
+      priceText: document.querySelector('[data-admin-price-text]').value,
+      orderText: document.querySelector('[data-admin-order-text]').value,
+    };
     const result = await adminRequest('/api/admin/replenishments', {
       method: 'POST',
       body: payload,
@@ -171,17 +175,18 @@ function renderInventory(credentials) {
       (credential) => `
         <article class="inventory-row">
           <div>
-            <strong>${credential.keyPreview}</strong>
-            <span>${credential.baseUrl}</span>
+            <strong>${escapeHtml(credential.keyPreview)}</strong>
+            <span>${escapeHtml(credential.baseUrl)}</span>
           </div>
           <span class="status-pill status-pill--${credential.status === 'healthy' ? 'healthy' : 'down'}">
             ${statusText(credential.status)}
           </span>
           <div>
-            <b>${credential.pool}</b>
+            <b>${escapeHtml(credential.pool)}</b>
             <small>${credential.quotaRemaining} · ${credential.latencyMs}ms · ${connectionText(credential.connectionPath)}</small>
+            <small>${sourceTypeText(credential.sourceType)} · ${riskText(credential)}</small>
           </div>
-          <code>${credential.models.join(', ')}</code>
+          <code>${escapeHtml(credential.models.join(', '))}</code>
         </article>
       `,
     )
@@ -235,6 +240,19 @@ function renderAudit(events) {
 function parseKeyLines(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
+  if (raw.startsWith('[')) {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('Key JSON 必须是数组');
+    }
+    return parsed
+      .map((item) => (typeof item === 'string' ? { value: item } : item))
+      .map((item) => ({
+        ...item,
+        value: item.value || item.key || item.apiKey || item.api_key || item.token || '',
+      }))
+      .filter((item) => String(item.value || '').trim());
+  }
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -259,6 +277,8 @@ function linesFrom(selector) {
 function statusText(status) {
   if (status === 'healthy') return '可用';
   if (status === 'exhausted') return '已耗尽';
+  if (status === 'quarantined') return '隔离';
+  if (status === 'blocked') return '禁止';
   return '不可用';
 }
 
@@ -268,6 +288,43 @@ function connectionText(path) {
 
 function setMessage(message) {
   document.querySelector('[data-admin-message]').textContent = message;
+}
+
+function applySourceTypeDefaults() {
+  const sourceType = document.querySelector('[data-admin-source-type]').value;
+  const riskStatus = document.querySelector('[data-admin-risk-status]');
+  const backupAccepted = document.querySelector('[data-admin-backup-risk-accepted]');
+  if (sourceType === 'authorized') {
+    riskStatus.value = 'approved';
+    backupAccepted.checked = false;
+    return;
+  }
+  riskStatus.value = 'quarantined';
+  backupAccepted.checked = false;
+}
+
+function sourceTypeText(sourceType) {
+  if (sourceType === 'cpa_json_backup') return 'CPA JSON 备用';
+  if (sourceType === 'chong_backup') return 'chong 备用';
+  if (sourceType === 'manual_backup') return '其他备用';
+  return '授权/自有';
+}
+
+function riskText(credential) {
+  const status = credential.riskStatus === 'approved' ? '已核验' : credential.riskStatus === 'blocked' ? '已禁止' : '待核验';
+  if (credential.sourceType !== 'authorized' && credential.riskStatus === 'approved' && !credential.backupRiskAccepted) {
+    return '已核验但未确认路由';
+  }
+  return status;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 init();

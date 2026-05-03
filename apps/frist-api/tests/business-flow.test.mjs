@@ -209,6 +209,46 @@ describe('Frist-API management replenishment chain', () => {
     assert.equal(report.priceDrafts[0].status, 'needs_admin_confirmation');
   });
 
+  it('keeps backup replenishment reports quarantined until manual approval is explicit', () => {
+    const quarantined = createReplenishmentReport({
+      baseUrl: 'https://cpa-backup.example.com/v1',
+      keys: ['sk-cpa-json'],
+      pool: 'day',
+      sourceType: 'cpa_json_backup',
+      riskStatus: 'quarantined',
+      backupRiskAccepted: false,
+      riskNote: '只登记，不路由',
+      modelProbe: { supported: true, models: ['gpt-5.5'] },
+      keyProbes: {
+        'sk-cpa-json': { ok: true, quotaRemaining: 900, latencyMs: 220 },
+      },
+      connectionProbe: {
+        direct: { ok: true, p95Ms: 300, failureRate: 0.01 },
+      },
+    });
+    assert.equal(quarantined.credentials[0].sourceType, 'cpa_json_backup');
+    assert.equal(quarantined.credentials[0].status, 'quarantined');
+    assert.equal(quarantined.credentials[0].enabled, false);
+
+    const approved = createReplenishmentReport({
+      baseUrl: 'https://chong-backup.example.com/v1',
+      keys: ['sk-chong-backup'],
+      pool: 'day',
+      sourceType: 'chong_backup',
+      riskStatus: 'approved',
+      backupRiskAccepted: true,
+      modelProbe: { supported: true, models: ['gpt-5.5'] },
+      keyProbes: {
+        'sk-chong-backup': { ok: true, quotaRemaining: 900, latencyMs: 180 },
+      },
+      connectionProbe: {
+        direct: { ok: true, p95Ms: 260, failureRate: 0.01 },
+      },
+    });
+    assert.equal(approved.credentials[0].status, 'healthy');
+    assert.equal(approved.credentials[0].enabled, true);
+  });
+
   it('applies replenishment and automatically skips exhausted day-card credentials on routing', () => {
     let state = createBusinessStateFromDashboard(dashboardSeed, {
       idFactory: createIds(['cred-1', 'cred-2']),
@@ -602,6 +642,10 @@ describe('Frist-API page business wiring', () => {
       'data-admin-credit',
       'data-admin-base-url',
       'data-admin-proxy-url',
+      'data-admin-source-type',
+      'data-admin-risk-status',
+      'data-admin-backup-risk-accepted',
+      'data-admin-risk-note',
       'data-admin-order-text',
       'data-admin-parse-order',
       'data-admin-inventory-summary',

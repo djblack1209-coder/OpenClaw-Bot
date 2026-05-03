@@ -1660,6 +1660,121 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('keeps CPA JSON and chong backup sources behind manual risk approval', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        upstreamCalls.push({
+          url: String(url),
+          authorization: options.headers?.Authorization || options.headers?.authorization,
+        });
+        return jsonResponse(200, {
+          id: 'chatcmpl-backup-ok',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'backup ok' } }],
+        });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('backup-risk@example.com');
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '备用渠道 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+
+      const quarantined = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://backup.example.com/v1',
+          pool: 'day',
+          probeMode: 'trusted',
+          sourceType: 'cpa_json_backup',
+          riskStatus: 'quarantined',
+          backupRiskAccepted: false,
+          riskNote: '人工未放行，只登记备用库存',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-cpa-risk', quotaRemaining: 900, quotaTotal: 900 }],
+        },
+      });
+      assert.equal(quarantined.status, 200);
+      assert.equal(quarantined.json.credentials[0].sourceType, 'cpa_json_backup');
+      assert.equal(quarantined.json.credentials[0].riskStatus, 'quarantined');
+      assert.equal(quarantined.json.credentials[0].status, 'quarantined');
+      assert.equal(quarantined.json.credentials[0].enabled, false);
+
+      const hiddenModels = await fixture.request('/v1/models', {
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+      });
+      assert.equal(hiddenModels.status, 200);
+      assert.deepEqual(hiddenModels.json.data, []);
+
+      const blockedGateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      assert.equal(blockedGateway.status, 503);
+      assert.equal(upstreamCalls.length, 0);
+
+      const approved = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://backup.example.com/v1',
+          pool: 'day',
+          probeMode: 'trusted',
+          sourceType: 'chong_backup',
+          riskStatus: 'approved',
+          backupRiskAccepted: true,
+          riskNote: '人工确认只作为备用渠道',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-chong-approved', quotaRemaining: 900, quotaTotal: 900 }],
+        },
+      });
+      assert.equal(approved.status, 200);
+      assert.equal(approved.json.credentials[0].sourceType, 'chong_backup');
+      assert.equal(approved.json.credentials[0].riskStatus, 'approved');
+      assert.equal(approved.json.credentials[0].status, 'healthy');
+      assert.equal(approved.json.credentials[0].enabled, true);
+
+      const visibleModels = await fixture.request('/v1/models', {
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+      });
+      assert.deepEqual(visibleModels.json.data.map((item) => item.id), ['gpt-5.5']);
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      assert.equal(gateway.status, 200);
+      assert.equal(upstreamCalls.length, 1);
+      assert.equal(upstreamCalls[0].authorization, 'Bearer sk-chong-approved');
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(JSON.stringify(dashboard.json).includes('cpa_json_backup'), false);
+      assert.equal(JSON.stringify(dashboard.json).includes('chong_backup'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('uses expiring stock first and falls back to unlimited inventory when day cards run out', async () => {
     const upstreamCalls = [];
     const fixture = await createServerFixture({
