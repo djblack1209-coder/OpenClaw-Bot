@@ -1325,11 +1325,7 @@ async function handlePlaygroundSend() {
     if (isImageModel(state.playgroundModel)) {
       const result = await serverClient.generateImage({
         apiKey: key.secret,
-        body: {
-          model: state.playgroundModel,
-          prompt,
-          size: '1024x1024',
-        },
+        body: buildImageRequestBody(state.playgroundModel, prompt),
       });
       state.generatedImage = firstImageSource(result);
       state.playgroundMessages.push(
@@ -1389,11 +1385,7 @@ async function handlePlaygroundConnectivityTest() {
     if (isImageModel(state.playgroundModel)) {
       const result = await serverClient.generateImage({
         apiKey: key.secret,
-        body: {
-          model: state.playgroundModel,
-          prompt: prompt || 'Frist-API 连通性测试',
-          size: '1024x1024',
-        },
+        body: buildImageRequestBody(state.playgroundModel, prompt || 'Frist-API 连通性测试'),
       });
       state.generatedImage = firstImageSource(result);
       resultText = state.generatedImage ? '图片已返回' : '上游成功但无图片地址';
@@ -1712,6 +1704,18 @@ function activeApiKey() {
 
 function isImageModel(model) {
   return /image|dall|gpt-image/i.test(String(model || ''));
+}
+
+// 广场生图默认走轻量 PNG，避免低带宽公网验收被慢图拖垮。
+function buildImageRequestBody(model, prompt) {
+  return {
+    model,
+    prompt,
+    size: '1024x1024',
+    quality: 'low',
+    output_format: 'png',
+    n: 1,
+  };
 }
 
 function assistantTextFromPayload(payload) {
