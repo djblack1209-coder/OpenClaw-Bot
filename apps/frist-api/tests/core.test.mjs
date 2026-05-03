@@ -590,13 +590,13 @@ describe('Frist-API user dashboard boundaries', () => {
     }
   });
 
-  it('uses an Apple-like customer homepage with one primary action and minimal fixed metrics', () => {
+  it('uses an inroi-style customer workbench with compact navigation and fixed metrics', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
     for (const required of [
-      'data-hero-flow',
-      'data-site-hero',
-      'data-hero-aside',
+      'data-workspace-layout',
+      'data-workspace-rail',
+      'data-console-board',
       'data-focus-metrics',
       'data-hero-primary-import',
       'data-action-dock',
@@ -607,10 +607,10 @@ describe('Frist-API user dashboard boundaries', () => {
     }
 
     const focusMetricCount = (userHtml.match(/class="focus-metric/g) || []).length;
-    assert.ok(focusMetricCount <= 3, '用户首屏最多固定展示 3 个核心指标');
+    assert.ok(focusMetricCount <= 4, '用户首屏最多固定展示 4 个核心指标');
     assert.equal((userHtml.match(/data-hero-primary-import/g) || []).length, 1, '首屏只保留一个主行动入口');
     assert.equal(userHtml.includes('Commercial API Gateway'), true, '首屏需要保留商业化品牌信号');
-    assert.equal(userHtml.includes('自动切换最强可用模型'), true, '首屏主叙事应聚焦模型导入价值');
+    assert.equal(userHtml.includes('Workbench'), true, '首屏需要变成操作工作台而不是营销大横幅');
     assert.equal(userHtml.includes('月卡 Pro'), false, '公开页面初始 HTML 不应该闪现演示套餐');
     assert.equal(userHtml.includes('¥428.90'), false, '公开页面初始 HTML 不应该闪现演示消耗金额');
     assert.equal(userHtml.includes('>DJ<'), false, '公开页面初始 HTML 不应该闪现演示用户缩写');
@@ -635,16 +635,16 @@ describe('Frist-API user dashboard boundaries', () => {
     assert.equal(combined.includes('claude-haiku-4-5-20251001'), false, '用户页面不能展示历史非规范模型名');
   });
 
-  it('removes the customer sidebar and keeps navigation inside direct action buttons', () => {
+  it('uses a compact customer rail for the main workbench routes', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    const actionDock = userHtml.match(/<section class="action-dock"[\s\S]*?<\/section>/)?.[0] || '';
+    const actionDock = userHtml.match(/<nav class="action-dock workspace-nav"[\s\S]*?<\/nav>/)?.[0] || '';
 
-    assert.equal(userHtml.includes('side-nav'), false, '用户端不再保留顶部或左侧导航栏');
-    for (const required of ['API Key', '充值', 'CC Switch']) {
-      assert.equal(actionDock.includes(required), true, `${required} 应该保留为首屏直接按钮`);
+    assert.equal(userHtml.includes('data-workspace-rail'), true, '用户端应该保留紧凑工作台导航');
+    for (const required of ['仪表盘', 'API Key', '充值', 'CC Switch', '广场']) {
+      assert.equal(actionDock.includes(required), true, `${required} 应该保留为工作台直接入口`);
     }
 
-    assert.match(actionDock, /class="is-priority-path"[\s\S]*?CC Switch/, '导入入口应该成为任务轨道里的主路径');
+    assert.match(actionDock, /class="is-priority-path"[\s\S]*?CC Switch/, '导入入口应该成为工作台里的主路径');
 
     for (const link of actionDock.match(/<a [^>]+>/g) || []) {
       assert.match(link, /href="#[^"]+"/, '每个快捷入口都要有 hash 跳转');
@@ -668,8 +668,9 @@ describe('Frist-API user dashboard boundaries', () => {
       'renderClientConfig',
       'data-copy-auth-json',
       'data-copy-config-toml',
-      'hero-flow',
-      'hero-aside',
+      'workspace-layout',
+      'workspace-rail',
+      'console-metrics',
       'panelReveal',
       '@media (prefers-reduced-motion: reduce)',
     ]) {

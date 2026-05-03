@@ -1625,6 +1625,82 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('routes root supplier URLs through /v1 when the root path returns a website shell', async () => {
+    const probeUrls = [];
+    const gatewayUrls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        const targetUrl = String(url);
+        const body = options.body ? JSON.parse(options.body) : {};
+        probeUrls.push(targetUrl);
+        if (targetUrl === 'https://supplier.example.com/chat/completions') {
+          return textResponse(200, '<!doctype html><main>balance dashboard</main>');
+        }
+        if (targetUrl === 'https://supplier.example.com/v1/chat/completions') {
+          if (body.messages?.[0]?.content === 'customer request') {
+            gatewayUrls.push(targetUrl);
+          }
+          return jsonResponse(200, {
+            id: 'chatcmpl-v1',
+            object: 'chat.completion',
+            model: body.model || 'gpt-5.5',
+            choices: [{ message: { role: 'assistant', content: 'ok' } }],
+            usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+          });
+        }
+        return jsonResponse(404, { error: { message: 'not found' } });
+      },
+    });
+
+    try {
+      const replenished = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com',
+          pool: 'unlimited',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-root-html', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      });
+      assert.equal(replenished.status, 200);
+      assert.equal(replenished.json.credentials[0].status, 'healthy');
+      assert.equal(replenished.json.credentials[0].lastProbeStatus, 'chat_probe_ok');
+      assert.deepEqual(probeUrls.slice(0, 2), [
+        'https://supplier.example.com/chat/completions',
+        'https://supplier.example.com/v1/chat/completions',
+      ]);
+
+      const cookie = await fixture.createVerifiedCustomer('root-v1-route@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '根路径自愈 Key', modelGroup: 'OpenAI' },
+      });
+
+      const response = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'customer request' }],
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.json.choices[0].message.content, 'ok');
+      assert.deepEqual(gatewayUrls, ['https://supplier.example.com/v1/chat/completions']);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('aggregates customer channel checks by model instead of exposing one card per upstream key', async () => {
     const fixture = await createServerFixture();
 
@@ -2742,6 +2818,13 @@ function jsonResponse(status, body) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
+  });
+}
+
+function textResponse(status, body, contentType = 'text/html') {
+  return new Response(body, {
+    status,
+    headers: { 'content-type': contentType },
   });
 }
 
