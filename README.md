@@ -63,8 +63,8 @@ OpenClaw Bot/
 - `docs/001-project-map.md`：项目全景与模块说明
 - `docs/060-health.md`：已知问题与技术债
 - `docs/002-changelog.md`：完整变更历史
-- `docs/042-full-audit-plan.md`：全量审计总方案
-- `docs/029-visual-audit-prompt.md`：OpenClaw APP 全量视觉级审计提示词
+- `docs/024-frist-api-operator-runbook.md`：Frist-API 运营、支付和价格管理手册
+- `docs/025-frist-api-quickstart.md`：Frist-API 快速启动和当前部署入口
 
 ## License
 

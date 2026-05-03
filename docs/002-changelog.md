@@ -1,15 +1,83 @@
 # CHANGELOG
 
-> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。详见 `docs/043-update-protocol.md`。
+> 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。文档更新触发规则以 `AGENTS.md` 和 `docs/003-docs-index.md` 为准。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
-## 按月查看
-
-- [2026-04 月变更记录](090-changelog-archive-2026-04.md)
-
----
-
 ## 最近更新（2026-05）
+
+## [2026-05-03] Frist-API 广场 5.5/image2 连通修复
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Gateway`, `Playground`, `Replenishment`, `docs`
+> 关联问题: HI-841
+
+### 变更内容
+- 方案收口: 保留 Frist-API 商业展示层 + New-API 内网路由层的解耦思路，但明确生产库存只接授权供应商、自有额度或明确可转售额度，不把批量 OAuth Session / 来路不明 JSON 号源当生产方案。
+- 模型别名: 将广场和补号里常见的 `5.5`、`gpt5.5`、`gpt-55` 统一清洗为 `gpt-5.5`，将 `image2`、`gpt-image2`、`gpt_image_2` 统一清洗为 `gpt-image-2`。
+- 图片探测: 补号严格探测遇到图片模型时直接请求 `/images/generations`，避免用 `/chat/completions` 或 `/responses` 误判 `image2` 库存不可用。
+- 广场实测: 用户广场新增“实测连通”按钮和状态摘要，能直接展示当前模型的成功/失败、耗时和返回结果；图片模型会展示生成结果。
+- 管理摘要: 管理端脱敏库存返回 `lastProbeStatus` / `lastProbeReason`，便于确认图片库存是 `image_probe_ok` 而不是信任写入。
+- 验证结果: 新增回归覆盖 `5.5` / `image2` 别名、图片模型补号探测和广场实测入口；Frist-API 测试集扩展到 100 条。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — 增加 `5.5` / `image2` 等广场常用别名归一化
+- `apps/frist-api/server/server.js` — 新增图片模型探测路径、图片默认候选模型和脱敏探测状态返回
+- `apps/frist-api/src/app.js` — 新增广场连通实测状态、按钮逻辑和耗时摘要
+- `apps/frist-api/index.html` — 新增广场连通实测按钮和状态展示位置
+- `apps/frist-api/src/styles.css` — 新增广场实测状态样式
+- `apps/frist-api/tests/core.test.mjs` — 覆盖广场模型别名清洗
+- `apps/frist-api/tests/server.test.mjs` — 覆盖 `image2` 网关归一化和图片模型补号探测
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场连通实测入口接线
+- `docs/024-frist-api-operator-runbook.md` — 明确授权库存边界和图片模型探测规则
+- `docs/025-frist-api-quickstart.md` — 同步广场实测、别名和图片探测说明
+- `docs/031-command-registry.md` — 登记广场连通实测入口
+- `docs/060-health.md` — 登记 HI-841 修复状态
+
+## [2026-05-03] 项目文档和冗余产物清理
+> 领域: `docs` | `infra`
+> 影响模块: `docs`, `Frist-API`, `workspace-cleanup`
+> 关联问题: HI-840
+
+### 变更内容
+- 文档压缩: 主项目 `docs/` Markdown 从 37 个压缩到 19 个，保留核心入口、操作指南、注册表、SOP 和状态文档。
+- 过时报告清理: 删除 5 月前审计/设计/归档报告、散落的 Bot 模型旧审计，以及 Frist-API 历史截图和散落测试截图。
+- Frist-API 文档收口: 腾讯云部署和公网验收要点合并进 `docs/024-frist-api-operator-runbook.md` / `docs/025-frist-api-quickstart.md`，不再单独维护临时部署报告。
+- 本地冗余清理: 清理可重建构建产物、缓存、浏览器模型缓存、运行日志和本地开发虚拟环境；仓库体积从约 2.4GB 降到约 196MB，保留业务数据库、测试、Bot 人设、Skill 文件和第三方包文档。
+- 服务器清理: 只清腾讯云上的日志、缓存、临时文件、构建缓存和 Docker 非运行对象；系统日志从 264MB 降到 176MB，不删除共享服务器的业务项目、数据库、测试代码、运行虚拟环境、浏览器登录态或 Docker 业务卷。
+- 验证结果: `apps/frist-api` 执行 `npm test`，99 passed, 0 failed；`docs/` 根目录保持 19 个 Markdown。
+
+### 文件变更
+- `docs/003-docs-index.md` — 重写为 19 个核心文档索引
+- `docs/024-frist-api-operator-runbook.md` — 合并腾讯云部署和公网验收操作要点
+- `docs/025-frist-api-quickstart.md` — 保留当前入口和本地/容器运行说明
+- `docs/060-health.md` — 登记本次冗余清理
+- `README.md` — 移除旧审计入口，指向当前 Frist-API 文档
+- `apps/openclaw/BOT_MODEL_AUDIT.md` — 删除 2026-03 旧 Bot 模型审计报告
+
+## [2026-05-02] Frist-API OpenCode 外网阻塞修复
+> 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `OpenCode`, `Gateway`, `docs`
+> 关联问题: HI-839, HI-833, HI-836
+
+### 变更内容
+- 外网复现: 用公网 Quick Tunnel 注册新用户、创建 Key、补日卡额度后复现并验证广场和 OpenCode 路由，不再只做本地冒烟。
+- 一键导入入口: CC Switch 页面把“一键导入 / 复制链接 / 导出模型清单”提前到长教程流程图之前，用户不用先读完教程才能找到主操作。
+- OpenCode 路由: 网关新增 `/openai/chat/completions`、`/v1/openai/chat/completions`、`/openai/responses`、`/v1/openai/responses` 和图片前缀别名，兼容 OpenCode/CC Switch 生成的 OpenAI 前缀路径。
+- Chat Completions 降级: 上游 Chat Completions 返回 404 或不支持时，自动把请求转换到 Responses，再把 Responses 响应转回 Chat Completions，修复 `Route /openai/chat/completions not found`。
+- 模型清单补齐: OpenCode/Codex 导入 URL、base64 配置和前端模型清单同步补 `gpt-5.4-mini`、`gpt-5.3-codex` 等兼容字段，避免外部 GUI 只显示默认 `gpt-5.5`。
+- OpenCode 桌面导入: `ccswitch://` 的 OpenCode `config.models` 改为 OpenCode/CC Switch 实际读取的模型对象映射，修复桌面端导入后编辑框仍只有 `gpt-5.5` 的问题。
+- 公网验证: 腾讯云 `/opt/frist-api` 已同步并重启，`frist-api-server` healthy；公网 `gpt-5.5` Chat/Responses、OpenCode 前缀 Chat、`gpt-5.4` Responses 和 OpenCode 导入模型清单均返回成功。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增 OpenCode 前缀路由、Chat Completions→Responses 降级、Responses→Chat Completions 响应转换和 Codex 模型排序
+- `apps/frist-api/index.html` — 将一键导入主操作和导出模型清单前置到长教程之前
+- `apps/frist-api/src/styles.css` — 增加一键导入主操作区域样式
+- `apps/frist-api/src/app.js` — 补齐 `gpt-5.3-codex` 前端模型强度排序
+- `apps/frist-api/src/core.js` — 补齐 `gpt-5.3-codex` 导入配置模型强度排序，并按 OpenCode 真实配置格式输出完整 `models` 映射
+- `apps/frist-api/tests/core.test.mjs` — 覆盖 OpenCode 桌面导入配置的完整模型映射
+- `apps/frist-api/tests/server.test.mjs` — 覆盖 Chat Completions 降级、OpenCode 前缀路由和完整模型清单导出
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖一键导入主操作必须位于长教程之前
+- `docs/060-health.md` — 登记 HI-839 并更新 Frist-API 当前状态
+- `docs/002-changelog.md` — 记录本次外网阻塞修复和验证结果
 
 ## [2026-05-02] Frist-API 用户闭环断点修复与价格管理
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
@@ -2675,4 +2743,4 @@
 
 ...
 
-查看完整记录请访问 [2026-04.md](changelog-archive/2026-04.md)
+2026-04 以前的详细审计附件和截图已在 2026-05-03 文档清理中移除，核心变更记录保留在本文。

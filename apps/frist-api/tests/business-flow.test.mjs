@@ -409,8 +409,12 @@ describe('Frist-API page business wiring', () => {
       'data-config-toml',
       'data-copy-auth-json',
       'data-copy-config-toml',
+      'data-opencode-config-card',
+      'data-opencode-provider-json',
+      'data-copy-opencode-config',
       'Codex',
       'OpenCode',
+      'OpenCode 完整配置',
       'OpenClaw',
       'Hermes',
     ]) {
@@ -419,9 +423,11 @@ describe('Frist-API page business wiring', () => {
 
     for (const required of [
       'renderExportModelSummary',
+      'renderOpenCodeConfig',
       'availableModelsForGroup',
       'defaultModelForGroup',
       'data-export-model-chip',
+      'openCodeProviderJson',
     ]) {
       assert.equal(appScript.includes(required), true, `${required} 应该让导入页展示完整模型清单`);
     }
@@ -449,6 +455,7 @@ describe('Frist-API page business wiring', () => {
       'data-import-family',
       'data-import-family-option="OpenAI"',
       'data-import-family-option="Claude"',
+      'data-import-primary-row',
       'data-cross-import-title',
       'data-cross-import-copy',
       'data-claude-developer-guide',
@@ -469,6 +476,10 @@ describe('Frist-API page business wiring', () => {
     ]) {
       assert.equal(switchPanel.includes(required), true, `${required} 应该解释跨模型家族导入`);
     }
+    assert.ok(
+      switchPanel.indexOf('data-import-primary-row') < switchPanel.indexOf('data-walkthrough="openai-to-claude"'),
+      '一键导入主操作应该在长教程流程图之前，避免用户先被教程淹没',
+    );
 
     for (const required of [
       'renderCrossImportGuide',
@@ -520,6 +531,8 @@ describe('Frist-API page business wiring', () => {
     for (const required of [
       'data-playground-model',
       'data-playground-send',
+      'data-playground-test',
+      'data-playground-status',
       'data-image-output',
       'data-delete-message',
       'data-clear-playground',
@@ -538,6 +551,8 @@ describe('Frist-API page business wiring', () => {
       'generateImage',
       'buildClientSetupCommands',
       'deletePlaygroundMessage',
+      'handlePlaygroundConnectivityTest',
+      'performance.now',
     ]) {
       assert.equal(combined.includes(required), true, `${required} 应该接入用户侧完整链路`);
     }

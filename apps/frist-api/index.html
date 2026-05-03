@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260502-open6" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260502-open7" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -158,6 +158,8 @@
             <div class="section-head">
               <h2>广场</h2>
               <div class="section-actions">
+                <span class="playground-status playground-status--idle" data-playground-status>等待实测</span>
+                <button class="text-action" data-playground-test type="button">实测连通</button>
                 <button class="text-action" data-clear-playground type="button">清空</button>
                 <select data-playground-model aria-label="选择模型"></select>
               </div>
@@ -326,6 +328,37 @@
                 <li data-claude-guide-step>点击一键导入，确认 Frist-API 供应商和模型。</li>
               </ol>
             </section>
+            <div class="import-primary-row" data-import-primary-row>
+              <div class="import-actions">
+                <a class="primary-action" data-open-import href="#" rel="noopener">一键导入</a>
+                <button class="secondary-action" data-copy-link type="button">复制链接</button>
+              </div>
+              <div class="link-row is-quiet">
+                <input data-import-link readonly aria-label="CC Switch 导入链接" />
+              </div>
+              <div class="export-summary" aria-label="导出模型清单">
+                <article class="export-summary-card">
+                  <span>默认模型</span>
+                  <strong data-export-default-model>gpt-5.5</strong>
+                </article>
+                <article class="export-summary-card">
+                  <span>可用模型</span>
+                  <strong data-export-model-count>0 个</strong>
+                </article>
+                <div class="export-models" data-export-models role="list" aria-label="模型列表"></div>
+              </div>
+              <article class="opencode-config-card" data-opencode-config-card hidden>
+                <div class="section-head">
+                  <div>
+                    <span class="eyebrow">OpenCode 完整配置</span>
+                    <h2>provider 片段</h2>
+                    <p>CC Switch 深链只写默认模型时，复制这段合并到 <code>~/.config/opencode/opencode.json</code> 的 <code>provider</code>。</p>
+                  </div>
+                  <button class="text-action" data-copy-opencode-config type="button">复制</button>
+                </div>
+                <pre data-opencode-provider-json>{}</pre>
+              </article>
+            </div>
             <section class="import-walkthroughs" aria-label="跨模型导入详细流程图">
               <article class="walkthrough" data-walkthrough="openai-to-claude">
                 <div class="walkthrough-head">
@@ -463,24 +496,6 @@ command = "npx"</pre>
                 </ol>
               </article>
             </section>
-            <div class="import-actions">
-              <a class="primary-action" data-open-import href="#" rel="noopener">一键导入</a>
-              <button class="secondary-action" data-copy-link type="button">复制链接</button>
-            </div>
-            <div class="link-row is-quiet">
-              <input data-import-link readonly aria-label="CC Switch 导入链接" />
-            </div>
-            <div class="export-summary" aria-label="导出模型清单">
-              <article class="export-summary-card">
-                <span>默认模型</span>
-                <strong data-export-default-model>gpt-5.5</strong>
-              </article>
-              <article class="export-summary-card">
-                <span>可用模型</span>
-                <strong data-export-model-count>0 个</strong>
-              </article>
-              <div class="export-models" data-export-models role="list" aria-label="模型列表"></div>
-            </div>
             <details class="config-details">
               <summary>手动配置</summary>
               <div class="config-grid">
@@ -505,6 +520,6 @@ command = "npx"</pre>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260502-open6"></script>
+    <script type="module" src="./src/app.js?v=20260502-open7"></script>
   </body>
 </html>

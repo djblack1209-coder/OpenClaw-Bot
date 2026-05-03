@@ -799,6 +799,225 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('falls back Chat Completions requests to upstream Responses when chat routes are missing', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        upstreamCalls.push({
+          url: String(url),
+          body: JSON.parse(options.body),
+        });
+        if (String(url).endsWith('/chat/completions')) {
+          return jsonResponse(404, {
+            error: 'Not Found',
+            message: 'Route /openai/chat/completions not found',
+          });
+        }
+        if (String(url).endsWith('/responses')) {
+          return jsonResponse(200, {
+            id: 'resp-chat-fallback',
+            object: 'response',
+            model: 'gpt-5.5',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'OK from responses fallback' }],
+              },
+            ],
+            usage: { input_tokens: 4, output_tokens: 3, total_tokens: 7 },
+          });
+        }
+        return jsonResponse(500, { error: 'unexpected upstream path' });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('chat-fallback@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Chat Fallback Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-chat-fallback-day', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 12,
+        },
+      });
+
+      assert.equal(gateway.status, 200);
+      assert.equal(gateway.json.object, 'chat.completion');
+      assert.equal(gateway.json.choices[0].message.content, 'OK from responses fallback');
+      assert.deepEqual(
+        upstreamCalls.map((call) => call.url),
+        ['https://supplier.example.com/openai/chat/completions', 'https://supplier.example.com/openai/responses'],
+      );
+      assert.deepEqual(upstreamCalls[1].body.input, [{ role: 'user', content: [{ type: 'input_text', text: 'ping' }] }]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('accepts OpenCode openai-prefixed Chat Completions gateway routes', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        upstreamCalls.push({
+          url: String(url),
+          body: JSON.parse(options.body),
+        });
+        return jsonResponse(200, {
+          id: `chatcmpl-${upstreamCalls.length}`,
+          object: 'chat.completion',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: `alias-${upstreamCalls.length}` }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
+        });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('opencode-alias@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'OpenCode Alias Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-opencode-alias-day', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      for (const path of ['/v1/openai/chat/completions', '/openai/chat/completions']) {
+        const gateway = await fixture.request(path, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token.json.key.secret}` },
+          body: {
+            model: 'gpt-5.5',
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 8,
+          },
+        });
+
+        assert.equal(gateway.status, 200);
+        assert.match(gateway.json.choices[0].message.content, /^alias-/);
+      }
+      assert.deepEqual(
+        upstreamCalls.map((call) => call.url),
+        [
+          'https://supplier.example.com/openai/chat/completions',
+          'https://supplier.example.com/openai/chat/completions',
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('skips invalid upstream credentials before returning a gateway response', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        const body = JSON.parse(options.body);
+        const auth = options.headers.authorization || '';
+        upstreamCalls.push({
+          url: String(url),
+          model: body.model,
+          keyPreview: auth.includes('bad-day') ? 'bad-day' : 'good-day',
+        });
+        if (auth.includes('bad-day')) {
+          return jsonResponse(401, { error: 'Invalid API key' });
+        }
+        return jsonResponse(200, {
+          id: 'chatcmpl-good-day',
+          object: 'chat.completion',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'healthy fallback key' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
+        });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('invalid-upstream-failover@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Invalid Upstream Failover Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [
+            { value: 'sk-bad-day', quotaRemaining: 900, latencyMs: 10 },
+            { value: 'sk-good-day', quotaRemaining: 900, latencyMs: 20 },
+          ],
+        },
+      });
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+
+      assert.equal(gateway.status, 200);
+      assert.equal(gateway.json.choices[0].message.content, 'healthy fallback key');
+      assert.deepEqual(upstreamCalls.map((call) => call.keyPreview), ['bad-day', 'good-day']);
+      assert.equal(inventory.json.credentials.find((item) => item.status === 'failed')?.status, 'failed');
+      assert.equal(inventory.json.credentials.find((item) => item.status === 'healthy')?.status, 'healthy');
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('exports the same complete model list for Codex and OpenCode import URLs', async () => {
     const fixture = await createServerFixture({ requireEmailVerification: false });
 
@@ -834,16 +1053,23 @@ describe('Frist-API public server chain', () => {
         });
         const importUrl = new URL(imported.json.url);
         const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
-        const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2'];
+        const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-5.3-codex'];
 
         assert.equal(imported.status, 200);
         assert.equal(importUrl.searchParams.get('defaultModel'), 'gpt-5.5');
         assert.deepEqual(JSON.parse(importUrl.searchParams.get('availableModels')), expectedModels);
         assert.deepEqual(JSON.parse(importUrl.searchParams.get('available_models')), expectedModels);
-        assert.deepEqual(providerConfig.provider.models, expectedModels);
-        assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
-        assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
-        assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
+        if (target === 'OpenCode') {
+          assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
+          assert.equal(providerConfig.options.baseURL, importUrl.searchParams.get('baseUrl'));
+          assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
+          assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
+        } else {
+          assert.deepEqual(providerConfig.provider.models, expectedModels);
+          assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
+          assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
+          assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
+        }
       }
     } finally {
       await fixture.close();
@@ -917,7 +1143,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/openai',
           pool: 'day',
-          models: ['gpt-image-2'],
+          models: ['image2'],
           keys: [{ value: 'sk-image-day', quotaRemaining: 900, latencyMs: 80 }],
         },
       });
@@ -926,7 +1152,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'gpt-image-2',
+          model: 'image2',
           prompt: '生成一张 Frist-API 测试图',
           size: '1024x1024',
         },
@@ -937,7 +1163,47 @@ describe('Frist-API public server chain', () => {
       assert.equal(upstreamCalls.length, 1);
       assert.equal(upstreamCalls[0].url, 'https://supplier.example.com/openai/images/generations');
       assert.equal(upstreamCalls[0].authorization, 'Bearer sk-image-day');
+      assert.equal(upstreamCalls[0].body.model, 'gpt-image-2');
       assert.equal(upstreamCalls[0].body.prompt, '生成一张 Frist-API 测试图');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('probes image-only supplier stock through the image generation endpoint', async () => {
+    const probeUrls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url) => {
+        probeUrls.push(String(url));
+        if (String(url).endsWith('/images/generations')) {
+          return jsonResponse(200, {
+            created: 1777777777,
+            data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }],
+          });
+        }
+        return jsonResponse(400, { error: { message: 'this endpoint does not support image model' } });
+      },
+    });
+
+    try {
+      const replenished = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          probeMode: 'strict',
+          models: ['image2'],
+          keys: [{ value: 'sk-image-only', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      assert.equal(replenished.status, 200);
+      assert.deepEqual(replenished.json.supplierProfile.models, ['gpt-image-2']);
+      assert.equal(replenished.json.credentials.length, 1);
+      assert.equal(replenished.json.credentials[0].status, 'healthy');
+      assert.equal(replenished.json.credentials[0].lastProbeStatus, 'image_probe_ok');
+      assert.deepEqual(probeUrls, ['https://supplier.example.com/openai/images/generations']);
     } finally {
       await fixture.close();
     }
