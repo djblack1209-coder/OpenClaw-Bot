@@ -827,6 +827,29 @@ textarea:focus {
   width: min(360px, 100%);
 }
 
+.playground-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  max-width: min(360px, 100%);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.35;
+}
+
+.playground-status--success {
+  color: var(--green);
+}
+
+.playground-status--error {
+  color: var(--red);
+}
+
+.playground-status--info {
+  color: var(--blue);
+}
+
 .playground-stage {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.44fr);
@@ -1814,6 +1837,14 @@ textarea:focus {
   gap: 10px;
 }
 
+.import-primary-row {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(18, 30, 25, 0.08);
+  border-bottom: 1px solid rgba(18, 30, 25, 0.08);
+  padding: 16px 0;
+}
+
 .export-summary {
   display: grid;
   grid-template-columns: minmax(150px, 0.8fr) minmax(130px, 0.6fr) minmax(0, 2fr);
@@ -1872,6 +1903,39 @@ textarea:focus {
 .export-model-chip.is-default {
   background: #e8f5ee;
   color: var(--green);
+}
+
+.opencode-config-card {
+  display: grid;
+  gap: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.68);
+  padding: 16px;
+  box-shadow: inset 0 0 0 1px rgba(18, 30, 25, 0.07);
+}
+
+.opencode-config-card[hidden] {
+  display: none;
+}
+
+.opencode-config-card p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.opencode-config-card pre {
+  max-height: 280px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: #111614;
+  color: #e8f5ee;
+  padding: 14px;
+  font-family: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .config-grid,

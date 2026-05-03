@@ -103,6 +103,10 @@ const state = {
   hasServerSession: false,
   importRequestId: 0,
   playgroundBusy: false,
+  playgroundConnectivity: {
+    status: 'idle',
+    text: '等待实测',
+  },
   playgroundMessageSeq: 0,
   playgroundMessages: [
     {
@@ -383,6 +387,18 @@ function renderPlayground() {
         : '发送';
   }
 
+  const testButton = document.querySelector('[data-playground-test]');
+  if (testButton) {
+    testButton.disabled = state.playgroundBusy;
+    testButton.textContent = state.playgroundBusy ? '实测中' : '实测连通';
+  }
+
+  const status = document.querySelector('[data-playground-status]');
+  if (status) {
+    status.textContent = state.playgroundConnectivity.text;
+    status.className = `playground-status playground-status--${state.playgroundConnectivity.status}`;
+  }
+
   const clearButton = document.querySelector('[data-clear-playground]');
   if (clearButton) {
     clearButton.disabled = state.playgroundMessages.length <= 1;
@@ -531,6 +547,7 @@ function sortModelsByStrength(models) {
     'gpt-image-2',
     'gpt-image-1.5',
     'gpt-image-1',
+    'gpt-5.3-codex',
     'claude-opus-4-6-thinking-c',
     'claude-opus-4-6-c',
     'claude-sonnet-4-5-c',
@@ -715,6 +732,7 @@ function renderImportLink() {
   }
 
   renderExportModelSummary(config);
+  renderOpenCodeConfig(config);
   setText('[data-key-inline-status]', state.keyEnabled ? 'Key 已开启' : 'Key 已关闭');
   document.querySelector('[data-import-link]').value = link;
   const openImport = document.querySelector('[data-open-import]');
@@ -822,6 +840,7 @@ function renderClientConfig() {
   setText('[data-auth-json]', config.authJson);
   setText('[data-config-toml]', config.configToml);
   renderExportModelSummary(config);
+  renderOpenCodeConfig(config);
 }
 
 function renderExportModelSummary(config) {
@@ -844,6 +863,15 @@ function renderExportModelSummary(config) {
       `,
     )
     .join('');
+}
+
+function renderOpenCodeConfig(config) {
+  const card = document.querySelector('[data-opencode-config-card]');
+  const output = document.querySelector('[data-opencode-provider-json]');
+  if (!card || !output) return;
+  const isOpenCode = (config?.targetSlug || '').toLowerCase() === 'opencode';
+  card.hidden = !isOpenCode;
+  output.textContent = config?.openCodeProviderJson || '{}\n';
 }
 
 async function refreshImportLinkFromServer() {
@@ -955,6 +983,12 @@ function bindStaticActions() {
     const playgroundSend = event.target.closest('[data-playground-send]');
     if (playgroundSend) {
       handlePlaygroundSend();
+      return;
+    }
+
+    const playgroundTest = event.target.closest('[data-playground-test]');
+    if (playgroundTest) {
+      handlePlaygroundConnectivityTest();
       return;
     }
 
@@ -1070,6 +1104,12 @@ function bindStaticActions() {
     const copyConfigToml = event.target.closest('[data-copy-config-toml]');
     if (copyConfigToml) {
       copyText(document.querySelector('[data-config-toml]').textContent, copyConfigToml);
+      return;
+    }
+
+    const copyOpenCodeConfig = event.target.closest('[data-copy-opencode-config]');
+    if (copyOpenCodeConfig) {
+      copyText(document.querySelector('[data-opencode-provider-json]').textContent, copyOpenCodeConfig);
       return;
     }
 
@@ -1316,6 +1356,74 @@ async function handlePlaygroundSend() {
   } catch (error) {
     state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型暂时不可用'));
     setActionMessage(error.message || '模型暂时不可用');
+  } finally {
+    state.playgroundBusy = false;
+    renderPlayground();
+  }
+}
+
+async function handlePlaygroundConnectivityTest() {
+  const promptInput = document.querySelector('[data-playground-prompt]');
+  const prompt = promptInput?.value.trim() || '';
+  const key = activeApiKey();
+  if (!key) {
+    setActionMessage('请先登录并创建 Key');
+    setActiveView('api');
+    return;
+  }
+  if (state.playgroundBusy) {
+    return;
+  }
+
+  state.playgroundBusy = true;
+  state.generatedImage = null;
+  state.playgroundConnectivity = {
+    status: 'info',
+    text: `正在实测 ${state.playgroundModel}`,
+  };
+  const startedAt = performance.now();
+  renderPlayground();
+
+  try {
+    let resultText = 'OK';
+    if (isImageModel(state.playgroundModel)) {
+      const result = await serverClient.generateImage({
+        apiKey: key.secret,
+        body: {
+          model: state.playgroundModel,
+          prompt: prompt || 'Frist-API 连通性测试',
+          size: '1024x1024',
+        },
+      });
+      state.generatedImage = firstImageSource(result);
+      resultText = state.generatedImage ? '图片已返回' : '上游成功但无图片地址';
+    } else {
+      const result = await serverClient.chatCompletion({
+        apiKey: key.secret,
+        body: {
+          model: state.playgroundModel,
+          messages: [{ role: 'user', content: prompt || '只回复 OK' }],
+          max_tokens: 16,
+          metadata: { frist_session_id: `web-connectivity-${key.id}-${state.playgroundModel}` },
+        },
+      });
+      resultText = assistantTextFromPayload(result) || 'OK';
+    }
+    const latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
+    const compactResult = resultText.length > 28 ? `${resultText.slice(0, 28)}...` : resultText;
+    state.playgroundConnectivity = {
+      status: 'success',
+      text: `${state.playgroundModel} 通过 · ${latencyMs}ms · ${compactResult}`,
+    };
+    state.playgroundMessages.push(createPlaygroundMessage('assistant', `连通实测通过：${state.playgroundModel}，${latencyMs}ms。`));
+    setActionMessage('广场连通实测通过');
+  } catch (error) {
+    state.playgroundConnectivity = {
+      status: 'error',
+      text: `${state.playgroundModel} 失败 · ${error.message || '模型暂时不可用'}`,
+    };
+    state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型暂时不可用'));
+    setActionMessage(error.message || '模型暂时不可用', 'error');
   } finally {
     state.playgroundBusy = false;
     renderPlayground();

@@ -21,7 +21,17 @@ import {
 const DEFAULT_MODEL = 'claude-opus-4-6-thinking-c';
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
 const DEFAULT_USD_TO_CNY = 7.2;
-const DEFAULT_PROBE_MODELS = ['claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c', 'gpt-5.5', 'gemini-2.5-flash'];
+const DEFAULT_PROBE_MODELS = [
+  'claude-opus-4-6-thinking-c',
+  'claude-opus-4-6-c',
+  'claude-sonnet-4-5-c',
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-image-2',
+  'gpt-5.3-codex',
+  'gemini-2.5-flash',
+];
 const DEFAULT_QUOTA_COST = 10;
 const DEFAULT_RECHARGE_PLANS = Object.freeze([
   Object.freeze({
@@ -146,6 +156,14 @@ const DEFAULT_MODEL_CATALOG = [
     available: true,
   },
   {
+    model: 'gpt-5.3-codex',
+    family: 'OpenAI',
+    tagline: 'Codex 专用代码模型',
+    context: '长上下文',
+    price: '官方同档 · 折扣结算',
+    available: true,
+  },
+  {
     model: DEFAULT_MODEL,
     family: 'Claude',
     tagline: '复杂开发和长链路推理',
@@ -168,7 +186,15 @@ const CONTENT_TYPES = new Map([
   ['.json', 'application/json; charset=utf-8'],
   ['.svg', 'image/svg+xml; charset=utf-8'],
 ]);
-const ROOT_GATEWAY_PATHS = new Set(['/chat/completions', '/responses', '/images/generations', '/messages']);
+const ROOT_GATEWAY_PATHS = new Set([
+  '/chat/completions',
+  '/openai/chat/completions',
+  '/responses',
+  '/openai/responses',
+  '/images/generations',
+  '/openai/images/generations',
+  '/messages',
+]);
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
@@ -388,37 +414,40 @@ async function handleGatewayApi({ request, response, url, store, serverOptions }
     return;
   }
 
+  const chatCompletionRouteOptions = {
+    upstreamAttempts: [
+      { upstreamPath: '/chat/completions' },
+      {
+        upstreamPath: '/responses',
+        transformRequest: chatCompletionRequestToResponses,
+        transformResponse: responsesToChatCompletionResponse,
+      },
+    ],
+  };
+  const responsesRouteOptions = {
+    upstreamAttempts: [
+      { upstreamPath: '/responses' },
+      {
+        upstreamPath: '/chat/completions',
+        transformRequest: responsesRequestToChatCompletion,
+        transformResponse: chatCompletionToResponsesResponse,
+      },
+    ],
+  };
+
   const upstreamPathByRoute = new Map([
-    ['/v1/chat/completions', { upstreamPath: '/chat/completions' }],
-    ['/chat/completions', { upstreamPath: '/chat/completions' }],
-    [
-      '/v1/responses',
-      {
-        upstreamAttempts: [
-          { upstreamPath: '/responses' },
-          {
-            upstreamPath: '/chat/completions',
-            transformRequest: responsesRequestToChatCompletion,
-            transformResponse: chatCompletionToResponsesResponse,
-          },
-        ],
-      },
-    ],
-    [
-      '/responses',
-      {
-        upstreamAttempts: [
-          { upstreamPath: '/responses' },
-          {
-            upstreamPath: '/chat/completions',
-            transformRequest: responsesRequestToChatCompletion,
-            transformResponse: chatCompletionToResponsesResponse,
-          },
-        ],
-      },
-    ],
+    ['/v1/chat/completions', chatCompletionRouteOptions],
+    ['/v1/openai/chat/completions', chatCompletionRouteOptions],
+    ['/chat/completions', chatCompletionRouteOptions],
+    ['/openai/chat/completions', chatCompletionRouteOptions],
+    ['/v1/responses', responsesRouteOptions],
+    ['/v1/openai/responses', responsesRouteOptions],
+    ['/responses', responsesRouteOptions],
+    ['/openai/responses', responsesRouteOptions],
     ['/v1/images/generations', { upstreamPath: '/images/generations' }],
+    ['/v1/openai/images/generations', { upstreamPath: '/images/generations' }],
     ['/images/generations', { upstreamPath: '/images/generations' }],
+    ['/openai/images/generations', { upstreamPath: '/images/generations' }],
     [
       '/v1/messages',
       {
@@ -1245,6 +1274,36 @@ async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, optio
   let lastFailure = null;
 
   for (const model of models) {
+    if (isImageGenerationModel(model)) {
+      const imageProbe = await probeCredentialImageGeneration(
+        baseUrl,
+        rawKey,
+        model,
+        serverOptions,
+        Date.now(),
+        options.authConfig || {},
+      );
+      if (imageProbe.status === 'auth_failed' || imageProbe.status === 'quota_failed' || imageProbe.status === 'network_failed') {
+        return imageProbe;
+      }
+      if (imageProbe.ok) {
+        supportedModels.push(model);
+        bestLatencyMs = bestLatencyMs ? Math.min(bestLatencyMs, imageProbe.latencyMs) : imageProbe.latencyMs;
+        if (!options.collectAllModels) {
+          return imageProbe;
+        }
+        continue;
+      }
+      if (isModelUnsupportedResponse(imageProbe.httpStatus, imageProbe.bodyText)) {
+        continue;
+      }
+      lastFailure = imageProbe;
+      if (!options.collectAllModels) {
+        return lastFailure;
+      }
+      continue;
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), Number(serverOptions.probeTimeoutMs || 2500));
     const startedAt = Date.now();
@@ -1350,6 +1409,66 @@ async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, optio
   return { ok: false, status: 'model_failed', reason: '预设模型均不可用', models: [] };
 }
 
+async function probeCredentialImageGeneration(baseUrl, rawKey, model, serverOptions, startedAt, authConfig = {}) {
+  const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
+  if (!fetchImpl) {
+    return { ok: false, status: 'probe_unavailable', reason: '当前 Node 环境缺少 fetch', models: [] };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(serverOptions.probeTimeoutMs || 2500));
+  try {
+    const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/images/generations`, {
+      method: 'POST',
+      headers: {
+        ...authHeadersForKey(rawKey, authConfig),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        prompt: 'ping',
+        size: '1024x1024',
+      }),
+      signal: controller.signal,
+    });
+    const bodyText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, status: 'auth_failed', reason: '认证失败或 Key 无效', models: [], httpStatus: response.status, bodyText };
+    }
+    if (response.status === 402 || response.status === 429) {
+      return { ok: false, status: 'quota_failed', reason: '上游额度不足或限速', models: [], httpStatus: response.status, bodyText };
+    }
+    if (response.status >= 200 && response.status < 300) {
+      return {
+        ok: true,
+        status: 'image_probe_ok',
+        reason: '',
+        models: [model],
+        latencyMs: Math.max(1, Date.now() - startedAt),
+        httpStatus: response.status,
+        bodyText,
+      };
+    }
+    return {
+      ok: false,
+      status: 'http_failed',
+      reason: `上游返回 HTTP ${response.status}`,
+      models: [],
+      httpStatus: response.status,
+      bodyText,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'network_failed',
+      reason: error.name === 'AbortError' ? '探测超时' : '请求地址不可达',
+      models: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function probeCredentialResponses(baseUrl, rawKey, model, serverOptions, startedAt, authConfig = {}) {
   const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
   const controller = new AbortController();
@@ -1413,6 +1532,10 @@ function shouldTryResponsesProbe(status, bodyText) {
 
 function isModelUnsupportedResponse(status, bodyText) {
   return (status === 400 || status === 404) && /model|not found|unsupported|not supported|不存在|不支持/i.test(bodyText || '');
+}
+
+function isImageGenerationModel(model) {
+  return /image|dall/i.test(String(model || ''));
 }
 
 function parseModelIds(bodyText) {
@@ -1556,7 +1679,7 @@ async function callGatewayAttempts(credential, body, serverOptions, options = {}
 }
 
 function shouldFailoverUpstream(upstream) {
-  return upstream.status === 408 || upstream.status >= 500;
+  return upstream.status === 408 || upstream.status >= 500 || isCredentialRejectedResponse(upstream) || isGatewayAdapterUnsupported(upstream);
 }
 
 function isGatewayAdapterUnsupported(upstream) {
@@ -1564,6 +1687,13 @@ function isGatewayAdapterUnsupported(upstream) {
     return false;
   }
   return /not found|unsupported|not supported|unknown endpoint|cannot\s+post|不存在|不支持/i.test(upstream.bodyText || '');
+}
+
+function isCredentialRejectedResponse(upstream) {
+  if (!upstream || ![401, 403].includes(upstream.status)) {
+    return false;
+  }
+  return /invalid api key|missing api key|unauthorized|forbidden|token|api key|认证|鉴权|密钥/i.test(upstream.bodyText || '');
 }
 
 function anthropicMessagesToChatCompletion(body) {
@@ -1621,6 +1751,52 @@ function responsesRequestToChatCompletion(body) {
   });
 }
 
+function chatCompletionRequestToResponses(body) {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const instructions = messages
+    .filter((message) => message.role === 'system' || message.role === 'developer')
+    .map((message) => chatMessageContentToText(message.content))
+    .filter(Boolean)
+    .join('\n\n');
+  const inputMessages = messages
+    .filter((message) => message.role !== 'system' && message.role !== 'developer')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: chatContentToResponsesContent(message.content),
+    }));
+
+  return compactObject({
+    model: body.model,
+    instructions,
+    input: inputMessages.length ? inputMessages : responsesInputToMessages(body.prompt || '').map((message) => ({
+      role: message.role,
+      content: chatContentToResponsesContent(message.content),
+    })),
+    max_output_tokens: body.max_completion_tokens || body.max_tokens,
+    temperature: body.temperature,
+    top_p: body.top_p,
+    stream: false,
+    metadata: body.metadata,
+  });
+}
+
+function chatContentToResponsesContent(content) {
+  if (typeof content === 'string') {
+    return [{ type: 'input_text', text: content }];
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === 'string') return { type: 'input_text', text: part };
+      if (part?.type === 'text') return { type: 'input_text', text: part.text || '' };
+      if (part?.type === 'image_url') {
+        return { type: 'input_image', image_url: part.image_url?.url || part.image_url || '' };
+      }
+      return { type: 'input_text', text: JSON.stringify(part || {}) };
+    });
+  }
+  return [{ type: 'input_text', text: content ? JSON.stringify(content) : '' }];
+}
+
 function responsesInputToMessages(input) {
   if (Array.isArray(input)) {
     return input.map((item) => ({
@@ -1674,6 +1850,63 @@ function chatCompletionToAnthropicMessageResponse(upstream, originalBody) {
       },
     }),
   };
+}
+
+function responsesToChatCompletionResponse(upstream, originalBody) {
+  if (upstream.status < 200 || upstream.status >= 300 || upstream.bodyStream) {
+    return upstream;
+  }
+  const payload = parseJsonPayload(upstream.bodyText);
+  const usage = payload.usage || {};
+  const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
+  const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
+  const id = String(payload.id || createId('resp'));
+  return {
+    status: upstream.status,
+    contentType: 'application/json; charset=utf-8',
+    bodyText: JSON.stringify({
+      id: id.startsWith('chatcmpl') ? id : `chatcmpl_${id}`,
+      object: 'chat.completion',
+      created: Number(payload.created || payload.created_at || Math.floor(Date.now() / 1000)),
+      model: payload.model || originalBody.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: responsesOutputToText(payload),
+          },
+          finish_reason: responseFinishReason(payload),
+        },
+      ],
+      usage: {
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: Number(usage.total_tokens || inputTokens + outputTokens),
+      },
+    }),
+  };
+}
+
+function responsesOutputToText(payload) {
+  if (typeof payload.output_text === 'string') {
+    return payload.output_text;
+  }
+  return (payload.output || [])
+    .flatMap((item) => item.content || [])
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part?.type === 'output_text' || part?.type === 'text') return part.text || '';
+      return part ? JSON.stringify(part) : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function responseFinishReason(payload) {
+  if (payload.status === 'incomplete') return 'length';
+  if (payload.status === 'failed') return 'error';
+  return 'stop';
 }
 
 function chatCompletionToResponsesResponse(upstream, originalBody) {
@@ -2796,6 +3029,7 @@ function sortModelsByStrength(models = []) {
     'gpt-image-2',
     'gpt-image-1.5',
     'gpt-image-1',
+    'gpt-5.3-codex',
     'claude-opus-4-6-thinking-c',
     'claude-opus-4-6-c',
     'claude-sonnet-4-5-c',
@@ -3149,6 +3383,8 @@ function sanitizeCredential(credential) {
     expiresAt: credential.expiresAt || '',
     wasteEstimate: estimateCredentialWaste(credential),
     latencyMs: credential.latencyMs,
+    lastProbeStatus: credential.lastProbeStatus || '',
+    lastProbeReason: credential.lastProbeReason || '',
     updatedAt: credential.updatedAt,
   };
 }

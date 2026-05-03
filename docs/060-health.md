@@ -1,10 +1,10 @@
 # HEALTH — 系统健康状态
 
-> 最后更新: 2026-05-02
+> 最后更新: 2026-05-03
 
 ---
 
-## 当前系统状态: 🟡 质量优化完成, 待外部密钥轮换
+## 当前系统状态: 🟡 质量优化和冗余清理完成, 待外部密钥轮换
 
 | 指标 | 值 |
 |------|------|
@@ -15,10 +15,11 @@
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
 | 测试 | ✅ 1488 passed, 2 skipped, 0 failed |
-| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮 Frist-API `npm test` 为 95/95 通过，已部署到腾讯云 `/opt/frist-api` 且 `frist-api-server` healthy；测试账号已补足 60 刀等值日卡额度；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
+| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传和公开模式硬门槛；本轮 Frist-API `npm test` 为 100/100 通过，已补齐广场 `5.5`/`image2` 别名、图片模型 `/images/generations` 补号探测和广场一键实测状态；上一轮腾讯云 `/opt/frist-api` 部署状态为 `frist-api-server` healthy，当前本地修复待同步到服务器；公网日卡账号曾实测 `gpt-5.5` 广场 Chat/Responses、OpenCode 前缀路由和导入模型清单通过；商业化自动运营仍需支付回调、固定域名、数据库、备份和监控 |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
 | 日志目录 | ✅ 784KB (已清理本地日志) |
+| 文档治理 | ✅ 主项目 docs 压缩到 19 个 Markdown，历史截图/旧审计/散落设计报告已清理 |
 | 公开仓库安全 | 🟡 Git 历史已重写并通过本地扫描, 仍需轮换曾暴露过的外部密钥 |
 
 ---
@@ -77,6 +78,9 @@
 | HI-836 | UX/ARCH_LIMIT | CC Switch 跨模型家族导入存在断点：ChatGPT 模型不能直接导入 Claude Code，Claude 模型导入 Codex 缺少 Responses 降级链路；已补齐 Claude Code Anthropic Messages 配置、Codex Responses fallback、开发者模式引导和支付最后一公里手册 | 2026-05-02 |
 | HI-837 | UX | CC Switch 跨模型导入教程仍偏文字化，用户不知道 Claude 左上角菜单、第三方推理输入框和 Codex 配置字段在哪里；已补两张仿真实操流程图、编号步骤、字段对照和上下文切换验收提示 | 2026-05-02 |
 | HI-838 | UX/BUG | Frist-API 登录、创建 Key、连通性刷新、模型命名、mock 数据和价格管理存在实测断点；已补明确反馈、刷新留在当前页、渠道聚合状态、官方模型名清洗、真实数据空态、后台价格 JSON 管理和 60 刀测试额度入账 | 2026-05-02 |
+| HI-839 | UX/BUG | Frist-API 外网实测发现 CC Switch 一键导入入口藏在长教程后、广场 `gpt-5.5` Chat Completions 返回上游 `Route /openai/chat/completions not found`、OpenCode 前缀路由未接住、OpenCode 导入模型清单缺 `gpt-5.4` / `gpt-5.3-codex`，桌面端实际导入后 `config.models` 仍只写默认模型；已前置一键导入主操作、补 OpenCode `/openai/*` 兼容路由、Chat Completions 缺失时降级 Responses，并按 OpenCode/CC Switch 真实配置格式补完整模型映射 | 2026-05-02 |
+| HI-840 | TECH_DEBT | 主项目文档、历史截图、旧审计报告、本地构建缓存和服务器临时产物过多；已压缩 docs 到 19 个 Markdown，本地仓库体积从约 2.4GB 降到约 196MB，并分层清理服务器日志、缓存、临时文件和 Docker 非运行对象 | 2026-05-03 |
+| HI-841 | UX/BUG | Frist-API 广场和补号对 `5.5`、`image2` 这类商业别名不够稳，图片库存严格探测可能误走聊天接口；已补别名清洗、图片模型 `/images/generations` 探测、广场一键实测状态和回归测试 | 2026-05-03 |
 
 ---
 

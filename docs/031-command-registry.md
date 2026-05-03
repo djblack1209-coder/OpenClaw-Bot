@@ -1,6 +1,6 @@
 # COMMAND_REGISTRY — OpenClaw Bot 命令全表
 
-> 最后更新: 2026-05-02 (同步 Frist-API 导出模型清单入口) | Bot 命令总数 104
+> 最后更新: 2026-05-03 (同步 Frist-API 广场连通实测入口) | Bot 命令总数 104
 
 ---
 
@@ -26,6 +26,7 @@
 | 手动配置复制 | `data-copy-auth-json` / `data-copy-config-toml` | 复制 Codex/OpenCode 等客户端配置 |
 | 连通性刷新 | `data-refresh-health` | 用户侧模型连通性刷新 |
 | 广场模型选择 | `data-playground-model` | 用户选择要直接测试的文本或图片模型 |
+| 广场连通实测 | `data-playground-test` / `data-playground-status` | 一键实测当前模型，展示成功/失败、耗时和返回摘要 |
 | 广场发送 | `data-playground-send` | 调用聊天网关或图片生成网关进行模型实测 |
 | 广场消息删除 | `data-delete-message` | 删除单条广场测试消息 |
 | 广场清空 | `data-clear-playground` | 清空广场测试消息并恢复欢迎提示 |

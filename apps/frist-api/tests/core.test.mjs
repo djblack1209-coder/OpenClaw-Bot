@@ -26,14 +26,20 @@ describe('Frist-API core flows', () => {
     assert.equal(normalizeOfficialModelName('claude-haiku-4-5-20251001'), 'claude-sonnet-4-5-c');
     assert.equal(normalizeOfficialModelName('claude-opus-4-6'), 'claude-opus-4-6-c');
     assert.equal(normalizeOfficialModelName('claude-opus-4-6-thinking'), 'claude-opus-4-6-thinking-c');
+    assert.equal(normalizeOfficialModelName('5.5'), 'gpt-5.5');
+    assert.equal(normalizeOfficialModelName('gpt5.5'), 'gpt-5.5');
+    assert.equal(normalizeOfficialModelName('image2'), 'gpt-image-2');
+    assert.equal(normalizeOfficialModelName('gpt_image_2'), 'gpt-image-2');
     assert.deepEqual(
       normalizeOfficialModelList([
         'claude-haiku-4-5-20251001',
         'claude-sonnet-4-5',
+        '5.5',
+        'image2',
         'gpt-5.5-c',
         'gpt-5.5',
       ]),
-      ['claude-sonnet-4-5-c', 'gpt-5.5-c', 'gpt-5.5'],
+      ['claude-sonnet-4-5-c', 'gpt-5.5', 'gpt-image-2', 'gpt-5.5-c'],
     );
   });
 
@@ -157,6 +163,12 @@ describe('Frist-API core flows', () => {
         ]);
       } else {
         assert.doesNotMatch(config.configToml, /\[mcp_servers\./);
+        assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
+        assert.equal(providerConfig.options.baseURL, 'http://101.43.41.96:5566/v1');
+        assert.equal(providerConfig.options.apiKey, 'fk_test_preview_only');
+        assert.equal(providerConfig.options.timeout, 600);
+        assert.equal(providerConfig.options.setCacheKey, true);
+        assert.deepEqual(providerConfig.models, { 'gpt-5.5': { name: 'gpt-5.5' } });
       }
     }
   });
@@ -226,12 +238,12 @@ describe('Frist-API core flows', () => {
         baseUrl: 'https://api.frist.example.com/v1',
         model: 'gpt-5.4',
         defaultModel: 'gpt-5.5',
-        availableModels: ['gpt-5.4', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2'],
+        availableModels: ['gpt-5.4', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2', 'gpt-5.3-codex'],
         modelGroup: 'OpenAI',
       });
       const importUrl = new URL(config.ccSwitchUrl);
       const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
-      const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2'];
+      const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2', 'gpt-5.3-codex'];
 
       assert.equal(config.modelName, 'gpt-5.5');
       assert.equal(config.defaultModel, 'gpt-5.5');
@@ -242,25 +254,53 @@ describe('Frist-API core flows', () => {
       assert.deepEqual(JSON.parse(importUrl.searchParams.get('availableModels')), expectedModels);
       assert.deepEqual(JSON.parse(importUrl.searchParams.get('available_models')), expectedModels);
       assert.deepEqual(JSON.parse(importUrl.searchParams.get('modelList')), expectedModels);
-      assert.deepEqual(providerConfig.models, expectedModels);
-      assert.deepEqual(providerConfig.availableModels, expectedModels);
-      assert.deepEqual(providerConfig.available_models, expectedModels);
-      assert.deepEqual(providerConfig.modelList, expectedModels);
-      assert.deepEqual(providerConfig.provider.models, expectedModels);
-      assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
-      assert.deepEqual(providerConfig.provider.available_models, expectedModels);
-      assert.deepEqual(providerConfig.provider.modelList, expectedModels);
-      assert.equal(providerConfig.defaultModel, 'gpt-5.5');
-      assert.equal(providerConfig.default_model, 'gpt-5.5');
-      assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
-      assert.equal(providerConfig.provider.default_model, 'gpt-5.5');
-      assert.equal(providerConfig.codex.defaultModel, 'gpt-5.5');
-      assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
-      assert.equal(providerConfig.features.responses, true);
-      assert.equal(providerConfig.features.streaming, true);
-      assert.equal(providerConfig.features.toolSearch, true);
-      assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2"\]/);
+      if (target === 'OpenCode') {
+        assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
+        assert.equal(providerConfig.options.baseURL, 'https://api.frist.example.com/v1');
+        assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
+        assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
+      } else {
+        assert.deepEqual(providerConfig.models, expectedModels);
+        assert.deepEqual(providerConfig.availableModels, expectedModels);
+        assert.deepEqual(providerConfig.available_models, expectedModels);
+        assert.deepEqual(providerConfig.modelList, expectedModels);
+        assert.deepEqual(providerConfig.provider.models, expectedModels);
+        assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
+        assert.deepEqual(providerConfig.provider.available_models, expectedModels);
+        assert.deepEqual(providerConfig.provider.modelList, expectedModels);
+        assert.equal(providerConfig.defaultModel, 'gpt-5.5');
+        assert.equal(providerConfig.default_model, 'gpt-5.5');
+        assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
+        assert.equal(providerConfig.provider.default_model, 'gpt-5.5');
+        assert.equal(providerConfig.codex.defaultModel, 'gpt-5.5');
+        assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
+        assert.equal(providerConfig.features.responses, true);
+        assert.equal(providerConfig.features.streaming, true);
+        assert.equal(providerConfig.features.toolSearch, true);
+      }
+      assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2", "gpt-5\.3-codex"\]/);
     }
+  });
+
+  it('builds a copyable OpenCode provider fragment with the full model map', () => {
+    const config = buildClientConfig({
+      target: 'OpenCode',
+      apiKey: 'fk_opencode_full_config',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'gpt-5.5',
+      defaultModel: 'gpt-5.5',
+      availableModels: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
+      modelGroup: 'OpenAI',
+    });
+    const fragment = JSON.parse(config.openCodeProviderJson);
+    const provider = fragment.provider['frist-api'];
+
+    assert.deepEqual(Object.keys(fragment), ['provider']);
+    assert.equal(provider.npm, '@ai-sdk/openai-compatible');
+    assert.equal(provider.options.baseURL, 'https://api.frist.example.com/v1');
+    assert.equal(provider.options.apiKey, 'fk_opencode_full_config');
+    assert.deepEqual(Object.keys(provider.models), ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex']);
+    assert.deepEqual(provider.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
   });
 
   it('promotes official Pro aliases when those models are available to the customer', () => {

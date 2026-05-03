@@ -70,6 +70,12 @@ const HEALTH_LABELS = {
 
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
 const OFFICIAL_MODEL_ALIASES = new Map([
+  ['5.5', 'gpt-5.5'],
+  ['gpt5.5', 'gpt-5.5'],
+  ['gpt-55', 'gpt-5.5'],
+  ['image2', 'gpt-image-2'],
+  ['gpt-image2', 'gpt-image-2'],
+  ['gpt_image_2', 'gpt-image-2'],
   ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-c'],
   ['claude-haiku-4-5', 'claude-sonnet-4-5-c'],
   ['claude-haiku', 'claude-sonnet-4-5-c'],
@@ -89,6 +95,7 @@ const MODEL_STRENGTH_ORDER = [
   'gpt-image-2',
   'gpt-image-1.5',
   'gpt-image-1',
+  'gpt-5.3-codex',
   'claude-opus-4-6-thinking-c',
   'claude-opus-4-6-c',
   'claude-sonnet-4-5-c',
@@ -330,6 +337,19 @@ export function buildClientConfig({
     mcpServers,
     authJson,
     configToml,
+    openCodeProviderJson:
+      profile.slug === 'opencode'
+        ? `${JSON.stringify(
+            buildOpenCodeProviderFragment({
+              apiKey: safeKey,
+              baseUrl: clientBaseUrl,
+              availableModels: modelList,
+              sdkOptions: safeSdkOptions,
+            }),
+            null,
+            2,
+          )}\n`
+        : '',
     ccSwitchUrl: buildCcSwitchImportUrl({
       target: profile.slug,
       apiKey: safeKey,
@@ -432,6 +452,14 @@ function buildCcSwitchProviderConfig({
 }) {
   const selectedModel = defaultModel || model;
   const exportModels = normalizeAvailableModels(availableModels, { model, defaultModel: selectedModel });
+  if (profile.slug === 'opencode') {
+    return buildOpenCodeProviderEntry({
+      apiKey,
+      baseUrl,
+      availableModels: exportModels,
+      sdkOptions,
+    });
+  }
   const commonEnv = {
     OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: openAiBaseUrl || baseUrl,
@@ -525,6 +553,38 @@ function buildCcSwitchProviderConfig({
     sdkOptions,
     ...(mcpServers ? { mcpServers, mcp_servers: mcpServers } : {}),
     features: defaultClientFeatures(exportModels),
+  };
+}
+
+function buildOpenCodeModelConfig(models = []) {
+  return normalizeAvailableModels(models).reduce((items, model) => {
+    items[model] = { name: model };
+    return items;
+  }, {});
+}
+
+function buildOpenCodeProviderEntry({ apiKey, baseUrl, availableModels, sdkOptions = {} }) {
+  return {
+    npm: '@ai-sdk/openai-compatible',
+    options: {
+      ...sdkOptions,
+      baseURL: baseUrl,
+      apiKey,
+    },
+    models: buildOpenCodeModelConfig(availableModels),
+  };
+}
+
+function buildOpenCodeProviderFragment({ apiKey, baseUrl, availableModels, sdkOptions = {} }) {
+  return {
+    provider: {
+      'frist-api': buildOpenCodeProviderEntry({
+        apiKey,
+        baseUrl,
+        availableModels,
+        sdkOptions,
+      }),
+    },
   };
 }
 
